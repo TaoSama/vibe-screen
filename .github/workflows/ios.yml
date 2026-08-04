@@ -14,9 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Verify generated Protocol v1 bindings are current
-        run: |
-          apps/ios/Scripts/generate-protocol.sh
-          git diff --exit-code -- apps/ios/Sources/VibeScreenProtocol
+        run: apps/ios/Scripts/verify-generated-protocol.sh
       - name: Resolve pinned dependencies
         run: swift package --package-path apps/ios resolve
       - name: Build native protocol, session, transport, and video modules

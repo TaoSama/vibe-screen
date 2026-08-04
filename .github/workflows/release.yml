@@ -128,9 +128,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Verify generated Protocol v1 bindings are current
-        run: |
-          apps/ios/Scripts/generate-protocol.sh
-          git diff --exit-code -- apps/ios/Sources/VibeScreenProtocol
+        run: apps/ios/Scripts/verify-generated-protocol.sh
       - name: Build and self-test iOS core modules
         run: |
           swift package --package-path apps/ios resolve

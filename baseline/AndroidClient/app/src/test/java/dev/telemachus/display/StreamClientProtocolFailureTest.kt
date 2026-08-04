@@ -6,7 +6,10 @@ import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.HostHello
+import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.SessionRejected
+import dev.vibescreen.protocol.v1.SessionAccepted
+import com.google.protobuf.ByteString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
@@ -16,6 +19,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.ServerSocket
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -32,6 +37,137 @@ class StreamClientProtocolFailureTest {
         assertEquals("device_revoked", result.reason)
         assertTrue(result.retryable)
         assertTrue(result.reconnectSuggested.await(1, TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun malformedEnvelopeReachesUiAndStopsReconnect() =
+        runMalformedPeerFrame(
+            payload = byteArrayOf(0x80.toByte()),
+            expectedReason = "invalid_envelope",
+        )
+
+    @Test
+    fun malformedMediaReachesUiAndStopsReconnect() =
+        runMalformedPeerFrame(
+            payload = byteArrayOf(0),
+            channel = ProtocolChannel.VIDEO,
+            expectedReason = "invalid_media_payload",
+        )
+
+    @Test
+    fun invalidMediaHeaderReachesUiAndStopsReconnect() =
+        runBlocking {
+            ServerSocket(0).use { server ->
+                val serverJob =
+                    async(Dispatchers.IO) {
+                        server.accept().use { peer ->
+                            assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
+                            peer.getOutputStream().write(byteArrayOf(PROTOCOL_UPGRADE_BYTE.toByte(), 1))
+                            peer.getOutputStream().flush()
+                            ProtocolV1Framing.read(peer.getInputStream())
+                            write(peer, hostHello())
+                            write(
+                                peer,
+                                Envelope.newBuilder()
+                                    .setProtocolVersion(1)
+                                    .setMessageId(2)
+                                    .setSessionAccepted(
+                                        SessionAccepted.newBuilder()
+                                            .setSessionId(ByteString.copyFrom(ByteArray(16) { 1 }))
+                                            .setSessionEpoch(1)
+                                            .addNegotiatedCapabilities(Capability.CAPABILITY_TOUCH)
+                                            .addNegotiatedCapabilities(Capability.CAPABILITY_TELEMETRY),
+                                    ).build(),
+                            )
+                            ProtocolV1Framing.read(peer.getInputStream())
+                            val media =
+                                ProtocolV1Framing.encodeVideo(
+                                    MediaPacketHeader.newBuilder().setPayloadLength(1).build(),
+                                    byteArrayOf(1),
+                                )
+                            ProtocolV1Framing.write(peer.getOutputStream(), ProtocolChannel.VIDEO, media)
+                        }
+                    }
+                val callback = CountDownLatch(1)
+                val reconnect = CountDownLatch(1)
+                var reason = ""
+                var retryable = true
+                val client = StreamClient("127.0.0.1", server.localPort)
+                client.onProtocolFailure = { reportedReason, reportedRetryable, _ ->
+                    reason = reportedReason
+                    retryable = reportedRetryable
+                    callback.countDown()
+                }
+                client.onReconnectSuggested = { reconnect.countDown() }
+
+                withTimeout(3_000) { client.connect() }
+                withTimeout(3_000) { serverJob.await() }
+                assertTrue(callback.await(1, TimeUnit.SECONDS))
+                assertEquals("invalid_media_header", reason)
+                assertFalse(retryable)
+                assertFalse(reconnect.await(200, TimeUnit.MILLISECONDS))
+            }
+        }
+
+    @Test
+    fun invalidFrameChannelReachesUiAndStopsReconnect() =
+        runMalformedPeerFrame(
+            rawFrame = byteArrayOf(99, 0, 0, 0, 0),
+            expectedReason = "invalid_frame",
+        )
+
+    @Test
+    fun truncatedFrameReachesUiAndStopsReconnect() =
+        runMalformedPeerFrame(
+            rawFrame = byteArrayOf(ProtocolChannel.CONTROL.wireValue.toByte(), 0, 0),
+            expectedReason = "invalid_frame",
+        )
+
+    private fun runMalformedPeerFrame(
+        payload: ByteArray? = null,
+        rawFrame: ByteArray? = null,
+        channel: ProtocolChannel = ProtocolChannel.CONTROL,
+        expectedReason: String,
+    ) = runBlocking {
+        ServerSocket(0).use { server ->
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
+                        peer.getOutputStream().write(byteArrayOf(PROTOCOL_UPGRADE_BYTE.toByte(), 1))
+                        peer.getOutputStream().flush()
+                        ProtocolV1Framing.read(peer.getInputStream())
+                        val malformed =
+                            rawFrame ?: ByteBuffer
+                                .allocate(5 + checkNotNull(payload).size)
+                                .order(ByteOrder.BIG_ENDIAN)
+                                .put(channel.wireValue.toByte())
+                                .putInt(payload.size)
+                                .put(payload)
+                                .array()
+                        peer.getOutputStream().write(malformed)
+                        peer.getOutputStream().flush()
+                    }
+                }
+            val callback = CountDownLatch(1)
+            val reconnect = CountDownLatch(1)
+            var reason = ""
+            var retryable = true
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.onProtocolFailure = { reportedReason, reportedRetryable, _ ->
+                reason = reportedReason
+                retryable = reportedRetryable
+                callback.countDown()
+            }
+            client.onReconnectSuggested = { reconnect.countDown() }
+
+            withTimeout(3_000) { client.connect() }
+            withTimeout(3_000) { serverJob.await() }
+            assertTrue(callback.await(1, TimeUnit.SECONDS))
+            assertEquals(expectedReason, reason)
+            assertFalse(retryable)
+            assertFalse(reconnect.await(200, TimeUnit.MILLISECONDS))
+        }
     }
 
     private fun runRejectedSession(

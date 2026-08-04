@@ -94,20 +94,24 @@ self-test. It does not replace device interoperability evidence.
   confirms that the unknown field is discarded, and does not prove Swift or
   Kotlin unknown-field preservation.
 - `./gradlew testDebugUnitTest lintDebug assembleDebug
-  auditReleaseDependencies` passes 112 Android unit tests and all 66 Gradle
+  auditReleaseDependencies` passes 124 Android unit tests and all 66 Gradle
   tasks. The generated Java-lite bindings contain 168 files. The resulting
   debug APK SHA-256 is
-  `c7f3c16339bd1cc589d03268e1d0bbfbf87ad0857af92787061f6247a32d9cb1`.
+  `d73b9a580949043b321d7d57351051f3e8b9bdb8532553272477584e92ed6917`.
 - `swift build -c release --product Telemachus` passes. The release executable
   SHA-256 is
-  `76202bd0deb8d8f9763490f25361dea9a894a5636a84d4e205fcfb2f1449ceb1`.
+  `e1675061f4098e29d692f7eb938a612bbe574d04b33133e0ecb8e76d8f112969`.
   `.build/release/Telemachus --protocol-v1-self-test` reports `PASS` for
   framing, all shared cross-platform golden fixtures, version/required
   capability negotiation, display/video acknowledgement gating, stale epochs,
   input including two-pointer aggregation, heartbeat, errors, and media.
 - The additive schema was regenerated into both MacHost and iOS Swift bindings.
   `swift build --package-path apps/ios` and the iOS core self-test pass, proving
-  the checked binding update did not regress that consumer.
+  the checked binding update did not regress that consumer. Both iOS and
+  release workflows run the same generated-binding verifier, which rejects
+  tracked changes and path-scoped untracked files. A temporary additive proto
+  produced an untracked Swift binding and made the verifier fail; removing it
+  and regenerating restored a clean pass.
 - `swift test --filter ProtocolV1SessionTests` still fails before test execution
   with `no such module 'XCTest'`: this machine selects
   `/Library/Developer/CommandLineTools`, not full Xcode. The equivalent pure

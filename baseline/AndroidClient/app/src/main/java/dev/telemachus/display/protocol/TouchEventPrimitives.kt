@@ -71,12 +71,14 @@ internal class TouchEventBuffer(
     internal enum class OfferResult {
         ACCEPTED,
         RETRY_REQUIRED,
+        CLOSED,
     }
 
     private val samples = ArrayList<TouchSample>(capacity)
     private val lock = ReentrantLock()
     private val notEmpty = lock.newCondition()
     private val notFull = lock.newCondition()
+    private var closed = false
 
     init {
         require(capacity > 0) { "capacity must be positive" }
@@ -87,19 +89,43 @@ internal class TouchEventBuffer(
 
     fun take(): TouchSample =
         lock.withLock {
-            while (samples.isEmpty()) {
+            while (samples.isEmpty() && !closed) {
                 notEmpty.await()
             }
+            if (samples.isEmpty()) throw TouchEventBufferClosedException()
             samples.removeAt(0).also { notFull.signalAll() }
         }
 
     /** Blocks only when the mailbox contains lifecycle boundaries that cannot be discarded. */
     @Throws(InterruptedException::class)
-    fun put(sample: TouchSample) {
+    fun put(sample: TouchSample): Boolean {
         lock.withLock {
-            while (offerLocked(sample) == OfferResult.RETRY_REQUIRED) {
-                notFull.await()
+            while (true) {
+                when (offerLocked(sample)) {
+                    OfferResult.ACCEPTED -> return true
+                    OfferResult.CLOSED -> return false
+                    OfferResult.RETRY_REQUIRED -> notFull.await()
+                }
             }
+        }
+    }
+
+    /** Stops new producers, while allowing the consumer to drain already accepted samples. */
+    fun close() {
+        lock.withLock {
+            closed = true
+            notEmpty.signalAll()
+            notFull.signalAll()
+        }
+    }
+
+    /** Stops the mailbox immediately and discards samples owned by the cancelled connection. */
+    fun cancel() {
+        lock.withLock {
+            closed = true
+            samples.clear()
+            notEmpty.signalAll()
+            notFull.signalAll()
         }
     }
 
@@ -118,6 +144,7 @@ internal class TouchEventBuffer(
     }
 
     private fun offerLocked(sample: TouchSample): OfferResult {
+        if (closed) return OfferResult.CLOSED
         if (sample.phase == InputPhase.INPUT_PHASE_CHANGED && coalesceChanged(sample)) {
             return OfferResult.ACCEPTED
         }
@@ -139,3 +166,5 @@ internal class TouchEventBuffer(
         const val DEFAULT_CAPACITY = 64
     }
 }
+
+internal class TouchEventBufferClosedException : IllegalStateException("touch event buffer is closed")

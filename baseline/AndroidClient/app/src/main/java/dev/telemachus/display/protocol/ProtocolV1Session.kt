@@ -28,7 +28,7 @@ internal class ProtocolV1Failure(
     val source: Source,
     message: String,
 ) : IOException(message) {
-    enum class Source { SESSION_REJECTED, HOST_PROTOCOL_ERROR, LOCAL_VALIDATION }
+    enum class Source { SESSION_REJECTED, HOST_PROTOCOL_ERROR, PEER_PROTOCOL_VIOLATION }
 }
 
 /** Product-session state machine. It intentionally has no Android, UI, codec, or transport imports. */
@@ -194,16 +194,16 @@ internal class ProtocolV1Session(
 
     @Synchronized
     fun validateMedia(header: dev.vibescreen.protocol.v1.MediaPacketHeader) {
-        if (state != State.STREAMING) throw IOException("Media received before VideoConfig acceptance")
+        if (state != State.STREAMING) throw mediaFailure("Media received before VideoConfig acceptance")
         if (header.sessionEpoch != sessionEpoch || header.streamId != streamId || header.configEpoch != configEpoch) {
-            throw IOException("Stale or cross-stream media header")
+            throw mediaFailure("Stale or cross-stream media header")
         }
-        if (header.codec != configuredCodec) throw IOException("Media codec differs from accepted VideoConfig")
+        if (header.codec != configuredCodec) throw mediaFailure("Media codec differs from accepted VideoConfig")
         if (header.fragmentCount != 1 || header.fragmentIndex != 0) {
-            throw IOException("Fragmented Protocol v1 media is unsupported")
+            throw mediaFailure("Fragmented Protocol v1 media is unsupported")
         }
-        if (header.frameId <= lastFrameId) throw IOException("Non-monotonic media frame_id")
-        if (header.payloadLength <= 0) throw IOException("Media payload must not be empty")
+        if (header.frameId <= lastFrameId) throw mediaFailure("Non-monotonic media frame_id")
+        if (header.payloadLength <= 0) throw mediaFailure("Media payload must not be empty")
         lastFrameId = header.frameId
     }
 
@@ -353,11 +353,19 @@ internal class ProtocolV1Session(
             .setSessionEpoch(sessionEpoch)
             .setSentAtMonotonicNs(nowNs())
 
-    private fun protocolFailure(message: String): IOException =
+    private fun protocolFailure(message: String): ProtocolV1Failure =
         ProtocolV1Failure(
             reason = "invalid_peer_message",
             retryable = false,
-            source = ProtocolV1Failure.Source.LOCAL_VALIDATION,
+            source = ProtocolV1Failure.Source.PEER_PROTOCOL_VIOLATION,
+            message = "Protocol v1: $message",
+        )
+
+    private fun mediaFailure(message: String): ProtocolV1Failure =
+        ProtocolV1Failure(
+            reason = "invalid_media_header",
+            retryable = false,
+            source = ProtocolV1Failure.Source.PEER_PROTOCOL_VIOLATION,
             message = "Protocol v1: $message",
         )
 

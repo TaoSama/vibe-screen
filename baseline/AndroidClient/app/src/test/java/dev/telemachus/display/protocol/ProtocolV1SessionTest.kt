@@ -23,7 +23,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.IOException
 
 class ProtocolV1SessionTest {
     @Test
@@ -68,16 +67,25 @@ class ProtocolV1SessionTest {
     @Test
     fun rejectsVersionCapabilitySessionEpochAndUnexpectedPayload() {
         val wrongVersion = session().also { it.clientHello() }
-        assertThrows(IOException::class.java) { wrongVersion.receive(hostHello(2).toBuilder().setProtocolVersion(2).build()) }
+        assertInvalidPeerMessage {
+            wrongVersion.receive(hostHello(2).toBuilder().setProtocolVersion(2).build())
+        }
 
         val missingRequired = session().also { it.clientHello() }
         val hello = hostHello(2).toBuilder().setHostHello(HostHello.newBuilder().setSelectedProtocol(1)).build()
-        assertThrows(IOException::class.java) { missingRequired.receive(hello) }
+        assertInvalidPeerMessage { missingRequired.receive(hello) }
 
         val active = streamingSession()
-        assertThrows(IOException::class.java) {
+        assertInvalidPeerMessage {
             active.receive(
                 Envelope.newBuilder(videoConfig(7)).setSessionEpoch(6).build(),
+            )
+        }
+
+        val missingPayload = session().also { it.clientHello() }
+        assertInvalidPeerMessage {
+            missingPayload.receive(
+                Envelope.newBuilder().setProtocolVersion(1).setMessageId(2).build(),
             )
         }
     }
@@ -86,9 +94,13 @@ class ProtocolV1SessionTest {
     fun validatesMediaHeaderAndRejectsFragmentOrStaleEpoch() {
         val session = streamingSession()
         session.validateMedia(mediaHeader())
-        assertThrows(IOException::class.java) { session.validateMedia(mediaHeader().toBuilder().setFragmentCount(2).build()) }
-        assertThrows(IOException::class.java) { session.validateMedia(mediaHeader().toBuilder().setSessionEpoch(6).build()) }
-        assertThrows(IOException::class.java) { session.validateMedia(mediaHeader().toBuilder().setPayloadLength(0).build()) }
+        assertInvalidMediaHeader { session.validateMedia(mediaHeader().toBuilder().setFragmentCount(2).build()) }
+        assertInvalidMediaHeader { session.validateMedia(mediaHeader().toBuilder().setSessionEpoch(6).build()) }
+        assertInvalidMediaHeader { session.validateMedia(mediaHeader().toBuilder().setPayloadLength(0).build()) }
+        assertInvalidMediaHeader { session.validateMedia(mediaHeader()) }
+        assertInvalidMediaHeader {
+            streamingSession().validateMedia(mediaHeader().toBuilder().setCodec(Codec.CODEC_H264).build())
+        }
     }
 
     @Test
@@ -152,7 +164,7 @@ class ProtocolV1SessionTest {
         val result = actions.single() as ProtocolV1Session.Action.Send
         assertFalse(result.envelope.videoConfigResult.accepted)
         assertFalse(session.isStreaming)
-        assertThrows(IOException::class.java) { session.validateMedia(mediaHeader()) }
+        assertInvalidMediaHeader { session.validateMedia(mediaHeader()) }
     }
 
     @Test
@@ -188,6 +200,20 @@ class ProtocolV1SessionTest {
             codecs = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
             nowNs = { 1_000L },
         )
+
+    private fun assertInvalidPeerMessage(block: () -> Unit) {
+        val failure = assertThrows(ProtocolV1Failure::class.java, block)
+        assertEquals("invalid_peer_message", failure.reason)
+        assertEquals(ProtocolV1Failure.Source.PEER_PROTOCOL_VIOLATION, failure.source)
+        assertFalse(failure.retryable)
+    }
+
+    private fun assertInvalidMediaHeader(block: () -> Unit) {
+        val failure = assertThrows(ProtocolV1Failure::class.java, block)
+        assertEquals("invalid_media_header", failure.reason)
+        assertEquals(ProtocolV1Failure.Source.PEER_PROTOCOL_VIOLATION, failure.source)
+        assertFalse(failure.retryable)
+    }
 
     private fun hostHello(
         id: Long,

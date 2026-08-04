@@ -122,7 +122,10 @@ internal class ProtocolV1OutboundActor(
     }
 
     override fun close() {
-        if (accepting.compareAndSet(true, false)) worker.interrupt()
+        if (accepting.compareAndSet(true, false)) {
+            releaseQueuedWork()
+            worker.interrupt()
+        }
     }
 
     val isClosed: Boolean
@@ -157,11 +160,11 @@ internal class ProtocolV1OutboundActor(
             // close() is the only intentional interruption path.
         } catch (failure: Throwable) {
             accepting.set(false)
-            releaseBarriers()
+            releaseQueuedWork()
             onFailure(failure)
         } finally {
             accepting.set(false)
-            releaseBarriers()
+            releaseQueuedWork()
         }
     }
 
@@ -186,7 +189,7 @@ internal class ProtocolV1OutboundActor(
         }
     }
 
-    private fun releaseBarriers() {
+    private fun releaseQueuedWork() {
         queue.forEach { work ->
             if (work is Work.Barrier) work.latch.countDown()
             if (work is Work.Receive) work.completion?.completeExceptionally(IllegalStateException("Actor closed"))
