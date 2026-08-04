@@ -11,11 +11,88 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import java.io.DataOutputStream
+import java.io.IOException
+import java.io.OutputStream
 import java.net.ServerSocket
+import java.net.Socket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class StreamClientCancellationTest {
+    @Test
+    fun invalidLocalWirelessCredentialsNeverOpenSocket() =
+        runBlocking {
+            ServerSocket(0).use { server ->
+                server.soTimeout = 250
+                val failures = mutableListOf<SessionFailure>()
+                val client =
+                    StreamClient("127.0.0.1", server.localPort).apply {
+                        onSessionEnded = { failures += it }
+                    }
+
+                try {
+                    client.connectWireless(ByteArray(31), "test-device")
+                    fail("Expected invalid local credentials")
+                } catch (expected: StreamClient.WirelessConnectError.ProtocolError) {
+                    Unit
+                }
+
+                val accepted = runCatching { server.accept().use { } }.isSuccess
+                assertFalse("invalid local credentials opened a socket", accepted)
+                assertTrue(failures.isEmpty())
+            }
+        }
+
+    @Test
+    fun wirelessOkStartupFailureClosesSocketAndEndsGenerationOnce() =
+        runBlocking {
+            val deviceName = "test-device"
+            val requestSize = 37 + deviceName.toByteArray().size
+            ServerSocket(0).use { server ->
+                val serverObservedEof = CountDownLatch(1)
+                val serverJob =
+                    async(Dispatchers.IO) {
+                        server.accept().use { socket ->
+                            val request = socket.getInputStream().readNBytes(requestSize)
+                            assertEquals(requestSize, request.size)
+                            socket.getOutputStream().apply {
+                                write(byteArrayOf(0x53, 0x53, 0x57, 0x52, 0x00))
+                                flush()
+                            }
+                            while (socket.getInputStream().read() >= 0) {
+                                // Wait until the client-owned termination path closes the socket.
+                            }
+                            serverObservedEof.countDown()
+                        }
+                    }
+                val failures = mutableListOf<SessionFailure>()
+                val retries = mutableListOf<Long>()
+                val statuses = mutableListOf<Boolean>()
+                val client =
+                    StreamClient(
+                        host = "127.0.0.1",
+                        port = server.localPort,
+                        socketFactory = { FailAfterBytesSocket(requestSize) },
+                    ).apply {
+                        onSessionEnded = { failures += it }
+                        onReconnectSuggested = { retries += it }
+                        onConnectionStatus = { statuses += it }
+                    }
+
+                client.connectWireless(ByteArray(32), deviceName)
+
+                assertTrue(serverObservedEof.await(1, TimeUnit.SECONDS))
+                serverJob.await()
+                assertEquals(SessionFailureKind.WRITE_FAILED, failures.single().kind)
+                assertTrue(failures.single().retryable)
+                assertEquals(1, retries.size)
+                assertEquals(listOf(false), statuses)
+                client.disconnect()
+                assertEquals(1, failures.size)
+                assertEquals(1, retries.size)
+            }
+        }
+
     @Test
     fun disconnectBeforeConnectPreventsSocketCreation() =
         runBlocking {
@@ -253,5 +330,37 @@ class StreamClientCancellationTest {
         writeInt(width)
         writeInt(height)
         writeInt(rotation)
+    }
+
+    private class FailAfterBytesSocket(
+        private val allowedBytes: Int,
+    ) : Socket() {
+        override fun getOutputStream(): OutputStream =
+            FailAfterBytesOutputStream(super.getOutputStream(), allowedBytes)
+    }
+
+    private class FailAfterBytesOutputStream(
+        private val delegate: OutputStream,
+        private val allowedBytes: Int,
+    ) : OutputStream() {
+        private var written = 0
+
+        override fun write(value: Int) {
+            if (written >= allowedBytes) throw IOException("injected capability failure")
+            delegate.write(value)
+            written++
+        }
+
+        override fun write(
+            bytes: ByteArray,
+            offset: Int,
+            length: Int,
+        ) {
+            if (written + length > allowedBytes) throw IOException("injected capability failure")
+            delegate.write(bytes, offset, length)
+            written += length
+        }
+
+        override fun flush() = delegate.flush()
     }
 }

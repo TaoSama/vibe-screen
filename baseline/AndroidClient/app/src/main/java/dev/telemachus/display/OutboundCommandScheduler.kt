@@ -1,7 +1,12 @@
 package dev.telemachus.display
 
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
+import java.util.concurrent.locks.LockSupport
 import kotlin.concurrent.withLock
 
 /**
@@ -20,6 +25,8 @@ class OutboundCommandScheduler<C : Any>(
     private val onWriteFailure: (OutboundWriteFailure<C>) -> Unit,
     private val coalesce: (Kind, C, C) -> C = { _, _, replacement -> replacement },
     threadName: String = "OutboundCommandWriter",
+    private val beforeOverflowPublish: () -> Unit = {},
+    private val afterOverflowValuePublished: () -> Unit = {},
 ) : AutoCloseable {
     init {
         require(capacity > 0) { "capacity must be positive" }
@@ -48,16 +55,20 @@ class OutboundCommandScheduler<C : Any>(
     }
 
     private val lock = ReentrantLock()
-    private val hasWork = lock.newCondition()
     private val hasSpace = lock.newCondition()
     private val terminated = lock.newCondition()
+    private val ingress = ConcurrentLinkedQueue<IngressCommand<C>>()
+    private val overflowKeyframe = AtomicReference(OverflowSlot<C>(accepting = true, command = null))
+    private val overflowPing = AtomicReference(OverflowSlot<C>(accepting = true, command = null))
+    private val occupiedCount = AtomicInteger()
+    private val accepting = AtomicBoolean(true)
+    private val workerStarted = AtomicBoolean(false)
     private val touchCommands = ArrayDeque<PendingTouch<C>>()
     private var keyframe: C? = null
     private var ping: C? = null
     private var pendingCount = 0
-    private var state = State.OPEN
+    @Volatile private var state = State.OPEN
     private var failureCallbackClaimed = false
-    private var workerStarted = false
     private val recoveryReservedSlots = if (capacity >= MIN_CAPACITY_WITH_RECOVERY_RESERVE) 2 else 0
 
     private val worker =
@@ -76,6 +87,7 @@ class OutboundCommandScheduler<C : Any>(
         timeoutMillis: Long = 0,
     ): Submission {
         require(timeoutMillis >= 0) { "timeoutMillis must not be negative" }
+        if (!accepting.get()) return Submission.CLOSED
         val deadlineNs = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
         val acquired =
             if (timeoutMillis == 0L) {
@@ -83,29 +95,78 @@ class OutboundCommandScheduler<C : Any>(
             } else {
                 lock.tryLock(timeoutMillis, TimeUnit.MILLISECONDS)
             }
-        if (!acquired) return Submission.TIMED_OUT
+        if (!acquired) return submitThroughIngress(kind, command)
         try {
-            if (state != State.OPEN) return Submission.CLOSED
+            drainIngressLocked()
+            if (!accepting.get() || state != State.OPEN) return Submission.CLOSED
 
             replacePending(kind, command)?.let { return it }
 
             var remainingNanos = (deadlineNs - System.nanoTime()).coerceAtLeast(0L)
-            while (pendingCount >= admissionLimit(kind)) {
+            while (!reserveSlot(kind)) {
                 if (kind != Kind.MOVE && removeOldestMove()) {
                     pendingCount--
-                    enqueue(kind, command)
-                    return Submission.ACCEPTED_AFTER_COALESCING_MOVE
+                    occupiedCount.decrementAndGet()
+                    if (reserveSlot(kind)) {
+                        enqueueReserved(kind, command)
+                        return Submission.ACCEPTED_AFTER_COALESCING_MOVE
+                    }
                 }
                 if (remainingNanos <= 0) return Submission.TIMED_OUT
                 remainingNanos = hasSpace.awaitNanos(remainingNanos)
                 if (state != State.OPEN) return Submission.CLOSED
+                drainIngressLocked()
                 replacePending(kind, command)?.let { return it }
             }
 
-            enqueue(kind, command)
+            enqueueReserved(kind, command)
             return Submission.ACCEPTED
         } finally {
             lock.unlock()
+        }
+    }
+
+    private fun submitThroughIngress(
+        kind: Kind,
+        command: C,
+    ): Submission {
+        if (!accepting.get() || state != State.OPEN) return Submission.CLOSED
+        if (!reserveSlot(kind)) return submitCoalescibleOverflow(kind, command)
+        val ingressCommand = IngressCommand(kind, command, reservedSlot = true)
+        ingress.add(ingressCommand)
+        ensureWorkerStarted()
+        LockSupport.unpark(worker)
+        if (accepting.get() && state == State.OPEN) return Submission.ACCEPTED
+        if (ingressCommand.cancel()) {
+            occupiedCount.decrementAndGet()
+            return Submission.CLOSED
+        }
+        return if (ingressCommand.wasDrained()) Submission.ACCEPTED else Submission.CLOSED
+    }
+
+    private fun submitCoalescibleOverflow(
+        kind: Kind,
+        command: C,
+    ): Submission {
+        val overflow = overflowSlot(kind) ?: return Submission.TIMED_OUT
+        beforeOverflowPublish()
+        while (true) {
+            val slot = overflow.get()
+            if (!slot.accepting) return Submission.CLOSED
+            val replacement = if (slot.command == null) command else coalesce(kind, slot.command, command)
+            if (!overflow.compareAndSet(slot, OverflowSlot(accepting = true, command = replacement))) continue
+            if (slot.command != null) return Submission.COALESCED
+            afterOverflowValuePublished()
+            overflow.get().let { published ->
+                if (published.command == null) {
+                    return if (published.discarded) Submission.CLOSED else Submission.ACCEPTED
+                }
+            }
+            val marker = IngressCommand<C>(kind, command = null, reservedSlot = false)
+            ingress.add(marker)
+            ensureWorkerStarted()
+            LockSupport.unpark(worker)
+            return Submission.ACCEPTED
         }
     }
 
@@ -115,13 +176,17 @@ class OutboundCommandScheduler<C : Any>(
         require(timeoutMillis >= 0) { "timeoutMillis must not be negative" }
         lock.lockInterruptibly()
         try {
+            accepting.set(false)
+            closeOverflowAdmissions(preserveCommands = true)
+            drainOverflowSlotsLocked()
+            drainIngressLocked()
             if (state == State.OPEN) {
-                if (!workerStarted && pendingCount == 0) {
+                if (!workerStarted.get() && pendingCount == 0) {
                     state = State.CLOSED
                     terminated.signalAll()
                 } else {
                     state = State.CLOSING
-                    hasWork.signalAll()
+                    LockSupport.unpark(worker)
                 }
             }
             var remainingNanos = TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
@@ -139,11 +204,13 @@ class OutboundCommandScheduler<C : Any>(
     fun shutdownNow() {
         lock.withLock {
             if (state == State.CLOSED || state == State.FAILED) return
+            accepting.set(false)
+            closeOverflowAdmissions(preserveCommands = false)
             clearPending()
             state = State.CLOSED
-            hasWork.signalAll()
             hasSpace.signalAll()
             terminated.signalAll()
+            LockSupport.unpark(worker)
         }
     }
 
@@ -179,7 +246,7 @@ class OutboundCommandScheduler<C : Any>(
             Kind.STRUCTURAL_TOUCH -> null
         }
 
-    private fun enqueue(
+    private fun enqueueReserved(
         kind: Kind,
         command: C,
     ) {
@@ -192,28 +259,35 @@ class OutboundCommandScheduler<C : Any>(
         }
         pendingCount++
         check(pendingCount <= capacity)
-        if (!workerStarted) {
-            workerStarted = true
-            worker.start()
-        }
-        hasWork.signal()
+        ensureWorkerStarted()
+        LockSupport.unpark(worker)
     }
 
     private fun runWriter() {
         while (true) {
-            val command =
+            val command: C? =
                 lock.withLock {
-                    while (pendingCount == 0 && state == State.OPEN) hasWork.await()
+                    drainIngressLocked()
                     if (pendingCount == 0 && state != State.OPEN) {
                         if (state == State.CLOSING) state = State.CLOSED
                         terminated.signalAll()
                         return
                     }
-                    takeNext().also {
-                        pendingCount--
-                        hasSpace.signalAll()
+                    if (pendingCount == 0) {
+                        null
+                    } else {
+                        takeNext().also {
+                            pendingCount--
+                            occupiedCount.decrementAndGet()
+                            hasSpace.signalAll()
+                        }
                     }
                 }
+
+            if (command == null) {
+                LockSupport.park(this)
+                continue
+            }
 
             try {
                 writer(command)
@@ -244,6 +318,8 @@ class OutboundCommandScheduler<C : Any>(
         val shouldDeliver =
             lock.withLock {
                 if (state == State.CLOSED) return
+                accepting.set(false)
+                closeOverflowAdmissions(preserveCommands = false)
                 clearPending()
                 state = State.FAILED
                 hasSpace.signalAll()
@@ -254,10 +330,19 @@ class OutboundCommandScheduler<C : Any>(
     }
 
     private fun clearPending() {
+        occupiedCount.addAndGet(-pendingCount)
         touchCommands.clear()
         keyframe = null
         ping = null
         pendingCount = 0
+        overflowKeyframe.set(OverflowSlot(accepting = false, command = null, discarded = true))
+        overflowPing.set(OverflowSlot(accepting = false, command = null, discarded = true))
+        while (true) {
+            val command = ingress.poll() ?: break
+            if (command.claimForDrain(accepted = false) && command.reservedSlot) {
+                occupiedCount.decrementAndGet()
+            }
+        }
     }
 
     private fun removeOldestMove(): Boolean {
@@ -265,6 +350,107 @@ class OutboundCommandScheduler<C : Any>(
         if (index < 0) return false
         touchCommands.removeAt(index)
         return true
+    }
+
+    private fun reserveSlot(kind: Kind): Boolean {
+        val limit = admissionLimit(kind)
+        while (true) {
+            val occupied = occupiedCount.get()
+            if (occupied >= limit) return false
+            if (occupiedCount.compareAndSet(occupied, occupied + 1)) return true
+        }
+    }
+
+    private fun drainIngressLocked() {
+        while (true) {
+            val ingressCommand = ingress.poll() ?: return
+            val acceptsPreviouslyAdmitted = state == State.OPEN || state == State.CLOSING
+            if (!ingressCommand.claimForDrain(acceptsPreviouslyAdmitted)) continue
+            if (!acceptsPreviouslyAdmitted) {
+                if (ingressCommand.reservedSlot) occupiedCount.decrementAndGet()
+                continue
+            }
+            val command = ingressCommand.command ?: takeOverflow(ingressCommand.kind) ?: continue
+            val merged = replacePending(ingressCommand.kind, command)
+            if (merged != null) {
+                if (ingressCommand.reservedSlot) occupiedCount.decrementAndGet()
+                hasSpace.signalAll()
+            } else {
+                val hasReservation = ingressCommand.reservedSlot || reserveSlot(ingressCommand.kind)
+                if (hasReservation) {
+                    enqueueReserved(ingressCommand.kind, command)
+                } else {
+                    restoreOverflow(ingressCommand.kind, command)
+                    ingress.add(IngressCommand(ingressCommand.kind, command = null, reservedSlot = false))
+                    return
+                }
+            }
+        }
+    }
+
+    private fun takeOverflow(kind: Kind): C? {
+        val overflow = overflowSlot(kind) ?: return null
+        while (true) {
+            val slot = overflow.get()
+            val command = slot.command ?: return null
+            if (overflow.compareAndSet(slot, slot.copy(command = null))) return command
+        }
+    }
+
+    private fun restoreOverflow(
+        kind: Kind,
+        command: C,
+    ) {
+        val overflow = checkNotNull(overflowSlot(kind))
+        while (true) {
+            val slot = overflow.get()
+            val replacement = if (slot.command == null) command else coalesce(kind, command, slot.command)
+            if (overflow.compareAndSet(slot, slot.copy(command = replacement))) return
+        }
+    }
+
+    private fun overflowSlot(kind: Kind): AtomicReference<OverflowSlot<C>>? =
+        when (kind) {
+            Kind.KEYFRAME -> overflowKeyframe
+            Kind.PING -> overflowPing
+            Kind.STRUCTURAL_TOUCH,
+            Kind.MOVE,
+            -> null
+        }
+
+    private fun closeOverflowAdmissions(preserveCommands: Boolean) {
+        listOf(overflowKeyframe, overflowPing).forEach { overflow ->
+            while (true) {
+                val slot = overflow.get()
+                val closed =
+                    OverflowSlot(
+                        accepting = false,
+                        command = if (preserveCommands) slot.command else null,
+                        discarded = !preserveCommands,
+                    )
+                if (overflow.compareAndSet(slot, closed)) break
+            }
+        }
+    }
+
+    private fun drainOverflowSlotsLocked() {
+        listOf(Kind.KEYFRAME, Kind.PING).forEach { kind ->
+            val command = takeOverflow(kind) ?: return@forEach
+            val merged = replacePending(kind, command)
+            if (merged != null) return@forEach
+            if (reserveSlot(kind)) {
+                enqueueReserved(kind, command)
+            } else {
+                restoreOverflow(kind, command)
+                ingress.add(IngressCommand(kind, command = null, reservedSlot = false))
+                ensureWorkerStarted()
+                LockSupport.unpark(worker)
+            }
+        }
+    }
+
+    private fun ensureWorkerStarted() {
+        if (workerStarted.compareAndSet(false, true)) worker.start()
     }
 
     private fun admissionLimit(kind: Kind): Int =
@@ -282,6 +468,37 @@ class OutboundCommandScheduler<C : Any>(
         val kind: Kind,
         val command: C,
     )
+
+    private data class OverflowSlot<C : Any>(
+        val accepting: Boolean,
+        val command: C?,
+        val discarded: Boolean = false,
+    )
+
+    private class IngressCommand<C : Any>(
+        val kind: Kind,
+        val command: C?,
+        val reservedSlot: Boolean,
+    ) {
+        private val state = AtomicReference(IngressState.PENDING)
+
+        fun claimForDrain(accepted: Boolean): Boolean =
+            state.compareAndSet(
+                IngressState.PENDING,
+                if (accepted) IngressState.DRAINED else IngressState.DISCARDED,
+            )
+
+        fun cancel(): Boolean = state.compareAndSet(IngressState.PENDING, IngressState.CANCELED)
+
+        fun wasDrained(): Boolean = state.get() == IngressState.DRAINED
+    }
+
+    private enum class IngressState {
+        PENDING,
+        DRAINED,
+        DISCARDED,
+        CANCELED,
+    }
 
     private companion object {
         const val DEFAULT_CLOSE_TIMEOUT_MS = 5_000L
