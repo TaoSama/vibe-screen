@@ -82,8 +82,8 @@ result.
 ## Final coordinated device acceptance (2026-08-04)
 
 The final device run used ADB endpoint `100.72.246.116:5555`. The device
-identified itself as Nubia P0110 (`pacific`), hardware serial
-`EP0110PZ0B9110152B`, Android 16 / SDK 36, fingerprint
+identified itself as Nubia P0110 (`pacific`), hardware serial `[redacted]`,
+Android 16 / SDK 36, fingerprint
 `nubia/pacific/pacific:16/2.5.2.0/20260804.003241:userdebug/test-keys`.
 It is not a Xiaomi 12, so this run proves interoperability on the recorded
 Nubia device but does not close the Xiaomi-specific Phase 0 criterion.

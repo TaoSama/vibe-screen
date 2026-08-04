@@ -25,7 +25,7 @@ The corresponding machine-readable record is
   (`origin/main` at preparation time).
 - ADB endpoint: `100.72.246.116:5555`.
 - Device: Nubia P0110 (`pacific`), Android 16 / SDK 36, hardware serial
-  `EP0110PZ0B9110152B`.
+  `[redacted]`.
 - Device fingerprint:
   `nubia/pacific/pacific:16/2.5.2.0/20260804.003241:userdebug/test-keys`.
 - Current-main debug APK SHA-256:
