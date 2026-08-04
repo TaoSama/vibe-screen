@@ -1,7 +1,7 @@
 # Nubia P0110 Phase 1 Android evidence
 
 Date: 2026-08-05
-Endpoint: `100.72.246.116:5555`
+Endpoint: `[controlled endpoint]:5555`
 Hardware serial: `[redacted]`
 Device: Nubia P0110 (`pacific`), Android 16 / SDK 36
 
