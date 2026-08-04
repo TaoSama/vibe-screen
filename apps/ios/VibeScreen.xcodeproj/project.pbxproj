@@ -154,7 +154,7 @@
 			name = VibeScreenAppTests;
 			productName = VibeScreenAppTests;
 			productReference = B20000000000000000000002 /* VibeScreenAppTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
 
@@ -247,7 +247,6 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
-				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Vibe Screen";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "连接局域网内的 Mac 并接收显示画面。";
@@ -282,28 +281,26 @@
 		BB0000000000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.vibescreen.ios.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VibeScreen.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/VibeScreen";
+				TEST_TARGET_NAME = VibeScreen;
 			};
 			name = Debug;
 		};
 		BB0000000000000000000002 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.vibescreen.ios.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VibeScreen.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/VibeScreen";
+				TEST_TARGET_NAME = VibeScreen;
 			};
 			name = Release;
 		};

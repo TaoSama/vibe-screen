@@ -61,7 +61,7 @@ with `** BUILD SUCCEEDED **`.
 
 This proves Xcode project/package resolution and iOS Simulator SDK compilation.
 It did not boot a simulator or run the application. The subsequent engineering
-gate adds an App-hosted XCTest, automatic simulator selection, and unsigned
+gate adds an XCTest UI smoke test, automatic simulator selection, and unsigned
 generic-iOS archive validation; those new steps require their own CI result and
 must not be retroactively attributed to the earlier build job.
 
@@ -79,7 +79,7 @@ zero valid signing identities. CI later closed only the SDK compilation gap.
 The following remain unproved until their dedicated gates produce evidence:
 
 - simulator launch and SwiftUI layout on iPhone/iPad sizes;
-- App-hosted XCTest and unsigned generic-iOS archive creation;
+- XCTest UI smoke test and unsigned generic-iOS archive creation;
 - signing, installation, Local Network permission, and lifecycle behavior;
 - VideoToolbox hardware H.264/HEVC decode and sustained thermal/power behavior;
 - end-to-end Protocol v1 host connection, video, touch, disconnect/reconnect;

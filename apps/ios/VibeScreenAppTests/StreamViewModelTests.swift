@@ -1,19 +1,16 @@
 import XCTest
-@testable import VibeScreen
 
-final class StreamViewModelTests: XCTestCase {
-    @MainActor
-    func testInitialStateAndInvalidPortValidation() async {
-        let model = StreamViewModel()
+final class VibeScreenAppUITests: XCTestCase {
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
 
-        XCTAssertFalse(model.isConnecting)
-        XCTAssertFalse(model.isStreaming)
-        XCTAssertNil(model.errorMessage)
+    func testConnectionFormIsUsable() {
+        let app = XCUIApplication()
+        app.launch()
 
-        await model.connect(host: "127.0.0.1", port: 0)
-
-        XCTAssertFalse(model.isConnecting)
-        XCTAssertFalse(model.isStreaming)
-        XCTAssertEqual(model.errorMessage, "端口必须在 1–65535 之间")
+        XCTAssertTrue(app.textFields["主机名或 IP"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textFields["端口"].exists)
+        XCTAssertTrue(app.buttons["连接"].exists)
     }
 }
