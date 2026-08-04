@@ -140,14 +140,11 @@ enum HostSelfTest {
                 "physical=\(mode?.pixelWidth ?? 0)x\(mode?.pixelHeight ?? 0)"
             )
         }
-        let privateDisplaySymbolsAvailable =
-            NSClassFromString("CGVirtualDisplay") != nil &&
-            NSClassFromString("CGVirtualDisplayDescriptor") != nil &&
-            NSClassFromString("CGVirtualDisplaySettings") != nil
+        let privateDisplayCapability = VirtualDisplayPrivateAPICapability.evaluate()
         print(
-            "Private virtual display symbol check: " +
-            (privateDisplaySymbolsAvailable ? "available" : "unavailable") +
-            " (symbol presence is not creation/capture evidence)"
+            "Private virtual display API shape check: " +
+            (privateDisplayCapability.isAvailable ? "available" : "unavailable") +
+            " (class/selector presence is not creation/capture evidence)"
         )
 
         if failures.isEmpty {

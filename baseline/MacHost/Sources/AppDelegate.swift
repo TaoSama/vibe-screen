@@ -81,6 +81,7 @@ struct GestureThresholds {
     static let minTouchInterval: UInt64 = 8_000_000    // ~120Hz
 }
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     var streamingServer: StreamingServer?
     var screenCapture: ScreenCapture?
@@ -103,7 +104,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var permissionMonitoringReady = false
     private var unattendedRecoveryTask: Task<Void, Never>?
     private var unattendedRecoveryAttempt = 0
-    private var isStarting = false
+    private let serverLifecycle = HostServerLifecycle()
     private var usbStatusProbeGeneration: UInt64 = 0
     var isDaemonMode = false // Deprecated: keeping variable for ABI compatibility but unused
 
@@ -138,7 +139,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     hasScreenRecordingPermission: settings.hasScreenRecordingPermission,
                     hasCompletedOnboarding: settings.hasCompletedOnboarding,
                     explicitHeadlessBenchmark: isHeadlessBenchmark
-                ) && !settings.isRunning && !isStarting {
+                ) && serverLifecycle.canStart {
                     settings.connectionMode = settings.startupMode
                     Task { await self.startServer() }
                 }
@@ -232,7 +233,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             hasScreenRecordingPermission: hasScreenRecording,
             hasCompletedOnboarding: settings.hasCompletedOnboarding,
             explicitHeadlessBenchmark: isHeadlessBenchmark
-        ) && !settings.isRunning && !isStarting {
+        ) && serverLifecycle.canStart {
             Task {
                 await startServer()
             }
@@ -508,7 +509,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         settings.onToggleServer = { [weak self] in
             guard let self else { return }
-            if self.settings.isRunning {
+            if !self.serverLifecycle.canStart {
                 self.stopServer()
             } else {
                 Task { [weak self] in
@@ -759,7 +760,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Bring the Android receiver to the foreground and ask it to connect.
     /// `am start` is idempotent because MainActivity uses singleTop and handles
     /// repeated intents, which gives us cable-driven plug-and-play after setup.
-    private static func launchAndroidClient(adbPath: String, serial: String?) {
+    nonisolated private static func launchAndroidClient(
+        adbPath: String,
+        serial: String?
+    ) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: adbPath)
         process.arguments = StatusDetector.adbArguments(serial: serial, command: [
@@ -813,16 +817,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func startServer() async {
-        guard !isStarting, !settings.isRunning else {
+        guard let startToken = serverLifecycle.beginStart() else {
             debugLog("Ignoring duplicate start request")
             return
         }
-        isStarting = true
-        defer { isStarting = false }
         debugLog("🚀 startServer() invoked. Check permission: \(settings.hasScreenRecordingPermission)")
         guard settings.hasScreenRecordingPermission else {
             debugLog("❌ startServer aborted: Missing Screen Recording permission")
-            await showPermissionAlert()
+            showPermissionAlert()
+            serverLifecycle.failStart(startToken)
             return
         }
 
@@ -928,6 +931,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 group.addTask { try? await Task.sleep(nanoseconds: 500_000_000) }
             }
+            try requireCurrentStart(startToken)
 
             if let vdm = virtualDisplayManager,
                settings.displaySource == .extended {
@@ -939,7 +943,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             // Setup capture
-            screenCapture = try await ScreenCapture()
+            let newCapture = try await ScreenCapture()
+            try requireCurrentStart(startToken)
+            screenCapture = newCapture
             screenCapture?.onCaptureMethodChanged = { [weak self] method in
                 guard let self = self else { return }
                 debugLog("Capture method: \(method)")
@@ -956,11 +962,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let configuredCapture = screenCapture
             configuredCapture?.onTerminalCaptureFailure = {
                 [weak self, weak configuredCapture] error in
-                guard let self, let configuredCapture,
-                      self.screenCapture === configuredCapture else { return }
-                debugLog("Capture terminated: \(error.localizedDescription)")
                 Task { @MainActor in
-                    self.handleCaptureFailure(error)
+                    guard let self, let configuredCapture,
+                          self.serverLifecycle.ownsSession(startToken),
+                          self.screenCapture === configuredCapture else { return }
+                    debugLog("Capture terminated: \(error.localizedDescription)")
+                    self.handleCaptureFailure(error, sessionToken: startToken)
                 }
             }
             let existingDisplayOutput = settings.displaySource == .extended
@@ -972,6 +979,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 outputSize: existingDisplayOutput,
                 followsMainDisplay: settings.displaySource == .currentMain
             )
+            try requireCurrentStart(startToken)
 
             // Setup server. USB is loopback-only; wireless authenticates every
             // candidate before it can replace the active client.
@@ -988,6 +996,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 port: settings.port,
                 mode: serverMode
             )
+            let configuredServer = streamingServer
             streamingServer?.touchEnabled = settings.touchEnabled
             if settings.connectionMode == .wireless {
                 streamingServer?.onWirelessClientPaired = { [weak self] deviceName in
@@ -1088,13 +1097,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
-            streamingServer?.onServerFailed = { [weak self] error in
-                debugLog("Streaming listener stopped: \(error.localizedDescription)")
-                self?.performSelector(
-                    onMainThread: #selector(AppDelegate.handleServerFailure),
-                    with: nil,
-                    waitUntilDone: false
-                )
+            streamingServer?.onServerFailed = {
+                [weak self, weak configuredServer] error in
+                Task { @MainActor in
+                    guard let self, let configuredServer,
+                          self.serverLifecycle.ownsSession(startToken),
+                          self.streamingServer === configuredServer else { return }
+                    debugLog("Streaming listener stopped: \(error.localizedDescription)")
+                    self.handleServerFailure(sessionToken: startToken)
+                }
             }
 
             try streamingServer?.start()
@@ -1105,32 +1116,49 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 gamingBoost: settings.gamingBoost,
                 frameRate: settings.effectiveRefreshRate
             )
+            try requireCurrentStart(startToken)
 
-            await MainActor.run {
-                settings.isRunning = true
+            guard serverLifecycle.finishStart(startToken) else {
+                throw CancellationError()
             }
+            settings.isRunning = true
 
             print("✅ Server started on port \(settings.port)")
+        } catch is CancellationError where !serverLifecycle.isCurrentStart(startToken) {
+            debugLog("Discarded superseded host start \(startToken)")
+            return
         } catch {
-            print("❌ Failed to start: \(error)")
-            await MainActor.run {
-                teardownStreamingComponents()
-                settings.isRunning = false
-                settings.displayCreated = false
-
-                if isUnattendedOperation {
-                    debugLog(
-                        "Unattended startup failed: \(error.localizedDescription)"
-                    )
-                    scheduleUnattendedRecoveryIfEnabled()
-                } else {
-                    let alert = NSAlert()
-                    alert.messageText = "Failed to Start Server"
-                    alert.informativeText = error.localizedDescription
-                    alert.alertStyle = .critical
-                    alert.runModal()
-                }
+            guard serverLifecycle.isCurrentStart(startToken) else {
+                debugLog(
+                    "Discarded error from superseded host start \(startToken): " +
+                    error.localizedDescription
+                )
+                return
             }
+            print("❌ Failed to start: \(error)")
+            serverLifecycle.failStart(startToken)
+            teardownStreamingComponents()
+            settings.isRunning = false
+            settings.displayCreated = false
+
+            if isUnattendedOperation {
+                debugLog(
+                    "Unattended startup failed: \(error.localizedDescription)"
+                )
+                scheduleUnattendedRecoveryIfEnabled()
+            } else {
+                let alert = NSAlert()
+                alert.messageText = "Failed to Start Server"
+                alert.informativeText = error.localizedDescription
+                alert.alertStyle = .critical
+                alert.runModal()
+            }
+        }
+    }
+
+    private func requireCurrentStart(_ token: UInt64) throws {
+        guard serverLifecycle.isCurrentStart(token) else {
+            throw CancellationError()
         }
     }
 
@@ -1149,14 +1177,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         activeDisplayID = nil
     }
 
-    @objc private func handleServerFailure() {
-        guard settings.isRunning else { return }
+    private func handleServerFailure(sessionToken: UInt64) {
+        guard serverLifecycle.ownsSession(sessionToken) else { return }
         stopServer(preserveRecoveryState: true)
         scheduleUnattendedRecoveryIfEnabled()
     }
 
-    private func handleCaptureFailure(_ error: Error) {
-        guard settings.isRunning else { return }
+    private func handleCaptureFailure(_ error: Error, sessionToken: UInt64) {
+        guard serverLifecycle.ownsSession(sessionToken) else { return }
         let selectedDisplayWentOffline = settings.displaySource == .selectedDisplay &&
             DisplayCatalog.resolve(
                 persistentUUID: settings.selectedDisplayUUID,
@@ -1213,8 +1241,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     nanoseconds: UInt64(delay * 1_000_000_000)
                 )
                 guard let self,
-                      !self.settings.isRunning,
-                      !self.isStarting,
+                      self.serverLifecycle.canStart,
                       HostStartupPolicy.shouldRecover(
                         autoStartEnabled: self.settings.autoStartStreamingOnLaunch,
                         hasScreenRecordingPermission: self.settings.hasScreenRecordingPermission,
@@ -1259,6 +1286,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func stopServer(preserveRecoveryState: Bool) {
+        let stopToken = serverLifecycle.beginStop()
         if !preserveRecoveryState {
             cancelUnattendedRecovery(resetAttempts: true)
         }
@@ -1276,6 +1304,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settings.connectedDeviceMaxRefreshRate = nil
         settings.currentFPS = 0
         settings.currentBitrate = 0
+        serverLifecycle.finishStop(stopToken)
 
         print("⏹️ Server stopped")
     }
@@ -1669,7 +1698,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         momentumVelocityY = velocityY
         lastMomentumPosition = position
         momentumTimer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) { [weak self] _ in
-            self?.momentumTick()
+            Task { @MainActor in
+                self?.momentumTick()
+            }
         }
     }
 

@@ -15,17 +15,25 @@ mirror sessions neither read nor overwrite them. Mirror teardown explicitly
 attempts to remove the per-session mirror configuration before releasing the
 display and reports a system configuration failure.
 
-Private class lookup is a diagnostic gate only. The authoritative success path
-remains descriptor creation, settings application, online registration, and
-capture setup. Failure directs the user to Current Mac Display or a
-physical/dummy display.
+Before constructing any private object, a capability adapter checks every
+used class and Objective-C selector, including the mode initializer, property
+setters, display initializer, `applySettings:`, and `displayID`. This API-shape
+check is diagnostic only. The authoritative success path remains descriptor
+creation, settings application, online registration, and capture setup.
+Failure directs the user to Current Mac Display or a physical/dummy display.
+
+CGDisplayStream fallback instances carry a generation token. An unexpected
+`.stopped` from the current generation clears fallback state and reports a
+terminal capture failure; delayed stop callbacks from an explicitly stopped
+older generation are ignored. Blank/idle frames remain non-terminal.
 
 ## Window recovery
 
 The first migration records the AX window, original frame, display UUID, and
 display bounds. Recovery resolves that UUID and maps the relative placement
-into its current bounds. If it is offline, the same placement is mapped and
-clamped into the current main display. All windows are removed from the managed
+into its current bounds. Unchanged bounds preserve the exact original frame,
+including intentional cross-screen or oversized placement. If it is offline,
+the same placement is mapped and clamped into the current main display. All windows are removed from the managed
 set after one recovery pass; individual AX failures are reported without
 preventing the rest.
 
@@ -46,8 +54,11 @@ mouse event type, so those are not claimed as integrated capabilities.
 
 Automatic start requires the preference, Screen Recording permission, and
 completed onboarding; explicit benchmark mode is the only onboarding bypass.
-Concurrent start requests are coalesced by an in-progress guard. Recovery is
-eligible only for unattended operation, uses the existing bounded backoff, and
+The AppDelegate and a generation-based lifecycle state machine are isolated to
+the MainActor. Concurrent starts admit one generation; stop invalidates a
+suspended start before teardown, and every suspension point rechecks the
+generation before committing components or running state. Recovery is eligible
+only for unattended operation, uses the existing bounded backoff, and
 rechecks all eligibility after sleeping. A user stop or disabling auto-start
 cancels pending recovery.
 
