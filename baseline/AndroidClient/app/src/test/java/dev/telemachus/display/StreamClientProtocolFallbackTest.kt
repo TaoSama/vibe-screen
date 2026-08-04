@@ -7,6 +7,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
+import java.io.DataOutputStream
 import java.net.ServerSocket
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -31,6 +32,14 @@ class StreamClientProtocolFallbackTest {
                             accepts.incrementAndGet()
                             val firstLegacyByte = legacy.getInputStream().read()
                             assertNotEquals(PROTOCOL_UPGRADE_BYTE, firstLegacyByte)
+                            legacy.getInputStream().read()
+                            DataOutputStream(legacy.getOutputStream()).apply {
+                                writeByte(1)
+                                writeInt(1920)
+                                writeInt(1080)
+                                writeInt(0)
+                                flush()
+                            }
                         }
                     }
                 val client = StreamClient("127.0.0.1", server.localPort)

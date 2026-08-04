@@ -29,7 +29,11 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicLong
 
 class StreamClient(
@@ -209,7 +213,13 @@ class StreamClient(
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Connection error", e)
                 completeConnectionEndNow(SessionFailure.transport(e.message ?: e.javaClass.simpleName))
-                if (!sessionReady && !stopRequested) throw e
+                if (!sessionReady && !stopRequested) {
+                    if (e is SessionProtocolException) throw e
+                    val failure = lastTerminationFailure
+                    if (failure != null && !failure.retryable) throw SessionProtocolException(failure)
+                    if (e.message.orEmpty().contains("before display configuration")) throw e
+                    throw IOException("Mac connection closed before display configuration", e)
+                }
             }
         }
 
@@ -470,7 +480,7 @@ class StreamClient(
                 protocolSession = session
                 submitOutbound(
                     kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-                    command = OutboundCommand.ProtocolControl(session.clientHello()),
+                    command = OutboundCommand.ProtocolBuild { it.clientHello() },
                 )
                 diagLog("Protocol v1 upgrade accepted")
             }
@@ -800,73 +810,64 @@ class StreamClient(
             try {
                 input.read()
             } catch (_: SocketTimeoutException) {
-                if (heartbeat.isExpired(System.nanoTime())) throw IOException("heartbeat timeout")
+                if (heartbeat.isExpired(System.nanoTime())) {
+                    throw SessionProtocolException(SessionFailure.heartbeat("heartbeat timeout"))
+                }
                 return
             }
-        val frame = ProtocolV1Framing.read(input, firstChannel)
+        if (firstChannel < 0) throw IOException("Protocol v1 transport closed")
+        val frame =
+            try {
+                ProtocolV1Framing.read(input, firstChannel)
+            } catch (failure: IOException) {
+                throw protocolFailure(
+                    reason = "invalid_frame",
+                    source = ProtocolV1Failure.Source.FRAME,
+                    cause = failure,
+                )
+            }
         when (frame.channel) {
             ProtocolChannel.CONTROL -> {
                 val envelope =
                     try {
                         Envelope.parseFrom(frame.payload)
                     } catch (failure: Exception) {
-                        throw IOException("Malformed Protocol v1 Envelope", failure)
+                        throw protocolFailure(
+                            reason = "invalid_envelope",
+                            source = ProtocolV1Failure.Source.ENVELOPE,
+                            cause = failure,
+                        )
                     }
-                val session = checkNotNull(protocolSession)
-                val actions =
-                    try {
-                        session.receive(envelope)
-                    } catch (failure: IOException) {
-                        if (envelope.payloadCase != Envelope.PayloadCase.PROTOCOL_ERROR) {
-                            try {
-                                submitOutbound(
-                                    kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-                                    command = OutboundCommand.ProtocolControl(
-                                        session.protocolError(
-                                        failure.message ?: "invalid protocol state",
-                                        correlationId = envelope.messageId,
-                                    ),
-                                    ),
-                                )
-                            } catch (writeFailure: Exception) {
-                                failure.addSuppressed(writeFailure)
-                            }
-                        }
-                        throw failure
-                    }
-                heartbeat.recordInbound(System.nanoTime())
-                actions.forEach { action ->
-                    when (action) {
-                        is ProtocolV1Session.Action.Send ->
-                            submitOutbound(
-                                kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-                                command = OutboundCommand.ProtocolControl(action.envelope),
-                            )
-                        is ProtocolV1Session.Action.VideoConfigured -> {
-                            streamCodecIsHevc = action.codec == Codec.CODEC_HEVC
-                            codecNegotiated = true
-                            if (!sessionReady) {
-                                sessionReady = true
-                                reconnectBackoff.reset()
-                                onConnectionStatus?.invoke(true)
-                            }
-                            onCodecSelected?.invoke(streamCodecIsHevc)
-                            onDisplaySize?.invoke(action.width, action.height, 0)
-                        }
-                        is ProtocolV1Session.Action.PongReceived -> {
-                            if (action.sequence == lastV1PingSequence && lastV1PingSentNs > 0L) {
-                                onLatencyMeasured?.invoke((System.nanoTime() - lastV1PingSentNs) / 1_000_000.0)
-                            }
-                        }
-                        is ProtocolV1Session.Action.Disconnected -> {
-                            stopRequested = !action.mayResume
-                            throw IOException("Host ended Protocol v1 session")
-                        }
-                    }
+                val completion = CompletableFuture<Unit>()
+                val submission = submitOutbound(
+                    kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                    command = OutboundCommand.ProtocolReceive(envelope, completion),
+                    timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
+                )
+                if (submission == OutboundCommandScheduler.Submission.TIMED_OUT ||
+                    submission == OutboundCommandScheduler.Submission.CLOSED
+                ) {
+                    throw SessionProtocolException(
+                        SessionFailure.protocol(
+                            SessionFailureKind.OUTBOUND_BACKPRESSURE,
+                            "Protocol receive queue unavailable: $submission",
+                        ),
+                    )
                 }
+                awaitProtocolReceive(completion)
+                heartbeat.recordInbound(System.nanoTime())
             }
             ProtocolChannel.VIDEO -> {
-                val payload = ProtocolV1Framing.decodeVideo(frame.payload)
+                val payload =
+                    try {
+                        ProtocolV1Framing.decodeVideo(frame.payload)
+                    } catch (failure: Exception) {
+                        throw protocolFailure(
+                            reason = "invalid_media_payload",
+                            source = ProtocolV1Failure.Source.MEDIA_PAYLOAD,
+                            cause = failure,
+                        )
+                    }
                 val session = checkNotNull(protocolSession)
                 session.validateMedia(payload.header)
                 val receiveTimestamp = System.nanoTime()
@@ -925,14 +926,6 @@ class StreamClient(
             val session = protocolSession ?: return
             if (!session.isStreaming) return
             v1Samples.forEach { sample ->
-                val envelope =
-                    session.touch(
-                        inputId = nextInputId.getAndIncrement(),
-                        pointerId = sample.pointerId,
-                        phase = sample.phase,
-                        x = sample.x,
-                        y = sample.y,
-                    )
                 submitOutbound(
                     kind =
                         if (sample.phase == InputPhase.INPUT_PHASE_CHANGED) {
@@ -940,7 +933,15 @@ class StreamClient(
                         } else {
                             OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
                         },
-                    command = OutboundCommand.ProtocolControl(envelope),
+                    command = OutboundCommand.ProtocolBuild { activeSession ->
+                        activeSession.touch(
+                            inputId = nextInputId.getAndIncrement(),
+                            pointerId = sample.pointerId,
+                            phase = sample.phase,
+                            x = sample.x,
+                            y = sample.y,
+                        )
+                    },
                 )
             }
             return
@@ -1007,7 +1008,7 @@ class StreamClient(
             if (!session.isStreaming) return
             submitOutbound(
                 kind = OutboundCommandScheduler.Kind.KEYFRAME,
-                command = OutboundCommand.ProtocolControl(session.requestKeyframe(reason)),
+                command = OutboundCommand.ProtocolBuild { it.requestKeyframe(reason) },
             )
             return
         }
@@ -1034,7 +1035,7 @@ class StreamClient(
             lastV1PingSentNs = System.nanoTime()
             submitOutbound(
                 kind = OutboundCommandScheduler.Kind.PING,
-                command = OutboundCommand.ProtocolControl(session.ping(sequence)),
+                command = OutboundCommand.ProtocolBuild { it.ping(sequence) },
             )
             return
         }
@@ -1048,14 +1049,14 @@ class StreamClient(
         kind: OutboundCommandScheduler.Kind,
         command: OutboundCommand,
         timeoutMillis: Long = 0,
-    ) {
+    ): OutboundCommandScheduler.Submission {
         val submission =
             try {
                 outboundScheduler.submit(kind, command, timeoutMillis)
             } catch (error: InterruptedException) {
                 Thread.currentThread().interrupt()
                 requestConnectionEnd(SessionFailure.write("outbound submission interrupted"))
-                return
+                return OutboundCommandScheduler.Submission.CLOSED
             }
         if (submission == OutboundCommandScheduler.Submission.TIMED_OUT &&
             kind != OutboundCommandScheduler.Kind.MOVE &&
@@ -1068,6 +1069,7 @@ class StreamClient(
                 ),
             )
         }
+        return submission
     }
 
     private fun writeOutboundCommand(command: OutboundCommand) {
@@ -1098,10 +1100,106 @@ class StreamClient(
                 out.write(buffer.array())
             }
 
-            is OutboundCommand.ProtocolControl ->
-                ProtocolV1Framing.write(out, ProtocolChannel.CONTROL, command.envelope.toByteArray())
+            is OutboundCommand.ProtocolBuild -> {
+                val session = checkNotNull(protocolSession) { "Protocol v1 session is closed" }
+                writeProtocolEnvelope(out, command.build(session))
+            }
+
+            is OutboundCommand.ProtocolReceive -> processProtocolReceive(out, command)
         }
-        if (command !is OutboundCommand.ProtocolControl) out.flush()
+        if (command !is OutboundCommand.ProtocolBuild && command !is OutboundCommand.ProtocolReceive) out.flush()
+    }
+
+    private fun processProtocolReceive(
+        out: java.io.DataOutputStream,
+        command: OutboundCommand.ProtocolReceive,
+    ) {
+        val session = checkNotNull(protocolSession) { "Protocol v1 session is closed" }
+        try {
+            val actions = session.receive(command.envelope)
+            actions.forEach { action ->
+                when (action) {
+                    is ProtocolV1Session.Action.Send -> writeProtocolEnvelope(out, action.envelope)
+                    is ProtocolV1Session.Action.VideoConfigured -> {
+                        streamCodecIsHevc = action.codec == Codec.CODEC_HEVC
+                        codecNegotiated = true
+                        if (!sessionReady) {
+                            sessionReady = true
+                            reconnectBackoff.reset()
+                            onConnectionStatus?.invoke(true)
+                        }
+                        onCodecSelected?.invoke(streamCodecIsHevc)
+                        onDisplaySize?.invoke(action.width, action.height, 0)
+                    }
+                    is ProtocolV1Session.Action.PongReceived -> {
+                        if (action.sequence == lastV1PingSequence && lastV1PingSentNs > 0L) {
+                            onLatencyMeasured?.invoke((System.nanoTime() - lastV1PingSentNs) / 1_000_000.0)
+                        }
+                    }
+                    is ProtocolV1Session.Action.Disconnected -> {
+                        stopRequested = !action.mayResume
+                        val failure =
+                            if (action.mayResume) {
+                                SessionFailure.transport("Host ended Protocol v1 session and allowed resume")
+                            } else {
+                                SessionFailure.serverShutdown()
+                            }
+                        command.completion.completeExceptionally(SessionProtocolException(failure))
+                        return
+                    }
+                }
+            }
+            command.completion.complete(Unit)
+        } catch (failure: ProtocolV1Failure) {
+            if (failure.source == ProtocolV1Failure.Source.PEER_PROTOCOL_VIOLATION &&
+                command.envelope.payloadCase != Envelope.PayloadCase.PROTOCOL_ERROR
+            ) {
+                try {
+                    writeProtocolEnvelope(
+                        out,
+                        session.protocolError(
+                            failure.message ?: "invalid protocol state",
+                            correlationId = command.envelope.messageId,
+                        ),
+                    )
+                } catch (writeFailure: IOException) {
+                    failure.addSuppressed(writeFailure)
+                    command.completion.completeExceptionally(failure)
+                    throw writeFailure
+                }
+            }
+            command.completion.completeExceptionally(failure)
+        } catch (failure: IOException) {
+            command.completion.completeExceptionally(failure)
+            throw failure
+        } catch (failure: RuntimeException) {
+            command.completion.completeExceptionally(failure)
+            throw failure
+        }
+    }
+
+    private fun writeProtocolEnvelope(
+        out: java.io.DataOutputStream,
+        envelope: Envelope,
+    ) = ProtocolV1Framing.write(out, ProtocolChannel.CONTROL, envelope.toByteArray())
+
+    private fun awaitProtocolReceive(completion: CompletableFuture<Unit>) {
+        try {
+            completion.get(PROTOCOL_ACTION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        } catch (failure: ExecutionException) {
+            val cause = failure.cause ?: failure
+            when (cause) {
+                is ProtocolV1Failure -> throw cause
+                is SessionProtocolException -> throw cause
+                is IOException -> throw cause
+                else -> throw IOException("Protocol v1 receive processing failed", cause)
+            }
+        } catch (failure: TimeoutException) {
+            throw IOException("Protocol v1 receive processing timed out", failure)
+        } catch (failure: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw IOException("Protocol v1 receive processing interrupted", failure)
+        }
     }
 
     private fun updateStats(bytes: Int) {
@@ -1300,10 +1398,35 @@ class StreamClient(
 
     private fun ProtocolV1Failure.toSessionFailure(): SessionFailure =
         SessionFailure(
-            kind = SessionFailureKind.UNKNOWN_MESSAGE,
+            kind =
+                when (source) {
+                    ProtocolV1Failure.Source.SESSION_REJECTED -> SessionFailureKind.SESSION_REJECTED
+                    ProtocolV1Failure.Source.HOST_PROTOCOL_ERROR -> SessionFailureKind.HOST_PROTOCOL_ERROR
+                    ProtocolV1Failure.Source.PEER_PROTOCOL_VIOLATION ->
+                        if (reason == "invalid_media_header") {
+                            SessionFailureKind.INVALID_MEDIA_HEADER
+                        } else {
+                            SessionFailureKind.INVALID_PEER_MESSAGE
+                        }
+                    ProtocolV1Failure.Source.FRAME -> SessionFailureKind.INVALID_FRAME
+                    ProtocolV1Failure.Source.ENVELOPE -> SessionFailureKind.INVALID_ENVELOPE
+                    ProtocolV1Failure.Source.MEDIA_PAYLOAD -> SessionFailureKind.INVALID_MEDIA_PAYLOAD
+                },
             detail = "$reason: ${message ?: reason}",
             retryable = retryable,
         )
+
+    private fun protocolFailure(
+        reason: String,
+        source: ProtocolV1Failure.Source,
+        cause: Throwable,
+    ): ProtocolV1Failure =
+        ProtocolV1Failure(
+            reason = reason,
+            retryable = false,
+            source = source,
+            message = "$reason: ${cause.message ?: cause.javaClass.simpleName}",
+        ).also { it.initCause(cause) }
 
     private fun diagLog(msg: String) = DiagLog.log("SC", msg)
 
@@ -1332,8 +1455,13 @@ class StreamClient(
             val sentAtNs: Long,
         ) : OutboundCommand
 
-        data class ProtocolControl(
+        class ProtocolBuild(
+            val build: (ProtocolV1Session) -> Envelope,
+        ) : OutboundCommand
+
+        data class ProtocolReceive(
             val envelope: Envelope,
+            val completion: CompletableFuture<Unit>,
         ) : OutboundCommand
     }
 

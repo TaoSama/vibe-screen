@@ -154,6 +154,7 @@ class StreamClientCancellationTest {
                                 writeByte(99)
                                 flush()
                             }
+                            repeat(3) { socket.getInputStream().read() }
                         }
                     }
                 val failures = mutableListOf<SessionFailure>()

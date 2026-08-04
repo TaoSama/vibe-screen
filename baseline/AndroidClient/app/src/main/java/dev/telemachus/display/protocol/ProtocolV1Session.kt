@@ -28,7 +28,14 @@ internal class ProtocolV1Failure(
     val source: Source,
     message: String,
 ) : IOException(message) {
-    enum class Source { SESSION_REJECTED, HOST_PROTOCOL_ERROR, PEER_PROTOCOL_VIOLATION }
+    enum class Source {
+        SESSION_REJECTED,
+        HOST_PROTOCOL_ERROR,
+        PEER_PROTOCOL_VIOLATION,
+        FRAME,
+        ENVELOPE,
+        MEDIA_PAYLOAD,
+    }
 }
 
 /** Product-session state machine. It intentionally has no Android, UI, codec, or transport imports. */

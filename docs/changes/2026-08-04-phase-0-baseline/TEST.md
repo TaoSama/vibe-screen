@@ -93,11 +93,12 @@ self-test. It does not replace device interoperability evidence.
   unknown binary field. The latter test deliberately projects through JSON,
   confirms that the unknown field is discarded, and does not prove Swift or
   Kotlin unknown-field preservation.
-- `./gradlew testDebugUnitTest lintDebug assembleDebug
-  auditReleaseDependencies` passes 124 Android unit tests and all 66 Gradle
-  tasks. The generated Java-lite bindings contain 168 files. The resulting
+- `./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug
+  auditReleaseDependencies` passes 167 Android unit tests with zero
+  failures/errors and all 67 Gradle tasks (`BUILD SUCCESSFUL in 39s`). The
+  generated Java-lite bindings contain 168 files. The resulting
   debug APK SHA-256 is
-  `d73b9a580949043b321d7d57351051f3e8b9bdb8532553272477584e92ed6917`.
+  `c7c7818ea4e8e15d3a4bedd68ef45cbe23138864db6575b82145ba20cee2c4ef`.
 - `swift build -c release --product Telemachus` passes. The release executable
   SHA-256 is
   `e1675061f4098e29d692f7eb938a612bbe574d04b33133e0ecb8e76d8f112969`.
