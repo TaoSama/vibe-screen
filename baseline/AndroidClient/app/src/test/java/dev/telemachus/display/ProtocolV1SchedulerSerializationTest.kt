@@ -61,4 +61,39 @@ class ProtocolV1SchedulerSerializationTest {
         assertEquals((1L..200L).toList(), writes.map(Envelope::getMessageId))
         producers.shutdownNow()
     }
+
+    @Test
+    fun moveCoalescingReplacesAWholePointerBatch() {
+        val writerStarted = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val writes = Collections.synchronizedList(mutableListOf<List<Int>>())
+        val scheduler =
+            OutboundCommandScheduler<List<Int>>(
+                capacity = 4,
+                writer = { command ->
+                    if (command == listOf(0)) {
+                        writerStarted.countDown()
+                        releaseWriter.await()
+                    }
+                    writes += command
+                },
+                onWriteFailure = { throw AssertionError(it.cause) },
+            )
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED,
+            scheduler.submit(OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH, listOf(0)),
+        )
+        assertTrue(writerStarted.await(2, TimeUnit.SECONDS))
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED,
+            scheduler.submit(OutboundCommandScheduler.Kind.MOVE, listOf(7, 9)),
+        )
+        assertEquals(
+            OutboundCommandScheduler.Submission.COALESCED,
+            scheduler.submit(OutboundCommandScheduler.Kind.MOVE, listOf(11, 13)),
+        )
+        releaseWriter.countDown()
+        assertTrue(scheduler.shutdownGracefully(2_000))
+        assertEquals(listOf(listOf(0), listOf(11, 13)), writes)
+    }
 }

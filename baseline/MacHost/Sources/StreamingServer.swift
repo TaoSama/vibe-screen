@@ -778,7 +778,7 @@ class StreamingServer {
         displayWidth = width
         displayHeight = height
         self.rotation = rotation
-        protocolV1Session?.updateDisplaySize(width: width, height: height)
+        protocolV1Session?.updateDisplayGeometry(width: width, height: height, rotation: rotation)
     }
 
     func setProtocolV1VideoConfiguration(
@@ -798,11 +798,32 @@ class StreamingServer {
     /// Update rotation and send to connected client
     func updateRotation(_ rotation: Int) {
         self.rotation = rotation
-        sendDisplaySize() // Re-send display config with new rotation
+        protocolV1Session?.updateDisplayGeometry(
+            width: displayWidth,
+            height: displayHeight,
+            rotation: rotation
+        )
+        guard connectionProtocolMode == .protocolV1,
+              let session = protocolV1Session,
+              let conn = connection else {
+            sendDisplaySize()
+            return
+        }
+        let generation = activeConnectionGeneration
+        let actions = session.makeDisplayChanged()
+        networkQueue.async { [weak self, weak conn] in
+            guard let self, let conn,
+                  self.connection === conn,
+                  self.activeConnectionGeneration == generation,
+                  self.connectionProtocolMode == .protocolV1,
+                  !self.isStopped else { return }
+            self.applyProtocolV1Actions(actions, connection: conn, generation: generation)
+        }
     }
 
     func sendDisplaySize() {
-        guard let connection = connection else { return }
+        guard connectionProtocolMode == .legacy,
+              let connection = connection else { return }
 
         var data = Data()
         data.append(WireMessage.displayConfig) // Type: Display size + rotation
@@ -1017,6 +1038,7 @@ class StreamingServer {
             sessionEpoch: sessionEpochGate.current,
             displayWidth: displayWidth,
             displayHeight: displayHeight,
+            rotation: rotation,
             framesPerSecond: protocolV1FramesPerSecond,
             bitrateKbps: protocolV1BitrateKbps,
             hostCapabilities: touchEnabled ? [.touch, .telemetry] : [.telemetry],
@@ -1575,6 +1597,34 @@ class StreamingServer {
     func stop() {
         isStopped = true
         isReceiving = false
+
+        // Send the shutdown using the currently negotiated protocol before
+        // invalidating its mode/session ownership.
+        if let conn = connection, connectionReady {
+            let shutdownMsg: Data?
+            if connectionProtocolMode == .protocolV1, let session = protocolV1Session {
+                do {
+                    shutdownMsg = try ProtocolV1TransportFrame(
+                        channel: .control,
+                        payload: session.makeDisconnectNotice()
+                    ).encoded()
+                } catch {
+                    shutdownMsg = nil
+                    debugLog("Unable to encode Protocol v1 shutdown notice: \(error)")
+                }
+            } else {
+                shutdownMsg = Data([WireMessage.serverShutdown])
+            }
+            if let shutdownMsg {
+                let semaphore = DispatchSemaphore(value: 0)
+                conn.send(content: shutdownMsg, completion: .contentProcessed { _ in
+                    semaphore.signal()
+                })
+                _ = semaphore.wait(timeout: .now() + .milliseconds(500))
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+        }
+
         connectionProtocolMode = .legacy
         protocolV1Framer = ProtocolV1Framer()
         protocolV1Session = nil
@@ -1602,34 +1652,6 @@ class StreamingServer {
         }
         recoveryController.stop()
         receiveQueue.sync {}
-
-        // Notify the client before aborting TCP. `cancel()` is forceful and can
-        // RST unacked bytes, so wait for contentProcessed (up to 500ms) and then
-        // settle briefly so the peer can read type 3 before the socket dies.
-        if let conn = connection, connectionReady {
-            let shutdownMsg: Data?
-            if connectionProtocolMode == .protocolV1, let session = protocolV1Session {
-                do {
-                    shutdownMsg = try ProtocolV1TransportFrame(
-                        channel: .control,
-                        payload: session.makeDisconnectNotice()
-                    ).encoded()
-                } catch {
-                    shutdownMsg = nil
-                    debugLog("Unable to encode Protocol v1 shutdown notice: \(error)")
-                }
-            } else {
-                shutdownMsg = Data([WireMessage.serverShutdown])
-            }
-            if let shutdownMsg {
-                let semaphore = DispatchSemaphore(value: 0)
-                conn.send(content: shutdownMsg, completion: .contentProcessed { _ in
-                    semaphore.signal()
-                })
-                _ = semaphore.wait(timeout: .now() + .milliseconds(500))
-                Thread.sleep(forTimeInterval: 0.05)
-            }
-        }
 
         connection?.cancel()
         listener?.cancel()

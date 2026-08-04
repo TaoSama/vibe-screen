@@ -35,6 +35,7 @@ CONTROL_FIXTURES = (
     "start_display_request",
     "start_display_response",
     "video_config",
+    "display_changed",
     "video_config_result",
     "touch",
     "ping",

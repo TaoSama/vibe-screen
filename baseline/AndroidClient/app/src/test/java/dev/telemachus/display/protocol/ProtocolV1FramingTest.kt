@@ -28,6 +28,14 @@ class ProtocolV1FramingTest {
         }
         val clientHello = Envelope.parseFrom(directory.resolve("client_hello.binpb").readBytes()).clientHello
         assertEquals(listOf(Capability.CAPABILITY_TOUCH), clientHello.requiredCapabilitiesList)
+        assertEquals(
+            90,
+            Envelope.parseFrom(directory.resolve("video_config.binpb").readBytes()).videoConfig.rotationDegrees,
+        )
+        assertEquals(
+            270,
+            Envelope.parseFrom(directory.resolve("display_changed.binpb").readBytes()).displayChanged.rotationDegrees,
+        )
     }
 
     @Test

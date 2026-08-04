@@ -93,7 +93,7 @@ enum ProtocolV1SelfTest {
                 "client_hello", "host_hello", "session_accepted",
                 "list_displays_request", "list_displays_response",
                 "start_display_request", "start_display_response",
-                "video_config", "video_config_result", "touch", "ping", "pong",
+                "video_config", "display_changed", "video_config_result", "touch", "ping", "pong",
                 "protocol_error"
             ]
             for name in controls {
@@ -163,7 +163,8 @@ enum ProtocolV1SelfTest {
                   case .videoConfig(let config)? = startResponses[1].payload,
                   config.codec == .hevc,
                   config.framesPerSecond == 60,
-                  config.bitrateKbps == 20_000 else {
+                  config.bitrateKbps == 20_000,
+                  config.rotationDegrees == 90 else {
                 failures.append("StartDisplay did not produce the configured VideoConfig")
                 return
             }
@@ -323,6 +324,7 @@ enum ProtocolV1SelfTest {
             sessionEpoch: sessionEpoch,
             displayWidth: 1920,
             displayHeight: 1080,
+            rotation: 90,
             framesPerSecond: 60,
             bitrateKbps: 20_000,
             hostCapabilities: [.touch, .telemetry],

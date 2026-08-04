@@ -8,6 +8,7 @@ struct ProtocolV1SessionConfiguration {
     let sessionEpoch: UInt64
     var displayWidth: Int
     var displayHeight: Int
+    var rotation: Int
     var framesPerSecond: UInt32
     var bitrateKbps: UInt32
     var hostCapabilities: Set<VSCapability>
@@ -59,10 +60,26 @@ final class ProtocolV1SessionCoordinator {
         self.configuration = configuration
     }
 
-    func updateDisplaySize(width: Int, height: Int) {
+    func updateDisplayGeometry(width: Int, height: Int, rotation: Int) {
         withSessionLock {
             configuration.displayWidth = width
             configuration.displayHeight = height
+            configuration.rotation = rotation
+        }
+    }
+
+    func makeDisplayChanged() -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            switch phase {
+            case .awaitingVideoConfig, .streaming:
+                break
+            default:
+                return []
+            }
+            var changed = VSDisplayChanged()
+            changed.display = displayDescriptor()
+            changed.rotationDegrees = UInt32(clamping: configuration.rotation)
+            return sendActions(payload: .displayChanged(changed), correlationID: 0)
         }
     }
 
@@ -364,6 +381,7 @@ final class ProtocolV1SessionCoordinator {
         config.framesPerSecond = configuration.framesPerSecond
         config.bitrateKbps = configuration.bitrateKbps
         config.streamID = streamID
+        config.rotationDegrees = UInt32(clamping: configuration.rotation)
 
         phase = .awaitingVideoConfig(configEpoch: configEpoch, streamID: streamID)
         do {

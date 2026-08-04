@@ -115,7 +115,7 @@ func testProtocolV1GoldenFixtures() throws {
         "client_hello", "host_hello", "session_accepted",
         "list_displays_request", "list_displays_response",
         "start_display_request", "start_display_response",
-        "video_config", "video_config_result", "touch", "ping", "pong",
+        "video_config", "display_changed", "video_config_result", "touch", "ping", "pong",
         "protocol_error",
     ]
     var envelopes: [String: VSEnvelope] = [:]
@@ -160,6 +160,12 @@ func testProtocolV1GoldenFixtures() throws {
     try require(videoConfig.configEpoch == 3 && videoConfig.streamID == 42, "Protocol v1 video routing")
     try require(videoConfig.codec == .hevc && videoConfig.framesPerSecond == 60, "Protocol v1 video format")
     try require(videoConfig.encodedSize.width == 1_920 && videoConfig.encodedSize.height == 1_080, "Protocol v1 video size")
+    try require(videoConfig.rotationDegrees == 90, "Protocol v1 initial rotation")
+    guard let displayChangedPayload = envelopes["display_changed"]?.payload,
+          case let .displayChanged(displayChanged) = displayChangedPayload else {
+        throw SelfTestError.failed("Protocol v1 display changed fixture missing")
+    }
+    try require(displayChanged.rotationDegrees == 270, "Protocol v1 runtime rotation")
     guard let videoResultPayload = envelopes["video_config_result"]?.payload,
           case let .videoConfigResult(videoResult) = videoResultPayload else {
         throw SelfTestError.failed("Protocol v1 video config result fixture missing")

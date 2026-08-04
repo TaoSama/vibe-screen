@@ -150,6 +150,19 @@ class ProtocolFixtureTest(unittest.TestCase):
             decoded = json.loads(decoded_path.read_text())
             self.assertEqual(["CAPABILITY_TOUCH"], decoded["clientHello"]["requiredCapabilities"])
 
+    def test_rotation_fixtures_cover_initial_and_runtime_values(self) -> None:
+        fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}
+        with tempfile.TemporaryDirectory(prefix="vibescreen-rotation-fixtures-") as temporary:
+            temporary_root = Path(temporary)
+            decoded: dict[str, dict[str, object]] = {}
+            for name in ("video_config", "display_changed"):
+                entry = fixtures[name]
+                output = temporary_root / f"{name}.json"
+                convert(entry["messageType"], FIXTURE_ROOT / entry["binary"], "binpb", output, "json")
+                decoded[name] = json.loads(output.read_text())
+            self.assertEqual(90, decoded["video_config"]["videoConfig"]["rotationDegrees"])
+            self.assertEqual(270, decoded["display_changed"]["displayChanged"]["rotationDegrees"])
+
     def test_buf_json_projection_accepts_and_discards_unknown_binary_field(self) -> None:
         client_entry = MANIFEST["controlFixtures"][0]
         original = (FIXTURE_ROOT / client_entry["binary"]).read_bytes()

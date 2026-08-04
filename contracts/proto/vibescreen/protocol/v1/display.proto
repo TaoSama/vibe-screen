@@ -51,4 +51,5 @@ message StopDisplay {
 
 message DisplayChanged {
   DisplayDescriptor display = 1;
+  uint32 rotation_degrees = 2;
 }

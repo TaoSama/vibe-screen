@@ -86,26 +86,31 @@ their runnable baseline session. This evidence proves generated-wire
 compatibility, session behavior, builds, and the non-listening host integration
 self-test. It does not replace device interoperability evidence.
 
-- `make protocol` passes Buf format, lint, build, and breaking checks plus 12
-  fixture/security tests. Fixed fixtures cover 13 control envelopes, media
+- `make protocol` passes Buf format, lint, build, and breaking checks plus 13
+  fixture/security tests. Fixed fixtures cover 14 control envelopes, including
+  non-zero initial and runtime rotation, plus media
   header plus Annex-B payload, upgrade bytes, required capability field 9,
   split/coalesced logical-channel framing, and Buf decoding of an additive
   unknown binary field. The latter test deliberately projects through JSON,
   confirms that the unknown field is discarded, and does not prove Swift or
   Kotlin unknown-field preservation.
 - `./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug
-  auditReleaseDependencies` passes 167 Android unit tests with zero
-  failures/errors and all 67 Gradle tasks (`BUILD SUCCESSFUL in 39s`). The
+  auditReleaseDependencies` passes 176 Android unit tests with zero
+  failures/errors and all 67 Gradle tasks (`BUILD SUCCESSFUL in 31s`). The
   generated Java-lite bindings contain 168 files. The resulting
   debug APK SHA-256 is
-  `c7c7818ea4e8e15d3a4bedd68ef45cbe23138864db6575b82145ba20cee2c4ef`.
+  `beec34fad53f16d99cc4bc1eb13aa08d6ba30d6ad09655850ed91f88f90409c3`.
 - `swift build -c release --product Telemachus` passes. The release executable
   SHA-256 is
-  `e1675061f4098e29d692f7eb938a612bbe574d04b33133e0ecb8e76d8f112969`.
+  `93c333e2bd76eea2ab163773b3d2b20af5310fa6494dda02f95342dbd231435e`.
   `.build/release/Telemachus --protocol-v1-self-test` reports `PASS` for
   framing, all shared cross-platform golden fixtures, version/required
   capability negotiation, display/video acknowledgement gating, stale epochs,
   input including two-pointer aggregation, heartbeat, errors, and media.
+  The production `StreamingServer` loopback transport test also completes a
+  real Protocol v1 upgrade/session, observes initial 90-degree rotation,
+  receives a framed 270-degree `DisplayChanged`, proves a following Ping/Pong
+  remains synchronized, and receives a framed intentional shutdown notice.
 - The additive schema was regenerated into both MacHost and iOS Swift bindings.
   `swift build --package-path apps/ios` and the iOS core self-test pass, proving
   the checked binding update did not regress that consumer. Both iOS and

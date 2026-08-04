@@ -53,6 +53,8 @@ public struct VSVideoConfig: Sendable {
   /// Clears the value of `colorDescription`. Subsequent reads from it will return its default value.
   public mutating func clearColorDescription() {self._colorDescription = nil}
 
+  public var rotationDegrees: UInt32 = 0
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -154,7 +156,7 @@ fileprivate let _protobuf_package = "vibescreen.protocol.v1"
 
 extension VSVideoConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".VideoConfig"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}config_epoch\0\u{1}codec\0\u{3}encoded_size\0\u{3}frames_per_second\0\u{3}bitrate_kbps\0\u{3}stream_id\0\u{3}color_description\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}config_epoch\0\u{1}codec\0\u{3}encoded_size\0\u{3}frames_per_second\0\u{3}bitrate_kbps\0\u{3}stream_id\0\u{3}color_description\0\u{3}rotation_degrees\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -169,6 +171,7 @@ extension VSVideoConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementa
       case 5: try { try decoder.decodeSingularUInt32Field(value: &self.bitrateKbps) }()
       case 6: try { try decoder.decodeSingularUInt64Field(value: &self.streamID) }()
       case 7: try { try decoder.decodeSingularMessageField(value: &self._colorDescription) }()
+      case 8: try { try decoder.decodeSingularUInt32Field(value: &self.rotationDegrees) }()
       default: break
       }
     }
@@ -200,6 +203,9 @@ extension VSVideoConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementa
     try { if let v = self._colorDescription {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
     } }()
+    if self.rotationDegrees != 0 {
+      try visitor.visitSingularUInt32Field(value: self.rotationDegrees, fieldNumber: 8)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -211,6 +217,7 @@ extension VSVideoConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementa
     if lhs.bitrateKbps != rhs.bitrateKbps {return false}
     if lhs.streamID != rhs.streamID {return false}
     if lhs._colorDescription != rhs._colorDescription {return false}
+    if lhs.rotationDegrees != rhs.rotationDegrees {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

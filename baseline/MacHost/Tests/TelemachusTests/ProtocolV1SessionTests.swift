@@ -239,6 +239,7 @@ final class ProtocolV1SessionTests: XCTestCase {
             sessionEpoch: sessionEpoch,
             displayWidth: 1920,
             displayHeight: 1080,
+            rotation: 90,
             framesPerSecond: 60,
             bitrateKbps: 20_000,
             hostCapabilities: [.touch, .telemetry],

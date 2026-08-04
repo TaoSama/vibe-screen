@@ -52,13 +52,23 @@ internal class ProtocolV1Session(
         data class VideoConfigured(
             val width: Int,
             val height: Int,
+            val rotation: Int,
             val codec: Codec,
             val sessionEpoch: Long,
         ) : Action()
 
+        data class DisplayChanged(
+            val width: Int,
+            val height: Int,
+            val rotation: Int,
+        ) : Action()
+
         data class PongReceived(val sequence: Long) : Action()
 
-        data class Disconnected(val mayResume: Boolean) : Action()
+        data class Disconnected(
+            val reasonCode: String,
+            val mayResume: Boolean,
+        ) : Action()
     }
 
     private enum class State { AWAITING_HOST_HELLO, AWAITING_SESSION, ACTIVE, DISPLAY_REQUESTED, STREAMING, CLOSED }
@@ -135,6 +145,7 @@ internal class ProtocolV1Session(
             Envelope.PayloadCase.LIST_DISPLAYS_RESPONSE -> onDisplays(envelope)
             Envelope.PayloadCase.START_DISPLAY_RESPONSE -> onStartDisplay(envelope)
             Envelope.PayloadCase.VIDEO_CONFIG -> onVideoConfig(envelope)
+            Envelope.PayloadCase.DISPLAY_CHANGED -> onDisplayChanged(envelope)
             Envelope.PayloadCase.PING ->
                 listOf(
                     Action.Send(
@@ -146,7 +157,12 @@ internal class ProtocolV1Session(
             Envelope.PayloadCase.PONG -> listOf(Action.PongReceived(envelope.pong.sequence))
             Envelope.PayloadCase.DISCONNECT_NOTICE -> {
                 state = State.CLOSED
-                listOf(Action.Disconnected(envelope.disconnectNotice.mayResume))
+                listOf(
+                    Action.Disconnected(
+                        reasonCode = envelope.disconnectNotice.reasonCode,
+                        mayResume = envelope.disconnectNotice.mayResume,
+                    ),
+                )
             }
             Envelope.PayloadCase.PROTOCOL_ERROR -> {
                 val error = envelope.protocolError
@@ -301,6 +317,7 @@ internal class ProtocolV1Session(
                 config.configEpoch > configEpoch &&
                 config.encodedSize.width in 16..8192 &&
                 config.encodedSize.height in 16..8192 &&
+                config.rotationDegrees.toInt() in VALID_ROTATIONS &&
                 config.codec in codecs &&
                 config.codec in hostCodecs
         val result =
@@ -328,10 +345,31 @@ internal class ProtocolV1Session(
             Action.VideoConfigured(
                 config.encodedSize.width,
                 config.encodedSize.height,
+                config.rotationDegrees.toInt(),
                 config.codec,
                 sessionEpoch,
             )
         return actions
+    }
+
+    private fun onDisplayChanged(envelope: Envelope): List<Action> {
+        if (state != State.STREAMING) throw protocolFailure("DisplayChanged in state $state")
+        val changed = envelope.displayChanged
+        if (!changed.hasDisplay() ||
+            changed.display.displayId != displayId ||
+            changed.display.logicalSize.width !in 16..8192 ||
+            changed.display.logicalSize.height !in 16..8192 ||
+            changed.rotationDegrees.toInt() !in VALID_ROTATIONS
+        ) {
+            throw protocolFailure("Invalid DisplayChanged")
+        }
+        return listOf(
+            Action.DisplayChanged(
+                width = changed.display.logicalSize.width,
+                height = changed.display.logicalSize.height,
+                rotation = changed.rotationDegrees.toInt(),
+            ),
+        )
     }
 
     private fun validateEnvelope(envelope: Envelope) {
@@ -378,5 +416,6 @@ internal class ProtocolV1Session(
 
     companion object {
         const val VERSION = 1
+        private val VALID_ROTATIONS = setOf(0, 90, 180, 270)
     }
 }

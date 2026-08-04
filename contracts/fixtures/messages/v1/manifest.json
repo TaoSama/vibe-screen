@@ -122,7 +122,7 @@
     },
     {
       "binary": "bin/video_config.binpb",
-      "byteLength": 54,
+      "byteLength": 56,
       "channel": 1,
       "expected": {
         "correlationId": "0",
@@ -134,8 +134,25 @@
       },
       "messageType": "vibescreen.protocol.v1.Envelope",
       "name": "video_config",
-      "sha256": "8f37217348281e5670be82167e510836c830f809ac6bccbc74e5043331f33ea2",
+      "sha256": "c01e1377493c0c42fd9ae567c2773644fd53bcbbcd531cf97adf254b478d53ca",
       "source": "json/video_config.json"
+    },
+    {
+      "binary": "bin/display_changed.binpb",
+      "byteLength": 88,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "14",
+        "payloadCase": "displayChanged",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000014",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "display_changed",
+      "sha256": "795c5f46b5ea495cc32a9237f49a3a66a8ad60e46c32c120efae32f59bd54576",
+      "source": "json/display_changed.json"
     },
     {
       "binary": "bin/video_config_result.binpb",

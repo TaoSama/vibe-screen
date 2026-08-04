@@ -7,15 +7,17 @@ The client is an early developer release. Its core modules build and self-test
 on macOS, and the unsigned application has built successfully with the iOS
 Simulator SDK in CI. Simulator test execution, signing, installation, and
 iPhone/iPad hardware decode are separate gates; do not treat the SDK build or
-Android device record as that evidence. The client also cannot connect to the
-imported Telemachus host until that host gains the Protocol v1 adapter.
+Android device record as that evidence. The Mac host now supports the Android
+baseline's legacy-to-v1 upgrade and Protocol v1 session, but this iOS client
+does not yet implement that upgrade or compose its session with the baseline
+host, so the two are not currently interoperable.
 
 ## Requirements
 
 - macOS with full Xcode 16 or newer and an iOS 17 or newer SDK;
 - iPhone or iPad running iOS/iPadOS 17 or newer for device installation;
-- a Mac host implementing Vibe Screen Protocol v1 over the trusted-LAN frame
-  adapter described in the Phase 5 technical design;
+- a Mac host and client adapter implementing the same Protocol v1 upgrade and
+  trusted-LAN session composition described in the Phase 5 technical design;
 - an Apple development team and a unique bundle identifier for device signing.
 
 The package pins `swift-protobuf` to immutable revision
@@ -131,7 +133,9 @@ not yet stored by this client, so there is currently no key migration step.
 ## Troubleshooting
 
 - **Connection refused:** confirm the Protocol v1 host is listening on the
-  entered address/port. The legacy Telemachus port `54321` is not compatible.
+  entered address/port. Port `54321` supports the Android baseline's explicit
+  legacy-to-v1 upgrade, but the current iOS transport does not yet perform that
+  upgrade and must not be pointed directly at this port.
 - **No Local Network prompt:** check the app's permission in Settings, then
   delete/reinstall if the development bundle identifier changed.
 - **Connected but no picture:** verify the host accepted `StartDisplayRequest`
@@ -168,8 +172,9 @@ not yet stored by this client, so there is currently no key migration step.
 
 ## Required host integration
 
-The imported Mac host still speaks the legacy wire format. The host owner must
-implement Protocol v1 without changing these client semantics:
+The Mac host has a Protocol v1 adapter for the Android baseline session. iOS
+still needs the matching upgrade and baseline-session composition; advanced
+host integrations must then preserve these client semantics:
 
 - Hello plus explicit negotiated capabilities/resource limits;
 - independent per-client epochs and unique per-session display stream IDs;

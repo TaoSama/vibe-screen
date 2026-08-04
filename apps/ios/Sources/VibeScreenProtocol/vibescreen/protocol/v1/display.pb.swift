@@ -199,6 +199,8 @@ public struct VSDisplayChanged: Sendable {
   /// Clears the value of `display`. Subsequent reads from it will return its default value.
   public mutating func clearDisplay() {self._display = nil}
 
+  public var rotationDegrees: UInt32 = 0
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -452,7 +454,7 @@ extension VSStopDisplay: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementa
 
 extension VSDisplayChanged: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".DisplayChanged"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}display\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}display\0\u{3}rotation_degrees\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -461,6 +463,7 @@ extension VSDisplayChanged: SwiftProtobuf.Message, SwiftProtobuf._MessageImpleme
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularMessageField(value: &self._display) }()
+      case 2: try { try decoder.decodeSingularUInt32Field(value: &self.rotationDegrees) }()
       default: break
       }
     }
@@ -474,11 +477,15 @@ extension VSDisplayChanged: SwiftProtobuf.Message, SwiftProtobuf._MessageImpleme
     try { if let v = self._display {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
     } }()
+    if self.rotationDegrees != 0 {
+      try visitor.visitSingularUInt32Field(value: self.rotationDegrees, fieldNumber: 2)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: VSDisplayChanged, rhs: VSDisplayChanged) -> Bool {
     if lhs._display != rhs._display {return false}
+    if lhs.rotationDegrees != rhs.rotationDegrees {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
