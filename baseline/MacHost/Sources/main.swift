@@ -54,7 +54,7 @@ mainMenu.addItem(editMenuItem)
 
 app.mainMenu = mainMenu
 
-let delegate = AppDelegate()
+let delegate = MainActor.assumeIsolated { AppDelegate() }
 
 app.setActivationPolicy(.regular)
 

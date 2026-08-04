@@ -241,6 +241,9 @@ enum WindowPlacement {
             })
         }
         if let originalDisplay {
+            if originalDisplay.bounds == originalDisplayBounds {
+                return originalFrame
+            }
             return mappedFrame(
                 originalFrame,
                 from: originalDisplayBounds,

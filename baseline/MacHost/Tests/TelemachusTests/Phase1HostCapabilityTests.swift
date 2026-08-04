@@ -95,6 +95,150 @@ final class Phase1HostCapabilityTests: XCTestCase {
         XCTAssertTrue(currentBounds.contains(recovered))
     }
 
+    func testUnchangedDisplayBoundsPreservePartiallyOffscreenFrame() {
+        let bounds = CGRect(x: -1200, y: 0, width: 1200, height: 800)
+        let frame = CGRect(x: -1300, y: 100, width: 700, height: 400)
+        XCTAssertEqual(WindowPlacement.recoveryFrame(
+            frame,
+            originalDisplayBounds: bounds,
+            originalDisplayUUID: "same",
+            onlineDisplays: [DisplayRecoveryTarget(
+                persistentUUID: "same",
+                bounds: bounds
+            )],
+            mainDisplayBounds: CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        ), frame)
+    }
+
+    func testUnchangedDisplayBoundsPreserveOversizedFrame() {
+        let bounds = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let frame = CGRect(x: -100, y: -50, width: 1800, height: 1200)
+        XCTAssertEqual(WindowPlacement.recoveryFrame(
+            frame,
+            originalDisplayBounds: bounds,
+            originalDisplayUUID: "same",
+            onlineDisplays: [DisplayRecoveryTarget(
+                persistentUUID: "same",
+                bounds: bounds
+            )],
+            mainDisplayBounds: bounds
+        ), frame)
+    }
+
+    @MainActor
+    func testConcurrentDoubleStartAdmitsExactlyOneRequest() async {
+        let lifecycle = HostServerLifecycle()
+        let first = Task { @MainActor in lifecycle.beginStart() }
+        let second = Task { @MainActor in lifecycle.beginStart() }
+        let tokens = await [first.value, second.value]
+        XCTAssertEqual(tokens.compactMap { $0 }.count, 1)
+        XCTAssertFalse(lifecycle.canStart)
+    }
+
+    @MainActor
+    func testStopInvalidatesSuspendedStart() {
+        let lifecycle = HostServerLifecycle()
+        let startToken = lifecycle.beginStart()!
+        let stopToken = lifecycle.beginStop()
+        XCTAssertFalse(lifecycle.isCurrentStart(startToken))
+        XCTAssertFalse(lifecycle.finishStart(startToken))
+        lifecycle.finishStop(stopToken)
+        XCTAssertTrue(lifecycle.canStart)
+    }
+
+    @MainActor
+    func testStaleFailureTokenCannotOwnReplacementSession() {
+        let lifecycle = HostServerLifecycle()
+        let first = lifecycle.beginStart()!
+        XCTAssertTrue(lifecycle.finishStart(first))
+        let stop = lifecycle.beginStop()
+        lifecycle.finishStop(stop)
+        let replacement = lifecycle.beginStart()!
+        XCTAssertFalse(lifecycle.ownsSession(first))
+        XCTAssertTrue(lifecycle.ownsSession(replacement))
+    }
+
+    func testFallbackRemovalReportsTerminalOnlyForCurrentGeneration() {
+        let lifecycle = FallbackCaptureLifecycle()
+        guard case .started(let generation) = lifecycle.begin() else {
+            return XCTFail("fallback did not start")
+        }
+        XCTAssertEqual(lifecycle.disposition(
+            status: .stopped,
+            generation: generation,
+            hasSurface: false
+        ), .terminalFailure)
+        XCTAssertTrue(lifecycle.isActive)
+        XCTAssertEqual(lifecycle.begin(), .alreadyActive)
+        XCTAssertEqual(lifecycle.disposition(
+            status: .stopped,
+            generation: generation,
+            hasSurface: false
+        ), .ignore)
+        XCTAssertTrue(lifecycle.claimTerminal(generation: generation))
+        XCTAssertFalse(lifecycle.isActive)
+        XCTAssertFalse(lifecycle.claimTerminal(generation: generation))
+    }
+
+    func testStaleFallbackStopDoesNotTerminateReplacement() {
+        let lifecycle = FallbackCaptureLifecycle()
+        guard case .started(let first) = lifecycle.begin() else {
+            return XCTFail("first fallback did not start")
+        }
+        lifecycle.invalidate()
+        guard case .started(let second) = lifecycle.begin() else {
+            return XCTFail("second fallback did not start")
+        }
+        XCTAssertEqual(lifecycle.disposition(
+            status: .stopped,
+            generation: first,
+            hasSurface: false
+        ), .ignore)
+        XCTAssertTrue(lifecycle.isActive)
+        XCTAssertEqual(lifecycle.disposition(
+            status: .frameComplete,
+            generation: second,
+            hasSurface: true
+        ), .consume)
+    }
+
+    func testFallbackBlankAndIdleFramesAreNonTerminal() {
+        let lifecycle = FallbackCaptureLifecycle()
+        guard case .started(let generation) = lifecycle.begin() else {
+            return XCTFail("fallback did not start")
+        }
+        XCTAssertEqual(lifecycle.disposition(
+            status: .frameIdle,
+            generation: generation,
+            hasSurface: false
+        ), .ignore)
+        XCTAssertEqual(lifecycle.disposition(
+            status: .frameBlank,
+            generation: generation,
+            hasSurface: false
+        ), .clearFrame)
+        XCTAssertTrue(lifecycle.isActive)
+    }
+
+    func testVirtualDisplayCapabilityRejectsMissingClassAndSelector() {
+        let complete = FakeRuntimeInspector.complete()
+        XCTAssertTrue(VirtualDisplayPrivateAPICapability.evaluate(
+            inspector: complete
+        ).isAvailable)
+
+        var missingMode = complete
+        missingMode.classes.remove("CGVirtualDisplayMode")
+        XCTAssertFalse(VirtualDisplayPrivateAPICapability.evaluate(
+            inspector: missingMode
+        ).isAvailable)
+
+        var missingApply = complete
+        missingApply.selectors["CGVirtualDisplay"]?.remove("applySettings:")
+        XCTAssertFalse(VirtualDisplayPrivateAPICapability.evaluate(
+            inspector: missingApply
+        ).isAvailable)
+    }
+
     func testInteractiveSessionIsNotEligibleForUnattendedRecovery() {
         XCTAssertFalse(HostStartupPolicy.shouldRecover(
             autoStartEnabled: true,
@@ -186,6 +330,30 @@ final class Phase1HostCapabilityTests: XCTestCase {
             physicalHeight: 1200 * (hiDPI ? 2 : 1),
             refreshRate: refreshRate,
             hiDPI: hiDPI
+        )
+    }
+}
+
+private struct FakeRuntimeInspector: ObjectiveCRuntimeInspecting {
+    var classes: Set<String>
+    var selectors: [String: Set<String>]
+
+    func classExists(named className: String) -> Bool {
+        classes.contains(className)
+    }
+
+    func instanceResponds(className: String, selector: String) -> Bool {
+        selectors[className]?.contains(selector) == true
+    }
+
+    static func complete() -> FakeRuntimeInspector {
+        FakeRuntimeInspector(
+            classes: Set(VirtualDisplayPrivateAPICapability.requirements.map(\.className)),
+            selectors: Dictionary(uniqueKeysWithValues:
+                VirtualDisplayPrivateAPICapability.requirements.map {
+                    ($0.className, Set($0.selectors))
+                }
+            )
         )
     }
 }

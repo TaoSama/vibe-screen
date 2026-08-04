@@ -50,7 +50,6 @@ class ScreenCapture {
         var lastFrameTime: DispatchTime?
         var lastKeepaliveTime: DispatchTime?
         var hasReceivedFirstFrame = false
-        var fallbackActive = false
         var captureStatsStartTime: DispatchTime?
         var sourceFrameCount = 0
     }
@@ -85,6 +84,7 @@ class ScreenCapture {
 
     // CGDisplayStream fallback
     private var cgDisplayStream: CGDisplayStream?
+    private let fallbackLifecycle = FallbackCaptureLifecycle()
 
     // Streaming parameters (saved for restart)
     private weak var currentServer: StreamingServer?
@@ -314,7 +314,7 @@ class ScreenCapture {
                 }
 
                 debugLog("StreamDelegate error callback — attempting fallback")
-                let alreadyActive = self.stateLock.withLock { $0.fallbackActive }
+                let alreadyActive = self.fallbackLifecycle.isActive
                 if !alreadyActive {
                     if !self.attemptFallbackCapture() {
                         self.reportTerminalCaptureFailure(
@@ -558,7 +558,7 @@ class ScreenCapture {
                 let currentMainDisplayID = CGMainDisplayID()
                 if currentMainDisplayID != 0,
                    currentMainDisplayID != self.virtualDisplayID {
-                    let wasUsingCGDisplayStream = self.stateLock.withLock { $0.fallbackActive }
+                    let wasUsingCGDisplayStream = self.fallbackLifecycle.isActive
                     debugLog(
                         "Main display changed \(self.virtualDisplayID.map(String.init) ?? "none") " +
                         "→ \(currentMainDisplayID); monitor rebuilding capture"
@@ -568,9 +568,9 @@ class ScreenCapture {
                     self.stopFrameMonitor()
 
                     if wasUsingCGDisplayStream {
+                        self.invalidateFallbackCapture()
                         self.cgDisplayStream?.stop()
                         self.cgDisplayStream = nil
-                        self.stateLock.withLock { $0.fallbackActive = false }
                         if self.attemptFallbackCapture(stopSCStream: false) {
                             self.encoder?.requestKeyframe()
                             self.startFrameMonitor()
@@ -583,7 +583,7 @@ class ScreenCapture {
                 }
             }
 
-            let isFallback = self.stateLock.withLock { $0.fallbackActive }
+            let isFallback = self.fallbackLifecycle.isActive
             guard !isFallback else {
                 if !self.followsMainDisplay {
                     self.stopFrameMonitor()
@@ -857,15 +857,13 @@ class ScreenCapture {
             return false
         }
 
-        // Thread-safe check-and-set for fallbackActive
-        let alreadyActive = stateLock.withLock { state -> Bool in
-            if state.fallbackActive { return true }
-            state.fallbackActive = true
-            return false
-        }
-        guard !alreadyActive else {
+        let fallbackGeneration: UInt64
+        switch fallbackLifecycle.begin() {
+        case .alreadyActive:
             debugLog("Fallback skipped — already active")
             return true
+        case .started(let generation):
+            fallbackGeneration = generation
         }
 
         if stopSCStream {
@@ -903,8 +901,36 @@ class ScreenCapture {
             pixelFormat: pixelFormat,
             properties: nil,
             queue: captureQueue,
-            handler: { [weak self] _, _, frameSurface, _ in
-                guard let self = self, let surface = frameSurface else { return }
+            handler: { [weak self] status, _, frameSurface, _ in
+                guard let self else { return }
+                let disposition = self.fallbackLifecycle.disposition(
+                    status: status,
+                    generation: fallbackGeneration,
+                    hasSurface: frameSurface != nil
+                )
+                switch disposition {
+                case .terminalFailure:
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, !self.isStopping,
+                              self.fallbackLifecycle.claimTerminal(
+                                generation: fallbackGeneration
+                              ) else { return }
+                        self.framePacingTimer?.cancel()
+                        self.framePacingTimer = nil
+                        self.pacingLock.withLock { $0.latestPixelBuffer = nil }
+                        self.cgDisplayStream = nil
+                        self.reportTerminalCaptureFailure()
+                    }
+                    return
+                case .clearFrame:
+                    self.pacingLock.withLock { $0.latestPixelBuffer = nil }
+                    return
+                case .ignore:
+                    return
+                case .consume:
+                    break
+                }
+                guard let surface = frameSurface else { return }
                 self.recordSourceFrame(at: DispatchTime.now(), label: "CGDisplayStream")
 
                 var unmanagedPB: Unmanaged<CVPixelBuffer>?
@@ -925,7 +951,7 @@ class ScreenCapture {
             }
         ) else {
             debugLog("Failed to create CGDisplayStream — fallback unavailable")
-            stateLock.withLock { $0.fallbackActive = false }
+            invalidateFallbackCapture()
             framePacingTimer?.cancel()
             framePacingTimer = nil
             return false
@@ -939,7 +965,7 @@ class ScreenCapture {
             return true
         } else {
             debugLog("CGDisplayStream.start() failed: \(startResult)")
-            stateLock.withLock { $0.fallbackActive = false }
+            invalidateFallbackCapture()
             framePacingTimer?.cancel()
             framePacingTimer = nil
             return false
@@ -982,11 +1008,11 @@ class ScreenCapture {
         newEncoder.requestKeyframe()
         encoder = newEncoder
 
-        let wasUsingCGDisplayStream = stateLock.withLock { $0.fallbackActive }
+        let wasUsingCGDisplayStream = fallbackLifecycle.isActive
         if wasUsingCGDisplayStream {
+            invalidateFallbackCapture()
             cgDisplayStream?.stop()
             cgDisplayStream = nil
-            stateLock.withLock { $0.fallbackActive = false }
             if attemptFallbackCapture(stopSCStream: false) {
                 startFrameMonitor()
                 return
@@ -1016,8 +1042,9 @@ class ScreenCapture {
         }
 
         // Stop CGDisplayStream fallback
-        let wasFallback = stateLock.withLock { $0.fallbackActive }
+        let wasFallback = fallbackLifecycle.isActive
         if wasFallback {
+            invalidateFallbackCapture()
             cgDisplayStream?.stop()
             cgDisplayStream = nil
             debugLog("CGDisplayStream fallback stopped")
@@ -1028,13 +1055,16 @@ class ScreenCapture {
             state.lastFrameTime = nil
             state.lastKeepaliveTime = nil
             state.hasReceivedFirstFrame = false
-            state.fallbackActive = false
             state.captureStatsStartTime = nil
             state.sourceFrameCount = 0
         }
         restartAttempted = false
         isRestarting = false
         isHealthCheckRunning = false
+    }
+
+    private func invalidateFallbackCapture() {
+        fallbackLifecycle.invalidate()
     }
 }
 

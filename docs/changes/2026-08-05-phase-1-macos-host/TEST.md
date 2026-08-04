@@ -22,8 +22,8 @@ make baseline-macos-self-test
 Build complete!
 Host display evidence: id=1, logical=1512x982, physical=3024x1964
 Host display evidence: id=2, logical=1920x1080, physical=3840x2160
-Private virtual display symbol check: available
-(symbol presence is not creation/capture evidence)
+Private virtual display API shape check: available
+(class/selector presence is not creation/capture evidence)
 Host self-test: PASS (display identity/catalog, input/window geometry,
 startup policy, bounded recovery backoff)
 Transport self-test: PASS (config=true, keyframe=true, pong=true, touch=true,
@@ -36,7 +36,7 @@ make baseline-macos-app
 
 shasum -a 256 -c Telemachus-macos-0.12.0-arm64.sha256
 Telemachus-macos-0.12.0-arm64.zip: OK
-SHA-256: b783419745f14799a4ff55db94211840e4dbebcf41ca3b31d2ef4ed0bc44d547
+SHA-256: 6f782eed4cb63e0f3cc02e52540e06d907ef5cf5fa991614446600e24ab4c0ab
 
 unzip -t Telemachus-macos-0.12.0-arm64.zip
 No errors detected in compressed data
@@ -57,6 +57,10 @@ eligibility, and the bounded recovery schedule. The loopback transport
 self-test also proves malformed touch cancellation without posting a real
 system event. XCTest sources add focused policy/lifecycle cases under
 `Phase1HostCapabilityTests.swift` and `StreamingServerLifecycleTests.swift`.
+The added cases cover concurrent double-start admission, stop invalidation of a
+suspended start, current/stale fallback stop generations, blank/idle fallback
+frames, missing private classes/selectors, and exact unchanged-bounds window
+recovery. They remain source-level regression coverage until XCTest can run.
 
 `make baseline-macos-test` compiles the application target but fails before
 test execution with `error: no such module 'XCTest'`; full Xcode is not

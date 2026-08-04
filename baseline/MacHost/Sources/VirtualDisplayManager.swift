@@ -36,10 +36,11 @@ class VirtualDisplayManager {
         // Clean up existing display if any
         destroyDisplay()
 
-        guard NSClassFromString("CGVirtualDisplay") != nil,
-              NSClassFromString("CGVirtualDisplayDescriptor") != nil,
-              NSClassFromString("CGVirtualDisplaySettings") != nil else {
-            throw VirtualDisplayError.privateAPIUnavailable
+        let capability = VirtualDisplayPrivateAPICapability.evaluate()
+        guard capability.isAvailable else {
+            throw VirtualDisplayError.privateAPIUnavailable(
+                capability.missingRequirements
+            )
         }
 
         // Physical pixels = 2x logical when HiDPI, 1x otherwise
@@ -401,7 +402,7 @@ enum VirtualDisplayError: Error, LocalizedError {
     case mainDisplayNotFound
     case configurationFailed(String)
     case mirrorModeFailed(String)
-    case privateAPIUnavailable
+    case privateAPIUnavailable([String])
 
     var errorDescription: String? {
         switch self {
@@ -417,8 +418,10 @@ enum VirtualDisplayError: Error, LocalizedError {
             return "Display configuration failed: \(msg)"
         case .mirrorModeFailed(let msg):
             return "Mirror mode operation failed: \(msg)"
-        case .privateAPIUnavailable:
-            return "Private CGVirtualDisplay APIs are unavailable on this macOS version. Use Current Mac Display or attach a physical/dummy display."
+        case .privateAPIUnavailable(let missingRequirements):
+            return "Private CGVirtualDisplay APIs are unavailable or incompatible " +
+                "on this macOS version (missing: \(missingRequirements.joined(separator: ", "))). " +
+                "Use Current Mac Display or attach a physical/dummy display."
         }
     }
 }
