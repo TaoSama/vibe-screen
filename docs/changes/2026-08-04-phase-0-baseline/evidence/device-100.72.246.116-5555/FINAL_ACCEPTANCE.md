@@ -24,7 +24,7 @@ workspace. The compact results and immutable hashes are retained here because
 ## Device identity
 
 ```text
-device serial: EP0110PZ0B9110152B
+device serial: [redacted]
 manufacturer: nubia
 model: P0110
 device/product: pacific
