@@ -1,6 +1,7 @@
 import com.google.protobuf.gradle.id
 import com.google.protobuf.gradle.proto
 import java.security.MessageDigest
+import com.google.protobuf.gradle.*
 
 plugins {
     id("com.android.application")
@@ -195,7 +196,7 @@ val generateReleaseDependencyLicenses by tasks.registering {
                     val coordinate = "$group:$name:$version"
                     val license =
                         when {
-                            coordinate in permittedBsdDependencies ->
+                            coordinate == "io.github.webrtc-sdk:android:144.7559.09" ->
                                 "WebRTC BSD-3-Clause plus bundled third-party terms " +
                                     "(`licenses/webrtc-android/WEBRTC_THIRD_PARTY_LICENSES.md`); " +
                                     "release wrapper MIT and patent grant are bundled beside it"

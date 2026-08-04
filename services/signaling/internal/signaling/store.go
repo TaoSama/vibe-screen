@@ -15,6 +15,7 @@ import (
 var (
 	ErrNotFound       = errors.New("session not found")
 	ErrExpired        = errors.New("session expired")
+	ErrInvalidated    = errors.New("session creation request was invalidated")
 	ErrUnauthorized   = errors.New("unauthorized")
 	ErrConflict       = errors.New("message conflicts with session state")
 	ErrRateLimited    = errors.New("rate limit exceeded")
@@ -43,6 +44,7 @@ type session struct {
 	rates          map[Role]rateWindow
 	waiters        map[Role]int
 	notify         chan struct{}
+	invalidated    bool
 }
 
 type Store struct {
@@ -54,6 +56,13 @@ type Store struct {
 	messagesPerMinute int
 	maxCandidates     int
 	maxWaiters        int
+}
+
+type StoreStats struct {
+	ActiveSessions  int
+	Tombstones      int
+	ReservedRecords int
+	BlockedWaiters  int
 }
 
 func NewStore(cfg Config) *Store {
@@ -76,6 +85,8 @@ func (s *Store) Create(requestID string, ttl time.Duration) (SessionResponse, bo
 		existing := s.sessions[sessionID]
 		if existing == nil {
 			delete(s.requestSessions, requestID)
+		} else if existing.invalidated {
+			return SessionResponse{}, false, ErrInvalidated
 		} else if existing.ttlSeconds != int64(ttl/time.Second) {
 			return SessionResponse{}, false, ErrConflict
 		} else {
@@ -111,6 +122,30 @@ func (s *Store) Create(requestID string, ttl time.Duration) (SessionResponse, bo
 	}
 	s.requestSessions[requestID] = sessionID
 	return response, true, nil
+}
+
+func (s *Store) Invalidate(sessionID string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cleanupLocked(s.now())
+	current := s.sessions[sessionID]
+	if current == nil {
+		return false, ErrNotFound
+	}
+	if current.invalidated {
+		return false, nil
+	}
+	current.invalidated = true
+	current.hostToken = ""
+	current.deviceToken = ""
+	current.response.HostToken = ""
+	current.response.DeviceToken = ""
+	current.events = nil
+	current.messages = nil
+	current.rates = nil
+	close(current.notify)
+	current.notify = make(chan struct{})
+	return true, nil
 }
 
 func (s *Store) AddMessage(sessionID, token string, request MessageRequest) (Event, bool, error) {
@@ -246,10 +281,25 @@ func (s *Store) releaseWaiter(sessionID string, role Role) {
 }
 
 func (s *Store) ActiveCount() int {
+	return s.Stats().ActiveSessions
+}
+
+func (s *Store) Stats() StoreStats {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cleanupLocked(s.now())
-	return len(s.sessions)
+	stats := StoreStats{ReservedRecords: len(s.sessions)}
+	for _, current := range s.sessions {
+		if current.invalidated {
+			stats.Tombstones++
+		} else {
+			stats.ActiveSessions++
+		}
+		for _, waiters := range current.waiters {
+			stats.BlockedWaiters += waiters
+		}
+	}
+	return stats
 }
 
 func (s *Store) Cleanup() int {
@@ -273,7 +323,7 @@ func (s *Store) cleanupLocked(now time.Time) int {
 
 func (s *Store) authorizeLocked(sessionID, token string) (*session, Role, error) {
 	current := s.sessions[sessionID]
-	if current == nil {
+	if current == nil || current.invalidated {
 		return nil, "", ErrNotFound
 	}
 	var role Role

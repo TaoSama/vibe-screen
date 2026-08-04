@@ -10,6 +10,9 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
         case channelUnavailable(InternetTransportChannel)
         case channelNotOpen(InternetTransportChannel)
         case sendRejected(InternetTransportChannel)
+        case sendAlreadyPending(InternetTransportChannel)
+        case sdkBacklogExceeded(InternetTransportChannel, UInt64)
+        case closedBeforeDrain(InternetTransportChannel)
 
         var errorDescription: String? {
             switch self {
@@ -19,8 +22,19 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
             case .channelUnavailable(let channel): return "The \(channel) data channel is unavailable."
             case .channelNotOpen(let channel): return "The \(channel) data channel is not open."
             case .sendRejected(let channel): return "libwebrtc rejected a \(channel) data message."
+            case .sendAlreadyPending(let channel):
+                return "A \(channel) data message is still buffered by libwebrtc."
+            case .sdkBacklogExceeded(let channel, let maximum):
+                return "The \(channel) libwebrtc buffer exceeded \(maximum) bytes."
+            case .closedBeforeDrain(let channel):
+                return "The \(channel) data channel closed before buffered data drained."
             }
         }
+    }
+
+    private struct PendingSDKSend {
+        let baselineBufferedAmount: UInt64
+        let completion: (Result<Void, Error>) -> Void
     }
 
     private static let initializeWebRTC: Void = {
@@ -36,6 +50,7 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
     private var callbacks: WebRTCEngineCallbacks?
     private var peerConnection: RTCPeerConnection?
     private var channelByKind: [InternetTransportChannel: RTCDataChannel] = [:]
+    private var pendingSDKSendByKind: [InternetTransportChannel: PendingSDKSend] = [:]
     private var kindByLabel: [String: InternetTransportChannel] = [:]
     private var pendingRemoteCandidates: [RTCIceCandidate] = []
     private var pendingLocalCandidates: [RTCIceCandidate] = []
@@ -77,6 +92,7 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
             localDescriptionPublished = false
             pendingLocalCandidates.removeAll()
             pendingRemoteCandidates.removeAll()
+            pendingSDKSendByKind.removeAll()
             self.configuration = configuration
             selectedCandidatePair = nil
             kindByLabel = Dictionary(uniqueKeysWithValues: channels.compactMap { descriptor in
@@ -142,8 +158,32 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
                 completion(.failure(AdapterError.channelNotOpen(channel)))
                 return
             }
+            guard self.pendingSDKSendByKind[channel] == nil else {
+                completion(.failure(AdapterError.sendAlreadyPending(channel)))
+                return
+            }
+            let bufferedBefore = dataChannel.bufferedAmount
+            let maximumBuffered = self.maximumBufferedAmount(for: channel)
+            let payloadBytes = UInt64(payload.count)
+            guard WebRTCDataChannelBackpressurePolicy.canAdmit(
+                bufferedAmount: bufferedBefore,
+                payloadBytes: payloadBytes,
+                maximumBufferedAmount: maximumBuffered
+            ) else {
+                completion(.failure(AdapterError.sdkBacklogExceeded(channel, maximumBuffered)))
+                return
+            }
+            self.pendingSDKSendByKind[channel] = PendingSDKSend(
+                baselineBufferedAmount: bufferedBefore,
+                completion: completion
+            )
             let accepted = dataChannel.sendData(RTCDataBuffer(data: payload, isBinary: true))
-            completion(accepted ? .success(()) : .failure(AdapterError.sendRejected(channel)))
+            guard accepted else {
+                self.pendingSDKSendByKind.removeValue(forKey: channel)
+                completion(.failure(AdapterError.sendRejected(channel)))
+                return
+            }
+            self.completeSDKSendIfDrained(channel: channel, currentBufferedAmount: dataChannel.bufferedAmount)
         }
     }
 
@@ -167,6 +207,7 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
             guard !isClosed else { return }
             isClosed = true
             stopStats()
+            failPendingSDKSends()
             pathMonitor.cancel()
             channelByKind.values.forEach {
                 $0.delegate = nil
@@ -186,6 +227,42 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
     private func install(channel: RTCDataChannel, kind: InternetTransportChannel) {
         channel.delegate = self
         channelByKind[kind] = channel
+    }
+
+    private func maximumBufferedAmount(for channel: InternetTransportChannel) -> UInt64 {
+        switch channel {
+        case .control:
+            return UInt64(
+                InternetTransportLimits.standard.maximumBufferedControlBytes
+                    + PlatformSessionPacketCipher.recordOverhead
+            )
+        case .media:
+            return UInt64(
+                InternetTransportLimits.standard.maximumMediaFrameBytes
+                    + PlatformSessionPacketCipher.recordOverhead
+            )
+        }
+    }
+
+    private func completeSDKSendIfDrained(
+        channel: InternetTransportChannel,
+        currentBufferedAmount: UInt64
+    ) {
+        guard let pending = pendingSDKSendByKind[channel],
+              WebRTCDataChannelBackpressurePolicy.hasDrained(
+                currentBufferedAmount: currentBufferedAmount,
+                baselineBufferedAmount: pending.baselineBufferedAmount
+              ) else { return }
+        pendingSDKSendByKind.removeValue(forKey: channel)
+        pending.completion(.success(()))
+    }
+
+    private func failPendingSDKSends() {
+        let pending = pendingSDKSendByKind
+        pendingSDKSendByKind.removeAll()
+        for (channel, send) in pending {
+            send.completion(.failure(AdapterError.closedBeforeDrain(channel)))
+        }
     }
 
     private func handle(_ signal: WebRTCSignal) {
@@ -319,7 +396,7 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
             else if path.usesInterfaceType(.wifi) { interface = .wifi }
             else if path.usesInterfaceType(.cellular) { interface = .cellular }
             else { interface = .other("other") }
-            let fingerprint = "\(interface)-\(path.status)-expensive:\(path.isExpensive)"
+            let fingerprint = NetworkPathFingerprint.make(path)
             self.callbacks?.networkPathChanged(InternetNetworkPath(
                 interface: interface,
                 isSatisfied: path.status == .satisfied,
@@ -400,6 +477,7 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
 
     private func fail(_ reason: String) {
         guard !isClosed else { return }
+        failPendingSDKSends()
         callbacks?.connectionStateChanged(.failed(reason))
     }
 
@@ -478,6 +556,18 @@ extension ProductionWebRTCEngine: RTCDataChannelDelegate {
         queue.async { [weak self] in
             guard let self, let kind = self.kindByLabel[dataChannel.label] else { return }
             self.callbacks?.messageReceived(buffer.data, kind)
+        }
+    }
+
+    func dataChannel(_ dataChannel: RTCDataChannel, didChangeBufferedAmount amount: UInt64) {
+        queue.async { [weak self] in
+            guard let self, let kind = self.kindByLabel[dataChannel.label] else { return }
+            // The property is authoritative across libwebrtc versions; the
+            // delegate argument has represented both old and new values.
+            self.completeSDKSendIfDrained(
+                channel: kind,
+                currentBufferedAmount: dataChannel.bufferedAmount
+            )
         }
     }
 }

@@ -87,6 +87,12 @@ class AndroidWebRtcPeerEngine internal constructor(
                     sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
                     continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
                     tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.ENABLED
+                    iceTransportsType =
+                        if (configuration.iceTransportPolicy == IceTransportPolicy.RELAY_ONLY) {
+                            PeerConnection.IceTransportsType.RELAY
+                        } else {
+                            PeerConnection.IceTransportsType.ALL
+                        }
                 }
             val createdPeer =
                 createdFactory.createPeerConnection(rtcConfiguration, PeerObserver())
@@ -430,6 +436,10 @@ class AndroidWebRtcPeerEngine internal constructor(
                     selectedRoute = route
                     observer.takeIf { changed && connectedReported && !closed }
                 }
+            // Candidate-pair selection may arrive after ICE and both negotiated
+            // channels are already open. Re-evaluate readiness so the initial
+            // connection event cannot be lost to callback ordering.
+            maybeReportConnected()
             target?.onConnected(route)
         }
 
@@ -508,8 +518,8 @@ class AndroidWebRtcPeerEngine internal constructor(
     }
 
     companion object {
-        private const val CONTROL_CHANNEL_LABEL = "vibe-control-v1"
-        private const val MEDIA_CHANNEL_LABEL = "vibe-media-v1"
+        internal const val CONTROL_CHANNEL_LABEL = "vibescreen.control.v1"
+        internal const val MEDIA_CHANNEL_LABEL = "vibescreen.media.v1"
         private const val MAX_CONTROL_BYTES = 1_048_576
         private const val MAX_MEDIA_PACKET_BYTES = 4_194_304
         private const val MAX_RECORD_OVERHEAD_BYTES = 256

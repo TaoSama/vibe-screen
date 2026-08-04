@@ -40,9 +40,31 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /readyz", s.readiness)
 	mux.HandleFunc("GET /metrics", s.metricsHandler)
 	mux.HandleFunc("POST /v1/sessions", s.createSession)
+	mux.HandleFunc("DELETE /v1/sessions/{session_id}", s.invalidateSession)
 	mux.HandleFunc("POST /v1/sessions/{session_id}/messages", s.postMessage)
 	mux.HandleFunc("GET /v1/sessions/{session_id}/events", s.getEvents)
 	return securityHeaders(mux)
+}
+
+func (s *Server) invalidateSession(w http.ResponseWriter, r *http.Request) {
+	if !authorized(r, s.cfg.IssuerToken) {
+		s.reject(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	sessionID := r.PathValue("session_id")
+	if !validIdentifier(sessionID) {
+		s.reject(w, http.StatusBadRequest, "invalid session_id")
+		return
+	}
+	invalidated, err := s.store.Invalidate(sessionID)
+	if err != nil {
+		s.writeStoreError(w, err)
+		return
+	}
+	if invalidated {
+		s.metrics.sessionsInvalidated.Add(1)
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) SetReady(ready bool) {
@@ -80,7 +102,7 @@ func (s *Server) metricsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-	if err := s.metrics.WritePrometheus(w, s.store.ActiveCount()); err != nil {
+	if err := s.metrics.WritePrometheus(w, s.store.Stats()); err != nil {
 		return
 	}
 }
@@ -279,7 +301,7 @@ func (s *Server) writeStoreError(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrUnauthorized):
 		// Do not disclose whether a guessed session identifier exists.
 		s.reject(w, http.StatusNotFound, "session not found")
-	case errors.Is(err, ErrConflict):
+	case errors.Is(err, ErrConflict), errors.Is(err, ErrInvalidated):
 		s.reject(w, http.StatusConflict, err.Error())
 	case errors.Is(err, ErrRateLimited), errors.Is(err, ErrTooManyWaiters), errors.Is(err, ErrCapacity), errors.Is(err, ErrCandidateLimit):
 		s.reject(w, http.StatusTooManyRequests, err.Error())

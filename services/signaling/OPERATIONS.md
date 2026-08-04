@@ -4,15 +4,16 @@
 
 - Bind the process to loopback or a private sidecar network.
 - Terminate TLS 1.2+ at a maintained reverse proxy; redirect/reject plaintext.
-- Restrict `/v1/sessions` and `/metrics` to their internal callers.
+- Restrict session creation/invalidation routes and `/metrics` to their internal callers.
 - Inject separate 32+ character issuer and metrics tokens from a secret manager.
 - Run UID/GID 65532, read-only root filesystem, no Linux capabilities, no core
   dumps, and a bounded memory/CPU/process budget.
 - Configure proxy body size at or below `max_request_body_bytes`, request read
   timeout below ten seconds, long-poll timeout just above `max_wait_seconds`,
   source-IP/global rate limits, connection caps, and DDoS protection.
-- Scrape authenticated metrics and alert on rejection rate, capacity, active
-  sessions, long-poll timeouts, and unexpected restart frequency.
+- Scrape authenticated metrics and alert on rejection rate, reserved-record
+  capacity, active sessions, tombstones, blocked/poll-timeout counts, and
+  unexpected restart frequency.
 - Run the synthetic real-process host/device exchange before shifting traffic.
 
 Never log request/response bodies or authorization headers at the proxy. Default
@@ -29,7 +30,8 @@ two candidates, then let it expire.
 Alert on:
 
 - readiness failure or restart loop;
-- active sessions approaching `max_active_sessions`;
+- `reserved_session_records` approaching `max_active_sessions`, split by active
+  sessions and invalidation tombstones;
 - sustained `requests_rejected_total` or create/message rate rejection;
 - active sessions increasing while created/expired counters stop moving;
 - poll timeout changes correlated with client connection failures;
@@ -49,10 +51,11 @@ Metrics are process-local and reset at restart. Do not use them as an audit log.
 
 ### Role token or SDP/ICE disclosure
 
-Restart the affected instance or wait for the bounded TTL, block the paired
-device at the authority, revoke new TURN issuance, and require a fresh signed
-session epoch. Signaling deletion does not revoke an already active TURN
-allocation or WebRTC connection.
+Invalidate the known signaling session through the authority endpoint, block
+the paired device at the authority, revoke new TURN issuance, and require a
+fresh signed session epoch. Restart the instance if the session is unknown or
+the issuer is compromised. Signaling invalidation does not revoke an already
+active TURN allocation or WebRTC connection.
 
 ### Memory/capacity exhaustion
 

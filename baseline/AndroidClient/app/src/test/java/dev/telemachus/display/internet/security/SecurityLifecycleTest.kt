@@ -10,9 +10,11 @@ class SecurityLifecycleTest {
     @Test
     fun sessionEpochIsPersistedBeforeReturn() {
         val store = MemoryStore()
-        assertEquals(1, SecurityLifecycle(store).beginSession())
-        assertEquals(2, SecurityLifecycle(store).beginSession())
-        assertEquals(2, store.state.sessionEpoch)
+        assertEquals(7, SecurityLifecycle(store).reserveSessionEpoch(7))
+        assertEquals(11, SecurityLifecycle(store).reserveSessionEpoch(11))
+        assertEquals(11, store.state.sessionEpoch)
+        assertThrows(IllegalArgumentException::class.java) { SecurityLifecycle(store).reserveSessionEpoch(11) }
+        assertThrows(IllegalArgumentException::class.java) { SecurityLifecycle(store).reserveSessionEpoch(10) }
     }
 
     @Test
@@ -32,14 +34,14 @@ class SecurityLifecycleTest {
     fun revocationFailsClosedAcrossRestart() {
         val store = MemoryStore()
         SecurityLifecycle(store).applyRevocation(8)
-        assertThrows(IllegalStateException::class.java) { SecurityLifecycle(store).beginSession() }
+        assertThrows(IllegalStateException::class.java) { SecurityLifecycle(store).reserveSessionEpoch(9) }
         assertThrows(IllegalArgumentException::class.java) { SecurityLifecycle(store).applyRevocation(8) }
     }
 
     @Test
     fun persistenceFailureNeverReleasesReservedValue() {
         val store = MemoryStore().apply { failPersist = true }
-        assertThrows(IllegalStateException::class.java) { SecurityLifecycle(store).beginSession() }
+        assertThrows(IllegalStateException::class.java) { SecurityLifecycle(store).reserveSessionEpoch(1) }
         assertEquals(0, store.state.sessionEpoch)
         assertThrows(IllegalStateException::class.java) {
             SecurityLifecycle(store).reserveNonce(channel = 1, senderRole = 1, keyEpoch = 1)

@@ -24,6 +24,7 @@ import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.EditText
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.lifecycle.lifecycleScope
@@ -34,13 +35,36 @@ import dev.telemachus.display.databinding.ActivityMainBinding
 import dev.telemachus.display.protocol.MotionPointer
 import dev.telemachus.display.protocol.MotionSnapshot
 import dev.telemachus.display.protocol.TouchSampleMapper
+import dev.telemachus.display.internet.AndroidNetworkMonitor
+import dev.telemachus.display.internet.DecoderConfigurationCommitGate
+import dev.telemachus.display.internet.InternetProductSession
+import dev.telemachus.display.internet.InternetProductSessionCallbacks
+import dev.telemachus.display.internet.InternetProductSessionState
+import dev.telemachus.display.internet.InternetProductRevocationStore
+import dev.telemachus.display.internet.InternetSessionProfileStore
+import dev.telemachus.display.internet.PeerRoute
+import dev.telemachus.display.internet.ProductInputPhase
+import dev.telemachus.display.internet.ProductTouchEvent
+import dev.telemachus.display.internet.ProductVideoCodec
+import dev.telemachus.display.internet.ProductVideoConfiguration
+import dev.telemachus.display.internet.ProductVideoDecision
+import dev.telemachus.display.internet.ProductVideoFrame
+import dev.telemachus.display.internet.ProtobufProtocolV1ProductCodec
+import dev.telemachus.display.internet.security.AndroidDeviceIdentityStore
+import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
+import dev.telemachus.display.internet.security.InternetPairingAcceptance
+import dev.telemachus.display.internet.security.InternetPairingCoordinator
+import dev.telemachus.display.internet.security.PendingInternetPairing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -58,7 +82,24 @@ class MainActivity : AppCompatActivity() {
     private var videoDecoder: VideoDecoder?
         get() = videoDecoderRef.get()
         set(value) = videoDecoderRef.set(value)
+    private val internetDeviceId by lazy { prefs.internetDeviceId }
+    private val internetProfileStore by lazy { InternetSessionProfileStore(applicationContext) }
+    private val internetStoredSessionFactory by lazy {
+        AndroidStoredInternetSessionFactory(applicationContext, internetDeviceId)
+    }
+    @Volatile private var internetSession: InternetProductSession? = null
+    private var internetNetworkMonitor: AndroidNetworkMonitor? = null
+    private var internetTickJob: kotlinx.coroutines.Job? = null
+    @Volatile private var internetRoute: PeerRoute? = null
+    @Volatile private var internetSessionEpoch = 0L
+    private var internetVideoConfiguration: ProductVideoConfiguration? = null
+    private var requiredFreshInternetEpoch = 0L
+    private var pendingInternetPairing: PendingInternetPairing? = null
+    @Volatile private var internetGeneration = 0L
+    private val nextInternetInputId = AtomicLong(0)
+    private val activeInternetInputIds = mutableMapOf<Int, Long>()
     private var streamClient: StreamClient? = null
+    private var legacyGeneration = 0L
     private var currentSurfaceHolder: SurfaceHolder? = null
     private var displayWidth = 0 // 0 = no config received yet
     private var displayHeight = 0 // 0 = no config received yet
@@ -269,12 +310,23 @@ class MainActivity : AppCompatActivity() {
     private fun setupModeToggle() {
         // Restore previous mode and reflect in toggle.
         val saved = prefs.connectionMode
-        binding.modeToggleGroup.check(if (saved == ConnectionMode.WIRELESS) R.id.modeWireless else R.id.modeUSB)
+        binding.modeToggleGroup.check(
+            when (saved) {
+                ConnectionMode.USB -> R.id.modeUSB
+                ConnectionMode.WIRELESS -> R.id.modeWireless
+                ConnectionMode.INTERNET -> R.id.modeInternet
+            },
+        )
         applyModeVisibility(saved)
 
         binding.modeToggleGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
-            val mode = if (checkedId == R.id.modeWireless) ConnectionMode.WIRELESS else ConnectionMode.USB
+            val mode =
+                when (checkedId) {
+                    R.id.modeWireless -> ConnectionMode.WIRELESS
+                    R.id.modeInternet -> ConnectionMode.INTERNET
+                    else -> ConnectionMode.USB
+                }
             if (prefs.connectionMode != mode) {
                 cancelConnectionForModeSwitch()
             }
@@ -284,6 +336,11 @@ class MainActivity : AppCompatActivity() {
                 automaticUsbConnect = false
                 autoConnectHandler.removeCallbacks(autoConnectRunnable)
                 wirelessController.show()
+            } else if (mode == ConnectionMode.INTERNET) {
+                automaticUsbConnect = false
+                autoConnectHandler.removeCallbacks(autoConnectRunnable)
+                cancelWirelessReconnect()
+                refreshInternetProfileUi()
             } else if (!isConnected) {
                 cancelWirelessReconnect()
                 automaticUsbConnect = true
@@ -295,12 +352,13 @@ class MainActivity : AppCompatActivity() {
     private fun applyModeVisibility(mode: ConnectionMode) {
         binding.usbModeContent.visibility = if (mode == ConnectionMode.USB) View.VISIBLE else View.GONE
         binding.wirelessModeContent.visibility = if (mode == ConnectionMode.WIRELESS) View.VISIBLE else View.GONE
+        binding.internetModeContent.visibility = if (mode == ConnectionMode.INTERNET) View.VISIBLE else View.GONE
         // USB checklist polls 127.0.0.1:port every 2s via adb-reverse to verify Mac
         // server reachability. While in Wireless mode that probe creates loopback
         // connections that fight the wireless session for the Mac's single client
         // slot — kicking the wireless client off seconds after it auths. Pause
         // checklist updates whenever Wireless is the active tab.
-        if (mode == ConnectionMode.WIRELESS) {
+        if (mode != ConnectionMode.USB) {
             stopChecklistUpdates()
         } else {
             startChecklistUpdates()
@@ -364,6 +422,9 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == WirelessTabController.REQ_SCAN && resultCode == RESULT_OK) {
             val url = data?.getStringExtra(QRScannerActivity.EXTRA_URL) ?: return
             wirelessController.onScanResult(url)
+        } else if (requestCode == REQ_INTERNET_SCAN && resultCode == RESULT_OK) {
+            val value = data?.getStringExtra(QRScannerActivity.EXTRA_URL) ?: return
+            beginInternetPairing(value)
         }
     }
 
@@ -376,6 +437,8 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == WirelessTabController.REQ_CAMERA) {
             val granted = grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED
             wirelessController.onCameraPermissionResult(granted)
+        } else if (requestCode == REQ_INTERNET_CAMERA && grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            launchInternetScanner()
         }
     }
 
@@ -458,7 +521,18 @@ class MainActivity : AppCompatActivity() {
                     currentSurfaceHolder = holder
                     // If we already have a display config (reconnect case), init now
                     if (displayWidth > 0 && displayHeight > 0 && videoDecoder == null) {
-                        initializeDecoder(holder)
+                        val internetConfiguration = internetVideoConfiguration
+                        if (prefs.connectionMode == ConnectionMode.INTERNET && internetConfiguration != null) {
+                            val currentInternetSession = internetSession
+                            val currentInternetGeneration = internetGeneration
+                            configureInternetDecoder(
+                                internetConfiguration,
+                                currentInternetGeneration,
+                                AtomicReference(currentInternetSession),
+                            )
+                        } else {
+                            initializeDecoder(holder)
+                        }
                     }
                 }
 
@@ -490,6 +564,7 @@ class MainActivity : AppCompatActivity() {
         view: View,
         event: MotionEvent,
     ): Boolean {
+        if (prefs.connectionMode == ConnectionMode.INTERNET) return false
         if (!isConnected || !isInForeground) return false
         val point = mapInputPoint(view, event.x, event.y)
         val nativePointerInput =
@@ -638,6 +713,8 @@ class MainActivity : AppCompatActivity() {
             showOpenSourceNotices()
         }
 
+        setupInternetUi()
+
         // Advanced settings toggle
         binding.showAdvanced.setOnClickListener {
             connectionDetailsVisible = !connectionDetailsVisible
@@ -698,17 +775,232 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateDisconnectedHeader(mode: ConnectionMode) {
         if (!::binding.isInitialized || isConnected) return
-        if (mode == ConnectionMode.USB) {
-            binding.connectionTitle.setText(R.string.waiting_for_mac)
-            binding.connectionSubtitle.setText(R.string.usb_waiting_description)
-            binding.connectionProgress.visibility = View.VISIBLE
-            binding.connectButton.setText(R.string.try_again)
-            updateStatus(getString(R.string.looking_for_mac))
-        } else {
-            binding.connectionTitle.setText(R.string.connect_wirelessly)
-            binding.connectionSubtitle.setText(R.string.wireless_pair_once)
-            binding.connectionProgress.visibility = View.GONE
+        when (mode) {
+            ConnectionMode.USB -> {
+                binding.connectionTitle.setText(R.string.waiting_for_mac)
+                binding.connectionSubtitle.setText(R.string.usb_waiting_description)
+                binding.connectionProgress.visibility = View.VISIBLE
+                binding.connectButton.setText(R.string.try_again)
+                updateStatus(getString(R.string.looking_for_mac))
+            }
+            ConnectionMode.WIRELESS -> {
+                binding.connectionTitle.setText(R.string.connect_wirelessly)
+                binding.connectionSubtitle.setText(R.string.wireless_pair_once)
+                binding.connectionProgress.visibility = View.GONE
+            }
+            ConnectionMode.INTERNET -> {
+                binding.connectionTitle.setText(R.string.internet_waiting_title)
+                binding.connectionSubtitle.setText(R.string.internet_waiting_description)
+                binding.connectionProgress.visibility = View.GONE
+                refreshInternetProfileUi()
+            }
         }
+    }
+
+    private fun setupInternetUi() {
+        binding.internetRouteToggleGroup.check(
+            if (prefs.internetForceRelay) R.id.internetForceRelay else R.id.internetPreferDirect,
+        )
+        binding.internetRouteToggleGroup.addOnButtonCheckedListener { _, checkedId, checked ->
+            if (!checked) return@addOnButtonCheckedListener
+            prefs.internetForceRelay = checkedId == R.id.internetForceRelay
+        }
+        binding.internetImportProfileButton.setOnClickListener { showInternetProfileImportDialog() }
+        binding.internetScanProfileButton.setOnClickListener {
+            when {
+                cameraPerm.isGranted() -> launchInternetScanner()
+                cameraPerm.isPermanentlyDenied() -> cameraPerm.openAppSettings()
+                else -> cameraPerm.request(REQ_INTERNET_CAMERA)
+            }
+        }
+        binding.internetConnectButton.setOnClickListener { connectInternet() }
+        binding.internetDisconnectButton.setOnClickListener { disconnectInternet(showIdle = true) }
+        binding.internetRevokeButton.setOnClickListener {
+            android.app.AlertDialog
+                .Builder(this)
+                .setTitle(R.string.internet_revoke_confirm_title)
+                .setMessage(R.string.internet_revoke_confirm_message)
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.internet_revoke_confirm_action) { _, _ ->
+                    revokeInternetPairing("user_requested")
+                }.show()
+        }
+        refreshInternetProfileUi()
+    }
+
+    private fun showInternetProfileImportDialog() {
+        val input =
+            EditText(this).apply {
+                hint = getString(R.string.internet_import_hint)
+                minLines = 8
+                maxLines = 16
+                setHorizontallyScrolling(false)
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                imeOptions =
+                    android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI or
+                    android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+                importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+                isSaveEnabled = false
+            }
+        val dialog =
+            android.app.AlertDialog
+                .Builder(this)
+                .setTitle(R.string.internet_import_title)
+                .setView(input)
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.internet_import_action, null)
+                .create()
+        dialog.setOnShowListener {
+            dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                try {
+                    internetProfileStore.import(input.text.toString())
+                    input.text?.clear()
+                    requiredFreshInternetEpoch = 0L
+                    binding.internetErrorText.visibility = View.GONE
+                    binding.internetStateText.setText(R.string.internet_profile_imported)
+                    refreshInternetProfileUi()
+                    dialog.dismiss()
+                } catch (failure: Throwable) {
+                    input.error = failure.message ?: getString(R.string.internet_error_title)
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun launchInternetScanner() {
+        startActivityForResult(Intent(this, QRScannerActivity::class.java), REQ_INTERNET_SCAN)
+    }
+
+    private fun beginInternetPairing(encodedUrl: String) {
+        try {
+            pendingInternetPairing?.close()
+            val identityEpoch = internetProfileStore.loadPublicProfile()?.identityEpoch ?: 1L
+            val identity = AndroidDeviceIdentityStore().loadOrCreate(internetDeviceId, identityEpoch)
+            val pending =
+                InternetPairingCoordinator(identity, internetStoredSessionFactory).begin(
+                    encodedUrl,
+                    (Build.MODEL ?: "Android").take(MAX_DEVICE_NAME_LENGTH),
+                )
+            if (internetProfileStore.isRevoked(pending.publicMetadata.pairingIdentifier)) {
+                pending.close()
+                throw IllegalStateException("This Mac pairing is locally revoked")
+            }
+            pendingInternetPairing = pending
+            showInternetPairingCompletionDialog(pending)
+        } catch (failure: Throwable) {
+            showInternetFailure(failure)
+        }
+    }
+
+    private fun showInternetPairingCompletionDialog(pending: PendingInternetPairing) {
+        val container =
+            android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                setPadding(32, 12, 32, 0)
+            }
+        val request =
+            TextView(this).apply {
+                text = pending.request.encode()
+                setTextIsSelectable(true)
+                maxLines = 6
+            }
+        val identities =
+            TextView(this).apply {
+                text =
+                    getString(
+                        R.string.internet_pairing_identity_format,
+                        pending.publicMetadata.hostIdentity.deviceId,
+                        pending.publicMetadata.hostIdentity.keyId.take(16),
+                        pending.publicMetadata.deviceIdentity.keyId.take(16),
+                    )
+                setTextIsSelectable(true)
+            }
+        val acceptance =
+            EditText(this).apply {
+                hint = getString(R.string.internet_pairing_acceptance_hint)
+                minLines = 5
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                imeOptions =
+                    android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI or
+                    android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+                importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+                isSaveEnabled = false
+            }
+        container.addView(identities)
+        container.addView(request)
+        container.addView(acceptance)
+        val dialog =
+            android.app.AlertDialog
+                .Builder(this)
+                .setTitle(R.string.internet_pairing_complete_title)
+                .setMessage(R.string.internet_pairing_complete_message)
+                .setView(container)
+                .setNegativeButton(R.string.cancel) { _, _ ->
+                    pending.close()
+                    if (pendingInternetPairing === pending) pendingInternetPairing = null
+                }
+                .setPositiveButton(R.string.internet_pairing_complete_action, null)
+                .create()
+        dialog.setOnShowListener {
+            dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                try {
+                    val parsed = InternetPairingAcceptance.parse(acceptance.text.toString())
+                    try {
+                        val result = pending.complete(parsed)
+                        internetProfileStore.recordVerifiedPairing(result.metadata)
+                        refreshInternetProfileUi()
+                    } catch (failure: Throwable) {
+                        pending.close()
+                        if (pendingInternetPairing === pending) pendingInternetPairing = null
+                        dialog.dismiss()
+                        showInternetFailure(failure)
+                        return@setOnClickListener
+                    }
+                    acceptance.text?.clear()
+                    if (pendingInternetPairing === pending) pendingInternetPairing = null
+                    binding.internetStateText.setText(R.string.internet_pairing_complete)
+                    dialog.dismiss()
+                } catch (failure: Throwable) {
+                    acceptance.error = failure.message ?: getString(R.string.internet_error_title)
+                }
+            }
+        }
+        dialog.setOnCancelListener {
+            pending.close()
+            if (pendingInternetPairing === pending) pendingInternetPairing = null
+        }
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.show()
+    }
+
+    private fun refreshInternetProfileUi() {
+        if (!::binding.isInitialized) return
+        val profile = internetProfileStore.loadPublicProfile()
+        val fingerprint = internetProfileStore.verifiedHostKeyFingerprint()
+        binding.internetProfileSummary.text =
+            if (profile == null) {
+                if (fingerprint == null) {
+                    getString(R.string.internet_profile_missing)
+                } else {
+                    getString(R.string.internet_paired_without_lease, fingerprint)
+                }
+            } else {
+                getString(
+                    R.string.internet_profile_format,
+                    profile.signalingUrl,
+                    profile.signalingSessionId,
+                    profile.authoritativeSessionEpoch,
+                    fingerprint ?: getString(R.string.empty_value),
+                )
+            }
+        binding.internetConnectButton.isEnabled =
+            profile != null &&
+                profile.authoritativeSessionEpoch > requiredFreshInternetEpoch &&
+                internetSession == null
+        binding.internetRevokeButton.isEnabled = profile != null || internetProfileStore.hasVerifiedPairing()
     }
 
     private fun showConnectedStreamUi() {
@@ -1527,6 +1819,395 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun connectInternet() {
+        if (internetSession != null || connectionAttemptInProgress) return
+        val lease =
+            try {
+                internetProfileStore.loadLease(prefs.internetForceRelay)
+                    ?: throw IllegalStateException(getString(R.string.internet_profile_missing))
+            } catch (failure: Throwable) {
+                return showInternetFailure(failure)
+            }
+        if (lease.authoritativeSessionEpoch <= requiredFreshInternetEpoch) {
+            return showInternetFailure(
+                IllegalStateException("Import a lease newer than epoch $requiredFreshInternetEpoch"),
+            )
+        }
+        connectionAttemptInProgress = true
+        internetRoute = null
+        internetSessionEpoch = lease.authoritativeSessionEpoch
+        val generation = ++internetGeneration
+        val monitor = AndroidNetworkMonitor(applicationContext)
+        val sessionReference = AtomicReference<InternetProductSession?>()
+        val activeLogged = AtomicBoolean(false)
+        fun isCurrentInternetSession(): Boolean =
+            generation == internetGeneration && internetSession === sessionReference.get()
+        fun logActiveIfReady() {
+            val current = sessionReference.get() ?: return
+            val route = internetRoute ?: return
+            if (current.state == InternetProductSessionState.ACTIVE && activeLogged.compareAndSet(false, true)) {
+                android.util.Log.i(
+                    INTERNET_LOG_TAG,
+                    "internet_stream_active session_epoch=${lease.authoritativeSessionEpoch} route=${route.name.lowercase()}",
+                )
+            }
+        }
+        val codec =
+            ProtobufProtocolV1ProductCodec(
+                localDeviceId = internetDeviceId,
+                deviceName = (Build.MODEL ?: "Android").take(MAX_DEVICE_NAME_LENGTH),
+                supportedCodecs =
+                    buildSet {
+                        add(ProductVideoCodec.H264)
+                        if (CodecCapabilities.hasHevcDecoder) add(ProductVideoCodec.HEVC)
+                    },
+            )
+        val callbacks =
+            object : InternetProductSessionCallbacks {
+                override fun onStateChanged(state: InternetProductSessionState) {
+                    if (!isCurrentInternetSession()) return
+                    logActiveIfReady()
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        updateInternetState(state)
+                    }
+                }
+
+                override fun onRouteSelected(route: PeerRoute) {
+                    if (!isCurrentInternetSession()) return
+                    internetRoute = route
+                    logActiveIfReady()
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        updateInternetState(sessionReference.get()?.state ?: InternetProductSessionState.CONNECTING)
+                    }
+                }
+
+                override fun onVideoConfiguration(configuration: ProductVideoConfiguration): ProductVideoDecision {
+                    if (!isCurrentInternetSession()) return ProductVideoDecision.reject("stale_session")
+                    return configureInternetDecoderOnMain(generation, sessionReference, configuration)
+                }
+
+                override fun onVideoFrame(frame: ProductVideoFrame) {
+                    if (!isCurrentInternetSession() || frame.sessionEpoch != internetSessionEpoch) return
+                    videoDecoder?.decode(
+                        frame.payload,
+                        frame.payload.size,
+                        System.nanoTime(),
+                        frame.keyframe,
+                        frame.sessionEpoch,
+                    )
+                }
+
+                override fun onFreshSessionRequired(reason: String) {
+                    if (!isCurrentInternetSession()) return
+                    android.util.Log.i(INTERNET_LOG_TAG, "internet_fresh_session_required session_epoch=${lease.authoritativeSessionEpoch}")
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        requiredFreshInternetEpoch = internetSessionEpoch
+                        disconnectInternet(showIdle = false)
+                        binding.internetErrorText.text = getString(R.string.internet_fresh_session_required, reason)
+                        binding.internetErrorText.visibility = View.VISIBLE
+                        showDisconnectedStreamUi()
+                    }
+                }
+
+                override fun onRevoked(reason: String) {
+                    if (!isCurrentInternetSession()) return
+                    android.util.Log.i(INTERNET_LOG_TAG, "internet_session_revoked session_epoch=${lease.authoritativeSessionEpoch}")
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        revokeInternetPairing(reason, tombstonePersisted = true)
+                    }
+                }
+
+                override fun onFailure(error: Throwable) {
+                    if (!isCurrentInternetSession()) return
+                    android.util.Log.e(INTERNET_LOG_TAG, "internet_session_error type=${error.javaClass.simpleName}")
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        showInternetFailure(error)
+                    }
+                }
+            }
+        try {
+            val created =
+                InternetProductSession.create(
+                    internetStoredSessionFactory,
+                    internetDeviceId,
+                    lease,
+                    monitor,
+                    dev.telemachus.display.internet.MonotonicClock { android.os.SystemClock.elapsedRealtime() },
+                    codec,
+                    callbacks,
+                    InternetProductRevocationStore { pairingIdentifier, reason ->
+                        internetProfileStore.markAuthenticatedRevoked(pairingIdentifier, reason)
+                    },
+                )
+            sessionReference.set(created)
+            internetNetworkMonitor = monitor
+            internetSession = created
+            binding.internetConnectButton.isEnabled = false
+            binding.internetDisconnectButton.visibility = View.VISIBLE
+            binding.internetErrorText.visibility = View.GONE
+            internetTickJob =
+                lifecycleScope.launch(Dispatchers.Default) {
+                    while (internetSession === created) {
+                        kotlinx.coroutines.delay(INTERNET_TICK_INTERVAL_MS)
+                        created.tick()
+                    }
+                }
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    created.start()
+                } catch (failure: Throwable) {
+                    if (generation == internetGeneration) {
+                        runOnUiThread {
+                            if (isCurrentInternetSession()) showInternetFailure(failure)
+                        }
+                    }
+                } finally {
+                    if (generation == internetGeneration) connectionAttemptInProgress = false
+                }
+            }
+        } catch (failure: Throwable) {
+            if (generation != internetGeneration) return
+            connectionAttemptInProgress = false
+            monitor.close()
+            requiredFreshInternetEpoch = maxOf(requiredFreshInternetEpoch, lease.authoritativeSessionEpoch)
+            android.util.Log.e(INTERNET_LOG_TAG, "internet_session_error type=${failure.javaClass.simpleName}")
+            showInternetFailure(failure)
+        }
+    }
+
+    private fun configureInternetDecoderOnMain(
+        generation: Long,
+        sessionReference: AtomicReference<InternetProductSession?>,
+        configuration: ProductVideoConfiguration,
+    ): ProductVideoDecision {
+        fun isCurrent(): Boolean = generation == internetGeneration && internetSession === sessionReference.get()
+        if (!isCurrent()) return ProductVideoDecision.reject("stale_session")
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return configureInternetDecoder(configuration, generation, sessionReference)
+        }
+        val latch = CountDownLatch(1)
+        val commitGate = DecoderConfigurationCommitGate()
+        val result = AtomicReference(ProductVideoDecision.reject("decoder_configuration_timeout"))
+        runOnUiThread {
+            try {
+                result.set(
+                    if (isCurrent() && commitGate.startInstallation()) {
+                        configureInternetDecoder(configuration, generation, sessionReference).also { decision ->
+                            if (decision.accepted) commitGate.markDone() else commitGate.markFailed()
+                        }
+                    } else {
+                        ProductVideoDecision.reject("stale_session")
+                    },
+                )
+            } finally {
+                latch.countDown()
+            }
+        }
+        return if (latch.await(INTERNET_DECODER_CONFIGURATION_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+            result.get()
+        } else if (commitGate.cancelPending()) {
+            ProductVideoDecision.reject("decoder_configuration_timeout")
+        } else {
+            // The main thread owns installation. Do not ACK until it has fully
+            // installed the decoder and updated UI state, or failed.
+            var interrupted = false
+            while (true) {
+                try {
+                    latch.await()
+                    break
+                } catch (_: InterruptedException) {
+                    interrupted = true
+                }
+            }
+            if (interrupted) Thread.currentThread().interrupt()
+            if (commitGate.done) result.get() else ProductVideoDecision.reject("decoder_configuration_failure")
+        }
+    }
+
+    private fun configureInternetDecoder(
+        configuration: ProductVideoConfiguration,
+        generation: Long,
+        sessionReference: AtomicReference<InternetProductSession?>,
+    ): ProductVideoDecision {
+        check(Looper.myLooper() == Looper.getMainLooper()) { "Internet decoder must be configured on the main thread" }
+        fun isCurrent(): Boolean = generation == internetGeneration && internetSession === sessionReference.get()
+        if (!isCurrent()) return ProductVideoDecision.reject("stale_session")
+        val mime =
+            when (configuration.codec) {
+                ProductVideoCodec.H264 -> MediaFormat.MIMETYPE_VIDEO_AVC
+                ProductVideoCodec.HEVC -> {
+                    if (!CodecCapabilities.hasHevcDecoder) return ProductVideoDecision.reject("hevc_decoder_unavailable")
+                    MediaFormat.MIMETYPE_VIDEO_HEVC
+                }
+                ProductVideoCodec.AV1 -> return ProductVideoDecision.reject("av1_decoder_unavailable")
+            }
+        val holder = currentSurfaceHolder
+        if (holder == null || !holder.surface.isValid) return ProductVideoDecision.reject("surface_unavailable")
+        var candidate: VideoDecoder? = null
+        val decoderCommitted = AtomicBoolean(false)
+        return try {
+            val displayObject =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) display else {
+                    @Suppress("DEPRECATION")
+                    windowManager.defaultDisplay
+                }
+            candidate =
+                VideoDecoder(holder.surface, displayObject, configuration.width, configuration.height, mime).apply {
+                    onFrameDecoded = { }
+                    onKeyframeRequired = { _, reason ->
+                        if (decoderCommitted.get() && isCurrent()) sessionReference.get()?.requestKeyframe(reason)
+                    }
+                    onCodecFallbackRequired = { reason ->
+                        runOnUiThread {
+                            if (decoderCommitted.get() && isCurrent()) {
+                                showInternetFailure(IllegalStateException("Decoder failed: $reason"))
+                            }
+                        }
+                    }
+                }
+            videoDecoder?.release()
+            videoDecoder = candidate
+            displayWidth = configuration.width
+            displayHeight = configuration.height
+            displayRotation = 0
+            internetVideoConfiguration = configuration
+            // InternetProductSession installs the accepted configuration after this
+            // callback returns, so defer the request until that state is visible.
+            binding.surfaceView.post {
+                if (isCurrent()) sessionReference.get()?.requestKeyframe("decoder initialized")
+            }
+            if (!isCurrent()) return ProductVideoDecision.reject("stale_session")
+            isConnected = true
+            setStreamingWindowState(true)
+            binding.resolutionText.text = getString(R.string.resolution_format, configuration.width, configuration.height)
+            binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_green)
+            binding.statusText.text = getString(R.string.connected_streaming)
+            showConnectedStreamUi()
+            decoderCommitted.set(true)
+            candidate = null
+            ProductVideoDecision.ACCEPT
+        } catch (failure: Throwable) {
+            candidate?.let { failedCandidate ->
+                if (videoDecoder === failedCandidate) videoDecoder = null
+                failedCandidate.release()
+            }
+            if (isCurrent()) showInternetFailure(failure)
+            ProductVideoDecision.reject("decoder_configuration_failure")
+        }
+    }
+
+    private fun updateInternetState(state: InternetProductSessionState) {
+        val routeLabel =
+            when (internetRoute) {
+                PeerRoute.DIRECT -> getString(R.string.internet_route_direct)
+                PeerRoute.RELAY -> getString(R.string.internet_route_relay)
+                null -> getString(R.string.internet_route_pending)
+            }
+        binding.internetStateText.text = getString(R.string.internet_state_format, state.name.lowercase(), routeLabel)
+        if (state == InternetProductSessionState.CLOSED || state == InternetProductSessionState.FAILED) {
+            isConnected = false
+            setStreamingWindowState(false)
+        }
+    }
+
+    private fun showInternetFailure(failure: Throwable) {
+        if (!::binding.isInitialized) return
+        if (internetSession != null) {
+            requiredFreshInternetEpoch = maxOf(requiredFreshInternetEpoch, internetSessionEpoch)
+            disconnectInternet(showIdle = false)
+        }
+        binding.internetErrorText.text = failure.message ?: failure.javaClass.simpleName
+        binding.internetErrorText.visibility = View.VISIBLE
+        binding.internetStateText.text = getString(
+            R.string.internet_state_format,
+            InternetProductSessionState.FAILED.name.lowercase(),
+            getString(R.string.internet_route_pending),
+        )
+        if (prefs.connectionMode == ConnectionMode.INTERNET) showDisconnectedStreamUi()
+    }
+
+    private fun disconnectInternet(showIdle: Boolean) {
+        ++internetGeneration
+        internetTickJob?.cancel()
+        internetTickJob = null
+        internetSession?.close()
+        internetSession = null
+        internetNetworkMonitor?.close()
+        internetNetworkMonitor = null
+        connectionAttemptInProgress = false
+        internetRoute = null
+        activeInternetInputIds.clear()
+        videoDecoder?.release()
+        videoDecoder = null
+        internetVideoConfiguration = null
+        displayWidth = 0
+        displayHeight = 0
+        isConnected = false
+        setStreamingWindowState(false)
+        binding.internetDisconnectButton.visibility = View.GONE
+        val profile = internetProfileStore.loadPublicProfile()
+        binding.internetConnectButton.isEnabled =
+            profile != null && profile.authoritativeSessionEpoch > requiredFreshInternetEpoch
+        if (showIdle) {
+            binding.internetStateText.setText(R.string.internet_state_idle)
+            binding.internetErrorText.visibility = View.GONE
+            showDisconnectedStreamUi()
+        }
+    }
+
+    private fun revokeInternetPairing(reason: String, tombstonePersisted: Boolean = false) {
+        val profile = internetProfileStore.loadPublicProfile()
+        val pairingIdentifier = profile?.pairingIdentifier ?: internetProfileStore.verifiedPairingIdentifier()
+        val identityEpoch = profile?.identityEpoch ?: internetProfileStore.verifiedLocalIdentityEpoch()
+        disconnectInternet(showIdle = false)
+        val cleanupFailures = mutableListOf<String>()
+        if (pairingIdentifier != null) {
+            if (!tombstonePersisted) {
+                try {
+                    internetProfileStore.markRevoked(pairingIdentifier)
+                } catch (_: Throwable) {
+                    cleanupFailures += "revocation tombstone"
+                }
+            }
+            try {
+                internetStoredSessionFactory.removePairingSecrets(pairingIdentifier)
+            } catch (_: Throwable) {
+                cleanupFailures += "pairing secret"
+            }
+            if (identityEpoch != null) {
+                try {
+                    AndroidDeviceIdentityStore().delete(internetDeviceId, identityEpoch)
+                } catch (_: Throwable) {
+                    cleanupFailures += "identity key"
+                }
+            }
+            try {
+                internetProfileStore.remove(pairingIdentifier)
+            } catch (_: Throwable) {
+                cleanupFailures += "session credentials"
+            }
+            try {
+                internetProfileStore.removePairingBinding()
+            } catch (_: Throwable) {
+                cleanupFailures += "pairing metadata"
+            }
+        }
+        requiredFreshInternetEpoch = Long.MAX_VALUE
+        binding.internetErrorText.text = getString(R.string.internet_revoked, reason)
+        binding.internetErrorText.visibility = View.VISIBLE
+        binding.internetStateText.setText(R.string.internet_profile_revoked)
+        if (cleanupFailures.isNotEmpty()) {
+            binding.internetErrorText.text = getString(R.string.internet_revoke_partial_failure, cleanupFailures.joinToString())
+        }
+        refreshInternetProfileUi()
+        showDisconnectedStreamUi()
+    }
+
     private fun connectWireless(
         host: String,
         port: Int,
@@ -1611,11 +2292,13 @@ class MainActivity : AppCompatActivity() {
         automaticUsbConnect = false
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         cancelWirelessReconnect()
+        stopPingTimer()
         val client = streamClient
         val generation = activeSessionGeneration
         client?.disconnect()
         if (client != null) sessionState.invalidate(client, generation)
         if (streamClient === client) streamClient = null
+        disconnectInternet(showIdle = false)
         connectionAttemptInProgress = false
         applyDisconnectedSessionUi()
     }
@@ -1660,6 +2343,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun disconnect() {
         finishPendingRightClick()
+        if (prefs.connectionMode == ConnectionMode.INTERNET || internetSession != null) {
+            disconnectInternet(showIdle = true)
+            return
+        }
         automaticUsbConnect = false
         cancelWirelessReconnect()
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
@@ -1725,6 +2412,10 @@ class MainActivity : AppCompatActivity() {
         view: View,
         event: MotionEvent,
     ) {
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            handleInternetTouch(view, event)
+            return
+        }
         if (!isConnected || !isInForeground) return
         val pointerCount = event.pointerCount.coerceAtMost(MAX_FORWARDED_POINTERS)
         val mappedPointers =
@@ -1824,6 +2515,51 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun handleInternetTouch(
+        view: View,
+        event: MotionEvent,
+    ) {
+        val session = internetSession ?: return
+
+        fun send(index: Int, phase: ProductInputPhase) {
+            val pointerId = event.getPointerId(index)
+            val inputId =
+                when (phase) {
+                    ProductInputPhase.BEGAN -> nextInternetInputId.incrementAndGet().also { activeInternetInputIds[pointerId] = it }
+                    else -> activeInternetInputIds[pointerId] ?: return
+                }
+            val point =
+                TouchMapper.map(
+                    x = event.getX(index),
+                    y = event.getY(index),
+                    viewWidth = view.width,
+                    viewHeight = view.height,
+                    videoWidth = displayWidth,
+                    videoHeight = displayHeight,
+                )
+            session.sendTouch(
+                ProductTouchEvent(
+                    inputId = inputId,
+                    pointerId = pointerId,
+                    phase = phase,
+                    normalizedX = point.x.toDouble().coerceIn(0.0, 1.0),
+                    normalizedY = point.y.toDouble().coerceIn(0.0, 1.0),
+                    pressure = event.getPressure(index).toDouble().coerceIn(0.0, 1.0),
+                ),
+            )
+            if (phase == ProductInputPhase.ENDED || phase == ProductInputPhase.CANCELLED) {
+                activeInternetInputIds.remove(pointerId)
+            }
+        }
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> send(event.actionIndex, ProductInputPhase.BEGAN)
+            MotionEvent.ACTION_MOVE -> repeat(event.pointerCount) { send(it, ProductInputPhase.CHANGED) }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> send(event.actionIndex, ProductInputPhase.ENDED)
+            MotionEvent.ACTION_CANCEL -> repeat(event.pointerCount) { send(it, ProductInputPhase.CANCELLED) }
+        }
+    }
+
     /**
      * Apply rotation by changing the Activity's screen orientation
      * This provides proper fullscreen portrait/landscape support
@@ -1875,11 +2611,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
         stopChecklistUpdates()
+        pendingInternetPairing?.close()
+        pendingInternetPairing = null
         cleanup()
+        super.onDestroy()
     }
 
     companion object {
@@ -1905,6 +2643,11 @@ class MainActivity : AppCompatActivity() {
             Executors.newSingleThreadExecutor { runnable ->
                 Thread(runnable, "VibeDecoderLifecycle").apply { isDaemon = true }
             }
+        private const val REQ_INTERNET_SCAN = 1101
+        private const val REQ_INTERNET_CAMERA = 1102
+        private const val INTERNET_TICK_INTERVAL_MS = 250L
+        private const val INTERNET_DECODER_CONFIGURATION_TIMEOUT_MS = 3_000L
+        private const val INTERNET_LOG_TAG = "VibeInternet"
     }
 
     // ==================== Connection Checklist ====================

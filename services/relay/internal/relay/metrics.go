@@ -9,6 +9,7 @@ import (
 type Metrics struct {
 	credentialIssued atomic.Uint64
 	requestRejected  atomic.Uint64
+	revokedRejected  atomic.Uint64
 	usageAccepted    atomic.Uint64
 	ingressBytes     atomic.Uint64
 	egressBytes      atomic.Uint64
@@ -21,6 +22,7 @@ func (m *Metrics) WritePrometheus(w io.Writer, activeSessions int64, estimatedMi
 	}{
 		{"vibescreen_relay_credentials_issued_total", "TURN credentials issued.", m.credentialIssued.Load()},
 		{"vibescreen_relay_requests_rejected_total", "Requests rejected by authentication, validation, quota, or abuse controls.", m.requestRejected.Load()},
+		{"vibescreen_relay_revoked_device_requests_rejected_total", "Credential and usage requests rejected because the device is revoked.", m.revokedRejected.Load()},
 		{"vibescreen_relay_usage_events_total", "Accepted usage events.", m.usageAccepted.Load()},
 		{"vibescreen_relay_ingress_bytes_total", "Reported relay ingress bytes.", m.ingressBytes.Load()},
 		{"vibescreen_relay_egress_bytes_total", "Reported relay egress bytes.", m.egressBytes.Load()},

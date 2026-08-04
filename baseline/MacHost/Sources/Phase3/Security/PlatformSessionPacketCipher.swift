@@ -36,7 +36,14 @@ final class PlatformSessionPacketCipher {
         self.localRole = localRole
         self.keys = initialKeys
         self.sessionHash = Data(SHA256.hash(data: Data(sessionIdentifier.utf8))).prefix(Self.sessionHashBytes)
-        self.reserveNonce = platformSecurity.reserveNonce
+        self.reserveNonce = { channel, senderRole, keyEpoch in
+            try platformSecurity.reserveNonce(
+                sessionEpoch: sessionEpoch,
+                channel: channel,
+                senderRole: senderRole,
+                keyEpoch: keyEpoch
+            )
+        }
         self.rotateKeys = platformSecurity.rotateTrafficKeys
     }
 
@@ -210,6 +217,7 @@ extension PlatformSessionSecurity {
         sharedSecretName: String,
         bootstrapSecretName: String,
         transcriptContext: Data,
+        agreedSessionEpoch: UInt64? = nil,
         secretStore: KeychainSecretStore = KeychainSecretStore()
     ) throws -> ActiveProtectedInternetSession {
         guard let sharedSecret = try secretStore.load(name: sharedSecretName),
@@ -224,7 +232,8 @@ extension PlatformSessionSecurity {
             identityEpoch: identityEpoch,
             sharedSecret: sharedSecret,
             bootstrapSecret: bootstrapSecret,
-            transcriptContext: transcriptContext
+            transcriptContext: transcriptContext,
+            agreedSessionEpoch: agreedSessionEpoch
         )
     }
 
@@ -234,17 +243,29 @@ extension PlatformSessionSecurity {
         identityEpoch: UInt64,
         sharedSecret: Data,
         bootstrapSecret: Data,
-        transcriptContext: Data
+        transcriptContext: Data,
+        agreedSessionEpoch: UInt64? = nil
     ) throws -> ActiveProtectedInternetSession {
         guard !sessionIdentifier.isEmpty else {
             throw PlatformSecurityError.invalidInput("A signaling session identifier is required.")
         }
-        let active = try startSession(
-            identityEpoch: identityEpoch,
-            sharedSecret: sharedSecret,
-            bootstrapSecret: bootstrapSecret,
-            transcriptContext: transcriptContext
-        )
+        let active: ActivePlatformSecuritySession
+        if let agreedSessionEpoch {
+            active = try startSession(
+                agreedSessionEpoch: agreedSessionEpoch,
+                identityEpoch: identityEpoch,
+                sharedSecret: sharedSecret,
+                bootstrapSecret: bootstrapSecret,
+                transcriptContext: transcriptContext
+            )
+        } else {
+            active = try startSession(
+                identityEpoch: identityEpoch,
+                sharedSecret: sharedSecret,
+                bootstrapSecret: bootstrapSecret,
+                transcriptContext: transcriptContext
+            )
+        }
         return ActiveProtectedInternetSession(
             identity: active.identity,
             sessionEpoch: active.sessionEpoch,

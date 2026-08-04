@@ -284,7 +284,18 @@
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:text="@string/wireless"
+                    android:text="@string/trusted_lan"
+                    android:textColor="@color/mode_toggle_text"
+                    app:backgroundTint="@color/mode_toggle_bg"
+                    app:strokeColor="#444444"
+                    app:strokeWidth="1dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/modeInternet"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/internet"
                     android:textColor="@color/mode_toggle_text"
                     app:backgroundTint="@color/mode_toggle_bg"
                     app:strokeColor="#444444"
@@ -813,6 +824,126 @@
 
             </LinearLayout>
             <!-- ============= /WIRELESS MODE CONTENT ============= -->
+
+            <!-- ============= INTERNET MODE CONTENT ============= -->
+            <LinearLayout
+                android:id="@+id/internetModeContent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/internetProfileSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/instruction_bg"
+                    android:padding="14dp"
+                    android:text="@string/internet_profile_missing"
+                    android:textColor="#C4CBD0"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/internet_route_policy"
+                    android:textColor="#FFFFFF"
+                    android:textStyle="bold" />
+
+                <com.google.android.material.button.MaterialButtonToggleGroup
+                    android:id="@+id/internetRouteToggleGroup"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginBottom="12dp"
+                    app:selectionRequired="true"
+                    app:singleSelection="true">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/internetPreferDirect"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="@string/internet_prefer_direct" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/internetForceRelay"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="@string/internet_force_turn" />
+                </com.google.android.material.button.MaterialButtonToggleGroup>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/internetScanProfileButton"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:text="@string/scan_qr_code" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/internetImportProfileButton"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:text="@string/internet_import_profile" />
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/internetConnectButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/internet_connect"
+                    android:textColor="#07100B"
+                    android:textStyle="bold"
+                    app:backgroundTint="#65D992"
+                    app:cornerRadius="18dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/internetDisconnectButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:text="@string/disconnect"
+                    android:visibility="gone" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/internetRevokeButton"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:text="@string/internet_revoke_local"
+                    android:textColor="#fca5a5" />
+
+                <TextView
+                    android:id="@+id/internetStateText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/internet_state_idle"
+                    android:textColor="#C4CBD0"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/internetErrorText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textColor="#fca5a5"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+            <!-- ============= /INTERNET MODE CONTENT ============= -->
 
             <TextView
                 android:layout_width="match_parent"

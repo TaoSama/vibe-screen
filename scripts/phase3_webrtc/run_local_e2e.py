@@ -24,7 +24,23 @@ from urllib import error, request
 DEFAULT_TIMEOUT_SECONDS = 45
 DEFAULT_SESSION_TTL_SECONDS = 120
 SIGNALING_VERSION = "0.1.0"
-PASS_MARKER = "Phase 3 WebRTC signaling self-test: PASS"
+BUILD_MANIFEST_SCHEMA = "dev.vibescreen.phase3-webrtc-build/v1"
+BUILD_MANIFEST_NAME = "build-manifest.json"
+GENERATED_SOURCE_PATH_PREFIXES = ("scripts/phase3_webrtc/.build/",)
+SLICE_CONFIGURATION = {
+    "transport": {
+        "command": "--phase3-webrtc-signaling-self-test",
+        "pass_marker": "Phase 3 WebRTC signaling self-test: PASS",
+    },
+    "product": {
+        "command": "--phase3-product-signaling-self-test",
+        "pass_marker": "Phase 3 product signaling self-test: PASS",
+    },
+}
+PRODUCT_PLAINTEXT_SEEDS = (
+    "VIBE-PRODUCT-E2E-KEYFRAME-PLAINTEXT-SEED",
+    "VIBE-PRODUCT-E2E-DELTA-PLAINTEXT-SEED",
+)
 RELAY_HOOK_ENVIRONMENT = (
     "VIBE_WEBRTC_ICE_URLS",
     "VIBE_WEBRTC_ICE_USERNAME",
@@ -44,6 +60,10 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--mode", choices=("direct", "relay"), default="direct",
         help="Direct runs the production signaling CLI; relay additionally proves local coturn allocation.",
+    )
+    parser.add_argument(
+        "--slice", choices=tuple(SLICE_CONFIGURATION), default="transport",
+        help="Transport preserves the original channel smoke; product runs Protocol v1 InternetProductSession composition.",
     )
     parser.add_argument(
         "--repo-root", type=Path,
@@ -66,16 +86,6 @@ def parse_arguments() -> argparse.Namespace:
         "--turnserver", type=Path,
         default=Path("/opt/homebrew/opt/coturn/bin/turnserver"),
         help="coturn turnserver binary.",
-    )
-    parser.add_argument(
-        "--turnutils-uclient", type=Path,
-        default=Path("/opt/homebrew/opt/coturn/bin/turnutils_uclient"),
-        help="coturn allocation/data client.",
-    )
-    parser.add_argument(
-        "--turnutils-peer", type=Path,
-        default=Path("/opt/homebrew/opt/coturn/bin/turnutils_peer"),
-        help="coturn peer echo process.",
     )
     arguments = parser.parse_args()
     if arguments.timeout_seconds <= 0:
@@ -100,7 +110,7 @@ def run_checked(
     if completed.returncode != 0:
         rendered_command = " ".join(command)
         rendered_output = completed.stdout
-        for value in redact_values:
+        for value in (item for item in redact_values if item):
             rendered_command = rendered_command.replace(value, "<redacted>")
             rendered_output = rendered_output.replace(value, "<redacted>")
         raise E2EFailure(
@@ -130,6 +140,88 @@ def version_output(command: list[str], cwd: Path) -> str:
     if completed.returncode != 0:
         raise E2EFailure(f"version command failed: {' '.join(command)}")
     return completed.stdout.strip()
+
+
+def repository_revision(repo_root: Path) -> str:
+    """Return the exact Git revision represented by the E2E evidence."""
+    revision = version_output(["git", "rev-parse", "HEAD"], repo_root)
+    if re.fullmatch(r"[0-9a-fA-F]{40,64}", revision) is None:
+        raise E2EFailure(f"git returned an invalid HEAD revision: {revision!r}")
+    return revision.lower()
+
+
+def git_bytes(arguments: list[str], repo_root: Path) -> bytes:
+    completed = subprocess.run(
+        ["git", *arguments],
+        cwd=repo_root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+        check=False,
+    )
+    if completed.returncode != 0:
+        error_text = completed.stderr.decode("utf-8", errors="replace").strip()
+        raise E2EFailure(f"git {' '.join(arguments)} failed: {error_text}")
+    return completed.stdout
+
+
+def bytes_sha256(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def canonical_json_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return bytes_sha256(encoded)
+
+
+def repository_source_state(repo_root: Path) -> dict[str, Any]:
+    """Describe the committed and dirty sources represented by a build."""
+    revision = repository_revision(repo_root)
+    tracked_diff = git_bytes(["diff", "--binary", "--no-ext-diff", "HEAD", "--"], repo_root)
+    untracked_output = git_bytes(
+        ["ls-files", "--others", "--exclude-standard", "-z"], repo_root
+    )
+    untracked_paths = sorted(
+        os.fsdecode(raw_path)
+        for raw_path in untracked_output.split(b"\0")
+        if raw_path
+    )
+    untracked_manifest = []
+    for relative_path in untracked_paths:
+        normalized_path = relative_path.replace(os.sep, "/")
+        if any(
+            normalized_path.startswith(prefix)
+            for prefix in GENERATED_SOURCE_PATH_PREFIXES
+        ):
+            continue
+        path = repo_root / relative_path
+        if path.is_symlink():
+            content_hash = bytes_sha256(os.fsencode(os.readlink(path)))
+        elif path.is_file():
+            content_hash = sha256(path)
+        else:
+            raise E2EFailure(f"untracked source disappeared or is not a file: {relative_path}")
+        untracked_manifest.append({"path": normalized_path, "sha256": content_hash})
+
+    tracked_diff_sha256 = bytes_sha256(tracked_diff)
+    untracked_manifest_sha256 = canonical_json_sha256(untracked_manifest)
+    dirty = bool(tracked_diff or untracked_manifest)
+    fingerprint_inputs = {
+        "repository_commit": revision,
+        "tracked_diff_sha256": tracked_diff_sha256,
+        "untracked_manifest_sha256": untracked_manifest_sha256,
+    }
+    return {
+        **fingerprint_inputs,
+        "dirty": dirty,
+        "evidence_qualification": (
+            "non-commit evidence (dirty worktree)" if dirty else "commit evidence"
+        ),
+        "untracked_manifest": untracked_manifest,
+        "source_fingerprint": canonical_json_sha256(fingerprint_inputs),
+    }
 
 
 def reserve_port() -> int:
@@ -213,7 +305,40 @@ def signaling_config(port: int) -> dict[str, Any]:
     }
 
 
+def build_manifest_path(repo_root: Path) -> Path:
+    return repo_root / "scripts/phase3_webrtc/.build" / BUILD_MANIFEST_NAME
+
+
+def create_build_manifest(
+    repo_root: Path,
+    signaling_binary: Path,
+    mac_binary: Path,
+    source_state: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema": BUILD_MANIFEST_SCHEMA,
+        "source_fingerprint": source_state["source_fingerprint"],
+        "artifacts": {
+            "signaling": {
+                "path": str(signaling_binary.relative_to(repo_root)),
+                "sha256": sha256(signaling_binary),
+            },
+            "mac_host": {
+                "path": str(mac_binary.relative_to(repo_root)),
+                "sha256": sha256(mac_binary),
+            },
+        },
+    }
+
+
+def write_build_manifest(repo_root: Path, manifest: dict[str, Any]) -> None:
+    path = build_manifest_path(repo_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def build_binaries(repo_root: Path, timeout: int) -> tuple[Path, Path, list[str]]:
+    source_state = repository_source_state(repo_root)
     signaling_root = repo_root / "services/signaling"
     mac_root = repo_root / "baseline/MacHost"
     build_root = repo_root / "scripts/phase3_webrtc/.build"
@@ -231,6 +356,13 @@ def build_binaries(repo_root: Path, timeout: int) -> tuple[Path, Path, list[str]
         ["swift", "build", "-c", "release", "--scratch-path", str(swift_scratch)],
         cwd=mac_root, timeout=max(timeout, 300)
     ).stdout)
+    completed_source_state = repository_source_state(repo_root)
+    if completed_source_state["source_fingerprint"] != source_state["source_fingerprint"]:
+        raise E2EFailure("repository sources changed while binaries were building")
+    write_build_manifest(
+        repo_root,
+        create_build_manifest(repo_root, signaling_binary, mac_binary, source_state),
+    )
     return signaling_binary, mac_binary, outputs
 
 
@@ -243,6 +375,29 @@ def locate_binaries(repo_root: Path) -> tuple[Path, Path]:
     missing = [str(path) for path in paths if not path.is_file()]
     if missing:
         raise E2EFailure(f"--skip-build requested but binaries are missing: {', '.join(missing)}")
+    manifest_path = build_manifest_path(repo_root)
+    if not manifest_path.is_file():
+        raise E2EFailure("--skip-build requires a build manifest; rebuild without --skip-build")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exception:
+        raise E2EFailure(f"invalid --skip-build manifest: {exception}") from exception
+    if manifest.get("schema") != BUILD_MANIFEST_SCHEMA:
+        raise E2EFailure("--skip-build manifest has an unsupported schema")
+    source_state = repository_source_state(repo_root)
+    if manifest.get("source_fingerprint") != source_state["source_fingerprint"]:
+        raise E2EFailure("--skip-build binaries do not match the current source fingerprint")
+    expected_artifacts = {
+        "signaling": paths[0],
+        "mac_host": paths[1],
+    }
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, dict):
+        raise E2EFailure("--skip-build manifest omits artifact hashes")
+    for name, binary in expected_artifacts.items():
+        artifact = artifacts.get(name)
+        if not isinstance(artifact, dict) or artifact.get("sha256") != sha256(binary):
+            raise E2EFailure(f"--skip-build {name} binary hash does not match its manifest")
     return paths
 
 
@@ -259,6 +414,39 @@ def metric_value(metrics: str, name: str) -> int:
     raise E2EFailure(f"missing signaling metric {name}")
 
 
+def validate_peer_output(output: str, *, mode: str, slice_name: str) -> str:
+    slice_configuration = SLICE_CONFIGURATION[slice_name]
+    if slice_configuration["pass_marker"] not in output:
+        raise E2EFailure(f"macOS peer output lacks PASS marker:\n{output}")
+    if "applicationE2EE=true" not in output:
+        raise E2EFailure(f"macOS peer did not prove application record encryption:\n{output}")
+    pair_match = re.search(
+        r"selectedCandidatePair=([a-z]+\(local=[^,]+,remote=[^,]+,protocol=[^)]+\))",
+        output,
+    )
+    if slice_name == "transport":
+        if pair_match is None or not pair_match.group(1).startswith(f"{mode}("):
+            raise E2EFailure(f"macOS peer did not prove a {mode} candidate pair:\n{output}")
+        return pair_match.group(1)
+
+    product_route = re.search(r"\broute=(direct|relay)\b", output)
+    if product_route is None or product_route.group(1) != mode:
+        raise E2EFailure(f"macOS peer did not prove a {mode} route:\n{output}")
+    if pair_match is None or not pair_match.group(1).startswith(f"{mode}("):
+        raise E2EFailure(f"macOS product peer did not prove a {mode} candidate pair:\n{output}")
+    required_product_markers = (
+        "productSession=true", "protocolV1=true", "epoch=1",
+        "configEpoch=1", "keyframe=true", "delta=true", "input=true",
+    )
+    missing_product_markers = [marker for marker in required_product_markers if marker not in output]
+    if missing_product_markers:
+        raise E2EFailure(
+            "macOS product peer omitted evidence markers "
+            f"{missing_product_markers}:\n{output}"
+        )
+    return pair_match.group(1)
+
+
 def run_direct(
     repo_root: Path,
     signaling_binary: Path,
@@ -266,8 +454,10 @@ def run_direct(
     timeout: int,
     *,
     mode: str = "direct",
+    slice_name: str = "transport",
     peer_environment_overrides: dict[str, str] | None = None,
 ) -> tuple[dict[str, Any], str]:
+    slice_configuration = SLICE_CONFIGURATION[slice_name]
     issuer_token = secrets.token_urlsafe(48)
     metrics_token = secrets.token_urlsafe(48)
     port = reserve_port()
@@ -324,20 +514,13 @@ def run_direct(
                     relay_credential,
                 )
                 peer = run_checked(
-                    [str(mac_binary), "--phase3-webrtc-signaling-self-test"],
+                    [str(mac_binary), slice_configuration["command"]],
                     cwd=mac_binary.parent, timeout=timeout, environment=peer_environment,
                     redact_values=peer_secrets,
                 )
-                if PASS_MARKER not in peer.stdout:
-                    raise E2EFailure(f"macOS peer output lacks PASS marker:\n{peer.stdout}")
-                if "applicationE2EE=true" not in peer.stdout:
-                    raise E2EFailure(f"macOS peer did not prove application record encryption:\n{peer.stdout}")
-                pair_match = re.search(
-                    r"selectedCandidatePair=([a-z]+\(local=[^,]+,remote=[^,]+,protocol=[^)]+\))",
-                    peer.stdout,
+                selected_candidate_pair = validate_peer_output(
+                    peer.stdout, mode=mode, slice_name=slice_name
                 )
-                if pair_match is None or not pair_match.group(1).startswith(f"{mode}("):
-                    raise E2EFailure(f"macOS peer did not prove a {mode} candidate pair:\n{peer.stdout}")
                 metrics = http_text(f"{base_url}/metrics", metrics_token)
                 accepted = metric_value(metrics, "vibescreen_signaling_messages_accepted_total")
                 if accepted < 4:
@@ -354,12 +537,16 @@ def run_direct(
                 str(session.get(key, "")) for key in ("session_id", "host_token", "device_token")
             )
         secrets_to_scan.append((peer_environment_overrides or {}).get("VIBE_WEBRTC_ICE_CREDENTIAL", ""))
-        assert_secret_free(service_log, secrets_to_scan, "signaling log")
-        assert_secret_free(peer.stdout, secrets_to_scan, "macOS peer output")
+        scan_values = secrets_to_scan + list(PRODUCT_PLAINTEXT_SEEDS)
+        assert_secret_free(service_log, scan_values, "signaling log")
+        assert_secret_free(peer.stdout, scan_values, "macOS peer output")
+        source_state = repository_source_state(repo_root)
         evidence = {
             "schema": "dev.vibescreen.phase3-webrtc-e2e/v1",
             "mode": mode,
+            "slice": slice_name,
             "result": "pass",
+            "evidence_qualification": source_state["evidence_qualification"],
             "signaling": {
                 "real_process": True,
                 "health": "pass",
@@ -378,7 +565,7 @@ def run_direct(
                     "control": "ordered/reliable; bidirectional payload pass",
                     "media": "unordered/maxRetransmits=0; bidirectional payload pass",
                 },
-                "selected_candidate_pair": pair_match.group(1),
+                "selected_candidate_pair": selected_candidate_pair,
                 "selected_route": mode,
             },
             "artifacts": {
@@ -390,61 +577,96 @@ def run_direct(
                 "python": platform.python_version(),
                 "go": version_output(["go", "version"], repo_root),
                 "swift": version_output(["swift", "--version"], repo_root),
-                "repository_commit": "unavailable: repository has no initial commit",
+                "repository_commit": source_state["repository_commit"],
+                "repository_source": source_state,
             },
             "limitations": [
                 "Real peer E2E does not inject an artificial media backlog; latest-frame replacement is covered by --phase3-internet-self-test.",
             ],
         }
+        if slice_name == "product":
+            evidence["product_session"] = {
+                "host": "InternetProductSession",
+                "device": "synthetic Protocol v1 harness",
+                "client_hello": "pass",
+                "session_accepted_epoch": 1,
+                "video_config_ack_epoch": 1,
+                "media": "synthetic keyframe and delta pass",
+                "touch_input": "pass",
+                "seeded_plaintext_log_scan": "pass",
+                "capture_or_stream_server_started": False,
+            }
+            evidence["limitations"].append(
+                "Product slice uses a local synthetic Protocol v1 device peer; it is not Android device or UI evidence."
+            )
         return evidence, peer.stdout
 
 
-def run_coturn_smoke(
+def write_turnserver_config(
+    path: Path, *, turn_port: int, username: str, password: str, realm: str
+) -> None:
+    configuration = "\n".join((
+        "no-cli",
+        "no-tls",
+        "no-dtls",
+        "fingerprint",
+        "lt-cred-mech",
+        "allow-loopback-peers",
+        "listening-ip=127.0.0.1",
+        "relay-ip=127.0.0.1",
+        f"listening-port={turn_port}",
+        f"realm={realm}",
+        f"user={username}:{password}",
+        "",
+    ))
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(configuration)
+
+
+def turnserver_command(turnserver: Path, config_path: Path) -> list[str]:
+    return [str(turnserver), "-c", str(config_path)]
+
+
+def run_coturn_forced_relay(
     arguments: argparse.Namespace,
-    peer_test: Callable[[dict[str, str]], tuple[dict[str, Any], str]] | None = None,
-) -> tuple[dict[str, Any], tuple[dict[str, Any], str] | None]:
-    binaries = (arguments.turnserver, arguments.turnutils_uclient, arguments.turnutils_peer)
-    missing = [str(path) for path in binaries if not path.is_file() or not os.access(path, os.X_OK)]
-    if missing:
-        raise E2EFailure(f"coturn binaries unavailable: {', '.join(missing)}")
+    peer_test: Callable[[dict[str, str]], tuple[dict[str, Any], str]],
+) -> tuple[dict[str, Any], tuple[dict[str, Any], str]]:
+    if not arguments.turnserver.is_file() or not os.access(arguments.turnserver, os.X_OK):
+        raise E2EFailure(f"coturn binary unavailable: {arguments.turnserver}")
     turn_port = reserve_port()
-    peer_port = reserve_port()
     username = f"e2e-{secrets.token_hex(8)}"
     password = secrets.token_urlsafe(32)
     realm = "phase3.local"
     with tempfile.TemporaryDirectory(prefix="vibe-phase3-coturn-") as temporary:
-        log_path = Path(temporary) / "turnserver.log"
+        temporary_root = Path(temporary)
+        log_path = temporary_root / "turnserver.log"
+        config_path = temporary_root / "turnserver.conf"
+        write_turnserver_config(
+            config_path,
+            turn_port=turn_port,
+            username=username,
+            password=password,
+            realm=realm,
+        )
         with log_path.open("w+", encoding="utf-8") as log:
-            turn = subprocess.Popen([
-                str(arguments.turnserver), "--no-cli", "--no-tls", "--no-dtls",
-                "--fingerprint", "--lt-cred-mech", "--allow-loopback-peers",
-                "--listening-ip=127.0.0.1",
-                "--relay-ip=127.0.0.1", f"--listening-port={turn_port}",
-                f"--realm={realm}", f"--user={username}:{password}",
-            ], stdout=log, stderr=subprocess.STDOUT, text=True)
-            peer = subprocess.Popen([
-                str(arguments.turnutils_peer), "-L", "127.0.0.1", "-p", str(peer_port)
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
+            turn = subprocess.Popen(
+                turnserver_command(arguments.turnserver, config_path),
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
             try:
                 time.sleep(2)
-                if turn.poll() is not None or peer.poll() is not None:
-                    raise E2EFailure("coturn or turnutils_peer exited before allocation test")
-                client = run_checked([
-                    str(arguments.turnutils_uclient), "-v", "-u", username, "-w", password,
-                    "-e", "127.0.0.1", "-r", str(peer_port), "-p", str(turn_port),
-                    "-n", "3", "-c", "127.0.0.1",
-                ], cwd=Path(temporary), timeout=arguments.timeout_seconds, redact_values=(password,))
-                assert_secret_free(client.stdout, [password], "turnutils output")
-                if "tot_send_msgs=3" not in client.stdout or "tot_recv_msgs=3" not in client.stdout:
-                    raise E2EFailure(f"TURN relay data counters did not match:\n{client.stdout}")
+                if turn.poll() is not None:
+                    raise E2EFailure("coturn exited before the forced-relay peer test")
                 peer_result = peer_test({
                     "VIBE_WEBRTC_ICE_URLS": f"turn:127.0.0.1:{turn_port}?transport=udp",
                     "VIBE_WEBRTC_ICE_USERNAME": username,
                     "VIBE_WEBRTC_ICE_CREDENTIAL": password,
                     "VIBE_WEBRTC_FORCE_RELAY": "true",
-                }) if peer_test is not None else None
+                })
             finally:
-                stop_process(peer)
                 stop_process(turn)
                 log.flush()
                 log.seek(0)
@@ -453,9 +675,9 @@ def run_coturn_smoke(
         coturn_evidence = {
             "real_process": True,
             "version": version_output([str(arguments.turnserver), "--version"], Path(temporary)),
-            "allocation": "pass",
-            "relayed_datagrams_sent": 3,
-            "relayed_datagrams_received": 3,
+            "credential_config_mode": "0600",
+            "credential_exposed_in_process_arguments": False,
+            "forced_libwebrtc_relay": "pass",
             "secret_log_scan": "pass",
         }
         return coturn_evidence, peer_result
@@ -473,7 +695,23 @@ def write_evidence(path: Path | None, evidence: dict[str, Any]) -> None:
         print(rendered, end="")
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(rendered, encoding="utf-8")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as destination:
+            descriptor = -1
+            destination.write(rendered)
+            destination.flush()
+            os.fsync(destination.fileno())
+        os.replace(temporary_path, path)
+        path.chmod(0o600)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        temporary_path.unlink(missing_ok=True)
     print(f"Evidence: {path}")
 
 
@@ -488,19 +726,18 @@ def main() -> int:
 
         if arguments.mode == "direct":
             evidence, peer_output = run_direct(
-                repo_root, signaling_binary, mac_binary, arguments.timeout_seconds
+                repo_root, signaling_binary, mac_binary, arguments.timeout_seconds,
+                slice_name=arguments.slice,
             )
             print(peer_output, end="" if peer_output.endswith("\n") else "\n")
             write_evidence(arguments.output, evidence)
             return 0
 
         if not production_relay_hook_available(repo_root):
-            coturn, _ = run_coturn_smoke(arguments)
             evidence = {
                 "schema": "dev.vibescreen.phase3-webrtc-e2e/v1",
                 "mode": "relay",
                 "result": "blocked",
-                "coturn": coturn,
                 "production_peer": {
                     "result": "not_run",
                     "reason": "macOS signaling self-test hard-codes STUN and forceRelay=false",
@@ -509,10 +746,10 @@ def main() -> int:
             }
             write_evidence(arguments.output, evidence)
             raise E2EFailure(
-                "coturn allocation passed, but production forced-relay ICE is unavailable: "
+                "production forced-relay ICE is unavailable: "
                 "the macOS CLI must accept ICE URLs/username/credential and forceRelay"
             )
-        coturn, peer_result = run_coturn_smoke(
+        coturn, peer_result = run_coturn_forced_relay(
             arguments,
             peer_test=lambda relay_environment: run_direct(
                 repo_root,
@@ -520,11 +757,10 @@ def main() -> int:
                 mac_binary,
                 arguments.timeout_seconds,
                 mode="relay",
+                slice_name=arguments.slice,
                 peer_environment_overrides=relay_environment,
             ),
         )
-        if peer_result is None:
-            raise E2EFailure("forced-relay peer test did not run")
         evidence, peer_output = peer_result
         evidence["coturn"] = coturn
         print(peer_output, end="" if peer_output.endswith("\n") else "\n")

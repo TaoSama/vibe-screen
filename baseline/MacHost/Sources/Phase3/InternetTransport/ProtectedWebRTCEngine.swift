@@ -5,13 +5,21 @@ import Foundation
 final class ProtectedWebRTCEngine: WebRTCEnginePort {
     private let engine: WebRTCEnginePort
     private let packetCipher: PlatformSessionPacketCipher
+    private let limits: InternetTransportLimits
     private let lock = NSLock()
     private var callbacks: WebRTCEngineCallbacks?
     private var closed = false
+    private var authenticationFailureCount = 0
+    private static let maximumAuthenticationFailures = 3
 
-    init(engine: WebRTCEnginePort, packetCipher: PlatformSessionPacketCipher) {
+    init(
+        engine: WebRTCEnginePort,
+        packetCipher: PlatformSessionPacketCipher,
+        limits: InternetTransportLimits = .standard
+    ) {
         self.engine = engine
         self.packetCipher = packetCipher
+        self.limits = limits
     }
 
     func install(callbacks: WebRTCEngineCallbacks) {
@@ -21,11 +29,36 @@ final class ProtectedWebRTCEngine: WebRTCEnginePort {
             networkPathChanged: callbacks.networkPathChanged,
             networkQualitySampled: callbacks.networkQualitySampled,
             messageReceived: { [weak self] record, channel in
-                guard let self,
-                      let plaintext = self.packetCipher.open(record, channel: channel),
-                      let callback = self.lock.withProtectedEngineLock({ self.closed ? nil : self.callbacks?.messageReceived }) else {
+                guard let self else { return }
+                let plaintextMaximum = channel == .control
+                    ? self.limits.maximumControlMessageBytes
+                    : self.limits.maximumMediaFrameBytes
+                let encryptedMaximum = plaintextMaximum + PlatformSessionPacketCipher.recordOverhead
+                guard record.count <= encryptedMaximum else {
+                    callbacks.connectionStateChanged(.failed(
+                        "Encrypted \(channel) record exceeded the configured inbound limit."
+                    ))
                     return
                 }
+                guard let plaintext = self.packetCipher.open(record, channel: channel) else {
+                    let exhausted = self.lock.withProtectedEngineLock { () -> Bool in
+                        guard !self.closed else { return false }
+                        self.authenticationFailureCount += 1
+                        return self.authenticationFailureCount >= Self.maximumAuthenticationFailures
+                    }
+                    if exhausted {
+                        callbacks.connectionStateChanged(.failed(
+                            "Application E2EE authentication failure budget was exhausted."
+                        ))
+                    }
+                    return
+                }
+                let callback = self.lock.withProtectedEngineLock { () -> ((Data, InternetTransportChannel) -> Void)? in
+                    guard !self.closed else { return nil }
+                    self.authenticationFailureCount = 0
+                    return self.callbacks?.messageReceived
+                }
+                guard let callback else { return }
                 callback(plaintext, channel)
             },
             selectedCandidatePairChanged: callbacks.selectedCandidatePairChanged
@@ -65,6 +98,7 @@ final class ProtectedWebRTCEngine: WebRTCEnginePort {
             guard !closed else { return false }
             closed = true
             callbacks = nil
+            authenticationFailureCount = 0
             return true
         }
         guard shouldClose else { return }

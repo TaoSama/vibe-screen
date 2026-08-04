@@ -2,7 +2,9 @@ import Cocoa
 import SwiftUI
 import Combine
 import ApplicationServices
+import Security
 import os.log
+import VibeScreenProtocol
 @preconcurrency import ScreenCaptureKit
 
 private enum TelemachusLog {
@@ -93,7 +95,12 @@ private enum HostStartOrigin {
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
+    private static let internetSignalingTokenName = "internet.local.signaling.host-token.v1"
+    private static let internetTURNCredentialName = "internet.local.turn.credential.v1"
+
     var streamingServer: StreamingServer?
+    private var internetProductSession: InternetProductSession?
+    private var internetPairingCoordinator: InternetPairingCoordinator?
     var screenCapture: ScreenCapture?
     var virtualDisplayManager: VirtualDisplayManager?
     /// The display currently being captured. This may be a Telemachus-created
@@ -119,10 +126,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         enabled: settings.autoStartStreamingOnLaunch
     )
     private var usbStatusProbeGeneration: UInt64 = 0
+    private var singleInstanceProcessLock: SingleInstanceProcessLock?
     var isDaemonMode = false // Deprecated: keeping variable for ABI compatibility but unused
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("✅ App launched")
+
+        do {
+            singleInstanceProcessLock = try SingleInstanceProcessLock.acquireDefault()
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Telemachus Is Already Running"
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .critical
+            alert.runModal()
+            NSApp.terminate(nil)
+            return
+        }
 
         // Seed permission state synchronously so the first visible window never
         // flashes the onboarding flow for an already-authorized installation.
@@ -543,6 +563,361 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 debugLog("Could not reset wireless token: \(error.localizedDescription)")
                 return false
             }
+        }
+
+        settings.onSaveInternetCredentials = { [weak self] signalingToken, turnCredential in
+            self?.saveInternetCredentials(
+                signalingToken: signalingToken,
+                turnCredential: turnCredential
+            ) ?? false
+        }
+        settings.onPairInternetDevice = { [weak self] in
+            self?.beginInternetPairing()
+        }
+        settings.onCompleteInternetPairing = { [weak self] response in
+            self?.completeInternetPairing(deviceResponse: response)
+        }
+        settings.onRevokeInternetDevice = { [weak self] in
+            self?.revokeInternetPeer()
+        }
+        settings.onConnectInternetSession = { [weak self] in
+            Task { [weak self] in await self?.startServer() }
+        }
+        settings.onDisconnectInternetSession = { [weak self] in
+            self?.stopServer()
+        }
+        refreshInternetCredentialState()
+        let handledLegacyRevocation = handleLegacyGlobalRevocationIfNeeded()
+        if !handledLegacyRevocation, internetPairingMetadataIsComplete {
+            do {
+                let peerIdentity = try pinnedInternetPeerIdentity()
+                let persisted = try KeychainSecurityStateStore(
+                    peerID: PairedDeviceSecurityScope.identifier(peerIdentity)
+                ).load()
+                if persisted.revoked {
+                    rememberRevokedInternetIdentity(peerIdentity)
+                }
+                settings.internetStatus = persisted.revoked ? .revoked : .paired
+            } catch {
+                settings.internetStatus = .failed
+                settings.internetErrorMessage = "Could not read the paired-device security state."
+                settings.internetRecoverySuggestion = "Unlock the login Keychain before connecting."
+                debugLog("Internet paired-device security state read failed")
+            }
+        }
+    }
+
+    private var internetPairingMetadataIsComplete: Bool {
+        !settings.internetPeerDeviceID.isEmpty &&
+            !settings.internetPeerKeyID.isEmpty &&
+            Data(base64Encoded: settings.internetPeerSigningPublicKeyBase64)?.count == 65 &&
+            settings.internetPeerKeyEpoch > 0 &&
+            !settings.internetSharedSecretName.isEmpty &&
+            !settings.internetBootstrapSecretName.isEmpty &&
+            Data(base64Encoded: settings.internetTranscriptContextBase64)?.count == 32
+    }
+
+    /// Legacy v1 stored revocation as one global bit. Begin writes a durable
+    /// cleanup marker before any invalidation. Every restart resumes from that
+    /// marker until credentials and pairing metadata are cleared, then removes
+    /// the legacy bit and marker last. The old bit is never copied to a peer.
+    private func handleLegacyGlobalRevocationIfNeeded() -> Bool {
+        do {
+            let cleanupStore = KeychainSecurityStateStore(
+                peerID: "legacy-global-revocation-cleanup"
+            )
+            let transaction = LegacyGlobalRevocationCleanupTransaction(
+                persistence: cleanupStore
+            )
+            let currentIdentity = try? pinnedInternetPeerIdentity()
+            guard let marker = try transaction.begin(
+                fallbackRevokedIdentity: currentIdentity,
+                sharedSecretName: settings.internetSharedSecretName.isEmpty
+                    ? nil : settings.internetSharedSecretName,
+                bootstrapSecretName: settings.internetBootstrapSecretName.isEmpty
+                    ? nil : settings.internetBootstrapSecretName
+            ) else {
+                return false
+            }
+            if let revokedIdentity = marker.revokedIdentity {
+                rememberRevokedInternetIdentity(revokedIdentity)
+            }
+
+            let secrets = KeychainSecretStore()
+            if let sharedSecretName = marker.sharedSecretName {
+                try secrets.delete(name: sharedSecretName)
+            }
+            if let bootstrapSecretName = marker.bootstrapSecretName {
+                try secrets.delete(name: bootstrapSecretName)
+            }
+            try secrets.delete(name: Self.internetSignalingTokenName)
+            try secrets.delete(name: Self.internetTURNCredentialName)
+
+            settings.internetPeerDeviceID = ""
+            settings.internetPeerKeyID = ""
+            settings.internetPeerKeyEpoch = 0
+            settings.internetPeerSigningPublicKeyBase64 = ""
+            settings.internetSharedSecretName = ""
+            settings.internetBootstrapSecretName = ""
+            settings.internetTranscriptContextBase64 = ""
+            settings.internetAuthoritativeSessionEpoch = 0
+            settings.internetSessionIdentifier = ""
+            settings.internetCredentialsAvailable = false
+            settings.internetStatus = .revoked
+            settings.internetErrorMessage = "A legacy unscoped revocation was safely cleared. The previous pairing cannot reconnect."
+            settings.internetRecoverySuggestion = "Generate a new Android signing identity with a higher key epoch, then choose Pair New Identity. The legacy revoked flag was not applied to other peers."
+            try transaction.complete()
+            debugLog("Legacy global revocation cleanup committed; existing Internet pairing invalidated")
+            return true
+        } catch {
+            settings.internetStatus = .failed
+            settings.internetErrorMessage = "Legacy Internet security state could not be cleared."
+            settings.internetRecoverySuggestion = "Unlock the login Keychain and relaunch before pairing another device."
+            debugLog("Legacy global revocation cleanup failed")
+            return true
+        }
+    }
+
+    private func rememberRevokedInternetIdentity(_ identity: PlatformPublicIdentity) {
+        guard settings.internetRevokedPeerDeviceID != identity.deviceID ||
+                identity.keyEpoch >= settings.internetRevokedPeerKeyEpoch else {
+            return
+        }
+        settings.internetRevokedPeerDeviceID = identity.deviceID
+        settings.internetRevokedPeerKeyID = identity.keyID
+        settings.internetRevokedPeerKeyEpoch = identity.keyEpoch
+    }
+
+    private func validateInternetReauthorization(
+        _ identity: PlatformPublicIdentity
+    ) throws {
+        if identity.deviceID == settings.internetRevokedPeerDeviceID {
+            guard identity.keyID != settings.internetRevokedPeerKeyID,
+                  identity.keyEpoch > settings.internetRevokedPeerKeyEpoch else {
+                throw PlatformSecurityError.revoked
+            }
+        }
+        let persisted = try KeychainSecurityStateStore(
+            peerID: PairedDeviceSecurityScope.identifier(identity)
+        ).load()
+        guard !persisted.revoked, persisted.peerRevocation == nil else {
+            throw PlatformSecurityError.revoked
+        }
+    }
+
+    private func saveInternetCredentials(
+        signalingToken: String,
+        turnCredential: String
+    ) -> Bool {
+        guard !signalingToken.isEmpty else {
+            settings.internetErrorMessage = "A short-lived host role token is required."
+            return false
+        }
+        do {
+            let store = KeychainSecretStore()
+            try store.persist(
+                name: Self.internetSignalingTokenName,
+                secret: Data(signalingToken.utf8)
+            )
+            if turnCredential.isEmpty {
+                try store.delete(name: Self.internetTURNCredentialName)
+            } else {
+                try store.persist(
+                    name: Self.internetTURNCredentialName,
+                    secret: Data(turnCredential.utf8)
+                )
+            }
+            refreshInternetCredentialState()
+            settings.internetErrorMessage = nil
+            settings.internetRecoverySuggestion = nil
+            if internetPairingMetadataIsComplete,
+               settings.internetStatus != .revoked {
+                settings.internetStatus = .paired
+            }
+            return true
+        } catch {
+            settings.internetErrorMessage = "Could not save the local development credentials in Keychain."
+            settings.internetRecoverySuggestion = "Unlock the login Keychain and try again."
+            debugLog("Internet credential Keychain write failed")
+            return false
+        }
+    }
+
+    private func refreshInternetCredentialState() {
+        do {
+            let token = try KeychainSecretStore().load(
+                name: Self.internetSignalingTokenName
+            )
+            settings.internetCredentialsAvailable = token?.isEmpty == false
+        } catch {
+            settings.internetCredentialsAvailable = false
+            debugLog("Internet credential Keychain read failed")
+        }
+    }
+
+    private func beginInternetPairing() {
+        do {
+            let identity = try KeychainDeviceIdentityStore().loadOrCreate(
+                deviceID: settings.internetHostDeviceID
+            )
+            let coordinator = InternetPairingCoordinator(signer: identity)
+            let created = try coordinator.createOffer()
+            internetPairingCoordinator = coordinator
+            settings.internetPairingURL = created.url.absoluteString
+            settings.internetPairingAcceptance = nil
+            settings.internetPairingCode = nil
+            settings.internetStatus = .pairing
+            settings.internetErrorMessage = nil
+            settings.internetRecoverySuggestion = "Scan the one-time QR code on the Android device, then complete identity confirmation there."
+        } catch {
+            settings.internetStatus = .failed
+            settings.internetErrorMessage = error.localizedDescription
+            settings.internetRecoverySuggestion = "Create a new one-time pairing offer and confirm both device identities."
+            debugLog("Internet pairing offer creation failed")
+        }
+    }
+
+    private func completeInternetPairing(deviceResponse: String) {
+        guard let coordinator = internetPairingCoordinator else {
+            settings.internetStatus = .failed
+            settings.internetErrorMessage = "The pairing offer is no longer active."
+            settings.internetRecoverySuggestion = "Create and scan a new one-time pairing offer."
+            return
+        }
+        let trimmed = deviceResponse.trimmingCharacters(in: .whitespacesAndNewlines)
+        let responseData = Data(base64Encoded: trimmed) ?? Data(trimmed.utf8)
+        var issuedSecretNames: PairedDeviceSecretNames?
+        do {
+            let request = try InternetPairingDeviceRequestWire.parse(responseData)
+            let acceptance = try coordinator.accept(request)
+            issuedSecretNames = acceptance.secretNames
+            let acceptedIdentity = PlatformPublicIdentity(
+                deviceID: acceptance.deviceIdentity.deviceID,
+                keyID: acceptance.deviceIdentity.keyID,
+                keyEpoch: acceptance.deviceIdentity.keyEpoch,
+                signingPublicKey: acceptance.deviceIdentity.signingPublicKey
+            )
+            try validateInternetReauthorization(acceptedIdentity)
+            let encodedAcceptance = try InternetPairingAcceptanceWire.encode(acceptance)
+
+            settings.internetPeerDeviceID = acceptance.deviceIdentity.deviceID
+            settings.internetPeerKeyID = acceptance.deviceIdentity.keyID
+            settings.internetPeerKeyEpoch = acceptance.deviceIdentity.keyEpoch
+            settings.internetPeerSigningPublicKeyBase64 = acceptance.deviceIdentity.signingPublicKey.base64EncodedString()
+            settings.internetSharedSecretName = acceptance.secretNames.sharedSecret
+            settings.internetBootstrapSecretName = acceptance.secretNames.bootstrapSecret
+            settings.internetTranscriptContextBase64 = acceptance.sessionContext.base64EncodedString()
+            settings.internetPeerDisplayName = acceptance.deviceName
+            settings.internetPairingAcceptance = encodedAcceptance.base64EncodedString()
+            settings.internetPairingURL = nil
+            settings.internetPairingCode = nil
+            settings.internetStatus = .paired
+            settings.internetErrorMessage = nil
+            settings.internetRecoverySuggestion = "Return the acceptance to Android, then issue a fresh short-lived session profile."
+            internetPairingCoordinator = nil
+        } catch {
+            if let issuedSecretNames {
+                let secrets = KeychainSecretStore()
+                try? secrets.delete(name: issuedSecretNames.sharedSecret)
+                try? secrets.delete(name: issuedSecretNames.bootstrapSecret)
+            }
+            // Every malformed response consumes the one-time offer by design.
+            internetPairingCoordinator = nil
+            settings.internetPairingURL = nil
+            let reusedRevokedIdentity = (error as? PlatformSecurityError) == .revoked
+            settings.internetStatus = reusedRevokedIdentity ? .revoked : .failed
+            settings.internetErrorMessage = error.localizedDescription
+            settings.internetRecoverySuggestion = reusedRevokedIdentity
+                ? "The old signing identity remains revoked. Generate a new signing key and higher key epoch before choosing Pair New Identity."
+                : "Create a new one-time pairing offer; the previous credential cannot be reused."
+            debugLog("Internet pairing response rejected")
+        }
+    }
+
+    private func revokeInternetPeer() {
+        guard !settings.internetPeerDeviceID.isEmpty else {
+            settings.internetStatus = .idle
+            return
+        }
+        do {
+            let peerIdentity = try pinnedInternetPeerIdentity()
+            let peerScopeID = PairedDeviceSecurityScope.identifier(peerIdentity)
+            let stateStore = KeychainSecurityStateStore(
+                peerID: peerScopeID
+            )
+            let persistedSequence = try stateStore.load().revocationSequence
+            guard persistedSequence < UInt64.max else {
+                throw PlatformSecurityError.exhausted(
+                    "The revocation sequence is exhausted."
+                )
+            }
+            let sequence = max(
+                persistedSequence + 1,
+                UInt64(Date().timeIntervalSince1970 * 1_000)
+            )
+            if let session = internetProductSession {
+                try session.revoke(sequence: sequence)
+            } else {
+                let identityStore = KeychainDeviceIdentityStore()
+                let authority = try identityStore.loadOrCreate(
+                    deviceID: settings.internetHostDeviceID
+                )
+                var nonce = Data(count: 32)
+                let status = nonce.withUnsafeMutableBytes { bytes in
+                    SecRandomCopyBytes(
+                        kSecRandomDefault,
+                        bytes.count,
+                        bytes.baseAddress!
+                    )
+                }
+                guard status == errSecSuccess else {
+                    throw PlatformSecurityError.persistenceFailure(
+                        "Unable to generate revocation randomness."
+                    )
+                }
+                let tombstone = try authority.signPeerRevocation(
+                    peerIdentity: peerIdentity,
+                    sequence: sequence,
+                    revokedAtUnixSeconds: Int64(Date().timeIntervalSince1970),
+                    nonce: nonce,
+                    reasonCode: "user_revoked"
+                )
+                try PlatformSessionSecurity(
+                    deviceID: settings.internetHostDeviceID,
+                    peerID: peerScopeID,
+                    identityStore: identityStore,
+                    stateStore: stateStore
+                ).revokePeer(
+                    tombstone,
+                    expectedAuthority: authority.publicIdentity,
+                    expectedPeer: peerIdentity,
+                    secretNames: PairedDeviceSecretNames(
+                        sharedSecret: settings.internetSharedSecretName,
+                        bootstrapSecret: settings.internetBootstrapSecretName
+                    )
+                )
+            }
+            rememberRevokedInternetIdentity(peerIdentity)
+            let store = KeychainSecretStore()
+            try store.delete(name: settings.internetSharedSecretName)
+            try store.delete(name: settings.internetBootstrapSecretName)
+            try? store.delete(name: Self.internetSignalingTokenName)
+            try? store.delete(name: Self.internetTURNCredentialName)
+            teardownStreamingComponents()
+            settings.isRunning = false
+            settings.clientConnected = false
+            settings.internetCredentialsAvailable = false
+            settings.internetPairingURL = nil
+            settings.internetStatus = .revoked
+            settings.internetErrorMessage = "This device is revoked and cannot reconnect."
+            settings.internetRecoverySuggestion = "The revoked signing key is locally blocked forever; the session authority must propagate the signed tombstone to signaling/TURN. To authorize this device again, generate a new signing identity with a higher key epoch, then choose Pair New Identity."
+        } catch {
+            settings.internetStatus = .failed
+            settings.internetErrorMessage = "Revocation could not be persisted. The active session was stopped."
+            settings.internetRecoverySuggestion = "Keep the session disconnected and retry revocation before reconnecting."
+            teardownStreamingComponents()
+            settings.isRunning = false
+            debugLog("Internet peer revocation failed")
         }
     }
 
@@ -987,6 +1362,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
             try requireCurrentStart(startToken)
 
+            if settings.connectionMode == .internet {
+                try await startInternetProductSession(
+                    streamSize: streamSize,
+                    sessionToken: startToken
+                )
+                try requireCurrentStart(startToken)
+                guard serverLifecycle.finishStart(startToken) else {
+                    throw CancellationError()
+                }
+                settings.isRunning = true
+                return
+            }
+
             // Setup server. USB is loopback-only; wireless authenticates every
             // candidate before it can replace the active client.
             let serverMode: StreamingServerMode
@@ -1243,6 +1631,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             settings.isRunning = false
             settings.displayCreated = false
 
+            if settings.connectionMode == .internet {
+                settings.internetStatus = .failed
+                settings.internetErrorMessage = error.localizedDescription
+                settings.internetRecoverySuggestion = internetRecoverySuggestion(
+                    for: (error as? InternetProductSessionError)
+                        ?? .invalidConfiguration(error.localizedDescription)
+                )
+            }
+
             if isUnattendedOperation || origin.authorizesRecovery {
                 debugLog(
                     "Unattended startup failed: \(error.localizedDescription)"
@@ -1290,17 +1687,331 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return generationWasCurrent && accepted
     }
 
+    private func startInternetProductSession(
+        streamSize: (width: Int, height: Int),
+        sessionToken: UInt64
+    ) async throws {
+        let configuration = try makeInternetProductSessionConfiguration(
+            streamSize: streamSize
+        )
+        let session = InternetProductSession()
+        internetProductSession = session
+        installInternetSessionCallbacks(session, sessionToken: sessionToken)
+        screenCapture?.setCodec(.hevc)
+        try session.start(configuration: configuration)
+        try await screenCapture?.startStreaming(
+            to: session,
+            bitrateMbps: settings.effectiveBitrate,
+            quality: settings.effectiveQuality,
+            gamingBoost: settings.gamingBoost,
+            frameRate: settings.effectiveRefreshRate
+        )
+        debugLog("Secure Internet product session started")
+    }
+
+    private func makeInternetProductSessionConfiguration(
+        streamSize: (width: Int, height: Int)
+    ) throws -> InternetProductSessionConfiguration {
+        guard internetPairingMetadataIsComplete else {
+            throw InternetProductSessionError.invalidConfiguration(
+                "Pair and confirm an Android device before connecting."
+            )
+        }
+        guard !settings.internetSessionIdentifier.isEmpty else {
+            throw InternetProductSessionError.invalidConfiguration(
+                "Enter a fresh short-lived signaling session ID."
+            )
+        }
+        guard DisplaySettings.isSafeInternetSignalingEndpoint(
+            settings.internetSignalingEndpoint
+        ), let signalingEndpoint = URL(string: settings.internetSignalingEndpoint) else {
+            throw InternetProductSessionError.invalidConfiguration(
+                "Enter a credential-free HTTPS signaling endpoint."
+            )
+        }
+        guard DisplaySettings.isSafeInternetICEURLList(settings.internetICEURLs) else {
+            throw InternetProductSessionError.invalidConfiguration(
+                "Enter credential-free STUN or TURN URLs."
+            )
+        }
+        let iceURLs = settings.internetICEURLs
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .compactMap(URL.init(string:))
+        guard !iceURLs.isEmpty else {
+            throw InternetProductSessionError.invalidConfiguration(
+                "Enter at least one valid STUN or TURN URL."
+            )
+        }
+
+        let secretStore = KeychainSecretStore()
+        guard let tokenData = try secretStore.load(
+            name: Self.internetSignalingTokenName
+        ), let signalingToken = String(data: tokenData, encoding: .utf8),
+              !signalingToken.isEmpty else {
+            throw InternetProductSessionError.invalidConfiguration(
+                "Save a fresh short-lived host role token in Keychain."
+            )
+        }
+        let hasTURN = iceURLs.contains {
+            ["turn", "turns"].contains($0.scheme?.lowercased() ?? "")
+        }
+        var turnCredential: String?
+        if hasTURN {
+            guard !settings.internetTURNUsername.isEmpty,
+                  let credentialData = try secretStore.load(
+                    name: Self.internetTURNCredentialName
+                  ), let credential = String(data: credentialData, encoding: .utf8),
+                  !credential.isEmpty else {
+                throw InternetProductSessionError.invalidConfiguration(
+                    "TURN URLs require a username and a short-lived Keychain credential."
+                )
+            }
+            turnCredential = credential
+        }
+        guard let transcriptContext = Data(
+            base64Encoded: settings.internetTranscriptContextBase64
+        ), transcriptContext.count == 32 else {
+            throw InternetProductSessionError.invalidConfiguration(
+                "The paired device transcript context is unavailable. Pair again."
+            )
+        }
+        let peerIdentity = try pinnedInternetPeerIdentity()
+        guard settings.internetAuthoritativeSessionEpoch > 0 else {
+            throw InternetProductSessionError.invalidConfiguration(
+                "The authoritative session epoch is unavailable. Issue a fresh session."
+            )
+        }
+        let iceServer = WebRTCICEServer(
+            urls: iceURLs,
+            username: hasTURN ? settings.internetTURNUsername : nil,
+            credential: turnCredential
+        )
+        let transport = WebRTCTransportConfiguration(
+            iceServers: [iceServer],
+            peerIdentity: peerIdentity.keyID,
+            sessionIdentifier: settings.internetSessionIdentifier,
+            forceRelay: settings.internetRoutePreference == .forceTURN,
+            signaling: WebRTCSignalingConfiguration(
+                endpoint: signalingEndpoint,
+                bearerToken: signalingToken,
+                role: .offerer
+            )
+        )
+        return InternetProductSessionConfiguration(
+            transport: transport,
+            hostDeviceID: settings.internetHostDeviceID,
+            hostName: Host.current().localizedName ?? "Mac",
+            peerDeviceID: settings.internetPeerDeviceID,
+            peerIdentity: peerIdentity,
+            authoritativeSessionEpoch: settings.internetAuthoritativeSessionEpoch,
+            sharedSecretName: settings.internetSharedSecretName,
+            bootstrapSecretName: settings.internetBootstrapSecretName,
+            transcriptContext: transcriptContext,
+            video: InternetProductVideoConfiguration(
+                codec: .hevc,
+                width: streamSize.width,
+                height: streamSize.height,
+                framesPerSecond: settings.effectiveRefreshRate,
+                bitrateKbps: settings.effectiveBitrate * 1_000
+            )
+        )
+    }
+
+    private func pinnedInternetPeerIdentity() throws -> PlatformPublicIdentity {
+        guard !settings.internetPeerDeviceID.isEmpty,
+              !settings.internetPeerKeyID.isEmpty,
+              settings.internetPeerKeyEpoch > 0,
+              let signingKey = Data(
+                base64Encoded: settings.internetPeerSigningPublicKeyBase64
+              ), signingKey.count == 65,
+              signingKey.first == 0x04 else {
+            throw InternetProductSessionError.invalidConfiguration(
+                "The pinned paired-device identity is invalid. Pair again."
+            )
+        }
+        return PlatformPublicIdentity(
+            deviceID: settings.internetPeerDeviceID,
+            keyID: settings.internetPeerKeyID,
+            keyEpoch: settings.internetPeerKeyEpoch,
+            signingPublicKey: signingKey
+        )
+    }
+
+    private func installInternetSessionCallbacks(
+        _ session: InternetProductSession,
+        sessionToken: UInt64
+    ) {
+        session.onStateChanged = { [weak self, weak session] state in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                if state == .closed {
+                    self.stopServer(preserveRecoveryState: true)
+                    return
+                }
+                self.applyInternetSessionState(state)
+            }
+        }
+        session.onError = { [weak self, weak session] error in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                // A failed product session must release capture/display and all
+                // active state so the user can correct the profile and retry.
+                self.stopServer(preserveRecoveryState: true)
+                self.settings.internetStatus = error == .revoked ? .revoked : .failed
+                self.settings.internetErrorMessage = error.localizedDescription
+                self.settings.internetRecoverySuggestion = self.internetRecoverySuggestion(for: error)
+                debugLog("Secure Internet product session failed")
+            }
+        }
+        session.onAuthenticatedTouchEvent = {
+            [weak self, weak session]
+            sessionEpoch, inputID, x, y, action, pointers, x2, y2 in
+            let inject = { () -> Bool in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return false }
+                return self.handleTouch(
+                    x: x, y: y, action: action,
+                    pointerCount: pointers, x2: x2, y2: y2
+                )
+            }
+            let injected = Thread.isMainThread
+                ? inject()
+                : DispatchQueue.main.sync(execute: inject)
+            if injected {
+                debugLog(
+                    "phase3_input_injected session_epoch=\(sessionEpoch) input_id=\(inputID)"
+                )
+            }
+            return injected
+        }
+        session.onKeyframeRequired = { [weak self, weak session] in
+            let request = {
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.screenCapture?.requestKeyframeOrReplayCachedFrame(force: true)
+            }
+            if Thread.isMainThread {
+                request()
+            } else {
+                DispatchQueue.main.sync(execute: request)
+            }
+        }
+        session.onFreshSessionRecoveryRequired = {
+            [weak self, weak session] attempt in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                // The previous signaling token, record keys and PeerConnection
+                // are never reused across a handoff. Stop the full product
+                // session until authority supplies a fresh short-lived profile.
+                self.stopServer(preserveRecoveryState: true)
+                try? KeychainSecretStore().delete(
+                    name: Self.internetSignalingTokenName
+                )
+                try? KeychainSecretStore().delete(
+                    name: Self.internetTURNCredentialName
+                )
+                self.settings.internetCredentialsAvailable = false
+                self.settings.internetStatus = .recovering
+                self.settings.internetErrorMessage = "Network recovery requires a fresh secure session."
+                self.settings.internetRecoverySuggestion = "Issue a new short-lived session ID, host role token and TURN credential, then connect again (attempt \(attempt))."
+            }
+        }
+        session.onRevocationPropagationRequired = {
+            [weak self, weak session] _ in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.settings.internetRecoverySuggestion = "Local signed revocation is committed. The session authority must propagate it to signaling, TURN, and the peer before revocation is globally complete."
+            }
+        }
+        session.onRevoked = { [weak self, weak session] in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                self.stopServer(preserveRecoveryState: true)
+                self.settings.internetStatus = .revoked
+                self.settings.clientConnected = false
+            }
+        }
+    }
+
+    @MainActor
+    private func applyInternetSessionState(_ state: InternetProductSessionState) {
+        switch state {
+        case .idle:
+            settings.internetStatus = internetPairingMetadataIsComplete ? .paired : .idle
+        case .connecting, .authenticating, .awaitingVideoConfiguration:
+            settings.internetStatus = .connecting
+            settings.clientConnected = false
+        case .streaming(let path):
+            settings.internetStatus = path == .relay ? .relay : .direct
+            settings.clientConnected = true
+            settings.internetErrorMessage = nil
+            settings.internetRecoverySuggestion = nil
+            screenCapture?.requestKeyframeOrReplayCachedFrame(force: true)
+        case .recovering:
+            settings.internetStatus = .recovering
+            settings.clientConnected = false
+        case .failed(let reason):
+            settings.internetStatus = .failed
+            settings.internetErrorMessage = reason
+            settings.clientConnected = false
+        case .revoked:
+            settings.internetStatus = .revoked
+            settings.clientConnected = false
+        case .closed:
+            settings.clientConnected = false
+            if settings.internetStatus != .recovering,
+               settings.internetStatus != .revoked,
+               settings.internetStatus != .failed {
+                settings.internetStatus = internetPairingMetadataIsComplete
+                    ? .paired
+                    : .idle
+            }
+        }
+    }
+
+    private func internetRecoverySuggestion(
+        for error: InternetProductSessionError
+    ) -> String {
+        switch error {
+        case .revoked:
+            return "The revoked device ID and key cannot be reused. Pair a newly generated device identity."
+        case .invalidConfiguration:
+            return "Check the local development profile and issue fresh credentials."
+        case .protocolFailure:
+            return "Confirm both apps support Protocol v1 Internet E2EE and pair again."
+        case .transportFailure:
+            return "Check signaling/TURN reachability. A network handoff requires a fresh session profile."
+        case .securityFailure:
+            return "Pair again and issue a fresh session; plaintext fallback is disabled."
+        }
+    }
+
     /// Idempotent cleanup used for both normal shutdown and a failure after any
     /// partial combination of display, capture, listener, or ADB setup.
     private func teardownStreamingComponents() {
         cancelActiveInput(releaseDrag: true)
         reportWindowRecovery(windowRecoveryManager.restoreManagedWindows())
         screenCapture?.onTerminalCaptureFailure = nil
+        internetProductSession?.close()
         screenCapture?.stopStreaming()
         streamingServer?.stop()
         virtualDisplayManager?.destroyDisplay()
         screenCapture = nil
         streamingServer = nil
+        internetProductSession = nil
         virtualDisplayManager = nil
         activeDisplayID = nil
     }
@@ -1436,6 +2147,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settings.currentFPS = 0
         settings.currentBitrate = 0
         serverLifecycle.finishStop(stopToken)
+        if settings.connectionMode == .internet,
+           settings.internetStatus != .revoked {
+            settings.internetStatus = internetPairingMetadataIsComplete
+                ? .paired
+                : .idle
+        }
 
         print("⏹️ Server stopped")
     }
@@ -1482,8 +2199,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Touch Entry Point
 
-    func handleTouch(x: Float, y: Float, action: Int, pointerCount: Int = 1, x2: Float = 0, y2: Float = 0) {
-        guard settings.touchEnabled else { return }
+    @discardableResult
+    func handleTouch(x: Float, y: Float, action: Int, pointerCount: Int = 1, x2: Float = 0, y2: Float = 0) -> Bool {
+        guard settings.touchEnabled else { return false }
 
         if !AXIsProcessTrusted() {
             if !accessibilityWarningShown {
@@ -1494,14 +2212,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             cancelActiveInput(releaseDrag: false)
-            return
+            return false
         }
 
         guard let displayID = activeDisplayID,
               pointerCount == 1 || pointerCount == 2,
               (0...2).contains(action) else {
             cancelActiveInput(releaseDrag: true)
-            return
+            return false
         }
         let bounds = CGDisplayBounds(displayID)
 
@@ -1511,7 +2229,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             in: bounds
         ) else {
             cancelActiveInput(releaseDrag: true)
-            return
+            return false
         }
 
         if pointerCount >= 2 {
@@ -1521,12 +2239,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 in: bounds
             ) else {
                 cancelActiveInput(releaseDrag: true)
-                return
+                return false
             }
             handleTwoFingerTouch(p1: p1, p2: p2, action: action)
         } else {
             handleOneFingerTouch(at: p1, action: action)
         }
+        return true
     }
 
     // MARK: - 1-Finger Gesture State Machine

@@ -112,6 +112,7 @@ enum InternetTransportSelfTest {
         let snapshot = transport.snapshot()
         let missingSignalingRejected = productionRejectsMissingSignaling()
         let backlogFailsClosed = controlBacklogFailsClosed()
+        let legacyCleanupCrashSafe = LegacyGlobalRevocationCleanupSelfTest.run()
         let passed = controlAccepted && emptyControlRejected && keyframeAccepted && staleFrameAccepted
             && latestFrameAccepted && overBudgetRejected
             && engine.channelConfigurations == [
@@ -128,13 +129,14 @@ enum InternetTransportSelfTest {
             && adaptiveProfile == AdaptiveMediaPolicy.constrained
             && missingSignalingRejected
             && backlogFailsClosed
+            && legacyCleanupCrashSafe
 
         transport.close()
         print(
             "Phase 3 Internet self-test: \(passed ? "PASS" : "FAIL") "
                 + "(channels=\(engine.channelConfigurations.count), relayBytes=\(snapshot.relayBytesSent), "
                 + "reserved=\(snapshot.relayBytesReserved), latestFrameDrops=\(snapshot.droppedMediaFrames), "
-                + "iceRestarts=\(engine.restartCount))"
+                + "iceRestarts=\(engine.restartCount), legacyCleanupCrashSafe=\(legacyCleanupCrashSafe))"
         )
         return passed
     }

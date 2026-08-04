@@ -106,14 +106,22 @@ with the same event ID until it receives `202 accepted` or `200 duplicate`.
 Limits return `429`; malformed or out-of-order lifecycle events return `400`.
 
 The trusted control plane can persistently block future credentials with
-`POST /v1/devices/{device-id}/revoke` using the admin token. This does not by
-itself terminate a coturn allocation that is already active; the operator must
-also invoke the data plane's allocation-disconnect mechanism.
+`POST /v1/devices/{device-id}/revoke` using the admin token. After revocation,
+the service fails closed: it rejects new credentials and new usage lifecycle
+events for that device with `403 device revoked`, including `start`, `update`,
+and `end`. Retrying an event already accepted during the current UTC day still
+returns `200 duplicate`, so a lost success response remains safely idempotent.
+This control-plane state change does not terminate a coturn allocation that is
+already active; the operator must separately invoke the data plane's
+allocation-disconnect mechanism and reconcile any active-session ledger entry
+left behind by the rejected lifecycle events.
 
 Unauthenticated liveness/readiness endpoints are `/healthz` and `/readyz`;
 readiness verifies that the state directory is writable.
 Prometheus scrapes `/metrics` with the dedicated metrics token. Metrics expose issued and
-rejected requests, accepted events, ingress/egress bytes, active sessions, and
+rejected requests, a dedicated
+`vibescreen_relay_revoked_device_requests_rejected_total` counter, accepted
+events, ingress/egress bytes, active sessions, and
 the current UTC day's estimated egress microcents as a gauge. Never use these
 application metrics as the sole
 billing record; reconcile them with the TURN provider or network billing data.

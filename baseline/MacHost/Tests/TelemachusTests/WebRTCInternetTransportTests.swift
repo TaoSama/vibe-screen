@@ -148,6 +148,43 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertEqual(transport.snapshot().bufferedControlBytes, 0)
     }
 
+    func testOversizedEncryptedInboundRecordFailsBeforeDecryption() {
+        let engine = FakeWebRTCEngine()
+        let limits = InternetTransportLimits(
+            maximumControlMessageBytes: 8,
+            maximumBufferedControlBytes: 16,
+            maximumMediaFrameBytes: 16,
+            maximumRelayBytesPerSession: 100
+        )
+        let transport = connectedTransport(engine: engine, limits: limits)
+
+        engine.receiveRaw(
+            Data(repeating: 0x41, count: 8 + PlatformSessionPacketCipher.recordOverhead + 1),
+            channel: .control
+        )
+
+        guard case .failed(let reason) = transport.snapshot().state else {
+            return XCTFail("Oversized encrypted input must fail the transport")
+        }
+        XCTAssertTrue(reason.contains("inbound limit"))
+    }
+
+    func testRepeatedAuthenticationFailuresExhaustBudgetAndFailClosed() {
+        let engine = FakeWebRTCEngine()
+        let transport = connectedTransport(engine: engine)
+        let invalidRecord = Data(repeating: 0x41, count: PlatformSessionPacketCipher.recordOverhead)
+
+        engine.receiveRaw(invalidRecord, channel: .control)
+        engine.receiveRaw(invalidRecord, channel: .control)
+        XCTAssertEqual(transport.snapshot().state, .connected(.direct))
+        engine.receiveRaw(invalidRecord, channel: .control)
+
+        guard case .failed(let reason) = transport.snapshot().state else {
+            return XCTFail("Authentication failure budget must fail the transport")
+        }
+        XCTAssertTrue(reason.contains("authentication failure budget"))
+    }
+
     func testFailedControlSendDoesNotDeliverLaterOrderedMessages() {
         let engine = FakeWebRTCEngine()
         let transport = connectedTransport(engine: engine)
@@ -478,5 +515,9 @@ private final class FakeWebRTCEngine: WebRTCEnginePort {
 
     func emitPath(_ path: InternetNetworkPath) {
         callbacks?.networkPathChanged(path)
+    }
+
+    func receiveRaw(_ record: Data, channel: InternetTransportChannel) {
+        callbacks?.messageReceived(record, channel)
     }
 }

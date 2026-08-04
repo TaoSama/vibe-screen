@@ -195,12 +195,13 @@ class AndroidSessionSecurity(
 
     fun startSession(
         identityEpoch: Long,
+        authoritativeSessionEpoch: Long,
         sharedSecret: ByteArray,
         bootstrapSecret: ByteArray,
         transcriptContext: ByteArray,
     ): ActiveAndroidSecuritySession {
+        val sessionEpoch = lifecycle.reserveSessionEpoch(authoritativeSessionEpoch)
         val keys = TrafficKeyDerivation.initial(sharedSecret, bootstrapSecret, transcriptContext)
-        val sessionEpoch = lifecycle.beginSession()
         val identity = identityStore.loadOrCreate(deviceId, identityEpoch)
         return ActiveAndroidSecuritySession(identity, sessionEpoch, keys)
     }

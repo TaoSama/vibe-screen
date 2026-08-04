@@ -140,6 +140,15 @@ enum InternetPathKind: Equatable {
     case relay
 }
 
+enum InternetRecoveryStrategy: Equatable {
+    /// Retained for standalone adapter tests. This requires signaling support
+    /// for negotiation generations and is not used by the product session.
+    case restartICE
+    /// Closes the old cryptographic/signaling session and asks the product
+    /// authority for a new session ID, role token, epoch, keys, and PeerConnection.
+    case freshSession
+}
+
 struct InternetNetworkPath: Equatable {
     enum Interface: Equatable {
         case wiredEthernet

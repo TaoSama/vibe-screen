@@ -22,14 +22,16 @@ interface SecurityStateStore {
 class SecurityLifecycle(
     private val store: SecurityStateStore,
 ) {
-    fun beginSession(): Long =
+    /** Persists the peer-authorized epoch before traffic keys or nonces can use it. */
+    fun reserveSessionEpoch(authoritativeEpoch: Long): Long =
         synchronized(persistenceLock) {
             val current = store.load()
             check(!current.revoked) { "The local device identity has been revoked" }
-            check(current.sessionEpoch < Long.MAX_VALUE) { "Session epoch exhausted; rotate the device identity" }
-            val next = current.sessionEpoch + 1
-            store.persist(current.copy(sessionEpoch = next))
-            next
+            require(authoritativeEpoch > current.sessionEpoch) {
+                "Authoritative session epoch must exceed the durable high-water mark"
+            }
+            store.persist(current.copy(sessionEpoch = authoritativeEpoch))
+            authoritativeEpoch
         }
 
     fun reserveNonce(

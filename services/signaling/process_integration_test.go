@@ -125,6 +125,42 @@ func TestRealProcessHostDeviceExchangeAndGracefulShutdown(t *testing.T) {
 		t.Fatalf("device candidate events: %#v", devicePoll)
 	}
 
+	pollStatus := make(chan int, 1)
+	go func() {
+		status, _, requestErr := requestStatus(http.MethodGet,
+			fmt.Sprintf("%s/v1/sessions/%s/events?after=4&wait_seconds=2", baseURL, created.SessionID),
+			created.HostToken, "")
+		if requestErr != nil {
+			pollStatus <- 0
+			return
+		}
+		pollStatus <- status
+	}()
+	waitForMetric(t, baseURL+"/metrics", integrationMetrics,
+		"vibescreen_signaling_blocked_long_polls", 1)
+	status, body, err := requestStatus(http.MethodDelete,
+		baseURL+"/v1/sessions/"+created.SessionID, integrationIssuer, "")
+	if err != nil || status != http.StatusNoContent {
+		t.Fatalf("invalidate session: status=%d err=%v body=%s", status, err, body)
+	}
+	select {
+	case status := <-pollStatus:
+		if status != http.StatusNotFound {
+			t.Fatalf("invalidated long poll status=%d", status)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("invalidating real-process session did not wake long poll")
+	}
+	postJSON(t, baseURL+"/v1/sessions/"+created.SessionID+"/messages", created.HostToken,
+		`{"message_id":"invalidated-offer","type":"offer","sdp":"v=0"}`, http.StatusNotFound)
+	postJSON(t, baseURL+"/v1/sessions", integrationIssuer,
+		`{"request_id":"process-exchange"}`, http.StatusConflict)
+	status, body, err = requestStatus(http.MethodDelete,
+		baseURL+"/v1/sessions/"+created.SessionID, integrationIssuer, "")
+	if err != nil || status != http.StatusNoContent {
+		t.Fatalf("repeat invalidate session: status=%d err=%v body=%s", status, err, body)
+	}
+
 	metricsRequest, err := http.NewRequest(http.MethodGet, baseURL+"/metrics", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -136,7 +172,13 @@ func TestRealProcessHostDeviceExchangeAndGracefulShutdown(t *testing.T) {
 	}
 	metricsBody, err := io.ReadAll(metricsResponse.Body)
 	_ = metricsResponse.Body.Close()
-	if err != nil || metricsResponse.StatusCode != http.StatusOK || !bytes.Contains(metricsBody, []byte("vibescreen_signaling_messages_accepted_total 4")) {
+	if err != nil || metricsResponse.StatusCode != http.StatusOK ||
+		!bytes.Contains(metricsBody, []byte("vibescreen_signaling_messages_accepted_total 4")) ||
+		!bytes.Contains(metricsBody, []byte("vibescreen_signaling_sessions_invalidated_total 1")) ||
+		!bytes.Contains(metricsBody, []byte("vibescreen_signaling_active_sessions 0")) ||
+		!bytes.Contains(metricsBody, []byte("vibescreen_signaling_invalidated_session_tombstones 1")) ||
+		!bytes.Contains(metricsBody, []byte("vibescreen_signaling_reserved_session_records 1")) ||
+		!bytes.Contains(metricsBody, []byte("vibescreen_signaling_blocked_long_polls 0")) {
 		t.Fatalf("metrics response: status=%d err=%v body=%s", metricsResponse.StatusCode, err, metricsBody)
 	}
 
@@ -189,6 +231,27 @@ func waitUntilHealthy(t *testing.T, url string) {
 		time.Sleep(25 * time.Millisecond)
 	}
 	t.Fatalf("process did not become healthy at %s", url)
+}
+
+func waitForMetric(t *testing.T, url, token, name string, expected int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	wanted := fmt.Sprintf("%s %d", name, expected)
+	lastStatus := 0
+	var lastBody []byte
+	var lastErr error
+	for time.Now().Before(deadline) {
+		lastStatus, lastBody, lastErr = requestStatus(http.MethodGet, url, token, "")
+		if lastErr == nil && lastStatus == http.StatusOK {
+			for _, line := range strings.Split(string(lastBody), "\n") {
+				if line == wanted {
+					return
+				}
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("metric %q did not reach %d: status=%d err=%v body=%s", name, expected, lastStatus, lastErr, lastBody)
 }
 
 func createSession(t *testing.T, baseURL, requestID string) sessionResponse {
@@ -250,4 +313,22 @@ func postJSON(t *testing.T, url, token, body string, expectedStatus int) []byte 
 		t.Fatalf("POST %s status=%d want=%d body=%s", url, response.StatusCode, expectedStatus, responseBody)
 	}
 	return responseBody
+}
+
+func requestStatus(method, url, token, body string) (int, []byte, error) {
+	request, err := http.NewRequest(method, url, strings.NewReader(body))
+	if err != nil {
+		return 0, nil, err
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	if body != "" {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer response.Body.Close()
+	responseBody, err := io.ReadAll(response.Body)
+	return response.StatusCode, responseBody, err
 }
