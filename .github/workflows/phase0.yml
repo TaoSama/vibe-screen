@@ -27,6 +27,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: make evidence-tools-test
+      - run: make release-tools-test
 
   android:
     runs-on: ubuntu-latest
@@ -50,6 +51,6 @@ jobs:
       - run: make baseline-macos-app
       - uses: actions/upload-artifact@v7
         with:
-          name: telemachus-macos-unsigned
+          name: telemachus-macos-ad-hoc-signed
           path: .build/release-artifacts/*
           if-no-files-found: error

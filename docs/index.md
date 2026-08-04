@@ -5,6 +5,7 @@
 - [Build, install, and run](getting-started.md)
 - [Testing and real-device acceptance](testing.md)
 - [Troubleshooting](troubleshooting.md)
+- [Development preview release runbook](runbook/releasing.md)
 - [Third-party source inventory](../THIRD_PARTY.md)
 
 ## Active changes

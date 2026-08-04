@@ -1,0 +1,66 @@
+name: Bug report
+description: Report a reproducible defect in the current development preview.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include pairing credentials, tokens, personal screen captures,
+        device identifiers, or private network details. Report security issues
+        through the private process in SECURITY.md instead of this public form.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Release tag or full commit SHA where the problem occurred.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Affected platform
+      options:
+        - macOS host
+        - Android client
+        - iOS simulator foundation
+        - HarmonyOS foundation
+        - Protocol or service
+        - Documentation or build tooling
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS/tool versions and hardware model, with sensitive identifiers removed.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest deterministic sequence that triggers the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and sanitized evidence
+      description: Include relevant logs after removing secrets and private data.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed credentials, device identifiers, private network details, and personal screen content.
+          required: true
+        - label: This is not a security vulnerability report.
+          required: true
