@@ -27,6 +27,13 @@ swift run --package-path apps/ios vibescreen-ios-selftest
 The generator pins SwiftProtobuf/protoc tooling by immutable revision. CI
 regenerates bindings and fails if checked output drifts.
 
+`fixtures/client-hello-v1.hex` is a control-message wire fixture rather than a
+schema descriptor. The HarmonyOS encoder must reproduce every byte, and the
+generated Swift binding must decode the same Protocol v1 semantics. This
+allows an independent codec and a generated binding to share one audited
+compatibility case even though protobuf permits more than one valid encoding
+for packed repeated scalar fields.
+
 Compatibility policy:
 
 - never reuse field numbers or enum values;

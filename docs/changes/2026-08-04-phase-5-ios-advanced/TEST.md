@@ -50,15 +50,36 @@ Phase 3 protocol compatibility: 4/4 pass
 Go security package: pass
 ```
 
+## iOS SDK build evidence
+
+GitHub Actions run
+[`30931951983`](https://github.com/TaoSama/vibe-screen/actions/runs/30931951983),
+job `simulator-build` (`92068565317`), built the unsigned universal application
+from commit `6f7ffbe0be872390144899642636dbb24d89f120` with Xcode 16.4 and the
+iPhoneSimulator 18.5 SDK. The job produced arm64 and x86_64 slices and ended
+with `** BUILD SUCCEEDED **`.
+
+This proves Xcode project/package resolution and iOS Simulator SDK compilation.
+It did not boot a simulator or run the application. The subsequent engineering
+gate adds an App-hosted XCTest, automatic simulator selection, and unsigned
+generic-iOS archive validation; those new steps require their own CI result and
+must not be retroactively attributed to the earlier build job.
+
+The portable self-test and HarmonyOS core test now consume the same exact
+`contracts/fixtures/client-hello-v1.hex` bytes. HarmonyOS must reproduce the
+fixture exactly; SwiftProtobuf must decode the same Hello fields. This does not
+satisfy the separate Android application fixture criterion.
+
 ## Environment gates and unproved behavior
 
-`xcode-select -p` returns Command Line Tools. `xcodebuild -version` fails
-because full Xcode is not installed; `iphoneos`, `iphonesimulator`, and
-`simctl` are unavailable, and the keychain contains zero valid signing
-identities. Therefore the following remain unproved:
+For the original local run, `xcode-select -p` returned Command Line Tools.
+`xcodebuild -version` failed because full Xcode was not installed; `iphoneos`,
+`iphonesimulator`, and `simctl` were unavailable, and the keychain contained
+zero valid signing identities. CI later closed only the SDK compilation gap.
+The following remain unproved until their dedicated gates produce evidence:
 
-- Xcode project resolution and iOS compilation;
 - simulator launch and SwiftUI layout on iPhone/iPad sizes;
+- App-hosted XCTest and unsigned generic-iOS archive creation;
 - signing, installation, Local Network permission, and lifecycle behavior;
 - VideoToolbox hardware H.264/HEVC decode and sustained thermal/power behavior;
 - end-to-end Protocol v1 host connection, video, touch, disconnect/reconnect;
