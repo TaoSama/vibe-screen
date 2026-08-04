@@ -35,17 +35,22 @@ Android treats a new application ID as a different app.
 The client captures common physical-keyboard keys and shortcuts into
 protocol-neutral USB HID usages, but the legacy session does not negotiate a
 keyboard channel. It therefore shows an actionable compatibility message and
-does not send unnegotiated bytes. Native pointer/stylus fields, client-side Mac
-display selection, and the Internet transport are not exposed in the current
-product UI. The display settings identify the active stream as host-selected
-instead of pretending that the Android client can enumerate it. The
-Phase 3 source tree does contain a production libwebrtc adapter, REST signaling
-client, Protocol v1 record encryption, and an AndroidKeyStore-backed factory
-that atomically loads paired secrets into a protected Internet session. These
-components still require the matching versioned host protocol and coordinated
-device acceptance before they are presented as shipped behavior. The
-legacy host accepts touch packets only; the client must not claim these controls
-until both ends negotiate them.
+does not send unnegotiated bytes. Native pointer/stylus fields and client-side
+display selection remain outside the current baseline; the display settings
+identify the active stream as host-selected instead of pretending that the
+Android client can enumerate it. The legacy host accepts touch packets only;
+the client must not claim additional controls until both ends negotiate them.
+
+Internet mode is exposed as
+a development-preview UI: it scans the one-time pairing offer, completes the
+strict request/acceptance exchange, imports a short-lived session profile,
+selects direct or forced TURN, and drives the Protocol v1 video/touch product
+session. The request/acceptance and session profile are intentionally copied or
+scanned in this local integration surface; no production account/session
+authority is bundled. An authorized device has passed real M144↔M150 direct and
+forced-local-TURN product-session interop plus actionable Internet UI checks.
+Public Internet, real ScreenCaptureKit output, handoff/reconnect, cross-service
+revocation and soak remain gates, so this is not yet a shipped Internet feature.
 
 ## Requirements
 
@@ -108,15 +113,38 @@ traffic. Never use this mode on public, guest, or otherwise untrusted Wi-Fi.
 Production Internet code must create sessions through
 `AndroidStoredInternetSessionFactory`. It stores the shared and bootstrap
 pairing secrets as one AES-256-GCM record protected by a non-exportable
-AndroidKeyStore key, allocates a durable session epoch and nonce sequence, and
-injects the resulting cipher into `AndroidWebRtcPeerEngine`. Missing or corrupt
-pairing state fails closed; callers must not construct a production
-`PeerConfiguration` with a null or test cipher.
+AndroidKeyStore key, reserves the authority-agreed session epoch above the
+durable high-water mark, and injects the resulting cipher into
+`AndroidWebRtcPeerEngine`. The imported signaling token and TURN credentials are
+also AndroidKeyStore-wrapped; only non-secret routing metadata is stored in
+preferences. Missing/corrupt state, an old epoch, relay-only without TURN, or a
+null/test cipher fails closed.
 
-The adapter and its instrumentation APK build locally, but the coordinated
-device freeze prevented running that instrumentation in this change. Internet
-mode remains absent from `MainActivity`, and public TURN/NAT interoperability is
-not claimed.
+`MainActivity` connects this protected transport to Protocol v1 negotiation,
+MediaCodec configuration and frames, touch input, keyframe requests, route/state
+display, disconnect, local revoke, and fresh-session errors. A network change
+closes the old session and requires an imported profile with a larger epoch; it
+does not reuse the old signaling session or downgrade to plaintext. Automatic
+authority issuance, public TURN/NAT, signed cross-service revocation propagation,
+real screen capture, handoff and soak are not claimed. The local
+direct/forced-coturn device result and its limits are recorded in the Phase 3
+test plan.
+
+The imported lease is strict JSON with exactly these fields (the two pairing
+secret fields are optional only as a pair):
+
+```text
+version, pairing_id, pinned_host_id, signaling_url, signaling_session_id,
+session_epoch, identity_epoch, transcript_context, protocol_session_id,
+signaling_token, ice_servers[{urls, username, credential}],
+shared_secret, bootstrap_secret, allow_insecure_for_testing
+```
+
+Unknown/missing fields fail closed, a replacement lease must use a strictly
+larger `session_epoch`, and production signaling requires HTTPS. Plain HTTP is
+accepted only for loopback in a debuggable build. Treat the complete imported
+JSON as secret because it contains role/TURN credentials and may contain pairing
+keys; do not save it in logs, screenshots, shell history, or tracked files.
 
 ## Upgrade and release packaging
 
@@ -157,6 +185,13 @@ can read the notice from **Open-source licenses** on the connection page.
   explicitly choose H.264.
 
 ## Verification status and known limits
+
+For the Phase 3 development-preview composition, the local JVM suite passed
+89/89 tests in 20 suites, lint and debug assembly passed, the Android
+instrumentation sources compiled, and the release-dependency audit passed. The
+merged release manifest disables cleartext traffic. The instrumentation APK was
+not executed, and no M150-to-M144 direct/forced-TURN stream, real video/touch,
+handoff, revocation, or soak result is claimed from those build checks.
 
 On 2026-08-04, the configured remote ADB endpoint
 `100.72.246.116:5555` identified itself as a nubia P0110 (`pacific`) running

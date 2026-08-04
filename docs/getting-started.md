@@ -9,8 +9,8 @@ there is no notarized stable release yet.
 ### macOS host
 
 - macOS 13 or newer;
-- full Xcode for the complete build/test workflow;
-- Swift 5.9-compatible toolchain;
+- full Xcode 16 or newer, with its Swift 6 toolchain, for the complete
+  Phase 3 macOS build/test workflow;
 - Python 3 for local `.app` packaging;
 - Android Platform Tools (`adb`) for USB mode.
 
@@ -21,6 +21,12 @@ sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
 xcodebuild -version
 swift --version
 ```
+
+The MacHost package manifest remains readable by Swift 5.9, but its local
+Protocol v1 dependency uses a Swift 6 package manifest. A Swift 5.9-only
+toolchain therefore cannot resolve or build the current Phase 3 product
+session. Command Line Tools with Swift 6 can run supported SwiftPM builds, but
+XCTest and the complete verification workflow still require full Xcode.
 
 ### Android client
 

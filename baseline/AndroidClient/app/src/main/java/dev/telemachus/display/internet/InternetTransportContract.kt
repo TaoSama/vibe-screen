@@ -27,16 +27,27 @@ data class PeerConfiguration(
     val sessionEpoch: Long,
     val signaling: SignalingConfiguration? = null,
     val sessionCipher: SessionPacketCipher? = null,
+    val iceTransportPolicy: IceTransportPolicy = IceTransportPolicy.ALL,
 ) {
     init {
         require(iceServers.isNotEmpty()) { "At least one STUN or TURN server is required" }
         require(sessionId.isNotBlank()) { "Session ID must not be blank" }
         require(sessionEpoch > 0) { "Session epoch must be positive" }
+        require(
+            iceTransportPolicy != IceTransportPolicy.RELAY_ONLY ||
+                iceServers.any { server -> server.urls.any { it.startsWith("turn:") || it.startsWith("turns:") } },
+        ) { "Relay-only policy requires a TURN server" }
     }
 
     override fun toString(): String =
         "PeerConfiguration(iceServers=$iceServers, sessionId=$sessionId, sessionEpoch=$sessionEpoch, " +
-            "signaling=$signaling, sessionCipher=<redacted>)"
+            "signaling=$signaling, iceTransportPolicy=$iceTransportPolicy, sessionCipher=<redacted>)"
+}
+
+/** ALL prefers a direct candidate pair and permits TURN fallback; RELAY_ONLY is an explicit diagnostic policy. */
+enum class IceTransportPolicy {
+    ALL,
+    RELAY_ONLY,
 }
 
 enum class SessionChannel {
@@ -208,7 +219,10 @@ sealed class InternetTransportEvent {
 
     data class RouteSelected(val route: PeerRoute) : InternetTransportEvent()
 
-    data class IceRestartRequested(val reason: String) : InternetTransportEvent()
+    /** The current rendezvous is single-use; recovery must allocate a new signaling/product session. */
+    data class FreshSessionRequested(val reason: String) : InternetTransportEvent()
 
     data class VideoProfileChanged(val profile: VideoProfile) : InternetTransportEvent()
+
+    data class Failure(val error: Throwable) : InternetTransportEvent()
 }

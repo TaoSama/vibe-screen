@@ -160,13 +160,17 @@ func TestRejectsUnknownJSONAndUnauthorizedRequests(t *testing.T) {
 	}
 }
 
-func TestRevokedDeviceCannotReceiveCredentials(t *testing.T) {
+func TestRevokedDeviceCannotReceiveCredentialsOrReportUsage(t *testing.T) {
 	cfg := testConfig(t)
 	server, err := NewServer(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	handler := server.Handler()
+	start := `{"event_id":"event-before-revoke","device_id":"device-1","session_id":"session-1","kind":"start","ingress_bytes":10,"egress_bytes":20}`
+	if got := requestJSON(t, handler, http.MethodPost, "/v1/usage", testUsageToken, start); got.Code != http.StatusAccepted {
+		t.Fatalf("usage before revoke = %d: %s", got.Code, got.Body.String())
+	}
 	if got := requestJSON(t, handler, http.MethodPost, "/v1/devices/device-1/revoke", testAdminToken, "{}"); got.Code != http.StatusOK {
 		t.Fatalf("revoke = %d: %s", got.Code, got.Body.String())
 	}
@@ -174,12 +178,32 @@ func TestRevokedDeviceCannotReceiveCredentials(t *testing.T) {
 	if credential.Code != http.StatusForbidden {
 		t.Fatalf("credential after revoke = %d", credential.Code)
 	}
+	if duplicate := requestJSON(t, handler, http.MethodPost, "/v1/usage", testUsageToken, start); duplicate.Code != http.StatusOK || !strings.Contains(duplicate.Body.String(), "duplicate") {
+		t.Fatalf("accepted usage retry after revoke = %d: %s", duplicate.Code, duplicate.Body.String())
+	}
+	for _, event := range []string{
+		`{"event_id":"event-start-after-revoke","device_id":"device-1","session_id":"session-2","kind":"start","ingress_bytes":0,"egress_bytes":0}`,
+		`{"event_id":"event-update-after-revoke","device_id":"device-1","session_id":"session-1","kind":"update","ingress_bytes":1,"egress_bytes":1}`,
+	} {
+		got := requestJSON(t, handler, http.MethodPost, "/v1/usage", testUsageToken, event)
+		if got.Code != http.StatusForbidden || !strings.Contains(got.Body.String(), ErrDeviceRevoked.Error()) {
+			t.Fatalf("usage after revoke = %d: %s", got.Code, got.Body.String())
+		}
+	}
+	metrics := requestJSON(t, handler, http.MethodGet, "/metrics", testMetricsToken, "")
+	if metrics.Code != http.StatusOK || !strings.Contains(metrics.Body.String(), "vibescreen_relay_revoked_device_requests_rejected_total 3") {
+		t.Fatalf("revocation metrics = %d: %s", metrics.Code, metrics.Body.String())
+	}
 	restarted, err := NewServer(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !restarted.store.IsRevoked("device-1") {
 		t.Fatal("revocation was not restored")
+	}
+	update := `{"event_id":"event-after-restart","device_id":"device-1","session_id":"session-1","kind":"update","ingress_bytes":1,"egress_bytes":1}`
+	if got := requestJSON(t, restarted.Handler(), http.MethodPost, "/v1/usage", testUsageToken, update); got.Code != http.StatusForbidden {
+		t.Fatalf("usage after restart = %d: %s", got.Code, got.Body.String())
 	}
 }
 

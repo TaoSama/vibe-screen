@@ -28,12 +28,13 @@ type rateWindow struct {
 }
 
 type Server struct {
-	cfg     Config
-	store   *UsageStore
-	metrics Metrics
-	now     func() time.Time
-	rateMu  sync.Mutex
-	rates   map[string]rateWindow
+	cfg      Config
+	store    *UsageStore
+	metrics  Metrics
+	now      func() time.Time
+	rateMu   sync.Mutex
+	rates    map[string]rateWindow
+	revokeMu sync.RWMutex
 }
 
 func NewServer(cfg Config) (*Server, error) {
@@ -110,8 +111,10 @@ func (s *Server) credentials(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusBadRequest, "invalid device_id or session_id")
 		return
 	}
+	s.revokeMu.RLock()
+	defer s.revokeMu.RUnlock()
 	if s.store.IsRevoked(request.DeviceID) {
-		s.reject(w, http.StatusForbidden, "device revoked")
+		s.rejectRevoked(w)
 		return
 	}
 	if !s.allowCredential(request.DeviceID) {
@@ -153,6 +156,8 @@ func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusBadRequest, "invalid device_id")
 		return
 	}
+	s.revokeMu.Lock()
+	defer s.revokeMu.Unlock()
 	if err := s.store.Revoke(deviceID, s.now()); err != nil {
 		s.reject(w, http.StatusInternalServerError, "persist revocation failed")
 		return
@@ -179,6 +184,10 @@ func (s *Server) usage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := s.store.Apply(s.now(), event)
+	if errors.Is(err, ErrDeviceRevoked) {
+		s.rejectRevoked(w)
+		return
+	}
 	if errors.Is(err, ErrDuplicateEvent) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "duplicate"})
 		return
@@ -227,6 +236,11 @@ func (s *Server) allowCredential(key string) bool {
 func (s *Server) reject(w http.ResponseWriter, status int, message string) {
 	s.metrics.requestRejected.Add(1)
 	writeJSON(w, status, map[string]string{"error": message})
+}
+
+func (s *Server) rejectRevoked(w http.ResponseWriter) {
+	s.metrics.revokedRejected.Add(1)
+	s.reject(w, http.StatusForbidden, ErrDeviceRevoked.Error())
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) error {

@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 import Security
 
-struct PlatformPublicIdentity: Equatable {
+struct PlatformPublicIdentity: Codable, Equatable {
     static let algorithm = "ECDSA_P256_SHA256"
 
     let deviceID: String
@@ -26,6 +26,12 @@ struct PlatformPublicIdentity: Equatable {
             parts: [identity, nonce]
         )
         return Data(SHA256.hash(data: transcript))
+    }
+}
+
+enum PairedDeviceSecurityScope {
+    static func identifier(_ identity: PlatformPublicIdentity) -> String {
+        "\(identity.deviceID)|key:\(identity.keyID)"
     }
 }
 
@@ -55,6 +61,33 @@ final class KeychainDeviceIdentity {
             throw PlatformSecurityError.persistenceFailure("Keychain signing failed.")
         }
         return signature
+    }
+
+    func signPeerRevocation(
+        peerIdentity: PlatformPublicIdentity,
+        sequence: UInt64,
+        revokedAtUnixSeconds: Int64,
+        nonce: Data,
+        reasonCode: String
+    ) throws -> PairedDeviceRevocationTombstone {
+        let unsigned = PairedDeviceRevocationTombstone(
+            peerIdentity: peerIdentity,
+            sequence: sequence,
+            revokedAtUnixSeconds: revokedAtUnixSeconds,
+            nonce: nonce,
+            reasonCode: reasonCode,
+            authority: publicIdentity,
+            authoritySignature: Data()
+        )
+        return PairedDeviceRevocationTombstone(
+            peerIdentity: peerIdentity,
+            sequence: sequence,
+            revokedAtUnixSeconds: revokedAtUnixSeconds,
+            nonce: nonce,
+            reasonCode: reasonCode,
+            authority: publicIdentity,
+            authoritySignature: try signTranscriptDigest(unsigned.signingDigest())
+        )
     }
 }
 
@@ -153,29 +186,75 @@ final class KeychainDeviceIdentityStore {
     }
 }
 
-struct KeychainSecurityStateStore: SecurityStateStore {
+struct KeychainSecurityStateStore:
+    SecurityStateStore,
+    LegacyGlobalRevocationCleanupPersistence {
     let service: String
     let account: String
+    let legacyAccount: String?
+    let legacyCleanupAccount: String?
+    let peerID: String?
 
-    init(service: String = "dev.telemachus.display.phase3-security", account: String = "durable-state-v1") {
+    init(
+        peerID: String,
+        service: String = "dev.telemachus.display.phase3-security",
+        legacyAccount: String? = "durable-state-v1",
+        legacyCleanupAccount: String? = "legacy-revocation-cleanup-v1"
+    ) {
+        precondition(!peerID.isEmpty, "Peer ID must not be empty.")
+        self.service = service
+        self.account = Self.accountName(peerID: peerID)
+        self.legacyAccount = legacyAccount
+        self.legacyCleanupAccount = legacyCleanupAccount
+        self.peerID = peerID
+    }
+
+    /// Retained for injected/custom stores. Production composition uses the
+    /// peer-scoped initializer and never writes the legacy global account.
+    init(service: String, account: String) {
         self.service = service
         self.account = account
+        self.legacyAccount = nil
+        self.legacyCleanupAccount = nil
+        self.peerID = nil
     }
 
     func load() throws -> PersistedSecurityState {
-        var query = baseQuery
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return PersistedSecurityState() }
-        guard status == errSecSuccess, let data = result as? Data else { throw keychainError(status) }
+        if let current = try load(account: account, expectedPeerID: peerID) { return current }
+        guard let legacyAccount,
+              let legacy = try load(account: legacyAccount, expectedPeerID: nil) else {
+            return PersistedSecurityState()
+        }
+        let migrated = try Self.migratedLegacyState(legacy)
+        try persist(migrated)
+        return migrated
+    }
+
+    private func load(
+        account: String,
+        expectedPeerID: String?
+    ) throws -> PersistedSecurityState? {
+        guard let data = try loadData(account: account) else { return nil }
         do {
             let state = try JSONDecoder().decode(PersistedSecurityState.self, from: data)
             guard state.usedRotationNonceHashes.allSatisfy({ value in
                 value.count == 64 && value.allSatisfy { "0123456789abcdef".contains($0) }
             }) else {
                 throw PlatformSecurityError.persistenceFailure("Stored rotation nonce state is invalid.")
+            }
+            guard state.nonceHighWatermarks.values.allSatisfy({ $0 > 0 }) else {
+                throw PlatformSecurityError.persistenceFailure("Stored nonce state is invalid.")
+            }
+            if let tombstone = state.peerRevocation {
+                guard state.revoked, state.revocationSequence == tombstone.sequence,
+                      expectedPeerID == nil ||
+                        PairedDeviceSecurityScope.identifier(tombstone.peerIdentity) == expectedPeerID else {
+                    throw PlatformSecurityError.persistenceFailure("Stored peer revocation state is invalid.")
+                }
+                try tombstone.verify(
+                    expectedAuthority: tombstone.authority,
+                    expectedPeer: tombstone.peerIdentity
+                )
             }
             return state
         }
@@ -186,17 +265,123 @@ struct KeychainSecurityStateStore: SecurityStateStore {
         let data: Data
         do { data = try JSONEncoder().encode(state) }
         catch { throw PlatformSecurityError.persistenceFailure("Unable to encode security state: \(error.localizedDescription)") }
-        let status = SecItemUpdate(baseQuery as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        try persist(data: data, account: account)
+    }
+
+    private func loadData(account: String) throws -> Data? {
+        var query = baseQuery(account: account)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess, let data = result as? Data else {
+            throw keychainError(status)
+        }
+        return data
+    }
+
+    private func persist(data: Data, account: String) throws {
+        let query = baseQuery(account: account)
+        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if status == errSecSuccess { return }
         guard status == errSecItemNotFound else { throw keychainError(status) }
-        var item = baseQuery
+        var item = query
         item[kSecValueData as String] = data
         item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         let addStatus = SecItemAdd(item as CFDictionary, nil)
         guard addStatus == errSecSuccess else { throw keychainError(addStatus) }
     }
 
-    private var baseQuery: [String: Any] {
+    private func delete(account: String) throws {
+        let status = SecItemDelete(baseQuery(account: account) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw keychainError(status)
+        }
+    }
+
+    static func accountName(peerID: String) -> String {
+        let digest = SHA256.hash(data: Data(peerID.utf8))
+        return "durable-state-v2.peer." + digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func migratedLegacyState(_ legacy: PersistedSecurityState) throws -> PersistedSecurityState {
+        guard !legacy.revoked, legacy.peerRevocation == nil else {
+            throw PlatformSecurityError.persistenceFailure(
+                "Legacy global revocation state requires explicit identity migration and cannot be copied to a peer."
+            )
+        }
+        // Only crash-safety high-watermarks are safe to conservatively copy
+        // into a new peer scope. Authorization, revocation, and rotation
+        // tombstones never migrate across peer identities.
+        return PersistedSecurityState(
+            sessionEpoch: legacy.sessionEpoch,
+            nonceHighWatermarks: legacy.nonceHighWatermarks
+        )
+    }
+
+    func loadCleanupMarker() throws -> LegacyGlobalRevocationCleanupMarker? {
+        guard let legacyCleanupAccount,
+              let data = try loadData(account: legacyCleanupAccount) else {
+            return nil
+        }
+        do {
+            let marker = try JSONDecoder().decode(
+                LegacyGlobalRevocationCleanupMarker.self,
+                from: data
+            )
+            try marker.validate()
+            return marker
+        } catch {
+            throw PlatformSecurityError.persistenceFailure(
+                "Stored legacy revocation cleanup marker is invalid: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    func loadLegacyGlobalRevocation() throws -> PersistedSecurityState? {
+        guard let legacyAccount,
+              let legacy = try load(account: legacyAccount, expectedPeerID: nil),
+              legacy.revoked || legacy.peerRevocation != nil else {
+            return nil
+        }
+        return legacy
+    }
+
+    func persistCleanupMarker(
+        _ marker: LegacyGlobalRevocationCleanupMarker
+    ) throws {
+        guard let legacyCleanupAccount else {
+            throw PlatformSecurityError.persistenceFailure(
+                "Legacy revocation cleanup is unavailable for this store."
+            )
+        }
+        try marker.validate()
+        do {
+            try persist(
+                data: JSONEncoder().encode(marker),
+                account: legacyCleanupAccount
+            )
+        } catch let error as PlatformSecurityError {
+            throw error
+        } catch {
+            throw PlatformSecurityError.persistenceFailure(
+                "Unable to encode the legacy revocation cleanup marker: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    func deleteLegacyGlobalRevocation() throws {
+        guard let legacyAccount else { return }
+        try delete(account: legacyAccount)
+    }
+
+    func deleteCleanupMarker() throws {
+        guard let legacyCleanupAccount else { return }
+        try delete(account: legacyCleanupAccount)
+    }
+
+    private func baseQuery(account: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -259,6 +444,25 @@ struct KeychainSecretStore {
     }
 }
 
+protocol PairedDeviceSecretStore {
+    func delete(name: String) throws
+}
+
+extension KeychainSecretStore: PairedDeviceSecretStore {}
+
+struct PairedDeviceSecretNames: Equatable {
+    let sharedSecret: String
+    let bootstrapSecret: String
+
+    init(sharedSecret: String, bootstrapSecret: String) throws {
+        guard !sharedSecret.isEmpty, !bootstrapSecret.isEmpty, sharedSecret != bootstrapSecret else {
+            throw PlatformSecurityError.invalidInput("Distinct paired-device secret names are required.")
+        }
+        self.sharedSecret = sharedSecret
+        self.bootstrapSecret = bootstrapSecret
+    }
+}
+
 struct ActivePlatformSecuritySession {
     let identity: KeychainDeviceIdentity
     let sessionEpoch: UInt64
@@ -269,17 +473,22 @@ struct ActivePlatformSecuritySession {
 /// derivation into the lifecycle consumed by a concrete Internet adapter.
 final class PlatformSessionSecurity {
     private let deviceID: String
+    private let peerID: String
     private let identityStore: KeychainDeviceIdentityStore
     private let lifecycle: SecurityLifecycle
 
     init(
         deviceID: String,
+        peerID: String? = nil,
         identityStore: KeychainDeviceIdentityStore = KeychainDeviceIdentityStore(),
-        stateStore: any SecurityStateStore = KeychainSecurityStateStore()
+        stateStore: (any SecurityStateStore)? = nil
     ) {
         self.deviceID = deviceID
+        self.peerID = peerID ?? "unpaired.\(deviceID)"
         self.identityStore = identityStore
-        self.lifecycle = SecurityLifecycle(store: stateStore)
+        self.lifecycle = SecurityLifecycle(
+            store: stateStore ?? KeychainSecurityStateStore(peerID: self.peerID)
+        )
     }
 
     func startSession(
@@ -296,6 +505,31 @@ final class PlatformSessionSecurity {
         let sessionEpoch = try lifecycle.beginSession()
         let identity = try identityStore.loadOrCreate(deviceID: deviceID, keyEpoch: identityEpoch)
         return ActivePlatformSecuritySession(identity: identity, sessionEpoch: sessionEpoch, trafficKeys: keys)
+    }
+
+    func startSession(
+        agreedSessionEpoch: UInt64,
+        identityEpoch: UInt64,
+        sharedSecret: Data,
+        bootstrapSecret: Data,
+        transcriptContext: Data
+    ) throws -> ActivePlatformSecuritySession {
+        let keys = try TrafficKeyDerivation.initial(
+            sharedSecret: sharedSecret,
+            bootstrapSecret: bootstrapSecret,
+            context: transcriptContext
+        )
+        let sessionEpoch = try lifecycle.reserveSessionEpoch(agreedSessionEpoch)
+        let identity = try identityStore.loadOrCreate(deviceID: deviceID, keyEpoch: identityEpoch)
+        return ActivePlatformSecuritySession(identity: identity, sessionEpoch: sessionEpoch, trafficKeys: keys)
+    }
+
+    func advanceSessionEpoch() throws -> UInt64 {
+        try lifecycle.advanceSessionEpoch()
+    }
+
+    func reserveSessionEpoch(_ agreedSessionEpoch: UInt64) throws -> UInt64 {
+        try lifecycle.reserveSessionEpoch(agreedSessionEpoch)
     }
 
     func rotateTrafficKeys(
@@ -316,15 +550,49 @@ final class PlatformSessionSecurity {
         try lifecycle.reserveNonce(channel: channel, senderRole: senderRole, keyEpoch: keyEpoch)
     }
 
+    func reserveNonce(
+        sessionEpoch: UInt64,
+        channel: UInt32,
+        senderRole: UInt32,
+        keyEpoch: UInt64
+    ) throws -> Data {
+        try lifecycle.reserveNonce(
+            sessionEpoch: sessionEpoch,
+            channel: channel,
+            senderRole: senderRole,
+            keyEpoch: keyEpoch
+        )
+    }
+
     func consumeRotationNonce(authority: PlatformPublicIdentity, nonce: Data) throws {
         try lifecycle.consumeRotationNonceHash(authority.rotationNonceHash(nonce: nonce))
     }
 
-    func revoke(sequence: UInt64, identityEpoch: UInt64) throws {
-        // Persist revocation first. A subsequent key deletion failure remains
-        // fail-closed and can be retried without re-authorizing the identity.
+    func revoke(sequence: UInt64, identityEpoch _: UInt64) throws {
+        // Compatibility path: this state is peer-scoped. Never delete the
+        // local identity when a paired device is revoked.
         try lifecycle.applyRevocation(sequence: sequence)
-        try identityStore.delete(deviceID: deviceID, keyEpoch: identityEpoch)
+    }
+
+    func revokePeer(
+        _ tombstone: PairedDeviceRevocationTombstone,
+        expectedAuthority: PlatformPublicIdentity,
+        expectedPeer: PlatformPublicIdentity,
+        secretNames: PairedDeviceSecretNames,
+        secretStore: any PairedDeviceSecretStore = KeychainSecretStore()
+    ) throws {
+        guard PairedDeviceSecurityScope.identifier(expectedPeer) == peerID else {
+            throw PlatformSecurityError.invalidInput("The revocation target does not match this peer scope.")
+        }
+        // Commit the signed tombstone before deleting secrets. A deletion
+        // failure remains fail-closed and can be retried safely.
+        try lifecycle.applyPeerRevocation(
+            tombstone,
+            expectedAuthority: expectedAuthority,
+            expectedPeer: expectedPeer
+        )
+        try secretStore.delete(name: secretNames.sharedSecret)
+        try secretStore.delete(name: secretNames.bootstrapSecret)
     }
 }
 

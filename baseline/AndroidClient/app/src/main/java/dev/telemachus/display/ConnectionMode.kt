@@ -3,6 +3,7 @@ package dev.telemachus.display
 enum class ConnectionMode {
     USB,
     WIRELESS,
+    INTERNET,
     ;
 
     companion object {

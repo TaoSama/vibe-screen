@@ -39,6 +39,7 @@ boundary.
 | Pairing MITM / QR theft | short expiry, single redemption, random challenge, signed canonical transcript, both identities displayed | mutate every transcript field; redeem twice; use after expiry |
 | Algorithm/capability downgrade | signed protocol range, algorithms, capabilities, and roles; Internet mode never falls back to plaintext | strip/reorder offers and required capabilities |
 | Signaling impersonation | authenticated service plus independent peer identity proof | substitute SDP/candidates/peer ID |
+| Signaling token retained after revoke | issuer-only idempotent invalidation destroys both role tokens, queued payloads, and active long polls | invalidate during offer/answer/candidate polling; retry invalidation; reuse both role tokens |
 | Relay content inspection | application AEAD over control and full media header+payload; traffic keys never sent to service | TURN capture contains no known plaintext or codec/frame header |
 | Packet tampering | header as AEAD AAD, fail closed before dispatch | flip every header/ciphertext class |
 | Replay/reordering | per-channel/direction/key-epoch sliding window and monotonic control delivery | duplicate, too-old, reordered, cross-channel, cross-session vectors |
@@ -65,6 +66,14 @@ and actionable denial telemetry. Authentication and cheap structural validation
 occur before expensive cryptography, decoding, or display work where safe.
 Unauthenticated error responses are small and rate-limited to avoid amplification.
 
+The current signaling invalidation endpoint is an authority operation, not a
+device-signed revocation feed. The relay control plane persistently rejects new
+credentials and all later usage events for a revoked device, but coturn allocation
+termination is a separate data-plane action. Those distinctions are security
+boundaries: a local tombstone, signaling invalidation, relay credential denial,
+and allocation disconnect must not be reported as one atomic operation until a
+cross-service test proves it.
+
 ## Privacy posture
 
 Operational services necessarily observe coarse connection metadata. Default
@@ -80,12 +89,19 @@ explicit, time-bounded, locally previewable, and redacted before upload.
 - private `CGVirtualDisplay` use has platform compatibility risk unrelated to
   Internet cryptography;
 - TURN compromise can deny service, consume quota, or expose metadata;
+- the current signaling issuer and relay client bearers are service authority
+  credentials rather than proof that a paired device possesses its signing key;
+- signaling invalidation cannot itself stop a direct PeerConnection, and relay
+  revocation cannot itself terminate an already-issued coturn allocation;
 - WebRTC community binaries are not official Google mobile distributions and
   carry a large transitive native-code/license supply chain;
 - macOS M150 and Android M144 are different WebRTC generations until real-device
   interoperability is proved;
 - a user can authorize the wrong device if identity confirmation UX is unclear;
-- cryptographic schema design is not evidence of a correct implementation.
+- cryptographic schema design is not evidence of a correct implementation;
+- the shared Swift/Kotlin bound-context known-answer value does not prove the full
+  pairing transcript or wire bytes interoperate; a real cross-language pairing
+  fixture/run remains required.
 
 ## Security exit criteria
 

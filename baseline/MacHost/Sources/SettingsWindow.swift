@@ -189,8 +189,8 @@ struct SettingsView: View {
                     ForEach(ConnectionMode.allCases, id: \.self) { mode in
                         Button(action: { settings.connectionMode = mode }) {
                             HStack(spacing: 4) {
-                                Image(systemName: mode == .usb ? "cable.connector" : "wifi")
-                                Text(mode == .usb ? "USB" : "Wireless")
+                                Image(systemName: mode.systemImage)
+                                Text(mode.title)
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
@@ -504,8 +504,10 @@ struct SettingsView: View {
                             }
                         }
 
-                        // Network Settings (port — applies to both modes; listener binds on it)
-                        FrostedGroupBox(title: "Network Settings", icon: "network") {
+                        // USB and trusted-LAN use a local TCP listener. Internet
+                        // mode uses signaling plus WebRTC DataChannels instead.
+                        if settings.connectionMode != .internet {
+                            FrostedGroupBox(title: "Network Settings", icon: "network") {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Text("Server Port")
@@ -533,11 +535,16 @@ struct SettingsView: View {
                                 }
                             }
                         }
+                        }
 
                         // Wireless-mode-only: QR + Paired Devices.
                         if settings.connectionMode == .wireless {
                             WirelessSection(settings: settings,
                                             pairedDeviceStore: (NSApp.delegate as? AppDelegate)?.pairedDeviceStore ?? PairedDeviceStore())
+                        }
+
+                        if settings.connectionMode == .internet {
+                            InternetSection(settings: settings)
                         }
 
                         // Startup / headless behaviour
@@ -618,12 +625,13 @@ struct SettingsView: View {
                                     }
                                     Spacer()
                                     Picker("", selection: $settings.startupMode) {
-                                        Text("USB").tag(ConnectionMode.usb)
-                                        Text("Wireless").tag(ConnectionMode.wireless)
+                                        ForEach(ConnectionMode.allCases, id: \.self) { mode in
+                                            Text(mode.title).tag(mode)
+                                        }
                                     }
                                     .pickerStyle(.segmented)
                                     .labelsHidden()
-                                    .frame(width: 150)
+                                    .frame(width: 220)
                                     .disabled(!settings.autoStartStreamingOnLaunch)
                                 }
                             }
@@ -870,7 +878,7 @@ struct SettingsView: View {
                                         .font(.system(size: 11))
                                         .help("ADB serial used for reverse forwarding and automatic launch.")
                                     }
-                                } else {
+                                } else if settings.connectionMode == .wireless {
                                     StatusRow(title: "WiFi",
                                               status: settings.wifiConnected ? "Connected" : "Disconnected",
                                               color: settings.wifiConnected ? .green : .red,
@@ -879,6 +887,19 @@ struct SettingsView: View {
                                               status: settings.listeningAddress.map { "\($0):\(settings.port)" } ?? "—",
                                               color: settings.listeningAddress != nil ? .green : .secondary,
                                               hint: "The LAN address the tablet must reach. The QR code embeds this exact host:port — if it changes (e.g. you switch WiFi), re-scan the new QR on the tablet.")
+                                } else {
+                                    StatusRow(
+                                        title: "Internet session",
+                                        status: settings.internetStatus.title,
+                                        color: settings.internetStatusColor,
+                                        hint: "The authenticated, end-to-end encrypted WebRTC product session state."
+                                    )
+                                    StatusRow(
+                                        title: "Route",
+                                        status: settings.internetRoutePreference.title,
+                                        color: settings.internetStatus == .direct ? .green : .secondary,
+                                        hint: settings.internetRoutePreference.helpText
+                                    )
                                 }
 
                                 if !settings.hasScreenRecordingPermission {
@@ -1003,7 +1024,9 @@ struct SettingsView: View {
                                             .stroke(Color.green.opacity(0.3), lineWidth: 2)
                                             .scaleEffect(1.5)
                                     }
-                                Text("Running on port \(settings.port)")
+                                Text(settings.connectionMode == .internet
+                                     ? settings.internetStatus.title
+                                     : "Running on port \(settings.port)")
                                     .font(.system(size: 12))
                             }
                             .padding(.horizontal, 12)
@@ -1254,6 +1277,239 @@ struct RotationButton: View {
     }
 }
 
+// MARK: - Internet Session
+
+private struct InternetSection: View {
+    @ObservedObject var settings: DisplaySettings
+    @State private var signalingToken = ""
+    @State private var turnCredential = ""
+    @State private var pairingDeviceRequest = ""
+
+    private var endpointIsValid: Bool {
+        DisplaySettings.isSafeInternetSignalingEndpoint(settings.internetSignalingEndpoint)
+    }
+
+    var body: some View {
+        FrostedGroupBox(title: "Secure Internet", icon: "lock.shield") {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Signaling endpoint")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    TextField("https://signal.example.com", text: $settings.internetSignalingEndpoint)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(settings.internetStatus.isActive)
+                    if !endpointIsValid {
+                        Text("Use a credential-free HTTPS URL. Plain HTTP is accepted only for 127.0.0.1 development.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.red)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Local development session profile")
+                        .font(.system(size: 11, weight: .semibold))
+
+                    TextField("Short-lived session ID", text: $settings.internetSessionIdentifier)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(settings.internetStatus.isActive)
+                    TextField(
+                        "Authoritative session epoch",
+                        value: $settings.internetAuthoritativeSessionEpoch,
+                        format: .number
+                    )
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(settings.internetStatus.isActive)
+                    TextField("ICE URLs (comma-separated)", text: $settings.internetICEURLs)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(settings.internetStatus.isActive)
+                    if !DisplaySettings.isSafeInternetICEURLList(settings.internetICEURLs) {
+                        Text("Use credential-free STUN/TURN URLs; enter TURN credentials only in the secure field.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.red)
+                    }
+                    TextField("TURN username", text: $settings.internetTURNUsername)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(settings.internetStatus.isActive)
+
+                    SecureField("Short-lived host role token", text: $signalingToken)
+                        .textFieldStyle(.roundedBorder)
+                    SecureField("TURN credential (if TURN is configured)", text: $turnCredential)
+                        .textFieldStyle(.roundedBorder)
+
+                    HStack {
+                        Button("Save credentials to Keychain") {
+                            if settings.saveInternetCredentials(
+                                signalingToken: signalingToken,
+                                turnCredential: turnCredential
+                            ) {
+                                signalingToken = ""
+                                turnCredential = ""
+                            }
+                        }
+                        .disabled(signalingToken.isEmpty)
+                        Spacer()
+                        Text(settings.internetCredentialsAvailable ? "Keychain ready" : "Credentials required")
+                            .font(.system(size: 10))
+                            .foregroundColor(settings.internetCredentialsAvailable ? .green : .orange)
+                    }
+                    .controlSize(.small)
+
+                    Text("This profile is for local integration only. Role tokens and TURN credentials are never written to preferences or logs.")
+                        .font(.system(size: 10))
+                        .foregroundColor(.orange)
+                }
+                .padding(10)
+                .background(Color.orange.opacity(0.07))
+                .cornerRadius(8)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Picker("Route", selection: $settings.internetRoutePreference) {
+                        ForEach(InternetRoutePreference.allCases) { route in
+                            Text(route.title).tag(route)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(settings.internetStatus.isActive)
+                    Text(settings.internetRoutePreference.helpText)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(settings.internetStatusColor)
+                        .frame(width: 8, height: 8)
+                    Text(settings.internetStatus.title)
+                        .font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                    if let peer = settings.internetPeerDisplayName, !peer.isEmpty {
+                        Text(peer)
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                if let pairingCode = settings.internetPairingCode {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Confirm this one-time code on both devices")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Text(pairingCode)
+                            .font(.system(size: 18, weight: .semibold, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.accentColor.opacity(0.08))
+                    .cornerRadius(8)
+                }
+
+                if let pairingURL = settings.internetPairingURL,
+                   let image = QRRenderer.render(url: pairingURL, size: 180) {
+                    HStack {
+                        Spacer()
+                        Image(nsImage: image)
+                            .resizable()
+                            .interpolation(.none)
+                            .frame(width: 180, height: 180)
+                            .accessibilityLabel("One-time Internet pairing QR code")
+                        Spacer()
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Device pairing response")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        TextField("Paste Base64 or JSON response from Android", text: $pairingDeviceRequest)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Complete pairing") {
+                            settings.completeInternetPairing(
+                                deviceRequest: pairingDeviceRequest
+                            )
+                            pairingDeviceRequest = ""
+                        }
+                        .disabled(pairingDeviceRequest.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .controlSize(.small)
+                    }
+                }
+
+                if let acceptance = settings.internetPairingAcceptance {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Return this acceptance to Android")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Text(acceptance)
+                            .font(.system(size: 9, design: .monospaced))
+                            .lineLimit(3)
+                            .textSelection(.enabled)
+                    }
+                    .padding(8)
+                    .background(Color.green.opacity(0.08))
+                    .cornerRadius(8)
+                }
+
+                if let error = settings.internetErrorMessage {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.red)
+                        if let recovery = settings.internetRecoverySuggestion {
+                            Text(recovery)
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.red.opacity(0.08))
+                    .cornerRadius(8)
+                }
+
+                HStack(spacing: 8) {
+                    Button(
+                        settings.internetStatus == .pairing
+                            ? "Pairing…"
+                            : (settings.internetStatus == .revoked ? "Pair New Identity" : "Pair")
+                    ) {
+                        settings.pairInternetDevice()
+                    }
+                    .disabled(!endpointIsValid || settings.internetStatus.isActive || settings.internetStatus == .pairing)
+
+                    Button("Revoke", role: .destructive) {
+                        settings.revokeInternetDevice()
+                    }
+                    .disabled(settings.internetStatus == .idle || settings.internetStatus == .revoked)
+
+                    Spacer()
+
+                    if settings.internetStatus.isActive {
+                        Button("Disconnect") {
+                            settings.disconnectInternetSession()
+                        }
+                    } else {
+                        Button("Connect") {
+                            settings.connectInternetSession()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(
+                            !endpointIsValid ||
+                            !settings.internetStatus.canConnect ||
+                            !settings.internetCredentialsAvailable
+                        )
+                    }
+                }
+                .controlSize(.small)
+
+                Text("Pairing credentials and identity keys are stored only in Keychain. Direct and TURN routes carry identical application-layer ciphertext.")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
 // MARK: - Display Settings
 
 class DisplaySettings: ObservableObject {
@@ -1327,6 +1583,77 @@ class DisplaySettings: ObservableObject {
     @Published var adbDeviceSerial: String {
         didSet { save("adbDeviceSerial", adbDeviceSerial) }
     }
+    @Published var internetSignalingEndpoint: String {
+        didSet {
+            // Persist only the non-sensitive service location. Tokens, URL
+            // credentials, query strings and fragments must stay out of defaults.
+            if Self.isSafeInternetSignalingEndpoint(internetSignalingEndpoint) {
+                save("internetSignalingEndpoint", internetSignalingEndpoint)
+            }
+        }
+    }
+    @Published var internetRoutePreference: InternetRoutePreference {
+        didSet { save("internetRoutePreference", internetRoutePreference.rawValue) }
+    }
+    @Published var internetSessionIdentifier: String {
+        didSet { save("internetSessionIdentifier", internetSessionIdentifier) }
+    }
+    @Published var internetICEURLs: String {
+        didSet {
+            if Self.isSafeInternetICEURLList(internetICEURLs) {
+                save("internetICEURLs", internetICEURLs)
+            }
+        }
+    }
+    @Published var internetTURNUsername: String {
+        didSet { save("internetTURNUsername", internetTURNUsername) }
+    }
+    @Published var internetPeerDeviceID: String {
+        didSet { save("internetPeerDeviceID", internetPeerDeviceID) }
+    }
+    @Published var internetSharedSecretName: String {
+        didSet { save("internetSharedSecretName", internetSharedSecretName) }
+    }
+    @Published var internetBootstrapSecretName: String {
+        didSet { save("internetBootstrapSecretName", internetBootstrapSecretName) }
+    }
+    @Published var internetTranscriptContextBase64: String {
+        didSet { save("internetTranscriptContextBase64", internetTranscriptContextBase64) }
+    }
+    @Published var internetHostDeviceID: String {
+        didSet { save("internetHostDeviceID", internetHostDeviceID) }
+    }
+    @Published var internetPeerKeyID: String {
+        didSet { save("internetPeerKeyID", internetPeerKeyID) }
+    }
+    @Published var internetPeerKeyEpoch: UInt64 {
+        didSet { save("internetPeerKeyEpoch", internetPeerKeyEpoch) }
+    }
+    /// Non-secret metadata for the most recently revoked signing identity.
+    /// Generic settings reset deliberately does not erase this deny history;
+    /// the Keychain tombstone remains the authoritative exact-key block.
+    @Published var internetRevokedPeerDeviceID: String {
+        didSet { save("internetRevokedPeerDeviceID", internetRevokedPeerDeviceID) }
+    }
+    @Published var internetRevokedPeerKeyID: String {
+        didSet { save("internetRevokedPeerKeyID", internetRevokedPeerKeyID) }
+    }
+    @Published var internetRevokedPeerKeyEpoch: UInt64 {
+        didSet { save("internetRevokedPeerKeyEpoch", internetRevokedPeerKeyEpoch) }
+    }
+    @Published var internetPeerSigningPublicKeyBase64: String {
+        didSet { save("internetPeerSigningPublicKeyBase64", internetPeerSigningPublicKeyBase64) }
+    }
+    @Published var internetAuthoritativeSessionEpoch: UInt64 {
+        didSet {
+            let maximum = UInt64(Int64.max)
+            guard internetAuthoritativeSessionEpoch <= maximum else {
+                internetAuthoritativeSessionEpoch = maximum
+                return
+            }
+            save("internetAuthoritativeSessionEpoch", internetAuthoritativeSessionEpoch)
+        }
+    }
 
     // Runtime state (not persisted)
     @Published var displayCreated = false
@@ -1356,11 +1683,25 @@ class DisplaySettings: ObservableObject {
     @Published var currentBitrate: Double = 0
     @Published var captureMethod: String = "Initializing..."
     @Published var wirelessTokenError: String?
+    @Published var internetStatus: InternetConnectionStatus = .idle
+    @Published var internetErrorMessage: String?
+    @Published var internetRecoverySuggestion: String?
+    @Published var internetPairingCode: String?
+    @Published var internetPeerDisplayName: String?
+    @Published var internetPairingURL: String?
+    @Published var internetPairingAcceptance: String?
+    @Published var internetCredentialsAvailable = false
 
     var onToggleServer: (() -> Void)?
     var onRequestScreenRecordingPermission: (() -> Void)?
     var onRequestAccessibilityPermission: (() -> Void)?
     var onResetWirelessToken: (() -> Bool)?
+    var onPairInternetDevice: (() -> Void)?
+    var onRevokeInternetDevice: (() -> Void)?
+    var onConnectInternetSession: (() -> Void)?
+    var onDisconnectInternetSession: (() -> Void)?
+    var onSaveInternetCredentials: ((String, String) -> Bool)?
+    var onCompleteInternetPairing: ((String) -> Void)?
 
     init() {
         self.resolution = defaults.string(forKey: keyPrefix + "resolution") ?? "2000x1200"
@@ -1400,6 +1741,68 @@ class DisplaySettings: ObservableObject {
         self.adbDeviceSerial = defaults.string(
             forKey: keyPrefix + "adbDeviceSerial"
         ) ?? ""
+        let storedInternetEndpoint = defaults.string(
+            forKey: keyPrefix + "internetSignalingEndpoint"
+        ) ?? "http://127.0.0.1:8088"
+        self.internetSignalingEndpoint = Self.isSafeInternetSignalingEndpoint(storedInternetEndpoint)
+            ? storedInternetEndpoint
+            : "http://127.0.0.1:8088"
+        let internetRouteRaw = defaults.string(
+            forKey: keyPrefix + "internetRoutePreference"
+        ) ?? InternetRoutePreference.preferDirect.rawValue
+        self.internetRoutePreference = InternetRoutePreference(rawValue: internetRouteRaw) ?? .preferDirect
+        self.internetSessionIdentifier = defaults.string(
+            forKey: keyPrefix + "internetSessionIdentifier"
+        ) ?? ""
+        let storedInternetICEURLs = defaults.string(
+            forKey: keyPrefix + "internetICEURLs"
+        ) ?? "stun:127.0.0.1:9"
+        self.internetICEURLs = Self.isSafeInternetICEURLList(storedInternetICEURLs)
+            ? storedInternetICEURLs
+            : "stun:127.0.0.1:9"
+        self.internetTURNUsername = defaults.string(
+            forKey: keyPrefix + "internetTURNUsername"
+        ) ?? ""
+        self.internetPeerDeviceID = defaults.string(
+            forKey: keyPrefix + "internetPeerDeviceID"
+        ) ?? ""
+        self.internetSharedSecretName = defaults.string(
+            forKey: keyPrefix + "internetSharedSecretName"
+        ) ?? ""
+        self.internetBootstrapSecretName = defaults.string(
+            forKey: keyPrefix + "internetBootstrapSecretName"
+        ) ?? ""
+        self.internetTranscriptContextBase64 = defaults.string(
+            forKey: keyPrefix + "internetTranscriptContextBase64"
+        ) ?? ""
+        self.internetHostDeviceID = defaults.string(
+            forKey: keyPrefix + "internetHostDeviceID"
+        ) ?? "mac-\(UUID().uuidString.lowercased())"
+        self.internetPeerKeyID = defaults.string(
+            forKey: keyPrefix + "internetPeerKeyID"
+        ) ?? ""
+        self.internetPeerKeyEpoch = (defaults.object(
+            forKey: keyPrefix + "internetPeerKeyEpoch"
+        ) as? NSNumber)?.uint64Value ?? 0
+        self.internetRevokedPeerDeviceID = defaults.string(
+            forKey: keyPrefix + "internetRevokedPeerDeviceID"
+        ) ?? ""
+        self.internetRevokedPeerKeyID = defaults.string(
+            forKey: keyPrefix + "internetRevokedPeerKeyID"
+        ) ?? ""
+        self.internetRevokedPeerKeyEpoch = (defaults.object(
+            forKey: keyPrefix + "internetRevokedPeerKeyEpoch"
+        ) as? NSNumber)?.uint64Value ?? 0
+        self.internetPeerSigningPublicKeyBase64 = defaults.string(
+            forKey: keyPrefix + "internetPeerSigningPublicKeyBase64"
+        ) ?? ""
+        self.internetAuthoritativeSessionEpoch = min((defaults.object(
+            forKey: keyPrefix + "internetAuthoritativeSessionEpoch"
+        ) as? NSNumber)?.uint64Value ?? 0, UInt64(Int64.max))
+
+        if defaults.string(forKey: keyPrefix + "internetHostDeviceID") == nil {
+            defaults.set(internetHostDeviceID, forKey: keyPrefix + "internetHostDeviceID")
+        }
 
         if selectedDisplayUUID == nil,
            let migratedUUID = DisplayCatalog.persistentUUID(
@@ -1417,6 +1820,39 @@ class DisplaySettings: ObservableObject {
 
     private func save(_ key: String, _ value: Any) {
         defaults.set(value, forKey: keyPrefix + key)
+    }
+
+    static func isSafeInternetSignalingEndpoint(_ value: String) -> Bool {
+        guard let components = URLComponents(string: value),
+              let scheme = components.scheme?.lowercased(),
+              let host = components.host,
+              !host.isEmpty,
+              components.user == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil else {
+            return false
+        }
+        return scheme == "https" || (scheme == "http" && host == "127.0.0.1")
+    }
+
+    static func isSafeInternetICEURLList(_ value: String) -> Bool {
+        let values = value.split(separator: ",").map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard !values.isEmpty else { return false }
+        return values.allSatisfy { raw in
+            guard let url = URL(string: raw),
+                  let scheme = url.scheme?.lowercased(),
+                  ["stun", "stuns", "turn", "turns"].contains(scheme),
+                  let separator = raw.firstIndex(of: ":"),
+                  raw.index(after: separator) < raw.endIndex else {
+                return false
+            }
+            let authority = raw[raw.index(after: separator)...]
+                .split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)[0]
+            return !authority.contains("@")
+        }
     }
 
     struct ResolutionGroup: Identifiable {
@@ -1481,6 +1917,44 @@ class DisplaySettings: ObservableObject {
 
     func resetWirelessToken() -> Bool {
         onResetWirelessToken?() ?? false
+    }
+
+    func pairInternetDevice() {
+        internetErrorMessage = nil
+        internetRecoverySuggestion = nil
+        onPairInternetDevice?()
+    }
+
+    func revokeInternetDevice() {
+        onRevokeInternetDevice?()
+    }
+
+    func connectInternetSession() {
+        internetErrorMessage = nil
+        internetRecoverySuggestion = nil
+        onConnectInternetSession?()
+    }
+
+    func disconnectInternetSession() {
+        onDisconnectInternetSession?()
+    }
+
+    func saveInternetCredentials(signalingToken: String, turnCredential: String) -> Bool {
+        onSaveInternetCredentials?(signalingToken, turnCredential) ?? false
+    }
+
+    func completeInternetPairing(deviceRequest: String) {
+        onCompleteInternetPairing?(deviceRequest)
+    }
+
+    var internetStatusColor: Color {
+        switch internetStatus {
+        case .direct: return .green
+        case .relay: return .blue
+        case .pairing, .connecting, .recovering: return .orange
+        case .revoked, .failed: return .red
+        case .idle, .paired: return .secondary
+        }
     }
 
     /// Detect rebuilds / re-signs that can leave stale TCC grants. Uses a
@@ -1562,7 +2036,13 @@ class DisplaySettings: ObservableObject {
         let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
                     "gamingBoost", "port", "rotation", "showAllResolutions",
                     "customWidth", "customHeight", "touchEnabled", "autoStartStreamingOnLaunch", "hideDockIcon", "startupMode",
-                    "displaySource", "selectedDisplayID", "selectedDisplayUUID", "adbDeviceSerial"]
+                    "displaySource", "selectedDisplayID", "selectedDisplayUUID", "adbDeviceSerial",
+                    "internetSignalingEndpoint", "internetRoutePreference",
+                    "internetSessionIdentifier", "internetICEURLs", "internetTURNUsername",
+                    "internetPeerDeviceID", "internetSharedSecretName",
+                    "internetBootstrapSecretName", "internetTranscriptContextBase64",
+                    "internetHostDeviceID", "internetPeerKeyID", "internetPeerKeyEpoch",
+                    "internetPeerSigningPublicKeyBase64", "internetAuthoritativeSessionEpoch"]
         for key in keys {
             defaults.removeObject(forKey: keyPrefix + key)
         }
@@ -1588,6 +2068,20 @@ class DisplaySettings: ObservableObject {
             for: selectedDisplayID
         )
         adbDeviceSerial = ""
+        internetSignalingEndpoint = "http://127.0.0.1:8088"
+        internetRoutePreference = .preferDirect
+        internetSessionIdentifier = ""
+        internetICEURLs = "stun:127.0.0.1:9"
+        internetTURNUsername = ""
+        internetPeerDeviceID = ""
+        internetSharedSecretName = ""
+        internetBootstrapSecretName = ""
+        internetTranscriptContextBase64 = ""
+        internetHostDeviceID = "mac-\(UUID().uuidString.lowercased())"
+        internetPeerKeyID = ""
+        internetPeerKeyEpoch = 0
+        internetPeerSigningPublicKeyBase64 = ""
+        internetAuthoritativeSessionEpoch = 0
 
         print("Settings reset to defaults")
     }

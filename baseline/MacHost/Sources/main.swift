@@ -31,6 +31,14 @@ if CommandLine.arguments.contains("--phase3-webrtc-signaling-self-test") {
     exit(ProductionWebRTCEngineSelfTest.runWithSignalingService() ? EXIT_SUCCESS : EXIT_FAILURE)
 }
 
+if CommandLine.arguments.contains("--phase3-product-signaling-self-test") {
+    exit(InternetProductSessionSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+}
+
+if CommandLine.arguments.contains("--phase3-product-android-interop-host") {
+    exit(InternetProductExternalHostE2E.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+}
+
 // Entry point
 let app = NSApplication.shared
 

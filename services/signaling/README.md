@@ -71,6 +71,25 @@ The `201` response contains an opaque `session_id`, separate `host_token` and
 authenticated channel to that endpoint. Repeating the same `request_id` and TTL
 returns the identical response with `200`; changing the TTL returns `409`.
 
+Invalidate a session through the same trusted authority when the product ends
+or revokes it:
+
+```bash
+curl --fail-with-body -X DELETE \
+  -H "Authorization: Bearer $VIBE_SIGNALING_ISSUER_TOKEN" \
+  "http://127.0.0.1:8088/v1/sessions/$SESSION_ID"
+```
+
+The first and repeated invalidations return `204`. Invalidation immediately
+destroys both role tokens and all queued SDP/ICE events, wakes blocked long
+polls with `404`, and rejects further role access. The service retains an
+in-memory tombstone until the session's original expiry: replaying the original
+`request_id` returns `409` instead of minting replacement credentials. The
+authority must use a new request ID and a larger product `session_epoch` for a
+fresh reconnect. This endpoint invalidates one known rendezvous session; it is
+not a durable device-revocation database or a replacement for terminating the
+product session and blocking relay credentials.
+
 Publish the host offer (the device uses its token and type `answer`):
 
 ```bash
@@ -115,12 +134,13 @@ by default. Sessions and all SDP/ICE state are deleted from memory at TTL.
 | --- | --- |
 | `200` | Poll success or exact idempotent replay |
 | `201` | Session or message created |
+| `204` | Session invalidated, including an idempotent repeat |
 | `400` | Invalid JSON, query, identifier, payload, or configured limit |
-| `401` | Invalid internal issuer/metrics authentication |
+| `401` | Invalid internal issuer/metrics authentication, including invalidation |
 | `404` | Unknown session or wrong session/role bearer; deliberately indistinguishable |
 | `409` | Role/state violation or conflicting idempotency replay |
 | `410` | Session expired and the caller proved possession of its role token |
-| `429` | Rate, waiter, candidate, or active-session limit reached |
+| `429` | Rate, waiter, candidate, or reserved-session-record limit reached |
 
 ## Configuration and limits
 
@@ -130,7 +150,7 @@ All JSON fields are required. Unknown fields fail startup.
 | --- | --- |
 | `listen_address` | TCP bind address; keep loopback unless a secure sidecar provides TLS |
 | `session_ttl_seconds`, `max_session_ttl_seconds` | Default and authority-selectable upper TTL |
-| `max_active_sessions` | Hard in-memory session cap |
+| `max_active_sessions` | Hard in-memory session/reserved-tombstone cap |
 | `session_creates_per_minute` | Global trusted-authority request cap per process |
 | `messages_per_minute` | Per-role, per-session publish cap |
 | `max_request_body_bytes` | HTTP JSON body cap |
@@ -150,11 +170,16 @@ device ID. Add edge source-IP/global limits and DDoS controls at the TLS proxy.
 - `GET /readyz` is unauthenticated readiness and reveals no dependency details.
 - `GET /metrics` requires the independent metrics bearer.
 
-Prometheus output contains low-cardinality counts for sessions, accepted
-messages, idempotent retries, rejected requests, poll timeouts, expired cleanup,
-and an active-session gauge. It has no session/device/IP/token labels. Logs are
-limited to lifecycle and generic network-write failures; raw SDP, candidates,
-tokens, keys, stable identifiers, and source addresses are never logged.
+Prometheus output contains low-cardinality counts for created/invalidated sessions,
+accepted messages, idempotent retries, rejected requests, poll timeouts, and
+expired cleanup. Gauges distinguish active sessions, retained invalidation
+tombstones, total reserved records that consume `max_active_sessions`, and
+currently blocked long polls. Thus `active_sessions=0` together with
+`reserved_session_records=max_active_sessions` explains a capacity `429` rather
+than implying free capacity. Metrics have no session/device/IP/token labels.
+Logs are limited to lifecycle and generic network-write failures; raw SDP,
+candidates, tokens, keys, stable identifiers, and source addresses are never
+logged.
 
 ## Container
 
@@ -185,10 +210,11 @@ go test -run TestRealProcessHostDeviceExchangeAndGracefulShutdown -count=1 .
 ```
 
 The process test builds and starts the real binary, waits for health, creates a
-session, performs offer/answer and bidirectional ICE exchange, scrapes metrics,
-sends `SIGTERM`, verifies a clean exit, and checks that known SDP/candidate/token
-secrets were absent from logs. This proves rendezvous behavior, not a WebRTC ICE
-connection or TURN allocation.
+session, performs offer/answer and bidirectional ICE exchange, invalidates the
+session while a long poll is blocked, verifies role-token and request-ID replay
+rejection, scrapes metrics, sends `SIGTERM`, verifies a clean exit, and checks
+that known SDP/candidate/token secrets were absent from logs. This proves
+rendezvous behavior, not a WebRTC ICE connection or TURN allocation.
 
 ## Upgrade and rollback
 

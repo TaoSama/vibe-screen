@@ -7,6 +7,7 @@ final class WebRTCInternetTransport {
     var onError: ((InternetTransportError) -> Void)?
     var onControlReceived: ((Data) -> Void)?
     var onMediaReceived: ((Data) -> Void)?
+    var onFreshSessionRecoveryRequired: ((Int) -> Void)?
 
     private struct MutableState {
         var transportState: InternetTransportState = .idle
@@ -31,6 +32,7 @@ final class WebRTCInternetTransport {
     private let hasApplicationCipher: Bool
     private let limits: InternetTransportLimits
     private let adaptivePolicy: AdaptiveMediaPolicy
+    private let recoveryStrategy: InternetRecoveryStrategy
     private let lock = NSLock()
     private var mutableState: MutableState
 
@@ -39,10 +41,15 @@ final class WebRTCInternetTransport {
         packetCipher: PlatformSessionPacketCipher? = nil,
         limits: InternetTransportLimits = .standard,
         recoveryPolicy: NetworkRecoveryPolicy = .standard,
-        adaptivePolicy: AdaptiveMediaPolicy = AdaptiveMediaPolicy()
+        adaptivePolicy: AdaptiveMediaPolicy = AdaptiveMediaPolicy(),
+        recoveryStrategy: InternetRecoveryStrategy = .restartICE
     ) {
         if let packetCipher {
-            self.engine = ProtectedWebRTCEngine(engine: engine, packetCipher: packetCipher)
+            self.engine = ProtectedWebRTCEngine(
+                engine: engine,
+                packetCipher: packetCipher,
+                limits: limits
+            )
             self.hasApplicationCipher = true
         } else {
             self.engine = engine
@@ -50,16 +57,14 @@ final class WebRTCInternetTransport {
         }
         self.limits = limits
         self.adaptivePolicy = adaptivePolicy
+        self.recoveryStrategy = recoveryStrategy
         self.mutableState = MutableState(recovery: NetworkRecoveryStateMachine(policy: recoveryPolicy))
         self.engine.install(callbacks: WebRTCEngineCallbacks(
             connectionStateChanged: { [weak self] state in self?.handleEngineState(state) },
             networkPathChanged: { [weak self] path in self?.handleNetworkPath(path) },
             networkQualitySampled: { [weak self] sample in self?.handleNetworkQuality(sample) },
             messageReceived: { [weak self] payload, channel in
-                switch channel {
-                case .control: self?.onControlReceived?(payload)
-                case .media: self?.onMediaReceived?(payload)
-                }
+                self?.handleInbound(payload, channel: channel)
             }
         ))
     }
@@ -385,7 +390,34 @@ final class WebRTCInternetTransport {
             return state.recovery.attempt
         }
         setState(.recovering(attempt: attempt))
-        engine.restartICE()
+        switch recoveryStrategy {
+        case .restartICE:
+            engine.restartICE()
+        case .freshSession:
+            onFreshSessionRecoveryRequired?(attempt)
+        }
+    }
+
+    private func handleInbound(_ payload: Data, channel: InternetTransportChannel) {
+        let maximum = channel == .control
+            ? limits.maximumControlMessageBytes
+            : limits.maximumMediaFrameBytes
+        guard !payload.isEmpty else {
+            failTransport(.emptyPayload(channel: channel))
+            return
+        }
+        guard payload.count <= maximum else {
+            failTransport(.payloadTooLarge(
+                channel: channel,
+                actual: payload.count,
+                maximum: maximum
+            ))
+            return
+        }
+        switch channel {
+        case .control: onControlReceived?(payload)
+        case .media: onMediaReceived?(payload)
+        }
     }
 
     private func handleNetworkQuality(_ sample: InternetNetworkQualitySample) {

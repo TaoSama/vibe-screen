@@ -116,14 +116,18 @@ deleted according to the operations retention policy.
 `services/signaling/` now implements a short-lived authenticated REST/long-poll
 rendezvous for one offer, one answer, and bounded ICE events. Swift and Android
 clients interoperate with that contract in local tests. It is intentionally a
-single-instance in-memory service; restart invalidates all sessions.
+single-instance in-memory service; restart invalidates all sessions. The issuer
+can also invalidate a session explicitly with an idempotent authenticated
+`DELETE`: role tokens, queued signaling payloads, and long polls become unusable
+immediately, while a request-ID tombstone remains until the original expiry.
 
-The current WebRTC adapters send a second offer for ICE restart, while the service
-rejects a second offer. Production recovery therefore requires one explicit
-versioned design: either negotiation generations in one session, or atomic issue
-of a fresh signaling session/token/PeerConnection and larger session epoch. Until
-that is implemented and tested across both clients, network-handoff recovery is
-not complete.
+The service still rejects a second offer. The product transport therefore does
+not attempt to reuse the old rendezvous after a network handoff: it suspends
+application traffic and asks its owner for a fresh signaling session, role token,
+TURN credential where needed, PeerConnection, and larger authority-agreed session
+epoch. The macOS UI currently fails closed and asks the operator to supply that
+fresh profile; automatic authority issuance and macOS/Android device proof of the
+complete handoff remain release gates.
 
 ## TURN and ICE
 
@@ -154,9 +158,17 @@ On a validated network fingerprint change or WebRTC disconnection:
 4. reset replay windows and media generation under newly derived session keys;
 5. request a keyframe and resume only after configuration acknowledgment.
 
-The current policy code covers bounded media and fail-closed application record
-encryption. Fresh-session identity/key renewal across ICE recovery and product
-stream/session composition remain pending.
+The macOS product composition now sends VideoToolbox output through a Protocol v1
+media header into the protected media DataChannel and dispatches Protocol v1 touch,
+video-configuration, heartbeat, disconnect, and keyframe control on the protected
+reliable channel. Android has the matching Protocol v1 product-session composition
+and consumes an authority-agreed epoch. Both sides reject an epoch at or below the
+durable high-water mark before traffic keys are used. Network change
+requests a replacement product session rather than a second offer in the old
+rendezvous. Android M144 and macOS M150 product-session interoperability now has
+authorized direct and forced-local-TURN device evidence, including Protocol v1,
+E2EE media/control and touch. Automatic authority issuance, real screen capture,
+and old-record injection across a real handoff remain unproved.
 
 ## Adaptive media
 
@@ -207,31 +219,48 @@ semantic change requires a new protocol package/version.
 | Area | Repository evidence | Status / release gate |
 | --- | --- | --- |
 | Security contract | `contracts/proto/vibescreen/protocol/v1/security.proto`, pairing/session/envelope additions | P-256/HKDF/AES-GCM schema exists; generated/canonical cross-language crypto interoperability and security-semantic review remain gates |
-| Security core | `packages/security/` | Go implementation, restart snapshots, attack tests and vectors exist; Swift/Kotlin platform lifecycle code exists, but cross-language product-session interoperability remains unproved |
-| macOS Internet transport | `baseline/MacHost/Sources/Phase3/InternetTransport/`, stasel WebRTC `150.0.0` | Real M150 adapter, REST signaling, Keychain session factory and Protocol v1 record layer pass direct and forced local TURN E2E; capture/encoder/input/UI and Android interop remain gates |
-| Android Internet transport | `baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/`, `io.github.webrtc-sdk:android:144.7559.09` | Real M144 PeerConnection/DataChannel adapter, strict REST client and an AndroidKeyStore-backed factory that atomically loads paired secrets into the AES-GCM record layer build; instrumentation APK builds but cannot run during device freeze; main UI wiring pending |
+| Pairing and identity | `baseline/MacHost/Sources/Phase3/Security/InternetPairing*`, Android `security/InternetPairing*` | Swift/Kotlin implement the same strict pairing URL/request/acceptance shape, stable platform signing identities, ephemeral P-256 ECDH, signed canonical transcript, one-time/expiry checks, and protected pairing-secret storage. The local UI scans the offer QR and exchanges the request/acceptance as operator-copied strict JSON; automatic authenticated authority exchange and real cross-language pairing remain unproved |
+| Security core | `packages/security/` and platform security directories | Go implementation, restart snapshots, attack tests and vectors exist. macOS state is peer-scoped; both platforms reserve the common authority epoch before first use, and macOS persists signed targeted revocation tombstones. Cross-language product-session and platform crash-boundary evidence remain gates |
+| macOS product session | `baseline/MacHost/Sources/Phase3/ProductSession/`, `AppDelegate.swift`, `SettingsWindow.swift`, stasel WebRTC `150.0.0` | Internet mode is separated from the legacy TCP server; real capture/HEVC, Protocol v1 control/media, protected DataChannels, touch injection, direct/forced-TURN selection, Keychain credentials, and actionable state UI are wired. Synthetic local direct/relay and real Android M144 direct/forced-local-TURN product sessions pass; real ScreenCaptureKit device streaming remains a gate |
+| Android product session | `MainActivity.kt`, `InternetSessionProfileStore.kt`, Android Internet packages, `io.github.webrtc-sdk:android:144.7559.09` | Internet UI scans the pairing offer, completes the copied request/acceptance flow, imports a strict short-lived lease, selects direct/forced TURN, drives Protocol v1 video/touch and decoder state, and exposes connect/disconnect/revoke/error/recovery. Tokens and pairing/session secrets are AndroidKeyStore-wrapped; sensitive dialogs disable screenshots/autofill, and release cleartext is disabled. An authorized Android device passed M144↔M150 direct and forced-local-TURN interop plus actionable UI checks; public Internet, real screen capture, handoff and soak remain gates |
 | Existing LAN security | `WirelessAuth.swift`, `AuthHandshake.kt`, `StreamingServer.swift`, `StreamClient.kt` | 32-byte bearer token over plaintext TCP; trusted LAN only, not E2EE |
-| Relay control/data plane | `services/relay/`, `deploy/phase3/` | Short-term credential control plane and pinned coturn Compose data plane exist; real local credential/allocation/ChannelBind and forced-relay libwebrtc E2E pass. Public deployment, trusted usage collector and multi-node state remain gates |
-| Signaling | `services/signaling/` plus Swift/Kotlin clients | Runnable single-instance service and real-process tests exist; one-offer state conflicts with adapter ICE restart, no durable/multi-instance authority or revocation feed |
-| Identity/rotation/revocation/replay | Protocol, Go core, platform security directories | Implementations and unit/self-tests exist; product composition, cross-language vectors, atomic platform crash consistency, and active-session revocation remain gates |
+| Relay control/data plane | `services/relay/`, `deploy/phase3/` | Short-term credential control plane and pinned coturn Compose data plane exist; new credentials and usage events are rejected after a persisted revoke, and issuance/revoke are serialized. Existing coturn allocations are not terminated by this control-plane action; public deployment, authoritative usage, active-allocation disconnect, and multi-node state remain gates |
+| Signaling | `services/signaling/` plus Swift/Kotlin clients | Runnable single-instance service, real-process tests, and issuer-only session invalidation exist. It remains a one-offer rendezvous without durable/multi-instance identity authority or a device revocation feed |
+| Rotation/revocation/replay | Protocol, Go core, platform security and product-session directories | Record replay and old-epoch rejection plus peer-scoped signed local revocation have unit/self-test coverage. End-to-end revocation propagation to the peer, signaling and active TURN allocation; rotation interoperability; and real reconnect injection remain gates |
 | Adaptive video | policy types and unit tests | Policy foundation only; encoder/config acknowledgment integration pending |
 | Network simulation | `scripts/phase3/network_profile.py`, `tests/phase3/` | Deterministic contract simulation only; explicitly not OS-level impairment, ICE, or TURN evidence |
-| Android Internet evidence | none at documentation creation time | Must complete [TEST.md](TEST.md) device matrix |
+| Android Internet evidence | [TEST.md](TEST.md), `evidence/android-product-interop.json` | Direct and forced local coturn product-session interop plus actionable UI passed on an authorized device. Public Internet/STUN/TURN, real capture, handoff/reconnect, cross-service revoke, latency and soak remain open |
 
 ### Open implementation findings
 
 These are release blockers, not accepted architecture:
 
-- Android's real engine still has open lifecycle/concurrency, pending-media order,
-  inbound-size, route-reporting, stats/adaptation, and signaling retry/strict-DTO
-  findings. Credentials are redacted by current `toString` tests, but all logging
-  and crash paths still require device validation.
-- macOS M150 local loopback, direct signaling and forced local coturn E2E pass,
-  including application AES-GCM. XCTest has not executed because full
-  Xcode/XCTest is unavailable. M150-to-Android-M144 interoperability, app
-  integration, public TURN, and signed packaging remain gates.
-- Both adapters' ICE restart behavior is incompatible with the current signaling
-  one-offer state machine; do not claim network-handoff recovery.
+- The strict Swift/Kotlin pairing formats and canonical inputs are implemented
+  independently. A shared hard-coded known-answer value now pins the bound
+  product-session context, but full pairing transcript/wire fixtures and a real QR
+  request/acceptance round trip are still required. Do not infer full
+  interoperability from same-language tests.
+- macOS M150 loopback, direct signaling and forced local coturn transport E2E
+  pass, including application AES-GCM. Those legacy adapter checks do not by
+  themselves prove the new Protocol v1 product session. The separate product
+  slice now proves Protocol v1 negotiation, touch/control and keyframe/delta media
+  over both direct and forced local TURN with a synthetic peer. It still does not
+  start capture/UI or prove M150-to-Android-M144 interoperability. XCTest has not
+  executed because full Xcode/XCTest is unavailable.
+- Recovery now fails closed into a fresh-session request instead of sending a
+  second offer, but the local development UI requires manually supplied authority
+  credentials and epoch. Do not claim automatic network-handoff recovery until a
+  real Mac/Android run proves new signaling tokens, PeerConnection, record keys,
+  epoch advance, and rejection of old records.
+- The macOS and Android local-development flows deliberately require copied
+  pairing request/acceptance and imported session-authority profiles. This is an
+  operable integration surface, not a production pairing/session issuer.
+- Product revocation is not one cross-service transaction. macOS persists its
+  peer-scoped signed tombstone and stops/deletes local session material; Android
+  UI currently removes its local profile/secrets; signaling invalidation and relay
+  revocation are separate authority APIs; an existing coturn allocation requires
+  a separate data-plane disconnect. End-to-end signed propagation and reconnect
+  rejection remain gates.
 - The Go secure-channel nonce is derived from channel and sequence. Product
   integration must persist or replace session/key epoch before reuse after crash;
   the standalone package alone cannot guarantee lifecycle uniqueness.
@@ -240,8 +269,8 @@ These are release blockers, not accepted architecture:
   collector, and the rate limiter/store are process-local. Usage ingestion,
   metrics scraping, credential issuance, and administration now use distinct
   tokens; the ledger atomically replaces and directory-syncs its state file.
-  Admin revocation blocks
-  new credentials but cannot terminate an already-issued TURN allocation.
+  Admin revocation blocks new credentials and later usage events but cannot
+  terminate an already-issued TURN allocation.
   Authoritative coturn accounting, cryptographic signaling binding, multi-instance
   storage, container-engine execution of the pinned image, and public reachability
   remain pending.

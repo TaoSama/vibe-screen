@@ -249,21 +249,23 @@ two-hour run.
 
 ### Phase 3 — Secure Internet access
 
-**Current status: runnable integration slice; Internet mode is not yet exposed
-in the product UI.** The repository includes a runnable authenticated signaling
-service, a coturn credential/quota control plane and pinned Compose data plane,
-and production libwebrtc adapters for macOS and Android. Control uses a
-reliable ordered DataChannel; media uses an unordered zero-retransmit channel
-with bounded latest-frame policy. Protocol v1 AES-256-GCM records protect both
-channels above WebRTC so a TURN relay handles only ciphertext.
+**Current status: runnable development-preview product slice and UI; not a
+stable Internet release.** The macOS and Android apps expose manual pairing,
+short-lived session-profile import, direct/forced-TURN selection, product-session
+state and recovery errors. The repository also includes authenticated signaling,
+a coturn credential/quota control plane and pinned Compose data plane, and
+production libwebrtc adapters. Control uses a reliable ordered DataChannel;
+media uses an unordered zero-retransmit channel with bounded latest-frame policy.
+Protocol v1 AES-256-GCM records protect both channels above WebRTC so a TURN
+relay handles only ciphertext.
 
 The macOS M150 adapter has completed real local offer/answer, ICE and
 bidirectional DataChannel tests through both direct and forced coturn relay
 candidate pairs. Its application record layer is wired to the Keychain-backed
 identity/session lifecycle. The Android M144 adapter, AndroidKeyStore lifecycle,
-REST signaling client and encrypted DataChannel instrumentation test all build;
-device execution remains frozen for Phase 0's coordinated soak owner. The
-existing trusted-LAN path is still a separate plaintext mode and must not be
+REST signaling client, product-session UI and encrypted DataChannel
+instrumentation test all build; the instrumentation test has not run on a device.
+The existing trusted-LAN path is still a separate plaintext mode and must not be
 presented as Internet E2EE.
 
 Reproduce the local Mac integration checks with:
@@ -274,8 +276,8 @@ swift build -c release
 .build/release/Telemachus --phase3-internet-self-test
 .build/release/Telemachus --phase3-webrtc-loopback-self-test
 cd ../..
-python3 scripts/phase3_webrtc/run_local_e2e.py --mode direct
-python3 scripts/phase3_webrtc/run_local_e2e.py --mode relay --skip-build
+python3 scripts/phase3_webrtc/run_local_e2e.py --mode direct --slice product
+python3 scripts/phase3_webrtc/run_local_e2e.py --mode relay --slice product --skip-build
 ```
 
 Start/configure signaling through [`services/signaling`](services/signaling/README.md)
@@ -288,12 +290,16 @@ See the [Phase 3 requirements](docs/changes/2026-08-04-phase-3-secure-internet/P
 [threat model](docs/changes/2026-08-04-phase-3-secure-internet/THREAT_MODEL.md),
 [test plan](docs/changes/2026-08-04-phase-3-secure-internet/TEST.md), and
 [relay operations](docs/changes/2026-08-04-phase-3-secure-internet/OPERATIONS.md).
-Product UI/session-authority composition, real encoded screen/input flow,
-fresh-session recovery after network handoff, public NAT/TURN deployment,
-Android device interoperability, revocation propagation and soak remain release
-gates rather than shipped features. Signaling and relay stores are currently
-single-node implementations, and coturn usage is not yet an authoritative input
-to the control-plane daily-byte ledger.
+An authorized Android device has completed real M144↔M150 Protocol v1 product
+sessions over direct candidates and forced local coturn, including E2EE media,
+touch and the actionable Internet UI. This is local signaling/relay evidence,
+not public Internet evidence. Automatic account/session-authority issuance, real
+encoded ScreenCaptureKit output through the device, automatic fresh-session
+recovery after network handoff, public NAT/TURN deployment, cross-service
+revocation propagation and soak remain release gates rather than shipped
+features. Signaling and relay stores are currently single-node implementations,
+and coturn usage is not yet an authoritative input to the control-plane
+daily-byte ledger.
 
 The target is roughly 80–150 ms on healthy Internet paths; relay distance and
 network quality may increase it.

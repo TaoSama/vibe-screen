@@ -16,6 +16,7 @@ var (
 	ErrDuplicateEvent = errors.New("duplicate event")
 	ErrUnknownSession = errors.New("unknown session")
 	ErrSessionExists  = errors.New("session already exists")
+	ErrDeviceRevoked  = errors.New("device revoked")
 )
 
 type UsageEvent struct {
@@ -82,6 +83,12 @@ func (s *UsageStore) Apply(now time.Time, event UsageEvent) error {
 	defer s.mu.Unlock()
 	day := now.UTC().Format(time.DateOnly)
 	current := s.state.Devices[event.DeviceID]
+	if current != nil && current.Day == day && current.EventIDs[event.EventID] {
+		return ErrDuplicateEvent
+	}
+	if current != nil && current.Revoked {
+		return ErrDeviceRevoked
+	}
 	usage := cloneUsage(current)
 	if usage == nil || usage.Day != day {
 		sessions := make(map[string]bool)
@@ -93,9 +100,6 @@ func (s *UsageStore) Apply(now time.Time, event UsageEvent) error {
 			revoked = usage.Revoked
 		}
 		usage = &deviceUsage{Day: day, Sessions: sessions, EventIDs: make(map[string]bool), Revoked: revoked}
-	}
-	if usage.EventIDs[event.EventID] {
-		return ErrDuplicateEvent
 	}
 	if event.IngressBytes > ^uint64(0)-usage.IngressBytes || event.EgressBytes > ^uint64(0)-usage.EgressBytes {
 		return ErrQuotaExceeded

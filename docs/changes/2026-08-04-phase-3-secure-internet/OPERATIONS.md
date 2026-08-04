@@ -12,17 +12,21 @@ The current `services/relay/` binary is an experimental credential/usage control
 service, not the production shape below. A trusted control-plane bearer requests
 session-scoped credentials, usage comes from a trusted collector, quota state is
 stored in one local file, and request-rate state is process-local. Admin revocation
-blocks future credentials but does not terminate an active TURN allocation or
-prove a signed device/host authorization. The binary itself remains separate from
-the coturn data-plane process in the Compose deployment.
+blocks future credentials and rejects every subsequent usage event for that
+device, but does not terminate an active TURN allocation or prove a signed
+device/host authorization. Credential issuance and revoke are serialized so no
+new credential is returned after a completed revoke. The binary itself remains
+separate from the coturn data-plane process in the Compose deployment.
 Do not expose it to the public Internet until those boundaries and the
 container/readiness findings in [TECH.md](TECH.md#open-implementation-findings)
 are resolved.
 
-The signaling service accepts one offer/answer per session. Current client ICE
-restart attempts to renegotiate in the existing session and will receive a state
-conflict. Operators must not enable unattended network-handoff recovery until the
-generation/new-session contract is implemented consistently.
+The signaling service accepts one offer/answer per session and now exposes an
+issuer-only idempotent invalidation operation. Current product transports request
+a wholly fresh session instead of attempting a second offer. Operators must not
+enable unattended network-handoff recovery until authority issuance can deliver
+both endpoints a new session ID, role tokens, optional TURN credential,
+PeerConnection, and larger common epoch and a Mac/Android test proves it.
 
 ## Service inventory
 
@@ -108,10 +112,15 @@ mitigation, escalation path, and rollback/feature-disable control.
 ### Suspected endpoint-key compromise
 
 1. Persist and distribute a monotonic revocation.
-2. Terminate matching signaling sessions, TURN credentials, and active transport.
-3. Confirm direct and relay reconnect rejection.
-4. Preserve redacted audit events; do not collect screen/input content.
-5. Require explicit re-pairing with a new device identity after remediation.
+2. Invalidate each matching signaling session through the issuer endpoint and
+   verify both role tokens and any long poll fail immediately.
+3. Revoke relay credential issuance, then separately disconnect existing coturn
+   allocations and reconcile any ledger entry whose final usage event is rejected.
+4. Terminate the endpoint transport; signaling invalidation alone does not stop a
+   direct PeerConnection.
+5. Confirm direct and relay reconnect rejection before and after service restart.
+6. Preserve redacted audit events; do not collect screen/input content.
+7. Require explicit re-pairing with a new device identity after remediation.
 
 ### TURN credential leak or abuse
 
@@ -164,3 +173,21 @@ processor, and user deletion behavior before public service launch.
 - rollback has been exercised and does not roll back revocation/key epochs;
 - feature flags can disable new sessions by version/region while preserving clear
   user errors.
+
+## Shared Android device lease
+
+The local acceptance endpoint `100.72.246.116:5555` uses three coordinated lock
+paths. `/tmp/vibe-screen-device-soak.lock` and
+`/tmp/vibe-screen-device-android.lock` must both be absent. The Internet task must
+atomically create and hold `/tmp/vibe-screen-device-internet.lock` with a private
+owner token and `0600` permissions before any ADB command, app install/stop/launch,
+device query, media-port probe, or Mac host stream start. The acceptance script
+requires an exact byte-for-byte match between that lock and `--lease-token`, and
+rechecks all locks before every ADB subprocess. Extra `--device-lock` values only
+add checks and cannot replace these mandatory paths.
+
+On completion or failure, stop the app, Mac host, signaling and coturn processes;
+remove only the ADB reverse/forward mappings created by this run; then delete the
+Internet lock. Never include its owner token in evidence. Absence of the
+coordination locks and ownership of the Internet lock authorize a run; neither is
+evidence that any device test passed.

@@ -8,6 +8,12 @@ import org.junit.Test
 
 class WebRtcInternetTransportTest {
     @Test
+    fun productionChannelLabelsMatchTheCrossPlatformContract() {
+        assertEquals("vibescreen.control.v1", AndroidWebRtcPeerEngine.CONTROL_CHANNEL_LABEL)
+        assertEquals("vibescreen.media.v1", AndroidWebRtcPeerEngine.MEDIA_CHANNEL_LABEL)
+    }
+
+    @Test
     fun validatesChannelSemanticsBeforeStarting() {
         val peer = FakePeerEngine(mediaSemantics = DataChannelSemantics.RELIABLE_CONTROL)
         val transport = fixture(peer = peer)
@@ -56,11 +62,12 @@ class WebRtcInternetTransportTest {
     }
 
     @Test
-    fun restartsIceWhenValidatedNetworkChangesAndThrottlesDuplicates() {
+    fun requestsFreshSessionWhenValidatedNetworkChangesAndThrottlesDuplicates() {
         val clock = FakeClock(10_000)
         val peer = FakePeerEngine()
         val monitor = FakeNetworkMonitor()
-        val transport = fixture(peer, monitor, clock)
+        val events = mutableListOf<InternetTransportEvent>()
+        val transport = fixture(peer, monitor, clock, events)
         transport.start()
         monitor.available(network("wifi"))
         peer.observer.onConnected(PeerRoute.DIRECT)
@@ -68,17 +75,20 @@ class WebRtcInternetTransportTest {
         monitor.available(network("cellular"))
         monitor.available(network("vpn"))
 
-        assertEquals(1, peer.iceRestarts)
+        assertEquals(1, events.filterIsInstance<InternetTransportEvent.FreshSessionRequested>().size)
+        assertEquals(0, peer.iceRestarts)
         clock.now += 5_000
         transport.tick()
-        assertEquals(2, peer.iceRestarts)
+        assertEquals(2, events.filterIsInstance<InternetTransportEvent.FreshSessionRequested>().size)
+        assertEquals(0, peer.iceRestarts)
     }
 
     @Test
     fun suspendsOnNetworkLossAndRecoversImmediatelyOnValidatedNetwork() {
         val peer = FakePeerEngine()
         val monitor = FakeNetworkMonitor()
-        val transport = fixture(peer, monitor)
+        val events = mutableListOf<InternetTransportEvent>()
+        val transport = fixture(peer, monitor, events = events)
         transport.start()
         monitor.available(network("wifi"))
         peer.observer.onConnected(PeerRoute.DIRECT)
@@ -88,7 +98,8 @@ class WebRtcInternetTransportTest {
         monitor.available(network("cellular"))
 
         assertEquals(InternetTransportState.RECOVERING, transport.state)
-        assertEquals(1, peer.iceRestarts)
+        assertEquals(1, events.filterIsInstance<InternetTransportEvent.FreshSessionRequested>().size)
+        assertEquals(0, peer.iceRestarts)
     }
 
     @Test
@@ -110,7 +121,8 @@ class WebRtcInternetTransportTest {
         val clock = FakeClock(1_000)
         val peer = FakePeerEngine()
         val monitor = FakeNetworkMonitor()
-        val transport = fixture(peer, monitor, clock)
+        val events = mutableListOf<InternetTransportEvent>()
+        val transport = fixture(peer, monitor, clock, events)
         transport.start()
         monitor.available(network("wifi"))
 
@@ -120,23 +132,20 @@ class WebRtcInternetTransportTest {
         clock.now += 100
         transport.tick()
 
-        assertEquals(1, peer.iceRestarts)
+        assertEquals(1, events.filterIsInstance<InternetTransportEvent.FreshSessionRequested>().size)
+        assertEquals(0, peer.iceRestarts)
     }
 
     @Test
-    fun failedIceRestartRemainsPendingForNextTick() {
-        val clock = FakeClock(1_000)
-        val peer = FakePeerEngine(iceRestartFailuresRemaining = 1)
-        val monitor = FakeNetworkMonitor()
-        val transport = fixture(peer, monitor, clock)
-        transport.start()
-        monitor.available(network("wifi"))
-        peer.observer.onConnected(PeerRoute.DIRECT)
-
-        assertThrows(IllegalStateException::class.java) { monitor.available(network("cellular")) }
-        transport.tick()
-
-        assertEquals(2, peer.iceRestartCalls)
+    fun relayOnlyPolicyRequiresTurnConfiguration() {
+        assertThrows(IllegalArgumentException::class.java) {
+            PeerConfiguration(
+                iceServers = listOf(IceServer(listOf("stun:stun.example.test:3478"))),
+                sessionId = "session-1",
+                sessionEpoch = 1,
+                iceTransportPolicy = IceTransportPolicy.RELAY_ONLY,
+            )
+        }
     }
 
     @Test
@@ -163,19 +172,21 @@ class WebRtcInternetTransportTest {
         val clock = FakeClock(1_000)
         val peer = FakePeerEngine()
         val monitor = FakeNetworkMonitor()
-        val transport = fixture(peer, monitor, clock)
+        val events = mutableListOf<InternetTransportEvent>()
+        val transport = fixture(peer, monitor, clock, events)
         transport.start()
         monitor.available(network("wifi"))
         peer.observer.onDisconnected()
 
         transport.tick()
-        assertEquals(0, peer.iceRestarts)
+        assertEquals(0, events.filterIsInstance<InternetTransportEvent.FreshSessionRequested>().size)
         clock.now += 500
         transport.tick()
-        assertEquals(1, peer.iceRestarts)
+        assertEquals(1, events.filterIsInstance<InternetTransportEvent.FreshSessionRequested>().size)
         clock.now += 1_000
         transport.tick()
-        assertEquals(2, peer.iceRestarts)
+        assertEquals(2, events.filterIsInstance<InternetTransportEvent.FreshSessionRequested>().size)
+        assertEquals(0, peer.iceRestarts)
     }
 
     @Test
@@ -265,7 +276,6 @@ private class FakePeerEngine(
     override val controlSemantics: DataChannelSemantics = DataChannelSemantics.RELIABLE_CONTROL,
     override val mediaSemantics: DataChannelSemantics = DataChannelSemantics.LATEST_MEDIA,
     private val startFailure: Throwable? = null,
-    private var iceRestartFailuresRemaining: Int = 0,
 ) : WebRtcPeerEngine {
     lateinit var observer: WebRtcPeerEngine.Observer
     var started = false
@@ -291,10 +301,6 @@ private class FakePeerEngine(
 
     override fun restartIce() {
         iceRestartCalls++
-        if (iceRestartFailuresRemaining > 0) {
-            iceRestartFailuresRemaining--
-            throw IllegalStateException("ICE restart failed")
-        }
         iceRestarts++
     }
 

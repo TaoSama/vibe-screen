@@ -2,10 +2,20 @@ package dev.telemachus.display
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.ByteBuffer
 
 class QRScannerLumaTest {
+    @Test
+    fun routesLegacyAndInternetPairingNamespaces() {
+        assertTrue(QRScannerActivity.isSupportedPairingNamespace("telemachus://127.0.0.1:1?t=x"))
+        assertTrue(QRScannerActivity.isSupportedPairingNamespace("vibescreen://pair?v=1&o=x"))
+        assertFalse(QRScannerActivity.isSupportedPairingNamespace("vibescreen://pair-evil?v=1&o=x"))
+        assertFalse(QRScannerActivity.isSupportedPairingNamespace("https://example.test"))
+    }
+
     @Test
     fun packsPaddedPlaneAndRotatesClockwise() {
         val source =

@@ -108,7 +108,7 @@ final class ClientCallbackGenerationGate {
     }
 }
 
-class StreamingServer {
+class StreamingServer: EncodedFrameSink {
     private static let networkQueueKey = DispatchSpecificKey<ObjectIdentifier>()
     private enum ConnectionProtocolMode: Equatable {
         case legacy

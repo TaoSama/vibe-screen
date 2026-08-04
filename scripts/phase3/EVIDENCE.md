@@ -27,12 +27,33 @@ session are observed:
 ```bash
 python3 scripts/phase3/android_internet_acceptance.py \
   --apk /absolute/path/to/app-debug.apk \
+  --lease-token "$VIBE_SCREEN_INTERNET_LEASE_TOKEN" \
   --connect-tap 540,1600 \
   --streaming-pattern 'decoded.*frame|streaming active' \
-  --input-pattern 'input.*ack' \
-  --reconnect-pattern 'session_epoch.*2|reconnected' \
+  --host-input-evidence ~/Library/Logs/Telemachus/telemachus.log \
+  --host-input-pattern 'phase3_input_injected session_epoch=[0-9]+ input_id=[0-9]+' \
+  --reconnect-pattern 'VibeInternet.*active.*epoch=[0-9]+' \
+  --session-epoch-pattern 'epoch=(?P<epoch>[0-9]+)' \
   --evidence /tmp/vibe-screen-phase3/android.json
 ```
+
+The script always requires both `/tmp/vibe-screen-device-soak.lock` and
+`/tmp/vibe-screen-device-android.lock` to be absent, and requires
+`/tmp/vibe-screen-device-internet.lock` to contain the exact UTF-8 bytes supplied
+by `--lease-token`. It checks all three conditions before validation begins and
+again before every ADB subprocess. `--device-lock` is repeatable and can only add
+coordination locks; it cannot replace the mandatory checks. A missing/mismatched
+Internet owner lock, an occupied coordination lock, or an unreadable lock fails
+closed. Never put the lease token in tracked evidence or shell history; source it
+from a protected local environment or credential file.
+
+The host-input file is the Mac host's real owner-only runtime log at
+`~/Library/Logs/Telemachus/telemachus.log`; `debugLog` creates it on first use
+and rotates it at 1 MiB. The script captures its inode and offset immediately
+before injecting the swipe and accepts only newly appended bytes, capped at
+1 MiB. The session-epoch regular expression must contain the named group
+`epoch`; the post-relaunch epoch must be strictly greater than the initial
+epoch.
 
 Generated reports, logcat, UI dumps, credentials, APKs, and captures must stay
 outside the repository (the examples use `/tmp/vibe-screen-phase3/`). If an
@@ -60,3 +81,33 @@ credential expiry, relay byte accounting, rate limiting, or abuse controls.
 Those claims require the external SUT mode and deployed relay/Android evidence;
 the reference policy model is intentionally labelled so it cannot be mistaken
 for such evidence.
+
+Use the explicit product slice to exercise the macOS product-session composition
+through real signaling/libwebrtc and, in relay mode, forced local coturn:
+
+```bash
+python3 scripts/phase3_webrtc/run_local_e2e.py \
+  --mode direct --slice product \
+  --output /tmp/vibe-phase3-product-direct.json \
+  --timeout-seconds 60
+python3 scripts/phase3_webrtc/run_local_e2e.py \
+  --mode relay --slice product --skip-build \
+  --output /tmp/vibe-phase3-product-relay.json \
+  --timeout-seconds 60
+```
+
+The product evidence must identify `slice: product`, the selected direct/relay
+route, Protocol v1 negotiation, session/config epochs, touch/control exchange,
+keyframe and delta media, application AEAD, seeded-plaintext log scan, tool
+versions, and the complete repository source fingerprint. Dirty-tree evidence is
+explicitly labelled non-commit evidence and includes the tracked diff hash plus
+the untracked-file manifest/hash. The build manifest binds that source fingerprint
+to both executable hashes; `--skip-build` fails closed if source or binaries have
+changed. Relay credentials are supplied through a temporary `0600` coturn config,
+not process arguments. The forced libwebrtc relay candidate pair is the TURN
+proof; there is no separate `turnutils` smoke.
+
+This uses a synthetic local Protocol v1 device harness and does not start screen
+capture or the product UI. It is not macOS-to-Android, real encoded-screen/input,
+packet-capture, public-Internet/NAT, or deployed STUN/TURN evidence. The default
+`transport` slice retains the narrower adapter/DataChannel smoke test.

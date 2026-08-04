@@ -3,6 +3,7 @@ package dev.telemachus.display.internet.security
 import android.content.Context
 import dev.telemachus.display.internet.AndroidWebRtcPeerEngine
 import dev.telemachus.display.internet.IceServer
+import dev.telemachus.display.internet.IceTransportPolicy
 import dev.telemachus.display.internet.PeerConfiguration
 import dev.telemachus.display.internet.PeerRole
 import dev.telemachus.display.internet.SignalingConfiguration
@@ -18,7 +19,6 @@ class AndroidStoredInternetSession internal constructor(
 ) : AutoCloseable {
     override fun close() {
         engine.close()
-        configuration.sessionCipher?.close()
     }
 }
 
@@ -28,15 +28,15 @@ class AndroidStoredInternetSession internal constructor(
  */
 class AndroidStoredInternetSessionFactory(
     context: Context,
-    private val deviceId: String,
+    val localDeviceId: String,
     private val secretStore: AndroidSecretStore = AndroidSecretStore(context.applicationContext),
     private val sessionSecurity: AndroidSessionSecurity =
-        AndroidSessionSecurity(deviceId, context.applicationContext),
+        AndroidSessionSecurity(localDeviceId, context.applicationContext),
 ) {
     private val applicationContext = context.applicationContext
 
     init {
-        require(deviceId.isNotBlank()) { "Device ID must not be blank" }
+        require(localDeviceId.isNotBlank()) { "Device ID must not be blank" }
     }
 
     fun persistPairingSecrets(
@@ -65,9 +65,11 @@ class AndroidStoredInternetSessionFactory(
         sessionId: String,
         localRole: PeerRole,
         identityEpoch: Long,
+        authoritativeSessionEpoch: Long,
         transcriptContext: ByteArray,
         iceServers: List<IceServer>,
         signaling: SignalingConfiguration,
+        iceTransportPolicy: IceTransportPolicy = IceTransportPolicy.ALL,
         videoProfileSink: (VideoProfile) -> Unit = {},
     ): AndroidStoredInternetSession {
         require(pairingIdentifier.isNotBlank()) { "Pairing identifier must not be blank" }
@@ -88,6 +90,7 @@ class AndroidStoredInternetSessionFactory(
             val active =
                 sessionSecurity.startSession(
                     identityEpoch = identityEpoch,
+                    authoritativeSessionEpoch = authoritativeSessionEpoch,
                     sharedSecret = decoded.sharedSecret,
                     bootstrapSecret = decoded.bootstrapSecret,
                     transcriptContext = transcriptContext,
@@ -109,6 +112,7 @@ class AndroidStoredInternetSessionFactory(
                         sessionEpoch = active.sessionEpoch,
                         signaling = signaling,
                         sessionCipher = cipher,
+                        iceTransportPolicy = iceTransportPolicy,
                     )
                 return AndroidStoredInternetSession(
                     identity = active.identity,

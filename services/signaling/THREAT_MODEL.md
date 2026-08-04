@@ -28,14 +28,15 @@ mandatory even when signaling authentication succeeds.
 | Arbitrary data tunneling | Closed JSON schema permits only offer/answer/candidate/end records | Edge traffic anomaly alerts |
 | Slow request/poll exhaustion | HTTP read/header/write deadlines and per-role waiter cap | Reverse-proxy global concurrency limits |
 | Stale state after restart | State is intentionally not persisted, so restart destroys all sessions | Clients establish a fresh rendezvous/session epoch |
+| Active session invalidation | Authority-only invalidation destroys role tokens/events, wakes polls, and tombstones the request ID until original expiry | Product authority persists device revocation and also terminates product/TURN access |
 | Compromised signaling | Cannot decrypt application E2EE or authenticate peer transcript | Endpoint identity pinning; rotate role credentials |
 
 ## Explicit residual risks
 
-- A stolen valid role bearer can act as that role until the short session TTL;
-  there is no v0.1 per-session revocation endpoint or account/device revocation
-  feed. Kill the instance or wait for TTL, revoke the device in the authority,
-  and block relay credentials during incident response.
+- A stolen valid role bearer can act until the trusted authority invalidates
+  that known session or its short TTL expires. There is no v0.1 account/device
+  revocation feed, durable tombstone, or active TURN-allocation termination;
+  the product authority must coordinate those controls during incident response.
 - The service is single-instance and in-memory. Horizontal replicas do not share
   state, rate limits, or idempotency. Sticky routing does not make this durable.
 - The global issuer token authenticates only the trusted backend, not a human or
@@ -55,8 +56,9 @@ mandatory even when signaling authentication succeeds.
 
 Automated tests must cover wrong/cross-session/cross-role tokens, answer before
 offer, conflicting and exact retries, candidate count/size/body limits, unknown
-fields, repeated queries, concurrent waiter rejection, TTL wakeup, process log
-redaction, and graceful cancellation. Before an Internet release, additionally
+fields, repeated queries, concurrent waiter rejection, TTL wakeup, authority-only
+invalidation, request-ID tombstones, poll wakeup, process log redaction, and
+graceful cancellation. Before an Internet release, additionally
 test TLS policy, proxy parsing, device revocation propagation, ICE generations,
 TURN credential TTL binding, multi-instance storage, fuzzed JSON/SDP/candidates,
 process/core-dump handling, and an independent peer-transcript security review.

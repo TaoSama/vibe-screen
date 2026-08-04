@@ -1,7 +1,9 @@
 package dev.telemachus.display
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
+import java.util.UUID
 
 class PreferencesManager(
     context: Context,
@@ -52,4 +54,19 @@ class PreferencesManager(
     var clientRotation: ClientRotation
         get() = ClientRotation.fromName(prefs.getString("client_rotation", null))
         set(value) = prefs.edit().putString("client_rotation", value.name).apply()
+
+    var internetForceRelay: Boolean
+        get() = prefs.getBoolean("internet_force_relay", false)
+        set(value) = prefs.edit().putBoolean("internet_force_relay", value).apply()
+
+    @get:SuppressLint("ApplySharedPref") // Identity creation must be durable before a Keystore key is bound to it.
+    val internetDeviceId: String
+        get() {
+            prefs.getString("internet_device_id", null)?.takeIf(String::isNotBlank)?.let { return it }
+            val created = "android-${UUID.randomUUID()}"
+            check(prefs.edit().putString("internet_device_id", created).commit()) {
+                "Failed to persist the Internet device identity"
+            }
+            return created
+        }
 }

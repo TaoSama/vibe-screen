@@ -16,10 +16,10 @@ class WebRtcInternetTransport(
     AutoCloseable {
     private val lock = Any()
     private var activeNetwork: NetworkSnapshot? = null
-    private var lastIceRestartAtMillis = Long.MIN_VALUE
+    private var lastRecoveryRequestAtMillis = Long.MIN_VALUE
     private var reconnectAttempt = 0
     private var nextRecoveryAtMillis: Long? = null
-    private var pendingIceRestartReason: String? = null
+    private var pendingFreshSessionReason: String? = null
     @Volatile private var closed = false
 
     @Volatile
@@ -73,7 +73,7 @@ class WebRtcInternetTransport(
                 if (closed) return
                 reconnectAttempt = 0
                 nextRecoveryAtMillis = null
-                pendingIceRestartReason = null
+                pendingFreshSessionReason = null
                 transitionLocked(
                     if (route == PeerRoute.DIRECT) {
                         InternetTransportState.CONNECTED_DIRECT
@@ -128,6 +128,10 @@ class WebRtcInternetTransport(
         }
     }
 
+    override fun onFailure(error: Throwable) {
+        if (!synchronized(lock) { closed }) eventSink(InternetTransportEvent.Failure(error))
+    }
+
     override fun onAvailable(network: NetworkSnapshot) {
         var stateEvent: InternetTransportEvent.StateChanged? = null
         var restartReason: String? = null
@@ -138,7 +142,7 @@ class WebRtcInternetTransport(
                 if (activeNetwork?.id == network.id) {
                     activeNetwork = null
                     nextRecoveryAtMillis = null
-                    pendingIceRestartReason = null
+                    pendingFreshSessionReason = null
                     stateEvent = transitionLocked(InternetTransportState.SUSPENDED)
                 }
                 return@synchronized
@@ -152,11 +156,12 @@ class WebRtcInternetTransport(
                 forceRestart = true
                 scheduleRecoveryLocked()
             } else if (previousNetworkId != null && previousNetworkId != network.id) {
+                stateEvent = transitionLocked(InternetTransportState.RECOVERING)
                 restartReason = "network changed from $previousNetworkId to ${network.id}"
             }
         }
         stateEvent?.let(eventSink)
-        restartReason?.let { requestIceRestart(it, forceRestart) }
+        restartReason?.let { requestFreshSession(it, forceRestart) }
     }
 
     override fun onLost(networkId: String) {
@@ -165,7 +170,7 @@ class WebRtcInternetTransport(
                 if (closed || activeNetwork?.id != networkId) return
                 activeNetwork = null
                 nextRecoveryAtMillis = null
-                pendingIceRestartReason = null
+                pendingFreshSessionReason = null
                 transitionLocked(InternetTransportState.SUSPENDED)
             }
         stateEvent?.let(eventSink)
@@ -177,9 +182,9 @@ class WebRtcInternetTransport(
         synchronized(lock) {
             if (closed || activeNetwork == null) return
             val now = clock.nowMillis()
-            val pendingReason = pendingIceRestartReason
-            if (pendingReason != null && iceRestartCooldownElapsedLocked(now)) {
-                pendingIceRestartReason = null
+            val pendingReason = pendingFreshSessionReason
+            if (pendingReason != null && recoveryCooldownElapsedLocked(now)) {
+                pendingFreshSessionReason = null
                 restartReason = pendingReason
             } else {
                 val recoveryAt = nextRecoveryAtMillis
@@ -191,7 +196,7 @@ class WebRtcInternetTransport(
                 }
             }
         }
-        restartReason?.let { requestIceRestart(it, force = true) }
+        restartReason?.let { requestFreshSession(it, force = true) }
     }
 
     override fun close() {
@@ -200,7 +205,7 @@ class WebRtcInternetTransport(
                 if (closed) return
                 closed = true
                 nextRecoveryAtMillis = null
-                pendingIceRestartReason = null
+                pendingFreshSessionReason = null
                 transitionLocked(InternetTransportState.CLOSED)
             }
 
@@ -223,41 +228,30 @@ class WebRtcInternetTransport(
         closeFailure?.let { throw it }
     }
 
-    private fun requestIceRestart(
+    private fun requestFreshSession(
         reason: String,
         force: Boolean,
     ) {
-        val shouldRestart =
+        val shouldRequest =
             synchronized(lock) {
                 if (closed || activeNetwork == null) return
                 val now = clock.nowMillis()
-                if (!force && !iceRestartCooldownElapsedLocked(now)) {
-                    pendingIceRestartReason = reason
+                if (!force && !recoveryCooldownElapsedLocked(now)) {
+                    pendingFreshSessionReason = reason
                     false
                 } else {
-                    lastIceRestartAtMillis = now
-                    pendingIceRestartReason = null
+                    lastRecoveryRequestAtMillis = now
+                    pendingFreshSessionReason = null
                     true
                 }
             }
-        if (shouldRestart) {
-            try {
-                peerEngine.restartIce()
-                eventSink(InternetTransportEvent.IceRestartRequested(reason))
-            } catch (failure: Throwable) {
-                synchronized(lock) {
-                    if (!closed) {
-                        lastIceRestartAtMillis = Long.MIN_VALUE
-                        pendingIceRestartReason = reason
-                    }
-                }
-                throw failure
-            }
+        if (shouldRequest) {
+            eventSink(InternetTransportEvent.FreshSessionRequested(reason))
         }
     }
 
-    private fun iceRestartCooldownElapsedLocked(now: Long): Boolean =
-        lastIceRestartAtMillis == Long.MIN_VALUE || now - lastIceRestartAtMillis >= ICE_RESTART_COOLDOWN_MS
+    private fun recoveryCooldownElapsedLocked(now: Long): Boolean =
+        lastRecoveryRequestAtMillis == Long.MIN_VALUE || now - lastRecoveryRequestAtMillis >= RECOVERY_REQUEST_COOLDOWN_MS
 
     private fun scheduleRecoveryLocked() {
         if (nextRecoveryAtMillis != null) return
@@ -280,7 +274,7 @@ class WebRtcInternetTransport(
         this == InternetTransportState.CONNECTED_DIRECT || this == InternetTransportState.CONNECTED_RELAY
 
     companion object {
-        private const val ICE_RESTART_COOLDOWN_MS = 5_000L
+        private const val RECOVERY_REQUEST_COOLDOWN_MS = 5_000L
         private const val INITIAL_RECOVERY_DELAY_MS = 500L
         private const val MAX_RECOVERY_DELAY_MS = 8_000L
         private const val MAX_BACKOFF_SHIFT = 4

@@ -87,7 +87,7 @@ class ScreenCapture {
     private let fallbackLifecycle = FallbackCaptureLifecycle()
 
     // Streaming parameters (saved for restart)
-    private weak var currentServer: StreamingServer?
+    private weak var currentFrameSink: (any EncodedFrameSink)?
     private var currentBitrateMbps: Int = 20
     private var currentQuality: String = "medium"
     private var currentGamingBoost: Bool = false
@@ -144,7 +144,7 @@ class ScreenCapture {
             value: CMTimeValue(DispatchTime.now().uptimeNanoseconds / 1000),
             timescale: 1_000_000
         )
-        let sessionEpoch = currentServer?.currentSessionEpoch ?? 0
+        let sessionEpoch = currentFrameSink?.currentSessionEpoch ?? 0
 
         encodeQueue?.async {
             encoder.encode(
@@ -450,7 +450,7 @@ class ScreenCapture {
             self.encoder?.encode(
                 pixelBuffer: pixelBuffer,
                 presentationTimeStamp: pts,
-                sessionEpoch: self.currentServer?.currentSessionEpoch ?? 0
+                sessionEpoch: self.currentFrameSink?.currentSessionEpoch ?? 0
             )
         }
         pacingTimer.resume()
@@ -460,7 +460,7 @@ class ScreenCapture {
     // MARK: - Start streaming
 
     func startStreaming(
-        to server: StreamingServer?,
+        to frameSink: (any EncodedFrameSink)?,
         bitrateMbps: Int = 20,
         quality: String = "medium",
         gamingBoost: Bool = false,
@@ -468,7 +468,7 @@ class ScreenCapture {
     ) async throws {
         isStopping = false
         // Save parameters for potential restart
-        currentServer = server
+        currentFrameSink = frameSink
         currentBitrateMbps = bitrateMbps
         currentQuality = quality
         currentGamingBoost = gamingBoost
@@ -477,8 +477,8 @@ class ScreenCapture {
         let (width, height) = encodeSize(for: codec)
 
         encoder = VideoEncoder(width: width, height: height, codec: codec, bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost, frameRate: frameRate)
-        encoder?.onEncodedFrame = { [weak server] data, timestamp, isKeyframe, sessionEpoch in
-            server?.sendFrame(
+        encoder?.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
+            frameSink?.sendFrame(
                 data,
                 timestamp: timestamp,
                 isKeyframe: isKeyframe,
@@ -661,7 +661,7 @@ class ScreenCapture {
             self?.encoder?.encode(
                 pixelBuffer: pixelBufferBox.value,
                 presentationTimeStamp: pts,
-                sessionEpoch: self?.currentServer?.currentSessionEpoch ?? 0
+                sessionEpoch: self?.currentFrameSink?.currentSessionEpoch ?? 0
             )
         }
     }
@@ -1016,10 +1016,10 @@ class ScreenCapture {
         lastPixelBuffer = nil
 
         let (width, height) = encodeSize(for: newCodec)
-        let server = currentServer
+        let frameSink = currentFrameSink
         let newEncoder = VideoEncoder(width: width, height: height, codec: newCodec, bitrateMbps: currentBitrateMbps, quality: currentQuality, gamingBoost: currentGamingBoost, frameRate: currentFrameRate)
-        newEncoder.onEncodedFrame = { [weak server] data, timestamp, isKeyframe, sessionEpoch in
-            server?.sendFrame(
+        newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
+            frameSink?.sendFrame(
                 data,
                 timestamp: timestamp,
                 isKeyframe: isKeyframe,
@@ -1082,6 +1082,7 @@ class ScreenCapture {
         restartAttempted = false
         isRestarting = false
         isHealthCheckRunning = false
+        currentFrameSink = nil
     }
 
     private func invalidateFallbackCapture() {

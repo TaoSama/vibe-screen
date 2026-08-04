@@ -65,7 +65,10 @@ struct ProtocolV1Framer {
 }
 
 enum ProtocolV1MediaPacketError: Error, Equatable {
+    case invalidHeaderLength
     case headerTooLarge(Int)
+    case truncatedHeader
+    case payloadLengthMismatch(declared: Int, actual: Int)
     case payloadTooLarge(Int)
 }
 
@@ -88,6 +91,28 @@ enum ProtocolV1MediaPacketCodec {
         return result
     }
 
+    static func decode(_ frame: Data) throws -> (header: VSMediaPacketHeader, payload: Data) {
+        var cursor = 0
+        let headerLength = try decodeVarint(frame, cursor: &cursor)
+        guard headerLength <= maximumHeaderBytes else {
+            throw ProtocolV1MediaPacketError.headerTooLarge(headerLength)
+        }
+        guard headerLength <= frame.count - cursor else {
+            throw ProtocolV1MediaPacketError.truncatedHeader
+        }
+        let header = try VSMediaPacketHeader(
+            serializedBytes: frame.dropFirst(cursor).prefix(headerLength)
+        )
+        let payload = Data(frame.dropFirst(cursor + headerLength))
+        guard payload.count == Int(header.payloadLength) else {
+            throw ProtocolV1MediaPacketError.payloadLengthMismatch(
+                declared: Int(header.payloadLength),
+                actual: payload.count
+            )
+        }
+        return (header, payload)
+    }
+
     private static func encodeVarint(_ value: Int) -> Data {
         var remaining = UInt64(value)
         var result = Data()
@@ -98,6 +123,19 @@ enum ProtocolV1MediaPacketCodec {
             result.append(byte)
         } while remaining != 0
         return result
+    }
+
+    private static func decodeVarint(_ data: Data, cursor: inout Int) throws -> Int {
+        var value = 0
+        var shift = 0
+        while cursor < data.count, shift <= 28 {
+            let byte = data[data.index(data.startIndex, offsetBy: cursor)]
+            cursor += 1
+            value |= Int(byte & 0x7f) << shift
+            if byte & 0x80 == 0 { return value }
+            shift += 7
+        }
+        throw ProtocolV1MediaPacketError.invalidHeaderLength
     }
 }
 

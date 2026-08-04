@@ -8,6 +8,16 @@ network topology, direct/relay route, and raw log/evidence paths. A build, fake
 engine, emulator, or loopback result may prove its own layer only; none substitutes
 for the Xiaomi 12 Internet end-to-end gate.
 
+The shared Android endpoint is lease-controlled. Before any `adb connect`,
+install, force-stop, launch, device query, media-port probe, or Mac host stream
+start, require the soak and Android coordination locks to be absent and atomically
+hold `/tmp/vibe-screen-device-internet.lock`. The acceptance script requires the
+Internet lock bytes to exactly match its caller-supplied owner token, checks all
+locks at entry and immediately before every ADB subprocess, and does not provide
+a parameter that can disable a mandatory check. A refusal before the first ADB
+call records an empty command list; a lock acquired during a run stops subsequent
+device access.
+
 ## Reproducible local checks
 
 Run current repository checks first:
@@ -165,8 +175,9 @@ No Xiaomi 12 Phase 3 Internet acceptance evidence is recorded here yet. All
 device, security-review, network-simulation, relay-operation, latency, and soak
 criteria remain unproved until their raw artifacts exist and are reviewed.
 
-Local verification on 2026-08-04 proved the following layers in one shared-tree
-snapshot:
+Local verification on 2026-08-04 and 2026-08-05 proved the following layers in
+recorded shared-tree snapshots. A result applies only to the layer and tree state
+named by that run:
 
 - `make protocol`: format, lint, build, and v1 breaking check passed;
 - `go test -race ./... && go vet ./...` in `packages/security`: passed;
@@ -174,8 +185,11 @@ snapshot:
   concurrent relay source/test changes converged;
 - Phase 3 Python suite: 21 tests passed; security-vector CLI passed
   24 vectors, including direction reflection and global revocation sequencing;
-- Android `./gradlew testDebugUnitTest`: 68 tests passed with zero
-  failures/errors; this does not run instrumented PeerConnection tests;
+- Android `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`
+  passed with 98 tests and zero failures/errors/skips.
+  `compileDebugAndroidTestKotlin` and both debug APK builds passed.
+  `processReleaseMainManifest` also passed and the merged release
+  manifest sets `usesCleartextTraffic=false`;
 - Android `./gradlew auditReleaseDependencies`: passed the fixed AAR, Gson,
   SBOM and bundled WebRTC/Gson notice hashes; release packaging depends on this
   task;
@@ -203,8 +217,55 @@ snapshot:
 - The relay control plane's race suite passed after separating usage and metrics
   credentials, enforcing an exact Bearer scheme, exporting current-day estimated
   cost as a gauge, and syncing the state directory after atomic replacement.
+- Signaling issuer-only invalidation passed store, HTTP, race and repeated
+  real-process tests: invalidation is idempotent, destroys role tokens and queued
+  payloads, wakes long polls, and retains only the request-ID tombstone until
+  expiry.
+- Relay revoke/issuance serialization and revoked-device rejection passed race
+  and persistence tests. New credentials and every later usage lifecycle event
+  fail closed after revocation. The coturn integration still relayed 10/10 test
+  messages; it did not prove termination of an allocation that was already active
+  when the control-plane revoke occurred.
+- Phase 3 Python tests cover fail-closed device-lease handling and evidence
+  revision recording. These tests do not access the Android endpoint.
+- Swift and Kotlin pairing implementations have local happy-path, one-time,
+  expiry, downgrade, mutation, strict-wire, and protected-secret-storage tests;
+  the Android pairing target passed 8/8 tests. They have not yet completed a real
+  cross-language QR exchange. Swift and Kotlin do share a passing hard-coded
+  product-session bound-context known-answer value. The macOS package builds, but
+  its XCTest cases did not execute in the Command Line Tools-only environment.
+- Platform lifecycle tests cover peer-scoped durable epoch reservation, rollback
+  rejection, signed targeted revocation, tombstone persistence, and pairing-secret
+  deletion failure/retry. Full macOS XCTest execution remains unavailable in the
+  selected Command Line Tools environment.
+- The local product slice passed in both modes:
+  `run_local_e2e.py --mode direct --slice product` and
+  `run_local_e2e.py --mode relay --slice product --skip-build`. Both traversed
+  `InternetProductSession`, the protected production M150 adapter and real
+  signaling; relay selected forced local coturn. The synthetic Protocol v1 device
+  completed hello/session acceptance at epoch 1, video-config acknowledgment at
+  config epoch 1, touch/control, and keyframe plus delta media. Application AEAD
+  and the seeded-plaintext log scan passed. Direct reported
+  `direct(local=host,remote=host,protocol=udp)`; forced TURN reported
+  `relay(local=relay,remote=relay,protocol=udp)` and its independent coturn check
+  relayed 3/3 datagrams. This did not start capture/UI and is not Android, real
+  screen/input, or packet-capture evidence.
+- An authorized Nubia P0110 / Android 16 (API 36) device run installed the final
+  APK and Android-test APK from source commit `90919dd`. A real macOS M150 host
+  and Android M144 client completed one direct and one forced-relay product
+  session through REST signaling. Both rounds passed Protocol v1 negotiation,
+  application AES-256-GCM, VideoConfig, keyframe plus delta delivery, and an
+  authenticated Android touch reaching the Mac harness. The relay round selected
+  relay candidates through a local coturn instance; coturn forwarded application
+  ciphertext and did not terminate the record layer. The final Android UI was
+  switched to Internet mode and exposed direct/Force TURN, import, connect, and
+  revoke controls. The curated, identifier-minimized result is
+  [android-product-interop.json](evidence/android-product-interop.json).
 
-These checks did not exercise public NAT/external TURN, OS-level network
-impairment, Android M144 against macOS M150, an Android Internet stream, or soak.
-The Android instrumentation APK uses the real record layer but cannot execute
-during the coordinated device freeze.
+The device run used local signaling over ADB reverse, direct host candidates,
+and forced local coturn over a private overlay. It is not evidence for public
+Internet, public STUN/TURN, carrier/CGNAT traversal, relay geography, real
+ScreenCaptureKit capture, automatic authority reconnect, cross-service revoke,
+packet capture, latency, or soak. Runtime start/finish timestamps were not
+captured by the first interop harness, so the curated record says so explicitly
+rather than inventing them. No result is inferred from lease-lock state.

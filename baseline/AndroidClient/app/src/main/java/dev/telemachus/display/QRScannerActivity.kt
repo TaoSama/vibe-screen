@@ -3,6 +3,7 @@ package dev.telemachus.display
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -34,6 +35,7 @@ class QRScannerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         setContentView(R.layout.activity_qr_scanner)
         findViewById<Button>(R.id.cancelButton).setOnClickListener { finishCanceled() }
         startCamera()
@@ -95,7 +97,7 @@ class QRScannerActivity : AppCompatActivity() {
                     false,
                 )
             val raw = reader.decode(BinaryBitmap(HybridBinarizer(source)), decodeHints).text
-            if (raw.startsWith("telemachus://")) {
+            if (isSupportedPairingNamespace(raw)) {
                 deliverResult(raw)
             }
         } catch (_: NotFoundException) {
@@ -112,7 +114,12 @@ class QRScannerActivity : AppCompatActivity() {
         if (alreadyDelivered) return
         alreadyDelivered = true
         runOnUiThread {
-            if (PairingURL.parse(raw) == null) {
+            val validLegacy = PairingURL.parse(raw) != null
+            // Product pairing is parsed exactly once by InternetPairingCoordinator,
+            // which owns and clears the one-time credential. The scanner only routes
+            // the namespaced payload and never interprets its security fields.
+            val validInternet = raw.startsWith(INTERNET_PAIRING_PREFIX)
+            if (!validLegacy && !validInternet) {
                 Toast.makeText(this, R.string.invalid_pairing_qr, Toast.LENGTH_SHORT).show()
                 alreadyDelivered = false
             } else {
@@ -134,7 +141,11 @@ class QRScannerActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "QRScanner"
+        private const val INTERNET_PAIRING_PREFIX = "vibescreen://pair?"
         const val EXTRA_URL = "qr_url"
+
+        internal fun isSupportedPairingNamespace(raw: String): Boolean =
+            raw.startsWith("telemachus://") || raw.startsWith(INTERNET_PAIRING_PREFIX)
 
         internal data class LumaImage(
             val bytes: ByteArray,

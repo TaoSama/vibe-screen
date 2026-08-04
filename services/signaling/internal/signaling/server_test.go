@@ -199,6 +199,147 @@ func TestPollFailsWhenSessionExpiresWhileWaiting(t *testing.T) {
 	}
 }
 
+func TestInvalidateDestroysSessionAndRetainsRequestTombstoneUntilExpiry(t *testing.T) {
+	store := NewStore(testConfig())
+	now := time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC)
+	store.now = func() time.Time { return now }
+	created, _, err := store.Create("invalidate-request", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.AddMessage(created.SessionID, created.HostToken, MessageRequest{
+		MessageID: "offer-before-invalidation", Type: MessageOffer, SDP: "v=0",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	pollResult := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	go func() {
+		_, _, pollErr := store.Poll(ctx, created.SessionID, created.DeviceToken, 1)
+		pollResult <- pollErr
+	}()
+	waitForWaiter(t, store, created.SessionID, RoleDevice)
+
+	invalidated, err := store.Invalidate(created.SessionID)
+	if err != nil || !invalidated {
+		t.Fatalf("invalidate created session: invalidated=%t err=%v", invalidated, err)
+	}
+	select {
+	case err := <-pollResult:
+		if !errors.Is(err, ErrNotFound) {
+			t.Fatalf("waiting poll error = %v, want ErrNotFound", err)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("invalidation did not wake waiting poll")
+	}
+	if err := store.Authorize(created.SessionID, created.HostToken); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("host token remained valid: %v", err)
+	}
+	if _, _, err := store.AddMessage(created.SessionID, created.DeviceToken, MessageRequest{
+		MessageID: "candidate-after-invalidation", Type: MessageICECandidate,
+		Candidate: &ICECandidate{Candidate: "candidate:invalidated"},
+	}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("device token remained valid: %v", err)
+	}
+	if store.ActiveCount() != 0 {
+		t.Fatalf("invalidated session counted as active: %d", store.ActiveCount())
+	}
+	current := store.sessions[created.SessionID]
+	if current == nil || !current.invalidated || current.hostToken != "" || current.deviceToken != "" ||
+		current.response.HostToken != "" || current.response.DeviceToken != "" || current.events != nil || current.messages != nil {
+		t.Fatalf("sensitive session state was not destroyed: %#v", current)
+	}
+	if invalidated, err := store.Invalidate(created.SessionID); err != nil || invalidated {
+		t.Fatalf("repeated invalidation: invalidated=%t err=%v", invalidated, err)
+	}
+	if _, _, err := store.Create("invalidate-request", time.Minute); !errors.Is(err, ErrInvalidated) {
+		t.Fatalf("request_id was reusable before expiry: %v", err)
+	}
+
+	now = now.Add(time.Minute)
+	recreated, wasCreated, err := store.Create("invalidate-request", time.Minute)
+	if err != nil || !wasCreated || recreated.SessionID == created.SessionID {
+		t.Fatalf("request_id was not reusable after expiry: created=%t session=%#v err=%v", wasCreated, recreated, err)
+	}
+}
+
+func TestHTTPAuthorityInvalidationRejectsRoleCredentialsAndIsIdempotent(t *testing.T) {
+	service, err := NewServer(testConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.SetReady(true)
+	handler := service.Handler()
+	created := createSessionForTest(t, handler, "http-invalidation", 0)
+	path := "/v1/sessions/" + created.SessionID
+
+	if response := performRequest(t, handler, http.MethodDelete, path, created.HostToken, ""); response.Code != http.StatusUnauthorized {
+		t.Fatalf("role credential invalidation status = %d", response.Code)
+	}
+	if response := performRequest(t, handler, http.MethodDelete, "/v1/sessions/not%20valid", testIssuerToken, ""); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid session ID status = %d", response.Code)
+	}
+	if response := performRequest(t, handler, http.MethodDelete, path, testIssuerToken, ""); response.Code != http.StatusNoContent {
+		t.Fatalf("authority invalidation status = %d: %s", response.Code, response.Body.String())
+	}
+	postMessageForTest(t, handler, created.SessionID, created.HostToken,
+		MessageRequest{MessageID: "old-offer", Type: MessageOffer, SDP: "v=0"}, http.StatusNotFound)
+	pollForTest(t, handler, created.SessionID, created.DeviceToken, 0, 0, http.StatusNotFound)
+	if response := performRequest(t, handler, http.MethodDelete, path, testIssuerToken, ""); response.Code != http.StatusNoContent {
+		t.Fatalf("repeated invalidation status = %d", response.Code)
+	}
+	body, err := json.Marshal(createSessionRequest{RequestID: "http-invalidation"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := performRequest(t, handler, http.MethodPost, "/v1/sessions", testIssuerToken, string(body)); response.Code != http.StatusConflict {
+		t.Fatalf("invalidated request replay status = %d: %s", response.Code, response.Body.String())
+	}
+	metrics := performRequest(t, handler, http.MethodGet, "/metrics", testMetricsToken, "")
+	if metrics.Code != http.StatusOK ||
+		!strings.Contains(metrics.Body.String(), "vibescreen_signaling_sessions_invalidated_total 1") ||
+		!strings.Contains(metrics.Body.String(), "vibescreen_signaling_active_sessions 0") ||
+		!strings.Contains(metrics.Body.String(), "vibescreen_signaling_invalidated_session_tombstones 1") ||
+		!strings.Contains(metrics.Body.String(), "vibescreen_signaling_reserved_session_records 1") {
+		t.Fatalf("invalidation metric = %d %q", metrics.Code, metrics.Body.String())
+	}
+}
+
+func TestTombstoneCapacityMetricsExplainCreateRejection(t *testing.T) {
+	cfg := testConfig()
+	cfg.MaxActiveSessions = 1
+	service, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := service.Handler()
+	created := createSessionForTest(t, handler, "capacity-tombstone", 0)
+	if response := performRequest(t, handler, http.MethodDelete,
+		"/v1/sessions/"+created.SessionID, testIssuerToken, ""); response.Code != http.StatusNoContent {
+		t.Fatalf("invalidate status = %d", response.Code)
+	}
+	body, err := json.Marshal(createSessionRequest{RequestID: "capacity-new"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := performRequest(t, handler, http.MethodPost,
+		"/v1/sessions", testIssuerToken, string(body)); response.Code != http.StatusTooManyRequests {
+		t.Fatalf("capacity status = %d: %s", response.Code, response.Body.String())
+	}
+	metrics := performRequest(t, handler, http.MethodGet, "/metrics", testMetricsToken, "")
+	for _, expected := range []string{
+		"vibescreen_signaling_active_sessions 0",
+		"vibescreen_signaling_invalidated_session_tombstones 1",
+		"vibescreen_signaling_reserved_session_records 1",
+	} {
+		if !strings.Contains(metrics.Body.String(), expected) {
+			t.Fatalf("capacity metric %q missing: %s", expected, metrics.Body.String())
+		}
+	}
+}
+
 func TestMessageRateLimit(t *testing.T) {
 	cfg := testConfig()
 	cfg.MessagesPerMinute = 1
@@ -212,6 +353,22 @@ func TestMessageRateLimit(t *testing.T) {
 		MessageRequest{MessageID: "offer-rate", Type: MessageOffer, SDP: "v=0"}, http.StatusCreated)
 	postMessageForTest(t, handler, created.SessionID, created.HostToken,
 		MessageRequest{MessageID: "candidate-rate", Type: MessageICECandidate, Candidate: &ICECandidate{Candidate: "candidate:rate"}}, http.StatusTooManyRequests)
+}
+
+func waitForWaiter(t *testing.T, store *Store, sessionID string, role Role) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		store.mu.Lock()
+		current := store.sessions[sessionID]
+		waiting := current != nil && current.waiters[role] == 1
+		store.mu.Unlock()
+		if waiting {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("poll did not register a waiter")
 }
 
 type pollResponse struct {
