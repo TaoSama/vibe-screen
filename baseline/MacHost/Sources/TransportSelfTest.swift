@@ -11,11 +11,13 @@ enum TransportSelfTest {
         var receivedKeyframe = false
         var receivedPong = false
         var receivedTouch = false
+        var rejectedMalformedTouch = false
         var failure: String?
 
         var isComplete: Bool {
             lock.withLock {
-                receivedConfig && receivedKeyframe && receivedPong && receivedTouch
+                receivedConfig && receivedKeyframe && receivedPong &&
+                    receivedTouch && rejectedMalformedTouch
             }
         }
     }
@@ -32,6 +34,11 @@ enum TransportSelfTest {
                     abs(y - 0.75) < 0.001 &&
                     action == 1 &&
                     pointers == 1
+            }
+        }
+        server.onInputCancelled = {
+            state.lock.withLock {
+                state.rejectedMalformedTouch = true
             }
         }
         server.onClientConnected = {
@@ -114,6 +121,14 @@ enum TransportSelfTest {
                     withUnsafeBytes(of: &x) { messages.append(contentsOf: $0) }
                     withUnsafeBytes(of: &y) { messages.append(contentsOf: $0) }
                     withUnsafeBytes(of: &action) { messages.append(contentsOf: $0) }
+                    messages.append(2)
+                    messages.append(1)
+                    var malformedX = Float.nan
+                    var malformedY: Float = 0.5
+                    var malformedAction: Int32 = 2
+                    withUnsafeBytes(of: &malformedX) { messages.append(contentsOf: $0) }
+                    withUnsafeBytes(of: &malformedY) { messages.append(contentsOf: $0) }
+                    withUnsafeBytes(of: &malformedAction) { messages.append(contentsOf: $0) }
                     client.send(content: messages, completion: .contentProcessed { _ in })
                 })
                 receiveNext()
@@ -136,7 +151,8 @@ enum TransportSelfTest {
                     (state.receivedConfig &&
                      state.receivedKeyframe &&
                      state.receivedPong &&
-                     state.receivedTouch)
+                     state.receivedTouch &&
+                     state.rejectedMalformedTouch)
             }
             if done { break }
             RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
@@ -150,16 +166,18 @@ enum TransportSelfTest {
                 state.receivedKeyframe,
                 state.receivedPong,
                 state.receivedTouch,
+                state.rejectedMalformedTouch,
                 state.failure
             )
         }
         let passed = snapshot.0 && snapshot.1 && snapshot.2 && snapshot.3 &&
-            snapshot.4 == nil
+            snapshot.4 && snapshot.5 == nil
         print(
             "Transport self-test: \(passed ? "PASS" : "FAIL") " +
             "(config=\(snapshot.0), keyframe=\(snapshot.1), " +
-            "pong=\(snapshot.2), touch=\(snapshot.3), portConflict=true, " +
-            "error=\(snapshot.4 ?? "none"))"
+            "pong=\(snapshot.2), touch=\(snapshot.3), " +
+            "malformedTouchRejected=\(snapshot.4), portConflict=true, " +
+            "error=\(snapshot.5 ?? "none"))"
         )
         return passed
     }

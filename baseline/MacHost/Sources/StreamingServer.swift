@@ -80,6 +80,7 @@ class StreamingServer {
     var onCodecNegotiated: ((StreamCodec) -> Void)?
     // Touch callback: (x1, y1, action, pointerCount, x2, y2)
     var onTouchEvent: ((Float, Float, Int, Int, Float, Float) -> Void)?
+    var onInputCancelled: (() -> Void)?
     var onStats: ((Double, Double) -> Void)?
     var onKeyframeRequested: ((Bool) -> Void)?
     // Whether host wants to receive touch events from client. Ping/pong is
@@ -120,6 +121,8 @@ class StreamingServer {
     private var isStopped = false
     private var connectionReady = false
     private var activeConnectionGeneration: UInt64 = 0
+    private let inputDispatchLock = NSLock()
+    private var inputDispatchGeneration: UInt64 = 0
     private var activeConnectionIsWireless = false
     private var clientSupportsFrameMetadata = false
     private var clientIsAvcOnly = false
@@ -337,6 +340,9 @@ class StreamingServer {
         }
         activeConnectionGeneration &+= 1
         let generation = activeConnectionGeneration
+        inputDispatchLock.withLock {
+            inputDispatchGeneration = generation
+        }
         connection = conn
         activeConnectionIsWireless = isWireless
         connectionReady = false
@@ -388,6 +394,9 @@ class StreamingServer {
         heartbeatTimer?.cancel()
         heartbeatTimer = nil
         activeConnectionGeneration &+= 1
+        inputDispatchLock.withLock {
+            inputDispatchGeneration = activeConnectionGeneration
+        }
         inputBuffer.removeAll(keepingCapacity: true)
         let epoch = sessionEpochGate.current
         let nowNs = DispatchTime.now().uptimeNanoseconds
@@ -733,8 +742,9 @@ class StreamingServer {
                 let pointerCount = Int(inputByte(at: 1))
                 guard pointerCount == 1 || pointerCount == 2 else {
                     debugLog("Invalid touch pointer count: \(pointerCount)")
-                    consumeInputBytes(1)
-                    continue
+                    inputBuffer.removeAll(keepingCapacity: true)
+                    connection.cancel()
+                    return
                 }
 
                 let expectedSize = 2 + pointerCount * 8 + 4
@@ -746,7 +756,12 @@ class StreamingServer {
                 // Drop early if host has touch disabled, after consuming exactly
                 // this touch frame so coalesced ping/keyframe messages survive.
                 if touchEnabled {
-                    handleTouchMessage(message, pointerCount: pointerCount)
+                    handleTouchMessage(
+                        message,
+                        pointerCount: pointerCount,
+                        connection: connection,
+                        generation: generation
+                    )
                 }
 
             case WireMessage.ping:
@@ -848,7 +863,12 @@ class StreamingServer {
         }
     }
 
-    private func handleTouchMessage(_ data: Data, pointerCount: Int) {
+    private func handleTouchMessage(
+        _ data: Data,
+        pointerCount: Int,
+        connection: NWConnection,
+        generation: UInt64
+    ) {
         let x1 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 2, as: Float.self) }
         let y1 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 6, as: Float.self) }
 
@@ -862,8 +882,33 @@ class StreamingServer {
         let actionOffset = 2 + pointerCount * 8
         let action = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: actionOffset, as: Int32.self) }
 
-        DispatchQueue.main.async {
+        guard x1.isFinite, y1.isFinite,
+              (0...1).contains(x1), (0...1).contains(y1),
+              pointerCount == 1 ||
+                (x2.isFinite && y2.isFinite &&
+                 (0...1).contains(x2) && (0...1).contains(y2)),
+              (0...2).contains(action) else {
+            debugLog("Rejected malformed touch input")
+            dispatchInputCancellation(generation: generation)
+            return
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.inputDispatchLock.withLock({
+                      self.inputDispatchGeneration == generation
+                  }) else { return }
             self.onTouchEvent?(x1, y1, Int(action), pointerCount, x2, y2)
+        }
+    }
+
+    private func dispatchInputCancellation(generation: UInt64) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.inputDispatchLock.withLock({
+                      self.inputDispatchGeneration == generation
+                  }) else { return }
+            self.onInputCancelled?()
         }
     }
 
@@ -1106,6 +1151,9 @@ class StreamingServer {
         isStopped = true
         isReceiving = false
         activeConnectionGeneration &+= 1
+        inputDispatchLock.withLock {
+            inputDispatchGeneration = activeConnectionGeneration
+        }
         for (_, timeout) in pendingHandshakeTimeouts {
             timeout.cancel()
         }

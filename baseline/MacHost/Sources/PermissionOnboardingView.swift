@@ -11,7 +11,7 @@ private enum OnboardingStep: Int, CaseIterable {
     var title: String {
         switch self {
         case .screenCapture: return "Screen Capture"
-        case .accessibility: return "Touch Control"
+        case .accessibility: return "Input & Window Control"
         case .ready: return "Ready"
         }
     }
@@ -226,7 +226,7 @@ struct PermissionOnboardingView: View {
 
             VStack(spacing: 9) {
                 HStack(spacing: 7) {
-                    Text("Enable touch control")
+                    Text("Enable input and window control")
                         .font(.system(size: 24, weight: .bold, design: .rounded))
                     Text("Optional")
                         .font(.system(size: 10, weight: .semibold))
@@ -236,7 +236,7 @@ struct PermissionOnboardingView: View {
                         .background(.thinMaterial, in: Capsule())
                 }
 
-                Text("Accessibility lets taps and gestures on the tablet control the Mac. Streaming works without it.")
+                Text("Accessibility lets tablet gestures control the Mac and lets Telemachus move and restore windows. Streaming works without it.")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -246,6 +246,7 @@ struct PermissionOnboardingView: View {
             permissionExplanation(
                 rows: [
                     ("cursorarrow.click.2", "Tap, scroll, drag, and pinch from the tablet"),
+                    ("macwindow", "Move and restore the focused Mac window"),
                     ("keyboard", "No keyboard or text contents are read"),
                     ("switch.2", "Touch control can be disabled at any time")
                 ]

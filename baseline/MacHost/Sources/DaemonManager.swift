@@ -4,6 +4,13 @@ import os.log
 
 @available(macOS 13.0, *)
 class DaemonManager {
+    enum RegistrationStatus: Equatable {
+        case notRegistered
+        case enabled
+        case requiresApproval
+        case unavailable
+    }
+
     static let shared = DaemonManager()
     
     private var appService: SMAppService {
@@ -11,12 +18,33 @@ class DaemonManager {
     }
     
     var isEnabled: Bool {
-        return appService.status == .enabled
+        status == .enabled
+    }
+
+    var status: RegistrationStatus {
+        switch appService.status {
+        case .notRegistered: return .notRegistered
+        case .enabled: return .enabled
+        case .requiresApproval: return .requiresApproval
+        case .notFound: return .unavailable
+        @unknown default: return .unavailable
+        }
+    }
+
+    var statusGuidance: String? {
+        switch status {
+        case .requiresApproval:
+            return "Approval required in System Settings → General → Login Items."
+        case .unavailable:
+            return "Launch at Login is unavailable for this app installation."
+        case .notRegistered, .enabled:
+            return nil
+        }
     }
     
     func enable() throws {
         let service = appService
-        guard service.status != .enabled else { return }
+        guard status != .enabled else { return }
         
         do {
             try service.register()
@@ -29,7 +57,7 @@ class DaemonManager {
     
     func disable() throws {
         let service = appService
-        guard service.status != .notRegistered else { return }
+        guard status != .notRegistered else { return }
         
         do {
             try service.unregister()

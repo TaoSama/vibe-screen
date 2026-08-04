@@ -103,6 +103,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var permissionMonitoringReady = false
     private var unattendedRecoveryTask: Task<Void, Never>?
     private var unattendedRecoveryAttempt = 0
+    private var isStarting = false
+    private var usbStatusProbeGeneration: UInt64 = 0
     var isDaemonMode = false // Deprecated: keeping variable for ABI compatibility but unused
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -131,6 +133,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await checkPermissions()
             await MainActor.run {
                 permissionMonitoringReady = true
+                if HostStartupPolicy.shouldAutoStart(
+                    autoStartEnabled: settings.autoStartStreamingOnLaunch,
+                    hasScreenRecordingPermission: settings.hasScreenRecordingPermission,
+                    hasCompletedOnboarding: settings.hasCompletedOnboarding,
+                    explicitHeadlessBenchmark: isHeadlessBenchmark
+                ) && !settings.isRunning && !isStarting {
+                    settings.connectionMode = settings.startupMode
+                    Task { await self.startServer() }
+                }
             }
         }
 
@@ -171,16 +182,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Declarative auto-start (no Mac interaction): start the server in the
         // chosen Startup mode if enabled. No blocking permission modal here —
         // it cannot be acted on when the Mac is headless.
-        if settings.autoStartStreamingOnLaunch {
+        if HostStartupPolicy.shouldAutoStart(
+            autoStartEnabled: settings.autoStartStreamingOnLaunch,
+            hasScreenRecordingPermission: settings.hasScreenRecordingPermission,
+            hasCompletedOnboarding: settings.hasCompletedOnboarding,
+            explicitHeadlessBenchmark: isHeadlessBenchmark
+        ) {
             settings.connectionMode = settings.startupMode
             Task {
-                await self.checkPermissions()
-                if self.settings.hasScreenRecordingPermission {
-                    await self.startServer()
-                } else {
-                    debugLog("Auto-start skipped: Screen Recording permission not granted")
-                }
+                await self.startServer()
             }
+        } else if settings.autoStartStreamingOnLaunch {
+            debugLog("Auto-start deferred until onboarding and Screen Recording are complete")
         }
     }
 
@@ -202,15 +215,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard permissionMonitoringReady else { return }
 
         let hadScreenRecording = settings.hasScreenRecordingPermission
+        let hadAccessibility = settings.hasAccessibilityPermission
         let hasScreenRecording = CGPreflightScreenCaptureAccess()
         settings.hasScreenRecordingPermission = hasScreenRecording
         settings.hasAccessibilityPermission = AXIsProcessTrusted()
+        if hadAccessibility && !settings.hasAccessibilityPermission {
+            cancelActiveInput(releaseDrag: false)
+        }
         settings.clearPostUpdatePermissionHintIfResolved()
 
         guard hasScreenRecording, !hadScreenRecording else { return }
         debugLog("Screen Recording permission became available while app was running")
 
-        if settings.autoStartStreamingOnLaunch && !settings.isRunning {
+        if HostStartupPolicy.shouldAutoStart(
+            autoStartEnabled: settings.autoStartStreamingOnLaunch,
+            hasScreenRecordingPermission: hasScreenRecording,
+            hasCompletedOnboarding: settings.hasCompletedOnboarding,
+            explicitHeadlessBenchmark: isHeadlessBenchmark
+        ) && !settings.isRunning && !isStarting {
             Task {
                 await startServer()
             }
@@ -219,14 +241,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func refreshStatusIndicators() {
+        usbStatusProbeGeneration &+= 1
+        let probeGeneration = usbStatusProbeGeneration
         settings.adbInstalled = StatusDetector.adbInstalled()
         settings.wifiConnected = StatusDetector.wifiReachable()
         settings.listeningAddress = LANAddressResolver.primaryIPv4()
         settings.availableDisplays = DisplayCatalog.onlineDisplays()
-        if !settings.availableDisplays.contains(where: {
-            $0.id == settings.selectedDisplayID
-        }) {
-            settings.selectedDisplayID = CGMainDisplayID()
+        if let uuid = settings.selectedDisplayUUID,
+           let reidentified = settings.availableDisplays.first(where: {
+               $0.persistentUUID == uuid
+           }), reidentified.id != settings.selectedDisplayID {
+            settings.selectedDisplayID = reidentified.id
         }
 
         // While a wireless client is actively streaming, keep its lastConnected
@@ -236,6 +261,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // "X minutes ago" label counts up correctly.
         if let name = currentWirelessDevice {
             pairedDeviceStore.upsert(name: name, lastConnected: Date())
+        }
+
+        guard HostStartupPolicy.shouldProbeUSB(
+            connectionMode: settings.connectionMode
+        ) else {
+            settings.usbDeviceConnected = false
+            settings.availableADBDevices = []
+            settings.adbReverseConfigured = false
+            return
         }
 
         let port = Int(settings.port)
@@ -254,6 +288,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
             await MainActor.run { [weak self] in
                 guard let self = self else { return }
+                guard self.settings.connectionMode == .usb,
+                      self.usbStatusProbeGeneration == probeGeneration else {
+                    return
+                }
                 
                 let isConnected = !devices.isEmpty
 
@@ -284,6 +322,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func handleConnectionModeChange(to mode: ConnectionMode) async {
+        usbStatusProbeGeneration &+= 1
         debugLog("Connection mode changed to: \(mode.rawValue)")
         // Disconnect any active client immediately (per spec §6 / fix #2).
         let wasRunning = settings.isRunning
@@ -357,6 +396,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .dropFirst()
             .sink { [weak self] enabled in
                 self?.streamingServer?.touchEnabled = enabled
+                if !enabled {
+                    self?.cancelActiveInput(releaseDrag: true)
+                }
             }
             .store(in: &cancellables)
 
@@ -412,6 +454,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.applyActivationPolicy(hideDockIcon: hideDockIcon)
             }
             .store(in: &cancellables)
+
+        settings.$autoStartStreamingOnLaunch
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                if !enabled {
+                    self?.cancelUnattendedRecovery(resetAttempts: true)
+                }
+            }
+            .store(in: &cancellables)
     }
 
     /// Switches between a normal Dock app and a menu-bar accessory.
@@ -441,7 +493,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: ""
         ))
         menu.addItem(NSMenuItem(
-            title: "Return Moved Windows to Main Display",
+            title: "Return Moved Windows",
             action: #selector(returnMovedWindowsToMainDisplay),
             keyEquivalent: ""
         ))
@@ -761,6 +813,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func startServer() async {
+        guard !isStarting, !settings.isRunning else {
+            debugLog("Ignoring duplicate start request")
+            return
+        }
+        isStarting = true
+        defer { isStarting = false }
         debugLog("🚀 startServer() invoked. Check permission: \(settings.hasScreenRecordingPermission)")
         guard settings.hasScreenRecordingPermission else {
             debugLog("❌ startServer aborted: Missing Screen Recording permission")
@@ -838,7 +896,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             case .selectedDisplay:
                 virtualDisplayManager = nil
                 captureDisplayID = DisplayCatalog.resolve(
-                    settings.selectedDisplayID
+                    persistentUUID: settings.selectedDisplayUUID,
+                    fallbackID: settings.selectedDisplayID
                 )
                 streamSize = Self.aspectFitStreamSize(
                     sourceWidth: CGDisplayPixelsWide(captureDisplayID),
@@ -870,7 +929,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 group.addTask { try? await Task.sleep(nanoseconds: 500_000_000) }
             }
 
-            if let vdm = virtualDisplayManager {
+            if let vdm = virtualDisplayManager,
+               settings.displaySource == .extended {
                 vdm.restoreDisplayPosition()
                 let registered = vdm.verifyDisplayRegistered()
                 if !registered {
@@ -891,6 +951,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let appDelegate = self else { return }
                 Task { @MainActor in
                     appDelegate.activeDisplayID = displayID
+                }
+            }
+            let configuredCapture = screenCapture
+            configuredCapture?.onTerminalCaptureFailure = {
+                [weak self, weak configuredCapture] error in
+                guard let self, let configuredCapture,
+                      self.screenCapture === configuredCapture else { return }
+                debugLog("Capture terminated: \(error.localizedDescription)")
+                Task { @MainActor in
+                    self.handleCaptureFailure(error)
                 }
             }
             let existingDisplayOutput = settings.displaySource == .extended
@@ -976,6 +1046,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             streamingServer?.onClientDisconnected = { [weak self] in
                 guard let self = self else { return }
                 Task { @MainActor in
+                    self.cancelActiveInput(releaseDrag: true)
                     self.reportWindowRecovery(
                         self.windowRecoveryManager.restoreManagedWindows()
                     )
@@ -1004,6 +1075,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             streamingServer?.onTouchEvent = { [weak self] x, y, action, pointerCount, x2, y2 in
                 self?.handleTouch(x: x, y: y, action: action, pointerCount: pointerCount, x2: x2, y2: y2)
+            }
+            streamingServer?.onInputCancelled = { [weak self] in
+                self?.cancelActiveInput(releaseDrag: true)
             }
 
             streamingServer?.onStats = { [weak self] fps, mbps in
@@ -1063,7 +1137,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Idempotent cleanup used for both normal shutdown and a failure after any
     /// partial combination of display, capture, listener, or ADB setup.
     private func teardownStreamingComponents() {
+        cancelActiveInput(releaseDrag: true)
         reportWindowRecovery(windowRecoveryManager.restoreManagedWindows())
+        screenCapture?.onTerminalCaptureFailure = nil
         screenCapture?.stopStreaming()
         streamingServer?.stop()
         virtualDisplayManager?.destroyDisplay()
@@ -1075,19 +1151,53 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func handleServerFailure() {
         guard settings.isRunning else { return }
-        stopServer()
+        stopServer(preserveRecoveryState: true)
         scheduleUnattendedRecoveryIfEnabled()
     }
 
+    private func handleCaptureFailure(_ error: Error) {
+        guard settings.isRunning else { return }
+        let selectedDisplayWentOffline = settings.displaySource == .selectedDisplay &&
+            DisplayCatalog.resolve(
+                persistentUUID: settings.selectedDisplayUUID,
+                fallbackID: settings.selectedDisplayID
+            ) != activeDisplayID
+        stopServer(preserveRecoveryState: true)
+
+        if selectedDisplayWentOffline {
+            debugLog("Selected display went offline; preserving selection and falling back to main display")
+            Task { @MainActor [weak self] in
+                await self?.startServer()
+            }
+        } else if isUnattendedOperation {
+            scheduleUnattendedRecoveryIfEnabled()
+        } else {
+            let alert = NSAlert()
+            alert.messageText = "Display Capture Stopped"
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .critical
+            alert.runModal()
+        }
+    }
+
+    private var isHeadlessBenchmark: Bool {
+        CommandLine.arguments.contains("--headless-benchmark")
+    }
+
     private var isUnattendedOperation: Bool {
-        CommandLine.arguments.contains("--headless-benchmark") ||
+        isHeadlessBenchmark ||
             settings.hideDockIcon ||
             (settings.hasCompletedOnboarding && DaemonManager.shared.isEnabled)
     }
 
     private func scheduleUnattendedRecoveryIfEnabled() {
-        guard settings.autoStartStreamingOnLaunch,
-              settings.hasScreenRecordingPermission,
+        guard HostStartupPolicy.shouldRecover(
+                autoStartEnabled: settings.autoStartStreamingOnLaunch,
+                hasScreenRecordingPermission: settings.hasScreenRecordingPermission,
+                hasCompletedOnboarding: settings.hasCompletedOnboarding,
+                explicitHeadlessBenchmark: isHeadlessBenchmark,
+                isUnattendedOperation: isUnattendedOperation
+              ),
               let delay = UnattendedRecoveryPolicy.delay(
                 afterFailure: unattendedRecoveryAttempt
               ) else {
@@ -1102,7 +1212,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 try await Task.sleep(
                     nanoseconds: UInt64(delay * 1_000_000_000)
                 )
-                guard let self, !self.settings.isRunning else { return }
+                guard let self,
+                      !self.settings.isRunning,
+                      !self.isStarting,
+                      HostStartupPolicy.shouldRecover(
+                        autoStartEnabled: self.settings.autoStartStreamingOnLaunch,
+                        hasScreenRecordingPermission: self.settings.hasScreenRecordingPermission,
+                        hasCompletedOnboarding: self.settings.hasCompletedOnboarding,
+                        explicitHeadlessBenchmark: self.isHeadlessBenchmark,
+                        isUnattendedOperation: self.isUnattendedOperation
+                      ) else { return }
                 await self.startServer()
             } catch is CancellationError {
                 return
@@ -1136,8 +1255,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func stopServer() {
+        stopServer(preserveRecoveryState: false)
+    }
+
+    private func stopServer(preserveRecoveryState: Bool) {
+        if !preserveRecoveryState {
+            cancelUnattendedRecovery(resetAttempts: true)
+        }
         // Save display position before destroying
-        virtualDisplayManager?.saveDisplayPosition()
+        if settings.displaySource == .extended {
+            virtualDisplayManager?.saveDisplayPosition()
+        }
 
         teardownStreamingComponents()
 
@@ -1150,6 +1278,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settings.currentBitrate = 0
 
         print("⏹️ Server stopped")
+    }
+
+    private func cancelUnattendedRecovery(resetAttempts: Bool) {
+        unattendedRecoveryTask?.cancel()
+        unattendedRecoveryTask = nil
+        if resetAttempts {
+            unattendedRecoveryAttempt = 0
+        }
     }
 
     // MARK: - Gesture Properties
@@ -1197,22 +1333,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     settings.hasAccessibilityPermission = false
                 }
             }
+            cancelActiveInput(releaseDrag: false)
             return
         }
 
-        guard let displayID = activeDisplayID else { return }
+        guard let displayID = activeDisplayID,
+              pointerCount == 1 || pointerCount == 2,
+              (0...2).contains(action) else {
+            cancelActiveInput(releaseDrag: true)
+            return
+        }
         let bounds = CGDisplayBounds(displayID)
 
-        let p1 = CGPoint(
-            x: bounds.origin.x + CGFloat(x) * bounds.width,
-            y: bounds.origin.y + CGFloat(y) * bounds.height
-        )
-        let p2 = CGPoint(
-            x: bounds.origin.x + CGFloat(x2) * bounds.width,
-            y: bounds.origin.y + CGFloat(y2) * bounds.height
-        )
+        guard let p1 = StreamInputMapper.point(
+            normalizedX: x,
+            normalizedY: y,
+            in: bounds
+        ) else {
+            cancelActiveInput(releaseDrag: true)
+            return
+        }
 
         if pointerCount >= 2 {
+            guard let p2 = StreamInputMapper.point(
+                normalizedX: x2,
+                normalizedY: y2,
+                in: bounds
+            ) else {
+                cancelActiveInput(releaseDrag: true)
+                return
+            }
             handleTwoFingerTouch(p1: p1, p2: p2, action: action)
         } else {
             handleOneFingerTouch(at: p1, action: action)
@@ -1542,6 +1692,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         momentumTimer = nil
         momentumVelocityX = 0
         momentumVelocityY = 0
+    }
+
+    private func cancelActiveInput(releaseDrag: Bool) {
+        cancelLongPressTimer()
+        stopMomentumScroll()
+        if releaseDrag, gestureState == .dragging, AXIsProcessTrusted() {
+            injectMouseUp(at: touchLastPosition)
+        }
+        gestureState = .idle
+        touchStartPosition = .zero
+        touchLastPosition = .zero
+        touchStartTime = 0
+        touchLastMoveTime = 0
+        lastScrollDeltaX = 0
+        lastScrollDeltaY = 0
+        lastTouchTime = 0
+        lastTapTime = 0
+        lastTapPosition = .zero
+        initialPinchDistance = 0
+        lastPinchDistance = 0
     }
 
     func applicationWillTerminate(_ notification: Notification) {
