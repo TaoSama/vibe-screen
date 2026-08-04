@@ -25,6 +25,12 @@ internal object ConnectionGuidanceFactory {
         when (failure.kind) {
             SessionFailureKind.INVALID_DISPLAY,
             SessionFailureKind.INVALID_FRAME,
+            SessionFailureKind.INVALID_ENVELOPE,
+            SessionFailureKind.INVALID_MEDIA_PAYLOAD,
+            SessionFailureKind.INVALID_MEDIA_HEADER,
+            SessionFailureKind.INVALID_PEER_MESSAGE,
+            SessionFailureKind.SESSION_REJECTED,
+            SessionFailureKind.HOST_PROTOCOL_ERROR,
             SessionFailureKind.UNKNOWN_MESSAGE,
             ->
                 ConnectionGuidance(

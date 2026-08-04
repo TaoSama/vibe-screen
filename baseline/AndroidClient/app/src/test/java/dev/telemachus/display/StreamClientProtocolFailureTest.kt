@@ -27,15 +27,17 @@ import java.util.concurrent.TimeUnit
 class StreamClientProtocolFailureTest {
     @Test
     fun permanentRejectionReachesUiCallbackAndStopsReconnect() = runRejectedSession(retryable = false) { result ->
-        assertEquals("device_revoked", result.reason)
-        assertFalse(result.retryable)
+        assertEquals(SessionFailureKind.SESSION_REJECTED, result.failure.kind)
+        assertTrue(result.failure.detail.startsWith("device_revoked:"))
+        assertFalse(result.failure.retryable)
         assertFalse(result.reconnectSuggested.await(200, TimeUnit.MILLISECONDS))
     }
 
     @Test
     fun retryableRejectionReachesUiCallbackAndSchedulesReconnect() = runRejectedSession(retryable = true) { result ->
-        assertEquals("device_revoked", result.reason)
-        assertTrue(result.retryable)
+        assertEquals(SessionFailureKind.SESSION_REJECTED, result.failure.kind)
+        assertTrue(result.failure.detail.startsWith("device_revoked:"))
+        assertTrue(result.failure.retryable)
         assertTrue(result.reconnectSuggested.await(1, TimeUnit.SECONDS))
     }
 
@@ -90,21 +92,21 @@ class StreamClientProtocolFailureTest {
                     }
                 val callback = CountDownLatch(1)
                 val reconnect = CountDownLatch(1)
-                var reason = ""
-                var retryable = true
+                var reportedFailure: SessionFailure? = null
                 val client = StreamClient("127.0.0.1", server.localPort)
-                client.onProtocolFailure = { reportedReason, reportedRetryable, _ ->
-                    reason = reportedReason
-                    retryable = reportedRetryable
+                client.onSessionEnded = { failure ->
+                    reportedFailure = failure
                     callback.countDown()
                 }
                 client.onReconnectSuggested = { reconnect.countDown() }
 
-                withTimeout(3_000) { client.connect() }
+                runCatching { withTimeout(3_000) { client.connect() } }
                 withTimeout(3_000) { serverJob.await() }
                 assertTrue(callback.await(1, TimeUnit.SECONDS))
-                assertEquals("invalid_media_header", reason)
-                assertFalse(retryable)
+                val failure = checkNotNull(reportedFailure)
+                assertEquals(SessionFailureKind.INVALID_MEDIA_HEADER, failure.kind)
+                assertTrue(failure.detail.startsWith("invalid_media_header:"))
+                assertFalse(failure.retryable)
                 assertFalse(reconnect.await(200, TimeUnit.MILLISECONDS))
             }
         }
@@ -151,21 +153,21 @@ class StreamClientProtocolFailureTest {
                 }
             val callback = CountDownLatch(1)
             val reconnect = CountDownLatch(1)
-            var reason = ""
-            var retryable = true
+            var reportedFailure: SessionFailure? = null
             val client = StreamClient("127.0.0.1", server.localPort)
-            client.onProtocolFailure = { reportedReason, reportedRetryable, _ ->
-                reason = reportedReason
-                retryable = reportedRetryable
+            client.onSessionEnded = { failure ->
+                reportedFailure = failure
                 callback.countDown()
             }
             client.onReconnectSuggested = { reconnect.countDown() }
 
-            withTimeout(3_000) { client.connect() }
+            runCatching { withTimeout(3_000) { client.connect() } }
             withTimeout(3_000) { serverJob.await() }
             assertTrue(callback.await(1, TimeUnit.SECONDS))
-            assertEquals(expectedReason, reason)
-            assertFalse(retryable)
+            val failure = checkNotNull(reportedFailure)
+            assertEquals(expectedKind(expectedReason), failure.kind)
+            assertTrue(failure.detail.startsWith("$expectedReason:"))
+            assertFalse(failure.retryable)
             assertFalse(reconnect.await(200, TimeUnit.MILLISECONDS))
         }
     }
@@ -189,20 +191,18 @@ class StreamClientProtocolFailureTest {
                 }
             val protocolFailure = CountDownLatch(1)
             val reconnect = CountDownLatch(1)
-            var reason = ""
-            var callbackRetryable = !retryable
+            var reportedFailure: SessionFailure? = null
             val client = StreamClient("127.0.0.1", server.localPort)
-            client.onProtocolFailure = { reportedReason, reportedRetryable, _ ->
-                reason = reportedReason
-                callbackRetryable = reportedRetryable
+            client.onSessionEnded = { failure ->
+                reportedFailure = failure
                 protocolFailure.countDown()
             }
             client.onReconnectSuggested = { reconnect.countDown() }
 
-            withTimeout(3_000) { client.connect() }
+            runCatching { withTimeout(3_000) { client.connect() } }
             withTimeout(3_000) { serverJob.await() }
             assertTrue(protocolFailure.await(1, TimeUnit.SECONDS))
-            assertions(Result(reason, callbackRetryable, reconnect))
+            assertions(Result(checkNotNull(reportedFailure), reconnect))
         }
     }
 
@@ -239,10 +239,17 @@ class StreamClientProtocolFailureTest {
             ).build()
 
     private data class Result(
-        val reason: String,
-        val retryable: Boolean,
+        val failure: SessionFailure,
         val reconnectSuggested: CountDownLatch,
     )
+
+    private fun expectedKind(reason: String): SessionFailureKind =
+        when (reason) {
+            "invalid_frame" -> SessionFailureKind.INVALID_FRAME
+            "invalid_envelope" -> SessionFailureKind.INVALID_ENVELOPE
+            "invalid_media_payload" -> SessionFailureKind.INVALID_MEDIA_PAYLOAD
+            else -> error("Unexpected Protocol v1 failure reason: $reason")
+        }
 
     companion object {
         private const val PROTOCOL_UPGRADE_BYTE = 0x0d
