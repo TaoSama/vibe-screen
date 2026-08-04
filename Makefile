@@ -4,13 +4,17 @@ EVIDENCE_SERIAL ?= 100.72.246.116:5555
 EVIDENCE_DIR ?= .build/evidence
 EVIDENCE_PACKAGE ?= dev.telemachus.display
 
-.PHONY: protocol baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-android-test baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test evidence-device-info soak-30m soak-2h soak-8h
+.PHONY: protocol protocol-tests baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-android-test baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test evidence-device-info soak-30m soak-2h soak-8h
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
 	cd contracts && $(BUF) lint
 	cd contracts && $(BUF) build
 	cd contracts && $(BUF) breaking --against fixtures/v1.binpb
+	$(MAKE) protocol-tests
+
+protocol-tests:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s contracts/tests -p 'test_*.py' -v
 
 baseline-macos-build:
 	cd baseline/MacHost && swift build -c release
@@ -22,6 +26,7 @@ baseline-macos-self-test: baseline-macos-build
 	baseline/MacHost/.build/release/Telemachus --host-self-test
 	baseline/MacHost/.build/release/Telemachus --transport-self-test
 	baseline/MacHost/.build/release/Telemachus --reliability-self-test
+	baseline/MacHost/.build/release/Telemachus --protocol-v1-self-test
 
 baseline-macos-app:
 	python3 scripts/package_macos.py

@@ -1,0 +1,260 @@
+{
+  "bufVersion": "v1.72.0",
+  "controlFixtures": [
+    {
+      "binary": "bin/client_hello.binpb",
+      "byteLength": 106,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "1",
+        "payloadCase": "clientHello",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000001",
+        "sessionEpoch": "0"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "client_hello",
+      "sha256": "544c19a021d5363ecfa2df232e3674efac5d165edaff5bcedb74d4a64904ed52",
+      "source": "json/client_hello.json"
+    },
+    {
+      "binary": "bin/host_hello.binpb",
+      "byteLength": 60,
+      "channel": 1,
+      "expected": {
+        "correlationId": "1",
+        "messageId": "2",
+        "payloadCase": "hostHello",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000002",
+        "sessionEpoch": "0"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "host_hello",
+      "sha256": "ae9061e74d34699dd657c551a98be1bd9cfa98fa1f230b3275748211879c06cd",
+      "source": "json/host_hello.json"
+    },
+    {
+      "binary": "bin/session_accepted.binpb",
+      "byteLength": 56,
+      "channel": 1,
+      "expected": {
+        "correlationId": "1",
+        "messageId": "3",
+        "payloadCase": "sessionAccepted",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000003",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "session_accepted",
+      "sha256": "c7a462662d71580433c68f9d59b5572b1739d3fdaa66592fa172c0228a385b5c",
+      "source": "json/session_accepted.json"
+    },
+    {
+      "binary": "bin/list_displays_request.binpb",
+      "byteLength": 25,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "4",
+        "payloadCase": "listDisplaysRequest",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000004",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "list_displays_request",
+      "sha256": "b1e8380278e2ba63d42ffe19dcadc989688e71837b8528224d5bc5b31767ac68",
+      "source": "json/list_displays_request.json"
+    },
+    {
+      "binary": "bin/list_displays_response.binpb",
+      "byteLength": 87,
+      "channel": 1,
+      "expected": {
+        "correlationId": "4",
+        "messageId": "5",
+        "payloadCase": "listDisplaysResponse",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000005",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "list_displays_response",
+      "sha256": "ba9f9f3d86d8b2643b3c80a6c8d4b8258413814c1094b13e4e04c2eef1a55560",
+      "source": "json/list_displays_response.json"
+    },
+    {
+      "binary": "bin/start_display_request.binpb",
+      "byteLength": 58,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "6",
+        "payloadCase": "startDisplayRequest",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000006",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "start_display_request",
+      "sha256": "56c26e52df87bb41c2fd46608b24fa24b9b6921b03b08c6bef8fd576b402561d",
+      "source": "json/start_display_request.json"
+    },
+    {
+      "binary": "bin/start_display_response.binpb",
+      "byteLength": 91,
+      "channel": 1,
+      "expected": {
+        "correlationId": "6",
+        "messageId": "7",
+        "payloadCase": "startDisplayResponse",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000007",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "start_display_response",
+      "sha256": "4b106c3af65ebdd060666892e90e494be7c1ac8a8ff9d08877f9fd9ca1326779",
+      "source": "json/start_display_response.json"
+    },
+    {
+      "binary": "bin/video_config.binpb",
+      "byteLength": 54,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "8",
+        "payloadCase": "videoConfig",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000008",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "video_config",
+      "sha256": "8f37217348281e5670be82167e510836c830f809ac6bccbc74e5043331f33ea2",
+      "source": "json/video_config.json"
+    },
+    {
+      "binary": "bin/video_config_result.binpb",
+      "byteLength": 43,
+      "channel": 1,
+      "expected": {
+        "correlationId": "8",
+        "messageId": "9",
+        "payloadCase": "videoConfigResult",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000009",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "video_config_result",
+      "sha256": "c06d60b27e3210efcb9c119578e2d1226c19e63e0529f37963c3ad5357d03711",
+      "source": "json/video_config_result.json"
+    },
+    {
+      "binary": "bin/touch.binpb",
+      "byteLength": 78,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "10",
+        "payloadCase": "touchEvent",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000010",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "touch",
+      "sha256": "cd4ec171918802e28411bf8574965d29d67520395f917cc7b7992aa0bd54e9e9",
+      "source": "json/touch.json"
+    },
+    {
+      "binary": "bin/ping.binpb",
+      "byteLength": 27,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "11",
+        "payloadCase": "ping",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000011",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "ping",
+      "sha256": "25c4397149e666bb8fe7a9df5d99f70888befa5b1df81eb7af1b9219739bac01",
+      "source": "json/ping.json"
+    },
+    {
+      "binary": "bin/pong.binpb",
+      "byteLength": 29,
+      "channel": 1,
+      "expected": {
+        "correlationId": "11",
+        "messageId": "12",
+        "payloadCase": "pong",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000012",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "pong",
+      "sha256": "2f8b71db77d754f03c322f560c2657a190472a99ce97f29812c486065528380e",
+      "source": "json/pong.json"
+    },
+    {
+      "binary": "bin/protocol_error.binpb",
+      "byteLength": 71,
+      "channel": 1,
+      "expected": {
+        "correlationId": "8",
+        "messageId": "13",
+        "payloadCase": "protocolError",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000013",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "protocol_error",
+      "sha256": "9e0792cc7b62cc239ef4afe886e1a5e52029b60f75d1881f607d138cee5c2e5f",
+      "source": "json/protocol_error.json"
+    }
+  ],
+  "mediaFixture": {
+    "annexBPayloadHex": "0000000140010c01ff00aa55",
+    "binary": "bin/media_packet.bin",
+    "byteLength": 36,
+    "channel": 2,
+    "expectedHeader": {
+      "captureTimestampNs": "2000000001",
+      "codec": "CODEC_HEVC",
+      "configEpoch": "3",
+      "fragmentCount": 1,
+      "frameId": "1001",
+      "keyframe": true,
+      "payloadLength": 12,
+      "sessionEpoch": "7",
+      "streamId": "42"
+    },
+    "headerBinary": "bin/media_packet_header.binpb",
+    "headerMessageType": "vibescreen.protocol.v1.MediaPacketHeader",
+    "headerSha256": "3f342a5f71866bdd82015bccc8155d30b47611f2bbec6f6ddf08304cdf08fae0",
+    "name": "media_packet",
+    "sha256": "9eff64cbbca0e1f7e1508a46e1397d917c25a6ffc1c5b8a507b69ca8ff3bbce2",
+    "source": "json/media_packet_header.json"
+  },
+  "protocolVersion": 1,
+  "transport": {
+    "controlChannel": 1,
+    "header": "channel:uint8,payload_length:uint32-big-endian",
+    "maximumPayloadBytes": 16777216,
+    "upgradeAcknowledgementHex": "0d01",
+    "upgradeAcknowledgementSha256": "3c5f62aba990d251fa6309ec45b979f67f16cba3f725ed3bb78453bd88948055",
+    "upgradeOfferHex": "0d",
+    "upgradeOfferSha256": "9d1e0e2d9459d06523ad13e28a4093c2316baafe7aec5b25f30eba2e113599c4",
+    "videoChannel": 2
+  }
+}

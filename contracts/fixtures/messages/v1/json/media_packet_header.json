@@ -1,0 +1,11 @@
+{
+  "streamId": "42",
+  "sessionEpoch": "7",
+  "configEpoch": "3",
+  "frameId": "1001",
+  "fragmentCount": 1,
+  "captureTimestampNs": "2000000001",
+  "keyframe": true,
+  "codec": "CODEC_HEVC",
+  "payloadLength": 12
+}

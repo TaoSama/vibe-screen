@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import VibeScreenProtocol
 
 private enum WireMessage {
     static let legacyVideoFrame: UInt8 = 0
@@ -10,6 +11,9 @@ private enum WireMessage {
     static let videoFrameWithMetadata: UInt8 = 6
     static let keyframeRequest: UInt8 = 7
     static let clientSupportsFrameMetadata: UInt8 = 8
+    /// Client→server Protocol v1 opt-in. The host acknowledges with [13, 1],
+    /// after which this connection permanently uses framed Protocol v1.
+    static let protocolV1Offer = ProtocolV1Upgrade.offer
     /// Client→server, payload-free (old hosts consume 1 byte safely):
     /// "this device has no HEVC decoder".
     static let clientAvcOnly: UInt8 = 9
@@ -51,6 +55,7 @@ private extension NWEndpoint {
 enum StreamingServerError: LocalizedError {
     case startupTimedOut
     case listenerCancelled
+    case protocolNotReady
 
     var errorDescription: String? {
         switch self {
@@ -58,6 +63,8 @@ enum StreamingServerError: LocalizedError {
             return "Timed out while opening the streaming port."
         case .listenerCancelled:
             return "The streaming listener was cancelled before it became ready."
+        case .protocolNotReady:
+            return "Protocol v1 media configuration is not ready."
         }
     }
 }
@@ -102,6 +109,11 @@ final class ClientCallbackGenerationGate {
 }
 
 class StreamingServer {
+    private enum ConnectionProtocolMode: Equatable {
+        case legacy
+        case protocolV1
+    }
+
     private let port: UInt16
     private let mode: StreamingServerMode
     private var listener: NWListener?
@@ -130,6 +142,10 @@ class StreamingServer {
     var onServerFailed: ((Error) -> Void)?
     /// Fired when the Android client reports Build.MODEL + max panel Hz.
     var onDeviceInfoReceived: ((String, UInt8, UInt64) -> Void)?
+    var onPointerEvent: ((Float, Float, VSInputPhase, UInt32, UInt64) -> Void)?
+    var onScrollEvent: ((Double, Double, UInt64) -> Void)?
+    var onKeyEvent: ((UInt32, Bool, UInt32, String, UInt64) -> Void)?
+    var onProtocolErrorReceived: ((VSProtocolError, UInt64) -> Void)?
 
     private let frameQueue = DispatchQueue(label: "frameQueue", qos: .userInteractive)
     private let receiveQueue = DispatchQueue(label: "receiveQueue", qos: .userInteractive)
@@ -156,6 +172,11 @@ class StreamingServer {
     private var displayWidth = 1920
     private var displayHeight = 1080
     private var rotation = 0
+    private var protocolV1FramesPerSecond: UInt32 = 60
+    private var protocolV1BitrateKbps: UInt32 = 20_000
+    private var protocolV1DisplayID = "active-display"
+    private var protocolV1DisplayName = "Telemachus Display"
+    private var protocolV1DisplayIsVirtual = true
     private var isReceiving = false
     private var isStopped = false
     private var connectionReady = false
@@ -165,6 +186,10 @@ class StreamingServer {
     private var clientSupportsFrameMetadata = false
     private var clientIsAvcOnly = false
     private var codecNegotiationGeneration: UInt64?
+    private var connectionProtocolMode = ConnectionProtocolMode.legacy
+    private var protocolV1Framer = ProtocolV1Framer()
+    private var protocolV1Session: ProtocolV1SessionCoordinator?
+    private var protocolV1TouchAggregator = ProtocolV1TouchAggregator()
     private var inputBuffer = Data()
     private var expectedAuthToken: Data?
     private var pendingHandshakeTimeouts: [ObjectIdentifier: DispatchWorkItem] = [:]
@@ -386,6 +411,10 @@ class StreamingServer {
         clientSupportsFrameMetadata = false
         clientIsAvcOnly = false
         codecNegotiationGeneration = nil
+        connectionProtocolMode = .legacy
+        protocolV1Framer = ProtocolV1Framer()
+        protocolV1Session = nil
+        protocolV1TouchAggregator.reset()
         inputBuffer.removeAll(keepingCapacity: true)
         isReceiving = false
         droppedFrames = 0
@@ -435,6 +464,10 @@ class StreamingServer {
         codecNegotiationGeneration = nil
         clientCallbackGeneration.advance(to: activeConnectionGeneration)
         inputBuffer.removeAll(keepingCapacity: true)
+        connectionProtocolMode = .legacy
+        protocolV1Framer = ProtocolV1Framer()
+        protocolV1Session = nil
+        protocolV1TouchAggregator.reset()
         let epoch = sessionEpochGate.current
         let nowNs = DispatchTime.now().uptimeNanoseconds
         let retryDelayNs: UInt64
@@ -465,7 +498,8 @@ class StreamingServer {
               activeConnectionGeneration == generation,
               !isStopped,
               !connectionReady,
-              codecNegotiationGeneration != generation else { return }
+              codecNegotiationGeneration != generation,
+              connectionProtocolMode == .legacy else { return }
 
         let clientCodecs: [StreamCodec] = clientIsAvcOnly ? [.h264] : [.hevc, .h264]
         let decision: CodecFallbackDecision
@@ -744,6 +778,21 @@ class StreamingServer {
         displayWidth = width
         displayHeight = height
         self.rotation = rotation
+        protocolV1Session?.updateDisplaySize(width: width, height: height)
+    }
+
+    func setProtocolV1VideoConfiguration(
+        framesPerSecond: Int,
+        bitrateKbps: Int,
+        displayID: String,
+        displayName: String,
+        isVirtual: Bool
+    ) {
+        protocolV1FramesPerSecond = UInt32(clamping: framesPerSecond)
+        protocolV1BitrateKbps = UInt32(clamping: bitrateKbps)
+        protocolV1DisplayID = displayID
+        protocolV1DisplayName = displayName
+        protocolV1DisplayIsVirtual = isVirtual
     }
 
     /// Update rotation and send to connected client
@@ -812,6 +861,10 @@ class StreamingServer {
         connection: NWConnection,
         generation: UInt64
     ) {
+        if connectionProtocolMode == .protocolV1 {
+            processProtocolV1Input(connection: connection, generation: generation)
+            return
+        }
         while let msgType = inputBuffer.first {
             switch msgType {
             case WireMessage.touchEvent:
@@ -926,6 +979,14 @@ class StreamingServer {
                 connection.send(content: accept, completion: .contentProcessed { _ in })
                 debugLog("Accepted device-info capability; waiting for type 11 payload")
 
+            case WireMessage.protocolV1Offer:
+                consumeInputBytes(1)
+                beginProtocolV1(on: connection, generation: generation)
+                if !inputBuffer.isEmpty {
+                    processProtocolV1Input(connection: connection, generation: generation)
+                }
+                return
+
             case WireMessage.clientDeviceInfo:
                 // 66 bytes: 1 type + 64 null-padded model name + 1 refresh rate.
                 guard inputBuffer.count >= 66 else { return }
@@ -940,6 +1001,235 @@ class StreamingServer {
                 debugLog("Unknown client input type: \(msgType)")
                 consumeInputBytes(1)
             }
+        }
+    }
+
+    private func beginProtocolV1(on conn: NWConnection, generation: UInt64) {
+        guard connection === conn,
+              activeConnectionGeneration == generation,
+              connectionProtocolMode == .legacy,
+              !connectionReady else { return }
+        connectionProtocolMode = .protocolV1
+        protocolV1Framer = ProtocolV1Framer()
+        let sessionID: Data = withUnsafeBytes(of: UUID().uuid) { Data($0) }
+        protocolV1Session = ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
+            sessionID: sessionID,
+            sessionEpoch: sessionEpochGate.current,
+            displayWidth: displayWidth,
+            displayHeight: displayHeight,
+            framesPerSecond: protocolV1FramesPerSecond,
+            bitrateKbps: protocolV1BitrateKbps,
+            hostCapabilities: touchEnabled ? [.touch, .telemetry] : [.telemetry],
+            requiredClientCapabilities: touchEnabled ? [.touch] : [],
+            supportedCodecs: [.hevc, .h264],
+            hostID: "macos-host",
+            hostName: Host.current().localizedName ?? "Mac",
+            displayID: protocolV1DisplayID,
+            displayName: protocolV1DisplayName,
+            displayIsVirtual: protocolV1DisplayIsVirtual
+        ))
+        conn.send(content: ProtocolV1Upgrade.acknowledgement, completion: .contentProcessed { [weak self] error in
+            if let error {
+                self?.recordTelemetry(
+                    "control_send_failed",
+                    epoch: self?.sessionEpochGate.current,
+                    attributes: [
+                        "message": .string("protocol_v1_ack"),
+                        "error": .string(error.localizedDescription)
+                    ]
+                )
+            }
+        })
+        debugLog("Protocol v1 selected for connection epoch \(sessionEpochGate.current)")
+    }
+
+    private func processProtocolV1Input(connection conn: NWConnection, generation: UInt64) {
+        guard connection === conn,
+              activeConnectionGeneration == generation,
+              connectionProtocolMode == .protocolV1,
+              let session = protocolV1Session else { return }
+        let bytes = inputBuffer
+        inputBuffer.removeAll(keepingCapacity: true)
+        do {
+            for frame in try protocolV1Framer.append(bytes) {
+                let actions: [ProtocolV1SessionAction]
+                switch frame.channel {
+                case .control:
+                    actions = session.handleControl(frame.payload)
+                case .video:
+                    actions = session.rejectMalformedTransport(
+                        "Client-to-host video frames are not valid in this session."
+                    )
+                }
+                applyProtocolV1Actions(actions, connection: conn, generation: generation)
+            }
+        } catch {
+            applyProtocolV1Actions(
+                session.rejectMalformedTransport("Invalid Protocol v1 transport frame: \(error)"),
+                connection: conn,
+                generation: generation
+            )
+        }
+    }
+
+    private func applyProtocolV1Actions(
+        _ actions: [ProtocolV1SessionAction],
+        connection conn: NWConnection,
+        generation: UInt64
+    ) {
+        guard connection === conn, activeConnectionGeneration == generation else { return }
+        if let codec = actions.compactMap({ action -> StreamCodec? in
+            if case .codecNegotiated(let codec) = action { return codec }
+            return nil
+        }).first {
+            let remainingActions = actions.filter { action in
+                if case .codecNegotiated = action { return false }
+                return true
+            }
+            prepareProtocolV1Codec(
+                codec,
+                actionsAfterNegotiation: remainingActions,
+                connection: conn,
+                generation: generation
+            )
+            return
+        }
+        let controlPayloads = actions.compactMap { action -> Data? in
+            if case .sendControl(let payload) = action { return payload }
+            return nil
+        }
+        let shouldClose = actions.contains { action in
+            if case .close = action { return true }
+            return false
+        }
+
+        for (index, payload) in controlPayloads.enumerated() {
+            do {
+                let bytes = try ProtocolV1TransportFrame(channel: .control, payload: payload).encoded()
+                let closesAfterSend = shouldClose && index == controlPayloads.count - 1
+                conn.send(content: bytes, completion: .contentProcessed { error in
+                    if closesAfterSend || error != nil { conn.cancel() }
+                })
+            } catch {
+                debugLog("Unable to encode Protocol v1 control frame: \(error)")
+                conn.cancel()
+                return
+            }
+        }
+
+        for action in actions {
+            switch action {
+            case .sendControl, .close:
+                break
+            case .codecNegotiated:
+                assertionFailure("Protocol v1 codec negotiation must be handled before dispatch")
+            case .connectionReady:
+                connectionReady = true
+                recoveryController.didConnect(
+                    epoch: sessionEpochGate.current,
+                    nowNs: DispatchTime.now().uptimeNanoseconds
+                )
+                startHeartbeatMonitor(connection: conn, epoch: sessionEpochGate.current)
+                onClientConnected?(generation)
+            case .touch(let pointerID, let x, let y, let phase):
+                guard touchEnabled,
+                      let touch = protocolV1TouchAggregator.handle(
+                        pointerID: pointerID,
+                        x: x,
+                        y: y,
+                        phase: phase
+                      ) else { break }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onTouchEvent?(
+                        touch.x1,
+                        touch.y1,
+                        touch.action,
+                        touch.pointerCount,
+                        touch.x2,
+                        touch.y2,
+                        generation
+                    )
+                }
+            case .pointer(let x, let y, let phase, let buttonMask):
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onPointerEvent?(x, y, phase, buttonMask, generation)
+                }
+            case .scroll(let deltaX, let deltaY):
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onScrollEvent?(deltaX, deltaY, generation)
+                }
+            case .key(let usage, let pressed, let modifiers, let text):
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onKeyEvent?(usage, pressed, modifiers, text, generation)
+                }
+            case .heartbeat:
+                let accepted = recoveryController.observeHeartbeat(
+                    epoch: sessionEpochGate.current,
+                    nowNs: DispatchTime.now().uptimeNanoseconds
+                )
+                recordTelemetry(
+                    "heartbeat_received",
+                    epoch: sessionEpochGate.current,
+                    attributes: ["accepted": .boolean(accepted)]
+                )
+            case .requestKeyframe(let force):
+                onKeyframeRequested?(force, generation)
+            case .peerError(let error):
+                onProtocolErrorReceived?(error, generation)
+            }
+        }
+        if shouldClose && controlPayloads.isEmpty { conn.cancel() }
+    }
+
+    private func prepareProtocolV1Codec(
+        _ codec: StreamCodec,
+        actionsAfterNegotiation: [ProtocolV1SessionAction],
+        connection conn: NWConnection,
+        generation: UInt64
+    ) {
+        codecNegotiationGeneration = generation
+        let completion: (NegotiatedDisplayConfiguration?) -> Void = {
+            [weak self, weak conn] configuration in
+            guard let self, let conn else { return }
+            self.networkQueue.async {
+                guard self.connection === conn,
+                      self.activeConnectionGeneration == generation,
+                      self.codecNegotiationGeneration == generation,
+                      self.connectionProtocolMode == .protocolV1,
+                      !self.isStopped else { return }
+                self.codecNegotiationGeneration = nil
+                guard let configuration else {
+                    conn.cancel()
+                    return
+                }
+                self.setDisplaySize(
+                    width: configuration.width,
+                    height: configuration.height,
+                    rotation: configuration.rotation
+                )
+                self.applyProtocolV1Actions(
+                    actionsAfterNegotiation,
+                    connection: conn,
+                    generation: generation
+                )
+            }
+        }
+        if let onCodecNegotiated {
+            onCodecNegotiated(codec, generation, completion)
+        } else {
+            completion(NegotiatedDisplayConfiguration(
+                width: displayWidth,
+                height: displayHeight,
+                rotation: rotation
+            ))
         }
     }
 
@@ -1087,11 +1377,26 @@ class StreamingServer {
               connectionReady else { return }
 
         sendInFlight = true
-        let packet = makeFramePacket(
-            frame.data,
-            timestamp: frame.timestamp,
-            isKeyframe: frame.isKeyframe
-        )
+        let packet: Data
+        do {
+            packet = try makeFramePacket(
+                frame.data,
+                timestamp: frame.timestamp,
+                isKeyframe: frame.isKeyframe
+            )
+        } catch {
+            sendInFlight = false
+            let dependentDrops = pendingFrames.reset(requiresKeyframe: true)
+            droppedFrames += UInt64(dependentDrops + 1)
+            recordTelemetry(
+                "frame_encode_failed",
+                epoch: frame.sessionEpoch,
+                attributes: ["error": .string(error.localizedDescription)]
+            )
+            onKeyframeRequested?(true, frame.clientGeneration)
+            frame.connection.cancel()
+            return
+        }
 
         frame.connection.send(content: packet, completion: .contentProcessed { [weak self] error in
             guard let self else { return }
@@ -1131,7 +1436,17 @@ class StreamingServer {
         })
     }
 
-    private func makeFramePacket(_ data: Data, timestamp: UInt64, isKeyframe: Bool) -> Data {
+    private func makeFramePacket(_ data: Data, timestamp: UInt64, isKeyframe: Bool) throws -> Data {
+        if connectionProtocolMode == .protocolV1, let protocolV1Session {
+            guard let mediaPayload = try protocolV1Session.makeMediaFrame(
+                payload: data,
+                timestamp: timestamp,
+                keyframe: isKeyframe
+            ) else {
+                throw StreamingServerError.protocolNotReady
+            }
+            return try ProtocolV1TransportFrame(channel: .video, payload: mediaPayload).encoded()
+        }
         if clientSupportsFrameMetadata {
             var packet = Data(capacity: data.count + 14)
             packet.append(WireMessage.videoFrameWithMetadata)
@@ -1260,6 +1575,10 @@ class StreamingServer {
     func stop() {
         isStopped = true
         isReceiving = false
+        connectionProtocolMode = .legacy
+        protocolV1Framer = ProtocolV1Framer()
+        protocolV1Session = nil
+        protocolV1TouchAggregator.reset()
         activeConnectionGeneration &+= 1
         codecNegotiationGeneration = nil
         clientCallbackGeneration.advance(to: activeConnectionGeneration)
@@ -1288,13 +1607,28 @@ class StreamingServer {
         // RST unacked bytes, so wait for contentProcessed (up to 500ms) and then
         // settle briefly so the peer can read type 3 before the socket dies.
         if let conn = connection, connectionReady {
-            let shutdownMsg = Data([WireMessage.serverShutdown])
-            let semaphore = DispatchSemaphore(value: 0)
-            conn.send(content: shutdownMsg, completion: .contentProcessed { _ in
-                semaphore.signal()
-            })
-            _ = semaphore.wait(timeout: .now() + .milliseconds(500))
-            Thread.sleep(forTimeInterval: 0.05)
+            let shutdownMsg: Data?
+            if connectionProtocolMode == .protocolV1, let session = protocolV1Session {
+                do {
+                    shutdownMsg = try ProtocolV1TransportFrame(
+                        channel: .control,
+                        payload: session.makeDisconnectNotice()
+                    ).encoded()
+                } catch {
+                    shutdownMsg = nil
+                    debugLog("Unable to encode Protocol v1 shutdown notice: \(error)")
+                }
+            } else {
+                shutdownMsg = Data([WireMessage.serverShutdown])
+            }
+            if let shutdownMsg {
+                let semaphore = DispatchSemaphore(value: 0)
+                conn.send(content: shutdownMsg, completion: .contentProcessed { _ in
+                    semaphore.signal()
+                })
+                _ = semaphore.wait(timeout: .now() + .milliseconds(500))
+                Thread.sleep(forTimeInterval: 0.05)
+            }
         }
 
         connection?.cancel()

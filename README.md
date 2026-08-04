@@ -3,9 +3,10 @@
 > **Development status:** the Phase 0 macOS/Android baseline has passed its
 > recorded 30-minute device acceptance run, but this remains a development
 > preview rather than a stable release. The runnable application is still
-> named **Telemachus** and uses its legacy byte protocol; Protocol v1 and the
-> newer platform/Internet modules are checked independently but are not yet a
-> single product session. Do not treat roadmap items below as shipped features.
+> named **Telemachus**. Matching macOS and Android builds now upgrade the main
+> USB/LAN session to Protocol v1 while retaining an explicit legacy fallback;
+> the cross-platform offline gates pass, but Protocol v1 real-device acceptance
+> is still open. Do not treat roadmap items below as shipped features.
 
 Vibe Screen is building a low-latency Mac display and input terminal for
 Android, HarmonyOS, and iOS. Today this repository contains a runnable native
@@ -22,7 +23,7 @@ platform scaffolding under active development.
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; authenticated but not encrypted |
-| Protocol v1 | Schemas, compatibility fixtures, and platform modules pass; baseline application integration pending |
+| Protocol v1 | Baseline host/client main-session integration and cross-platform offline gates pass; real-device acceptance pending |
 | HarmonyOS/iOS/Internet | In development; not part of the current runnable baseline |
 
 ## Quick start
@@ -195,8 +196,9 @@ HiDPI scale, letterboxing, rotation, and safe areas.
 ### Phase 0 — Sustainable baseline
 
 **Current status: baseline acceptance passed on the recorded Nubia P0110 test
-device; Xiaomi 12 acceptance, full Xcode/XCTest, and two-hour leak testing
-remain open gates.**
+device using the legacy compatibility path, and Protocol v1 main-session
+offline gates pass. Protocol v1 device interoperability, Xiaomi 12 acceptance,
+full Xcode/XCTest, and two-hour leak testing remain open gates.**
 
 Implementation status and evidence are tracked in the
 [Phase 0 change docs](docs/changes/2026-08-04-phase-0-baseline/PRD.md).

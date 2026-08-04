@@ -6,6 +6,14 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import android.util.Log
 import android.view.WindowManager
+import dev.telemachus.display.protocol.ProtocolChannel
+import dev.telemachus.display.protocol.ProtocolUpgrade
+import dev.telemachus.display.protocol.ProtocolV1Framing
+import dev.telemachus.display.protocol.ProtocolV1Session
+import dev.vibescreen.protocol.v1.Codec
+import dev.vibescreen.protocol.v1.Envelope
+import dev.vibescreen.protocol.v1.InputPhase
+import dev.vibescreen.protocol.v1.TransportKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,6 +25,7 @@ import java.net.SocketTimeoutException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
 class StreamClient(
     private val host: String,
@@ -33,6 +42,13 @@ class StreamClient(
     @Volatile private var stopRequested = false
     @Volatile private var connectionEpoch = 0L
     @Volatile private var lastTerminationFailure: SessionFailure? = null
+    @Volatile private var wireMode = WireMode.LEGACY
+    private var pendingLegacyFirstByte: Int? = null
+    private var protocolSession: ProtocolV1Session? = null
+    private val nextInputId = AtomicLong(1L)
+    private val nextPingSequence = AtomicLong(1L)
+    @Volatile private var lastV1PingSequence = 0L
+    @Volatile private var lastV1PingSentNs = 0L
 
     private val heartbeat = HeartbeatMonitor(HEARTBEAT_TIMEOUT_MS)
     private val reconnectBackoff = ReconnectBackoff()
@@ -155,10 +171,8 @@ class StreamClient(
                 outputStream = java.io.DataOutputStream(socket?.getOutputStream())
                 streamCodecIsHevc = true
                 codecNegotiated = false
-                advertiseAvcOnlyIfNeeded() // MUST precede type 8: type 8 can trigger the server's early protocol finish
-                advertiseFrameMetadataSupport()
-                offerDeviceInfoCapability()
                 connectionEpoch = SESSION_EPOCHS.beginSession()
+                negotiateProtocol(TransportKind.TRANSPORT_KIND_USB)
                 isConnected = true
                 if (terminationDispatcher.isClaimed()) {
                     isConnected = false
@@ -358,9 +372,7 @@ class StreamClient(
                         outputStream = java.io.DataOutputStream(rawOutput)
                         streamCodecIsHevc = true
                         codecNegotiated = false
-                        advertiseAvcOnlyIfNeeded()
-                        advertiseFrameMetadataSupport()
-                        offerDeviceInfoCapability()
+                        negotiateProtocol(TransportKind.TRANSPORT_KIND_LAN)
                         true
                     } catch (error: IOException) {
                         completeConnectionEndNow(SessionFailure.write(error.message ?: "wireless session startup failed"))
@@ -411,6 +423,53 @@ class StreamClient(
             out.flush()
             diagLog("Advertised frame metadata support")
         }
+    }
+
+    private fun negotiateProtocol(transport: TransportKind) {
+        val socket = checkNotNull(socket)
+        val input = checkNotNull(inputStream)
+        val output = checkNotNull(outputStream)
+        ProtocolUpgrade.writeOffer(output)
+        socket.soTimeout = PROTOCOL_UPGRADE_TIMEOUT_MS
+        val firstByte =
+            try {
+                input.read()
+            } catch (_: SocketTimeoutException) {
+                null
+            }
+        when (val result = ProtocolUpgrade.classify(firstByte, input)) {
+            ProtocolUpgrade.Result.V1 -> {
+                wireMode = WireMode.V1
+                pendingLegacyFirstByte = null
+                protocolSession =
+                    ProtocolV1Session(
+                        deviceId = "android-${Build.MODEL}".take(MAX_PROTOCOL_ID_BYTES),
+                        deviceName = (Build.MODEL ?: "Android").take(MAX_DEVICE_NAME_BYTES),
+                        transport = transport,
+                        codecs =
+                            if (CodecCapabilities.shouldAdvertiseAvcOnly) {
+                                listOf(Codec.CODEC_H264)
+                            } else {
+                                listOf(Codec.CODEC_HEVC, Codec.CODEC_H264)
+                            },
+                    )
+                submitOutbound(
+                    kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                    command = OutboundCommand.ProtocolControl(checkNotNull(protocolSession).clientHello()),
+                )
+                diagLog("Protocol v1 upgrade accepted")
+            }
+            is ProtocolUpgrade.Result.Legacy -> {
+                wireMode = WireMode.LEGACY
+                protocolSession = null
+                pendingLegacyFirstByte = result.firstByte
+                advertiseAvcOnlyIfNeeded()
+                advertiseFrameMetadataSupport()
+                offerDeviceInfoCapability()
+                diagLog("Protocol upgrade unavailable; using legacy wire mode")
+            }
+        }
+        socket.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
     }
 
     /**
@@ -497,9 +556,13 @@ class StreamClient(
 
             try {
                 while (isConnected) {
+                    if (wireMode == WireMode.V1) {
+                        receiveV1Frame(input)
+                        continue
+                    }
                     val type =
                         try {
-                            input.readByte()
+                            pendingLegacyFirstByte?.also { pendingLegacyFirstByte = null }?.toByte() ?: input.readByte()
                         } catch (_: SocketTimeoutException) {
                             if (heartbeat.isExpired(System.nanoTime())) {
                                 emitTelemetry(
@@ -605,6 +668,99 @@ class StreamClient(
             }
         }
 
+    private fun receiveV1Frame(input: DataInputStream) {
+        val firstChannel =
+            try {
+                input.read()
+            } catch (_: SocketTimeoutException) {
+                if (heartbeat.isExpired(System.nanoTime())) throw IOException("heartbeat timeout")
+                return
+            }
+        val frame = ProtocolV1Framing.read(input, firstChannel)
+        when (frame.channel) {
+            ProtocolChannel.CONTROL -> {
+                val envelope =
+                    try {
+                        Envelope.parseFrom(frame.payload)
+                    } catch (failure: Exception) {
+                        throw IOException("Malformed Protocol v1 Envelope", failure)
+                    }
+                val session = checkNotNull(protocolSession)
+                val actions =
+                    try {
+                        session.receive(envelope)
+                    } catch (failure: IOException) {
+                        if (envelope.payloadCase != Envelope.PayloadCase.PROTOCOL_ERROR) {
+                            try {
+                                submitOutbound(
+                                    kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                                    command = OutboundCommand.ProtocolControl(
+                                        session.protocolError(
+                                        failure.message ?: "invalid protocol state",
+                                        correlationId = envelope.messageId,
+                                    ),
+                                    ),
+                                )
+                            } catch (writeFailure: Exception) {
+                                failure.addSuppressed(writeFailure)
+                            }
+                        }
+                        throw failure
+                    }
+                heartbeat.recordInbound(System.nanoTime())
+                actions.forEach { action ->
+                    when (action) {
+                        is ProtocolV1Session.Action.Send ->
+                            submitOutbound(
+                                kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                                command = OutboundCommand.ProtocolControl(action.envelope),
+                            )
+                        is ProtocolV1Session.Action.VideoConfigured -> {
+                            streamCodecIsHevc = action.codec == Codec.CODEC_HEVC
+                            codecNegotiated = true
+                            if (!sessionReady) {
+                                sessionReady = true
+                                reconnectBackoff.reset()
+                                onConnectionStatus?.invoke(true)
+                            }
+                            onCodecSelected?.invoke(streamCodecIsHevc)
+                            onDisplaySize?.invoke(action.width, action.height, 0)
+                        }
+                        is ProtocolV1Session.Action.PongReceived -> {
+                            if (action.sequence == lastV1PingSequence && lastV1PingSentNs > 0L) {
+                                onLatencyMeasured?.invoke((System.nanoTime() - lastV1PingSentNs) / 1_000_000.0)
+                            }
+                        }
+                        is ProtocolV1Session.Action.Disconnected -> {
+                            stopRequested = !action.mayResume
+                            throw IOException("Host ended Protocol v1 session")
+                        }
+                    }
+                }
+            }
+            ProtocolChannel.VIDEO -> {
+                val payload = ProtocolV1Framing.decodeVideo(frame.payload)
+                val session = checkNotNull(protocolSession)
+                session.validateMedia(payload.header)
+                val receiveTimestamp = System.nanoTime()
+                checkKeyframeFreshness(receiveTimestamp, payload.header.keyframe)
+                val callback = onFrameReceived
+                if (callback == null) {
+                    releaseBuffer(payload.annexB)
+                } else {
+                    callback.invoke(
+                        payload.annexB,
+                        payload.annexB.size,
+                        receiveTimestamp,
+                        payload.header.keyframe,
+                        connectionEpoch,
+                    )
+                }
+                updateStats(payload.annexB.size)
+            }
+        }
+    }
+
     fun sendTouch(
         x: Float,
         y: Float,
@@ -614,13 +770,47 @@ class StreamClient(
         y2: Float = 0f,
     ) {
         if (!isConnected) return
-        val command = OutboundCommand.Touch(x, y, action, pointerCount.coerceIn(1, 2), x2, y2)
         val kind =
             if (action == TOUCH_ACTION_MOVE) {
                 OutboundCommandScheduler.Kind.MOVE
             } else {
                 OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
             }
+
+        if (wireMode == WireMode.V1) {
+            val phase =
+                when (action) {
+                    0 -> InputPhase.INPUT_PHASE_BEGAN
+                    1 -> InputPhase.INPUT_PHASE_CHANGED
+                    2 -> InputPhase.INPUT_PHASE_ENDED
+                    else -> InputPhase.INPUT_PHASE_CANCELLED
+                }
+            val session = protocolSession ?: return
+            if (!session.isStreaming) return
+            val points =
+                if (pointerCount.coerceIn(1, 2) == 2) {
+                    listOf(x to y, x2 to y2)
+                } else {
+                    listOf(x to y)
+                }
+            points.forEachIndexed { pointerId, point ->
+                val envelope =
+                    session.touch(
+                        inputId = nextInputId.getAndIncrement(),
+                        pointerId = pointerId,
+                        phase = phase,
+                        x = point.first.toDouble(),
+                        y = point.second.toDouble(),
+                    )
+                submitOutbound(
+                    kind = kind,
+                    command = OutboundCommand.ProtocolControl(envelope),
+                )
+            }
+            return
+        }
+
+        val command = OutboundCommand.Touch(x, y, action, pointerCount.coerceIn(1, 2), x2, y2)
         submitOutbound(
             kind = kind,
             command = command,
@@ -659,6 +849,16 @@ class StreamClient(
             }
         if (!shouldSend) return
 
+        if (wireMode == WireMode.V1) {
+            val session = protocolSession ?: return
+            if (!session.isStreaming) return
+            submitOutbound(
+                kind = OutboundCommandScheduler.Kind.KEYFRAME,
+                command = OutboundCommand.ProtocolControl(session.requestKeyframe(reason)),
+            )
+            return
+        }
+
         val flags = if (force) KEYFRAME_REQUEST_FLAG_FORCE else 0
         diagLog("Requesting keyframe: reason=$reason, force=$force")
         submitOutbound(
@@ -673,6 +873,18 @@ class StreamClient(
      */
     fun sendPing() {
         if (!isConnected) return
+        if (wireMode == WireMode.V1) {
+            val session = protocolSession ?: return
+            if (!session.isStreaming) return
+            val sequence = nextPingSequence.getAndIncrement()
+            lastV1PingSequence = sequence
+            lastV1PingSentNs = System.nanoTime()
+            submitOutbound(
+                kind = OutboundCommandScheduler.Kind.PING,
+                command = OutboundCommand.ProtocolControl(session.ping(sequence)),
+            )
+            return
+        }
         submitOutbound(
             kind = OutboundCommandScheduler.Kind.PING,
             command = OutboundCommand.Ping(System.nanoTime()),
@@ -732,8 +944,11 @@ class StreamClient(
                 buffer.putLong(command.sentAtNs)
                 out.write(buffer.array())
             }
+
+            is OutboundCommand.ProtocolControl ->
+                ProtocolV1Framing.write(out, ProtocolChannel.CONTROL, command.envelope.toByteArray())
         }
-        out.flush()
+        if (command !is OutboundCommand.ProtocolControl) out.flush()
     }
 
     private fun updateStats(bytes: Int) {
@@ -914,6 +1129,8 @@ class StreamClient(
         outputStream = null
         inputStream = null
         socket = null
+        protocolSession = null
+        pendingLegacyFirstByte = null
     }
 
     private fun cleanupCandidateSocket(candidate: Socket? = socket) {
@@ -954,6 +1171,10 @@ class StreamClient(
         data class Ping(
             val sentAtNs: Long,
         ) : OutboundCommand
+
+        data class ProtocolControl(
+            val envelope: Envelope,
+        ) : OutboundCommand
     }
 
     private data class TerminationRequest(
@@ -970,6 +1191,7 @@ class StreamClient(
         private const val OUTBOUND_DRAIN_TIMEOUT_MS = 200L
         private const val CONNECT_TIMEOUT_MS = 5_000
         private const val HANDSHAKE_TIMEOUT_MS = 5_000
+        private const val PROTOCOL_UPGRADE_TIMEOUT_MS = 250
         private const val HEARTBEAT_POLL_INTERVAL_MS = 1_000
         private const val HEARTBEAT_TIMEOUT_MS = 3_500L
         private const val MIN_DISPLAY_DIMENSION = 16
@@ -986,6 +1208,8 @@ class StreamClient(
         private const val MESSAGE_CODEC_SELECTED = 10
         private const val MESSAGE_CLIENT_DEVICE_INFO = 11
         private const val MESSAGE_DEVICE_INFO_CAPABILITY = 12
+        private const val MAX_PROTOCOL_ID_BYTES = 128
+        private const val MAX_DEVICE_NAME_BYTES = 64
 
         // Type 3 (gap between touch=2 and ping=4). Not 12 — that is device-info capability.
         private const val MESSAGE_SERVER_SHUTDOWN = 3
@@ -997,6 +1221,8 @@ class StreamClient(
             Executors.newSingleThreadExecutor { runnable ->
                 Thread(runnable, "VibeSessionTerminator").apply { isDaemon = true }
             }
+
+        private enum class WireMode { LEGACY, V1 }
 
         /**
          * Codec-aware sync-frame (keyframe) detection on the legacy

@@ -72,6 +72,34 @@ Compatibility rules:
 - reconnect increments `session_epoch`; adapters drop older media and input;
 - codec fallback is an explicit `VideoConfig` / `VideoConfigResult` exchange.
 
+### Baseline application integration
+
+The runnable macOS and Android baseline uses an explicit connection-level
+upgrade rather than guessing whether arbitrary bytes are Protobuf. The Android
+client first sends legacy-safe byte `0x0d`; a supporting host replies with
+`0x0d 0x01`, after which that connection is permanently Protocol v1. A timeout
+or a first legacy host byte selects the inherited adapter without losing that
+byte. An old client never sends the offer, so a new host retains the inherited
+startup path. Protocol negotiation failures after a successful upgrade send a
+`ProtocolError` and close instead of downgrading silently.
+
+Protocol v1 TCP frames are `[channel: uint8][payload_length: uint32 big-endian]
+[payload]`, with control channel `1` and video channel `2`. Control payloads are
+serialized `Envelope` messages. Video payloads are a Protobuf-varint header
+length, `MediaPacketHeader`, and the exact Annex-B bytes declared by
+`payload_length`. A frame is capped at 16 MiB. The existing host latest-frame
+queue remains the media policy; control messages never enter that eviction
+queue.
+
+The main-session flow is `ClientHello -> HostHello -> SessionAccepted ->
+ListDisplays -> StartDisplay -> VideoConfig -> VideoConfigResult`. Media remains
+blocked until the client accepts the configuration. Touch and heartbeat use
+control envelopes, host epochs are propagated into decoder frames, and stale
+session/config/stream/frame identifiers fail closed. The production baseline
+advertises only capabilities actually connected to product behavior: touch and
+telemetry. Keyboard and pointer capabilities remain unadvertised until their UI
+and injection paths are complete.
+
 ## Transport and backpressure
 
 Control is reliable and ordered. Media is logically independent and optimized

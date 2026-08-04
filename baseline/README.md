@@ -6,11 +6,13 @@ since been modified in this repository. Telemachus is a SideScreen derivative;
 both projects' MIT notices remain under `baseline/` and
 `third_party/telemachus/`.
 
-The imported baseline is intentionally kept separate from the stable contracts in
-`contracts/`. It exists to preserve a buildable host/client vertical slice
-while characterization tests are added and responsibilities are extracted.
-Do not perform broad renames or module moves without first protecting the
-affected behavior with tests.
+The imported baseline consumes the stable Protocol v1 schemas from `contracts/`
+through generated Swift and Java-lite bindings. Matching host/client builds
+upgrade the main TCP session to Protocol v1; the inherited byte protocol remains
+as a tested mixed-version fallback. The directory still preserves the buildable
+vertical slice while responsibilities are extracted. Do not perform broad
+renames or module moves without first protecting the affected behavior with
+tests.
 
 Build entry points:
 

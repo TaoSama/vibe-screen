@@ -12,18 +12,33 @@ let package = Package(
     products: [
         .executable(
             name: "Telemachus",
-            targets: ["Telemachus"])
+            targets: ["Telemachus"]),
+        .library(
+            name: "VibeScreenProtocol",
+            targets: ["VibeScreenProtocol"])
     ],
     dependencies: [
         .package(
             url: "https://github.com/stasel/WebRTC.git",
             exact: "150.0.0"
+        ),
+        .package(
+            url: "https://github.com/apple/swift-protobuf.git",
+            revision: "c6fe6442e6a64250495669325044052e113e990c"
         )
     ],
     targets: [
+        .target(
+            name: "VibeScreenProtocol",
+            dependencies: [
+                .product(name: "SwiftProtobuf", package: "swift-protobuf")
+            ],
+            path: "Protocol/Sources/VibeScreenProtocol"
+        ),
         .executableTarget(
             name: "Telemachus",
             dependencies: [
+                "VibeScreenProtocol",
                 .product(name: "WebRTC", package: "WebRTC")
             ],
             path: "Sources",
@@ -43,6 +58,7 @@ let package = Package(
             name: "TelemachusTests",
             dependencies: [
                 "Telemachus",
+                "VibeScreenProtocol",
                 .product(name: "WebRTC", package: "WebRTC")
             ],
             path: "Tests/TelemachusTests",

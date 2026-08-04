@@ -1,0 +1,9 @@
+{
+  "protocolVersion": 1,
+  "messageId": "12",
+  "correlationId": "11",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000012",
+  "pong": {"sequence": "99"}
+}

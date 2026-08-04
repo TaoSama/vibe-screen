@@ -1,0 +1,14 @@
+{
+  "protocolVersion": 1,
+  "messageId": "2",
+  "correlationId": "1",
+  "sentAtMonotonicNs": "1000000002",
+  "hostHello": {
+    "selectedProtocol": 1,
+    "hostId": "mac-golden",
+    "hostName": "Golden Mac",
+    "capabilities": ["CAPABILITY_DISPLAY_MIRROR", "CAPABILITY_TOUCH", "CAPABILITY_KEYBOARD", "CAPABILITY_POINTER", "CAPABILITY_TELEMETRY"],
+    "codecs": ["CODEC_HEVC", "CODEC_H264"],
+    "resourceLimits": {"maximumClients": 1, "maximumDisplays": 1, "maximumVideoStreams": 1}
+  }
+}
