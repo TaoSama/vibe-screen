@@ -6,9 +6,7 @@ let package = Package(
     name: "VibeScreenIOS",
     platforms: [
         .iOS(.v17),
-        // Protocol/Core use Foundation-only APIs and are shared with the
-        // macOS 13 host. iOS app deployment remains iOS 17.
-        .macOS(.v13),
+        .macOS(.v14),
     ],
     products: [
         .library(name: "VibeScreenProtocol", targets: ["VibeScreenProtocol"]),
