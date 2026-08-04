@@ -279,9 +279,10 @@ extension StreamViewModel {
     func decoder(for streamID: UInt64) -> VideoDecoder {
         if let decoder = decoders[streamID] { return decoder }
         let decoder = VideoDecoder { [weak self] pixelBuffer, _ in
+            let frame = DecodedPixelBuffer(pixelBuffer)
             Task { @MainActor in
                 guard self?.selectedStreamID == streamID else { return }
-                self?.pixelBuffer = pixelBuffer
+                self?.pixelBuffer = frame.value
             }
         }
         decoders[streamID] = decoder
@@ -387,4 +388,13 @@ extension StreamViewModel {
 
 private enum ProtocolClientError: Error {
     case rejected(String)
+}
+
+// The app treats the retained VideoToolbox output as read-only across the UI actor hop.
+private struct DecodedPixelBuffer: @unchecked Sendable {
+    let value: CVPixelBuffer
+
+    init(_ value: CVPixelBuffer) {
+        self.value = value
+    }
 }
