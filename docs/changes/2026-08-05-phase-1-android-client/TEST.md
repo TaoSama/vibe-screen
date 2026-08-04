@@ -4,7 +4,7 @@ Date: 2026-08-05
 Branch: `codex/phase1-android-client-experience`
 Implementation base: `6f7ffbe0be872390144899642636dbb24d89f120`
 
-Final branch base after synchronization: `43607d47144c15c34670c17640231d8e50efa908`
+Final branch base after synchronization: `53228758722c74592b36b3f9b0b7be41ca9f5403`
 
 ## Scope and protocol boundary
 
@@ -14,14 +14,15 @@ legacy touch protocol.
 
 | Capability | Implementation status | Evidence status |
 | --- | --- | --- |
-| Fit/fill scaling | client-local MediaCodec mode, aspect-preserving Fit surface, and crop-aware Fill mapping | Fit geometry and synthetic stream passed; Fill visual/corner device check pending |
-| rotation | host rotation plus persisted client offset | policy/build passed; four-mode visual/corner device check pending |
+| Fit/fill scaling | client-local MediaCodec mode, rotated viewport container, aspect-preserving Fit surface, and crop-aware Fill mapping | eight rotation/scale corner matrices pass on JVM; Fit synthetic-device geometry passed; Fill device check pending |
+| rotation | actual Surface pixel transform with 90°/270° viewport/surface dimension exchange and input inverse transform | four-direction layout/corner matrix passes on JVM; four-mode visual device check pending |
 | Mac display selection | explicit touch-only capability boundary; host-selected stream shown | correctly blocked; host/session integration required |
 | tap/drag/right click/scroll/pinch | existing touch path retained; secondary mouse button and wheel adapt to touch gestures | injected tap/long swipe produced touch packets; Mac result and two-finger checks pending |
 | keyboard/shortcuts | common Android keys map to protocol-neutral USB HID events | HID mapping/gate passed on device; forwarding blocked by legacy host |
 | external mouse/keyboard | wheel and secondary-button adapters; physical keys captured and gated | physical peripherals pending; native pointer/keyboard protocol required |
-| reconnect/errors | readiness begins at display config; initial failures propagate to actionable UI; retries remain bounded | stale/no-display endpoint error and synthetic cold reconnect passed |
-| permissions/lifecycle | existing camera recovery retained; background pauses input/retries and keep-awake, foreground resumes/rekeys | camera deny/settings/recovery, paused retry, and synthetic live-session resume passed |
+| reconnect/errors | per-session generation gates all client/decoder callbacks; typed retryability preserves failure reasons and stops protocol-error loops | stale/no-display endpoint and synthetic cold reconnect passed on device; stale-generation and ready-session failure paths pass on JVM |
+| permissions/lifecycle | Camera permission is re-evaluated after returning from Settings; background pauses input/retries and keep-awake, foreground resumes/rekeys | original camera deny/settings launch passed on device; Settings-return state machine passes on JVM; post-review device rerun pending |
+| outbound input | bounded single writer reserves recovery capacity, coalesces MOVE/ping/keyframe, preserves admitted touch-boundary FIFO, gracefully drains releases, and fails the session closed instead of silently losing a saturated boundary | saturation/order/write-failure/graceful-close tests pass on JVM; physical-peripheral device check pending |
 
 No unsupported keyboard, pointer, or display-selection bytes are added to the
 legacy wire format. A compatible negotiated application session remains the
@@ -47,11 +48,11 @@ cd baseline/AndroidClient
 
 Results:
 
-- 83 JVM tests, zero failures/errors/skips;
+- 114 JVM tests, zero failures/errors/skips;
 - lint reported `No issues found`;
 - all requested Gradle tasks completed with `BUILD SUCCESSFUL in 28s`;
 - final clean-rebuild APK SHA-256:
-  `8c73795f0c97de5e6f0a0c8c7c74c0de4d8af8164b149e4c586c02dd14fe5071`.
+  `1fec4cd06c728d35d52abad99ffb3a5e284af1996e0923ef9b6d10c5eaf17e67`.
 
 The APK hash is an offline artifact identity, not install or device evidence.
 
@@ -67,10 +68,11 @@ The device-run APK installed with `adb install -r -t` at
 `b108fb9e0c8e5544171d57eb3be57d9fb93f332fc4954e26d5f51b20b876aa0b`.
 Its SHA-256 was
 `37e7c2b7e107443c298a8d59d054fac027ad32021bb5eeadcb87f73d649c3892`.
-After the lease ended, final review added only pre-ready validation for invalid
-display dimensions/rotation plus its fake-server test. That final delta passed
-the 83-test clean gate but was not reinstalled, so malformed-display rejection
-remains JVM-verified rather than device-verified.
+After the lease ended, review added malformed-display validation and then
+corrected true client rotation, callback-generation isolation, bounded
+outbound scheduling, typed terminal failures, and Camera settings-return
+recovery. The final 110-test clean build was not reinstalled. Those review
+fixes are JVM/lint/build-verified only and retain all real-device gates below.
 
 The Mac remained locked, so ScreenCaptureKit could not provide a real display.
 The device run therefore used the repository's existing 2000×1124@60 synthetic

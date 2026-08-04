@@ -4,13 +4,9 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
-import android.os.Process
 import android.util.Log
 import android.view.WindowManager
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.DataInputStream
 import java.io.IOException
@@ -19,8 +15,6 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 class StreamClient(
     private val host: String,
@@ -35,6 +29,8 @@ class StreamClient(
     @Volatile private var sessionReady = false
     @Volatile private var stopRequested = false
     @Volatile private var connectionEpoch = 0L
+    @Volatile private var terminationDelivered = false
+    @Volatile private var lastTerminationFailure: SessionFailure? = null
 
     private val heartbeat = HeartbeatMonitor(HEARTBEAT_TIMEOUT_MS)
     private val reconnectBackoff = ReconnectBackoff()
@@ -47,6 +43,7 @@ class StreamClient(
     var onStats: ((Double, Double) -> Unit)? = null
     var onReconnectSuggested: ((delayMs: Long) -> Unit)? = null
     var onWriteFailure: ((reason: String) -> Unit)? = null
+    internal var onSessionEnded: ((failure: SessionFailure) -> Unit)? = null
 
     /** Invoked when the server confirms the stream codec (true = HEVC). */
     var onCodecSelected: ((Boolean) -> Unit)? = null
@@ -106,34 +103,35 @@ class StreamClient(
         }
     }
 
-    // High-priority thread for touch events to minimize latency
-    // Use THREAD_PRIORITY_DISPLAY instead of URGENT_DISPLAY to avoid starving system processes
-    private val touchExecutor =
-        Executors.newSingleThreadExecutor { runnable ->
-            Thread(
-                {
-                    // Use DISPLAY priority (less aggressive than URGENT_DISPLAY).
-                    // ThreadFactory runs on the caller thread, so set Linux priority
-                    // from inside the worker thread before processing touch writes.
-                    try {
-                        Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY)
-                    } catch (error: Exception) {
-                        Log.w(TAG, "Could not raise touch thread priority", error)
-                    }
-                    runnable.run()
-                },
-                "TouchThread",
-            ).apply {
-                priority = Thread.MAX_PRIORITY
-            }
-        }
-    private val touchDispatcher = touchExecutor.asCoroutineDispatcher()
-    private val touchScope = CoroutineScope(touchDispatcher)
+    private val outboundScheduler =
+        OutboundCommandScheduler(
+            capacity = OUTBOUND_QUEUE_CAPACITY,
+            writer = ::writeOutboundCommand,
+            onWriteFailure = { failure ->
+                val detail = failure.cause.message ?: failure.cause.javaClass.simpleName
+                Log.e(TAG, "Outbound write failed", failure.cause)
+                onWriteFailure?.invoke(detail)
+                handleConnectionEnded(SessionFailure.write(detail))
+            },
+            coalesce = { kind, pending, replacement ->
+                if (kind == OutboundCommandScheduler.Kind.KEYFRAME &&
+                    pending is OutboundCommand.Keyframe &&
+                    replacement is OutboundCommand.Keyframe
+                ) {
+                    OutboundCommand.Keyframe(pending.flags or replacement.flags)
+                } else {
+                    replacement
+                }
+            },
+            threadName = "VibeOutboundWriter",
+        )
 
     suspend fun connect() =
         withContext(Dispatchers.IO) {
             stopRequested = false
             sessionReady = false
+            terminationDelivered = false
+            lastTerminationFailure = null
             try {
                 val candidate = Socket()
                 socket = candidate
@@ -162,11 +160,13 @@ class StreamClient(
                 )
                 receiveData()
                 if (!sessionReady && !stopRequested) {
+                    val failure = lastTerminationFailure
+                    if (failure != null && !failure.retryable) throw SessionProtocolException(failure)
                     throw IOException("Mac connection closed before display configuration")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Connection error", e)
-                handleConnectionEnded(e.message ?: e.javaClass.simpleName)
+                handleConnectionEnded(SessionFailure.transport(e.message ?: e.javaClass.simpleName))
                 if (!sessionReady && !stopRequested) throw e
             }
         }
@@ -191,6 +191,8 @@ class StreamClient(
     ) = withContext(Dispatchers.IO) {
         stopRequested = false
         sessionReady = false
+        terminationDelivered = false
+        lastTerminationFailure = null
         Log.i(TAG, "connectWireless: trying $host:$port (device=$deviceName, token bytes=${token.size})")
 
         // Force the socket onto the active WiFi network. On some Android setups
@@ -398,6 +400,7 @@ class StreamClient(
     private suspend fun receiveData() =
         withContext(Dispatchers.IO) {
             val input = inputStream ?: return@withContext
+            var terminalFailure = SessionFailure.transport("receive loop ended")
 
             try {
                 while (isConnected) {
@@ -410,7 +413,7 @@ class StreamClient(
                                     "heartbeat_timeout",
                                     mapOf("session_epoch" to connectionEpoch),
                                 )
-                                throw IOException("heartbeat timeout")
+                                throw SessionProtocolException(SessionFailure.heartbeat("heartbeat timeout"))
                             }
                             continue
                         }
@@ -433,7 +436,12 @@ class StreamClient(
                                 height !in MIN_DISPLAY_DIMENSION..MAX_DISPLAY_DIMENSION ||
                                 rotation !in VALID_DISPLAY_ROTATIONS
                             ) {
-                                throw IOException("Invalid display configuration: ${width}x$height @ $rotation")
+                                throw SessionProtocolException(
+                                    SessionFailure.protocol(
+                                        SessionFailureKind.INVALID_DISPLAY,
+                                        "Invalid display configuration: ${width}x$height @ $rotation",
+                                    ),
+                                )
                             }
                             diagLog("Display config: ${width}x$height @ $rotation°")
                             if (!sessionReady) {
@@ -476,25 +484,31 @@ class StreamClient(
                         MESSAGE_SERVER_SHUTDOWN -> {
                             diagLog("Server shut down gracefully — closing")
                             stopRequested = true
+                            terminalFailure = SessionFailure.serverShutdown()
                             onServerShutdown?.invoke()
                             break
                         }
 
                         else -> {
-                            Log.e(
-                                TAG,
-                                "Unknown message type: ${type.toInt()}, stream may be misaligned — disconnecting",
+                            throw SessionProtocolException(
+                                SessionFailure.protocol(
+                                    SessionFailureKind.UNKNOWN_MESSAGE,
+                                    "Unknown message type: ${type.toInt()}",
+                                ),
                             )
-                            break
                         }
                     }
                 }
+            } catch (error: SessionProtocolException) {
+                terminalFailure = error.failure
+                Log.e(TAG, "Session protocol failure: ${error.failure.detail}", error)
             } catch (e: IOException) {
+                terminalFailure = SessionFailure.transport(e.message ?: e.javaClass.simpleName)
                 if (isConnected) {
                     Log.e(TAG, "❌ Read error", e)
                 }
             } finally {
-                handleConnectionEnded("receive_loop_ended")
+                handleConnectionEnded(terminalFailure)
             }
         }
 
@@ -507,30 +521,18 @@ class StreamClient(
         y2: Float = 0f,
     ) {
         if (!isConnected) return
-
-        touchScope.launch {
-            try {
-                socket?.getOutputStream()?.let { out ->
-                    val count = pointerCount.coerceIn(1, 2)
-                    val size = 6 + count * 8 // 1 type + 1 count + N*(4x+4y) + 4 action
-                    val buffer = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
-                    buffer.put(2.toByte())
-                    buffer.put(count.toByte())
-                    buffer.putFloat(x)
-                    buffer.putFloat(y)
-                    if (count == 2) {
-                        buffer.putFloat(x2)
-                        buffer.putFloat(y2)
-                    }
-                    buffer.putInt(action)
-                    out.write(buffer.array())
-                    out.flush()
-                }
-            } catch (error: Exception) {
-                Log.e(TAG, "Touch write failed", error)
-                onWriteFailure?.invoke(error.message ?: error.javaClass.simpleName)
+        val command = OutboundCommand.Touch(x, y, action, pointerCount.coerceIn(1, 2), x2, y2)
+        val kind =
+            if (action == TOUCH_ACTION_MOVE) {
+                OutboundCommandScheduler.Kind.MOVE
+            } else {
+                OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
             }
-        }
+        submitOutbound(
+            kind = kind,
+            command = command,
+            timeoutMillis = if (kind == OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH) BOUNDARY_SUBMIT_TIMEOUT_MS else 0,
+        )
     }
 
     // Callback for latency measurement (round-trip ping/pong)
@@ -566,17 +568,11 @@ class StreamClient(
 
         val flags = if (force) KEYFRAME_REQUEST_FLAG_FORCE else 0
         diagLog("Requesting keyframe: reason=$reason, force=$force")
-        touchScope.launch {
-            try {
-                outputStream?.let { out ->
-                    out.write(byteArrayOf(MESSAGE_KEYFRAME_REQUEST.toByte(), flags.toByte()))
-                    out.flush()
-                }
-            } catch (error: Exception) {
-                Log.e(TAG, "Keyframe request write failed", error)
-                onWriteFailure?.invoke(error.message ?: error.javaClass.simpleName)
-            }
-        }
+        submitOutbound(
+            kind = OutboundCommandScheduler.Kind.KEYFRAME,
+            command = OutboundCommand.Keyframe(flags),
+            timeoutMillis = RECOVERY_SUBMIT_TIMEOUT_MS,
+        )
     }
 
     /**
@@ -584,20 +580,67 @@ class StreamClient(
      */
     fun sendPing() {
         if (!isConnected) return
-        touchScope.launch {
+        submitOutbound(
+            kind = OutboundCommandScheduler.Kind.PING,
+            command = OutboundCommand.Ping(System.nanoTime()),
+        )
+    }
+
+    private fun submitOutbound(
+        kind: OutboundCommandScheduler.Kind,
+        command: OutboundCommand,
+        timeoutMillis: Long = 0,
+    ) {
+        val submission =
             try {
-                socket?.getOutputStream()?.let { out ->
-                    val buffer = ByteBuffer.allocate(9).order(ByteOrder.LITTLE_ENDIAN)
-                    buffer.put(4.toByte()) // Type 4: ping
-                    buffer.putLong(System.nanoTime())
-                    out.write(buffer.array())
-                    out.flush()
+                outboundScheduler.submit(kind, command, timeoutMillis)
+            } catch (error: InterruptedException) {
+                Thread.currentThread().interrupt()
+                handleConnectionEnded(SessionFailure.write("outbound submission interrupted"))
+                return
+            }
+        if (submission == OutboundCommandScheduler.Submission.TIMED_OUT &&
+            kind != OutboundCommandScheduler.Kind.MOVE &&
+            kind != OutboundCommandScheduler.Kind.PING
+        ) {
+            handleConnectionEnded(
+                SessionFailure.protocol(
+                    SessionFailureKind.OUTBOUND_BACKPRESSURE,
+                    "Outbound queue saturated while preserving $kind",
+                ),
+            )
+        }
+    }
+
+    private fun writeOutboundCommand(command: OutboundCommand) {
+        val out = outputStream ?: throw IOException("session output is closed")
+        when (command) {
+            is OutboundCommand.Touch -> {
+                val size = 6 + command.pointerCount * 8
+                val buffer = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
+                buffer.put(MESSAGE_TOUCH.toByte())
+                buffer.put(command.pointerCount.toByte())
+                buffer.putFloat(command.x)
+                buffer.putFloat(command.y)
+                if (command.pointerCount == 2) {
+                    buffer.putFloat(command.x2)
+                    buffer.putFloat(command.y2)
                 }
-            } catch (error: Exception) {
-                Log.e(TAG, "Ping write failed", error)
-                onWriteFailure?.invoke(error.message ?: error.javaClass.simpleName)
+                buffer.putInt(command.action)
+                out.write(buffer.array())
+            }
+
+            is OutboundCommand.Keyframe ->
+                out.write(byteArrayOf(MESSAGE_KEYFRAME_REQUEST.toByte(), command.flags.toByte()))
+
+            is OutboundCommand.Ping -> {
+                val buffer = ByteBuffer.allocate(9).order(ByteOrder.LITTLE_ENDIAN)
+                buffer.put(MESSAGE_PING.toByte())
+                buffer.putLong(command.sentAtNs)
+                out.write(buffer.array())
             }
         }
+        out.flush()
     }
 
     private fun updateStats(bytes: Int) {
@@ -633,7 +676,9 @@ class StreamClient(
         val frameSize = input.readInt()
 
         if (frameSize <= 0 || frameSize > MAX_FRAME_SIZE) {
-            throw IOException("Invalid frame size: $frameSize")
+            throw SessionProtocolException(
+                SessionFailure.protocol(SessionFailureKind.INVALID_FRAME, "Invalid frame size: $frameSize"),
+            )
         }
 
         var isKeyframe = false
@@ -708,35 +753,41 @@ class StreamClient(
 
     fun disconnect() {
         stopRequested = true
-        handleConnectionEnded("user_requested")
+        handleConnectionEnded(SessionFailure.userRequested())
     }
 
     fun failCurrentSession(reason: String) {
         stopRequested = false
-        handleConnectionEnded(reason)
+        handleConnectionEnded(SessionFailure.codec(reason))
     }
 
     @Synchronized
-    private fun handleConnectionEnded(reason: String) {
+    private fun handleConnectionEnded(failure: SessionFailure) {
+        if (terminationDelivered) return
+        terminationDelivered = true
+        lastTerminationFailure = failure
         val wasConnected = isConnected
         isConnected = false
         cleanup()
-        if (!wasConnected && connectionEpoch > 0L) return
+        if (!wasConnected && connectionEpoch == 0L) return
         val ownsCurrentEpoch = connectionEpoch == 0L || SESSION_EPOCHS.accepts(connectionEpoch)
         if (ownsCurrentEpoch) {
+            onSessionEnded?.invoke(failure)
             onConnectionStatus?.invoke(false)
         }
         if (wasConnected) {
             emitTelemetry(
                 "connection_closed",
                 mapOf(
-                    "reason" to reason,
+                    "reason" to failure.detail,
+                    "failure_kind" to failure.kind.name,
+                    "retryable" to failure.retryable,
                     "session_epoch" to connectionEpoch,
-                    "intentional" to stopRequested,
+                    "intentional" to failure.intentional,
                 ),
             )
         }
-        if (!stopRequested && ownsCurrentEpoch) {
+        if (failure.retryable && ownsCurrentEpoch) {
             val delayMs = reconnectBackoff.nextDelayMs()
             emitTelemetry(
                 "reconnect_scheduled",
@@ -744,28 +795,22 @@ class StreamClient(
             )
             onReconnectSuggested?.invoke(delayMs)
         }
-        Log.d(TAG, "Disconnected: $reason")
+        Log.d(TAG, "Disconnected: ${failure.kind}: ${failure.detail}")
     }
 
     private fun cleanup() {
         try {
-            // Closing the socket first interrupts a blocking connect/read.
+            try {
+                if (!outboundScheduler.shutdownGracefully(OUTBOUND_DRAIN_TIMEOUT_MS)) {
+                    outboundScheduler.shutdownNow()
+                }
+            } catch (error: InterruptedException) {
+                Thread.currentThread().interrupt()
+                outboundScheduler.shutdownNow()
+            }
             socket?.close()
             outputStream?.close()
             inputStream?.close()
-
-            // Properly shutdown executor with timeout to prevent orphaned threads
-            touchExecutor.shutdown()
-            try {
-                if (!touchExecutor.awaitTermination(500, TimeUnit.MILLISECONDS)) {
-                    touchExecutor.shutdownNow()
-                    // Wait a bit more for forced shutdown
-                    touchExecutor.awaitTermination(200, TimeUnit.MILLISECONDS)
-                }
-            } catch (e: InterruptedException) {
-                touchExecutor.shutdownNow()
-                Thread.currentThread().interrupt()
-            }
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup", e)
         }
@@ -783,6 +828,7 @@ class StreamClient(
         if (socket === candidate) {
             socket = null
         }
+        outboundScheduler.shutdownNow()
     }
 
     private fun diagLog(msg: String) = DiagLog.log("SC", msg)
@@ -794,11 +840,34 @@ class StreamClient(
         Log.i(TELEMETRY_TAG, TelemetryJson.encode(event, System.currentTimeMillis(), fields))
     }
 
+    private sealed interface OutboundCommand {
+        data class Touch(
+            val x: Float,
+            val y: Float,
+            val action: Int,
+            val pointerCount: Int,
+            val x2: Float,
+            val y2: Float,
+        ) : OutboundCommand
+
+        data class Keyframe(
+            val flags: Int,
+        ) : OutboundCommand
+
+        data class Ping(
+            val sentAtNs: Long,
+        ) : OutboundCommand
+    }
+
     companion object {
         private const val TAG = "StreamClient"
         private const val MAX_FRAME_SIZE = 5 * 1024 * 1024 // 5MB
         private const val KEYFRAME_REQUEST_INTERVAL_NS = 500_000_000L
         private const val KEYFRAME_STALE_INTERVAL_NS = 1_500_000_000L
+        private const val OUTBOUND_QUEUE_CAPACITY = 32
+        private const val BOUNDARY_SUBMIT_TIMEOUT_MS = 8L
+        private const val RECOVERY_SUBMIT_TIMEOUT_MS = 10L
+        private const val OUTBOUND_DRAIN_TIMEOUT_MS = 200L
         private const val CONNECT_TIMEOUT_MS = 5_000
         private const val HANDSHAKE_TIMEOUT_MS = 5_000
         private const val HEARTBEAT_POLL_INTERVAL_MS = 1_000
@@ -808,6 +877,8 @@ class StreamClient(
         private val VALID_DISPLAY_ROTATIONS = setOf(0, 90, 180, 270)
         private const val TELEMETRY_TAG = "VibeScreenTelemetry"
         private const val MESSAGE_VIDEO_FRAME = 0
+        private const val MESSAGE_TOUCH = 2
+        private const val MESSAGE_PING = 4
         private const val MESSAGE_VIDEO_FRAME_WITH_METADATA = 6
         private const val MESSAGE_KEYFRAME_REQUEST = 7
         private const val MESSAGE_CLIENT_SUPPORTS_FRAME_METADATA = 8
@@ -820,6 +891,7 @@ class StreamClient(
         private const val MESSAGE_SERVER_SHUTDOWN = 3
         private const val FRAME_FLAG_KEYFRAME = 1
         private const val KEYFRAME_REQUEST_FLAG_FORCE = 1
+        private const val TOUCH_ACTION_MOVE = 1
         private val SESSION_EPOCHS = SessionEpochGate()
 
         /**

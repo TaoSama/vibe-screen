@@ -11,8 +11,8 @@ Android treats a new application ID as a different app.
   trusted LAN.
 - Hardware H.264 and HEVC decoding with explicit codec negotiation, sync-frame
   recovery, stale-frame dropping, and bounded buffers.
-- Full-screen fit/fill rendering, crop/letterbox-aware touch mapping,
-  host-following or client-offset rotation, two-finger gestures, connection
+- Full-screen fit/fill rendering, real client-local Surface rotation,
+  rotation/crop/letterbox-aware touch mapping, two-finger gestures, connection
   telemetry, and saved UI preferences.
 - QR pairing for LAN, encrypted-at-rest pairing credentials, actionable camera
   permission states, and automatic USB/LAN reconnection.
@@ -20,6 +20,9 @@ Android treats a new application ID as a different app.
   screen stays awake and is protected from Android screenshots. Backgrounding
   pauses new retry attempts and input; returning to the foreground resumes
   retry or requests a fresh keyframe without discarding a live session.
+- Input writes use a bounded single-writer scheduler: recovery controls are
+  prioritized, pointer moves coalesce to the newest pending position, and
+  down/up/cancel boundaries retain FIFO order.
 - Touch tap, long-press right click, long-press drag, two-finger scroll/pinch,
   external mouse wheel, and external secondary-button events use the existing
   touch path. Secondary mouse clicks are adapted to the host's long-press
@@ -87,7 +90,7 @@ this mode on public, guest, or otherwise untrusted Wi-Fi.
 
 - **Camera** is requested only when scanning a LAN pairing QR code. USB works
   without it. If permission is permanently denied, the UI links to Android app
-  settings.
+  settings and re-evaluates the permission when the user returns.
 - **Network access/state** is used for the stream and for binding LAN sockets to
   the active Wi-Fi network.
 - Pairing tokens are encrypted with a key held by Android Keystore and are not
@@ -165,6 +168,12 @@ cold reconnect were exercised. The Mac remained locked, so this run does not
 prove visible Mac input results, real display selection/rotation, physical
 mouse or keyboard behavior, or ScreenCaptureKit end-to-end recovery. See the
 [Phase 1 verification record](../../docs/changes/2026-08-05-phase-1-android-client/TEST.md).
+
+Subsequent review fixes for true 90°/270° rendering, inverse input mapping,
+session-generation isolation, bounded outbound input, typed terminal errors,
+and Camera settings-return recovery are covered by JVM/lint/build gates only.
+That post-device build has not been installed or exercised with a real Mac or
+physical peripherals.
 
 The following remain separate release gates: Xiaomi 12 coverage, a physical
 8–9 inch tablet matrix, unlocked-Mac Phase 1 interaction acceptance, two-hour

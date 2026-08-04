@@ -1,9 +1,13 @@
 package dev.telemachus.display
 
+import java.io.IOException
+
 internal enum class ConnectionFailureKind {
     HOST_NOT_RUNNING,
     NETWORK_UNREACHABLE,
     TIMEOUT,
+    INCOMPATIBLE_SESSION,
+    INPUT_OVERLOADED,
     UNKNOWN,
 }
 
@@ -15,9 +19,56 @@ internal data class ConnectionGuidance(
 
 internal object ConnectionGuidanceFactory {
     fun from(
+        failure: SessionFailure,
+        port: Int,
+    ): ConnectionGuidance =
+        when (failure.kind) {
+            SessionFailureKind.INVALID_DISPLAY,
+            SessionFailureKind.INVALID_FRAME,
+            SessionFailureKind.UNKNOWN_MESSAGE,
+            ->
+                ConnectionGuidance(
+                    kind = ConnectionFailureKind.INCOMPATIBLE_SESSION,
+                    status = "Mac app is incompatible",
+                    message = "Update Vibe Screen on both devices, then reconnect. " +
+                        "Technical detail: ${failure.detail}",
+                )
+
+            SessionFailureKind.OUTBOUND_BACKPRESSURE ->
+                ConnectionGuidance(
+                    kind = ConnectionFailureKind.INPUT_OVERLOADED,
+                    status = "Input stream overloaded",
+                    message = "Reconnect, then reduce simultaneous touch or peripheral input. " +
+                        "Technical detail: ${failure.detail}",
+                )
+
+            SessionFailureKind.CODEC_CONFIGURATION ->
+                ConnectionGuidance(
+                    kind = ConnectionFailureKind.INCOMPATIBLE_SESSION,
+                    status = "Video decoder recovery",
+                    message = "Keep the Mac app open while the client retries with a compatible codec.",
+                )
+
+            SessionFailureKind.HEARTBEAT_TIMEOUT,
+            SessionFailureKind.TRANSPORT_CLOSED,
+            SessionFailureKind.WRITE_FAILED,
+            -> from(IOException(failure.detail), port)
+
+            SessionFailureKind.SERVER_SHUTDOWN,
+            SessionFailureKind.USER_REQUESTED,
+            ->
+                ConnectionGuidance(
+                    kind = ConnectionFailureKind.UNKNOWN,
+                    status = "Session ended",
+                    message = failure.detail,
+                )
+        }
+
+    fun from(
         throwable: Throwable,
         port: Int,
     ): ConnectionGuidance {
+        if (throwable is SessionProtocolException) return from(throwable.failure, port)
         val detail = throwable.message.orEmpty()
         return when {
             detail.contains("ECONNREFUSED", ignoreCase = true) ||

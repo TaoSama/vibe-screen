@@ -1,7 +1,7 @@
 package dev.telemachus.display
 
 /**
- * Maps SurfaceView coordinates into the displayed video rectangle.
+ * Maps visible viewport coordinates into the encoded video orientation.
  *
  * MediaCodec's SCALE_TO_FIT mode letterboxes when the stream and tablet have
  * different aspect ratios. Normalizing against the whole SurfaceView would
@@ -21,6 +21,7 @@ internal object TouchMapper {
         videoWidth: Int,
         videoHeight: Int,
         scaleMode: VideoScaleMode = VideoScaleMode.FIT,
+        renderRotation: Int = 0,
     ): Point {
         if (viewWidth <= 0 || viewHeight <= 0 || videoWidth <= 0 || videoHeight <= 0) {
             return Point(0f, 0f)
@@ -28,7 +29,11 @@ internal object TouchMapper {
 
         val surfaceWidth = viewWidth.toFloat()
         val surfaceHeight = viewHeight.toFloat()
-        val videoAspect = videoWidth.toFloat() / videoHeight.toFloat()
+        val normalizedRotation = ViewportPolicy.normalizeRotation(renderRotation)
+        val quarterTurn = normalizedRotation == 90 || normalizedRotation == 270
+        val rotatedVideoWidth = if (quarterTurn) videoHeight else videoWidth
+        val rotatedVideoHeight = if (quarterTurn) videoWidth else videoHeight
+        val videoAspect = rotatedVideoWidth.toFloat() / rotatedVideoHeight.toFloat()
         val surfaceAspect = surfaceWidth / surfaceHeight
 
         val contentWidth: Float
@@ -51,9 +56,13 @@ internal object TouchMapper {
             offsetY = (surfaceHeight - contentHeight) / 2f
         }
 
-        return Point(
-            x = ((x - offsetX) / contentWidth).coerceIn(0f, 1f),
-            y = ((y - offsetY) / contentHeight).coerceIn(0f, 1f),
-        )
+        val rotatedX = ((x - offsetX) / contentWidth).coerceIn(0f, 1f)
+        val rotatedY = ((y - offsetY) / contentHeight).coerceIn(0f, 1f)
+        return when (normalizedRotation) {
+            90 -> Point(rotatedY, 1f - rotatedX)
+            180 -> Point(1f - rotatedX, 1f - rotatedY)
+            270 -> Point(1f - rotatedY, rotatedX)
+            else -> Point(rotatedX, rotatedY)
+        }
     }
 }

@@ -220,6 +220,31 @@ class WirelessTabController(
         // else: stay in current state; user can tap Scan again to re-prompt.
     }
 
+    /** Reconcile permission changes made in Android Settings while this Activity was stopped. */
+    fun onHostForegrounded(): Boolean =
+        when (
+            CameraPermissionResumePolicy.evaluate(
+                state = state,
+                granted = cameraPerm.isGranted(),
+                permanentlyDenied = cameraPerm.isPermanentlyDenied(),
+            )
+        ) {
+            CameraPermissionResumeAction.NOOP,
+            CameraPermissionResumeAction.KEEP_DENIED,
+            -> false
+
+            CameraPermissionResumeAction.SHOW_SCAN_ENTRY -> {
+                show()
+                false
+            }
+
+            CameraPermissionResumeAction.SHOW_SCAN_ENTRY_AND_LAUNCH -> {
+                show()
+                launchScanner()
+                true
+            }
+        }
+
     private fun triggerScan() {
         if (!isTrustedLanAcknowledged()) {
             android.app.AlertDialog

@@ -41,4 +41,40 @@ class ClientExperienceTest {
             ViewportPolicy.surfaceSize(2400, 1080, 1920, 1080, VideoScaleMode.FILL),
         )
     }
+
+    @Test
+    fun `quarter turns swap viewport aspect and preserve decoder surface orientation`() {
+        assertEquals(
+            ViewportPolicy.Layout(
+                viewport = ViewportPolicy.Size(600, 1200),
+                surface = ViewportPolicy.Size(1200, 600),
+            ),
+            ViewportPolicy.layout(1200, 1200, 2000, 1000, VideoScaleMode.FIT, 90),
+        )
+        assertEquals(
+            ViewportPolicy.Layout(
+                viewport = ViewportPolicy.Size(600, 1200),
+                surface = ViewportPolicy.Size(1200, 600),
+            ),
+            ViewportPolicy.layout(1200, 1200, 2000, 1000, VideoScaleMode.FIT, 270),
+        )
+    }
+
+    @Test
+    fun `fill viewport covers parent while quarter turn swaps surface dimensions`() {
+        assertEquals(
+            ViewportPolicy.Layout(
+                viewport = ViewportPolicy.Size(1200, 800),
+                surface = ViewportPolicy.Size(800, 1200),
+            ),
+            ViewportPolicy.layout(1200, 800, 2000, 1000, VideoScaleMode.FILL, 90),
+        )
+        assertEquals(
+            ViewportPolicy.Layout(
+                viewport = ViewportPolicy.Size(1200, 800),
+                surface = ViewportPolicy.Size(1200, 800),
+            ),
+            ViewportPolicy.layout(1200, 800, 2000, 1000, VideoScaleMode.FILL, 180),
+        )
+    }
 }

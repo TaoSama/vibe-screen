@@ -54,7 +54,8 @@ class MainActivity : AppCompatActivity() {
     private var displayRotation = 0 // 0, 90, 180, 270 degrees
     private var pingJob: kotlinx.coroutines.Job? = null
     private var isInForeground = false
-    private val sessionCapabilities = ClientSessionCapabilities.LEGACY_TOUCH_ONLY
+    private val sessionState = SessionState<StreamClient>()
+    private var activeSessionGeneration = 0L
     private var unsupportedKeyboardNoticeShown = false
     private val inputHandler = Handler(Looper.getMainLooper())
     private var pendingRightClickRelease: Runnable? = null
@@ -84,6 +85,7 @@ class MainActivity : AppCompatActivity() {
         )
     private var wirelessAutoReconnectEnabled = false
     private var pendingWirelessReconnectDelayMs: Long? = null
+    private var pendingTerminalGuidance: ConnectionGuidance? = null
     private val autoConnectRunnable =
         Runnable {
             if (automaticUsbConnect && isInForeground && !isConnected && !connectionAttemptInProgress) {
@@ -158,6 +160,11 @@ class MainActivity : AppCompatActivity() {
         super.onStart()
         isInForeground = true
         mainDiag("lifecycle foreground connected=$isConnected")
+        val scannerLaunched =
+            ::wirelessController.isInitialized &&
+                prefs.connectionMode == ConnectionMode.WIRELESS &&
+                wirelessController.onHostForegrounded()
+        if (scannerLaunched) return
         if (isConnected) {
             setStreamingWindowState(true)
             streamClient?.requestKeyframe(force = true, reason = "client returned to foreground")
@@ -188,7 +195,16 @@ class MainActivity : AppCompatActivity() {
                 metaState = event.metaState,
                 repeatCount = event.repeatCount,
             ) ?: return super.dispatchKeyEvent(event)
-        if (!ClientControlAvailability.isSupported(ClientControl.KEYBOARD, sessionCapabilities)) {
+        when (ClientInputDispatch(currentSessionBinding()).sendKey(clientEvent)) {
+            ClientInputDispatchResult.SENT -> return true
+            ClientInputDispatchResult.REJECTED -> {
+                mainDiag("negotiated keyboard sink rejected HID ${clientEvent.usbHidUsage}")
+                return true
+            }
+
+            ClientInputDispatchResult.UNSUPPORTED -> Unit
+        }
+        run {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
                 mainDiag(
                     "keyboard input blocked by touch-only host " +
@@ -203,7 +219,6 @@ class MainActivity : AppCompatActivity() {
             }
             return true
         }
-        return super.dispatchKeyEvent(event)
     }
 
     private fun KeyEvent.isSystemKey(): Boolean =
@@ -445,14 +460,14 @@ class MainActivity : AppCompatActivity() {
             },
         )
 
-        binding.surfaceView.setOnTouchListener { view, event ->
+        binding.inputViewport.setOnTouchListener { view, event ->
             handleTouch(view, event)
             true
         }
-        binding.surfaceView.setOnGenericMotionListener { view, event ->
+        binding.inputViewport.setOnGenericMotionListener { view, event ->
             handleGenericMotion(view, event)
         }
-        binding.surfaceView.isFocusableInTouchMode = true
+        binding.inputViewport.isFocusableInTouchMode = true
         binding.root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             updateSurfaceViewportLayout()
         }
@@ -463,6 +478,48 @@ class MainActivity : AppCompatActivity() {
         event: MotionEvent,
     ): Boolean {
         if (!isConnected || !isInForeground) return false
+        val point = mapInputPoint(view, event.x, event.y)
+        val nativePointerInput =
+            when (event.actionMasked) {
+                MotionEvent.ACTION_BUTTON_PRESS ->
+                    ClientPointerInput(
+                        ClientPointerAction.BUTTON_PRESS,
+                        point.x,
+                        point.y,
+                        buttonState = event.actionButton,
+                    )
+
+                MotionEvent.ACTION_BUTTON_RELEASE ->
+                    ClientPointerInput(
+                        ClientPointerAction.BUTTON_RELEASE,
+                        point.x,
+                        point.y,
+                        buttonState = event.actionButton,
+                    )
+
+                MotionEvent.ACTION_SCROLL ->
+                    ClientPointerInput(
+                        ClientPointerAction.SCROLL,
+                        point.x,
+                        point.y,
+                        buttonState = event.buttonState,
+                        horizontalScroll = event.getAxisValue(MotionEvent.AXIS_HSCROLL),
+                        verticalScroll = event.getAxisValue(MotionEvent.AXIS_VSCROLL),
+                    )
+
+                else -> null
+            }
+        if (nativePointerInput != null) {
+            when (ClientInputDispatch(currentSessionBinding()).sendPointer(nativePointerInput)) {
+                ClientInputDispatchResult.SENT -> return true
+                ClientInputDispatchResult.REJECTED -> {
+                    mainDiag("negotiated pointer sink rejected ${nativePointerInput.action}")
+                    return true
+                }
+
+                ClientInputDispatchResult.UNSUPPORTED -> Unit
+            }
+        }
         if (event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS &&
             event.isFromSource(InputDevice.SOURCE_MOUSE) &&
             event.buttonState and MotionEvent.BUTTON_SECONDARY != 0
@@ -471,10 +528,9 @@ class MainActivity : AppCompatActivity() {
             return true
         }
         if (event.actionMasked != MotionEvent.ACTION_SCROLL) return false
-        val anchor = mapInputPoint(view, event.x, event.y)
         val gesture =
             LegacyScrollMapper.map(
-                anchor = anchor,
+                anchor = point,
                 horizontalAxis = event.getAxisValue(MotionEvent.AXIS_HSCROLL),
                 verticalAxis = event.getAxisValue(MotionEvent.AXIS_VSCROLL),
             ) ?: return false
@@ -512,11 +568,15 @@ class MainActivity : AppCompatActivity() {
     ) {
         val point = mapInputPoint(view, event.x, event.y)
         val client = streamClient ?: return
+        val generation = activeSessionGeneration
+        if (!isCurrentSession(client, generation)) return
         finishPendingRightClick()
         client.sendTouch(point.x, point.y, LEGACY_TOUCH_DOWN)
         val release =
             Runnable {
-                if (streamClient === client) client.sendTouch(point.x, point.y, LEGACY_TOUCH_UP)
+                if (isCurrentSession(client, generation)) {
+                    client.sendTouch(point.x, point.y, LEGACY_TOUCH_UP)
+                }
                 pendingRightClickRelease = null
             }
         pendingRightClickRelease = release
@@ -643,7 +703,7 @@ class MainActivity : AppCompatActivity() {
         binding.checklistContainer.visibility = View.GONE
         binding.advancedSettings.visibility = View.GONE
         binding.showAdvanced.setText(R.string.connection_details)
-        binding.surfaceView.visibility = View.VISIBLE
+        binding.videoViewport.visibility = View.VISIBLE
         binding.disconnectedBackdrop.visibility = View.GONE
         binding.settingsPanel.visibility = View.GONE
         binding.settingsButton.visibility = View.VISIBLE
@@ -656,7 +716,7 @@ class MainActivity : AppCompatActivity() {
         // bars or changing orientation here resized/recreated the Activity and
         // made the waiting state visibly flash.
         enableFullscreenMode()
-        binding.surfaceView.visibility = View.GONE
+        binding.videoViewport.visibility = View.GONE
         binding.disconnectedBackdrop.visibility = View.VISIBLE
         binding.settingsPanel.visibility = View.VISIBLE
         binding.settingsButton.visibility = View.GONE
@@ -799,7 +859,7 @@ class MainActivity : AppCompatActivity() {
         opacitySlider.value = prefs.overlayOpacity
         opacityValue.text = "${(prefs.overlayOpacity * 100).toInt()}%"
         displayCapability.setText(
-            if (sessionCapabilities.displaySelection) {
+            if (currentSessionBinding().capabilities.displaySelection) {
                 R.string.display_selection_available
             } else {
                 R.string.display_selection_host_only
@@ -1121,7 +1181,35 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun activateSession(client: StreamClient): Long {
+        val generation = sessionState.activate(client)
+        streamClient = client
+        activeSessionGeneration = generation
+        return generation
+    }
+
+    private fun isCurrentSession(
+        client: StreamClient,
+        generation: Long,
+    ): Boolean = sessionState.accepts(client, generation)
+
+    private fun currentSessionBinding(): ClientSessionBinding {
+        val client = streamClient ?: return ClientSessionBinding.LEGACY_TOUCH_ONLY
+        return sessionState.binding(client, activeSessionGeneration)
+            ?: ClientSessionBinding.LEGACY_TOUCH_ONLY
+    }
+
+    /** Protocol-v1 integration point; capabilities and their sender install atomically. */
+    private fun applyNegotiatedSession(
+        client: StreamClient,
+        generation: Long,
+        binding: ClientSessionBinding,
+    ): Boolean = sessionState.updateNegotiatedSession(client, generation, binding)
+
     private fun initializeDecoder(holder: SurfaceHolder) {
+        val ownerClient = streamClient ?: return
+        val ownerGeneration = activeSessionGeneration
+        if (!isCurrentSession(ownerClient, ownerGeneration)) return
         mainDiag(
             "initializeDecoder called, surface=${holder.surface}, " +
                 "valid=${holder.surface.isValid}, res=${displayWidth}x$displayHeight",
@@ -1141,24 +1229,28 @@ class MainActivity : AppCompatActivity() {
                     windowManager.defaultDisplay
                 }
             val mime =
-                if (streamClient?.streamCodecIsHevc == false) {
+                if (!ownerClient.streamCodecIsHevc) {
                     MediaFormat.MIMETYPE_VIDEO_AVC
                 } else {
                     MediaFormat.MIMETYPE_VIDEO_HEVC
                 }
-            videoDecoder = VideoDecoder(holder.surface, displayObj, displayWidth, displayHeight, mime)
-            videoDecoder?.updateScaleMode(prefs.videoScaleMode)
-            // Wire up buffer release callback
-            videoDecoder?.onFrameDecoded = { buffer ->
-                streamClient?.releaseBuffer(buffer)
+            val decoder = VideoDecoder(holder.surface, displayObj, displayWidth, displayHeight, mime)
+            videoDecoder = decoder
+            decoder.updateScaleMode(prefs.videoScaleMode)
+            decoder.onFrameDecoded = { buffer ->
+                ownerClient.releaseBuffer(buffer)
             }
-            videoDecoder?.onKeyframeRequired = { force, reason ->
-                streamClient?.requestKeyframe(force = force, reason = reason)
+            decoder.onKeyframeRequired = { force, reason ->
+                if (isCurrentSession(ownerClient, ownerGeneration) && videoDecoder === decoder) {
+                    ownerClient.requestKeyframe(force = force, reason = reason)
+                }
             }
-            videoDecoder?.onCodecFallbackRequired = { reason ->
-                streamClient?.failCurrentSession(reason)
+            decoder.onCodecFallbackRequired = { reason ->
+                if (isCurrentSession(ownerClient, ownerGeneration) && videoDecoder === decoder) {
+                    ownerClient.failCurrentSession(reason)
+                }
             }
-            streamClient?.requestKeyframe(force = true, reason = "decoder initialized")
+            ownerClient.requestKeyframe(force = true, reason = "decoder initialized")
             mainDiag("Decoder initialized OK ${displayWidth}x$displayHeight mime=$mime, videoDecoder=$videoDecoder")
             log("✅ Decoder initialized ${displayWidth}x$displayHeight $mime (${displayObj?.refreshRate ?: 60f}Hz)")
         } catch (e: Exception) {
@@ -1167,8 +1259,8 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 updateStatus("Video decoder failed: ${e.message}")
             }
-            if (CodecCapabilities.shouldAdvertiseAvcOnly) {
-                streamClient?.failCurrentSession("codec_configuration_failure")
+            if (CodecCapabilities.shouldAdvertiseAvcOnly && isCurrentSession(ownerClient, ownerGeneration)) {
+                ownerClient.failCurrentSession("codec_configuration_failure")
             }
         }
     }
@@ -1176,34 +1268,36 @@ class MainActivity : AppCompatActivity() {
     /**
      * Wire up all StreamClient callbacks. Used by both USB connect() and wireless connectWireless().
      */
-    private fun setupStreamClientCallbacks() {
-        val callbackClient = streamClient ?: return
-        streamClient?.onFrameReceived = { frameData, frameSize, timestamp, isKeyframe, sessionEpoch ->
+    private fun setupStreamClientCallbacks(
+        callbackClient: StreamClient,
+        callbackGeneration: Long,
+    ) {
+        callbackClient.onFrameReceived = frame@{ frameData, frameSize, timestamp, isKeyframe, sessionEpoch ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) {
+                callbackClient.releaseBuffer(frameData)
+                return@frame
+            }
             val dec = videoDecoder
             if (dec != null) {
                 dec.decode(frameData, frameSize, timestamp, isKeyframe, sessionEpoch)
             } else {
                 mainDiag("FRAME DROPPED: videoDecoder is null!")
-                streamClient?.releaseBuffer(frameData)
+                callbackClient.releaseBuffer(frameData)
             }
         }
 
-        videoDecoder?.onFrameDecoded = { buffer ->
-            streamClient?.releaseBuffer(buffer)
-        }
-
-        videoDecoder?.onCodecFallbackRequired = { reason ->
-            streamClient?.failCurrentSession(reason)
-        }
-
-        streamClient?.onLatencyMeasured = { rttMs ->
+        callbackClient.onLatencyMeasured = latency@{ rttMs ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@latency
             runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                 binding.latencyText.text = String.format(Locale.US, "%.1f ms", rttMs)
             }
         }
 
-        streamClient?.onReconnectSuggested = { delayMs ->
+        callbackClient.onReconnectSuggested = reconnect@{ delayMs ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@reconnect
             runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                 pendingWirelessReconnectDelayMs = delayMs
                 if (wirelessAutoReconnectEnabled && prefs.connectionMode == ConnectionMode.WIRELESS) {
                     scheduleWirelessReconnect(delayMs)
@@ -1211,17 +1305,33 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        callbackClient.onWriteFailure = { reason ->
+        callbackClient.onWriteFailure = writeFailure@{ reason ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@writeFailure
             mainDiag("session write failed: $reason")
-            lifecycleScope.launch(Dispatchers.IO) {
-                if (streamClient === callbackClient) {
-                    callbackClient.failCurrentSession("session_write_failure")
+        }
+
+        callbackClient.onSessionEnded = sessionEnded@{ failure ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@sessionEnded
+            mainDiag(
+                "session ended kind=${failure.kind} retryable=${failure.retryable} " +
+                    "detail=${failure.detail}",
+            )
+            if (!failure.retryable && !failure.intentional) {
+                val guidance = ConnectionGuidanceFactory.from(failure, currentUsbPort())
+                runOnUiThread {
+                    if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                    automaticUsbConnect = false
+                    cancelWirelessReconnect()
+                    autoConnectHandler.removeCallbacks(autoConnectRunnable)
+                    pendingTerminalGuidance = guidance
                 }
             }
         }
 
-        streamClient?.onConnectionStatus = { connected ->
+        callbackClient.onConnectionStatus = connectionStatus@{ connected ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@connectionStatus
             runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                 isConnected = connected
                 if (connected && !isInForeground) {
                     window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -1238,7 +1348,7 @@ class MainActivity : AppCompatActivity() {
                     startPingTimer()
                     stopChecklistUpdates()
                     enableFullscreenMode()
-                    binding.surfaceView.requestFocus()
+                    binding.inputViewport.requestFocus()
                     // For wireless mode, transition controller to CONNECTED here —
                     // not in MainActivity.connectWireless's coroutine after the
                     // receive loop returns (that runs AFTER disconnect, causing
@@ -1269,12 +1379,19 @@ class MainActivity : AppCompatActivity() {
                         log("📋 Restarting checklist updates")
                         startChecklistUpdates()
                     }
+                    pendingTerminalGuidance?.let { guidance ->
+                        pendingTerminalGuidance = null
+                        updateStatus(guidance.status)
+                        showError(guidance.message)
+                    }
                 }
             }
         }
 
-        streamClient?.onServerShutdown = {
+        callbackClient.onServerShutdown = serverShutdown@{
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@serverShutdown
             runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                 automaticUsbConnect = false
                 cancelWirelessReconnect()
                 autoConnectHandler.removeCallbacks(autoConnectRunnable)
@@ -1283,28 +1400,26 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        streamClient?.onDisplaySize = { width, height, rotation ->
+        callbackClient.onDisplaySize = displaySize@{ width, height, rotation ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@displaySize
             mainDiag("onDisplaySize: ${width}x$height @ $rotation°")
-            warnIfAvcOnlyWithoutNegotiation()
-            displayWidth = width
-            displayHeight = height
-            displayRotation = rotation
-            if (videoDecoder != null) {
-                videoDecoder?.updateResolution(width, height)
-            } else {
-                val holder = currentSurfaceHolder
-                if (holder != null && holder.surface.isValid) {
-                    mainDiag("Display config arrived, initializing decoder ${width}x$height")
-                    runOnUiThread {
-                        if (videoDecoder == null) {
-                            initializeDecoder(holder)
-                        }
-                    }
-                } else {
-                    mainDiag("Display config arrived but no valid surface yet")
-                }
-            }
             runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                warnIfAvcOnlyWithoutNegotiation()
+                displayWidth = width
+                displayHeight = height
+                displayRotation = rotation
+                if (videoDecoder != null) {
+                    videoDecoder?.updateResolution(width, height)
+                } else {
+                    val holder = currentSurfaceHolder
+                    if (holder != null && holder.surface.isValid) {
+                        mainDiag("Display config arrived, initializing decoder ${width}x$height")
+                        initializeDecoder(holder)
+                    } else {
+                        mainDiag("Display config arrived but no valid surface yet")
+                    }
+                }
                 updateSurfaceViewportLayout()
                 binding.resolutionText.text = getString(R.string.resolution_format, width, height)
                 binding.connectButton.isEnabled = false
@@ -1317,8 +1432,10 @@ class MainActivity : AppCompatActivity() {
             log("Display: ${width}x$height @ $rotation°")
         }
 
-        streamClient?.onStats = { fps, mbps ->
+        callbackClient.onStats = stats@{ fps, mbps ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@stats
             runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                 binding.fpsText.text = String.format(Locale.US, "%.1f", fps)
                 binding.bitrateText.text = String.format(Locale.US, "%.1f Mbps", mbps)
             }
@@ -1339,31 +1456,37 @@ class MainActivity : AppCompatActivity() {
         }
         if (isConnected || connectionAttemptInProgress) return
         connectionAttemptInProgress = true
+        val callbackClient = StreamClient(host, port, applicationContext)
+        val callbackGeneration = activateSession(callbackClient)
+        setupStreamClientCallbacks(callbackClient, callbackGeneration)
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 log("Connecting wirelessly to $macName at $host:$port...")
-                streamClient = StreamClient(host, port, applicationContext)
-                setupStreamClientCallbacks()
-                streamClient?.connectWireless(token, deviceName)
+                callbackClient.connectWireless(token, deviceName)
                 // NOTE: onConnectSuccess is fired from the onConnectionStatus(true)
                 // listener (above) right after handshake OK — not here. This line
                 // would otherwise run AFTER the receive loop exits, i.e. AFTER
                 // disconnect, incorrectly transitioning back to CONNECTED.
             } catch (e: StreamClient.WirelessConnectError) {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@launch
                 runOnUiThread {
+                    if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                     if (e !is StreamClient.WirelessConnectError.NetworkUnreachable) {
                         cancelWirelessReconnect()
                     }
                     wirelessController.onConnectError(e)
                 }
             } catch (e: Exception) {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@launch
                 log("Wireless connect failed: ${e.message}")
                 runOnUiThread {
+                    if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                     wirelessController.onConnectError(StreamClient.WirelessConnectError.NetworkUnreachable)
                 }
             } finally {
-                connectionAttemptInProgress = false
                 runOnUiThread {
+                    if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                    connectionAttemptInProgress = false
                     if (!isConnected && wirelessAutoReconnectEnabled) {
                         val delayMs =
                             pendingWirelessReconnectDelayMs
@@ -1403,8 +1526,11 @@ class MainActivity : AppCompatActivity() {
         automaticUsbConnect = false
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         cancelWirelessReconnect()
-        streamClient?.disconnect()
-        streamClient = null
+        val client = streamClient
+        val generation = activeSessionGeneration
+        client?.disconnect()
+        if (client != null) sessionState.invalidate(client, generation)
+        if (streamClient === client) streamClient = null
         connectionAttemptInProgress = false
     }
 
@@ -1419,30 +1545,27 @@ class MainActivity : AppCompatActivity() {
         }
         if (isConnected || connectionAttemptInProgress) return
         connectionAttemptInProgress = true
+        val callbackClient = StreamClient(host, port, applicationContext)
+        val callbackGeneration = activateSession(callbackClient)
+        setupStreamClientCallbacks(callbackClient, callbackGeneration)
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 log("Connecting to $host:$port...")
-
-                streamClient = StreamClient(host, port, applicationContext)
-                setupStreamClientCallbacks()
-                streamClient?.connect()
+                callbackClient.connect()
             } catch (e: Exception) {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@launch
                 val guidance = ConnectionGuidanceFactory.from(e, port)
-                if (!automatic) {
+                if (!automatic && e !is SessionProtocolException) {
                     updateStatus(guidance.status)
                     showError(guidance.message)
                 }
             } finally {
-                connectionAttemptInProgress = false
-                if (automaticUsbConnect) {
-                    // onConnectionStatus(false) is posted to the main thread. Checking
-                    // isConnected on this IO thread can race that callback and suppress
-                    // the retry after a server closes an otherwise successful socket.
-                    runOnUiThread {
-                        if (!isConnected) {
+                runOnUiThread {
+                    if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                    connectionAttemptInProgress = false
+                    if (automaticUsbConnect && !isConnected) {
                             showDisconnectedStreamUi()
                             scheduleAutomaticUsbConnect()
-                        }
                     }
                 }
             }
@@ -1455,7 +1578,12 @@ class MainActivity : AppCompatActivity() {
         cancelWirelessReconnect()
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         stopPingTimer()
-        streamClient?.disconnect()
+        val client = streamClient
+        val generation = activeSessionGeneration
+        client?.disconnect()
+        if (client != null) sessionState.invalidate(client, generation)
+        if (streamClient === client) streamClient = null
+        connectionAttemptInProgress = false
         // Reset display config so next connect defers decoder init until config arrives
         displayWidth = 0
         displayHeight = 0
@@ -1558,6 +1686,7 @@ class MainActivity : AppCompatActivity() {
             videoWidth = displayWidth,
             videoHeight = displayHeight,
             scaleMode = prefs.videoScaleMode,
+            renderRotation = prefs.clientRotation.degrees,
         )
 
     private fun updateSurfaceViewportLayout() {
@@ -1566,20 +1695,29 @@ class MainActivity : AppCompatActivity() {
         val parentHeight = binding.root.height
         if (parentWidth <= 0 || parentHeight <= 0) return
 
-        val params =
-            binding.surfaceView.layoutParams as androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
-        val target =
-            ViewportPolicy.surfaceSize(
+        val layout =
+            ViewportPolicy.layout(
                 parentWidth = parentWidth,
                 parentHeight = parentHeight,
                 videoWidth = displayWidth,
                 videoHeight = displayHeight,
                 scaleMode = prefs.videoScaleMode,
+                renderRotation = prefs.clientRotation.degrees,
             )
-        if (params.width == target.width && params.height == target.height) return
-        params.width = target.width
-        params.height = target.height
-        binding.surfaceView.layoutParams = params
+        val viewportParams =
+            binding.videoViewport.layoutParams as androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
+        if (viewportParams.width != layout.viewport.width || viewportParams.height != layout.viewport.height) {
+            viewportParams.width = layout.viewport.width
+            viewportParams.height = layout.viewport.height
+            binding.videoViewport.layoutParams = viewportParams
+        }
+        val surfaceParams = binding.surfaceView.layoutParams as android.widget.FrameLayout.LayoutParams
+        if (surfaceParams.width != layout.surface.width || surfaceParams.height != layout.surface.height) {
+            surfaceParams.width = layout.surface.width
+            surfaceParams.height = layout.surface.height
+            surfaceParams.gravity = android.view.Gravity.CENTER
+            binding.surfaceView.layoutParams = surfaceParams
+        }
     }
 
     /**
@@ -1596,15 +1734,15 @@ class MainActivity : AppCompatActivity() {
                 else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE // 0°
             }
 
-        // Reset SurfaceView transform (orientation change handles rotation)
+        // The host already reports upright encoded dimensions. Rotate only by
+        // the explicit client-local offset; host rotation still selects the
+        // Activity orientation above.
         binding.surfaceView.apply {
-            this.rotation = 0f
+            this.rotation = prefs.clientRotation.degrees.toFloat()
             scaleX = 1f
             scaleY = 1f
         }
-
-        // ConstraintSet handles orientation changes automatically
-        // No need for postDelayed positioning
+        updateSurfaceViewportLayout()
 
         log(
             "🔄 Orientation: ${when (effectiveRotation) {

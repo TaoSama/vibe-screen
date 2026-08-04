@@ -32,4 +32,17 @@ class ConnectionGuidanceTest {
         assertTrue(guidance.message.contains("54321"))
         assertTrue(guidance.message.contains("firewall"))
     }
+
+    @Test
+    fun `protocol failure stops retry with upgrade guidance`() {
+        val guidance =
+            ConnectionGuidanceFactory.from(
+                SessionFailure.protocol(SessionFailureKind.UNKNOWN_MESSAGE, "Unknown message type: 99"),
+                54321,
+            )
+
+        assertEquals(ConnectionFailureKind.INCOMPATIBLE_SESSION, guidance.kind)
+        assertTrue(guidance.message.contains("Update Vibe Screen"))
+        assertTrue(guidance.message.contains("99"))
+    }
 }
