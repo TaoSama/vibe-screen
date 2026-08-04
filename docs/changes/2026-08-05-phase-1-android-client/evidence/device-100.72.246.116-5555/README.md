@@ -22,6 +22,8 @@ coalescing, recovery-prioritized outbound writes; typed terminal failures;
 Camera Settings-return recovery; atomic negotiated capability/input-sink
 installation; and strict non-blocking saturation fail-close with asynchronous
 cleanup, including serialized off-UI decoder teardown and reinitialization.
+Later review also separated writer lock contention from true outbound capacity
+and unified wireless post-auth startup under exactly-once termination cleanup.
 Those changes have only JVM/lint/build evidence and were not reinstalled. The
 final offline APK identity is recorded in the parent
 [`TEST.md`](../../TEST.md) and must not be attributed to this device run.

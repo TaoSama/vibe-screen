@@ -20,9 +20,9 @@ legacy touch protocol.
 | tap/drag/right click/scroll/pinch | existing touch path retained; secondary mouse button and wheel adapt to touch gestures | injected tap/long swipe produced touch packets; Mac result and two-finger checks pending |
 | keyboard/shortcuts | common Android keys map to protocol-neutral USB HID events | HID mapping/gate passed on device; forwarding blocked by legacy host |
 | external mouse/keyboard | wheel and secondary-button adapters; physical keys captured and gated | physical peripherals pending; native pointer/keyboard protocol required |
-| reconnect/errors | per-session generation gates all client/decoder callbacks; typed retryability preserves failure reasons and stops protocol-error loops | stale/no-display endpoint and synthetic cold reconnect passed on device; stale-generation and ready-session failure paths pass on JVM |
+| reconnect/errors | per-session generation gates all client/decoder callbacks; typed retryability preserves failure reasons and stops protocol-error loops; wireless post-connect startup has exactly-once socket/stream ownership | stale/no-display endpoint and synthetic cold reconnect passed on device; stale-generation, ready-session, invalid-local-credential, and post-auth startup-failure paths pass on JVM |
 | permissions/lifecycle | Camera permission is re-evaluated after returning from Settings; background pauses input/retries and keep-awake, foreground resumes/rekeys | original camera deny/settings launch passed on device; Settings-return state machine passes on JVM; post-review device rerun pending |
-| outbound input | bounded single writer reserves recovery capacity, coalesces MOVE/ping/keyframe, preserves admitted touch-boundary FIFO, gracefully drains releases, and fails the session closed instead of silently losing a saturated boundary | saturation/order/write-failure/graceful-close tests pass on JVM; physical-peripheral device check pending |
+| outbound input | bounded single writer reserves recovery capacity, uses non-blocking atomic ingress under lock contention, coalesces MOVE/ping/keyframe, preserves admitted touch-boundary FIFO, gracefully drains releases, and fails closed only on true capacity saturation | contention/capacity/close-race/order/write-failure/graceful-close tests pass on JVM; physical-peripheral device check pending |
 
 No unsupported keyboard, pointer, or display-selection bytes are added to the
 legacy wire format. A compatible negotiated application session remains the
@@ -48,11 +48,11 @@ cd baseline/AndroidClient
 
 Results:
 
-- 116 JVM tests, zero failures/errors/skips;
+- 123 JVM tests, zero failures/errors/skips;
 - lint reported `No issues found`;
-- all requested Gradle tasks completed with `BUILD SUCCESSFUL in 25s`;
+- all requested Gradle tasks completed with `BUILD SUCCESSFUL in 31s`;
 - final clean-rebuild APK SHA-256:
-  `a07a0581297b999293d6a92df06102cd4a83f1c2f3e22b237968d4aa6ce4c363`.
+  `020f1fa84a8d113e0dea4ed54d86e7ae5872c4e2599c411b751e895f68c5b69b`.
 
 The APK hash is an offline artifact identity, not install or device evidence.
 
@@ -79,8 +79,10 @@ recovery-prioritized outbound scheduling, typed terminal failures, Camera
 Settings-return recovery, atomic capability/input-sink installation, and
 strict non-blocking saturation fail-close with asynchronous cleanup. The final
 implementation also serializes decoder teardown and reinitialization off the
-UI thread. The final clean build was not reinstalled. This complete delta is
-JVM/lint/build-verified only and retains all real-device gates below.
+UI thread, distinguishes writer lock contention from actual outbound capacity,
+and gives wireless post-auth startup exactly-once termination ownership. The
+final clean build was not reinstalled. This complete delta is JVM/lint/build-
+verified only and retains all real-device gates below.
 
 The Mac remained locked, so ScreenCaptureKit could not provide a real display.
 The device run therefore used the repository's existing 2000×1124@60 synthetic
