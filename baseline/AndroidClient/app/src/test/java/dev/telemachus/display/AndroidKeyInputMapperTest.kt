@@ -41,4 +41,20 @@ class AndroidKeyInputMapperTest {
         assertNull(AndroidKeyInputMapper.map(KeyEvent.KEYCODE_UNKNOWN, KeyEvent.ACTION_DOWN, 0, 0))
         assertNull(AndroidKeyInputMapper.map(KeyEvent.KEYCODE_A, 99, 0, 0))
     }
+
+    @Test
+    fun `physical shortcut press and release preserve usage and modifiers`() {
+        val metaState = KeyEvent.META_CTRL_ON or KeyEvent.META_ALT_ON
+        val down =
+            requireNotNull(AndroidKeyInputMapper.map(KeyEvent.KEYCODE_F5, KeyEvent.ACTION_DOWN, metaState, 0))
+        val up =
+            requireNotNull(AndroidKeyInputMapper.map(KeyEvent.KEYCODE_F5, KeyEvent.ACTION_UP, metaState, 0))
+
+        assertEquals(0x3E, down.usbHidUsage)
+        assertEquals(down.usbHidUsage, up.usbHidUsage)
+        assertTrue(down.pressed)
+        assertFalse(up.pressed)
+        assertEquals(setOf(ClientKeyModifier.CONTROL, ClientKeyModifier.ALT), down.modifiers)
+        assertEquals(down.modifiers, up.modifiers)
+    }
 }

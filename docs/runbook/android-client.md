@@ -31,10 +31,12 @@ cd baseline/AndroidClient
 ./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug auditReleaseDependencies
 ```
 
-The JVM suite covers crop/letterbox mapping, manual rotation, common physical
-keyboard-to-HID mapping, capability gating, connection guidance, reconnect
-backoff, framing, and reliability. This proves code paths and packaging only;
-it is not device acceptance.
+The JVM suite covers Fit/Fill corners through all four rotations, viewport and
+decoder-surface dimensions, common physical keyboard-to-HID sequences,
+session-generation/capability gating, Camera settings-return policy, bounded
+outbound ordering, typed connection guidance, reconnect backoff, framing, and
+reliability. This proves code paths and packaging only; it is not device
+acceptance.
 
 ## Install after acquiring the device
 
@@ -110,9 +112,11 @@ a negotiated input channel.
 ## Actionable failure checks
 
 Exercise a missing Mac app, missing ADB reverse, unreachable route, timeout,
-camera denial, and decoder failure. Each state must identify the failed layer
-and tell the user what to do next. Automatic retries use the calm waiting UI;
-only an explicit **Try again** action may show a modal diagnostic.
+camera denial, incompatible message/display configuration, outbound
+backpressure, and decoder failure. Each state must identify the failed layer
+and tell the user what to do next. Retryable transport failures use bounded
+automatic recovery; non-retryable protocol/input failures must stop the loop
+and show a concrete recovery action.
 
 Collect the private log with:
 

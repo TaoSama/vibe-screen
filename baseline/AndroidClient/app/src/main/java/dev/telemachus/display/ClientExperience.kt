@@ -31,6 +31,15 @@ internal object ViewportPolicy {
         val height: Int,
     )
 
+    /**
+     * The viewport occupies the visible, rotated video bounds. The decoder
+     * surface keeps the encoded orientation and is rotated inside it.
+     */
+    data class Layout(
+        val viewport: Size,
+        val surface: Size,
+    )
+
     fun effectiveRotation(
         hostRotation: Int,
         clientRotation: ClientRotation,
@@ -64,7 +73,52 @@ internal object ViewportPolicy {
         }
     }
 
+    fun layout(
+        parentWidth: Int,
+        parentHeight: Int,
+        videoWidth: Int,
+        videoHeight: Int,
+        scaleMode: VideoScaleMode,
+        renderRotation: Int,
+    ): Layout {
+        require(parentWidth > 0 && parentHeight > 0)
+        require(videoWidth > 0 && videoHeight > 0)
+
+        val quarterTurn = normalizeRotation(renderRotation) % HALF_ROTATION_DEGREES != 0
+        val rotatedVideoWidth = if (quarterTurn) videoHeight else videoWidth
+        val rotatedVideoHeight = if (quarterTurn) videoWidth else videoHeight
+        val viewport =
+            if (scaleMode == VideoScaleMode.FILL) {
+                Size(parentWidth, parentHeight)
+            } else {
+                fitSize(parentWidth, parentHeight, rotatedVideoWidth, rotatedVideoHeight)
+            }
+        val surface =
+            if (quarterTurn) {
+                Size(viewport.height, viewport.width)
+            } else {
+                viewport
+            }
+        return Layout(viewport = viewport, surface = surface)
+    }
+
+    private fun fitSize(
+        parentWidth: Int,
+        parentHeight: Int,
+        contentWidth: Int,
+        contentHeight: Int,
+    ): Size {
+        val contentAspect = contentWidth.toFloat() / contentHeight.toFloat()
+        val parentAspect = parentWidth.toFloat() / parentHeight.toFloat()
+        return if (parentAspect > contentAspect) {
+            Size((parentHeight * contentAspect).toInt().coerceAtLeast(1), parentHeight)
+        } else {
+            Size(parentWidth, (parentWidth / contentAspect).toInt().coerceAtLeast(1))
+        }
+    }
+
     private const val FULL_ROTATION_DEGREES = 360
+    private const val HALF_ROTATION_DEGREES = 180
     private val VALID_ROTATIONS = listOf(0, 90, 180, 270)
 }
 
