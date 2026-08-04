@@ -26,6 +26,9 @@ CGDisplayStream fallback instances carry a generation token. An unexpected
 `.stopped` from the current generation clears fallback state and reports a
 terminal capture failure; delayed stop callbacks from an explicitly stopped
 older generation are ignored. Blank/idle frames remain non-terminal.
+For current-main capture, the stopped handler first resolves a replacement
+`CGMainDisplayID`; when one exists it rebuilds capture immediately instead of
+waiting for the periodic monitor or declaring the session terminal.
 
 ## Window recovery
 
@@ -33,9 +36,9 @@ The first migration records the AX window, original frame, display UUID, and
 display bounds. Recovery resolves that UUID and maps the relative placement
 into its current bounds. Unchanged bounds preserve the exact original frame,
 including intentional cross-screen or oversized placement. If it is offline,
-the same placement is mapped and clamped into the current main display. All windows are removed from the managed
-set after one recovery pass; individual AX failures are reported without
-preventing the rest.
+the same placement is mapped and clamped into the current main display. All
+windows are removed from the managed set after one recovery pass; individual
+AX failures are reported without preventing the rest.
 
 ## Input boundary
 
@@ -61,6 +64,21 @@ generation before committing components or running state. Recovery is eligible
 only for unattended operation, uses the existing bounded backoff, and
 rechecks all eligibility after sleeping. A user stop or disabling auto-start
 cancels pending recovery.
+
+Every session callback first hops to MainActor and then verifies both the
+session token and configured server identity. A lock-protected server-owned
+client generation lease linearizes that validation with each callback side
+effect, so a callback queued before a same-server client takeover cannot inject
+input or mutate capture and status afterward. Codec negotiation uses an
+explicit completion protocol: the network queue pauses protocol startup while
+MainActor validates the server/capture and returns decoder-safe dimensions,
+then revalidates connection generation before sending display configuration.
+
+Automatic launch uses one process-local intent shared by synchronous preflight,
+permission completion, and permission monitoring. The first eligible trigger
+consumes it permanently; a failed automatic start retries only through the
+bounded recovery scheduler, so a slower permission callback cannot bypass
+backoff.
 
 Wireless status refresh does not schedule ADB device or reverse-rule probes,
 and stale USB probe results cannot update Wireless state. Launch at Login

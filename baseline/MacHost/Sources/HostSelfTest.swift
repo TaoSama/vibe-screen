@@ -90,6 +90,33 @@ enum HostSelfTest {
             failures.append("unattended recovery backoff differs from policy")
         }
 
+        let callbackGeneration = ClientCallbackGenerationGate()
+        callbackGeneration.advance(to: 1)
+        callbackGeneration.advance(to: 2)
+        var callbackMutations = 0
+        if callbackGeneration.performIfCurrent(1, operation: {
+            callbackMutations += 1
+        }) || callbackMutations != 0 {
+            failures.append("stale client callback survived authoritative takeover")
+        }
+        if !callbackGeneration.performIfCurrent(2, operation: {
+            callbackMutations += 1
+        }) || callbackMutations != 1 {
+            failures.append("current client callback was rejected")
+        }
+        callbackGeneration.advance(to: 1)
+        if !callbackGeneration.isCurrent(2) {
+            failures.append("client callback generation rolled back")
+        }
+
+        if FallbackStoppedPolicy.action(
+            followsMainDisplay: true,
+            capturedDisplayID: 10,
+            currentMainDisplayID: 11
+        ) != .rebuild(11) {
+            failures.append("stopped main-display fallback missed replacement")
+        }
+
         let displays = DisplayCatalog.onlineDisplays()
         if displays.isEmpty {
             failures.append("online display catalog is empty")
@@ -150,7 +177,8 @@ enum HostSelfTest {
         if failures.isEmpty {
             print(
                 "Host self-test: PASS (display identity/catalog, input/window " +
-                "geometry, startup policy, bounded recovery backoff)"
+                "geometry, startup/recovery policy, callback generation, " +
+                "fallback replacement)"
             )
             return true
         }

@@ -25,9 +25,9 @@ Host display evidence: id=2, logical=1920x1080, physical=3840x2160
 Private virtual display API shape check: available
 (class/selector presence is not creation/capture evidence)
 Host self-test: PASS (display identity/catalog, input/window geometry,
-startup policy, bounded recovery backoff)
+startup/recovery policy, callback generation, fallback replacement)
 Transport self-test: PASS (config=true, keyframe=true, pong=true, touch=true,
-malformedTouchRejected=true, portConflict=true, error=none)
+malformedTouchRejected=true, portConflict=true, codecNegotiations=1, error=none)
 Reliability self-test: PASS (queue, epoch, heartbeat/backoff, codec, JSONL)
 
 make baseline-macos-app
@@ -36,7 +36,7 @@ make baseline-macos-app
 
 shasum -a 256 -c Telemachus-macos-0.12.0-arm64.sha256
 Telemachus-macos-0.12.0-arm64.zip: OK
-SHA-256: 6f782eed4cb63e0f3cc02e52540e06d907ef5cf5fa991614446600e24ab4c0ab
+SHA-256: dd0094d5d2b9c8da0fc8f35ef6701b755e822eb0a564b33bc23b183a2d2430dd
 
 unzip -t Telemachus-macos-0.12.0-arm64.zip
 No errors detected in compressed data
@@ -55,12 +55,19 @@ virtual identity, negative-origin input mapping and malformed-coordinate
 rejection, UUID-aware online/offline window recovery geometry, startup
 eligibility, and the bounded recovery schedule. The loopback transport
 self-test also proves malformed touch cancellation without posting a real
-system event. XCTest sources add focused policy/lifecycle cases under
+system event. It now also rejects a callback queued before an authoritative
+same-server client-generation takeover and checks stopped-first main-display
+replacement policy. XCTest sources add focused policy/lifecycle cases under
 `Phase1HostCapabilityTests.swift` and `StreamingServerLifecycleTests.swift`.
 The added cases cover concurrent double-start admission, stop invalidation of a
 suspended start, current/stale fallback stop generations, blank/idle fallback
 frames, missing private classes/selectors, and exact unchanged-bounds window
 recovery. They remain source-level regression coverage until XCTest can run.
+The second review adds queued-old-callback rejection, asynchronous codec
+startup de-duplication, stopped-first current-main replacement policy, and
+single-consumption automatic-launch intent cases. The queued-callback cases
+cover both host-session replacement and same-server client takeover before the
+new client's MainActor callback is observed.
 
 `make baseline-macos-test` compiles the application target but fails before
 test execution with `error: no such module 'XCTest'`; full Xcode is not

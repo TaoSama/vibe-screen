@@ -81,6 +81,16 @@ struct GestureThresholds {
     static let minTouchInterval: UInt64 = 8_000_000    // ~120Hz
 }
 
+private enum HostStartOrigin {
+    case manual
+    case automatic
+    case recovery
+
+    var authorizesRecovery: Bool {
+        self == .automatic || self == .recovery
+    }
+}
+
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     var streamingServer: StreamingServer?
@@ -105,6 +115,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var unattendedRecoveryTask: Task<Void, Never>?
     private var unattendedRecoveryAttempt = 0
     private let serverLifecycle = HostServerLifecycle()
+    private lazy var automaticLaunch = AutomaticLaunchCoordinator(
+        enabled: settings.autoStartStreamingOnLaunch
+    )
     private var usbStatusProbeGeneration: UInt64 = 0
     var isDaemonMode = false // Deprecated: keeping variable for ABI compatibility but unused
 
@@ -134,15 +147,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await checkPermissions()
             await MainActor.run {
                 permissionMonitoringReady = true
-                if HostStartupPolicy.shouldAutoStart(
-                    autoStartEnabled: settings.autoStartStreamingOnLaunch,
-                    hasScreenRecordingPermission: settings.hasScreenRecordingPermission,
-                    hasCompletedOnboarding: settings.hasCompletedOnboarding,
-                    explicitHeadlessBenchmark: isHeadlessBenchmark
-                ) && serverLifecycle.canStart {
-                    settings.connectionMode = settings.startupMode
-                    Task { await self.startServer() }
-                }
+                attemptAutomaticLaunch()
             }
         }
 
@@ -183,17 +188,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Declarative auto-start (no Mac interaction): start the server in the
         // chosen Startup mode if enabled. No blocking permission modal here —
         // it cannot be acted on when the Mac is headless.
-        if HostStartupPolicy.shouldAutoStart(
-            autoStartEnabled: settings.autoStartStreamingOnLaunch,
-            hasScreenRecordingPermission: settings.hasScreenRecordingPermission,
-            hasCompletedOnboarding: settings.hasCompletedOnboarding,
-            explicitHeadlessBenchmark: isHeadlessBenchmark
-        ) {
-            settings.connectionMode = settings.startupMode
-            Task {
-                await self.startServer()
-            }
-        } else if settings.autoStartStreamingOnLaunch {
+        attemptAutomaticLaunch()
+        if settings.autoStartStreamingOnLaunch,
+           automaticLaunch.state == .pending {
             debugLog("Auto-start deferred until onboarding and Screen Recording are complete")
         }
     }
@@ -228,16 +225,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard hasScreenRecording, !hadScreenRecording else { return }
         debugLog("Screen Recording permission became available while app was running")
 
-        if HostStartupPolicy.shouldAutoStart(
+        attemptAutomaticLaunch()
+    }
+
+    private func attemptAutomaticLaunch() {
+        let eligible = HostStartupPolicy.shouldAutoStart(
             autoStartEnabled: settings.autoStartStreamingOnLaunch,
-            hasScreenRecordingPermission: hasScreenRecording,
+            hasScreenRecordingPermission: settings.hasScreenRecordingPermission,
             hasCompletedOnboarding: settings.hasCompletedOnboarding,
             explicitHeadlessBenchmark: isHeadlessBenchmark
-        ) && serverLifecycle.canStart {
-            Task {
-                await startServer()
-            }
-        }
+        )
+        guard automaticLaunch.consumeIfEligible(eligible) else { return }
+        settings.connectionMode = settings.startupMode
+        Task { await startServer(origin: .automatic) }
     }
 
     @MainActor
@@ -816,7 +816,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func startServer() async {
+    private func startServer(origin: HostStartOrigin = .manual) async {
         guard let startToken = serverLifecycle.beginStart() else {
             debugLog("Ignoring duplicate start request")
             return
@@ -946,20 +946,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let newCapture = try await ScreenCapture()
             try requireCurrentStart(startToken)
             screenCapture = newCapture
-            screenCapture?.onCaptureMethodChanged = { [weak self] method in
-                guard let self = self else { return }
-                debugLog("Capture method: \(method)")
+            let configuredCapture = screenCapture
+            configuredCapture?.onCaptureMethodChanged = {
+                [weak self, weak configuredCapture] method in
                 Task { @MainActor in
+                    guard let self, let configuredCapture,
+                          self.serverLifecycle.ownsSession(startToken),
+                          self.screenCapture === configuredCapture else { return }
+                    debugLog("Capture method: \(method)")
                     self.settings.captureMethod = method
                 }
             }
-            screenCapture?.onDisplayIDChanged = { [weak self] displayID in
-                guard let appDelegate = self else { return }
+            configuredCapture?.onDisplayIDChanged = {
+                [weak self, weak configuredCapture] displayID in
                 Task { @MainActor in
-                    appDelegate.activeDisplayID = displayID
+                    guard let self, let configuredCapture,
+                          self.serverLifecycle.ownsSession(startToken),
+                          self.screenCapture === configuredCapture else { return }
+                    self.activeDisplayID = displayID
                 }
             }
-            let configuredCapture = screenCapture
             configuredCapture?.onTerminalCaptureFailure = {
                 [weak self, weak configuredCapture] error in
                 Task { @MainActor in
@@ -999,12 +1005,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let configuredServer = streamingServer
             streamingServer?.touchEnabled = settings.touchEnabled
             if settings.connectionMode == .wireless {
-                streamingServer?.onWirelessClientPaired = { [weak self] deviceName in
-                    guard let self = self else { return }
+                streamingServer?.onWirelessClientPaired = {
+                    [weak self, weak configuredServer] deviceName, clientGeneration in
                     Task { @MainActor in
-                        self.currentWirelessDevice = deviceName
-                        self.settings.currentWirelessDevice = deviceName
-                        self.pairedDeviceStore.upsert(name: deviceName, lastConnected: Date())
+                        guard let self, let configuredServer else { return }
+                        self.performSessionCallback(
+                                token: startToken,
+                                server: configuredServer,
+                                clientGeneration: clientGeneration
+                        ) {
+                            self.currentWirelessDevice = deviceName
+                            self.settings.currentWirelessDevice = deviceName
+                            self.pairedDeviceStore.upsert(
+                                name: deviceName,
+                                lastConnected: Date()
+                            )
+                        }
                     }
                 }
             }
@@ -1015,85 +1031,164 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // match the Mac's resolution dropdown (e.g. "2560x1600" instead of
             // the HiDPI-doubled "5120x3200").
             streamingServer?.setDisplaySize(width: streamSize.width, height: streamSize.height, rotation: settings.rotation)
-            streamingServer?.onClientConnected = { [weak self] in
-                guard let self = self else { return }
-                self.screenCapture?.requestKeyframeOrReplayCachedFrame(force: true)
+            streamingServer?.onClientConnected = {
+                [weak self, weak configuredServer, weak configuredCapture]
+                clientGeneration in
                 Task { @MainActor in
-                    self.unattendedRecoveryAttempt = 0
-                    // Clear before the new client's type-11 arrives so a
-                    // takeover never leaves the previous tablet's model/Hz up.
-                    self.settings.connectedDeviceModel = nil
-                    self.settings.connectedDeviceMaxRefreshRate = nil
-                    self.settings.clientConnected = true
+                    guard let self, let configuredServer, let configuredCapture,
+                          self.screenCapture === configuredCapture else { return }
+                    self.performSessionCallback(
+                            token: startToken,
+                            server: configuredServer,
+                            clientGeneration: clientGeneration
+                    ) {
+                        configuredCapture.requestKeyframeOrReplayCachedFrame(force: true)
+                        self.unattendedRecoveryAttempt = 0
+                        // Clear before the new client's type-11 arrives so a
+                        // takeover never leaves the previous tablet's model/Hz up.
+                        self.settings.connectedDeviceModel = nil
+                        self.settings.connectedDeviceMaxRefreshRate = nil
+                        self.settings.clientConnected = true
+                    }
                 }
             }
-            // Runs synchronously on the server's network queue BEFORE the
-            // display config is sent, so the config below carries the right
-            // dimensions for the negotiated codec.
-            streamingServer?.onCodecNegotiated = { [weak self] codec in
-                guard let self = self, let capture = self.screenCapture else { return }
-                capture.setCodec(codec)
-                switch codec {
-                case .hevc:
-                    self.streamingServer?.setDisplaySize(
-                        width: streamSize.width,
-                        height: streamSize.height,
-                        rotation: self.settings.rotation
-                    )
-                case .h264:
-                    // Clamped physical encode size: the client must configure
-                    // its (weak) AVC decoder within its supported range, and
-                    // this matches what the stream's SPS will carry.
-                    let enc = capture.encodeSize(for: .h264)
-                    self.streamingServer?.setDisplaySize(width: enc.width, height: enc.height, rotation: self.settings.rotation)
+            // Protocol startup pauses until this MainActor callback returns a
+            // display configuration to the server's network queue.
+            streamingServer?.onCodecNegotiated = {
+                [weak self, weak configuredServer, weak configuredCapture]
+                codec, clientGeneration, completion in
+                Task { @MainActor in
+                    guard let self, let configuredServer, let configuredCapture,
+                          self.screenCapture === configuredCapture else {
+                        completion(nil)
+                        return
+                    }
+                    let accepted = self.performSessionCallback(
+                            token: startToken,
+                            server: configuredServer,
+                            clientGeneration: clientGeneration
+                    ) {
+                        configuredCapture.setCodec(codec)
+                        let dimensions: (width: Int, height: Int)
+                        switch codec {
+                        case .hevc:
+                            dimensions = streamSize
+                        case .h264:
+                            dimensions = configuredCapture.encodeSize(for: .h264)
+                        }
+                        completion(NegotiatedDisplayConfiguration(
+                            width: dimensions.width,
+                            height: dimensions.height,
+                            rotation: self.settings.rotation
+                        ))
+                    }
+                    if !accepted { completion(nil) }
                 }
             }
-            streamingServer?.onKeyframeRequested = { [weak self] force in
-                self?.screenCapture?.requestKeyframeOrReplayCachedFrame(force: force)
-            }
-
-            streamingServer?.onClientDisconnected = { [weak self] in
-                guard let self = self else { return }
+            streamingServer?.onKeyframeRequested = {
+                [weak self, weak configuredServer, weak configuredCapture]
+                force, clientGeneration in
                 Task { @MainActor in
-                    self.cancelActiveInput(releaseDrag: true)
-                    self.reportWindowRecovery(
-                        self.windowRecoveryManager.restoreManagedWindows()
-                    )
-                    self.settings.clientConnected = false
-                    self.settings.connectedDeviceModel = nil
-                    self.settings.connectedDeviceMaxRefreshRate = nil
-                    // Final lastConnected snapshot at the disconnect moment, then
-                    // freeze (currentWirelessDevice = nil stops the rolling update
-                    // in refreshStatusIndicators).
-                    if let name = self.currentWirelessDevice {
-                        self.pairedDeviceStore.upsert(name: name, lastConnected: Date())
-                        self.currentWirelessDevice = nil
-                        self.settings.currentWirelessDevice = nil
+                    guard let self, let configuredServer, let configuredCapture,
+                          self.screenCapture === configuredCapture else { return }
+                    self.performSessionCallback(
+                            token: startToken,
+                            server: configuredServer,
+                            clientGeneration: clientGeneration
+                    ) {
+                        configuredCapture.requestKeyframeOrReplayCachedFrame(force: force)
                     }
                 }
             }
 
-            streamingServer?.onDeviceInfoReceived = { [weak self] model, refreshRate in
-                guard let self = self else { return }
+            streamingServer?.onClientDisconnected = {
+                [weak self, weak configuredServer] clientGeneration in
                 Task { @MainActor in
-                    self.settings.connectedDeviceModel = model
-                    self.settings.connectedDeviceMaxRefreshRate = Int(refreshRate)
-                    debugLog("Device info: \(model), \(refreshRate)Hz")
+                    guard let self, let configuredServer else { return }
+                    self.performSessionCallback(
+                            token: startToken,
+                            server: configuredServer,
+                            clientGeneration: clientGeneration
+                    ) {
+                        self.cancelActiveInput(releaseDrag: true)
+                        self.reportWindowRecovery(
+                            self.windowRecoveryManager.restoreManagedWindows()
+                        )
+                        self.settings.clientConnected = false
+                        self.settings.connectedDeviceModel = nil
+                        self.settings.connectedDeviceMaxRefreshRate = nil
+                        // Final lastConnected snapshot at the disconnect moment, then
+                        // freeze (currentWirelessDevice = nil stops the rolling update
+                        // in refreshStatusIndicators).
+                        if let name = self.currentWirelessDevice {
+                            self.pairedDeviceStore.upsert(name: name, lastConnected: Date())
+                            self.currentWirelessDevice = nil
+                            self.settings.currentWirelessDevice = nil
+                        }
+                    }
                 }
             }
 
-            streamingServer?.onTouchEvent = { [weak self] x, y, action, pointerCount, x2, y2 in
-                self?.handleTouch(x: x, y: y, action: action, pointerCount: pointerCount, x2: x2, y2: y2)
-            }
-            streamingServer?.onInputCancelled = { [weak self] in
-                self?.cancelActiveInput(releaseDrag: true)
+            streamingServer?.onDeviceInfoReceived = {
+                [weak self, weak configuredServer]
+                model, refreshRate, clientGeneration in
+                Task { @MainActor in
+                    guard let self, let configuredServer else { return }
+                    self.performSessionCallback(
+                            token: startToken,
+                            server: configuredServer,
+                            clientGeneration: clientGeneration
+                    ) {
+                        self.settings.connectedDeviceModel = model
+                        self.settings.connectedDeviceMaxRefreshRate = Int(refreshRate)
+                        debugLog("Device info: \(model), \(refreshRate)Hz")
+                    }
+                }
             }
 
-            streamingServer?.onStats = { [weak self] fps, mbps in
-                let captured = self
+            streamingServer?.onTouchEvent = {
+                [weak self, weak configuredServer]
+                x, y, action, pointerCount, x2, y2, clientGeneration in
                 Task { @MainActor in
-                    captured?.settings.currentFPS = fps
-                    captured?.settings.currentBitrate = mbps
+                    guard let self, let configuredServer else { return }
+                    self.performSessionCallback(
+                            token: startToken,
+                            server: configuredServer,
+                            clientGeneration: clientGeneration
+                    ) {
+                        self.handleTouch(
+                            x: x, y: y, action: action,
+                            pointerCount: pointerCount, x2: x2, y2: y2
+                        )
+                    }
+                }
+            }
+            streamingServer?.onInputCancelled = {
+                [weak self, weak configuredServer] clientGeneration in
+                Task { @MainActor in
+                    guard let self, let configuredServer else { return }
+                    self.performSessionCallback(
+                            token: startToken,
+                            server: configuredServer,
+                            clientGeneration: clientGeneration
+                    ) {
+                        self.cancelActiveInput(releaseDrag: true)
+                    }
+                }
+            }
+
+            streamingServer?.onStats = {
+                [weak self, weak configuredServer] fps, mbps, clientGeneration in
+                Task { @MainActor in
+                    guard let self, let configuredServer else { return }
+                    self.performSessionCallback(
+                            token: startToken,
+                            server: configuredServer,
+                            clientGeneration: clientGeneration
+                    ) {
+                        self.settings.currentFPS = fps
+                        self.settings.currentBitrate = mbps
+                    }
                 }
             }
 
@@ -1141,11 +1236,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             settings.isRunning = false
             settings.displayCreated = false
 
-            if isUnattendedOperation {
+            if isUnattendedOperation || origin.authorizesRecovery {
                 debugLog(
                     "Unattended startup failed: \(error.localizedDescription)"
                 )
-                scheduleUnattendedRecoveryIfEnabled()
+                scheduleUnattendedRecoveryIfEnabled(
+                    allowAutomaticLaunch: origin.authorizesRecovery
+                )
             } else {
                 let alert = NSAlert()
                 alert.messageText = "Failed to Start Server"
@@ -1160,6 +1257,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard serverLifecycle.isCurrentStart(token) else {
             throw CancellationError()
         }
+    }
+
+    @discardableResult
+    private func performSessionCallback(
+        token: UInt64,
+        server: StreamingServer,
+        clientGeneration: UInt64,
+        operation: () -> Void
+    ) -> Bool {
+        guard serverLifecycle.ownsSession(token),
+              streamingServer === server else { return false }
+        var accepted = false
+        let generationWasCurrent = server.performIfCurrentClientGeneration(
+            clientGeneration
+        ) {
+            guard serverLifecycle.acceptsCallback(
+                token,
+                sourceMatches: streamingServer === server,
+                clientGeneration: clientGeneration
+            ) else { return }
+            accepted = true
+            operation()
+        }
+        return generationWasCurrent && accepted
     }
 
     /// Idempotent cleanup used for both normal shutdown and a failure after any
@@ -1218,13 +1339,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             (settings.hasCompletedOnboarding && DaemonManager.shared.isEnabled)
     }
 
-    private func scheduleUnattendedRecoveryIfEnabled() {
+    private func scheduleUnattendedRecoveryIfEnabled(
+        allowAutomaticLaunch: Bool = false
+    ) {
         guard HostStartupPolicy.shouldRecover(
                 autoStartEnabled: settings.autoStartStreamingOnLaunch,
                 hasScreenRecordingPermission: settings.hasScreenRecordingPermission,
                 hasCompletedOnboarding: settings.hasCompletedOnboarding,
                 explicitHeadlessBenchmark: isHeadlessBenchmark,
-                isUnattendedOperation: isUnattendedOperation
+                isUnattendedOperation: isUnattendedOperation || allowAutomaticLaunch
               ),
               let delay = UnattendedRecoveryPolicy.delay(
                 afterFailure: unattendedRecoveryAttempt
@@ -1247,9 +1370,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         hasScreenRecordingPermission: self.settings.hasScreenRecordingPermission,
                         hasCompletedOnboarding: self.settings.hasCompletedOnboarding,
                         explicitHeadlessBenchmark: self.isHeadlessBenchmark,
-                        isUnattendedOperation: self.isUnattendedOperation
+                        isUnattendedOperation:
+                            self.isUnattendedOperation || allowAutomaticLaunch
                       ) else { return }
-                await self.startServer()
+                await self.startServer(origin: .recovery)
             } catch is CancellationError {
                 return
             } catch {
