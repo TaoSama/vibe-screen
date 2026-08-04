@@ -4,10 +4,11 @@ This directory contains the native SwiftUI iOS client and its independently
 testable Protocol v1, session, transport, and VideoToolbox modules.
 
 The client is an early developer release. Its core modules build and self-test
-on macOS, but this repository has not yet recorded a successful iOS SDK build,
-simulator run, signed installation, or iPhone/iPad hardware decode result. It
-also cannot connect to the imported Telemachus host until that host gains the
-Protocol v1 adapter. Do not treat the Android device record as iOS evidence.
+on macOS, and the unsigned application has built successfully with the iOS
+Simulator SDK in CI. Simulator test execution, signing, installation, and
+iPhone/iPad hardware decode are separate gates; do not treat the SDK build or
+Android device record as that evidence. The client also cannot connect to the
+imported Telemachus host until that host gains the Protocol v1 adapter.
 
 ## Requirements
 
@@ -31,6 +32,10 @@ swift build --package-path apps/ios
 swift run --package-path apps/ios vibescreen-ios-selftest
 ```
 
+The self-test decodes the shared
+`contracts/fixtures/client-hello-v1.hex` fixture also emitted by the HarmonyOS
+codec, in addition to its protocol/session/media checks.
+
 After editing Protocol v1 schemas, regenerate the checked Swift bindings:
 
 ```bash
@@ -38,19 +43,19 @@ apps/ios/Scripts/generate-protocol.sh
 git diff -- apps/ios/Sources/VibeScreenProtocol
 ```
 
-With full Xcode selected, build the unsigned simulator application:
+With full Xcode selected, run the App-hosted XCTest on an available iPhone
+simulator and create an unsigned Release archive:
 
 ```bash
-sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 xcodebuild -version
 xcodebuild -showsdks
-xcodebuild \
-  -project apps/ios/VibeScreen.xcodeproj \
-  -scheme VibeScreen \
-  -destination 'generic/platform=iOS Simulator' \
-  CODE_SIGNING_ALLOWED=NO \
-  build
+apps/ios/Scripts/build_ios.py
 ```
+
+Use `--action simulator-build`, `--action simulator-test`, or
+`--action archive` to run one gate. The archive is written to
+`apps/ios/.build/xcode/VibeScreen.xcarchive` and is intentionally unsigned; it
+is build evidence, not an installable signed release.
 
 For a physical device, open `apps/ios/VibeScreen.xcodeproj`, select the
 `VibeScreen` target, choose your development team, replace
@@ -146,7 +151,8 @@ not yet stored by this client, so there is currently no key migration step.
 
 ## Known limits
 
-- no recorded iOS build, simulator, signing, installation, or device run yet;
+- unsigned iOS Simulator SDK compilation is recorded in CI; simulator XCTest,
+  signing, installation, and device execution remain separate evidence gates;
 - no automatic reconnect loop in the app UI yet, although epoch filtering and
   bounded reconnect backoff are implemented and self-tested;
 - one host connection can route up to four negotiated display streams; actual
@@ -154,7 +160,7 @@ not yet stored by this client, so there is currently no key migration step.
 - touch only; keyboard/pointer UI is negotiated but not exposed yet;
 - PCM S16LE playback, explicit text clipboard, bounded file transfer, SDR
   fallback, gestures, WOL, and managed restrictions are implemented, but have
-  no simulator/iOS-device evidence in this environment;
+  no iOS-device evidence in this environment;
 - no AAC/Opus, background audio, zero-copy HDR/EDR output, arbitrary clipboard
   MIME UI, Internet transport, or production E2EE;
 - frame rendering currently creates a Core Image display image per decoded

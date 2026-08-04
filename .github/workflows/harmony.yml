@@ -1,0 +1,28 @@
+name: HarmonyOS portable checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  portable-core:
+    name: Portable core (no DevEco or HAP claim)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: apps/harmony/pnpm-lock.yaml
+      - name: Install pinned portable test dependencies
+        run: pnpm --dir apps/harmony install --frozen-lockfile
+      - name: Type-check core and verify shared Protocol v1 golden bytes
+        run: pnpm --dir apps/harmony verify

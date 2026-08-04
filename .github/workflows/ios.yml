@@ -1,4 +1,4 @@
-name: iOS core checks
+name: iOS engineering gates
 
 on:
   pull_request:
@@ -21,18 +21,18 @@ jobs:
         run: swift package --package-path apps/ios resolve
       - name: Build native protocol, session, transport, and video modules
         run: swift build --package-path apps/ios
-      - name: Run deterministic self-test
+      - name: Run deterministic self-test and shared Protocol v1 compatibility fixture
         run: swift run --package-path apps/ios vibescreen-ios-selftest
 
-  simulator-build:
+  app-build-test-archive:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
-      - name: Build unsigned iPhone/iPad simulator application
-        run: >-
-          xcodebuild
-          -project apps/ios/VibeScreen.xcodeproj
-          -scheme VibeScreen
-          -destination 'generic/platform=iOS Simulator'
-          CODE_SIGNING_ALLOWED=NO
-          build
+      - name: Build and test on an iPhone simulator, then create an unsigned archive
+        run: apps/ios/Scripts/build_ios.py
+      - name: Upload unsigned archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: VibeScreen-unsigned-xcarchive
+          path: apps/ios/.build/xcode/VibeScreen.xcarchive
+          if-no-files-found: error

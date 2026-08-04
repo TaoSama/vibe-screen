@@ -9,10 +9,15 @@ cd apps/harmony && pnpm run verify
 8 tests, 0 failures
 ```
 
-Covered behavior: Protocol v1 hello encoding, SessionAccepted/unknown-field
+Covered behavior: exact shared Protocol v1 ClientHello bytes,
+SessionAccepted/unknown-field
 decoding, distinct touch/pointer/scroll/key envelopes, split/coalesced control
 framing, strict session epochs, capacity-one frame queue, rotated coordinate
 mapping, and capped deterministic reconnect backoff.
+
+The hosted `HarmonyOS portable checks` workflow runs the same frozen install,
+type-check, and test commands. Its job name explicitly states that it supplies
+no DevEco or HAP evidence.
 
 ## Environment evidence
 

@@ -72,6 +72,45 @@ func testSessionAndProtobuf() throws {
     try require(packet.payload == Data([0x65, 0x01]), "media payload boundary")
 }
 
+func testSharedProtocolFixture() throws {
+    let fixtureURL = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("contracts/fixtures/client-hello-v1.hex")
+    let hex = try String(contentsOf: fixtureURL, encoding: .utf8)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    let bytes = try decodeHex(hex)
+    let envelope = try VSEnvelope(serializedBytes: bytes)
+
+    try require(envelope.protocolVersion == 1, "golden protocol version")
+    try require(envelope.messageID == 1, "golden message ID")
+    try require(envelope.clientHello.supportedProtocols.minimum == 1, "golden minimum protocol")
+    try require(envelope.clientHello.supportedProtocols.maximum == 1, "golden maximum protocol")
+    try require(envelope.clientHello.deviceID == "protocol-golden", "golden device ID")
+    try require(envelope.clientHello.deviceName == "Vibe Screen", "golden device name")
+    try require(envelope.clientHello.capabilities == [.touch, .keyboard, .pointer], "golden capabilities")
+    try require(envelope.clientHello.codecs == [.h264, .hevc], "golden codecs")
+    try require(envelope.clientHello.transports == [.lan], "golden transport")
+}
+
+func decodeHex(_ hex: String) throws -> Data {
+    try require(hex.count.isMultiple(of: 2), "golden hex has odd length")
+    var bytes = Data()
+    var index = hex.startIndex
+    while index < hex.endIndex {
+        let end = hex.index(index, offsetBy: 2)
+        guard let byte = UInt8(hex[index..<end], radix: 16) else {
+            throw SelfTestError.failed("golden hex contains invalid byte")
+        }
+        bytes.append(byte)
+        index = end
+    }
+    return bytes
+}
+
 func encodeVarint(_ value: Int) -> Data {
     var remaining = value
     var bytes = Data()
@@ -342,6 +381,7 @@ do {
     try testFraming()
     FileHandle.standardError.write(Data("RUN: protocol/session\n".utf8))
     try testSessionAndProtobuf()
+    try testSharedProtocolFixture()
     FileHandle.standardError.write(Data("RUN: codec/backoff\n".utf8))
     try testBackpressureAndCodecParsing()
     FileHandle.standardError.write(Data("RUN: multi-display/audio\n".utf8))

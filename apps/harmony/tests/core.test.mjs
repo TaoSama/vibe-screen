@@ -1,22 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { CoordinateMapper, Rotation } from '../.test-dist/input/CoordinateMapper.js';
 import { LatestFrameQueue } from '../.test-dist/media/LatestFrameQueue.js';
-import { Codec, defaultCapabilities, TransportKind } from '../.test-dist/protocol/ProtocolModels.js';
+import { Capability, Codec, TransportKind } from '../.test-dist/protocol/ProtocolModels.js';
 import { ProtocolEncoder } from '../.test-dist/protocol/ProtocolEncoder.js';
 import { ProtocolDecoder } from '../.test-dist/protocol/ProtocolDecoder.js';
 import { ReconnectPolicy } from '../.test-dist/session/ReconnectPolicy.js';
 import { SessionState, SessionStateMachine } from '../.test-dist/session/SessionStateMachine.js';
 import { ControlFramer } from '../.test-dist/transport/ControlFramer.js';
 
-test('client hello uses Protocol v1 golden prefix', () => {
+test('client hello matches the shared Protocol v1 golden fixture', () => {
   const bytes = new ProtocolEncoder().clientHello(ProtocolEncoder.metadata(1n), {
-    minimumProtocol: 1, maximumProtocol: 1, deviceId: 'matepad-mini', deviceName: 'MatePad Mini',
-    capabilities: defaultCapabilities(), codecs: [Codec.HEVC, Codec.H264], transports: [TransportKind.LAN]
+    minimumProtocol: 1, maximumProtocol: 1, deviceId: 'protocol-golden', deviceName: 'Vibe Screen',
+    capabilities: [Capability.TOUCH, Capability.KEYBOARD, Capability.POINTER],
+    codecs: [Codec.H264, Codec.HEVC], transports: [TransportKind.LAN]
   });
-  assert.equal(bytes[0], 0x08);
-  assert.equal(bytes[1], 0x01);
-  assert.ok(bytes.includes(0xa2));
+  const fixture = readFileSync('../../contracts/fixtures/client-hello-v1.hex', 'utf8').trim();
+  assert.equal(Buffer.from(bytes).toString('hex'), fixture);
+  const decoded = new ProtocolDecoder().envelope(bytes);
+  assert.equal(decoded.protocolVersion, 1);
+  assert.equal(decoded.payloadField, 20);
 });
 
 test('session accepted decoder ignores unknown fields', () => {

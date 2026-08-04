@@ -19,16 +19,22 @@ by your developer account.
 
 ```bash
 cd apps/harmony
-pnpm install --frozen-lockfile
-pnpm verify
+make ci
+make doctor
 make build-debug
 ```
 
-If `hvigorw` is not on `PATH`, import `apps/harmony` in DevEco Studio, allow it
-to synchronize the SDK, then select **entry > default > debug > Build HAP**.
-The unsigned/debug HAP is emitted below `entry/build/`. For a versioned signed
-artifact, configure a release signing profile and run `make release`; the HAP
-and `SHA256SUMS` are copied to `dist/0.1.0/`.
+`make ci` runs only the portable TypeScript core checks, including the exact
+shared Protocol v1 wire fixture. It does not compile ArkTS, invoke DevEco, or
+produce a HAP. `make doctor` reports whether the real `hvigorw`/`hvigor` and
+`ohpm` tools are available; HAP targets fail explicitly when either is absent.
+
+If those tools are not on `PATH`, import `apps/harmony` in DevEco Studio, allow
+it to synchronize the API 12+ SDK, then select **entry > default > debug >
+Build HAP**. In a configured CLI environment, `make build-debug` runs `ohpm
+install` before Hvigor. The debug HAP is emitted below `entry/build/`. For a
+versioned signed artifact, configure a release signing profile and run `make
+release`; the HAP and `SHA256SUMS` are copied to `dist/0.1.0/`.
 
 ## Install and run
 
@@ -87,6 +93,9 @@ See the [device runbook](../../docs/runbook/harmony-matepad-mini.md) and the
 
 - No HarmonyOS device or DevEco SDK was available for the initial implementation,
   so HAP compilation and MatePad Mini behavior remain unverified.
+- Hosted CI verifies only the portable core and shared golden fixture. The
+  `.ets` page/platform adapters, SDK API checker, HAP packaging, and signing
+  require a genuine DevEco environment.
 - The repository host has not implemented Protocol v1, preventing stream/input
   interoperability testing today.
 - Protocol v1 represents stylus pressure but not tilt/azimuth, and has no

@@ -288,7 +288,8 @@ network quality may increase it.
 - Native ArkTS/ArkUI project and Protocol v1 core now live in
   [`apps/harmony`](apps/harmony/README.md), with independent Protobuf encoding,
   strict session epochs, bounded media queues, Harmony TCP/AVCodec adapters,
-  input mapping, tests, and reproducible HAP packaging commands.
+  input mapping, portable tests, and DevEco-gated HAP packaging commands. The
+  hosted CI does not claim to compile ArkTS or produce a HAP.
 - The [Phase 4 verification record](docs/changes/2026-08-04-phase-4-harmony/TEST.md)
   tracks the remaining DevEco, host-interoperability, and MatePad Mini gates.
 - HarmonyOS device acceptance must follow the
@@ -306,9 +307,11 @@ network quality may increase it.
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
   Wake-on-LAN, and deny-wins managed configuration.
-- Full Xcode/iOS SDK build, simulator, signing, iPhone/iPad installation, host
-  interoperability, host-side advanced adapters, AVAudioEngine playback, HDR
-  output, and all advanced real-device behavior remain unverified; see the
+- The unsigned app has built successfully with the iOS Simulator SDK in CI.
+  Simulator test execution, unsigned device archive, signing, iPhone/iPad
+  installation, host interoperability, host-side advanced adapters,
+  AVAudioEngine playback, HDR output, and all advanced real-device behavior
+  remain separate gates; see the
   [evidence record](docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md).
 
 ## Device Strategy

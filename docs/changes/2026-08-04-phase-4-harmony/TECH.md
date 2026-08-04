@@ -12,8 +12,10 @@ ArkUI -> session orchestration -> Protocol v1 -> TCP control transport
 The Protobuf codec is a small independent implementation limited to the Vibe
 Screen schema, including unknown-field skipping. It avoids a runtime dependency
 whose ArkTS compatibility and license could not be verified. Contract `.proto`
-files remain the source of truth; wire golden tests must be expanded when host
-bindings arrive.
+files remain the source of truth. The encoder now reproduces the complete
+shared ClientHello wire fixture, while the generated Swift binding decodes the
+same fixture. Additional message families still require fixtures as their host
+adapters arrive.
 
 The session state machine rejects invalid transitions and only renders media
 whose epoch equals the accepted session. `LatestFrameQueue` holds at most one
@@ -21,6 +23,8 @@ pending encoded frame, replacing stale data rather than accumulating latency.
 Transport and decoder adapters import Harmony APIs; core modules do not.
 
 The current source includes the official TCP, Asset Store credential, and AVCodec
-adapter seams. Full page/controller wiring and API-level compiler corrections
-must be completed against an installed DevEco SDK because that toolchain was
-not present during this change. This is not treated as a completed device port.
+adapter seams. Hosted CI compiles and tests only the framework-independent
+TypeScript core; it does not claim ArkTS/HAP validation. Full page/controller
+wiring and API-level compiler corrections must be completed against an
+installed DevEco SDK because that toolchain was not present during this change.
+This is not treated as a completed device port.
