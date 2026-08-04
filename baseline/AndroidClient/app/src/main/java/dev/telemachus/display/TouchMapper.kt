@@ -20,6 +20,7 @@ internal object TouchMapper {
         viewHeight: Int,
         videoWidth: Int,
         videoHeight: Int,
+        scaleMode: VideoScaleMode = VideoScaleMode.FIT,
     ): Point {
         if (viewWidth <= 0 || viewHeight <= 0 || videoWidth <= 0 || videoHeight <= 0) {
             return Point(0f, 0f)
@@ -35,7 +36,10 @@ internal object TouchMapper {
         val offsetX: Float
         val offsetY: Float
 
-        if (surfaceAspect > videoAspect) {
+        val fitByHeight = surfaceAspect > videoAspect
+        if ((scaleMode == VideoScaleMode.FIT && fitByHeight) ||
+            (scaleMode == VideoScaleMode.FILL && !fitByHeight)
+        ) {
             contentHeight = surfaceHeight
             contentWidth = contentHeight * videoAspect
             offsetX = (surfaceWidth - contentWidth) / 2f

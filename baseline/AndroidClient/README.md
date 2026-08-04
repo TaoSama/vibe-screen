@@ -11,15 +11,27 @@ Android treats a new application ID as a different app.
   trusted LAN.
 - Hardware H.264 and HEVC decoding with explicit codec negotiation, sync-frame
   recovery, stale-frame dropping, and bounded buffers.
-- Full-screen aspect-fit rendering, letterbox-aware touch mapping, rotation,
-  two-finger gestures, connection telemetry, and saved UI preferences.
+- Full-screen fit/fill rendering, crop/letterbox-aware touch mapping,
+  host-following or client-offset rotation, two-finger gestures, connection
+  telemetry, and saved UI preferences.
 - QR pairing for LAN, encrypted-at-rest pairing credentials, actionable camera
   permission states, and automatic USB/LAN reconnection.
 - Adaptive layouts tested on phone and wide tablet-sized screens. The connected
-  screen stays awake and is protected from Android screenshots.
+  screen stays awake and is protected from Android screenshots. Backgrounding
+  pauses new retry attempts and input; returning to the foreground resumes
+  retry or requests a fresh keyframe without discarding a live session.
+- Touch tap, long-press right click, long-press drag, two-finger scroll/pinch,
+  external mouse wheel, and external secondary-button events use the existing
+  touch path. Secondary mouse clicks are adapted to the host's long-press
+  gesture rather than sent as native pointer-button packets.
 
-Keyboard forwarding, native mouse/stylus fields, client-side display selection,
-and the Internet transport are not exposed in the current product UI. The
+The client captures common physical-keyboard keys and shortcuts into
+protocol-neutral USB HID usages, but the legacy session does not negotiate a
+keyboard channel. It therefore shows an actionable compatibility message and
+does not send unnegotiated bytes. Native pointer/stylus fields, client-side Mac
+display selection, and the Internet transport are not exposed in the current
+product UI. The display settings identify the active stream as host-selected
+instead of pretending that the Android client can enumerate it. The
 Phase 3 source tree does contain a production libwebrtc adapter, REST signaling
 client, Protocol v1 record encryption, and an AndroidKeyStore-backed factory
 that atomically loads paired secrets into a protected Internet session. These
@@ -81,7 +93,8 @@ this mode on public, guest, or otherwise untrusted Wi-Fi.
 - Pairing tokens are encrypted with a key held by Android Keystore and are not
   included in Android backups.
 - While streaming, Android's keep-screen-on and secure-window flags are active.
-  They are removed after disconnect.
+  Keep-screen-on and retries pause in the background; screenshot protection
+  remains until disconnect.
 
 ## Phase 3 secure-session composition
 
@@ -144,10 +157,20 @@ Android 16/API 36, not a Xiaomi 12. It installed and launched the debug APK and
 decoded a real 1512×982 HEVC stream with Qualcomm's hardware decoder. This is
 useful device evidence but does not satisfy Xiaomi 12 acceptance.
 
+On 2026-08-05, the same Nubia device installed the Phase 1 Android client and
+decoded a repository-generated 2000×1124 HEVC stream with Qualcomm hardware.
+Fit geometry, actionable pre-display failure, Camera denial/recovery,
+foreground resume, HID compatibility gating, touch packets, and a synthetic
+cold reconnect were exercised. The Mac remained locked, so this run does not
+prove visible Mac input results, real display selection/rotation, physical
+mouse or keyboard behavior, or ScreenCaptureKit end-to-end recovery. See the
+[Phase 1 verification record](../../docs/changes/2026-08-05-phase-1-android-client/TEST.md).
+
 The following remain separate release gates: Xiaomi 12 coverage, a physical
-8–9 inch tablet matrix, 30-minute and eight-hour controlled soak runs,
-external-camera glass-to-glass latency, keyboard/mouse/stylus protocol
-interoperability, and production encryption for LAN traffic.
+8–9 inch tablet matrix, unlocked-Mac Phase 1 interaction acceptance, two-hour
+and eight-hour controlled soak runs, external-camera
+glass-to-glass latency, keyboard/native-mouse/stylus protocol interoperability,
+client-side Mac display selection, and production encryption for LAN traffic.
 
 ## Source and licenses
 

@@ -46,4 +46,22 @@ class TouchMapperTest {
         assertEquals(0f, point.x, 0.0001f)
         assertEquals(0.5f, point.y, 0.0001f)
     }
+
+    @Test
+    fun `fill mode maps cropped video rather than clamping to visible bounds`() {
+        val left =
+            TouchMapper.map(
+                x = 0f,
+                y = 500f,
+                viewWidth = 1000,
+                viewHeight = 1000,
+                videoWidth = 2000,
+                videoHeight = 1000,
+                scaleMode = VideoScaleMode.FILL,
+            )
+
+        assertEquals(0.25f, left.x, 0.0001f)
+        assertEquals(0.5f, left.y, 0.0001f)
+    }
+
 }

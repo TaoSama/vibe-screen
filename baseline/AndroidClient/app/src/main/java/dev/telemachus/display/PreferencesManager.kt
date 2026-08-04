@@ -44,4 +44,12 @@ class PreferencesManager(
     var trustedLanAcknowledged: Boolean
         get() = prefs.getBoolean("trusted_lan_acknowledged", false)
         set(value) = prefs.edit().putBoolean("trusted_lan_acknowledged", value).apply()
+
+    var videoScaleMode: VideoScaleMode
+        get() = VideoScaleMode.fromName(prefs.getString("video_scale_mode", null))
+        set(value) = prefs.edit().putString("video_scale_mode", value.name).apply()
+
+    var clientRotation: ClientRotation
+        get() = ClientRotation.fromName(prefs.getString("client_rotation", null))
+        set(value) = prefs.edit().putString("client_rotation", value.name).apply()
 }

@@ -14,6 +14,8 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.MotionEvent
+import android.view.InputDevice
+import android.view.KeyEvent
 import android.view.SurfaceHolder
 import android.view.View
 import android.view.Window
@@ -21,6 +23,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.lifecycle.lifecycleScope
@@ -50,6 +53,11 @@ class MainActivity : AppCompatActivity() {
     private var displayHeight = 0 // 0 = no config received yet
     private var displayRotation = 0 // 0, 90, 180, 270 degrees
     private var pingJob: kotlinx.coroutines.Job? = null
+    private var isInForeground = false
+    private val sessionCapabilities = ClientSessionCapabilities.LEGACY_TOUCH_ONLY
+    private var unsupportedKeyboardNoticeShown = false
+    private val inputHandler = Handler(Looper.getMainLooper())
+    private var pendingRightClickRelease: Runnable? = null
 
     // For dragging stats overlay
     private var isDraggingOverlay = false
@@ -78,7 +86,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingWirelessReconnectDelayMs: Long? = null
     private val autoConnectRunnable =
         Runnable {
-            if (automaticUsbConnect && !isConnected && !connectionAttemptInProgress) {
+            if (automaticUsbConnect && isInForeground && !isConnected && !connectionAttemptInProgress) {
                 connect("127.0.0.1", currentUsbPort(), automatic = true)
             }
         }
@@ -89,6 +97,7 @@ class MainActivity : AppCompatActivity() {
                 !wirelessAutoReconnectEnabled ||
                 prefs.connectionMode != ConnectionMode.WIRELESS ||
                 isConnected ||
+                !isInForeground ||
                 connectionAttemptInProgress
             ) {
                 return@Runnable
@@ -145,6 +154,65 @@ class MainActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
     }
 
+    override fun onStart() {
+        super.onStart()
+        isInForeground = true
+        mainDiag("lifecycle foreground connected=$isConnected")
+        if (isConnected) {
+            setStreamingWindowState(true)
+            streamClient?.requestKeyframe(force = true, reason = "client returned to foreground")
+        } else if (prefs.connectionMode == ConnectionMode.WIRELESS && wirelessAutoReconnectEnabled) {
+            pendingWirelessReconnectDelayMs?.let(::scheduleWirelessReconnect)
+                ?: pairedHostStorage.load()?.let { scheduleWirelessReconnect(WIRELESS_INITIAL_RETRY_DELAY_MS) }
+        } else {
+            scheduleAutomaticUsbConnect(FOREGROUND_RECONNECT_DELAY_MS)
+        }
+    }
+
+    override fun onStop() {
+        finishPendingRightClick()
+        isInForeground = false
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        autoConnectHandler.removeCallbacks(autoConnectRunnable)
+        wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
+        mainDiag("lifecycle background connected=$isConnected; retries paused")
+        super.onStop()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (!isConnected || event.isSystemKey()) return super.dispatchKeyEvent(event)
+        val clientEvent =
+            AndroidKeyInputMapper.map(
+                keyCode = event.keyCode,
+                action = event.action,
+                metaState = event.metaState,
+                repeatCount = event.repeatCount,
+            ) ?: return super.dispatchKeyEvent(event)
+        if (!ClientControlAvailability.isSupported(ClientControl.KEYBOARD, sessionCapabilities)) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                mainDiag(
+                    "keyboard input blocked by touch-only host " +
+                        "hid=${clientEvent.usbHidUsage} modifiers=${clientEvent.modifiers}",
+                )
+                if (!unsupportedKeyboardNoticeShown) {
+                    unsupportedKeyboardNoticeShown = true
+                    Toast
+                        .makeText(this, R.string.keyboard_requires_compatible_host, Toast.LENGTH_LONG)
+                        .show()
+                }
+            }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun KeyEvent.isSystemKey(): Boolean =
+        keyCode == KeyEvent.KEYCODE_BACK ||
+            keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
+            keyCode == KeyEvent.KEYCODE_VOLUME_DOWN ||
+            keyCode == KeyEvent.KEYCODE_VOLUME_MUTE ||
+            keyCode == KeyEvent.KEYCODE_POWER
+
     private fun handleLaunchIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(EXTRA_AUTO_CONNECT, false) != true) return
         // Treat the launch extra as an event. Persisting it on the Activity's
@@ -167,7 +235,7 @@ class MainActivity : AppCompatActivity() {
             .toIntOrNull() ?: 54321
 
     private fun scheduleAutomaticUsbConnect(delayMs: Long = 1500) {
-        if (!automaticUsbConnect || isConnected) return
+        if (!automaticUsbConnect || isConnected || !isInForeground) return
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         autoConnectHandler.postDelayed(autoConnectRunnable, delayMs)
     }
@@ -384,22 +452,26 @@ class MainActivity : AppCompatActivity() {
         binding.surfaceView.setOnGenericMotionListener { view, event ->
             handleGenericMotion(view, event)
         }
+        binding.surfaceView.isFocusableInTouchMode = true
+        binding.root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateSurfaceViewportLayout()
+        }
     }
 
     private fun handleGenericMotion(
         view: View,
         event: MotionEvent,
     ): Boolean {
+        if (!isConnected || !isInForeground) return false
+        if (event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS &&
+            event.isFromSource(InputDevice.SOURCE_MOUSE) &&
+            event.buttonState and MotionEvent.BUTTON_SECONDARY != 0
+        ) {
+            synthesizeLegacyRightClick(view, event)
+            return true
+        }
         if (event.actionMasked != MotionEvent.ACTION_SCROLL) return false
-        val anchor =
-            TouchMapper.map(
-                x = event.x,
-                y = event.y,
-                viewWidth = view.width,
-                viewHeight = view.height,
-                videoWidth = displayWidth,
-                videoHeight = displayHeight,
-            )
+        val anchor = mapInputPoint(view, event.x, event.y)
         val gesture =
             LegacyScrollMapper.map(
                 anchor = anchor,
@@ -434,6 +506,30 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
+    private fun synthesizeLegacyRightClick(
+        view: View,
+        event: MotionEvent,
+    ) {
+        val point = mapInputPoint(view, event.x, event.y)
+        val client = streamClient ?: return
+        finishPendingRightClick()
+        client.sendTouch(point.x, point.y, LEGACY_TOUCH_DOWN)
+        val release =
+            Runnable {
+                if (streamClient === client) client.sendTouch(point.x, point.y, LEGACY_TOUCH_UP)
+                pendingRightClickRelease = null
+            }
+        pendingRightClickRelease = release
+        inputHandler.postDelayed(release, LEGACY_RIGHT_CLICK_HOLD_MS)
+        mainDiag("secondary mouse button adapted to legacy long press")
+    }
+
+    private fun finishPendingRightClick() {
+        val release = pendingRightClickRelease ?: return
+        inputHandler.removeCallbacks(release)
+        release.run()
+    }
+
     private fun setupUI() {
         binding.connectButton.setOnClickListener {
             var host =
@@ -457,8 +553,8 @@ class MainActivity : AppCompatActivity() {
             }
 
             updateStatus("Checking for your Mac…")
-            automaticUsbConnect = true
-            connect(host, port, automatic = true)
+            automaticUsbConnect = false
+            connect(host, port, automatic = false)
         }
 
         binding.disconnectButton.setOnClickListener {
@@ -679,6 +775,10 @@ class MainActivity : AppCompatActivity() {
         val resetSettingsBtn = view.findViewById<View>(R.id.resetSettingsButton)
         val disconnectButton = view.findViewById<View>(R.id.disconnectSettingsButton)
         val closeButton = view.findViewById<View>(R.id.closeButton)
+        val scaleFitButton = view.findViewById<MaterialButton>(R.id.scaleFitButton)
+        val scaleFillButton = view.findViewById<MaterialButton>(R.id.scaleFillButton)
+        val rotationButton = view.findViewById<MaterialButton>(R.id.rotationButton)
+        val displayCapability = view.findViewById<TextView>(R.id.displayCapability)
 
         // Only show Disconnect when actually streaming. Otherwise the button is
         // a no-op and confuses users into clicking it twice.
@@ -698,6 +798,29 @@ class MainActivity : AppCompatActivity() {
         showStatsSwitch.isChecked = prefs.showStatsOverlay
         opacitySlider.value = prefs.overlayOpacity
         opacityValue.text = "${(prefs.overlayOpacity * 100).toInt()}%"
+        displayCapability.setText(
+            if (sessionCapabilities.displaySelection) {
+                R.string.display_selection_available
+            } else {
+                R.string.display_selection_host_only
+            },
+        )
+
+        fun updateViewportButtons() {
+            scaleFitButton.isChecked = prefs.videoScaleMode == VideoScaleMode.FIT
+            scaleFillButton.isChecked = prefs.videoScaleMode == VideoScaleMode.FILL
+            rotationButton.text =
+                getString(
+                    R.string.rotation_value,
+                    when (prefs.clientRotation) {
+                        ClientRotation.FOLLOW_HOST -> getString(R.string.rotation_follow_host)
+                        ClientRotation.CLOCKWISE_90 -> getString(R.string.rotation_90)
+                        ClientRotation.UPSIDE_DOWN -> getString(R.string.rotation_180)
+                        ClientRotation.COUNTER_CLOCKWISE_90 -> getString(R.string.rotation_270)
+                    },
+                )
+        }
+        updateViewportButtons()
 
         // Highlight current position selection (8 positions)
         // 0=BottomRight, 1=BottomLeft, 2=TopRight, 3=TopLeft
@@ -737,6 +860,30 @@ class MainActivity : AppCompatActivity() {
             updateOverlayOpacity(value)
             updateSettingsButtonOpacity(value)
             opacityValue.text = "${(value * 100).toInt()}%"
+        }
+
+        scaleFitButton.setOnClickListener {
+            prefs.videoScaleMode = VideoScaleMode.FIT
+            videoDecoder?.updateScaleMode(VideoScaleMode.FIT)
+            updateSurfaceViewportLayout()
+            updateViewportButtons()
+        }
+        scaleFillButton.setOnClickListener {
+            prefs.videoScaleMode = VideoScaleMode.FILL
+            videoDecoder?.updateScaleMode(VideoScaleMode.FILL)
+            updateSurfaceViewportLayout()
+            updateViewportButtons()
+        }
+        rotationButton.setOnClickListener {
+            prefs.clientRotation =
+                when (prefs.clientRotation) {
+                    ClientRotation.FOLLOW_HOST -> ClientRotation.CLOCKWISE_90
+                    ClientRotation.CLOCKWISE_90 -> ClientRotation.UPSIDE_DOWN
+                    ClientRotation.UPSIDE_DOWN -> ClientRotation.COUNTER_CLOCKWISE_90
+                    ClientRotation.COUNTER_CLOCKWISE_90 -> ClientRotation.FOLLOW_HOST
+                }
+            applyRotation(displayRotation)
+            updateViewportButtons()
         }
 
         resetButton.setOnClickListener {
@@ -1000,6 +1147,7 @@ class MainActivity : AppCompatActivity() {
                     MediaFormat.MIMETYPE_VIDEO_HEVC
                 }
             videoDecoder = VideoDecoder(holder.surface, displayObj, displayWidth, displayHeight, mime)
+            videoDecoder?.updateScaleMode(prefs.videoScaleMode)
             // Wire up buffer release callback
             videoDecoder?.onFrameDecoded = { buffer ->
                 streamClient?.releaseBuffer(buffer)
@@ -1029,6 +1177,7 @@ class MainActivity : AppCompatActivity() {
      * Wire up all StreamClient callbacks. Used by both USB connect() and wireless connectWireless().
      */
     private fun setupStreamClientCallbacks() {
+        val callbackClient = streamClient ?: return
         streamClient?.onFrameReceived = { frameData, frameSize, timestamp, isKeyframe, sessionEpoch ->
             val dec = videoDecoder
             if (dec != null) {
@@ -1062,17 +1211,34 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        callbackClient.onWriteFailure = { reason ->
+            mainDiag("session write failed: $reason")
+            lifecycleScope.launch(Dispatchers.IO) {
+                if (streamClient === callbackClient) {
+                    callbackClient.failCurrentSession("session_write_failure")
+                }
+            }
+        }
+
         streamClient?.onConnectionStatus = { connected ->
             runOnUiThread {
                 isConnected = connected
-                setStreamingWindowState(connected)
+                if (connected && !isInForeground) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    setStreamingWindowState(connected)
+                }
                 if (connected) {
+                    if (prefs.connectionMode == ConnectionMode.USB) automaticUsbConnect = true
+                    unsupportedKeyboardNoticeShown = false
                     pendingWirelessReconnectDelayMs = null
                     initialWirelessReconnectBackoff.reset()
                     wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
                     startPingTimer()
                     stopChecklistUpdates()
                     enableFullscreenMode()
+                    binding.surfaceView.requestFocus()
                     // For wireless mode, transition controller to CONNECTED here —
                     // not in MainActivity.connectWireless's coroutine after the
                     // receive loop returns (that runs AFTER disconnect, causing
@@ -1139,6 +1305,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             runOnUiThread {
+                updateSurfaceViewportLayout()
                 binding.resolutionText.text = getString(R.string.resolution_format, width, height)
                 binding.connectButton.isEnabled = false
                 binding.disconnectButton.isEnabled = true
@@ -1165,6 +1332,11 @@ class MainActivity : AppCompatActivity() {
         deviceName: String,
         macName: String,
     ) {
+        if (!isInForeground) {
+            wirelessAutoReconnectEnabled = true
+            pendingWirelessReconnectDelayMs = WIRELESS_INITIAL_RETRY_DELAY_MS
+            return
+        }
         if (isConnected || connectionAttemptInProgress) return
         connectionAttemptInProgress = true
         lifecycleScope.launch(Dispatchers.IO) {
@@ -1207,7 +1379,8 @@ class MainActivity : AppCompatActivity() {
     private fun scheduleWirelessReconnect(suggestedDelayMs: Long) {
         if (!wirelessAutoReconnectEnabled ||
             prefs.connectionMode != ConnectionMode.WIRELESS ||
-            isConnected
+            isConnected ||
+            !isInForeground
         ) {
             return
         }
@@ -1240,6 +1413,10 @@ class MainActivity : AppCompatActivity() {
         port: Int,
         automatic: Boolean = false,
     ) {
+        if (!isInForeground) {
+            scheduleAutomaticUsbConnect(FOREGROUND_RECONNECT_DELAY_MS)
+            return
+        }
         if (isConnected || connectionAttemptInProgress) return
         connectionAttemptInProgress = true
         lifecycleScope.launch(Dispatchers.IO) {
@@ -1250,36 +1427,14 @@ class MainActivity : AppCompatActivity() {
                 setupStreamClientCallbacks()
                 streamClient?.connect()
             } catch (e: Exception) {
-                val errorMessage =
-                    when {
-                        e.message?.contains("ECONNREFUSED") == true -> {
-                            "Mac server is not running.\n\nPlease start Telemachus.app on your Mac first."
-                        }
-
-                        e.message?.contains("Network is unreachable") == true -> {
-                            "Cannot reach Mac.\n\n" +
-                                "Make sure both devices are connected via USB cable and ADB reverse is configured."
-                        }
-
-                        e.message?.contains("timeout") == true -> {
-                            "Connection timeout.\n\nCheck if Mac firewall is blocking port $port."
-                        }
-
-                        else -> {
-                            "Connection failed: ${e.message}\n\n" +
-                                "Try:\n• Start Telemachus.app on Mac\n" +
-                                "• Check USB connection\n• Run: adb reverse tcp:$port tcp:$port"
-                        }
-                    }
+                val guidance = ConnectionGuidanceFactory.from(e, port)
                 if (!automatic) {
-                    updateStatus("Couldn’t reach your Mac")
-                }
-                if (!automatic) {
-                    showError(errorMessage)
+                    updateStatus(guidance.status)
+                    showError(guidance.message)
                 }
             } finally {
                 connectionAttemptInProgress = false
-                if (automatic && automaticUsbConnect) {
+                if (automaticUsbConnect) {
                     // onConnectionStatus(false) is posted to the main thread. Checking
                     // isConnected on this IO thread can race that callback and suppress
                     // the retry after a server closes an otherwise successful socket.
@@ -1295,6 +1450,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun disconnect() {
+        finishPendingRightClick()
         automaticUsbConnect = false
         cancelWirelessReconnect()
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
@@ -1337,15 +1493,8 @@ class MainActivity : AppCompatActivity() {
         view: View,
         event: MotionEvent,
     ) {
-        val first =
-            TouchMapper.map(
-                x = event.x,
-                y = event.y,
-                viewWidth = view.width,
-                viewHeight = view.height,
-                videoWidth = displayWidth,
-                videoHeight = displayHeight,
-            )
+        if (!isConnected || !isInForeground) return
+        val first = mapInputPoint(view, event.x, event.y)
         val x = first.x
         val y = first.y
         val pointerCount = event.pointerCount.coerceAtMost(2)
@@ -1354,14 +1503,7 @@ class MainActivity : AppCompatActivity() {
         var y2 = 0f
         if (pointerCount >= 2) {
             val second =
-                TouchMapper.map(
-                    x = event.getX(1),
-                    y = event.getY(1),
-                    viewWidth = view.width,
-                    viewHeight = view.height,
-                    videoWidth = displayWidth,
-                    videoHeight = displayHeight,
-                )
+                mapInputPoint(view, event.getX(1), event.getY(1))
             x2 = second.x
             y2 = second.y
         }
@@ -1403,13 +1545,51 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun mapInputPoint(
+        view: View,
+        x: Float,
+        y: Float,
+    ): TouchMapper.Point =
+        TouchMapper.map(
+            x = x,
+            y = y,
+            viewWidth = view.width,
+            viewHeight = view.height,
+            videoWidth = displayWidth,
+            videoHeight = displayHeight,
+            scaleMode = prefs.videoScaleMode,
+        )
+
+    private fun updateSurfaceViewportLayout() {
+        if (!::binding.isInitialized || displayWidth <= 0 || displayHeight <= 0) return
+        val parentWidth = binding.root.width
+        val parentHeight = binding.root.height
+        if (parentWidth <= 0 || parentHeight <= 0) return
+
+        val params =
+            binding.surfaceView.layoutParams as androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
+        val target =
+            ViewportPolicy.surfaceSize(
+                parentWidth = parentWidth,
+                parentHeight = parentHeight,
+                videoWidth = displayWidth,
+                videoHeight = displayHeight,
+                scaleMode = prefs.videoScaleMode,
+            )
+        if (params.width == target.width && params.height == target.height) return
+        params.width = target.width
+        params.height = target.height
+        binding.surfaceView.layoutParams = params
+    }
+
     /**
      * Apply rotation by changing the Activity's screen orientation
      * This provides proper fullscreen portrait/landscape support
      */
     private fun applyRotation(rotation: Int) {
+        val effectiveRotation = ViewportPolicy.effectiveRotation(rotation, prefs.clientRotation)
         requestedOrientation =
-            when (rotation) {
+            when (effectiveRotation) {
                 90 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 180 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
                 270 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
@@ -1427,7 +1607,7 @@ class MainActivity : AppCompatActivity() {
         // No need for postDelayed positioning
 
         log(
-            "🔄 Orientation: ${when (rotation) {
+            "🔄 Orientation: ${when (effectiveRotation) {
                 90 -> "Portrait"
                 180 -> "Landscape (flipped)"
                 270 -> "Portrait (flipped)"
@@ -1476,6 +1656,8 @@ class MainActivity : AppCompatActivity() {
         private const val LEGACY_TOUCH_MOVE = 1
         private const val LEGACY_TOUCH_UP = 2
         private const val LEGACY_SCROLL_POINTER_COUNT = 2
+        private const val LEGACY_RIGHT_CLICK_HOLD_MS = 650L
+        private const val FOREGROUND_RECONNECT_DELAY_MS = 150L
     }
 
     // ==================== Connection Checklist ====================
