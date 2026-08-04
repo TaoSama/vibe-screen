@@ -31,6 +31,9 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
 import dev.telemachus.display.databinding.ActivityMainBinding
+import dev.telemachus.display.protocol.MotionPointer
+import dev.telemachus.display.protocol.MotionSnapshot
+import dev.telemachus.display.protocol.TouchSampleMapper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.IOException
@@ -1723,55 +1726,55 @@ class MainActivity : AppCompatActivity() {
         event: MotionEvent,
     ) {
         if (!isConnected || !isInForeground) return
-        val first = mapInputPoint(view, event.x, event.y)
+        val pointerCount = event.pointerCount.coerceAtMost(MAX_FORWARDED_POINTERS)
+        val mappedPointers =
+            (0 until pointerCount).map { index ->
+                val mapped = mapInputPoint(view, event.getX(index), event.getY(index))
+                MotionPointer(event.getPointerId(index), mapped.x.toDouble(), mapped.y.toDouble())
+            }.toMutableList()
+        val first = mappedPointers.firstOrNull() ?: return
         val x = first.x
         val y = first.y
-        val pointerCount = event.pointerCount.coerceAtMost(2)
-
-        var x2 = 0f
-        var y2 = 0f
-        if (pointerCount >= 2) {
-            val second =
-                mapInputPoint(view, event.getX(1), event.getY(1))
-            x2 = second.x
-            y2 = second.y
-        }
-
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 inputPredictor.reset()
-                inputPredictor.addSample(x, y)
-                streamClient?.sendTouch(x, y, 0, pointerCount, x2, y2)
-            }
-
-            MotionEvent.ACTION_POINTER_DOWN -> {
-                streamClient?.sendTouch(x, y, 0, pointerCount, x2, y2)
+                inputPredictor.addSample(x.toFloat(), y.toFloat())
             }
 
             MotionEvent.ACTION_MOVE -> {
                 if (pointerCount == 1) {
-                    inputPredictor.addSample(x, y)
+                    inputPredictor.addSample(x.toFloat(), y.toFloat())
                     val (px, py) = inputPredictor.predictPosition(12f)
-                    streamClient?.sendTouch(px.coerceIn(0f, 1f), py.coerceIn(0f, 1f), 1, 1)
-                } else {
-                    streamClient?.sendTouch(x, y, 1, pointerCount, x2, y2)
+                    mappedPointers[0] =
+                        first.copy(
+                            x = px.coerceIn(0f, 1f).toDouble(),
+                            y = py.coerceIn(0f, 1f).toDouble(),
+                        )
                 }
             }
 
             MotionEvent.ACTION_UP -> {
                 inputPredictor.reset()
-                streamClient?.sendTouch(x, y, 2, 1)
-            }
-
-            MotionEvent.ACTION_POINTER_UP -> {
-                streamClient?.sendTouch(x, y, 2, pointerCount, x2, y2)
             }
 
             MotionEvent.ACTION_CANCEL -> {
                 inputPredictor.reset()
-                streamClient?.sendTouch(x, y, 2, 1)
             }
         }
+
+        val snapshot = MotionSnapshot(event.actionMasked, event.actionIndex, mappedPointers)
+        val v1Samples = TouchSampleMapper.map(snapshot)
+        val legacyAction =
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> LEGACY_TOUCH_DOWN
+                MotionEvent.ACTION_MOVE -> LEGACY_TOUCH_MOVE
+                else -> LEGACY_TOUCH_UP
+            }
+        streamClient?.sendMotionTouch(
+            v1Samples = v1Samples,
+            legacyAction = legacyAction,
+            legacyPointers = mappedPointers,
+        )
     }
 
     private fun mapInputPoint(
@@ -1895,6 +1898,7 @@ class MainActivity : AppCompatActivity() {
         private const val LEGACY_TOUCH_MOVE = 1
         private const val LEGACY_TOUCH_UP = 2
         private const val LEGACY_SCROLL_POINTER_COUNT = 2
+        private const val MAX_FORWARDED_POINTERS = 2
         private const val LEGACY_RIGHT_CLICK_HOLD_MS = 650L
         private const val FOREGROUND_RECONNECT_DELAY_MS = 150L
         private val DECODER_LIFECYCLE_EXECUTOR =

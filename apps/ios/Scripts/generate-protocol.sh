@@ -23,6 +23,7 @@ if [[ -z "$plugin_path" || -z "$protoc_path" ]]; then
 fi
 
 output_dir="$ios_dir/Sources/VibeScreenProtocol"
+rm -rf "$output_dir/vibescreen"
 mkdir -p "$output_dir"
 proto_files=()
 while IFS= read -r proto_file; do

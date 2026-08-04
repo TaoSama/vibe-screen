@@ -24,7 +24,7 @@ result.
 | Layer | Required evidence |
 | --- | --- |
 | Static | Buf format/lint/build; breaking check against v1 fixture; license/notice audit |
-| Contract | Swift/Kotlin golden bytes; unknown fields; incompatible version; capability rejection |
+| Contract | Swift/Kotlin golden bytes; required capability; Buf unknown-field binary acceptance and lossy JSON projection; incompatible version; capability rejection |
 | Unit | session state machine; epoch filter; backoff; coordinate mapping; latest-frame queue |
 | Transport | split/coalesced reads; disconnect; slow consumer; bounded backlog |
 | Host integration | fake capture through encoder and loopback transport |
@@ -86,15 +86,18 @@ their runnable baseline session. This evidence proves generated-wire
 compatibility, session behavior, builds, and the non-listening host integration
 self-test. It does not replace device interoperability evidence.
 
-- `make protocol` passes Buf format, lint, build, and breaking checks plus 11
+- `make protocol` passes Buf format, lint, build, and breaking checks plus 12
   fixture/security tests. Fixed fixtures cover 13 control envelopes, media
-  header plus Annex-B payload, upgrade bytes, unknown fields, required
-  capability field 9, and split/coalesced logical-channel framing.
+  header plus Annex-B payload, upgrade bytes, required capability field 9,
+  split/coalesced logical-channel framing, and Buf decoding of an additive
+  unknown binary field. The latter test deliberately projects through JSON,
+  confirms that the unknown field is discarded, and does not prove Swift or
+  Kotlin unknown-field preservation.
 - `./gradlew testDebugUnitTest lintDebug assembleDebug
-  auditReleaseDependencies` passes 84 Android unit tests and all 66 Gradle
+  auditReleaseDependencies` passes 112 Android unit tests and all 66 Gradle
   tasks. The generated Java-lite bindings contain 168 files. The resulting
   debug APK SHA-256 is
-  `46b0899f2335a51f5d0be359d02b5c7e86be2241e9f6b492e177e416b8e602bf`.
+  `c7f3c16339bd1cc589d03268e1d0bbfbf87ad0857af92787061f6247a32d9cb1`.
 - `swift build -c release --product Telemachus` passes. The release executable
   SHA-256 is
   `76202bd0deb8d8f9763490f25361dea9a894a5636a84d4e205fcfb2f1449ceb1`.

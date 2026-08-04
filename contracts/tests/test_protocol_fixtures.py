@@ -141,19 +141,28 @@ class ProtocolFixtureTest(unittest.TestCase):
                     convert(fixture["messageType"], decoded_path, "json", reencoded_path, "binpb")
                     self.assertEqual(binary.read_bytes(), reencoded_path.read_bytes())
 
-    def test_required_capability_and_unknown_field_compatibility(self) -> None:
+    def test_client_hello_fixture_declares_required_touch_capability(self) -> None:
         client_entry = MANIFEST["controlFixtures"][0]
         client_path = FIXTURE_ROOT / client_entry["binary"]
-        original = client_path.read_bytes()
+        with tempfile.TemporaryDirectory(prefix="vibescreen-required-capability-") as temporary:
+            decoded_path = Path(temporary) / "decoded.json"
+            convert(client_entry["messageType"], client_path, "binpb", decoded_path, "json")
+            decoded = json.loads(decoded_path.read_text())
+            self.assertEqual(["CAPABILITY_TOUCH"], decoded["clientHello"]["requiredCapabilities"])
+
+    def test_buf_json_projection_accepts_and_discards_unknown_binary_field(self) -> None:
+        client_entry = MANIFEST["controlFixtures"][0]
+        original = (FIXTURE_ROOT / client_entry["binary"]).read_bytes()
         unknown_field = encode_varint((500 << 3) | 0) + encode_varint(1)
         with tempfile.TemporaryDirectory(prefix="vibescreen-unknown-field-") as temporary:
             temporary_root = Path(temporary)
             extended_path = temporary_root / "extended.binpb"
-            extended_path.write_bytes(original + unknown_field)
+            extended = original + unknown_field
+            extended_path.write_bytes(extended)
+            self.assertNotEqual(original, extended)
+
             decoded_path = temporary_root / "decoded.json"
             convert(client_entry["messageType"], extended_path, "binpb", decoded_path, "json")
-            decoded = json.loads(decoded_path.read_text())
-            self.assertEqual(["CAPABILITY_TOUCH"], decoded["clientHello"]["requiredCapabilities"])
 
             reencoded_path = temporary_root / "reencoded.binpb"
             convert(client_entry["messageType"], decoded_path, "json", reencoded_path, "binpb")
