@@ -12,7 +12,7 @@ jobs:
   core:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify generated Protocol v1 bindings are current
         run: |
           apps/ios/Scripts/generate-protocol.sh
@@ -27,7 +27,7 @@ jobs:
   simulator-build:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build unsigned iPhone/iPad simulator application
         run: >-
           xcodebuild

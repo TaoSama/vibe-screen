@@ -351,7 +351,7 @@ extension StreamViewModel {
     }
 
     static let sdrDecodeCapabilities: [VSVideoDecodeCapability] = {
-        [.h264, .hevc].map { codec in
+        [VSCodec.h264, .hevc].map { codec in
             var capability = VSVideoDecodeCapability()
             capability.codec = codec
             capability.maximumWidth = 3_840

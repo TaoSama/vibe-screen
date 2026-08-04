@@ -42,12 +42,10 @@ enum TrafficPacketCryptography {
         guard key.count == 32, nonce.count == 12, ciphertextAndTag.count >= 16 else {
             throw PlatformSecurityError.invalidInput("AES-256-GCM packet sizes are invalid.")
         }
-        let tagStart = ciphertextAndTag.count - 16
-        let box = try AES.GCM.SealedBox(
-            nonce: AES.GCM.Nonce(data: nonce),
-            ciphertext: ciphertextAndTag[..<tagStart],
-            tag: ciphertextAndTag[tagStart...]
-        )
+        var combined = Data(capacity: nonce.count + ciphertextAndTag.count)
+        combined.append(nonce)
+        combined.append(ciphertextAndTag)
+        let box = try AES.GCM.SealedBox(combined: combined)
         return try AES.GCM.open(box, using: SymmetricKey(data: key), authenticating: authenticatedHeader)
     }
 }
