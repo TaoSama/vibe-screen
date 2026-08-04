@@ -1,6 +1,10 @@
 import Foundation
 import AppKit
 
+if CommandLine.arguments.contains("--issue-phase3-internet-lease") {
+    exit(InternetSessionLeaseCLI.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+}
+
 print("🚀 Telemachus starting...")
 
 if CommandLine.arguments.contains("--transport-self-test") {
@@ -21,6 +25,10 @@ if CommandLine.arguments.contains("--host-self-test") {
 
 if CommandLine.arguments.contains("--phase3-internet-self-test") {
     exit(InternetTransportSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+}
+
+if CommandLine.arguments.contains("--phase3-internet-lease-self-test") {
+    exit(InternetSessionLeaseSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
 }
 
 if CommandLine.arguments.contains("--phase3-webrtc-loopback-self-test") {

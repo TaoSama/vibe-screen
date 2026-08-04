@@ -113,6 +113,23 @@ enum InternetTransportSelfTest {
         let missingSignalingRejected = productionRejectsMissingSignaling()
         let backlogFailsClosed = controlBacklogFailsClosed()
         let legacyCleanupCrashSafe = LegacyGlobalRevocationCleanupSelfTest.run()
+        let unknownCandidatePathFailsClosed =
+            SelectedCandidatePathResolver.resolve(
+                localCandidateType: nil,
+                remoteCandidateType: "host"
+            ) == .unknown &&
+            SelectedCandidatePathResolver.resolve(
+                localCandidateType: "host",
+                remoteCandidateType: "srflx"
+            ) == .direct &&
+            SelectedCandidatePathResolver.mustFailClosed(
+                publishedPath: .direct,
+                observedPath: .unknown
+            ) &&
+            SelectedCandidatePathResolver.mustFailClosed(
+                publishedPath: .relay,
+                observedPath: nil
+            )
         let passed = controlAccepted && emptyControlRejected && keyframeAccepted && staleFrameAccepted
             && latestFrameAccepted && overBudgetRejected
             && engine.channelConfigurations == [
@@ -130,13 +147,15 @@ enum InternetTransportSelfTest {
             && missingSignalingRejected
             && backlogFailsClosed
             && legacyCleanupCrashSafe
+            && unknownCandidatePathFailsClosed
 
         transport.close()
         print(
             "Phase 3 Internet self-test: \(passed ? "PASS" : "FAIL") "
                 + "(channels=\(engine.channelConfigurations.count), relayBytes=\(snapshot.relayBytesSent), "
                 + "reserved=\(snapshot.relayBytesReserved), latestFrameDrops=\(snapshot.droppedMediaFrames), "
-                + "iceRestarts=\(engine.restartCount), legacyCleanupCrashSafe=\(legacyCleanupCrashSafe))"
+                + "iceRestarts=\(engine.restartCount), legacyCleanupCrashSafe=\(legacyCleanupCrashSafe), "
+                + "unknownCandidatePathFailsClosed=\(unknownCandidatePathFailsClosed))"
         )
         return passed
     }

@@ -85,13 +85,11 @@ class AndroidWebRtcPeerEngineInstrumentedTest {
                     bootstrapSecret = ByteArray(32) { 2 },
                     context = ByteArray(32) { 3 },
                 ),
-            reserveNonce = { channel, sender, keyEpoch ->
-                val sequence =
-                    nonceCounters
-                        .computeIfAbsent("$channel:$sender:$keyEpoch") { AtomicLong() }
-                        .incrementAndGet()
-                java.nio.ByteBuffer.allocate(12).putInt(channel).putLong(sequence).array()
+            sealWithActiveEpoch = { _, channel, sender, keyEpoch, operation ->
+                val sequence = nonceCounters.computeIfAbsent("$channel:$sender:$keyEpoch") { AtomicLong() }.incrementAndGet()
+                operation(java.nio.ByteBuffer.allocate(12).putInt(channel).putLong(sequence).array())
             },
+            openWithActiveEpoch = { _, operation -> operation() },
             rotateKeys = { current, nonce ->
                 TrafficKeyDerivation.rotate(current, current.keyEpoch + 1, nonce)
             },

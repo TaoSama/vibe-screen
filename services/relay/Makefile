@@ -9,11 +9,13 @@ build:
 
 test:
 	go test ./...
+	python3 -m unittest discover -s integration -p 'test_*.py'
 
 verify:
 	test -z "$$(gofmt -l .)"
 	go vet ./...
 	go test -race -count=1 ./...
+	python3 -m unittest discover -s integration -p 'test_*.py'
 
 clean:
 	rm -f "$(OUTPUT)"

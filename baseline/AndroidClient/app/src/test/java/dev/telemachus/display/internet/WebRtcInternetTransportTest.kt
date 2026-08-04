@@ -5,6 +5,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class WebRtcInternetTransportTest {
     @Test
@@ -59,6 +63,48 @@ class WebRtcInternetTransportTest {
 
         assertEquals(InternetTransportState.CONNECTED_RELAY, transport.state)
         assertTrue(events.contains(InternetTransportEvent.RouteSelected(PeerRoute.RELAY)))
+    }
+
+    @Test
+    fun candidatePairArrivesLateThenRouteChangesWithoutRepeatingSelection() {
+        val peer = FakePeerEngine()
+        val events = mutableListOf<InternetTransportEvent>()
+        val transport = fixture(peer = peer, events = events)
+        transport.start()
+
+        assertTrue(events.filterIsInstance<InternetTransportEvent.RouteSelected>().isEmpty())
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.observer.onRouteChanged(PeerRoute.RELAY)
+        peer.observer.onRouteChanged(PeerRoute.RELAY)
+
+        assertEquals(listOf(InternetTransportEvent.RouteSelected(PeerRoute.DIRECT)), events.filterIsInstance<InternetTransportEvent.RouteSelected>())
+        assertEquals(listOf(InternetTransportEvent.RouteUpdated(PeerRoute.RELAY)), events.filterIsInstance<InternetTransportEvent.RouteUpdated>())
+        assertEquals(InternetTransportState.CONNECTED_RELAY, transport.state)
+    }
+
+    @Test
+    fun concurrentRepeatedConnectedCallbacksEmitOneSessionSelection() {
+        val peer = FakePeerEngine()
+        val events = CopyOnWriteArrayList<InternetTransportEvent>()
+        val transport = fixture(peer = peer, events = events)
+        transport.start()
+        val executor = Executors.newFixedThreadPool(16)
+        val ready = CountDownLatch(16)
+        val start = CountDownLatch(1)
+        repeat(16) { index ->
+            executor.execute {
+                ready.countDown()
+                start.await()
+                peer.observer.onConnected(if (index % 2 == 0) PeerRoute.DIRECT else PeerRoute.RELAY)
+            }
+        }
+        assertTrue(ready.await(2, TimeUnit.SECONDS))
+        start.countDown()
+        executor.shutdown()
+        assertTrue(executor.awaitTermination(2, TimeUnit.SECONDS))
+
+        assertEquals(1, events.filterIsInstance<InternetTransportEvent.RouteSelected>().size)
+        assertTrue(events.filterIsInstance<InternetTransportEvent.RouteUpdated>().size <= 15)
     }
 
     @Test

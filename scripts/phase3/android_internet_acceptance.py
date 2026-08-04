@@ -455,7 +455,7 @@ def swipe(value: str) -> tuple[int, int, int, int, int]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--serial", default="100.72.246.116:5555")
+    parser.add_argument("--serial", required=True, help="explicit lease-controlled ADB endpoint or device serial")
     parser.add_argument("--expected-model", default="2201123C")
     parser.add_argument("--adb", default="adb")
     parser.add_argument(

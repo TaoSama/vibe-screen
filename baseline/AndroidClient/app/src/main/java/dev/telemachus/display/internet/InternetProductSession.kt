@@ -19,7 +19,9 @@ data class InternetProductSessionLease(
 ) {
     init {
         require(pairingIdentifier.isNotBlank() && signalingSessionId.isNotBlank()) { "Session lease identifiers are required" }
-        require(authoritativeSessionEpoch > 0 && identityEpoch > 0) { "Session and identity epochs must be positive" }
+        require(authoritativeSessionEpoch in 1 until Long.MAX_VALUE && identityEpoch in 1 until Long.MAX_VALUE) {
+            "Session and identity epochs must be positive and below the reserved maximum"
+        }
         require(protocolSessionId.isNotEmpty()) { "Protocol session identifier is required" }
         require(pinnedHostId.isNotBlank()) { "Pinned host identity is required" }
         require(signaling.role == PeerRole.DEVICE) { "Android product sessions must use a device signaling credential" }
@@ -128,6 +130,7 @@ class InternetProductSession internal constructor(
     private var currentVideoConfiguration: ProductVideoConfiguration? = null
     private var acceptedHostHello = false
     private var acceptedSession = false
+    private var negotiationStarted = false
     private var freshSessionRequested = false
     private var lastReceivedControlMessageId = 0L
     private var closed = false
@@ -199,8 +202,10 @@ class InternetProductSession internal constructor(
                 true
             }
         if (shouldClose) {
-            transport.close()
-            transition(InternetProductSessionState.CLOSED)
+            runBestEffort(
+                { transport.close() },
+                { transition(InternetProductSessionState.CLOSED) },
+            )
         }
     }
 
@@ -220,6 +225,7 @@ class InternetProductSession internal constructor(
                 callbacks.onRouteSelected(event.route)
                 beginProtocolNegotiation()
             }
+            is InternetTransportEvent.RouteUpdated -> callbacks.onRouteSelected(event.route)
             is InternetTransportEvent.FreshSessionRequested -> {
                 val notify =
                     synchronized(lock) {
@@ -238,7 +244,12 @@ class InternetProductSession internal constructor(
     private fun beginProtocolNegotiation() {
         val shouldSend =
             synchronized(lock) {
-                if (closed || acceptedSession) false else true
+                if (closed || acceptedSession || negotiationStarted) {
+                    false
+                } else {
+                    negotiationStarted = true
+                    true
+                }
             }
         if (!shouldSend) return
         transition(InternetProductSessionState.NEGOTIATING)

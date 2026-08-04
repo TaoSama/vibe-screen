@@ -200,6 +200,7 @@ class AndroidSessionSecurity(
         bootstrapSecret: ByteArray,
         transcriptContext: ByteArray,
     ): ActiveAndroidSecuritySession {
+        lifecycle.requireAuthorizedIdentityEpoch(identityEpoch)
         val sessionEpoch = lifecycle.reserveSessionEpoch(authoritativeSessionEpoch)
         val keys = TrafficKeyDerivation.initial(sharedSecret, bootstrapSecret, transcriptContext)
         val identity = identityStore.loadOrCreate(deviceId, identityEpoch)
@@ -219,6 +220,23 @@ class AndroidSessionSecurity(
         senderRole: Int,
         keyEpoch: Long,
     ): ByteArray = lifecycle.reserveNonce(channel, senderRole, keyEpoch)
+
+    fun reserveNextIdentityEpoch(): Long = lifecycle.reserveNextIdentityEpoch()
+
+    fun authorizeIdentityEpoch(identityEpoch: Long) = lifecycle.authorizeIdentityEpoch(identityEpoch)
+
+    fun <T> withFreshSessionEpochCandidate(sessionEpoch: Long, block: () -> T): T =
+        lifecycle.withFreshSessionEpochCandidate(sessionEpoch, block)
+
+    fun <T> withActiveSessionEpoch(sessionEpoch: Long, block: () -> T): T = lifecycle.withActiveSessionEpoch(sessionEpoch, block)
+
+    fun <T> withReservedSessionNonce(
+        sessionEpoch: Long,
+        channel: Int,
+        senderRole: Int,
+        keyEpoch: Long,
+        block: (ByteArray) -> T,
+    ): T = lifecycle.withReservedSessionNonce(sessionEpoch, channel, senderRole, keyEpoch, block)
 
     fun consumeRotationNonce(
         authority: AndroidPublicIdentity,

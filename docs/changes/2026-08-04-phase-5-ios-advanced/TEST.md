@@ -99,7 +99,8 @@ touch acknowledgement, USB/network interruption, reconnect duration, and a
 30-minute memory/latency series. Raw logs belong under this change directory's
 `evidence/` subdirectory.
 
-While the Phase 0 soak owns `100.72.246.116:5555`, Phase 5 performs only
+While the Phase 0 soak owns the controlled endpoint (redacted as
+`$ADB_ENDPOINT`), Phase 5 performs only
 read-only `getprop`, `logcat`, `dumpsys`, or `ps` queries and does not change
 ADB, application, or session state. Any later Android Protocol v1 fixture run
 must be coordinated by Phase 0. Android evidence is never an iOS build,

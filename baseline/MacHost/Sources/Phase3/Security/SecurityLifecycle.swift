@@ -89,6 +89,7 @@ struct PersistedSecurityState: Codable, Equatable {
     var nonceHighWatermarks: [String: UInt64] = [:]
     var usedRotationNonceHashes: Set<String> = []
     var peerRevocation: PairedDeviceRevocationTombstone?
+    var revocationSecretCleanup: RevocationSecretCleanupMarker?
 
     init(
         sessionEpoch: UInt64 = 0,
@@ -96,7 +97,8 @@ struct PersistedSecurityState: Codable, Equatable {
         revoked: Bool = false,
         nonceHighWatermarks: [String: UInt64] = [:],
         usedRotationNonceHashes: Set<String> = [],
-        peerRevocation: PairedDeviceRevocationTombstone? = nil
+        peerRevocation: PairedDeviceRevocationTombstone? = nil,
+        revocationSecretCleanup: RevocationSecretCleanupMarker? = nil
     ) {
         self.sessionEpoch = sessionEpoch
         self.revocationSequence = revocationSequence
@@ -104,6 +106,7 @@ struct PersistedSecurityState: Codable, Equatable {
         self.nonceHighWatermarks = nonceHighWatermarks
         self.usedRotationNonceHashes = usedRotationNonceHashes
         self.peerRevocation = peerRevocation
+        self.revocationSecretCleanup = revocationSecretCleanup
     }
 
     init(from decoder: any Decoder) throws {
@@ -114,6 +117,35 @@ struct PersistedSecurityState: Codable, Equatable {
         nonceHighWatermarks = try container.decodeIfPresent([String: UInt64].self, forKey: .nonceHighWatermarks) ?? [:]
         usedRotationNonceHashes = try container.decodeIfPresent(Set<String>.self, forKey: .usedRotationNonceHashes) ?? []
         peerRevocation = try container.decodeIfPresent(PairedDeviceRevocationTombstone.self, forKey: .peerRevocation)
+        revocationSecretCleanup = try container.decodeIfPresent(
+            RevocationSecretCleanupMarker.self,
+            forKey: .revocationSecretCleanup
+        )
+    }
+}
+
+/// Durable, peer-scoped work remaining after a revocation tombstone commits.
+/// Secret values are never persisted here; only their Keychain account names.
+struct RevocationSecretCleanupMarker: Codable, Equatable {
+    private static let currentVersion = 1
+
+    let version: Int
+    var remainingSecretNames: [String]
+
+    init(secretNames: PairedDeviceSecretNames) {
+        version = Self.currentVersion
+        remainingSecretNames = [secretNames.sharedSecret, secretNames.bootstrapSecret]
+    }
+
+    func validate() throws {
+        guard version == Self.currentVersion,
+              !remainingSecretNames.isEmpty,
+              remainingSecretNames.allSatisfy({ !$0.isEmpty }),
+              Set(remainingSecretNames).count == remainingSecretNames.count else {
+            throw PlatformSecurityError.persistenceFailure(
+                "Stored revocation secret cleanup marker is invalid."
+            )
+        }
     }
 }
 
@@ -223,7 +255,8 @@ final class SecurityLifecycle {
     func applyPeerRevocation(
         _ tombstone: PairedDeviceRevocationTombstone,
         expectedAuthority: PlatformPublicIdentity,
-        expectedPeer: PlatformPublicIdentity
+        expectedPeer: PlatformPublicIdentity,
+        secretNames: PairedDeviceSecretNames? = nil
     ) throws {
         try tombstone.verify(expectedAuthority: expectedAuthority, expectedPeer: expectedPeer)
         try Self.persistenceLock.withLock {
@@ -235,6 +268,62 @@ final class SecurityLifecycle {
             state.revocationSequence = tombstone.sequence
             state.revoked = true
             state.peerRevocation = tombstone
+            state.revocationSecretCleanup = secretNames.map(
+                RevocationSecretCleanupMarker.init(secretNames:)
+            )
+            try store.persist(state)
+        }
+    }
+
+    func hasPendingRevocationSecretCleanup() throws -> Bool {
+        try Self.persistenceLock.withLock {
+            try store.load().revocationSecretCleanup != nil
+        }
+    }
+
+    /// Deletes every pending secret independently. Each successful deletion is
+    /// durably removed from the marker before moving to the next item, so a
+    /// crash can only cause an idempotent re-delete and never lose work.
+    func retryRevocationSecretCleanup(
+        secretStore: any PairedDeviceSecretStore
+    ) throws {
+        let pendingNames = try Self.persistenceLock.withLock { () -> [String] in
+            let state = try store.load()
+            guard state.revoked, state.peerRevocation != nil else {
+                if state.revocationSecretCleanup != nil {
+                    throw PlatformSecurityError.persistenceFailure(
+                        "Revocation secret cleanup exists without a peer tombstone."
+                    )
+                }
+                return []
+            }
+            try state.revocationSecretCleanup?.validate()
+            return state.revocationSecretCleanup?.remainingSecretNames ?? []
+        }
+
+        var failureCount = 0
+        for name in pendingNames {
+            do {
+                try secretStore.delete(name: name)
+                try markRevocationSecretDeleted(name)
+            } catch {
+                failureCount += 1
+            }
+        }
+        guard failureCount == 0 else {
+            throw PlatformSecurityError.persistenceFailure(
+                "Could not delete \(failureCount) revoked pairing secret(s); cleanup remains pending."
+            )
+        }
+    }
+
+    private func markRevocationSecretDeleted(_ name: String) throws {
+        try Self.persistenceLock.withLock {
+            var state = try store.load()
+            guard var marker = state.revocationSecretCleanup else { return }
+            try marker.validate()
+            marker.remainingSecretNames.removeAll { $0 == name }
+            state.revocationSecretCleanup = marker.remainingSecretNames.isEmpty ? nil : marker
             try store.persist(state)
         }
     }

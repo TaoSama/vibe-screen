@@ -67,6 +67,44 @@ func TestCredentialsUseTURNRESTAndRateLimit(t *testing.T) {
 	}
 }
 
+func TestCredentialsUseStableDeviceQuotaPrincipalAcrossSessionsAndExpiries(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.CredentialRequestsPerMinute = 10
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 5, 10, 0, 0, 0, time.UTC)
+	server.now = func() time.Time { return now }
+	issue := func(sessionID string) string {
+		body := fmt.Sprintf(`{"device_id":"device-1","session_id":"%s"}`, sessionID)
+		response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/credentials", testClientToken, body)
+		if response.Code != http.StatusOK {
+			t.Fatalf("credential = %d: %s", response.Code, response.Body.String())
+		}
+		var credential map[string]any
+		if err := json.Unmarshal(response.Body.Bytes(), &credential); err != nil {
+			t.Fatal(err)
+		}
+		return credential["username"].(string)
+	}
+	first := issue("session-1")
+	now = now.Add(time.Second)
+	second := issue("session-2")
+	if first == second {
+		t.Fatal("test did not produce distinct credential expiries")
+	}
+	for _, username := range []string{first, second} {
+		parts := strings.Split(username, ":")
+		if len(parts) != 2 || parts[1] != "device-1" {
+			t.Fatalf("username %q does not map to one stable device quota principal", username)
+		}
+		if strings.Contains(username, "session-") {
+			t.Fatalf("username %q leaks session into coturn quota principal", username)
+		}
+	}
+}
+
 func TestUsageEnforcesSessionsQuotaAndIdempotency(t *testing.T) {
 	server, err := NewServer(testConfig(t))
 	if err != nil {

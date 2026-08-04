@@ -299,6 +299,7 @@ enum ProductionWebRTCEngineSelfTest {
 
     private static func pathLabel(_ path: InternetPathKind) -> String {
         switch path {
+        case .unknown: return "unknown"
         case .direct: return "direct"
         case .relay: return "relay"
         }

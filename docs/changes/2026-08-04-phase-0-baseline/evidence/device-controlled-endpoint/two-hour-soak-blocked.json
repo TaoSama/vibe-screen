@@ -16,7 +16,8 @@
     "branch_base": "origin/main"
   },
   "device": {
-    "adb_serial": "100.72.246.116:5555",
+    "adb_endpoint": "[redacted controlled endpoint]",
+    "adb_endpoint_redacted": true,
     "manufacturer": "nubia",
     "model": "P0110",
     "device": "pacific",

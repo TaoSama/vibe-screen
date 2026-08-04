@@ -164,7 +164,7 @@ cryptographic primitive may be introduced.
 
 ### Required device evidence
 
-The Xiaomi 12 at `100.72.246.116:5555` must be connected with ADB, identified,
+The Xiaomi 12 at `$ADB_ENDPOINT` must be connected with ADB, identified,
 installed, paired, streamed across a genuine Internet/TURN path, exercised for
 touch and keyboard, disconnected/reconnected, switched between networks, and
 soaked. Commands, device properties, APK/version hashes, host/client revision,

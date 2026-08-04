@@ -81,9 +81,14 @@ docker compose -f docker-compose.production.yml logs --since=10m relay coturn
 ```
 
 `production.conf` enables UDP/TCP TURN, TLS on 5349, TLS 1.2+, fingerprints,
-short nonces, per-user/total allocation quotas, a 20 MB/s allocation cap,
-loopback/multicast peer denial, and a bounded relay range. Tune quotas from
-observed demand; never remove peer filtering or broaden the range silently.
+short nonces, stable per-device and total allocation quotas, a 20 MB/s
+allocation cap, and a bounded relay range. Its CREATE_PERMISSION policy denies
+unspecified, RFC1918, CGNAT, loopback, IPv4/IPv6 link-local, ULA, deprecated
+IPv6 site-local, protocol-assignment, and benchmark/internal ranges; multicast
+peers are also denied. Add every provider VPC, metadata, container, Pod,
+Service, and overlay range visible in the host routing table, with a host egress
+firewall as a second layer. Never add a broad `allowed-peer-ip`, which takes
+precedence over denies.
 
 ## Upgrade, rollback, and rotation
 
@@ -110,7 +115,12 @@ limits issuance and exposes `/metrics` behind a dedicated metrics token. Place
 both behind host/provider connection limits and alert on authentication failures,
 allocation growth, relay bytes, port exhaustion, and credential rejections.
 
-The repository still has no coturn-to-`/v1/usage` collector. Therefore the
+TURN REST usernames use `<expiry>:<device-id>`, so coturn strips the expiry and
+atomically counts all session/expiry credentials under one device principal.
+`user-quota=12` is therefore a per-device allocation cap, distinct from the
+control plane's product-session limit. Revalidate it against legitimate
+UDP/TCP/TLS ICE allocation counts before changing it. The repository still has
+no coturn-to-`/v1/usage` collector. Therefore the
 control plane's daily-byte and per-device concurrent-session accounting is not
 authoritative for this deployment; coturn's own limits remain the immediate
 enforcement boundary. The control plane is also single-replica/local-state.

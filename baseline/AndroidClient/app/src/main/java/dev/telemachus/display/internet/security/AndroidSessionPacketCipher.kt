@@ -13,7 +13,14 @@ class AndroidSessionPacketCipher internal constructor(
     override val sessionEpoch: Long,
     private val localRole: PeerRole,
     initialKeys: SessionTrafficKeys,
-    private val reserveNonce: (channel: Int, sender: Int, keyEpoch: Long) -> ByteArray,
+    private val sealWithActiveEpoch: (
+        sessionEpoch: Long,
+        channel: Int,
+        sender: Int,
+        keyEpoch: Long,
+        operation: (ByteArray) -> ByteArray,
+    ) -> ByteArray,
+    private val openWithActiveEpoch: (sessionEpoch: Long, operation: () -> ByteArray?) -> ByteArray?,
     private val rotateKeys: (current: SessionTrafficKeys, updateNonce: ByteArray) -> SessionTrafficKeys,
 ) : SessionPacketCipher {
     constructor(
@@ -27,7 +34,8 @@ class AndroidSessionPacketCipher internal constructor(
         sessionEpoch,
         localRole,
         initialKeys,
-        platformSecurity::reserveNonce,
+        platformSecurity::withReservedSessionNonce,
+        platformSecurity::withActiveSessionEpoch,
         platformSecurity::rotateTrafficKeys,
     )
 
@@ -51,52 +59,55 @@ class AndroidSessionPacketCipher internal constructor(
             val keys = checkNotNull(trafficKeys) { "Session packet cipher is closed" }
             val securityChannel = channel.toSecurityChannel()
             val sender = localRole.toSenderRole()
-            val nonce = reserveNonce(securityChannel.wireValue, sender.wireValue, keys.keyEpoch)
-            val header = header(keys.keyEpoch, sender, securityChannel, nonce)
-            header + TrafficPacketCryptography.seal(payload, keys.key(securityChannel, sender), nonce, header)
+            sealWithActiveEpoch(sessionEpoch, securityChannel.wireValue, sender.wireValue, keys.keyEpoch) { nonce ->
+                val header = header(keys.keyEpoch, sender, securityChannel, nonce)
+                header + TrafficPacketCryptography.seal(payload, keys.key(securityChannel, sender), nonce, header)
+            }
         }
 
     override fun open(
         channel: SessionChannel,
         record: ByteArray,
     ): ByteArray? =
-        synchronized(lock) {
+        synchronized(lock) outer@{
             val keys = trafficKeys ?: return null
-            if (record.size < HEADER_BYTES + GCM_TAG_BYTES) return null
-            val header = record.copyOfRange(0, HEADER_BYTES)
-            val decoded = decodeHeader(header) ?: return null
-            val expectedChannel = channel.toSecurityChannel()
-            val expectedSender = localRole.remote().toSenderRole()
-            if (
-                !decoded.sessionIdHash.contentEquals(sessionIdHash) ||
-                decoded.sessionEpoch != sessionEpoch ||
-                decoded.keyEpoch != keys.keyEpoch ||
-                decoded.sender != expectedSender ||
-                decoded.channel != expectedChannel ||
-                ByteBuffer.wrap(decoded.nonce).int != expectedChannel.wireValue
-            ) {
-                return null
-            }
-            val sequence = ByteBuffer.wrap(decoded.nonce, Int.SIZE_BYTES, Long.SIZE_BYTES).long
-            val window = replayWindows.getOrPut(channel) {
-                ReplayWindow(strictlyOrdered = channel == SessionChannel.CONTROL)
-            }
-            if (!window.canAccept(sequence)) return null
-            val plaintext =
-                try {
-                    TrafficPacketCryptography.open(
-                        record.copyOfRange(HEADER_BYTES, record.size),
-                        keys.key(expectedChannel, expectedSender),
-                        decoded.nonce,
-                        header,
-                    )
-                } catch (_: GeneralSecurityException) {
-                    return null
-                } catch (_: IllegalArgumentException) {
-                    return null
+            openWithActiveEpoch(sessionEpoch) active@{
+                if (record.size < HEADER_BYTES + GCM_TAG_BYTES) return@active null
+                val header = record.copyOfRange(0, HEADER_BYTES)
+                val decoded = decodeHeader(header) ?: return@active null
+                val expectedChannel = channel.toSecurityChannel()
+                val expectedSender = localRole.remote().toSenderRole()
+                if (
+                    !decoded.sessionIdHash.contentEquals(sessionIdHash) ||
+                    decoded.sessionEpoch != sessionEpoch ||
+                    decoded.keyEpoch != keys.keyEpoch ||
+                    decoded.sender != expectedSender ||
+                    decoded.channel != expectedChannel ||
+                    ByteBuffer.wrap(decoded.nonce).int != expectedChannel.wireValue
+                ) {
+                    return@active null
                 }
-            window.commit(sequence)
-            plaintext
+                val sequence = ByteBuffer.wrap(decoded.nonce, Int.SIZE_BYTES, Long.SIZE_BYTES).long
+                val window = replayWindows.getOrPut(channel) {
+                    ReplayWindow(strictlyOrdered = channel == SessionChannel.CONTROL)
+                }
+                if (!window.canAccept(sequence)) return@active null
+                val plaintext =
+                    try {
+                        TrafficPacketCryptography.open(
+                            record.copyOfRange(HEADER_BYTES, record.size),
+                            keys.key(expectedChannel, expectedSender),
+                            decoded.nonce,
+                            header,
+                        )
+                    } catch (_: GeneralSecurityException) {
+                        return@active null
+                    } catch (_: IllegalArgumentException) {
+                        return@active null
+                    }
+                window.commit(sequence)
+                plaintext
+            }
         }
 
     override fun rotateTrafficKeys(updateNonce: ByteArray) {

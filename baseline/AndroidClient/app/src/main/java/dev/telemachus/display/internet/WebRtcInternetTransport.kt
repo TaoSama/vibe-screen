@@ -20,6 +20,7 @@ class WebRtcInternetTransport(
     private var reconnectAttempt = 0
     private var nextRecoveryAtMillis: Long? = null
     private var pendingFreshSessionReason: String? = null
+    private var selectedRoute: PeerRoute? = null
     @Volatile private var closed = false
 
     @Volatile
@@ -68,22 +69,26 @@ class WebRtcInternetTransport(
     }
 
     override fun onConnected(route: PeerRoute) {
-        val stateEvent =
+        val events =
             synchronized(lock) {
                 if (closed) return
                 reconnectAttempt = 0
                 nextRecoveryAtMillis = null
                 pendingFreshSessionReason = null
-                transitionLocked(
-                    if (route == PeerRoute.DIRECT) {
-                        InternetTransportState.CONNECTED_DIRECT
-                    } else {
-                        InternetTransportState.CONNECTED_RELAY
-                    },
-                )
+                routeEventsLocked(route, initial = selectedRoute == null)
             }
-        stateEvent?.let(eventSink)
-        eventSink(InternetTransportEvent.RouteSelected(route))
+        events.state?.let(eventSink)
+        events.route?.let(eventSink)
+    }
+
+    override fun onRouteChanged(route: PeerRoute) {
+        val events =
+            synchronized(lock) {
+                if (closed || selectedRoute == null) return
+                routeEventsLocked(route, initial = false)
+            }
+        events.state?.let(eventSink)
+        events.route?.let(eventSink)
     }
 
     override fun onDisconnected() {
@@ -206,26 +211,15 @@ class WebRtcInternetTransport(
                 closed = true
                 nextRecoveryAtMillis = null
                 pendingFreshSessionReason = null
+                selectedRoute = null
                 transitionLocked(InternetTransportState.CLOSED)
             }
 
-        var closeFailure: Throwable? = null
-        try {
-            networkMonitor.close()
-        } catch (failure: Throwable) {
-            closeFailure = failure
-        }
-        try {
-            peerEngine.close()
-        } catch (failure: Throwable) {
-            if (closeFailure == null) {
-                closeFailure = failure
-            } else {
-                closeFailure.addSuppressed(failure)
-            }
-        }
-        stateEvent?.let(eventSink)
-        closeFailure?.let { throw it }
+        runBestEffort(
+            { networkMonitor.close() },
+            { peerEngine.close() },
+            { stateEvent?.let(eventSink) },
+        )
     }
 
     private fun requestFreshSession(
@@ -267,11 +261,32 @@ class WebRtcInternetTransport(
         return InternetTransportEvent.StateChanged(newState)
     }
 
+    private fun routeEventsLocked(route: PeerRoute, initial: Boolean): RouteEvents {
+        val previous = selectedRoute
+        selectedRoute = route
+        val stateEvent =
+            transitionLocked(
+                if (route == PeerRoute.DIRECT) InternetTransportState.CONNECTED_DIRECT else InternetTransportState.CONNECTED_RELAY,
+            )
+        val routeEvent =
+            when {
+                initial -> InternetTransportEvent.RouteSelected(route)
+                previous != route -> InternetTransportEvent.RouteUpdated(route)
+                else -> null
+            }
+        return RouteEvents(stateEvent, routeEvent)
+    }
+
     private fun acceptsPacketLocked(sessionEpoch: Long): Boolean =
         !closed && state.isConnected() && sessionEpoch == configuration.sessionEpoch
 
     private fun InternetTransportState.isConnected(): Boolean =
         this == InternetTransportState.CONNECTED_DIRECT || this == InternetTransportState.CONNECTED_RELAY
+
+    private data class RouteEvents(
+        val state: InternetTransportEvent.StateChanged?,
+        val route: InternetTransportEvent?,
+    )
 
     companion object {
         private const val RECOVERY_REQUEST_COOLDOWN_MS = 5_000L

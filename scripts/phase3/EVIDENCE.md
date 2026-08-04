@@ -25,7 +25,9 @@ decoded frames, host-side input acknowledgement, and a new post-disconnect
 session are observed:
 
 ```bash
+export ADB_ENDPOINT='<lease-controlled-endpoint>'
 python3 scripts/phase3/android_internet_acceptance.py \
+  --serial "$ADB_ENDPOINT" \
   --apk /absolute/path/to/app-debug.apk \
   --lease-token "$VIBE_SCREEN_INTERNET_LEASE_TOKEN" \
   --connect-tap 540,1600 \

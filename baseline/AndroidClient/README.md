@@ -130,21 +130,23 @@ real screen capture, handoff and soak are not claimed. The local
 direct/forced-coturn device result and its limits are recorded in the Phase 3
 test plan.
 
-The imported lease is strict JSON with exactly these fields (the two pairing
-secret fields are optional only as a pair):
+The imported lease is strict JSON with exactly these fields. The paired Mac
+signs the canonical lease transcript, including the signaling token and TURN
+credentials, before the client persists any part of it:
 
 ```text
 version, pairing_id, pinned_host_id, signaling_url, signaling_session_id,
 session_epoch, identity_epoch, transcript_context, protocol_session_id,
 signaling_token, ice_servers[{urls, username, credential}],
-shared_secret, bootstrap_secret, allow_insecure_for_testing
+allow_insecure_for_testing, lease_host_key_id, lease_signature
 ```
 
 Unknown/missing fields fail closed, a replacement lease must use a strictly
 larger `session_epoch`, and production signaling requires HTTPS. Plain HTTP is
 accepted only for loopback in a debuggable build. Treat the complete imported
-JSON as secret because it contains role/TURN credentials and may contain pairing
-keys; do not save it in logs, screenshots, shell history, or tracked files.
+JSON as secret because it contains role/TURN credentials. Pairing secrets come
+only from the completed signed pairing and are never accepted in a lease. Do not
+save the JSON in logs, screenshots, shell history, or tracked files.
 
 ## Upgrade and release packaging
 
@@ -193,8 +195,8 @@ merged release manifest disables cleartext traffic. The instrumentation APK was
 not executed, and no M150-to-M144 direct/forced-TURN stream, real video/touch,
 handoff, revocation, or soak result is claimed from those build checks.
 
-On 2026-08-04, the configured remote ADB endpoint
-`100.72.246.116:5555` identified itself as a nubia P0110 (`pacific`) running
+On 2026-08-04, the controlled remote ADB endpoint (redacted as
+`$ADB_ENDPOINT`) identified itself as a nubia P0110 (`pacific`) running
 Android 16/API 36, not a Xiaomi 12. It installed and launched the debug APK and
 decoded a real 1512×982 HEVC stream with Qualcomm's hardware decoder. This is
 useful device evidence but does not satisfy Xiaomi 12 acceptance.

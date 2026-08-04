@@ -20,7 +20,7 @@ class FakeClock:
 
 
 class FakeADBClient:
-    serial = "100.72.246.116:5555"
+    serial = "device.example:5555"
 
     def __init__(self):
         self.state_checks = 0

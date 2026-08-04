@@ -19,12 +19,12 @@ class ADBClientTest(unittest.TestCase):
             commands.append((command, kwargs))
             return subprocess.CompletedProcess(command, 0, "device\n", "")
 
-        client = ADBClient("100.72.246.116:5555", command_runner=run)
+        client = ADBClient("device.example:5555", command_runner=run)
         client.require_device()
 
         self.assertEqual(
             commands[0][0],
-            ["adb", "-s", "100.72.246.116:5555", "get-state"],
+            ["adb", "-s", "device.example:5555", "get-state"],
         )
         self.assertFalse(commands[0][1]["check"])
         self.assertEqual(commands[0][1]["timeout"], 15.0)

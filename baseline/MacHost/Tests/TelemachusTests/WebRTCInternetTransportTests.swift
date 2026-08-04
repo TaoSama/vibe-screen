@@ -5,6 +5,80 @@ import XCTest
 final class WebRTCInternetTransportTests: XCTestCase {
     private enum TestError: Error { case sendFailed }
 
+    func testCandidatePathResolutionFailsClosedForMissingOrUnknownStats() {
+        XCTAssertEqual(
+            SelectedCandidatePathResolver.resolve(
+                localCandidateType: nil,
+                remoteCandidateType: "host"
+            ),
+            .unknown
+        )
+        XCTAssertEqual(
+            SelectedCandidatePathResolver.resolve(
+                localCandidateType: "unknown",
+                remoteCandidateType: "host"
+            ),
+            .unknown
+        )
+        XCTAssertEqual(
+            SelectedCandidatePathResolver.resolve(
+                localCandidateType: "host",
+                remoteCandidateType: "srflx"
+            ),
+            .direct
+        )
+        XCTAssertEqual(
+            SelectedCandidatePathResolver.resolve(
+                localCandidateType: "relay",
+                remoteCandidateType: "host"
+            ),
+            .relay
+        )
+        XCTAssertTrue(
+            SelectedCandidatePathResolver.mustFailClosed(
+                publishedPath: .direct,
+                observedPath: .unknown
+            )
+        )
+        XCTAssertTrue(
+            SelectedCandidatePathResolver.mustFailClosed(
+                publishedPath: .direct,
+                observedPath: nil
+            )
+        )
+        XCTAssertTrue(
+            SelectedCandidatePathResolver.mustFailClosed(
+                publishedPath: .relay,
+                observedPath: .unknown
+            )
+        )
+        XCTAssertTrue(
+            SelectedCandidatePathResolver.mustFailClosed(
+                publishedPath: .relay,
+                observedPath: nil
+            )
+        )
+    }
+
+    func testUnknownCandidatePathCannotPublishConnected() throws {
+        let engine = FakeWebRTCEngine()
+        let transport = WebRTCInternetTransport(
+            engine: engine,
+            packetCipher: engine.localCipher
+        )
+        try transport.start(configuration: validConfiguration())
+
+        engine.emitConnection(.connected(path: .unknown))
+
+        guard case .failed = transport.snapshot().state else {
+            return XCTFail("Unknown candidate path must fail closed")
+        }
+        XCTAssertFailure(
+            transport.sendControl(Data([1])),
+            expected: .notConnected
+        )
+    }
+
     func testStartsEngineWithSeparatedControlAndMediaChannels() throws {
         let engine = FakeWebRTCEngine()
         let transport = WebRTCInternetTransport(engine: engine, packetCipher: engine.localCipher)

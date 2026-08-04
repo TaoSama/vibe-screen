@@ -14,7 +14,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class InternetProductSessionTest {
     private val signaling =
@@ -126,6 +130,53 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun routeChangesAndConcurrentConnectedCallbacksSendOneClientHello() {
+        val peer = ProductFakePeerEngine()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+        session.start()
+        val executor = Executors.newFixedThreadPool(16)
+        val ready = CountDownLatch(16)
+        val start = CountDownLatch(1)
+        repeat(16) { index ->
+            executor.execute {
+                ready.countDown()
+                start.await()
+                peer.observer.onConnected(if (index % 2 == 0) PeerRoute.DIRECT else PeerRoute.RELAY)
+            }
+        }
+        assertTrue(ready.await(2, TimeUnit.SECONDS))
+        start.countDown()
+        executor.shutdown()
+        assertTrue(executor.awaitTermination(2, TimeUnit.SECONDS))
+        peer.observer.onRouteChanged(PeerRoute.DIRECT)
+        peer.observer.onRouteChanged(PeerRoute.RELAY)
+
+        assertEquals(1, peer.control.size)
+        assertEquals(Envelope.PayloadCase.CLIENT_HELLO, Envelope.parseFrom(peer.control.single()).payloadCase)
+        assertTrue(callbacks.routes.isNotEmpty())
+    }
+
+    @Test
+    fun failureThenLateConnectedAndRouteCallbacksCannotReviveNegotiation() {
+        val peer = ProductFakePeerEngine()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        assertEquals(1, peer.control.size)
+
+        peer.observer.onFailure(IllegalStateException("candidate resolution failed"))
+        peer.observer.onDisconnected()
+        peer.observer.onConnected(PeerRoute.RELAY)
+        peer.observer.onRouteChanged(PeerRoute.DIRECT)
+
+        assertEquals(InternetProductSessionState.SUSPENDED, session.state)
+        assertEquals(1, peer.control.size)
+        assertEquals(Envelope.PayloadCase.CLIENT_HELLO, Envelope.parseFrom(peer.control.single()).payloadCase)
+    }
+
+    @Test
     fun persistsAuthenticatedRevocationBeforeCallbackAndClose() {
         val peer = ProductFakePeerEngine()
         val callbacks = ProductCallbacks()
@@ -175,6 +226,24 @@ class InternetProductSessionTest {
         assertTrue(callbacks.revocationEvents.isNullOrEmpty())
         assertEquals(1, callbacks.failures.size)
         assertEquals(InternetProductSessionState.CLOSED, session.state)
+        assertEquals(1, peer.closeCalls)
+    }
+
+    @Test
+    fun closeReleasesAllOwnersTransitionsClosedAndAggregatesFailures() {
+        val monitorFailure = IllegalStateException("monitor close failed")
+        val peerFailure = IllegalArgumentException("peer close failed")
+        val peer = ProductFakePeerEngine(closeFailure = peerFailure)
+        val monitor = ProductFakeNetworkMonitor(closeFailure = monitorFailure)
+        val session = session(peer, monitor, ProductCallbacks())
+
+        val thrown = assertThrows(IllegalStateException::class.java) { session.close() }
+        session.close()
+
+        assertEquals(monitorFailure, thrown)
+        assertEquals(listOf(peerFailure), thrown.suppressed.toList())
+        assertEquals(InternetProductSessionState.CLOSED, session.state)
+        assertEquals(1, monitor.closeCalls)
         assertEquals(1, peer.closeCalls)
     }
 
@@ -246,23 +315,32 @@ private class ProductCallbacks : InternetProductSessionCallbacks {
     val frames = mutableListOf<ProductVideoFrame>()
     val freshReasons = mutableListOf<String>()
     val failures = mutableListOf<Throwable>()
+    val routes = java.util.concurrent.CopyOnWriteArrayList<PeerRoute>()
     var revocationEvents: MutableList<String>? = null
     override fun onVideoConfiguration(configuration: ProductVideoConfiguration) = ProductVideoDecision.ACCEPT
     override fun onVideoFrame(frame: ProductVideoFrame) { frames += frame }
     override fun onFreshSessionRequired(reason: String) { freshReasons += reason }
     override fun onFailure(error: Throwable) { failures += error }
+    override fun onRouteSelected(route: PeerRoute) { routes += route }
     override fun onRevoked(reason: String) { revocationEvents?.add("callback") }
 }
 
-private class ProductFakeNetworkMonitor : NetworkMonitor {
+private class ProductFakeNetworkMonitor(
+    private val closeFailure: Throwable? = null,
+) : NetworkMonitor {
     lateinit var listener: NetworkMonitor.Listener
     var closeCalls = 0
     override fun start(listener: NetworkMonitor.Listener) { this.listener = listener }
     fun available(id: String) = listener.onAvailable(NetworkSnapshot(id, true, false, setOf(NetworkTransport.WIFI)))
-    override fun close() { closeCalls++ }
+    override fun close() {
+        closeCalls++
+        closeFailure?.let { throw it }
+    }
 }
 
-private class ProductFakePeerEngine : WebRtcPeerEngine {
+private class ProductFakePeerEngine(
+    private val closeFailure: Throwable? = null,
+) : WebRtcPeerEngine {
     override val controlSemantics = DataChannelSemantics.RELIABLE_CONTROL
     override val mediaSemantics = DataChannelSemantics.LATEST_MEDIA
     lateinit var observer: WebRtcPeerEngine.Observer
@@ -274,7 +352,10 @@ private class ProductFakePeerEngine : WebRtcPeerEngine {
     override fun sendMedia(payload: ByteArray): Boolean = true
     override fun restartIce() { restartCalls++ }
     override fun applyVideoProfile(profile: VideoProfile) = Unit
-    override fun close() { closeCalls++ }
+    override fun close() {
+        closeCalls++
+        closeFailure?.let { throw it }
+    }
     fun receive(envelope: Envelope) = observer.onControlMessage(7, envelope.toByteArray())
     fun media(payload: ByteArray) = observer.onMediaPacket(7, payload)
 }

@@ -86,8 +86,12 @@ curl --fail-with-body -H "Authorization: Bearer $VIBE_RELAY_CLIENT_TOKEN" \
   http://127.0.0.1:8090/v1/credentials
 ```
 
-The username is `<unix-expiry>:<device-id>:<session-id>` and the password is the base64
-HMAC-SHA1 required by TURN REST authentication. SHA-1 is used only for this
+The username is `<unix-expiry>:<device-id>` and the password is the base64
+HMAC-SHA1 required by TURN REST authentication. `session_id` remains in the
+authenticated control-plane request but is excluded from the TURN username.
+After coturn removes the expiry prefix, every credential for a device shares
+one stable `user-quota` principal across sessions and expiries. Device IDs
+cannot contain the `:` separator. SHA-1 is used only for this
 TURN compatibility MAC with a high-entropy server secret; it is not content
 encryption or a password hash.
 
@@ -136,6 +140,10 @@ collector into `/v1/usage`; coturn does not call this custom HTTP API itself.
 That collector is the authoritative source for enforcement: missed or delayed
 events temporarily weaken byte and concurrency limits. Alert on collector lag
 and enforce matching `user-quota`, `total-quota`, and `max-bps` limits in TURN.
+`user-quota` is the immediate atomic per-device allocation boundary because the
+signed TURN principal is device-only. It is an allocation cap, not a product
+session cap; size it for the ICE transports a legitimate device needs. Multiple
+TURN nodes require device-sticky routing or a distributed admission authority.
 
 This component is not a WebRTC signaling/rendezvous server and does not
 implement SDP exchange, ICE restart, P2P path selection, network handoff, or
@@ -154,6 +162,11 @@ limits. Relay revocation blocks new credentials, but a credential already
 issued remains valid until its short expiry. Immediate removal additionally
 requires blocking the device at signaling policy and disconnecting its TURN
 allocation; rotating the shared TURN secret affects every device.
+
+The `/v1/usage` daily-byte and active-session ledger is not authoritative until
+a trusted coturn collector and reconciliation loop are deployed. It must not be
+used as the real-time allocation security boundary; coturn's stable-device
+`user-quota` remains that boundary in the current deployment.
 
 ## Threat model
 

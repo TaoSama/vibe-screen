@@ -50,6 +50,7 @@ import dev.telemachus.display.internet.ProductVideoConfiguration
 import dev.telemachus.display.internet.ProductVideoDecision
 import dev.telemachus.display.internet.ProductVideoFrame
 import dev.telemachus.display.internet.ProtobufProtocolV1ProductCodec
+import dev.telemachus.display.internet.runBestEffort
 import dev.telemachus.display.internet.security.AndroidDeviceIdentityStore
 import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
 import dev.telemachus.display.internet.security.InternetPairingAcceptance
@@ -825,6 +826,11 @@ class MainActivity : AppCompatActivity() {
                     revokeInternetPairing("user_requested")
                 }.show()
         }
+        val pendingCleanup = retryPendingInternetRevocationCleanup()
+        if (pendingCleanup.isNotEmpty()) {
+            binding.internetErrorText.text = getString(R.string.internet_revoke_partial_failure, pendingCleanup.joinToString())
+            binding.internetErrorText.visibility = View.VISIBLE
+        }
         refreshInternetProfileUi()
     }
 
@@ -854,7 +860,7 @@ class MainActivity : AppCompatActivity() {
             dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
-                    internetProfileStore.import(input.text.toString())
+                    internetProfileStore.import(input.text.toString(), internetStoredSessionFactory)
                     input.text?.clear()
                     requiredFreshInternetEpoch = 0L
                     binding.internetErrorText.visibility = View.GONE
@@ -875,8 +881,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun beginInternetPairing(encodedUrl: String) {
         try {
+            check(retryPendingInternetRevocationCleanup().isEmpty()) {
+                "Finish the pending local revocation cleanup before pairing again"
+            }
             pendingInternetPairing?.close()
-            val identityEpoch = internetProfileStore.loadPublicProfile()?.identityEpoch ?: 1L
+            val identityEpoch = internetStoredSessionFactory.reserveNextIdentityEpoch()
             val identity = AndroidDeviceIdentityStore().loadOrCreate(internetDeviceId, identityEpoch)
             val pending =
                 InternetPairingCoordinator(identity, internetStoredSessionFactory).begin(
@@ -950,7 +959,7 @@ class MainActivity : AppCompatActivity() {
                     val parsed = InternetPairingAcceptance.parse(acceptance.text.toString())
                     try {
                         val result = pending.complete(parsed)
-                        internetProfileStore.recordVerifiedPairing(result.metadata)
+                        internetProfileStore.recordVerifiedPairing(result.metadata, internetStoredSessionFactory)
                         refreshInternetProfileUi()
                     } catch (failure: Throwable) {
                         pending.close()
@@ -1823,6 +1832,9 @@ class MainActivity : AppCompatActivity() {
         if (internetSession != null || connectionAttemptInProgress) return
         val lease =
             try {
+                check(retryPendingInternetRevocationCleanup().isEmpty()) {
+                    "Internet revocation cleanup is still pending"
+                }
                 internetProfileStore.loadLease(prefs.internetForceRelay)
                     ?: throw IllegalStateException(getString(R.string.internet_profile_missing))
             } catch (failure: Throwable) {
@@ -2133,68 +2145,61 @@ class MainActivity : AppCompatActivity() {
 
     private fun disconnectInternet(showIdle: Boolean) {
         ++internetGeneration
-        internetTickJob?.cancel()
+        val tickJob = internetTickJob
         internetTickJob = null
-        internetSession?.close()
+        val session = internetSession
         internetSession = null
-        internetNetworkMonitor?.close()
+        val networkMonitor = internetNetworkMonitor
         internetNetworkMonitor = null
+        val decoder = videoDecoder
+        videoDecoder = null
         connectionAttemptInProgress = false
         internetRoute = null
         activeInternetInputIds.clear()
-        videoDecoder?.release()
-        videoDecoder = null
         internetVideoConfiguration = null
         displayWidth = 0
         displayHeight = 0
         isConnected = false
-        setStreamingWindowState(false)
-        binding.internetDisconnectButton.visibility = View.GONE
-        val profile = internetProfileStore.loadPublicProfile()
-        binding.internetConnectButton.isEnabled =
-            profile != null && profile.authoritativeSessionEpoch > requiredFreshInternetEpoch
-        if (showIdle) {
-            binding.internetStateText.setText(R.string.internet_state_idle)
-            binding.internetErrorText.visibility = View.GONE
-            showDisconnectedStreamUi()
-        }
+        runBestEffort(
+            { tickJob?.cancel() },
+            { session?.close() },
+            { networkMonitor?.close() },
+            { decoder?.release() },
+            {
+                setStreamingWindowState(false)
+                binding.internetDisconnectButton.visibility = View.GONE
+                val profile = internetProfileStore.loadPublicProfile()
+                binding.internetConnectButton.isEnabled =
+                    profile != null && profile.authoritativeSessionEpoch > requiredFreshInternetEpoch
+                if (showIdle) {
+                    binding.internetStateText.setText(R.string.internet_state_idle)
+                    binding.internetErrorText.visibility = View.GONE
+                    showDisconnectedStreamUi()
+                }
+            },
+        )
     }
 
     private fun revokeInternetPairing(reason: String, tombstonePersisted: Boolean = false) {
         val profile = internetProfileStore.loadPublicProfile()
         val pairingIdentifier = profile?.pairingIdentifier ?: internetProfileStore.verifiedPairingIdentifier()
         val identityEpoch = profile?.identityEpoch ?: internetProfileStore.verifiedLocalIdentityEpoch()
-        disconnectInternet(showIdle = false)
         val cleanupFailures = mutableListOf<String>()
+        try {
+            disconnectInternet(showIdle = false)
+        } catch (_: Throwable) {
+            cleanupFailures += "active session"
+        }
         if (pairingIdentifier != null) {
-            if (!tombstonePersisted) {
+            if (identityEpoch == null) {
+                cleanupFailures += "identity epoch"
+            } else {
                 try {
-                    internetProfileStore.markRevoked(pairingIdentifier)
+                    internetProfileStore.beginRevocationCleanup(pairingIdentifier, internetDeviceId, identityEpoch)
                 } catch (_: Throwable) {
-                    cleanupFailures += "revocation tombstone"
+                    cleanupFailures += if (tombstonePersisted) "cleanup intent" else "revocation tombstone"
                 }
-            }
-            try {
-                internetStoredSessionFactory.removePairingSecrets(pairingIdentifier)
-            } catch (_: Throwable) {
-                cleanupFailures += "pairing secret"
-            }
-            if (identityEpoch != null) {
-                try {
-                    AndroidDeviceIdentityStore().delete(internetDeviceId, identityEpoch)
-                } catch (_: Throwable) {
-                    cleanupFailures += "identity key"
-                }
-            }
-            try {
-                internetProfileStore.remove(pairingIdentifier)
-            } catch (_: Throwable) {
-                cleanupFailures += "session credentials"
-            }
-            try {
-                internetProfileStore.removePairingBinding()
-            } catch (_: Throwable) {
-                cleanupFailures += "pairing metadata"
+                cleanupFailures += retryPendingInternetRevocationCleanup()
             }
         }
         requiredFreshInternetEpoch = Long.MAX_VALUE
@@ -2206,6 +2211,20 @@ class MainActivity : AppCompatActivity() {
         }
         refreshInternetProfileUi()
         showDisconnectedStreamUi()
+    }
+
+    private fun retryPendingInternetRevocationCleanup(): List<String> {
+        return try {
+            val result =
+                internetProfileStore.retryPendingRevocationCleanup(
+                    deletePairingSecret = internetStoredSessionFactory::removePairingSecrets,
+                    deleteIdentityKey = { deviceId, epoch -> AndroidDeviceIdentityStore().delete(deviceId, epoch) },
+                ) ?: return emptyList()
+            result.remainingSteps.map { it.failureLabel }.distinct()
+        } catch (failure: Throwable) {
+            android.util.Log.e(INTERNET_LOG_TAG, "Could not retry durable Internet revocation cleanup", failure)
+            listOf("cleanup state")
+        }
     }
 
     private fun connectWireless(
