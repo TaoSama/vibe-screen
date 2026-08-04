@@ -120,7 +120,7 @@ class InternetProductSession internal constructor(
     configuration: PeerConfiguration,
     peerEngine: WebRtcPeerEngine,
     networkMonitor: NetworkMonitor,
-    clock: MonotonicClock,
+    private val clock: MonotonicClock,
     private val codec: ProtocolV1ProductCodec,
     private val callbacks: InternetProductSessionCallbacks,
     private val revocationStore: InternetProductRevocationStore,
@@ -132,6 +132,9 @@ class InternetProductSession internal constructor(
     private var acceptedSession = false
     private var negotiationStarted = false
     private var freshSessionRequested = false
+    private var heartbeatIntervalMillis = 0L
+    private var nextHeartbeatAtMillis = Long.MAX_VALUE
+    private var nextHeartbeatSequence = 1L
     private var lastReceivedControlMessageId = 0L
     private var closed = false
     private val frameAssembler = ProductMediaFrameAssembler()
@@ -166,7 +169,10 @@ class InternetProductSession internal constructor(
         }
     }
 
-    fun tick() = transport.tick()
+    fun tick() {
+        transport.tick()
+        heartbeatTick()
+    }
 
     fun sendTouch(event: ProductTouchEvent): Boolean =
         sendApplicationControl {
@@ -198,6 +204,7 @@ class InternetProductSession internal constructor(
                 closed = true
                 acceptedSession = false
                 currentVideoConfiguration = null
+                nextHeartbeatAtMillis = Long.MAX_VALUE
                 frameAssembler.reset()
                 true
             }
@@ -217,6 +224,9 @@ class InternetProductSession internal constructor(
                     InternetTransportState.CONNECTING -> transition(InternetProductSessionState.CONNECTING)
                     InternetTransportState.RECOVERING -> transition(InternetProductSessionState.RECOVERING)
                     InternetTransportState.SUSPENDED -> transition(InternetProductSessionState.SUSPENDED)
+                    InternetTransportState.CONNECTED_DIRECT,
+                    InternetTransportState.CONNECTED_RELAY
+                    -> resumeAuthenticatedSessionAfterTransportRecovery()
                     InternetTransportState.CLOSED -> transition(InternetProductSessionState.CLOSED)
                     else -> Unit
                 }
@@ -340,11 +350,47 @@ class InternetProductSession internal constructor(
                 acceptedHostHello &&
                     message.sessionId.contentEquals(lease.protocolSessionId) &&
                     message.sessionEpoch == lease.authoritativeSessionEpoch &&
-                    message.capabilities.containsAll(REQUIRED_SESSION_CAPABILITIES)
+                    message.capabilities.containsAll(REQUIRED_SESSION_CAPABILITIES) &&
+                    message.heartbeatIntervalMillis in MIN_HEARTBEAT_INTERVAL_MS..MAX_HEARTBEAT_INTERVAL_MS
             }
         if (!valid) return fail(IllegalArgumentException("Session acceptance does not match the authenticated lease"))
-        synchronized(lock) { acceptedSession = true }
+        synchronized(lock) {
+            acceptedSession = true
+            heartbeatIntervalMillis = message.heartbeatIntervalMillis
+            scheduleNextHeartbeatLocked()
+        }
         transition(InternetProductSessionState.ACTIVE)
+    }
+
+    private fun resumeAuthenticatedSessionAfterTransportRecovery() {
+        val shouldResume =
+            synchronized(lock) {
+                if (!acceptedSession || !negotiationStarted || closed) {
+                    false
+                } else {
+                    scheduleNextHeartbeatLocked()
+                    true
+                }
+            }
+        if (shouldResume) transition(InternetProductSessionState.ACTIVE)
+    }
+
+    private fun heartbeatTick() {
+        val sequence =
+            synchronized(lock) {
+                if (closed || state != InternetProductSessionState.ACTIVE || clock.nowMillis() < nextHeartbeatAtMillis) {
+                    null
+                } else {
+                    val value = nextHeartbeatSequence++
+                    scheduleNextHeartbeatLocked()
+                    value
+                }
+            } ?: return
+        sendPing(sequence)
+    }
+
+    private fun scheduleNextHeartbeatLocked() {
+        nextHeartbeatAtMillis = clock.nowMillis() + heartbeatIntervalMillis
     }
 
     private fun handleVideoConfiguration(configuration: ProductVideoConfiguration) {
@@ -451,6 +497,8 @@ class InternetProductSession internal constructor(
     }
 
     companion object {
+        private const val MIN_HEARTBEAT_INTERVAL_MS = 100L
+        private const val MAX_HEARTBEAT_INTERVAL_MS = 60_000L
         private val REQUIRED_SESSION_CAPABILITIES =
             setOf(
                 Capability.CAPABILITY_DEVICE_IDENTITY,

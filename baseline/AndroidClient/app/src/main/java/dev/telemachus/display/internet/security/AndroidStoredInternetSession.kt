@@ -34,9 +34,19 @@ class AndroidStoredInternetSessionFactory(
         AndroidSessionSecurity(localDeviceId, context.applicationContext),
 ) {
     private val applicationContext = context.applicationContext
+    private val pairingPersistence =
+        PairingPersistenceTransaction(
+            object : PairingPersistenceSlots {
+                override fun load(name: String): ByteArray? = secretStore.load(name)
+                override fun persist(name: String, value: ByteArray) = secretStore.persist(name, value)
+                override fun delete(name: String) = secretStore.delete(name)
+            },
+            PAIRING_CLEANUP_MARKER_NAME,
+        )
 
     init {
         require(localDeviceId.isNotBlank()) { "Device ID must not be blank" }
+        pairingPersistence.retryPendingCleanup()
     }
 
     fun persistPairingSecrets(
@@ -49,7 +59,7 @@ class AndroidStoredInternetSessionFactory(
         require(bootstrapSecret.size == BOOTSTRAP_SECRET_BYTES) { "Bootstrap secret must contain 32 bytes" }
         val record = PairingSecretRecordCodec.encode(sharedSecret, bootstrapSecret)
         try {
-            secretStore.persist(secretName(pairingIdentifier), record)
+            pairingPersistence.persist(secretName(pairingIdentifier), record)
         } finally {
             record.fill(0)
         }
@@ -112,6 +122,9 @@ class AndroidStoredInternetSessionFactory(
                         platformSecurity = sessionSecurity,
                         initialKeys = active.trafficKeys,
                     )
+                check(active.sessionEpoch == authoritativeSessionEpoch) {
+                    "Platform security returned a session epoch that does not match the authority reservation"
+                }
                 val configuration =
                     PeerConfiguration(
                         iceServers = iceServers,
@@ -127,7 +140,11 @@ class AndroidStoredInternetSessionFactory(
                     configuration = configuration,
                 )
             } catch (failure: Throwable) {
-                cipher?.close() ?: active.trafficKeys.close()
+                try {
+                    cipher?.close() ?: active.trafficKeys.close()
+                } catch (cleanupFailure: Throwable) {
+                    failure.addSuppressed(cleanupFailure)
+                }
                 throw failure
             }
         } finally {
@@ -142,6 +159,7 @@ class AndroidStoredInternetSessionFactory(
 
     companion object {
         private const val PAIRING_SECRET_PREFIX = "phase3.pairing.v1"
+        private const val PAIRING_CLEANUP_MARKER_NAME = "phase3.pairing.persistence-cleanup.v1"
         private const val BOOTSTRAP_SECRET_BYTES = 32
         private const val TRANSCRIPT_CONTEXT_BYTES = 32
     }

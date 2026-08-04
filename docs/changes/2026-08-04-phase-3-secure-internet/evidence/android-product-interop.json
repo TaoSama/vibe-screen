@@ -1,69 +1,22 @@
 {
   "schema": "dev.vibescreen.phase3-android-interop/v1",
-  "result": "pass",
-  "curated_at_utc": "2026-08-04T18:55:45Z",
-  "runtime_timestamps_not_captured": true,
-  "source_commit": "90919dd1bf39570aa5fd46e9e6db36b30942fd30",
-  "device": {
-    "manufacturer": "nubia",
-    "model": "P0110",
-    "device": "pacific",
-    "os_release": "16",
-    "api_level": "36"
-  },
-  "artifacts": {
-    "app_apk_sha256": "376c5075deb838c44557c11ecac1ba2bfcabc659414f6860ac81ad10fa4682c6",
-    "test_apk_sha256": "78abca44b7fc55d8fb9fb7e3139fa369d69ed034d01d22c8280eb0dcb0e30f51"
-  },
-  "topology": "local signaling over ADB reverse; direct host candidates; forced local coturn over a private overlay",
-  "rounds": [
-    {
-      "route": "direct",
-      "mac_product_marker": "pass",
-      "android_instrumentation": "OK (1 test)",
-      "protocol_v1": "pass",
-      "application_e2ee": "pass",
-      "video_config": "pass",
-      "keyframe_delta": "pass",
-      "touch_control": "pass"
-    },
-    {
-      "route": "relay",
-      "mac_product_marker": "pass",
-      "android_instrumentation": "OK (1 test)",
-      "protocol_v1": "pass",
-      "application_e2ee": "pass",
-      "video_config": "pass",
-      "keyframe_delta": "pass",
-      "touch_control": "pass"
-    },
-    {
-      "android_internet_ui": "pass",
-      "controls": [
-        "Secure Internet session",
-        "Prefer direct",
-        "Force TURN",
-        "Import profile",
-        "Connect securely",
-        "Revoke this Mac on this device"
-      ]
-    }
+  "result": "withdrawn",
+  "source_commit": null,
+  "withdrawal_reason": "The prior curated pass record referenced a source commit that is not present in this repository and cannot be tied to retained raw evidence.",
+  "missing_audit_fields": [
+    "reachable source commit and clean-tree identity",
+    "raw macOS host output",
+    "raw Android instrumentation output",
+    "runtime start and completion timestamps",
+    "exact commands and environment",
+    "artifact-to-source build provenance",
+    "candidate-pair and application-E2EE logs for each route",
+    "UI observation source files"
   ],
-  "not_proven": [
-    "public Internet",
-    "public STUN or TURN",
-    "carrier or CGNAT traversal",
-    "real ScreenCaptureKit capture",
-    "public relay geography",
-    "automatic authority reconnect",
-    "cross-service revocation propagation",
-    "soak"
+  "claims_withdrawn": [
+    "Android M144 to macOS M150 direct product-session pass",
+    "Android M144 to macOS M150 forced-TURN product-session pass",
+    "Android Internet UI pass"
   ],
-  "redaction": {
-    "hardware_serial": "omitted",
-    "device_endpoint": "omitted",
-    "tokens": "omitted",
-    "ssid_bssid": "omitted",
-    "accounts": "omitted"
-  }
+  "recovery_requirement": "Run the documented acceptance flow again on an authorized device and retain raw, redacted, commit-bound evidence. No prior timestamps, logs, or commit identifiers may be reconstructed."
 }

@@ -68,11 +68,13 @@ class ProtocolV1ProductCodecTest {
                         .newBuilder()
                         .setSessionId(ByteString.copyFrom(sessionId))
                         .setSessionEpoch(7)
+                        .setHeartbeatIntervalMs(1_000)
                         .addAllNegotiatedCapabilities(ProtobufProtocolV1ProductCodec.REQUIRED_CLIENT_CAPABILITIES),
                 ).build()
         val decodedAccepted = codec.decodeControl(accepted.toByteArray()).message as ProductControlMessage.SessionAccepted
         assertArrayEquals(sessionId, decodedAccepted.sessionId)
         assertEquals(7, decodedAccepted.sessionEpoch)
+        assertEquals(1_000, decodedAccepted.heartbeatIntervalMillis)
     }
 
     @Test

@@ -17,6 +17,7 @@ final class PlatformSessionPacketCipher {
     private static let headerBytes = 51
 
     private let localRole: PlatformSenderRole
+    private let requireActiveSessionEpoch: () throws -> Void
     private let reserveNonce: (UInt32, UInt32, UInt64) throws -> Data
     private let rotateKeys: (PlatformSessionKeys, Data) throws -> PlatformSessionKeys
     private let lock = NSLock()
@@ -36,6 +37,9 @@ final class PlatformSessionPacketCipher {
         self.localRole = localRole
         self.keys = initialKeys
         self.sessionHash = Data(SHA256.hash(data: Data(sessionIdentifier.utf8))).prefix(Self.sessionHashBytes)
+        self.requireActiveSessionEpoch = {
+            try platformSecurity.requireActiveSessionEpoch(sessionEpoch)
+        }
         self.reserveNonce = { channel, senderRole, keyEpoch in
             try platformSecurity.reserveNonce(
                 sessionEpoch: sessionEpoch,
@@ -52,6 +56,7 @@ final class PlatformSessionPacketCipher {
         sessionEpoch: UInt64,
         localRole: PlatformSenderRole,
         initialKeys: PlatformSessionKeys,
+        requireActiveSessionEpoch: @escaping () throws -> Void,
         reserveNonce: @escaping (UInt32, UInt32, UInt64) throws -> Data,
         rotateKeys: @escaping (PlatformSessionKeys, Data) throws -> PlatformSessionKeys
     ) {
@@ -60,6 +65,7 @@ final class PlatformSessionPacketCipher {
         self.localRole = localRole
         self.keys = initialKeys
         self.sessionHash = Data(SHA256.hash(data: Data(sessionIdentifier.utf8))).prefix(Self.sessionHashBytes)
+        self.requireActiveSessionEpoch = requireActiveSessionEpoch
         self.reserveNonce = reserveNonce
         self.rotateKeys = rotateKeys
     }
@@ -67,6 +73,7 @@ final class PlatformSessionPacketCipher {
     func seal(_ payload: Data, channel: InternetTransportChannel) throws -> Data {
         try lock.withPacketCipherLock {
             guard let keys else { throw PlatformSecurityError.invalidInput("Session packet cipher is closed.") }
+            try requireActiveSessionEpoch()
             let securityChannel = channel.securityChannel
             let nonce = try reserveNonce(securityChannel.rawValue, localRole.rawValue, keys.keyEpoch)
             guard nonce.count == Self.nonceBytes else {
@@ -85,6 +92,8 @@ final class PlatformSessionPacketCipher {
     func open(_ record: Data, channel: InternetTransportChannel) -> Data? {
         lock.withPacketCipherLock {
             guard let keys, record.count >= Self.headerBytes + Self.tagBytes else { return nil }
+            do { try requireActiveSessionEpoch() }
+            catch { return nil }
             let header = record.prefix(Self.headerBytes)
             guard let decoded = decodeHeader(Data(header)) else { return nil }
             let expectedChannel = channel.securityChannel
@@ -134,7 +143,9 @@ final class PlatformSessionPacketCipher {
         sessionIdentifier: String,
         sharedSecret: Data,
         bootstrapSecret: Data,
-        transcriptContext: Data
+        transcriptContext: Data,
+        sessionEpoch: UInt64 = 1,
+        requireActiveEpoch: @escaping (UInt64) throws -> Void = { _ in }
     ) throws -> (host: PlatformSessionPacketCipher, device: PlatformSessionPacketCipher) {
         let keys = try TrafficKeyDerivation.initial(
             sharedSecret: sharedSecret,
@@ -151,17 +162,19 @@ final class PlatformSessionPacketCipher {
         return (
             PlatformSessionPacketCipher(
                 sessionIdentifier: sessionIdentifier,
-                sessionEpoch: 1,
+                sessionEpoch: sessionEpoch,
                 localRole: .host,
                 initialKeys: keys,
+                requireActiveSessionEpoch: { try requireActiveEpoch(sessionEpoch) },
                 reserveNonce: reserve,
                 rotateKeys: rotate
             ),
             PlatformSessionPacketCipher(
                 sessionIdentifier: sessionIdentifier,
-                sessionEpoch: 1,
+                sessionEpoch: sessionEpoch,
                 localRole: .device,
                 initialKeys: keys,
+                requireActiveSessionEpoch: { try requireActiveEpoch(sessionEpoch) },
                 reserveNonce: reserve,
                 rotateKeys: rotate
             )

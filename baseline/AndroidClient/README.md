@@ -47,8 +47,9 @@ strict request/acceptance exchange, imports a short-lived session profile,
 selects direct or forced TURN, and drives the Protocol v1 video/touch product
 session. The request/acceptance and session profile are intentionally copied or
 scanned in this local integration surface; no production account/session
-authority is bundled. An authorized device has passed real M144↔M150 direct and
-forced-local-TURN product-session interop plus actionable Internet UI checks.
+authority is bundled. The prior curated M144↔M150/UI pass is withdrawn because
+its claimed source commit and raw evidence are unavailable; device acceptance
+must be rerun from a reachable clean commit.
 Public Internet, real ScreenCaptureKit output, handoff/reconnect, cross-service
 revocation and soak remain gates, so this is not yet a shipped Internet feature.
 

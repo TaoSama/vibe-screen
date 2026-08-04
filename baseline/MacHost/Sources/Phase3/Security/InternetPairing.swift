@@ -73,6 +73,7 @@ extension KeychainDeviceIdentity: InternetPairingSigner {
 }
 
 protocol InternetPairingSecretStore {
+    func load(name: String) throws -> Data?
     func persist(name: String, secret: Data) throws
     func delete(name: String) throws
 }
@@ -162,6 +163,7 @@ final class InternetPairingCoordinator {
     }
 
     func createOffer(validFor lifetime: TimeInterval = 120) throws -> InternetPairingCreatedOffer {
+        try retryPendingPersistenceCleanup()
         guard lifetime > 0, lifetime <= 600 else {
             throw InternetPairingError.invalidOffer("Offer lifetime must be between 1 and 600 seconds.")
         }
@@ -275,25 +277,64 @@ final class InternetPairingCoordinator {
     }
 
     private func persist(derived: InternetPairingDerivedSecrets, names: PairedDeviceSecretNames) throws {
+        let marker = PairingPersistenceCleanupMarker(
+            remainingSecretNames: [names.sharedSecret, names.bootstrapSecret]
+        )
         do {
+            try secretStore.persist(
+                name: Self.persistenceCleanupMarkerName,
+                secret: try JSONEncoder().encode(marker)
+            )
             try secretStore.persist(name: names.sharedSecret, secret: derived.sharedSecret)
-            do { try secretStore.persist(name: names.bootstrapSecret, secret: derived.bootstrapSecret) }
-            catch let bootstrapError {
-                do { try secretStore.delete(name: names.sharedSecret) }
-                catch let rollbackError {
-                    throw InternetPairingError.persistenceFailure(
-                        "Bootstrap write failed (\(bootstrapError.localizedDescription)); "
-                            + "shared-secret rollback also failed (\(rollbackError.localizedDescription))."
-                    )
-                }
-                throw bootstrapError
-            }
+            try secretStore.persist(name: names.bootstrapSecret, secret: derived.bootstrapSecret)
+            try secretStore.delete(name: Self.persistenceCleanupMarkerName)
         } catch let error as InternetPairingError {
             throw error
         } catch {
-            throw InternetPairingError.persistenceFailure(error.localizedDescription)
+            var cleanupFailures: [Error] = []
+            for name in marker.remainingSecretNames {
+                do { try secretStore.delete(name: name) }
+                catch { cleanupFailures.append(error) }
+            }
+            if cleanupFailures.isEmpty {
+                do { try secretStore.delete(name: Self.persistenceCleanupMarkerName) }
+                catch { cleanupFailures.append(error) }
+            }
+            let details = cleanupFailures.map(\.localizedDescription).joined(separator: "; ")
+            throw InternetPairingError.persistenceFailure(
+                details.isEmpty
+                    ? error.localizedDescription
+                    : "\(error.localizedDescription); durable pairing cleanup remains pending: \(details)"
+            )
         }
     }
+
+    func retryPendingPersistenceCleanup() throws {
+        guard let encoded = try secretStore.load(
+            name: Self.persistenceCleanupMarkerName
+        ) else { return }
+        let marker: PairingPersistenceCleanupMarker
+        do { marker = try JSONDecoder().decode(PairingPersistenceCleanupMarker.self, from: encoded) }
+        catch {
+            throw InternetPairingError.persistenceFailure(
+                "Stored pairing cleanup marker is invalid; its Keychain slot was retained."
+            )
+        }
+        try marker.validate()
+        var failures: [Error] = []
+        for name in marker.remainingSecretNames {
+            do { try secretStore.delete(name: name) }
+            catch { failures.append(error) }
+        }
+        guard failures.isEmpty else {
+            throw InternetPairingError.persistenceFailure(
+                "Pairing cleanup remains pending for \(failures.count) Keychain slot(s)."
+            )
+        }
+        try secretStore.delete(name: Self.persistenceCleanupMarkerName)
+    }
+
+    private static let persistenceCleanupMarkerName = "pairing.persistence-cleanup.v1"
 
     private static func secureRandomBytes(count: Int) throws -> Data {
         guard count > 0 else { throw InternetPairingError.invalidOffer("Random byte count must be positive.") }
@@ -305,6 +346,27 @@ final class InternetPairingCoordinator {
             throw InternetPairingError.persistenceFailure("Secure random generation failed with status \(status).")
         }
         return data
+    }
+}
+
+private struct PairingPersistenceCleanupMarker: Codable {
+    let version: Int
+    let remainingSecretNames: [String]
+
+    init(remainingSecretNames: [String]) {
+        version = 1
+        self.remainingSecretNames = remainingSecretNames
+    }
+
+    func validate() throws {
+        guard version == 1,
+              remainingSecretNames.count == 2,
+              remainingSecretNames.allSatisfy({ !$0.isEmpty }),
+              Set(remainingSecretNames).count == remainingSecretNames.count else {
+            throw InternetPairingError.persistenceFailure(
+                "Stored pairing cleanup marker is invalid; its Keychain slot was retained."
+            )
+        }
     }
 }
 

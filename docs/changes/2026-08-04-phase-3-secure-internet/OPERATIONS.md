@@ -75,7 +75,10 @@ The unsigned JSON is strict: it contains exactly `version`, `pairing_id`,
 `signaling_token`, `ice_servers`, and `allow_insecure_for_testing`. Each ICE
 server contains exactly `urls`, `username`, and `credential`; nullable values
 must be JSON `null`. The issuer adds `lease_host_key_id` and the DER ECDSA
-`lease_signature` over the Android canonical transcript.
+`lease_signature` over the Android canonical transcript. `session_epoch` in the
+unsigned input is an untrusted compatibility field: the issuer ignores its value,
+atomically reserves the next epoch from pairing-scoped durable Keychain state,
+replaces the field, and only then signs. Input JSON cannot select or reset it.
 
 Both input and output contain the signaling token and possibly TURN credentials.
 Keep them in an owner-only temporary directory, never pass them as command-line

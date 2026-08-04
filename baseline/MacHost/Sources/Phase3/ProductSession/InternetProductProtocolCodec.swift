@@ -48,6 +48,7 @@ struct InternetProductVideoConfiguration: Equatable {
     let bitrateKbps: Int
     let streamID: UInt64
     let configEpoch: UInt64
+    let rotationDegrees: Int
 
     init(
         codec: VSCodec,
@@ -56,7 +57,8 @@ struct InternetProductVideoConfiguration: Equatable {
         framesPerSecond: Int,
         bitrateKbps: Int,
         streamID: UInt64 = 1,
-        configEpoch: UInt64 = 1
+        configEpoch: UInt64 = 1,
+        rotationDegrees: Int = 0
     ) {
         self.codec = codec
         self.width = width
@@ -65,15 +67,35 @@ struct InternetProductVideoConfiguration: Equatable {
         self.bitrateKbps = bitrateKbps
         self.streamID = streamID
         self.configEpoch = configEpoch
+        self.rotationDegrees = rotationDegrees
     }
 
     func validate() throws {
         guard codec == .h264 || codec == .hevc,
               width > 0, height > 0,
               framesPerSecond > 0, bitrateKbps > 0,
-              streamID > 0, configEpoch > 0 else {
+              streamID > 0, configEpoch > 0,
+              [0, 90, 180, 270].contains(rotationDegrees) else {
             throw InternetProductProtocolError.unsupportedCodec
         }
+    }
+
+    func replacingRotation(_ rotationDegrees: Int) throws -> Self {
+        guard configEpoch < UInt64.max else {
+            throw InternetProductProtocolError.rejectedVideoConfiguration(
+                "Video configuration epoch is exhausted."
+            )
+        }
+        return Self(
+            codec: codec,
+            width: width,
+            height: height,
+            framesPerSecond: framesPerSecond,
+            bitrateKbps: bitrateKbps,
+            streamID: streamID,
+            configEpoch: configEpoch + 1,
+            rotationDegrees: rotationDegrees
+        )
     }
 }
 
@@ -90,7 +112,7 @@ struct InternetProductProtocolCodec {
     let hostID: String
     let hostName: String
     let peerDeviceID: String
-    let video: InternetProductVideoConfiguration
+    private(set) var video: InternetProductVideoConfiguration
     let maximumControlBytes: Int
     let maximumMediaBytes: Int
 
@@ -221,9 +243,28 @@ struct InternetProductProtocolCodec {
         configuration.framesPerSecond = UInt32(video.framesPerSecond)
         configuration.bitrateKbps = UInt32(video.bitrateKbps)
         configuration.streamID = video.streamID
+        configuration.rotationDegrees = UInt32(video.rotationDegrees)
         var envelope = baseEnvelope()
         envelope.videoConfig = configuration
         return try encode(envelope)
+    }
+
+    mutating func updateRotation(_ rotationDegrees: Int) throws -> [Data] {
+        video = try video.replacingRotation(rotationDegrees)
+        var size = VSDimensions()
+        size.width = UInt32(video.width)
+        size.height = UInt32(video.height)
+        var display = VSDisplayDescriptor()
+        display.displayID = "internet-display"
+        display.name = "Secure Internet Display"
+        display.logicalSize = size
+        display.scaleFactor = 1
+        var changed = VSDisplayChanged()
+        changed.display = display
+        changed.rotationDegrees = UInt32(video.rotationDegrees)
+        var envelope = baseEnvelope()
+        envelope.displayChanged = changed
+        return [try encode(envelope), try videoConfiguration()]
     }
 
     mutating func pong(sequence: UInt64, correlationID: UInt64) throws -> Data {

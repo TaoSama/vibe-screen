@@ -204,6 +204,18 @@ final class SecurityLifecycle {
         try advanceSessionEpoch()
     }
 
+    func requireCurrentSessionEpoch(_ expectedEpoch: UInt64) throws {
+        try Self.persistenceLock.withLock {
+            let state = try store.load()
+            try requireActive(state)
+            guard expectedEpoch > 0, state.sessionEpoch == expectedEpoch else {
+                throw PlatformSecurityError.invalidInput(
+                    "The session epoch is stale or was not reserved."
+                )
+            }
+        }
+    }
+
     func reserveNonce(channel: UInt32, senderRole: UInt32, keyEpoch: UInt64) throws -> Data {
         try reserveNonce(sessionEpoch: nil, channel: channel, senderRole: senderRole, keyEpoch: keyEpoch)
     }

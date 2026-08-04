@@ -115,6 +115,10 @@ enum InternetProductSessionSelfTest {
                 )
             }
             try wait(keyframeRequested, gate: "the product keyframe request")
+            try session.updateRotation(90)
+            try wait(harness.rotationComplete, gate: "the versioned runtime rotation")
+            try wait(streaming, gate: "streaming after rotation acknowledgment")
+            try wait(keyframeRequested, gate: "the post-rotation keyframe request")
 
             session.sendFrame(
                 Data(keyframePlaintextSeed.utf8),
@@ -144,7 +148,7 @@ enum InternetProductSessionSelfTest {
             print(
                 "Phase 3 product signaling self-test: PASS "
                     + "(productSession=true, protocolV1=true, route=\(pathLabel(evidence.route)), "
-                    + "epoch=\(evidence.epoch), configEpoch=\(evidence.configEpoch), "
+                    + "epoch=\(evidence.epoch), configEpoch=\(evidence.configEpoch), rotation=90, "
                     + "keyframe=true, delta=true, input=true, applicationE2EE=true, "
                     + "selectedCandidatePair=\(pathLabel(evidence.route))"
                     + "(local=\(evidence.localCandidateType),remote=\(evidence.remoteCandidateType),"
@@ -224,7 +228,11 @@ enum InternetProductSessionSelfTest {
     }
 
     private static func pathLabel(_ path: InternetPathKind) -> String {
-        path == .relay ? "relay" : "direct"
+        switch path {
+        case .unknown: return "unknown"
+        case .direct: return "direct"
+        case .relay: return "relay"
+        }
     }
 
     private static func fail(_ error: SelfTestError) -> Bool {
@@ -270,6 +278,7 @@ private final class ProductDeviceHarness {
     let keyframeComplete = DispatchSemaphore(value: 0)
     let mediaComplete = DispatchSemaphore(value: 0)
     let candidatePairObserved = DispatchSemaphore(value: 0)
+    let rotationComplete = DispatchSemaphore(value: 0)
 
     private let engine: WebRTCEnginePort
     private let configuration: WebRTCTransportConfiguration
@@ -280,6 +289,8 @@ private final class ProductDeviceHarness {
     private var selectedCandidatePair: WebRTCSelectedCandidatePair?
     private var epoch: UInt64 = 0
     private var configEpoch: UInt64 = 0
+    private var rotationDegrees: UInt32 = 0
+    private var displayChangedRotation: UInt32 = 0
     private var keyframeReceived = false
     private var deltaReceived = false
     private var touchSent = false
@@ -319,7 +330,9 @@ private final class ProductDeviceHarness {
                   pair.path == hostPath,
                   connectedPath == hostPath,
                   epoch == 1,
-                  configEpoch == 1,
+                  configEpoch == 2,
+                  rotationDegrees == 90,
+                  displayChangedRotation == 90,
                   keyframeReceived,
                   deltaReceived,
                   touchSent else { return nil }
@@ -367,9 +380,16 @@ private final class ProductDeviceHarness {
         case .sessionAccepted(let accepted):
             lock.withProductSelfTestLock { epoch = accepted.sessionEpoch }
         case .videoConfig(let configuration):
-            lock.withProductSelfTestLock { configEpoch = configuration.configEpoch }
+            let completedRotation = lock.withProductSelfTestLock { () -> Bool in
+                configEpoch = configuration.configEpoch
+                rotationDegrees = configuration.rotationDegrees
+                return configEpoch == 2 && rotationDegrees == 90 && displayChangedRotation == 90
+            }
             send(videoAccepted(configuration))
             send(touch(sessionEpoch: envelope.sessionEpoch))
+            if completedRotation { rotationComplete.signal() }
+        case .displayChanged(let changed):
+            lock.withProductSelfTestLock { displayChangedRotation = changed.rotationDegrees }
         case .hostHello, .ping, .pong: break
         default:
             throw InternetProductSessionSelfTest.SelfTestError.protocolFailure(

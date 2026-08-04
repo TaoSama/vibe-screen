@@ -484,6 +484,57 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
             )
         )
     }
+
+    func testOldCipherFailsClosedForSealAndOpenAfterDurableEpochAdvance() throws {
+        let store = MemorySecurityStateStore()
+        let lifecycle = SecurityLifecycle(store: store)
+        XCTAssertEqual(try lifecycle.reserveSessionEpoch(1), 1)
+        let pair = try PlatformSessionPacketCipher.selfTestPair(
+            sessionIdentifier: "epoch-bound-session",
+            sharedSecret: Data(repeating: 0x31, count: 32),
+            bootstrapSecret: Data(repeating: 0x32, count: 32),
+            transcriptContext: Data(repeating: 0x33, count: 32),
+            sessionEpoch: 1,
+            requireActiveEpoch: lifecycle.requireCurrentSessionEpoch
+        )
+        let oldRecord = try pair.device.seal(Data("old".utf8), channel: .control)
+        XCTAssertEqual(pair.host.open(oldRecord, channel: .control), Data("old".utf8))
+
+        XCTAssertEqual(try lifecycle.reserveSessionEpoch(2), 2)
+        let queue = DispatchQueue(label: "stale-cipher-race", attributes: .concurrent)
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var sealFailures = 0
+        var openFailures = 0
+        for _ in 0..<32 {
+            group.enter()
+            queue.async {
+                defer { group.leave() }
+                do {
+                    _ = try pair.device.seal(Data("stale".utf8), channel: .control)
+                } catch {
+                    lock.lock(); sealFailures += 1; lock.unlock()
+                }
+                if pair.host.open(oldRecord, channel: .control) == nil {
+                    lock.lock(); openFailures += 1; lock.unlock()
+                }
+            }
+        }
+        XCTAssertEqual(group.wait(timeout: .now() + 2), .success)
+        XCTAssertEqual(sealFailures, 32)
+        XCTAssertEqual(openFailures, 32)
+
+        let currentPair = try PlatformSessionPacketCipher.selfTestPair(
+            sessionIdentifier: "epoch-bound-session-2",
+            sharedSecret: Data(repeating: 0x31, count: 32),
+            bootstrapSecret: Data(repeating: 0x32, count: 32),
+            transcriptContext: Data(repeating: 0x34, count: 32),
+            sessionEpoch: 2,
+            requireActiveEpoch: lifecycle.requireCurrentSessionEpoch
+        )
+        let currentRecord = try currentPair.device.seal(Data("current".utf8), channel: .control)
+        XCTAssertEqual(currentPair.host.open(currentRecord, channel: .control), Data("current".utf8))
+    }
 }
 
 private func signedTombstone(

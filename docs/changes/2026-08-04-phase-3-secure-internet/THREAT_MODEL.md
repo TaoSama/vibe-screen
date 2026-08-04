@@ -39,7 +39,7 @@ boundary.
 | Pairing MITM / QR theft | short expiry, single redemption, random challenge, signed canonical transcript, both identities displayed | mutate every transcript field; redeem twice; use after expiry |
 | Algorithm/capability downgrade | signed protocol range, algorithms, capabilities, and roles; Internet mode never falls back to plaintext | strip/reorder offers and required capabilities |
 | Signaling impersonation | authenticated service plus independent peer identity proof | substitute SDP/candidates/peer ID |
-| Forged or epoch-poisoning session lease | paired-host signature covers all routing, epoch, transcript, signaling-token, ICE/TURN and policy fields; verify before durable high-watermark update; reserve maximum epoch | mutate each field, inject `Long.MAX_VALUE`, reuse an old host key |
+| Forged or epoch-poisoning session lease | paired-host signature covers all routing, epoch, transcript, signaling-token, ICE/TURN and policy fields; issuer ignores caller epoch and atomically reserves the next pairing-scoped durable value; receiver verifies before its durable high-watermark update | mutate each field, inject an abnormal high caller value, race issuers, restart authority, reuse an old host key |
 | Signaling token retained after revoke | issuer-only idempotent invalidation destroys both role tokens, queued payloads, and active long polls | invalidate during offer/answer/candidate polling; retry invalidation; reuse both role tokens |
 | Relay content inspection | application AEAD over control and full media header+payload; traffic keys never sent to service | TURN capture contains no known plaintext or codec/frame header |
 | Packet tampering | header as AEAD AAD, fail closed before dispatch | flip every header/ciphertext class |
@@ -83,6 +83,15 @@ Operational services necessarily observe coarse connection metadata. Default
 telemetry is pseudonymous and excludes content, raw candidate/IP data, credentials,
 and stable cross-install advertising identifiers. Diagnostic collection is
 explicit, time-bounded, locally previewable, and redacted before upload.
+
+An endpoint value and endpoint-bearing evidence paths were already published on
+the public main branch before this review. A normal follow-up commit cannot erase
+that value from Git history, existing clones, mirrors, or caches, and this branch
+does not claim otherwise. Removing it completely requires an explicitly approved
+coordinated history rewrite plus cache/mirror invalidation. Current branch gates
+dynamically detect the inherited baseline exposure and fail if the branch adds,
+modifies, or renames any IP/port variant; the sensitive value is not embedded in
+the gate source.
 
 ## Residual risks
 
