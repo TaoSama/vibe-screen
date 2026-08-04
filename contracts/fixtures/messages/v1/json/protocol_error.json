@@ -1,0 +1,13 @@
+{
+  "protocolVersion": 1,
+  "messageId": "13",
+  "correlationId": "8",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000013",
+  "protocolError": {
+    "code": "PROTOCOL_ERROR_CODE_UNSUPPORTED_CAPABILITY",
+    "message": "required capability unavailable",
+    "component": "session"
+  }
+}

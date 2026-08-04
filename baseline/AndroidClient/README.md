@@ -14,6 +14,10 @@ Android treats a new application ID as a different app.
 - Full-screen fit/fill rendering, real client-local Surface rotation,
   rotation/crop/letterbox-aware touch mapping, two-finger gestures, connection
   telemetry, and saved UI preferences.
+- Protocol v1 main-session negotiation, display/video configuration, logical
+  control/video channels, host-issued session epochs, touch, heartbeat, and
+  actionable protocol errors. Older hosts remain available through an explicit
+  legacy fallback.
 - QR pairing for LAN, encrypted-at-rest pairing credentials, actionable camera
   permission states, and automatic USB/LAN reconnection.
 - Adaptive layouts tested on phone and wide tablet-sized screens. The connected
@@ -83,8 +87,8 @@ USB reconnect is automatic and keeps retry delays bounded.
 4. On a network handoff or brief host interruption, leave the client open; it
    retries automatically. Use **Forget this Mac** to remove the stored token.
 
-LAN authentication does not encrypt legacy video or input traffic. Never use
-this mode on public, guest, or otherwise untrusted Wi-Fi.
+LAN authentication does not encrypt Protocol v1 or legacy video and input
+traffic. Never use this mode on public, guest, or otherwise untrusted Wi-Fi.
 
 ## Permissions and device behavior
 
@@ -175,7 +179,8 @@ and Camera settings-return recovery are covered by JVM/lint/build gates only.
 That post-device build has not been installed or exercised with a real Mac or
 physical peripherals.
 
-The following remain separate release gates: Xiaomi 12 coverage, a physical
+The following remain separate release gates: Protocol v1 real-device
+interoperability, Xiaomi 12 coverage, a physical
 8–9 inch tablet matrix, unlocked-Mac Phase 1 interaction acceptance, two-hour
 and eight-hour controlled soak runs, external-camera
 glass-to-glass latency, keyboard/native-mouse/stylus protocol interoperability,

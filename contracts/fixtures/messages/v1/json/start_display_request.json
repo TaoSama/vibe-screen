@@ -1,0 +1,13 @@
+{
+  "protocolVersion": 1,
+  "messageId": "6",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000006",
+  "startDisplayRequest": {
+    "mode": "DISPLAY_MODE_EXISTING",
+    "sourceDisplayId": "display-main",
+    "requestedLogicalSize": {"width": 1920, "height": 1080},
+    "requestedScaleFactor": 2.0
+  }
+}

@@ -1031,6 +1031,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // match the Mac's resolution dropdown (e.g. "2560x1600" instead of
             // the HiDPI-doubled "5120x3200").
             streamingServer?.setDisplaySize(width: streamSize.width, height: streamSize.height, rotation: settings.rotation)
+            streamingServer?.setProtocolV1VideoConfiguration(
+                framesPerSecond: settings.effectiveRefreshRate,
+                bitrateKbps: settings.effectiveBitrate * 1_000,
+                displayID: String(captureDisplayID),
+                displayName: "Telemachus Display",
+                isVirtual: settings.displaySource == .extended || settings.displaySource == .mirrorMain
+            )
             streamingServer?.onClientConnected = {
                 [weak self, weak configuredServer, weak configuredCapture]
                 clientGeneration in

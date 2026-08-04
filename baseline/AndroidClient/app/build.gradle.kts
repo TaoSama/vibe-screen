@@ -1,11 +1,15 @@
+import com.google.protobuf.gradle.id
+import com.google.protobuf.gradle.proto
 import java.security.MessageDigest
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.google.protobuf")
 }
 
 val appVersion = providers.environmentVariable("TELEMACHUS_VERSION").getOrElse("0.0.0")
+val protobufVersion = "4.32.1"
 val versionParts = appVersion.split(".")
 require(versionParts.size == 3 && versionParts.all { part -> part.toIntOrNull() != null }) {
     "TELEMACHUS_VERSION must be a semantic version, got '$appVersion'."
@@ -88,10 +92,28 @@ android {
 
     sourceSets {
         getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/oss-notices"))
+        getByName("main").proto {
+            srcDir(rootProject.projectDir.parentFile.parentFile.resolve("contracts/proto"))
+        }
     }
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+    }
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:$protobufVersion"
+    }
+    generateProtoTasks {
+        all().configureEach {
+            builtins {
+                id("java") {
+                    option("lite")
+                }
+            }
+        }
     }
 }
 
@@ -106,6 +128,10 @@ val syncOpenSourceNotices by tasks.registering(Sync::class) {
     from(rootProject.projectDir.parentFile.parentFile.resolve("third_party/webrtc-android")) {
         include("METADATA.json", "PATENTS", "WEBRTC_LICENSE", "WEBRTC_THIRD_PARTY_LICENSES.md", "WRAPPER_LICENSE")
         into("licenses/webrtc-android")
+    }
+    from(rootProject.projectDir.resolve("licenses/protobuf")) {
+        include("LICENSE")
+        into("licenses/protobuf")
     }
     into(layout.buildDirectory.dir("generated/oss-notices"))
 }
@@ -132,6 +158,8 @@ val generateReleaseDependencyLicenses by tasks.registering {
             setOf("com.google.code.gson:gson:2.13.1")
         val permittedBsdDependencies =
             setOf("io.github.webrtc-sdk:android:144.7559.09")
+        val permittedProtobufDependencies =
+            setOf("com.google.protobuf:protobuf-javalite:$protobufVersion")
         val dependencies =
             configurations
                 .getByName("releaseRuntimeClasspath")
@@ -147,7 +175,8 @@ val generateReleaseDependencyLicenses by tasks.registering {
                 val coordinate = "${dependency.first}:${dependency.second}:${dependency.third}"
                 permittedApacheGroups.none { prefix -> dependency.first.startsWith(prefix) } &&
                     coordinate !in permittedApacheDependencies &&
-                    coordinate !in permittedBsdDependencies
+                    coordinate !in permittedBsdDependencies &&
+                    coordinate !in permittedProtobufDependencies
             }
         check(unknown.isEmpty()) {
             "Review and classify new runtime dependency licenses: " +
@@ -170,6 +199,8 @@ val generateReleaseDependencyLicenses by tasks.registering {
                                 "WebRTC BSD-3-Clause plus bundled third-party terms " +
                                     "(`licenses/webrtc-android/WEBRTC_THIRD_PARTY_LICENSES.md`); " +
                                     "release wrapper MIT and patent grant are bundled beside it"
+                            coordinate in permittedProtobufDependencies ->
+                                "BSD-3-Clause (`licenses/protobuf/LICENSE`)"
                             coordinate in permittedApacheDependencies ->
                                 "Apache License 2.0 ([source](https://github.com/google/gson/tree/gson-parent-2.13.1), bundled as `licenses/gson/LICENSE`)"
                             else -> "Apache License 2.0"
@@ -207,6 +238,8 @@ val generateReleaseSbom by tasks.registering {
                     when (coordinate) {
                         "com.google.code.gson:gson:2.13.1" -> "Apache-2.0" to "Apache-2.0"
                         "io.github.webrtc-sdk:android:144.7559.09" -> "NOASSERTION" to "BSD-3-Clause"
+                        "com.google.protobuf:protobuf-javalite:$protobufVersion" ->
+                            "BSD-3-Clause" to "BSD-3-Clause"
                         else -> "Apache-2.0" to "Apache-2.0"
                     }
                 """    {"SPDXID":"SPDXRef-Package-${group.replace('.', '-')}-${name.replace('.', '-')}","name":"$coordinate","versionInfo":"$version","downloadLocation":"https://repo1.maven.org/maven2/${group.replace('.', '/')}/$name/$version/","licenseConcluded":"${licenses.first}","licenseDeclared":"${licenses.second}","externalRefs":[{"referenceCategory":"PACKAGE-MANAGER","referenceType":"purl","referenceLocator":"pkg:maven/$group/$name@$version"}]}"""
@@ -271,6 +304,32 @@ val auditReleaseDependencies by tasks.registering {
         check(webRtcDigest == "34cf91dd7497e5fe88adb76ba29ccae35db42dd6614ce548b79ce037b6d634d5") {
             "WebRTC AAR digest changed: $webRtcDigest"
         }
+        val protobufCoordinate = "com.google.protobuf:protobuf-javalite:$protobufVersion"
+        val protobufArtifacts =
+            runtimeArtifacts.filter {
+                "${it.moduleVersion.id.group}:${it.name}:${it.moduleVersion.id.version}" == protobufCoordinate
+            }
+        check(protobufArtifacts.size == 1) {
+            "Exactly $protobufCoordinate must be present in releaseRuntimeClasspath"
+        }
+        val protobufArtifactDigest =
+            MessageDigest
+                .getInstance("SHA-256")
+                .digest(protobufArtifacts.single().file.readBytes())
+                .joinToString("") { "%02x".format(it) }
+        check(protobufArtifactDigest == "55b046d3213f1046a2172e28e32a2bc72bbd49aebc66a4e44b99db9fff6def8e") {
+            "Protobuf Java Lite JAR digest changed: $protobufArtifactDigest"
+        }
+        val protobufLicense = rootProject.projectDir.resolve("licenses/protobuf/LICENSE")
+        check(protobufLicense.isFile) { "Protobuf BSD-3-Clause license is missing" }
+        val protobufLicenseDigest =
+            MessageDigest
+                .getInstance("SHA-256")
+                .digest(protobufLicense.readBytes())
+                .joinToString("") { "%02x".format(it) }
+        check(protobufLicenseDigest == "6e5e117324afd944dcf67f36cf329843bc1a92229a8cd9bb573d7a83130fea7d") {
+            "Protobuf BSD-3-Clause license hash changed: $protobufLicenseDigest"
+        }
         val webRtcLicenseDirectory = repositoryRoot.resolve("third_party/webrtc-android")
         val requiredWebRtcNotices =
             mapOf(
@@ -301,12 +360,18 @@ val auditReleaseDependencies by tasks.registering {
         check(webRtcCoordinate in licenseReport) {
             "WebRTC is absent from the generated Android runtime license inventory"
         }
+        check(protobufCoordinate in licenseReport) {
+            "Protobuf Java Lite is absent from the generated Android runtime license inventory"
+        }
         val sbom = layout.buildDirectory.file("generated/sbom/android-runtime.spdx.json").get().asFile.readText()
         check("pkg:maven/com.google.code.gson/gson@2.13.1" in sbom) {
             "Gson is absent from the generated SPDX SBOM"
         }
         check("pkg:maven/io.github.webrtc-sdk/android@144.7559.09" in sbom) {
             "WebRTC is absent from the generated SPDX SBOM"
+        }
+        check("pkg:maven/com.google.protobuf/protobuf-javalite@$protobufVersion" in sbom) {
+            "Protobuf Java Lite is absent from the generated SPDX SBOM"
         }
     }
 }
@@ -364,6 +429,7 @@ dependencies {
     // WebRTC M144 Android AAR, pinned for reproducible native packaging.
     implementation("io.github.webrtc-sdk:android:144.7559.09")
     implementation("com.google.code.gson:gson:2.13.1")
+    implementation("com.google.protobuf:protobuf-javalite:$protobufVersion")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:core:1.6.1")

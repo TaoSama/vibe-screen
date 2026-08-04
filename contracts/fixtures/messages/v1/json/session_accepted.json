@@ -1,0 +1,15 @@
+{
+  "protocolVersion": 1,
+  "messageId": "3",
+  "correlationId": "1",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000003",
+  "sessionAccepted": {
+    "sessionId": "AQIDBAUGBwg=",
+    "sessionEpoch": "7",
+    "heartbeatIntervalMs": 1000,
+    "negotiatedCapabilities": ["CAPABILITY_TOUCH", "CAPABILITY_KEYBOARD", "CAPABILITY_POINTER", "CAPABILITY_TELEMETRY"],
+    "negotiatedResourceLimits": {"maximumClients": 1, "maximumDisplays": 1, "maximumVideoStreams": 1}
+  }
+}

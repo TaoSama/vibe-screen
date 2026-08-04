@@ -44,6 +44,7 @@ message ClientHello {
   repeated TransportKind transports = 6;
   ResourceLimits resource_limits = 7;
   repeated VideoDecodeCapability video_decode_capabilities = 8;
+  repeated Capability required_capabilities = 9;
 }
 
 message HostHello {

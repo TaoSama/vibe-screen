@@ -1,0 +1,21 @@
+{
+  "protocolVersion": 1,
+  "messageId": "8",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000008",
+  "videoConfig": {
+    "configEpoch": "3",
+    "codec": "CODEC_HEVC",
+    "encodedSize": {"width": 1920, "height": 1080},
+    "framesPerSecond": 60,
+    "bitrateKbps": 12000,
+    "streamId": "42",
+    "colorDescription": {
+      "primaries": "COLOR_PRIMARIES_BT709",
+      "transferFunction": "TRANSFER_FUNCTION_BT709",
+      "matrixCoefficients": "MATRIX_COEFFICIENTS_BT709",
+      "bitDepth": 8
+    }
+  }
+}

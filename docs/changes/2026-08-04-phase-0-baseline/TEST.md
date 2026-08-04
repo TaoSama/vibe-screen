@@ -79,6 +79,45 @@ result.
 - Both macOS test suites fail before test execution with
   `error: no such module 'XCTest'` because full Xcode is not selected.
 
+## Protocol v1 main-session offline verification (2026-08-05)
+
+The macOS host and Android client now share the checked Protocol v1 schemas in
+their runnable baseline session. This evidence proves generated-wire
+compatibility, session behavior, builds, and the non-listening host integration
+self-test. It does not replace device interoperability evidence.
+
+- `make protocol` passes Buf format, lint, build, and breaking checks plus 11
+  fixture/security tests. Fixed fixtures cover 13 control envelopes, media
+  header plus Annex-B payload, upgrade bytes, unknown fields, required
+  capability field 9, and split/coalesced logical-channel framing.
+- `./gradlew testDebugUnitTest lintDebug assembleDebug
+  auditReleaseDependencies` passes 84 Android unit tests and all 66 Gradle
+  tasks. The generated Java-lite bindings contain 168 files. The resulting
+  debug APK SHA-256 is
+  `46b0899f2335a51f5d0be359d02b5c7e86be2241e9f6b492e177e416b8e602bf`.
+- `swift build -c release --product Telemachus` passes. The release executable
+  SHA-256 is
+  `76202bd0deb8d8f9763490f25361dea9a894a5636a84d4e205fcfb2f1449ceb1`.
+  `.build/release/Telemachus --protocol-v1-self-test` reports `PASS` for
+  framing, all shared cross-platform golden fixtures, version/required
+  capability negotiation, display/video acknowledgement gating, stale epochs,
+  input including two-pointer aggregation, heartbeat, errors, and media.
+- The additive schema was regenerated into both MacHost and iOS Swift bindings.
+  `swift build --package-path apps/ios` and the iOS core self-test pass, proving
+  the checked binding update did not regress that consumer.
+- `swift test --filter ProtocolV1SessionTests` still fails before test execution
+  with `no such module 'XCTest'`: this machine selects
+  `/Library/Developer/CommandLineTools`, not full Xcode. The equivalent pure
+  host self-test is evidence for this change, but it is not recorded as XCTest.
+
+The available device lease was released after a screen-locked macOS host
+reported zero ScreenCaptureKit displays; its attempted two-hour pre-warm never
+started a valid clock and is not evidence. No Protocol v1 APK install, app
+launch, media-port probe, or device stream was performed for this integration
+record. A future device run must acquire a fresh exclusive lease and prove the
+new wire mode from host/client logs before it can close the interoperability
+gate.
+
 ## Final coordinated device acceptance (2026-08-04)
 
 The final device run used ADB endpoint `100.72.246.116:5555`. The device
@@ -156,7 +195,7 @@ Detailed commands, hashes, and artifact locations are recorded in
 - private virtual-display behavior on macOS 26.4.1;
 - selected-display hot-plug behavior, true mirror mode, and real-window restore;
 - Xiaomi 12 install, hardware decode, input, disconnect, and soak behavior;
-- keyboard forwarding, Protocol v1 application interoperability, a two-hour
-  no-growth run, and external glass-to-glass/input latency.
+- keyboard forwarding, Protocol v1 real-device application interoperability, a
+  two-hour no-growth run, and external glass-to-glass/input latency.
 
 These remain required work. They must not be converted into assumed passes.

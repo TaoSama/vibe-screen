@@ -1,0 +1,19 @@
+{
+  "protocolVersion": 1,
+  "messageId": "7",
+  "correlationId": "6",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000007",
+  "startDisplayResponse": {
+    "accepted": true,
+    "display": {
+      "displayId": "display-main",
+      "name": "Built-in Retina Display",
+      "logicalSize": {"width": 1920, "height": 1080},
+      "scaleFactor": 2.0,
+      "isPrimary": true
+    },
+    "streamId": "42"
+  }
+}

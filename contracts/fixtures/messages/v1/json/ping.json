@@ -1,0 +1,8 @@
+{
+  "protocolVersion": 1,
+  "messageId": "11",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000011",
+  "ping": {"sequence": "99"}
+}

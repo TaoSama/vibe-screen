@@ -1,0 +1,17 @@
+{
+  "protocolVersion": 1,
+  "messageId": "5",
+  "correlationId": "4",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000005",
+  "listDisplaysResponse": {
+    "displays": [{
+      "displayId": "display-main",
+      "name": "Built-in Retina Display",
+      "logicalSize": {"width": 1920, "height": 1080},
+      "scaleFactor": 2.0,
+      "isPrimary": true
+    }]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "protocolVersion": 1,
+  "messageId": "1",
+  "sentAtMonotonicNs": "1000000001",
+  "clientHello": {
+    "supportedProtocols": {"minimum": 1, "maximum": 1},
+    "deviceId": "android-golden",
+    "deviceName": "Golden Android",
+    "capabilities": ["CAPABILITY_TOUCH", "CAPABILITY_KEYBOARD", "CAPABILITY_POINTER", "CAPABILITY_TELEMETRY"],
+    "codecs": ["CODEC_HEVC", "CODEC_H264"],
+    "transports": ["TRANSPORT_KIND_USB", "TRANSPORT_KIND_LAN"],
+    "resourceLimits": {"maximumClients": 1, "maximumDisplays": 1, "maximumVideoStreams": 1},
+    "videoDecodeCapabilities": [
+      {"codec": "CODEC_HEVC", "maximumWidth": 1920, "maximumHeight": 1200, "maximumFramesPerSecond": 60, "bitDepths": [8]},
+      {"codec": "CODEC_H264", "maximumWidth": 1920, "maximumHeight": 1200, "maximumFramesPerSecond": 60, "bitDepths": [8]}
+    ],
+    "requiredCapabilities": ["CAPABILITY_TOUCH"]
+  }
+}

@@ -19,6 +19,10 @@ def message_fields(source: str, message_name: str) -> dict[str, int]:
 
 
 class SecurityContractTest(unittest.TestCase):
+    def test_client_required_capabilities_is_additive_field_nine(self) -> None:
+        source = (PROTO_ROOT / "session.proto").read_text()
+        self.assertEqual(9, message_fields(source, "ClientHello")["required_capabilities"])
+
     def test_legacy_pairing_field_numbers_remain_stable(self) -> None:
         source = (PROTO_ROOT / "pairing.proto").read_text()
         self.assertEqual(
