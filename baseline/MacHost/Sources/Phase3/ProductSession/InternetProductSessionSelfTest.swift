@@ -300,6 +300,8 @@ private final class ProductDeviceHarness {
     private var keyframeReceived = false
     private var deltaReceived = false
     private var touchSent = false
+    private var pendingControlPayloads: [Data] = []
+    private var controlSendInFlight = false
     private var helloSent = false
     private var storedFailures: [String] = []
 
@@ -479,11 +481,39 @@ private final class ProductDeviceHarness {
     private func send(_ envelope: VSEnvelope) {
         do {
             let data = try envelope.serializedData()
-            engine.send(data, channel: .control) { [weak self] result in
-                if case .failure(let error) = result { self?.recordFailure(error.localizedDescription) }
+            let shouldStart = lock.withProductSelfTestLock { () -> Bool in
+                pendingControlPayloads.append(data)
+                guard !controlSendInFlight else { return false }
+                controlSendInFlight = true
+                return true
             }
+            if shouldStart { sendNextControlPayload() }
         } catch {
             recordFailure(error.localizedDescription)
+        }
+    }
+
+    private func sendNextControlPayload() {
+        guard let payload = lock.withProductSelfTestLock({ pendingControlPayloads.first }) else {
+            lock.withProductSelfTestLock { controlSendInFlight = false }
+            return
+        }
+        engine.send(payload, channel: .control) { [weak self] result in
+            guard let self else { return }
+            let shouldContinue = self.lock.withProductSelfTestLock { () -> Bool in
+                if !self.pendingControlPayloads.isEmpty {
+                    self.pendingControlPayloads.removeFirst()
+                }
+                if case .failure(let error) = result {
+                    self.storedFailures.append(error.localizedDescription)
+                }
+                if self.pendingControlPayloads.isEmpty {
+                    self.controlSendInFlight = false
+                    return false
+                }
+                return true
+            }
+            if shouldContinue { self.sendNextControlPayload() }
         }
     }
 
