@@ -3,6 +3,9 @@ package dev.telemachus.display.protocol
 import dev.telemachus.display.protocol.TouchEventBuffer.OfferResult
 import dev.vibescreen.protocol.v1.InputPhase
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -157,6 +160,112 @@ class TouchEventPrimitivesTest {
         assertEquals(true, completed.await(1, TimeUnit.SECONDS))
         assertEquals(InputPhase.INPUT_PHASE_ENDED, buffer.take().phase)
         producer.join(1_000)
+    }
+
+    @Test
+    fun `offer stays non-blocking when boundary-only buffer is saturated`() {
+        val buffer = TouchEventBuffer(capacity = 1)
+        buffer.offer(sample(1, InputPhase.INPUT_PHASE_BEGAN, 0.0))
+
+        val startedAt = System.nanoTime()
+        val result = buffer.offer(sample(1, InputPhase.INPUT_PHASE_ENDED, 1.0))
+        val elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
+
+        assertEquals(OfferResult.RETRY_REQUIRED, result)
+        assertTrue("offer blocked for ${elapsedMillis}ms", elapsedMillis < 100)
+    }
+
+    @Test
+    fun `cancel wakes producer blocked by boundary backpressure`() {
+        val buffer = TouchEventBuffer(capacity = 1)
+        buffer.offer(sample(1, InputPhase.INPUT_PHASE_BEGAN, 0.0))
+        val entered = CountDownLatch(1)
+        val completed = CountDownLatch(1)
+        var accepted = true
+        val producer =
+            Thread {
+                entered.countDown()
+                accepted = buffer.put(sample(1, InputPhase.INPUT_PHASE_ENDED, 1.0))
+                completed.countDown()
+            }.apply { start() }
+
+        assertTrue(entered.await(1, TimeUnit.SECONDS))
+        assertFalse(completed.await(100, TimeUnit.MILLISECONDS))
+        buffer.cancel()
+
+        assertTrue(completed.await(1, TimeUnit.SECONDS))
+        assertFalse(accepted)
+        assertEquals(OfferResult.CLOSED, buffer.offer(sample(2, InputPhase.INPUT_PHASE_BEGAN, 0.0)))
+        producer.join(1_000)
+    }
+
+    @Test
+    fun `non-blocking ingress stays responsive while producer is backpressured and cancel releases it`() {
+        val ingress = TouchEventBuffer(capacity = 2)
+        val delivery = TouchEventBuffer(capacity = 1)
+        delivery.offer(sample(1, InputPhase.INPUT_PHASE_BEGAN, 0.0))
+        ingress.offer(sample(1, InputPhase.INPUT_PHASE_ENDED, 1.0))
+        val producerStopped = CountDownLatch(1)
+        val producer =
+            Thread {
+                try {
+                    delivery.put(ingress.take())
+                } finally {
+                    producerStopped.countDown()
+                }
+            }.apply { start() }
+
+        val startedAt = System.nanoTime()
+        assertEquals(OfferResult.ACCEPTED, ingress.offer(sample(2, InputPhase.INPUT_PHASE_BEGAN, 0.2)))
+        val elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
+        assertTrue("UI ingress blocked for ${elapsedMillis}ms", elapsedMillis < 100)
+        assertFalse(producerStopped.await(100, TimeUnit.MILLISECONDS))
+
+        ingress.cancel()
+        delivery.cancel()
+        assertTrue(producerStopped.await(1, TimeUnit.SECONDS))
+        producer.join(1_000)
+    }
+
+    @Test
+    fun `cancel wakes consumer waiting on an empty buffer`() {
+        val buffer = TouchEventBuffer(capacity = 1)
+        val completed = CountDownLatch(1)
+        var closed = false
+        val consumer =
+            Thread {
+                try {
+                    buffer.take()
+                    fail("take should not return a sample after cancellation")
+                } catch (_: TouchEventBufferClosedException) {
+                    closed = true
+                } finally {
+                    completed.countDown()
+                }
+            }.apply { start() }
+
+        assertFalse(completed.await(100, TimeUnit.MILLISECONDS))
+        buffer.cancel()
+
+        assertTrue(completed.await(1, TimeUnit.SECONDS))
+        assertTrue(closed)
+        consumer.join(1_000)
+    }
+
+    @Test
+    fun `close drains accepted samples then terminates consumer`() {
+        val buffer = TouchEventBuffer(capacity = 2)
+        buffer.offer(sample(1, InputPhase.INPUT_PHASE_BEGAN, 0.0))
+        buffer.close()
+
+        assertEquals(InputPhase.INPUT_PHASE_BEGAN, buffer.take().phase)
+        try {
+            buffer.take()
+            fail("drained closed buffer should terminate the consumer")
+        } catch (_: TouchEventBufferClosedException) {
+            // Expected termination signal.
+        }
+        assertEquals(OfferResult.CLOSED, buffer.offer(sample(1, InputPhase.INPUT_PHASE_ENDED, 1.0)))
     }
 
     @Test
