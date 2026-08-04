@@ -1,0 +1,38 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "soak_blocked_before_start",
+  "recorded_at": "2026-08-04T17:32:00Z",
+  "status": "blocked",
+  "accepted_for_gate": false,
+  "formal_duration_seconds": 0,
+  "accepted_sample_count": 0,
+  "two_hour_gate_closed": false,
+  "reason": "macOS console session locked; SCShareableContent returned zero displays during pre-warm",
+  "formal_runner_started": false,
+  "hevc_stream_established": false,
+  "device_lock_released": true,
+  "repository": {
+    "commit": "6f7ffbe0be872390144899642636dbb24d89f120",
+    "branch_base": "origin/main"
+  },
+  "device": {
+    "adb_serial": "100.72.246.116:5555",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "device": "pacific",
+    "hardware_serial": "EP0110PZ0B9110152B",
+    "android_release": "16",
+    "sdk": 36,
+    "build_fingerprint": "nubia/pacific/pacific:16/2.5.2.0/20260804.003241:userdebug/test-keys"
+  },
+  "artifacts": {
+    "apk_sha256": "d3acd058c806108a747da853533c7ffa631347b3de64e4e367c1d8cb944328c6",
+    "host_executable_sha256": "98df1a5de55a8ee49b469febae36bcf9bc744dc9121ee64b23c795385847f5ff"
+  },
+  "invalidation": {
+    "prewarm_only": true,
+    "reuse_elapsed_time": false,
+    "reuse_as_soak_evidence": false,
+    "required_next_action": "Acquire a new exclusive device lock after macOS is unlocked, pre-warm a real HEVC stream, then run a fresh uninterrupted two-hour preset"
+  }
+}
