@@ -115,6 +115,7 @@ enum InternetProductSessionSelfTest {
                 )
             }
             try wait(keyframeRequested, gate: "the product keyframe request")
+            try wait(input, gate: "the routed touch input before rotation")
             try session.updateRotation(90)
             try wait(harness.rotationComplete, gate: "the versioned runtime rotation")
             guard streaming.wait(timeout: .now() + timeout) == .success else {
@@ -140,7 +141,6 @@ enum InternetProductSessionSelfTest {
                 sessionEpoch: 1
             )
             try wait(harness.mediaComplete, gate: "keyframe and delta media")
-            try wait(input, gate: "the routed touch input")
             try wait(harness.candidatePairObserved, gate: "the selected ICE candidate pair")
 
             guard let evidence = harness.evidence(hostPath: state.hostPath),
