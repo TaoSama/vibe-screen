@@ -32,7 +32,7 @@ final class StreamingServerLifecycleTests: XCTestCase {
         defer { server.stop() }
 
         let paired = expectation(description: "fragmented handshake accepted")
-        server.onWirelessClientPaired = { name in
+        server.onWirelessClientPaired = { name, _ in
             XCTAssertEqual(name, "Test tablet")
             paired.fulfill()
         }
@@ -65,8 +65,8 @@ final class StreamingServerLifecycleTests: XCTestCase {
         let connected = expectation(description: "legitimate client connected")
         let disconnected = expectation(description: "active client disconnected")
         disconnected.isInverted = true
-        server.onClientConnected = { connected.fulfill() }
-        server.onClientDisconnected = { disconnected.fulfill() }
+        server.onClientConnected = { _ in connected.fulfill() }
+        server.onClientDisconnected = { _ in disconnected.fulfill() }
         try server.start()
 
         let legitimate = try readyClient(port: port)
@@ -116,8 +116,8 @@ final class StreamingServerLifecycleTests: XCTestCase {
 
         let connected = expectation(description: "client connected")
         let disconnected = expectation(description: "client revoked")
-        server.onClientConnected = { connected.fulfill() }
-        server.onClientDisconnected = { disconnected.fulfill() }
+        server.onClientConnected = { _ in connected.fulfill() }
+        server.onClientDisconnected = { _ in disconnected.fulfill() }
         try server.start()
 
         let client = try readyClient(port: port)
@@ -144,7 +144,7 @@ final class StreamingServerLifecycleTests: XCTestCase {
         let firstConnected = expectation(description: "first connected")
         let secondConnected = expectation(description: "second connected")
         var connectionCount = 0
-        server.onClientConnected = {
+        server.onClientConnected = { _ in
             connectionCount += 1
             if connectionCount == 1 {
                 firstConnected.fulfill()
@@ -154,7 +154,7 @@ final class StreamingServerLifecycleTests: XCTestCase {
         }
         let disconnected = expectation(description: "new session disconnected")
         disconnected.isInverted = true
-        server.onClientDisconnected = { disconnected.fulfill() }
+        server.onClientDisconnected = { _ in disconnected.fulfill() }
         try server.start()
 
         let first = try readyClient(port: port)
@@ -181,8 +181,8 @@ final class StreamingServerLifecycleTests: XCTestCase {
         defer { server.stop() }
         let connected = expectation(description: "client connected")
         let disconnected = expectation(description: "malformed client disconnected")
-        server.onClientConnected = { connected.fulfill() }
-        server.onClientDisconnected = { disconnected.fulfill() }
+        server.onClientConnected = { _ in connected.fulfill() }
+        server.onClientDisconnected = { _ in disconnected.fulfill() }
         try server.start()
 
         let client = try readyClient(port: port)

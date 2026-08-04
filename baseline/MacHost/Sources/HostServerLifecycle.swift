@@ -11,6 +11,7 @@ final class HostServerLifecycle {
 
     private(set) var state: State = .idle
     private var generation: UInt64 = 0
+    private var latestClientGeneration: [UInt64: UInt64] = [:]
 
     var canStart: Bool { state == .idle }
 
@@ -27,6 +28,18 @@ final class HostServerLifecycle {
 
     func ownsSession(_ token: UInt64) -> Bool {
         state == .starting(token) || state == .running(token)
+    }
+
+    func acceptsCallback(
+        _ token: UInt64,
+        sourceMatches: Bool,
+        clientGeneration: UInt64
+    ) -> Bool {
+        guard ownsSession(token), sourceMatches else { return false }
+        let latest = latestClientGeneration[token] ?? 0
+        guard clientGeneration >= latest else { return false }
+        latestClientGeneration[token] = clientGeneration
+        return true
     }
 
     func finishStart(_ token: UInt64) -> Bool {
@@ -49,5 +62,6 @@ final class HostServerLifecycle {
     func finishStop(_ token: UInt64) {
         guard state == .stopping(token) else { return }
         state = .idle
+        latestClientGeneration.removeAll()
     }
 }

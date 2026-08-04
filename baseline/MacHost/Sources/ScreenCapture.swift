@@ -919,7 +919,28 @@ class ScreenCapture {
                         self.framePacingTimer = nil
                         self.pacingLock.withLock { $0.latestPixelBuffer = nil }
                         self.cgDisplayStream = nil
-                        self.reportTerminalCaptureFailure()
+                        self.stopFrameMonitor()
+                        switch FallbackStoppedPolicy.action(
+                            followsMainDisplay: self.followsMainDisplay,
+                            capturedDisplayID: self.virtualDisplayID,
+                            currentMainDisplayID: CGMainDisplayID()
+                        ) {
+                        case .rebuild(let replacementID):
+                            debugLog(
+                                "Fallback display stopped; following replacement " +
+                                "main display \(replacementID)"
+                            )
+                            self.virtualDisplayID = replacementID
+                            self.onDisplayIDChanged?(replacementID)
+                            if self.attemptFallbackCapture(stopSCStream: false) {
+                                self.encoder?.requestKeyframe()
+                                self.startFrameMonitor()
+                            } else {
+                                self.restartStream()
+                            }
+                        case .terminalFailure:
+                            self.reportTerminalCaptureFailure()
+                        }
                     }
                     return
                 case .clearFrame:

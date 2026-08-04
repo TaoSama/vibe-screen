@@ -67,31 +67,69 @@ enum StreamingServerMode {
     case wireless(authToken: Data)
 }
 
+struct NegotiatedDisplayConfiguration: Equatable {
+    let width: Int
+    let height: Int
+    let rotation: Int
+}
+
+final class ClientCallbackGenerationGate {
+    private let lock = NSLock()
+    private var currentGeneration: UInt64 = 0
+
+    func advance(to generation: UInt64) {
+        lock.withLock {
+            currentGeneration = max(currentGeneration, generation)
+        }
+    }
+
+    func isCurrent(_ generation: UInt64) -> Bool {
+        lock.withLock { currentGeneration == generation }
+    }
+
+    func performIfCurrent(
+        _ generation: UInt64,
+        operation: () -> Void
+    ) -> Bool {
+        // The operation is deliberately linearized with generation changes.
+        // It must not synchronously re-enter this gate or wait for networkQueue.
+        lock.withLock {
+            guard currentGeneration == generation else { return false }
+            operation()
+            return true
+        }
+    }
+}
+
 class StreamingServer {
     private let port: UInt16
     private let mode: StreamingServerMode
     private var listener: NWListener?
     private var connection: NWConnection?
-    var onClientConnected: (() -> Void)?
-    var onClientDisconnected: (() -> Void)?
+    var onClientConnected: ((UInt64) -> Void)?
+    var onClientDisconnected: ((UInt64) -> Void)?
     /// Fired once per connection during protocol startup, BEFORE the display
     /// config is sent, for every outcome (.hevc or .h264) — so the capture
     /// pipeline can also revert to HEVC after an AVC-only client goes away.
-    var onCodecNegotiated: ((StreamCodec) -> Void)?
+    var onCodecNegotiated: ((
+        StreamCodec,
+        UInt64,
+        @escaping (NegotiatedDisplayConfiguration?) -> Void
+    ) -> Void)?
     // Touch callback: (x1, y1, action, pointerCount, x2, y2)
-    var onTouchEvent: ((Float, Float, Int, Int, Float, Float) -> Void)?
-    var onInputCancelled: (() -> Void)?
-    var onStats: ((Double, Double) -> Void)?
-    var onKeyframeRequested: ((Bool) -> Void)?
+    var onTouchEvent: ((Float, Float, Int, Int, Float, Float, UInt64) -> Void)?
+    var onInputCancelled: ((UInt64) -> Void)?
+    var onStats: ((Double, Double, UInt64) -> Void)?
+    var onKeyframeRequested: ((Bool, UInt64) -> Void)?
     // Whether host wants to receive touch events from client. Ping/pong is
     // handled regardless. When false, incoming touch frames are dropped
     // immediately without parsing or dispatching to main queue.
     var touchEnabled: Bool = true
 
-    var onWirelessClientPaired: ((String) -> Void)?
+    var onWirelessClientPaired: ((String, UInt64) -> Void)?
     var onServerFailed: ((Error) -> Void)?
     /// Fired when the Android client reports Build.MODEL + max panel Hz.
-    var onDeviceInfoReceived: ((String, UInt8) -> Void)?
+    var onDeviceInfoReceived: ((String, UInt8, UInt64) -> Void)?
 
     private let frameQueue = DispatchQueue(label: "frameQueue", qos: .userInteractive)
     private let receiveQueue = DispatchQueue(label: "receiveQueue", qos: .userInteractive)
@@ -102,6 +140,7 @@ class StreamingServer {
         let isKeyframe: Bool
         let connection: NWConnection
         let generation: UInt64
+        let clientGeneration: UInt64
         let sessionEpoch: UInt64
     }
     /// At most one frame is inside Network.framework and one newer frame is
@@ -121,11 +160,11 @@ class StreamingServer {
     private var isStopped = false
     private var connectionReady = false
     private var activeConnectionGeneration: UInt64 = 0
-    private let inputDispatchLock = NSLock()
-    private var inputDispatchGeneration: UInt64 = 0
+    private let clientCallbackGeneration = ClientCallbackGenerationGate()
     private var activeConnectionIsWireless = false
     private var clientSupportsFrameMetadata = false
     private var clientIsAvcOnly = false
+    private var codecNegotiationGeneration: UInt64?
     private var inputBuffer = Data()
     private var expectedAuthToken: Data?
     private var pendingHandshakeTimeouts: [ObjectIdentifier: DispatchWorkItem] = [:]
@@ -340,14 +379,13 @@ class StreamingServer {
         }
         activeConnectionGeneration &+= 1
         let generation = activeConnectionGeneration
-        inputDispatchLock.withLock {
-            inputDispatchGeneration = generation
-        }
+        clientCallbackGeneration.advance(to: generation)
         connection = conn
         activeConnectionIsWireless = isWireless
         connectionReady = false
         clientSupportsFrameMetadata = false
         clientIsAvcOnly = false
+        codecNegotiationGeneration = nil
         inputBuffer.removeAll(keepingCapacity: true)
         isReceiving = false
         droppedFrames = 0
@@ -371,7 +409,7 @@ class StreamingServer {
         }
 
         if let deviceName {
-            onWirelessClientPaired?(deviceName)
+            onWirelessClientPaired?(deviceName, generation)
         }
         startReceivingTouch(on: conn, generation: generation)
 
@@ -394,9 +432,8 @@ class StreamingServer {
         heartbeatTimer?.cancel()
         heartbeatTimer = nil
         activeConnectionGeneration &+= 1
-        inputDispatchLock.withLock {
-            inputDispatchGeneration = activeConnectionGeneration
-        }
+        codecNegotiationGeneration = nil
+        clientCallbackGeneration.advance(to: activeConnectionGeneration)
         inputBuffer.removeAll(keepingCapacity: true)
         let epoch = sessionEpochGate.current
         let nowNs = DispatchTime.now().uptimeNanoseconds
@@ -411,7 +448,7 @@ class StreamingServer {
             epoch: epoch,
             attributes: ["suggested_retry_delay_ns": .unsigned(retryDelayNs)]
         )
-        onClientDisconnected?()
+        onClientDisconnected?(activeConnectionGeneration)
     }
 
     private func requestProtocolStartup(on conn: NWConnection, generation: UInt64) {
@@ -427,7 +464,8 @@ class StreamingServer {
         guard connection === conn,
               activeConnectionGeneration == generation,
               !isStopped,
-              !connectionReady else { return }
+              !connectionReady,
+              codecNegotiationGeneration != generation else { return }
 
         let clientCodecs: [StreamCodec] = clientIsAvcOnly ? [.h264] : [.hevc, .h264]
         let decision: CodecFallbackDecision
@@ -475,10 +513,52 @@ class StreamingServer {
                 "reason": .string(decision.reason.rawValue)
             ]
         )
-        // Synchronous, before sendDisplaySize(): the handler switches the
-        // encoder AND updates displayWidth/Height (clamped for H.264) so the
-        // display config below carries decoder-safe dimensions.
-        onCodecNegotiated?(codec)
+        codecNegotiationGeneration = generation
+        let completion: (NegotiatedDisplayConfiguration?) -> Void = {
+            [weak self, weak conn] configuration in
+            guard let self, let conn else { return }
+            self.networkQueue.async {
+                guard self.connection === conn,
+                      self.activeConnectionGeneration == generation,
+                      self.codecNegotiationGeneration == generation,
+                      !self.isStopped else { return }
+                self.codecNegotiationGeneration = nil
+                guard let configuration else {
+                    conn.cancel()
+                    return
+                }
+                self.setDisplaySize(
+                    width: configuration.width,
+                    height: configuration.height,
+                    rotation: configuration.rotation
+                )
+                self.completeProtocolStartup(
+                    on: conn,
+                    generation: generation,
+                    codec: codec
+                )
+            }
+        }
+        if let onCodecNegotiated {
+            onCodecNegotiated(codec, generation, completion)
+        } else {
+            completion(NegotiatedDisplayConfiguration(
+                width: displayWidth,
+                height: displayHeight,
+                rotation: rotation
+            ))
+        }
+    }
+
+    private func completeProtocolStartup(
+        on conn: NWConnection,
+        generation: UInt64,
+        codec: StreamCodec
+    ) {
+        guard connection === conn,
+              activeConnectionGeneration == generation,
+              !isStopped,
+              !connectionReady else { return }
 
         debugLog("Client connected - sending display config first")
         sendDisplaySize()
@@ -489,7 +569,7 @@ class StreamingServer {
         )
         startHeartbeatMonitor(connection: conn, epoch: sessionEpochGate.current)
         debugLog("Connection ready for frames (metadata=\(clientSupportsFrameMetadata ? "on" : "off"), codec=\(codec))")
-        onClientConnected?()
+        onClientConnected?(generation)
     }
 
     private func startHeartbeatMonitor(connection conn: NWConnection, epoch: UInt64) {
@@ -805,7 +885,7 @@ class StreamingServer {
 
                 let flags = inputByte(at: 1)
                 consumeInputBytes(2)
-                onKeyframeRequested?((flags & 1) != 0)
+                onKeyframeRequested?((flags & 1) != 0, generation)
 
             case WireMessage.clientSupportsFrameMetadata:
                 // One-byte opt-in from newer clients. Keeping this payload-free
@@ -854,7 +934,7 @@ class StreamingServer {
                 let refreshRate = inputByte(at: 65)
                 consumeInputBytes(66)
                 debugLog("Received device info: model=\(model), refreshRate=\(refreshRate)Hz")
-                onDeviceInfoReceived?(model, refreshRate)
+                onDeviceInfoReceived?(model, refreshRate, generation)
 
             default:
                 debugLog("Unknown client input type: \(msgType)")
@@ -895,20 +975,18 @@ class StreamingServer {
 
         DispatchQueue.main.async { [weak self] in
             guard let self,
-                  self.inputDispatchLock.withLock({
-                      self.inputDispatchGeneration == generation
-                  }) else { return }
-            self.onTouchEvent?(x1, y1, Int(action), pointerCount, x2, y2)
+                  self.clientCallbackGeneration.isCurrent(generation) else { return }
+            self.onTouchEvent?(
+                x1, y1, Int(action), pointerCount, x2, y2, generation
+            )
         }
     }
 
     private func dispatchInputCancellation(generation: UInt64) {
         DispatchQueue.main.async { [weak self] in
             guard let self,
-                  self.inputDispatchLock.withLock({
-                      self.inputDispatchGeneration == generation
-                  }) else { return }
-            self.onInputCancelled?()
+                  self.clientCallbackGeneration.isCurrent(generation) else { return }
+            self.onInputCancelled?(generation)
         }
     }
 
@@ -928,6 +1006,7 @@ class StreamingServer {
         sessionEpoch: UInt64
     ) {
         guard let connection = connection, !isStopped, connectionReady else { return }
+        let clientGeneration = activeConnectionGeneration
         let frameEpoch = sessionEpoch
         guard sessionEpochGate.accepts(frameEpoch) else {
             recordTelemetry(
@@ -951,24 +1030,37 @@ class StreamingServer {
                 isKeyframe: isKeyframe,
                 connection: connection,
                 generation: self.framePipelineGeneration,
+                clientGeneration: clientGeneration,
                 sessionEpoch: frameEpoch
             )
 
             guard self.sendInFlight else {
                 let admission = self.pendingFrames.enqueue(frame)
-                self.observeQueueResult(admission, epoch: frameEpoch)
+                self.observeQueueResult(
+                    admission,
+                    epoch: frameEpoch,
+                    clientGeneration: clientGeneration
+                )
                 guard let admitted = self.pendingFrames.dequeue() else { return }
                 self.transmit(admitted)
                 return
             }
 
             let result = self.pendingFrames.enqueue(frame)
-            self.observeQueueResult(result, epoch: frameEpoch)
+            self.observeQueueResult(
+                result,
+                epoch: frameEpoch,
+                clientGeneration: clientGeneration
+            )
         }
     }
 
     /// Must be called on frameQueue.
-    private func observeQueueResult(_ result: LatestFrameEnqueueResult, epoch: UInt64) {
+    private func observeQueueResult(
+        _ result: LatestFrameEnqueueResult,
+        epoch: UInt64,
+        clientGeneration: UInt64
+    ) {
         guard result.droppedCount > 0 else { return }
         droppedFrames += UInt64(result.droppedCount)
         recordTelemetry(
@@ -982,7 +1074,7 @@ class StreamingServer {
             ]
         )
         if result.requiresKeyframe {
-            onKeyframeRequested?(true)
+            onKeyframeRequested?(true, clientGeneration)
         }
     }
 
@@ -1022,12 +1114,16 @@ class StreamingServer {
                             "keyframe_required": .boolean(true)
                         ]
                     )
-                    self.onKeyframeRequested?(true)
+                    self.onKeyframeRequested?(true, frame.clientGeneration)
                     return
                 }
 
                 let sendAge = DispatchTime.now().uptimeNanoseconds - frame.timestamp
-                self.updateStats(bytes: frame.data.count, frameAgeNs: sendAge)
+                self.updateStats(
+                    bytes: frame.data.count,
+                    frameAgeNs: sendAge,
+                    clientGeneration: frame.clientGeneration
+                )
                 if let next = self.pendingFrames.dequeue() {
                     self.transmit(next)
                 }
@@ -1065,7 +1161,21 @@ class StreamingServer {
     private var totalFrameAgeNs: UInt64 = 0
     private var profiledFrameCount: UInt64 = 0
 
-    private func updateStats(bytes: Int, frameAgeNs: UInt64 = 0) {
+    func performIfCurrentClientGeneration(
+        _ generation: UInt64,
+        operation: () -> Void
+    ) -> Bool {
+        clientCallbackGeneration.performIfCurrent(
+            generation,
+            operation: operation
+        )
+    }
+
+    private func updateStats(
+        bytes: Int,
+        frameAgeNs: UInt64 = 0,
+        clientGeneration: UInt64
+    ) {
         bytesSent += UInt64(bytes)
         frameCount += 1
         if frameAgeNs > 0 {
@@ -1079,7 +1189,7 @@ class StreamingServer {
         if elapsed >= 1.0 {
             let mbps = Double(bytesSent * 8) / elapsed / 1_000_000
             let fps = Double(frameCount) / elapsed
-            onStats?(fps, mbps)
+            onStats?(fps, mbps, clientGeneration)
 
             // Log pipeline latency profile
             if profiledFrameCount > 0 {
@@ -1151,9 +1261,8 @@ class StreamingServer {
         isStopped = true
         isReceiving = false
         activeConnectionGeneration &+= 1
-        inputDispatchLock.withLock {
-            inputDispatchGeneration = activeConnectionGeneration
-        }
+        codecNegotiationGeneration = nil
+        clientCallbackGeneration.advance(to: activeConnectionGeneration)
         for (_, timeout) in pendingHandshakeTimeouts {
             timeout.cancel()
         }

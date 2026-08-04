@@ -8,6 +8,26 @@ enum FallbackFrameDisposition: Equatable {
     case terminalFailure
 }
 
+enum FallbackStoppedAction: Equatable {
+    case rebuild(CGDirectDisplayID)
+    case terminalFailure
+}
+
+enum FallbackStoppedPolicy {
+    static func action(
+        followsMainDisplay: Bool,
+        capturedDisplayID: CGDirectDisplayID?,
+        currentMainDisplayID: CGDirectDisplayID
+    ) -> FallbackStoppedAction {
+        guard followsMainDisplay,
+              currentMainDisplayID != 0,
+              currentMainDisplayID != capturedDisplayID else {
+            return .terminalFailure
+        }
+        return .rebuild(currentMainDisplayID)
+    }
+}
+
 final class FallbackCaptureLifecycle: @unchecked Sendable {
     enum BeginResult: Equatable {
         case started(UInt64)

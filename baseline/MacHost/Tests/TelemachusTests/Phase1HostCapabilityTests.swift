@@ -158,6 +158,99 @@ final class Phase1HostCapabilityTests: XCTestCase {
         XCTAssertTrue(lifecycle.ownsSession(replacement))
     }
 
+    @MainActor
+    func testQueuedOldCallbackCannotMutateReplacementSession() async {
+        final class Source {}
+        let lifecycle = HostServerLifecycle()
+        let oldSource = Source()
+        let replacementSource = Source()
+        var currentSource: Source? = oldSource
+        var mutations = 0
+        let oldToken = lifecycle.beginStart()!
+        XCTAssertTrue(lifecycle.finishStart(oldToken))
+
+        let queuedCallback = Task { @MainActor in
+            if lifecycle.acceptsCallback(
+                oldToken,
+                sourceMatches: currentSource === oldSource,
+                clientGeneration: 1
+            ) {
+                mutations += 1
+            }
+        }
+        let stop = lifecycle.beginStop()
+        lifecycle.finishStop(stop)
+        let replacementToken = lifecycle.beginStart()!
+        XCTAssertTrue(lifecycle.finishStart(replacementToken))
+        currentSource = replacementSource
+
+        await queuedCallback.value
+        XCTAssertEqual(mutations, 0)
+    }
+
+    @MainActor
+    func testOlderClientGenerationCannotOverrideTakeover() {
+        let lifecycle = HostServerLifecycle()
+        let token = lifecycle.beginStart()!
+        XCTAssertTrue(lifecycle.finishStart(token))
+        XCTAssertTrue(lifecycle.acceptsCallback(
+            token,
+            sourceMatches: true,
+            clientGeneration: 2
+        ))
+        XCTAssertFalse(lifecycle.acceptsCallback(
+            token,
+            sourceMatches: true,
+            clientGeneration: 1
+        ))
+    }
+
+    func testAuthoritativeGenerationRejectsCallbackQueuedBeforeTakeover() {
+        let gate = ClientCallbackGenerationGate()
+        gate.advance(to: 1)
+        gate.advance(to: 2)
+        var oldClientMutations = 0
+
+        XCTAssertFalse(gate.performIfCurrent(1) {
+            oldClientMutations += 1
+        })
+        XCTAssertEqual(oldClientMutations, 0)
+        XCTAssertTrue(gate.performIfCurrent(2) {
+            oldClientMutations += 1
+        })
+        XCTAssertEqual(oldClientMutations, 1)
+        gate.advance(to: 1)
+        XCTAssertTrue(gate.isCurrent(2))
+    }
+
+    @MainActor
+    func testAutomaticLaunchIntentIsConsumedOnlyOnce() {
+        let launch = AutomaticLaunchCoordinator(enabled: true)
+        XCTAssertTrue(launch.consumeIfEligible(true))
+        XCTAssertFalse(launch.consumeIfEligible(true))
+    }
+
+    @MainActor
+    func testSlowPermissionCompletionCannotBypassRecovery() {
+        let launch = AutomaticLaunchCoordinator(enabled: true)
+        XCTAssertTrue(launch.consumeIfEligible(true))
+        let lifecycle = HostServerLifecycle()
+        let failedStart = lifecycle.beginStart()!
+        lifecycle.failStart(failedStart)
+        XCTAssertTrue(lifecycle.canStart)
+        XCTAssertFalse(launch.consumeIfEligible(true))
+        XCTAssertEqual(UnattendedRecoveryPolicy.delay(afterFailure: 0), 1)
+    }
+
+    @MainActor
+    func testAutomaticLaunchWaitsForPermissionAndDisabledNeverLaunches() {
+        let pending = AutomaticLaunchCoordinator(enabled: true)
+        XCTAssertFalse(pending.consumeIfEligible(false))
+        XCTAssertTrue(pending.consumeIfEligible(true))
+        let disabled = AutomaticLaunchCoordinator(enabled: false)
+        XCTAssertFalse(disabled.consumeIfEligible(true))
+    }
+
     func testFallbackRemovalReportsTerminalOnlyForCurrentGeneration() {
         let lifecycle = FallbackCaptureLifecycle()
         guard case .started(let generation) = lifecycle.begin() else {
@@ -218,6 +311,50 @@ final class Phase1HostCapabilityTests: XCTestCase {
             hasSurface: false
         ), .clearFrame)
         XCTAssertTrue(lifecycle.isActive)
+    }
+
+    func testStoppedFallbackRebuildsReplacementBeforeMonitor() {
+        XCTAssertEqual(FallbackStoppedPolicy.action(
+            followsMainDisplay: true,
+            capturedDisplayID: 10,
+            currentMainDisplayID: 11
+        ), .rebuild(11))
+        let lifecycle = FallbackCaptureLifecycle()
+        guard case .started(let oldGeneration) = lifecycle.begin() else {
+            return XCTFail("old fallback did not start")
+        }
+        XCTAssertEqual(lifecycle.disposition(
+            status: .stopped,
+            generation: oldGeneration,
+            hasSurface: false
+        ), .terminalFailure)
+        XCTAssertTrue(lifecycle.claimTerminal(generation: oldGeneration))
+        guard case .started(let replacementGeneration) = lifecycle.begin() else {
+            return XCTFail("replacement fallback did not start")
+        }
+        XCTAssertEqual(lifecycle.disposition(
+            status: .stopped,
+            generation: oldGeneration,
+            hasSurface: false
+        ), .ignore)
+        XCTAssertEqual(lifecycle.disposition(
+            status: .frameComplete,
+            generation: replacementGeneration,
+            hasSurface: true
+        ), .consume)
+    }
+
+    func testStoppedFallbackWithoutReplacementIsTerminal() {
+        XCTAssertEqual(FallbackStoppedPolicy.action(
+            followsMainDisplay: true,
+            capturedDisplayID: 10,
+            currentMainDisplayID: 10
+        ), .terminalFailure)
+        XCTAssertEqual(FallbackStoppedPolicy.action(
+            followsMainDisplay: false,
+            capturedDisplayID: 10,
+            currentMainDisplayID: 11
+        ), .terminalFailure)
     }
 
     func testVirtualDisplayCapabilityRejectsMissingClassAndSelector() {
