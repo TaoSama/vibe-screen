@@ -176,11 +176,11 @@ class OutboundCommandScheduler<C : Any>(
         require(timeoutMillis >= 0) { "timeoutMillis must not be negative" }
         lock.lockInterruptibly()
         try {
-            accepting.set(false)
-            closeOverflowAdmissions(preserveCommands = true)
-            drainOverflowSlotsLocked()
-            drainIngressLocked()
             if (state == State.OPEN) {
+                accepting.set(false)
+                closeOverflowAdmissions(preserveCommands = true)
+                drainOverflowSlotsLocked()
+                drainIngressLocked()
                 if (!workerStarted.get() && pendingCount == 0) {
                     state = State.CLOSED
                     terminated.signalAll()

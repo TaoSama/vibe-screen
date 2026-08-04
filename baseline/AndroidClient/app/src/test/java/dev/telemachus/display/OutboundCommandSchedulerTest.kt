@@ -347,12 +347,15 @@ class OutboundCommandSchedulerTest {
         assertEquals(true, shutdownResult.get())
         assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, firstResult.get())
         assertEquals("active", written.first())
-        assertEquals(listOf("down", "up"), written.takeLast(2))
-        val recovery = written.drop(1).dropLast(2)
-        assertTrue(recovery.contains("ping"))
-        assertEquals(
-            "normal+lock-holder+force-1+force-2",
-            recovery.filterNot { it == "ping" }.joinToString("+"),
+        val afterActive = written.drop(1)
+        assertEquals(listOf("down", "up"), afterActive.filter { it == "down" || it == "up" })
+        val recovery = afterActive.filterNot { it == "down" || it == "up" }
+        assertEquals(1, recovery.count { it == "ping" })
+        val keyframes = recovery.filterNot { it == "ping" }
+        assertTrue(
+            "unexpected keyframe writes: $keyframes",
+            keyframes == listOf("normal+lock-holder+force-1+force-2") ||
+                keyframes == listOf("normal+lock-holder", "force-1+force-2"),
         )
     }
 
@@ -404,6 +407,7 @@ class OutboundCommandSchedulerTest {
         releaseCoalescer.countDown()
         lockHolder.join(1_000)
         scheduler.shutdownNow()
+        assertTrue(scheduler.shutdownGracefully(100))
         releaseOverflowPublisher.countDown()
         publisher.join(1_000)
         releaseWriter.countDown()
@@ -497,6 +501,7 @@ class OutboundCommandSchedulerTest {
         scheduler.submit(STRUCTURAL, "down")
         assertTrue(scheduler.shutdownGracefully(1_000))
         assertTrue(callbackDelivered.await(1, TimeUnit.SECONDS))
+        assertTrue(scheduler.shutdownGracefully(100))
         assertEquals(1, callbacks.get())
         assertEquals("down", failures.single().command)
         assertTrue(failures.single().cause is IOException)

@@ -49,10 +49,12 @@ cd baseline/AndroidClient
 Results:
 
 - 123 JVM tests, zero failures/errors/skips;
+- the final graceful overflow marker-gap regression passed three consecutive isolated
+  `--rerun-tasks` executions;
 - lint reported `No issues found`;
-- all requested Gradle tasks completed with `BUILD SUCCESSFUL in 31s`;
+- all requested Gradle tasks completed with `BUILD SUCCESSFUL in 34s`;
 - final clean-rebuild APK SHA-256:
-  `020f1fa84a8d113e0dea4ed54d86e7ae5872c4e2599c411b751e895f68c5b69b`.
+  `23a68e912c6c9ea23ee3485e7e7a041f050a21b40bdfb1fbc0e3bd414bfdfe96`.
 
 The APK hash is an offline artifact identity, not install or device evidence.
 
