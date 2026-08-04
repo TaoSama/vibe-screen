@@ -126,6 +126,10 @@ class PrepareReleaseTests(unittest.TestCase):
                 {package["name"] for package in sbom["packages"]},
                 {"example:runtime:1.0.0", "webrtc", "swift-protobuf"},
             )
+            self.assertEqual(
+                [package["name"] for package in sbom["packages"]].count("swift-protobuf"),
+                1,
+            )
             self.assertTrue(all(package["filesAnalyzed"] is False for package in sbom["packages"]))
             self.assertEqual(len(sbom["relationships"]), len(sbom["packages"]))
             notes = (output / "RELEASE_NOTES.md").read_text(encoding="utf-8")
