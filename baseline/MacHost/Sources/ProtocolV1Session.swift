@@ -23,6 +23,7 @@ struct ProtocolV1SessionConfiguration {
 
 enum ProtocolV1SessionPhase: Equatable {
     case awaitingClientHello
+    case preparingCodec(correlationID: UInt64)
     case awaitingDisplayStart
     case awaitingVideoConfig(configEpoch: UInt64, streamID: UInt64)
     case streaming(configEpoch: UInt64, streamID: UInt64)
@@ -52,6 +53,7 @@ final class ProtocolV1SessionCoordinator {
     private var configuration: ProtocolV1SessionConfiguration
     private var nextMessageID: UInt64 = 1
     private var negotiatedCapabilities: Set<VSCapability> = []
+    private var advertisedVideoRotation = 0
     private let lock = NSLock()
 
     init(configuration: ProtocolV1SessionConfiguration) {
@@ -70,21 +72,49 @@ final class ProtocolV1SessionCoordinator {
 
     func makeDisplayChanged() -> [ProtocolV1SessionAction] {
         withSessionLock {
-            switch phase {
-            case .awaitingVideoConfig, .streaming:
-                break
-            default:
-                return []
-            }
+            guard case .streaming = phase else { return [] }
             var changed = VSDisplayChanged()
             changed.display = displayDescriptor()
             changed.rotationDegrees = UInt32(clamping: configuration.rotation)
+            advertisedVideoRotation = configuration.rotation
             return sendActions(payload: .displayChanged(changed), correlationID: 0)
         }
     }
 
     func handleControl(_ bytes: Data) -> [ProtocolV1SessionAction] {
         withSessionLock { handleControlLocked(bytes) }
+    }
+
+    func completeCodecNegotiation() -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard case .preparingCodec(let correlationID) = phase else { return [] }
+            var hostHello = VSHostHello()
+            hostHello.selectedProtocol = Self.protocolVersion
+            hostHello.hostID = configuration.hostID
+            hostHello.hostName = configuration.hostName
+            hostHello.capabilities = configuration.hostCapabilities.sorted { $0.rawValue < $1.rawValue }
+            hostHello.codecs = configuration.supportedCodecs
+
+            var accepted = VSSessionAccepted()
+            accepted.sessionID = configuration.sessionID
+            accepted.sessionEpoch = configuration.sessionEpoch
+            accepted.heartbeatIntervalMs = 1_000
+            accepted.negotiatedCapabilities = negotiatedCapabilities.sorted { $0.rawValue < $1.rawValue }
+
+            phase = .awaitingDisplayStart
+            do {
+                return [
+                    .sendControl(try encode(
+                        payload: .hostHello(hostHello),
+                        correlationID: correlationID,
+                        sessionScoped: false
+                    )),
+                    .sendControl(try encode(payload: .sessionAccepted(accepted), correlationID: correlationID))
+                ]
+            } catch {
+                return serializationFailure()
+            }
+        }
     }
 
     private func handleControlLocked(_ bytes: Data) -> [ProtocolV1SessionAction] {
@@ -182,7 +212,18 @@ final class ProtocolV1SessionCoordinator {
                 )
             }
             phase = .streaming(configEpoch: configEpoch, streamID: streamID)
-            return [.connectionReady, .requestKeyframe(force: true)]
+            var actions: [ProtocolV1SessionAction] = []
+            if advertisedVideoRotation != configuration.rotation {
+                var changed = VSDisplayChanged()
+                changed.display = displayDescriptor()
+                changed.rotationDegrees = UInt32(clamping: configuration.rotation)
+                do {
+                    actions.append(.sendControl(try encode(payload: .displayChanged(changed), correlationID: 0)))
+                } catch {
+                    return serializationFailure()
+                }
+            }
+            return actions + [.connectionReady, .requestKeyframe(force: true)]
 
         case .ping(let ping):
             var pong = VSPong()
@@ -336,34 +377,9 @@ final class ProtocolV1SessionCoordinator {
         let negotiatedCapabilities = configuration.hostCapabilities.intersection(offeredCapabilities)
         self.negotiatedCapabilities = negotiatedCapabilities
 
-        var hostHello = VSHostHello()
-        hostHello.selectedProtocol = Self.protocolVersion
-        hostHello.hostID = configuration.hostID
-        hostHello.hostName = configuration.hostName
-        hostHello.capabilities = configuration.hostCapabilities.sorted { $0.rawValue < $1.rawValue }
-        hostHello.codecs = configuration.supportedCodecs
-
-        var accepted = VSSessionAccepted()
-        accepted.sessionID = configuration.sessionID
-        accepted.sessionEpoch = configuration.sessionEpoch
-        accepted.heartbeatIntervalMs = 1_000
-        accepted.negotiatedCapabilities = negotiatedCapabilities.sorted { $0.rawValue < $1.rawValue }
-
-        phase = .awaitingDisplayStart
+        phase = .preparingCodec(correlationID: correlationID)
         let streamCodec: StreamCodec = codec == .h264 ? .h264 : .hevc
-        do {
-            return [
-                .sendControl(try encode(
-                payload: .hostHello(hostHello),
-                correlationID: correlationID,
-                sessionScoped: false
-                )),
-                .sendControl(try encode(payload: .sessionAccepted(accepted), correlationID: correlationID)),
-                .codecNegotiated(streamCodec)
-            ]
-        } catch {
-            return serializationFailure()
-        }
+        return [.codecNegotiated(streamCodec)]
     }
 
     private func startDisplay(correlationID: UInt64) -> [ProtocolV1SessionAction] {
@@ -382,6 +398,7 @@ final class ProtocolV1SessionCoordinator {
         config.bitrateKbps = configuration.bitrateKbps
         config.streamID = streamID
         config.rotationDegrees = UInt32(clamping: configuration.rotation)
+        advertisedVideoRotation = configuration.rotation
 
         phase = .awaitingVideoConfig(configEpoch: configEpoch, streamID: streamID)
         do {

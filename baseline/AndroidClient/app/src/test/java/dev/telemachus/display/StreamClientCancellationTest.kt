@@ -118,30 +118,32 @@ class StreamClientCancellationTest {
     @Test
     fun readySessionRejectsMalformedDisplayWithoutReconnectLoop() =
         runBlocking {
-            ServerSocket(0).use { server ->
-                val serverJob =
-                    async(Dispatchers.IO) {
-                        server.accept().use { socket ->
-                            socket.getInputStream().read()
-                            DataOutputStream(socket.getOutputStream()).apply {
-                                writeDisplay(1920, 1080, 0)
-                                writeDisplay(1920, 1080, 45)
-                                flush()
+            repeat(25) { iteration ->
+                ServerSocket(0).use { server ->
+                    val serverJob =
+                        async(Dispatchers.IO) {
+                            server.accept().use { socket ->
+                                socket.getInputStream().read()
+                                DataOutputStream(socket.getOutputStream()).apply {
+                                    writeDisplay(1920, 1080, 0)
+                                    writeDisplay(1920, 1080, 45)
+                                    flush()
+                                }
                             }
                         }
-                    }
-                val failures = mutableListOf<SessionFailure>()
-                val retries = mutableListOf<Long>()
-                StreamClient("127.0.0.1", server.localPort)
-                    .apply {
-                        onSessionEnded = { failures += it }
-                        onReconnectSuggested = { retries += it }
-                    }.connect()
+                    val failures = mutableListOf<SessionFailure>()
+                    val retries = mutableListOf<Long>()
+                    StreamClient("127.0.0.1", server.localPort)
+                        .apply {
+                            onSessionEnded = { failures += it }
+                            onReconnectSuggested = { retries += it }
+                        }.connect()
 
-                serverJob.await()
-                assertEquals(SessionFailureKind.INVALID_DISPLAY, failures.single().kind)
-                assertFalse(failures.single().retryable)
-                assertTrue(retries.isEmpty())
+                    serverJob.await()
+                    assertEquals("iteration $iteration", SessionFailureKind.INVALID_DISPLAY, failures.single().kind)
+                    assertFalse("iteration $iteration", failures.single().retryable)
+                    assertTrue("iteration $iteration", retries.isEmpty())
+                }
             }
         }
 

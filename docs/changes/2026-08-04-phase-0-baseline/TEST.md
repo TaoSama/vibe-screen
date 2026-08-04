@@ -96,21 +96,35 @@ self-test. It does not replace device interoperability evidence.
   Kotlin unknown-field preservation.
 - `./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug
   auditReleaseDependencies` passes 176 Android unit tests with zero
-  failures/errors and all 67 Gradle tasks (`BUILD SUCCESSFUL in 31s`). The
+  failures/errors/skips and all 67 Gradle tasks (`BUILD SUCCESSFUL in 34s`). The
   generated Java-lite bindings contain 168 files. The resulting
   debug APK SHA-256 is
-  `beec34fad53f16d99cc4bc1eb13aa08d6ba30d6ad09655850ed91f88f90409c3`.
+  `0c0a399e3ed0b10ae13afd61bc24e570afb1bf69243a0f47b2cf61d71ad67072`.
+  The deterministic malformed-display/RST regression ran three separate
+  `--rerun-tasks` invocations, each repeating the live `StreamClient` socket
+  integration 25 times. All 75 interleavings preserved the inbound
+  non-retryable `INVALID_DISPLAY` result, emitted no reconnect suggestion,
+  and did not allow the concurrent startup-capability writer failure to mask
+  it.
 - `swift build -c release --product Telemachus` passes. The release executable
   SHA-256 is
-  `93c333e2bd76eea2ab163773b3d2b20af5310fa6494dda02f95342dbd231435e`.
+  `ce86c9f60418e4b34fd4fa9d6229ba103b32a47922b0abeec6dc14409b87ee76`.
   `.build/release/Telemachus --protocol-v1-self-test` reports `PASS` for
   framing, all shared cross-platform golden fixtures, version/required
   capability negotiation, display/video acknowledgement gating, stale epochs,
   input including two-pointer aggregation, heartbeat, errors, and media.
   The production `StreamingServer` loopback transport test also completes a
-  real Protocol v1 upgrade/session, observes initial 90-degree rotation,
-  receives a framed 270-degree `DisplayChanged`, proves a following Ping/Pong
-  remains synchronized, and receives a framed intentional shutdown notice.
+  real Protocol v1 upgrade/session, observes initial 90-degree rotation, and
+  uses queue barriers to force an inbound Ping ahead of both a runtime rotation
+  and a concurrent stop. The wire records preserve one connection/session
+  owner and strictly increasing IDs (`Pong` before `DisplayChanged`, and
+  `Pong` before the framed intentional `DisconnectNotice`). Separate loopback
+  cases stop the server immediately after upgrade, during codec preparation,
+  while awaiting the display request, while awaiting `VideoConfigResult`, and
+  after streaming begins; every upgraded v1 stage receives a framed intentional
+  shutdown. The session self-test also proves that a rotation changed during
+  video negotiation is withheld until acceptance and then emitted as the
+  latest `DisplayChanged` rather than leaking an early control message.
 - The additive schema was regenerated into both MacHost and iOS Swift bindings.
   `swift build --package-path apps/ios` and the iOS core self-test pass, proving
   the checked binding update did not regress that consumer. Both iOS and

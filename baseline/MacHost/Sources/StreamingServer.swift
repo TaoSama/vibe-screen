@@ -109,6 +109,7 @@ final class ClientCallbackGenerationGate {
 }
 
 class StreamingServer {
+    private static let networkQueueKey = DispatchSpecificKey<ObjectIdentifier>()
     private enum ConnectionProtocolMode: Equatable {
         case legacy
         case protocolV1
@@ -199,6 +200,8 @@ class StreamingServer {
         heartbeatTimeoutNs: 5_000_000_000
     )
     private var heartbeatTimer: DispatchSourceTimer?
+    private var stopSequence: UInt64 = 0
+    private var stopInProgress: UInt64?
     private let telemetry: TelemetryRecording?
 
     var currentSessionEpoch: UInt64 { sessionEpochGate.current }
@@ -236,6 +239,7 @@ class StreamingServer {
         if case .wireless(let authToken) = mode {
             expectedAuthToken = authToken
         }
+        networkQueue.setSpecific(key: Self.networkQueueKey, value: ObjectIdentifier(self))
     }
 
     /// Starts the listener and returns only after Network.framework reports it
@@ -797,27 +801,35 @@ class StreamingServer {
 
     /// Update rotation and send to connected client
     func updateRotation(_ rotation: Int) {
-        self.rotation = rotation
-        protocolV1Session?.updateDisplayGeometry(
-            width: displayWidth,
-            height: displayHeight,
-            rotation: rotation
-        )
-        guard connectionProtocolMode == .protocolV1,
-              let session = protocolV1Session,
-              let conn = connection else {
-            sendDisplaySize()
-            return
-        }
-        let generation = activeConnectionGeneration
-        let actions = session.makeDisplayChanged()
-        networkQueue.async { [weak self, weak conn] in
-            guard let self, let conn,
-                  self.connection === conn,
-                  self.activeConnectionGeneration == generation,
-                  self.connectionProtocolMode == .protocolV1,
-                  !self.isStopped else { return }
+        networkQueue.async { [weak self] in
+            guard let self, !self.isStopped else { return }
+            self.rotation = rotation
+            self.protocolV1Session?.updateDisplayGeometry(
+                width: self.displayWidth,
+                height: self.displayHeight,
+                rotation: rotation
+            )
+            guard self.connectionProtocolMode == .protocolV1,
+                  let session = self.protocolV1Session,
+                  let conn = self.connection else {
+                self.sendDisplaySize()
+                return
+            }
+            let generation = self.activeConnectionGeneration
+            let actions = session.makeDisplayChanged()
             self.applyProtocolV1Actions(actions, connection: conn, generation: generation)
+        }
+    }
+
+    /// Evidence-only queue barrier used by the production transport self-test
+    /// to force control-operation interleavings deterministically.
+    func suspendNetworkQueueForSelfTest(
+        entered: DispatchSemaphore,
+        resume: DispatchSemaphore
+    ) {
+        networkQueue.async {
+            entered.signal()
+            _ = resume.wait(timeout: .now() + .seconds(2))
         }
     }
 
@@ -1069,6 +1081,7 @@ class StreamingServer {
         guard connection === conn,
               activeConnectionGeneration == generation,
               connectionProtocolMode == .protocolV1,
+              !isStopped,
               let session = protocolV1Session else { return }
         let bytes = inputBuffer
         inputBuffer.removeAll(keepingCapacity: true)
@@ -1099,7 +1112,11 @@ class StreamingServer {
         connection conn: NWConnection,
         generation: UInt64
     ) {
-        guard connection === conn, activeConnectionGeneration == generation else { return }
+        dispatchPrecondition(condition: .onQueue(networkQueue))
+        guard connection === conn,
+              activeConnectionGeneration == generation,
+              connectionProtocolMode == .protocolV1,
+              !isStopped else { return }
         if let codec = actions.compactMap({ action -> StreamCodec? in
             if case .codecNegotiated(let codec) = action { return codec }
             return nil
@@ -1237,8 +1254,9 @@ class StreamingServer {
                     height: configuration.height,
                     rotation: configuration.rotation
                 )
+                let completionActions = self.protocolV1Session?.completeCodecNegotiation() ?? []
                 self.applyProtocolV1Actions(
-                    actionsAfterNegotiation,
+                    actionsAfterNegotiation + completionActions,
                     connection: conn,
                     generation: generation
                 )
@@ -1595,41 +1613,95 @@ class StreamingServer {
     }
 
     func stop() {
+        if DispatchQueue.getSpecific(key: Self.networkQueueKey) == ObjectIdentifier(self) {
+            beginStopOnNetworkQueue(completion: nil)
+            return
+        }
+        let completed = DispatchSemaphore(value: 0)
+        networkQueue.async { [weak self] in
+            guard let self else {
+                completed.signal()
+                return
+            }
+            self.beginStopOnNetworkQueue { completed.signal() }
+        }
+        _ = completed.wait(timeout: .now() + .milliseconds(700))
+    }
+
+    private func beginStopOnNetworkQueue(completion: (() -> Void)?) {
+        dispatchPrecondition(condition: .onQueue(networkQueue))
+        guard stopInProgress == nil else {
+            completion?()
+            return
+        }
         isStopped = true
         isReceiving = false
-
-        // Send the shutdown using the currently negotiated protocol before
-        // invalidating its mode/session ownership.
-        if let conn = connection, connectionReady {
-            let shutdownMsg: Data?
-            if connectionProtocolMode == .protocolV1, let session = protocolV1Session {
-                do {
-                    shutdownMsg = try ProtocolV1TransportFrame(
-                        channel: .control,
-                        payload: session.makeDisconnectNotice()
-                    ).encoded()
-                } catch {
-                    shutdownMsg = nil
-                    debugLog("Unable to encode Protocol v1 shutdown notice: \(error)")
-                }
-            } else {
-                shutdownMsg = Data([WireMessage.serverShutdown])
+        stopSequence &+= 1
+        let token = stopSequence
+        stopInProgress = token
+        let conn = connection
+        let generation = activeConnectionGeneration
+        let shutdownMsg: Data?
+        if let conn,
+           connection === conn,
+           connectionProtocolMode == .protocolV1,
+           let session = protocolV1Session {
+            do {
+                shutdownMsg = try ProtocolV1TransportFrame(
+                    channel: .control,
+                    payload: session.makeDisconnectNotice()
+                ).encoded()
+            } catch {
+                shutdownMsg = nil
+                debugLog("Unable to encode Protocol v1 shutdown notice: \(error)")
             }
-            if let shutdownMsg {
-                let semaphore = DispatchSemaphore(value: 0)
-                conn.send(content: shutdownMsg, completion: .contentProcessed { _ in
-                    semaphore.signal()
-                })
-                _ = semaphore.wait(timeout: .now() + .milliseconds(500))
-                Thread.sleep(forTimeInterval: 0.05)
-            }
+        } else if conn != nil && connectionReady {
+            shutdownMsg = Data([WireMessage.serverShutdown])
+        } else {
+            shutdownMsg = nil
         }
 
+        guard let conn, let shutdownMsg else {
+            finishStopOnNetworkQueue(token: token, connection: conn, generation: generation, completion: completion)
+            return
+        }
+        conn.send(content: shutdownMsg, completion: .contentProcessed { [weak self, weak conn] _ in
+            guard let self else { return }
+            self.networkQueue.asyncAfter(deadline: .now() + .milliseconds(50)) {
+                self.finishStopOnNetworkQueue(
+                    token: token,
+                    connection: conn,
+                    generation: generation,
+                    completion: completion
+                )
+            }
+        })
+        networkQueue.asyncAfter(deadline: .now() + .milliseconds(500)) { [weak self, weak conn] in
+            self?.finishStopOnNetworkQueue(
+                token: token,
+                connection: conn,
+                generation: generation,
+                completion: completion
+            )
+        }
+    }
+
+    private func finishStopOnNetworkQueue(
+        token: UInt64,
+        connection stoppedConnection: NWConnection?,
+        generation: UInt64,
+        completion: (() -> Void)?
+    ) {
+        dispatchPrecondition(condition: .onQueue(networkQueue))
+        guard stopInProgress == token else { return }
+        stopInProgress = nil
         connectionProtocolMode = .legacy
         protocolV1Framer = ProtocolV1Framer()
         protocolV1Session = nil
         protocolV1TouchAggregator.reset()
-        activeConnectionGeneration &+= 1
+        if activeConnectionGeneration == generation {
+            activeConnectionGeneration &+= 1
+        }
         codecNegotiationGeneration = nil
         clientCallbackGeneration.advance(to: activeConnectionGeneration)
         for (_, timeout) in pendingHandshakeTimeouts {
@@ -1653,11 +1725,14 @@ class StreamingServer {
         recoveryController.stop()
         receiveQueue.sync {}
 
-        connection?.cancel()
+        stoppedConnection?.cancel()
         listener?.cancel()
-        connection = nil
+        if connection === stoppedConnection {
+            connection = nil
+        }
         listener = nil
         connectionReady = false
         activeConnectionIsWireless = false
+        completion?()
     }
 }
