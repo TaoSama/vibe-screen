@@ -34,6 +34,7 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 class StreamClient(
@@ -55,6 +56,8 @@ class StreamClient(
     @Volatile private var wireMode = WireMode.LEGACY
     private var pendingLegacyFirstByte: Int? = null
     private var protocolSession: ProtocolV1Session? = null
+    private val transportOwnerLock = Any()
+    private var pendingFreshTransport: FreshTransportCandidate? = null
     private val nextInputId = AtomicLong(1L)
     private val nextPingSequence = AtomicLong(1L)
     @Volatile private var lastV1PingSequence = 0L
@@ -190,7 +193,7 @@ class StreamClient(
                 isConnected = true
                 if (terminationDispatcher.isClaimed()) {
                     isConnected = false
-                    cleanupCandidateSocket(candidate)
+                    cleanupCandidateSocket()
                     return@withContext
                 }
                 heartbeat.reset(System.nanoTime())
@@ -480,7 +483,7 @@ class StreamClient(
                 protocolSession = session
                 submitOutbound(
                     kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-                    command = OutboundCommand.ProtocolBuild { it.clientHello() },
+                    command = OutboundCommand.ProtocolBatch { listOf(it.clientHello()) },
                 )
                 diagLog("Protocol v1 upgrade accepted")
             }
@@ -519,14 +522,11 @@ class StreamClient(
     }
 
     private fun reopenUsbAsLegacy(attemptGeneration: Long) {
-        check(SESSION_EPOCHS.accepts(attemptGeneration)) { "USB attempt was superseded" }
         closeTransport()
-        val fresh = socketFactory()
-        fresh.tcpNoDelay = true
-        fresh.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
-        fresh.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
-        installTransport(fresh)
-        configureLegacyMode()
+        installFreshLegacyTransport(attemptGeneration) { fresh ->
+            fresh.tcpNoDelay = true
+            fresh.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+        }
     }
 
     private fun reopenWirelessAsLegacy(
@@ -534,14 +534,71 @@ class StreamClient(
         deviceName: String,
         attemptGeneration: Long,
     ) {
-        check(SESSION_EPOCHS.accepts(attemptGeneration)) { "LAN attempt was superseded" }
         closeTransport()
-        val fresh = openWirelessSocket()
-        authenticateWirelessSocket(fresh, token, deviceName)
-        fresh.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
-        installTransport(fresh)
-        configureLegacyMode()
+        installFreshLegacyTransport(attemptGeneration) { fresh ->
+            configureWirelessSocket(fresh)
+            authenticateWirelessSocket(fresh, token, deviceName)
+        }
     }
+
+    private fun installFreshLegacyTransport(
+        attemptGeneration: Long,
+        prepare: (Socket) -> Unit,
+    ) {
+        val candidate = registerFreshTransport(attemptGeneration)
+        var promoted = false
+        try {
+            prepare(candidate.socket)
+            candidate.socket.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
+            val input = DataInputStream(java.io.BufferedInputStream(candidate.socket.getInputStream(), 65536))
+            val output = java.io.DataOutputStream(candidate.socket.getOutputStream())
+            synchronized(transportOwnerLock) {
+                check(pendingFreshTransport === candidate && ownsAttempt(attemptGeneration)) {
+                    "Fallback connection attempt was superseded"
+                }
+                pendingFreshTransport = null
+                socket = candidate.socket
+                inputStream = input
+                outputStream = output
+                promoted = true
+            }
+            configureLegacyMode()
+        } catch (failure: Exception) {
+            if (promoted) closeTransport()
+            throw failure
+        } finally {
+            if (!promoted) releaseFreshTransport(candidate)
+        }
+    }
+
+    private fun registerFreshTransport(attemptGeneration: Long): FreshTransportCandidate {
+        val candidate = FreshTransportCandidate(socketFactory(), attemptGeneration)
+        synchronized(transportOwnerLock) {
+            if (!ownsAttempt(attemptGeneration) || pendingFreshTransport != null) {
+                candidate.closeOnce()
+                throw IOException("Fallback connection attempt was superseded")
+            }
+            pendingFreshTransport = candidate
+        }
+        return candidate
+    }
+
+    private fun releaseFreshTransport(candidate: FreshTransportCandidate) {
+        synchronized(transportOwnerLock) {
+            if (pendingFreshTransport === candidate) pendingFreshTransport = null
+        }
+        candidate.closeOnce()
+    }
+
+    private fun ownsAttempt(attemptGeneration: Long): Boolean =
+        !terminationDispatcher.isClaimed() &&
+            connectionEpoch == attemptGeneration &&
+            SESSION_EPOCHS.accepts(attemptGeneration)
+
+    private fun detachFreshTransport(): FreshTransportCandidate? =
+        synchronized(transportOwnerLock) {
+            pendingFreshTransport.also { pendingFreshTransport = null }
+        }
 
     private fun installTransport(transportSocket: Socket) {
         socket = transportSocket
@@ -550,6 +607,7 @@ class StreamClient(
     }
 
     private fun closeTransport() {
+        detachFreshTransport()?.closeOnce()
         val failures = mutableListOf<IOException>()
         listOf(outputStream, inputStream, socket).forEach { resource ->
             try {
@@ -566,9 +624,7 @@ class StreamClient(
         }
     }
 
-    private fun openWirelessSocket(): Socket {
-        val fresh = socketFactory()
-        socket = fresh
+    private fun configureWirelessSocket(fresh: Socket) {
         fresh.tcpNoDelay = true
         val wifiNetwork =
             context?.let { ctx ->
@@ -579,7 +635,6 @@ class StreamClient(
             }
         wifiNetwork?.bindSocket(fresh)
         fresh.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
-        return fresh
     }
 
     private fun authenticateWirelessSocket(
@@ -625,25 +680,20 @@ class StreamClient(
      * (66 bytes) only after [MESSAGE_DEVICE_INFO_CAPABILITY] acceptance.
      */
     private fun sendDeviceInfo() {
-        val out = outputStream ?: return
-        try {
-            val model = Build.MODEL
-            val modelBytes = model.toByteArray(Charsets.UTF_8)
-            val modelField = ByteArray(64)
-            modelBytes.copyInto(modelField, 0, 0, minOf(modelBytes.size, 63))
-
-            val refreshRate = resolveMaxRefreshRateHz()
-            val buffer = ByteArray(1 + 64 + 1)
-            buffer[0] = MESSAGE_CLIENT_DEVICE_INFO.toByte()
-            System.arraycopy(modelField, 0, buffer, 1, 64)
-            buffer[65] = (refreshRate.coerceIn(0, 255) and 0xFF).toByte()
-
-            out.write(buffer)
-            out.flush()
-            diagLog("Sent device info: model=$model, maxRefreshRate=$refreshRate")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to send device info", e)
-        }
+        val model = Build.MODEL ?: "Android"
+        val modelBytes = model.toByteArray(Charsets.UTF_8)
+        val modelField = ByteArray(64)
+        modelBytes.copyInto(modelField, 0, 0, minOf(modelBytes.size, 63))
+        val refreshRate = resolveMaxRefreshRateHz()
+        val payload = ByteArray(1 + 64 + 1)
+        payload[0] = MESSAGE_CLIENT_DEVICE_INFO.toByte()
+        System.arraycopy(modelField, 0, payload, 1, 64)
+        payload[65] = (refreshRate.coerceIn(0, 255) and 0xFF).toByte()
+        submitOutbound(
+            kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+            command = OutboundCommand.LegacyControl(payload),
+        )
+        diagLog("Queued device info: model=$model, maxRefreshRate=$refreshRate")
     }
 
     private fun resolveMaxRefreshRateHz(): Int {
@@ -925,15 +975,17 @@ class StreamClient(
         if (wireMode == WireMode.V1) {
             val session = protocolSession ?: return
             if (!session.isStreaming) return
-            v1Samples.forEach { sample ->
-                submitOutbound(
-                    kind =
-                        if (sample.phase == InputPhase.INPUT_PHASE_CHANGED) {
-                            OutboundCommandScheduler.Kind.MOVE
-                        } else {
-                            OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
-                        },
-                    command = OutboundCommand.ProtocolBuild { activeSession ->
+            val samples = v1Samples.toList()
+            if (samples.isEmpty()) return
+            submitOutbound(
+                kind =
+                    if (samples.all { it.phase == InputPhase.INPUT_PHASE_CHANGED }) {
+                        OutboundCommandScheduler.Kind.MOVE
+                    } else {
+                        OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
+                    },
+                command = OutboundCommand.ProtocolBatch { activeSession ->
+                    samples.map { sample ->
                         activeSession.touch(
                             inputId = nextInputId.getAndIncrement(),
                             pointerId = sample.pointerId,
@@ -941,9 +993,9 @@ class StreamClient(
                             x = sample.x,
                             y = sample.y,
                         )
-                    },
-                )
-            }
+                    }
+                },
+            )
             return
         }
 
@@ -1008,7 +1060,7 @@ class StreamClient(
             if (!session.isStreaming) return
             submitOutbound(
                 kind = OutboundCommandScheduler.Kind.KEYFRAME,
-                command = OutboundCommand.ProtocolBuild { it.requestKeyframe(reason) },
+                command = OutboundCommand.ProtocolBatch { listOf(it.requestKeyframe(reason)) },
             )
             return
         }
@@ -1035,7 +1087,7 @@ class StreamClient(
             lastV1PingSentNs = System.nanoTime()
             submitOutbound(
                 kind = OutboundCommandScheduler.Kind.PING,
-                command = OutboundCommand.ProtocolBuild { it.ping(sequence) },
+                command = OutboundCommand.ProtocolBatch { listOf(it.ping(sequence)) },
             )
             return
         }
@@ -1100,14 +1152,16 @@ class StreamClient(
                 out.write(buffer.array())
             }
 
-            is OutboundCommand.ProtocolBuild -> {
+            is OutboundCommand.LegacyControl -> out.write(command.payload)
+
+            is OutboundCommand.ProtocolBatch -> {
                 val session = checkNotNull(protocolSession) { "Protocol v1 session is closed" }
-                writeProtocolEnvelope(out, command.build(session))
+                command.build(session).forEach { writeProtocolEnvelope(out, it) }
             }
 
             is OutboundCommand.ProtocolReceive -> processProtocolReceive(out, command)
         }
-        if (command !is OutboundCommand.ProtocolBuild && command !is OutboundCommand.ProtocolReceive) out.flush()
+        if (command !is OutboundCommand.ProtocolBatch && command !is OutboundCommand.ProtocolReceive) out.flush()
     }
 
     private fun processProtocolReceive(
@@ -1129,7 +1183,10 @@ class StreamClient(
                             onConnectionStatus?.invoke(true)
                         }
                         onCodecSelected?.invoke(streamCodecIsHevc)
-                        onDisplaySize?.invoke(action.width, action.height, 0)
+                        onDisplaySize?.invoke(action.width, action.height, action.rotation)
+                    }
+                    is ProtocolV1Session.Action.DisplayChanged -> {
+                        onDisplaySize?.invoke(action.width, action.height, action.rotation)
                     }
                     is ProtocolV1Session.Action.PongReceived -> {
                         if (action.sequence == lastV1PingSequence && lastV1PingSentNs > 0L) {
@@ -1141,8 +1198,14 @@ class StreamClient(
                         val failure =
                             if (action.mayResume) {
                                 SessionFailure.transport("Host ended Protocol v1 session and allowed resume")
-                            } else {
+                            } else if (action.reasonCode == "host_shutdown") {
                                 SessionFailure.serverShutdown()
+                            } else {
+                                SessionFailure(
+                                    kind = SessionFailureKind.HOST_PROTOCOL_ERROR,
+                                    detail = "Host ended Protocol v1 session: ${action.reasonCode}",
+                                    retryable = false,
+                                )
                             }
                         command.completion.completeExceptionally(SessionProtocolException(failure))
                         return
@@ -1371,9 +1434,7 @@ class StreamClient(
                 Thread.currentThread().interrupt()
                 outboundScheduler.shutdownNow()
             }
-            socket?.close()
-            outputStream?.close()
-            inputStream?.close()
+            closeTransport()
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup", e)
         }
@@ -1393,6 +1454,7 @@ class StreamClient(
         if (socket === candidate) {
             socket = null
         }
+        detachFreshTransport()?.closeOnce()
         outboundScheduler.shutdownNow()
     }
 
@@ -1455,8 +1517,12 @@ class StreamClient(
             val sentAtNs: Long,
         ) : OutboundCommand
 
-        class ProtocolBuild(
-            val build: (ProtocolV1Session) -> Envelope,
+        data class LegacyControl(
+            val payload: ByteArray,
+        ) : OutboundCommand
+
+        class ProtocolBatch(
+            val build: (ProtocolV1Session) -> List<Envelope>,
         ) : OutboundCommand
 
         data class ProtocolReceive(
@@ -1469,6 +1535,22 @@ class StreamClient(
         val failure: SessionFailure,
         val wasConnected: Boolean,
     )
+
+    private class FreshTransportCandidate(
+        val socket: Socket,
+        val attemptGeneration: Long,
+    ) {
+        private val closed = AtomicBoolean()
+
+        fun closeOnce() {
+            if (!closed.compareAndSet(false, true)) return
+            try {
+                socket.close()
+            } catch (_: IOException) {
+                // The ownership contract is about exactly-once close attempts.
+            }
+        }
+    }
 
     companion object {
         private const val TAG = "StreamClient"

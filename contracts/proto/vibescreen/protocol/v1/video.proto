@@ -17,6 +17,7 @@ message VideoConfig {
   uint32 bitrate_kbps = 5;
   uint64 stream_id = 6;
   ColorDescription color_description = 7;
+  uint32 rotation_degrees = 8;
 }
 
 message VideoConfigResult {

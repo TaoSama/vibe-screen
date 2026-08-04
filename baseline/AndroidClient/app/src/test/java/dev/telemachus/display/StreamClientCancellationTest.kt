@@ -11,12 +11,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import java.io.DataOutputStream
+import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.io.OutputStream
+import java.net.SocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 class StreamClientCancellationTest {
     @Test
@@ -322,6 +326,117 @@ class StreamClientCancellationTest {
             }
         }
 
+    @Test
+    fun disconnectClosesUsbFreshFallbackCandidateExactlyOnce() = runBlocking {
+        ServerSocket(0).use { server ->
+            val fresh = BlockingConnectSocket()
+            val sockets = AtomicInteger()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { probe ->
+                        assertEquals(0x0d, probe.getInputStream().read())
+                        Thread.sleep(400)
+                    }
+                }
+            val client =
+                StreamClient(
+                    "127.0.0.1",
+                    server.localPort,
+                    socketFactory = { if (sockets.getAndIncrement() == 0) Socket() else fresh },
+                )
+            val connectJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            assertTrue(fresh.connectEntered.await(2, TimeUnit.SECONDS))
+
+            client.disconnect()
+            withTimeout(2_000) { connectJob.await() }
+            withTimeout(2_000) { serverJob.await() }
+            assertEquals(1, fresh.closeCalls.get())
+            assertEquals(2, sockets.get())
+        }
+    }
+
+    @Test
+    fun supersedingGenerationRejectsAndClosesUsbFreshFallbackCandidate() = runBlocking {
+        ServerSocket(0).use { firstServer ->
+            ServerSocket(0).use { secondServer ->
+                val fresh = BlockingConnectSocket()
+                val sockets = AtomicInteger()
+                val firstServerJob =
+                    async(Dispatchers.IO) {
+                        firstServer.accept().use { probe ->
+                            assertEquals(0x0d, probe.getInputStream().read())
+                            Thread.sleep(400)
+                        }
+                    }
+                val secondServerJob =
+                    async(Dispatchers.IO) {
+                        secondServer.accept().use { peer ->
+                            assertEquals(0x0d, peer.getInputStream().read())
+                            DataOutputStream(peer.getOutputStream()).apply {
+                                writeDisplay(1920, 1080, 0)
+                                flush()
+                            }
+                        }
+                    }
+                val first =
+                    StreamClient(
+                        "127.0.0.1",
+                        firstServer.localPort,
+                        socketFactory = { if (sockets.getAndIncrement() == 0) Socket() else fresh },
+                    )
+                val firstJob = async(Dispatchers.IO) { runCatching { first.connect() } }
+                assertTrue(fresh.connectEntered.await(2, TimeUnit.SECONDS))
+
+                runCatching { StreamClient("127.0.0.1", secondServer.localPort).connect() }
+                fresh.allowConnectReturn()
+
+                withTimeout(2_000) { firstJob.await() }
+                withTimeout(2_000) { firstServerJob.await() }
+                withTimeout(2_000) { secondServerJob.await() }
+                assertEquals(1, fresh.closeCalls.get())
+            }
+        }
+    }
+
+    @Test
+    fun disconnectDuringFreshWirelessAuthClosesCandidateExactlyOnce() = runBlocking {
+        val deviceName = "fallback-auth"
+        val requestSize = 37 + deviceName.toByteArray().size
+        ServerSocket(0).use { server ->
+            val fresh = BlockingAuthSocket()
+            val sockets = AtomicInteger()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { probe ->
+                        assertEquals(requestSize, probe.getInputStream().readNBytes(requestSize).size)
+                        probe.getOutputStream().apply {
+                            write(byteArrayOf(0x53, 0x53, 0x57, 0x52, 0x00))
+                            flush()
+                        }
+                        assertEquals(0x0d, probe.getInputStream().read())
+                        Thread.sleep(400)
+                    }
+                }
+            val client =
+                StreamClient(
+                    "127.0.0.1",
+                    server.localPort,
+                    socketFactory = { if (sockets.getAndIncrement() == 0) Socket() else fresh },
+                )
+            val connectJob =
+                async(Dispatchers.IO) {
+                    runCatching { client.connectWireless(ByteArray(32), deviceName) }
+                }
+            assertTrue(fresh.authPaused.await(2, TimeUnit.SECONDS))
+
+            client.disconnect()
+            withTimeout(2_000) { connectJob.await() }
+            withTimeout(2_000) { serverJob.await() }
+            assertEquals(1, fresh.closeCalls.get())
+            assertEquals(2, sockets.get())
+        }
+    }
+
     private fun DataOutputStream.writeDisplay(
         width: Int,
         height: Int,
@@ -363,5 +478,69 @@ class StreamClientCancellationTest {
         }
 
         override fun flush() = delegate.flush()
+    }
+
+    private class BlockingConnectSocket : Socket() {
+        val connectEntered = CountDownLatch(1)
+        val closeCalls = AtomicInteger()
+        private val released = CountDownLatch(1)
+
+        override fun connect(endpoint: SocketAddress?, timeout: Int) {
+            connectEntered.countDown()
+            released.await()
+        }
+
+        override fun close() {
+            if (closeCalls.incrementAndGet() == 1) released.countDown()
+        }
+
+        fun allowConnectReturn() = released.countDown()
+
+        override fun setTcpNoDelay(on: Boolean) = Unit
+
+        override fun setSoTimeout(timeout: Int) = Unit
+    }
+
+    private class BlockingAuthSocket : Socket() {
+        val authPaused = CountDownLatch(1)
+        val closeCalls = AtomicInteger()
+        private val released = CountDownLatch(1)
+        private val output = ByteArrayOutputStream()
+        private val response = byteArrayOf(0x53, 0x53, 0x57, 0x52, 0x00)
+        private val input =
+            object : InputStream() {
+                private var offset = 0
+
+                override fun read(): Int {
+                    val target = ByteArray(1)
+                    return if (read(target, 0, 1) < 0) -1 else target[0].toInt() and 0xff
+                }
+
+                override fun read(target: ByteArray, targetOffset: Int, length: Int): Int {
+                    if (offset >= response.size) return -1
+                    if (offset == response.lastIndex) {
+                        authPaused.countDown()
+                        released.await()
+                    }
+                    val count = minOf(length, if (offset == 0) response.size - 1 else 1)
+                    response.copyInto(target, targetOffset, offset, offset + count)
+                    offset += count
+                    return count
+                }
+            }
+
+        override fun connect(endpoint: SocketAddress?, timeout: Int) = Unit
+
+        override fun getOutputStream(): OutputStream = output
+
+        override fun getInputStream(): InputStream = input
+
+        override fun close() {
+            if (closeCalls.incrementAndGet() == 1) released.countDown()
+        }
+
+        override fun setTcpNoDelay(on: Boolean) = Unit
+
+        override fun setSoTimeout(timeout: Int) = Unit
     }
 }

@@ -5,6 +5,7 @@ import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Dimensions
 import dev.vibescreen.protocol.v1.DisplayDescriptor
+import dev.vibescreen.protocol.v1.DisplayChanged
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.InputPhase
@@ -60,8 +61,33 @@ class ProtocolV1SessionTest {
         assertEquals(6L, result.envelope.correlationId)
         assertEquals(1920, configured.width)
         assertEquals(1080, configured.height)
+        assertEquals(90, configured.rotation)
         assertEquals(7L, configured.sessionEpoch)
         assertTrue(session.isStreaming)
+    }
+
+    @Test
+    fun runtimeDisplayChangeCarriesRotationWithoutReconfiguringMedia() {
+        val session = streamingSession()
+        val action =
+            session.receive(
+                base(7)
+                    .setDisplayChanged(
+                        DisplayChanged
+                            .newBuilder()
+                            .setDisplay(
+                                DisplayDescriptor
+                                    .newBuilder()
+                                    .setDisplayId("display-main")
+                                    .setLogicalSize(Dimensions.newBuilder().setWidth(1080).setHeight(1920)),
+                            ).setRotationDegrees(270),
+                    ).build(),
+            ).single() as ProtocolV1Session.Action.DisplayChanged
+
+        assertEquals(1080, action.width)
+        assertEquals(1920, action.height)
+        assertEquals(270, action.rotation)
+        session.validateMedia(mediaHeader())
     }
 
     @Test
@@ -282,7 +308,8 @@ class ProtocolV1SessionTest {
                     .setEncodedSize(Dimensions.newBuilder().setWidth(1920).setHeight(1080))
                     .setFramesPerSecond(60)
                     .setBitrateKbps(12_000)
-                    .setStreamId(42),
+                    .setStreamId(42)
+                    .setRotationDegrees(90),
             ).build()
 
     private fun base(id: Long): Envelope.Builder =

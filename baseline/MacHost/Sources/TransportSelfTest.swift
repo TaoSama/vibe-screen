@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import VibeScreenProtocol
 
 /// Loopback smoke test for the exact production transport implementation.
 /// It validates startup capability negotiation, display configuration, a
@@ -184,17 +185,244 @@ enum TransportSelfTest {
                 state.failure
             )
         }
+        let protocolV1Lifecycle = runProtocolV1Lifecycle()
         let passed = snapshot.0 && snapshot.1 && snapshot.2 && snapshot.3 &&
-            snapshot.4 && snapshot.5 == 1 && snapshot.6 == nil
+            snapshot.4 && snapshot.5 == 1 && snapshot.6 == nil &&
+            protocolV1Lifecycle
         print(
             "Transport self-test: \(passed ? "PASS" : "FAIL") " +
             "(config=\(snapshot.0), keyframe=\(snapshot.1), " +
             "pong=\(snapshot.2), touch=\(snapshot.3), " +
             "malformedTouchRejected=\(snapshot.4), portConflict=true, " +
             "codecNegotiations=\(snapshot.5), " +
+            "protocolV1Lifecycle=\(protocolV1Lifecycle), " +
             "error=\(snapshot.6 ?? "none"))"
         )
         return passed
+    }
+
+    private static func runProtocolV1Lifecycle() -> Bool {
+        let port: UInt16 = 55433
+        let server = StreamingServer(port: port)
+        let connected = DispatchSemaphore(value: 0)
+        server.setDisplaySize(width: 1920, height: 1080, rotation: 90)
+        server.onCodecNegotiated = { _, _, completion in
+            completion(NegotiatedDisplayConfiguration(width: 1920, height: 1080, rotation: 90))
+        }
+        server.onClientConnected = { _ in connected.signal() }
+        do {
+            try server.start()
+            let client = try BlockingProtocolClient(port: port)
+            defer { client.cancel() }
+            try client.send(Data([ProtocolV1Upgrade.offer]))
+            guard try client.readExactly(2) == ProtocolV1Upgrade.acknowledgement else {
+                server.stop()
+                return false
+            }
+
+            var range = VSProtocolRange()
+            range.minimum = 1
+            range.maximum = 1
+            var hello = VSClientHello()
+            hello.supportedProtocols = range
+            hello.deviceID = "transport-self-test"
+            hello.deviceName = "Transport Self Test"
+            hello.capabilities = [.touch, .telemetry]
+            hello.requiredCapabilities = [.touch]
+            hello.codecs = [.hevc]
+            hello.transports = [.usb]
+            try client.sendEnvelope(envelope(id: 1, payload: .clientHello(hello), scoped: false))
+            let hostHello = try client.readEnvelope()
+            let accepted = try client.readEnvelope()
+            guard case .hostHello? = hostHello.payload,
+                  case .sessionAccepted(let session)? = accepted.payload else {
+                server.stop()
+                return false
+            }
+
+            let sessionID = session.sessionID
+            let sessionEpoch = session.sessionEpoch
+            try client.sendEnvelope(envelope(
+                id: 2,
+                payload: .listDisplaysRequest(VSListDisplaysRequest()),
+                sessionID: sessionID,
+                sessionEpoch: sessionEpoch
+            ))
+            guard case .listDisplaysResponse? = try client.readEnvelope().payload else {
+                server.stop()
+                return false
+            }
+            var start = VSStartDisplayRequest()
+            start.mode = .existing
+            try client.sendEnvelope(envelope(
+                id: 3,
+                payload: .startDisplayRequest(start),
+                sessionID: sessionID,
+                sessionEpoch: sessionEpoch
+            ))
+            guard case .startDisplayResponse? = try client.readEnvelope().payload,
+                  case .videoConfig(let video)? = try client.readEnvelope().payload,
+                  video.rotationDegrees == 90 else {
+                server.stop()
+                return false
+            }
+            var result = VSVideoConfigResult()
+            result.configEpoch = video.configEpoch
+            result.streamID = video.streamID
+            result.accepted = true
+            try client.sendEnvelope(envelope(
+                id: 4,
+                payload: .videoConfigResult(result),
+                sessionID: sessionID,
+                sessionEpoch: sessionEpoch
+            ))
+            guard connected.wait(timeout: .now() + 2) == .success else {
+                server.stop()
+                return false
+            }
+
+            server.updateRotation(270)
+            guard case .displayChanged(let changed)? = try client.readEnvelope().payload,
+                  changed.rotationDegrees == 270 else {
+                server.stop()
+                return false
+            }
+            var ping = VSPing()
+            ping.sequence = 99
+            try client.sendEnvelope(envelope(
+                id: 5,
+                payload: .ping(ping),
+                sessionID: sessionID,
+                sessionEpoch: sessionEpoch
+            ))
+            guard case .pong(let pong)? = try client.readEnvelope().payload,
+                  pong.sequence == 99 else {
+                server.stop()
+                return false
+            }
+
+            server.stop()
+            guard case .disconnectNotice(let notice)? = try client.readEnvelope().payload,
+                  notice.reasonCode == "host_shutdown",
+                  !notice.mayResume else { return false }
+            return true
+        } catch {
+            server.stop()
+            return false
+        }
+    }
+
+    private static func envelope(
+        id: UInt64,
+        payload: VSEnvelope.OneOf_Payload,
+        sessionID: Data = Data(),
+        sessionEpoch: UInt64 = 0,
+        scoped: Bool = true
+    ) -> VSEnvelope {
+        var envelope = VSEnvelope()
+        envelope.protocolVersion = 1
+        envelope.messageID = id
+        if scoped {
+            envelope.sessionID = sessionID
+            envelope.sessionEpoch = sessionEpoch
+        }
+        envelope.sentAtMonotonicNs = id
+        envelope.payload = payload
+        return envelope
+    }
+
+    private final class BlockingProtocolClient {
+        private let connection: NWConnection
+        private let queue = DispatchQueue(label: "transport-self-test-v1-client")
+        private var buffered = Data()
+
+        init(port: UInt16) throws {
+            connection = NWConnection(
+                host: "127.0.0.1",
+                port: NWEndpoint.Port(rawValue: port)!,
+                using: .tcp
+            )
+            let ready = DispatchSemaphore(value: 0)
+            var failure: Error?
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready: ready.signal()
+                case .failed(let error):
+                    failure = error
+                    ready.signal()
+                default: break
+                }
+            }
+            connection.start(queue: queue)
+            guard ready.wait(timeout: .now() + 2) == .success, failure == nil else {
+                throw failure ?? ProtocolClientError.timeout
+            }
+        }
+
+        func cancel() { connection.cancel() }
+
+        func send(_ data: Data) throws {
+            let completed = DispatchSemaphore(value: 0)
+            var failure: Error?
+            connection.send(content: data, completion: .contentProcessed { error in
+                failure = error
+                completed.signal()
+            })
+            guard completed.wait(timeout: .now() + 2) == .success else {
+                throw ProtocolClientError.timeout
+            }
+            if let failure { throw failure }
+        }
+
+        func sendEnvelope(_ envelope: VSEnvelope) throws {
+            try send(ProtocolV1TransportFrame(
+                channel: .control,
+                payload: try envelope.serializedData()
+            ).encoded())
+        }
+
+        func readEnvelope() throws -> VSEnvelope {
+            let header = try readExactly(5)
+            guard header.first == ProtocolV1LogicalChannel.control.rawValue else {
+                throw ProtocolClientError.invalidFrame
+            }
+            let length = header.dropFirst().reduce(UInt32.zero) { ($0 << 8) | UInt32($1) }
+            guard length <= ProtocolV1Framer.maximumPayloadBytes else {
+                throw ProtocolClientError.invalidFrame
+            }
+            return try VSEnvelope(serializedBytes: readExactly(Int(length)))
+        }
+
+        func readExactly(_ count: Int) throws -> Data {
+            while buffered.count < count {
+                let received = DispatchSemaphore(value: 0)
+                var chunk: Data?
+                var failure: Error?
+                var complete = false
+                connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) {
+                    data, _, isComplete, error in
+                    chunk = data
+                    failure = error
+                    complete = isComplete
+                    received.signal()
+                }
+                guard received.wait(timeout: .now() + 2) == .success else {
+                    throw ProtocolClientError.timeout
+                }
+                if let failure { throw failure }
+                if let chunk { buffered.append(chunk) }
+                if complete && buffered.count < count { throw ProtocolClientError.closed }
+            }
+            let result = Data(buffered.prefix(count))
+            buffered.removeFirst(count)
+            return result
+        }
+    }
+
+    private enum ProtocolClientError: Error {
+        case timeout
+        case invalidFrame
+        case closed
     }
 
     private static func parseServerMessages(buffer: inout Data, state: ResultState) {

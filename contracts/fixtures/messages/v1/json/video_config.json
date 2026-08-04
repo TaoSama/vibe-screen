@@ -11,6 +11,7 @@
     "framesPerSecond": 60,
     "bitrateKbps": 12000,
     "streamId": "42",
+    "rotationDegrees": 90,
     "colorDescription": {
       "primaries": "COLOR_PRIMARIES_BT709",
       "transferFunction": "TRANSFER_FUNCTION_BT709",

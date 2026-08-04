@@ -1,0 +1,17 @@
+{
+  "protocolVersion": 1,
+  "messageId": "14",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000014",
+  "displayChanged": {
+    "display": {
+      "displayId": "display-main",
+      "name": "Built-in Retina Display",
+      "logicalSize": {"width": 1080, "height": 1920},
+      "scaleFactor": 2.0,
+      "isPrimary": true
+    },
+    "rotationDegrees": 270
+  }
+}
