@@ -471,11 +471,15 @@ enum InternetSessionLeaseSelfTest {
             let staleRecord = try stalePair.device.seal(Data("epoch-10".utf8), channel: .control)
             guard stalePair.host.open(staleRecord, channel: .control) != nil,
                   try cipherLifecycle.advanceSessionEpoch() == 11 else { return false }
+            let staleSealRejected: Bool
             do {
                 _ = try stalePair.device.seal(Data("must-fail".utf8), channel: .control)
-                return false
-            } catch {}
-            guard stalePair.host.open(staleRecord, channel: .control) == nil else { return false }
+                staleSealRejected = false
+            } catch {
+                staleSealRejected = true
+            }
+            guard staleSealRejected,
+                  stalePair.host.open(staleRecord, channel: .control) == nil else { return false }
 
             let mutations = [
                 ("\"pairing_id\":\"pair-1\"", "\"pairing_id\":\"pair-2\""),
