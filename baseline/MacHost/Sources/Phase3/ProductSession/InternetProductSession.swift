@@ -356,8 +356,20 @@ final class InternetProductSession: EncodedFrameSink {
                 beginFreshSessionRecovery(attempt: 1, generation: generation)
 
             default:
+                let payloadName: String
+                switch envelope.payload {
+                case .clientHello: payloadName = "ClientHello"
+                case .videoConfigResult: payloadName = "VideoConfigResult"
+                case .ping: payloadName = "Ping"
+                case .pong: payloadName = "Pong"
+                case .requestKeyframe: payloadName = "RequestKeyframe"
+                case .touchEvent: payloadName = "TouchEvent"
+                case .disconnectNotice: payloadName = "DisconnectNotice"
+                case nil: payloadName = "empty payload"
+                default: payloadName = "unsupported payload"
+                }
                 throw InternetProductProtocolError.unexpectedMessage(
-                    "the product session is in state \(state)"
+                    "\(payloadName) arrived while the product session is in state \(state)"
                 )
             }
         } catch let error as InternetProductProtocolError {
