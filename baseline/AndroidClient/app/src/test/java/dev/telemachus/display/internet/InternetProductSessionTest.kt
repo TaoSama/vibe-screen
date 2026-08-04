@@ -82,7 +82,8 @@ class InternetProductSessionTest {
                         .setEncodedSize(Dimensions.newBuilder().setWidth(1920).setHeight(1080))
                         .setFramesPerSecond(60)
                         .setBitrateKbps(12_000)
-                        .setStreamId(5),
+                        .setStreamId(5)
+                        .setRotationDegrees(90),
                 ).build(),
         )
         assertEquals(Envelope.PayloadCase.VIDEO_CONFIG_RESULT, Envelope.parseFrom(peer.control.last()).payloadCase)
@@ -92,6 +93,23 @@ class InternetProductSessionTest {
         peer.media(media(frameId = 2, keyframe = true, payload = "key".toByteArray()))
         assertEquals("key", callbacks.frames.single().payload.toString(Charsets.UTF_8))
         assertTrue(session.sendTouch(ProductTouchEvent(1, 0, ProductInputPhase.BEGAN, 0.5, 0.5)))
+        assertEquals(listOf(90), callbacks.configurations.map { it.rotationDegrees })
+
+        peer.receive(
+            controlEnvelope(4)
+                .setVideoConfig(
+                    VideoConfig
+                        .newBuilder()
+                        .setConfigEpoch(4)
+                        .setCodec(Codec.CODEC_HEVC)
+                        .setEncodedSize(Dimensions.newBuilder().setWidth(1080).setHeight(1920))
+                        .setFramesPerSecond(60)
+                        .setBitrateKbps(12_000)
+                        .setStreamId(5)
+                        .setRotationDegrees(270),
+                ).build(),
+        )
+        assertEquals(listOf(90, 270), callbacks.configurations.map { it.rotationDegrees })
 
         monitor.available("cellular")
         assertEquals(InternetProductSessionState.RECOVERING, session.state)
@@ -155,6 +173,37 @@ class InternetProductSessionTest {
         assertEquals(1, peer.control.size)
         assertEquals(Envelope.PayloadCase.CLIENT_HELLO, Envelope.parseFrom(peer.control.single()).payloadCase)
         assertTrue(callbacks.routes.isNotEmpty())
+    }
+
+    @Test
+    fun shortDisconnectRouteInterleavingResumesActiveTouchAndHeartbeatWithoutSecondHello() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val clock = ProductFakeClock(0)
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks, clock = clock)
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+
+        peer.observer.onDisconnected()
+        assertEquals(InternetProductSessionState.RECOVERING, session.state)
+        peer.observer.onRouteChanged(PeerRoute.RELAY)
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(session.sendTouch(ProductTouchEvent(9, 0, ProductInputPhase.BEGAN, 0.25, 0.75)))
+
+        clock.now = 1_000
+        session.tick()
+        val payloads = peer.control.map { Envelope.parseFrom(it).payloadCase }
+        assertEquals(1, payloads.count { it == Envelope.PayloadCase.CLIENT_HELLO })
+        assertTrue(payloads.contains(Envelope.PayloadCase.TOUCH_EVENT))
+        assertTrue(payloads.contains(Envelope.PayloadCase.PING))
+        assertTrue(callbacks.routes.contains(PeerRoute.RELAY))
+        assertTrue(callbacks.routes.contains(PeerRoute.DIRECT))
     }
 
     @Test
@@ -251,6 +300,7 @@ class InternetProductSessionTest {
         peer: ProductFakePeerEngine,
         monitor: ProductFakeNetworkMonitor,
         callbacks: ProductCallbacks,
+        clock: ProductFakeClock = ProductFakeClock(0),
         revocationStore: InternetProductRevocationStore = InternetProductRevocationStore { _, _ -> },
     ) = InternetProductSession(
         lease = lease,
@@ -262,7 +312,7 @@ class InternetProductSessionTest {
             ),
         peerEngine = peer,
         networkMonitor = monitor,
-        clock = MonotonicClock { 0 },
+        clock = clock,
         codec = codec,
         callbacks = callbacks,
         revocationStore = revocationStore,
@@ -289,6 +339,7 @@ class InternetProductSessionTest {
             .newBuilder()
             .setSessionId(ByteString.copyFrom(lease.protocolSessionId))
             .setSessionEpoch(lease.authoritativeSessionEpoch)
+            .setHeartbeatIntervalMs(1_000)
             .addAllNegotiatedCapabilities(ProtobufProtocolV1ProductCodec.REQUIRED_CLIENT_CAPABILITIES)
 
     private fun media(frameId: Long, keyframe: Boolean, payload: ByteArray): ByteArray =
@@ -309,15 +360,23 @@ class InternetProductSessionTest {
         )
 }
 
+private class ProductFakeClock(var now: Long) : MonotonicClock {
+    override fun nowMillis(): Long = now
+}
+
 private fun String.hex(): ByteArray = chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
 private class ProductCallbacks : InternetProductSessionCallbacks {
     val frames = mutableListOf<ProductVideoFrame>()
+    val configurations = mutableListOf<ProductVideoConfiguration>()
     val freshReasons = mutableListOf<String>()
     val failures = mutableListOf<Throwable>()
     val routes = java.util.concurrent.CopyOnWriteArrayList<PeerRoute>()
     var revocationEvents: MutableList<String>? = null
-    override fun onVideoConfiguration(configuration: ProductVideoConfiguration) = ProductVideoDecision.ACCEPT
+    override fun onVideoConfiguration(configuration: ProductVideoConfiguration): ProductVideoDecision {
+        configurations += configuration
+        return ProductVideoDecision.ACCEPT
+    }
     override fun onVideoFrame(frame: ProductVideoFrame) { frames += frame }
     override fun onFreshSessionRequired(reason: String) { freshReasons += reason }
     override fun onFailure(error: Throwable) { failures += error }

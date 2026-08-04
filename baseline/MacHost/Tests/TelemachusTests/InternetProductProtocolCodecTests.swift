@@ -56,7 +56,33 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         }
     }
 
-    private func makeCodec(controlLimit: Int = 64 * 1_024) throws -> InternetProductProtocolCodec {
+    func testInitialAndRuntimeRotationUseVersionedVideoAndDisplayChangedControls() throws {
+        var codec = try makeCodec(rotationDegrees: 90)
+        let initial = try VSEnvelope(serializedBytes: codec.videoConfiguration())
+        guard case .videoConfig(let initialVideo) = initial.payload else {
+            return XCTFail("Expected initial video configuration")
+        }
+        XCTAssertEqual(initialVideo.configEpoch, 9)
+        XCTAssertEqual(initialVideo.rotationDegrees, 90)
+
+        let updates = try codec.updateRotation(270)
+        XCTAssertEqual(updates.count, 2)
+        let displayEnvelope = try VSEnvelope(serializedBytes: updates[0])
+        let videoEnvelope = try VSEnvelope(serializedBytes: updates[1])
+        guard case .displayChanged(let display) = displayEnvelope.payload,
+              case .videoConfig(let video) = videoEnvelope.payload else {
+            return XCTFail("Expected DisplayChanged followed by VideoConfig")
+        }
+        XCTAssertEqual(display.rotationDegrees, 270)
+        XCTAssertEqual(video.rotationDegrees, 270)
+        XCTAssertEqual(video.configEpoch, 10)
+        XCTAssertEqual(codec.video.rotationDegrees, 270)
+    }
+
+    private func makeCodec(
+        controlLimit: Int = 64 * 1_024,
+        rotationDegrees: Int = 0
+    ) throws -> InternetProductProtocolCodec {
         try InternetProductProtocolCodec(
             sessionIdentifier: "product-session",
             sessionEpoch: 3,
@@ -70,7 +96,8 @@ final class InternetProductProtocolCodecTests: XCTestCase {
                 framesPerSecond: 60,
                 bitrateKbps: 20_000,
                 streamID: 7,
-                configEpoch: 9
+                configEpoch: 9,
+                rotationDegrees: rotationDegrees
             ),
             limits: InternetTransportLimits(
                 maximumControlMessageBytes: controlLimit,

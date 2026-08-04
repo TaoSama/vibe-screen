@@ -33,6 +33,22 @@ struct InternetSessionLeasePayload: Equatable {
     let signalingToken: String
     let iceServers: [InternetSessionLeaseICE]
     let allowInsecureForTesting: Bool
+
+    func replacingAuthoritativeSessionEpoch(_ epoch: UInt64) -> Self {
+        Self(
+            pairingIdentifier: pairingIdentifier,
+            pinnedHostID: pinnedHostID,
+            signalingURL: signalingURL,
+            signalingSessionID: signalingSessionID,
+            authoritativeSessionEpoch: epoch,
+            identityEpoch: identityEpoch,
+            transcriptContext: transcriptContext,
+            protocolSessionID: protocolSessionID,
+            signalingToken: signalingToken,
+            iceServers: iceServers,
+            allowInsecureForTesting: allowInsecureForTesting
+        )
+    }
 }
 
 enum InternetSessionLeaseCodec {
@@ -309,16 +325,25 @@ enum InternetSessionLeaseCodec {
 }
 
 enum InternetSessionLeaseIssuer {
+    typealias StateStoreFactory = (String) -> any SecurityStateStore
+
     static func issue(
         unsignedJSON: Data,
-        identityStore: KeychainDeviceIdentityStore = KeychainDeviceIdentityStore()
+        identityStore: KeychainDeviceIdentityStore = KeychainDeviceIdentityStore(),
+        stateStoreFactory: StateStoreFactory = {
+            KeychainSecurityStateStore(peerID: "lease-authority.\($0)")
+        }
     ) throws -> Data {
-        let payload = try InternetSessionLeaseCodec.decodeUnsigned(unsignedJSON)
+        let requested = try InternetSessionLeaseCodec.decodeUnsigned(unsignedJSON)
         guard let identity = try identityStore.loadExisting(
-            deviceID: payload.pinnedHostID
+            deviceID: requested.pinnedHostID
         ) else {
             throw InternetSessionLeaseIssuerError.pairedHostIdentityUnavailable
         }
+        let epoch = try SecurityLifecycle(
+            store: stateStoreFactory(requested.pairingIdentifier)
+        ).advanceSessionEpoch()
+        let payload = requested.replacingAuthoritativeSessionEpoch(epoch)
         let digest = InternetSessionLeaseCodec.digest(
             payload,
             leaseHostKeyID: identity.publicIdentity.keyID
@@ -377,19 +402,17 @@ enum InternetSessionLeaseSelfTest {
             let keychainIdentity = try keychainStore.loadOrCreate(
                 deviceID: fixture.pinnedHostID
             )
-            defer {
-                try? keychainStore.delete(
-                    deviceID: fixture.pinnedHostID,
-                    keyEpoch: 1
-                )
-            }
+            let leaseStateStore = SelfTestLeaseStateStore()
             let signedJSON = try InternetSessionLeaseIssuer.issue(
                 unsignedJSON: Data(fixtureJSON.utf8),
-                identityStore: keychainStore
+                identityStore: keychainStore,
+                stateStoreFactory: { _ in leaseStateStore }
             )
             guard let signedRoot = try JSONSerialization.jsonObject(
                 with: signedJSON
             ) as? [String: Any],
+                  let issuedEpoch = (signedRoot["session_epoch"] as? NSNumber)?.uint64Value,
+                  issuedEpoch == 1,
                   signedRoot["lease_host_key_id"] as? String ==
                     keychainIdentity.publicIdentity.keyID,
                   let encodedKeychainSignature =
@@ -400,11 +423,59 @@ enum InternetSessionLeaseSelfTest {
                   InternetSessionLeaseCodec.verifyDigestSignature(
                     keychainSignature,
                     digest: InternetSessionLeaseCodec.digest(
-                        fixture,
+                        fixture.replacingAuthoritativeSessionEpoch(issuedEpoch),
                         leaseHostKeyID: keychainIdentity.publicIdentity.keyID
                     ),
                     publicKey: keychainIdentity.publicIdentity.signingPublicKey
                   ) else { return false }
+
+            let highCallerJSON = fixtureJSON.replacingOccurrences(
+                of: "\"session_epoch\":7",
+                with: "\"session_epoch\":9223372036854775806"
+            )
+            let restarted = try InternetSessionLeaseIssuer.issue(
+                unsignedJSON: Data(highCallerJSON.utf8),
+                identityStore: keychainStore,
+                stateStoreFactory: { _ in leaseStateStore }
+            )
+            guard try signedEpoch(restarted) == 2 else { return false }
+
+            let resultLock = NSLock()
+            var concurrentEpochs: [UInt64] = []
+            var concurrentFailures = 0
+            DispatchQueue.concurrentPerform(iterations: 8) { _ in
+                do {
+                    let issued = try InternetSessionLeaseIssuer.issue(
+                        unsignedJSON: Data(fixtureJSON.utf8),
+                        identityStore: keychainStore,
+                        stateStoreFactory: { _ in leaseStateStore }
+                    )
+                    let epoch = try signedEpoch(issued)
+                    resultLock.lock(); concurrentEpochs.append(epoch); resultLock.unlock()
+                } catch {
+                    resultLock.lock(); concurrentFailures += 1; resultLock.unlock()
+                }
+            }
+            guard concurrentFailures == 0,
+                  Set(concurrentEpochs) == Set(UInt64(3)...UInt64(10)) else { return false }
+
+            let cipherLifecycle = SecurityLifecycle(store: leaseStateStore)
+            let stalePair = try PlatformSessionPacketCipher.selfTestPair(
+                sessionIdentifier: "lease-self-test-epoch-10",
+                sharedSecret: Data(repeating: 0x41, count: 32),
+                bootstrapSecret: Data(repeating: 0x42, count: 32),
+                transcriptContext: Data(repeating: 0x43, count: 32),
+                sessionEpoch: 10,
+                requireActiveEpoch: cipherLifecycle.requireCurrentSessionEpoch
+            )
+            let staleRecord = try stalePair.device.seal(Data("epoch-10".utf8), channel: .control)
+            guard stalePair.host.open(staleRecord, channel: .control) != nil,
+                  try cipherLifecycle.advanceSessionEpoch() == 11 else { return false }
+            do {
+                _ = try stalePair.device.seal(Data("must-fail".utf8), channel: .control)
+                return false
+            } catch {}
+            guard stalePair.host.open(staleRecord, channel: .control) == nil else { return false }
 
             let mutations = [
                 ("\"pairing_id\":\"pair-1\"", "\"pairing_id\":\"pair-2\""),
@@ -470,7 +541,11 @@ enum InternetSessionLeaseSelfTest {
                     of: "\"credential\":\"turn-password\"",
                     with: "\"credential\":false"
                   )) else { return false }
-            print("Phase 3 Internet lease self-test: PASS (canonicalKAT=true, mutation=true, strictParser=true, keychainSigner=true)")
+            try keychainStore.delete(
+                deviceID: fixture.pinnedHostID,
+                keyEpoch: 1
+            )
+            print("Phase 3 Internet lease self-test: PASS (canonicalKAT=true, mutation=true, strictParser=true, keychainSigner=true, durableEpochAuthority=true, staleCipherFailClosed=true)")
             return true
         } catch {
             print("Phase 3 Internet lease self-test: FAIL")
@@ -485,9 +560,26 @@ enum InternetSessionLeaseSelfTest {
         } catch { return true }
     }
 
+    private static func signedEpoch(_ data: Data) throws -> UInt64 {
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let value = root["session_epoch"] as? NSNumber else {
+            throw InternetSessionLeaseIssuerError.invalidInput(
+                "Signed self-test lease omitted its authoritative epoch."
+            )
+        }
+        return value.uint64Value
+    }
+
     private static let fixtureJSON = """
     {"version":1,"pairing_id":"pair-1","pinned_host_id":"host-1","signaling_url":"https://signal.example.test","signaling_session_id":"session-7","session_epoch":7,"identity_epoch":1,"transcript_context":"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=","protocol_session_id":"cHJvdG9jb2wtc2Vzc2lvbi03","signaling_token":"device-token-abcdefghijklmnopqrstuvwxyz","ice_servers":[{"urls":["stun:stun.example.test"],"username":null,"credential":null},{"urls":["turn:turn.example.test"],"username":"turn-user","credential":"turn-password"}],"allow_insecure_for_testing":false}
     """
+}
+
+private final class SelfTestLeaseStateStore: SecurityStateStore {
+    private var state = PersistedSecurityState()
+
+    func load() throws -> PersistedSecurityState { state }
+    func persist(_ state: PersistedSecurityState) throws { self.state = state }
 }
 
 private extension Data {

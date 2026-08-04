@@ -290,10 +290,10 @@ See the [Phase 3 requirements](docs/changes/2026-08-04-phase-3-secure-internet/P
 [threat model](docs/changes/2026-08-04-phase-3-secure-internet/THREAT_MODEL.md),
 [test plan](docs/changes/2026-08-04-phase-3-secure-internet/TEST.md), and
 [relay operations](docs/changes/2026-08-04-phase-3-secure-internet/OPERATIONS.md).
-An authorized Android device has completed real M144↔M150 Protocol v1 product
-sessions over direct candidates and forced local coturn, including E2EE media,
-touch and the actionable Internet UI. This is local signaling/relay evidence,
-not public Internet evidence. Automatic account/session-authority issuance, real
+The previous curated Android interop pass has been withdrawn because its source
+commit is unavailable and the raw host/instrumentation/UI evidence was not
+retained. Android product-session and UI acceptance must be rerun from a clean,
+reachable commit. Automatic account/session-authority issuance, real
 encoded ScreenCaptureKit output through the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
 revocation propagation and soak remain release gates rather than shipped

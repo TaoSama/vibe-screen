@@ -53,11 +53,13 @@ data class ProductVideoConfiguration(
     val framesPerSecond: Int,
     val bitrateKbps: Int,
     val streamId: Long,
+    val rotationDegrees: Int = 0,
 ) {
     init {
         require(configEpoch > 0 && streamId > 0) { "Video epochs and stream identifiers must be positive" }
         require(width in 16..MAX_VIDEO_DIMENSION && height in 16..MAX_VIDEO_DIMENSION) { "Video dimensions are invalid" }
         require(framesPerSecond in 1..MAX_VIDEO_FPS && bitrateKbps > 0) { "Video rate is invalid" }
+        require(rotationDegrees in setOf(0, 90, 180, 270)) { "Video rotation is invalid" }
     }
 
     companion object {
@@ -91,6 +93,7 @@ sealed class ProductControlMessage {
         val sessionId: ByteArray,
         val sessionEpoch: Long,
         val capabilities: Set<Capability>,
+        val heartbeatIntervalMillis: Long,
     ) : ProductControlMessage()
 
     data class SessionRejected(
@@ -279,6 +282,7 @@ class ProtobufProtocolV1ProductCodec(
                         value.sessionId.toByteArray(),
                         value.sessionEpoch,
                         value.negotiatedCapabilitiesList.toSet(),
+                        value.heartbeatIntervalMs.toLong(),
                     )
                 }
                 Envelope.PayloadCase.SESSION_REJECTED -> {
@@ -382,6 +386,7 @@ class ProtobufProtocolV1ProductCodec(
             framesPerSecond = framesPerSecond,
             bitrateKbps = bitrateKbps,
             streamId = streamId,
+            rotationDegrees = rotationDegrees,
         )
 
     private fun ProductVideoCodec.toProto(): Codec =

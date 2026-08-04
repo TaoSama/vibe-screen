@@ -48,10 +48,14 @@ final class InternetProductSessionTests: XCTestCase {
         let touch = expectation(description: "touch")
         let keyframe = expectation(description: "keyframe")
         var keyframeCount = 0
+        var streamingObserved = false
 
         harness.session.onStateChanged = { state in
             if state == .authenticating { authenticating.fulfill() }
-            if state == .streaming(.direct) { streaming.fulfill() }
+            if state == .streaming(.direct), !streamingObserved {
+                streamingObserved = true
+                streaming.fulfill()
+            }
         }
         harness.session.onAuthenticatedTouchEvent = {
             sessionEpoch, inputID, x, y, action, pointers, _, _ in
@@ -90,6 +94,21 @@ final class InternetProductSessionTests: XCTestCase {
         wait(for: [streaming], timeout: 1)
         XCTAssertEqual(harness.session.currentSessionEpoch, 1)
 
+        try harness.session.updateRotation(90)
+        XCTAssertTrue(harness.waitForSentControlCount(5))
+        let rotationControls = try harness.engine.sentPlaintext
+            .filter { $0.channel == .control }
+            .suffix(2)
+            .map { try VSEnvelope(serializedBytes: $0.payload) }
+        guard case .displayChanged(let displayChanged) = rotationControls[0].payload,
+              case .videoConfig(let rotatedVideo) = rotationControls[1].payload else {
+            return XCTFail("Runtime rotation must send DisplayChanged followed by VideoConfig")
+        }
+        XCTAssertEqual(displayChanged.rotationDegrees, 90)
+        XCTAssertEqual(rotatedVideo.rotationDegrees, 90)
+        XCTAssertEqual(rotatedVideo.configEpoch, 2)
+        harness.receiveControl(harness.videoAccepted(messageID: 3, configEpoch: 2))
+
         harness.session.sendFrame(
             Data([0, 0, 0, 1, 0x26]),
             timestamp: 99,
@@ -103,9 +122,9 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertEqual(media.header.captureTimestampNs, 99)
         XCTAssertTrue(media.header.keyframe)
 
-        harness.receiveControl(harness.touch(messageID: 3))
-        harness.receiveControl(harness.keyframeRequest(messageID: 4))
-        harness.receiveControl(harness.ping(messageID: 5, sequence: 77))
+        harness.receiveControl(harness.touch(messageID: 4))
+        harness.receiveControl(harness.keyframeRequest(messageID: 5))
+        harness.receiveControl(harness.ping(messageID: 6, sequence: 77))
         wait(for: [touch, keyframe], timeout: 1)
         XCTAssertTrue(harness.waitForPong(sequence: 77))
     }
@@ -133,6 +152,32 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertEqual(harness.session.snapshotState(), .recovering(attempt: 1))
     }
 
+    func testSecurityFactoryEpochMismatchClosesTemporaryCipherAndReportsCleanupFailure() throws {
+        let harness = try Harness()
+        var cleanupCalled = false
+        let mismatched = InternetProductSecuritySession(
+            sessionEpoch: 2,
+            packetCipher: harness.securitySession.packetCipher,
+            cleanup: {
+                cleanupCalled = true
+                throw PlatformSecurityError.persistenceFailure("injected cleanup failure")
+            }
+        )
+        let session = InternetProductSession(
+            engineFactory: { harness.engine },
+            securitySessionFactory: { _ in mismatched },
+            revocationHandler: { _, _ in nil }
+        )
+
+        XCTAssertThrowsError(try session.start(configuration: harness.configuration)) { error in
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("authority-agreed session epoch"))
+            XCTAssertTrue(message.contains("injected cleanup failure"))
+        }
+        XCTAssertTrue(cleanupCalled)
+        XCTAssertFalse(harness.engine.didClose)
+    }
+
     func testAuthenticationNegotiationDeadlineFailsAndClosesTransport() throws {
         let harness = try Harness(negotiationTimeoutMilliseconds: 20)
         let failed = expectation(description: "negotiation failed")
@@ -147,6 +192,18 @@ final class InternetProductSessionTests: XCTestCase {
         harness.engine.emitConnection(.connected(path: .direct))
 
         wait(for: [failed], timeout: 1)
+        XCTAssertTrue(harness.engine.didClose)
+    }
+
+    func testUnknownCandidatePathNeverPublishesDirectProductState() throws {
+        let harness = try Harness()
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .unknown))
+
+        guard case .failed(let reason) = harness.session.snapshotState() else {
+            return XCTFail("Unknown route must fail closed")
+        }
+        XCTAssertTrue(reason.contains("path is still unknown"))
         XCTAssertTrue(harness.engine.didClose)
     }
 
@@ -297,9 +354,9 @@ private final class Harness {
         return envelope
     }
 
-    func videoAccepted(messageID: UInt64) -> VSEnvelope {
+    func videoAccepted(messageID: UInt64, configEpoch: UInt64 = 1) -> VSEnvelope {
         var result = VSVideoConfigResult()
-        result.configEpoch = 1
+        result.configEpoch = configEpoch
         result.streamID = 1
         result.accepted = true
         var envelope = baseEnvelope(messageID: messageID)

@@ -2086,8 +2086,9 @@ class MainActivity : AppCompatActivity() {
             videoDecoder = candidate
             displayWidth = configuration.width
             displayHeight = configuration.height
-            displayRotation = 0
+            displayRotation = configuration.rotationDegrees
             internetVideoConfiguration = configuration
+            applyRotation(configuration.rotationDegrees)
             // InternetProductSession installs the accepted configuration after this
             // callback returns, so defer the request until that state is visible.
             binding.surfaceView.post {

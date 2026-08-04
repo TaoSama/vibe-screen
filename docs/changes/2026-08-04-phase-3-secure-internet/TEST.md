@@ -272,22 +272,13 @@ named by that run:
   `relay(local=relay,remote=relay,protocol=udp)` and its independent coturn check
   relayed 3/3 datagrams. This did not start capture/UI and is not Android, real
   screen/input, or packet-capture evidence.
-- An authorized Nubia P0110 / Android 16 (API 36) device run installed the final
-  APK and Android-test APK from source commit `90919dd`. A real macOS M150 host
-  and Android M144 client completed one direct and one forced-relay product
-  session through REST signaling. Both rounds passed Protocol v1 negotiation,
-  application AES-256-GCM, VideoConfig, keyframe plus delta delivery, and an
-  authenticated Android touch reaching the Mac harness. The relay round selected
-  relay candidates through a local coturn instance; coturn forwarded application
-  ciphertext and did not terminate the record layer. The final Android UI was
-  switched to Internet mode and exposed direct/Force TURN, import, connect, and
-  revoke controls. The curated, identifier-minimized result is
-  [android-product-interop.json](evidence/android-product-interop.json).
+- The prior curated Android interop record is
+  [withdrawn](evidence/android-product-interop.json). Its claimed source commit
+  does not exist in this repository, and raw host output, instrumentation output,
+  runtime timestamps, exact commands/environment, artifact provenance,
+  candidate-pair/E2EE logs, and UI source files were not retained. No pass result
+  is recoverable from the summary, and none is inferred or reconstructed.
 
-The device run used local signaling over ADB reverse, direct host candidates,
-and forced local coturn over a private overlay. It is not evidence for public
-Internet, public STUN/TURN, carrier/CGNAT traversal, relay geography, real
-ScreenCaptureKit capture, automatic authority reconnect, cross-service revoke,
-packet capture, latency, or soak. Runtime start/finish timestamps were not
-captured by the first interop harness, so the curated record says so explicitly
-rather than inventing them. No result is inferred from lease-lock state.
+Android direct/forced-TURN product interop, Internet UI, public Internet/STUN/TURN,
+carrier/CGNAT traversal, real ScreenCaptureKit capture, automatic authority
+reconnect, cross-service revoke, packet capture, latency, and soak all remain open.

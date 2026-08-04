@@ -152,6 +152,20 @@ final class InternetProductSession: EncodedFrameSink {
         performSync { state }
     }
 
+    func updateRotation(_ rotationDegrees: Int) throws {
+        try performSync {
+            guard isStreaming, var codec else {
+                throw InternetProductSessionError.invalidConfiguration(
+                    "Internet rotation requires an active product session."
+                )
+            }
+            let controls = try codec.updateRotation(rotationDegrees)
+            self.codec = codec
+            for control in controls { try sendControl(control) }
+            setState(.awaitingVideoConfiguration)
+        }
+    }
+
     private func startFreshSession(_ configuration: InternetProductSessionConfiguration) throws {
         stopHeartbeat()
         stopNegotiationDeadline()
@@ -167,9 +181,15 @@ final class InternetProductSession: EncodedFrameSink {
             throw InternetProductSessionError.securityFailure(error.localizedDescription)
         }
         guard securitySession.sessionEpoch == configuration.authoritativeSessionEpoch else {
-            throw InternetProductSessionError.securityFailure(
-                "Platform security did not reserve the authority-agreed session epoch."
-            )
+            let mismatch = "Platform security did not reserve the authority-agreed session epoch."
+            do {
+                try securitySession.close()
+            } catch {
+                throw InternetProductSessionError.securityFailure(
+                    "\(mismatch) Temporary cipher cleanup also failed: \(error.localizedDescription)"
+                )
+            }
+            throw InternetProductSessionError.securityFailure(mismatch)
         }
         let codec = try InternetProductProtocolCodec(
             sessionIdentifier: configuration.transport.sessionIdentifier,
@@ -251,6 +271,12 @@ final class InternetProductSession: EncodedFrameSink {
         case .idle: break
         case .connecting: setState(.connecting)
         case .connected(let path):
+            guard path != .unknown else {
+                fail(.securityFailure(
+                    "The selected ICE candidate path is still unknown; the session remains fail-closed."
+                ))
+                return
+            }
             activePath = path
             if isStreaming {
                 setState(.streaming(path))
@@ -297,7 +323,11 @@ final class InternetProductSession: EncodedFrameSink {
                     )
                 }
                 self.codec = codec
-                let path = activePath ?? .direct
+                guard let path = activePath, path != .unknown else {
+                    throw InternetProductProtocolError.unexpectedMessage(
+                        "waiting for the authoritative selected ICE candidate path"
+                    )
+                }
                 setState(.streaming(path))
                 stopNegotiationDeadline()
                 startHeartbeat()

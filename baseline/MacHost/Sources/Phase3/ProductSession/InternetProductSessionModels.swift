@@ -129,4 +129,17 @@ struct InternetProductSessionConfiguration {
 struct InternetProductSecuritySession {
     let sessionEpoch: UInt64
     let packetCipher: PlatformSessionPacketCipher
+    private let cleanup: () throws -> Void
+
+    init(
+        sessionEpoch: UInt64,
+        packetCipher: PlatformSessionPacketCipher,
+        cleanup: (() throws -> Void)? = nil
+    ) {
+        self.sessionEpoch = sessionEpoch
+        self.packetCipher = packetCipher
+        self.cleanup = cleanup ?? { packetCipher.close() }
+    }
+
+    func close() throws { try cleanup() }
 }

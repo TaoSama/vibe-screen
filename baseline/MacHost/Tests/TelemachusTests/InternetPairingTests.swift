@@ -186,6 +186,36 @@ final class InternetPairingTests: XCTestCase {
         XCTAssertThrowsError(try InternetPairingAcceptanceWire.encode(invalidAcceptance))
     }
 
+    func testPartialPairingPersistenceLeavesDurableCleanupAndRetriesAfterRestart() throws {
+        let fixture = Fixture()
+        let created = try fixture.coordinator.createOffer()
+        let prepared = try fixture.prepareRequest(for: created.offer)
+        let pairingID = InternetPairingCanonical.hexDigest(created.offer.offerID)
+        let sharedName = "pairing.\(pairingID).shared.v1"
+        let bootstrapName = "pairing.\(pairingID).bootstrap.v1"
+        fixture.store.failingPersists = [bootstrapName]
+        fixture.store.failingDeletes = [sharedName]
+
+        XCTAssertThrowsError(try fixture.coordinator.accept(prepared.request))
+        XCTAssertNotNil(fixture.store.values[sharedName])
+        XCTAssertTrue(
+            fixture.store.values.keys.contains { $0.contains("persistence-cleanup") },
+            "The deterministic cleanup slot must survive a rollback failure"
+        )
+
+        fixture.store.failingPersists = []
+        fixture.store.failingDeletes = []
+        let restarted = InternetPairingCoordinator(
+            signer: fixture.hostSigner,
+            secretStore: fixture.store,
+            now: { fixture.clock.date }
+        )
+        _ = try restarted.createOffer()
+        XCTAssertNil(fixture.store.values[sharedName])
+        XCTAssertNil(fixture.store.values[bootstrapName])
+        XCTAssertFalse(fixture.store.values.keys.contains { $0.contains("persistence-cleanup") })
+    }
+
     private func addingUnknownField(to data: Data) throws -> Data {
         var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         object["unknown_field"] = true
@@ -294,6 +324,15 @@ private final class MemorySigner: InternetPairingSigner {
 
 private final class MemorySecretStore: InternetPairingSecretStore {
     var values: [String: Data] = [:]
-    func persist(name: String, secret: Data) throws { values[name] = secret }
-    func delete(name: String) throws { values.removeValue(forKey: name) }
+    var failingPersists: Set<String> = []
+    var failingDeletes: Set<String> = []
+    func load(name: String) throws -> Data? { values[name] }
+    func persist(name: String, secret: Data) throws {
+        if failingPersists.contains(name) { throw PlatformSecurityError.persistenceFailure("injected persist") }
+        values[name] = secret
+    }
+    func delete(name: String) throws {
+        if failingDeletes.contains(name) { throw PlatformSecurityError.persistenceFailure("injected delete") }
+        values.removeValue(forKey: name)
+    }
 }

@@ -409,6 +409,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self = self, self.settings.isRunning else { return }
                 print("🔄 Rotation changed to \(rotation)°")
                 self.streamingServer?.updateRotation(rotation)
+                guard self.settings.internetStatus == .direct
+                    || self.settings.internetStatus == .relay else { return }
+                do {
+                    try self.internetProductSession?.updateRotation(rotation)
+                } catch {
+                    self.settings.internetStatus = .failed
+                    self.settings.internetErrorMessage = error.localizedDescription
+                    self.settings.internetRecoverySuggestion =
+                        "Reconnect with a fresh secure session before changing rotation."
+                }
             }
             .store(in: &cancellables)
 
@@ -1884,7 +1894,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 width: streamSize.width,
                 height: streamSize.height,
                 framesPerSecond: settings.effectiveRefreshRate,
-                bitrateKbps: settings.effectiveBitrate * 1_000
+                bitrateKbps: settings.effectiveBitrate * 1_000,
+                rotationDegrees: settings.rotation
             )
         )
     }
@@ -2026,6 +2037,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             settings.internetStatus = .connecting
             settings.clientConnected = false
         case .streaming(let path):
+            guard path != .unknown else {
+                settings.internetStatus = .failed
+                settings.internetErrorMessage =
+                    "The selected ICE candidate path is unknown; no route was published."
+                settings.clientConnected = false
+                return
+            }
             settings.internetStatus = path == .relay ? .relay : .direct
             settings.clientConnected = true
             settings.internetErrorMessage = nil

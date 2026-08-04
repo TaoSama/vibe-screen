@@ -30,8 +30,8 @@ gate for those controls.
 
 ## Offline evidence
 
-The coordinated Phase 0 two-hour HEVC soak initially owned the controlled
-Android endpoint through `/tmp/vibe-screen-device-soak.lock`. While that
+The coordinated Phase 0 two-hour HEVC soak initially owned
+`100.72.246.116:5555` through `/tmp/vibe-screen-device-soak.lock`. While that
 lock existed, this change performed no ADB connect/install/launch/force-stop,
 reverse mutation, media-port probe, or MacHost start. That soak never opened
 its formal clock because the locked Mac exposed zero ScreenCaptureKit displays.
@@ -118,7 +118,7 @@ gates open.
   again,” rather than entering a false connected loop.
 
 Screenshots, UI XML, and application-tag-filtered logcat are retained in
-[`evidence/device-controlled-endpoint/`](evidence/device-controlled-endpoint/).
+[`evidence/device-100.72.246.116-5555/`](evidence/device-100.72.246.116-5555/).
 The private diagnostic timestamps quoted above were observed during the run,
 but the raw file was lost during post-run filtering and is not claimed as a
 retained artifact.
