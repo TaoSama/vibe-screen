@@ -15,6 +15,7 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.Executors
 
 class StreamClient(
     private val host: String,
@@ -29,7 +30,6 @@ class StreamClient(
     @Volatile private var sessionReady = false
     @Volatile private var stopRequested = false
     @Volatile private var connectionEpoch = 0L
-    @Volatile private var terminationDelivered = false
     @Volatile private var lastTerminationFailure: SessionFailure? = null
 
     private val heartbeat = HeartbeatMonitor(HEARTBEAT_TIMEOUT_MS)
@@ -111,7 +111,7 @@ class StreamClient(
                 val detail = failure.cause.message ?: failure.cause.javaClass.simpleName
                 Log.e(TAG, "Outbound write failed", failure.cause)
                 onWriteFailure?.invoke(detail)
-                handleConnectionEnded(SessionFailure.write(detail))
+                requestConnectionEnd(SessionFailure.write(detail))
             },
             coalesce = { kind, pending, replacement ->
                 if (kind == OutboundCommandScheduler.Kind.KEYFRAME &&
@@ -125,16 +125,27 @@ class StreamClient(
             },
             threadName = "VibeOutboundWriter",
         )
+    private val terminationDispatcher =
+        OnceAsyncDispatcher(
+            executor = SESSION_TERMINATION_EXECUTOR,
+            onClaim = { request ->
+                lastTerminationFailure = request.failure
+                isConnected = false
+            },
+            complete = ::completeConnectionEnd,
+        )
 
     suspend fun connect() =
         withContext(Dispatchers.IO) {
-            stopRequested = false
+            if (terminationDispatcher.isClaimed()) return@withContext
             sessionReady = false
-            terminationDelivered = false
-            lastTerminationFailure = null
             try {
                 val candidate = Socket()
                 socket = candidate
+                if (terminationDispatcher.isClaimed()) {
+                    cleanupCandidateSocket(candidate)
+                    return@withContext
+                }
                 candidate.tcpNoDelay = true
                 candidate.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
                 candidate.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
@@ -147,6 +158,11 @@ class StreamClient(
                 offerDeviceInfoCapability()
                 connectionEpoch = SESSION_EPOCHS.beginSession()
                 isConnected = true
+                if (terminationDispatcher.isClaimed()) {
+                    isConnected = false
+                    cleanupCandidateSocket(candidate)
+                    return@withContext
+                }
                 heartbeat.reset(System.nanoTime())
                 lastKeyframeReceivedNs = 0L
                 synchronized(keyframeRequestLock) {
@@ -166,7 +182,7 @@ class StreamClient(
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Connection error", e)
-                handleConnectionEnded(SessionFailure.transport(e.message ?: e.javaClass.simpleName))
+                completeConnectionEndNow(SessionFailure.transport(e.message ?: e.javaClass.simpleName))
                 if (!sessionReady && !stopRequested) throw e
             }
         }
@@ -189,10 +205,8 @@ class StreamClient(
         token: ByteArray,
         deviceName: String,
     ) = withContext(Dispatchers.IO) {
-        stopRequested = false
+        if (terminationDispatcher.isClaimed()) return@withContext
         sessionReady = false
-        terminationDelivered = false
-        lastTerminationFailure = null
         Log.i(TAG, "connectWireless: trying $host:$port (device=$deviceName, token bytes=${token.size})")
 
         // Force the socket onto the active WiFi network. On some Android setups
@@ -205,6 +219,10 @@ class StreamClient(
                 // Register before connect/auth so Disconnect can cancel either
                 // blocking operation immediately.
                 socket = sock
+                if (terminationDispatcher.isClaimed()) {
+                    cleanupCandidateSocket(sock)
+                    return@withContext
+                }
                 sock.tcpNoDelay = true
                 val wifiNetwork =
                     context?.let { ctx ->
@@ -290,6 +308,11 @@ class StreamClient(
                 offerDeviceInfoCapability()
                 connectionEpoch = SESSION_EPOCHS.beginSession()
                 isConnected = true
+                if (terminationDispatcher.isClaimed()) {
+                    isConnected = false
+                    cleanupCandidateSocket(s)
+                    return@withContext
+                }
                 heartbeat.reset(System.nanoTime())
                 emitTelemetry(
                     "connection_opened",
@@ -508,7 +531,7 @@ class StreamClient(
                     Log.e(TAG, "❌ Read error", e)
                 }
             } finally {
-                handleConnectionEnded(terminalFailure)
+                completeConnectionEndNow(terminalFailure)
             }
         }
 
@@ -531,7 +554,7 @@ class StreamClient(
         submitOutbound(
             kind = kind,
             command = command,
-            timeoutMillis = if (kind == OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH) BOUNDARY_SUBMIT_TIMEOUT_MS else 0,
+            timeoutMillis = 0,
         )
     }
 
@@ -571,7 +594,7 @@ class StreamClient(
         submitOutbound(
             kind = OutboundCommandScheduler.Kind.KEYFRAME,
             command = OutboundCommand.Keyframe(flags),
-            timeoutMillis = RECOVERY_SUBMIT_TIMEOUT_MS,
+            timeoutMillis = 0,
         )
     }
 
@@ -596,14 +619,14 @@ class StreamClient(
                 outboundScheduler.submit(kind, command, timeoutMillis)
             } catch (error: InterruptedException) {
                 Thread.currentThread().interrupt()
-                handleConnectionEnded(SessionFailure.write("outbound submission interrupted"))
+                requestConnectionEnd(SessionFailure.write("outbound submission interrupted"))
                 return
             }
         if (submission == OutboundCommandScheduler.Submission.TIMED_OUT &&
             kind != OutboundCommandScheduler.Kind.MOVE &&
             kind != OutboundCommandScheduler.Kind.PING
         ) {
-            handleConnectionEnded(
+            requestConnectionEnd(
                 SessionFailure.protocol(
                     SessionFailureKind.OUTBOUND_BACKPRESSURE,
                     "Outbound queue saturated while preserving $kind",
@@ -753,21 +776,25 @@ class StreamClient(
 
     fun disconnect() {
         stopRequested = true
-        handleConnectionEnded(SessionFailure.userRequested())
+        requestConnectionEnd(SessionFailure.userRequested())
     }
 
     fun failCurrentSession(reason: String) {
         stopRequested = false
-        handleConnectionEnded(SessionFailure.codec(reason))
+        requestConnectionEnd(SessionFailure.codec(reason))
     }
 
-    @Synchronized
-    private fun handleConnectionEnded(failure: SessionFailure) {
-        if (terminationDelivered) return
-        terminationDelivered = true
-        lastTerminationFailure = failure
-        val wasConnected = isConnected
-        isConnected = false
+    private fun requestConnectionEnd(failure: SessionFailure) {
+        terminationDispatcher.dispatch(TerminationRequest(failure, isConnected))
+    }
+
+    private fun completeConnectionEndNow(failure: SessionFailure) {
+        terminationDispatcher.completeNow(TerminationRequest(failure, isConnected))
+    }
+
+    private fun completeConnectionEnd(request: TerminationRequest) {
+        val failure = request.failure
+        val wasConnected = request.wasConnected
         cleanup()
         if (!wasConnected && connectionEpoch == 0L) return
         val ownsCurrentEpoch = connectionEpoch == 0L || SESSION_EPOCHS.accepts(connectionEpoch)
@@ -859,14 +886,17 @@ class StreamClient(
         ) : OutboundCommand
     }
 
+    private data class TerminationRequest(
+        val failure: SessionFailure,
+        val wasConnected: Boolean,
+    )
+
     companion object {
         private const val TAG = "StreamClient"
         private const val MAX_FRAME_SIZE = 5 * 1024 * 1024 // 5MB
         private const val KEYFRAME_REQUEST_INTERVAL_NS = 500_000_000L
         private const val KEYFRAME_STALE_INTERVAL_NS = 1_500_000_000L
         private const val OUTBOUND_QUEUE_CAPACITY = 32
-        private const val BOUNDARY_SUBMIT_TIMEOUT_MS = 8L
-        private const val RECOVERY_SUBMIT_TIMEOUT_MS = 10L
         private const val OUTBOUND_DRAIN_TIMEOUT_MS = 200L
         private const val CONNECT_TIMEOUT_MS = 5_000
         private const val HANDSHAKE_TIMEOUT_MS = 5_000
@@ -893,6 +923,10 @@ class StreamClient(
         private const val KEYFRAME_REQUEST_FLAG_FORCE = 1
         private const val TOUCH_ACTION_MOVE = 1
         private val SESSION_EPOCHS = SessionEpochGate()
+        private val SESSION_TERMINATION_EXECUTOR =
+            Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "VibeSessionTerminator").apply { isDaemon = true }
+            }
 
         /**
          * Codec-aware sync-frame (keyframe) detection on the legacy

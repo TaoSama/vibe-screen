@@ -17,6 +17,24 @@ import java.util.concurrent.TimeUnit
 
 class StreamClientCancellationTest {
     @Test
+    fun disconnectBeforeConnectPreventsSocketCreation() =
+        runBlocking {
+            ServerSocket(0).use { server ->
+                server.soTimeout = 250
+                val client = StreamClient("127.0.0.1", server.localPort)
+                val statuses = mutableListOf<Boolean>()
+                client.onConnectionStatus = { statuses += it }
+
+                client.disconnect()
+                client.connect()
+
+                assertTrue(statuses.isEmpty())
+                val accepted = runCatching { server.accept().use { } }.isSuccess
+                assertFalse("pre-cancelled client opened a socket", accepted)
+            }
+        }
+
+    @Test
     fun readySessionRejectsMalformedDisplayWithoutReconnectLoop() =
         runBlocking {
             ServerSocket(0).use { server ->

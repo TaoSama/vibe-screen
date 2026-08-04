@@ -10,8 +10,21 @@ The device-run debug APK has SHA-256
 It installed at `2026-08-05 01:46:06 +08:00` with Android Debug signer
 certificate SHA-256
 `b108fb9e0c8e5544171d57eb3be57d9fb93f332fc4954e26d5f51b20b876aa0b`.
-Final review subsequently added JVM-tested malformed-display validation; that
-post-lease delta was not reinstalled and is not part of this device artifact.
+The install-time working tree was based on
+`6f7ffbe0be872390144899642636dbb24d89f120`, but its Android changes had not
+yet been committed; therefore no Git commit exactly identifies the installed
+tree. The device APK hash above is its exact artifact identity.
+
+Everything added after the lease is outside this device evidence: malformed
+display validation; true 90°/270° Surface rotation and dimension exchange;
+Fit/Fill input inverse mapping; callback-generation isolation; bounded,
+coalescing, recovery-prioritized outbound writes; typed terminal failures;
+Camera Settings-return recovery; atomic negotiated capability/input-sink
+installation; and strict non-blocking saturation fail-close with asynchronous
+cleanup, including serialized off-UI decoder teardown and reinitialization.
+Those changes have only JVM/lint/build evidence and were not reinstalled. The
+final offline APK identity is recorded in the parent
+[`TEST.md`](../../TEST.md) and must not be attributed to this device run.
 
 ## Retained files
 
