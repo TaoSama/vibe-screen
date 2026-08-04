@@ -13,15 +13,13 @@ from pathlib import Path
 IOS_ROOT = Path(__file__).resolve().parents[1]
 PROJECT = IOS_ROOT / "VibeScreen.xcodeproj"
 OUTPUT_ROOT = IOS_ROOT / ".build" / "xcode"
-DERIVED_DATA = OUTPUT_ROOT / "DerivedData"
+DERIVED_DATA_ROOT = OUTPUT_ROOT / "DerivedData"
 ARCHIVE = OUTPUT_ROOT / "VibeScreen.xcarchive"
 COMMON_ARGUMENTS = [
     "-project",
     str(PROJECT),
     "-scheme",
     "VibeScreen",
-    "-derivedDataPath",
-    str(DERIVED_DATA),
     "CODE_SIGNING_ALLOWED=NO",
     "CODE_SIGNING_REQUIRED=NO",
 ]
@@ -42,6 +40,14 @@ def parse_args() -> argparse.Namespace:
 
 def run(command: list[str]) -> None:
     subprocess.run(command, cwd=IOS_ROOT, check=True)
+
+
+def action_arguments(name: str) -> list[str]:
+    return [
+        *COMMON_ARGUMENTS,
+        "-derivedDataPath",
+        str(DERIVED_DATA_ROOT / name),
+    ]
 
 
 def require_xcode() -> None:
@@ -73,7 +79,7 @@ def available_iphone_destination() -> str:
 def simulator_build() -> None:
     run([
         "xcodebuild",
-        *COMMON_ARGUMENTS,
+        *action_arguments("simulator-build"),
         "-destination",
         "generic/platform=iOS Simulator",
         "build",
@@ -83,7 +89,7 @@ def simulator_build() -> None:
 def simulator_test() -> None:
     run([
         "xcodebuild",
-        *COMMON_ARGUMENTS,
+        *action_arguments("simulator-test"),
         "-destination",
         available_iphone_destination(),
         "test",
@@ -95,7 +101,7 @@ def unsigned_archive() -> None:
         shutil.rmtree(ARCHIVE)
     run([
         "xcodebuild",
-        *COMMON_ARGUMENTS,
+        *action_arguments("archive"),
         "-configuration",
         "Release",
         "-destination",
