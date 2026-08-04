@@ -185,7 +185,9 @@ enum TransportSelfTest {
                 state.failure
             )
         }
-        let protocolV1Lifecycle = runProtocolV1Lifecycle() && runProtocolV1PreReadyStops()
+        let protocolV1ReadyLifecycle = runProtocolV1Lifecycle()
+        let protocolV1PreReadyStops = runProtocolV1PreReadyStops()
+        let protocolV1Lifecycle = protocolV1ReadyLifecycle && protocolV1PreReadyStops
         let passed = snapshot.0 && snapshot.1 && snapshot.2 && snapshot.3 &&
             snapshot.4 && snapshot.5 == 1 && snapshot.6 == nil &&
             protocolV1Lifecycle
@@ -196,6 +198,8 @@ enum TransportSelfTest {
             "malformedTouchRejected=\(snapshot.4), portConflict=true, " +
             "codecNegotiations=\(snapshot.5), " +
             "protocolV1Lifecycle=\(protocolV1Lifecycle), " +
+            "protocolV1ReadyLifecycle=\(protocolV1ReadyLifecycle), " +
+            "protocolV1PreReadyStops=\(protocolV1PreReadyStops), " +
             "error=\(snapshot.6 ?? "none"))"
         )
         return passed
