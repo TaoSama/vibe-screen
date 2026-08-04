@@ -175,6 +175,26 @@ final class StreamingServerLifecycleTests: XCTestCase {
         wait(for: [disconnected], timeout: 0.5)
     }
 
+    func testInvalidPointerCountClosesConnectionWithoutResynchronizing() throws {
+        let port = testPort(offset: 7)
+        let server = StreamingServer(port: port)
+        defer { server.stop() }
+        let connected = expectation(description: "client connected")
+        let disconnected = expectation(description: "malformed client disconnected")
+        server.onClientConnected = { connected.fulfill() }
+        server.onClientDisconnected = { disconnected.fulfill() }
+        try server.start()
+
+        let client = try readyClient(port: port)
+        defer { client.cancel() }
+        wait(for: [connected], timeout: 2)
+        client.send(
+            content: Data([2, 3]),
+            completion: .contentProcessed { _ in }
+        )
+        wait(for: [disconnected], timeout: 2)
+    }
+
     private func readyClient(port: UInt16) throws -> NWConnection {
         let ready = expectation(description: "client ready")
         var failure: Error?

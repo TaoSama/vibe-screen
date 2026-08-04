@@ -8,6 +8,8 @@ class VirtualDisplayManager {
     private var adoptedDisplayID: CGDirectDisplayID?
     private var displayDescriptor: CGVirtualDisplayDescriptor?
     private var displaySettings: CGVirtualDisplaySettings?
+    private var mirrorModeEnabled = false
+    private var positionStorageSuffix: String?
 
     var displayID: CGDirectDisplayID? {
         return virtualDisplay?.displayID ?? adoptedDisplayID
@@ -34,10 +36,24 @@ class VirtualDisplayManager {
         // Clean up existing display if any
         destroyDisplay()
 
+        guard NSClassFromString("CGVirtualDisplay") != nil,
+              NSClassFromString("CGVirtualDisplayDescriptor") != nil,
+              NSClassFromString("CGVirtualDisplaySettings") != nil else {
+            throw VirtualDisplayError.privateAPIUnavailable
+        }
+
         // Physical pixels = 2x logical when HiDPI, 1x otherwise
         let physW = hiDPI ? width * 2 : width
         let physH = hiDPI ? height * 2 : height
-        let productID = UInt32((physW * 10000 + physH) & 0xFFFFFFFF)
+        let productID = VirtualDisplayIdentity.productID(
+            logicalWidth: width,
+            logicalHeight: height,
+            physicalWidth: physW,
+            physicalHeight: physH,
+            refreshRate: refreshRate,
+            hiDPI: hiDPI
+        )
+        positionStorageSuffix = "\(productID)_\(refreshRate)_\(hiDPI ? 1 : 0)"
 
         // CGVirtualDisplay can remain registered with WindowServer across a
         // host restart. Reuse the exact Telemachus display instead of trying to
@@ -70,8 +86,8 @@ class VirtualDisplayManager {
             height: Double(physH) * 25.4 / ppi
         )
 
-        // Set vendor/product IDs
-        // Use width * 10000 + height so (3840,2400) ≠ (2400,3840) — avoids portrait/landscape collision
+        // Product identity includes the logical, physical, density, and
+        // refresh configuration.
         descriptor.productID = productID
         descriptor.vendorID = 0xEEEE
         descriptor.serialNum = 0x0001
@@ -136,12 +152,12 @@ class VirtualDisplayManager {
             guard CGDisplayVendorNumber(displayID) == 0xEEEE,
                   CGDisplayModelNumber(displayID) == productID,
                   CGDisplaySerialNumber(displayID) == 1,
-                  Int(CGDisplayPixelsWide(displayID)) == width,
-                  Int(CGDisplayPixelsHigh(displayID)) == height,
                   let mode = CGDisplayCopyDisplayMode(displayID) else {
                 return false
             }
-            return abs(mode.refreshRate - Double(refreshRate)) < 0.5
+            return mode.pixelWidth == width &&
+                mode.pixelHeight == height &&
+                abs(mode.refreshRate - Double(refreshRate)) < 0.5
         }
     }
 
@@ -200,6 +216,7 @@ class VirtualDisplayManager {
             throw VirtualDisplayError.mirrorModeFailed("Failed to complete mirror configuration: \(completeResult)")
         }
 
+        mirrorModeEnabled = true
         print("✅ Mirror mode enabled")
     }
 
@@ -234,6 +251,7 @@ class VirtualDisplayManager {
             throw VirtualDisplayError.mirrorModeFailed("Failed to complete configuration: \(completeResult)")
         }
 
+        mirrorModeEnabled = false
         print("✅ Extend mode enabled (mirror disabled)")
     }
 
@@ -275,24 +293,26 @@ class VirtualDisplayManager {
 
     /// Save current display position to UserDefaults
     func saveDisplayPosition() {
-        guard let position = getDisplayPosition() else { return }
+        guard let position = getDisplayPosition(),
+              let positionStorageSuffix else { return }
         let defaults = UserDefaults.standard
-        defaults.set(Int(position.x), forKey: "Telemachus_positionX")
-        defaults.set(Int(position.y), forKey: "Telemachus_positionY")
-        defaults.set(true, forKey: "Telemachus_hasPosition")
+        defaults.set(Int(position.x), forKey: "Telemachus_positionX_\(positionStorageSuffix)")
+        defaults.set(Int(position.y), forKey: "Telemachus_positionY_\(positionStorageSuffix)")
+        defaults.set(true, forKey: "Telemachus_hasPosition_\(positionStorageSuffix)")
         print("💾 Saved display position: (\(Int(position.x)), \(Int(position.y)))")
     }
 
     /// Restore saved display position
     func restoreDisplayPosition() {
         let defaults = UserDefaults.standard
-        guard defaults.bool(forKey: "Telemachus_hasPosition") else {
+        guard let positionStorageSuffix,
+              defaults.bool(forKey: "Telemachus_hasPosition_\(positionStorageSuffix)") else {
             print("📍 No saved display position found")
             return
         }
 
-        let x = defaults.integer(forKey: "Telemachus_positionX")
-        let y = defaults.integer(forKey: "Telemachus_positionY")
+        let x = defaults.integer(forKey: "Telemachus_positionX_\(positionStorageSuffix)")
+        let y = defaults.integer(forKey: "Telemachus_positionY_\(positionStorageSuffix)")
 
         do {
             try setDisplayPosition(x: Int32(x), y: Int32(y))
@@ -326,6 +346,13 @@ class VirtualDisplayManager {
 
     /// Destroy the virtual display
     func destroyDisplay() {
+        if mirrorModeEnabled {
+            do {
+                try disableMirrorMode()
+            } catch {
+                debugLog("Failed to disable mirror mode during teardown: \(error.localizedDescription)")
+            }
+        }
         if virtualDisplay != nil {
             virtualDisplay = nil
             displayDescriptor = nil
@@ -333,10 +360,36 @@ class VirtualDisplayManager {
             print("🗑️  Virtual display destroyed")
         }
         adoptedDisplayID = nil
+        mirrorModeEnabled = false
+        positionStorageSuffix = nil
     }
 
     deinit {
         destroyDisplay()
+    }
+}
+
+enum VirtualDisplayIdentity {
+    static func productID(
+        logicalWidth: Int,
+        logicalHeight: Int,
+        physicalWidth: Int,
+        physicalHeight: Int,
+        refreshRate: Int,
+        hiDPI: Bool
+    ) -> UInt32 {
+        var hash: UInt32 = 2_166_136_261
+        for value in [
+            logicalWidth,
+            logicalHeight,
+            physicalWidth,
+            physicalHeight,
+            refreshRate,
+            hiDPI ? 1 : 0
+        ] {
+            hash = (hash ^ UInt32(truncatingIfNeeded: value)) &* 16_777_619
+        }
+        return hash
     }
 }
 
@@ -348,6 +401,7 @@ enum VirtualDisplayError: Error, LocalizedError {
     case mainDisplayNotFound
     case configurationFailed(String)
     case mirrorModeFailed(String)
+    case privateAPIUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -363,6 +417,8 @@ enum VirtualDisplayError: Error, LocalizedError {
             return "Display configuration failed: \(msg)"
         case .mirrorModeFailed(let msg):
             return "Mirror mode operation failed: \(msg)"
+        case .privateAPIUnavailable:
+            return "Private CGVirtualDisplay APIs are unavailable on this macOS version. Use Current Mac Display or attach a physical/dummy display."
         }
     }
 }

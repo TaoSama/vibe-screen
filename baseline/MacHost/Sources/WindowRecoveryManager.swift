@@ -36,6 +36,8 @@ final class WindowRecoveryManager {
     private struct ManagedWindow {
         let element: AXUIElement
         let originalFrame: CGRect
+        let originalDisplayBounds: CGRect
+        let originalDisplayUUID: String?
     }
 
     private var managedWindows: [CFHashCode: ManagedWindow] = [:]
@@ -58,16 +60,24 @@ final class WindowRecoveryManager {
             from: application
         )
         let originalFrame = try frame(of: window)
+        let sourceDisplay = displayTarget(containing: originalFrame.center)
+            ?? DisplayRecoveryTarget(
+                persistentUUID: DisplayCatalog.persistentUUID(
+                    for: CGMainDisplayID()
+                ),
+                bounds: CGDisplayBounds(CGMainDisplayID())
+            )
+        let sourceBounds = sourceDisplay.bounds
         let key = CFHash(window)
         if managedWindows[key] == nil {
             managedWindows[key] = ManagedWindow(
                 element: window,
-                originalFrame: originalFrame
+                originalFrame: originalFrame,
+                originalDisplayBounds: sourceBounds,
+                originalDisplayUUID: sourceDisplay.persistentUUID
             )
         }
 
-        let sourceBounds = displayBounds(containing: originalFrame.center)
-            ?? CGDisplayBounds(CGMainDisplayID())
         let targetBounds = CGDisplayBounds(displayID)
         try setFrame(
             WindowPlacement.mappedFrame(
@@ -82,9 +92,18 @@ final class WindowRecoveryManager {
     func restoreManagedWindows() -> WindowRecoveryReport {
         var restoredCount = 0
         var failures: [String] = []
+        let onlineDisplays = allOnlineDisplayTargets()
+        let mainBounds = CGDisplayBounds(CGMainDisplayID())
         for (_, managedWindow) in managedWindows {
             do {
-                try setFrame(managedWindow.originalFrame, for: managedWindow.element)
+                let recoveryFrame = WindowPlacement.recoveryFrame(
+                    managedWindow.originalFrame,
+                    originalDisplayBounds: managedWindow.originalDisplayBounds,
+                    originalDisplayUUID: managedWindow.originalDisplayUUID,
+                    onlineDisplays: onlineDisplays,
+                    mainDisplayBounds: mainBounds
+                )
+                try setFrame(recoveryFrame, for: managedWindow.element)
                 restoredCount += 1
             } catch {
                 failures.append(error.localizedDescription)
@@ -170,24 +189,71 @@ final class WindowRecoveryManager {
         }
     }
 
-    private func displayBounds(containing point: CGPoint) -> CGRect? {
+    private func displayTarget(containing point: CGPoint) -> DisplayRecoveryTarget? {
+        allOnlineDisplayTargets().first(where: { $0.bounds.contains(point) })
+    }
+
+    private func allOnlineDisplayTargets() -> [DisplayRecoveryTarget] {
         var displayCount: UInt32 = 0
         guard CGGetOnlineDisplayList(0, nil, &displayCount) == .success,
-              displayCount > 0 else { return nil }
+              displayCount > 0 else { return [] }
         var displayIDs = [CGDirectDisplayID](repeating: 0, count: Int(displayCount))
         guard CGGetOnlineDisplayList(
             displayCount,
             &displayIDs,
             &displayCount
-        ) == .success else { return nil }
+        ) == .success else { return [] }
         return displayIDs
             .prefix(Int(displayCount))
-            .map(CGDisplayBounds)
-            .first(where: { $0.contains(point) })
+            .map { displayID in
+                DisplayRecoveryTarget(
+                    persistentUUID: DisplayCatalog.persistentUUID(
+                        for: displayID
+                    ),
+                    bounds: CGDisplayBounds(displayID)
+                )
+            }
     }
 }
 
+struct DisplayRecoveryTarget: Equatable {
+    let persistentUUID: String?
+    let bounds: CGRect
+}
+
 enum WindowPlacement {
+    static func recoveryFrame(
+        _ originalFrame: CGRect,
+        originalDisplayBounds: CGRect,
+        originalDisplayUUID: String?,
+        onlineDisplays: [DisplayRecoveryTarget],
+        mainDisplayBounds: CGRect
+    ) -> CGRect {
+        let originalDisplay: DisplayRecoveryTarget?
+        if let originalDisplayUUID {
+            originalDisplay = onlineDisplays.first(where: {
+                $0.persistentUUID == originalDisplayUUID
+            })
+        } else {
+            originalDisplay = onlineDisplays.first(where: {
+                $0.bounds.intersects(originalFrame) &&
+                    $0.bounds.intersects(originalDisplayBounds)
+            })
+        }
+        if let originalDisplay {
+            return mappedFrame(
+                originalFrame,
+                from: originalDisplayBounds,
+                to: originalDisplay.bounds
+            )
+        }
+        return mappedFrame(
+            originalFrame,
+            from: originalDisplayBounds,
+            to: mainDisplayBounds
+        )
+    }
+
     static func mappedFrame(
         _ frame: CGRect,
         from source: CGRect,

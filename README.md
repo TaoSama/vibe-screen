@@ -116,8 +116,9 @@ boundaries:
   where required.
 - VideoToolbox provides hardware HEVC and H.264 encoding, with AV1 added when
   supported by host and client hardware.
-- CGEvent and Accessibility inject touch, keyboard, pointer, stylus, and
-  shortcut input.
+- CGEvent and Accessibility provide the macOS input adapter. The runnable
+  legacy session currently wires touch-derived pointer gestures only;
+  keyboard, native mouse, stylus, and shortcut transport remain pending.
 - Window management moves the current window or application between physical
   and virtual displays and supports headless startup.
 
@@ -209,6 +210,18 @@ Implementation status and evidence are tracked in the
 The output is a maintainable product mainline rather than a disposable demo.
 
 ### Phase 1 — Complete local Android experience
+
+**macOS host status:** display-source selection, stable existing-display
+identity/fallback, experimental virtual extension/mirroring, HiDPI
+configuration, window migration/recovery, validated touch-derived pointer
+handling, permission onboarding, login startup, and bounded unattended
+listener recovery are implemented. Pure display/input geometry, identity, and
+startup policies are covered by host self-tests; system integration is not.
+Private `CGVirtualDisplay` creation/capture, true mirroring, real CGEvent/AX
+behavior, login-item approval, and headless reboot still require gated macOS
+integration evidence. The legacy
+session has no keyboard/native-mouse transport entry point, and the two-hour
+device soak remains owned by the coordinated Phase 0 run.
 
 - Deliver USB and LAN connectivity.
 - Support virtual extension, mirroring, display selection, HiDPI, rotation, and

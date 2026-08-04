@@ -81,6 +81,7 @@ class ScreenCapture {
     private var restartAttempted = false
     private var isRestarting = false
     private var isHealthCheckRunning = false
+    private var isStopping = false
 
     // CGDisplayStream fallback
     private var cgDisplayStream: CGDisplayStream?
@@ -101,6 +102,10 @@ class ScreenCapture {
     /// Current-display mode follows a replacement Screen Sharing Virtual Display
     /// when macOS recreates it with a new CoreGraphics display ID.
     var onDisplayIDChanged: ((CGDirectDisplayID) -> Void)?
+    /// Fired only after both ScreenCaptureKit restart and CGDisplayStream
+    /// fallback are unavailable. Callers must stop the session or select a
+    /// different online display instead of presenting a false running state.
+    var onTerminalCaptureFailure: ((Error) -> Void)?
 
     /// Force the encoder to emit an IDR keyframe on the next frame.
     /// If the encoder hasn't been created yet (request arrived before
@@ -287,10 +292,10 @@ class ScreenCapture {
 
         let delegate = StreamDelegate()
         let captureReference = WeakReference(self)
-        delegate.onStreamError = { _ in
+        delegate.onStreamError = { streamError in
             DispatchQueue.main.async {
                 guard let self = captureReference.value else { return }
-                guard !self.isRestarting else { return }
+                guard !self.isRestarting, !self.isStopping else { return }
 
                 if self.followsMainDisplay {
                     let replacementID = CGMainDisplayID()
@@ -311,7 +316,11 @@ class ScreenCapture {
                 debugLog("StreamDelegate error callback — attempting fallback")
                 let alreadyActive = self.stateLock.withLock { $0.fallbackActive }
                 if !alreadyActive {
-                    self.attemptFallbackCapture()
+                    if !self.attemptFallbackCapture() {
+                        self.reportTerminalCaptureFailure(
+                            underlying: streamError
+                        )
+                    }
                 }
             }
         }
@@ -457,6 +466,7 @@ class ScreenCapture {
         gamingBoost: Bool = false,
         frameRate: Int = 60
     ) async throws {
+        isStopping = false
         // Save parameters for potential restart
         currentServer = server
         currentBitrateMbps = bitrateMbps
@@ -618,7 +628,9 @@ class ScreenCapture {
                         self.restartStream()
                     } else {
                         debugLog("Restart already attempted — falling back to CGDisplayStream")
-                        self.attemptFallbackCapture()
+                        if !self.attemptFallbackCapture() {
+                            self.reportTerminalCaptureFailure()
+                        }
                     }
                 }
             }
@@ -812,8 +824,27 @@ class ScreenCapture {
             } catch {
                 isRestarting = false
                 debugLog("SCStream restart failed: \(error) — falling back to CGDisplayStream")
-                attemptFallbackCapture()
+                if !attemptFallbackCapture() {
+                    reportTerminalCaptureFailure(underlying: error)
+                } else {
+                    startFrameMonitor()
+                }
             }
+        }
+    }
+
+    private func reportTerminalCaptureFailure(underlying: Error? = nil) {
+        guard !isStopping else { return }
+        let error = underlying ?? NSError(
+            domain: "ScreenCapture",
+            code: 20,
+            userInfo: [
+                NSLocalizedDescriptionKey:
+                    "The selected display is unavailable and both capture paths failed."
+            ]
+        )
+        DispatchQueue.main.async { [weak self] in
+            self?.onTerminalCaptureFailure?(error)
         }
     }
 
@@ -967,6 +998,8 @@ class ScreenCapture {
     // MARK: - Stop streaming
 
     func stopStreaming() {
+        isStopping = true
+        onTerminalCaptureFailure = nil
         // Cancel frame flow monitor
         stopFrameMonitor()
         framePacingTimer?.cancel()

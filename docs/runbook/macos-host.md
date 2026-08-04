@@ -42,8 +42,9 @@ Telemachus requests two independent permissions:
 
 - **Screen & System Audio Recording** (called **Screen Recording** on older
   macOS): required for capture.
-- **Accessibility**: required only for taps, scrolling, dragging, window
-  migration, keyboard, and pointer injection.
+- **Accessibility**: required only for touch-derived pointer gestures and
+  window migration/restoration. The legacy session does not yet carry
+  keyboard or native-mouse messages.
 
 Grant both in **System Settings → Privacy & Security**, then quit and reopen
 Telemachus. The app rechecks permission while it is running, but a relaunch is
@@ -83,16 +84,18 @@ the desired serial in host settings.
   logical size, refresh rate, and optional HiDPI scale.
 - **Current Main Display** captures the display macOS currently considers
   primary and aspect-fits it into the requested stream bounds.
-- **Choose Existing Display** captures a persisted online display ID and falls
-  back to the current main display when that display has been unplugged.
+- **Choose Existing Display** persists the display UUID, resolves its current
+  runtime ID, and falls back to the current main display while the chosen
+  display is unplugged without forgetting the selection.
 - **Mirror Main Display** creates a private client display and configures it as
   a mirror of the current main display.
 - Rotation is advertised to the client as 0°, 90°, 180°, or 270°.
 - **Move Focused Window to Client Display** in the menu bar moves the current
   accessible window while preserving its relative placement.
-- **Return Moved Windows to Main Display** restores windows moved by the host.
-  The same restore runs when the client disconnects, the server stops, startup
-  fails, or the app terminates.
+- **Return Moved Windows** restores windows to their original display and
+  frame. If that display is offline, it maps and clamps them onto the current
+  main display. The same restore runs when the client disconnects, the server
+  stops, startup fails, or the app terminates.
 
 Window migration cannot move apps that do not expose standard Accessibility
 window position/size attributes. Those failures are logged and do not prevent
@@ -114,6 +117,10 @@ listener itself fails, unattended mode retries up to eight times with bounded
 First login, FileVault unlock, macOS updates, expired TCC grants, and a machine
 with no usable physical/dummy/Screen Sharing display still require local or
 remote administrator intervention.
+
+If macOS reports that the login item requires approval, open **System Settings
+→ General → Login Items** and approve Telemachus. Registration alone is not
+treated as proof that login launch is active.
 
 ## Upgrade and rollback
 
@@ -201,12 +208,16 @@ requires a project-controlled Developer ID signature and Apple notarization.
 
 ## Known limitations
 
-- Existing-display selection is implemented offline. Mirror mode still depends
-  on the private virtual-display API and both paths need matrix testing across
-  supported macOS versions and hot-plug scenarios.
+- Existing-display UUID fallback is implemented and unit/self-tested, but
+  selected-display hot-plug still needs a real streaming integration run.
+  Mirror mode still depends on the private virtual-display API. Runtime symbol
+  presence is diagnostic only; create/apply/online/capture must all succeed on
+  the exact macOS build before the feature is accepted.
 - Protocol v1 integration is in progress; legacy clients do not receive all
   negotiated session and input capabilities.
-- Keyboard and native mouse forwarding are not yet proven end to end.
+- The legacy product session has no keyboard or native-mouse message entry
+  point. Touch-derived click, drag, right-click, scroll, and zoom are present;
+  keyboard/native-mouse forwarding is not an implemented product capability.
 - Adaptive bitrate/resolution policy, external glass-to-glass latency, Xiaomi
   12 acceptance, two-hour Phase 1 soak, and eight-hour Phase 2 soak remain
   unverified.

@@ -20,7 +20,7 @@ enum DisplaySourceMode: String, CaseIterable, Identifiable {
     var helpText: String {
         switch self {
         case .extended:
-            return "Creates a real additional desktop that appears in Displays."
+            return "Experimental: uses private macOS APIs to create an additional desktop."
         case .mirrorMain:
             return "Creates a client display that mirrors the current main display."
         case .currentMain:
@@ -111,6 +111,7 @@ struct SettingsView: View {
     @State private var customWidthText = ""
     @State private var customHeightText = ""
     @State private var daemonEnabled = false
+    @State private var daemonStatusGuidance: String?
 
     private var customWidthValue: Int? { Int(customWidthText.trimmingCharacters(in: .whitespaces)) }
     private var customHeightValue: Int? { Int(customHeightText.trimmingCharacters(in: .whitespaces)) }
@@ -564,10 +565,15 @@ struct SettingsView: View {
                                                 } catch {
                                                     print("Daemon toggle failed: \(error)")
                                                 }
-                                                daemonEnabled = DaemonManager.shared.isEnabled
+                                                refreshDaemonStatus()
                                             }
                                         ))
                                         .labelsHidden()
+                                    }
+                                    if let daemonStatusGuidance {
+                                        Text(daemonStatusGuidance)
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.orange)
                                     }
                                     Divider()
                                 }
@@ -624,7 +630,7 @@ struct SettingsView: View {
                         }
                         .onAppear {
                             if #available(macOS 13.0, *) {
-                                daemonEnabled = DaemonManager.shared.isEnabled
+                                refreshDaemonStatus()
                             }
                         }
 
@@ -1056,6 +1062,18 @@ struct SettingsView: View {
             }
         }
         .frame(width: 480, height: 780)
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: NSApplication.didBecomeActiveNotification
+            )
+        ) { _ in
+            refreshDaemonStatus()
+        }
+    }
+
+    private func refreshDaemonStatus() {
+        daemonEnabled = DaemonManager.shared.isEnabled
+        daemonStatusGuidance = DaemonManager.shared.statusGuidance
     }
 
     /// Restart the app by launching a new instance and terminating current one
@@ -1294,8 +1312,15 @@ class DisplaySettings: ObservableObject {
         didSet { save("displaySource", displaySource.rawValue) }
     }
     @Published var selectedDisplayID: CGDirectDisplayID {
-        didSet { save("selectedDisplayID", Int(selectedDisplayID)) }
+        didSet {
+            save("selectedDisplayID", Int(selectedDisplayID))
+            if let uuid = DisplayCatalog.persistentUUID(for: selectedDisplayID) {
+                selectedDisplayUUID = uuid
+                save("selectedDisplayUUID", uuid)
+            }
+        }
     }
+    private(set) var selectedDisplayUUID: String?
     @Published var hasCompletedOnboarding: Bool {
         didSet { save("hasCompletedOnboarding", hasCompletedOnboarding) }
     }
@@ -1360,14 +1385,32 @@ class DisplaySettings: ObservableObject {
         self.startupMode = ConnectionMode(rawValue: startupRaw) ?? .usb
         let sourceRaw = defaults.string(forKey: keyPrefix + "displaySource") ?? DisplaySourceMode.currentMain.rawValue
         self.displaySource = DisplaySourceMode(rawValue: sourceRaw) ?? .currentMain
-        self.selectedDisplayID = CGDirectDisplayID(
+        self.selectedDisplayUUID = defaults.string(
+            forKey: keyPrefix + "selectedDisplayUUID"
+        )
+        let storedDisplayID = CGDirectDisplayID(
             defaults.object(forKey: keyPrefix + "selectedDisplayID") as? Int
                 ?? Int(CGMainDisplayID())
+        )
+        self.selectedDisplayID = DisplayCatalog.resolve(
+            persistentUUID: selectedDisplayUUID,
+            fallbackID: storedDisplayID
         )
         self.hasCompletedOnboarding = defaults.bool(forKey: keyPrefix + "hasCompletedOnboarding")
         self.adbDeviceSerial = defaults.string(
             forKey: keyPrefix + "adbDeviceSerial"
         ) ?? ""
+
+        if selectedDisplayUUID == nil,
+           let migratedUUID = DisplayCatalog.persistentUUID(
+               for: selectedDisplayID
+           ) {
+            selectedDisplayUUID = migratedUUID
+            defaults.set(
+                migratedUUID,
+                forKey: keyPrefix + "selectedDisplayUUID"
+            )
+        }
 
         print("Loaded settings: \(resolution) @ \(refreshRate)Hz, bitrate=\(bitrate), quality=\(quality)")
     }
@@ -1519,7 +1562,7 @@ class DisplaySettings: ObservableObject {
         let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
                     "gamingBoost", "port", "rotation", "showAllResolutions",
                     "customWidth", "customHeight", "touchEnabled", "autoStartStreamingOnLaunch", "hideDockIcon", "startupMode",
-                    "displaySource", "selectedDisplayID", "adbDeviceSerial"]
+                    "displaySource", "selectedDisplayID", "selectedDisplayUUID", "adbDeviceSerial"]
         for key in keys {
             defaults.removeObject(forKey: keyPrefix + key)
         }
@@ -1541,6 +1584,9 @@ class DisplaySettings: ObservableObject {
         startupMode = .usb
         displaySource = .currentMain
         selectedDisplayID = CGMainDisplayID()
+        selectedDisplayUUID = DisplayCatalog.persistentUUID(
+            for: selectedDisplayID
+        )
         adbDeviceSerial = ""
 
         print("Settings reset to defaults")
