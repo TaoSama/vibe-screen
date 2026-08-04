@@ -1,0 +1,1150 @@
+import Foundation
+import Network
+
+private enum WireMessage {
+    static let legacyVideoFrame: UInt8 = 0
+    static let displayConfig: UInt8 = 1
+    static let touchEvent: UInt8 = 2
+    static let ping: UInt8 = 4
+    static let pong: UInt8 = 5
+    static let videoFrameWithMetadata: UInt8 = 6
+    static let keyframeRequest: UInt8 = 7
+    static let clientSupportsFrameMetadata: UInt8 = 8
+    /// Client→server, payload-free (old hosts consume 1 byte safely):
+    /// "this device has no HEVC decoder".
+    static let clientAvcOnly: UInt8 = 9
+    /// Server→client, 1-byte payload (StreamCodec.wireId). Sent ONLY to
+    /// clients that sent clientAvcOnly — old clients disconnect on unknown
+    /// message types, so this must never be sent unsolicited.
+    static let codecSelected: UInt8 = 10
+    /// Client→server, 66-byte message: type + 64-byte null-padded UTF-8 model
+    /// name + 1-byte max refresh rate (Hz). Sent only after the host accepts
+    /// via `hostAcceptsDeviceInfo` so older Macs never see the payload.
+    static let clientDeviceInfo: UInt8 = 11
+    /// Payload-free capability handshake. Client offers; host accepts only if
+    /// it understands type 11. Older hosts consume the offer as 1 unknown byte
+    /// and never reply, so the client skips the payload.
+    static let deviceInfoCapability: UInt8 = 12
+    /// Server→client, payload-free: server shutting down intentionally.
+    /// Client should close without attempting reconnect.
+    /// Uses the free slot 3 (between touch=2 and ping=4). Do not use 12 —
+    /// that is `deviceInfoCapability` and would trigger device-info send.
+    static let serverShutdown: UInt8 = 3
+}
+
+private extension NWEndpoint {
+    var isLoopback: Bool {
+        switch self {
+        case .hostPort(let host, _):
+            switch host {
+            case .ipv4(let v4): return v4.isLoopback
+            case .ipv6(let v6): return v6.isLoopback
+            case .name(let name, _): return name == "localhost"
+            @unknown default: return false
+            }
+        default:
+            return false
+        }
+    }
+}
+
+enum StreamingServerError: LocalizedError {
+    case startupTimedOut
+    case listenerCancelled
+
+    var errorDescription: String? {
+        switch self {
+        case .startupTimedOut:
+            return "Timed out while opening the streaming port."
+        case .listenerCancelled:
+            return "The streaming listener was cancelled before it became ready."
+        }
+    }
+}
+
+enum StreamingServerMode {
+    case usb
+    case wireless(authToken: Data)
+}
+
+class StreamingServer {
+    private let port: UInt16
+    private let mode: StreamingServerMode
+    private var listener: NWListener?
+    private var connection: NWConnection?
+    var onClientConnected: (() -> Void)?
+    var onClientDisconnected: (() -> Void)?
+    /// Fired once per connection during protocol startup, BEFORE the display
+    /// config is sent, for every outcome (.hevc or .h264) — so the capture
+    /// pipeline can also revert to HEVC after an AVC-only client goes away.
+    var onCodecNegotiated: ((StreamCodec) -> Void)?
+    // Touch callback: (x1, y1, action, pointerCount, x2, y2)
+    var onTouchEvent: ((Float, Float, Int, Int, Float, Float) -> Void)?
+    var onStats: ((Double, Double) -> Void)?
+    var onKeyframeRequested: ((Bool) -> Void)?
+    // Whether host wants to receive touch events from client. Ping/pong is
+    // handled regardless. When false, incoming touch frames are dropped
+    // immediately without parsing or dispatching to main queue.
+    var touchEnabled: Bool = true
+
+    var onWirelessClientPaired: ((String) -> Void)?
+    var onServerFailed: ((Error) -> Void)?
+    /// Fired when the Android client reports Build.MODEL + max panel Hz.
+    var onDeviceInfoReceived: ((String, UInt8) -> Void)?
+
+    private let frameQueue = DispatchQueue(label: "frameQueue", qos: .userInteractive)
+    private let receiveQueue = DispatchQueue(label: "receiveQueue", qos: .userInteractive)
+    private let networkQueue = DispatchQueue(label: "networkQueue", qos: .userInteractive)
+    private struct PendingFrame {
+        let data: Data
+        let timestamp: UInt64
+        let isKeyframe: Bool
+        let connection: NWConnection
+        let generation: UInt64
+        let sessionEpoch: UInt64
+    }
+    /// At most one frame is inside Network.framework and one newer frame is
+    /// retained. This prevents a transient USB/Wi-Fi slowdown from becoming a
+    /// seconds-long FIFO of pictures the viewer no longer wants to see.
+    private var sendInFlight = false
+    private var pendingFrames: LatestFrameQueue<PendingFrame>
+    private var framePipelineGeneration: UInt64 = 0
+    private var bytesSent: UInt64 = 0
+    private var frameCount: UInt64 = 0
+    private var droppedFrames: UInt64 = 0
+    private var lastStatsTime = DispatchTime.now()
+    private var displayWidth = 1920
+    private var displayHeight = 1080
+    private var rotation = 0
+    private var isReceiving = false
+    private var isStopped = false
+    private var connectionReady = false
+    private var activeConnectionGeneration: UInt64 = 0
+    private var activeConnectionIsWireless = false
+    private var clientSupportsFrameMetadata = false
+    private var clientIsAvcOnly = false
+    private var inputBuffer = Data()
+    private var expectedAuthToken: Data?
+    private var pendingHandshakeTimeouts: [ObjectIdentifier: DispatchWorkItem] = [:]
+    private var pendingWirelessConnections: [ObjectIdentifier: NWConnection] = [:]
+    private let sessionEpochGate = SessionEpochGate()
+    private var recoveryController = ConnectionRecoveryController(
+        heartbeatTimeoutNs: 5_000_000_000
+    )
+    private var heartbeatTimer: DispatchSourceTimer?
+    private let telemetry: TelemetryRecording?
+
+    var currentSessionEpoch: UInt64 { sessionEpochGate.current }
+
+    init(
+        port: UInt16,
+        mode: StreamingServerMode = .usb,
+        telemetry: TelemetryRecording? = nil
+    ) {
+        self.port = port
+        self.mode = mode
+        if let telemetry {
+            self.telemetry = telemetry
+        } else if let path = ProcessInfo.processInfo.environment["VIBE_SCREEN_TELEMETRY_PATH"],
+                  !path.isEmpty {
+            do {
+                self.telemetry = try JSONLTelemetrySink(
+                    url: URL(fileURLWithPath: path)
+                )
+            } catch {
+                debugLog("Unable to open telemetry JSONL sink at \(path): \(error)")
+                self.telemetry = nil
+            }
+        } else {
+            self.telemetry = nil
+        }
+        do {
+            pendingFrames = try LatestFrameQueue(
+                capacity: 1,
+                isKeyframe: { $0.isKeyframe }
+            )
+        } catch {
+            preconditionFailure("Invalid fixed frame queue capacity: \(error)")
+        }
+        if case .wireless(let authToken) = mode {
+            expectedAuthToken = authToken
+        }
+    }
+
+    /// Starts the listener and returns only after Network.framework reports it
+    /// ready. This prevents callers from presenting a false "Running" state
+    /// when the port is occupied or listener creation fails.
+    func start(timeout: TimeInterval = 3) throws {
+        isStopped = false
+        recoveryController = ConnectionRecoveryController(
+            heartbeatTimeoutNs: 5_000_000_000
+        )
+        let params = NWParameters.tcp
+
+        if let tcpOptions = params.defaultProtocolStack.transportProtocol as? NWProtocolTCP.Options {
+            tcpOptions.noDelay = true
+        }
+
+        let newListener: NWListener
+        switch mode {
+        case .usb:
+            // adb reverse reaches the Mac through loopback. Do not expose the
+            // unauthenticated USB listener to the LAN.
+            params.requiredLocalEndpoint = .hostPort(
+                host: NWEndpoint.Host("127.0.0.1"),
+                port: NWEndpoint.Port(rawValue: port)!
+            )
+            newListener = try NWListener(using: params)
+        case .wireless:
+            newListener = try NWListener(
+                using: params,
+                on: NWEndpoint.Port(rawValue: port)!
+            )
+        }
+        listener = newListener
+
+        let startupSignal = DispatchSemaphore(value: 0)
+        let startupLock = NSLock()
+        var startupResult: Result<Void, Error>?
+        var startupFinished = false
+        var listenerWasReady = false
+
+        func completeStartup(_ result: Result<Void, Error>) {
+            startupLock.lock()
+            guard !startupFinished else {
+                startupLock.unlock()
+                return
+            }
+            startupFinished = true
+            startupResult = result
+            startupLock.unlock()
+            startupSignal.signal()
+        }
+
+        newListener.newConnectionHandler = { [weak self] newConnection in
+            self?.handleConnection(newConnection)
+        }
+
+        newListener.stateUpdateHandler = { [weak self, weak newListener] state in
+            guard let self else { return }
+            switch state {
+            case .ready:
+                listenerWasReady = true
+                debugLog("TCP server listening on port \(self.port)")
+                completeStartup(.success(()))
+            case .failed(let error):
+                debugLog("Server failed: \(error)")
+                completeStartup(.failure(error))
+                if listenerWasReady, newListener === self.listener {
+                    self.onServerFailed?(error)
+                }
+            case .cancelled:
+                completeStartup(.failure(StreamingServerError.listenerCancelled))
+            default:
+                break
+            }
+        }
+
+        newListener.start(queue: networkQueue)
+        guard startupSignal.wait(timeout: .now() + timeout) == .success else {
+            newListener.cancel()
+            listener = nil
+            throw StreamingServerError.startupTimedOut
+        }
+
+        switch startupResult {
+        case .success:
+            return
+        case .failure(let error):
+            listener = nil
+            throw error
+        case .none:
+            listener = nil
+            throw StreamingServerError.startupTimedOut
+        }
+    }
+
+    private func handleConnection(_ newConnection: NWConnection) {
+        debugLog("New connection incoming...")
+        newConnection.stateUpdateHandler = { [weak self] state in
+            debugLog("Connection state: \(state)")
+            switch state {
+            case .ready:
+                self?.onConnectionReady(newConnection)
+            case .failed(let error):
+                debugLog("Connection failed: \(error)")
+                self?.connectionEnded(newConnection)
+            case .cancelled:
+                debugLog("Connection cancelled")
+                self?.connectionEnded(newConnection)
+            default:
+                break
+            }
+        }
+
+        newConnection.start(queue: networkQueue)
+    }
+
+    private func onConnectionReady(_ conn: NWConnection) {
+        switch mode {
+        case .usb:
+            guard conn.endpoint.isLoopback else {
+                debugLog("Rejecting non-loopback client in USB mode")
+                conn.cancel()
+                return
+            }
+            debugLog("Client connected via loopback (USB) — skipping auth")
+            admitConnection(conn, isWireless: false, deviceName: nil)
+        case .wireless:
+            guard let expected = expectedAuthToken else {
+                debugLog("Rejecting wireless client: no active authentication token")
+                conn.cancel()
+                return
+            }
+            // Wireless mode authenticates loopback clients as well. Otherwise
+            // any local process could take over a wireless session.
+            debugLog("Client connected via wireless listener — running auth handshake")
+            runAuthHandshake(connection: conn, expectedToken: expected)
+        }
+    }
+
+    private func admitConnection(
+        _ conn: NWConnection,
+        isWireless: Bool,
+        deviceName: String?
+    ) {
+        guard !isStopped else {
+            conn.cancel()
+            return
+        }
+
+        cancelHandshakeTimeout(for: conn)
+        heartbeatTimer?.cancel()
+        heartbeatTimer = nil
+        let oldConnection = connection
+        let sessionEpoch: UInt64
+        do {
+            sessionEpoch = try sessionEpochGate.beginNextSession()
+        } catch {
+            debugLog("Unable to create a new session epoch: \(error)")
+            recordTelemetry(
+                "session_admission_failed",
+                epoch: sessionEpochGate.current,
+                attributes: ["error": .string(String(describing: error))]
+            )
+            conn.cancel()
+            return
+        }
+        activeConnectionGeneration &+= 1
+        let generation = activeConnectionGeneration
+        connection = conn
+        activeConnectionIsWireless = isWireless
+        connectionReady = false
+        clientSupportsFrameMetadata = false
+        clientIsAvcOnly = false
+        inputBuffer.removeAll(keepingCapacity: true)
+        isReceiving = false
+        droppedFrames = 0
+
+        frameQueue.async { [weak self] in
+            guard let self else { return }
+            self.framePipelineGeneration &+= 1
+            self.sendInFlight = false
+            _ = self.pendingFrames.reset(requiresKeyframe: true)
+        }
+        recordTelemetry(
+            "session_admitted",
+            epoch: sessionEpoch,
+            attributes: ["transport": .string(isWireless ? "lan" : "usb")]
+        )
+
+        // Promote the authenticated candidate before cancelling the previous
+        // session. Its stale cancellation callback then cannot mutate this one.
+        if let oldConnection, oldConnection !== conn {
+            oldConnection.cancel()
+        }
+
+        if let deviceName {
+            onWirelessClientPaired?(deviceName)
+        }
+        startReceivingTouch(on: conn, generation: generation)
+
+        // Give new clients a short chance to opt in before the first frame.
+        // Legacy clients send no capability message, so we continue shortly
+        // after this window with the old frame type.
+        networkQueue.asyncAfter(deadline: .now() + .milliseconds(100)) { [weak self, weak conn] in
+            guard let self = self, let conn = conn else { return }
+            self.requestProtocolStartup(on: conn, generation: generation)
+        }
+    }
+
+    private func connectionEnded(_ conn: NWConnection) {
+        cancelHandshakeTimeout(for: conn)
+        pendingWirelessConnections.removeValue(forKey: ObjectIdentifier(conn))
+        guard connection === conn else { return }
+        connection = nil
+        connectionReady = false
+        isReceiving = false
+        heartbeatTimer?.cancel()
+        heartbeatTimer = nil
+        activeConnectionGeneration &+= 1
+        inputBuffer.removeAll(keepingCapacity: true)
+        let epoch = sessionEpochGate.current
+        let nowNs = DispatchTime.now().uptimeNanoseconds
+        let retryDelayNs: UInt64
+        if case .waitingToReconnect(_, let deadlineNs) = recoveryController.state {
+            retryDelayNs = deadlineNs > nowNs ? deadlineNs - nowNs : 0
+        } else {
+            retryDelayNs = recoveryController.scheduleReconnect(nowNs: nowNs)
+        }
+        recordTelemetry(
+            "session_disconnected",
+            epoch: epoch,
+            attributes: ["suggested_retry_delay_ns": .unsigned(retryDelayNs)]
+        )
+        onClientDisconnected?()
+    }
+
+    private func requestProtocolStartup(on conn: NWConnection, generation: UInt64) {
+        networkQueue.async { [weak self, weak conn] in
+            guard let self, let conn else { return }
+            self.finishProtocolStartup(on: conn, generation: generation)
+        }
+    }
+
+    /// Must execute on networkQueue so disconnect and heartbeat transitions
+    /// cannot race protocol admission.
+    private func finishProtocolStartup(on conn: NWConnection, generation: UInt64) {
+        guard connection === conn,
+              activeConnectionGeneration == generation,
+              !isStopped,
+              !connectionReady else { return }
+
+        let clientCodecs: [StreamCodec] = clientIsAvcOnly ? [.h264] : [.hevc, .h264]
+        let decision: CodecFallbackDecision
+        do {
+            decision = try CodecFallbackPolicy.select(
+                preferred: .hevc,
+                hostSupported: [.hevc, .h264],
+                clientSupported: clientCodecs
+            )
+        } catch {
+            debugLog("Codec negotiation failed: \(error)")
+            recordTelemetry(
+                "codec_negotiation_failed",
+                epoch: sessionEpochGate.current,
+                attributes: ["error": .string(String(describing: error))]
+            )
+            conn.cancel()
+            return
+        }
+        let codec = decision.selected
+        if clientIsAvcOnly {
+            // Safe to send: this client opted in via type 9. Must precede the
+            // display config so the client knows the codec before it sizes
+            // and configures its decoder.
+            let msg = Data([WireMessage.codecSelected, codec.wireId])
+            conn.send(content: msg, completion: .contentProcessed { [weak self] error in
+                if let error {
+                    self?.recordTelemetry(
+                        "control_send_failed",
+                        epoch: self?.sessionEpochGate.current,
+                        attributes: [
+                            "message": .string("codec_selected"),
+                            "error": .string(error.localizedDescription)
+                        ]
+                    )
+                }
+            })
+            debugLog("Sent codecSelected: H.264")
+        }
+        recordTelemetry(
+            "codec_selected",
+            epoch: sessionEpochGate.current,
+            attributes: [
+                "codec": .string(codec == .hevc ? "hevc" : "h264"),
+                "reason": .string(decision.reason.rawValue)
+            ]
+        )
+        // Synchronous, before sendDisplaySize(): the handler switches the
+        // encoder AND updates displayWidth/Height (clamped for H.264) so the
+        // display config below carries decoder-safe dimensions.
+        onCodecNegotiated?(codec)
+
+        debugLog("Client connected - sending display config first")
+        sendDisplaySize()
+        connectionReady = true
+        recoveryController.didConnect(
+            epoch: sessionEpochGate.current,
+            nowNs: DispatchTime.now().uptimeNanoseconds
+        )
+        startHeartbeatMonitor(connection: conn, epoch: sessionEpochGate.current)
+        debugLog("Connection ready for frames (metadata=\(clientSupportsFrameMetadata ? "on" : "off"), codec=\(codec))")
+        onClientConnected?()
+    }
+
+    private func startHeartbeatMonitor(connection conn: NWConnection, epoch: UInt64) {
+        heartbeatTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: networkQueue)
+        timer.schedule(
+            deadline: .now() + .seconds(1),
+            repeating: .seconds(1),
+            leeway: .milliseconds(100)
+        )
+        timer.setEventHandler { [weak self, weak conn] in
+            guard let self, let conn,
+                  self.connection === conn,
+                  self.sessionEpochGate.accepts(epoch) else { return }
+            let nowNs = DispatchTime.now().uptimeNanoseconds
+            guard self.recoveryController.heartbeatTimedOut(nowNs: nowNs) else { return }
+            self.recordTelemetry(
+                "heartbeat_timed_out",
+                epoch: epoch,
+                attributes: ["timeout_ns": .unsigned(5_000_000_000)]
+            )
+            self.heartbeatTimer?.cancel()
+            self.heartbeatTimer = nil
+            conn.cancel()
+        }
+        heartbeatTimer = timer
+        timer.resume()
+    }
+
+    private func runAuthHandshake(connection conn: NWConnection, expectedToken: Data) {
+        pendingWirelessConnections[ObjectIdentifier(conn)] = conn
+        let timeout = DispatchWorkItem { [weak self, weak conn] in
+            guard let self, let conn else { return }
+            guard self.pendingHandshakeTimeouts.removeValue(
+                forKey: ObjectIdentifier(conn)
+            ) != nil else { return }
+            self.pendingWirelessConnections.removeValue(
+                forKey: ObjectIdentifier(conn)
+            )
+            debugLog("Wireless authentication timed out")
+            conn.cancel()
+        }
+        pendingHandshakeTimeouts[ObjectIdentifier(conn)] = timeout
+        networkQueue.asyncAfter(deadline: .now() + .seconds(3), execute: timeout)
+
+        // Read fixed prefix [magic 4][token 32][name_len 1] = 37 bytes.
+        receiveExactly(
+            HandshakeCodec.fixedPrefixLen,
+            from: conn
+        ) { [weak self] prefixData, error in
+            guard let self = self else { return }
+            guard self.pendingWirelessConnections[
+                ObjectIdentifier(conn)
+            ] === conn else { return }
+            if let error = error {
+                debugLog("Auth read error: \(error)")
+                conn.cancel()
+                return
+            }
+            guard let prefix = prefixData, prefix.count == HandshakeCodec.fixedPrefixLen else {
+                self.sendAuthResponse(conn, status: .invalidMagic, thenClose: true)
+                return
+            }
+            let prefixBytes = Array(prefix)
+            guard Array(prefixBytes[0..<4]) == HandshakeCodec.requestMagic else {
+                self.sendAuthResponse(conn, status: .invalidMagic, thenClose: true)
+                return
+            }
+            let nameLen = Int(prefixBytes[36])
+            guard (1...64).contains(nameLen) else {
+                self.sendAuthResponse(conn, status: .invalidName, thenClose: true)
+                return
+            }
+            // Read variable name.
+            self.receiveExactly(nameLen, from: conn) { nameData, error in
+                guard self.pendingWirelessConnections[
+                    ObjectIdentifier(conn)
+                ] === conn else { return }
+                if let error = error {
+                    debugLog("Auth name read error: \(error)")
+                    conn.cancel()
+                    return
+                }
+                guard let nameData = nameData, nameData.count == nameLen else {
+                    self.sendAuthResponse(conn, status: .invalidName, thenClose: true)
+                    return
+                }
+                let full = prefix + nameData
+                do {
+                    let parsed = try HandshakeCodec.parseRequest(full)
+                    if WirelessAuth.validate(parsed.token, expected: expectedToken) {
+                        debugLog("Wireless auth accepted")
+                        self.sendAuthResponse(conn, status: .ok, thenClose: false)
+                        self.admitConnection(
+                            conn,
+                            isWireless: true,
+                            deviceName: parsed.deviceName
+                        )
+                    } else {
+                        debugLog("Wireless auth rejected: token mismatch")
+                        self.sendAuthResponse(conn, status: .invalidToken, thenClose: true)
+                    }
+                } catch HandshakeError.invalidMagic {
+                    self.sendAuthResponse(conn, status: .invalidMagic, thenClose: true)
+                } catch HandshakeError.invalidName {
+                    self.sendAuthResponse(conn, status: .invalidName, thenClose: true)
+                } catch {
+                    self.sendAuthResponse(conn, status: .invalidMagic, thenClose: true)
+                }
+            }
+        }
+    }
+
+    private func receiveExactly(
+        _ count: Int,
+        from conn: NWConnection,
+        accumulated: Data = Data(),
+        completion: @escaping (Data?, Error?) -> Void
+    ) {
+        guard accumulated.count < count else {
+            completion(accumulated, nil)
+            return
+        }
+        conn.receive(
+            minimumIncompleteLength: 1,
+            maximumLength: count - accumulated.count
+        ) { [weak self] data, _, isComplete, error in
+            guard let self else { return }
+            if let error {
+                completion(nil, error)
+                return
+            }
+            var next = accumulated
+            if let data {
+                next.append(data)
+            }
+            guard next.count < count else {
+                completion(next, nil)
+                return
+            }
+            guard !isComplete, data?.isEmpty == false else {
+                completion(nil, NWError.posix(.ECONNRESET))
+                return
+            }
+            self.receiveExactly(
+                count,
+                from: conn,
+                accumulated: next,
+                completion: completion
+            )
+        }
+    }
+
+    private func cancelHandshakeTimeout(for conn: NWConnection) {
+        pendingHandshakeTimeouts.removeValue(
+            forKey: ObjectIdentifier(conn)
+        )?.cancel()
+        pendingWirelessConnections.removeValue(forKey: ObjectIdentifier(conn))
+    }
+
+    private func sendAuthResponse(_ conn: NWConnection, status: HandshakeStatus, thenClose: Bool) {
+        let bytes = HandshakeCodec.encodeResponse(status: status)
+        conn.send(content: bytes, completion: .contentProcessed { _ in
+            if thenClose {
+                debugLog("Auth rejected (\(status)), closing connection")
+                conn.cancel()
+            }
+        })
+    }
+
+    func setDisplaySize(width: Int, height: Int, rotation: Int = 0) {
+        displayWidth = width
+        displayHeight = height
+        self.rotation = rotation
+    }
+
+    /// Update rotation and send to connected client
+    func updateRotation(_ rotation: Int) {
+        self.rotation = rotation
+        sendDisplaySize() // Re-send display config with new rotation
+    }
+
+    func sendDisplaySize() {
+        guard let connection = connection else { return }
+
+        var data = Data()
+        data.append(WireMessage.displayConfig) // Type: Display size + rotation
+        data.append(contentsOf: withUnsafeBytes(of: Int32(displayWidth).bigEndian) { Data($0) })
+        data.append(contentsOf: withUnsafeBytes(of: Int32(displayHeight).bigEndian) { Data($0) })
+        data.append(contentsOf: withUnsafeBytes(of: Int32(rotation).bigEndian) { Data($0) })
+
+        connection.send(content: data, completion: .contentProcessed { _ in })
+        debugLog("Sent display config: \(displayWidth)x\(displayHeight) @ \(rotation)°")
+    }
+
+    private func startReceivingTouch(on conn: NWConnection, generation: UInt64) {
+        isReceiving = true
+        debugLog("Starting input receive loop... (touch=\(touchEnabled ? "on" : "off"))")
+
+        receiveQueue.async { [weak self] in
+            self?.touchReceiveLoop(on: conn, generation: generation)
+        }
+    }
+
+    private func touchReceiveLoop(on conn: NWConnection, generation: UInt64) {
+        guard connection === conn,
+              activeConnectionGeneration == generation,
+              isReceiving,
+              !isStopped else { return }
+
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 256) { [weak self] data, _, isComplete, error in
+            guard let self,
+                  self.connection === conn,
+                  self.activeConnectionGeneration == generation,
+                  self.isReceiving,
+                  !self.isStopped else { return }
+
+            if error != nil || isComplete {
+                self.isReceiving = false
+                self.inputBuffer.removeAll(keepingCapacity: true)
+                self.connectionEnded(conn)
+                return
+            }
+
+            if let data = data, !data.isEmpty {
+                self.inputBuffer.append(data)
+                self.processInputBuffer(
+                    connection: conn,
+                    generation: generation
+                )
+            }
+
+            self.receiveQueue.async {
+                self.touchReceiveLoop(on: conn, generation: generation)
+            }
+        }
+    }
+
+    private func processInputBuffer(
+        connection: NWConnection,
+        generation: UInt64
+    ) {
+        while let msgType = inputBuffer.first {
+            switch msgType {
+            case WireMessage.touchEvent:
+                // Touch event: 1 type + 1 pointerCount + N*(4x+4y) + 4 action.
+                // 1 finger: 14 bytes, 2 fingers: 22 bytes.
+                guard inputBuffer.count >= 2 else { return }
+
+                let pointerCount = Int(inputByte(at: 1))
+                guard pointerCount == 1 || pointerCount == 2 else {
+                    debugLog("Invalid touch pointer count: \(pointerCount)")
+                    consumeInputBytes(1)
+                    continue
+                }
+
+                let expectedSize = 2 + pointerCount * 8 + 4
+                guard inputBuffer.count >= expectedSize else { return }
+
+                let message = Data(inputBuffer.prefix(expectedSize))
+                consumeInputBytes(expectedSize)
+
+                // Drop early if host has touch disabled, after consuming exactly
+                // this touch frame so coalesced ping/keyframe messages survive.
+                if touchEnabled {
+                    handleTouchMessage(message, pointerCount: pointerCount)
+                }
+
+            case WireMessage.ping:
+                // Ping from client: echo back as pong (type=5) with client's timestamp.
+                guard inputBuffer.count >= 9 else { return }
+
+                let clientTimestamp = Data(inputBuffer.dropFirst().prefix(8))
+                consumeInputBytes(9)
+
+                var pong = Data(capacity: 9)
+                pong.append(WireMessage.pong) // Type: Pong
+                pong.append(clientTimestamp)
+                let epoch = sessionEpochGate.current
+                let nowNs = DispatchTime.now().uptimeNanoseconds
+                let accepted = recoveryController.observeHeartbeat(
+                    epoch: epoch,
+                    nowNs: nowNs
+                )
+                recordTelemetry(
+                    "heartbeat_received",
+                    epoch: epoch,
+                    attributes: ["accepted": .boolean(accepted)]
+                )
+                connection.send(content: pong, completion: .contentProcessed { [weak self] error in
+                    if let error {
+                        self?.recordTelemetry(
+                            "control_send_failed",
+                            epoch: epoch,
+                            attributes: [
+                                "message": .string("pong"),
+                                "error": .string(error.localizedDescription)
+                            ]
+                        )
+                    }
+                })
+
+            case WireMessage.keyframeRequest:
+                // Keyframe request from Android decoder. The client sends a
+                // two-byte message: type + flags.
+                guard inputBuffer.count >= 2 else { return }
+
+                let flags = inputByte(at: 1)
+                consumeInputBytes(2)
+                onKeyframeRequested?((flags & 1) != 0)
+
+            case WireMessage.clientSupportsFrameMetadata:
+                // One-byte opt-in from newer clients. Keeping this payload-free
+                // lets older hosts safely ignore it without misaligning input.
+                consumeInputBytes(1)
+                networkQueue.async { [weak self, weak connection] in
+                    guard let self, let connection,
+                          self.connection === connection,
+                          self.activeConnectionGeneration == generation else { return }
+                    if !self.clientSupportsFrameMetadata {
+                        self.clientSupportsFrameMetadata = true
+                        debugLog("Client supports video frame metadata")
+                    }
+                    self.finishProtocolStartup(on: connection, generation: generation)
+                }
+
+            case WireMessage.clientAvcOnly:
+                // Payload-free opt-in (same convention as type 8): the client
+                // has no HEVC decoder, stream H.264 instead. Clients send this
+                // BEFORE type 8, so it lands before finishProtocolStartup runs.
+                consumeInputBytes(1)
+                networkQueue.async { [weak self, weak connection] in
+                    guard let self, let connection,
+                          self.connection === connection,
+                          self.activeConnectionGeneration == generation else { return }
+                    if !self.clientIsAvcOnly {
+                        self.clientIsAvcOnly = true
+                        debugLog("Client is AVC-only — will negotiate H.264")
+                    }
+                }
+
+            case WireMessage.deviceInfoCapability:
+                // Payload-free offer from a client that can send type 11.
+                // Reply with the same type so the client knows it is safe to
+                // send the 66-byte payload. Older hosts never reach this case.
+                consumeInputBytes(1)
+                let accept = Data([WireMessage.deviceInfoCapability])
+                connection.send(content: accept, completion: .contentProcessed { _ in })
+                debugLog("Accepted device-info capability; waiting for type 11 payload")
+
+            case WireMessage.clientDeviceInfo:
+                // 66 bytes: 1 type + 64 null-padded model name + 1 refresh rate.
+                guard inputBuffer.count >= 66 else { return }
+                let modelData = Data(inputBuffer.dropFirst().prefix(64))
+                let model = String(data: modelData.prefix(while: { $0 != 0 }), encoding: .utf8) ?? "Unknown"
+                let refreshRate = inputByte(at: 65)
+                consumeInputBytes(66)
+                debugLog("Received device info: model=\(model), refreshRate=\(refreshRate)Hz")
+                onDeviceInfoReceived?(model, refreshRate)
+
+            default:
+                debugLog("Unknown client input type: \(msgType)")
+                consumeInputBytes(1)
+            }
+        }
+    }
+
+    private func handleTouchMessage(_ data: Data, pointerCount: Int) {
+        let x1 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 2, as: Float.self) }
+        let y1 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 6, as: Float.self) }
+
+        var x2: Float = 0
+        var y2: Float = 0
+        if pointerCount >= 2 {
+            x2 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 10, as: Float.self) }
+            y2 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 14, as: Float.self) }
+        }
+
+        let actionOffset = 2 + pointerCount * 8
+        let action = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: actionOffset, as: Int32.self) }
+
+        DispatchQueue.main.async {
+            self.onTouchEvent?(x1, y1, Int(action), pointerCount, x2, y2)
+        }
+    }
+
+    private func inputByte(at offset: Int) -> UInt8 {
+        inputBuffer[inputBuffer.index(inputBuffer.startIndex, offsetBy: offset)]
+    }
+
+    private func consumeInputBytes(_ count: Int) {
+        let endIndex = inputBuffer.index(inputBuffer.startIndex, offsetBy: count)
+        inputBuffer.removeSubrange(inputBuffer.startIndex..<endIndex)
+    }
+
+    func sendFrame(
+        _ data: Data,
+        timestamp: UInt64,
+        isKeyframe: Bool = false,
+        sessionEpoch: UInt64
+    ) {
+        guard let connection = connection, !isStopped, connectionReady else { return }
+        let frameEpoch = sessionEpoch
+        guard sessionEpochGate.accepts(frameEpoch) else {
+            recordTelemetry(
+                "stale_frame_rejected",
+                epoch: frameEpoch,
+                attributes: ["active_epoch": .unsigned(sessionEpochGate.current)]
+            )
+            return
+        }
+
+        frameQueue.async { [weak self] in
+            guard let self = self else { return }
+            guard self.connection === connection,
+                  !self.isStopped,
+                  self.connectionReady,
+                  self.sessionEpochGate.accepts(frameEpoch) else { return }
+
+            let frame = PendingFrame(
+                data: data,
+                timestamp: timestamp,
+                isKeyframe: isKeyframe,
+                connection: connection,
+                generation: self.framePipelineGeneration,
+                sessionEpoch: frameEpoch
+            )
+
+            guard self.sendInFlight else {
+                let admission = self.pendingFrames.enqueue(frame)
+                self.observeQueueResult(admission, epoch: frameEpoch)
+                guard let admitted = self.pendingFrames.dequeue() else { return }
+                self.transmit(admitted)
+                return
+            }
+
+            let result = self.pendingFrames.enqueue(frame)
+            self.observeQueueResult(result, epoch: frameEpoch)
+        }
+    }
+
+    /// Must be called on frameQueue.
+    private func observeQueueResult(_ result: LatestFrameEnqueueResult, epoch: UInt64) {
+        guard result.droppedCount > 0 else { return }
+        droppedFrames += UInt64(result.droppedCount)
+        recordTelemetry(
+            "frame_queue_drop",
+            epoch: epoch,
+            attributes: [
+                "dropped": .integer(Int64(result.droppedCount)),
+                "depth": .integer(Int64(pendingFrames.count + (sendInFlight ? 1 : 0))),
+                "capacity": .integer(2),
+                "keyframe_required": .boolean(result.requiresKeyframe)
+            ]
+        )
+        if result.requiresKeyframe {
+            onKeyframeRequested?(true)
+        }
+    }
+
+    /// Must be called on frameQueue.
+    private func transmit(_ frame: PendingFrame) {
+        guard connection === frame.connection,
+              frame.generation == framePipelineGeneration,
+              sessionEpochGate.accepts(frame.sessionEpoch),
+              !isStopped,
+              connectionReady else { return }
+
+        sendInFlight = true
+        let packet = makeFramePacket(
+            frame.data,
+            timestamp: frame.timestamp,
+            isKeyframe: frame.isKeyframe
+        )
+
+        frame.connection.send(content: packet, completion: .contentProcessed { [weak self] error in
+            guard let self else { return }
+            self.frameQueue.async {
+                guard frame.generation == self.framePipelineGeneration,
+                      self.connection === frame.connection else { return }
+
+                self.sendInFlight = false
+                if let error {
+                    let dependentDrops = self.pendingFrames.reset(
+                        requiresKeyframe: true
+                    )
+                    self.droppedFrames += UInt64(dependentDrops + 1)
+                    self.recordTelemetry(
+                        "frame_send_failed",
+                        epoch: frame.sessionEpoch,
+                        attributes: [
+                            "error": .string(error.localizedDescription),
+                            "dropped": .integer(Int64(dependentDrops + 1)),
+                            "keyframe_required": .boolean(true)
+                        ]
+                    )
+                    self.onKeyframeRequested?(true)
+                    return
+                }
+
+                let sendAge = DispatchTime.now().uptimeNanoseconds - frame.timestamp
+                self.updateStats(bytes: frame.data.count, frameAgeNs: sendAge)
+                if let next = self.pendingFrames.dequeue() {
+                    self.transmit(next)
+                }
+            }
+        })
+    }
+
+    private func makeFramePacket(_ data: Data, timestamp: UInt64, isKeyframe: Bool) -> Data {
+        if clientSupportsFrameMetadata {
+            var packet = Data(capacity: data.count + 14)
+            packet.append(WireMessage.videoFrameWithMetadata)
+            appendFrameSize(data.count, to: &packet)
+            packet.append(isKeyframe ? 1 : 0)
+            var captureTimestamp = timestamp.bigEndian
+            withUnsafeBytes(of: &captureTimestamp) { packet.append(contentsOf: $0) }
+            packet.append(data)
+            return packet
+        }
+
+        // Keep legacy frame type 0 for clients that do not advertise
+        // metadata support; remove after legacy clients age out.
+        var packet = Data(capacity: data.count + 5)
+        packet.append(WireMessage.legacyVideoFrame)
+        appendFrameSize(data.count, to: &packet)
+        packet.append(data)
+        return packet
+    }
+
+    private func appendFrameSize(_ size: Int, to packet: inout Data) {
+        var frameSize = Int32(size).bigEndian
+        withUnsafeBytes(of: &frameSize) { packet.append(contentsOf: $0) }
+    }
+
+    // Pipeline profiling: track frame age at send time
+    private var totalFrameAgeNs: UInt64 = 0
+    private var profiledFrameCount: UInt64 = 0
+
+    private func updateStats(bytes: Int, frameAgeNs: UInt64 = 0) {
+        bytesSent += UInt64(bytes)
+        frameCount += 1
+        if frameAgeNs > 0 {
+            totalFrameAgeNs += frameAgeNs
+            profiledFrameCount += 1
+        }
+
+        let now = DispatchTime.now()
+        let elapsed = Double(now.uptimeNanoseconds - lastStatsTime.uptimeNanoseconds) / 1_000_000_000
+
+        if elapsed >= 1.0 {
+            let mbps = Double(bytesSent * 8) / elapsed / 1_000_000
+            let fps = Double(frameCount) / elapsed
+            onStats?(fps, mbps)
+
+            // Log pipeline latency profile
+            if profiledFrameCount > 0 {
+                let avgAgeMs = Double(totalFrameAgeNs) / Double(profiledFrameCount) / 1_000_000.0
+                debugLog("Pipeline: \(String(format: "%.1f", fps))fps, \(String(format: "%.1f", mbps))Mbps, avg frame age: \(String(format: "%.1f", avgAgeMs))ms, dropped: \(droppedFrames)")
+                recordTelemetry(
+                    "stream_stats",
+                    epoch: sessionEpochGate.current,
+                    attributes: [
+                        "fps": .double(fps),
+                        "mbps": .double(mbps),
+                        "average_frame_age_ms": .double(avgAgeMs),
+                        "dropped_frames": .unsigned(droppedFrames),
+                        "queue_capacity": .integer(2)
+                    ]
+                )
+            }
+
+            bytesSent = 0
+            frameCount = 0
+            droppedFrames = 0
+            totalFrameAgeNs = 0
+            profiledFrameCount = 0
+            lastStatsTime = now
+        }
+    }
+
+    private func recordTelemetry(
+        _ event: String,
+        epoch: UInt64?,
+        attributes: [String: TelemetryValue] = [:]
+    ) {
+        guard let telemetry else { return }
+        do {
+            try telemetry.record(
+                TelemetryEvent(
+                    event: event,
+                    sessionEpoch: epoch,
+                    attributes: attributes
+                )
+            )
+        } catch {
+            debugLog("Telemetry write failed for \(event): \(error)")
+        }
+    }
+
+    /// Installs a new bearer token and immediately revokes every in-flight or
+    /// authenticated wireless session that could have observed the old token.
+    func rotateAuthToken(_ token: Data) {
+        precondition(token.count == 32)
+        networkQueue.async { [weak self] in
+            guard let self else { return }
+            self.expectedAuthToken = token
+            for (_, timeout) in self.pendingHandshakeTimeouts {
+                timeout.cancel()
+            }
+            self.pendingHandshakeTimeouts.removeAll()
+            for (_, pendingConnection) in self.pendingWirelessConnections {
+                pendingConnection.cancel()
+            }
+            self.pendingWirelessConnections.removeAll()
+            if self.activeConnectionIsWireless {
+                self.connection?.cancel()
+            }
+        }
+    }
+
+    func stop() {
+        isStopped = true
+        isReceiving = false
+        activeConnectionGeneration &+= 1
+        for (_, timeout) in pendingHandshakeTimeouts {
+            timeout.cancel()
+        }
+        pendingHandshakeTimeouts.removeAll()
+        for (_, pendingConnection) in pendingWirelessConnections {
+            pendingConnection.cancel()
+        }
+        pendingWirelessConnections.removeAll()
+        heartbeatTimer?.cancel()
+        heartbeatTimer = nil
+
+        // Invalidate completions from the old connection and discard its newest
+        // unsent frame before cancelling.
+        frameQueue.sync {
+            framePipelineGeneration &+= 1
+            sendInFlight = false
+            _ = pendingFrames.reset(requiresKeyframe: true)
+        }
+        recoveryController.stop()
+        receiveQueue.sync {}
+
+        // Notify the client before aborting TCP. `cancel()` is forceful and can
+        // RST unacked bytes, so wait for contentProcessed (up to 500ms) and then
+        // settle briefly so the peer can read type 3 before the socket dies.
+        if let conn = connection, connectionReady {
+            let shutdownMsg = Data([WireMessage.serverShutdown])
+            let semaphore = DispatchSemaphore(value: 0)
+            conn.send(content: shutdownMsg, completion: .contentProcessed { _ in
+                semaphore.signal()
+            })
+            _ = semaphore.wait(timeout: .now() + .milliseconds(500))
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+
+        connection?.cancel()
+        listener?.cancel()
+        connection = nil
+        listener = nil
+        connectionReady = false
+        activeConnectionIsWireless = false
+    }
+}

@@ -1,0 +1,117 @@
+# Phase 5 technical design
+
+## Dependency direction
+
+```text
+SwiftUI app -> session orchestration -> generated Protocol v1
+                                  \-> TCP transport adapter
+             -> VideoToolbox decoder -> native CoreVideo renderer
+             -> native gesture input -> Protocol v1 input
+```
+
+`VibeScreenProtocol` owns generated messages only. `VibeScreenCore` owns
+session/stream resources, epochs, framing, PCM jitter, clipboard/file
+validation, color fallback, gestures, policy, and WOL bytes.
+`VibeScreenVideo` owns Annex-B adaptation and
+`VTDecompressionSession`. The Xcode application owns SwiftUI/UIKit and maps
+native user intent into core calls. Protocol and session modules do not import
+UIKit, SwiftUI, or VideoToolbox.
+
+## Trusted-LAN transport adapter
+
+Each TCP frame is `channel: uint8`, `payload_length: uint32 big-endian`, then
+exactly `payload_length` bytes. Channels are control `1`, video `2`, audio `3`,
+and bulk transfer `4`. Control payload is a serialized Protocol v1 `Envelope`.
+Video payload is a varint-delimited `MediaPacketHeader` followed by the exact
+payload length declared in that header. Payloads larger than 16 MiB are
+rejected before their body is buffered.
+
+This adapter preserves logical channel identity; QUIC or WebRTC can replace it
+without changing session/product messages. The adapter is development-only
+plaintext and must never be presented as secure Internet transport.
+
+## Protocol v1 backward-compatible advanced negotiation
+
+Advanced work remains in `vibescreen.protocol.v1` and only appends fields,
+enum values, messages, and `Envelope.oneof` branches. The frozen
+`fixtures/v1.binpb` baseline is unchanged. Capabilities `13...22` now allocate
+audio, clipboard, files, HDR, color, multi-display, multi-client, host actions,
+wake, and managed configuration. `advanced.proto` owns resource limits, color,
+PCM audio, clipboard/file transfer, action, wake, and effective-policy messages.
+
+Negotiation rules:
+
+- a feature activates only when both Hello messages advertise it;
+- `SessionAccepted.negotiated_capabilities` makes the intersection explicit;
+  its absence means legacy single-stream SDR;
+- unknown capabilities and fields are ignored, but a required unsupported
+  capability is explicitly rejected with `UNSUPPORTED_CAPABILITY`;
+- new scalar fields use proto3 `optional` when absence differs from zero;
+- new payloads are sent only after negotiation; old readers safely preserve
+  their Phase 0/5A behavior;
+- every connection keeps its own `session_id` and monotonically increasing
+  `session_epoch`; epochs are never global across clients.
+
+## Advanced resource and message boundaries
+
+- **Multiple clients/displays:** host advertises maximum clients, virtual
+  displays, and streams. Start-display and video-config results bind an
+  allocated `stream_id`; input gets an optional display/stream target. Missing
+  targets retain the legacy active-stream meaning.
+- **Audio:** independent `AudioConfig` result and `AudioPacketHeader`; never
+  reuse video codec or allow audio backlog to block control/video.
+- **Clipboard:** offer/request/chunk messages carry change ID, origin, MIME,
+  size, and digest. Origin/change IDs prevent bidirectional feedback loops.
+- **File transfer:** offer/accept/progress/cancel on control; data on bulk with
+  transfer ID, offset, total length, and SHA-256. Paths are never trusted.
+- **HDR/color:** video negotiation adds profile, bit depth, primaries,
+  transfer, matrix, range, and static metadata, all guarded by `config_epoch`.
+  Unsupported Main10/HDR is explicitly renegotiated to SDR.
+- **Custom gestures:** mappings stay on-device. The host exposes a capability-
+  gated action catalog/invocation API; UI gesture definitions never enter the
+  protocol.
+- **Wake:** only an already paired device may request wake with replay-safe
+  proof. Wake-on-LAN is transport behavior, not authentication.
+- **Managed devices:** Apple MDM configuration is read locally. The protocol
+  carries product restrictions/results, not vendor-specific MDM payloads.
+
+## Implemented client mechanics
+
+- `MultiDisplaySessionRegistry` isolates clients by `session_id + epoch`,
+  enforces client/stream limits, rejects duplicate display/stream bindings, and
+  releases old-epoch resources. The iOS model maintains a decoder per stream
+  and targets touch at the selected binding.
+- PCM S16LE audio validates format and exact frame bytes, rejects old session
+  or config epochs, reorders a bounded packet window, and feeds a bounded
+  `AVAudioPlayerNode` schedule through playback-only `AVAudioSession`.
+- Clipboard data is read or written only inside explicit button handlers.
+  Change IDs suppress loops; MIME, byte limit, and SHA-256 are checked before
+  system pasteboard writes.
+- Incoming files use hidden unique staging paths, safe basename validation,
+  sequential offsets, negotiated chunk/aggregate/concurrency limits,
+  per-chunk and final SHA-256, idempotent cancellation, and cleanup. Outgoing
+  files stream from a security-scoped document URL rather than loading whole
+  files into memory.
+- The current renderer advertises 8-bit SDR only. Unsupported Main10/PQ/HLG
+  requests produce a structured SDR fallback with a larger `config_epoch`.
+- Gesture mappings are local Codable state and may invoke only catalogued host
+  action IDs. Managed policy is parsed fail-closed and merged deny-wins. WOL
+  produces the standard 102-byte packet only after local authorization/policy.
+
+## Host and security TODO
+
+No MacHost file is changed in this phase. A compatible host still must provide
+per-client resource allocation, multi-display stream IDs, target-aware input,
+PCM capture, advanced control handlers, bulk streaming, color retry, a finite
+host-action catalog, and an authenticated wake helper. `SecureChannel` now
+allocates audio `3` and bulk `4`; Internet mode must derive independent keys,
+sequence counters, and replay windows for them. The client's plaintext trusted-
+LAN implementation is not evidence of that security work.
+
+## Rendering and color
+
+VideoToolbox creates hardware-capable H.264 or HEVC decompression sessions from
+SPS/PPS or VPS/SPS/PPS. CoreVideo pixel buffers retain platform color
+attachments. The current renderer uses Core Image for correctness and aspect
+fit. A Metal zero-copy renderer is a future optimization and requires measured
+latency, color, power, and HDR comparison before replacement.

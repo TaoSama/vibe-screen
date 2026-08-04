@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package vibescreen.protocol.v1;
+
+import "vibescreen/protocol/v1/security.proto";
+
+option java_multiple_files = true;
+option java_package = "dev.vibescreen.protocol.v1";
+option swift_prefix = "VS";
+
+message PairingOffer {
+  bytes offer_id = 1;
+  bytes one_time_credential = 2;
+  uint64 expires_at_unix_seconds = 3;
+  bytes host_public_key = 4;
+  DeviceIdentity host_identity = 5;
+  bytes challenge = 6;
+  bytes ephemeral_public_key = 7;
+  repeated SignatureAlgorithm signature_algorithms = 8;
+  repeated KeyAgreementAlgorithm key_agreement_algorithms = 9;
+  repeated AeadAlgorithm aead_algorithms = 10;
+}
+
+message PairingRequest {
+  bytes offer_id = 1;
+  string device_id = 2;
+  string device_name = 3;
+  bytes device_public_key = 4;
+  DeviceIdentity device_identity = 5;
+  PairingProof proof = 6;
+  bytes bootstrap_mac = 7;
+}
+
+message PairingResult {
+  bool accepted = 1;
+  string device_id = 2;
+  bytes device_credential = 3;
+  string rejection_reason = 4;
+  PairingProof host_proof = 5;
+  bytes encrypted_device_credential = 6;
+  bytes credential_nonce = 7;
+  string session_key_id = 8;
+  uint64 session_key_epoch = 9;
+}
+
+message DeviceRevoked {
+  string device_id = 1;
+  string reason_code = 2;
+}

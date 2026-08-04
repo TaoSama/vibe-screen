@@ -1,0 +1,10 @@
+{
+  name: 'entry',
+  version: '0.1.0',
+  description: 'Vibe Screen HarmonyOS NEXT entry HAP',
+  main: '',
+  author: 'Vibe Screen contributors',
+  license: 'MIT',
+  dependencies: {}
+}
+

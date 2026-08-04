@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package vibescreen.protocol.v1;
+
+option java_multiple_files = true;
+option java_package = "dev.vibescreen.protocol.v1";
+option swift_prefix = "VS";
+
+enum Codec {
+  CODEC_UNSPECIFIED = 0;
+  CODEC_H264 = 1;
+  CODEC_HEVC = 2;
+  CODEC_AV1 = 3;
+}
+
+enum TransportKind {
+  TRANSPORT_KIND_UNSPECIFIED = 0;
+  TRANSPORT_KIND_USB = 1;
+  TRANSPORT_KIND_LAN = 2;
+  TRANSPORT_KIND_INTERNET = 3;
+}
+
+message ProtocolRange {
+  uint32 minimum = 1;
+  uint32 maximum = 2;
+}
+
+message Dimensions {
+  uint32 width = 1;
+  uint32 height = 2;
+}

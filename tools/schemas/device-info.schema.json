@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/device-info.schema.json",
+  "title": "Vibe Screen Android device information v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "collected_at", "connection", "adb_version", "device", "packages"],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "android_device_info"},
+    "collected_at": {"type": "string", "format": "date-time"},
+    "connection": {"type": ["string", "null"]},
+    "adb_version": {"type": "string", "minLength": 1},
+    "device": {
+      "type": "object",
+      "required": ["adb_serial", "device_serial", "manufacturer", "model", "android_release", "sdk", "build_fingerprint", "abi"]
+    },
+    "packages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["package", "version_name", "version_code"],
+        "properties": {
+          "package": {"type": "string"},
+          "version_name": {"type": ["string", "null"]},
+          "version_code": {"type": ["integer", "null"]}
+        }
+      }
+    }
+  }
+}
+

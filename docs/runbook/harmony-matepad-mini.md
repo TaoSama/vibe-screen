@@ -1,0 +1,27 @@
+# HarmonyOS NEXT / MatePad Mini device acceptance
+
+Never substitute Android results for this runbook.
+
+1. Record repository commit, DevEco/Harmony SDK versions, `hdc -v`, HAP SHA-256,
+   tablet model, OS build, free storage, battery, thermal state, and network.
+2. Run `pnpm verify`, `make build-release`, and verify `dist/*/SHA256SUMS`.
+3. Run `hdc list targets -v`; match the serial in Settings before installing.
+4. Install the signed HAP, launch it, and capture `hdc hilog` filtered to the
+   VibeScreen domain. Verify permission copy and denial/retry behavior.
+5. Pair with a one-time QR credential, connect over LAN, and verify the device
+   can be revoked and cannot reuse the credential.
+6. Stream both H.264 and HEVC. Record negotiated codec/resolution/FPS, hardware
+   decoder name, dropped frames, queue depth, RSS, temperature, and power.
+7. Exercise tap, drag, multi-touch, right click, wheel/trackpad scroll, hardware
+   keyboard/modifiers, mouse buttons, and stylus pressure in both orientations.
+8. Background/foreground the app, turn Wi-Fi off/on, roam access points, sleep
+   and wake the Mac, and restart the host. Confirm reconnect within the target
+   and that no prior-epoch frame renders.
+9. Run eight hours at the target mode. Archive timestamped logs and metrics;
+   reject any unbounded latency, queue, RSS, or thermal throttling trend.
+10. Measure glass-to-glass and input latency with an external high-frame-rate
+    camera; do not compare unsynchronized host/device clocks.
+
+Store raw evidence under an ignored local directory or attach it to the release;
+do not commit device identifiers, pairing credentials, or private network data.
+

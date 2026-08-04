@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/soak-sample.schema.json",
+  "title": "Vibe Screen soak sample v1",
+  "type": "object",
+  "required": ["schema_version", "run_id", "sample_index", "captured_at", "elapsed_seconds", "device"],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "run_id": {"type": "string"},
+    "sample_index": {"type": "integer", "minimum": 0},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "elapsed_seconds": {"type": "number", "minimum": 0},
+    "device": {"type": "object"},
+    "host": {"type": "object"},
+    "errors": {"type": "array", "items": {"type": "string"}}
+  }
+}
+

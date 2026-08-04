@@ -1,0 +1,5 @@
+/config/relay.production.json
+/secrets/*.txt
+/tls/*
+!/tls/README.md
+

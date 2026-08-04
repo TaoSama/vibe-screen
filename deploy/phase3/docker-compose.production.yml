@@ -1,0 +1,102 @@
+name: vibe-screen-phase3-production
+
+services:
+  relay-data-init:
+    image: coturn/coturn:4.7.0-r0@sha256:99bf5bf6ab1c119862d0c3d2dfb2bbf805a86a131492cab18c148be64ae7d978
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["chown 65532:65532 /data && chmod 0750 /data"]
+    network_mode: none
+    volumes:
+      - relay-data:/data
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
+  relay:
+    build:
+      context: ../../services/relay
+      dockerfile: Dockerfile
+      args:
+        VERSION: 0.1.0
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      relay-data-init:
+        condition: service_completed_successfully
+    environment:
+      VIBE_RELAY_TURN_SECRET_FILE: /run/secrets/turn_secret
+      VIBE_RELAY_CLIENT_TOKEN_FILE: /run/secrets/client_token
+      VIBE_RELAY_USAGE_TOKEN_FILE: /run/secrets/usage_token
+      VIBE_RELAY_METRICS_TOKEN_FILE: /run/secrets/metrics_token
+      VIBE_RELAY_ADMIN_TOKEN_FILE: /run/secrets/admin_token
+    secrets:
+      - turn_secret
+      - client_token
+      - usage_token
+      - metrics_token
+      - admin_token
+    volumes:
+      - ./config/relay.production.json:/etc/vibe-relay/config.json:ro
+      - relay-data:/data
+    healthcheck:
+      test: ["CMD", "/vibe-relay", "--version"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+
+  coturn:
+    image: coturn/coturn:4.7.0-r0@sha256:99bf5bf6ab1c119862d0c3d2dfb2bbf805a86a131492cab18c148be64ae7d978
+    restart: unless-stopped
+    network_mode: host
+    user: "65532:65532"
+    entrypoint: ["/bin/sh", "/opt/vibe/start-coturn.sh"]
+    environment:
+      COTURN_CONFIG_FILE: /etc/vibe-coturn/production.conf
+      COTURN_EXTERNAL_IP: ${COTURN_EXTERNAL_IP:?set public/private IP mapping}
+      COTURN_REALM: ${COTURN_REALM:?set the public relay hostname}
+    secrets:
+      - turn_secret
+      - tls_certificate
+      - tls_private_key
+    volumes:
+      - ./coturn:/etc/vibe-coturn:ro
+      - ./scripts/start-coturn.sh:/opt/vibe/start-coturn.sh:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=0700,uid=65532,gid=65532
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "turnutils_stunclient", "-p", "3478", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+secrets:
+  turn_secret:
+    file: ./secrets/turn_secret.txt
+  client_token:
+    file: ./secrets/client_token.txt
+  usage_token:
+    file: ./secrets/usage_token.txt
+  metrics_token:
+    file: ./secrets/metrics_token.txt
+  admin_token:
+    file: ./secrets/admin_token.txt
+  tls_certificate:
+    file: ./tls/fullchain.pem
+  tls_private_key:
+    file: ./tls/privkey.pem
+
+volumes:
+  relay-data:

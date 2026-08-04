@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package vibescreen.protocol.v1;
+
+option java_multiple_files = true;
+option java_package = "dev.vibescreen.protocol.v1";
+option swift_prefix = "VS";
+
+enum ProtocolErrorCode {
+  PROTOCOL_ERROR_CODE_UNSPECIFIED = 0;
+  PROTOCOL_ERROR_CODE_UNSUPPORTED_VERSION = 1;
+  PROTOCOL_ERROR_CODE_MALFORMED_MESSAGE = 2;
+  PROTOCOL_ERROR_CODE_UNSUPPORTED_CAPABILITY = 3;
+  PROTOCOL_ERROR_CODE_INVALID_STATE = 4;
+  PROTOCOL_ERROR_CODE_UNAUTHORIZED = 5;
+  PROTOCOL_ERROR_CODE_RESOURCE_EXHAUSTED = 6;
+}
+
+message ProtocolError {
+  ProtocolErrorCode code = 1;
+  string message = 2;
+  bool retryable = 3;
+  string component = 4;
+}

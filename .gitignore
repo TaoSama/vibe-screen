@@ -1,0 +1,33 @@
+# Claude Code - track .claude/CLAUDE.md, settings.json,
+# commands, docs, rules, skills, agents
+.claude/*
+!.claude/CLAUDE.md
+!.claude/settings.json
+!.claude/commands/
+!.claude/docs/
+!.claude/rules/
+!.claude/skills/
+!.claude/agents/
+
+# Codex CLI - track portable project configuration only
+.codex/*
+!.codex/AGENTS.md
+!.codex/config.toml
+
+# Trae CLI - track portable project configuration only
+.trae/*
+!.trae/AGENTS.md
+!.trae/traecli.toml
+
+.env
+.env.*
+!.env.example
+
+# General
+.DS_Store
+**/.build*/
+.gradle/
+**/build/
+__pycache__/
+*.py[cod]
+local.properties

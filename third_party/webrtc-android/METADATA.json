@@ -1,0 +1,20 @@
+{
+  "name": "webrtc-sdk Android",
+  "release_repository": "https://github.com/webrtc-sdk/android",
+  "release_tag": "v144.7559.09",
+  "release_commit": "a46e9a7f63ce2b531252313f4e81754998e78f9a",
+  "webrtc_repository": "https://github.com/webrtc-sdk/webrtc",
+  "webrtc_commit": "b1800a61db8320af5c14456c13622d8b85b1ed39",
+  "maven_coordinate": "io.github.webrtc-sdk:android:144.7559.09",
+  "package_url": "pkg:maven/io.github.webrtc-sdk/android@144.7559.09",
+  "artifact_sha256": "34cf91dd7497e5fe88adb76ba29ccae35db42dd6614ce548b79ce037b6d634d5",
+  "wrapper_license": "MIT",
+  "webrtc_license": "BSD-3-Clause",
+  "wrapper_license_sha256": "e6b282fe6c0fb353928923470457f31b44cbab203effd60c0cde4a5bb96c8aec",
+  "webrtc_license_sha256": "ab00a482b6a3902e40211b43c5d0441962ea99b6cc7c25c0f243fa270b78d482",
+  "patents_sha256": "01462e2068d1a04c2274f3389773014c14ed9bc3446b28303543bd3e3c064145",
+  "upstream_notice_bundle": "WEBRTC_THIRD_PARTY_LICENSES.md",
+  "upstream_notice_bundle_sha256": "d1f9382c6878ac024155fd6d44a5977329108bb8b0a01cea40e4a2f1d7de252e",
+  "usage": "Prebuilt Android WebRTC PeerConnection and DataChannel runtime distributed inside the APK",
+  "source_copied": false
+}

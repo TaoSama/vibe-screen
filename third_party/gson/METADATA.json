@@ -1,0 +1,15 @@
+{
+  "name": "Gson",
+  "repository": "https://github.com/google/gson",
+  "source_tag": "gson-parent-2.13.1",
+  "source_tag_object": "bec33dceb61708a514c675c4bcf6578345e4a888",
+  "source_commit": "257bee9eff81889893ca02a6925aa1b620378e9e",
+  "maven_coordinate": "com.google.code.gson:gson:2.13.1",
+  "package_url": "pkg:maven/com.google.code.gson/gson@2.13.1",
+  "artifact_sha256": "94855942d4992f112946d3de1c334e709237b8126d8130bf07807c018a4a2120",
+  "license": "Apache-2.0",
+  "license_file": "LICENSE",
+  "notice_file": null,
+  "usage": "Android runtime JSON codec for the authenticated Phase 3 signaling REST API",
+  "source_copied": false
+}

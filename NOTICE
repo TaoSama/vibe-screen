@@ -1,0 +1,64 @@
+Vibe Screen third-party notice
+
+The macOS and Android application baseline incorporates and modifies software
+from Telemachus:
+
+  https://github.com/aaditagrawal/telemachus
+  commit a5dd1298870846d749175812f936ceebfd8b6b69
+  MIT License
+
+Telemachus is derived from SideScreen:
+
+  https://github.com/tranvuongquocdat/SideScreen
+  audited commit a651a81b7d6468c7a564c038551872d3346a2d55
+  MIT License
+
+The original copyright statements, MIT license, NOTICE, and credits are
+preserved under baseline/ and third_party/telemachus/ and are included in
+generated application notices where applicable.
+
+The Android client dynamically links the Gson JSON library:
+
+  https://github.com/google/gson
+  tag gson-parent-2.13.1
+  commit 257bee9eff81889893ca02a6925aa1b620378e9e
+  Maven com.google.code.gson:gson:2.13.1
+  Apache License 2.0
+
+Gson source is not copied. Its complete license and machine-readable package
+metadata are retained under third_party/gson/ and bundled in Android open-source
+notices. Gson 2.13.1 does not publish a separate upstream NOTICE file.
+
+The Android Internet adapter links the webrtc-sdk Android binary:
+
+  https://github.com/webrtc-sdk/android
+  tag v144.7559.09, commit a46e9a7f63ce2b531252313f4e81754998e78f9a
+  WebRTC source commit b1800a61db8320af5c14456c13622d8b85b1ed39
+  Maven io.github.webrtc-sdk:android:144.7559.09
+
+The release wrapper is MIT-licensed. WebRTC is BSD-3-Clause and carries an
+additional patent grant and third-party component notices. Exact terms and
+metadata are retained under third_party/webrtc-android/ and bundled in Android
+open-source notices. No WebRTC source is copied.
+
+The macOS Internet adapter links stasel WebRTC 150.0.0 at package commit
+6ed87f05368632f71dc95c89c14c051561710925 (BSD-3-Clause). Its license and
+binary provenance are shipped in the MacHost resource bundle; no source is
+copied.
+
+The Phase 3 deployment runs the external coturn 4.7.0-r0 container at manifest
+sha256:99bf5bf6ab1c119862d0c3d2dfb2bbf805a86a131492cab18c148be64ae7d978.
+coturn is BSD-3-Clause; the image also contains separately licensed operating
+system libraries. No coturn source or image layer is copied into this repository.
+
+The iOS Protocol v1 runtime links SwiftProtobuf 1.32.0 at commit
+c6fe6442e6a64250495669325044052e113e990c (Apache-2.0 with its runtime-library
+exception). Its exact license is retained and bundled at
+apps/ios/ThirdPartyLicenses/SwiftProtobuf-LICENSE.txt; runtime source is not
+copied. Protocol Buffers compiler v32.1 at commit
+7fcfd66022455635fa29af92987cdc0967efd4f3 (BSD-3-Clause) was used only as a
+build-time generator for sources derived from this repository's schemas; its
+source and binary are not copied.
+
+See THIRD_PARTY.md for exact non-code design references. No source from the
+listed GPL or AGPL projects is copied into this repository.

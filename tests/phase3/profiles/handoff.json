@@ -1,0 +1,30 @@
+[
+  {
+    "name": "wifi-good",
+    "duration_ms": 2000,
+    "latency_ms": 35,
+    "jitter_ms": 5,
+    "loss_percent": 0.5,
+    "bandwidth_kbps": 16000,
+    "network_id": "wifi"
+  },
+  {
+    "name": "handoff-outage",
+    "duration_ms": 800,
+    "latency_ms": 400,
+    "jitter_ms": 200,
+    "loss_percent": 60.0,
+    "bandwidth_kbps": 256,
+    "network_id": "transition"
+  },
+  {
+    "name": "cellular-recovered",
+    "duration_ms": 3200,
+    "latency_ms": 95,
+    "jitter_ms": 20,
+    "loss_percent": 2.0,
+    "bandwidth_kbps": 6000,
+    "network_id": "cellular"
+  }
+]
+
