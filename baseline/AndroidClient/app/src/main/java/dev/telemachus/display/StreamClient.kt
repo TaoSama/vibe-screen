@@ -9,7 +9,12 @@ import android.view.WindowManager
 import dev.telemachus.display.protocol.ProtocolChannel
 import dev.telemachus.display.protocol.ProtocolUpgrade
 import dev.telemachus.display.protocol.ProtocolV1Framing
+import dev.telemachus.display.protocol.ProtocolV1Failure
 import dev.telemachus.display.protocol.ProtocolV1Session
+import dev.telemachus.display.protocol.TouchSample
+import dev.telemachus.display.protocol.UpgradeFallbackDecision
+import dev.telemachus.display.protocol.UpgradeProbeOutcome
+import dev.telemachus.display.protocol.MotionPointer
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.InputPhase
@@ -40,6 +45,7 @@ class StreamClient(
     @Volatile private var isConnected = false
     @Volatile private var sessionReady = false
     @Volatile private var stopRequested = false
+    /** Process-local decoder/attempt generation. Never assigned from a wire session epoch. */
     @Volatile private var connectionEpoch = 0L
     @Volatile private var lastTerminationFailure: SessionFailure? = null
     @Volatile private var wireMode = WireMode.LEGACY
@@ -157,6 +163,7 @@ class StreamClient(
         withContext(Dispatchers.IO) {
             if (terminationDispatcher.isClaimed()) return@withContext
             sessionReady = false
+            stopRequested = false
             try {
                 val candidate = socketFactory()
                 socket = candidate
@@ -172,7 +179,10 @@ class StreamClient(
                 streamCodecIsHevc = true
                 codecNegotiated = false
                 connectionEpoch = SESSION_EPOCHS.beginSession()
-                negotiateProtocol(TransportKind.TRANSPORT_KIND_USB)
+                val upgradeDecision = negotiateProtocol(TransportKind.TRANSPORT_KIND_USB)
+                if (upgradeDecision == UpgradeFallbackDecision.OpenFreshLegacyConnection) {
+                    reopenUsbAsLegacy(connectionEpoch)
+                }
                 isConnected = true
                 if (terminationDispatcher.isClaimed()) {
                     isConnected = false
@@ -223,6 +233,7 @@ class StreamClient(
     ) = withContext(Dispatchers.IO) {
         if (terminationDispatcher.isClaimed()) return@withContext
         sessionReady = false
+        stopRequested = false
         val request =
             try {
                 AuthHandshake.encodeRequest(token, deviceName)
@@ -372,7 +383,10 @@ class StreamClient(
                         outputStream = java.io.DataOutputStream(rawOutput)
                         streamCodecIsHevc = true
                         codecNegotiated = false
-                        negotiateProtocol(TransportKind.TRANSPORT_KIND_LAN)
+                        val upgradeDecision = negotiateProtocol(TransportKind.TRANSPORT_KIND_LAN)
+                        if (upgradeDecision == UpgradeFallbackDecision.OpenFreshLegacyConnection) {
+                            reopenWirelessAsLegacy(token, deviceName, connectionEpoch)
+                        }
                         true
                     } catch (error: IOException) {
                         completeConnectionEndNow(SessionFailure.write(error.message ?: "wireless session startup failed"))
@@ -425,7 +439,7 @@ class StreamClient(
         }
     }
 
-    private fun negotiateProtocol(transport: TransportKind) {
+    private fun negotiateProtocol(transport: TransportKind): UpgradeFallbackDecision {
         val socket = checkNotNull(socket)
         val input = checkNotNull(inputStream)
         val output = checkNotNull(outputStream)
@@ -437,39 +451,149 @@ class StreamClient(
             } catch (_: SocketTimeoutException) {
                 null
             }
-        when (val result = ProtocolUpgrade.classify(firstByte, input)) {
-            ProtocolUpgrade.Result.V1 -> {
+        val outcome =
+            if (firstByte == null) {
+                UpgradeProbeOutcome.TimedOut
+            } else {
+                when (val result = ProtocolUpgrade.classify(firstByte, input)) {
+                    ProtocolUpgrade.Result.V1 -> UpgradeProbeOutcome.V1Acknowledged
+                    is ProtocolUpgrade.Result.Legacy ->
+                        UpgradeProbeOutcome.LegacyByte(checkNotNull(result.firstByte))
+                }
+            }
+        val decision = UpgradeFallbackDecision.fromProbeOutcome(outcome)
+        when (decision) {
+            UpgradeFallbackDecision.UseCurrentV1Connection -> {
                 wireMode = WireMode.V1
                 pendingLegacyFirstByte = null
-                protocolSession =
-                    ProtocolV1Session(
-                        deviceId = "android-${Build.MODEL}".take(MAX_PROTOCOL_ID_BYTES),
-                        deviceName = (Build.MODEL ?: "Android").take(MAX_DEVICE_NAME_BYTES),
-                        transport = transport,
-                        codecs =
-                            if (CodecCapabilities.shouldAdvertiseAvcOnly) {
-                                listOf(Codec.CODEC_H264)
-                            } else {
-                                listOf(Codec.CODEC_HEVC, Codec.CODEC_H264)
-                            },
-                    )
+                val session = createProtocolSession(transport)
+                protocolSession = session
                 submitOutbound(
                     kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-                    command = OutboundCommand.ProtocolControl(checkNotNull(protocolSession).clientHello()),
+                    command = OutboundCommand.ProtocolControl(session.clientHello()),
                 )
                 diagLog("Protocol v1 upgrade accepted")
             }
-            is ProtocolUpgrade.Result.Legacy -> {
-                wireMode = WireMode.LEGACY
-                protocolSession = null
-                pendingLegacyFirstByte = result.firstByte
-                advertiseAvcOnlyIfNeeded()
-                advertiseFrameMetadataSupport()
-                offerDeviceInfoCapability()
-                diagLog("Protocol upgrade unavailable; using legacy wire mode")
+            is UpgradeFallbackDecision.UseCurrentLegacyConnection -> {
+                configureLegacyMode(decision.firstByte)
+                diagLog("Protocol upgrade unavailable after explicit legacy response")
+            }
+            UpgradeFallbackDecision.OpenFreshLegacyConnection -> {
+                diagLog("Protocol upgrade timed out; probe socket must be replaced")
             }
         }
         socket.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
+        return decision
+    }
+
+    private fun createProtocolSession(transport: TransportKind): ProtocolV1Session =
+        ProtocolV1Session(
+            deviceId = "android-${Build.MODEL}".take(MAX_PROTOCOL_ID_BYTES),
+            deviceName = (Build.MODEL ?: "Android").take(MAX_DEVICE_NAME_BYTES),
+            transport = transport,
+            codecs =
+                if (CodecCapabilities.shouldAdvertiseAvcOnly) {
+                    listOf(Codec.CODEC_H264)
+                } else {
+                    listOf(Codec.CODEC_HEVC, Codec.CODEC_H264)
+                },
+        )
+
+    private fun configureLegacyMode(firstByte: Int? = null) {
+        wireMode = WireMode.LEGACY
+        protocolSession = null
+        pendingLegacyFirstByte = firstByte
+        advertiseAvcOnlyIfNeeded()
+        advertiseFrameMetadataSupport()
+        offerDeviceInfoCapability()
+    }
+
+    private fun reopenUsbAsLegacy(attemptGeneration: Long) {
+        check(SESSION_EPOCHS.accepts(attemptGeneration)) { "USB attempt was superseded" }
+        closeTransport()
+        val fresh = socketFactory()
+        fresh.tcpNoDelay = true
+        fresh.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+        fresh.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
+        installTransport(fresh)
+        configureLegacyMode()
+    }
+
+    private fun reopenWirelessAsLegacy(
+        token: ByteArray,
+        deviceName: String,
+        attemptGeneration: Long,
+    ) {
+        check(SESSION_EPOCHS.accepts(attemptGeneration)) { "LAN attempt was superseded" }
+        closeTransport()
+        val fresh = openWirelessSocket()
+        authenticateWirelessSocket(fresh, token, deviceName)
+        fresh.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
+        installTransport(fresh)
+        configureLegacyMode()
+    }
+
+    private fun installTransport(transportSocket: Socket) {
+        socket = transportSocket
+        inputStream = DataInputStream(java.io.BufferedInputStream(transportSocket.getInputStream(), 65536))
+        outputStream = java.io.DataOutputStream(transportSocket.getOutputStream())
+    }
+
+    private fun closeTransport() {
+        val failures = mutableListOf<IOException>()
+        listOf(outputStream, inputStream, socket).forEach { resource ->
+            try {
+                resource?.close()
+            } catch (failure: IOException) {
+                failures += failure
+            }
+        }
+        outputStream = null
+        inputStream = null
+        socket = null
+        if (failures.isNotEmpty()) {
+            Log.w(TAG, "Transport close reported ${failures.size} failure(s)", failures.first())
+        }
+    }
+
+    private fun openWirelessSocket(): Socket {
+        val fresh = socketFactory()
+        socket = fresh
+        fresh.tcpNoDelay = true
+        val wifiNetwork =
+            context?.let { ctx ->
+                val manager = ctx.getSystemService(ConnectivityManager::class.java)
+                manager.activeNetwork?.takeIf { network ->
+                    manager.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+                }
+            }
+        wifiNetwork?.bindSocket(fresh)
+        fresh.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+        return fresh
+    }
+
+    private fun authenticateWirelessSocket(
+        fresh: Socket,
+        token: ByteArray,
+        deviceName: String,
+    ) {
+        fresh.soTimeout = HANDSHAKE_TIMEOUT_MS
+        val output = fresh.getOutputStream()
+        output.write(AuthHandshake.encodeRequest(token, deviceName))
+        output.flush()
+        val response = ByteArray(AUTH_RESPONSE_BYTES)
+        var offset = 0
+        while (offset < response.size) {
+            val count = fresh.getInputStream().read(response, offset, response.size - offset)
+            if (count < 0) throw IOException("Wireless authentication ended early")
+            if (count == 0) continue
+            offset += count
+        }
+        when (AuthHandshake.parseResponse(response)) {
+            AuthHandshake.ResponseStatus.OK -> Unit
+            AuthHandshake.ResponseStatus.INVALID_TOKEN -> throw WirelessConnectError.TokenRejected
+            else -> throw WirelessConnectError.ProtocolError
+        }
     }
 
     /**
@@ -658,6 +782,9 @@ class StreamClient(
             } catch (error: SessionProtocolException) {
                 terminalFailure = error.failure
                 Log.e(TAG, "Session protocol failure: ${error.failure.detail}", error)
+            } catch (error: ProtocolV1Failure) {
+                terminalFailure = error.toSessionFailure()
+                Log.e(TAG, "Protocol v1 failure: ${error.message}", error)
             } catch (e: IOException) {
                 terminalFailure = SessionFailure.transport(e.message ?: e.javaClass.simpleName)
                 if (isConnected) {
@@ -769,50 +896,76 @@ class StreamClient(
         x2: Float = 0f,
         y2: Float = 0f,
     ) {
-        if (!isConnected) return
-        val kind =
-            if (action == TOUCH_ACTION_MOVE) {
-                OutboundCommandScheduler.Kind.MOVE
-            } else {
-                OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
+        val phase =
+            when (action) {
+                0 -> InputPhase.INPUT_PHASE_BEGAN
+                1 -> InputPhase.INPUT_PHASE_CHANGED
+                2 -> InputPhase.INPUT_PHASE_ENDED
+                else -> InputPhase.INPUT_PHASE_CANCELLED
             }
+        val legacyPointers =
+            buildList {
+                add(MotionPointer(0, x.toDouble(), y.toDouble()))
+                if (pointerCount.coerceIn(1, 2) == 2) add(MotionPointer(1, x2.toDouble(), y2.toDouble()))
+            }
+        sendMotionTouch(
+            v1Samples = legacyPointers.map { TouchSample(it.pointerId, phase, it.x, it.y) },
+            legacyAction = action,
+            legacyPointers = legacyPointers,
+        )
+    }
 
+    internal fun sendMotionTouch(
+        v1Samples: List<TouchSample>,
+        legacyAction: Int,
+        legacyPointers: List<MotionPointer>,
+    ) {
+        if (!isConnected) return
         if (wireMode == WireMode.V1) {
-            val phase =
-                when (action) {
-                    0 -> InputPhase.INPUT_PHASE_BEGAN
-                    1 -> InputPhase.INPUT_PHASE_CHANGED
-                    2 -> InputPhase.INPUT_PHASE_ENDED
-                    else -> InputPhase.INPUT_PHASE_CANCELLED
-                }
             val session = protocolSession ?: return
             if (!session.isStreaming) return
-            val points =
-                if (pointerCount.coerceIn(1, 2) == 2) {
-                    listOf(x to y, x2 to y2)
-                } else {
-                    listOf(x to y)
-                }
-            points.forEachIndexed { pointerId, point ->
+            v1Samples.forEach { sample ->
                 val envelope =
                     session.touch(
                         inputId = nextInputId.getAndIncrement(),
-                        pointerId = pointerId,
-                        phase = phase,
-                        x = point.first.toDouble(),
-                        y = point.second.toDouble(),
+                        pointerId = sample.pointerId,
+                        phase = sample.phase,
+                        x = sample.x,
+                        y = sample.y,
                     )
                 submitOutbound(
-                    kind = kind,
+                    kind =
+                        if (sample.phase == InputPhase.INPUT_PHASE_CHANGED) {
+                            OutboundCommandScheduler.Kind.MOVE
+                        } else {
+                            OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
+                        },
                     command = OutboundCommand.ProtocolControl(envelope),
                 )
             }
             return
         }
 
-        val command = OutboundCommand.Touch(x, y, action, pointerCount.coerceIn(1, 2), x2, y2)
+        val points = legacyPointers.take(MAX_FORWARDED_POINTERS)
+        if (points.isEmpty()) return
+        val first = points.first()
+        val second = points.getOrNull(1)
+        val command =
+            OutboundCommand.Touch(
+                first.x.toFloat(),
+                first.y.toFloat(),
+                legacyAction,
+                points.size,
+                second?.x?.toFloat() ?: 0f,
+                second?.y?.toFloat() ?: 0f,
+            )
         submitOutbound(
-            kind = kind,
+            kind =
+                if (legacyAction == TOUCH_ACTION_MOVE) {
+                    OutboundCommandScheduler.Kind.MOVE
+                } else {
+                    OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
+                },
             command = command,
             timeoutMillis = 0,
         )
@@ -1145,6 +1298,13 @@ class StreamClient(
         outboundScheduler.shutdownNow()
     }
 
+    private fun ProtocolV1Failure.toSessionFailure(): SessionFailure =
+        SessionFailure(
+            kind = SessionFailureKind.UNKNOWN_MESSAGE,
+            detail = "$reason: ${message ?: reason}",
+            retryable = retryable,
+        )
+
     private fun diagLog(msg: String) = DiagLog.log("SC", msg)
 
     private fun emitTelemetry(
@@ -1192,6 +1352,9 @@ class StreamClient(
         private const val CONNECT_TIMEOUT_MS = 5_000
         private const val HANDSHAKE_TIMEOUT_MS = 5_000
         private const val PROTOCOL_UPGRADE_TIMEOUT_MS = 250
+        private const val PROTOCOL_ACTION_TIMEOUT_MS = 2_000L
+        private const val AUTH_RESPONSE_BYTES = 5
+        private const val MAX_FORWARDED_POINTERS = 2
         private const val HEARTBEAT_POLL_INTERVAL_MS = 1_000
         private const val HEARTBEAT_TIMEOUT_MS = 3_500L
         private const val MIN_DISPLAY_DIMENSION = 16

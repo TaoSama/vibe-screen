@@ -65,4 +65,6 @@ Compatibility policy:
 - never reuse field numbers or enum values;
 - reserve removed names and numbers;
 - negotiate capabilities before sending optional behavior;
+- binary decoders must accept additive unknown fields, but JSON projections may
+  discard them and are not a field-preserving relay format;
 - use a new versioned package for an incompatible wire change.

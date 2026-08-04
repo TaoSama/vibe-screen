@@ -22,6 +22,15 @@ import dev.vibescreen.protocol.v1.TouchEvent
 import dev.vibescreen.protocol.v1.VideoConfigResult
 import java.io.IOException
 
+internal class ProtocolV1Failure(
+    val reason: String,
+    val retryable: Boolean,
+    val source: Source,
+    message: String,
+) : IOException(message) {
+    enum class Source { SESSION_REJECTED, HOST_PROTOCOL_ERROR, LOCAL_VALIDATION }
+}
+
 /** Product-session state machine. It intentionally has no Android, UI, codec, or transport imports. */
 internal class ProtocolV1Session(
     private val deviceId: String,
@@ -65,9 +74,11 @@ internal class ProtocolV1Session(
     private val requiredCapabilities = setOf(Capability.CAPABILITY_TOUCH)
 
     val activeSessionEpoch: Long
+        @Synchronized
         get() = sessionEpoch
 
     val isStreaming: Boolean
+        @Synchronized
         get() = state == State.STREAMING
 
     init {
@@ -76,6 +87,7 @@ internal class ProtocolV1Session(
         require(codecs.isNotEmpty() && codecs.none { it == Codec.CODEC_UNSPECIFIED }) { "At least one codec is required" }
     }
 
+    @Synchronized
     fun clientHello(): Envelope {
         check(state == State.AWAITING_HOST_HELLO)
         val hello =
@@ -98,12 +110,21 @@ internal class ProtocolV1Session(
         return envelope().setClientHello(hello).build()
     }
 
+    @Synchronized
     fun receive(envelope: Envelope): List<Action> {
         validateEnvelope(envelope)
         return when (envelope.payloadCase) {
             Envelope.PayloadCase.HOST_HELLO -> onHostHello(envelope)
             Envelope.PayloadCase.SESSION_ACCEPTED -> onSessionAccepted(envelope)
-            Envelope.PayloadCase.SESSION_REJECTED -> throw IOException("Session rejected: ${envelope.sessionRejected.reasonCode}")
+            Envelope.PayloadCase.SESSION_REJECTED -> {
+                val rejected = envelope.sessionRejected
+                throw ProtocolV1Failure(
+                    reason = rejected.reasonCode.ifBlank { "session_rejected" },
+                    retryable = rejected.retryable,
+                    source = ProtocolV1Failure.Source.SESSION_REJECTED,
+                    message = rejected.message.ifBlank { "Session rejected: ${rejected.reasonCode}" },
+                )
+            }
             Envelope.PayloadCase.LIST_DISPLAYS_RESPONSE -> onDisplays(envelope)
             Envelope.PayloadCase.START_DISPLAY_RESPONSE -> onStartDisplay(envelope)
             Envelope.PayloadCase.VIDEO_CONFIG -> onVideoConfig(envelope)
@@ -120,19 +141,27 @@ internal class ProtocolV1Session(
                 state = State.CLOSED
                 listOf(Action.Disconnected(envelope.disconnectNotice.mayResume))
             }
-            Envelope.PayloadCase.PROTOCOL_ERROR -> throw IOException(
-                "Host protocol error ${envelope.protocolError.code}: ${envelope.protocolError.message}",
-            )
+            Envelope.PayloadCase.PROTOCOL_ERROR -> {
+                val error = envelope.protocolError
+                throw ProtocolV1Failure(
+                    reason = error.code.name,
+                    retryable = error.retryable,
+                    source = ProtocolV1Failure.Source.HOST_PROTOCOL_ERROR,
+                    message = "Host protocol error ${error.code}: ${error.message}",
+                )
+            }
             else -> throw protocolFailure("Unexpected ${envelope.payloadCase} in state $state")
         }
     }
 
+    @Synchronized
     fun ping(sequence: Long): Envelope {
         require(sequence > 0)
         check(state >= State.ACTIVE && state != State.CLOSED)
         return envelope().setPing(Ping.newBuilder().setSequence(sequence)).build()
     }
 
+    @Synchronized
     fun requestKeyframe(reason: String): Envelope {
         check(state == State.STREAMING)
         return envelope()
@@ -140,6 +169,7 @@ internal class ProtocolV1Session(
             .build()
     }
 
+    @Synchronized
     fun touch(
         inputId: Long,
         pointerId: Int,
@@ -162,6 +192,7 @@ internal class ProtocolV1Session(
         return envelope().setTouchEvent(event).build()
     }
 
+    @Synchronized
     fun validateMedia(header: dev.vibescreen.protocol.v1.MediaPacketHeader) {
         if (state != State.STREAMING) throw IOException("Media received before VideoConfig acceptance")
         if (header.sessionEpoch != sessionEpoch || header.streamId != streamId || header.configEpoch != configEpoch) {
@@ -176,6 +207,7 @@ internal class ProtocolV1Session(
         lastFrameId = header.frameId
     }
 
+    @Synchronized
     fun protocolError(
         message: String,
         correlationId: Long = 0,
@@ -321,7 +353,13 @@ internal class ProtocolV1Session(
             .setSessionEpoch(sessionEpoch)
             .setSentAtMonotonicNs(nowNs())
 
-    private fun protocolFailure(message: String): IOException = IOException("Protocol v1: $message")
+    private fun protocolFailure(message: String): IOException =
+        ProtocolV1Failure(
+            reason = "invalid_peer_message",
+            retryable = false,
+            source = ProtocolV1Failure.Source.LOCAL_VALIDATION,
+            message = "Protocol v1: $message",
+        )
 
     companion object {
         const val VERSION = 1

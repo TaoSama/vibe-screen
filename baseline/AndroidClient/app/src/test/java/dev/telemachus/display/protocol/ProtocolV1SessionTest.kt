@@ -14,6 +14,7 @@ import dev.vibescreen.protocol.v1.Ping
 import dev.vibescreen.protocol.v1.ProtocolError
 import dev.vibescreen.protocol.v1.ProtocolErrorCode
 import dev.vibescreen.protocol.v1.SessionAccepted
+import dev.vibescreen.protocol.v1.SessionRejected
 import dev.vibescreen.protocol.v1.StartDisplayResponse
 import dev.vibescreen.protocol.v1.TransportKind
 import dev.vibescreen.protocol.v1.VideoConfig
@@ -113,7 +114,35 @@ class ProtocolV1SessionTest {
                         .setCode(ProtocolErrorCode.PROTOCOL_ERROR_CODE_INVALID_STATE)
                         .setMessage("bad state"),
                 ).build()
-        assertThrows(IOException::class.java) { session.receive(error) }
+        val failure = assertThrows(ProtocolV1Failure::class.java) { session.receive(error) }
+        assertEquals(ProtocolV1Failure.Source.HOST_PROTOCOL_ERROR, failure.source)
+        assertEquals(ProtocolErrorCode.PROTOCOL_ERROR_CODE_INVALID_STATE.name, failure.reason)
+        assertFalse(failure.retryable)
+    }
+
+    @Test
+    fun sessionRejectionPreservesReasonAndRetryability() {
+        val session = session().also { it.clientHello() }
+        session.receive(hostHello(2))
+        val rejected =
+            Envelope
+                .newBuilder()
+                .setProtocolVersion(1)
+                .setMessageId(3)
+                .setSessionRejected(
+                    SessionRejected
+                        .newBuilder()
+                        .setReasonCode("host_busy")
+                        .setMessage("Try another host")
+                        .setRetryable(true),
+                ).build()
+
+        val failure = assertThrows(ProtocolV1Failure::class.java) { session.receive(rejected) }
+
+        assertEquals(ProtocolV1Failure.Source.SESSION_REJECTED, failure.source)
+        assertEquals("host_busy", failure.reason)
+        assertEquals("Try another host", failure.message)
+        assertTrue(failure.retryable)
     }
 
     @Test

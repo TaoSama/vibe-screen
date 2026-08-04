@@ -96,6 +96,105 @@ func testSharedProtocolFixture() throws {
     try require(envelope.clientHello.transports == [.lan], "golden transport")
 }
 
+func protocolV1FixtureDirectory() -> URL {
+    URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("contracts/fixtures/messages/v1/bin", isDirectory: true)
+}
+
+func readProtocolV1Fixture(_ name: String) throws -> Data {
+    try Data(contentsOf: protocolV1FixtureDirectory().appendingPathComponent(name))
+}
+
+func testProtocolV1GoldenFixtures() throws {
+    let controlFixtureNames = [
+        "client_hello", "host_hello", "session_accepted",
+        "list_displays_request", "list_displays_response",
+        "start_display_request", "start_display_response",
+        "video_config", "video_config_result", "touch", "ping", "pong",
+        "protocol_error",
+    ]
+    var envelopes: [String: VSEnvelope] = [:]
+    for name in controlFixtureNames {
+        let expected = try readProtocolV1Fixture("\(name).binpb")
+        let envelope = try VSEnvelope(serializedBytes: expected)
+        try require(try envelope.serializedData() == expected, "Protocol v1 exact round trip: \(name)")
+        envelopes[name] = envelope
+    }
+
+    guard let clientHello = envelopes["client_hello"]?.clientHello else {
+        throw SelfTestError.failed("Protocol v1 client hello fixture missing")
+    }
+    try require(clientHello.requiredCapabilities == [.touch], "Protocol v1 required capabilities")
+    try require(clientHello.capabilities == [.touch, .keyboard, .pointer, .telemetry], "Protocol v1 capabilities")
+    try require(clientHello.videoDecodeCapabilities.map(\.codec) == [.hevc, .h264], "Protocol v1 decode codecs")
+
+    guard let displayList = envelopes["list_displays_response"]?.listDisplaysResponse.displays.first else {
+        throw SelfTestError.failed("Protocol v1 display list fixture missing")
+    }
+    try require(displayList.displayID == "display-main", "Protocol v1 display ID")
+    try require(displayList.logicalSize.width == 1_920 && displayList.logicalSize.height == 1_080, "Protocol v1 display size")
+    try require(displayList.scaleFactor == 2 && displayList.isPrimary, "Protocol v1 display attributes")
+
+    guard let startRequest = envelopes["start_display_request"]?.payload,
+          case let .startDisplayRequest(request) = startRequest else {
+        throw SelfTestError.failed("Protocol v1 start display request fixture missing")
+    }
+    try require(request.mode == .existing, "Protocol v1 start display mode")
+    try require(request.sourceDisplayID == displayList.displayID, "Protocol v1 start display source")
+    guard let startResponse = envelopes["start_display_response"]?.payload,
+          case let .startDisplayResponse(response) = startResponse else {
+        throw SelfTestError.failed("Protocol v1 start display response fixture missing")
+    }
+    try require(response.accepted && response.streamID == 42, "Protocol v1 start display response")
+    try require(response.display.displayID == displayList.displayID, "Protocol v1 started display")
+
+    guard let videoConfigPayload = envelopes["video_config"]?.payload,
+          case let .videoConfig(videoConfig) = videoConfigPayload else {
+        throw SelfTestError.failed("Protocol v1 video config fixture missing")
+    }
+    try require(videoConfig.configEpoch == 3 && videoConfig.streamID == 42, "Protocol v1 video routing")
+    try require(videoConfig.codec == .hevc && videoConfig.framesPerSecond == 60, "Protocol v1 video format")
+    try require(videoConfig.encodedSize.width == 1_920 && videoConfig.encodedSize.height == 1_080, "Protocol v1 video size")
+    guard let videoResultPayload = envelopes["video_config_result"]?.payload,
+          case let .videoConfigResult(videoResult) = videoResultPayload else {
+        throw SelfTestError.failed("Protocol v1 video config result fixture missing")
+    }
+    try require(videoResult.accepted && videoResult.configEpoch == 3, "Protocol v1 video result")
+    try require(videoResult.streamID == videoConfig.streamID, "Protocol v1 video result routing")
+
+    guard let touchPayload = envelopes["touch"]?.payload,
+          case let .touchEvent(touch) = touchPayload else {
+        throw SelfTestError.failed("Protocol v1 touch fixture missing")
+    }
+    try require(touch.inputID == 100 && touch.pointerID == 1 && touch.phase == .began, "Protocol v1 touch identity")
+    try require(touch.position.x == 0.25 && touch.position.y == 0.75, "Protocol v1 touch position")
+    try require(touch.target.displayID == displayList.displayID && touch.target.streamID == 42, "Protocol v1 touch target")
+
+    let expectedHeader = try readProtocolV1Fixture("media_packet_header.binpb")
+    let expectedPacket = try readProtocolV1Fixture("media_packet.bin")
+    let mediaPacket = try MediaPacket(serializedFrame: expectedPacket)
+    let serializedHeader = try mediaPacket.header.serializedData()
+    try require(serializedHeader == expectedHeader, "Protocol v1 media header exact round trip")
+    try require(mediaPacket.header.streamID == 42 && mediaPacket.header.sessionEpoch == 7, "Protocol v1 media session routing")
+    try require(mediaPacket.header.configEpoch == 3 && mediaPacket.header.codec == .hevc, "Protocol v1 media config")
+    try require(mediaPacket.header.keyframe && mediaPacket.header.fragmentCount == 1, "Protocol v1 media frame metadata")
+    var rebuiltPacket = encodeVarint(serializedHeader.count)
+    rebuiltPacket.append(serializedHeader)
+    rebuiltPacket.append(mediaPacket.payload)
+    try require(rebuiltPacket == expectedPacket, "Protocol v1 media packet exact reconstruction")
+
+    try require(try readProtocolV1Fixture("upgrade_offer.bin") == Data([0x0d]), "Protocol v1 upgrade offer")
+    try require(
+        try readProtocolV1Fixture("upgrade_acknowledgement.bin") == Data([0x0d, 0x01]),
+        "Protocol v1 upgrade acknowledgement"
+    )
+}
+
 func decodeHex(_ hex: String) throws -> Data {
     try require(hex.count.isMultiple(of: 2), "golden hex has odd length")
     var bytes = Data()
@@ -382,6 +481,7 @@ do {
     FileHandle.standardError.write(Data("RUN: protocol/session\n".utf8))
     try testSessionAndProtobuf()
     try testSharedProtocolFixture()
+    try testProtocolV1GoldenFixtures()
     FileHandle.standardError.write(Data("RUN: codec/backoff\n".utf8))
     try testBackpressureAndCodecParsing()
     FileHandle.standardError.write(Data("RUN: multi-display/audio\n".utf8))

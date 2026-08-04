@@ -26,4 +26,7 @@ the manifest. `upgrade_offer.bin` (`0d`) and `upgrade_acknowledgement.bin`
 
 Additive protobuf changes must preserve decoding of these bytes. Do not rewrite
 an existing fixture to hide an incompatible change; add a new protocol package
-for incompatible wire semantics.
+for incompatible wire semantics. The contract test also verifies that Buf can
+decode a fixture extended with an unknown binary field. Its JSON projection
+intentionally drops that field, so the test does not claim unknown-field
+preservation by Swift, Kotlin, or a binary relay.
