@@ -94,6 +94,7 @@ class StreamClientLegacyWriterIntegrationTest {
         ServerSocket(0).use { server ->
             val ready = CountDownLatch(1)
             val requestDeviceInfo = CountDownLatch(1)
+            val writerFailed = CountDownLatch(1)
             val serverJob =
                 async(Dispatchers.IO) {
                     server.accept().use { peer ->
@@ -108,9 +109,10 @@ class StreamClientLegacyWriterIntegrationTest {
                         assertTrue(requestDeviceInfo.await(3, TimeUnit.SECONDS))
                         peer.getOutputStream().write(MESSAGE_DEVICE_INFO_CAPABILITY)
                         peer.getOutputStream().flush()
-                        while (peer.getInputStream().read() >= 0) {
-                            // Wait for the typed writer-failure cleanup to close the socket.
-                        }
+                        assertTrue(writerFailed.await(3, TimeUnit.SECONDS))
+                        // Keep the inbound direction open past one client read poll so
+                        // pending WRITE_FAILED, rather than peer EOF, ends the session.
+                        Thread.sleep(1_200)
                     }
                 }
             val ended = CountDownLatch(1)
@@ -126,7 +128,10 @@ class StreamClientLegacyWriterIntegrationTest {
                         failure = it
                         ended.countDown()
                     }
-                    onWriteFailure = { writerFailure = it }
+                    onWriteFailure = {
+                        writerFailure = it
+                        writerFailed.countDown()
+                    }
                     onConnectionStatus = { connected -> if (connected) ready.countDown() }
                 }
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }

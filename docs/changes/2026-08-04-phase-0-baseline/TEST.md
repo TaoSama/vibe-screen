@@ -96,16 +96,21 @@ self-test. It does not replace device interoperability evidence.
   Kotlin unknown-field preservation.
 - `./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug
   auditReleaseDependencies` passes 176 Android unit tests with zero
-  failures/errors/skips and all 67 Gradle tasks (`BUILD SUCCESSFUL in 34s`). The
+  failures/errors/skips and all 67 Gradle tasks (`BUILD SUCCESSFUL in 37s`). The
   generated Java-lite bindings contain 168 files. The resulting
   debug APK SHA-256 is
-  `0c0a399e3ed0b10ae13afd61bc24e570afb1bf69243a0f47b2cf61d71ad67072`.
+  `1fdd44c2a7da8b5cb9a28dca7e8b883bafa303897aee957617804ec006be3c58`.
   The deterministic malformed-display/RST regression ran three separate
   `--rerun-tasks` invocations, each repeating the live `StreamClient` socket
   integration 25 times. All 75 interleavings preserved the inbound
   non-retryable `INVALID_DISPLAY` result, emitted no reconnect suggestion,
   and did not allow the concurrent startup-capability writer failure to mask
-  it.
+  it. The same three invocations also ran 25 deterministic ready-session EOF
+  interleavings each: a startup-capability write failure was observed before
+  the server closed, yet all 75 sessions preserved the more specific inbound
+  `TRANSPORT_CLOSED` reason. A complementary writer-only case kept the peer's
+  inbound direction open beyond the read poll and consistently selected the
+  pending `WRITE_FAILED` reason.
 - `swift build -c release --product Telemachus` passes. The release executable
   SHA-256 is
   `ce86c9f60418e4b34fd4fa9d6229ba103b32a47922b0abeec6dc14409b87ee76`.

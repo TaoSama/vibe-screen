@@ -143,8 +143,8 @@ class StreamClient(
             onWriteFailure = { failure ->
                 val detail = failure.cause.message ?: failure.cause.javaClass.simpleName
                 Log.e(TAG, "Outbound write failed", failure.cause)
-                onWriteFailure?.invoke(detail)
                 pendingOutboundFailure.compareAndSet(null, SessionFailure.write(detail))
+                onWriteFailure?.invoke(detail)
                 try {
                     socket?.shutdownOutput()
                 } catch (shutdownFailure: IOException) {
@@ -743,7 +743,7 @@ class StreamClient(
     private suspend fun receiveData() =
         withContext(Dispatchers.IO) {
             val input = inputStream ?: return@withContext
-            var terminalFailure = SessionFailure.transport("receive loop ended")
+            var terminalFailure: SessionFailure? = null
 
             try {
                 while (isConnected) {
@@ -755,7 +755,7 @@ class StreamClient(
                         try {
                             pendingLegacyFirstByte?.also { pendingLegacyFirstByte = null }?.toByte() ?: input.readByte()
                         } catch (_: SocketTimeoutException) {
-                            pendingOutboundFailure.get()?.let { throw IOException(it.detail) }
+                            pendingOutboundFailure.get()?.let { throw SessionProtocolException(it) }
                             if (heartbeat.isExpired(System.nanoTime())) {
                                 emitTelemetry(
                                     "heartbeat_timeout",
@@ -859,21 +859,20 @@ class StreamClient(
                     Log.e(TAG, "❌ Read error", e)
                 }
             } finally {
-                completeConnectionEndNow(preferredTerminalFailure(terminalFailure))
+                completeConnectionEndNow(
+                    terminalFailure
+                        ?: pendingOutboundFailure.get()
+                        ?: SessionFailure.transport("receive loop ended"),
+                )
             }
         }
-
-    private fun preferredTerminalFailure(inboundFailure: SessionFailure): SessionFailure {
-        if (!inboundFailure.retryable || inboundFailure.intentional) return inboundFailure
-        return pendingOutboundFailure.get() ?: inboundFailure
-    }
 
     private fun receiveV1Frame(input: DataInputStream) {
         val firstChannel =
             try {
                 input.read()
             } catch (_: SocketTimeoutException) {
-                pendingOutboundFailure.get()?.let { throw IOException(it.detail) }
+                pendingOutboundFailure.get()?.let { throw SessionProtocolException(it) }
                 if (heartbeat.isExpired(System.nanoTime())) {
                     throw SessionProtocolException(SessionFailure.heartbeat("heartbeat timeout"))
                 }
