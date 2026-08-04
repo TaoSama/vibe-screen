@@ -23,14 +23,16 @@ PYTHONPATH=tools python3 -m unittest discover -s tools/tests -v
 
 ## Device and soak evidence
 
-The repository-level entry points default to the configured ADB TCP endpoint
-and can be overridden without editing a script:
+The repository-level entry points require an explicit lease-controlled ADB
+endpoint. Set it in the shell; the repository intentionally has no device
+endpoint default:
 
 ```sh
-make evidence-device-info EVIDENCE_SERIAL=100.72.246.116:5555
-make soak-30m EVIDENCE_SERIAL=100.72.246.116:5555
-make soak-2h EVIDENCE_SERIAL=100.72.246.116:5555
-make soak-8h EVIDENCE_SERIAL=100.72.246.116:5555
+export ADB_ENDPOINT='<lease-controlled-endpoint>'
+make evidence-device-info EVIDENCE_SERIAL="$ADB_ENDPOINT"
+make soak-30m EVIDENCE_SERIAL="$ADB_ENDPOINT"
+make soak-2h EVIDENCE_SERIAL="$ADB_ENDPOINT"
+make soak-8h EVIDENCE_SERIAL="$ADB_ENDPOINT"
 ```
 
 Outputs go under `.build/evidence/` by default. Each soak writes raw JSONL and

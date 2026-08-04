@@ -152,7 +152,8 @@ gate.
 
 ## Final coordinated device acceptance (2026-08-04)
 
-The final device run used ADB endpoint `100.72.246.116:5555`. The device
+The final device run used a controlled ADB endpoint, redacted here as
+`$ADB_ENDPOINT`; it is historical evidence, not a script default. The device
 identified itself as Nubia P0110 (`pacific`), hardware serial `[redacted]`,
 Android 16 / SDK 36, fingerprint
 `nubia/pacific/pacific:16/2.5.2.0/20260804.003241:userdebug/test-keys`.
@@ -219,7 +220,7 @@ not used for the accepted result. The final Host was pre-warmed beyond the
 one-time probe before starting the accepted clock.
 
 Detailed commands, hashes, and artifact locations are recorded in
-[`evidence/device-100.72.246.116-5555/FINAL_ACCEPTANCE.md`](evidence/device-100.72.246.116-5555/FINAL_ACCEPTANCE.md).
+[`evidence/device-controlled-endpoint/FINAL_ACCEPTANCE.md`](evidence/device-controlled-endpoint/FINAL_ACCEPTANCE.md).
 
 ## Still unproved
 

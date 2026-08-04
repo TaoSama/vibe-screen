@@ -163,6 +163,7 @@ struct SettingsView: View {
                             }
                     }
                     .buttonStyle(.plain)
+                    .disabled(settings.internetRevocationCleanupPending)
                     .help("Reset settings")
                     .alert("Reset Settings", isPresented: $showResetConfirmation) {
                         Button("Cancel", role: .cancel) { }
@@ -1474,12 +1475,23 @@ private struct InternetSection: View {
                     ) {
                         settings.pairInternetDevice()
                     }
-                    .disabled(!endpointIsValid || settings.internetStatus.isActive || settings.internetStatus == .pairing)
+                    .disabled(
+                        !endpointIsValid ||
+                        settings.internetStatus.isActive ||
+                        settings.internetStatus == .pairing ||
+                        settings.internetRevocationCleanupPending
+                    )
 
                     Button("Revoke", role: .destructive) {
                         settings.revokeInternetDevice()
                     }
                     .disabled(settings.internetStatus == .idle || settings.internetStatus == .revoked)
+
+                    if settings.internetRevocationCleanupPending {
+                        Button("Retry Cleanup") {
+                            settings.retryInternetRevocationCleanup()
+                        }
+                    }
 
                     Spacer()
 
@@ -1629,9 +1641,8 @@ class DisplaySettings: ObservableObject {
     @Published var internetPeerKeyEpoch: UInt64 {
         didSet { save("internetPeerKeyEpoch", internetPeerKeyEpoch) }
     }
-    /// Non-secret metadata for the most recently revoked signing identity.
-    /// Generic settings reset deliberately does not erase this deny history;
-    /// the Keychain tombstone remains the authoritative exact-key block.
+    /// Legacy single-device deny metadata. AppDelegate migrates these fields
+    /// into RevokedInternetIdentityStore and clears them after persistence.
     @Published var internetRevokedPeerDeviceID: String {
         didSet { save("internetRevokedPeerDeviceID", internetRevokedPeerDeviceID) }
     }
@@ -1691,6 +1702,7 @@ class DisplaySettings: ObservableObject {
     @Published var internetPairingURL: String?
     @Published var internetPairingAcceptance: String?
     @Published var internetCredentialsAvailable = false
+    @Published var internetRevocationCleanupPending = false
 
     var onToggleServer: (() -> Void)?
     var onRequestScreenRecordingPermission: (() -> Void)?
@@ -1698,6 +1710,7 @@ class DisplaySettings: ObservableObject {
     var onResetWirelessToken: (() -> Bool)?
     var onPairInternetDevice: (() -> Void)?
     var onRevokeInternetDevice: (() -> Void)?
+    var onRetryInternetRevocationCleanup: (() -> Void)?
     var onConnectInternetSession: (() -> Void)?
     var onDisconnectInternetSession: (() -> Void)?
     var onSaveInternetCredentials: ((String, String) -> Bool)?
@@ -1929,6 +1942,10 @@ class DisplaySettings: ObservableObject {
         onRevokeInternetDevice?()
     }
 
+    func retryInternetRevocationCleanup() {
+        onRetryInternetRevocationCleanup?()
+    }
+
     func connectInternetSession() {
         internetErrorMessage = nil
         internetRecoverySuggestion = nil
@@ -2033,6 +2050,12 @@ class DisplaySettings: ObservableObject {
     }
 
     func resetToDefaults() {
+        guard !internetRevocationCleanupPending else {
+            internetStatus = .revoked
+            internetErrorMessage = "Revoked pairing-secret cleanup is still pending."
+            internetRecoverySuggestion = "Choose Retry Cleanup before resetting settings so the peer-scoped cleanup marker remains reachable."
+            return
+        }
         let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
                     "gamingBoost", "port", "rotation", "showAllResolutions",
                     "customWidth", "customHeight", "touchEnabled", "autoStartStreamingOnLaunch", "hideDockIcon", "startupMode",

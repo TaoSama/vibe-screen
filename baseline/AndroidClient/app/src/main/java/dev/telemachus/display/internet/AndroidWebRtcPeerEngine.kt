@@ -42,6 +42,14 @@ class AndroidWebRtcPeerEngine internal constructor(
         Executors.newSingleThreadScheduledExecutor { runnable ->
             Thread(runnable, "vibe-webrtc-stats").apply { isDaemon = true }
         }
+    private val routeResolutionTimeout =
+        RouteResolutionTimeout(
+            scheduler = RouteResolutionScheduler { delayMillis, task ->
+                val future = statsExecutor.schedule(task, delayMillis, TimeUnit.MILLISECONDS)
+                RouteResolutionCancellation { future.cancel(false) }
+            },
+            timeoutMillis = ROUTE_RESOLUTION_TIMEOUT_MS,
+        )
     private var factory: PeerConnectionFactory? = null
     private var peerConnection: PeerConnection? = null
     private var signalingClient: SignalingClient? = null
@@ -54,6 +62,9 @@ class AndroidWebRtcPeerEngine internal constructor(
     private val pendingMedia = LatestFrameSlot()
     private var selectedRoute: PeerRoute? = null
     private var connectedReported = false
+    private var routeResolutionFailed = false
+    private var routeGeneration = 0L
+    private var acceptCandidateRoutes = true
     private var startClaimed = false
     private var closed = false
     private var endOfCandidatesSent = false
@@ -162,11 +173,16 @@ class AndroidWebRtcPeerEngine internal constructor(
         val peer = synchronized(lock) { peerConnection.takeIf { !closed } }
             ?: throw IllegalStateException("WebRTC engine is not running")
         synchronized(lock) {
+            routeGeneration++
             endOfCandidatesSent = false
             remoteDescriptionSet = false
             pendingRemoteCandidates.clear()
             selectedRoute = null
+            routeResolutionFailed = false
+            connectedReported = false
+            acceptCandidateRoutes = false
         }
+        routeResolutionTimeout.cancel()
         peer.restartIce()
         if (configuration?.signaling?.role == PeerRole.HOST) createOffer()
     }
@@ -215,6 +231,7 @@ class AndroidWebRtcPeerEngine internal constructor(
         val resources =
             synchronized(lock) {
                 if (closed) return
+                routeGeneration++
                 closed = true
                 val channels = listOfNotNull(controlChannel, mediaChannel).distinct()
                 controlChannel = null
@@ -230,17 +247,24 @@ class AndroidWebRtcPeerEngine internal constructor(
                         configuration = null
                     }
             }
-        statsExecutor.shutdownNow()
-        resources.signaling?.close()
-        resources.channels.forEach {
-            it.unregisterObserver()
-            it.close()
-            it.dispose()
-        }
-        resources.peer?.close()
-        resources.peer?.dispose()
-        resources.factory?.dispose()
-        resources.sessionCipher?.close()
+        routeResolutionTimeout.cancel()
+        val cleanupActions =
+            buildList<() -> Unit> {
+                add { statsExecutor.shutdownNow() }
+                resources.signaling?.let { signaling -> add { signaling.close() } }
+                resources.channels.forEach { channel ->
+                    add { channel.unregisterObserver() }
+                    add { channel.close() }
+                    add { channel.dispose() }
+                }
+                resources.peer?.let { peer ->
+                    add { peer.close() }
+                    add { peer.dispose() }
+                }
+                resources.factory?.let { factory -> add { factory.dispose() } }
+                resources.sessionCipher?.let { cipher -> add { cipher.close() } }
+            }
+        runBestEffort(*cleanupActions.toTypedArray())
     }
 
     private fun createLocalChannelsLocked(peer: PeerConnection) {
@@ -386,21 +410,63 @@ class AndroidWebRtcPeerEngine internal constructor(
     private fun maybeReportConnected() {
         val report =
             synchronized(lock) {
-                val ready =
-                    !closed &&
-                        peerConnection?.connectionState() == PeerConnection.PeerConnectionState.CONNECTED &&
-                        controlChannel?.state() == DataChannel.State.OPEN &&
-                        mediaChannel?.state() == DataChannel.State.OPEN
-                if (!ready || connectedReported) return
-                val route = selectedRoute ?: return
-                connectedReported = true
-                observer to route
+                if (!isReadyForRouteResolutionLocked() || connectedReported) return
+                val route = selectedRoute
+                if (route == null) {
+                    // Arm while holding the same state lock used by the candidate
+                    // callback. A late route therefore cannot cancel and then be
+                    // followed by a stale arm from this readiness observation.
+                    val generation = routeGeneration
+                    routeResolutionTimeout.arm { routeResolutionTimedOut(generation) }
+                    null
+                } else {
+                    connectedReported = true
+                    observer to route
+                }
             }
-        report.first?.onConnected(report.second)
+        if (report != null) routeResolutionTimeout.cancel()
+        report?.first?.onConnected(report.second)
+    }
+
+    private fun isReadyForRouteResolutionLocked(): Boolean =
+        !closed &&
+            !routeResolutionFailed &&
+            peerConnection?.connectionState() == PeerConnection.PeerConnectionState.CONNECTED &&
+            controlChannel?.state() == DataChannel.State.OPEN &&
+            mediaChannel?.state() == DataChannel.State.OPEN
+
+    private fun routeResolutionTimedOut(generation: Long) {
+        val shouldFail =
+            synchronized(lock) {
+                if (
+                    generation != routeGeneration ||
+                    !isReadyForRouteResolutionLocked() ||
+                    connectedReported ||
+                    selectedRoute != null
+                ) {
+                    false
+                } else {
+                    routeResolutionFailed = true
+                    true
+                }
+            }
+        if (shouldFail) {
+            fail(IllegalStateException("WebRTC connected without a selected candidate route before the deadline"))
+        }
     }
 
     private fun fail(error: Throwable) {
-        val target = synchronized(lock) { observer.takeIf { !closed } } ?: return
+        val target =
+            synchronized(lock) {
+                routeGeneration++
+                routeResolutionFailed = true
+                acceptCandidateRoutes = false
+                selectedRoute = null
+                connectedReported = false
+                observer.takeIf { !closed }
+            }
+        routeResolutionTimeout.cancel()
+        target ?: return
         target.onFailure(error)
         target.onDisconnected()
     }
@@ -416,12 +482,25 @@ class AndroidWebRtcPeerEngine internal constructor(
     private inner class PeerObserver : PeerConnection.Observer {
         override fun onConnectionChange(state: PeerConnection.PeerConnectionState) {
             when (state) {
-                PeerConnection.PeerConnectionState.CONNECTED -> maybeReportConnected()
+                PeerConnection.PeerConnectionState.CONNECTING -> synchronized(lock) { acceptCandidateRoutes = true }
+                PeerConnection.PeerConnectionState.CONNECTED -> {
+                    synchronized(lock) { acceptCandidateRoutes = true }
+                    maybeReportConnected()
+                }
                 PeerConnection.PeerConnectionState.DISCONNECTED,
                 PeerConnection.PeerConnectionState.CLOSED,
                 -> {
-                    synchronized(lock) { connectedReported = false }
-                    synchronized(lock) { observer.takeIf { !closed } }?.onDisconnected()
+                    val target =
+                        synchronized(lock) {
+                            routeGeneration++
+                            connectedReported = false
+                            selectedRoute = null
+                            routeResolutionFailed = false
+                            acceptCandidateRoutes = false
+                            observer.takeIf { !closed }
+                        }
+                    routeResolutionTimeout.cancel()
+                    target?.onDisconnected()
                 }
                 PeerConnection.PeerConnectionState.FAILED -> fail(IllegalStateException("WebRTC ICE/DTLS connection failed"))
                 else -> Unit
@@ -432,15 +511,17 @@ class AndroidWebRtcPeerEngine internal constructor(
             val route = if (event.local.sdp.contains(" typ relay ") || event.remote.sdp.contains(" typ relay ")) PeerRoute.RELAY else PeerRoute.DIRECT
             val target =
                 synchronized(lock) {
+                    if (!acceptCandidateRoutes || closed || routeResolutionFailed) return
                     val changed = route != selectedRoute
                     selectedRoute = route
-                    observer.takeIf { changed && connectedReported && !closed }
+                    observer.takeIf { changed && connectedReported && !closed && !routeResolutionFailed }
                 }
+            routeResolutionTimeout.cancel()
             // Candidate-pair selection may arrive after ICE and both negotiated
             // channels are already open. Re-evaluate readiness so the initial
             // connection event cannot be lost to callback ordering.
             maybeReportConnected()
-            target?.onConnected(route)
+            target?.onRouteChanged(route)
         }
 
         override fun onIceCandidate(candidate: IceCandidate) {
@@ -529,5 +610,6 @@ class AndroidWebRtcPeerEngine internal constructor(
         private const val MEDIA_BUFFER_HIGH_WATER_BYTES = 524_288L
         private const val STATS_INTERVAL_SECONDS = 2L
         private const val MEDIA_RETRY_DELAY_MS = 50L
+        internal const val ROUTE_RESOLUTION_TIMEOUT_MS = 5_000L
     }
 }

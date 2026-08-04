@@ -54,6 +54,39 @@ Static shared TURN passwords in clients are prohibited. `turns:` is preferred fo
 credential and metadata protection; application E2EE remains mandatory regardless
 of TURN transport.
 
+### Issue a host-signed Android session lease
+
+The Mac host provides an explicit stdin/stdout issuer that reuses the existing
+paired P-256 identity in the login Keychain. It never creates a signing identity,
+and fails if `pinned_host_id` does not name an already provisioned host key:
+
+```bash
+cd baseline/MacHost
+umask 077
+swift build -c release
+.build/release/Telemachus --issue-phase3-internet-lease \
+  < /protected/path/unsigned-lease.json \
+  > /protected/path/android-lease.json
+```
+
+The unsigned JSON is strict: it contains exactly `version`, `pairing_id`,
+`pinned_host_id`, `signaling_url`, `signaling_session_id`, `session_epoch`,
+`identity_epoch`, `transcript_context`, `protocol_session_id`,
+`signaling_token`, `ice_servers`, and `allow_insecure_for_testing`. Each ICE
+server contains exactly `urls`, `username`, and `credential`; nullable values
+must be JSON `null`. The issuer adds `lease_host_key_id` and the DER ECDSA
+`lease_signature` over the Android canonical transcript.
+
+Both input and output contain the signaling token and possibly TURN credentials.
+Keep them in an owner-only temporary directory, never pass them as command-line
+arguments, and delete them immediately after importing the output through the
+Android Internet UI. The command writes only the signed JSON to stdout and never
+logs lease contents. Verify the cross-language canonical fixture with:
+
+```bash
+.build/release/Telemachus --phase3-internet-lease-self-test
+```
+
 ## Required dashboards
 
 ### User experience
@@ -176,7 +209,8 @@ processor, and user deletion behavior before public service launch.
 
 ## Shared Android device lease
 
-The local acceptance endpoint `100.72.246.116:5555` uses three coordinated lock
+The caller must explicitly supply the lease-controlled local acceptance
+endpoint as `$ADB_ENDPOINT`; the repository has no endpoint default. It uses three coordinated lock
 paths. `/tmp/vibe-screen-device-soak.lock` and
 `/tmp/vibe-screen-device-android.lock` must both be absent. The Internet task must
 atomically create and hold `/tmp/vibe-screen-device-internet.lock` with a private

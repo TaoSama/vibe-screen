@@ -29,7 +29,7 @@ For every device run, record:
 
 The current Phase 0 evidence is recorded in
 `docs/changes/2026-08-04-phase-0-baseline/TEST.md`. The designated endpoint
-`100.72.246.116:5555` identified itself as Nubia P0110, not Xiaomi 12; results
+is redacted as `$ADB_ENDPOINT` and identified itself as Nubia P0110, not Xiaomi 12; results
 must retain that distinction.
 
 ## Pass criteria

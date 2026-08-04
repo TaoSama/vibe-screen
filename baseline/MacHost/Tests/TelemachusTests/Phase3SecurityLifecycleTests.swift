@@ -197,6 +197,7 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
 
         XCTAssertEqual(secretStore.deletedNames, ["tablet.shared", "tablet.bootstrap"])
         XCTAssertEqual(stateStore.state.peerRevocation, tombstone)
+        XCTAssertNil(stateStore.state.revocationSecretCleanup)
     }
 
     func testPeerRevocationRemainsFailClosedWhenSecretDeletionMustRetry() throws {
@@ -230,6 +231,10 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
             )
         )
         XCTAssertEqual(stateStore.state.peerRevocation, tombstone)
+        XCTAssertEqual(
+            stateStore.state.revocationSecretCleanup?.remainingSecretNames,
+            ["tablet.bootstrap"]
+        )
         XCTAssertThrowsError(try security.advanceSessionEpoch()) { error in
             XCTAssertEqual(error as? PlatformSecurityError, .revoked)
         }
@@ -245,6 +250,112 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
             )
         )
         XCTAssertEqual(secretStore.deletedNames.last, "tablet.bootstrap")
+        XCTAssertNil(stateStore.state.revocationSecretCleanup)
+    }
+
+    func testPeerRevocationCleanupAggregatesFailuresAndResumesAfterRestart() throws {
+        let authorityKey = try TestSigningKey(deviceID: "host", keyEpoch: 1)
+        let peer = try TestSigningKey(deviceID: "tablet", keyEpoch: 1).identity
+        let tombstone = try signedTombstone(
+            authorityKey: authorityKey,
+            authority: authorityKey.identity,
+            peer: peer,
+            sequence: 3
+        )
+        let stateStore = MemorySecurityStateStore()
+        let secretStore = MemoryPairedDeviceSecretStore(
+            failingNames: ["tablet.shared"]
+        )
+        let peerID = PairedDeviceSecurityScope.identifier(peer)
+        let names = try PairedDeviceSecretNames(
+            sharedSecret: "tablet.shared",
+            bootstrapSecret: "tablet.bootstrap"
+        )
+
+        XCTAssertThrowsError(
+            try PlatformSessionSecurity(
+                deviceID: "mac-host",
+                peerID: peerID,
+                stateStore: stateStore
+            ).revokePeer(
+                tombstone,
+                expectedAuthority: authorityKey.identity,
+                expectedPeer: peer,
+                secretNames: names,
+                secretStore: secretStore
+            )
+        )
+        XCTAssertEqual(
+            secretStore.attemptedNames,
+            ["tablet.shared", "tablet.bootstrap"],
+            "A shared-secret failure must not skip bootstrap-secret cleanup."
+        )
+        XCTAssertEqual(secretStore.deletedNames, ["tablet.bootstrap"])
+        XCTAssertEqual(
+            stateStore.state.revocationSecretCleanup?.remainingSecretNames,
+            ["tablet.shared"]
+        )
+
+        let afterRestart = PlatformSessionSecurity(
+            deviceID: "mac-host",
+            peerID: peerID,
+            stateStore: stateStore
+        )
+        XCTAssertTrue(try afterRestart.hasPendingRevocationSecretCleanup())
+        secretStore.failingNames = []
+        try afterRestart.retryRevocationSecretCleanup(secretStore: secretStore)
+
+        XCTAssertFalse(try afterRestart.hasPendingRevocationSecretCleanup())
+        XCTAssertNil(stateStore.state.revocationSecretCleanup)
+        XCTAssertEqual(secretStore.deletedNames.last, "tablet.shared")
+    }
+
+    func testCleanupProgressPersistenceFailureKeepsMarkerForRestart() throws {
+        let authorityKey = try TestSigningKey(deviceID: "host", keyEpoch: 1)
+        let peer = try TestSigningKey(deviceID: "tablet", keyEpoch: 1).identity
+        let tombstone = try signedTombstone(
+            authorityKey: authorityKey,
+            authority: authorityKey.identity,
+            peer: peer,
+            sequence: 4
+        )
+        let stateStore = MemorySecurityStateStore()
+        // Call 1 atomically commits tombstone + marker. Call 2 attempts to
+        // remove the already-deleted shared secret from that marker.
+        stateStore.failPersistCalls = [2]
+        let secretStore = MemoryPairedDeviceSecretStore()
+        let peerID = PairedDeviceSecurityScope.identifier(peer)
+
+        XCTAssertThrowsError(
+            try PlatformSessionSecurity(
+                deviceID: "mac-host",
+                peerID: peerID,
+                stateStore: stateStore
+            ).revokePeer(
+                tombstone,
+                expectedAuthority: authorityKey.identity,
+                expectedPeer: peer,
+                secretNames: try PairedDeviceSecretNames(
+                    sharedSecret: "tablet.shared",
+                    bootstrapSecret: "tablet.bootstrap"
+                ),
+                secretStore: secretStore
+            )
+        )
+        XCTAssertEqual(secretStore.deletedNames, ["tablet.shared", "tablet.bootstrap"])
+        XCTAssertEqual(
+            stateStore.state.revocationSecretCleanup?.remainingSecretNames,
+            ["tablet.shared"]
+        )
+
+        let afterRestart = PlatformSessionSecurity(
+            deviceID: "mac-host",
+            peerID: peerID,
+            stateStore: stateStore
+        )
+        try afterRestart.retryRevocationSecretCleanup(secretStore: secretStore)
+        XCTAssertNil(stateStore.state.revocationSecretCleanup)
+        XCTAssertEqual(secretStore.deletedNames.last, "tablet.shared")
     }
 
     func testPeerScopedKeychainAccountsAreDistinctAndDoNotExposePeerID() {
@@ -447,23 +558,35 @@ private final class TestSigningKey {
 private final class MemorySecurityStateStore: SecurityStateStore {
     var state = PersistedSecurityState()
     var failPersist = false
+    var failPersistCalls: Set<Int> = []
+    private var persistCallCount = 0
     func load() throws -> PersistedSecurityState { state }
     func persist(_ state: PersistedSecurityState) throws {
-        if failPersist { throw PlatformSecurityError.persistenceFailure("injected") }
+        persistCallCount += 1
+        if failPersist || failPersistCalls.contains(persistCallCount) {
+            throw PlatformSecurityError.persistenceFailure("injected")
+        }
         self.state = state
     }
 }
 
 private final class MemoryPairedDeviceSecretStore: PairedDeviceSecretStore {
     private(set) var deletedNames: [String] = []
-    var failingName: String?
+    private(set) var attemptedNames: [String] = []
+    var failingNames: Set<String>
 
-    init(failingName: String? = nil) {
-        self.failingName = failingName
+    var failingName: String? {
+        get { failingNames.first }
+        set { failingNames = newValue.map { Set([$0]) } ?? [] }
+    }
+
+    init(failingName: String? = nil, failingNames: Set<String> = []) {
+        self.failingNames = failingName.map { Set([$0]) } ?? failingNames
     }
 
     func delete(name: String) throws {
-        if name == failingName {
+        attemptedNames.append(name)
+        if failingNames.contains(name) {
             throw PlatformSecurityError.persistenceFailure("injected secret deletion failure")
         }
         deletedNames.append(name)

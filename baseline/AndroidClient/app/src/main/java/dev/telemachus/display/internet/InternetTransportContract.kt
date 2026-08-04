@@ -140,6 +140,9 @@ interface WebRtcPeerEngine : AutoCloseable {
     interface Observer {
         fun onConnected(route: PeerRoute)
 
+        /** Selected candidate pair changed after this session was already connected. */
+        fun onRouteChanged(route: PeerRoute) = Unit
+
         fun onDisconnected()
 
         fun onControlMessage(
@@ -218,6 +221,9 @@ sealed class InternetTransportEvent {
     data class StateChanged(val state: InternetTransportState) : InternetTransportEvent()
 
     data class RouteSelected(val route: PeerRoute) : InternetTransportEvent()
+
+    /** Route telemetry changed without creating a new transport or product negotiation. */
+    data class RouteUpdated(val route: PeerRoute) : InternetTransportEvent()
 
     /** The current rendezvous is single-use; recovery must allocate a new signaling/product session. */
     data class FreshSessionRequested(val reason: String) : InternetTransportEvent()

@@ -110,6 +110,29 @@ final class KeychainDeviceIdentityStore {
         }
     }
 
+    /// Loads an already-provisioned identity without creating a replacement.
+    /// Lease issuance must fail closed when pairing has not created this key.
+    func loadExisting(
+        deviceID: String,
+        keyEpoch: UInt64 = 1
+    ) throws -> KeychainDeviceIdentity? {
+        guard !deviceID.isEmpty, keyEpoch > 0 else {
+            throw PlatformSecurityError.invalidInput(
+                "Device ID and positive key epoch are required."
+            )
+        }
+        return try lock.withCriticalSection {
+            guard let privateKey = try loadPrivateKey(
+                tag: keyTag(deviceID: deviceID, epoch: keyEpoch)
+            ) else { return nil }
+            return try identity(
+                deviceID: deviceID,
+                epoch: keyEpoch,
+                privateKey: privateKey
+            )
+        }
+    }
+
     func delete(deviceID: String, keyEpoch: UInt64) throws {
         try lock.withCriticalSection {
             let status = SecItemDelete([
@@ -255,6 +278,14 @@ struct KeychainSecurityStateStore:
                     expectedAuthority: tombstone.authority,
                     expectedPeer: tombstone.peerIdentity
                 )
+            }
+            if let marker = state.revocationSecretCleanup {
+                guard state.revoked, state.peerRevocation != nil else {
+                    throw PlatformSecurityError.persistenceFailure(
+                        "Stored revocation cleanup has no peer tombstone."
+                    )
+                }
+                try marker.validate()
             }
             return state
         }
@@ -589,10 +620,20 @@ final class PlatformSessionSecurity {
         try lifecycle.applyPeerRevocation(
             tombstone,
             expectedAuthority: expectedAuthority,
-            expectedPeer: expectedPeer
+            expectedPeer: expectedPeer,
+            secretNames: secretNames
         )
-        try secretStore.delete(name: secretNames.sharedSecret)
-        try secretStore.delete(name: secretNames.bootstrapSecret)
+        try lifecycle.retryRevocationSecretCleanup(secretStore: secretStore)
+    }
+
+    func hasPendingRevocationSecretCleanup() throws -> Bool {
+        try lifecycle.hasPendingRevocationSecretCleanup()
+    }
+
+    func retryRevocationSecretCleanup(
+        secretStore: any PairedDeviceSecretStore = KeychainSecretStore()
+    ) throws {
+        try lifecycle.retryRevocationSecretCleanup(secretStore: secretStore)
     }
 }
 

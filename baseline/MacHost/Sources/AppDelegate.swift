@@ -101,6 +101,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var streamingServer: StreamingServer?
     private var internetProductSession: InternetProductSession?
     private var internetPairingCoordinator: InternetPairingCoordinator?
+    private let revokedInternetIdentityStore = RevokedInternetIdentityStore()
     var screenCapture: ScreenCapture?
     var virtualDisplayManager: VirtualDisplayManager?
     /// The display currently being captured. This may be a Telemachus-created
@@ -580,6 +581,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settings.onRevokeInternetDevice = { [weak self] in
             self?.revokeInternetPeer()
         }
+        settings.onRetryInternetRevocationCleanup = { [weak self] in
+            self?.retryInternetRevocationSecretCleanup()
+        }
         settings.onConnectInternetSession = { [weak self] in
             Task { [weak self] in await self?.startServer() }
         }
@@ -587,6 +591,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.stopServer()
         }
         refreshInternetCredentialState()
+        do {
+            try migrateLegacyRevokedInternetIdentityIfNeeded()
+        } catch {
+            settings.internetStatus = .failed
+            settings.internetErrorMessage = "Revoked identity history could not be migrated."
+            settings.internetRecoverySuggestion = "Keep Internet mode disconnected and retry after persistent settings are available."
+            debugLog("Internet revoked identity history migration failed")
+            return
+        }
         let handledLegacyRevocation = handleLegacyGlobalRevocationIfNeeded()
         if !handledLegacyRevocation, internetPairingMetadataIsComplete {
             do {
@@ -595,9 +608,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     peerID: PairedDeviceSecurityScope.identifier(peerIdentity)
                 ).load()
                 if persisted.revoked {
-                    rememberRevokedInternetIdentity(peerIdentity)
+                    try rememberRevokedInternetIdentity(peerIdentity)
                 }
                 settings.internetStatus = persisted.revoked ? .revoked : .paired
+                settings.internetRevocationCleanupPending =
+                    persisted.revocationSecretCleanup != nil
+                if settings.internetRevocationCleanupPending {
+                    retryInternetRevocationSecretCleanup()
+                }
             } catch {
                 settings.internetStatus = .failed
                 settings.internetErrorMessage = "Could not read the paired-device security state."
@@ -640,7 +658,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return false
             }
             if let revokedIdentity = marker.revokedIdentity {
-                rememberRevokedInternetIdentity(revokedIdentity)
+                try rememberRevokedInternetIdentity(revokedIdentity)
             }
 
             let secrets = KeychainSecretStore()
@@ -678,25 +696,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func rememberRevokedInternetIdentity(_ identity: PlatformPublicIdentity) {
-        guard settings.internetRevokedPeerDeviceID != identity.deviceID ||
-                identity.keyEpoch >= settings.internetRevokedPeerKeyEpoch else {
-            return
-        }
-        settings.internetRevokedPeerDeviceID = identity.deviceID
-        settings.internetRevokedPeerKeyID = identity.keyID
-        settings.internetRevokedPeerKeyEpoch = identity.keyEpoch
+    private func migrateLegacyRevokedInternetIdentityIfNeeded() throws {
+        guard !settings.internetRevokedPeerDeviceID.isEmpty else { return }
+        try revokedInternetIdentityStore.remember(
+            deviceID: settings.internetRevokedPeerDeviceID,
+            keyID: settings.internetRevokedPeerKeyID,
+            keyEpoch: settings.internetRevokedPeerKeyEpoch
+        )
+        settings.internetRevokedPeerDeviceID = ""
+        settings.internetRevokedPeerKeyID = ""
+        settings.internetRevokedPeerKeyEpoch = 0
+    }
+
+    private func rememberRevokedInternetIdentity(
+        _ identity: PlatformPublicIdentity
+    ) throws {
+        try revokedInternetIdentityStore.remember(identity)
     }
 
     private func validateInternetReauthorization(
         _ identity: PlatformPublicIdentity
     ) throws {
-        if identity.deviceID == settings.internetRevokedPeerDeviceID {
-            guard identity.keyID != settings.internetRevokedPeerKeyID,
-                  identity.keyEpoch > settings.internetRevokedPeerKeyEpoch else {
-                throw PlatformSecurityError.revoked
-            }
-        }
+        try revokedInternetIdentityStore.validateReauthorization(identity)
         let persisted = try KeychainSecurityStateStore(
             peerID: PairedDeviceSecurityScope.identifier(identity)
         ).load()
@@ -897,27 +918,77 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     )
                 )
             }
-            rememberRevokedInternetIdentity(peerIdentity)
+            try rememberRevokedInternetIdentity(peerIdentity)
             let store = KeychainSecretStore()
-            try store.delete(name: settings.internetSharedSecretName)
-            try store.delete(name: settings.internetBootstrapSecretName)
             try? store.delete(name: Self.internetSignalingTokenName)
             try? store.delete(name: Self.internetTURNCredentialName)
             teardownStreamingComponents()
             settings.isRunning = false
             settings.clientConnected = false
             settings.internetCredentialsAvailable = false
+            settings.internetRevocationCleanupPending = false
             settings.internetPairingURL = nil
             settings.internetStatus = .revoked
             settings.internetErrorMessage = "This device is revoked and cannot reconnect."
             settings.internetRecoverySuggestion = "The revoked signing key is locally blocked forever; the session authority must propagate the signed tombstone to signaling/TURN. To authorize this device again, generate a new signing identity with a higher key epoch, then choose Pair New Identity."
         } catch {
-            settings.internetStatus = .failed
-            settings.internetErrorMessage = "Revocation could not be persisted. The active session was stopped."
-            settings.internetRecoverySuggestion = "Keep the session disconnected and retry revocation before reconnecting."
+            let cleanupPending = (try? currentInternetRevocationCleanupPending()) == true
+            let revocationPersisted = (try? pinnedInternetPeerIdentity()).flatMap { identity in
+                try? KeychainSecurityStateStore(
+                    peerID: PairedDeviceSecurityScope.identifier(identity)
+                ).load().revoked
+            } == true
+            let finalizationPending = cleanupPending || revocationPersisted
+            settings.internetRevocationCleanupPending = finalizationPending
+            settings.internetStatus = finalizationPending ? .revoked : .failed
+            settings.internetErrorMessage = finalizationPending
+                ? "The device is revoked, but secure revocation finalization still needs retry."
+                : "Revocation could not be persisted. The active session was stopped."
+            settings.internetRecoverySuggestion = finalizationPending
+                ? "Unlock the login Keychain and choose Retry Cleanup before pairing another identity."
+                : "Keep the session disconnected and retry revocation before reconnecting."
             teardownStreamingComponents()
             settings.isRunning = false
             debugLog("Internet peer revocation failed")
+        }
+    }
+
+    private func currentInternetRevocationCleanupPending() throws -> Bool {
+        let peerIdentity = try pinnedInternetPeerIdentity()
+        return try PlatformSessionSecurity(
+            deviceID: settings.internetHostDeviceID,
+            peerID: PairedDeviceSecurityScope.identifier(peerIdentity),
+            stateStore: KeychainSecurityStateStore(
+                peerID: PairedDeviceSecurityScope.identifier(peerIdentity)
+            )
+        ).hasPendingRevocationSecretCleanup()
+    }
+
+    private func retryInternetRevocationSecretCleanup() {
+        do {
+            let peerIdentity = try pinnedInternetPeerIdentity()
+            let peerID = PairedDeviceSecurityScope.identifier(peerIdentity)
+            // The per-device epoch floor is a separate durable record. Commit it
+            // before clearing the cleanup gate so a completed secret deletion
+            // cannot make a lower-epoch replacement identity eligible.
+            try rememberRevokedInternetIdentity(peerIdentity)
+            let security = PlatformSessionSecurity(
+                deviceID: settings.internetHostDeviceID,
+                peerID: peerID,
+                stateStore: KeychainSecurityStateStore(peerID: peerID)
+            )
+            try security.retryRevocationSecretCleanup()
+            settings.internetRevocationCleanupPending = false
+            settings.internetStatus = .revoked
+            settings.internetErrorMessage = "This device is revoked and its pairing secrets were removed."
+            settings.internetRecoverySuggestion = "Generate a new signing identity with a higher key epoch before pairing again."
+            debugLog("Internet revocation secret cleanup completed")
+        } catch {
+            settings.internetRevocationCleanupPending = true
+            settings.internetStatus = .revoked
+            settings.internetErrorMessage = "The device remains revoked, but pairing-secret cleanup is still pending."
+            settings.internetRecoverySuggestion = "Unlock the login Keychain and choose Retry Cleanup before pairing another identity."
+            debugLog("Internet revocation secret cleanup retry failed")
         }
     }
 

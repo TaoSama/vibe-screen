@@ -39,6 +39,7 @@ boundary.
 | Pairing MITM / QR theft | short expiry, single redemption, random challenge, signed canonical transcript, both identities displayed | mutate every transcript field; redeem twice; use after expiry |
 | Algorithm/capability downgrade | signed protocol range, algorithms, capabilities, and roles; Internet mode never falls back to plaintext | strip/reorder offers and required capabilities |
 | Signaling impersonation | authenticated service plus independent peer identity proof | substitute SDP/candidates/peer ID |
+| Forged or epoch-poisoning session lease | paired-host signature covers all routing, epoch, transcript, signaling-token, ICE/TURN and policy fields; verify before durable high-watermark update; reserve maximum epoch | mutate each field, inject `Long.MAX_VALUE`, reuse an old host key |
 | Signaling token retained after revoke | issuer-only idempotent invalidation destroys both role tokens, queued payloads, and active long polls | invalidate during offer/answer/candidate polling; retry invalidation; reuse both role tokens |
 | Relay content inspection | application AEAD over control and full media header+payload; traffic keys never sent to service | TURN capture contains no known plaintext or codec/frame header |
 | Packet tampering | header as AEAD AAD, fail closed before dispatch | flip every header/ciphertext class |
@@ -49,7 +50,8 @@ boundary.
 | Revoked-device reconnect | durable signed tombstone, active disconnect, signaling/TURN credential invalidation | direct and relay reconnect before/after service restart |
 | Credential extraction | Keychain/Keystore protection, backup exclusion, redacted logs/evidence | backup/restore, log/crash/evidence scan |
 | Memory/backlog exhaustion | strict envelope/frame/candidate/channel/allocation caps; latest-frame media queue | oversized/flood/fuzz and sustained slow consumer |
-| Relay cost abuse | short-lived scoped credentials, auth rate limits, quotas, concurrent allocation and byte caps, alerts | quota/rate/concurrency tests and billing drill |
+| Relay cost abuse | short-lived scoped credentials, stable per-device coturn quota principal, auth rate limits, allocation/bandwidth caps and alerts; non-authoritative byte ledger is never an admission boundary | different-session/expiry concurrent allocations, 486 limit, allocation expiry/release, rate and billing drill |
+| TURN peer-address SSRF | production CREATE_PERMISSION denies loopback, RFC1918, CGNAT, link-local, ULA, mapped and provider-internal ranges; deployment inventory extends the deny set | authenticated CREATE_PERMISSION matrix plus allowed-public control |
 | ICE/SDP privacy leak | minimal retention, access control, redaction, no routine raw candidate logging | telemetry/log inventory and deletion test |
 | Network-switch hijack | re-authenticated resume, new session epoch/keys, peer identity pin | adversarial candidate during ICE restart |
 | Malicious input | explicit device authorization, focus/permission policy, rate limit, emergency disconnect | flood, revoked input, background/locked-host cases |
@@ -57,6 +59,7 @@ boundary.
 | Configuration-secret disclosure | credential-bearing configuration types permanently redact string/debug output; logs and errors use structured safe fields | seed TURN/signaling secrets and scan logcat, crash, exception, and diagnostic output |
 | WebRTC binary supply-chain compromise | exact tag/revision/artifact digest, signature/checksum verification, full upstream license/SBOM inventory, release audit gate | mutate artifact/metadata, clean dependency resolve, final APK/XCFramework inventory |
 | Native lifecycle race | single-owner executor/state machine and callback generation; dispose cannot race send/SDP/ICE/cipher | concurrent start/close/send/restart/callback stress under sanitizers/race tooling |
+| Candidate-path confusion | keep route unknown until complete selected-pair stats; timeout fails closed; route updates do not restart the product handshake | missing/unknown stats, late pair, direct-to-relay change, duplicate concurrent connected callbacks |
 
 ## Denial-of-service posture
 

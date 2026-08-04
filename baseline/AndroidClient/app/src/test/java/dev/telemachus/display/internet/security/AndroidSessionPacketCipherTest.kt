@@ -2,15 +2,14 @@ package dev.telemachus.display.internet.security
 
 import dev.telemachus.display.internet.PeerRole
 import dev.telemachus.display.internet.SessionChannel
-import java.nio.ByteBuffer
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class AndroidSessionPacketCipherTest {
-    private val nonces = ConcurrentHashMap<String, AtomicLong>()
+    private val securityStore = CipherSecurityStore(DurableSecurityState(sessionEpoch = 7))
+    private val securityLifecycle = SecurityLifecycle(securityStore)
 
     @Test
     fun authenticatesBothDirectionsAndSeparatesChannels() {
@@ -69,6 +68,19 @@ class AndroidSessionPacketCipherTest {
         assertArrayEquals(byteArrayOf(3), device.open(SessionChannel.MEDIA, firstMedia))
     }
 
+    @Test
+    fun staleDurableSessionEpochRejectsSealAndOpenBeforeCryptography() {
+        val host = cipher(PeerRole.HOST)
+        val device = cipher(PeerRole.DEVICE)
+        val record = host.seal(SessionChannel.CONTROL, byteArrayOf(9))
+
+        assertThrows(IllegalArgumentException::class.java) { securityLifecycle.reserveSessionEpoch(Long.MAX_VALUE) }
+        securityLifecycle.reserveSessionEpoch(8)
+
+        assertThrows(IllegalStateException::class.java) { host.seal(SessionChannel.CONTROL, byteArrayOf(10)) }
+        assertThrows(IllegalStateException::class.java) { device.open(SessionChannel.CONTROL, record) }
+    }
+
     private fun cipher(
         role: PeerRole,
         sessionId: String = "session-1",
@@ -78,20 +90,12 @@ class AndroidSessionPacketCipherTest {
             sessionEpoch = 7,
             localRole = role,
             initialKeys = keys(),
-            reserveNonce = ::reserveNonce,
+            sealWithActiveEpoch = securityLifecycle::withReservedSessionNonce,
+            openWithActiveEpoch = securityLifecycle::withActiveSessionEpoch,
             rotateKeys = { current, updateNonce ->
                 TrafficKeyDerivation.rotate(current, current.keyEpoch + 1, updateNonce)
             },
         )
-
-    private fun reserveNonce(
-        channel: Int,
-        sender: Int,
-        keyEpoch: Long,
-    ): ByteArray {
-        val sequence = nonces.computeIfAbsent("$channel:$sender:$keyEpoch") { AtomicLong() }.incrementAndGet()
-        return ByteBuffer.allocate(12).putInt(channel).putLong(sequence).array()
-    }
 
     private fun keys() =
         TrafficKeyDerivation.initial(
@@ -99,4 +103,16 @@ class AndroidSessionPacketCipherTest {
             bootstrapSecret = ByteArray(32) { 2 },
             context = ByteArray(32) { 3 },
         )
+}
+
+private class CipherSecurityStore(
+    initialState: DurableSecurityState,
+) : SecurityStateStore {
+    private var state = initialState
+
+    override fun load(): DurableSecurityState = state
+
+    override fun persist(state: DurableSecurityState) {
+        this.state = state
+    }
 }

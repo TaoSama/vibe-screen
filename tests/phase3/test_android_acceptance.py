@@ -38,11 +38,20 @@ from scripts.phase3.android_internet_acceptance import (
 
 
 class AndroidAcceptanceTests(unittest.TestCase):
+    def test_serial_is_required_instead_of_using_repository_default(self) -> None:
+        serial_action = next(
+            action for action in build_parser()._actions if action.dest == "serial"
+        )
+        self.assertTrue(serial_action.required)
+        self.assertIsNone(serial_action.default)
+
     def test_mandatory_locks_cannot_be_replaced_by_additional_lock(self) -> None:
         args = build_parser().parse_args(
             [
                 "--apk",
                 "/tmp/app.apk",
+                "--serial",
+                "device.example:5555",
                 "--device-lock",
                 "/tmp/extra.lock",
                 "--lease-token",
@@ -82,6 +91,8 @@ class AndroidAcceptanceTests(unittest.TestCase):
                 [
                     "--apk",
                     str(apk),
+                    "--serial",
+                    "device.example:5555",
                     "--device-lock",
                     str(device_lock),
                     "--lease-token",
@@ -156,6 +167,8 @@ class AndroidAcceptanceTests(unittest.TestCase):
                         str(root / "must-not-run-adb"),
                         "--apk",
                         str(apk),
+                        "--serial",
+                        "device.example:5555",
                         "--device-lock",
                         str(device_lock),
                         "--lease-token",
@@ -213,7 +226,7 @@ class AndroidAcceptanceTests(unittest.TestCase):
             internet_lock = Path(directory) / "internet.lock"
             internet_lock.write_text("owner-token", encoding="utf-8")
             records = []
-            endpoint = "100.72.246.116:5555"
+            endpoint = "device.example:5555"
             adb = Adb(
                 "/Users/private-account/platform-tools/adb",
                 endpoint,
@@ -226,7 +239,7 @@ class AndroidAcceptanceTests(unittest.TestCase):
                 ["adb", "connect"],
                 1,
                 stdout="SSID=private-network BSSID=aa:bb:cc:dd:ee:ff account=private-account",
-                stderr="token=owner-token endpoint=100.72.246.116:5555",
+                stderr="token=owner-token endpoint=device.example:5555",
             )
             with mock.patch("scripts.phase3.android_internet_acceptance.subprocess.run", return_value=completed):
                 with self.assertRaises(AcceptanceError) as failure:
@@ -364,7 +377,7 @@ class AndroidAcceptanceTests(unittest.TestCase):
                     "scripts.phase3.android_internet_acceptance.run",
                     side_effect=AcceptanceError(
                         "APK does not exist: /Users/private-account/missing.apk; "
-                        "owner-token 100.72.246.116:5555"
+                        "owner-token device.example:5555"
                     ),
                 ),
                 mock.patch("sys.stderr", io.StringIO()),
@@ -374,7 +387,7 @@ class AndroidAcceptanceTests(unittest.TestCase):
                         "--apk",
                         "/Users/private-account/missing.apk",
                         "--serial",
-                        "100.72.246.116:5555",
+                        "device.example:5555",
                         "--lease-token",
                         "owner-token",
                         "--streaming-pattern",
@@ -396,7 +409,7 @@ class AndroidAcceptanceTests(unittest.TestCase):
             self.assertEqual(report["result"], "failed")
             rendered = evidence.read_text(encoding="utf-8")
             self.assertNotIn("owner-token", rendered)
-            self.assertNotIn("100.72.246.116:5555", rendered)
+            self.assertNotIn("device.example:5555", rendered)
             self.assertNotIn("private-account", rendered)
 
 

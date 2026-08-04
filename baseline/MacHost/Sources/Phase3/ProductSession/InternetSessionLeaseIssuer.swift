@@ -1,0 +1,495 @@
+import CryptoKit
+import Foundation
+import Security
+
+enum InternetSessionLeaseIssuerError: Error, LocalizedError {
+    case invalidInput(String)
+    case pairedHostIdentityUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidInput(let reason): return reason
+        case .pairedHostIdentityUnavailable:
+            return "The paired Keychain host identity is unavailable. Create a pairing offer first."
+        }
+    }
+}
+
+struct InternetSessionLeaseICE: Equatable {
+    let urls: [String]
+    let username: String?
+    let credential: String?
+}
+
+struct InternetSessionLeasePayload: Equatable {
+    let pairingIdentifier: String
+    let pinnedHostID: String
+    let signalingURL: String
+    let signalingSessionID: String
+    let authoritativeSessionEpoch: UInt64
+    let identityEpoch: UInt64
+    let transcriptContext: Data
+    let protocolSessionID: Data
+    let signalingToken: String
+    let iceServers: [InternetSessionLeaseICE]
+    let allowInsecureForTesting: Bool
+}
+
+enum InternetSessionLeaseCodec {
+    static let domain = "vibescreen/internet-session-lease/v1"
+    private static let version: UInt64 = 1
+    private static let rootKeys: Set<String> = [
+        "version", "pairing_id", "pinned_host_id", "signaling_url",
+        "signaling_session_id", "session_epoch", "identity_epoch",
+        "transcript_context", "protocol_session_id", "signaling_token",
+        "ice_servers", "allow_insecure_for_testing"
+    ]
+    private static let iceKeys: Set<String> = ["urls", "username", "credential"]
+
+    static func decodeUnsigned(_ data: Data) throws -> InternetSessionLeasePayload {
+        guard !data.isEmpty, data.count <= 65_536 else {
+            throw invalid("Internet lease is empty or too large.")
+        }
+        let value: Any
+        do {
+            value = try JSONSerialization.jsonObject(with: data, options: [])
+        } catch {
+            throw invalid("Internet lease is not valid JSON.")
+        }
+        guard let root = value as? [String: Any], Set(root.keys) == rootKeys else {
+            throw invalid("Internet lease contains missing or unknown fields.")
+        }
+        guard try integer(root, "version") == version else {
+            throw invalid("Unsupported Internet lease version.")
+        }
+        let signalingURL = try string(root, "signaling_url", maximumBytes: 2_048)
+        let allowInsecure = try boolean(root, "allow_insecure_for_testing")
+        try validateSignalingURL(signalingURL, allowInsecure: allowInsecure)
+        let signalingToken = try string(root, "signaling_token", maximumBytes: 8_192)
+        guard signalingToken.utf8.count >= 32 else {
+            throw invalid("Signaling token is invalid.")
+        }
+        guard let rawICE = root["ice_servers"] as? [Any],
+              (1...16).contains(rawICE.count) else {
+            throw invalid("ICE server count is invalid.")
+        }
+        let iceServers = try rawICE.map { raw -> InternetSessionLeaseICE in
+            guard let server = raw as? [String: Any], Set(server.keys) == iceKeys,
+                  let rawURLs = server["urls"] as? [Any],
+                  (1...8).contains(rawURLs.count) else {
+                throw invalid("ICE server contains missing or unknown fields.")
+            }
+            let urls = try rawURLs.map { rawURL -> String in
+                guard let url = rawURL as? String, !url.isEmpty,
+                      url.utf8.count <= 2_048 else {
+                    throw invalid("ICE URL is invalid.")
+                }
+                return url
+            }
+            let username = try nullableString(server, "username", maximumBytes: 4_096)
+            let credential = try nullableString(server, "credential", maximumBytes: 4_096)
+            try validateICE(urls: urls, username: username, credential: credential)
+            return InternetSessionLeaseICE(
+                urls: urls,
+                username: username,
+                credential: credential
+            )
+        }
+        return InternetSessionLeasePayload(
+            pairingIdentifier: try string(root, "pairing_id", maximumBytes: 256),
+            pinnedHostID: try string(root, "pinned_host_id", maximumBytes: 256),
+            signalingURL: signalingURL,
+            signalingSessionID: try string(root, "signaling_session_id", maximumBytes: 256),
+            authoritativeSessionEpoch: try positiveEpoch(root, "session_epoch"),
+            identityEpoch: try positiveEpoch(root, "identity_epoch"),
+            transcriptContext: try base64(root, "transcript_context", sizes: 32...32),
+            protocolSessionID: try base64(root, "protocol_session_id", sizes: 1...256),
+            signalingToken: signalingToken,
+            iceServers: iceServers,
+            allowInsecureForTesting: allowInsecure
+        )
+    }
+
+    static func digest(
+        _ payload: InternetSessionLeasePayload,
+        leaseHostKeyID: String
+    ) -> Data {
+        var parts: [Data] = [
+            SecurityTranscript.uint64(version),
+            Data(payload.pairingIdentifier.utf8),
+            Data(payload.pinnedHostID.utf8),
+            Data(leaseHostKeyID.utf8),
+            Data(payload.signalingURL.utf8),
+            Data(payload.signalingSessionID.utf8),
+            SecurityTranscript.uint64(payload.authoritativeSessionEpoch),
+            SecurityTranscript.uint64(payload.identityEpoch),
+            payload.transcriptContext,
+            payload.protocolSessionID,
+            Data(payload.signalingToken.utf8),
+            SecurityTranscript.uint64(UInt64(payload.iceServers.count))
+        ]
+        for server in payload.iceServers {
+            parts.append(SecurityTranscript.uint64(UInt64(server.urls.count)))
+            parts.append(contentsOf: server.urls.map { Data($0.utf8) })
+            appendNullable(server.username, to: &parts)
+            appendNullable(server.credential, to: &parts)
+        }
+        parts.append(Data([payload.allowInsecureForTesting ? 1 : 0]))
+        return SecurityTranscript.digest(domain: domain, parts: parts)
+    }
+
+    static func encodeSigned(
+        _ payload: InternetSessionLeasePayload,
+        leaseHostKeyID: String,
+        signature: Data
+    ) throws -> Data {
+        let ice: [[String: Any]] = payload.iceServers.map {
+            [
+                "urls": $0.urls,
+                "username": $0.username ?? NSNull(),
+                "credential": $0.credential ?? NSNull()
+            ]
+        }
+        let root: [String: Any] = [
+            "version": 1,
+            "pairing_id": payload.pairingIdentifier,
+            "pinned_host_id": payload.pinnedHostID,
+            "signaling_url": payload.signalingURL,
+            "signaling_session_id": payload.signalingSessionID,
+            "session_epoch": payload.authoritativeSessionEpoch,
+            "identity_epoch": payload.identityEpoch,
+            "transcript_context": payload.transcriptContext.base64EncodedString(),
+            "protocol_session_id": payload.protocolSessionID.base64EncodedString(),
+            "signaling_token": payload.signalingToken,
+            "ice_servers": ice,
+            "allow_insecure_for_testing": payload.allowInsecureForTesting,
+            "lease_host_key_id": leaseHostKeyID,
+            "lease_signature": signature.base64EncodedString()
+        ]
+        return try JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])
+    }
+
+    static func verifyDigestSignature(
+        _ signature: Data,
+        digest: Data,
+        publicKey: Data
+    ) -> Bool {
+        let attributes: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecAttrKeyClass as String: kSecAttrKeyClassPublic,
+            kSecAttrKeySizeInBits as String: 256
+        ]
+        guard digest.count == SHA256.byteCount,
+              let key = SecKeyCreateWithData(
+                publicKey as CFData,
+                attributes as CFDictionary,
+                nil
+              ) else { return false }
+        return SecKeyVerifySignature(
+            key,
+            .ecdsaSignatureDigestX962SHA256,
+            digest as CFData,
+            signature as CFData,
+            nil
+        )
+    }
+
+    private static func appendNullable(_ value: String?, to parts: inout [Data]) {
+        parts.append(Data([value == nil ? 0 : 1]))
+        if let value { parts.append(Data(value.utf8)) }
+    }
+
+    private static func string(
+        _ root: [String: Any],
+        _ name: String,
+        maximumBytes: Int
+    ) throws -> String {
+        guard let value = root[name] as? String,
+              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              value.utf8.count <= maximumBytes else {
+            throw invalid("\(name) must be a bounded non-empty string.")
+        }
+        return value
+    }
+
+    private static func nullableString(
+        _ root: [String: Any],
+        _ name: String,
+        maximumBytes: Int
+    ) throws -> String? {
+        if root[name] is NSNull { return nil }
+        return try string(root, name, maximumBytes: maximumBytes)
+    }
+
+    private static func boolean(_ root: [String: Any], _ name: String) throws -> Bool {
+        guard let value = root[name] as? NSNumber,
+              CFGetTypeID(value) == CFBooleanGetTypeID() else {
+            throw invalid("\(name) must be a boolean.")
+        }
+        return value.boolValue
+    }
+
+    private static func integer(_ root: [String: Any], _ name: String) throws -> UInt64 {
+        guard let value = root[name] as? NSNumber,
+              CFGetTypeID(value) != CFBooleanGetTypeID(),
+              ["c", "s", "i", "l", "q", "C", "S", "I", "L", "Q"]
+                .contains(String(cString: value.objCType)),
+              value.int64Value >= 0 else {
+            throw invalid("\(name) must be a non-negative integer.")
+        }
+        return value.uint64Value
+    }
+
+    private static func positiveEpoch(
+        _ root: [String: Any],
+        _ name: String
+    ) throws -> UInt64 {
+        let value = try integer(root, name)
+        guard value > 0, value < UInt64(Int64.max) else {
+            throw invalid("\(name) must be positive and below the reserved maximum.")
+        }
+        return value
+    }
+
+    private static func base64(
+        _ root: [String: Any],
+        _ name: String,
+        sizes: ClosedRange<Int>
+    ) throws -> Data {
+        let encoded = try string(root, name, maximumBytes: 8_192)
+        guard let decoded = Data(base64Encoded: encoded), sizes.contains(decoded.count) else {
+            throw invalid("\(name) is not valid bounded base64.")
+        }
+        return decoded
+    }
+
+    private static func validateSignalingURL(
+        _ value: String,
+        allowInsecure: Bool
+    ) throws {
+        guard let components = URLComponents(string: value),
+              let scheme = components.scheme?.lowercased(),
+              let host = components.host, !host.isEmpty,
+              components.user == nil, components.password == nil,
+              components.query == nil, components.fragment == nil else {
+            throw invalid("Signaling URL is invalid.")
+        }
+        let loopback = ["localhost", "127.0.0.1", "::1"].contains(host)
+        if allowInsecure {
+            guard scheme == "http", loopback else {
+                throw invalid("Insecure signaling is limited to explicit loopback testing.")
+            }
+        } else if scheme != "https" {
+            throw invalid("Production signaling requires HTTPS.")
+        }
+    }
+
+    private static func validateICE(
+        urls: [String],
+        username: String?,
+        credential: String?
+    ) throws {
+        var containsTURN = false
+        for raw in urls {
+            guard let url = URL(string: raw),
+                  let scheme = url.scheme?.lowercased(),
+                  ["stun", "stuns", "turn", "turns"].contains(scheme) else {
+                throw invalid("ICE URL scheme is invalid.")
+            }
+            containsTURN = containsTURN || scheme == "turn" || scheme == "turns"
+        }
+        guard !containsTURN || (username != nil && credential != nil) else {
+            throw invalid("TURN servers require username and credential.")
+        }
+    }
+
+    private static func invalid(_ reason: String) -> InternetSessionLeaseIssuerError {
+        .invalidInput(reason)
+    }
+}
+
+enum InternetSessionLeaseIssuer {
+    static func issue(
+        unsignedJSON: Data,
+        identityStore: KeychainDeviceIdentityStore = KeychainDeviceIdentityStore()
+    ) throws -> Data {
+        let payload = try InternetSessionLeaseCodec.decodeUnsigned(unsignedJSON)
+        guard let identity = try identityStore.loadExisting(
+            deviceID: payload.pinnedHostID
+        ) else {
+            throw InternetSessionLeaseIssuerError.pairedHostIdentityUnavailable
+        }
+        let digest = InternetSessionLeaseCodec.digest(
+            payload,
+            leaseHostKeyID: identity.publicIdentity.keyID
+        )
+        let signature = try identity.signTranscriptDigest(digest)
+        return try InternetSessionLeaseCodec.encodeSigned(
+            payload,
+            leaseHostKeyID: identity.publicIdentity.keyID,
+            signature: signature
+        )
+    }
+}
+
+enum InternetSessionLeaseCLI {
+    static func run() -> Bool {
+        do {
+            let input = FileHandle.standardInput.readDataToEndOfFile()
+            let output = try InternetSessionLeaseIssuer.issue(unsignedJSON: input)
+            FileHandle.standardOutput.write(output)
+            FileHandle.standardOutput.write(Data([0x0a]))
+            return true
+        } catch {
+            let message = "Internet lease issuance failed: \(error.localizedDescription)\n"
+            FileHandle.standardError.write(Data(message.utf8))
+            return false
+        }
+    }
+}
+
+enum InternetSessionLeaseSelfTest {
+    static func run() -> Bool {
+        do {
+            let fixture = try InternetSessionLeaseCodec.decodeUnsigned(
+                Data(fixtureJSON.utf8)
+            )
+            let digest = InternetSessionLeaseCodec.digest(
+                fixture,
+                leaseHostKeyID: "host-key-id"
+            )
+            guard digest.hex == "9e6426d343a5f5e57652b42288df902bd24ff1df975b3fde4ab3bb0f1d8c5cbb" else {
+                return false
+            }
+            let key = P256.Signing.PrivateKey()
+            let signature = try key.signature(for: digest).derRepresentation
+            guard InternetPairingCanonical.verify(
+                signature: signature,
+                digest: digest,
+                publicKey: key.publicKey.x963Representation
+            ) else { return false }
+
+            let keychainService =
+                "dev.telemachus.display.phase3-lease-self-test.\(UUID().uuidString)"
+            let keychainStore = KeychainDeviceIdentityStore(
+                service: keychainService
+            )
+            let keychainIdentity = try keychainStore.loadOrCreate(
+                deviceID: fixture.pinnedHostID
+            )
+            defer {
+                try? keychainStore.delete(
+                    deviceID: fixture.pinnedHostID,
+                    keyEpoch: 1
+                )
+            }
+            let signedJSON = try InternetSessionLeaseIssuer.issue(
+                unsignedJSON: Data(fixtureJSON.utf8),
+                identityStore: keychainStore
+            )
+            guard let signedRoot = try JSONSerialization.jsonObject(
+                with: signedJSON
+            ) as? [String: Any],
+                  signedRoot["lease_host_key_id"] as? String ==
+                    keychainIdentity.publicIdentity.keyID,
+                  let encodedKeychainSignature =
+                    signedRoot["lease_signature"] as? String,
+                  let keychainSignature = Data(
+                    base64Encoded: encodedKeychainSignature
+                  ),
+                  InternetSessionLeaseCodec.verifyDigestSignature(
+                    keychainSignature,
+                    digest: InternetSessionLeaseCodec.digest(
+                        fixture,
+                        leaseHostKeyID: keychainIdentity.publicIdentity.keyID
+                    ),
+                    publicKey: keychainIdentity.publicIdentity.signingPublicKey
+                  ) else { return false }
+
+            let mutations = [
+                ("\"pairing_id\":\"pair-1\"", "\"pairing_id\":\"pair-2\""),
+                ("\"pinned_host_id\":\"host-1\"", "\"pinned_host_id\":\"host-2\""),
+                ("https://signal.example.test", "https://other.example.test"),
+                ("\"signaling_session_id\":\"session-7\"", "\"signaling_session_id\":\"session-8\""),
+                ("\"session_epoch\":7", "\"session_epoch\":8"),
+                ("\"identity_epoch\":1", "\"identity_epoch\":2"),
+                ("AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=", "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI="),
+                ("cHJvdG9jb2wtc2Vzc2lvbi03", "b3RoZXItcHJvdG9jb2w="),
+                ("device-token-abcdefghijklmnopqrstuvwxyz", "z-device-token-abcdefghijklmnopqrstuvwx"),
+                ("stun:stun.example.test", "stun:other.example.test"),
+                ("turn-user", "changed-user"),
+                ("turn-password", "changed-password")
+            ]
+            for (original, replacement) in mutations {
+                let mutated = fixtureJSON.replacingOccurrences(
+                    of: original,
+                    with: replacement
+                )
+                let mutatedPayload = try InternetSessionLeaseCodec.decodeUnsigned(
+                    Data(mutated.utf8)
+                )
+                let mutatedDigest = InternetSessionLeaseCodec.digest(
+                    mutatedPayload,
+                    leaseHostKeyID: "host-key-id"
+                )
+                guard mutatedDigest != digest,
+                      !InternetPairingCanonical.verify(
+                        signature: signature,
+                        digest: mutatedDigest,
+                        publicKey: key.publicKey.x963Representation
+                      ) else { return false }
+            }
+            let changedHostKeyDigest = InternetSessionLeaseCodec.digest(
+                fixture,
+                leaseHostKeyID: "different-host-key-id"
+            )
+            let insecureMutation = fixtureJSON
+                .replacingOccurrences(
+                    of: "https://signal.example.test",
+                    with: "http://127.0.0.1:8088"
+                )
+                .replacingOccurrences(
+                    of: "\"allow_insecure_for_testing\":false",
+                    with: "\"allow_insecure_for_testing\":true"
+                )
+            let insecurePayload = try InternetSessionLeaseCodec.decodeUnsigned(
+                Data(insecureMutation.utf8)
+            )
+            guard changedHostKeyDigest != digest,
+                  InternetSessionLeaseCodec.digest(
+                    insecurePayload,
+                    leaseHostKeyID: "host-key-id"
+                  ) != digest else { return false }
+
+            guard rejects(fixtureJSON.dropLast() + ",\"extra\":true}"),
+                  rejects(fixtureJSON.replacingOccurrences(
+                    of: "\"session_epoch\":7",
+                    with: "\"session_epoch\":9223372036854775807"
+                  )),
+                  rejects(fixtureJSON.replacingOccurrences(
+                    of: "\"credential\":\"turn-password\"",
+                    with: "\"credential\":false"
+                  )) else { return false }
+            print("Phase 3 Internet lease self-test: PASS (canonicalKAT=true, mutation=true, strictParser=true, keychainSigner=true)")
+            return true
+        } catch {
+            print("Phase 3 Internet lease self-test: FAIL")
+            return false
+        }
+    }
+
+    private static func rejects(_ value: String) -> Bool {
+        do {
+            _ = try InternetSessionLeaseCodec.decodeUnsigned(Data(value.utf8))
+            return false
+        } catch { return true }
+    }
+
+    private static let fixtureJSON = """
+    {"version":1,"pairing_id":"pair-1","pinned_host_id":"host-1","signaling_url":"https://signal.example.test","signaling_session_id":"session-7","session_epoch":7,"identity_epoch":1,"transcript_context":"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=","protocol_session_id":"cHJvdG9jb2wtc2Vzc2lvbi03","signaling_token":"device-token-abcdefghijklmnopqrstuvwxyz","ice_servers":[{"urls":["stun:stun.example.test"],"username":null,"credential":null},{"urls":["turn:turn.example.test"],"username":"turn-user","credential":"turn-password"}],"allow_insecure_for_testing":false}
+    """
+}
+
+private extension Data {
+    var hex: String { map { String(format: "%02x", $0) }.joined() }
+}

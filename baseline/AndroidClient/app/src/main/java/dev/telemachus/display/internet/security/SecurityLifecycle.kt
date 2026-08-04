@@ -10,6 +10,8 @@ data class DurableSecurityState(
     val revoked: Boolean = false,
     val nonceHighWatermarks: Map<String, Long> = emptyMap(),
     val usedRotationNonceHashes: Set<String> = emptySet(),
+    val identityEpochHighWatermark: Long = 0,
+    val authorizedIdentityEpoch: Long = 0,
 )
 
 interface SecurityStateStore {
@@ -27,12 +29,83 @@ class SecurityLifecycle(
         synchronized(persistenceLock) {
             val current = store.load()
             check(!current.revoked) { "The local device identity has been revoked" }
+            require(authoritativeEpoch < Long.MAX_VALUE) { "Authoritative session epoch is outside the supported range" }
             require(authoritativeEpoch > current.sessionEpoch) {
                 "Authoritative session epoch must exceed the durable high-water mark"
             }
             store.persist(current.copy(sessionEpoch = authoritativeEpoch))
             authoritativeEpoch
         }
+
+    fun reserveNextIdentityEpoch(): Long =
+        synchronized(persistenceLock) {
+            val current = store.load()
+            check(current.identityEpochHighWatermark < Long.MAX_VALUE - 1) { "Identity key epoch exhausted" }
+            val next = current.identityEpochHighWatermark + 1
+            store.persist(current.copy(identityEpochHighWatermark = next))
+            next
+        }
+
+    fun authorizeIdentityEpoch(identityEpoch: Long) {
+        synchronized(persistenceLock) {
+            val current = store.load()
+            require(identityEpoch in 1 until Long.MAX_VALUE && identityEpoch == current.identityEpochHighWatermark) {
+                "Identity epoch was not durably reserved"
+            }
+            if (current.authorizedIdentityEpoch == identityEpoch && !current.revoked) return
+            require(identityEpoch > current.authorizedIdentityEpoch) { "Identity epoch must advance" }
+            store.persist(current.copy(authorizedIdentityEpoch = identityEpoch, revoked = false))
+        }
+    }
+
+    fun requireAuthorizedIdentityEpoch(identityEpoch: Long) {
+        synchronized(persistenceLock) {
+            val current = store.load()
+            check(!current.revoked && current.authorizedIdentityEpoch == identityEpoch) { "Identity epoch is not authorized" }
+        }
+    }
+
+    fun <T> withFreshSessionEpochCandidate(
+        candidateEpoch: Long,
+        block: () -> T,
+    ): T =
+        synchronized(persistenceLock) {
+            val current = store.load()
+            check(!current.revoked) { "The local device identity has been revoked" }
+            require(candidateEpoch in 1 until Long.MAX_VALUE && candidateEpoch > current.sessionEpoch) {
+                "Internet lease session epoch must exceed the durable high-water mark"
+            }
+            block()
+        }
+
+    fun <T> withActiveSessionEpoch(expectedEpoch: Long, block: () -> T): T =
+        synchronized(persistenceLock) {
+            val current = store.load()
+            check(!current.revoked && current.sessionEpoch == expectedEpoch) { "Session epoch is no longer active" }
+            block()
+        }
+
+    fun <T> withReservedSessionNonce(
+        expectedSessionEpoch: Long,
+        channel: Int,
+        senderRole: Int,
+        keyEpoch: Long,
+        block: (ByteArray) -> T,
+    ): T {
+        require(expectedSessionEpoch > 0 && channel > 0 && senderRole > 0 && keyEpoch > 0) {
+            "Session epoch, channel, sender role, and key epoch must be positive"
+        }
+        return synchronized(persistenceLock) {
+            val current = store.load()
+            check(!current.revoked && current.sessionEpoch == expectedSessionEpoch) { "Session epoch is no longer active" }
+            val counterKey = "$channel:$senderRole:$keyEpoch"
+            val previous = current.nonceHighWatermarks[counterKey] ?: 0
+            check(previous < Long.MAX_VALUE) { "Nonce sequence exhausted; rotate traffic keys" }
+            val sequence = previous + 1
+            store.persist(current.copy(nonceHighWatermarks = current.nonceHighWatermarks + (counterKey to sequence)))
+            block(ByteBuffer.allocate(NONCE_BYTES).putInt(channel).putLong(sequence).array())
+        }
+    }
 
     fun reserveNonce(
         channel: Int,
@@ -58,6 +131,7 @@ class SecurityLifecycle(
     fun applyRevocation(sequence: Long) {
         synchronized(persistenceLock) {
             val current = store.load()
+            require(sequence < Long.MAX_VALUE) { "Revocation sequence is outside the supported range" }
             require(sequence > current.revocationSequence) { "Revocation sequence must increase" }
             store.persist(current.copy(revocationSequence = sequence, revoked = true))
         }
@@ -102,8 +176,17 @@ class SharedPreferencesSecurityStateStore(
             revoked = preferences.getBoolean(REVOKED, false),
             nonceHighWatermarks = counters,
             usedRotationNonceHashes = preferences.getStringSet(ROTATION_NONCE_HASHES, emptySet())?.toSet() ?: emptySet(),
+            identityEpochHighWatermark = preferences.getLong(IDENTITY_EPOCH_HIGH_WATERMARK, 0),
+            authorizedIdentityEpoch = preferences.getLong(AUTHORIZED_IDENTITY_EPOCH, 0),
         )
-        check(state.sessionEpoch >= 0 && state.revocationSequence >= 0 && counters.values.all { it >= 0 }) {
+        check(
+            state.sessionEpoch in 0 until Long.MAX_VALUE &&
+                state.revocationSequence in 0 until Long.MAX_VALUE &&
+                state.identityEpochHighWatermark in 0 until Long.MAX_VALUE &&
+                state.authorizedIdentityEpoch in 0 until Long.MAX_VALUE &&
+                state.authorizedIdentityEpoch <= state.identityEpochHighWatermark &&
+                counters.values.all { it >= 0 },
+        ) {
             "Stored monotonic security state is invalid"
         }
         check(state.usedRotationNonceHashes.all { hash ->
@@ -122,6 +205,8 @@ class SharedPreferencesSecurityStateStore(
                 .putLong(REVOCATION_SEQUENCE, state.revocationSequence)
                 .putBoolean(REVOKED, state.revoked)
                 .putStringSet(ROTATION_NONCE_HASHES, state.usedRotationNonceHashes)
+                .putLong(IDENTITY_EPOCH_HIGH_WATERMARK, state.identityEpochHighWatermark)
+                .putLong(AUTHORIZED_IDENTITY_EPOCH, state.authorizedIdentityEpoch)
         preferences.all.keys.filter { it.startsWith(NONCE_PREFIX) }.forEach(editor::remove)
         state.nonceHighWatermarks.forEach { (key, value) -> editor.putLong(NONCE_PREFIX + key, value) }
         check(editor.commit()) { "Failed to durably commit Phase 3 security state" }
@@ -134,6 +219,8 @@ class SharedPreferencesSecurityStateStore(
         private const val REVOKED = "revoked"
         private const val ROTATION_NONCE_HASHES = "rotation_nonce_hashes"
         private const val NONCE_PREFIX = "nonce."
+        private const val IDENTITY_EPOCH_HIGH_WATERMARK = "identity_epoch_high_watermark"
+        private const val AUTHORIZED_IDENTITY_EPOCH = "authorized_identity_epoch"
     }
 }
 

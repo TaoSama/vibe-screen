@@ -7,8 +7,13 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import dev.telemachus.display.internet.security.AndroidSecretStore
+import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
 import dev.telemachus.display.internet.security.InternetPairingPublicMetadata
+import dev.telemachus.display.internet.security.InternetPairingIdentity
+import dev.telemachus.display.internet.security.SecurityTranscript
+import dev.telemachus.display.internet.security.verify
 import java.net.URI
+import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.Base64
 
@@ -24,6 +29,8 @@ data class StoredInternetSessionProfile(
     val protocolSessionId: ByteArray,
     val iceServerUrls: List<List<String>>,
     val allowInsecureForTesting: Boolean,
+    val leaseHostKeyId: String,
+    val leaseSignature: ByteArray,
 )
 
 internal data class ImportedInternetSecrets(
@@ -40,9 +47,7 @@ internal data class DecodedInternetProfile(
 
 private data class StoredPairingBinding(
     val pairingIdentifier: String,
-    val hostDeviceId: String,
-    val hostKeyId: String,
-    val hostIdentityEpoch: Long,
+    val hostIdentity: InternetPairingIdentity,
     val localDeviceId: String,
     val localIdentityEpoch: Long,
     val sessionContext: ByteArray,
@@ -69,54 +74,63 @@ class InternetSessionProfileStore(
     private val debuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     private val inMemoryDeferredCleanup = DeferredSecretCleanupPending()
 
-    fun import(json: String): StoredInternetSessionProfile {
+    fun import(
+        json: String,
+        storedSessionFactory: AndroidStoredInternetSessionFactory,
+    ): StoredInternetSessionProfile {
         retryDeferredCredentialCleanup()
         val decoded = InternetSessionProfileCodec.decode(json, debuggable)
         try {
             val pairing = loadPairingBinding() ?: throw IllegalStateException("Complete signed pairing before importing a lease")
             require(decoded.profile.pairingIdentifier == pairing.pairingIdentifier) { "Lease pairing does not match the verified Mac" }
-            require(decoded.profile.pinnedHostId == pairing.hostDeviceId) { "Lease host identity does not match the verified Mac" }
+            require(decoded.profile.pinnedHostId == pairing.hostIdentity.deviceId) { "Lease host identity does not match the verified Mac" }
             require(decoded.profile.identityEpoch == pairing.localIdentityEpoch) { "Lease local identity epoch does not match the paired identity" }
+            require(storedSessionFactory.localDeviceId == pairing.localDeviceId) {
+                "Lease lifecycle state does not belong to the paired local identity"
+            }
             require(decoded.profile.transcriptContext.contentEquals(pairing.sessionContext)) {
                 "Lease transcript context does not match signed pairing"
             }
-            val current = loadPublicProfile()
-            if (current != null) {
-                require(decoded.profile.authoritativeSessionEpoch > current.authoritativeSessionEpoch) {
-                    "A replacement Internet lease must use a strictly newer session epoch"
+            verifySignedLease(decoded, pairing)
+            return storedSessionFactory.withFreshSessionEpochCandidate(decoded.profile.authoritativeSessionEpoch) {
+                val current = loadPublicProfile()
+                if (current != null) {
+                    require(decoded.profile.authoritativeSessionEpoch > current.authoritativeSessionEpoch) {
+                        "A replacement Internet lease must use a strictly newer session epoch"
+                    }
                 }
+                val encrypted = InternetSessionProfileCodec.encodeSecrets(decoded.secrets).toByteArray(Charsets.UTF_8)
+                try {
+                    secretStore.persist(profileSecretName(decoded.profile), encrypted)
+                } finally {
+                    encrypted.fill(0)
+                }
+                val newSecretName = profileSecretName(decoded.profile)
+                val oldSecretName = current?.let(::profileSecretName)?.takeIf { it != newSecretName }
+                val cleanupQueue = oldSecretName?.let { enqueueDeferredSecretCleanup(loadDeferredSecretCleanup(), it) }
+                    ?: loadDeferredSecretCleanup()
+                val committed =
+                    commitProfileReplacement(
+                        cleanupQueue = cleanupQueue,
+                        commitPointerAndCleanup = { queued ->
+                            val editor =
+                                preferences
+                                    .edit()
+                                    .putString(PROFILE_KEY, InternetSessionProfileCodec.encodePublic(decoded.profile))
+                            if (queued.isEmpty()) editor.remove(DEFERRED_SECRET_CLEANUP_KEY) else {
+                                editor.putStringSet(DEFERRED_SECRET_CLEANUP_KEY, queued)
+                            }
+                            editor.commit()
+                        },
+                        rollbackNewSecret = { secretStore.delete(newSecretName) },
+                    )
+                if (!committed) {
+                    error("Failed to persist the Internet session profile")
+                }
+                inMemoryDeferredCleanup.replaceAfterDurableCommit(cleanupQueue)
+                retryDeferredCredentialCleanup()
+                decoded.profile
             }
-            val encrypted = InternetSessionProfileCodec.encodeSecrets(decoded.secrets).toByteArray(Charsets.UTF_8)
-            try {
-                secretStore.persist(profileSecretName(decoded.profile), encrypted)
-            } finally {
-                encrypted.fill(0)
-            }
-            val newSecretName = profileSecretName(decoded.profile)
-            val oldSecretName = current?.let(::profileSecretName)?.takeIf { it != newSecretName }
-            val cleanupQueue = oldSecretName?.let { enqueueDeferredSecretCleanup(loadDeferredSecretCleanup(), it) }
-                ?: loadDeferredSecretCleanup()
-            val committed =
-                commitProfileReplacement(
-                    cleanupQueue = cleanupQueue,
-                    commitPointerAndCleanup = { queued ->
-                        val editor =
-                            preferences
-                                .edit()
-                                .putString(PROFILE_KEY, InternetSessionProfileCodec.encodePublic(decoded.profile))
-                        if (queued.isEmpty()) editor.remove(DEFERRED_SECRET_CLEANUP_KEY) else {
-                            editor.putStringSet(DEFERRED_SECRET_CLEANUP_KEY, queued)
-                        }
-                        editor.commit()
-                    },
-                    rollbackNewSecret = { secretStore.delete(newSecretName) },
-                )
-            if (!committed) {
-                error("Failed to persist the Internet session profile")
-            }
-            inMemoryDeferredCleanup.replaceAfterDurableCommit(cleanupQueue)
-            retryDeferredCredentialCleanup()
-            return decoded.profile
         } finally {
             decoded.close()
         }
@@ -126,7 +140,7 @@ class InternetSessionProfileStore(
         retryDeferredCredentialCleanup()
         val profile = loadPublicProfile() ?: return null
         val pairing = loadPairingBinding() ?: return null
-        check(profile.pairingIdentifier == pairing.pairingIdentifier && profile.pinnedHostId == pairing.hostDeviceId) {
+        check(profile.pairingIdentifier == pairing.pairingIdentifier && profile.pinnedHostId == pairing.hostIdentity.deviceId) {
             "Stored Internet lease is not bound to the verified pairing"
         }
         check(profile.identityEpoch == pairing.localIdentityEpoch && profile.transcriptContext.contentEquals(pairing.sessionContext)) {
@@ -141,6 +155,7 @@ class InternetSessionProfileStore(
                 encrypted.fill(0)
             }
         try {
+            verifySignedLease(DecodedInternetProfile(profile, secrets), pairing)
             val iceServers =
                 profile.iceServerUrls.mapIndexed { index, urls ->
                     val credential = secrets.turnCredentials[index]
@@ -170,7 +185,10 @@ class InternetSessionProfileStore(
     }
 
     @SuppressLint("ApplySharedPref")
-    fun recordVerifiedPairing(metadata: InternetPairingPublicMetadata) {
+    fun recordVerifiedPairing(
+        metadata: InternetPairingPublicMetadata,
+        storedSessionFactory: AndroidStoredInternetSessionFactory,
+    ) {
         require(!isRevoked(metadata.pairingIdentifier)) { "This Mac pairing is locally revoked" }
         val context = requireNotNull(metadata.sessionContext) { "Completed pairing must include a session context" }
         val value =
@@ -179,10 +197,13 @@ class InternetSessionProfileStore(
                 addProperty("host_device_id", metadata.hostIdentity.deviceId)
                 addProperty("host_key_id", metadata.hostIdentity.keyId)
                 addProperty("host_identity_epoch", metadata.hostIdentity.keyEpoch)
+                addProperty("host_signature_algorithm", metadata.hostIdentity.signatureAlgorithm)
+                addProperty("host_signing_public_key", Base64.getEncoder().encodeToString(metadata.hostIdentity.signingPublicKey))
                 addProperty("local_device_id", metadata.deviceIdentity.deviceId)
                 addProperty("local_identity_epoch", metadata.deviceIdentity.keyEpoch)
                 addProperty("session_context", Base64.getEncoder().encodeToString(context))
             }.toString()
+        storedSessionFactory.authorizeIdentityEpoch(metadata.deviceIdentity.keyEpoch)
         check(preferences.edit().putString(PAIRING_KEY, value).commit()) { "Failed to persist verified pairing metadata" }
     }
 
@@ -192,7 +213,7 @@ class InternetSessionProfileStore(
 
     fun verifiedLocalIdentityEpoch(): Long? = loadPairingBinding()?.localIdentityEpoch
 
-    fun verifiedHostKeyFingerprint(): String? = loadPairingBinding()?.hostKeyId?.take(FINGERPRINT_CHARACTERS)
+    fun verifiedHostKeyFingerprint(): String? = loadPairingBinding()?.hostIdentity?.keyId?.take(FINGERPRINT_CHARACTERS)
 
     @SuppressLint("ApplySharedPref")
     fun markRevoked(pairingIdentifier: String) {
@@ -222,13 +243,84 @@ class InternetSessionProfileStore(
     fun remove(pairingIdentifier: String) {
         val profile = loadPublicProfile()
         require(profile == null || profile.pairingIdentifier == pairingIdentifier) { "Pairing identifier does not match active profile" }
-        check(preferences.edit().remove(PROFILE_KEY).commit()) { "Failed to delete the Internet session profile" }
-        profile?.let { secretStore.delete(profileSecretName(it)) }
+        val secretName = profile?.let(::profileSecretName)
+        val cleanupQueue = secretName?.let { enqueueDeferredSecretCleanup(loadDeferredSecretCleanup(), it) }
+            ?: loadDeferredSecretCleanup()
+        check(
+            commitProfileRemoval(cleanupQueue) { queued ->
+                val editor = preferences.edit().remove(PROFILE_KEY)
+                if (queued.isEmpty()) editor.remove(DEFERRED_SECRET_CLEANUP_KEY) else {
+                    editor.putStringSet(DEFERRED_SECRET_CLEANUP_KEY, queued)
+                }
+                editor.commit()
+            },
+        ) { "Failed to durably schedule Internet session credential deletion" }
+        inMemoryDeferredCleanup.replaceAfterDurableCommit(cleanupQueue)
+        retryDeferredCredentialCleanup()
     }
 
     @SuppressLint("ApplySharedPref")
     fun removePairingBinding() {
         check(preferences.edit().remove(PAIRING_KEY).commit()) { "Failed to delete verified pairing metadata" }
+    }
+
+    @Synchronized
+    @SuppressLint("ApplySharedPref")
+    fun beginRevocationCleanup(
+        pairingIdentifier: String,
+        localDeviceId: String,
+        identityEpoch: Long,
+    ) {
+        val requested = PendingRevocationCleanup(pairingIdentifier, localDeviceId, identityEpoch)
+        val existing = loadPendingRevocationCleanup()
+        require(
+            existing == null ||
+                existing.pairingIdentifier == pairingIdentifier &&
+                existing.localDeviceId == localDeviceId &&
+                existing.identityEpoch == identityEpoch,
+        ) { "Another revocation cleanup is already pending" }
+        if (existing != null) return
+        check(
+            preferences
+                .edit()
+                .putString(REVOKED_PAIRING_KEY, pairingIdentifier)
+                .putString(PENDING_REVOCATION_CLEANUP_KEY, PendingRevocationCleanupCodec.encode(requested))
+                .commit(),
+        ) { "Failed to persist revocation cleanup intent" }
+    }
+
+    @Synchronized
+    internal fun retryPendingRevocationCleanup(
+        deletePairingSecret: (String) -> Unit,
+        deleteIdentityKey: (String, Long) -> Unit,
+    ): RevocationCleanupResult? {
+        val pending = loadPendingRevocationCleanup() ?: return null
+        return retryRevocationCleanup(
+            initial = pending,
+            execute = { step ->
+                when (step) {
+                    RevocationCleanupStep.PAIRING_SECRET -> deletePairingSecret(pending.pairingIdentifier)
+                    RevocationCleanupStep.IDENTITY_KEY -> deleteIdentityKey(pending.localDeviceId, pending.identityEpoch)
+                    RevocationCleanupStep.SESSION_CREDENTIALS -> remove(pending.pairingIdentifier)
+                    RevocationCleanupStep.PAIRING_METADATA -> removePairingBinding()
+                }
+            },
+            persist = ::persistPendingRevocationCleanup,
+        )
+    }
+
+    internal fun loadPendingRevocationCleanup(): PendingRevocationCleanup? =
+        preferences
+            .getString(PENDING_REVOCATION_CLEANUP_KEY, null)
+            ?.let(PendingRevocationCleanupCodec::decode)
+
+    @SuppressLint("ApplySharedPref")
+    private fun persistPendingRevocationCleanup(pending: PendingRevocationCleanup?): Boolean {
+        val editor = preferences.edit()
+        if (pending == null) editor.remove(PENDING_REVOCATION_CLEANUP_KEY) else {
+            editor.putString(PENDING_REVOCATION_CLEANUP_KEY, PendingRevocationCleanupCodec.encode(pending))
+        }
+        return editor.commit()
     }
 
     private fun profileSecretName(profile: StoredInternetSessionProfile): String =
@@ -276,9 +368,13 @@ class InternetSessionProfileStore(
         require(root.keySet() == PAIRING_KEYS) { "Stored pairing metadata is malformed" }
         return StoredPairingBinding(
             root.bindingString("pairing_id"),
-            root.bindingString("host_device_id"),
-            root.bindingString("host_key_id"),
-            root.bindingPositiveLong("host_identity_epoch"),
+            InternetPairingIdentity(
+                deviceId = root.bindingString("host_device_id"),
+                keyId = root.bindingString("host_key_id"),
+                keyEpoch = root.bindingPositiveLong("host_identity_epoch"),
+                signatureAlgorithm = root.bindingString("host_signature_algorithm"),
+                signingPublicKey = Base64.getDecoder().decode(root.bindingString("host_signing_public_key")),
+            ),
             root.bindingString("local_device_id"),
             root.bindingPositiveLong("local_identity_epoch"),
             root.bindingContext(),
@@ -292,7 +388,7 @@ class InternetSessionProfileStore(
 
     private fun JsonObject.bindingPositiveLong(name: String): Long =
         get(name)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asLong
-            ?.also { require(it > 0) { "Stored pairing epoch is invalid" } }
+            ?.also { require(it in 1 until Long.MAX_VALUE) { "Stored pairing epoch is invalid" } }
             ?: throw IllegalArgumentException("Stored pairing epoch is invalid")
 
     private fun JsonObject.bindingContext(): ByteArray =
@@ -308,12 +404,14 @@ class InternetSessionProfileStore(
         private const val PAIRING_KEY = "verified_pairing"
         private const val REVOKED_PAIRING_KEY = "revoked_pairing"
         private const val DEFERRED_SECRET_CLEANUP_KEY = "deferred_secret_cleanup"
+        private const val PENDING_REVOCATION_CLEANUP_KEY = "pending_revocation_cleanup"
         private const val SECRET_PREFIX = "phase3.internet.profile.v1"
         private const val FINGERPRINT_CHARACTERS = 16
         private const val TAG = "InternetProfileStore"
         private val PAIRING_KEYS =
             setOf(
                 "pairing_id", "host_device_id", "host_key_id", "host_identity_epoch",
+                "host_signature_algorithm", "host_signing_public_key",
                 "local_device_id", "local_identity_epoch", "session_context",
             )
     }
@@ -324,6 +422,11 @@ internal fun enqueueDeferredSecretCleanup(existing: Set<String>, secretName: Str
     return existing + secretName
 }
 
+internal fun commitProfileRemoval(
+    cleanupQueue: Set<String>,
+    commitPointerAndCleanup: (Set<String>) -> Boolean,
+): Boolean = commitPointerAndCleanup(cleanupQueue)
+
 internal fun commitProfileReplacement(
     cleanupQueue: Set<String>,
     commitPointerAndCleanup: (Set<String>) -> Boolean,
@@ -333,6 +436,73 @@ internal fun commitProfileReplacement(
     rollbackNewSecret()
     return false
 }
+
+internal object InternetSessionLeaseSignature {
+    private const val DOMAIN = "vibescreen/internet-session-lease/v1"
+    private const val VERSION = 1L
+
+    fun digest(decoded: DecodedInternetProfile): ByteArray =
+        digest(decoded.profile, decoded.secrets)
+
+    fun digest(
+        profile: StoredInternetSessionProfile,
+        secrets: ImportedInternetSecrets,
+    ): ByteArray {
+        require(profile.iceServerUrls.size == secrets.turnCredentials.size) {
+            "Stored ICE credentials do not match the lease"
+        }
+        val parts = mutableListOf<ByteArray>()
+        parts += u64(VERSION)
+        parts += text(profile.pairingIdentifier)
+        parts += text(profile.pinnedHostId)
+        parts += text(profile.leaseHostKeyId)
+        parts += text(profile.signalingUrl)
+        parts += text(profile.signalingSessionId)
+        parts += u64(profile.authoritativeSessionEpoch)
+        parts += u64(profile.identityEpoch)
+        parts += profile.transcriptContext
+        parts += profile.protocolSessionId
+        parts += text(secrets.signalingToken)
+        parts += u64(profile.iceServerUrls.size.toLong())
+        profile.iceServerUrls.forEachIndexed { index, urls ->
+            parts += u64(urls.size.toLong())
+            urls.forEach { parts += text(it) }
+            val credentials = secrets.turnCredentials[index]
+            parts.addNullable(credentials.first)
+            parts.addNullable(credentials.second)
+        }
+        parts += byteArrayOf(if (profile.allowInsecureForTesting) 1 else 0)
+        return SecurityTranscript.digest(DOMAIN, *parts.toTypedArray())
+    }
+
+    fun verify(
+        decoded: DecodedInternetProfile,
+        hostIdentity: InternetPairingIdentity,
+    ) {
+        require(decoded.profile.pinnedHostId == hostIdentity.deviceId) {
+            "Lease host identity does not match the verified Mac"
+        }
+        require(decoded.profile.leaseHostKeyId == hostIdentity.keyId) {
+            "Lease signing key does not match the verified Mac"
+        }
+        require(verify(hostIdentity.signingPublicKey, digest(decoded), decoded.profile.leaseSignature)) {
+            "Internet session lease signature is invalid"
+        }
+    }
+
+    private fun MutableList<ByteArray>.addNullable(value: String?) {
+        add(byteArrayOf(if (value == null) 0 else 1))
+        if (value != null) add(text(value))
+    }
+
+    private fun text(value: String): ByteArray = value.toByteArray(StandardCharsets.UTF_8)
+    private fun u64(value: Long): ByteArray = SecurityTranscript.uint64(value)
+}
+
+private fun verifySignedLease(
+    decoded: DecodedInternetProfile,
+    pairing: StoredPairingBinding,
+) = InternetSessionLeaseSignature.verify(decoded, pairing.hostIdentity)
 
 internal object InternetSessionProfileCodec {
     private val ROOT_KEYS =
@@ -349,6 +519,8 @@ internal object InternetSessionProfileCodec {
             "signaling_token",
             "ice_servers",
             "allow_insecure_for_testing",
+            "lease_host_key_id",
+            "lease_signature",
         )
     private val ICE_KEYS = setOf("urls", "username", "credential")
     private val PUBLIC_KEYS = ROOT_KEYS - setOf("signaling_token")
@@ -401,6 +573,8 @@ internal object InternetSessionProfileCodec {
                 protocolSessionId = protocolSessionId,
                 iceServerUrls = urls,
                 allowInsecureForTesting = allowInsecure,
+                leaseHostKeyId = root.requiredString("lease_host_key_id", MAX_IDENTIFIER_BYTES),
+                leaseSignature = root.requiredBase64("lease_signature", 1..MAX_SIGNATURE_BYTES),
             )
         return DecodedInternetProfile(
             profile,
@@ -421,6 +595,8 @@ internal object InternetSessionProfileCodec {
             addProperty("protocol_session_id", profile.protocolSessionId.base64())
             add("ice_servers", JsonArray().apply { profile.iceServerUrls.forEach { server -> add(JsonObject().apply { add("urls", server.toJsonArray()); add("username", null); add("credential", null) }) } })
             addProperty("allow_insecure_for_testing", profile.allowInsecureForTesting)
+            addProperty("lease_host_key_id", profile.leaseHostKeyId)
+            addProperty("lease_signature", profile.leaseSignature.base64())
         }.toString()
 
     fun decodePublic(json: String, debuggable: Boolean): StoredInternetSessionProfile {
@@ -501,7 +677,7 @@ internal object InternetSessionProfileCodec {
         requiredIntegerLiteral(name).toIntOrNull() ?: throw IllegalArgumentException("$name is outside the integer range")
     private fun JsonObject.requiredPositiveLong(name: String): Long =
         (requiredIntegerLiteral(name).toLongOrNull() ?: throw IllegalArgumentException("$name is outside the integer range"))
-            .also { require(it > 0) { "$name must be positive" } }
+            .also { require(it in 1 until Long.MAX_VALUE) { "$name must be positive and below the reserved maximum" } }
     private fun JsonObject.requiredIntegerLiteral(name: String): String {
         val primitive = get(name)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asJsonPrimitive
             ?: throw IllegalArgumentException("$name must be an integer")
@@ -537,6 +713,7 @@ internal object InternetSessionProfileCodec {
     private const val MIN_SIGNALING_TOKEN_BYTES = 32
     private const val MAX_CREDENTIAL_BYTES = 4_096
     private const val MAX_BASE64_BYTES = 8_192
+    private const val MAX_SIGNATURE_BYTES = 512
     private const val MAX_ICE_SERVERS = 16
     private const val MAX_ICE_URLS = 8
     private const val TRANSCRIPT_BYTES = 32

@@ -18,6 +18,24 @@ class SecurityLifecycleTest {
     }
 
     @Test
+    fun deletedProfileCannotReimportLeaseAtDurableSessionHighWatermark() {
+        val store = MemoryStore(DurableSecurityState(sessionEpoch = 7))
+        var secretPersisted = false
+        var profilePersisted = false
+
+        assertThrows(IllegalArgumentException::class.java) {
+            SecurityLifecycle(store).withFreshSessionEpochCandidate(7) {
+                secretPersisted = true
+                profilePersisted = true
+            }
+        }
+
+        assertEquals(false, secretPersisted)
+        assertEquals(false, profilePersisted)
+        assertEquals(7, store.state.sessionEpoch)
+    }
+
+    @Test
     fun nonceDoesNotRepeatAcrossRestart() {
         val store = MemoryStore()
         assertArrayEquals(
@@ -51,6 +69,95 @@ class SecurityLifecycleTest {
             SecurityLifecycle(store).consumeRotationNonceHash(ByteArray(32) { 1 })
         }
         assertEquals(emptySet<String>(), store.state.usedRotationNonceHashes)
+        assertThrows(IllegalStateException::class.java) {
+            SecurityLifecycle(store).reserveNextIdentityEpoch()
+        }
+        assertEquals(0, store.state.identityEpochHighWatermark)
+    }
+
+    @Test
+    fun identityEpochAdvancesAcrossRevocationReauthorizationAndRestart() {
+        val store = MemoryStore()
+        val initial = SecurityLifecycle(store)
+
+        assertEquals(1, initial.reserveNextIdentityEpoch())
+        assertThrows(IllegalStateException::class.java) { initial.requireAuthorizedIdentityEpoch(1) }
+        initial.authorizeIdentityEpoch(1)
+        initial.requireAuthorizedIdentityEpoch(1)
+
+        initial.applyRevocation(1)
+        assertThrows(IllegalStateException::class.java) { initial.requireAuthorizedIdentityEpoch(1) }
+
+        val afterRevocation = SecurityLifecycle(store)
+        assertEquals(2, afterRevocation.reserveNextIdentityEpoch())
+        afterRevocation.authorizeIdentityEpoch(2)
+        afterRevocation.requireAuthorizedIdentityEpoch(2)
+        assertThrows(IllegalStateException::class.java) { afterRevocation.requireAuthorizedIdentityEpoch(1) }
+
+        assertEquals(3, SecurityLifecycle(store).reserveNextIdentityEpoch())
+        assertEquals(3, store.state.identityEpochHighWatermark)
+        assertEquals(2, store.state.authorizedIdentityEpoch)
+    }
+
+    @Test
+    fun cancelledIdentityReservationIsBurnedAndCannotBeAuthorizedLater() {
+        val store = MemoryStore()
+        val lifecycle = SecurityLifecycle(store)
+
+        assertEquals(1, lifecycle.reserveNextIdentityEpoch())
+        assertEquals(2, lifecycle.reserveNextIdentityEpoch())
+        assertThrows(IllegalArgumentException::class.java) { lifecycle.authorizeIdentityEpoch(1) }
+        lifecycle.authorizeIdentityEpoch(2)
+
+        assertEquals(3, SecurityLifecycle(store).reserveNextIdentityEpoch())
+    }
+
+    @Test
+    fun repeatedAuthorizationOfCurrentEpochIsIdempotentButCannotClearRevocation() {
+        val store = MemoryStore()
+        val lifecycle = SecurityLifecycle(store)
+        val identityEpoch = lifecycle.reserveNextIdentityEpoch()
+        lifecycle.authorizeIdentityEpoch(identityEpoch)
+        val persistedAfterAuthorization = store.persistCount
+
+        SecurityLifecycle(store).authorizeIdentityEpoch(identityEpoch)
+
+        assertEquals(persistedAfterAuthorization, store.persistCount)
+        assertEquals(identityEpoch, store.state.authorizedIdentityEpoch)
+        lifecycle.applyRevocation(1)
+        assertThrows(IllegalArgumentException::class.java) {
+            SecurityLifecycle(store).authorizeIdentityEpoch(identityEpoch)
+        }
+        assertEquals(true, store.state.revoked)
+    }
+
+    @Test
+    fun failedIdentityAuthorizationKeepsRevocationAndAuthorizedEpochDurable() {
+        val store = MemoryStore(DurableSecurityState(identityEpochHighWatermark = 2, authorizedIdentityEpoch = 1, revoked = true))
+        store.failPersist = true
+
+        assertThrows(IllegalStateException::class.java) { SecurityLifecycle(store).authorizeIdentityEpoch(2) }
+        assertEquals(1, store.state.authorizedIdentityEpoch)
+        assertEquals(true, store.state.revoked)
+    }
+
+    @Test
+    fun longMaxValueCannotPoisonMonotonicEpochs() {
+        val initial =
+            DurableSecurityState(
+                sessionEpoch = 7,
+                revocationSequence = 3,
+                identityEpochHighWatermark = Long.MAX_VALUE,
+                authorizedIdentityEpoch = 2,
+            )
+        val store = MemoryStore(initial)
+        val lifecycle = SecurityLifecycle(store)
+
+        assertThrows(IllegalArgumentException::class.java) { lifecycle.reserveSessionEpoch(Long.MAX_VALUE) }
+        assertThrows(IllegalArgumentException::class.java) { lifecycle.applyRevocation(Long.MAX_VALUE) }
+        assertThrows(IllegalStateException::class.java) { lifecycle.reserveNextIdentityEpoch() }
+        assertThrows(IllegalArgumentException::class.java) { lifecycle.authorizeIdentityEpoch(Long.MAX_VALUE) }
+        assertEquals(initial, store.state)
     }
 
     @Test
@@ -127,13 +234,17 @@ class SecurityLifecycleTest {
     }
 }
 
-private class MemoryStore : SecurityStateStore {
-    var state = DurableSecurityState()
+private class MemoryStore(
+    initialState: DurableSecurityState = DurableSecurityState(),
+) : SecurityStateStore {
+    var state = initialState
     var failPersist = false
+    var persistCount = 0
     override fun load(): DurableSecurityState = state
     override fun persist(state: DurableSecurityState) {
         check(!failPersist) { "injected" }
         this.state = state
+        persistCount += 1
     }
 }
 

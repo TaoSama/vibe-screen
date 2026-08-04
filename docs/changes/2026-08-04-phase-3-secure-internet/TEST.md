@@ -129,21 +129,20 @@ docs/changes/2026-08-04-phase-3-secure-internet/evidence/
 Start by proving device identity, not merely that some ADB endpoint responded:
 
 ```bash
-adb connect 100.72.246.116:5555
-adb -s 100.72.246.116:5555 devices -l
-adb -s 100.72.246.116:5555 shell getprop ro.product.manufacturer
-adb -s 100.72.246.116:5555 shell getprop ro.product.model
-adb -s 100.72.246.116:5555 shell getprop ro.serialno
-adb -s 100.72.246.116:5555 shell getprop ro.build.fingerprint
-adb -s 100.72.246.116:5555 shell getprop ro.build.version.sdk
+export ADB_ENDPOINT='<lease-controlled-endpoint>'
+adb connect "$ADB_ENDPOINT"
+adb -s "$ADB_ENDPOINT" devices -l
+adb -s "$ADB_ENDPOINT" shell getprop ro.product.manufacturer
+adb -s "$ADB_ENDPOINT" shell getprop ro.product.model
+adb -s "$ADB_ENDPOINT" shell getprop ro.build.version.sdk
 ```
 
 Then record the exact APK and installed version:
 
 ```bash
 shasum -a 256 path/to/vibe-screen.apk
-adb -s 100.72.246.116:5555 install -r path/to/vibe-screen.apk
-adb -s 100.72.246.116:5555 shell dumpsys package dev.telemachus.display
+adb -s "$ADB_ENDPOINT" install -r path/to/vibe-screen.apk
+adb -s "$ADB_ENDPOINT" shell dumpsys package dev.telemachus.display
 ```
 
 The run log must state, with timestamps and route evidence:
@@ -183,10 +182,16 @@ named by that run:
 - `go test -race ./... && go vet ./...` in `packages/security`: passed;
 - `go test -race ./... && go vet ./...` in `services/relay`: passed after the
   concurrent relay source/test changes converged;
-- Phase 3 Python suite: 21 tests passed; security-vector CLI passed
+- Phase 3 Python suite: 47 tests passed, including repository endpoint privacy,
+  fail-closed device-lock handling, and build/source evidence binding;
+  security-vector CLI passed
   24 vectors, including direction reflection and global revocation sequencing;
 - Android `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`
-  passed with 98 tests and zero failures/errors/skips.
+  passed with 123 tests and zero failures/errors/skips. The security tests cover
+  paired-host lease signature mutation, reserved maximum epochs, stale durable
+  cipher epochs, monotonic identity reauthorization, restart-safe credential and
+  revocation cleanup, best-effort close aggregation, and generation-scoped route
+  changes with a bounded candidate-resolution timeout and one ClientHello.
   `compileDebugAndroidTestKotlin` and both debug APK builds passed.
   `processReleaseMainManifest` also passed and the merged release
   manifest sets `usesCleartextTraffic=false`;
@@ -212,8 +217,17 @@ named by that run:
   AES-256-GCM control/media records bidirectionally. Its independent allocation
   check relayed 3/3 datagrams and scanned generated credentials out of logs.
 - `services/relay/integration/test-turn-rest.sh` passed short-term control-plane
-  credential issuance, authenticated coturn allocation, ChannelBind and 10/10
-  relayed messages.
+  credential issuance, authenticated coturn allocation, ChannelBind and relayed
+  messages. A deterministic one-socket TURN helper filled `user-quota=2` with
+  two exact allocations whose credentials used different sessions and expiries;
+  the next allocation received 486. One holder then sent an authenticated
+  Refresh with `LIFETIME=0`, after which a new allocation succeeded and was also
+  released. The complete check passed five consecutive runs after removing the
+  scheduler-sensitive multi-allocation client assumption.
+- `services/relay/integration/test-turn-peer-acl.sh` parsed the production ACL
+  and used authenticated CREATE_PERMISSION requests to prove explicit 403 denial
+  for private, CGNAT, link-local and internal peers, including IPv6 loopback; a
+  public IPv4 control remained allowed.
 - The relay control plane's race suite passed after separating usage and metrics
   credentials, enforcing an exact Bearer scheme, exporting current-day estimated
   cost as a gauge, and syncing the state directory after atomic replacement.
@@ -238,6 +252,14 @@ named by that run:
   rejection, signed targeted revocation, tombstone persistence, and pairing-secret
   deletion failure/retry. Full macOS XCTest execution remains unavailable in the
   selected Command Line Tools environment.
+- The macOS executable Internet self-test keeps a selected route explicitly
+  unknown until complete candidate-pair stats arrive and fails closed on timeout;
+  the loopback self-test still selected a real direct host/host UDP pair after
+  the change. It also covers multi-device revoked-identity epoch floors and
+  restart-safe secret-cleanup state. The lease self-test matches Android's
+  canonical digest, mutates every signed field, rejects malformed input, and
+  signs/verifies with a temporary real Keychain identity. XCTest coverage is
+  present but did not execute in the Command Line Tools-only environment.
 - The local product slice passed in both modes:
   `run_local_e2e.py --mode direct --slice product` and
   `run_local_e2e.py --mode relay --slice product --skip-build`. Both traversed

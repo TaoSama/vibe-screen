@@ -60,6 +60,13 @@ class AndroidStoredInternetSessionFactory(
         secretStore.delete(secretName(pairingIdentifier))
     }
 
+    fun reserveNextIdentityEpoch(): Long = sessionSecurity.reserveNextIdentityEpoch()
+
+    fun authorizeIdentityEpoch(identityEpoch: Long) = sessionSecurity.authorizeIdentityEpoch(identityEpoch)
+
+    fun <T> withFreshSessionEpochCandidate(sessionEpoch: Long, block: () -> T): T =
+        sessionSecurity.withFreshSessionEpochCandidate(sessionEpoch, block)
+
     fun create(
         pairingIdentifier: String,
         sessionId: String,

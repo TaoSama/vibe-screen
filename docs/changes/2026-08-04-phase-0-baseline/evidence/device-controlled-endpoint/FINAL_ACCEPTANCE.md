@@ -1,7 +1,11 @@
 # Final Android device acceptance
 
 Date: 2026-08-04  
-ADB endpoint: `100.72.246.116:5555`
+ADB endpoint: `$ADB_ENDPOINT`
+
+The historical endpoint is intentionally redacted. `$ADB_ENDPOINT` denotes the
+lease-controlled value supplied at execution time and is not a repository
+default or the original address.
 
 ## Frozen artifacts
 
@@ -84,11 +88,11 @@ passed. No GPL/AGPL code was introduced by this acceptance work.
 The final APK was installed exactly once:
 
 ```bash
-adb -s 100.72.246.116:5555 install -r -t \
+adb -s "$ADB_ENDPOINT" install -r -t \
   baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
-adb -s 100.72.246.116:5555 reverse --remove tcp:54321
-adb -s 100.72.246.116:5555 reverse tcp:54321 tcp:54321
-adb -s 100.72.246.116:5555 shell am start -S -W \
+adb -s "$ADB_ENDPOINT" reverse --remove tcp:54321
+adb -s "$ADB_ENDPOINT" reverse tcp:54321 tcp:54321
+adb -s "$ADB_ENDPOINT" shell am start -S -W \
   -a android.intent.action.MAIN \
   -n dev.telemachus.display/.MainActivity \
   --ez auto_connect true
@@ -107,7 +111,7 @@ runner's supported `--host-pid` argument so Host liveness was sampled:
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 \
   -m vibescreen_evidence.soak \
-  --serial 100.72.246.116:5555 \
+  --serial "$ADB_ENDPOINT" \
   --preset 30m --interval 30s \
   --package dev.telemachus.display \
   --host-pid 95367 \

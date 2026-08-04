@@ -40,14 +40,18 @@ WebRTC/network/key-store implementations.
 4. Derive a root secret from ECDH-P256 and transcript using HKDF-SHA-256. Derive
    direction/channel/session-specific traffic keys; never use the raw shared
    secret as an AEAD key.
-5. Exchange signaling messages over authenticated HTTPS/WebSocket. Authenticate
+5. Before Android stores or activates a session lease, verify a signature from
+   the paired host identity over every routing, epoch, transcript, token, ICE,
+   TURN-credential, and test-policy field. Verify before advancing any durable
+   high-water mark.
+6. Exchange signaling messages over authenticated HTTPS/WebSocket. Authenticate
    the remote identity independently of the signaling channel.
-6. Gather ICE candidates, prefer direct connectivity, and use short-lived TURN
+7. Gather ICE candidates, prefer direct connectivity, and use short-lived TURN
    credentials only when needed.
-7. Open two negotiated channels:
+8. Open two negotiated channels:
    - `vibescreen.control.v1`: ordered, reliable;
    - `vibescreen.media.v1`: unordered, `maxRetransmits = 0`.
-8. Authenticate the session transcript, establish a new `session_epoch`, then
+9. Authenticate the session transcript, establish a new `session_epoch`, then
    send encrypted Protocol v1 traffic. Start media only after configuration is
    accepted and a keyframe is available.
 
@@ -139,8 +143,13 @@ complete handoff remain release gates.
   both direct and relay carry identical application ciphertext.
 - Relay-only exists for diagnostics and restrictive networks, never to bypass
   device authorization.
-- Allocation lifetime, peer permissions, bandwidth, concurrent allocations, and
-  bytes per session are bounded server-side. Client byte counters are advisory.
+- Coturn applies `user-quota` to a stable device principal after stripping the
+  REST expiry, so session or expiry churn cannot reset the device allocation
+  counter. Allocation lifetime, peer permissions, bandwidth, and concurrent
+  allocations are bounded in the data plane.
+- The current `/v1/usage` byte/session ledger is non-authoritative telemetry;
+  it is not a real-time spend or admission-control boundary until a trusted
+  coturn collector is deployed.
 
 ## Backpressure and recovery
 
@@ -220,13 +229,13 @@ semantic change requires a new protocol package/version.
 | --- | --- | --- |
 | Security contract | `contracts/proto/vibescreen/protocol/v1/security.proto`, pairing/session/envelope additions | P-256/HKDF/AES-GCM schema exists; generated/canonical cross-language crypto interoperability and security-semantic review remain gates |
 | Pairing and identity | `baseline/MacHost/Sources/Phase3/Security/InternetPairing*`, Android `security/InternetPairing*` | Swift/Kotlin implement the same strict pairing URL/request/acceptance shape, stable platform signing identities, ephemeral P-256 ECDH, signed canonical transcript, one-time/expiry checks, and protected pairing-secret storage. The local UI scans the offer QR and exchanges the request/acceptance as operator-copied strict JSON; automatic authenticated authority exchange and real cross-language pairing remain unproved |
-| Security core | `packages/security/` and platform security directories | Go implementation, restart snapshots, attack tests and vectors exist. macOS state is peer-scoped; both platforms reserve the common authority epoch before first use, and macOS persists signed targeted revocation tombstones. Cross-language product-session and platform crash-boundary evidence remain gates |
+| Security core | `packages/security/` and platform security directories | Go implementation, restart snapshots, attack tests and vectors exist. macOS state is peer-scoped, keeps a Keychain-backed revoked-identity epoch floor per stable device ID, and persists signed targeted tombstones plus restart-safe secret-cleanup progress. Both platforms reserve the common authority epoch before first use. Cross-language product-session and real platform crash-boundary evidence remain gates |
 | macOS product session | `baseline/MacHost/Sources/Phase3/ProductSession/`, `AppDelegate.swift`, `SettingsWindow.swift`, stasel WebRTC `150.0.0` | Internet mode is separated from the legacy TCP server; real capture/HEVC, Protocol v1 control/media, protected DataChannels, touch injection, direct/forced-TURN selection, Keychain credentials, and actionable state UI are wired. Synthetic local direct/relay and real Android M144 direct/forced-local-TURN product sessions pass; real ScreenCaptureKit device streaming remains a gate |
-| Android product session | `MainActivity.kt`, `InternetSessionProfileStore.kt`, Android Internet packages, `io.github.webrtc-sdk:android:144.7559.09` | Internet UI scans the pairing offer, completes the copied request/acceptance flow, imports a strict short-lived lease, selects direct/forced TURN, drives Protocol v1 video/touch and decoder state, and exposes connect/disconnect/revoke/error/recovery. Tokens and pairing/session secrets are AndroidKeyStore-wrapped; sensitive dialogs disable screenshots/autofill, and release cleartext is disabled. An authorized Android device passed M144↔M150 direct and forced-local-TURN interop plus actionable UI checks; public Internet, real screen capture, handoff and soak remain gates |
+| Android product session | `MainActivity.kt`, `InternetSessionProfileStore.kt`, Android Internet packages, `io.github.webrtc-sdk:android:144.7559.09` | Internet UI scans the pairing offer, completes the copied request/acceptance flow, imports a strict host-signed short-lived lease, selects direct/forced TURN, drives Protocol v1 video/touch and decoder state, and exposes connect/disconnect/revoke/error/recovery. Lease verification precedes persistence/high-watermark changes; durable session/identity epochs reject stale ciphers and permit monotonic reauthorization after revoke. Credential and revocation cleanup retain restart-safe retry state. Tokens and pairing/session secrets are AndroidKeyStore-wrapped; sensitive dialogs disable screenshots/autofill, and release cleartext is disabled. An authorized Android device passed M144↔M150 direct and forced-local-TURN interop plus actionable UI checks; public Internet, real screen capture, handoff and soak remain gates |
 | Existing LAN security | `WirelessAuth.swift`, `AuthHandshake.kt`, `StreamingServer.swift`, `StreamClient.kt` | 32-byte bearer token over plaintext TCP; trusted LAN only, not E2EE |
-| Relay control/data plane | `services/relay/`, `deploy/phase3/` | Short-term credential control plane and pinned coturn Compose data plane exist; new credentials and usage events are rejected after a persisted revoke, and issuance/revoke are serialized. Existing coturn allocations are not terminated by this control-plane action; public deployment, authoritative usage, active-allocation disconnect, and multi-node state remain gates |
+| Relay control/data plane | `services/relay/`, `deploy/phase3/` | Short-term credential control plane and pinned coturn Compose data plane exist. REST usernames map all sessions/expiries for one device to one coturn allocation-quota principal, and production peer ACLs deny private, CGNAT, link-local, ULA and other internal ranges. New credentials and usage events are rejected after a persisted revoke, and issuance/revoke are serialized. Existing coturn allocations are not terminated by this control-plane action; public deployment, authoritative byte usage, active-allocation disconnect, and multi-node state remain gates |
 | Signaling | `services/signaling/` plus Swift/Kotlin clients | Runnable single-instance service, real-process tests, and issuer-only session invalidation exist. It remains a one-offer rendezvous without durable/multi-instance identity authority or a device revocation feed |
-| Rotation/revocation/replay | Protocol, Go core, platform security and product-session directories | Record replay and old-epoch rejection plus peer-scoped signed local revocation have unit/self-test coverage. End-to-end revocation propagation to the peer, signaling and active TURN allocation; rotation interoperability; and real reconnect injection remain gates |
+| Rotation/revocation/replay | Protocol, Go core, platform security and product-session directories | Record replay and old-epoch rejection plus peer-scoped signed local revocation have unit/self-test coverage. Android and macOS retain durable retry state for local secret cleanup; macOS prevents one device's revoke history from overwriting another's epoch floor. End-to-end revocation propagation to the peer, signaling and active TURN allocation; rotation interoperability; and real reconnect injection remain gates |
 | Adaptive video | policy types and unit tests | Policy foundation only; encoder/config acknowledgment integration pending |
 | Network simulation | `scripts/phase3/network_profile.py`, `tests/phase3/` | Deterministic contract simulation only; explicitly not OS-level impairment, ICE, or TURN evidence |
 | Android Internet evidence | [TEST.md](TEST.md), `evidence/android-product-interop.json` | Direct and forced local coturn product-session interop plus actionable UI passed on an authorized device. Public Internet/STUN/TURN, real capture, handoff/reconnect, cross-service revoke, latency and soak remain open |
@@ -265,8 +274,10 @@ These are release blockers, not accepted architecture:
   integration must persist or replace session/key epoch before reuse after crash;
   the standalone package alone cannot guarantee lifecycle uniqueness.
 - Relay session requests remain authenticated by a trusted control-plane bearer,
-  not a device possession proof. Usage/quota enforcement relies on a trusted TURN
-  collector, and the rate limiter/store are process-local. Usage ingestion,
+  not a device possession proof. Coturn now authoritatively enforces the stable
+  per-device concurrent-allocation boundary, but byte/session usage remains a
+  non-authoritative ledger without a trusted TURN collector, and the rate
+  limiter/store are process-local. Usage ingestion,
   metrics scraping, credential issuance, and administration now use distinct
   tokens; the ledger atomically replaces and directory-syncs its state file.
   Admin revocation blocks new credentials and later usage events but cannot

@@ -40,6 +40,7 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
     private static let initializeWebRTC: Void = {
         RTCInitializeSSL()
     }()
+    private static let candidatePairResolutionTimeoutSeconds = 5
 
     private let factory: RTCPeerConnectionFactory
     private let signaling: WebRTCSignalingClientPort
@@ -57,8 +58,10 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
     private var localDescriptionPublished = false
     private var configuration: WebRTCTransportConfiguration?
     private var statsTimer: DispatchSourceTimer?
-    private var selectedPath: InternetPathKind = .direct
+    private var candidatePairResolutionTimer: DispatchSourceTimer?
+    private var selectedPath: InternetPathKind = .unknown
     private var selectedCandidatePair: WebRTCSelectedCandidatePair?
+    private var didPublishConnected = false
     private var peerIsConnected = false
     private var isClosed = false
 
@@ -94,7 +97,9 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
             pendingRemoteCandidates.removeAll()
             pendingSDKSendByKind.removeAll()
             self.configuration = configuration
+            selectedPath = .unknown
             selectedCandidatePair = nil
+            didPublishConnected = false
             kindByLabel = Dictionary(uniqueKeysWithValues: channels.compactMap { descriptor in
                 InternetTransportChannel.allCases.first(where: {
                     $0.dataChannelConfiguration.label == descriptor.label
@@ -122,8 +127,6 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
                 delegate: self
             ) else { throw AdapterError.peerCreationFailed }
             peerConnection = peer
-            selectedPath = configuration.forceRelay ? .relay : .direct
-
             if configuration.signaling?.role == .offerer {
                 for descriptor in channels {
                     let rtcDescriptor = RTCDataChannelConfiguration()
@@ -190,8 +193,13 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
     func restartICE() {
         queue.async { [weak self] in
             guard let self, let peerConnection = self.peerConnection else { return }
+            self.selectedPath = .unknown
+            self.selectedCandidatePair = nil
+            self.didPublishConnected = false
             self.localDescriptionPublished = false
             self.pendingLocalCandidates.removeAll()
+            self.callbacks?.connectionStateChanged(.connecting)
+            self.publishConnectedIfReady()
             peerConnection.restartIce()
             if self.configuration?.signaling?.role == .offerer { self.createAndSendOffer() }
         }
@@ -206,6 +214,7 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
         performSync {
             guard !isClosed else { return }
             isClosed = true
+            stopCandidatePairResolutionTimeout()
             stopStats()
             failPendingSDKSends()
             pathMonitor.cancel()
@@ -384,8 +393,35 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
               InternetTransportChannel.allCases.allSatisfy({ channelByKind[$0]?.readyState == .open }) else {
             return
         }
-        callbacks?.connectionStateChanged(.connected(path: selectedPath))
         startStats()
+        guard selectedPath != .unknown else {
+            startCandidatePairResolutionTimeout()
+            return
+        }
+        stopCandidatePairResolutionTimeout()
+        guard !didPublishConnected else { return }
+        didPublishConnected = true
+        callbacks?.connectionStateChanged(.connected(path: selectedPath))
+    }
+
+    private func startCandidatePairResolutionTimeout() {
+        guard candidatePairResolutionTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + .seconds(Self.candidatePairResolutionTimeoutSeconds))
+        timer.setEventHandler { [weak self] in
+            guard let self, !self.isClosed,
+                  self.peerIsConnected,
+                  self.selectedPath == .unknown else { return }
+            self.stopCandidatePairResolutionTimeout()
+            self.fail("Selected ICE candidate pair statistics were unavailable before timeout.")
+        }
+        candidatePairResolutionTimer = timer
+        timer.resume()
+    }
+
+    private func stopCandidatePairResolutionTimeout() {
+        candidatePairResolutionTimer?.cancel()
+        candidatePairResolutionTimer = nil
     }
 
     private func startPathMonitor() {
@@ -435,6 +471,7 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
         var roundTripTime: Double = 0
         var packetsLost: Double = 0
         var packetsReceived: Double = 0
+        var observedSelectedPath: InternetPathKind?
         for statistic in report.statistics.values {
             if statistic.type == "candidate-pair", statistic.id == selectedPairID {
                 availableBitrate = (statistic.values["availableOutgoingBitrate"] as? NSNumber)?.uint64Value ?? 0
@@ -443,29 +480,43 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
                 let remoteID = statistic.values["remoteCandidateId"] as? String
                 let localCandidate = report.statistics.values.first { $0.id == localID }
                 let remoteCandidate = report.statistics.values.first { $0.id == remoteID }
-                let localType = localCandidate?.values["candidateType"] as? String ?? "unknown"
-                let remoteType = remoteCandidate?.values["candidateType"] as? String ?? "unknown"
-                let isRelay = localType == "relay" || remoteType == "relay"
-                let newPath: InternetPathKind = isRelay ? .relay : .direct
+                let localType = localCandidate?.values["candidateType"] as? String
+                let remoteType = remoteCandidate?.values["candidateType"] as? String
+                let newPath = SelectedCandidatePathResolver.resolve(
+                    localCandidateType: localType,
+                    remoteCandidateType: remoteType
+                )
+                observedSelectedPath = newPath
                 let pair = WebRTCSelectedCandidatePair(
                     path: newPath,
-                    localCandidateType: localType,
-                    remoteCandidateType: remoteType,
+                    localCandidateType: localType ?? "unknown",
+                    remoteCandidateType: remoteType ?? "unknown",
                     networkProtocol: (localCandidate?.values["protocol"] as? String ?? "unknown").lowercased()
                 )
                 if pair != selectedCandidatePair {
                     selectedCandidatePair = pair
                     callbacks?.selectedCandidatePairChanged(pair)
                 }
-                if newPath != selectedPath {
+                if newPath != .unknown, newPath != selectedPath {
                     selectedPath = newPath
-                    callbacks?.connectionStateChanged(.connected(path: newPath))
+                    if didPublishConnected {
+                        callbacks?.connectionStateChanged(.connected(path: newPath))
+                    } else {
+                        publishConnectedIfReady()
+                    }
                 }
             }
             if statistic.type == "data-channel" {
                 packetsLost += (statistic.values["messagesDiscardedOnSend"] as? NSNumber)?.doubleValue ?? 0
                 packetsReceived += (statistic.values["messagesReceived"] as? NSNumber)?.doubleValue ?? 0
             }
+        }
+        if SelectedCandidatePathResolver.mustFailClosed(
+            publishedPath: didPublishConnected ? selectedPath : nil,
+            observedPath: observedSelectedPath
+        ) {
+            fail("Selected ICE candidate pair statistics became unavailable or unknown.")
+            return
         }
         let denominator = packetsLost + packetsReceived
         callbacks?.networkQualitySampled(InternetNetworkQualitySample(
@@ -477,6 +528,7 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
 
     private func fail(_ reason: String) {
         guard !isClosed else { return }
+        stopCandidatePairResolutionTimeout()
         failPendingSDKSends()
         callbacks?.connectionStateChanged(.failed(reason))
     }
@@ -533,9 +585,14 @@ extension ProductionWebRTCEngine: RTCPeerConnectionDelegate {
                 self.publishConnectedIfReady()
             case .disconnected:
                 self.peerIsConnected = false
+                self.stopCandidatePairResolutionTimeout()
+                self.selectedPath = .unknown
+                self.selectedCandidatePair = nil
+                self.didPublishConnected = false
                 self.callbacks?.connectionStateChanged(.disconnected)
             case .failed:
                 self.peerIsConnected = false
+                self.stopCandidatePairResolutionTimeout()
                 self.callbacks?.connectionStateChanged(.failed("libwebrtc peer connection failed."))
             case .closed:
                 self.peerIsConnected = false

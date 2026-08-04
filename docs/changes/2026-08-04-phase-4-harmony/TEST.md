@@ -34,7 +34,7 @@ DevEco Studio: not installed
 The requested ADB endpoint connected successfully but identifies as:
 
 ```text
-100.72.246.116:5555 device product:pacific model:P0110
+[controlled endpoint, redacted] device product:pacific model:P0110
 manufacturer=nubia, model=P0110, Android=16, API=36
 ```
 

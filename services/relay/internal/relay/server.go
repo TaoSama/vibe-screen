@@ -135,7 +135,7 @@ func (s *Server) credentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	expires := s.now().UTC().Add(time.Duration(ttl) * time.Second).Unix()
-	username := fmt.Sprintf("%d:%s:%s", expires, request.DeviceID, request.SessionID)
+	username := fmt.Sprintf("%d:%s", expires, request.DeviceID)
 	mac := hmac.New(sha1.New, []byte(s.cfg.TurnSecret))
 	if _, err := mac.Write([]byte(username)); err != nil {
 		s.reject(w, http.StatusInternalServerError, "credential generation failed")

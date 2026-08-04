@@ -17,7 +17,9 @@ data class InternetPairingIdentity(
     val signingPublicKey: ByteArray,
 ) {
     init {
-        require(deviceId.isNotBlank() && keyId.isNotBlank() && keyEpoch > 0) { "Pairing identity is incomplete" }
+        require(deviceId.isNotBlank() && keyId.isNotBlank() && keyEpoch in 1 until Long.MAX_VALUE) {
+            "Pairing identity is incomplete or has a reserved key epoch"
+        }
         require(signatureAlgorithm == SIGNATURE_ALGORITHM) { "Unsupported pairing signature algorithm" }
         require(signingPublicKey.size == P256_PUBLIC_KEY_BYTES) { "Pairing identity requires an uncompressed P-256 key" }
         require(keyId == pairingSha256(signingPublicKey).toPairingHex()) { "Pairing identity key ID does not match its signing key" }

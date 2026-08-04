@@ -331,6 +331,13 @@ final class WebRTCInternetTransport {
         case .connecting:
             setState(.connecting)
         case .connected(let path):
+            guard path != .unknown else {
+                failTransport(
+                    .engineSendFailed("WebRTC reported connected before selecting an ICE candidate pair."),
+                    reportError: false
+                )
+                return
+            }
             withLock {
                 if let previousPath = $0.activePath, previousPath != path {
                     invalidatePipeline(state: &$0)

@@ -136,8 +136,41 @@ enum InternetTransportState: Equatable {
 }
 
 enum InternetPathKind: Equatable {
+    case unknown
     case direct
     case relay
+}
+
+enum SelectedCandidatePathResolver {
+    private static let directCandidateTypes: Set<String> = [
+        "host", "srflx", "prflx"
+    ]
+
+    static func resolve(
+        localCandidateType: String?,
+        remoteCandidateType: String?
+    ) -> InternetPathKind {
+        guard let local = localCandidateType?.lowercased(),
+              let remote = remoteCandidateType?.lowercased() else {
+            return .unknown
+        }
+        if local == "relay" || remote == "relay" { return .relay }
+        guard directCandidateTypes.contains(local),
+              directCandidateTypes.contains(remote) else {
+            return .unknown
+        }
+        return .direct
+    }
+
+    static func mustFailClosed(
+        publishedPath: InternetPathKind?,
+        observedPath: InternetPathKind?
+    ) -> Bool {
+        guard publishedPath == .direct || publishedPath == .relay else {
+            return false
+        }
+        return observedPath == nil || observedPath == .unknown
+    }
 }
 
 enum InternetRecoveryStrategy: Equatable {
