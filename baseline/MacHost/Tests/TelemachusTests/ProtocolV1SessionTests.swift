@@ -89,7 +89,8 @@ final class ProtocolV1SessionTests: XCTestCase {
     func testHandshakeAndDisplayVideoAcknowledgementGateMedia() throws {
         let session = makeSession()
         let helloActions = session.handleControl(try clientHello().serializedData())
-        let responses = try controlEnvelopes(helloActions)
+        XCTAssertTrue(helloActions.contains { if case .codecNegotiated = $0 { true } else { false } })
+        let responses = try controlEnvelopes(session.completeCodecNegotiation())
         XCTAssertEqual(responses.count, 2)
         guard case .hostHello(let hostHello)? = responses[0].payload else {
             return XCTFail("Expected HostHello")
@@ -150,6 +151,7 @@ final class ProtocolV1SessionTests: XCTestCase {
     func testInvalidDisplayAndStaleEpochFailClosed() throws {
         let invalidDisplay = makeSession()
         _ = invalidDisplay.handleControl(try clientHello().serializedData())
+        _ = invalidDisplay.completeCodecNegotiation()
         var request = existingDisplayRequest()
         request.sourceDisplayID = "not-active"
         XCTAssertEqual(
@@ -161,6 +163,7 @@ final class ProtocolV1SessionTests: XCTestCase {
 
         let stale = makeSession()
         _ = stale.handleControl(try clientHello().serializedData())
+        _ = stale.completeCodecNegotiation()
         var ping = VSPing()
         ping.sequence = 1
         var staleEnvelope = envelope(id: 2, payload: .ping(ping))
@@ -290,6 +293,7 @@ final class ProtocolV1SessionTests: XCTestCase {
     private func readySession() throws -> ProtocolV1SessionCoordinator {
         let session = makeSession()
         _ = session.handleControl(try clientHello().serializedData())
+        _ = session.completeCodecNegotiation()
         _ = session.handleControl(try envelope(
             id: 2,
             payload: .startDisplayRequest(existingDisplayRequest())

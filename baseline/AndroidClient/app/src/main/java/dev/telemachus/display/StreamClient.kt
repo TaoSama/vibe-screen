@@ -36,6 +36,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 class StreamClient(
     private val host: String,
@@ -60,6 +61,7 @@ class StreamClient(
     private var pendingFreshTransport: FreshTransportCandidate? = null
     private val nextInputId = AtomicLong(1L)
     private val nextPingSequence = AtomicLong(1L)
+    private val pendingOutboundFailure = AtomicReference<SessionFailure?>(null)
     @Volatile private var lastV1PingSequence = 0L
     @Volatile private var lastV1PingSentNs = 0L
 
@@ -142,7 +144,12 @@ class StreamClient(
                 val detail = failure.cause.message ?: failure.cause.javaClass.simpleName
                 Log.e(TAG, "Outbound write failed", failure.cause)
                 onWriteFailure?.invoke(detail)
-                requestConnectionEnd(SessionFailure.write(detail))
+                pendingOutboundFailure.compareAndSet(null, SessionFailure.write(detail))
+                try {
+                    socket?.shutdownOutput()
+                } catch (shutdownFailure: IOException) {
+                    Log.d(TAG, "Outbound side was already closed", shutdownFailure)
+                }
             },
             coalesce = { kind, pending, replacement ->
                 if (kind == OutboundCommandScheduler.Kind.KEYFRAME &&
@@ -171,6 +178,7 @@ class StreamClient(
             if (terminationDispatcher.isClaimed()) return@withContext
             sessionReady = false
             stopRequested = false
+            pendingOutboundFailure.set(null)
             try {
                 val candidate = socketFactory()
                 socket = candidate
@@ -247,6 +255,7 @@ class StreamClient(
         if (terminationDispatcher.isClaimed()) return@withContext
         sessionReady = false
         stopRequested = false
+        pendingOutboundFailure.set(null)
         val request =
             try {
                 AuthHandshake.encodeRequest(token, deviceName)
@@ -445,11 +454,8 @@ class StreamClient(
     }
 
     private fun advertiseFrameMetadataSupport() {
-        outputStream?.let { out ->
-            out.writeByte(MESSAGE_CLIENT_SUPPORTS_FRAME_METADATA)
-            out.flush()
-            diagLog("Advertised frame metadata support")
-        }
+        enqueueLegacyControlByte(MESSAGE_CLIENT_SUPPORTS_FRAME_METADATA)
+        diagLog("Queued frame metadata support")
     }
 
     private fun negotiateProtocol(transport: TransportKind): UpgradeFallbackDecision {
@@ -667,11 +673,8 @@ class StreamClient(
      * accepts with the same type.
      */
     private fun offerDeviceInfoCapability() {
-        outputStream?.let { out ->
-            out.writeByte(MESSAGE_DEVICE_INFO_CAPABILITY)
-            out.flush()
-            diagLog("Offered device-info capability")
-        }
+        enqueueLegacyControlByte(MESSAGE_DEVICE_INFO_CAPABILITY)
+        diagLog("Queued device-info capability")
     }
 
     /**
@@ -722,15 +725,19 @@ class StreamClient(
 
     private fun advertiseAvcOnlyIfNeeded() {
         if (!CodecCapabilities.shouldAdvertiseAvcOnly) return
-        outputStream?.let { out ->
-            out.writeByte(MESSAGE_CLIENT_AVC_ONLY)
-            out.flush()
-            diagLog("Advertised AVC-only (HEVC unavailable or failed at runtime)")
-            emitTelemetry(
-                "codec_fallback_requested",
-                mapOf("from" to "HEVC", "to" to "H264", "session_epoch" to connectionEpoch),
-            )
-        }
+        enqueueLegacyControlByte(MESSAGE_CLIENT_AVC_ONLY)
+        diagLog("Queued AVC-only advertisement (HEVC unavailable or failed at runtime)")
+        emitTelemetry(
+            "codec_fallback_requested",
+            mapOf("from" to "HEVC", "to" to "H264", "session_epoch" to connectionEpoch),
+        )
+    }
+
+    private fun enqueueLegacyControlByte(messageType: Int) {
+        submitOutbound(
+            kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+            command = OutboundCommand.LegacyControl(byteArrayOf(messageType.toByte())),
+        )
     }
 
     private suspend fun receiveData() =
@@ -748,6 +755,7 @@ class StreamClient(
                         try {
                             pendingLegacyFirstByte?.also { pendingLegacyFirstByte = null }?.toByte() ?: input.readByte()
                         } catch (_: SocketTimeoutException) {
+                            pendingOutboundFailure.get()?.let { throw IOException(it.detail) }
                             if (heartbeat.isExpired(System.nanoTime())) {
                                 emitTelemetry(
                                     "heartbeat_timeout",
@@ -851,15 +859,21 @@ class StreamClient(
                     Log.e(TAG, "❌ Read error", e)
                 }
             } finally {
-                completeConnectionEndNow(terminalFailure)
+                completeConnectionEndNow(preferredTerminalFailure(terminalFailure))
             }
         }
+
+    private fun preferredTerminalFailure(inboundFailure: SessionFailure): SessionFailure {
+        if (!inboundFailure.retryable || inboundFailure.intentional) return inboundFailure
+        return pendingOutboundFailure.get() ?: inboundFailure
+    }
 
     private fun receiveV1Frame(input: DataInputStream) {
         val firstChannel =
             try {
                 input.read()
             } catch (_: SocketTimeoutException) {
+                pendingOutboundFailure.get()?.let { throw IOException(it.detail) }
                 if (heartbeat.isExpired(System.nanoTime())) {
                     throw SessionProtocolException(SessionFailure.heartbeat("heartbeat timeout"))
                 }

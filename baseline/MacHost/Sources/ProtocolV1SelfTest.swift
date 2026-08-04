@@ -130,8 +130,13 @@ enum ProtocolV1SelfTest {
     private static func testNegotiationAndMediaGate(failures: inout [String]) {
         do {
             let session = makeSession()
+            let preparation = session.handleControl(try clientHello().serializedData())
+            guard preparation.contains(where: { if case .codecNegotiated = $0 { true } else { false } }) else {
+                failures.append("ClientHello did not request codec preparation")
+                return
+            }
             let helloResponses = try responseEnvelopes(
-                session.handleControl(try clientHello().serializedData())
+                session.completeCodecNegotiation()
             )
             guard helloResponses.count == 2,
                   case .hostHello? = helloResponses[0].payload,
@@ -172,6 +177,11 @@ enum ProtocolV1SelfTest {
                 failures.append("media escaped before VideoConfigResult")
                 return
             }
+            session.updateDisplayGeometry(width: 1920, height: 1080, rotation: 270)
+            guard session.makeDisplayChanged().isEmpty else {
+                failures.append("DisplayChanged escaped before VideoConfigResult")
+                return
+            }
             var result = VSVideoConfigResult()
             result.configEpoch = config.configEpoch
             result.streamID = config.streamID
@@ -180,6 +190,12 @@ enum ProtocolV1SelfTest {
                 id: 4,
                 payload: .videoConfigResult(result)
             ).serializedData())
+            let postNegotiation = try responseEnvelopes(actions)
+            guard case .displayChanged(let changed)? = postNegotiation.first?.payload,
+                  changed.rotationDegrees == 270 else {
+                failures.append("negotiation-time rotation was not coalesced after VideoConfigResult")
+                return
+            }
             guard actions.contains(where: { if case .connectionReady = $0 { true } else { false } }) else {
                 failures.append("accepted VideoConfig did not ready the connection")
                 return
@@ -214,6 +230,7 @@ enum ProtocolV1SelfTest {
 
             let staleSession = makeSession()
             _ = staleSession.handleControl(try clientHello().serializedData())
+            _ = staleSession.completeCodecNegotiation()
             var ping = VSPing()
             ping.sequence = 1
             var stale = envelope(id: 2, payload: .ping(ping))
@@ -375,6 +392,7 @@ enum ProtocolV1SelfTest {
     private static func readySession() throws -> ProtocolV1SessionCoordinator {
         let session = makeSession()
         _ = session.handleControl(try clientHello().serializedData())
+        _ = session.completeCodecNegotiation()
         _ = session.handleControl(try envelope(
             id: 2,
             payload: .startDisplayRequest(displayRequest())

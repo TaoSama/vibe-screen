@@ -185,7 +185,7 @@ enum TransportSelfTest {
                 state.failure
             )
         }
-        let protocolV1Lifecycle = runProtocolV1Lifecycle()
+        let protocolV1Lifecycle = runProtocolV1Lifecycle() && runProtocolV1PreReadyStops()
         let passed = snapshot.0 && snapshot.1 && snapshot.2 && snapshot.3 &&
             snapshot.4 && snapshot.5 == 1 && snapshot.6 == nil &&
             protocolV1Lifecycle
@@ -281,35 +281,181 @@ enum TransportSelfTest {
                 return false
             }
 
-            server.updateRotation(270)
-            guard case .displayChanged(let changed)? = try client.readEnvelope().payload,
-                  changed.rotationDegrees == 270 else {
+            var ping = VSPing()
+            ping.sequence = 99
+            let rotationBarrierEntered = DispatchSemaphore(value: 0)
+            let releaseRotationBarrier = DispatchSemaphore(value: 0)
+            server.suspendNetworkQueueForSelfTest(
+                entered: rotationBarrierEntered,
+                resume: releaseRotationBarrier
+            )
+            guard rotationBarrierEntered.wait(timeout: .now() + 2) == .success else {
                 server.stop()
                 return false
             }
-            var ping = VSPing()
-            ping.sequence = 99
             try client.sendEnvelope(envelope(
                 id: 5,
                 payload: .ping(ping),
                 sessionID: sessionID,
                 sessionEpoch: sessionEpoch
             ))
-            guard case .pong(let pong)? = try client.readEnvelope().payload,
-                  pong.sequence == 99 else {
+            Thread.sleep(forTimeInterval: 0.05)
+            server.updateRotation(270)
+            releaseRotationBarrier.signal()
+            let pongEnvelope = try client.readEnvelope()
+            let rotationEnvelope = try client.readEnvelope()
+            guard pongEnvelope.messageID < rotationEnvelope.messageID,
+                  pongEnvelope.sessionID == sessionID,
+                  rotationEnvelope.sessionID == sessionID,
+                  case .pong(let pong)? = pongEnvelope.payload,
+                  pong.sequence == 99,
+                  case .displayChanged(let changed)? = rotationEnvelope.payload,
+                  changed.rotationDegrees == 270 else {
                 server.stop()
                 return false
             }
 
-            server.stop()
-            guard case .disconnectNotice(let notice)? = try client.readEnvelope().payload,
+            ping.sequence = 100
+            let stopBarrierEntered = DispatchSemaphore(value: 0)
+            let releaseStopBarrier = DispatchSemaphore(value: 0)
+            server.suspendNetworkQueueForSelfTest(
+                entered: stopBarrierEntered,
+                resume: releaseStopBarrier
+            )
+            guard stopBarrierEntered.wait(timeout: .now() + 2) == .success else {
+                server.stop()
+                return false
+            }
+            try client.sendEnvelope(envelope(
+                id: 6,
+                payload: .ping(ping),
+                sessionID: sessionID,
+                sessionEpoch: sessionEpoch
+            ))
+            Thread.sleep(forTimeInterval: 0.05)
+            let stopReturned = DispatchSemaphore(value: 0)
+            DispatchQueue.global().async {
+                server.stop()
+                stopReturned.signal()
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+            releaseStopBarrier.signal()
+            let finalPong = try client.readEnvelope()
+            let shutdown = try client.readEnvelope()
+            guard finalPong.messageID < shutdown.messageID,
+                  finalPong.sessionID == sessionID,
+                  shutdown.sessionID == sessionID,
+                  case .pong(let pong)? = finalPong.payload,
+                  pong.sequence == 100,
+                  case .disconnectNotice(let notice)? = shutdown.payload,
                   notice.reasonCode == "host_shutdown",
                   !notice.mayResume else { return false }
+            guard stopReturned.wait(timeout: .now() + 2) == .success else { return false }
             return true
         } catch {
             server.stop()
             return false
         }
+    }
+
+    private enum ProtocolStopStage: CaseIterable {
+        case upgraded
+        case preparingCodec
+        case awaitingDisplay
+        case awaitingVideoResult
+    }
+
+    private static func runProtocolV1PreReadyStops() -> Bool {
+        for (offset, stage) in ProtocolStopStage.allCases.enumerated() {
+            let port = UInt16(55_434 + offset)
+            let server = StreamingServer(port: port)
+            let codecRequested = DispatchSemaphore(value: 0)
+            server.setDisplaySize(width: 1920, height: 1080, rotation: 90)
+            server.onCodecNegotiated = { _, _, completion in
+                codecRequested.signal()
+                if stage != .preparingCodec {
+                    completion(NegotiatedDisplayConfiguration(width: 1920, height: 1080, rotation: 90))
+                }
+            }
+            do {
+                try server.start()
+                let client = try BlockingProtocolClient(port: port)
+                defer { client.cancel() }
+                try client.send(Data([ProtocolV1Upgrade.offer]))
+                guard try client.readExactly(2) == ProtocolV1Upgrade.acknowledgement else {
+                    server.stop()
+                    return false
+                }
+
+                var sessionID = Data()
+                var sessionEpoch: UInt64 = 0
+                if stage != .upgraded {
+                    var range = VSProtocolRange()
+                    range.minimum = 1
+                    range.maximum = 1
+                    var hello = VSClientHello()
+                    hello.supportedProtocols = range
+                    hello.deviceID = "stop-stage"
+                    hello.deviceName = "Stop Stage"
+                    hello.capabilities = [.touch, .telemetry]
+                    hello.requiredCapabilities = [.touch]
+                    hello.codecs = [.hevc]
+                    hello.transports = [.usb]
+                    try client.sendEnvelope(envelope(id: 1, payload: .clientHello(hello), scoped: false))
+                    guard codecRequested.wait(timeout: .now() + 2) == .success else {
+                        server.stop()
+                        return false
+                    }
+                    if stage != .preparingCodec {
+                        _ = try client.readEnvelope()
+                        let accepted = try client.readEnvelope()
+                        guard case .sessionAccepted(let session)? = accepted.payload else {
+                            server.stop()
+                            return false
+                        }
+                        sessionID = session.sessionID
+                        sessionEpoch = session.sessionEpoch
+                    }
+                }
+
+                if stage == .awaitingVideoResult {
+                    try client.sendEnvelope(envelope(
+                        id: 2,
+                        payload: .listDisplaysRequest(VSListDisplaysRequest()),
+                        sessionID: sessionID,
+                        sessionEpoch: sessionEpoch
+                    ))
+                    _ = try client.readEnvelope()
+                    var start = VSStartDisplayRequest()
+                    start.mode = .existing
+                    try client.sendEnvelope(envelope(
+                        id: 3,
+                        payload: .startDisplayRequest(start),
+                        sessionID: sessionID,
+                        sessionEpoch: sessionEpoch
+                    ))
+                    _ = try client.readEnvelope()
+                    _ = try client.readEnvelope()
+                }
+
+                server.stop()
+                let shutdown = try client.readEnvelope()
+                guard case .disconnectNotice(let notice)? = shutdown.payload,
+                      notice.reasonCode == "host_shutdown",
+                      !notice.mayResume else { return false }
+                let expectedID: UInt64
+                switch stage {
+                case .upgraded, .preparingCodec: expectedID = 1
+                case .awaitingDisplay: expectedID = 3
+                case .awaitingVideoResult: expectedID = 6
+                }
+                guard shutdown.messageID == expectedID else { return false }
+            } catch {
+                server.stop()
+                return false
+            }
+        }
+        return true
     }
 
     private static func envelope(
