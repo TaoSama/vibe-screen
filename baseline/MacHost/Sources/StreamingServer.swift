@@ -779,10 +779,16 @@ class StreamingServer: EncodedFrameSink {
     }
 
     func setDisplaySize(width: Int, height: Int, rotation: Int = 0) {
-        displayWidth = width
-        displayHeight = height
-        self.rotation = rotation
-        protocolV1Session?.updateDisplayGeometry(width: width, height: height, rotation: rotation)
+        performOnNetworkQueue {
+            self.displayWidth = width
+            self.displayHeight = height
+            self.rotation = rotation
+            self.protocolV1Session?.updateDisplayGeometry(
+                width: width,
+                height: height,
+                rotation: rotation
+            )
+        }
     }
 
     func setProtocolV1VideoConfiguration(
@@ -792,11 +798,21 @@ class StreamingServer: EncodedFrameSink {
         displayName: String,
         isVirtual: Bool
     ) {
-        protocolV1FramesPerSecond = UInt32(clamping: framesPerSecond)
-        protocolV1BitrateKbps = UInt32(clamping: bitrateKbps)
-        protocolV1DisplayID = displayID
-        protocolV1DisplayName = displayName
-        protocolV1DisplayIsVirtual = isVirtual
+        performOnNetworkQueue {
+            self.protocolV1FramesPerSecond = UInt32(clamping: framesPerSecond)
+            self.protocolV1BitrateKbps = UInt32(clamping: bitrateKbps)
+            self.protocolV1DisplayID = displayID
+            self.protocolV1DisplayName = displayName
+            self.protocolV1DisplayIsVirtual = isVirtual
+        }
+    }
+
+    private func performOnNetworkQueue(_ operation: @escaping () -> Void) {
+        if DispatchQueue.getSpecific(key: Self.networkQueueKey) == ObjectIdentifier(self) {
+            operation()
+        } else {
+            networkQueue.sync(execute: operation)
+        }
     }
 
     /// Update rotation and send to connected client
