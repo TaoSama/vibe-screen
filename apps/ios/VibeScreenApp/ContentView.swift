@@ -48,11 +48,13 @@ struct ContentView: View {
             } footer: {
                 Text("首次连接时请允许本地网络访问。高级功能只有在双方协商且本地策略允许后启用。")
             }
-            Section("唤醒已授权主机") {
+            Section {
                 TextField("MAC 地址", text: $wakeMAC)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
                 Button("发送 Wake-on-LAN") { model.wake(macAddress: wakeMAC) }
+            } header: {
+                Text("唤醒已授权主机")
             } footer: {
                 Text("仅在此前协商过设备身份且本地策略允许时发送；Magic Packet 本身不提供认证。")
             }
@@ -157,11 +159,13 @@ private struct AdvancedControlsView: View {
                     }
                 }
             }
-            Section("唤醒已配对 Mac") {
+            Section {
                 TextField("MAC 地址，例如 00:11:22:33:44:55", text: $wakeMAC)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
                 Button("发送 Wake-on-LAN") { model.wake(macAddress: wakeMAC) }
+            } header: {
+                Text("唤醒已配对 Mac")
             } footer: {
                 Text("Magic Packet 本身不提供认证，只允许当前已配对会话且本地策略未禁用时发送。")
             }
