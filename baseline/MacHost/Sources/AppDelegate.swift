@@ -1385,7 +1385,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Scale an existing display into the requested stream bounds without
     /// stretching it. VideoToolbox requires even dimensions for reliable
     /// hardware H.264/HEVC operation, so both axes are rounded down to even.
-    static func aspectFitStreamSize(
+    nonisolated static func aspectFitStreamSize(
         sourceWidth: Int,
         sourceHeight: Int,
         maximumWidth: Int,
