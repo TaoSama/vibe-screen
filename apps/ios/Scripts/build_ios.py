@@ -92,6 +92,7 @@ def simulator_test() -> None:
         *action_arguments("simulator-test"),
         "-destination",
         available_iphone_destination(),
+        "ONLY_ACTIVE_ARCH=YES",
         "test",
     ])
 
