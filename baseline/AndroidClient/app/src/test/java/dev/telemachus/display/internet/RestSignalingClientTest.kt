@@ -67,6 +67,7 @@ class RestSignalingClientTest {
 
         assertTrue("incoming signaling events timed out", received.await(5, TimeUnit.SECONDS))
         assertTrue("outgoing signaling messages timed out", server.posted.await(5, TimeUnit.SECONDS))
+        assertTrue("poll cursor did not advance", server.cursorAdvanced.await(5, TimeUnit.SECONDS))
         client.close()
         assertEquals(listOf("v=0\r\noffer"), offers)
         assertEquals(listOf(SignalingIceCandidate("candidate:host", "0", 0)), candidates)
@@ -78,11 +79,6 @@ class RestSignalingClientTest {
         assertEquals("0", documents[1]["candidate"].asJsonObject["sdp_mid"].asString)
         assertEquals(0, documents[1]["candidate"].asJsonObject["sdp_mline_index"].asInt)
         assertEquals(null, asyncFailure.get())
-        repeat(50) {
-            if (server.requestPaths.any { path -> "after=2" in path }) return@repeat
-            Thread.sleep(10)
-        }
-        assertTrue(server.requestPaths.any { "after=2" in it })
     }
 
     @Test
@@ -136,8 +132,8 @@ private class MiniSignalingServer(
     private val closed = AtomicBoolean(false)
     private val servedEvents = AtomicBoolean(false)
     val postedBodies = Collections.synchronizedList(mutableListOf<String>())
-    val requestPaths = Collections.synchronizedList(mutableListOf<String>())
     val posted = CountDownLatch(2)
+    val cursorAdvanced = CountDownLatch(1)
     val port: Int = socket.localPort
     private val thread =
         Thread(::serve, "signaling-test-server").apply {
@@ -182,7 +178,7 @@ private class MiniSignalingServer(
         }
 
         val path = request.split(' ')[1]
-        requestPaths += path
+        if (path.startsWith("/v1/sessions/session-1/events") && "after=2" in path) cursorAdvanced.countDown()
         val responseBody =
             when {
                 path.startsWith("/v1/sessions/session-1/events") -> {
