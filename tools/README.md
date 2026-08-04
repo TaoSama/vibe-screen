@@ -50,6 +50,22 @@ For custom sampling, run `python3 -m vibescreen_evidence.soak --help` with
 commands must be supplied explicitly because interrupting ADB or the host is a
 destructive test action.
 
+After a run, derive exact-window metrics from its three raw artifacts:
+
+```sh
+PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report \
+  --summary .build/evidence/soak-2h/summary.json \
+  --samples .build/evidence/soak-2h/samples.jsonl \
+  --host-telemetry .build/evidence/soak-2h/host-telemetry.jsonl \
+  --output .build/evidence/soak-2h/exact-window-report.json
+```
+
+The report filters both sample and Host telemetry timestamps to the inclusive
+`started_at`/`finished_at` window recorded by the summary. It preserves source
+errors, reports malformed or empty inputs, and computes full-window and
+second-half RSS regression slopes. Those slopes are descriptive evidence; the
+tool deliberately does not turn them into a no-leak verdict.
+
 ## Latency evidence
 
 Prepare a CSV with either `latency_ms`, or `start_frame,end_frame,camera_fps`
