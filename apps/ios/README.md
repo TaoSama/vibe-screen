@@ -43,7 +43,7 @@ apps/ios/Scripts/generate-protocol.sh
 git diff -- apps/ios/Sources/VibeScreenProtocol
 ```
 
-With full Xcode selected, run the App-hosted XCTest on an available iPhone
+With full Xcode selected, run the XCTest UI smoke test on an available iPhone
 simulator and create an unsigned Release archive:
 
 ```bash
