@@ -4,7 +4,7 @@ EVIDENCE_SERIAL ?= 100.72.246.116:5555
 EVIDENCE_DIR ?= .build/evidence
 EVIDENCE_PACKAGE ?= dev.telemachus.display
 
-.PHONY: protocol baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-android-test baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test evidence-device-info soak-30m soak-2h soak-8h
+.PHONY: protocol baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-android-test baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test evidence-device-info soak-30m soak-2h soak-8h
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -40,6 +40,9 @@ baseline-android-dependency-audit:
 
 evidence-tools-test:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest discover -s tools/tests -v
+
+release-tools-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -v
 
 evidence-device-info:
 	mkdir -p $(EVIDENCE_DIR)

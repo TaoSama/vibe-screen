@@ -4,9 +4,10 @@ There is no stable supported release yet. Security fixes should target the
 active development branch and include regression evidence.
 
 Do not publish pairing credentials, tokens, personal screen captures, device
-identifiers, or private network details in a public issue. Use the hosting
-platform's private security-reporting channel when one is configured; until
-then, contact the maintainers privately before disclosing details.
+identifiers, or private network details in a public issue. Use
+[GitHub private vulnerability reporting](https://github.com/TaoSama/vibe-screen/security/advisories/new).
+If that private form is unavailable, do not open a public issue; repository
+owners must enable the channel before accepting a public preview release.
 
 ## Current boundary
 

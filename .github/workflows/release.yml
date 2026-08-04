@@ -1,0 +1,219 @@
+name: Development preview release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      commit: ${{ steps.release.outputs.commit }}
+      created: ${{ steps.release.outputs.created }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: release
+        name: Validate tag and release identity
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          commit="$(git rev-parse HEAD)"
+          test "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$commit"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$commit" refs/remotes/origin/main
+          created="$(git show -s --format=%cI "$commit")"
+          python3 scripts/prepare_release.py \
+            --version "$version" \
+            --tag "$RELEASE_TAG" \
+            --commit "$commit" \
+            --created "$created" \
+            --validate-only
+          {
+            echo "version=$version"
+            echo "commit=$commit"
+            echo "created=$created"
+          } >> "$GITHUB_OUTPUT"
+
+  macos:
+    needs: validate
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Build and test macOS host
+        run: |
+          make baseline-macos-build
+          make baseline-macos-self-test
+          make baseline-macos-test
+      - name: Package ad-hoc signed, unnotarized macOS preview
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: python3 scripts/package_macos.py --version "$RELEASE_VERSION"
+      - name: Verify embedded macOS version
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          actual="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
+            .build/release-artifacts/Telemachus.app/Contents/Info.plist)"
+          test "$actual" = "$RELEASE_VERSION"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: macos-ad-hoc-signed
+          path: .build/release-artifacts/Telemachus-macos-*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  android:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+      - name: Install pinned Android SDK components
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+      - name: Test, lint, audit dependencies, and build debug APK
+        working-directory: baseline/AndroidClient
+        env:
+          TELEMACHUS_VERSION: ${{ needs.validate.outputs.version }}
+        run: ./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug auditReleaseDependencies
+      - name: Verify and collect Android artifacts
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          apk="baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk"
+          actual="$(apkanalyzer manifest version-name "$apk")"
+          test "$actual" = "$RELEASE_VERSION"
+          mkdir -p .build/android-release
+          cp "$apk" ".build/android-release/Telemachus-android-${RELEASE_VERSION}-debug.apk"
+          cp baseline/AndroidClient/app/build/generated/sbom/android-runtime.spdx.json \
+            .build/android-release/
+          cp baseline/AndroidClient/app/build/generated/dependency-license-report/ANDROID_RUNTIME_DEPENDENCY_LICENSES.md \
+            .build/android-release/
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-debug-signed
+          path: .build/android-release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  ios-simulator:
+    needs: validate
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Verify generated Protocol v1 bindings are current
+        run: |
+          apps/ios/Scripts/generate-protocol.sh
+          git diff --exit-code -- apps/ios/Sources/VibeScreenProtocol
+      - name: Build and self-test iOS core modules
+        run: |
+          swift package --package-path apps/ios resolve
+          swift build --package-path apps/ios
+          swift run --package-path apps/ios vibescreen-ios-selftest
+      - name: Run iOS application tests on an available simulator
+        run: apps/ios/Scripts/build_ios.py --action simulator-test
+      - name: Build unsigned iOS Simulator application
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          xcodebuild \
+            -project apps/ios/VibeScreen.xcodeproj \
+            -scheme VibeScreen \
+            -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath .build/ios-derived-data \
+            CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="$RELEASE_VERSION" \
+            CURRENT_PROJECT_VERSION=1 \
+            build
+      - name: Verify and archive iOS Simulator artifact
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          app=".build/ios-derived-data/Build/Products/Release-iphonesimulator/VibeScreen.app"
+          actual="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")"
+          test "$actual" = "$RELEASE_VERSION"
+          python3 scripts/archive_artifact.py \
+            --input "$app" \
+            --output ".build/VibeScreen-ios-simulator-${RELEASE_VERSION}.zip"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ios-unsigned-simulator
+          path: .build/VibeScreen-ios-simulator-*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-draft:
+    needs: [validate, macos, android, ios-simulator]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: .build/downloaded-release
+          merge-multiple: true
+      - name: Assemble checksums, notices, notes, and SPDX SBOM
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}
+          RELEASE_CREATED: ${{ needs.validate.outputs.created }}
+        run: |
+          python3 scripts/prepare_release.py \
+            --version "$RELEASE_VERSION" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --created "$RELEASE_CREATED" \
+            --artifacts-dir .build/downloaded-release \
+            --output-dir .build/publish-release
+          cd .build/publish-release
+          shasum -a 256 -c SHA256SUMS
+      - name: Create draft prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            --verify-tag \
+            --draft \
+            --prerelease \
+            --title "Vibe Screen $RELEASE_VERSION — development preview" \
+            --notes-file .build/publish-release/RELEASE_NOTES.md \
+            .build/publish-release/SHA256SUMS \
+            .build/publish-release/Telemachus-android-*.apk \
+            .build/publish-release/Telemachus-macos-*.zip \
+            .build/publish-release/VibeScreen-ios-simulator-*.zip \
+            .build/publish-release/vibe-screen-*.spdx.json \
+            .build/publish-release/vibe-screen-*-notices.zip

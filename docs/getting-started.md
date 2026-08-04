@@ -64,6 +64,12 @@ The Debug APK uses the local Android debug certificate and is not a public
 release artifact. A Developer ID-signed and notarized macOS build is also not
 provided yet.
 
+Version tags create draft development-prerelease artifacts for maintainer
+review. They retain these same signing limitations and add an unsigned iOS
+Simulator-only build, aggregate checksums, an SPDX SBOM, and third-party
+notices. See the [release runbook](runbook/releasing.md); these drafts are not a
+stable distribution channel.
+
 ## Install and run over USB
 
 Replace the serial below with the exact value from `adb devices -l`.
@@ -116,5 +122,7 @@ may be observable on the network. Do not use it on public or hostile networks.
 Android release builds require `TELEMACHUS_VERSION` and the four
 `TELEMACHUS_KEYSTORE_*` / `TELEMACHUS_KEY_*` signing variables defined in
 `baseline/AndroidClient/app/build.gradle.kts`. Never commit a keystore or its
-password. Public release signing, macOS notarization, and release checksums are
-maintainer responsibilities and remain release gates.
+password. Public release signing and macOS notarization are not performed by
+the preview workflow. The workflow generates unsigned SHA-256 checksum metadata
+for its own draft artifacts; production signing and notarization remain
+separate maintainer gates.
