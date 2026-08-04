@@ -29,26 +29,35 @@ extension StreamViewModel {
     }
 
     func handleControl(_ envelope: VSEnvelope) throws {
-        if envelope.hasHostHello { pendingHostHello = envelope.hostHello }
-        if envelope.hasSessionAccepted { try acceptSession(envelope.sessionAccepted) }
-        if envelope.hasSessionRejected { throw ProtocolClientError.rejected(envelope.sessionRejected.message) }
-        if envelope.hasVideoConfig { handleVideoConfig(envelope.videoConfig) }
-        if envelope.hasAudioConfig { try handleAudioConfig(envelope.audioConfig) }
-        if envelope.hasListDisplaysResponse { startDisplays(envelope.listDisplaysResponse.displays) }
-        if envelope.hasStartDisplayResponse { try bindDisplay(envelope.startDisplayResponse) }
-        if envelope.hasClipboardContent, negotiatedCapabilities.contains(.clipboard) {
-            clipboard.stage(envelope.clipboardContent)
-        }
-        if envelope.hasFileOffer, negotiatedCapabilities.contains(.fileTransfer) {
+        guard let payload = envelope.payload else { return }
+        switch payload {
+        case .hostHello(let hello):
+            pendingHostHello = hello
+        case .sessionAccepted(let accepted):
+            try acceptSession(accepted)
+        case .sessionRejected(let rejected):
+            throw ProtocolClientError.rejected(rejected.message)
+        case .videoConfig(let config):
+            handleVideoConfig(config)
+        case .audioConfig(let config):
+            try handleAudioConfig(config)
+        case .listDisplaysResponse(let response):
+            startDisplays(response.displays)
+        case .startDisplayResponse(let response):
+            try bindDisplay(response)
+        case .clipboardContent(let content):
+            if negotiatedCapabilities.contains(.clipboard) { clipboard.stage(content) }
+        case .fileOffer(let offer):
+            guard negotiatedCapabilities.contains(.fileTransfer) else { return }
             let maximum = negotiatedLimits.maximumFileBytes == 0 ?
                 managedConfiguration.policy.maximumFileBytes :
                 min(negotiatedLimits.maximumFileBytes, managedConfiguration.policy.maximumFileBytes)
-            if envelope.fileOffer.byteLength <= maximum {
-                pendingFileOffers[envelope.fileOffer.transferID] = envelope.fileOffer
-                pendingFileName = envelope.fileOffer.fileName
+            if offer.byteLength <= maximum {
+                pendingFileOffers[offer.transferID] = offer
+                pendingFileName = offer.fileName
             } else {
                 var rejection = VSFileAccept()
-                rejection.transferID = envelope.fileOffer.transferID
+                rejection.transferID = offer.transferID
                 rejection.accepted = false
                 rejection.rejectionReason = "negotiated_file_limit_exceeded"
                 sendInBackground(factory.fileAccept(
@@ -57,19 +66,31 @@ extension StreamViewModel {
                     sessionEpoch: state.sessionEpoch
                 ))
             }
-        }
-        if envelope.hasFileAccept { handleFileAccept(envelope.fileAccept) }
-        if envelope.hasFileTransferCancel { cancelLocalFileTransfer(transferID: envelope.fileTransferCancel.transferID) }
-        if envelope.hasFileTransferComplete {
-            outgoingFiles.removeValue(forKey: envelope.fileTransferComplete.transferID)?.cancel()
-        }
-        if envelope.hasHostActionCatalog, negotiatedCapabilities.contains(.hostActions) {
-            availableHostActions = envelope.hostActionCatalog.actions.map(\.actionID)
-        }
-        if envelope.hasManagedPolicyStatus,
-           negotiatedCapabilities.contains(.managedConfiguration) {
-            managedConfiguration.applyRemote(envelope.managedPolicyStatus)
-            enforceCurrentPolicy()
+        case .fileAccept(let acceptance):
+            handleFileAccept(acceptance)
+        case .fileTransferCancel(let cancellation):
+            cancelLocalFileTransfer(transferID: cancellation.transferID)
+        case .fileTransferComplete(let completion):
+            outgoingFiles.removeValue(forKey: completion.transferID)?.cancel()
+        case .hostActionCatalog(let catalog):
+            if negotiatedCapabilities.contains(.hostActions) {
+                availableHostActions = catalog.actions.map(\.actionID)
+            }
+        case .managedPolicyStatus(let status):
+            if negotiatedCapabilities.contains(.managedConfiguration) {
+                managedConfiguration.applyRemote(status)
+                enforceCurrentPolicy()
+            }
+        case .clientHello, .ping, .pong, .resumeSessionRequest, .resumeSessionResult,
+             .disconnectNotice, .pairingOffer, .pairingRequest, .pairingResult, .deviceRevoked,
+             .keyRotationRequest, .keyRotationResult, .deviceRevocation, .trafficKeyUpdate,
+             .trafficKeyAck, .listDisplaysRequest, .startDisplayRequest, .stopDisplay,
+             .displayChanged, .videoConfigResult, .requestKeyframe, .videoStreamEnded,
+             .touchEvent, .pointerEvent, .scrollEvent, .keyEvent, .inputAck, .streamStats,
+             .transportStats, .errorReport, .protocolError, .encryptedControlPacket,
+             .audioConfigResult, .clipboardOffer, .clipboardRequest, .fileTransferProgress,
+             .hostActionInvoke, .hostActionResult, .wakeHostRequest, .wakeHostResult:
+            break
         }
     }
 
