@@ -436,7 +436,7 @@ def validate_peer_output(output: str, *, mode: str, slice_name: str) -> str:
         raise E2EFailure(f"macOS product peer did not prove a {mode} candidate pair:\n{output}")
     required_product_markers = (
         "productSession=true", "protocolV1=true", "epoch=1",
-        "configEpoch=1", "keyframe=true", "delta=true", "input=true",
+        "configEpoch=2", "rotation=90", "keyframe=true", "delta=true", "input=true",
     )
     missing_product_markers = [marker for marker in required_product_markers if marker not in output]
     if missing_product_markers:
