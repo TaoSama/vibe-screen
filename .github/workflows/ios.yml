@@ -1,0 +1,38 @@
+name: iOS core checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify generated Protocol v1 bindings are current
+        run: |
+          apps/ios/Scripts/generate-protocol.sh
+          git diff --exit-code -- apps/ios/Sources/VibeScreenProtocol
+      - name: Resolve pinned dependencies
+        run: swift package --package-path apps/ios resolve
+      - name: Build native protocol, session, transport, and video modules
+        run: swift build --package-path apps/ios
+      - name: Run deterministic self-test
+        run: swift run --package-path apps/ios vibescreen-ios-selftest
+
+  simulator-build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build unsigned iPhone/iPad simulator application
+        run: >-
+          xcodebuild
+          -project apps/ios/VibeScreen.xcodeproj
+          -scheme VibeScreen
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO
+          build

@@ -1,0 +1,15 @@
+{
+  "listen_address": "127.0.0.1:8088",
+  "session_ttl_seconds": 300,
+  "max_session_ttl_seconds": 900,
+  "max_active_sessions": 10000,
+  "session_creates_per_minute": 60,
+  "messages_per_minute": 120,
+  "max_request_body_bytes": 131072,
+  "max_sdp_bytes": 65536,
+  "max_candidate_bytes": 4096,
+  "max_candidates_per_role": 64,
+  "max_wait_seconds": 25,
+  "max_waiters_per_role": 1,
+  "cleanup_interval_seconds": 30
+}

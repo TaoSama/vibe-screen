@@ -1,0 +1,207 @@
+syntax = "proto3";
+
+package vibescreen.protocol.v1;
+
+import "vibescreen/protocol/v1/common.proto";
+
+option java_multiple_files = true;
+option java_package = "dev.vibescreen.protocol.v1";
+option swift_prefix = "VS";
+
+message ResourceLimits {
+  uint32 maximum_clients = 1;
+  uint32 maximum_displays = 2;
+  uint32 maximum_video_streams = 3;
+  uint32 maximum_audio_streams = 4;
+  uint64 maximum_clipboard_bytes = 5;
+  uint64 maximum_file_bytes = 6;
+  uint32 maximum_file_chunk_bytes = 7;
+}
+
+enum ColorPrimaries {
+  COLOR_PRIMARIES_UNSPECIFIED = 0;
+  COLOR_PRIMARIES_BT709 = 1;
+  COLOR_PRIMARIES_DISPLAY_P3 = 2;
+  COLOR_PRIMARIES_BT2020 = 3;
+}
+
+enum TransferFunction {
+  TRANSFER_FUNCTION_UNSPECIFIED = 0;
+  TRANSFER_FUNCTION_SRGB = 1;
+  TRANSFER_FUNCTION_BT709 = 2;
+  TRANSFER_FUNCTION_PQ = 3;
+  TRANSFER_FUNCTION_HLG = 4;
+}
+
+enum MatrixCoefficients {
+  MATRIX_COEFFICIENTS_UNSPECIFIED = 0;
+  MATRIX_COEFFICIENTS_BT709 = 1;
+  MATRIX_COEFFICIENTS_BT2020_NON_CONSTANT = 2;
+}
+
+message ColorDescription {
+  ColorPrimaries primaries = 1;
+  TransferFunction transfer_function = 2;
+  MatrixCoefficients matrix_coefficients = 3;
+  bool full_range = 4;
+  uint32 bit_depth = 5;
+}
+
+message VideoDecodeCapability {
+  Codec codec = 1;
+  uint32 maximum_width = 2;
+  uint32 maximum_height = 3;
+  uint32 maximum_frames_per_second = 4;
+  repeated uint32 bit_depths = 5;
+  repeated TransferFunction transfer_functions = 6;
+}
+
+message InputTarget {
+  string display_id = 1;
+  uint64 stream_id = 2;
+}
+
+enum AudioCodec {
+  AUDIO_CODEC_UNSPECIFIED = 0;
+  AUDIO_CODEC_PCM_S16LE = 1;
+  AUDIO_CODEC_AAC_LC = 2;
+  AUDIO_CODEC_OPUS = 3;
+}
+
+message AudioConfig {
+  uint64 stream_id = 1;
+  uint64 config_epoch = 2;
+  AudioCodec codec = 3;
+  uint32 sample_rate_hz = 4;
+  uint32 channel_count = 5;
+  uint32 frames_per_packet = 6;
+}
+
+message AudioConfigResult {
+  uint64 stream_id = 1;
+  uint64 config_epoch = 2;
+  bool accepted = 3;
+  string rejection_reason = 4;
+}
+
+message AudioPacketHeader {
+  uint64 stream_id = 1;
+  uint64 session_epoch = 2;
+  uint64 config_epoch = 3;
+  uint64 sequence = 4;
+  uint32 frame_count = 5;
+  uint32 payload_length = 6;
+}
+
+message ClipboardOffer {
+  bytes change_id = 1;
+  string origin_device_id = 2;
+  string mime_type = 3;
+  uint64 byte_length = 4;
+  bytes sha256 = 5;
+}
+
+message ClipboardRequest {
+  bytes change_id = 1;
+}
+
+message ClipboardContent {
+  bytes change_id = 1;
+  string origin_device_id = 2;
+  string mime_type = 3;
+  bytes content = 4;
+  bytes sha256 = 5;
+}
+
+message FileOffer {
+  bytes transfer_id = 1;
+  string file_name = 2;
+  string mime_type = 3;
+  uint64 byte_length = 4;
+  bytes sha256 = 5;
+}
+
+message FileAccept {
+  bytes transfer_id = 1;
+  bool accepted = 2;
+  uint32 maximum_chunk_bytes = 3;
+  string rejection_reason = 4;
+}
+
+message FileChunkHeader {
+  bytes transfer_id = 1;
+  uint64 offset = 2;
+  uint32 payload_length = 3;
+  uint64 session_epoch = 4;
+  bytes chunk_sha256 = 5;
+  bool final = 6;
+}
+
+message FileTransferProgress {
+  bytes transfer_id = 1;
+  uint64 received_bytes = 2;
+}
+
+message FileTransferCancel {
+  bytes transfer_id = 1;
+  string reason_code = 2;
+}
+
+message FileTransferComplete {
+  bytes transfer_id = 1;
+  bool accepted = 2;
+  bytes sha256 = 3;
+  string rejection_reason = 4;
+}
+
+message HostActionDescriptor {
+  string action_id = 1;
+  string localized_name = 2;
+  bool requires_confirmation = 3;
+}
+
+message HostActionCatalog {
+  repeated HostActionDescriptor actions = 1;
+}
+
+message HostActionInvoke {
+  string action_id = 1;
+  bytes invocation_id = 2;
+  InputTarget target = 3;
+}
+
+message HostActionResult {
+  bytes invocation_id = 1;
+  bool accepted = 2;
+  string rejection_reason = 3;
+}
+
+message WakeHostRequest {
+  bytes request_id = 1;
+  bytes target_mac_address = 2;
+  bytes secure_on_password = 3;
+  string host_id = 4;
+  string device_id = 5;
+  string key_id = 6;
+  uint64 issued_at_unix_seconds = 7;
+  uint64 expires_at_unix_seconds = 8;
+  bytes nonce = 9;
+  bytes signature = 10;
+}
+
+message WakeHostResult {
+  bytes request_id = 1;
+  bool accepted = 2;
+  string rejection_reason = 3;
+}
+
+message ManagedPolicyStatus {
+  bool managed = 1;
+  bool clipboard_allowed = 2;
+  bool file_transfer_allowed = 3;
+  bool audio_allowed = 4;
+  bool wake_allowed = 5;
+  uint64 maximum_file_bytes = 6;
+  bool custom_gestures_allowed = 7;
+  bool host_actions_allowed = 8;
+}

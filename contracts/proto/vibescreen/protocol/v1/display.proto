@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package vibescreen.protocol.v1;
+
+import "vibescreen/protocol/v1/common.proto";
+
+option java_multiple_files = true;
+option java_package = "dev.vibescreen.protocol.v1";
+option swift_prefix = "VS";
+
+enum DisplayMode {
+  DISPLAY_MODE_UNSPECIFIED = 0;
+  DISPLAY_MODE_EXTEND = 1;
+  DISPLAY_MODE_MIRROR = 2;
+  DISPLAY_MODE_EXISTING = 3;
+  DISPLAY_MODE_HEADLESS_PRIMARY = 4;
+}
+
+message DisplayDescriptor {
+  string display_id = 1;
+  string name = 2;
+  Dimensions logical_size = 3;
+  double scale_factor = 4;
+  bool is_primary = 5;
+  bool is_virtual = 6;
+}
+
+message ListDisplaysRequest {}
+
+message ListDisplaysResponse {
+  repeated DisplayDescriptor displays = 1;
+}
+
+message StartDisplayRequest {
+  DisplayMode mode = 1;
+  string source_display_id = 2;
+  Dimensions requested_logical_size = 3;
+  double requested_scale_factor = 4;
+}
+
+message StartDisplayResponse {
+  bool accepted = 1;
+  DisplayDescriptor display = 2;
+  string rejection_reason = 3;
+  uint64 stream_id = 4;
+}
+
+message StopDisplay {
+  string display_id = 1;
+}
+
+message DisplayChanged {
+  DisplayDescriptor display = 1;
+}

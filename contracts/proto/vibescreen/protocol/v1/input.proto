@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package vibescreen.protocol.v1;
+
+import "vibescreen/protocol/v1/advanced.proto";
+
+option java_multiple_files = true;
+option java_package = "dev.vibescreen.protocol.v1";
+option swift_prefix = "VS";
+
+enum InputPhase {
+  INPUT_PHASE_UNSPECIFIED = 0;
+  INPUT_PHASE_BEGAN = 1;
+  INPUT_PHASE_CHANGED = 2;
+  INPUT_PHASE_ENDED = 3;
+  INPUT_PHASE_CANCELLED = 4;
+}
+
+message NormalizedPoint {
+  double x = 1;
+  double y = 2;
+}
+
+message TouchEvent {
+  uint64 input_id = 1;
+  uint32 pointer_id = 2;
+  InputPhase phase = 3;
+  NormalizedPoint position = 4;
+  double pressure = 5;
+  InputTarget target = 6;
+}
+
+message PointerEvent {
+  uint64 input_id = 1;
+  InputPhase phase = 2;
+  NormalizedPoint position = 3;
+  uint32 button_mask = 4;
+  InputTarget target = 5;
+}
+
+message ScrollEvent {
+  uint64 input_id = 1;
+  double delta_x = 2;
+  double delta_y = 3;
+  InputTarget target = 4;
+}
+
+message KeyEvent {
+  uint64 input_id = 1;
+  uint32 usb_hid_usage = 2;
+  bool pressed = 3;
+  uint32 modifier_mask = 4;
+  string text = 5;
+  InputTarget target = 6;
+}
+
+message InputAck {
+  uint64 input_id = 1;
+  bool accepted = 2;
+  string rejection_reason = 3;
+}

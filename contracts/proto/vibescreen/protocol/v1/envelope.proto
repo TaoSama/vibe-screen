@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package vibescreen.protocol.v1;
+
+import "vibescreen/protocol/v1/advanced.proto";
+import "vibescreen/protocol/v1/display.proto";
+import "vibescreen/protocol/v1/error.proto";
+import "vibescreen/protocol/v1/input.proto";
+import "vibescreen/protocol/v1/pairing.proto";
+import "vibescreen/protocol/v1/security.proto";
+import "vibescreen/protocol/v1/session.proto";
+import "vibescreen/protocol/v1/telemetry.proto";
+import "vibescreen/protocol/v1/video.proto";
+
+option java_multiple_files = true;
+option java_package = "dev.vibescreen.protocol.v1";
+option swift_prefix = "VS";
+
+message Envelope {
+  uint32 protocol_version = 1;
+  uint64 message_id = 2;
+  uint64 correlation_id = 3;
+  bytes session_id = 4;
+  uint64 session_epoch = 5;
+  uint64 sent_at_monotonic_ns = 6;
+
+  oneof payload {
+    ClientHello client_hello = 20;
+    HostHello host_hello = 21;
+    SessionAccepted session_accepted = 22;
+    SessionRejected session_rejected = 23;
+    Ping ping = 24;
+    Pong pong = 25;
+    ResumeSessionRequest resume_session_request = 26;
+    ResumeSessionResult resume_session_result = 27;
+    DisconnectNotice disconnect_notice = 28;
+    PairingOffer pairing_offer = 30;
+    PairingRequest pairing_request = 31;
+    PairingResult pairing_result = 32;
+    DeviceRevoked device_revoked = 33;
+    KeyRotationRequest key_rotation_request = 34;
+    KeyRotationResult key_rotation_result = 35;
+    DeviceRevocation device_revocation = 36;
+    TrafficKeyUpdate traffic_key_update = 37;
+    TrafficKeyAck traffic_key_ack = 38;
+    ListDisplaysRequest list_displays_request = 40;
+    ListDisplaysResponse list_displays_response = 41;
+    StartDisplayRequest start_display_request = 42;
+    StartDisplayResponse start_display_response = 43;
+    StopDisplay stop_display = 44;
+    DisplayChanged display_changed = 45;
+    VideoConfig video_config = 50;
+    VideoConfigResult video_config_result = 51;
+    RequestKeyframe request_keyframe = 52;
+    VideoStreamEnded video_stream_ended = 53;
+    TouchEvent touch_event = 60;
+    PointerEvent pointer_event = 61;
+    ScrollEvent scroll_event = 62;
+    KeyEvent key_event = 63;
+    InputAck input_ack = 64;
+    StreamStats stream_stats = 70;
+    TransportStats transport_stats = 71;
+    ErrorReport error_report = 72;
+    ProtocolError protocol_error = 80;
+    EncryptedControlPacket encrypted_control_packet = 90;
+    AudioConfig audio_config = 100;
+    AudioConfigResult audio_config_result = 101;
+    ClipboardOffer clipboard_offer = 102;
+    ClipboardRequest clipboard_request = 103;
+    ClipboardContent clipboard_content = 104;
+    FileOffer file_offer = 105;
+    FileAccept file_accept = 106;
+    FileTransferProgress file_transfer_progress = 107;
+    FileTransferCancel file_transfer_cancel = 108;
+    FileTransferComplete file_transfer_complete = 109;
+    HostActionCatalog host_action_catalog = 110;
+    HostActionInvoke host_action_invoke = 111;
+    HostActionResult host_action_result = 112;
+    WakeHostRequest wake_host_request = 113;
+    WakeHostResult wake_host_result = 114;
+    ManagedPolicyStatus managed_policy_status = 115;
+  }
+}

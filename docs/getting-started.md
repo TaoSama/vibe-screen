@@ -1,0 +1,120 @@
+# Getting started
+
+The current runnable applications are named **Telemachus** while the Vibe
+Screen architecture is being integrated. These instructions build from source;
+there is no notarized stable release yet.
+
+## Prerequisites
+
+### macOS host
+
+- macOS 13 or newer;
+- full Xcode for the complete build/test workflow;
+- Swift 5.9-compatible toolchain;
+- Python 3 for local `.app` packaging;
+- Android Platform Tools (`adb`) for USB mode.
+
+Select full Xcode and verify it:
+
+```bash
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+xcodebuild -version
+swift --version
+```
+
+### Android client
+
+- JDK 17;
+- Android SDK Platform 34 and Build Tools 34.0.0;
+- an Android 8.0 / API 26 or newer device;
+- developer options and USB debugging enabled.
+
+```bash
+sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+java -version
+adb version
+```
+
+Protocol checks additionally use Go 1.25.12. `make protocol` downloads the
+pinned Buf v1.72.0 module through Go on first use.
+
+## Build from a clean checkout
+
+```bash
+make protocol
+
+cd baseline/AndroidClient
+./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug
+cd ../..
+
+make baseline-macos-build
+make baseline-macos-test
+make baseline-macos-self-test
+make baseline-macos-app
+```
+
+Outputs:
+
+- Android Debug APK:
+  `baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk`
+- ad-hoc signed macOS source build and SHA-256:
+  `.build/release-artifacts/`
+
+The Debug APK uses the local Android debug certificate and is not a public
+release artifact. A Developer ID-signed and notarized macOS build is also not
+provided yet.
+
+## Install and run over USB
+
+Replace the serial below with the exact value from `adb devices -l`.
+
+```bash
+export ANDROID_SERIAL="device-serial-or-host:port"
+adb -s "$ANDROID_SERIAL" get-state
+adb -s "$ANDROID_SERIAL" install -r -t \
+  baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+adb -s "$ANDROID_SERIAL" reverse tcp:54321 tcp:54321
+adb -s "$ANDROID_SERIAL" reverse --list
+```
+
+Start the packaged host:
+
+```bash
+open .build/release-artifacts/Telemachus.app
+```
+
+On first launch:
+
+1. grant Screen Recording in **System Settings → Privacy & Security**;
+2. grant Accessibility if touch control is required;
+3. restart the host after macOS requests it;
+4. select USB mode and start streaming.
+
+Then launch Android with automatic USB connection:
+
+```bash
+adb -s "$ANDROID_SERIAL" shell am start -S -W \
+  -n dev.telemachus.display/.MainActivity \
+  --ez auto_connect true
+```
+
+The client connects to `127.0.0.1:54321`; ADB reverse carries that socket to
+the host. A successful session shows an active stream, rising frame counters,
+and touch changes the Mac pointer position.
+
+## Trusted LAN mode
+
+LAN support is experimental. Pair with the QR code shown by the Mac host while
+both devices are on the same trusted private network. Android camera permission
+is used only to scan a new QR code. Existing USB use does not require it.
+
+LAN currently uses authenticated but unencrypted TCP. Screen content and input
+may be observable on the network. Do not use it on public or hostile networks.
+
+## Release signing
+
+Android release builds require `TELEMACHUS_VERSION` and the four
+`TELEMACHUS_KEYSTORE_*` / `TELEMACHUS_KEY_*` signing variables defined in
+`baseline/AndroidClient/app/build.gradle.kts`. Never commit a keystore or its
+password. Public release signing, macOS notarization, and release checksums are
+maintainer responsibilities and remain release gates.

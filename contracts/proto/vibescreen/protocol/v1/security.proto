@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+package vibescreen.protocol.v1;
+
+option java_multiple_files = true;
+option java_package = "dev.vibescreen.protocol.v1";
+option swift_prefix = "VS";
+
+enum SignatureAlgorithm {
+  SIGNATURE_ALGORITHM_UNSPECIFIED = 0;
+  SIGNATURE_ALGORITHM_ECDSA_P256_SHA256 = 1;
+}
+
+enum KeyAgreementAlgorithm {
+  KEY_AGREEMENT_ALGORITHM_UNSPECIFIED = 0;
+  KEY_AGREEMENT_ALGORITHM_ECDH_P256 = 1;
+}
+
+enum AeadAlgorithm {
+  AEAD_ALGORITHM_UNSPECIFIED = 0;
+  AEAD_ALGORITHM_AES_256_GCM = 1;
+}
+
+enum SecureChannel {
+  SECURE_CHANNEL_UNSPECIFIED = 0;
+  SECURE_CHANNEL_CONTROL = 1;
+  SECURE_CHANNEL_MEDIA = 2;
+  SECURE_CHANNEL_AUDIO = 3;
+  SECURE_CHANNEL_BULK = 4;
+}
+
+enum SenderRole {
+  SENDER_ROLE_UNSPECIFIED = 0;
+  SENDER_ROLE_HOST = 1;
+  SENDER_ROLE_DEVICE = 2;
+}
+
+message DeviceIdentity {
+  string device_id = 1;
+  string key_id = 2;
+  uint64 key_epoch = 3;
+  SignatureAlgorithm signature_algorithm = 4;
+  bytes signing_public_key = 5;
+}
+
+message PairingProof {
+  bytes challenge = 1;
+  bytes ephemeral_public_key = 2;
+  bytes signature = 3;
+}
+
+message KeyRotationRequest {
+  DeviceIdentity current_identity = 1;
+  DeviceIdentity next_identity = 2;
+  bytes rotation_nonce = 3;
+  uint64 not_before_unix_seconds = 4;
+  bytes current_key_signature = 5;
+  bytes next_key_signature = 6;
+}
+
+message KeyRotationResult {
+  bool accepted = 1;
+  string device_id = 2;
+  string active_key_id = 3;
+  uint64 active_key_epoch = 4;
+  string rejection_reason = 5;
+}
+
+// TrafficKeyUpdate is sent inside an authenticated EncryptedControlPacket.
+// Receivers derive the next directional control/media keys, acknowledge, then
+// retire the prior epoch after their bounded reordering grace window.
+message TrafficKeyUpdate {
+  string current_key_id = 1;
+  uint64 current_key_epoch = 2;
+  uint64 next_key_epoch = 3;
+  bytes update_nonce = 4;
+}
+
+message TrafficKeyAck {
+  string active_key_id = 1;
+  uint64 active_key_epoch = 2;
+  bool accepted = 3;
+  string rejection_reason = 4;
+}
+
+message DeviceRevocation {
+  string device_id = 1;
+  string key_id = 2;
+  uint64 revocation_sequence = 3;
+  uint64 revoked_at_unix_seconds = 4;
+  bytes revocation_nonce = 5;
+  string reason_code = 6;
+  DeviceIdentity authority = 7;
+  bytes authority_signature = 8;
+}
+
+message SecurePacketHeader {
+  uint32 protocol_version = 1;
+  bytes session_id = 2;
+  uint64 session_epoch = 3;
+  string key_id = 4;
+  uint64 key_epoch = 5;
+  SecureChannel channel = 6;
+  uint64 sequence = 7;
+  AeadAlgorithm aead_algorithm = 8;
+  bytes nonce = 9;
+  SenderRole sender_role = 10;
+}
+
+message EncryptedControlPacket {
+  SecurePacketHeader header = 1;
+  bytes ciphertext = 2;
+}
+
+// When carried as Envelope.encrypted_control_packet, receivers authenticate
+// this inner header and require any duplicated outer routing fields to match;
+// outer Envelope metadata must never override authenticated values.
+
+// EncryptedMediaPacket remains on the independent, unordered media channel.
+// The ciphertext contains MediaPacketHeader followed by the encoded payload so
+// a relay cannot inspect frame metadata or screen content.
+message EncryptedMediaPacket {
+  SecurePacketHeader header = 1;
+  bytes ciphertext = 2;
+}

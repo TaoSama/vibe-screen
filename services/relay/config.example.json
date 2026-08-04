@@ -1,0 +1,16 @@
+{
+  "listen_address": "127.0.0.1:8090",
+  "turn_realm": "relay.example.com",
+  "turn_uris": [
+    "turn:relay.example.com:3478?transport=udp",
+    "turns:relay.example.com:5349?transport=tcp"
+  ],
+  "credential_ttl_seconds": 600,
+  "max_credential_ttl_seconds": 1800,
+  "credential_requests_per_minute": 12,
+  "max_concurrent_sessions_per_device": 2,
+  "daily_bytes_per_device": 21474836480,
+  "max_usage_event_bytes": 1073741824,
+  "egress_microcents_per_gibibyte": 9000000,
+  "state_file": "./data/relay-state.json"
+}

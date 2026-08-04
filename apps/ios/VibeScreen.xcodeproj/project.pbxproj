@@ -1,0 +1,229 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* VibeScreenApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* VibeScreenApp.swift */; };
+		A10000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* ContentView.swift */; };
+		A10000000000000000000003 /* PixelBufferView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* PixelBufferView.swift */; };
+		A10000000000000000000004 /* StreamViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* StreamViewModel.swift */; };
+		A10000000000000000000005 /* AudioPlaybackController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* AudioPlaybackController.swift */; };
+		A10000000000000000000006 /* ClipboardController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* ClipboardController.swift */; };
+		A10000000000000000000007 /* ManagedConfigurationProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* ManagedConfigurationProvider.swift */; };
+		A10000000000000000000008 /* WakeOnLANClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* WakeOnLANClient.swift */; };
+		A10000000000000000000009 /* StreamViewModel+Protocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* StreamViewModel+Protocol.swift */; };
+		A1000000000000000000000A /* SecurityScopedOutgoingFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* SecurityScopedOutgoingFile.swift */; };
+		A10000000000000000000011 /* VibeScreenCore in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000001 /* VibeScreenCore */; };
+		A10000000000000000000012 /* VibeScreenProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* VibeScreenProtocol */; };
+		A10000000000000000000013 /* VibeScreenVideo in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000003 /* VibeScreenVideo */; };
+		A10000000000000000000021 /* SwiftProtobuf-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000021 /* SwiftProtobuf-LICENSE.txt */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* VibeScreenApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeScreenApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* PixelBufferView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelBufferView.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* StreamViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamViewModel.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* AudioPlaybackController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlaybackController.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* ClipboardController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardController.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* ManagedConfigurationProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedConfigurationProvider.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* WakeOnLANClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnLANClient.swift; sourceTree = "<group>"; };
+		A20000000000000000000009 /* StreamViewModel+Protocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StreamViewModel+Protocol.swift"; sourceTree = "<group>"; };
+		A2000000000000000000000A /* SecurityScopedOutgoingFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedOutgoingFile.swift; sourceTree = "<group>"; };
+		A20000000000000000000010 /* VibeScreen.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VibeScreen.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000021 /* SwiftProtobuf-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "SwiftProtobuf-LICENSE.txt"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A30000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000011 /* VibeScreenCore in Frameworks */,
+				A10000000000000000000012 /* VibeScreenProtocol in Frameworks */,
+				A10000000000000000000013 /* VibeScreenVideo in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A40000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A40000000000000000000002 /* VibeScreenApp */,
+				A40000000000000000000004 /* ThirdPartyLicenses */,
+				A40000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A40000000000000000000002 /* VibeScreenApp */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* VibeScreenApp.swift */,
+				A20000000000000000000002 /* ContentView.swift */,
+				A20000000000000000000003 /* PixelBufferView.swift */,
+				A20000000000000000000004 /* StreamViewModel.swift */,
+				A20000000000000000000005 /* AudioPlaybackController.swift */,
+				A20000000000000000000006 /* ClipboardController.swift */,
+				A20000000000000000000007 /* ManagedConfigurationProvider.swift */,
+				A20000000000000000000008 /* WakeOnLANClient.swift */,
+				A20000000000000000000009 /* StreamViewModel+Protocol.swift */,
+				A2000000000000000000000A /* SecurityScopedOutgoingFile.swift */,
+			);
+			path = VibeScreenApp;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (A20000000000000000000010 /* VibeScreen.app */);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000004 /* ThirdPartyLicenses */ = {
+			isa = PBXGroup;
+			children = (A20000000000000000000021 /* SwiftProtobuf-LICENSE.txt */);
+			path = ThirdPartyLicenses;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A50000000000000000000001 /* VibeScreen */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A80000000000000000000002 /* Build configuration list for PBXNativeTarget "VibeScreen" */;
+			buildPhases = (
+				A60000000000000000000001 /* Sources */,
+				A30000000000000000000001 /* Frameworks */,
+				A60000000000000000000002 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = VibeScreen;
+			packageProductDependencies = (
+				A90000000000000000000001 /* VibeScreenCore */,
+				A90000000000000000000002 /* VibeScreenProtocol */,
+				A90000000000000000000003 /* VibeScreenVideo */,
+			);
+			productName = VibeScreen;
+			productReference = A20000000000000000000010 /* VibeScreen.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A70000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = { A50000000000000000000001 = {CreatedOnToolsVersion = 26.0; }; };
+			};
+			buildConfigurationList = A80000000000000000000001 /* Build configuration list for PBXProject "VibeScreen" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base, zh_Hans);
+			mainGroup = A40000000000000000000001;
+			packageReferences = (A90000000000000000000010 /* XCLocalSwiftPackageReference "." */);
+			productRefGroup = A40000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (A50000000000000000000001 /* VibeScreen */);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A60000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (A10000000000000000000021 /* SwiftProtobuf-LICENSE.txt in Resources */);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A60000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* VibeScreenApp.swift in Sources */,
+				A10000000000000000000002 /* ContentView.swift in Sources */,
+				A10000000000000000000003 /* PixelBufferView.swift in Sources */,
+				A10000000000000000000004 /* StreamViewModel.swift in Sources */,
+				A10000000000000000000005 /* AudioPlaybackController.swift in Sources */,
+				A10000000000000000000006 /* ClipboardController.swift in Sources */,
+				A10000000000000000000007 /* ManagedConfigurationProvider.swift in Sources */,
+				A10000000000000000000008 /* WakeOnLANClient.swift in Sources */,
+				A10000000000000000000009 /* StreamViewModel+Protocol.swift in Sources */,
+				A1000000000000000000000A /* SecurityScopedOutgoingFile.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		AA0000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 6.0; }; name = Debug; };
+		AA0000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_VERSION = 6.0; VALIDATE_PRODUCT = YES; }; name = Release; };
+		AA0000000000000000000011 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Vibe Screen";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "连接局域网内的 Mac 并接收显示画面。";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.vibescreen.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA0000000000000000000012 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Vibe Screen";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "连接局域网内的 Mac 并接收显示画面。";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.vibescreen.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A80000000000000000000001 /* Build configuration list for PBXProject "VibeScreen" */ = {isa = XCConfigurationList; buildConfigurations = (AA0000000000000000000001, AA0000000000000000000002); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A80000000000000000000002 /* Build configuration list for PBXNativeTarget "VibeScreen" */ = {isa = XCConfigurationList; buildConfigurations = (AA0000000000000000000011, AA0000000000000000000012); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		A90000000000000000000010 /* XCLocalSwiftPackageReference "." */ = {isa = XCLocalSwiftPackageReference; relativePath = .; };
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A90000000000000000000001 /* VibeScreenCore */ = {isa = XCSwiftPackageProductDependency; productName = VibeScreenCore; };
+		A90000000000000000000002 /* VibeScreenProtocol */ = {isa = XCSwiftPackageProductDependency; productName = VibeScreenProtocol; };
+		A90000000000000000000003 /* VibeScreenVideo */ = {isa = XCSwiftPackageProductDependency; productName = VibeScreenVideo; };
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A70000000000000000000001 /* Project object */;
+}

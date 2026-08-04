@@ -1,0 +1,13 @@
+{
+  "name": "@vibescreen/harmony-client-tests",
+  "private": true,
+  "version": "0.1.0",
+  "type": "commonjs",
+  "scripts": {
+    "clean": "rm -rf .test-dist",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test tests/*.test.mjs",
+    "verify": "pnpm run clean && pnpm run typecheck && pnpm run test"
+  },
+  "devDependencies": { "typescript": "5.9.3" }
+}

@@ -1,0 +1,185 @@
+# Vibe Screen relay control plane
+
+This directory contains a small, runnable control plane for a separately
+deployed TURN data plane. It issues short-lived TURN REST credentials, accepts
+authenticated usage events, enforces per-device quotas and concurrent-session
+limits, estimates egress cost, and exposes authenticated Prometheus metrics.
+
+It deliberately does **not** proxy WebRTC packets. A TURN server such as coturn
+forwards already encrypted DTLS-SRTP media and encrypted data-channel traffic.
+This service never receives SDP, media, input events, content keys, or plaintext
+screen content, so the relay cannot terminate Vibe Screen content encryption.
+
+## Requirements and build
+
+- Go 1.23 or newer (verified with Go 1.24.13)
+- A TURN server configured with the same REST authentication secret
+- TLS termination in front of this HTTP service outside local development
+
+```bash
+cd services/relay
+make verify
+make build VERSION=0.1.0
+./bin/vibe-relay --version
+```
+
+The build uses only the Go standard library and has no downloaded module
+dependencies. The container build pins `golang:1.24.13-alpine3.22` by OCI
+digest and produces a static, non-root scratch image:
+
+```bash
+docker build --build-arg VERSION=0.1.0 -t vibe-relay:0.1.0 .
+```
+
+## Configure and run
+
+Copy `config.example.json` to `config.json`, replace the realm and TURN URIs,
+then generate five independent secrets. Never commit them.
+
+```bash
+export VIBE_RELAY_TURN_SECRET="$(openssl rand -base64 48)"
+export VIBE_RELAY_CLIENT_TOKEN="$(openssl rand -base64 48)"
+export VIBE_RELAY_USAGE_TOKEN="$(openssl rand -base64 48)"
+export VIBE_RELAY_METRICS_TOKEN="$(openssl rand -base64 48)"
+export VIBE_RELAY_ADMIN_TOKEN="$(openssl rand -base64 48)"
+./bin/vibe-relay --config config.json
+```
+
+- `VIBE_RELAY_TURN_SECRET` is shared only with coturn.
+- `VIBE_RELAY_CLIENT_TOKEN` authenticates the trusted signaling service that
+  requests credentials after it has authenticated a paired device.
+- `VIBE_RELAY_USAGE_TOKEN` authenticates only the trusted TURN usage collector.
+- `VIBE_RELAY_METRICS_TOKEN` authenticates only the Prometheus scraper.
+- `VIBE_RELAY_ADMIN_TOKEN` authenticates device-revocation requests. All four
+  API tokens must differ.
+
+The service refuses to start when a secret is missing or shorter than 32
+characters. State is atomically stored at `state_file` with mode `0600`. Back
+up that file before an upgrade; the v0.1 JSON schema is forwards-readable by
+v0.1 releases. Stop the old process, replace the binary, and restart against
+the same configuration and state file. Roll back by restoring both the prior
+binary and its state backup.
+
+For a container, mount a read-only configuration file and a writable `/data`
+directory owned by UID/GID 65532. Set `state_file` to
+`/data/relay-state.json`, inject secrets through the runtime secret store, and
+publish the HTTP port only to the internal load balancer.
+
+Each secret also supports a mutually exclusive `<NAME>_FILE` variable, for
+example `VIBE_RELAY_TURN_SECRET_FILE=/run/secrets/turn_secret`. File contents
+are trimmed of surrounding whitespace and unreadable/ambiguous sources fail
+closed. The runnable coturn/Compose integration uses only these file variants;
+see [`../../deploy/phase3/README.md`](../../deploy/phase3/README.md).
+
+## API v1
+
+All protected calls use `Authorization: Bearer <token>` and JSON bodies reject
+unknown fields. Identifiers accept 1–128 ASCII letters, digits, `.`, `_`, or
+`-`. Responses set `Cache-Control: no-store`.
+
+Request a credential (trusted signaling service):
+
+```bash
+curl --fail-with-body -H "Authorization: Bearer $VIBE_RELAY_CLIENT_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"device_id":"paired-device-id","session_id":"authorized-session-id","ttl_seconds":600}' \
+  http://127.0.0.1:8090/v1/credentials
+```
+
+The username is `<unix-expiry>:<device-id>:<session-id>` and the password is the base64
+HMAC-SHA1 required by TURN REST authentication. SHA-1 is used only for this
+TURN compatibility MAC with a high-entropy server secret; it is not content
+encryption or a password hash.
+
+Report lifecycle and cumulative byte deltas (trusted usage collector):
+
+```bash
+curl --fail-with-body -H "Authorization: Bearer $VIBE_RELAY_USAGE_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"event_id":"unique-event-id","device_id":"paired-device-id","session_id":"allocation-id","kind":"start","ingress_bytes":0,"egress_bytes":0}' \
+  http://127.0.0.1:8090/v1/usage
+```
+
+`kind` is `start`, `update`, or `end`. Each `event_id` is idempotent for the
+current UTC day. Byte fields are deltas, not totals. The collector must retry
+with the same event ID until it receives `202 accepted` or `200 duplicate`.
+Limits return `429`; malformed or out-of-order lifecycle events return `400`.
+
+The trusted control plane can persistently block future credentials with
+`POST /v1/devices/{device-id}/revoke` using the admin token. This does not by
+itself terminate a coturn allocation that is already active; the operator must
+also invoke the data plane's allocation-disconnect mechanism.
+
+Unauthenticated liveness/readiness endpoints are `/healthz` and `/readyz`;
+readiness verifies that the state directory is writable.
+Prometheus scrapes `/metrics` with the dedicated metrics token. Metrics expose issued and
+rejected requests, accepted events, ingress/egress bytes, active sessions, and
+the current UTC day's estimated egress microcents as a gauge. Never use these
+application metrics as the sole
+billing record; reconcile them with the TURN provider or network billing data.
+
+## TURN integration and operational limits
+
+`coturn.example.conf` shows the compatible REST-secret settings and basic data
+plane abuse controls. Configure TLS certificates, external/public IP mapping,
+port ranges, firewall rules, and the same realm/secret for the actual host.
+Feed allocation lifecycle and byte deltas from a trusted coturn log/metrics
+collector into `/v1/usage`; coturn does not call this custom HTTP API itself.
+That collector is the authoritative source for enforcement: missed or delayed
+events temporarily weaken byte and concurrency limits. Alert on collector lag
+and enforce matching `user-quota`, `total-quota`, and `max-bps` limits in TURN.
+
+This component is not a WebRTC signaling/rendezvous server and does not
+implement SDP exchange, ICE restart, P2P path selection, network handoff, or
+STUN itself. Those remain transport/session responsibilities. The signaling
+service must authenticate the paired device and authorized host/session before
+using its client token; the token intentionally authenticates that service,
+not the arbitrary `device_id` string in a request.
+
+This single-process v0.1 service is intended for one control-plane replica. Its
+atomic local ledger prevents duplicate counting across restarts, but it does
+not coordinate quotas across replicas. Before horizontal scaling, replace the
+`UsageStore` behind its narrow interface with a transactional shared store and
+retain the same API/idempotency semantics. Rate limiting is per process and
+per device, so the edge proxy should additionally enforce source-IP and global
+limits. Relay revocation blocks new credentials, but a credential already
+issued remains valid until its short expiry. Immediate removal additionally
+requires blocking the device at signaling policy and disconnecting its TURN
+allocation; rotating the shared TURN secret affects every device.
+
+## Threat model
+
+Protected assets are relay capacity, quota/cost records, TURN shared secret,
+API tokens, and the privacy of device identifiers. Defenses cover stolen or
+replayed usage events (scoped bearer token plus persistent event IDs), quota
+exhaustion (daily bytes, concurrent allocations, event-size bounds), credential
+scraping (separate token, short TTL, rate limit), parser abuse (16 KiB body cap,
+strict JSON), timing disclosure (constant-time token comparison), and restart
+replay (atomic persisted ledger).
+
+The deployment must supply TLS, trusted-device authentication at signaling,
+token rotation, network isolation, log redaction, TURN allocation telemetry,
+DDoS protection, and secret management. Bearer-token theft, host compromise,
+malicious trusted collectors, volumetric attacks before the application, and
+multi-region consistency are outside this process's trust boundary. WebRTC
+DTLS-SRTP plus Vibe Screen's device/session encryption remains responsible for
+content confidentiality and replay protection; TURN credentials do not provide
+end-to-end device identity.
+
+## Provenance and licenses
+
+No third-party source code is copied into this module, and the compiled service
+uses only the Go standard library.
+
+| Project | Immutable version | License | Use | Copied code |
+| --- | --- | --- | --- | --- |
+| SideScreen, <https://github.com/tranvuongquocdat/SideScreen> | `a651a81b7d6468c7a564c038551872d3346a2d55` | MIT | Repository architecture/behavior context only; no relay implementation used | No |
+| Telemachus, <https://github.com/aaditagrawal/telemachus> | `a5dd1298870846d749175812f936ceebfd8b6b69` | MIT | Repository reliability context only; no relay implementation used | No |
+| coturn, <https://github.com/coturn/coturn> | source `678996a52954ddc7a44afd9f72f5b5c647e41083` (`4.7.0`); container build `aa685e2669bac662d553a3d8eef6412d95ba7664` (`docker/4.7.0-r0`) | BSD-3-Clause; the container also carries its base/library licenses | External interoperable TURN data plane pinned by multi-platform digest `sha256:99bf5bf6ab1c119862d0c3d2dfb2bbf805a86a131492cab18c148be64ae7d978` | No |
+
+The credential format implements the open TURN REST API mechanism documented
+by coturn and uses the IETF TURN protocol family. coturn is not vendored or
+linked into the control-plane image; the separate Phase 3 Compose service pulls
+the digest-pinned upstream coturn image. Operators must retain its copyright,
+LICENSE, bundled dependency notices, and release SBOM. No GPL or AGPL source
+was consulted or copied for this implementation.

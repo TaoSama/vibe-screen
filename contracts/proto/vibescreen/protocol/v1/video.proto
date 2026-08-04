@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package vibescreen.protocol.v1;
+
+import "vibescreen/protocol/v1/advanced.proto";
+import "vibescreen/protocol/v1/common.proto";
+
+option java_multiple_files = true;
+option java_package = "dev.vibescreen.protocol.v1";
+option swift_prefix = "VS";
+
+message VideoConfig {
+  uint64 config_epoch = 1;
+  Codec codec = 2;
+  Dimensions encoded_size = 3;
+  uint32 frames_per_second = 4;
+  uint32 bitrate_kbps = 5;
+  uint64 stream_id = 6;
+  ColorDescription color_description = 7;
+}
+
+message VideoConfigResult {
+  uint64 config_epoch = 1;
+  bool accepted = 2;
+  string rejection_reason = 3;
+  uint64 stream_id = 4;
+  ColorDescription selected_color_description = 5;
+}
+
+message RequestKeyframe {
+  uint64 stream_id = 1;
+  string reason_code = 2;
+}
+
+message VideoStreamEnded {
+  uint64 stream_id = 1;
+  string reason_code = 2;
+}
+
+message MediaPacketHeader {
+  uint64 stream_id = 1;
+  uint64 session_epoch = 2;
+  uint64 config_epoch = 3;
+  uint64 frame_id = 4;
+  uint32 fragment_index = 5;
+  uint32 fragment_count = 6;
+  uint64 capture_timestamp_ns = 7;
+  bool keyframe = 8;
+  Codec codec = 9;
+  uint32 payload_length = 10;
+}

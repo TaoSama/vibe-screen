@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package vibescreen.protocol.v1;
+
+option java_multiple_files = true;
+option java_package = "dev.vibescreen.protocol.v1";
+option swift_prefix = "VS";
+
+message StreamStats {
+  uint64 stream_id = 1;
+  double captured_fps = 2;
+  double encoded_fps = 3;
+  double rendered_fps = 4;
+  uint64 dropped_before_encode = 5;
+  uint64 dropped_before_send = 6;
+  uint32 media_queue_depth = 7;
+  double encode_time_p95_ms = 8;
+  double decode_time_p95_ms = 9;
+}
+
+message TransportStats {
+  uint64 bytes_sent = 1;
+  uint64 bytes_received = 2;
+  double round_trip_time_ms = 3;
+  uint64 reconnect_count = 4;
+  double last_reconnect_time_ms = 5;
+}
+
+message ErrorReport {
+  string code = 1;
+  string component = 2;
+  string message = 3;
+  bool retryable = 4;
+}

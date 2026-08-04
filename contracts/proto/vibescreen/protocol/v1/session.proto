@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package vibescreen.protocol.v1;
+
+import "vibescreen/protocol/v1/advanced.proto";
+import "vibescreen/protocol/v1/common.proto";
+
+option java_multiple_files = true;
+option java_package = "dev.vibescreen.protocol.v1";
+option swift_prefix = "VS";
+
+enum Capability {
+  CAPABILITY_UNSPECIFIED = 0;
+  CAPABILITY_DISPLAY_MIRROR = 1;
+  CAPABILITY_VIRTUAL_DISPLAY = 2;
+  CAPABILITY_TOUCH = 3;
+  CAPABILITY_KEYBOARD = 4;
+  CAPABILITY_POINTER = 5;
+  CAPABILITY_STYLUS = 6;
+  CAPABILITY_TELEMETRY = 7;
+  CAPABILITY_SESSION_RESUME = 8;
+  CAPABILITY_DEVICE_IDENTITY = 9;
+  CAPABILITY_END_TO_END_ENCRYPTION = 10;
+  CAPABILITY_KEY_ROTATION = 11;
+  CAPABILITY_REPLAY_PROTECTION = 12;
+  CAPABILITY_AUDIO = 13;
+  CAPABILITY_CLIPBOARD = 14;
+  CAPABILITY_FILE_TRANSFER = 15;
+  CAPABILITY_HDR_VIDEO = 16;
+  CAPABILITY_COLOR_MANAGEMENT = 17;
+  CAPABILITY_MULTI_DISPLAY = 18;
+  CAPABILITY_MULTI_CLIENT = 19;
+  CAPABILITY_HOST_ACTIONS = 20;
+  CAPABILITY_WAKE_HOST = 21;
+  CAPABILITY_MANAGED_CONFIGURATION = 22;
+}
+
+message ClientHello {
+  ProtocolRange supported_protocols = 1;
+  string device_id = 2;
+  string device_name = 3;
+  repeated Capability capabilities = 4;
+  repeated Codec codecs = 5;
+  repeated TransportKind transports = 6;
+  ResourceLimits resource_limits = 7;
+  repeated VideoDecodeCapability video_decode_capabilities = 8;
+}
+
+message HostHello {
+  uint32 selected_protocol = 1;
+  string host_id = 2;
+  string host_name = 3;
+  repeated Capability capabilities = 4;
+  repeated Codec codecs = 5;
+  ResourceLimits resource_limits = 6;
+}
+
+message SessionAccepted {
+  bytes session_id = 1;
+  uint64 session_epoch = 2;
+  uint32 heartbeat_interval_ms = 3;
+  repeated Capability negotiated_capabilities = 4;
+  ResourceLimits negotiated_resource_limits = 5;
+}
+
+message SessionRejected {
+  string reason_code = 1;
+  string message = 2;
+  bool retryable = 3;
+}
+
+message Ping {
+  uint64 sequence = 1;
+}
+
+message Pong {
+  uint64 sequence = 1;
+}
+
+message ResumeSessionRequest {
+  bytes session_id = 1;
+  uint64 previous_session_epoch = 2;
+  uint64 last_received_message_id = 3;
+}
+
+message ResumeSessionResult {
+  bool accepted = 1;
+  uint64 session_epoch = 2;
+  string rejection_reason = 3;
+}
+
+message DisconnectNotice {
+  string reason_code = 1;
+  bool may_resume = 2;
+}

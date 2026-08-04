@@ -1,0 +1,69 @@
+const WIRE_VARINT: number = 0;
+const WIRE_FIXED64: number = 1;
+const WIRE_LENGTH_DELIMITED: number = 2;
+
+export class ProtobufWriter {
+  private bytes: number[] = [];
+
+  private writeTag(fieldNumber: number, wireType: number): void {
+    this.writeVarint(BigInt((fieldNumber << 3) | wireType));
+  }
+
+  writeVarint(value: bigint): void {
+    let remaining: bigint = value;
+    while (remaining > 0x7fn) {
+      this.bytes.push(Number(remaining & 0x7fn) | 0x80);
+      remaining >>= 7n;
+    }
+    this.bytes.push(Number(remaining));
+  }
+
+  uint32(fieldNumber: number, value: number): ProtobufWriter {
+    if (value !== 0) { this.writeTag(fieldNumber, WIRE_VARINT); this.writeVarint(BigInt(value)); }
+    return this;
+  }
+
+  uint64(fieldNumber: number, value: bigint): ProtobufWriter {
+    if (value !== 0n) { this.writeTag(fieldNumber, WIRE_VARINT); this.writeVarint(value); }
+    return this;
+  }
+
+  bool(fieldNumber: number, value: boolean): ProtobufWriter {
+    return this.uint32(fieldNumber, value ? 1 : 0);
+  }
+
+  fixed64(fieldNumber: number, value: number): ProtobufWriter {
+    if (value === 0) return this;
+    this.writeTag(fieldNumber, WIRE_FIXED64);
+    const buffer: ArrayBuffer = new ArrayBuffer(8);
+    new DataView(buffer).setFloat64(0, value, true);
+    this.raw(new Uint8Array(buffer));
+    return this;
+  }
+
+  string(fieldNumber: number, value: string): ProtobufWriter {
+    if (value.length > 0) this.bytesField(fieldNumber, new TextEncoder().encode(value));
+    return this;
+  }
+
+  bytesField(fieldNumber: number, value: Uint8Array): ProtobufWriter {
+    if (value.length > 0) {
+      this.writeTag(fieldNumber, WIRE_LENGTH_DELIMITED);
+      this.writeVarint(BigInt(value.length));
+      this.raw(value);
+    }
+    return this;
+  }
+
+  message(fieldNumber: number, writer: ProtobufWriter): ProtobufWriter {
+    return this.bytesField(fieldNumber, writer.finish());
+  }
+
+  raw(value: Uint8Array): ProtobufWriter {
+    for (let index: number = 0; index < value.length; index += 1) this.bytes.push(value[index]);
+    return this;
+  }
+
+  finish(): Uint8Array { return new Uint8Array(this.bytes); }
+}
+

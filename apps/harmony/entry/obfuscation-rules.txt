@@ -1,0 +1,3 @@
+-keep-global-name
+-keep-file-name
+

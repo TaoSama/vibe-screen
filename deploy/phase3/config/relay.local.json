@@ -1,0 +1,17 @@
+{
+  "listen_address": "0.0.0.0:8090",
+  "turn_realm": "vibe-screen.local",
+  "turn_uris": [
+    "turn:127.0.0.1:3478?transport=udp",
+    "turn:127.0.0.1:3478?transport=tcp"
+  ],
+  "credential_ttl_seconds": 300,
+  "max_credential_ttl_seconds": 600,
+  "credential_requests_per_minute": 12,
+  "max_concurrent_sessions_per_device": 2,
+  "daily_bytes_per_device": 1073741824,
+  "max_usage_event_bytes": 67108864,
+  "egress_microcents_per_gibibyte": 0,
+  "state_file": "/data/relay-state.json"
+}
+
