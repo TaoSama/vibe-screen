@@ -173,10 +173,15 @@ def write_release_sbom(
         REPOSITORY_ROOT / "apps/ios/Package.resolved",
     ):
         packages.extend(load_swift_packages(resolved_path))
-    packages.sort(key=lambda package: str(package["SPDXID"]))
+    packages_by_id: dict[str, dict[str, object]] = {}
+    for package in packages:
+        package_id = str(package["SPDXID"])
+        existing = packages_by_id.get(package_id)
+        if existing is not None and existing != package:
+            raise ValueError(f"runtime dependency SPDX identifier has conflicting metadata: {package_id}")
+        packages_by_id[package_id] = package
+    packages = sorted(packages_by_id.values(), key=lambda package: str(package["SPDXID"]))
     package_ids = [str(package["SPDXID"]) for package in packages]
-    if len(package_ids) != len(set(package_ids)):
-        raise ValueError("runtime dependency SPDX identifiers are not unique")
     document = {
         "spdxVersion": "SPDX-2.3",
         "dataLicense": "CC0-1.0",
