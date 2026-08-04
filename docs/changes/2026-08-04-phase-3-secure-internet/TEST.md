@@ -186,13 +186,18 @@ named by that run:
   fail-closed device-lock handling, and build/source evidence binding;
   security-vector CLI passed
   24 vectors, including direction reflection and global revocation sequencing;
-- Android `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`
-  passed with 123 tests and zero failures/errors/skips. The security tests cover
+- Android clean `./gradlew --no-daemon clean testDebugUnitTest lintDebug
+  assembleDebug compileDebugAndroidTestKotlin auditReleaseDependencies` passed
+  with 234 JVM tests and zero failures/errors/skips. The security tests cover
   paired-host lease signature mutation, reserved maximum epochs, stale durable
   cipher epochs, monotonic identity reauthorization, restart-safe credential and
   revocation cleanup, best-effort close aggregation, and generation-scoped route
-  changes with a bounded candidate-resolution timeout and one ClientHello.
-  `compileDebugAndroidTestKotlin` and both debug APK builds passed.
+  changes with a bounded candidate-resolution timeout and one ClientHello. New
+  cases cover pairing-record partial persistence plus cross-restart cleanup, and
+  short-disconnect route interleavings that restore ACTIVE, heartbeat and touch
+  without a second ClientHello. Initial and runtime rotation values reach the
+  product decoder configuration. `compileDebugAndroidTestKotlin` and the debug
+  APK build passed.
   `processReleaseMainManifest` also passed and the merged release
   manifest sets `usesCleartextTraffic=false`;
 - Android `./gradlew auditReleaseDependencies`: passed the fixed AAR, Gson,
@@ -250,24 +255,31 @@ named by that run:
   its XCTest cases did not execute in the Command Line Tools-only environment.
 - Platform lifecycle tests cover peer-scoped durable epoch reservation, rollback
   rejection, signed targeted revocation, tombstone persistence, and pairing-secret
-  deletion failure/retry. Full macOS XCTest execution remains unavailable in the
-  selected Command Line Tools environment.
+  deletion failure/retry. Added deterministic XCTest source covers concurrent old
+  cipher seal/open rejection after N→N+1, pairing partial-write cleanup across a
+  coordinator restart, and lease issuance across concurrent callers and authority
+  restart while ignoring an abnormal caller epoch. Full macOS XCTest execution
+  remains unavailable in the selected Command Line Tools environment.
 - The macOS executable Internet self-test keeps a selected route explicitly
   unknown until complete candidate-pair stats arrive and fails closed on timeout;
   the loopback self-test still selected a real direct host/host UDP pair after
   the change. It also covers multi-device revoked-identity epoch floors and
   restart-safe secret-cleanup state. The lease self-test matches Android's
   canonical digest, mutates every signed field, rejects malformed input, and
-  signs/verifies with a temporary real Keychain identity. XCTest coverage is
-  present but did not execute in the Command Line Tools-only environment.
+  signs/verifies with a temporary real Keychain identity. It additionally proves
+  pairing-scoped durable authority allocation across restart/concurrency and
+  rejects stale cipher seal/open after the durable epoch advances. XCTest coverage
+  is present but did not execute in the Command Line Tools-only environment.
 - The local product slice passed in both modes:
   `run_local_e2e.py --mode direct --slice product` and
   `run_local_e2e.py --mode relay --slice product --skip-build`. Both traversed
   `InternetProductSession`, the protected production M150 adapter and real
   signaling; relay selected forced local coturn. The synthetic Protocol v1 device
   completed hello/session acceptance at epoch 1, video-config acknowledgment at
-  config epoch 1, touch/control, and keyframe plus delta media. Application AEAD
-  and the seeded-plaintext log scan passed. Direct reported
+  config epoch 1, then runtime `DisplayChanged` plus a 90-degree `VideoConfig` at
+  config epoch 2 and acknowledgment before post-rotation media. Touch/control,
+  keyframe plus delta media, application AEAD, and the seeded-plaintext log scan
+  passed. Direct reported
   `direct(local=host,remote=host,protocol=udp)`; forced TURN reported
   `relay(local=relay,remote=relay,protocol=udp)` and its independent coturn check
   relayed 3/3 datagrams. This did not start capture/UI and is not Android, real
