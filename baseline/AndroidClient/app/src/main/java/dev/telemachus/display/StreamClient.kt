@@ -32,6 +32,7 @@ class StreamClient(
     private var outputStream: java.io.DataOutputStream? = null
 
     @Volatile private var isConnected = false
+    @Volatile private var sessionReady = false
     @Volatile private var stopRequested = false
     @Volatile private var connectionEpoch = 0L
 
@@ -45,6 +46,7 @@ class StreamClient(
     var onDisplaySize: ((Int, Int, Int) -> Unit)? = null // width, height, rotation
     var onStats: ((Double, Double) -> Unit)? = null
     var onReconnectSuggested: ((delayMs: Long) -> Unit)? = null
+    var onWriteFailure: ((reason: String) -> Unit)? = null
 
     /** Invoked when the server confirms the stream codec (true = HEVC). */
     var onCodecSelected: ((Boolean) -> Unit)? = null
@@ -115,7 +117,8 @@ class StreamClient(
                     // from inside the worker thread before processing touch writes.
                     try {
                         Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY)
-                    } catch (_: Exception) {
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Could not raise touch thread priority", error)
                     }
                     runnable.run()
                 },
@@ -130,12 +133,13 @@ class StreamClient(
     suspend fun connect() =
         withContext(Dispatchers.IO) {
             stopRequested = false
+            sessionReady = false
             try {
-                socket =
-                    Socket(host, port).apply {
-                        tcpNoDelay = true
-                        soTimeout = HEARTBEAT_POLL_INTERVAL_MS
-                    }
+                val candidate = Socket()
+                socket = candidate
+                candidate.tcpNoDelay = true
+                candidate.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+                candidate.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
                 inputStream = DataInputStream(java.io.BufferedInputStream(socket?.getInputStream(), 65536))
                 outputStream = java.io.DataOutputStream(socket?.getOutputStream())
                 streamCodecIsHevc = true
@@ -146,7 +150,6 @@ class StreamClient(
                 connectionEpoch = SESSION_EPOCHS.beginSession()
                 isConnected = true
                 heartbeat.reset(System.nanoTime())
-                reconnectBackoff.reset()
                 lastKeyframeReceivedNs = 0L
                 synchronized(keyframeRequestLock) {
                     lastKeyframeRequestNs = 0L
@@ -157,12 +160,14 @@ class StreamClient(
                     "connection_opened",
                     mapOf("host" to host, "port" to port, "session_epoch" to connectionEpoch),
                 )
-                onConnectionStatus?.invoke(true)
-
                 receiveData()
+                if (!sessionReady && !stopRequested) {
+                    throw IOException("Mac connection closed before display configuration")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Connection error", e)
                 handleConnectionEnded(e.message ?: e.javaClass.simpleName)
+                if (!sessionReady && !stopRequested) throw e
             }
         }
 
@@ -185,6 +190,7 @@ class StreamClient(
         deviceName: String,
     ) = withContext(Dispatchers.IO) {
         stopRequested = false
+        sessionReady = false
         Log.i(TAG, "connectWireless: trying $host:$port (device=$deviceName, token bytes=${token.size})")
 
         // Force the socket onto the active WiFi network. On some Android setups
@@ -283,14 +289,13 @@ class StreamClient(
                 connectionEpoch = SESSION_EPOCHS.beginSession()
                 isConnected = true
                 heartbeat.reset(System.nanoTime())
-                reconnectBackoff.reset()
                 emitTelemetry(
                     "connection_opened",
                     mapOf("host" to host, "port" to port, "session_epoch" to connectionEpoch),
                 )
                 diagLog("Wireless connected to $host:$port")
-                onConnectionStatus?.invoke(true)
                 receiveData()
+                if (!sessionReady && !stopRequested) throw WirelessConnectError.ProtocolError
             }
 
             AuthHandshake.ResponseStatus.INVALID_TOKEN -> {
@@ -424,7 +429,18 @@ class StreamClient(
                             val width = input.readInt()
                             val height = input.readInt()
                             val rotation = input.readInt()
+                            if (width !in MIN_DISPLAY_DIMENSION..MAX_DISPLAY_DIMENSION ||
+                                height !in MIN_DISPLAY_DIMENSION..MAX_DISPLAY_DIMENSION ||
+                                rotation !in VALID_DISPLAY_ROTATIONS
+                            ) {
+                                throw IOException("Invalid display configuration: ${width}x$height @ $rotation")
+                            }
                             diagLog("Display config: ${width}x$height @ $rotation°")
+                            if (!sessionReady) {
+                                sessionReady = true
+                                reconnectBackoff.reset()
+                                onConnectionStatus?.invoke(true)
+                            }
                             onDisplaySize?.invoke(width, height, rotation)
                         }
 
@@ -510,7 +526,9 @@ class StreamClient(
                     out.write(buffer.array())
                     out.flush()
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                Log.e(TAG, "Touch write failed", error)
+                onWriteFailure?.invoke(error.message ?: error.javaClass.simpleName)
             }
         }
     }
@@ -554,7 +572,9 @@ class StreamClient(
                     out.write(byteArrayOf(MESSAGE_KEYFRAME_REQUEST.toByte(), flags.toByte()))
                     out.flush()
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                Log.e(TAG, "Keyframe request write failed", error)
+                onWriteFailure?.invoke(error.message ?: error.javaClass.simpleName)
             }
         }
     }
@@ -573,7 +593,9 @@ class StreamClient(
                     out.write(buffer.array())
                     out.flush()
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                Log.e(TAG, "Ping write failed", error)
+                onWriteFailure?.invoke(error.message ?: error.javaClass.simpleName)
             }
         }
     }
@@ -694,6 +716,7 @@ class StreamClient(
         handleConnectionEnded(reason)
     }
 
+    @Synchronized
     private fun handleConnectionEnded(reason: String) {
         val wasConnected = isConnected
         isConnected = false
@@ -754,7 +777,8 @@ class StreamClient(
     private fun cleanupCandidateSocket(candidate: Socket? = socket) {
         try {
             candidate?.close()
-        } catch (_: IOException) {
+        } catch (error: IOException) {
+            Log.d(TAG, "Candidate socket was already closed", error)
         }
         if (socket === candidate) {
             socket = null
@@ -779,6 +803,9 @@ class StreamClient(
         private const val HANDSHAKE_TIMEOUT_MS = 5_000
         private const val HEARTBEAT_POLL_INTERVAL_MS = 1_000
         private const val HEARTBEAT_TIMEOUT_MS = 3_500L
+        private const val MIN_DISPLAY_DIMENSION = 16
+        private const val MAX_DISPLAY_DIMENSION = 8_192
+        private val VALID_DISPLAY_ROTATIONS = setOf(0, 90, 180, 270)
         private const val TELEMETRY_TAG = "VibeScreenTelemetry"
         private const val MESSAGE_VIDEO_FRAME = 0
         private const val MESSAGE_VIDEO_FRAME_WITH_METADATA = 6

@@ -23,6 +23,7 @@ class VideoDecoder(
     initialWidth: Int = 1920,
     initialHeight: Int = 1200,
     private val mime: String = MediaFormat.MIMETYPE_VIDEO_HEVC,
+    initialScaleMode: VideoScaleMode = VideoScaleMode.FIT,
 ) {
     private var decoder: MediaCodec? = null
     private var decoderThread: HandlerThread? = null
@@ -53,6 +54,7 @@ class VideoDecoder(
 
     private var currentWidth = initialWidth
     private var currentHeight = initialHeight
+    private var currentScaleMode = initialScaleMode
 
     @Volatile private var isRunning = false
 
@@ -88,6 +90,15 @@ class VideoDecoder(
             release()
             setupDecoder()
             requestKeyframe("resolution changed", force = true)
+        }
+    }
+
+    fun updateScaleMode(scaleMode: VideoScaleMode) {
+        currentScaleMode = scaleMode
+        try {
+            decoder?.setVideoScalingMode(scaleMode.mediaCodecValue())
+        } catch (error: IllegalStateException) {
+            Log.w(TAG, "Deferring video scaling mode until decoder recreation", error)
         }
     }
 
@@ -227,7 +238,7 @@ class VideoDecoder(
             }
         }
 
-        codec.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+        codec.setVideoScalingMode(currentScaleMode.mediaCodecValue())
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 surface.setFrameRate(
@@ -249,6 +260,12 @@ class VideoDecoder(
                 "surface=$surface, valid=${surface.isValid}",
         )
     }
+
+    private fun VideoScaleMode.mediaCodecValue(): Int =
+        when (this) {
+            VideoScaleMode.FIT -> MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT
+            VideoScaleMode.FILL -> MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+        }
 
     /**
      * Find the best decoder for [mime] at the given resolution.
@@ -272,7 +289,8 @@ class VideoDecoder(
                 val caps =
                     try {
                         info.getCapabilitiesForType(mime)
-                    } catch (_: Exception) {
+                    } catch (error: Exception) {
+                        diagLog("Skipping decoder '${info.name}' for $mime: ${error.message}")
                         continue
                     }
 
@@ -285,7 +303,8 @@ class VideoDecoder(
                     supported &&
                         try {
                             videoCaps.areSizeAndRateSupported(width, height, targetRate)
-                        } catch (_: Exception) {
+                        } catch (error: Exception) {
+                            diagLog("Rate query failed for '${info.name}': ${error.message}")
                             false
                         }
 
@@ -643,7 +662,8 @@ class VideoDecoder(
             Log.e(TAG, "releaseOutputBuffer failed", e)
             try {
                 codec.releaseOutputBuffer(index, false)
-            } catch (_: Exception) {
+            } catch (fallbackError: Exception) {
+                Log.e(TAG, "Failed to discard output buffer after timed release error", fallbackError)
             }
         }
     }

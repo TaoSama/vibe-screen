@@ -17,6 +17,7 @@
 - [Phase 1 macOS host capabilities](changes/2026-08-05-phase-1-macos-host/PRD.md)
   - [Technical design and boundaries](changes/2026-08-05-phase-1-macos-host/TECH.md)
   - [Verification record](changes/2026-08-05-phase-1-macos-host/TEST.md)
+- [Phase 1 Android client verification](changes/2026-08-05-phase-1-android-client/TEST.md)
 - [Phase 4 HarmonyOS NEXT client](changes/2026-08-04-phase-4-harmony/PRD.md)
   - [Technical design](changes/2026-08-04-phase-4-harmony/TECH.md)
   - [Verification record](changes/2026-08-04-phase-4-harmony/TEST.md)
