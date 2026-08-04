@@ -5,12 +5,17 @@ final class VibeScreenAppUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    @MainActor
     func testConnectionFormIsUsable() {
         let app = XCUIApplication()
         app.launch()
 
-        XCTAssertTrue(app.textFields["主机名或 IP"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.textFields["端口"].exists)
-        XCTAssertTrue(app.buttons["连接"].exists)
+        let hostFieldExists = app.textFields["主机名或 IP"].waitForExistence(timeout: 10)
+        let portFieldExists = app.textFields["端口"].exists
+        let connectButtonExists = app.buttons["连接"].exists
+
+        XCTAssertTrue(hostFieldExists)
+        XCTAssertTrue(portFieldExists)
+        XCTAssertTrue(connectButtonExists)
     }
 }
