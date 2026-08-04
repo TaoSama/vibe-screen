@@ -4,7 +4,7 @@ Date: 2026-08-05
 Branch: `codex/phase1-android-client-experience`
 Implementation base: `6f7ffbe0be872390144899642636dbb24d89f120`
 
-Final branch base after synchronization: `53228758722c74592b36b3f9b0b7be41ca9f5403`
+Final branch base after synchronization: `5a12d2a1dcdf3a719753e413fb85b63aa35aca90`
 
 ## Scope and protocol boundary
 
@@ -48,11 +48,11 @@ cd baseline/AndroidClient
 
 Results:
 
-- 114 JVM tests, zero failures/errors/skips;
+- 116 JVM tests, zero failures/errors/skips;
 - lint reported `No issues found`;
-- all requested Gradle tasks completed with `BUILD SUCCESSFUL in 28s`;
+- all requested Gradle tasks completed with `BUILD SUCCESSFUL in 25s`;
 - final clean-rebuild APK SHA-256:
-  `1fec4cd06c728d35d52abad99ffb3a5e284af1996e0923ef9b6d10c5eaf17e67`.
+  `a07a0581297b999293d6a92df06102cd4a83f1c2f3e22b237968d4aa6ce4c363`.
 
 The APK hash is an offline artifact identity, not install or device evidence.
 
@@ -68,11 +68,19 @@ The device-run APK installed with `adb install -r -t` at
 `b108fb9e0c8e5544171d57eb3be57d9fb93f332fc4954e26d5f51b20b876aa0b`.
 Its SHA-256 was
 `37e7c2b7e107443c298a8d59d054fac027ad32021bb5eeadcb87f73d649c3892`.
-After the lease ended, review added malformed-display validation and then
-corrected true client rotation, callback-generation isolation, bounded
-outbound scheduling, typed terminal failures, and Camera settings-return
-recovery. The final 110-test clean build was not reinstalled. Those review
-fixes are JVM/lint/build-verified only and retain all real-device gates below.
+The install-time working tree was based on
+`6f7ffbe0be872390144899642636dbb24d89f120`, but its Android changes were not
+yet committed, so there is no exact installed Git commit; the device APK hash
+is the authoritative artifact identity.
+
+After the lease ended, review added malformed-display validation, true client
+rotation and inverse input mapping, callback-generation isolation, bounded and
+recovery-prioritized outbound scheduling, typed terminal failures, Camera
+Settings-return recovery, atomic capability/input-sink installation, and
+strict non-blocking saturation fail-close with asynchronous cleanup. The final
+implementation also serializes decoder teardown and reinitialization off the
+UI thread. The final clean build was not reinstalled. This complete delta is
+JVM/lint/build-verified only and retains all real-device gates below.
 
 The Mac remained locked, so ScreenCaptureKit could not provide a real display.
 The device run therefore used the repository's existing 2000×1124@60 synthetic

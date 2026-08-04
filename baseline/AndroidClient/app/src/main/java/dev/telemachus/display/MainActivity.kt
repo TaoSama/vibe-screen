@@ -37,6 +37,9 @@ import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.Locale
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 private fun mainDiag(msg: String) = DiagLog.log("MA", msg)
 
@@ -46,7 +49,12 @@ class MainActivity : AppCompatActivity() {
     private val cameraPerm by lazy { CameraPermissionManager(this) }
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefs: PreferencesManager
-    private var videoDecoder: VideoDecoder? = null
+    private val videoDecoderRef = AtomicReference<VideoDecoder?>()
+    private val surfaceGeneration = AtomicLong()
+    private val decoderConfigurationGeneration = AtomicLong()
+    private var videoDecoder: VideoDecoder?
+        get() = videoDecoderRef.get()
+        set(value) = videoDecoderRef.set(value)
     private var streamClient: StreamClient? = null
     private var currentSurfaceHolder: SurfaceHolder? = null
     private var displayWidth = 0 // 0 = no config received yet
@@ -443,6 +451,7 @@ class MainActivity : AppCompatActivity() {
                     // Don't initialize decoder here — wait for display config
                     // from the server so we use the correct resolution.
                     // Store the holder so we can initialize later.
+                    surfaceGeneration.incrementAndGet()
                     currentSurfaceHolder = holder
                     // If we already have a display config (reconnect case), init now
                     if (displayWidth > 0 && displayHeight > 0 && videoDecoder == null) {
@@ -454,8 +463,9 @@ class MainActivity : AppCompatActivity() {
                     mainDiag("surfaceDestroyed")
                     log("Surface destroyed")
                     // Only release decoder, NOT the connection.
-                    videoDecoder?.release()
-                    videoDecoder = null
+                    surfaceGeneration.incrementAndGet()
+                    if (currentSurfaceHolder === holder) currentSurfaceHolder = null
+                    releaseVideoDecoderAsync()
                 }
             },
         )
@@ -923,14 +933,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         scaleFitButton.setOnClickListener {
-            prefs.videoScaleMode = VideoScaleMode.FIT
-            videoDecoder?.updateScaleMode(VideoScaleMode.FIT)
+            applyVideoScaleMode(VideoScaleMode.FIT)
             updateSurfaceViewportLayout()
             updateViewportButtons()
         }
         scaleFillButton.setOnClickListener {
-            prefs.videoScaleMode = VideoScaleMode.FILL
-            videoDecoder?.updateScaleMode(VideoScaleMode.FILL)
+            applyVideoScaleMode(VideoScaleMode.FILL)
             updateSurfaceViewportLayout()
             updateViewportButtons()
         }
@@ -1218,28 +1226,101 @@ class MainActivity : AppCompatActivity() {
             mainDiag("initializeDecoder skipped — no display config yet")
             return
         }
-        try {
-            // Pass display for vsync-aligned frame presentation
-            // Use modern API on Android R+, fallback to deprecated for older versions
-            val displayObj =
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    display // Activity.getDisplay() - modern API
-                } else {
-                    @Suppress("DEPRECATION")
-                    windowManager.defaultDisplay
-                }
-            val mime =
-                if (!ownerClient.streamCodecIsHevc) {
-                    MediaFormat.MIMETYPE_VIDEO_AVC
-                } else {
-                    MediaFormat.MIMETYPE_VIDEO_HEVC
-                }
-            val decoder = VideoDecoder(holder.surface, displayObj, displayWidth, displayHeight, mime)
-            videoDecoder = decoder
-            decoder.updateScaleMode(prefs.videoScaleMode)
-            decoder.onFrameDecoded = { buffer ->
-                ownerClient.releaseBuffer(buffer)
+        val surface = holder.surface
+        val expectedSurfaceGeneration = surfaceGeneration.get()
+        val expectedConfigurationGeneration = decoderConfigurationGeneration.incrementAndGet()
+        val width = displayWidth
+        val height = displayHeight
+        val scaleMode = prefs.videoScaleMode
+        val displayObj =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                display
+            } else {
+                @Suppress("DEPRECATION")
+                windowManager.defaultDisplay
             }
+        val mime =
+            if (ownerClient.streamCodecIsHevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
+        DECODER_LIFECYCLE_EXECUTOR.execute {
+            if (videoDecoder != null ||
+                !surface.isValid ||
+                surfaceGeneration.get() != expectedSurfaceGeneration ||
+                decoderConfigurationGeneration.get() != expectedConfigurationGeneration ||
+                !isCurrentSession(ownerClient, ownerGeneration)
+            ) {
+                return@execute
+            }
+            val decoder =
+                try {
+                    createConfiguredDecoder(
+                        surface = surface,
+                        displayObj = displayObj,
+                        width = width,
+                        height = height,
+                        mime = mime,
+                        scaleMode = scaleMode,
+                        ownerClient = ownerClient,
+                        ownerGeneration = ownerGeneration,
+                    )
+                } catch (e: Exception) {
+                    if (surface.isValid &&
+                        surfaceGeneration.get() == expectedSurfaceGeneration &&
+                        decoderConfigurationGeneration.get() == expectedConfigurationGeneration &&
+                        isCurrentSession(ownerClient, ownerGeneration)
+                    ) {
+                        reportDecoderInitializationFailure(e, ownerClient, ownerGeneration)
+                    }
+                    return@execute
+                }
+            if (!surface.isValid ||
+                surfaceGeneration.get() != expectedSurfaceGeneration ||
+                decoderConfigurationGeneration.get() != expectedConfigurationGeneration ||
+                !isCurrentSession(ownerClient, ownerGeneration) ||
+                !videoDecoderRef.compareAndSet(null, decoder)
+            ) {
+                decoder.release()
+                return@execute
+            }
+            if (!surface.isValid ||
+                surfaceGeneration.get() != expectedSurfaceGeneration ||
+                decoderConfigurationGeneration.get() != expectedConfigurationGeneration ||
+                !isCurrentSession(ownerClient, ownerGeneration)
+            ) {
+                val ownsRelease = videoDecoderRef.compareAndSet(decoder, null)
+                if (ownsRelease) decoder.release()
+                return@execute
+            }
+            try {
+                ownerClient.requestKeyframe(force = true, reason = "decoder initialized")
+                mainDiag("Decoder initialized OK ${width}x$height mime=$mime, videoDecoder=$decoder")
+                log("✅ Decoder initialized ${width}x$height $mime (${displayObj?.refreshRate ?: 60f}Hz)")
+            } catch (e: Exception) {
+                if (surface.isValid &&
+                    surfaceGeneration.get() == expectedSurfaceGeneration &&
+                    decoderConfigurationGeneration.get() == expectedConfigurationGeneration &&
+                    isCurrentSession(ownerClient, ownerGeneration) &&
+                    videoDecoder === decoder
+                ) {
+                    reportDecoderInitializationFailure(e, ownerClient, ownerGeneration)
+                }
+            }
+        }
+    }
+
+    private fun createConfiguredDecoder(
+        surface: android.view.Surface,
+        displayObj: android.view.Display?,
+        width: Int,
+        height: Int,
+        mime: String,
+        scaleMode: VideoScaleMode,
+        ownerClient: StreamClient,
+        ownerGeneration: Long,
+    ): VideoDecoder {
+        val decoder = VideoDecoder(surface, displayObj, width, height, mime)
+        try {
+            decoder.updateScaleMode(scaleMode)
+            decoder.onFrameDecoded = { buffer -> ownerClient.releaseBuffer(buffer) }
             decoder.onKeyframeRequired = { force, reason ->
                 if (isCurrentSession(ownerClient, ownerGeneration) && videoDecoder === decoder) {
                     ownerClient.requestKeyframe(force = force, reason = reason)
@@ -1250,19 +1331,45 @@ class MainActivity : AppCompatActivity() {
                     ownerClient.failCurrentSession(reason)
                 }
             }
-            ownerClient.requestKeyframe(force = true, reason = "decoder initialized")
-            mainDiag("Decoder initialized OK ${displayWidth}x$displayHeight mime=$mime, videoDecoder=$videoDecoder")
-            log("✅ Decoder initialized ${displayWidth}x$displayHeight $mime (${displayObj?.refreshRate ?: 60f}Hz)")
+            return decoder
         } catch (e: Exception) {
-            mainDiag("Decoder init FAILED: ${e.message}")
-            log("❌ Failed to initialize decoder: ${e.message}")
-            runOnUiThread {
-                updateStatus("Video decoder failed: ${e.message}")
-            }
-            if (CodecCapabilities.shouldAdvertiseAvcOnly && isCurrentSession(ownerClient, ownerGeneration)) {
+            decoder.release()
+            throw e
+        }
+    }
+
+    private fun reportDecoderInitializationFailure(
+        error: Exception,
+        ownerClient: StreamClient,
+        ownerGeneration: Long,
+    ) {
+        mainDiag("Decoder init FAILED: ${error.message}")
+        log("❌ Failed to initialize decoder: ${error.message}")
+        if (isCurrentSession(ownerClient, ownerGeneration)) {
+            updateStatus("Video decoder failed: ${error.message}")
+            if (CodecCapabilities.shouldAdvertiseAvcOnly) {
                 ownerClient.failCurrentSession("codec_configuration_failure")
             }
         }
+    }
+
+    private fun applyVideoScaleMode(mode: VideoScaleMode) {
+        prefs.videoScaleMode = mode
+        // Invalidate an in-flight constructor, then reconcile on the same
+        // serial worker so its publish/post-publish checks finish first.
+        decoderConfigurationGeneration.incrementAndGet()
+        DECODER_LIFECYCLE_EXECUTOR.execute {
+            videoDecoder?.updateScaleMode(mode)
+        }
+        currentSurfaceHolder
+            ?.takeIf { it.surface.isValid && displayWidth > 0 && displayHeight > 0 }
+            ?.let(::initializeDecoder)
+    }
+
+    private fun releaseVideoDecoderAsync() {
+        decoderConfigurationGeneration.incrementAndGet()
+        val decoder = videoDecoderRef.getAndSet(null) ?: return
+        DECODER_LIFECYCLE_EXECUTOR.execute { decoder.release() }
     }
 
     /**
@@ -1361,29 +1468,7 @@ class MainActivity : AppCompatActivity() {
                         )
                     }
                 } else {
-                    stopPingTimer()
-                    videoDecoder?.release()
-                    videoDecoder = null
-                    showDisconnectedStreamUi()
-                    val mode = prefs.connectionMode
-                    val willTransition = mode == ConnectionMode.WIRELESS
-                    android.util.Log.i(
-                        "MainActivity",
-                        "onConnectionStatus(false) — mode=$mode, willTransition=$willTransition",
-                    )
-                    if (mode == ConnectionMode.WIRELESS) {
-                        // Don't restart checklist (it conflicts with wireless on Mac).
-                        // Tell wireless controller to show the idle/reconnect UI.
-                        wirelessController.onStreamDisconnected()
-                    } else {
-                        log("📋 Restarting checklist updates")
-                        startChecklistUpdates()
-                    }
-                    pendingTerminalGuidance?.let { guidance ->
-                        pendingTerminalGuidance = null
-                        updateStatus(guidance.status)
-                        showError(guidance.message)
-                    }
+                    applyDisconnectedSessionUi()
                 }
             }
         }
@@ -1409,16 +1494,13 @@ class MainActivity : AppCompatActivity() {
                 displayWidth = width
                 displayHeight = height
                 displayRotation = rotation
-                if (videoDecoder != null) {
-                    videoDecoder?.updateResolution(width, height)
+                releaseVideoDecoderAsync()
+                val holder = currentSurfaceHolder
+                if (holder != null && holder.surface.isValid) {
+                    mainDiag("Display config arrived, initializing decoder ${width}x$height")
+                    initializeDecoder(holder)
                 } else {
-                    val holder = currentSurfaceHolder
-                    if (holder != null && holder.surface.isValid) {
-                        mainDiag("Display config arrived, initializing decoder ${width}x$height")
-                        initializeDecoder(holder)
-                    } else {
-                        mainDiag("Display config arrived but no valid surface yet")
-                    }
+                    mainDiag("Display config arrived but no valid surface yet")
                 }
                 updateSurfaceViewportLayout()
                 binding.resolutionText.text = getString(R.string.resolution_format, width, height)
@@ -1532,6 +1614,7 @@ class MainActivity : AppCompatActivity() {
         if (client != null) sessionState.invalidate(client, generation)
         if (streamClient === client) streamClient = null
         connectionAttemptInProgress = false
+        applyDisconnectedSessionUi()
     }
 
     private fun connect(
@@ -1584,10 +1667,30 @@ class MainActivity : AppCompatActivity() {
         if (client != null) sessionState.invalidate(client, generation)
         if (streamClient === client) streamClient = null
         connectionAttemptInProgress = false
+        applyDisconnectedSessionUi()
         // Reset display config so next connect defers decoder init until config arrives
         displayWidth = 0
         displayHeight = 0
         log("Disconnected")
+    }
+
+    private fun applyDisconnectedSessionUi() {
+        isConnected = false
+        setStreamingWindowState(false)
+        stopPingTimer()
+        releaseVideoDecoderAsync()
+        showDisconnectedStreamUi()
+        val mode = prefs.connectionMode
+        if (mode == ConnectionMode.WIRELESS) {
+            wirelessController.onStreamDisconnected()
+        } else {
+            startChecklistUpdates()
+        }
+        pendingTerminalGuidance?.let { guidance ->
+            pendingTerminalGuidance = null
+            updateStatus(guidance.status)
+            showError(guidance.message)
+        }
     }
 
     private fun startPingTimer() {
@@ -1609,8 +1712,6 @@ class MainActivity : AppCompatActivity() {
     private fun cleanup() {
         try {
             disconnect()
-            videoDecoder?.release()
-            videoDecoder = null
             setStreamingWindowState(false)
         } catch (e: Exception) {
             log("⚠️ Cleanup error: ${e.message}")
@@ -1796,6 +1897,10 @@ class MainActivity : AppCompatActivity() {
         private const val LEGACY_SCROLL_POINTER_COUNT = 2
         private const val LEGACY_RIGHT_CLICK_HOLD_MS = 650L
         private const val FOREGROUND_RECONNECT_DELAY_MS = 150L
+        private val DECODER_LIFECYCLE_EXECUTOR =
+            Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "VibeDecoderLifecycle").apply { isDaemon = true }
+            }
     }
 
     // ==================== Connection Checklist ====================

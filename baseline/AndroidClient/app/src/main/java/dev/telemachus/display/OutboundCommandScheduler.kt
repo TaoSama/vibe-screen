@@ -57,12 +57,12 @@ class OutboundCommandScheduler<C : Any>(
     private var pendingCount = 0
     private var state = State.OPEN
     private var failureCallbackClaimed = false
+    private var workerStarted = false
     private val recoveryReservedSlots = if (capacity >= MIN_CAPACITY_WITH_RECOVERY_RESERVE) 2 else 0
 
     private val worker =
         Thread(::runWriter, threadName).apply {
             isDaemon = true
-            start()
         }
 
     /**
@@ -76,13 +76,20 @@ class OutboundCommandScheduler<C : Any>(
         timeoutMillis: Long = 0,
     ): Submission {
         require(timeoutMillis >= 0) { "timeoutMillis must not be negative" }
-        lock.lockInterruptibly()
+        val deadlineNs = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+        val acquired =
+            if (timeoutMillis == 0L) {
+                lock.tryLock()
+            } else {
+                lock.tryLock(timeoutMillis, TimeUnit.MILLISECONDS)
+            }
+        if (!acquired) return Submission.TIMED_OUT
         try {
             if (state != State.OPEN) return Submission.CLOSED
 
             replacePending(kind, command)?.let { return it }
 
-            var remainingNanos = TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+            var remainingNanos = (deadlineNs - System.nanoTime()).coerceAtLeast(0L)
             while (pendingCount >= admissionLimit(kind)) {
                 if (kind != Kind.MOVE && removeOldestMove()) {
                     pendingCount--
@@ -109,8 +116,13 @@ class OutboundCommandScheduler<C : Any>(
         lock.lockInterruptibly()
         try {
             if (state == State.OPEN) {
-                state = State.CLOSING
-                hasWork.signalAll()
+                if (!workerStarted && pendingCount == 0) {
+                    state = State.CLOSED
+                    terminated.signalAll()
+                } else {
+                    state = State.CLOSING
+                    hasWork.signalAll()
+                }
             }
             var remainingNanos = TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
             while (state != State.CLOSED && state != State.FAILED) {
@@ -180,6 +192,10 @@ class OutboundCommandScheduler<C : Any>(
         }
         pendingCount++
         check(pendingCount <= capacity)
+        if (!workerStarted) {
+            workerStarted = true
+            worker.start()
+        }
         hasWork.signal()
     }
 

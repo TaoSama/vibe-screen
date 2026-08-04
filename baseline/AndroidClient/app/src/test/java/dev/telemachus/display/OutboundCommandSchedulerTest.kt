@@ -133,11 +133,14 @@ class OutboundCommandSchedulerTest {
         assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
         assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(STRUCTURAL, "down"))
         assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(STRUCTURAL, "up"))
-        val cancelSubmission = scheduler.submit(STRUCTURAL, "cancel", timeoutMillis = 1)
+        val startedAt = System.nanoTime()
+        val cancelSubmission = scheduler.submit(STRUCTURAL, "cancel", timeoutMillis = 0)
+        val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000.0
         releaseWriter.countDown()
 
         assertTrue(scheduler.shutdownGracefully(1_000))
         assertEquals(OutboundCommandScheduler.Submission.TIMED_OUT, cancelSubmission)
+        assertTrue("zero-timeout submission took ${elapsedMs}ms", elapsedMs < 50.0)
         assertEquals(listOf("active", "down", "up"), written)
     }
 
