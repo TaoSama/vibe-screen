@@ -117,7 +117,13 @@ enum InternetProductSessionSelfTest {
             try wait(keyframeRequested, gate: "the product keyframe request")
             try session.updateRotation(90)
             try wait(harness.rotationComplete, gate: "the versioned runtime rotation")
-            try wait(streaming, gate: "streaming after rotation acknowledgment")
+            guard streaming.wait(timeout: .now() + timeout) == .success else {
+                throw SelfTestError.protocolFailure(
+                    "Timed out waiting for streaming after rotation acknowledgment; "
+                        + "hostState=\(session.snapshotState()), "
+                        + "hostFailures=\(state.failures), deviceFailures=\(harness.failures)"
+                )
+            }
             try wait(keyframeRequested, gate: "the post-rotation keyframe request")
 
             session.sendFrame(
