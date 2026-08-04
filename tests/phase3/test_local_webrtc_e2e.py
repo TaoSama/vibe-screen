@@ -180,7 +180,7 @@ class LocalWebRTCE2ETests(unittest.TestCase):
         output = (
             "Phase 3 product signaling self-test: PASS "
             "(productSession=true, protocolV1=true, route=relay, epoch=1, "
-            "configEpoch=1, keyframe=true, delta=true, input=true, applicationE2EE=true, "
+            "configEpoch=2, rotation=90, keyframe=true, delta=true, input=true, applicationE2EE=true, "
             "selectedCandidatePair=relay(local=relay,remote=relay,protocol=udp))"
         )
 
@@ -200,7 +200,7 @@ class LocalWebRTCE2ETests(unittest.TestCase):
         output = (
             "Phase 3 product signaling self-test: PASS "
             "(productSession=true, protocolV1=true, route=direct, epoch=1, "
-            "configEpoch=1, keyframe=true, delta=true, input=true, applicationE2EE=true, "
+            "configEpoch=2, rotation=90, keyframe=true, delta=true, input=true, applicationE2EE=true, "
             "selectedCandidatePair=direct(local=host,remote=host,protocol=udp))"
         )
         with self.assertRaisesRegex(E2EFailure, "relay route"):
