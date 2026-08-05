@@ -535,6 +535,78 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
         let currentRecord = try currentPair.device.seal(Data("current".utf8), channel: .control)
         XCTAssertEqual(currentPair.host.open(currentRecord, channel: .control), Data("current".utf8))
     }
+
+    func testOpenAndConcurrentEpochAdvanceAreSerializedByDurableEpochLock() throws {
+        let store = MemorySecurityStateStore()
+        let lifecycle = SecurityLifecycle(store: store)
+        XCTAssertEqual(try lifecycle.reserveSessionEpoch(1), 1)
+        let material = (
+            shared: Data(repeating: 0x51, count: 32),
+            bootstrap: Data(repeating: 0x52, count: 32),
+            context: Data(repeating: 0x53, count: 32)
+        )
+        let recordPair = try PlatformSessionPacketCipher.selfTestPair(
+            sessionIdentifier: "epoch-open-interleaving",
+            sharedSecret: material.shared,
+            bootstrapSecret: material.bootstrap,
+            transcriptContext: material.context,
+            sessionEpoch: 1,
+            requireActiveEpoch: lifecycle.requireCurrentSessionEpoch
+        )
+        let record = try recordPair.device.seal(Data("epoch-one".utf8), channel: .control)
+        let openEntered = DispatchSemaphore(value: 0)
+        let releaseOpen = DispatchSemaphore(value: 0)
+        let openFinished = DispatchSemaphore(value: 0)
+        let reserveStarted = DispatchSemaphore(value: 0)
+        let reserveFinished = DispatchSemaphore(value: 0)
+        let opened = LockedOptionalData()
+        let reservation = LockedEpochReservation()
+        let interleavedPair = try PlatformSessionPacketCipher.selfTestPair(
+            sessionIdentifier: "epoch-open-interleaving",
+            sharedSecret: material.shared,
+            bootstrapSecret: material.bootstrap,
+            transcriptContext: material.context,
+            sessionEpoch: 1,
+            withActiveEpoch: { epoch, operation in
+                try lifecycle.withActiveSessionEpoch(epoch) {
+                    openEntered.signal()
+                    guard releaseOpen.wait(timeout: .now() + 2) == .success else {
+                        throw PlatformSecurityError.persistenceFailure("test latch timed out")
+                    }
+                    return try operation()
+                }
+            }
+        )
+
+        DispatchQueue.global().async {
+            opened.set(interleavedPair.host.open(record, channel: .control))
+            openFinished.signal()
+        }
+        XCTAssertEqual(openEntered.wait(timeout: .now() + 2), .success)
+        DispatchQueue.global().async {
+            reserveStarted.signal()
+            do {
+                reservation.succeed(try lifecycle.reserveSessionEpoch(2))
+            } catch {
+                reservation.fail(error)
+            }
+            reserveFinished.signal()
+        }
+        XCTAssertEqual(reserveStarted.wait(timeout: .now() + 2), .success)
+        XCTAssertEqual(
+            reserveFinished.wait(timeout: .now() + 0.05),
+            .timedOut,
+            "N+1 reservation must wait while the N open transaction owns the durable epoch lock."
+        )
+        releaseOpen.signal()
+        XCTAssertEqual(openFinished.wait(timeout: .now() + 2), .success)
+        XCTAssertEqual(opened.value, Data("epoch-one".utf8))
+        XCTAssertEqual(reserveFinished.wait(timeout: .now() + 2), .success)
+        XCTAssertEqual(reservation.value, 2)
+        XCTAssertNil(reservation.errorDescription)
+        XCTAssertEqual(store.state.sessionEpoch, 2)
+        XCTAssertNil(interleavedPair.host.open(record, channel: .control))
+    }
 }
 
 private func signedTombstone(
@@ -618,6 +690,53 @@ private final class MemorySecurityStateStore: SecurityStateStore {
             throw PlatformSecurityError.persistenceFailure("injected")
         }
         self.state = state
+    }
+}
+
+private final class LockedOptionalData: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Data?
+
+    var value: Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored
+    }
+
+    func set(_ value: Data?) {
+        lock.lock()
+        stored = value
+        lock.unlock()
+    }
+}
+
+private final class LockedEpochReservation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedValue: UInt64?
+    private var storedErrorDescription: String?
+
+    var value: UInt64? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedValue
+    }
+
+    var errorDescription: String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedErrorDescription
+    }
+
+    func succeed(_ value: UInt64) {
+        lock.lock()
+        storedValue = value
+        lock.unlock()
+    }
+
+    func fail(_ error: Error) {
+        lock.lock()
+        storedErrorDescription = error.localizedDescription
+        lock.unlock()
     }
 }
 

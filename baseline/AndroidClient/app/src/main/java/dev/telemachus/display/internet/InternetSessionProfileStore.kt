@@ -203,8 +203,16 @@ class InternetSessionProfileStore(
                 addProperty("local_identity_epoch", metadata.deviceIdentity.keyEpoch)
                 addProperty("session_context", Base64.getEncoder().encodeToString(context))
             }.toString()
-        storedSessionFactory.authorizeIdentityEpoch(metadata.deviceIdentity.keyEpoch)
-        check(preferences.edit().putString(PAIRING_KEY, value).commit()) { "Failed to persist verified pairing metadata" }
+        storedSessionFactory.completePairingPersistence(
+            pairingIdentifier = metadata.pairingIdentifier,
+            commitBusinessState = {
+                storedSessionFactory.authorizeIdentityEpoch(metadata.deviceIdentity.keyEpoch)
+                check(preferences.edit().putString(PAIRING_KEY, value).commit()) {
+                    "Failed to persist verified pairing metadata"
+                }
+            },
+            cleanupBusinessState = ::removePairingBinding,
+        )
     }
 
     fun hasVerifiedPairing(): Boolean = loadPairingBinding() != null

@@ -207,22 +207,62 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun freshSessionRequestInvalidatesOwnerAndLateCallbacksCannotReactivateOldEpoch() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val clock = ProductFakeClock(0)
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks, clock = clock)
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+
+        monitor.available("cellular")
+        assertEquals(InternetProductSessionState.RECOVERING, session.state)
+        assertEquals(1, callbacks.freshReasons.size)
+        peer.observer.onConnected(PeerRoute.RELAY)
+        peer.observer.onRouteChanged(PeerRoute.DIRECT)
+        assertEquals(InternetProductSessionState.RECOVERING, session.state)
+        assertFalse(session.sendTouch(ProductTouchEvent(10, 0, ProductInputPhase.BEGAN, 0.1, 0.2)))
+
+        clock.now = 10_000
+        session.tick()
+        val payloads = peer.control.map { Envelope.parseFrom(it).payloadCase }
+        assertEquals(1, payloads.count { it == Envelope.PayloadCase.CLIENT_HELLO })
+        assertFalse(payloads.contains(Envelope.PayloadCase.TOUCH_EVENT))
+        assertFalse(payloads.contains(Envelope.PayloadCase.PING))
+    }
+
+    @Test
     fun failureThenLateConnectedAndRouteCallbacksCannotReviveNegotiation() {
         val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val clock = ProductFakeClock(0)
         val callbacks = ProductCallbacks()
-        val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+        val session = session(peer, monitor, callbacks, clock = clock)
         session.start()
+        monitor.available("wifi")
         peer.observer.onConnected(PeerRoute.DIRECT)
-        assertEquals(1, peer.control.size)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
 
         peer.observer.onFailure(IllegalStateException("candidate resolution failed"))
         peer.observer.onDisconnected()
         peer.observer.onConnected(PeerRoute.RELAY)
         peer.observer.onRouteChanged(PeerRoute.DIRECT)
 
-        assertEquals(InternetProductSessionState.SUSPENDED, session.state)
-        assertEquals(1, peer.control.size)
-        assertEquals(Envelope.PayloadCase.CLIENT_HELLO, Envelope.parseFrom(peer.control.single()).payloadCase)
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertFalse(session.sendTouch(ProductTouchEvent(11, 0, ProductInputPhase.BEGAN, 0.1, 0.2)))
+        clock.now = 10_000
+        session.tick()
+        val payloads = peer.control.map { Envelope.parseFrom(it).payloadCase }
+        assertEquals(1, payloads.count { it == Envelope.PayloadCase.CLIENT_HELLO })
+        assertFalse(payloads.contains(Envelope.PayloadCase.TOUCH_EVENT))
+        assertFalse(payloads.contains(Envelope.PayloadCase.PING))
     }
 
     @Test

@@ -6,25 +6,24 @@ internal interface PairingPersistenceSlots {
     fun delete(name: String)
 }
 
-/** Crash-safe single-record pairing commit with a deterministic cleanup slot. */
+/** Crash-safe pairing transaction kept pending through authorization and metadata commit. */
 internal class PairingPersistenceTransaction(
     private val slots: PairingPersistenceSlots,
     private val markerName: String,
 ) {
-    fun persist(targetName: String, record: ByteArray) {
+    fun begin(targetName: String, record: ByteArray) {
         validateTarget(targetName)
         val marker = targetName.toByteArray(Charsets.UTF_8)
         var markerCommitted = false
         try {
+            check(slots.load(markerName) == null) { "Another pairing persistence transaction is pending" }
             slots.persist(markerName, marker)
             markerCommitted = true
             slots.persist(targetName, record)
-            slots.delete(markerName)
         } catch (failure: Throwable) {
             if (markerCommitted) {
                 try {
-                    slots.delete(targetName)
-                    slots.delete(markerName)
+                    retryPendingCleanup()
                 } catch (cleanupFailure: Throwable) {
                     failure.addSuppressed(cleanupFailure)
                 }
@@ -35,16 +34,47 @@ internal class PairingPersistenceTransaction(
         }
     }
 
-    fun retryPendingCleanup() {
-        val marker = slots.load(markerName) ?: return
-        val targetName =
-            try {
-                marker.toString(Charsets.UTF_8).also(::validateTarget)
-            } finally {
-                marker.fill(0)
-            }
-        slots.delete(targetName)
+    fun commit(targetName: String) {
+        validateTarget(targetName)
+        val pending = loadPendingTarget() ?: error("Pairing persistence transaction marker is missing")
+        check(pending == targetName) { "Pairing persistence transaction targets another secret slot" }
         slots.delete(markerName)
+    }
+
+    fun complete(
+        targetName: String,
+        commitBusinessState: () -> Unit,
+        cleanupBusinessState: () -> Unit,
+    ) {
+        try {
+            commitBusinessState()
+            commit(targetName)
+        } catch (failure: Throwable) {
+            try {
+                val recovered = retryPendingCleanup(cleanupBusinessState)
+                if (!recovered) cleanupBusinessState()
+            } catch (cleanupFailure: Throwable) {
+                failure.addSuppressed(cleanupFailure)
+            }
+            throw failure
+        }
+    }
+
+    fun retryPendingCleanup(cleanupBusinessState: () -> Unit = {}): Boolean {
+        val targetName = loadPendingTarget() ?: return false
+        slots.delete(targetName)
+        cleanupBusinessState()
+        slots.delete(markerName)
+        return true
+    }
+
+    private fun loadPendingTarget(): String? {
+        val marker = slots.load(markerName) ?: return null
+        return try {
+            marker.toString(Charsets.UTF_8).also(::validateTarget)
+        } finally {
+            marker.fill(0)
+        }
     }
 
     private fun validateTarget(targetName: String) {

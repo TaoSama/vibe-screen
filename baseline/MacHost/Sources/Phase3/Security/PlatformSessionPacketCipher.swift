@@ -17,7 +17,7 @@ final class PlatformSessionPacketCipher {
     private static let headerBytes = 51
 
     private let localRole: PlatformSenderRole
-    private let requireActiveSessionEpoch: () throws -> Void
+    private let withActiveSessionEpoch: (() throws -> Data?) throws -> Data?
     private let reserveNonce: (UInt32, UInt32, UInt64) throws -> Data
     private let rotateKeys: (PlatformSessionKeys, Data) throws -> PlatformSessionKeys
     private let lock = NSLock()
@@ -37,8 +37,11 @@ final class PlatformSessionPacketCipher {
         self.localRole = localRole
         self.keys = initialKeys
         self.sessionHash = Data(SHA256.hash(data: Data(sessionIdentifier.utf8))).prefix(Self.sessionHashBytes)
-        self.requireActiveSessionEpoch = {
-            try platformSecurity.requireActiveSessionEpoch(sessionEpoch)
+        self.withActiveSessionEpoch = { operation in
+            try platformSecurity.withActiveSessionEpoch(
+                sessionEpoch,
+                operation: operation
+            )
         }
         self.reserveNonce = { channel, senderRole, keyEpoch in
             try platformSecurity.reserveNonce(
@@ -56,7 +59,7 @@ final class PlatformSessionPacketCipher {
         sessionEpoch: UInt64,
         localRole: PlatformSenderRole,
         initialKeys: PlatformSessionKeys,
-        requireActiveSessionEpoch: @escaping () throws -> Void,
+        withActiveSessionEpoch: @escaping (() throws -> Data?) throws -> Data?,
         reserveNonce: @escaping (UInt32, UInt32, UInt64) throws -> Data,
         rotateKeys: @escaping (PlatformSessionKeys, Data) throws -> PlatformSessionKeys
     ) {
@@ -65,7 +68,7 @@ final class PlatformSessionPacketCipher {
         self.localRole = localRole
         self.keys = initialKeys
         self.sessionHash = Data(SHA256.hash(data: Data(sessionIdentifier.utf8))).prefix(Self.sessionHashBytes)
-        self.requireActiveSessionEpoch = requireActiveSessionEpoch
+        self.withActiveSessionEpoch = withActiveSessionEpoch
         self.reserveNonce = reserveNonce
         self.rotateKeys = rotateKeys
     }
@@ -73,51 +76,59 @@ final class PlatformSessionPacketCipher {
     func seal(_ payload: Data, channel: InternetTransportChannel) throws -> Data {
         try lock.withPacketCipherLock {
             guard let keys else { throw PlatformSecurityError.invalidInput("Session packet cipher is closed.") }
-            try requireActiveSessionEpoch()
-            let securityChannel = channel.securityChannel
-            let nonce = try reserveNonce(securityChannel.rawValue, localRole.rawValue, keys.keyEpoch)
-            guard nonce.count == Self.nonceBytes else {
-                throw PlatformSecurityError.persistenceFailure("Durable nonce allocator returned an invalid nonce.")
+            guard let record = try withActiveSessionEpoch({
+                let securityChannel = channel.securityChannel
+                let nonce = try reserveNonce(securityChannel.rawValue, localRole.rawValue, keys.keyEpoch)
+                guard nonce.count == Self.nonceBytes else {
+                    throw PlatformSecurityError.persistenceFailure("Durable nonce allocator returned an invalid nonce.")
+                }
+                let header = makeHeader(keyEpoch: keys.keyEpoch, sender: localRole, channel: securityChannel, nonce: nonce)
+                return header + (try TrafficPacketCryptography.seal(
+                    plaintext: payload,
+                    key: keys.key(channel: securityChannel, sender: localRole),
+                    nonce: nonce,
+                    authenticatedHeader: header
+                ))
+            }) else {
+                throw PlatformSecurityError.persistenceFailure("Active session seal returned no record.")
             }
-            let header = makeHeader(keyEpoch: keys.keyEpoch, sender: localRole, channel: securityChannel, nonce: nonce)
-            return header + (try TrafficPacketCryptography.seal(
-                plaintext: payload,
-                key: keys.key(channel: securityChannel, sender: localRole),
-                nonce: nonce,
-                authenticatedHeader: header
-            ))
+            return record
         }
     }
 
     func open(_ record: Data, channel: InternetTransportChannel) -> Data? {
         lock.withPacketCipherLock {
             guard let keys, record.count >= Self.headerBytes + Self.tagBytes else { return nil }
-            do { try requireActiveSessionEpoch() }
-            catch { return nil }
-            let header = record.prefix(Self.headerBytes)
-            guard let decoded = decodeHeader(Data(header)) else { return nil }
-            let expectedChannel = channel.securityChannel
-            let expectedSender = localRole.remote
-            guard decoded.sessionHash == sessionHash,
-                  decoded.sessionEpoch == sessionEpoch,
-                  decoded.keyEpoch == keys.keyEpoch,
-                  decoded.sender == expectedSender,
-                  decoded.channel == expectedChannel,
-                  decodeUInt32(decoded.nonce.prefix(4)) == expectedChannel.rawValue else {
+            do {
+                return try withActiveSessionEpoch {
+                    let header = record.prefix(Self.headerBytes)
+                    guard let decoded = decodeHeader(Data(header)) else { return nil }
+                    let expectedChannel = channel.securityChannel
+                    let expectedSender = localRole.remote
+                    guard decoded.sessionHash == sessionHash,
+                          decoded.sessionEpoch == sessionEpoch,
+                          decoded.keyEpoch == keys.keyEpoch,
+                          decoded.sender == expectedSender,
+                          decoded.channel == expectedChannel,
+                          decodeUInt32(decoded.nonce.prefix(4)) == expectedChannel.rawValue else {
+                        return nil
+                    }
+                    let sequence = decodeUInt64(decoded.nonce.suffix(8))
+                    var window = replay[expectedChannel] ?? ReplayWindow(strictlyOrdered: expectedChannel == .control)
+                    guard window.canAccept(sequence) else { return nil }
+                    guard let plaintext = try? TrafficPacketCryptography.open(
+                        ciphertextAndTag: Data(record.dropFirst(Self.headerBytes)),
+                        key: keys.key(channel: expectedChannel, sender: expectedSender),
+                        nonce: decoded.nonce,
+                        authenticatedHeader: Data(header)
+                    ) else { return nil }
+                    window.commit(sequence)
+                    replay[expectedChannel] = window
+                    return plaintext
+                }
+            } catch {
                 return nil
             }
-            let sequence = decodeUInt64(decoded.nonce.suffix(8))
-            var window = replay[expectedChannel] ?? ReplayWindow(strictlyOrdered: expectedChannel == .control)
-            guard window.canAccept(sequence) else { return nil }
-            guard let plaintext = try? TrafficPacketCryptography.open(
-                ciphertextAndTag: Data(record.dropFirst(Self.headerBytes)),
-                key: keys.key(channel: expectedChannel, sender: expectedSender),
-                nonce: decoded.nonce,
-                authenticatedHeader: Data(header)
-            ) else { return nil }
-            window.commit(sequence)
-            replay[expectedChannel] = window
-            return plaintext
         }
     }
 
@@ -145,7 +156,8 @@ final class PlatformSessionPacketCipher {
         bootstrapSecret: Data,
         transcriptContext: Data,
         sessionEpoch: UInt64 = 1,
-        requireActiveEpoch: @escaping (UInt64) throws -> Void = { _ in }
+        requireActiveEpoch: @escaping (UInt64) throws -> Void = { _ in },
+        withActiveEpoch: ((_ epoch: UInt64, _ operation: () throws -> Data?) throws -> Data?)? = nil
     ) throws -> (host: PlatformSessionPacketCipher, device: PlatformSessionPacketCipher) {
         let keys = try TrafficKeyDerivation.initial(
             sharedSecret: sharedSecret,
@@ -159,13 +171,17 @@ final class PlatformSessionPacketCipher {
         let rotate: (PlatformSessionKeys, Data) throws -> PlatformSessionKeys = { current, nonce in
             try TrafficKeyDerivation.rotate(current: current, nextEpoch: current.keyEpoch + 1, updateNonce: nonce)
         }
+        let activeOperation = withActiveEpoch ?? { epoch, operation in
+            try requireActiveEpoch(epoch)
+            return try operation()
+        }
         return (
             PlatformSessionPacketCipher(
                 sessionIdentifier: sessionIdentifier,
                 sessionEpoch: sessionEpoch,
                 localRole: .host,
                 initialKeys: keys,
-                requireActiveSessionEpoch: { try requireActiveEpoch(sessionEpoch) },
+                withActiveSessionEpoch: { try activeOperation(sessionEpoch, $0) },
                 reserveNonce: reserve,
                 rotateKeys: rotate
             ),
@@ -174,7 +190,7 @@ final class PlatformSessionPacketCipher {
                 sessionEpoch: sessionEpoch,
                 localRole: .device,
                 initialKeys: keys,
-                requireActiveSessionEpoch: { try requireActiveEpoch(sessionEpoch) },
+                withActiveSessionEpoch: { try activeOperation(sessionEpoch, $0) },
                 reserveNonce: reserve,
                 rotateKeys: rotate
             )

@@ -188,14 +188,16 @@ named by that run:
   24 vectors, including direction reflection and global revocation sequencing;
 - Android clean `./gradlew --no-daemon clean testDebugUnitTest lintDebug
   assembleDebug compileDebugAndroidTestKotlin auditReleaseDependencies` passed
-  with 234 JVM tests and zero failures/errors/skips. The security tests cover
+  with 236 JVM tests and zero failures/errors/skips. The security tests cover
   paired-host lease signature mutation, reserved maximum epochs, stale durable
   cipher epochs, monotonic identity reauthorization, restart-safe credential and
   revocation cleanup, best-effort close aggregation, and generation-scoped route
   changes with a bounded candidate-resolution timeout and one ClientHello. New
-  cases cover pairing-record partial persistence plus cross-restart cleanup, and
-  short-disconnect route interleavings that restore ACTIVE, heartbeat and touch
-  without a second ClientHello. Initial and runtime rotation values reach the
+  cases cover pairing-record partial persistence, post-persist business failure,
+  deletion failure and cross-restart metadata/secret cleanup. Short-disconnect
+  route interleavings restore ACTIVE, heartbeat and touch without a second
+  ClientHello, while fresh-session and FAILED late callbacks keep the old owner,
+  heartbeat and touch disabled. Initial and runtime rotation values reach the
   product decoder configuration. `compileDebugAndroidTestKotlin` and the debug
   APK build passed.
   `processReleaseMainManifest` also passed and the merged release
@@ -255,10 +257,11 @@ named by that run:
   its XCTest cases did not execute in the Command Line Tools-only environment.
 - Platform lifecycle tests cover peer-scoped durable epoch reservation, rollback
   rejection, signed targeted revocation, tombstone persistence, and pairing-secret
-  deletion failure/retry. Added deterministic XCTest source covers concurrent old
-  cipher seal/open rejection after N→N+1, pairing partial-write cleanup across a
-  coordinator restart, and lease issuance across concurrent callers and authority
-  restart while ignoring an abnormal caller epoch. Full macOS XCTest execution
+  deletion failure/retry. Added deterministic XCTest source covers an N open
+  transaction latched across a concurrent N+1 reservation, post-persist pairing
+  business failure plus deletion failure across coordinator restart, and lease
+  issuance across concurrent callers and authority restart while ignoring an
+  abnormal caller epoch. Full macOS XCTest execution
   remains unavailable in the selected Command Line Tools environment.
 - The macOS executable Internet self-test keeps a selected route explicitly
   unknown until complete candidate-pair stats arrive and fails closed on timeout;
@@ -267,9 +270,10 @@ named by that run:
   restart-safe secret-cleanup state. The lease self-test matches Android's
   canonical digest, mutates every signed field, rejects malformed input, and
   signs/verifies with a temporary real Keychain identity. It additionally proves
-  pairing-scoped durable authority allocation across restart/concurrency and
-  rejects stale cipher seal/open after the durable epoch advances. XCTest coverage
-  is present but did not execute in the Command Line Tools-only environment.
+  pairing-scoped durable authority allocation across restart/concurrency, rejects
+  stale cipher seal/open after the durable epoch advances, and uses a deterministic
+  latch to prove N+1 reservation waits while N open owns the durable epoch lock.
+  XCTest coverage is present but did not execute in the Command Line Tools-only environment.
 - The local product slice passed in both modes:
   `run_local_e2e.py --mode direct --slice product` and
   `run_local_e2e.py --mode relay --slice product --skip-build`. Both traversed

@@ -158,7 +158,10 @@ protocol SecurityStateStore {
 /// it is returned, so a crash can skip values but cannot reuse them.
 final class SecurityLifecycle {
     static let maximumCrossPlatformSessionEpoch = UInt64(Int64.max)
-    private static let persistenceLock = NSLock()
+    // Cipher seal holds this lock while reserving a durable nonce. Recursive
+    // entry lets reserveNonce share the same epoch transaction without opening
+    // a check/use window for a concurrent session reservation.
+    private static let persistenceLock = NSRecursiveLock()
     private let store: any SecurityStateStore
 
     init(store: any SecurityStateStore) {
@@ -205,6 +208,13 @@ final class SecurityLifecycle {
     }
 
     func requireCurrentSessionEpoch(_ expectedEpoch: UInt64) throws {
+        try withActiveSessionEpoch(expectedEpoch) {}
+    }
+
+    func withActiveSessionEpoch<T>(
+        _ expectedEpoch: UInt64,
+        operation: () throws -> T
+    ) throws -> T {
         try Self.persistenceLock.withLock {
             let state = try store.load()
             try requireActive(state)
@@ -213,6 +223,7 @@ final class SecurityLifecycle {
                     "The session epoch is stale or was not reserved."
                 )
             }
+            return try operation()
         }
     }
 
@@ -362,7 +373,7 @@ final class SecurityLifecycle {
     }
 }
 
-private extension NSLock {
+private extension NSRecursiveLock {
     func withLock<T>(_ operation: () throws -> T) rethrows -> T {
         lock()
         defer { unlock() }

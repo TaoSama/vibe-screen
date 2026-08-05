@@ -563,8 +563,11 @@ final class PlatformSessionSecurity {
         try lifecycle.reserveSessionEpoch(agreedSessionEpoch)
     }
 
-    func requireActiveSessionEpoch(_ expectedEpoch: UInt64) throws {
-        try lifecycle.requireCurrentSessionEpoch(expectedEpoch)
+    func withActiveSessionEpoch<T>(
+        _ expectedEpoch: UInt64,
+        operation: () throws -> T
+    ) throws -> T {
+        try lifecycle.withActiveSessionEpoch(expectedEpoch, operation: operation)
     }
 
     func rotateTrafficKeys(

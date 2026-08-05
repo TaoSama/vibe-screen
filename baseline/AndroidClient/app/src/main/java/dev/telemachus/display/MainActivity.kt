@@ -826,6 +826,13 @@ class MainActivity : AppCompatActivity() {
                     revokeInternetPairing("user_requested")
                 }.show()
         }
+        try {
+            internetStoredSessionFactory.retryPendingPairingPersistenceCleanup(
+                internetProfileStore::removePairingBinding,
+            )
+        } catch (failure: Throwable) {
+            showInternetFailure(failure)
+        }
         val pendingCleanup = retryPendingInternetRevocationCleanup()
         if (pendingCleanup.isNotEmpty()) {
             binding.internetErrorText.text = getString(R.string.internet_revoke_partial_failure, pendingCleanup.joinToString())
@@ -881,6 +888,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun beginInternetPairing(encodedUrl: String) {
         try {
+            internetStoredSessionFactory.retryPendingPairingPersistenceCleanup(
+                internetProfileStore::removePairingBinding,
+            )
             check(retryPendingInternetRevocationCleanup().isEmpty()) {
                 "Finish the pending local revocation cleanup before pairing again"
             }

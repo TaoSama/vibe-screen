@@ -137,6 +137,8 @@ class InternetProductSession internal constructor(
     private var nextHeartbeatSequence = 1L
     private var lastReceivedControlMessageId = 0L
     private var closed = false
+    private val transportOwner = TransportOwner(generation = 1)
+    private var activeTransportOwner: TransportOwner? = transportOwner
     private val frameAssembler = ProductMediaFrameAssembler()
 
     private val transport =
@@ -145,7 +147,7 @@ class InternetProductSession internal constructor(
             peerEngine = peerEngine,
             networkMonitor = networkMonitor,
             clock = clock,
-            eventSink = ::handleTransportEvent,
+            eventSink = { event -> handleTransportEvent(transportOwner, event) },
         ).apply {
             onControlMessage = ::handleControl
             onMediaPacket = ::handleMedia
@@ -202,6 +204,7 @@ class InternetProductSession internal constructor(
             synchronized(lock) {
                 if (closed) return
                 closed = true
+                invalidateTransportOwnerLocked()
                 acceptedSession = false
                 currentVideoConfiguration = null
                 nextHeartbeatAtMillis = Long.MAX_VALUE
@@ -216,10 +219,14 @@ class InternetProductSession internal constructor(
         }
     }
 
-    private fun handleTransportEvent(event: InternetTransportEvent) {
+    private fun handleTransportEvent(
+        owner: TransportOwner,
+        event: InternetTransportEvent,
+    ) {
         if (synchronized(lock) { closed }) return
         when (event) {
             is InternetTransportEvent.StateChanged -> {
+                if (!synchronized(lock) { acceptsTransportCallbackLocked(owner) }) return
                 when (event.state) {
                     InternetTransportState.CONNECTING -> transition(InternetProductSessionState.CONNECTING)
                     InternetTransportState.RECOVERING -> transition(InternetProductSessionState.RECOVERING)
@@ -232,14 +239,24 @@ class InternetProductSession internal constructor(
                 }
             }
             is InternetTransportEvent.RouteSelected -> {
+                if (!synchronized(lock) { acceptsTransportCallbackLocked(owner) }) return
                 callbacks.onRouteSelected(event.route)
                 beginProtocolNegotiation()
             }
-            is InternetTransportEvent.RouteUpdated -> callbacks.onRouteSelected(event.route)
+            is InternetTransportEvent.RouteUpdated -> {
+                if (!synchronized(lock) { acceptsTransportCallbackLocked(owner) }) return
+                callbacks.onRouteSelected(event.route)
+            }
             is InternetTransportEvent.FreshSessionRequested -> {
                 val notify =
                     synchronized(lock) {
-                        if (freshSessionRequested || closed) false else true.also { freshSessionRequested = it }
+                        if (freshSessionRequested || closed || isTerminalStateLocked()) {
+                            false
+                        } else {
+                            freshSessionRequested = true
+                            invalidateTransportOwnerLocked()
+                            true
+                        }
                     }
                 if (notify) {
                     transition(InternetProductSessionState.RECOVERING)
@@ -254,7 +271,7 @@ class InternetProductSession internal constructor(
     private fun beginProtocolNegotiation() {
         val shouldSend =
             synchronized(lock) {
-                if (closed || acceptedSession || negotiationStarted) {
+                if (!acceptsTransportCallbackLocked() || acceptedSession || negotiationStarted) {
                     false
                 } else {
                     negotiationStarted = true
@@ -273,7 +290,7 @@ class InternetProductSession internal constructor(
     }
 
     private fun handleControl(payload: ByteArray) {
-        if (synchronized(lock) { closed }) return
+        if (!synchronized(lock) { acceptsTransportCallbackLocked() }) return
         val decoded =
             try {
                 codec.decodeControl(payload)
@@ -365,7 +382,12 @@ class InternetProductSession internal constructor(
     private fun resumeAuthenticatedSessionAfterTransportRecovery() {
         val shouldResume =
             synchronized(lock) {
-                if (!acceptedSession || !negotiationStarted || closed) {
+                if (
+                    !acceptsTransportCallbackLocked() ||
+                    !acceptedSession ||
+                    !negotiationStarted ||
+                    state !in setOf(InternetProductSessionState.RECOVERING, InternetProductSessionState.SUSPENDED)
+                ) {
                     false
                 } else {
                     scheduleNextHeartbeatLocked()
@@ -449,7 +471,13 @@ class InternetProductSession internal constructor(
         if (!mayResume) return fail(IllegalStateException("Host ended the Internet session: $reason"))
         val notify =
             synchronized(lock) {
-                if (freshSessionRequested || closed) false else true.also { freshSessionRequested = it }
+                if (freshSessionRequested || closed || isTerminalStateLocked()) {
+                    false
+                } else {
+                    freshSessionRequested = true
+                    invalidateTransportOwnerLocked()
+                    true
+                }
             }
         if (notify) {
             transition(InternetProductSessionState.RECOVERING)
@@ -480,7 +508,12 @@ class InternetProductSession internal constructor(
     private fun fail(error: Throwable) {
         val notify =
             synchronized(lock) {
-                if (closed || state == InternetProductSessionState.FAILED) false else true
+                if (closed || state == InternetProductSessionState.FAILED) {
+                    false
+                } else {
+                    invalidateTransportOwnerLocked()
+                    true
+                }
             }
         if (notify) {
             transition(InternetProductSessionState.FAILED)
@@ -491,10 +524,35 @@ class InternetProductSession internal constructor(
     private fun transition(next: InternetProductSessionState) {
         val changed =
             synchronized(lock) {
-                if (state == next) false else true.also { state = next }
+                if (
+                    state == next ||
+                    state == InternetProductSessionState.CLOSED ||
+                    state == InternetProductSessionState.FAILED && next != InternetProductSessionState.CLOSED
+                ) {
+                    false
+                } else {
+                    state = next
+                    true
+                }
             }
         if (changed) callbacks.onStateChanged(next)
     }
+
+    private fun acceptsTransportCallbackLocked(owner: TransportOwner = transportOwner): Boolean =
+        !closed &&
+            !freshSessionRequested &&
+            activeTransportOwner === owner &&
+            !isTerminalStateLocked()
+
+    private fun isTerminalStateLocked(): Boolean =
+        state == InternetProductSessionState.FAILED || state == InternetProductSessionState.CLOSED
+
+    private fun invalidateTransportOwnerLocked() {
+        activeTransportOwner = null
+        nextHeartbeatAtMillis = Long.MAX_VALUE
+    }
+
+    private data class TransportOwner(val generation: Long)
 
     companion object {
         private const val MIN_HEARTBEAT_INTERVAL_MS = 100L
