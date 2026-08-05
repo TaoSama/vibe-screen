@@ -1,0 +1,692 @@
+{
+  "device": {
+    "codename": "pacific",
+    "operating_system": "Android 16",
+    "product": "Nubia P0110"
+  },
+  "evidence_boundaries": {
+    "disconnect_reconnect": "not_claimed",
+    "real_display_content": "not_claimed",
+    "revocation_repair": "local_android_keystore_and_profile_store_only",
+    "rotation": "open_harness_has_no_rotation_assertion",
+    "screen_capture_kit": "not_claimed",
+    "soak": "not_claimed",
+    "ui": "pairing_strict_signed_lease_import_local_revoke_repair_only_no_negative_lease_ui_case"
+  },
+  "result": "pass",
+  "routes": [
+    "direct",
+    "relay"
+  ],
+  "runs": [
+    {
+      "adb_gate": {
+        "commit": "597518f948075e396352bc353afcec01a30303f3",
+        "content_bytes": 171,
+        "content_matches_initial": true,
+        "expected_records_per_adb_subprocess": 2,
+        "filesystem_device": 16777234,
+        "inode": 134017315,
+        "lease_comparison_tag": "c891b0bd1faeca26d83ebf15da9b4bf675e749e227ad9cecee2486f27971bcab",
+        "owner_matches_initial": true,
+        "pid": 64182,
+        "records": 48,
+        "run_id": "android-internet-20260805T082521Z-104db4ce",
+        "schema": "dev.vibescreen.adb-lease-gate/v1",
+        "task": "phase3-android-internet-acceptance"
+      },
+      "artifacts": {
+        "adb_gate_log_sha256": "8c1c80d9ce3cf78077a36012e52851a1daa3ca1701b3fafd2f835733a6267e8b",
+        "app_apk_sha256": "42dd82712bc14f0639ba551d383eba646dc8773c405eea5a313ff145322e275d",
+        "coturn_log_sha256": "2126120a7212c0ee1da8ecc0eb05689212e77a00c70d3d2746df126cca568298",
+        "coturn_version_record_sha256": "27d440fa66d4cb754ba20fa5750c6f0cdc42fec23a7338aef95b4ee6272cfe46",
+        "mac_host_sha256": "ef94ed786e21bc13417af727cbbc918434f3c20ce46c08900074f3cb3cf22f07",
+        "signaling_binary_sha256": "ccdfdd459935a3f65a104574ec0722e4fe1ce7dfaf68b5a896299e9c0ea47497",
+        "test_apk_sha256": "8f3c256190bc54220626847099ce10b711ca3fa5cef3450ea51741184affd2d7"
+      },
+      "assertions": {
+        "aes_256_gcm_control": "pass",
+        "aes_256_gcm_media": "pass",
+        "authenticated_touch": "pass",
+        "caller_managed_reachable_coturn_route": "not_exercised",
+        "durable_security_state": "not_claimed_interop_uses_test_isolated_store",
+        "internet_ui_pairing_and_strict_signed_lease_import": "pass",
+        "local_revoke_and_repair": "pass",
+        "protocol_v1": "pass",
+        "real_android_app_and_instrumentation": "pass",
+        "real_local_signaling_process": "pass",
+        "secure_credential_dialogs": "pass",
+        "selected_route": "pass",
+        "synthetic_video_config_keyframe_delta": "pass"
+      },
+      "commands": [
+        {
+          "elapsed_seconds": 31.832,
+          "name": "android-controlled-build",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 4447,
+          "stdout_sha256": "3de00c6ed7364d3f32bafe88059145314b3c050576b172e2d4cb06f53099f653"
+        },
+        {
+          "elapsed_seconds": 0.915,
+          "name": "mac-controlled-build",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 142,
+          "stdout_sha256": "0ec07ca65ed6928bea50fc45f5f230186c6047475a85a79cd9311bade28a8b6a"
+        },
+        {
+          "elapsed_seconds": 0.495,
+          "name": "signaling-controlled-build",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 0.024,
+          "name": "adb-version-non-device",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 161,
+          "stdout_sha256": "4716651dba85a24b48e43d219fab09d8b953eb56c025fd6a677f424faf454afd"
+        },
+        {
+          "elapsed_seconds": 0.076,
+          "name": "adb-connect",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 41,
+          "stdout_sha256": "b76c619d25af453cd7baf167457f556ef0585ae29909c13d84f24899d9e815bc"
+        },
+        {
+          "elapsed_seconds": 0.035,
+          "name": "adb-state",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 7,
+          "stdout_sha256": "c98373c1abef78070f6beef6b4ae4fbf3de348dac280195c7f93441920584af9"
+        },
+        {
+          "elapsed_seconds": 0.155,
+          "name": "identity-manufacturer",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 6,
+          "stdout_sha256": "1c108043a5ccaf07707d683cba58dfdfdba0ceb2a5d80d13888f03f5a3072bbf"
+        },
+        {
+          "elapsed_seconds": 0.282,
+          "name": "identity-model",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 6,
+          "stdout_sha256": "7bc4237119c3ff7841b47b395d8bec249f5c187f39c868c44652d431b3888deb"
+        },
+        {
+          "elapsed_seconds": 0.179,
+          "name": "identity-device",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 8,
+          "stdout_sha256": "59d5aafdbbdf992eb312e0d630a84e561cce52f931706d98fd1c8f41c73b162a"
+        },
+        {
+          "elapsed_seconds": 0.177,
+          "name": "identity-release",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 3,
+          "stdout_sha256": "e6c21e8d260fe71882debdb339d2402a2ca7648529bc2303f48649bce0380017"
+        },
+        {
+          "elapsed_seconds": 20.282,
+          "name": "install-app",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 36,
+          "stdout_sha256": "781a31c82430c97897af612ece5e0ca2205e301cb5ff121ce2660541ea5182c7"
+        },
+        {
+          "elapsed_seconds": 0.251,
+          "name": "install-test",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 36,
+          "stdout_sha256": "781a31c82430c97897af612ece5e0ca2205e301cb5ff121ce2660541ea5182c7"
+        },
+        {
+          "elapsed_seconds": 0.15,
+          "name": "clear-app-state-before-ui",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 8,
+          "stdout_sha256": "7fc0023a6402c7bd7abd98bb3e580968de4833eed07d88d1cc8d70819d69c7a0"
+        },
+        {
+          "elapsed_seconds": 0.156,
+          "name": "clear-ui-marker-log",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 3.904,
+          "name": "instrumentation-ui",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 887,
+          "stdout_sha256": "5e1c23c3e39597eec04283e8e414d54d3cdc470295ddf6fbba9bb35291514f7d"
+        },
+        {
+          "elapsed_seconds": 0.115,
+          "name": "read-ui-marker-log",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 302,
+          "stdout_sha256": "e5d3f55ec75dce9dfd617b86015174932994f08fe1c955e34d22e48333cf0f10"
+        },
+        {
+          "elapsed_seconds": 0.056,
+          "name": "adb-reverse-signaling",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 6,
+          "stdout_sha256": "1522432c840b39c174addb7ee3e8127cda1e2df1a81e3e2b642b01482add8005"
+        },
+        {
+          "elapsed_seconds": 0.114,
+          "name": "private-config-prepare-1",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 0.098,
+          "name": "private-config-prepare-2",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 0.156,
+          "name": "private-config-import",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 0.13,
+          "name": "private-config-mode",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 0.215,
+          "name": "clear-device-marker-log",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 2.356,
+          "name": "instrumentation-direct",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 881,
+          "stdout_sha256": "87d53b4c06c3c63807852be49ddd884b218bfee0e204e27488f6910486188c89"
+        },
+        {
+          "elapsed_seconds": 0.304,
+          "name": "read-device-marker-log",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 248,
+          "stdout_sha256": "c473a5888655d519887300a07bf8b1b7ef80220000c83f25f55a594341a91873"
+        },
+        {
+          "elapsed_seconds": 0.261,
+          "name": "private-config-consumed",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 0.143,
+          "name": "private-config-cleanup",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 0.126,
+          "name": "adb-reverse-cleanup",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "device": {
+        "codename": "pacific",
+        "operating_system": "Android 16",
+        "product": "Nubia P0110"
+      },
+      "evidence_boundaries": {
+        "disconnect_reconnect": "not_claimed",
+        "real_display_content": "not_claimed",
+        "revocation_repair": "local_android_keystore_and_profile_store_only",
+        "rotation": "open_harness_has_no_rotation_assertion",
+        "screen_capture_kit": "not_claimed",
+        "soak": "not_claimed",
+        "ui": "pairing_strict_signed_lease_import_local_revoke_repair_only_no_negative_lease_ui_case"
+      },
+      "finished_at_utc": "2026-08-05T08:25:52.936423+00:00",
+      "raw_markers": {
+        "device_sha256": "07a08aed38e50364521877a0014579a3293ede14d0562825ab1eeb7687fa56f0",
+        "host_sha256": "536d97e224683c3bd888e42c28408ddc2f337217abdefcdbe26f3eabe084371e",
+        "ui_sha256": "558d44067286c8f6f7ed4b0587a88d45e3220494022e6800a6fc339cc57d30fc"
+      },
+      "result": "pass",
+      "route": "direct",
+      "schema": "dev.vibescreen.phase3-android-product-interop/v1",
+      "source": {
+        "commit": "597518f948075e396352bc353afcec01a30303f3",
+        "origin_main_commit": "36905b40b2457c9f156e0b9b273fd437303a1efe",
+        "tree": "f09080b077668a21e738f7b40d0a634b61c69ebb"
+      },
+      "started_at_utc": "2026-08-05T08:25:21.828062+00:00",
+      "toolchain": {
+        "adb": {
+          "device_operation": false,
+          "first_line": "Android Debug Bridge version 1.0.41",
+          "lease_guarded": true,
+          "sha256": "6502716f048b41073da1596b3d8e84ee903da189a59c60ff6733fc24660e4d76"
+        },
+        "java": {
+          "first_line": "openjdk version \"17.0.19\" 2026-04-21",
+          "sha256": "2a35caa960bc478729f0f24c1dd9af4fd23c6351421e67b7735f30091403e781"
+        },
+        "swift": {
+          "first_line": "Apple Swift version 6.3.1 (swiftlang-6.3.1.1.2 clang-2100.0.123.102)",
+          "sha256": "4ca412f84a21cc8979cb7a4bbc2fa4a76744a70d48ef5848c00e1c18972d69e1"
+        }
+      }
+    },
+    {
+      "adb_gate": {
+        "commit": "597518f948075e396352bc353afcec01a30303f3",
+        "content_bytes": 171,
+        "content_matches_initial": true,
+        "expected_records_per_adb_subprocess": 2,
+        "filesystem_device": 16777234,
+        "inode": 134017315,
+        "lease_comparison_tag": "c891b0bd1faeca26d83ebf15da9b4bf675e749e227ad9cecee2486f27971bcab",
+        "owner_matches_initial": true,
+        "pid": 64182,
+        "records": 48,
+        "run_id": "android-internet-20260805T082553Z-cd2cc4aa",
+        "schema": "dev.vibescreen.adb-lease-gate/v1",
+        "task": "phase3-android-internet-acceptance"
+      },
+      "artifacts": {
+        "adb_gate_log_sha256": "2c73d637921b5aba5e28aacf7b77602f819c1374e44162fce2d9ddf45d57abb7",
+        "app_apk_sha256": "42dd82712bc14f0639ba551d383eba646dc8773c405eea5a313ff145322e275d",
+        "coturn_log_sha256": "2126120a7212c0ee1da8ecc0eb05689212e77a00c70d3d2746df126cca568298",
+        "coturn_version_record_sha256": "27d440fa66d4cb754ba20fa5750c6f0cdc42fec23a7338aef95b4ee6272cfe46",
+        "mac_host_sha256": "ef94ed786e21bc13417af727cbbc918434f3c20ce46c08900074f3cb3cf22f07",
+        "signaling_binary_sha256": "ccdfdd459935a3f65a104574ec0722e4fe1ce7dfaf68b5a896299e9c0ea47497",
+        "test_apk_sha256": "8f3c256190bc54220626847099ce10b711ca3fa5cef3450ea51741184affd2d7"
+      },
+      "assertions": {
+        "aes_256_gcm_control": "pass",
+        "aes_256_gcm_media": "pass",
+        "authenticated_touch": "pass",
+        "caller_managed_reachable_coturn_route": "pass",
+        "durable_security_state": "not_claimed_interop_uses_test_isolated_store",
+        "internet_ui_pairing_and_strict_signed_lease_import": "pass",
+        "local_revoke_and_repair": "pass",
+        "protocol_v1": "pass",
+        "real_android_app_and_instrumentation": "pass",
+        "real_local_signaling_process": "pass",
+        "secure_credential_dialogs": "pass",
+        "selected_route": "pass",
+        "synthetic_video_config_keyframe_delta": "pass"
+      },
+      "commands": [
+        {
+          "elapsed_seconds": 31.832,
+          "name": "android-controlled-build",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 4447,
+          "stdout_sha256": "3de00c6ed7364d3f32bafe88059145314b3c050576b172e2d4cb06f53099f653"
+        },
+        {
+          "elapsed_seconds": 0.915,
+          "name": "mac-controlled-build",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 142,
+          "stdout_sha256": "0ec07ca65ed6928bea50fc45f5f230186c6047475a85a79cd9311bade28a8b6a"
+        },
+        {
+          "elapsed_seconds": 0.495,
+          "name": "signaling-controlled-build",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 0.022,
+          "name": "adb-version-non-device",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 161,
+          "stdout_sha256": "4716651dba85a24b48e43d219fab09d8b953eb56c025fd6a677f424faf454afd"
+        },
+        {
+          "elapsed_seconds": 0.181,
+          "name": "adb-connect",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 41,
+          "stdout_sha256": "b76c619d25af453cd7baf167457f556ef0585ae29909c13d84f24899d9e815bc"
+        },
+        {
+          "elapsed_seconds": 0.101,
+          "name": "adb-state",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 7,
+          "stdout_sha256": "c98373c1abef78070f6beef6b4ae4fbf3de348dac280195c7f93441920584af9"
+        },
+        {
+          "elapsed_seconds": 0.134,
+          "name": "identity-manufacturer",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 6,
+          "stdout_sha256": "1c108043a5ccaf07707d683cba58dfdfdba0ceb2a5d80d13888f03f5a3072bbf"
+        },
+        {
+          "elapsed_seconds": 0.14,
+          "name": "identity-model",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 6,
+          "stdout_sha256": "7bc4237119c3ff7841b47b395d8bec249f5c187f39c868c44652d431b3888deb"
+        },
+        {
+          "elapsed_seconds": 0.102,
+          "name": "identity-device",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 8,
+          "stdout_sha256": "59d5aafdbbdf992eb312e0d630a84e561cce52f931706d98fd1c8f41c73b162a"
+        },
+        {
+          "elapsed_seconds": 0.15,
+          "name": "identity-release",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 3,
+          "stdout_sha256": "e6c21e8d260fe71882debdb339d2402a2ca7648529bc2303f48649bce0380017"
+        },
+        {
+          "elapsed_seconds": 16.363,
+          "name": "install-app",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 36,
+          "stdout_sha256": "781a31c82430c97897af612ece5e0ca2205e301cb5ff121ce2660541ea5182c7"
+        },
+        {
+          "elapsed_seconds": 0.403,
+          "name": "install-test",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 36,
+          "stdout_sha256": "781a31c82430c97897af612ece5e0ca2205e301cb5ff121ce2660541ea5182c7"
+        },
+        {
+          "elapsed_seconds": 0.142,
+          "name": "clear-app-state-before-ui",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 8,
+          "stdout_sha256": "7fc0023a6402c7bd7abd98bb3e580968de4833eed07d88d1cc8d70819d69c7a0"
+        },
+        {
+          "elapsed_seconds": 0.202,
+          "name": "clear-ui-marker-log",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 4.019,
+          "name": "instrumentation-ui",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 887,
+          "stdout_sha256": "fe1c942234b113c022cfd77d2875d2a975bf084b7bfc6c76989d353c2b6d4e37"
+        },
+        {
+          "elapsed_seconds": 0.162,
+          "name": "read-ui-marker-log",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 302,
+          "stdout_sha256": "e5d3f55ec75dce9dfd617b86015174932994f08fe1c955e34d22e48333cf0f10"
+        },
+        {
+          "elapsed_seconds": 0.078,
+          "name": "adb-reverse-signaling",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 6,
+          "stdout_sha256": "1522432c840b39c174addb7ee3e8127cda1e2df1a81e3e2b642b01482add8005"
+        },
+        {
+          "elapsed_seconds": 0.146,
+          "name": "private-config-prepare-1",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 0.151,
+          "name": "private-config-prepare-2",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 0.388,
+          "name": "private-config-import",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 0.261,
+          "name": "private-config-mode",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 0.267,
+          "name": "clear-device-marker-log",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 1.595,
+          "name": "instrumentation-relay",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 881,
+          "stdout_sha256": "745e0480740961575f379e5bfd41b1b6cdc25c72d11f2258eb967bbd2ef61e8f"
+        },
+        {
+          "elapsed_seconds": 0.159,
+          "name": "read-device-marker-log",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 247,
+          "stdout_sha256": "e1e0a53cf6db84e558125a4c1f34261914f19112b28729a462da0e83ab259106"
+        },
+        {
+          "elapsed_seconds": 0.155,
+          "name": "private-config-consumed",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 0.139,
+          "name": "private-config-cleanup",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "elapsed_seconds": 0.08,
+          "name": "adb-reverse-cleanup",
+          "returncode": 0,
+          "stderr_bytes": 0,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_bytes": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "device": {
+        "codename": "pacific",
+        "operating_system": "Android 16",
+        "product": "Nubia P0110"
+      },
+      "evidence_boundaries": {
+        "disconnect_reconnect": "not_claimed",
+        "real_display_content": "not_claimed",
+        "revocation_repair": "local_android_keystore_and_profile_store_only",
+        "rotation": "open_harness_has_no_rotation_assertion",
+        "screen_capture_kit": "not_claimed",
+        "soak": "not_claimed",
+        "ui": "pairing_strict_signed_lease_import_local_revoke_repair_only_no_negative_lease_ui_case"
+      },
+      "finished_at_utc": "2026-08-05T08:26:19.533421+00:00",
+      "raw_markers": {
+        "device_sha256": "f618140680b908f1fd516f08da5cdbcedd5746544b08d1d6fe07600fec364db8",
+        "host_sha256": "f7f0444e98ba1f67862d5ea30d47091e2de27c0845ce7eb6dc1343d0ba5edff3",
+        "ui_sha256": "558d44067286c8f6f7ed4b0587a88d45e3220494022e6800a6fc339cc57d30fc"
+      },
+      "result": "pass",
+      "route": "relay",
+      "schema": "dev.vibescreen.phase3-android-product-interop/v1",
+      "source": {
+        "commit": "597518f948075e396352bc353afcec01a30303f3",
+        "origin_main_commit": "36905b40b2457c9f156e0b9b273fd437303a1efe",
+        "tree": "f09080b077668a21e738f7b40d0a634b61c69ebb"
+      },
+      "started_at_utc": "2026-08-05T08:25:53.076431+00:00",
+      "toolchain": {
+        "adb": {
+          "device_operation": false,
+          "first_line": "Android Debug Bridge version 1.0.41",
+          "lease_guarded": true,
+          "sha256": "6502716f048b41073da1596b3d8e84ee903da189a59c60ff6733fc24660e4d76"
+        },
+        "java": {
+          "first_line": "openjdk version \"17.0.19\" 2026-04-21",
+          "sha256": "2a35caa960bc478729f0f24c1dd9af4fd23c6351421e67b7735f30091403e781"
+        },
+        "swift": {
+          "first_line": "Apple Swift version 6.3.1 (swiftlang-6.3.1.1.2 clang-2100.0.123.102)",
+          "sha256": "4ca412f84a21cc8979cb7a4bbc2fa4a76744a70d48ef5848c00e1c18972d69e1"
+        }
+      }
+    }
+  ],
+  "same_device_lease_holder": true,
+  "schema": "dev.vibescreen.phase3-android-product-interop-combined/v1",
+  "source": {
+    "commit": "597518f948075e396352bc353afcec01a30303f3",
+    "origin_main_commit": "36905b40b2457c9f156e0b9b273fd437303a1efe",
+    "tree": "f09080b077668a21e738f7b40d0a634b61c69ebb"
+  }
+}

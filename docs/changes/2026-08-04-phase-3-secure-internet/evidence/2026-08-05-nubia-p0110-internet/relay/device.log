@@ -1,0 +1,51 @@
+INSTRUMENTATION_STATUS: class=dev.telemachus.display.InternetMainActivityAcceptanceInstrumentedTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+dev.telemachus.display.InternetMainActivityAcceptanceInstrumentedTest:
+INSTRUMENTATION_STATUS: test=pairingLeaseRevokeAndRepairAreAcceptedThroughMainActivity
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=dev.telemachus.display.InternetMainActivityAcceptanceInstrumentedTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=pairingLeaseRevokeAndRepairAreAcceptedThroughMainActivity
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 3.183
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+--------- beginning of main
+解析 ro.build.date 失败：Text 'Tue Aug  4 00:32:41 CST 2026' could not be parsed at index 8，尝试降级解析
+PHASE3_ANDROID_INTERNET_UI_PASS internet_tab=true route_toggle=true pairing=true strict_lease_import=true local_revoke=true repair=true secure_dialogs=true
+INSTRUMENTATION_STATUS: class=dev.telemachus.display.internet.InternetProductSessionInteropInstrumentedTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+dev.telemachus.display.internet.InternetProductSessionInteropInstrumentedTest:
+INSTRUMENTATION_STATUS: test=realProductSessionInteroperatesWithMacHost
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=dev.telemachus.display.internet.InternetProductSessionInteropInstrumentedTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=realProductSessionInteroperatesWithMacHost
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 0.635
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+--------- beginning of main
+PHASE3_ANDROID_INTEROP_DEVICE_PASS route=relay epoch=380551427 kdf_kat=true transcript_kat=true video_config=true keyframe=true delta=true touch=true protocol_v1=true application_e2ee=true lifecycle_store=test_isolated

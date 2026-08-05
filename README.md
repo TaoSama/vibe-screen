@@ -264,7 +264,9 @@ bidirectional DataChannel tests through both direct and forced coturn relay
 candidate pairs. Its application record layer is wired to the Keychain-backed
 identity/session lifecycle. The Android M144 adapter, AndroidKeyStore lifecycle,
 REST signaling client, product-session UI and encrypted DataChannel
-instrumentation test all build; the instrumentation test has not run on a device.
+instrumentation now have one clean-commit Nubia P0110 device pass through direct
+and forced local coturn using synthetic Protocol v1 media. This is not real
+display-capture evidence.
 The existing trusted-LAN path is still a separate plaintext mode and must not be
 presented as Internet E2EE.
 
@@ -290,10 +292,10 @@ See the [Phase 3 requirements](docs/changes/2026-08-04-phase-3-secure-internet/P
 [threat model](docs/changes/2026-08-04-phase-3-secure-internet/THREAT_MODEL.md),
 [test plan](docs/changes/2026-08-04-phase-3-secure-internet/TEST.md), and
 [relay operations](docs/changes/2026-08-04-phase-3-secure-internet/OPERATIONS.md).
-The previous curated Android interop pass has been withdrawn because its source
-commit is unavailable and the raw host/instrumentation/UI evidence was not
-retained. Android product-session and UI acceptance must be rerun from a clean,
-reachable commit. Automatic account/session-authority issuance, real
+The previous curated Android interop pass remains withdrawn because its source
+commit and raw evidence were unavailable. A new reachable-source record retains
+raw host/device/UI, service and per-ADB lease-gate evidence with a privacy scan.
+Automatic account/session-authority issuance, real
 encoded ScreenCaptureKit output through the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
 revocation propagation and soak remain release gates rather than shipped

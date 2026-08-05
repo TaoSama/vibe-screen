@@ -1,0 +1,42 @@
+0: (18446744073709551615): INFO: log file opened: <redacted-path>
+0: (18446744073709551615): ERROR: no-cli option is deprecated, see --cli
+0: (18446744073709551615): INFO: Listener address to use: <redacted-ip>
+0: (18446744073709551615): INFO: Relay address to use: <redacted-ip>
+0: (18446744073709551615): INFO: System cpu num is 14
+0: (18446744073709551615): INFO: System enable num is 14
+0: (18446744073709551615): INFO: Configured cpu num is 14
+0: (18446744073709551615): INFO: Coturn Version Coturn-4.16.0 'Gorst'
+0: (18446744073709551615): INFO: Max number of open files/sockets allowed for this process: 9223372036854775807
+0: (18446744073709551615): INFO: Due to the open files/sockets limitation, max supported number of TURN Sessions possible is: 4611686018427387500 (approximately)
+0: (18446744073709551615): INFO:
+
+==== Show him the instruments, Practical Frost: ====
+
+0: (18446744073709551615): INFO: OpenSSL compile-time version: OpenSSL 3.6.3 9 Jun 2026 (0x30600030)
+0: (18446744073709551615): INFO: TLS 1.2 supported
+0: (18446744073709551615): INFO: TLS 1.3 supported
+0: (18446744073709551615): INFO: DTLS 1.2 supported
+0: (18446744073709551615): INFO: TURN/STUN ALPN supported
+0: (18446744073709551615): INFO: Third-party authorization (oAuth) supported
+0: (18446744073709551615): INFO: GCM (AEAD) supported
+0: (18446744073709551615): INFO: SQLite supported, default database location is /opt/homebrew/var/db/turndb
+0: (18446744073709551615): INFO: Redis supported
+0: (18446744073709551615): INFO: PostgreSQL supported
+0: (18446744073709551615): INFO: MySQL is not supported
+0: (18446744073709551615): INFO: MongoDB is not supported
+0: (18446744073709551615): INFO: Net Engine: UDP thread per CPU core
+0: (18446744073709551615): INFO: Domain name:
+0: (18446744073709551615): INFO: Default realm: phase3-android.local
+0: (18446744073709551615): WARNING: Certificate file not found or not readable: <redacted-path>
+0: (18446744073709551615): WARNING: Private key file not found or not readable: <redacted-path>
+0: (18446744073709551615): WARNING: Cannot create pid file: /var/run/turnserver.pid
+0: (18446744073709551615): INFO: pid file created: /var<redacted-path>
+0: (18446744073709551615): INFO: IO method: kqueue
+0: (18446744073709551615): INFO: RFC5780 disabled! /NAT behavior discovery/
+0: (18446744073709551615): INFO: Wait for relay ports initialization...
+0: (18446744073709551615): INFO:   relay <redacted-ip> initialization...
+0: (18446744073709551615): INFO:   relay <redacted-ip> initialization done
+0: (18446744073709551615): INFO: Relay ports initialization done
+0: (18446744073709551615): INFO: Total relay threads: 14
+0: (18446744073709551615): INFO: Total auth threads: 8
+0: (18446744073709551615): INFO: turnserver compiled without prometheus support
