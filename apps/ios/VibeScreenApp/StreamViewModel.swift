@@ -28,7 +28,10 @@ final class StreamViewModel: ObservableObject {
     var viewportSize = CGSize(width: 1, height: 1)
 
     lazy var transport = TCPTransport { [weak self] result in
-        Task { @MainActor in self?.handle(result) }
+        let delivery = TransportDelivery(result)
+        DispatchQueue.main.async { [weak self, delivery] in
+            MainActor.assumeIsolated { self?.handle(delivery.result) }
+        }
     }
     let audioPlayback = AudioPlaybackController()
     var audioFormat: PCMStreamFormat?
@@ -46,8 +49,15 @@ final class StreamViewModel: ObservableObject {
     var nextInputID: UInt64 = 1
     var touchActive = false
     var pendingHostHello: VSHostHello?
+    var controlValidator = ClientControlEnvelopeValidator()
     var negotiatedCapabilities: Set<VSCapability> = []
     var negotiatedLimits = VSResourceLimits()
+    var heartbeatIntervalMilliseconds: UInt32 = 0
+    var heartbeatSequence: UInt64 = 0
+    var lastPongSequence: UInt64 = 0
+    var pendingHeartbeatCorrelations: [UInt64: UInt64] = [:]
+    var heartbeatTask: Task<Void, Never>?
+    var sessionGeneration: UInt64 = 0
     var pendingFileOffers: [Data: VSFileOffer] = [:]
     var outgoingFiles: [Data: SecurityScopedOutgoingFile] = [:]
     let incomingFiles: IncomingFileTransferManager?
@@ -70,21 +80,27 @@ final class StreamViewModel: ObservableObject {
         }
     }
 
-    func connect(host: String, port: Int) async {
-        guard (1...Int(UInt16.max)).contains(port) else {
-            errorMessage = "端口必须在 1–65535 之间"
+    func connect(pairingURL: String) async {
+        let pairing: TrustedLANPairing
+        do {
+            pairing = try TrustedLANPairing(
+                urlString: pairingURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        } catch {
+            errorMessage = "配对链接无效：\(error.localizedDescription)"
             return
         }
         let policy = managedConfiguration.policy
-        guard policy.allowedHosts.isEmpty || policy.allowedHosts.contains(host) else {
+        guard policy.allowedHosts.isEmpty || policy.allowedHosts.contains(pairing.host) else {
             errorMessage = "此主机不在组织允许列表中"
             return
         }
+        endSession(disconnectTransport: true)
         isConnecting = true
         errorMessage = nil
         do {
             try state.beginConnection()
-            try await transport.connect(host: host, port: UInt16(port))
+            try await transport.connect(pairing: pairing, deviceName: UIDevice.current.name)
             try state.transportConnected()
             let hello = factory.clientHello(
                 deviceID: deviceID,
@@ -94,26 +110,58 @@ final class StreamViewModel: ObservableObject {
                 resourceLimits: clientResourceLimits(policy: policy),
                 videoDecodeCapabilities: Self.sdrDecodeCapabilities
             )
+            controlValidator.reset()
             try await send(hello)
         } catch {
             state.fail(error.localizedDescription)
             errorMessage = error.localizedDescription
+            endSession(disconnectTransport: true, resetState: false)
         }
         isConnecting = false
     }
 
     func disconnect() {
-        transport.disconnect()
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
+        guard !state.sessionID.isEmpty, state.sessionEpoch > 0 else {
+            endSession(disconnectTransport: true)
+            return
+        }
+        let generation = sessionGeneration
+        let notice = factory.disconnectNotice(
+            reasonCode: "client_disconnect",
+            mayResume: false,
+            sessionID: state.sessionID,
+            sessionEpoch: state.sessionEpoch
+        )
+        isStreaming = false
+        Task {
+            try? await send(notice, timeout: 0.25)
+            guard generation == sessionGeneration else { return }
+            endSession(disconnectTransport: true)
+        }
+    }
+
+    func endSession(disconnectTransport: Bool, resetState: Bool = true) {
+        sessionGeneration &+= 1
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
+        if disconnectTransport { transport.disconnect() }
         audioPlayback.stop()
         for decoder in decoders.values { decoder.invalidate() }
         for transferID in pendingFileOffers.keys { incomingFiles?.cancel(transferID: transferID) }
         for transfer in outgoingFiles.values { transfer.cancel() }
         if let sessionKey { registry.disconnect(sessionKey) }
-        state.reset()
+        if resetState { state.reset() }
         sessionKey = nil
         negotiatedCapabilities = []
         negotiatedLimits = VSResourceLimits()
+        heartbeatIntervalMilliseconds = 0
+        heartbeatSequence = 0
+        lastPongSequence = 0
+        pendingHeartbeatCorrelations = [:]
         pendingHostHello = nil
+        controlValidator.reset()
         decoders.removeAll()
         configuredCodecs.removeAll()
         displayBindings = []
@@ -121,8 +169,15 @@ final class StreamViewModel: ObservableObject {
         pendingFileOffers = [:]
         outgoingFiles = [:]
         pendingFileName = nil
+        audioConfig = nil
+        audioFormat = nil
+        audioJitter.reset(firstSequence: 0)
+        availableHostActions = []
         pixelBuffer = nil
+        nextInputID = 1
+        touchActive = false
         isStreaming = false
+        isConnecting = false
     }
 
     func selectDisplay(streamID: UInt64) {
@@ -296,5 +351,13 @@ final class StreamViewModel: ObservableObject {
                 UserDefaults.standard.set(data, forKey: "gestureProfile")
             }
         } catch { errorMessage = error.localizedDescription }
+    }
+}
+
+private struct TransportDelivery: @unchecked Sendable {
+    let result: Result<TransportFrame, Error>
+
+    init(_ result: Result<TransportFrame, Error>) {
+        self.result = result
     }
 }

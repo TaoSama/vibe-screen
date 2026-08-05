@@ -7,22 +7,28 @@ The client is an early developer release. Its core modules build and self-test
 on macOS, and the unsigned application has built successfully with the iOS
 Simulator SDK in CI. Simulator test execution, signing, installation, and
 iPhone/iPad hardware decode are separate gates; do not treat the SDK build or
-Android device record as that evidence. The Mac host now supports the Android
-baseline's legacy-to-v1 upgrade and Protocol v1 session, but this iOS client
-does not yet implement that upgrade or compose its session with the baseline
-host, so the two are not currently interoperable.
+Android device record as that evidence. The trusted-LAN Core client now
+connects to the baseline MacHost on TCP port `54321`, completes authenticated
+`SSWA`/`SSWR` admission plus the `0D` legacy-to-v1 upgrade, and then runs its
+Protocol v1 main session. A real two-process loopback covers this baseline
+boundary; it is not iOS-device, UI, hardware VideoToolbox, or advanced-host
+evidence.
 
 ## Requirements
 
 - macOS with full Xcode 16 or newer and an iOS 17 or newer SDK;
 - iPhone or iPad running iOS/iPadOS 17 or newer for device installation;
-- a Mac host and client adapter implementing the same Protocol v1 upgrade and
-  trusted-LAN session composition described in the Phase 5 technical design;
+- the baseline MacHost on TCP port `54321`, or another host implementing the
+  trusted-LAN admission and Protocol v1 session described in the Phase 5
+  technical design;
 - an Apple development team and a unique bundle identifier for device signing.
 
 The package pins `swift-protobuf` to immutable revision
 `c6fe6442e6a64250495669325044052e113e990c`. The first build therefore needs
-network access unless the Swift Package cache is already populated.
+network access unless the Swift Package cache is already populated. The full
+Apache-2.0 license with runtime-library exception is retained at
+`ThirdPartyLicenses/SwiftProtobuf-LICENSE.txt` and included in the application
+Resources build phase.
 
 ## Build and test
 
@@ -37,6 +43,19 @@ swift run --package-path apps/ios vibescreen-ios-selftest
 The self-test decodes the shared
 `contracts/fixtures/client-hello-v1.hex` fixture also emitted by the HarmonyOS
 codec, in addition to its protocol/session/media checks.
+
+Run the real release-build, two-process iOS Core to baseline MacHost loopback:
+
+```bash
+apps/ios/Scripts/run_machost_loopback.py
+```
+
+This starts MacHost on loopback port `54321` and checks authenticated
+`SSWA`/`SSWR` admission, the `0D`/`0D01` upgrade exchange, Hello and negotiated
+capabilities, display list/start, video-config acknowledgement, video media
+framing, ping/pong, display/stream-targeted touch, invalid-target protocol
+error, and disconnect. Use `--skip-build` only after both release products have
+already been built.
 
 After editing Protocol v1 schemas, regenerate the checked Swift bindings:
 
@@ -67,9 +86,11 @@ device, and Run. The app supports both device families from one target.
 ## Connect and use
 
 1. Put the iPhone/iPad and Mac on a trusted local network.
-2. Start a Protocol v1 host and note its IP address and TCP port. The default
-   client field is port `58008`; change it to the host's configured port.
-3. Enter the host address and tap **连接**.
+2. Start the baseline MacHost, open its Wireless pairing view, and obtain the
+   `telemachus://` link for TCP port `54321`.
+3. Paste that link into the iOS client and tap **连接**. The link contains a
+   32-byte bearer token: paste it for each connection and do not store or share
+   it.
 4. Accept the iOS Local Network permission prompt.
 5. The client negotiates H.264/HEVC and additive capabilities, asks for
    available displays, and attaches to as many as the negotiated limit allows.
@@ -90,9 +111,10 @@ swift package --package-path apps/ios resolve
 xcodebuild -project apps/ios/VibeScreen.xcodeproj -scheme VibeScreen clean
 ```
 
-Install the new build over the old one to preserve the saved host and port.
-Delete the app from the device to remove those preferences. Pairing keys are
-not yet stored by this client, so there is currently no key migration step.
+Install the new build over the old one. The trusted-LAN pairing URL and bearer
+token are intentionally not persisted; paste a current link again for every
+connection. Pairing keys are not yet stored by this client, so there is
+currently no key migration step.
 
 ## Permissions and managed configuration
 
@@ -132,10 +154,9 @@ not yet stored by this client, so there is currently no key migration step.
 
 ## Troubleshooting
 
-- **Connection refused:** confirm the Protocol v1 host is listening on the
-  entered address/port. Port `54321` supports the Android baseline's explicit
-  legacy-to-v1 upgrade, but the current iOS transport does not yet perform that
-  upgrade and must not be pointed directly at this port.
+- **Connection refused:** confirm the baseline MacHost is listening on TCP
+  `54321`, paste a current pairing link again, and confirm the iPhone/iPad can
+  reach the Mac over the trusted LAN.
 - **No Local Network prompt:** check the app's permission in Settings, then
   delete/reinstall if the development bundle identifier changed.
 - **Connected but no picture:** verify the host accepted `StartDisplayRequest`
@@ -155,8 +176,10 @@ not yet stored by this client, so there is currently no key migration step.
 
 ## Known limits
 
-- unsigned iOS Simulator SDK compilation is recorded in CI; simulator XCTest,
-  signing, installation, and device execution remain separate evidence gates;
+- unsigned iOS Simulator SDK compilation is recorded in CI; the newly added
+  iPhone Simulator XCTest and unsigned archive steps require a new GitHub
+  Actions result, while signing, installation, and device execution remain
+  separate evidence gates;
 - no automatic reconnect loop in the app UI yet, although epoch filtering and
   bounded reconnect backoff are implemented and self-tested;
 - one host connection can route up to four negotiated display streams; actual
@@ -172,9 +195,10 @@ not yet stored by this client, so there is currently no key migration step.
 
 ## Required host integration
 
-The Mac host has a Protocol v1 adapter for the Android baseline session. iOS
-still needs the matching upgrade and baseline-session composition; advanced
-host integrations must then preserve these client semantics:
+The baseline MacHost compatibility boundary now admits the iOS trusted-LAN
+client and composes it with the existing Protocol v1 main session. This closes
+the basic port `54321` interoperability gap only. Advanced host integrations
+must still preserve these client semantics:
 
 - Hello plus explicit negotiated capabilities/resource limits;
 - independent per-client epochs and unique per-session display stream IDs;
@@ -187,4 +211,5 @@ host integrations must then preserve these client semantics:
   enabling advanced channels on Internet transport.
 
 See the [Phase 5 verification record](../../docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md)
-and [dependency provenance](THIRD_PARTY.md) for exact evidence and licensing.
+and [dependency provenance](../../THIRD_PARTY.md) for exact evidence and
+licensing.

@@ -6,9 +6,10 @@ import VibeScreenProtocol
 import VibeScreenVideo
 
 extension StreamViewModel {
-    func send(_ envelope: VSEnvelope) async throws {
+    func send(_ envelope: VSEnvelope, timeout: TimeInterval = 3) async throws {
         try await transport.send(
-            TransportFrame(channel: .control, payload: EnvelopeCodec.serialize(envelope))
+            TransportFrame(channel: .control, payload: EnvelopeCodec.serialize(envelope)),
+            timeout: timeout
         )
     }
 
@@ -23,12 +24,13 @@ extension StreamViewModel {
             }
         } catch {
             errorMessage = error.localizedDescription
-            isStreaming = false
-            state.disconnected(retryAttempt: 1)
+            state.fail(error.localizedDescription)
+            endSession(disconnectTransport: true, resetState: false)
         }
     }
 
     func handleControl(_ envelope: VSEnvelope) throws {
+        try controlValidator.validate(envelope)
         guard let payload = envelope.payload else { return }
         switch payload {
         case .hostHello(let hello):
@@ -37,6 +39,17 @@ extension StreamViewModel {
             try acceptSession(accepted)
         case .sessionRejected(let rejected):
             throw ProtocolClientError.rejected(rejected.message)
+        case .ping(let ping):
+            sendPong(sequence: ping.sequence, correlationID: envelope.messageID)
+        case .pong(let pong):
+            guard let correlationID = pendingHeartbeatCorrelations.removeValue(forKey: pong.sequence),
+                  envelope.correlationID == correlationID,
+                  pong.sequence > lastPongSequence else {
+                throw ProtocolClientError.invalidPong
+            }
+            lastPongSequence = max(lastPongSequence, pong.sequence)
+        case .disconnectNotice(let notice):
+            terminateSession(message: "Mac 已断开会话：\(notice.reasonCode)")
         case .videoConfig(let config):
             handleVideoConfig(config)
         case .audioConfig(let config):
@@ -45,6 +58,12 @@ extension StreamViewModel {
             startDisplays(response.displays)
         case .startDisplayResponse(let response):
             try bindDisplay(response)
+        case .videoStreamEnded(let ended):
+            handleVideoStreamEnded(ended)
+        case .errorReport(let report):
+            terminateSession(message: "主机错误 [\(report.code)]：\(report.message)")
+        case .protocolError(let error):
+            terminateSession(message: "协议错误 [\(error.code)]：\(error.message)")
         case .clipboardContent(let content):
             if negotiatedCapabilities.contains(.clipboard) { clipboard.stage(content) }
         case .fileOffer(let offer):
@@ -81,13 +100,13 @@ extension StreamViewModel {
                 managedConfiguration.applyRemote(status)
                 enforceCurrentPolicy()
             }
-        case .clientHello, .ping, .pong, .resumeSessionRequest, .resumeSessionResult,
-             .disconnectNotice, .pairingOffer, .pairingRequest, .pairingResult, .deviceRevoked,
+        case .clientHello, .resumeSessionRequest, .resumeSessionResult,
+             .pairingOffer, .pairingRequest, .pairingResult, .deviceRevoked,
              .keyRotationRequest, .keyRotationResult, .deviceRevocation, .trafficKeyUpdate,
              .trafficKeyAck, .listDisplaysRequest, .startDisplayRequest, .stopDisplay,
-             .displayChanged, .videoConfigResult, .requestKeyframe, .videoStreamEnded,
+             .displayChanged, .videoConfigResult, .requestKeyframe,
              .touchEvent, .pointerEvent, .scrollEvent, .keyEvent, .inputAck, .streamStats,
-             .transportStats, .errorReport, .protocolError, .encryptedControlPacket,
+             .transportStats, .encryptedControlPacket,
              .audioConfigResult, .clipboardOffer, .clipboardRequest, .fileTransferProgress,
              .hostActionInvoke, .hostActionResult, .wakeHostRequest, .wakeHostResult:
             break
@@ -111,12 +130,14 @@ extension StreamViewModel {
         negotiatedCapabilities = state.negotiatedCapabilities
         negotiatedLimits = accepted.hasNegotiatedResourceLimits ?
             accepted.negotiatedResourceLimits : host.resourceLimits
+        heartbeatIntervalMilliseconds = accepted.heartbeatIntervalMs == 0 ? 1_000 : accepted.heartbeatIntervalMs
         if negotiatedCapabilities.contains(.deviceIdentity) {
             UserDefaults.standard.set(true, forKey: "hasAuthorizedHostIdentity")
         }
         let key = ClientSessionKey(sessionID: state.sessionID, epoch: state.sessionEpoch)
         try registry.register(key)
         sessionKey = key
+        startHeartbeat()
         sendManagedPolicyStatus()
         sendInBackground(factory.listDisplays(sessionID: state.sessionID, sessionEpoch: state.sessionEpoch))
     }
@@ -143,8 +164,6 @@ extension StreamViewModel {
         try registry.bind(binding, to: sessionKey)
         displayBindings = registry.bindings(in: sessionKey)
         selectedStreamID = selectedStreamID ?? streamID
-        if case .ready = state.phase { try state.startStreaming(streamID: streamID) }
-        isStreaming = true
     }
 
     func handleVideoConfig(_ config: VSVideoConfig) {
@@ -162,11 +181,98 @@ extension StreamViewModel {
             result.rejectionReason = reason
             result.selectedColorDescription = fallback.colorDescription
         }
-        sendInBackground(factory.videoConfigResult(
+        let response = factory.videoConfigResult(
             result,
             sessionID: state.sessionID,
             sessionEpoch: state.sessionEpoch
+        )
+        let generation = sessionGeneration
+        let sessionID = state.sessionID
+        let sessionEpoch = state.sessionEpoch
+        Task {
+            do {
+                try await send(response)
+                guard generation == sessionGeneration,
+                      sessionID == state.sessionID,
+                      sessionEpoch == state.sessionEpoch else { return }
+                guard result.accepted else { return }
+                if case .ready = state.phase {
+                    try state.startStreaming(streamID: result.streamID)
+                }
+                isStreaming = true
+            } catch {
+                guard !Task.isCancelled, generation == sessionGeneration else { return }
+                terminateSession(message: "视频配置确认失败：\(error.localizedDescription)")
+            }
+        }
+    }
+
+    func startHeartbeat() {
+        heartbeatTask?.cancel()
+        let interval = heartbeatIntervalMilliseconds
+        let generation = sessionGeneration
+        let sessionID = state.sessionID
+        let sessionEpoch = state.sessionEpoch
+        heartbeatTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .milliseconds(Int(interval)))
+                    try Task.checkCancellation()
+                    guard let self else { return }
+                    guard generation == sessionGeneration,
+                          sessionID == state.sessionID,
+                          sessionEpoch == state.sessionEpoch else { return }
+                    heartbeatSequence += 1
+                    let envelope = factory.ping(
+                        sequence: heartbeatSequence,
+                        sessionID: state.sessionID,
+                        sessionEpoch: state.sessionEpoch
+                    )
+                    pendingHeartbeatCorrelations[heartbeatSequence] = envelope.messageID
+                    if pendingHeartbeatCorrelations.count > 4,
+                       let oldest = pendingHeartbeatCorrelations.keys.min() {
+                        pendingHeartbeatCorrelations.removeValue(forKey: oldest)
+                    }
+                    try await send(envelope)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    guard let self else { return }
+                    guard !Task.isCancelled, generation == sessionGeneration else { return }
+                    terminateSession(message: "心跳发送失败：\(error.localizedDescription)")
+                    return
+                }
+            }
+        }
+    }
+
+    func sendPong(sequence: UInt64, correlationID: UInt64) {
+        sendInBackground(factory.pong(
+            sequence: sequence,
+            correlationID: correlationID,
+            sessionID: state.sessionID,
+            sessionEpoch: state.sessionEpoch
         ))
+    }
+
+    func handleVideoStreamEnded(_ ended: VSVideoStreamEnded) {
+        guard let sessionKey else { return }
+        decoders.removeValue(forKey: ended.streamID)?.invalidate()
+        configuredCodecs.removeValue(forKey: ended.streamID)
+        _ = registry.release(streamID: ended.streamID, in: sessionKey)
+        displayBindings = registry.bindings(in: sessionKey)
+        if selectedStreamID == ended.streamID {
+            selectedStreamID = displayBindings.first?.streamID
+            pixelBuffer = nil
+        }
+        guard displayBindings.isEmpty else { return }
+        terminateSession(message: "视频流已结束：\(ended.reasonCode)")
+    }
+
+    func terminateSession(message: String) {
+        errorMessage = message
+        state.fail(message)
+        endSession(disconnectTransport: true, resetState: false)
     }
 
     func handleAudioConfig(_ config: VSAudioConfig) throws {
@@ -342,9 +448,13 @@ extension StreamViewModel {
     }
 
     func sendInBackground(_ envelope: VSEnvelope) {
+        let generation = sessionGeneration
         Task {
             do { try await send(envelope) }
-            catch { errorMessage = error.localizedDescription }
+            catch {
+                guard !Task.isCancelled, generation == sessionGeneration else { return }
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -386,8 +496,16 @@ extension StreamViewModel {
     }()
 }
 
-private enum ProtocolClientError: Error {
+private enum ProtocolClientError: Error, LocalizedError {
     case rejected(String)
+    case invalidPong
+
+    var errorDescription: String? {
+        switch self {
+        case let .rejected(message): message
+        case .invalidPong: "主机返回了不匹配当前心跳的 Pong"
+        }
+    }
 }
 
 // The app treats the retained VideoToolbox output as read-only across the UI actor hop.

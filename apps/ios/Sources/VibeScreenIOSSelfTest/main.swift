@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import Network
 import VibeScreenCore
 import VibeScreenProtocol
 import VibeScreenVideo
@@ -481,6 +482,219 @@ func testAdvancedProtocolRoundTrip() throws {
     try require(VSCapability.managedConfiguration.rawValue == 22, "capability allocation")
 }
 
+func testTrustedLANStartupCodecs() throws {
+    let encodedToken = String(repeating: "A", count: 43)
+    let pairing = try TrustedLANPairing(
+        urlString: "telemachus://127.0.0.1?t=\(encodedToken)&name=Test%20Mac"
+    )
+    try require(pairing.host == "127.0.0.1", "pairing host")
+    try require(pairing.port == 54_321, "pairing default port")
+    try require(pairing.token == Data(repeating: 0, count: 32), "pairing token")
+    try require(pairing.hostName == "Test Mac", "pairing host name")
+
+    do {
+        _ = try TrustedLANPairing(
+            urlString: "telemachus://127.0.0.1:54321?t=\(encodedToken)&t=\(encodedToken)&name=Mac"
+        )
+        throw SelfTestError.failed("duplicate pairing token accepted")
+    } catch TrustedLANPairingError.invalidQuery { }
+    do {
+        _ = try TrustedLANPairing(
+            urlString: "http://127.0.0.1:54321?t=\(encodedToken)&name=Mac"
+        )
+        throw SelfTestError.failed("wrong pairing scheme accepted")
+    } catch TrustedLANPairingError.invalidScheme { }
+
+    let request = try TrustedLANHandshake.request(token: pairing.token, deviceName: "iPhone")
+    try require(request.prefix(4) == Data("SSWA".utf8), "SSWA request magic")
+    try require(request.count == 37 + "iPhone".utf8.count, "SSWA request boundary")
+    try require(request[36] == UInt8("iPhone".utf8.count), "SSWA device name length")
+    try TrustedLANHandshake.validateResponse(Data("SSWR".utf8) + Data([0]))
+    do {
+        try TrustedLANHandshake.validateResponse(Data("SSWR".utf8) + Data([1]))
+        throw SelfTestError.failed("SSWR rejection accepted")
+    } catch TrustedLANHandshakeError.rejected(.invalidToken) { }
+    do {
+        try TrustedLANHandshake.validateResponse(Data("SSWX".utf8) + Data([0]))
+        throw SelfTestError.failed("invalid SSWR magic accepted")
+    } catch TrustedLANHandshakeError.invalidResponseMagic { }
+    do {
+        try TrustedLANHandshake.validateResponse(Data("SSWR".utf8))
+        throw SelfTestError.failed("truncated SSWR accepted")
+    } catch TrustedLANHandshakeError.invalidResponseLength { }
+
+    try ProtocolV1Upgrade.validateAcknowledgement(Data([0x0D, 0x01]))
+    do {
+        try ProtocolV1Upgrade.validateAcknowledgement(Data([0x0D, 0x00]))
+        throw SelfTestError.failed("invalid Protocol v1 acknowledgement accepted")
+    } catch ProtocolV1UpgradeError.invalidAcknowledgement { }
+
+    var factory = EnvelopeFactory(firstMessageID: 20)
+    let ping = factory.ping(sequence: 7, sessionID: Data([1]), sessionEpoch: 3)
+    let pong = factory.pong(
+        sequence: 7,
+        correlationID: ping.messageID,
+        sessionID: Data([1]),
+        sessionEpoch: 3
+    )
+    try require(ping.messageID == 20 && ping.ping.sequence == 7, "ping factory")
+    try require(pong.messageID == 21 && pong.pong.sequence == 7, "pong factory message ID")
+    try require(pong.correlationID == ping.messageID, "pong correlation")
+    let disconnect = factory.disconnectNotice(
+        reasonCode: "client_disconnect",
+        mayResume: false,
+        sessionID: Data([1]),
+        sessionEpoch: 3
+    )
+    try require(
+        disconnect.messageID == 22 && disconnect.disconnectNotice.reasonCode == "client_disconnect",
+        "disconnect factory"
+    )
+
+    let sessionID = Data([0xAA])
+    var validator = ClientControlEnvelopeValidator()
+    var hostHello = VSEnvelope()
+    hostHello.protocolVersion = 1
+    hostHello.messageID = 1
+    hostHello.hostHello.selectedProtocol = 1
+    try validator.validate(hostHello)
+
+    var accepted = VSSessionAccepted()
+    accepted.sessionID = sessionID
+    accepted.sessionEpoch = 7
+    var acceptedEnvelope = VSEnvelope()
+    acceptedEnvelope.protocolVersion = 1
+    acceptedEnvelope.messageID = 2
+    acceptedEnvelope.sessionID = sessionID
+    acceptedEnvelope.sessionEpoch = 7
+    acceptedEnvelope.sessionAccepted = accepted
+    try validator.validate(acceptedEnvelope)
+
+    var validPong = VSEnvelope()
+    validPong.protocolVersion = 1
+    validPong.messageID = 3
+    validPong.sessionID = sessionID
+    validPong.sessionEpoch = 7
+    validPong.pong.sequence = 1
+    try validator.validate(validPong)
+
+    var duplicate = validPong
+    duplicate.messageID = 3
+    do {
+        try validator.validate(duplicate)
+        throw SelfTestError.failed("non-monotonic host message accepted")
+    } catch ClientControlEnvelopeError.nonMonotonicMessageID { }
+
+    var stale = validPong
+    stale.messageID = 4
+    stale.sessionEpoch = 6
+    do {
+        try validator.validate(stale)
+        throw SelfTestError.failed("stale host session accepted")
+    } catch ClientControlEnvelopeError.invalidSession { }
+
+    var invalidState = SessionState()
+    try invalidState.beginConnection()
+    try invalidState.transportConnected()
+    do {
+        try invalidState.accept(
+            selectedProtocol: 1,
+            sessionID: Data(),
+            epoch: 0,
+            localCapabilities: [],
+            hostCapabilities: []
+        )
+        throw SelfTestError.failed("empty host session accepted")
+    } catch SessionStateError.invalidSessionIdentifier { }
+}
+
+func testTransportStartupCancellation() throws {
+    let queue = DispatchQueue(label: "vibescreen-ios-selftest.transport")
+    let listener = try NWListener(using: .tcp, on: .any)
+    defer { listener.cancel() }
+    let listenerReady = DispatchSemaphore(value: 0)
+    let accepted = DispatchSemaphore(value: 0)
+    listener.stateUpdateHandler = { state in
+        if case .ready = state { listenerReady.signal() }
+    }
+    listener.newConnectionHandler = { connection in
+        connection.start(queue: queue)
+        accepted.signal()
+    }
+    listener.start(queue: queue)
+    guard listenerReady.wait(timeout: .now() + 2) == .success,
+          let port = listener.port?.rawValue else {
+        throw SelfTestError.failed("transport cancellation listener did not start")
+    }
+
+    let transport = TCPTransport { _ in }
+    let completed = DispatchSemaphore(value: 0)
+    let result = LockedTransportResult()
+    Task {
+        do {
+            try await transport.connect(
+                host: "127.0.0.1",
+                port: port,
+                startup: .usbNoAuthentication,
+                timeout: 5
+            )
+            result.finish(.success(()))
+        } catch {
+            result.finish(.failure(error))
+        }
+        completed.signal()
+    }
+    guard accepted.wait(timeout: .now() + 2) == .success else {
+        throw SelfTestError.failed("transport cancellation connection was not accepted")
+    }
+    transport.disconnect()
+    guard completed.wait(timeout: .now() + 2) == .success else {
+        throw SelfTestError.failed("disconnect left transport startup suspended")
+    }
+    if case .success? = result.value {
+        throw SelfTestError.failed("disconnected transport startup succeeded")
+    }
+
+    let cancelledTransport = TCPTransport { _ in }
+    let cancelledCompleted = DispatchSemaphore(value: 0)
+    let cancelledResult = LockedTransportResult()
+    let task = Task {
+        do {
+            try await cancelledTransport.connect(
+                host: "127.0.0.1",
+                port: port,
+                startup: .usbNoAuthentication,
+                timeout: 5
+            )
+            cancelledResult.finish(.success(()))
+        } catch {
+            cancelledResult.finish(.failure(error))
+        }
+        cancelledCompleted.signal()
+    }
+    guard accepted.wait(timeout: .now() + 2) == .success else {
+        throw SelfTestError.failed("cancelled transport connection was not accepted")
+    }
+    task.cancel()
+    guard cancelledCompleted.wait(timeout: .now() + 2) == .success else {
+        throw SelfTestError.failed("Task cancellation left transport startup suspended")
+    }
+    if case .success? = cancelledResult.value {
+        throw SelfTestError.failed("cancelled transport startup succeeded")
+    }
+}
+
+private final class LockedTransportResult: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Result<Void, Error>?
+
+    var value: Result<Void, Error>? { lock.withLock { stored } }
+
+    func finish(_ result: Result<Void, Error>) {
+        lock.withLock { stored = result }
+    }
+}
+
 do {
     FileHandle.standardError.write(Data("RUN: framing\n".utf8))
     try testFraming()
@@ -499,7 +713,10 @@ do {
     FileHandle.standardError.write(Data("RUN: HDR/gesture/wake/advanced-proto\n".utf8))
     try testHDRGesturesAndWake()
     try testAdvancedProtocolRoundTrip()
-    print("PASS: Phase 5A-5D core protocol, limits, queues, digest, policy, fallback, wake")
+    FileHandle.standardError.write(Data("RUN: trusted-LAN startup codecs\n".utf8))
+    try testTrustedLANStartupCodecs()
+    try testTransportStartupCancellation()
+    print("PASS: Phase 5A-5D core and trusted-LAN Protocol v1 startup")
 } catch {
     FileHandle.standardError.write(Data("FAIL: \(error)\n".utf8))
     exit(EXIT_FAILURE)

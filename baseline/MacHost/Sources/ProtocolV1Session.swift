@@ -27,6 +27,7 @@ enum ProtocolV1SessionPhase: Equatable {
     case awaitingDisplayStart
     case awaitingVideoConfig(configEpoch: UInt64, streamID: UInt64)
     case streaming(configEpoch: UInt64, streamID: UInt64)
+    case closed
     case failed
 }
 
@@ -245,6 +246,7 @@ final class ProtocolV1SessionCoordinator {
             guard isStreaming, touch.hasPosition,
                   (0...1).contains(touch.position.x),
                   (0...1).contains(touch.position.y),
+                  inputTargetMatchesActiveStream(touch.hasTarget ? touch.target : nil),
                   touch.phase != .unspecified else {
                 return invalidState("TouchEvent is invalid or media is not ready.", envelope.messageID)
             }
@@ -289,6 +291,10 @@ final class ProtocolV1SessionCoordinator {
         case .protocolError(let error):
             phase = .failed
             return [.peerError(error), .close]
+
+        case .disconnectNotice:
+            phase = .closed
+            return [.close]
 
         default:
             return invalidState("Payload is unsupported in the current host session.", envelope.messageID)
@@ -338,6 +344,13 @@ final class ProtocolV1SessionCoordinator {
     private var isStreaming: Bool {
         if case .streaming = phase { return true }
         return false
+    }
+
+    private func inputTargetMatchesActiveStream(_ target: VSInputTarget?) -> Bool {
+        guard case .streaming(_, let streamID) = phase else { return false }
+        guard let target else { return true }
+        if target.displayID.isEmpty && target.streamID == 0 { return true }
+        return target.displayID == configuration.displayID && target.streamID == streamID
     }
 
     private func acceptClientHello(_ hello: VSClientHello, correlationID: UInt64) -> [ProtocolV1SessionAction] {
