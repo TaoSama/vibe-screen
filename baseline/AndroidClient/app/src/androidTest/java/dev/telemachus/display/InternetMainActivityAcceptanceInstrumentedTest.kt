@@ -317,7 +317,11 @@ class InternetMainActivityAcceptanceInstrumentedTest {
             .inRoot(FocusedRootMatcher())
             .perform(click())
         acceptanceStage = "revoke_result"
-        onView(withId(R.id.internetConnectButton)).check(matches(not(isEnabled())))
+        scenario.onActivity { activity ->
+            check(!activity.findViewById<View>(R.id.internetConnectButton).isEnabled) {
+                "Internet connect action remained enabled after revoke"
+            }
+        }
     }
 
     private fun assertSecretsRemoved(
