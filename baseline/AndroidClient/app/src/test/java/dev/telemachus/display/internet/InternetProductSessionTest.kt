@@ -8,6 +8,7 @@ import dev.vibescreen.protocol.v1.DeviceRevoked
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.MediaPacketHeader
+import dev.vibescreen.protocol.v1.Ping
 import dev.vibescreen.protocol.v1.SessionAccepted
 import dev.vibescreen.protocol.v1.VideoConfig
 import org.junit.Assert.assertEquals
@@ -19,6 +20,9 @@ import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 class InternetProductSessionTest {
     private val signaling =
@@ -225,6 +229,7 @@ class InternetProductSessionTest {
         assertEquals(1, callbacks.freshReasons.size)
         peer.observer.onConnected(PeerRoute.RELAY)
         peer.observer.onRouteChanged(PeerRoute.DIRECT)
+        peer.observer.onFailure(IllegalStateException("late owner failure"))
         assertEquals(InternetProductSessionState.RECOVERING, session.state)
         assertFalse(session.sendTouch(ProductTouchEvent(10, 0, ProductInputPhase.BEGAN, 0.1, 0.2)))
 
@@ -234,6 +239,284 @@ class InternetProductSessionTest {
         assertEquals(1, payloads.count { it == Envelope.PayloadCase.CLIENT_HELLO })
         assertFalse(payloads.contains(Envelope.PayloadCase.TOUCH_EVENT))
         assertFalse(payloads.contains(Envelope.PayloadCase.PING))
+    }
+
+    @Test
+    fun freshInvalidationAfterControlDecodePreventsLateSessionAcceptanceCommit() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val shouldBlock = AtomicBoolean(false)
+        val decoded = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val session =
+            session(
+                peer,
+                monitor,
+                callbacks,
+                testHooks =
+                    InternetProductSessionTestHooks(
+                        afterControlDecodeBeforeCommit = {
+                            if (shouldBlock.get()) {
+                                decoded.countDown()
+                                assertTrue(release.await(2, TimeUnit.SECONDS))
+                            }
+                        },
+                    ),
+            )
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+
+        shouldBlock.set(true)
+        val executor = Executors.newSingleThreadExecutor()
+        val acceptance = executor.submit { peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build()) }
+        assertTrue(decoded.await(2, TimeUnit.SECONDS))
+        monitor.available("cellular")
+        release.countDown()
+        acceptance.get(2, TimeUnit.SECONDS)
+        executor.shutdown()
+
+        assertEquals(InternetProductSessionState.RECOVERING, session.state)
+        assertEquals(1, callbacks.freshReasons.size)
+        assertEquals(1, peer.control.size)
+        assertFalse(session.sendTouch(ProductTouchEvent(12, 0, ProductInputPhase.BEGAN, 0.2, 0.3)))
+    }
+
+    @Test
+    fun videoConfigurationCallbackCanCloseWithoutDeadlockOrLateSend() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val sessionReference = AtomicReference<InternetProductSession>()
+        val callbacks =
+            object : InternetProductSessionCallbacks {
+                override fun onVideoConfiguration(configuration: ProductVideoConfiguration): ProductVideoDecision {
+                    sessionReference.get().close()
+                    return ProductVideoDecision.ACCEPT
+                }
+            }
+        val session = session(peer, monitor, callbacks)
+        sessionReference.set(session)
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        val executor = Executors.newSingleThreadExecutor()
+        val delivery = executor.submit { peer.receive(videoConfigurationEnvelope(3)) }
+        delivery.get(2, TimeUnit.SECONDS)
+        executor.shutdown()
+
+        assertEquals(InternetProductSessionState.CLOSED, session.state)
+        assertEquals(1, peer.control.size)
+    }
+
+    @Test
+    fun concurrentVideoConfigurationsFailClosedBeforeSecondDecoderInstall() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbackEntered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val configurationCallbacks = AtomicInteger(0)
+        val callbacks =
+            object : InternetProductSessionCallbacks {
+                override fun onVideoConfiguration(configuration: ProductVideoConfiguration): ProductVideoDecision {
+                    configurationCallbacks.incrementAndGet()
+                    callbackEntered.countDown()
+                    assertTrue(release.await(2, TimeUnit.SECONDS))
+                    return ProductVideoDecision.ACCEPT
+                }
+            }
+        val session = session(peer, monitor, callbacks)
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        val executor = Executors.newSingleThreadExecutor()
+        val first = executor.submit { peer.receive(videoConfigurationEnvelope(3)) }
+        assertTrue(callbackEntered.await(2, TimeUnit.SECONDS))
+        peer.receive(videoConfigurationEnvelope(4))
+        release.countDown()
+        first.get(2, TimeUnit.SECONDS)
+        executor.shutdown()
+
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals(1, configurationCallbacks.get())
+        assertEquals(1, peer.control.size)
+    }
+
+    @Test
+    fun closeFromRecoveringStateCallbackSuppressesFreshCallback() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val sessionReference = AtomicReference<InternetProductSession>()
+        val freshCallbacks = AtomicInteger(0)
+        val callbacks =
+            object : InternetProductSessionCallbacks {
+                override fun onStateChanged(state: InternetProductSessionState) {
+                    if (state == InternetProductSessionState.RECOVERING) sessionReference.get().close()
+                }
+
+                override fun onFreshSessionRequired(reason: String) {
+                    freshCallbacks.incrementAndGet()
+                }
+            }
+        val session = session(peer, monitor, callbacks)
+        sessionReference.set(session)
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        monitor.available("cellular")
+
+        assertEquals(InternetProductSessionState.CLOSED, session.state)
+        assertEquals(0, freshCallbacks.get())
+    }
+
+    @Test
+    fun closeBetweenStateCommitAndDispatchGateSuppressesConnectingAndStart() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val committed = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val states = mutableListOf<InternetProductSessionState>()
+        val callbacks =
+            object : InternetProductSessionCallbacks {
+                override fun onStateChanged(state: InternetProductSessionState) {
+                    states += state
+                }
+            }
+        val session =
+            session(
+                peer,
+                monitor,
+                callbacks,
+                testHooks =
+                    InternetProductSessionTestHooks(
+                        afterStateCommitBeforeDispatchGate = { state ->
+                            if (state == InternetProductSessionState.CONNECTING) {
+                                committed.countDown()
+                                assertTrue(release.await(2, TimeUnit.SECONDS))
+                            }
+                        },
+                    ),
+            )
+
+        val executor = Executors.newSingleThreadExecutor()
+        val start = executor.submit { session.start() }
+        assertTrue(committed.await(2, TimeUnit.SECONDS))
+        session.close()
+        release.countDown()
+        start.get(2, TimeUnit.SECONDS)
+        executor.shutdown()
+
+        assertEquals(InternetProductSessionState.CLOSED, session.state)
+        assertFalse(states.contains(InternetProductSessionState.CONNECTING))
+        assertEquals(1, peer.closeCalls)
+        assertEquals(1, monitor.closeCalls)
+    }
+
+    @Test
+    fun freshInvalidationAfterMediaDecodePreventsLateFrameDispatch() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val shouldBlock = AtomicBoolean(false)
+        val decoded = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val session =
+            session(
+                peer,
+                monitor,
+                callbacks,
+                testHooks =
+                    InternetProductSessionTestHooks(
+                        afterMediaDecodeBeforeCommit = {
+                            if (shouldBlock.get()) {
+                                decoded.countDown()
+                                assertTrue(release.await(2, TimeUnit.SECONDS))
+                            }
+                        },
+                    ),
+            )
+        activateWithVideo(session, peer, monitor)
+
+        shouldBlock.set(true)
+        val executor = Executors.newSingleThreadExecutor()
+        val delivery = executor.submit { peer.media(media(frameId = 20, keyframe = true, payload = "late".toByteArray())) }
+        assertTrue(decoded.await(2, TimeUnit.SECONDS))
+        monitor.available("cellular")
+        release.countDown()
+        delivery.get(2, TimeUnit.SECONDS)
+        executor.shutdown()
+
+        assertEquals(InternetProductSessionState.RECOVERING, session.state)
+        assertTrue(callbacks.frames.isEmpty())
+    }
+
+    @Test
+    fun freshInvalidationBetweenMediaCommitAndDispatchGateDropsFrame() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val committed = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val session =
+            session(
+                peer,
+                monitor,
+                callbacks,
+                testHooks =
+                    InternetProductSessionTestHooks(
+                        beforeMediaDispatchGate = {
+                            committed.countDown()
+                            assertTrue(release.await(2, TimeUnit.SECONDS))
+                        },
+                    ),
+            )
+        activateWithVideo(session, peer, monitor)
+
+        val executor = Executors.newSingleThreadExecutor()
+        val delivery = executor.submit { peer.media(media(frameId = 22, keyframe = true, payload = "late".toByteArray())) }
+        assertTrue(committed.await(2, TimeUnit.SECONDS))
+        monitor.available("cellular")
+        release.countDown()
+        delivery.get(2, TimeUnit.SECONDS)
+        executor.shutdown()
+
+        assertEquals(InternetProductSessionState.RECOVERING, session.state)
+        assertTrue(callbacks.frames.isEmpty())
+    }
+
+    @Test
+    fun failedAndClosedSessionsDropLateControlAndMediaWithoutSending() {
+        listOf(InternetProductSessionState.FAILED, InternetProductSessionState.CLOSED).forEach { terminalState ->
+            val peer = ProductFakePeerEngine()
+            val monitor = ProductFakeNetworkMonitor()
+            val callbacks = ProductCallbacks()
+            val session = session(peer, monitor, callbacks)
+            activateWithVideo(session, peer, monitor)
+            val sentBeforeTerminal = peer.control.size
+
+            if (terminalState == InternetProductSessionState.FAILED) {
+                peer.observer.onFailure(IllegalStateException("transport failed"))
+            } else {
+                session.close()
+            }
+            peer.receive(controlEnvelope(4).setPing(Ping.newBuilder().setSequence(99)).build())
+            peer.receive(controlEnvelope(5).setSessionAccepted(sessionAccepted()).build())
+            peer.media(media(frameId = 21, keyframe = true, payload = "late".toByteArray()))
+
+            assertEquals(terminalState, session.state)
+            assertEquals(sentBeforeTerminal, peer.control.size)
+            assertTrue(callbacks.frames.isEmpty())
+        }
     }
 
     @Test
@@ -339,8 +622,9 @@ class InternetProductSessionTest {
     private fun session(
         peer: ProductFakePeerEngine,
         monitor: ProductFakeNetworkMonitor,
-        callbacks: ProductCallbacks,
+        callbacks: InternetProductSessionCallbacks,
         clock: ProductFakeClock = ProductFakeClock(0),
+        testHooks: InternetProductSessionTestHooks = InternetProductSessionTestHooks(),
         revocationStore: InternetProductRevocationStore = InternetProductRevocationStore { _, _ -> },
     ) = InternetProductSession(
         lease = lease,
@@ -356,7 +640,35 @@ class InternetProductSessionTest {
         codec = codec,
         callbacks = callbacks,
         revocationStore = revocationStore,
+        testHooks = testHooks,
     )
+
+    private fun activateWithVideo(
+        session: InternetProductSession,
+        peer: ProductFakePeerEngine,
+        monitor: ProductFakeNetworkMonitor,
+    ) {
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+        peer.receive(videoConfigurationEnvelope(3))
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+    }
+
+    private fun videoConfigurationEnvelope(messageId: Long): Envelope =
+        controlEnvelope(messageId)
+            .setVideoConfig(
+                VideoConfig
+                    .newBuilder()
+                    .setConfigEpoch(3)
+                    .setCodec(Codec.CODEC_HEVC)
+                    .setEncodedSize(Dimensions.newBuilder().setWidth(1920).setHeight(1080))
+                    .setFramesPerSecond(60)
+                    .setBitrateKbps(12_000)
+                    .setStreamId(5),
+            ).build()
 
     private fun controlEnvelope(messageId: Long): Envelope.Builder =
         Envelope
