@@ -4,10 +4,10 @@ This directory contains the native SwiftUI iOS client and its independently
 testable Protocol v1, session, transport, and VideoToolbox modules.
 
 The client is an early developer release. Its core modules build and self-test
-on macOS, and the unsigned application has built successfully with the iOS
-Simulator SDK in CI. Simulator test execution, signing, installation, and
-iPhone/iPad hardware decode are separate gates; do not treat the SDK build or
-Android device record as that evidence. The trusted-LAN Core client now
+on macOS; the iPhone Simulator UI smoke and unsigned iPhoneOS archive gates
+pass in CI. Signing, installation, and iPhone/iPad hardware decode remain
+separate gates; do not treat Simulator or Android records as that evidence.
+The trusted-LAN Core client now
 connects to the baseline MacHost on TCP port `54321`, completes authenticated
 `SSWA`/`SSWR` admission plus the `0D` legacy-to-v1 upgrade, and then runs its
 Protocol v1 main session. A real two-process loopback covers this baseline
@@ -176,10 +176,8 @@ currently no key migration step.
 
 ## Known limits
 
-- unsigned iOS Simulator SDK compilation is recorded in CI; the newly added
-  iPhone Simulator XCTest and unsigned archive steps require a new GitHub
-  Actions result, while signing, installation, and device execution remain
-  separate evidence gates;
+- iPhone Simulator UI smoke and an unsigned iPhoneOS archive pass in CI;
+  signing, installation, and device execution remain separate evidence gates;
 - no automatic reconnect loop in the app UI yet, although epoch filtering and
   bounded reconnect backoff are implemented and self-tested;
 - one host connection can route up to four negotiated display streams; actual

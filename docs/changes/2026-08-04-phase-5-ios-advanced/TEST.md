@@ -110,11 +110,16 @@ gate adds an XCTest UI smoke test, automatic simulator selection, and unsigned
 generic-iOS archive validation; those new steps require their own CI result and
 must not be retroactively attributed to the earlier build job.
 
-The workflow now also runs the generated-binding verifier, core self-test,
-MacHost loopback, iPhone Simulator XCTest, and unsigned archive gates. The
-Simulator test/archive steps remain unproved until a new GitHub Actions run for
-the current commit is retained; their presence in workflow YAML is not evidence
-that they passed.
+GitHub Actions run
+[`30978213167`](https://github.com/TaoSama/vibe-screen/actions/runs/30978213167)
+from interoperability commit `650803ce461e8b157c2b067178b3427d3687fd6f`
+passed both jobs. The `core` job verified generated bindings, the release Core
+self-test, the real MacHost loopback, and all baseline MacHost self-tests. The
+`app-build-test-archive` job used Xcode 16.4 (`16F6`) and an iPhone 17 Pro
+Simulator on iOS 26.2; `VibeScreenAppUITests` executed 2 tests with 0 failures
+and ended with `** TEST SUCCEEDED **`. The unsigned iPhoneOS Release archive
+ended with `** ARCHIVE SUCCEEDED **`, passed the script's app/binary/license
+checks, and was uploaded as `VibeScreen-unsigned-xcarchive`.
 
 The portable self-test and HarmonyOS core test now consume the same exact
 `contracts/fixtures/client-hello-v1.hex` bytes. HarmonyOS must reproduce the
@@ -129,8 +134,7 @@ For the original local run, `xcode-select -p` returned Command Line Tools.
 zero valid signing identities. CI later closed only the SDK compilation gap.
 The following remain unproved until their dedicated gates produce evidence:
 
-- simulator launch and SwiftUI layout on iPhone/iPad sizes;
-- XCTest UI smoke test and unsigned generic-iOS archive creation;
+- iPad-class Simulator layout (the retained smoke run used an iPhone 17 Pro);
 - signing, installation, Local Network permission, and lifecycle behavior;
 - VideoToolbox hardware H.264/HEVC decode and sustained thermal/power behavior;
 - iOS app/Simulator/device end-to-end host connection, decoded video, touch,

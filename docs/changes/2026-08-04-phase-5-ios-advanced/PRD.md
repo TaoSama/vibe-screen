@@ -1,6 +1,6 @@
 # Phase 5: native iOS client and advanced capability boundary
 
-Status: 5A–5D client implementation complete; baseline MacHost loopback interoperable, new Simulator gates and device verification pending
+Status: 5A–5D client implementation complete; baseline MacHost loopback and Simulator gates pass, device verification pending
 Owner: iOS and advanced capabilities  
 Started: 2026-08-04
 
@@ -30,7 +30,7 @@ older Phase 0 clients remain valid.
 
 | Slice | Scope | Protocol rule | Status |
 | --- | --- | --- | --- |
-| 5A | single iOS client, existing display, one video stream, touch | existing Protocol v1 only | code complete; baseline MacHost two-process loopback passes; unsigned simulator SDK build verified; new Simulator gates and device run pending |
+| 5A | single iOS client, existing display, one video stream, touch | existing Protocol v1 only | code complete; baseline MacHost two-process loopback, iPhone Simulator UI smoke, and unsigned archive pass; device run pending |
 | 5B | multiple clients, multiple virtual displays/streams | additive resource limits, stream/display targets, explicit negotiated capability result | client routing/limits/UI implemented and CLI tested; host allocation pending |
 | 5C | audio, bidirectional clipboard, file transfer | capability-gated messages and separate audio/bulk channels | client core and iOS adapters implemented; platform/host E2E pending |
 | 5D | HDR/color, custom gestures, wake, managed devices | structured color metadata; host actions; local gesture/MDM policy | negotiation/fallback and controls implemented; HDR output/host helper pending |
