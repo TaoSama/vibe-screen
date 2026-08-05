@@ -8,11 +8,19 @@ importers:
 
   .:
     devDependencies:
+      json5:
+        specifier: 2.2.3
+        version: 2.2.3
       typescript:
         specifier: 5.9.3
         version: 5.9.3
 
 packages:
+
+  json5@2.2.3:
+    resolution: {integrity: sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==}
+    engines: {node: '>=6'}
+    hasBin: true
 
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
@@ -20,5 +28,7 @@ packages:
     hasBin: true
 
 snapshots:
+
+  json5@2.2.3: {}
 
   typescript@5.9.3: {}

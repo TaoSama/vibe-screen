@@ -23,9 +23,27 @@ message order, session identity, or cross-stream media fails closed.
 
 `ProductSession` drives HostHello, SessionAccepted, list/start display,
 VideoConfig, heartbeat, and VideoConfigResult. It sends video acceptance only
-after the platform decoder configuration resolves. Old epoch and already-seen
-media frames are dropped; wrong stream/config and unsupported fragmentation are
-protocol failures. The pending encoded queue holds one frame.
+after the platform decoder configuration resolves and opens input only after
+the result is written. Negotiated capabilities must be a subset of both offers;
+touch, pointer/scroll, keyboard, and stylus pressure are locally gated before
+encoding. Old epoch and already-seen media frames are dropped; wrong
+stream/config and unsupported fragmentation are protocol failures.
+
+Every outbound control uses one FIFO writer. It assigns and encodes the next
+message ID at dequeue time, allowing an asynchronous decoder configuration to
+finish without overtaking heartbeat or input traffic. Response correlation is
+tracked for hello, display selection, video configuration, and Pong. Only one
+Ping may be outstanding; a missing matching Pong causes a retryable reconnect.
+The control backlog has a hard bound and fails into recovery rather than
+accumulating unlimited stale input under socket backpressure. Protocol
+responses use the critical FIFO; all input events share a secondary FIFO so
+Pong and VideoConfigResult cannot be starved without reordering a gesture's
+begin/change/end lifecycle. Handshake,
+display/configuration, and first-frame progress each have generation-bound
+watchdogs; initial first-frame timeouts retry keyframe requests before reconnect.
+The capacity-one decoder ingress preserves reference-chain decodability:
+keyframes cannot be replaced by deltas, a delta gap/overflow/push failure enters
+wait-keyframe, and AVCodec must accept the keyframe before deltas resume.
 
 The independent protobuf codec supports packed/unpacked repeated enums and
 unknown-field skipping. It exactly reproduces both the historical Harmony hello
@@ -45,6 +63,10 @@ a newer session. Backgrounding closes transport
 and decode resources; foregrounding creates a fresh v1 session with capped
 jittered backoff. Protocol resume-result handling remains open and therefore is
 not advertised.
+
+Transport close plus decoder stop/release are all attempted even if a sibling
+operation fails. Aggregated cleanup errors remain visible in status diagnostics
+but do not suppress an otherwise safe retryable reconnect.
 
 `HarmonyVideoDecoder` keeps input buffers until a latest frame is available,
 writes Annex-B payloads, renders output buffers to the XComponent surface, and
@@ -67,6 +89,14 @@ credentials are never persisted. This is not the cryptographic PairingRequest
 proof exchange and does not authenticate plaintext trusted-LAN transport.
 Secure pairing must be completed jointly with a compatible host.
 
+Alias operations are serialized. Existing records use `asset.update`; missing
+records use `asset.add`, so an update failure never deletes the prior host or
+identity. Client identity creation treats an add conflict as another creator's
+win and reloads that record. A validated bare identity from the earlier
+development format is atomically wrapped in the version-1 JSON record without
+changing its identifier. These platform calls still require DevEco and device
+verification.
+
 The application declares only the Internet permission; it does not declare
 network-information or background-running permissions without corresponding
 runtime behavior. Data handling and record deletion are documented in
@@ -75,5 +105,8 @@ runtime behavior. Data handling and record deletion are documented in
 
 The static project validator checks the real AppScope/entry/Hvigor graph,
 resource/ability wiring, version consistency, native-only dependency boundary,
-permission boundary, and that HAP targets call real OHPM/Hvigor commands. It is
-explicitly not an ArkTS compiler or HAP substitute.
+permission boundary, production capability/writer/keyframe seams, packaged
+license resources, and that HAP targets call real OHPM/Hvigor commands. JSON5
+is parsed rather than searched as text, and negative fixtures cover broken
+references, extra permissions, comment-only build tokens, and disconnected
+production gates. It is explicitly not an ArkTS compiler or HAP substitute.

@@ -52,7 +52,10 @@ Both targets call real `ohpm install` and Hvigor `assembleHap`; there is no Node
 packaging substitute. A release profile and signing certificate must be
 configured locally. `make release` accepts exactly one signed release HAP,
 copies it to `dist/0.1.0/`, and writes `SHA256SUMS`. The build must be repeated
-from a clean checkout in DevEco before any release claim.
+from a clean checkout in DevEco before any release claim. The HAP raw resources
+carry the repository MIT license and Harmony runtime notice; `make release`
+also copies the root license/notices beside the HAP and includes them in the
+checksum manifest.
 
 ## Run in trusted-LAN development mode
 
@@ -84,8 +87,21 @@ not present address import as completed secure pairing.
 Control messages are protobuf envelopes on channel 1. Channel 2 carries a
 varint-delimited `MediaPacketHeader` plus Annex-B media. Old session epochs are
 dropped, cross-stream/config media is rejected, and pending encoded media never
-exceeds one frame. A `VideoConfigResult(accepted=true)` is sent only after the
-decoder configuration promise succeeds.
+exceeds one frame. A single FIFO writer assigns message IDs only when dequeuing
+and serializes every control send. A `VideoConfigResult(accepted=true)` is
+queued only after the decoder configuration promise succeeds, and input opens
+only after that result is written. Heartbeats allow one outstanding Ping and
+force a retryable reconnect after the matching Pong deadline. The writer has a
+hard backlog bound and lets protocol responses overtake the input-event FIFO;
+input begin/change/end ordering remains intact, and overflow
+fails into fresh recovery instead of retaining unlimited stale input.
+Session-progress and first-frame watchdogs
+cover peers that stop before heartbeat becomes available.
+
+The decoder ingress starts in wait-keyframe state. A queued keyframe cannot be
+replaced by a delta frame; losing any dependent delta clears the bounded queue,
+drops later deltas, and asks the host for a new keyframe. Recovery completes
+only when AVCodec accepts the keyframe input buffer.
 
 ## Permissions and privacy
 

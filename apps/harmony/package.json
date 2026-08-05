@@ -7,9 +7,13 @@
   "scripts": {
     "clean": "rm -rf .test-dist",
     "static": "node scripts/validate-project.mjs",
+    "test:static": "node --test tests/validate-project.test.mjs",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "test": "tsc -p tsconfig.test.json && node --test tests/*.test.mjs",
     "verify": "pnpm run clean && pnpm run static && pnpm run typecheck && pnpm run test"
   },
-  "devDependencies": { "typescript": "5.9.3" }
+  "devDependencies": {
+    "json5": "2.2.3",
+    "typescript": "5.9.3"
+  }
 }

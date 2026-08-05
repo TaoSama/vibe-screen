@@ -1,4 +1,5 @@
-import { Codec, DisplayDescriptor, HostHello, MediaPacketHeader, SessionAccepted, VideoConfig } from './ProtocolModels';
+import { Codec, ColorDescription, ColorPrimaries, DisplayDescriptor, HostHello, MatrixCoefficients,
+  MediaPacketHeader, SessionAccepted, TransferFunction, VideoConfig } from './ProtocolModels';
 import { ProtobufReader } from './ProtobufReader';
 
 export interface DecodedEnvelope {
@@ -14,6 +15,7 @@ export interface DecodedEnvelope {
 export interface StartDisplayResponse { accepted: boolean; streamId: bigint; rejectionReason: string; displayId: string; }
 export interface FailureMessage { reason: string; message: string; retryable: boolean; }
 export interface DisplayChange { display: DisplayDescriptor; rotationDegrees: number; }
+export interface DisconnectNotice { reason: string; mayResume: boolean; }
 
 export class ProtocolDecoder {
   envelope(bytes: Uint8Array): DecodedEnvelope {
@@ -100,18 +102,50 @@ export class ProtocolDecoder {
   videoConfig(payload: Uint8Array): VideoConfig {
     const reader: ProtobufReader = new ProtobufReader(payload);
     const config: VideoConfig = { configEpoch: 0n, codec: Codec.UNSPECIFIED, width: 0, height: 0,
-      framesPerSecond: 0, streamId: 0n, rotationDegrees: 0 };
+      framesPerSecond: 0, bitrateKbps: 0, streamId: 0n, rotationDegrees: 0 };
     while (!reader.done()) {
       const tag: number = reader.tag(); const field: number = tag >>> 3; const wire: number = tag & 7;
       if (field === 1 && wire === 0) config.configEpoch = reader.varint();
       else if (field === 2 && wire === 0) config.codec = Number(reader.varint());
       else if (field === 3 && wire === 2) [config.width, config.height] = this.dimensions(reader.bytesField());
       else if (field === 4 && wire === 0) config.framesPerSecond = Number(reader.varint());
+      else if (field === 5 && wire === 0) config.bitrateKbps = Number(reader.varint());
       else if (field === 6 && wire === 0) config.streamId = reader.varint();
+      else if (field === 7 && wire === 2) config.colorDescription = this.colorDescription(reader.bytesField());
       else if (field === 8 && wire === 0) config.rotationDegrees = Number(reader.varint());
       else reader.skip(wire);
     }
     return config;
+  }
+
+  disconnectNotice(payload: Uint8Array): DisconnectNotice {
+    const reader: ProtobufReader = new ProtobufReader(payload);
+    const notice: DisconnectNotice = { reason: '', mayResume: false };
+    while (!reader.done()) {
+      const tag: number = reader.tag(); const field: number = tag >>> 3; const wire: number = tag & 7;
+      if (field === 1 && wire === 2) notice.reason = reader.string();
+      else if (field === 2 && wire === 0) notice.mayResume = reader.varint() !== 0n;
+      else reader.skip(wire);
+    }
+    return notice;
+  }
+
+  private colorDescription(payload: Uint8Array): ColorDescription {
+    const reader: ProtobufReader = new ProtobufReader(payload);
+    const color: ColorDescription = { primaries: ColorPrimaries.UNSPECIFIED,
+      transferFunction: TransferFunction.UNSPECIFIED, matrixCoefficients: MatrixCoefficients.UNSPECIFIED,
+      fullRange: false, bitDepth: 0 };
+    while (!reader.done()) {
+      const tag: number = reader.tag(); const field: number = tag >>> 3; const wire: number = tag & 7;
+      if (wire !== 0) { reader.skip(wire); continue; }
+      const value: bigint = reader.varint();
+      if (field === 1) color.primaries = Number(value);
+      else if (field === 2) color.transferFunction = Number(value);
+      else if (field === 3) color.matrixCoefficients = Number(value);
+      else if (field === 4) color.fullRange = value !== 0n;
+      else if (field === 5) color.bitDepth = Number(value);
+    }
+    return color;
   }
 
   mediaHeader(payload: Uint8Array): MediaPacketHeader {
