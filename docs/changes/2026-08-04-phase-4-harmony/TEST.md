@@ -7,8 +7,8 @@ Date: 2026-08-05
 The full clean verification below ran from a detached worktree with:
 
 ```text
-tested commit: d80519c1792e34e2f5785c693027217a4bb295ae
-tested tree: 8ee3061927c2158c80b016c23f02107e5780248b
+tested commit: 11ced21f64279c27e1f9107a58a8a11f5ed5f532
+tested tree: eb78445bbf59a1351980ce3e58c8175e8f7081f2
 git status --porcelain before gates: (empty)
 git status --porcelain after gates: (empty)
 upgrade acknowledgement bytes: 0d01
@@ -19,7 +19,7 @@ upgrade acknowledgement bytes: 0d01
 ```text
 cd apps/harmony && pnpm run verify
 Validated 32 HarmonyOS project files and semantic release boundaries (static only; no ArkTS/HAP claim).
-70 tests, 70 passed, 0 failed
+77 tests, 77 passed, 0 failed
 ```
 
 Coverage includes:
@@ -44,6 +44,9 @@ Coverage includes:
   supersede at every await window, stage-rejection cleanup races, one
   per-candidate cleanup promise, the A/B/C transition barrier, and old
   continuation isolation;
+- native decoder creation reservation before the factory call, create-await
+  supersede/release and A/B/C barriers, single uninitialized release, and
+  observable factory/release failures;
 - deterministic parse/timeout/error/socket-close/controller-close/supersede
   races with one transport close owner and one notification;
 - pointer/scroll/key envelope separation, HID/button mapping, rotation, and backoff;
@@ -51,7 +54,8 @@ Coverage includes:
 - parsed AppScope/entry/Hvigor/resource/version/native-dependency/permission
   graph, parse diagnostics, method-scoped production import/call checks,
   dominating capability guards, exact bounded-queue control flow, packaged
-  license/notices, and external/method-local/dead-path validator negatives.
+  license/notices, and external/method-local/constant-terminal/dead-path
+  validator negatives.
 
 Hosted `HarmonyOS portable checks (no DevEco or HAP claim)` runs the same frozen
 install and verify command. It parses TypeScript-compatible ArkTS and an ArkUI
@@ -64,7 +68,7 @@ The following commands ran against the tested commit/tree above:
 
 ```text
 cd apps/harmony && pnpm install --frozen-lockfile && pnpm run verify
-  PASS: 32 semantic project files; 70/70 portable tests
+  PASS: 32 semantic project files; 77/77 portable tests
 make protocol
   PASS: Buf format/lint/build/breaking; 13/13 contract tests
 make evidence-tools-test release-tools-test
