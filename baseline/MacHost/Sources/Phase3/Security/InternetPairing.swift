@@ -287,9 +287,6 @@ final class InternetPairingCoordinator {
             )
             try secretStore.persist(name: names.sharedSecret, secret: derived.sharedSecret)
             try secretStore.persist(name: names.bootstrapSecret, secret: derived.bootstrapSecret)
-            try secretStore.delete(name: Self.persistenceCleanupMarkerName)
-        } catch let error as InternetPairingError {
-            throw error
         } catch {
             var cleanupFailures: [Error] = []
             for name in marker.remainingSecretNames {
@@ -309,10 +306,79 @@ final class InternetPairingCoordinator {
         }
     }
 
-    func retryPendingPersistenceCleanup() throws {
+    func commitPersistence(secretNames: PairedDeviceSecretNames) throws {
         guard let encoded = try secretStore.load(
             name: Self.persistenceCleanupMarkerName
-        ) else { return }
+        ) else {
+            throw InternetPairingError.persistenceFailure(
+                "The pairing persistence transaction marker is missing."
+            )
+        }
+        let marker = try decodePersistenceCleanupMarker(encoded)
+        guard Set(marker.remainingSecretNames) == Set([
+            secretNames.sharedSecret,
+            secretNames.bootstrapSecret
+        ]) else {
+            throw InternetPairingError.persistenceFailure(
+                "The pairing persistence transaction targets another secret set."
+            )
+        }
+        try secretStore.delete(name: Self.persistenceCleanupMarkerName)
+    }
+
+    func completePersistence(
+        secretNames: PairedDeviceSecretNames,
+        commitBusinessState: () throws -> Void,
+        cleanupBusinessState: () throws -> Void
+    ) throws {
+        do {
+            try commitBusinessState()
+            try commitPersistence(secretNames: secretNames)
+        } catch {
+            let businessError = error
+            do {
+                let recovered = try retryPendingPersistenceCleanup(
+                    cleanupBusinessState: cleanupBusinessState
+                )
+                if !recovered { try cleanupBusinessState() }
+            } catch let cleanupError {
+                throw InternetPairingError.persistenceFailure(
+                    "\(businessError.localizedDescription); cleanup remains pending: \(cleanupError.localizedDescription)"
+                )
+            }
+            throw businessError
+        }
+    }
+
+    @discardableResult
+    func retryPendingPersistenceCleanup(
+        cleanupBusinessState: () throws -> Void = {}
+    ) throws -> Bool {
+        guard let encoded = try secretStore.load(
+            name: Self.persistenceCleanupMarkerName
+        ) else { return false }
+        let marker = try decodePersistenceCleanupMarker(encoded)
+        var failures: [Error] = []
+        for name in marker.remainingSecretNames {
+            do { try secretStore.delete(name: name) }
+            catch { failures.append(error) }
+        }
+        if failures.isEmpty {
+            do { try cleanupBusinessState() }
+            catch { failures.append(error) }
+        }
+        guard failures.isEmpty else {
+            throw InternetPairingError.persistenceFailure(
+                "Pairing cleanup remains pending after \(failures.count) failed step(s)."
+            )
+        }
+        try secretStore.delete(name: Self.persistenceCleanupMarkerName)
+        return true
+    }
+
+    private func decodePersistenceCleanupMarker(
+        _ encoded: Data
+    ) throws -> PairingPersistenceCleanupMarker {
         let marker: PairingPersistenceCleanupMarker
         do { marker = try JSONDecoder().decode(PairingPersistenceCleanupMarker.self, from: encoded) }
         catch {
@@ -321,17 +387,7 @@ final class InternetPairingCoordinator {
             )
         }
         try marker.validate()
-        var failures: [Error] = []
-        for name in marker.remainingSecretNames {
-            do { try secretStore.delete(name: name) }
-            catch { failures.append(error) }
-        }
-        guard failures.isEmpty else {
-            throw InternetPairingError.persistenceFailure(
-                "Pairing cleanup remains pending for \(failures.count) Keychain slot(s)."
-            )
-        }
-        try secretStore.delete(name: Self.persistenceCleanupMarkerName)
+        return marker
     }
 
     private static let persistenceCleanupMarkerName = "pairing.persistence-cleanup.v1"

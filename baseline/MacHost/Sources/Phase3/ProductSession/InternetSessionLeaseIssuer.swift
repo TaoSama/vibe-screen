@@ -480,6 +480,7 @@ enum InternetSessionLeaseSelfTest {
             }
             guard staleSealRejected,
                   stalePair.host.open(staleRecord, channel: .control) == nil else { return false }
+            guard try atomicEpochOpenInterleaving() else { return false }
 
             let mutations = [
                 ("\"pairing_id\":\"pair-1\"", "\"pairing_id\":\"pair-2\""),
@@ -549,7 +550,7 @@ enum InternetSessionLeaseSelfTest {
                 deviceID: fixture.pinnedHostID,
                 keyEpoch: 1
             )
-            print("Phase 3 Internet lease self-test: PASS (canonicalKAT=true, mutation=true, strictParser=true, keychainSigner=true, durableEpochAuthority=true, staleCipherFailClosed=true)")
+            print("Phase 3 Internet lease self-test: PASS (canonicalKAT=true, mutation=true, strictParser=true, keychainSigner=true, durableEpochAuthority=true, staleCipherFailClosed=true, atomicEpochOpen=true)")
             return true
         } catch {
             print("Phase 3 Internet lease self-test: FAIL")
@@ -574,6 +575,72 @@ enum InternetSessionLeaseSelfTest {
         return value.uint64Value
     }
 
+    private static func atomicEpochOpenInterleaving() throws -> Bool {
+        let store = SelfTestLeaseStateStore()
+        let lifecycle = SecurityLifecycle(store: store)
+        guard try lifecycle.reserveSessionEpoch(1) == 1 else { return false }
+        let shared = Data(repeating: 0x61, count: 32)
+        let bootstrap = Data(repeating: 0x62, count: 32)
+        let context = Data(repeating: 0x63, count: 32)
+        let source = try PlatformSessionPacketCipher.selfTestPair(
+            sessionIdentifier: "atomic-open-self-test",
+            sharedSecret: shared,
+            bootstrapSecret: bootstrap,
+            transcriptContext: context,
+            sessionEpoch: 1,
+            requireActiveEpoch: lifecycle.requireCurrentSessionEpoch
+        )
+        let record = try source.device.seal(Data("epoch-one".utf8), channel: .control)
+        let entered = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        let openFinished = DispatchSemaphore(value: 0)
+        let reserveStarted = DispatchSemaphore(value: 0)
+        let reserveFinished = DispatchSemaphore(value: 0)
+        let result = AtomicEpochOpenSelfTestResult()
+        let interleaved = try PlatformSessionPacketCipher.selfTestPair(
+            sessionIdentifier: "atomic-open-self-test",
+            sharedSecret: shared,
+            bootstrapSecret: bootstrap,
+            transcriptContext: context,
+            sessionEpoch: 1,
+            withActiveEpoch: { epoch, operation in
+                try lifecycle.withActiveSessionEpoch(epoch) {
+                    entered.signal()
+                    guard release.wait(timeout: .now() + 2) == .success else {
+                        throw PlatformSecurityError.persistenceFailure("atomic open latch timed out")
+                    }
+                    return try operation()
+                }
+            }
+        )
+        DispatchQueue.global().async {
+            result.setOpened(interleaved.host.open(record, channel: .control))
+            openFinished.signal()
+        }
+        guard entered.wait(timeout: .now() + 2) == .success else { return false }
+        DispatchQueue.global().async {
+            reserveStarted.signal()
+            do { result.setReserved(try lifecycle.reserveSessionEpoch(2)) }
+            catch { result.setFailure(error.localizedDescription) }
+            reserveFinished.signal()
+        }
+        guard reserveStarted.wait(timeout: .now() + 2) == .success else {
+            release.signal()
+            return false
+        }
+        guard reserveFinished.wait(timeout: .now() + 0.05) == .timedOut else {
+            release.signal()
+            return false
+        }
+        release.signal()
+        guard openFinished.wait(timeout: .now() + 2) == .success,
+              reserveFinished.wait(timeout: .now() + 2) == .success,
+              result.opened == Data("epoch-one".utf8),
+              result.reserved == 2,
+              result.failure == nil else { return false }
+        return interleaved.host.open(record, channel: .control) == nil
+    }
+
     private static let fixtureJSON = """
     {"version":1,"pairing_id":"pair-1","pinned_host_id":"host-1","signaling_url":"https://signal.example.test","signaling_session_id":"session-7","session_epoch":7,"identity_epoch":1,"transcript_context":"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=","protocol_session_id":"cHJvdG9jb2wtc2Vzc2lvbi03","signaling_token":"device-token-abcdefghijklmnopqrstuvwxyz","ice_servers":[{"urls":["stun:stun.example.test"],"username":null,"credential":null},{"urls":["turn:turn.example.test"],"username":"turn-user","credential":"turn-password"}],"allow_insecure_for_testing":false}
     """
@@ -584,6 +651,44 @@ private final class SelfTestLeaseStateStore: SecurityStateStore {
 
     func load() throws -> PersistedSecurityState { state }
     func persist(_ state: PersistedSecurityState) throws { self.state = state }
+}
+
+private final class AtomicEpochOpenSelfTestResult: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedOpened: Data?
+    private var storedReserved: UInt64?
+    private var storedFailure: String?
+
+    var opened: Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedOpened
+    }
+    var reserved: UInt64? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedReserved
+    }
+    var failure: String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedFailure
+    }
+    func setOpened(_ value: Data?) {
+        lock.lock()
+        storedOpened = value
+        lock.unlock()
+    }
+    func setReserved(_ value: UInt64) {
+        lock.lock()
+        storedReserved = value
+        lock.unlock()
+    }
+    func setFailure(_ value: String) {
+        lock.lock()
+        storedFailure = value
+        lock.unlock()
+    }
 }
 
 private extension Data {

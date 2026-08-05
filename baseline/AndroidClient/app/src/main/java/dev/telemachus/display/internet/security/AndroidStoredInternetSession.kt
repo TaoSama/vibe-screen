@@ -46,7 +46,6 @@ class AndroidStoredInternetSessionFactory(
 
     init {
         require(localDeviceId.isNotBlank()) { "Device ID must not be blank" }
-        pairingPersistence.retryPendingCleanup()
     }
 
     fun persistPairingSecrets(
@@ -59,11 +58,27 @@ class AndroidStoredInternetSessionFactory(
         require(bootstrapSecret.size == BOOTSTRAP_SECRET_BYTES) { "Bootstrap secret must contain 32 bytes" }
         val record = PairingSecretRecordCodec.encode(sharedSecret, bootstrapSecret)
         try {
-            pairingPersistence.persist(secretName(pairingIdentifier), record)
+            pairingPersistence.begin(secretName(pairingIdentifier), record)
         } finally {
             record.fill(0)
         }
     }
+
+    fun completePairingPersistence(
+        pairingIdentifier: String,
+        commitBusinessState: () -> Unit,
+        cleanupBusinessState: () -> Unit,
+    ) {
+        require(pairingIdentifier.isNotBlank()) { "Pairing identifier must not be blank" }
+        pairingPersistence.complete(
+            secretName(pairingIdentifier),
+            commitBusinessState,
+            cleanupBusinessState,
+        )
+    }
+
+    fun retryPendingPairingPersistenceCleanup(cleanupBusinessState: () -> Unit = {}): Boolean =
+        pairingPersistence.retryPendingCleanup(cleanupBusinessState)
 
     fun removePairingSecrets(pairingIdentifier: String) {
         require(pairingIdentifier.isNotBlank()) { "Pairing identifier must not be blank" }

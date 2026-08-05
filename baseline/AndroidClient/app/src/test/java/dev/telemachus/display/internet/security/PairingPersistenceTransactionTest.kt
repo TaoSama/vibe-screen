@@ -15,7 +15,7 @@ class PairingPersistenceTransactionTest {
         slots.failDelete = setOf(TARGET)
 
         val failure = assertThrows(IllegalStateException::class.java) {
-            transaction.persist(TARGET, byteArrayOf(1, 2, 3))
+            transaction.begin(TARGET, byteArrayOf(1, 2, 3))
         }
         assertTrue(failure.suppressed.isNotEmpty())
         assertTrue(MARKER in slots.values)
@@ -30,10 +30,48 @@ class PairingPersistenceTransactionTest {
     @Test
     fun successfulCommitClearsMarkerAndKeepsRecord() {
         val slots = MemorySlots()
-        PairingPersistenceTransaction(slots, MARKER).persist(TARGET, byteArrayOf(4, 5))
+        val transaction = PairingPersistenceTransaction(slots, MARKER)
+        transaction.begin(TARGET, byteArrayOf(4, 5))
+
+        assertTrue(MARKER in slots.values)
+        transaction.complete(TARGET, commitBusinessState = {}, cleanupBusinessState = {})
 
         assertFalse(MARKER in slots.values)
         assertArrayEquals(byteArrayOf(4, 5), slots.values.getValue(TARGET))
+    }
+
+    @Test
+    fun postPersistBusinessFailureAndDeleteFailureResumeAfterRestart() {
+        val slots = MemorySlots()
+        val transaction = PairingPersistenceTransaction(slots, MARKER)
+        transaction.begin(TARGET, byteArrayOf(7, 8, 9))
+        var metadataCommitted = false
+        slots.failDelete = setOf(TARGET)
+
+        val failure = assertThrows(IllegalStateException::class.java) {
+            transaction.complete(
+                TARGET,
+                commitBusinessState = {
+                    metadataCommitted = true
+                    throw IllegalStateException("metadata commit failed")
+                },
+                cleanupBusinessState = { metadataCommitted = false },
+            )
+        }
+        assertTrue(failure.suppressed.isNotEmpty())
+        assertTrue(metadataCommitted)
+        assertTrue(MARKER in slots.values)
+        assertTrue(TARGET in slots.values)
+
+        slots.failDelete = emptySet()
+        assertTrue(
+            PairingPersistenceTransaction(slots, MARKER).retryPendingCleanup {
+                metadataCommitted = false
+            },
+        )
+        assertFalse(metadataCommitted)
+        assertFalse(MARKER in slots.values)
+        assertFalse(TARGET in slots.values)
     }
 
     private class MemorySlots : PairingPersistenceSlots {

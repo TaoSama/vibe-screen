@@ -24,6 +24,7 @@ final class InternetPairingTests: XCTestCase {
         XCTAssertEqual(fixture.store.values[accepted.secretNames.sharedSecret], prepared.derived.sharedSecret)
         XCTAssertEqual(fixture.store.values[accepted.secretNames.bootstrapSecret], prepared.derived.bootstrapSecret)
         XCTAssertFalse(accepted.secretNames.sharedSecret.contains(fixture.deviceSigner.pairingPublicIdentity.deviceID))
+        XCTAssertTrue(fixture.store.values.keys.contains { $0.contains("persistence-cleanup") })
 
         let parts = InternetPairingCanonical.transcriptParts(offer: created.offer, request: prepared.request)
         let resultDigest = SecurityTranscript.digest(
@@ -40,6 +41,16 @@ final class InternetPairingTests: XCTestCase {
             digest: resultDigest,
             publicKey: accepted.hostIdentity.signingPublicKey
         ))
+        var businessStateCommitted = false
+        try fixture.coordinator.completePersistence(
+            secretNames: accepted.secretNames,
+            commitBusinessState: { businessStateCommitted = true },
+            cleanupBusinessState: { businessStateCommitted = false }
+        )
+        XCTAssertTrue(businessStateCommitted)
+        XCTAssertFalse(fixture.store.values.keys.contains { $0.contains("persistence-cleanup") })
+        XCTAssertNotNil(fixture.store.values[accepted.secretNames.sharedSecret])
+        XCTAssertNotNil(fixture.store.values[accepted.secretNames.bootstrapSecret])
     }
 
     func testOfferIsConsumedExactlyOnce() throws {
@@ -213,6 +224,47 @@ final class InternetPairingTests: XCTestCase {
         _ = try restarted.createOffer()
         XCTAssertNil(fixture.store.values[sharedName])
         XCTAssertNil(fixture.store.values[bootstrapName])
+        XCTAssertFalse(fixture.store.values.keys.contains { $0.contains("persistence-cleanup") })
+    }
+
+    func testPostPersistBusinessFailureAndDeleteFailureResumeAfterRestart() throws {
+        let fixture = Fixture()
+        let created = try fixture.coordinator.createOffer()
+        let prepared = try fixture.prepareRequest(for: created.offer)
+        let accepted = try fixture.coordinator.accept(prepared.request)
+        var metadataCommitted = false
+        fixture.store.failingDeletes = [accepted.secretNames.sharedSecret]
+
+        XCTAssertThrowsError(
+            try fixture.coordinator.completePersistence(
+                secretNames: accepted.secretNames,
+                commitBusinessState: {
+                    metadataCommitted = true
+                    throw InternetPairingError.persistenceFailure("metadata commit failed")
+                },
+                cleanupBusinessState: {
+                    metadataCommitted = false
+                }
+            )
+        )
+        XCTAssertTrue(metadataCommitted)
+        XCTAssertNotNil(fixture.store.values[accepted.secretNames.sharedSecret])
+        XCTAssertTrue(fixture.store.values.keys.contains { $0.contains("persistence-cleanup") })
+
+        fixture.store.failingDeletes = []
+        let restarted = InternetPairingCoordinator(
+            signer: fixture.hostSigner,
+            secretStore: fixture.store,
+            now: { fixture.clock.date }
+        )
+        XCTAssertTrue(
+            try restarted.retryPendingPersistenceCleanup {
+                metadataCommitted = false
+            }
+        )
+        XCTAssertFalse(metadataCommitted)
+        XCTAssertNil(fixture.store.values[accepted.secretNames.sharedSecret])
+        XCTAssertNil(fixture.store.values[accepted.secretNames.bootstrapSecret])
         XCTAssertFalse(fixture.store.values.keys.contains { $0.contains("persistence-cleanup") })
     }
 

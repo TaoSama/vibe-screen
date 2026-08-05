@@ -601,6 +601,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.stopServer()
         }
         refreshInternetCredentialState()
+        guard recoverPendingInternetPairingPersistence() else { return }
         do {
             try migrateLegacyRevokedInternetIdentityIfNeeded()
         } catch {
@@ -643,6 +644,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             !settings.internetSharedSecretName.isEmpty &&
             !settings.internetBootstrapSecretName.isEmpty &&
             Data(base64Encoded: settings.internetTranscriptContextBase64)?.count == 32
+    }
+
+    private func recoverPendingInternetPairingPersistence() -> Bool {
+        do {
+            let identity = try KeychainDeviceIdentityStore().loadOrCreate(
+                deviceID: settings.internetHostDeviceID
+            )
+            let coordinator = InternetPairingCoordinator(signer: identity)
+            _ = try coordinator.retryPendingPersistenceCleanup {
+                self.clearInternetPairingMetadata()
+            }
+            return true
+        } catch {
+            settings.internetStatus = .failed
+            settings.internetErrorMessage = "An incomplete Internet pairing could not be cleaned up."
+            settings.internetRecoverySuggestion = "Unlock the login Keychain and relaunch before pairing or connecting."
+            debugLog("Pending Internet pairing persistence cleanup failed")
+            return false
+        }
+    }
+
+    private func clearInternetPairingMetadata() {
+        settings.internetPeerDeviceID = ""
+        settings.internetPeerKeyID = ""
+        settings.internetPeerKeyEpoch = 0
+        settings.internetPeerSigningPublicKeyBase64 = ""
+        settings.internetSharedSecretName = ""
+        settings.internetBootstrapSecretName = ""
+        settings.internetTranscriptContextBase64 = ""
+        settings.internetAuthoritativeSessionEpoch = 0
+        settings.internetSessionIdentifier = ""
+        settings.internetPairingAcceptance = nil
+        settings.internetPeerDisplayName = nil
     }
 
     /// Legacy v1 stored revocation as one global bit. Begin writes a durable
@@ -787,6 +821,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func beginInternetPairing() {
+        guard recoverPendingInternetPairingPersistence() else { return }
         do {
             let identity = try KeychainDeviceIdentityStore().loadOrCreate(
                 deviceID: settings.internetHostDeviceID
@@ -817,29 +852,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let trimmed = deviceResponse.trimmingCharacters(in: .whitespacesAndNewlines)
         let responseData = Data(base64Encoded: trimmed) ?? Data(trimmed.utf8)
-        var issuedSecretNames: PairedDeviceSecretNames?
         do {
             let request = try InternetPairingDeviceRequestWire.parse(responseData)
             let acceptance = try coordinator.accept(request)
-            issuedSecretNames = acceptance.secretNames
-            let acceptedIdentity = PlatformPublicIdentity(
-                deviceID: acceptance.deviceIdentity.deviceID,
-                keyID: acceptance.deviceIdentity.keyID,
-                keyEpoch: acceptance.deviceIdentity.keyEpoch,
-                signingPublicKey: acceptance.deviceIdentity.signingPublicKey
+            try coordinator.completePersistence(
+                secretNames: acceptance.secretNames,
+                commitBusinessState: {
+                    let acceptedIdentity = PlatformPublicIdentity(
+                        deviceID: acceptance.deviceIdentity.deviceID,
+                        keyID: acceptance.deviceIdentity.keyID,
+                        keyEpoch: acceptance.deviceIdentity.keyEpoch,
+                        signingPublicKey: acceptance.deviceIdentity.signingPublicKey
+                    )
+                    try self.validateInternetReauthorization(acceptedIdentity)
+                    let encodedAcceptance = try InternetPairingAcceptanceWire.encode(acceptance)
+                    self.settings.internetPeerDeviceID = acceptance.deviceIdentity.deviceID
+                    self.settings.internetPeerKeyID = acceptance.deviceIdentity.keyID
+                    self.settings.internetPeerKeyEpoch = acceptance.deviceIdentity.keyEpoch
+                    self.settings.internetPeerSigningPublicKeyBase64 = acceptance.deviceIdentity.signingPublicKey.base64EncodedString()
+                    self.settings.internetSharedSecretName = acceptance.secretNames.sharedSecret
+                    self.settings.internetBootstrapSecretName = acceptance.secretNames.bootstrapSecret
+                    self.settings.internetTranscriptContextBase64 = acceptance.sessionContext.base64EncodedString()
+                    self.settings.internetPeerDisplayName = acceptance.deviceName
+                    self.settings.internetPairingAcceptance = encodedAcceptance.base64EncodedString()
+                },
+                cleanupBusinessState: {
+                    self.clearInternetPairingMetadata()
+                }
             )
-            try validateInternetReauthorization(acceptedIdentity)
-            let encodedAcceptance = try InternetPairingAcceptanceWire.encode(acceptance)
-
-            settings.internetPeerDeviceID = acceptance.deviceIdentity.deviceID
-            settings.internetPeerKeyID = acceptance.deviceIdentity.keyID
-            settings.internetPeerKeyEpoch = acceptance.deviceIdentity.keyEpoch
-            settings.internetPeerSigningPublicKeyBase64 = acceptance.deviceIdentity.signingPublicKey.base64EncodedString()
-            settings.internetSharedSecretName = acceptance.secretNames.sharedSecret
-            settings.internetBootstrapSecretName = acceptance.secretNames.bootstrapSecret
-            settings.internetTranscriptContextBase64 = acceptance.sessionContext.base64EncodedString()
-            settings.internetPeerDisplayName = acceptance.deviceName
-            settings.internetPairingAcceptance = encodedAcceptance.base64EncodedString()
             settings.internetPairingURL = nil
             settings.internetPairingCode = nil
             settings.internetStatus = .paired
@@ -847,11 +887,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             settings.internetRecoverySuggestion = "Return the acceptance to Android, then issue a fresh short-lived session profile."
             internetPairingCoordinator = nil
         } catch {
-            if let issuedSecretNames {
-                let secrets = KeychainSecretStore()
-                try? secrets.delete(name: issuedSecretNames.sharedSecret)
-                try? secrets.delete(name: issuedSecretNames.bootstrapSecret)
-            }
             // Every malformed response consumes the one-time offer by design.
             internetPairingCoordinator = nil
             settings.internetPairingURL = nil
