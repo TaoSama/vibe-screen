@@ -60,6 +60,9 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class InternetMainActivityAcceptanceInstrumentedTest {
+    @Volatile
+    private var acceptanceStage = "initialization"
+
     @get:Rule
     val cameraPermission: GrantPermissionRule = GrantPermissionRule.grant(Manifest.permission.CAMERA)
 
@@ -72,7 +75,6 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         val deviceId = preferences.internetDeviceId
         val storedFactory = AndroidStoredInternetSessionFactory(context, deviceId)
         val revocationCoordinator = InternetProductRevocationCoordinator.processShared()
-        var acceptanceStage = "initialization"
         Espresso.setFailureHandler(
             FailureHandler { _, _ -> throw AssertionError("Protected Internet UI action failed at $acceptanceStage") },
         )
@@ -260,12 +262,15 @@ class InternetMainActivityAcceptanceInstrumentedTest {
     }
 
     private fun completePairing(acceptance: InternetPairingAcceptance) {
+        acceptanceStage = "pairing_acceptance_input"
         onView(withHint(R.string.internet_pairing_acceptance_hint))
             .inRoot(SecureDialogRootMatcher())
             .perform(SetSensitiveTextAction(acceptance.encode()))
+        acceptanceStage = "pairing_acceptance_submit"
         onView(withText(R.string.internet_pairing_complete_action))
             .inRoot(isDialog())
             .perform(click())
+        acceptanceStage = "pairing_acceptance_result"
         onView(withId(R.id.internetRevokeButton)).check(matches(isEnabled()))
     }
 
