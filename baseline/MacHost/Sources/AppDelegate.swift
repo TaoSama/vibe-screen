@@ -93,6 +93,97 @@ private enum HostStartOrigin {
     }
 }
 
+struct HostSelectedDisplayIdentity: Equatable {
+    let id: CGDirectDisplayID
+    let persistentUUID: String?
+
+    func replacing(
+        id: CGDirectDisplayID,
+        persistentUUID: String?
+    ) -> HostSelectedDisplayIdentity {
+        HostSelectedDisplayIdentity(id: id, persistentUUID: persistentUUID)
+    }
+}
+
+private struct HostRuntimeConfiguration: Equatable {
+    let origin: HostStartOrigin
+    let connectionMode: ConnectionMode
+    let resolution: String
+    let displaySource: DisplaySourceMode
+    let selectedDisplay: HostSelectedDisplayIdentity
+
+    init(
+        settings: DisplaySettings,
+        origin: HostStartOrigin,
+        connectionMode: ConnectionMode? = nil,
+        resolution: String? = nil,
+        displaySource: DisplaySourceMode? = nil
+    ) {
+        self.origin = origin
+        self.connectionMode = connectionMode ?? settings.connectionMode
+        self.resolution = resolution ?? settings.resolution
+        self.displaySource = displaySource ?? settings.displaySource
+        selectedDisplay = HostSelectedDisplayIdentity(
+            id: settings.selectedDisplayID,
+            persistentUUID: settings.selectedDisplayUUID
+        )
+    }
+
+    private init(
+        origin: HostStartOrigin,
+        connectionMode: ConnectionMode,
+        resolution: String,
+        displaySource: DisplaySourceMode,
+        selectedDisplay: HostSelectedDisplayIdentity
+    ) {
+        self.origin = origin
+        self.connectionMode = connectionMode
+        self.resolution = resolution
+        self.displaySource = displaySource
+        self.selectedDisplay = selectedDisplay
+    }
+
+    func updating(
+        connectionMode: ConnectionMode? = nil,
+        resolution: String? = nil,
+        displaySource: DisplaySourceMode? = nil
+    ) -> HostRuntimeConfiguration {
+        HostRuntimeConfiguration(
+            origin: origin,
+            connectionMode: connectionMode ?? self.connectionMode,
+            resolution: resolution ?? self.resolution,
+            displaySource: displaySource ?? self.displaySource,
+            selectedDisplay: selectedDisplay
+        )
+    }
+
+    func updatingSelectedDisplay(
+        id: CGDirectDisplayID,
+        persistentUUID: String?
+    ) -> HostRuntimeConfiguration {
+        HostRuntimeConfiguration(
+            origin: origin,
+            connectionMode: connectionMode,
+            resolution: resolution,
+            displaySource: displaySource,
+            selectedDisplay: selectedDisplay.replacing(
+                id: id,
+                persistentUUID: persistentUUID
+            )
+        )
+    }
+
+    func resolutionSize(rotation: Int) -> (width: Int, height: Int) {
+        let parts = resolution.split(separator: "x")
+        let baseWidth = Int(parts.first ?? "") ?? 1920
+        let baseHeight = Int(parts.dropFirst().first ?? "") ?? 1200
+        if rotation == 90 || rotation == 270 {
+            return (baseHeight, baseWidth)
+        }
+        return (baseWidth, baseHeight)
+    }
+}
+
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     private static let internetSignalingTokenName = "internet.local.signaling.host-token.v1"
@@ -121,8 +212,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusRefreshTimer: Timer?
     private var permissionMonitoringReady = false
     private var unattendedRecoveryTask: Task<Void, Never>?
+    private var teardownTask: Task<Void, Never>?
     private var unattendedRecoveryAttempt = 0
     private let serverLifecycle = HostServerLifecycle()
+    private let stopOperationCoordinator = HostStopOperationCoordinator()
+    private let terminationCoordinator = HostTerminationCoordinator()
+    private let stopRecoveryPreservation = StopRecoveryPreservationAccumulator()
+    private let stopFollowUpSuppression = StopFollowUpSuppressionAccumulator()
+    private var lastSuppressedStopFollowUpGeneration: UInt64?
+    private var lastCompletedStopGeneration: UInt64 = 0
+    private var activeRuntimeConfiguration: HostRuntimeConfiguration?
+    private lazy var reconfigurationCoordinator = HostReconfigurationCoordinator<HostRuntimeConfiguration>(
+        debounceNanoseconds: 150_000_000,
+        stop: { [weak self] in
+            await self?.stopServer(preserveRecoveryState: false, recordsManualStop: false)
+        },
+        start: { [weak self] configuration, isCurrent in
+            guard let self else { return false }
+            self.settings.isStarting = true
+            let started = await self.startServer(
+                origin: configuration.origin,
+                configuration: configuration,
+                intentIsCurrent: isCurrent
+            )
+            if !started, isCurrent() {
+                self.settings.isStarting = false
+            }
+            return started
+        }
+    )
     private lazy var automaticLaunch = AutomaticLaunchCoordinator(
         enabled: settings.autoStartStreamingOnLaunch
     )
@@ -258,7 +376,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         guard automaticLaunch.consumeIfEligible(eligible) else { return }
         settings.connectionMode = settings.startupMode
-        Task { await startServer(origin: .automatic) }
+        requestServerStart(origin: .automatic)
     }
 
     @MainActor
@@ -343,26 +461,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
-    private func handleConnectionModeChange(to mode: ConnectionMode) async {
+    private func handleConnectionModeChange(to mode: ConnectionMode) {
         usbStatusProbeGeneration &+= 1
         debugLog("Connection mode changed to: \(mode.rawValue)")
-        // Disconnect any active client immediately (per spec §6 / fix #2).
-        let wasRunning = settings.isRunning
-        if wasRunning {
-            stopServer()
-        }
-        if mode == .wireless {
-            // Generate token if missing; the QR will reflect it.
-            do {
-                _ = try WirelessAuth.loadOrCreate()
-                settings.wirelessTokenError = nil
-            } catch {
-                settings.wirelessTokenError = error.localizedDescription
-                debugLog("Could not prepare wireless token: \(error.localizedDescription)")
-            }
-        }
-        if wasRunning {
-            await startServer()
+        guard settings.isRunning || reconfigurationCoordinator.acceptsRuntimeChanges else { return }
+        reconfigurationCoordinator.updateIntent {
+            $0.updating(connectionMode: mode)
         }
     }
 
@@ -378,7 +482,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settings.$gamingBoost
             .dropFirst() // Skip initial value
             .sink { [weak self] gamingBoost in
-                guard let self = self, self.settings.isRunning else { return }
+                guard let self else { return }
+                self.refreshPendingReconfigurationIntent()
+                guard self.settings.isRunning else { return }
                 print("🎮 Gaming Boost \(gamingBoost ? "ENABLED" : "DISABLED")")
                 self.screenCapture?.updateEncoderSettings(
                     bitrateMbps: self.settings.effectiveBitrate,
@@ -392,7 +498,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Publishers.CombineLatest(settings.$bitrate, settings.$quality)
             .dropFirst()
             .sink { [weak self] bitrate, quality in
-                guard let self = self, self.settings.isRunning, !self.settings.gamingBoost else { return }
+                guard let self else { return }
+                self.refreshPendingReconfigurationIntent()
+                guard self.settings.isRunning, !self.settings.gamingBoost else { return }
                 print("⚙️ Settings updated: \(bitrate)Mbps, \(quality)")
                 self.screenCapture?.updateEncoderSettings(
                     bitrateMbps: bitrate,
@@ -406,7 +514,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settings.$rotation
             .dropFirst()
             .sink { [weak self] rotation in
-                guard let self = self, self.settings.isRunning else { return }
+                guard let self else { return }
+                self.refreshPendingReconfigurationIntent()
+                guard self.settings.isRunning else { return }
                 print("🔄 Rotation changed to \(rotation)°")
                 self.streamingServer?.updateRotation(rotation)
                 guard self.settings.internetStatus == .direct
@@ -427,6 +537,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settings.$touchEnabled
             .dropFirst()
             .sink { [weak self] enabled in
+                self?.refreshPendingReconfigurationIntent()
                 self?.streamingServer?.touchEnabled = enabled
                 if !enabled {
                     self?.cancelActiveInput(releaseDrag: true)
@@ -434,14 +545,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
+        for publisher in [
+            settings.$refreshRate.map { _ in () }.eraseToAnyPublisher(),
+            settings.$hiDPI.map { _ in () }.eraseToAnyPublisher(),
+            settings.$port.map { _ in () }.eraseToAnyPublisher(),
+            settings.$adbDeviceSerial.map { _ in () }.eraseToAnyPublisher()
+        ] {
+            publisher
+                .dropFirst()
+                .sink { [weak self] in
+                    self?.refreshPendingReconfigurationIntent()
+                }
+                .store(in: &cancellables)
+        }
+
         // Observer cho connection mode changes — restart server with new auth/ADB policy.
         settings.$connectionMode
             .dropFirst()
+            .removeDuplicates()
             .sink { [weak self] mode in
-                guard let self = self else { return }
-                Task { @MainActor in
-                    await self.handleConnectionModeChange(to: mode)
-                }
+                self?.handleConnectionModeChange(to: mode)
             }
             .store(in: &cancellables)
 
@@ -454,11 +577,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .removeDuplicates()
             .sink { [weak self] resolution in
                 guard let self = self else { return }
-                Task { @MainActor in
-                    guard self.settings.isRunning else { return }
-                    debugLog("Resolution changed to \(resolution) — restarting server to rebuild virtual display")
-                    self.stopServer()
-                    await self.startServer()
+                guard self.settings.isRunning || self.reconfigurationCoordinator.acceptsRuntimeChanges else { return }
+                debugLog("Resolution changed to \(resolution) — scheduling capture reconfiguration")
+                self.reconfigurationCoordinator.updateIntent {
+                    $0.updating(resolution: resolution)
                 }
             }
             .store(in: &cancellables)
@@ -468,11 +590,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .removeDuplicates()
             .sink { [weak self] source in
                 guard let self else { return }
-                Task { @MainActor in
-                    guard self.settings.isRunning else { return }
-                    debugLog("Display source changed to \(source.rawValue) — restarting capture")
-                    self.stopServer()
-                    await self.startServer()
+                guard self.settings.isRunning || self.reconfigurationCoordinator.acceptsRuntimeChanges else { return }
+                debugLog("Display source changed to \(source.rawValue) — scheduling capture reconfiguration")
+                self.reconfigurationCoordinator.updateIntent {
+                    $0.updating(displaySource: source)
+                }
+            }
+            .store(in: &cancellables)
+
+        settings.$selectedDisplayID
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] displayID in
+                guard let self,
+                      self.settings.isRunning
+                        || self.reconfigurationCoordinator.acceptsRuntimeChanges else {
+                    return
+                }
+                self.reconfigurationCoordinator.updateIntent {
+                    $0.updatingSelectedDisplay(
+                        id: displayID,
+                        persistentUUID: DisplayCatalog.persistentUUID(for: displayID)
+                    )
                 }
             }
             .store(in: &cancellables)
@@ -496,6 +635,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             .store(in: &cancellables)
+    }
+
+    private func refreshPendingReconfigurationIntent() {
+        guard reconfigurationCoordinator.hasPendingReconfiguration else { return }
+        reconfigurationCoordinator.refreshIntentGeneration()
+    }
+
+    private func requestServerStart(origin: HostStartOrigin) {
+        settings.isStarting = true
+        reconfigurationCoordinator.requestStart(
+            HostRuntimeConfiguration(settings: settings, origin: origin)
+        )
     }
 
     /// Switches between a normal Dock app and a menu-bar accessory.
@@ -540,12 +691,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         settings.onToggleServer = { [weak self] in
             guard let self else { return }
-            if !self.serverLifecycle.canStart {
-                self.stopServer()
-            } else {
-                Task { [weak self] in
-                    await self?.startServer()
+            if self.reconfigurationCoordinator.hasDesiredRunning
+                || !self.serverLifecycle.canStart {
+                Task { @MainActor [weak self] in
+                    await self?.stopServer()
                 }
+            } else {
+                self.requestServerStart(origin: .manual)
             }
         }
 
@@ -589,16 +741,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.completeInternetPairing(deviceResponse: response)
         }
         settings.onRevokeInternetDevice = { [weak self] in
-            self?.revokeInternetPeer()
+            Task { @MainActor [weak self] in
+                await self?.revokeInternetPeer()
+            }
         }
         settings.onRetryInternetRevocationCleanup = { [weak self] in
             self?.retryInternetRevocationSecretCleanup()
         }
         settings.onConnectInternetSession = { [weak self] in
-            Task { [weak self] in await self?.startServer() }
+            self?.requestServerStart(origin: .manual)
         }
         settings.onDisconnectInternetSession = { [weak self] in
-            self?.stopServer()
+            Task { @MainActor [weak self] in
+                await self?.stopServer()
+            }
         }
         refreshInternetCredentialState()
         guard recoverPendingInternetPairingPersistence() else { return }
@@ -900,7 +1056,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func revokeInternetPeer() {
+    private func revokeInternetPeer() async {
         guard !settings.internetPeerDeviceID.isEmpty else {
             settings.internetStatus = .idle
             return
@@ -921,6 +1077,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 persistedSequence + 1,
                 UInt64(Date().timeIntervalSince1970 * 1_000)
             )
+            // Close the reconfiguration gate before the session queues its
+            // onRevoked callback. The local revocation path owns the stop.
+            settings.internetStatus = .revoked
+            reconfigurationCoordinator.recordManualStop()
             if let session = internetProductSession {
                 try session.revoke(sequence: sequence)
             } else {
@@ -965,10 +1125,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             try rememberRevokedInternetIdentity(peerIdentity)
             let store = KeychainSecretStore()
-            try? store.delete(name: Self.internetSignalingTokenName)
-            try? store.delete(name: Self.internetTURNCredentialName)
-            teardownStreamingComponents()
-            settings.isRunning = false
+            try store.delete(name: Self.internetSignalingTokenName)
+            try store.delete(name: Self.internetTURNCredentialName)
             settings.clientConnected = false
             settings.internetCredentialsAvailable = false
             settings.internetRevocationCleanupPending = false
@@ -976,6 +1134,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             settings.internetStatus = .revoked
             settings.internetErrorMessage = "This device is revoked and cannot reconnect."
             settings.internetRecoverySuggestion = "The revoked signing key is locally blocked forever; the session authority must propagate the signed tombstone to signaling/TURN. To authorize this device again, generate a new signing identity with a higher key epoch, then choose Pair New Identity."
+            await stopServer(preserveRecoveryState: true)
         } catch {
             let cleanupPending = (try? currentInternetRevocationCleanupPending()) == true
             let revocationPersisted = (try? pinnedInternetPeerIdentity()).flatMap { identity in
@@ -984,6 +1143,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 ).load().revoked
             } == true
             let finalizationPending = cleanupPending || revocationPersisted
+            reconfigurationCoordinator.recordManualStop()
             settings.internetRevocationCleanupPending = finalizationPending
             settings.internetStatus = finalizationPending ? .revoked : .failed
             settings.internetErrorMessage = finalizationPending
@@ -992,9 +1152,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             settings.internetRecoverySuggestion = finalizationPending
                 ? "Unlock the login Keychain and choose Retry Cleanup before pairing another identity."
                 : "Keep the session disconnected and retry revocation before reconnecting."
-            teardownStreamingComponents()
-            settings.isRunning = false
             debugLog("Internet peer revocation failed")
+            await stopServer(preserveRecoveryState: true)
         }
     }
 
@@ -1307,32 +1466,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func startServer(origin: HostStartOrigin = .manual) async {
+    @discardableResult
+    private func startServer(
+        origin: HostStartOrigin = .manual,
+        configuration requestedConfiguration: HostRuntimeConfiguration? = nil,
+        intentIsCurrent: @escaping @MainActor () -> Bool = { true }
+    ) async -> Bool {
+        guard intentIsCurrent() else { return false }
+        let configuration = requestedConfiguration ?? HostRuntimeConfiguration(
+            settings: settings,
+            origin: origin
+        )
         guard let startToken = serverLifecycle.beginStart() else {
             debugLog("Ignoring duplicate start request")
-            return
+            return false
         }
         debugLog("🚀 startServer() invoked. Check permission: \(settings.hasScreenRecordingPermission)")
         guard settings.hasScreenRecordingPermission else {
             debugLog("❌ startServer aborted: Missing Screen Recording permission")
             showPermissionAlert()
             serverLifecycle.failStart(startToken)
-            return
+            settings.isStarting = false
+            return false
         }
 
         do {
-            let size = settings.resolutionSize
+            let size = configuration.resolutionSize(rotation: settings.rotation)
             let captureDisplayID: CGDirectDisplayID
             let streamSize: (width: Int, height: Int)
 
-            switch settings.displaySource {
+            switch configuration.displaySource {
             case .extended:
                 let manager = VirtualDisplayManager()
                 virtualDisplayManager = manager
                 try manager.createDisplay(
                     width: size.width,
                     height: size.height,
-                    refreshRate: settings.refreshRate,
+                    refreshRate: settings.effectiveRefreshRate,
                     hiDPI: settings.hiDPI,
                     name: "Telemachus"
                 )
@@ -1390,8 +1560,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             case .selectedDisplay:
                 virtualDisplayManager = nil
                 captureDisplayID = DisplayCatalog.resolve(
-                    persistentUUID: settings.selectedDisplayUUID,
-                    fallbackID: settings.selectedDisplayID
+                    persistentUUID: configuration.selectedDisplay.persistentUUID,
+                    fallbackID: configuration.selectedDisplay.id
                 )
                 streamSize = Self.aspectFitStreamSize(
                     sourceWidth: CGDisplayPixelsWide(captureDisplayID),
@@ -1412,20 +1582,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 settings.displayCreated = true
             }
 
-            // Run ADB setup (USB only) and display init wait in parallel.
-            // For wireless mode, skip ADB entirely — the auth handshake gates LAN connections instead.
-            await withTaskGroup(of: Void.self) { group in
-                if settings.connectionMode == .usb {
-                    group.addTask { await self.setupADBReverse() }
-                } else {
-                    debugLog("Wireless mode: skipping ADB setup")
-                }
-                group.addTask { try? await Task.sleep(nanoseconds: 500_000_000) }
+            // Let display registration settle, then validate the intent before
+            // performing mode-specific side effects such as ADB setup.
+            try await Task.sleep(nanoseconds: 500_000_000)
+            try requireCurrentStart(startToken, intentIsCurrent: intentIsCurrent)
+            if configuration.connectionMode == .usb {
+                await setupADBReverse()
+            } else {
+                debugLog("Non-USB mode: skipping ADB setup")
             }
-            try requireCurrentStart(startToken)
+            try requireCurrentStart(startToken, intentIsCurrent: intentIsCurrent)
 
             if let vdm = virtualDisplayManager,
-               settings.displaySource == .extended {
+               configuration.displaySource == .extended {
                 vdm.restoreDisplayPosition()
                 let registered = vdm.verifyDisplayRegistered()
                 if !registered {
@@ -1435,7 +1604,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             // Setup capture
             let newCapture = try await ScreenCapture()
-            try requireCurrentStart(startToken)
+            try requireCurrentStart(startToken, intentIsCurrent: intentIsCurrent)
             screenCapture = newCapture
             let configuredCapture = screenCapture
             configuredCapture?.onCaptureMethodChanged = {
@@ -1464,41 +1633,51 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                           self.serverLifecycle.ownsSession(startToken),
                           self.screenCapture === configuredCapture else { return }
                     debugLog("Capture terminated: \(error.localizedDescription)")
-                    self.handleCaptureFailure(error, sessionToken: startToken)
+                    await self.handleCaptureFailure(error, sessionToken: startToken)
                 }
             }
-            let existingDisplayOutput = settings.displaySource == .extended
+            let existingDisplayOutput = configuration.displaySource == .extended
                 ? nil
                 : streamSize
             try await screenCapture?.setupForDisplay(
                 captureDisplayID,
                 refreshRate: settings.effectiveRefreshRate,
                 outputSize: existingDisplayOutput,
-                followsMainDisplay: settings.displaySource == .currentMain
+                followsMainDisplay: configuration.displaySource == .currentMain
             )
-            try requireCurrentStart(startToken)
+            try requireCurrentStart(startToken, intentIsCurrent: intentIsCurrent)
 
-            if settings.connectionMode == .internet {
+            if configuration.connectionMode == .internet {
                 try await startInternetProductSession(
                     streamSize: streamSize,
                     sessionToken: startToken
                 )
-                try requireCurrentStart(startToken)
+                try requireCurrentStart(startToken, intentIsCurrent: intentIsCurrent)
                 guard serverLifecycle.finishStart(startToken) else {
                     throw CancellationError()
                 }
                 settings.isRunning = true
-                return
+                settings.isStarting = false
+                activeRuntimeConfiguration = configuration
+                reconfigurationCoordinator.recordApplied(configuration)
+                return true
             }
 
             // Setup server. USB is loopback-only; wireless authenticates every
             // candidate before it can replace the active client.
             let serverMode: StreamingServerMode
-            if settings.connectionMode == .wireless {
-                serverMode = .wireless(
-                    authToken: try WirelessAuth.loadOrCreate()
-                )
-                settings.wirelessTokenError = nil
+            try requireCurrentStart(startToken, intentIsCurrent: intentIsCurrent)
+            if configuration.connectionMode == .wireless {
+                do {
+                    serverMode = .wireless(
+                        authToken: try WirelessAuth.loadOrCreate()
+                    )
+                    settings.wirelessTokenError = nil
+                } catch {
+                    settings.wirelessTokenError = error.localizedDescription
+                    debugLog("Could not prepare wireless token: \(error.localizedDescription)")
+                    throw error
+                }
             } else {
                 serverMode = .usb
             }
@@ -1508,7 +1687,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
             let configuredServer = streamingServer
             streamingServer?.touchEnabled = settings.touchEnabled
-            if settings.connectionMode == .wireless {
+            if configuration.connectionMode == .wireless {
                 streamingServer?.onWirelessClientPaired = {
                     [weak self, weak configuredServer] deviceName, clientGeneration in
                     Task { @MainActor in
@@ -1534,13 +1713,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // logical dimensions here makes the resolution overlay on Android
             // match the Mac's resolution dropdown (e.g. "2560x1600" instead of
             // the HiDPI-doubled "5120x3200").
-            streamingServer?.setDisplaySize(width: streamSize.width, height: streamSize.height, rotation: settings.rotation)
+            streamingServer?.setDisplaySize(
+                width: streamSize.width,
+                height: streamSize.height,
+                rotation: settings.rotation
+            )
             streamingServer?.setProtocolV1VideoConfiguration(
                 framesPerSecond: settings.effectiveRefreshRate,
                 bitrateKbps: settings.effectiveBitrate * 1_000,
                 displayID: String(captureDisplayID),
                 displayName: "Telemachus Display",
-                isVirtual: settings.displaySource == .extended || settings.displaySource == .mirrorMain
+                isVirtual: configuration.displaySource == .extended || configuration.displaySource == .mirrorMain
             )
             streamingServer?.onClientConnected = {
                 [weak self, weak configuredServer, weak configuredCapture]
@@ -1710,7 +1893,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                           self.serverLifecycle.ownsSession(startToken),
                           self.streamingServer === configuredServer else { return }
                     debugLog("Streaming listener stopped: \(error.localizedDescription)")
-                    self.handleServerFailure(sessionToken: startToken)
+                    await self.handleServerFailure(sessionToken: startToken)
                 }
             }
 
@@ -1722,32 +1905,51 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 gamingBoost: settings.gamingBoost,
                 frameRate: settings.effectiveRefreshRate
             )
-            try requireCurrentStart(startToken)
+            try requireCurrentStart(startToken, intentIsCurrent: intentIsCurrent)
 
             guard serverLifecycle.finishStart(startToken) else {
                 throw CancellationError()
             }
             settings.isRunning = true
+            settings.isStarting = false
+            activeRuntimeConfiguration = configuration
+            reconfigurationCoordinator.recordApplied(configuration)
 
             print("✅ Server started on port \(settings.port)")
+            return true
         } catch is CancellationError where !serverLifecycle.isCurrentStart(startToken) {
             debugLog("Discarded superseded host start \(startToken)")
-            return
+            if serverLifecycle.isStopping {
+                await stopServer(
+                    preserveRecoveryState: true,
+                    recordsManualStop: false
+                )
+            }
+            return false
+        } catch is CancellationError {
+            debugLog("Discarded superseded host configuration \(startToken)")
+            await stopServer(
+                preserveRecoveryState: true,
+                recordsManualStop: false
+            )
+            return false
         } catch {
             guard serverLifecycle.isCurrentStart(startToken) else {
                 debugLog(
                     "Discarded error from superseded host start \(startToken): " +
                     error.localizedDescription
                 )
-                return
+                if serverLifecycle.isStopping {
+                    await stopServer(
+                        preserveRecoveryState: true,
+                        recordsManualStop: false
+                    )
+                }
+                return false
             }
             print("❌ Failed to start: \(error)")
-            serverLifecycle.failStart(startToken)
-            teardownStreamingComponents()
-            settings.isRunning = false
-            settings.displayCreated = false
-
-            if settings.connectionMode == .internet {
+            let shouldRecover = isUnattendedOperation || origin.authorizesRecovery
+            if configuration.connectionMode == .internet {
                 settings.internetStatus = .failed
                 settings.internetErrorMessage = error.localizedDescription
                 settings.internetRecoverySuggestion = internetRecoverySuggestion(
@@ -1755,11 +1957,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         ?? .invalidConfiguration(error.localizedDescription)
                 )
             }
-
-            if isUnattendedOperation || origin.authorizesRecovery {
-                debugLog(
-                    "Unattended startup failed: \(error.localizedDescription)"
-                )
+            let stopResult = await stopServer(
+                preserveRecoveryState: true,
+                recordsManualStop: false
+            )
+            guard intentIsCurrent(),
+                  canApplyStopFollowUp(
+                    result: stopResult,
+                    permitsDesiredRunning: true
+                  ) else { return false }
+            if shouldRecover {
+                debugLog("Unattended startup failed: \(error.localizedDescription)")
                 scheduleUnattendedRecoveryIfEnabled(
                     allowAutomaticLaunch: origin.authorizesRecovery
                 )
@@ -1770,11 +1978,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 alert.alertStyle = .critical
                 alert.runModal()
             }
+            return false
         }
     }
 
-    private func requireCurrentStart(_ token: UInt64) throws {
-        guard serverLifecycle.isCurrentStart(token) else {
+    private func requireCurrentStart(
+        _ token: UInt64,
+        intentIsCurrent: @MainActor () -> Bool = { true }
+    ) throws {
+        guard serverLifecycle.isCurrentStart(token), intentIsCurrent() else {
             throw CancellationError()
         }
     }
@@ -1965,7 +2177,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                       self.serverLifecycle.ownsSession(sessionToken),
                       self.internetProductSession === session else { return }
                 if state == .closed {
-                    self.stopServer(preserveRecoveryState: true)
+                    self.applyInternetSessionState(state)
+                    await self.stopServer(preserveRecoveryState: true)
                     return
                 }
                 self.applyInternetSessionState(state)
@@ -1978,11 +2191,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                       self.internetProductSession === session else { return }
                 // A failed product session must release capture/display and all
                 // active state so the user can correct the profile and retry.
-                self.stopServer(preserveRecoveryState: true)
                 self.settings.internetStatus = error == .revoked ? .revoked : .failed
                 self.settings.internetErrorMessage = error.localizedDescription
                 self.settings.internetRecoverySuggestion = self.internetRecoverySuggestion(for: error)
                 debugLog("Secure Internet product session failed")
+                await self.stopServer(preserveRecoveryState: true)
             }
         }
         session.onAuthenticatedTouchEvent = {
@@ -2029,17 +2242,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 // The previous signaling token, record keys and PeerConnection
                 // are never reused across a handoff. Stop the full product
                 // session until authority supplies a fresh short-lived profile.
-                self.stopServer(preserveRecoveryState: true)
-                try? KeychainSecretStore().delete(
-                    name: Self.internetSignalingTokenName
-                )
-                try? KeychainSecretStore().delete(
-                    name: Self.internetTURNCredentialName
-                )
+                do {
+                    try KeychainSecretStore().delete(
+                        name: Self.internetSignalingTokenName
+                    )
+                    try KeychainSecretStore().delete(
+                        name: Self.internetTURNCredentialName
+                    )
+                } catch {
+                    debugLog("Fresh-session credential cleanup failed: \(error.localizedDescription)")
+                }
                 self.settings.internetCredentialsAvailable = false
                 self.settings.internetStatus = .recovering
                 self.settings.internetErrorMessage = "Network recovery requires a fresh secure session."
                 self.settings.internetRecoverySuggestion = "Issue a new short-lived session ID, host role token and TURN credential, then connect again (attempt \(attempt))."
+                await self.stopServer(preserveRecoveryState: true)
             }
         }
         session.onRevocationPropagationRequired = {
@@ -2056,9 +2273,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self, let session,
                       self.serverLifecycle.ownsSession(sessionToken),
                       self.internetProductSession === session else { return }
-                self.stopServer(preserveRecoveryState: true)
                 self.settings.internetStatus = .revoked
                 self.settings.clientConnected = false
+                await self.stopServer(preserveRecoveryState: true)
             }
         }
     }
@@ -2125,41 +2342,62 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Idempotent cleanup used for both normal shutdown and a failure after any
     /// partial combination of display, capture, listener, or ADB setup.
-    private func teardownStreamingComponents() {
+    private func teardownStreamingComponents() async {
+        if let teardownTask {
+            await teardownTask.value
+            return
+        }
+
         cancelActiveInput(releaseDrag: true)
         reportWindowRecovery(windowRecoveryManager.restoreManagedWindows())
-        screenCapture?.onTerminalCaptureFailure = nil
-        internetProductSession?.close()
-        screenCapture?.stopStreaming()
-        streamingServer?.stop()
-        virtualDisplayManager?.destroyDisplay()
+        let captureToStop = screenCapture
+        captureToStop?.onTerminalCaptureFailure = nil
+        let serverToStop = streamingServer
+        let internetSessionToStop = internetProductSession
+        let displayToDestroy = virtualDisplayManager
         screenCapture = nil
         streamingServer = nil
         internetProductSession = nil
         virtualDisplayManager = nil
         activeDisplayID = nil
+        let task = Task { @MainActor in
+            internetSessionToStop?.close()
+            await HostTeardownOrdering.perform(
+                stopListener: { serverToStop?.stop() },
+                stopCapture: { await captureToStop?.stopStreaming() },
+                destroyDisplay: { displayToDestroy?.destroyDisplay() }
+            )
+        }
+        teardownTask = task
+        await task.value
+        teardownTask = nil
     }
 
-    private func handleServerFailure(sessionToken: UInt64) {
+    private func handleServerFailure(sessionToken: UInt64) async {
         guard serverLifecycle.ownsSession(sessionToken) else { return }
-        stopServer(preserveRecoveryState: true)
+        let stopResult = await stopServer(
+            preserveRecoveryState: true,
+            suppressesFollowUp: false
+        )
+        guard canApplyStopFollowUp(result: stopResult) else { return }
         scheduleUnattendedRecoveryIfEnabled()
     }
 
-    private func handleCaptureFailure(_ error: Error, sessionToken: UInt64) {
+    private func handleCaptureFailure(_ error: Error, sessionToken: UInt64) async {
         guard serverLifecycle.ownsSession(sessionToken) else { return }
         let selectedDisplayWentOffline = settings.displaySource == .selectedDisplay &&
             DisplayCatalog.resolve(
                 persistentUUID: settings.selectedDisplayUUID,
                 fallbackID: settings.selectedDisplayID
             ) != activeDisplayID
-        stopServer(preserveRecoveryState: true)
-
+        let stopResult = await stopServer(
+            preserveRecoveryState: true,
+            suppressesFollowUp: false
+        )
+        guard canApplyStopFollowUp(result: stopResult) else { return }
         if selectedDisplayWentOffline {
             debugLog("Selected display went offline; preserving selection and falling back to main display")
-            Task { @MainActor [weak self] in
-                await self?.startServer()
-            }
+            requestServerStart(origin: .recovery)
         } else if isUnattendedOperation {
             scheduleUnattendedRecoveryIfEnabled()
         } else {
@@ -2215,7 +2453,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         isUnattendedOperation:
                             self.isUnattendedOperation || allowAutomaticLaunch
                       ) else { return }
-                await self.startServer(origin: .recovery)
+                self.requestServerStart(origin: .recovery)
             } catch is CancellationError {
                 return
             } catch {
@@ -2247,38 +2485,83 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return (fittedWidth, fittedHeight)
     }
 
-    func stopServer() {
-        stopServer(preserveRecoveryState: false)
+    func stopServer() async {
+        await stopServer(preserveRecoveryState: false)
     }
 
-    private func stopServer(preserveRecoveryState: Bool) {
-        let stopToken = serverLifecycle.beginStop()
+    @discardableResult
+    private func stopServer(
+        preserveRecoveryState: Bool,
+        recordsManualStop: Bool = true,
+        suppressesFollowUp: Bool? = nil
+    ) async -> HostStopOperationCoordinator.Result {
+        stopRecoveryPreservation.request(
+            preserveRecoveryState: preserveRecoveryState
+        )
+        stopFollowUpSuppression.request(
+            suppressFollowUp: suppressesFollowUp ?? recordsManualStop
+        )
         if !preserveRecoveryState {
             cancelUnattendedRecovery(resetAttempts: true)
         }
-        // Save display position before destroying
-        if settings.displaySource == .extended {
-            virtualDisplayManager?.saveDisplayPosition()
+        if recordsManualStop {
+            reconfigurationCoordinator.recordManualStop()
+            settings.isStarting = false
         }
+        var stopToken: UInt64?
+        var shouldPreserveRecoveryState = false
+        var shouldSuppressFollowUp = false
+        let result = await stopOperationCoordinator.perform({
+            stopToken = self.serverLifecycle.beginStop()
+            if self.activeRuntimeConfiguration?.displaySource == .extended {
+                self.virtualDisplayManager?.saveDisplayPosition()
+            }
+            await self.teardownStreamingComponents()
+            self.activeRuntimeConfiguration = nil
+            shouldPreserveRecoveryState = self.stopRecoveryPreservation.consume()
+            shouldSuppressFollowUp = self.stopFollowUpSuppression.consume()
+        }, finalize: { generation in
+            guard let stopToken else { return }
+            self.settings.isRunning = false
+            self.settings.isStarting = self.reconfigurationCoordinator.hasDesiredRunning
+            self.settings.displayCreated = false
+            self.settings.clientConnected = false
+            self.settings.connectedDeviceModel = nil
+            self.settings.connectedDeviceMaxRefreshRate = nil
+            self.settings.currentFPS = 0
+            self.settings.currentBitrate = 0
+            self.serverLifecycle.finishStop(stopToken)
+            if !shouldPreserveRecoveryState,
+               self.settings.connectionMode == .internet,
+               self.settings.internetStatus != .revoked {
+                self.settings.internetStatus = self.internetPairingMetadataIsComplete
+                    ? .paired
+                    : .idle
+            }
+            self.lastSuppressedStopFollowUpGeneration = shouldSuppressFollowUp
+                ? generation
+                : nil
+            self.lastCompletedStopGeneration = generation
+            print("⏹️ Server stopped")
+        })
+        return result
+    }
 
-        teardownStreamingComponents()
-
-        settings.isRunning = false
-        settings.displayCreated = false
-        settings.clientConnected = false
-        settings.connectedDeviceModel = nil
-        settings.connectedDeviceMaxRefreshRate = nil
-        settings.currentFPS = 0
-        settings.currentBitrate = 0
-        serverLifecycle.finishStop(stopToken)
-        if settings.connectionMode == .internet,
-           settings.internetStatus != .revoked {
-            settings.internetStatus = internetPairingMetadataIsComplete
-                ? .paired
-                : .idle
-        }
-
-        print("⏹️ Server stopped")
+    private func canApplyStopFollowUp(
+        result: HostStopOperationCoordinator.Result,
+        permitsDesiredRunning: Bool = false
+    ) -> Bool {
+        HostStopFollowUpPolicy.shouldApply(
+            performedOperation: result.performedOperation,
+            requestedGeneration: result.generation,
+            lastCompletedGeneration: lastCompletedStopGeneration,
+            lifecycleIsIdle: serverLifecycle.canStart,
+            hasActiveConfiguration: activeRuntimeConfiguration != nil,
+            hasDesiredRunning: reconfigurationCoordinator.hasDesiredRunning,
+            followUpWasSuppressed:
+                lastSuppressedStopFollowUpGeneration == result.generation,
+            permitsDesiredRunning: permitsDesiredRunning
+        )
     }
 
     private func cancelUnattendedRecovery(resetAttempts: Bool) {
@@ -2719,19 +3002,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         lastPinchDistance = 0
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
-        // Stop momentum scrolling
+    func applicationShouldTerminate(
+        _ sender: NSApplication
+    ) -> NSApplication.TerminateReply {
+        switch terminationCoordinator.requestTermination() {
+        case .beginDeferredCleanup:
+            prepareForTermination()
+            Task { @MainActor in
+                await self.stopServer()
+                self.terminationCoordinator.completeCleanup()
+                sender.reply(toApplicationShouldTerminate: true)
+            }
+            return .terminateLater
+        case .waitForDeferredCleanup:
+            return .terminateLater
+        case .terminateNow:
+            return .terminateNow
+        }
+    }
+
+    private func prepareForTermination() {
         stopMomentumScroll()
-
         permissionCheckTimer?.invalidate()
+        permissionCheckTimer = nil
         statusRefreshTimer?.invalidate()
+        statusRefreshTimer = nil
         unattendedRecoveryTask?.cancel()
-
-        // Stop server and cleanup
-        stopServer()
-
-        // Cancel all combine subscriptions
+        unattendedRecoveryTask = nil
         cancellables.removeAll()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // The deferred applicationShouldTerminate path has already awaited the
+        // complete server/capture/display teardown before AppKit reaches here.
+        prepareForTermination()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

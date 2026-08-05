@@ -1003,15 +1003,15 @@ struct SettingsView: View {
                             }
                         }) {
                             HStack(spacing: 6) {
-                                Image(systemName: settings.isRunning ? "stop.fill" : "play.fill")
+                                Image(systemName: settings.hasRunningIntent ? "stop.fill" : "play.fill")
                                     .font(.system(size: 12))
-                                Text(settings.isRunning ? "Stop" : "Start")
+                                Text(settings.hasRunningIntent ? "Stop" : "Start")
                                     .font(.system(size: 13, weight: .medium))
                             }
                             .frame(width: 90)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(settings.isRunning ? .red : .accentColor)
+                        .tint(settings.hasRunningIntent ? .red : .accentColor)
                         .controlSize(.large)
                         .disabled(!settings.hasScreenRecordingPermission)
 
@@ -1582,9 +1582,12 @@ class DisplaySettings: ObservableObject {
     @Published var selectedDisplayID: CGDirectDisplayID {
         didSet {
             save("selectedDisplayID", Int(selectedDisplayID))
-            if let uuid = DisplayCatalog.persistentUUID(for: selectedDisplayID) {
-                selectedDisplayUUID = uuid
+            selectedDisplayUUID = DisplayCatalog.persistentUUID(for: selectedDisplayID)
+            if let selectedDisplayUUID {
+                let uuid = selectedDisplayUUID
                 save("selectedDisplayUUID", uuid)
+            } else {
+                defaults.removeObject(forKey: keyPrefix + "selectedDisplayUUID")
             }
         }
     }
@@ -1690,6 +1693,7 @@ class DisplaySettings: ObservableObject {
     @Published var wifiConnected = false
     @Published var listeningAddress: String?
     @Published var isRunning = false
+    @Published var isStarting = false
     @Published var currentFPS: Double = 0
     @Published var currentBitrate: Double = 0
     @Published var captureMethod: String = "Initializing..."
@@ -1713,6 +1717,10 @@ class DisplaySettings: ObservableObject {
     var onRetryInternetRevocationCleanup: (() -> Void)?
     var onConnectInternetSession: (() -> Void)?
     var onDisconnectInternetSession: (() -> Void)?
+
+    var hasRunningIntent: Bool {
+        isRunning || isStarting
+    }
     var onSaveInternetCredentials: ((String, String) -> Bool)?
     var onCompleteInternetPairing: ((String) -> Void)?
 
