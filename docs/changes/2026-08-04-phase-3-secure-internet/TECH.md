@@ -276,7 +276,12 @@ These are release blockers, not accepted architecture:
   first commits a durable pending-revocation admission barrier before releasing
   the product session, then atomically promotes it to a tombstone. A failed
   promotion leaves the pending record for startup retry and blocks new leases;
-  if even the pending commit fails, the process retains a quarantined session
+  process reservations, durable pending/tombstone/cleanup state, lease import,
+  and the final pairing secret/authorization/metadata commit share one global
+  admission transaction. An already-open pairing dialog therefore cannot commit
+  after revocation wins the transaction, including when the pending record names
+  a different pairing.
+  If even the pending commit fails, the process retains a quarantined session
   owner and disables new import/connect while quiescing UI-side resources. This
   last fail-stop boundary cannot survive an operating-system forced process kill
   when durable storage itself is unavailable. Android UI otherwise removes its

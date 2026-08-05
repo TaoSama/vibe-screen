@@ -1045,8 +1045,15 @@ class InternetProductSessionTest {
         val peer = ProductFakePeerEngine()
         val callbacks = ProductCallbacks()
         val store = ProductRevocationStore().apply { failCompletionWith(IllegalStateException("disk unavailable")) }
+        val coordinator = InternetProductRevocationCoordinator()
         val session =
-            session(peer, ProductFakeNetworkMonitor(), callbacks, revocationStore = store)
+            session(
+                peer,
+                ProductFakeNetworkMonitor(),
+                callbacks,
+                revocationCoordinator = coordinator,
+                revocationStore = store,
+            )
         session.start()
         peer.observer.onConnected(PeerRoute.DIRECT)
         peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
@@ -1064,6 +1071,13 @@ class InternetProductSessionTest {
         assertEquals(1, peer.closeCalls)
         assertTrue(store.pending.get())
         assertFalse(store.revoked.get())
+        assertFalse(coordinator.hasActiveReservation())
+        assertTrue(coordinator.isCredentialMutationBlocked { store.isAdmissionBlocked("pair-1") })
+        assertThrows(IllegalStateException::class.java) {
+            coordinator.withCredentialMutationAdmission(
+                durableBlock = { store.isAdmissionBlocked("different-pairing") },
+            ) { error("A durable pending revocation must block pairing metadata replacement") }
+        }
 
         val restartedStore = store.restarted()
         assertThrows(IllegalStateException::class.java) {
@@ -1085,6 +1099,74 @@ class InternetProductSessionTest {
                 revocationStore = restartedStore,
             )
         }
+    }
+
+    @Test
+    fun dialogOpenedBeforeDurableRevocationCannotCommitPairingAfterPendingAppears() {
+        val coordinator = InternetProductRevocationCoordinator()
+        val store = ProductRevocationStore().apply { failCompletionWith(IllegalStateException("disk unavailable")) }
+        assertFalse(coordinator.isCredentialMutationBlocked { store.isAdmissionBlocked("pair-2") })
+        val peer = ProductFakePeerEngine()
+        val session =
+            session(
+                peer,
+                ProductFakeNetworkMonitor(),
+                ProductCallbacks(),
+                revocationCoordinator = coordinator,
+                revocationStore = store,
+            )
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        peer.receive(revocationEnvelope(3))
+
+        val pairingCommitted = AtomicBoolean(false)
+        assertThrows(IllegalStateException::class.java) {
+            coordinator.withCredentialMutationAdmission(
+                durableBlock = { store.isAdmissionBlocked("pair-2") },
+            ) {
+                pairingCommitted.set(true)
+            }
+        }
+        assertFalse(pairingCommitted.get())
+        assertTrue(store.pending.get())
+    }
+
+    @Test
+    fun pairingCommitAndRevocationReservationShareOneLinearizationGate() {
+        val coordinator = InternetProductRevocationCoordinator()
+        val commitEntered = CountDownLatch(1)
+        val releaseCommit = CountDownLatch(1)
+        val events = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val issuedPermit = AtomicReference<InternetProductCredentialMutationPermit?>()
+        val executor = Executors.newFixedThreadPool(2)
+        val commit =
+            executor.submit {
+                coordinator.withCredentialMutationAdmission(durableBlock = { false }) { permit ->
+                    issuedPermit.set(permit)
+                    permit.requireActive()
+                    events += "commit-start"
+                    commitEntered.countDown()
+                    assertTrue(releaseCommit.await(2, TimeUnit.SECONDS))
+                    events += "commit-end"
+                }
+            }
+        assertTrue(commitEntered.await(2, TimeUnit.SECONDS))
+        val reserve =
+            executor.submit {
+                coordinator.reserve("pair-linearized").also { events += "reserve" }
+            }
+        assertFalse(reserve.isDone)
+        releaseCommit.countDown()
+        commit.get(2, TimeUnit.SECONDS)
+        reserve.get(2, TimeUnit.SECONDS)
+        executor.shutdown()
+
+        assertEquals(listOf("commit-start", "commit-end", "reserve"), events)
+        assertTrue(coordinator.hasActiveReservation())
+        assertThrows(IllegalStateException::class.java) { requireNotNull(issuedPermit.get()).requireActive() }
     }
 
     @Test

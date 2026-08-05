@@ -137,13 +137,36 @@ interface InternetProductRevocationStore {
 class PendingRevocationBarrierException(cause: Throwable? = null) :
     IllegalStateException("Cannot release the Internet session before pending revocation is durably persisted", cause)
 
+internal object InternetProductAdmissionGate {
+    private val lock = ReentrantLock(true)
+
+    fun <T> withLock(block: () -> T): T = lock.withLock(block)
+
+    fun requireHeld() {
+        check(lock.isHeldByCurrentThread) { "Internet credential mutation requires an admission transaction" }
+    }
+}
+
+internal class InternetProductCredentialMutationPermit internal constructor() {
+    private var active = true
+
+    fun requireActive() {
+        InternetProductAdmissionGate.requireHeld()
+        check(active) { "Internet credential mutation permit is no longer active" }
+    }
+
+    internal fun invalidate() {
+        InternetProductAdmissionGate.requireHeld()
+        active = false
+    }
+}
+
 class InternetProductRevocationCoordinator {
-    private val lock = Any()
     private val blockedPairings = mutableSetOf<String>()
     private val reservations = mutableSetOf<Reservation>()
 
     internal fun reserve(pairingIdentifier: String): Reservation =
-        synchronized(lock) {
+        InternetProductAdmissionGate.withLock {
             check(pairingIdentifier !in blockedPairings) { "Authenticated revocation is already pending or committed" }
             Reservation(pairingIdentifier).also {
                 blockedPairings += pairingIdentifier
@@ -152,15 +175,35 @@ class InternetProductRevocationCoordinator {
         }
 
     internal fun commit(reservation: Reservation) {
-        synchronized(lock) {
+        InternetProductAdmissionGate.withLock {
             check(reservations.remove(reservation)) { "Authenticated revocation reservation is not active" }
             check(reservation.pairingIdentifier in blockedPairings) { "Authenticated revocation admission block was lost" }
         }
     }
 
-    fun isBlocked(pairingIdentifier: String): Boolean = synchronized(lock) { pairingIdentifier in blockedPairings }
+    fun isBlocked(pairingIdentifier: String): Boolean =
+        InternetProductAdmissionGate.withLock { pairingIdentifier in blockedPairings }
 
-    fun hasActiveReservation(): Boolean = synchronized(lock) { reservations.isNotEmpty() }
+    fun hasActiveReservation(): Boolean = InternetProductAdmissionGate.withLock { reservations.isNotEmpty() }
+
+    fun isCredentialMutationBlocked(durableBlock: () -> Boolean): Boolean =
+        InternetProductAdmissionGate.withLock { reservations.isNotEmpty() || durableBlock() }
+
+    internal fun <T> withCredentialMutationAdmission(
+        durableBlock: () -> Boolean,
+        mutation: (InternetProductCredentialMutationPermit) -> T,
+    ): T =
+        InternetProductAdmissionGate.withLock {
+            check(reservations.isEmpty() && !durableBlock()) {
+                "Internet credential mutation is blocked by revocation state"
+            }
+            val permit = InternetProductCredentialMutationPermit()
+            try {
+                mutation(permit)
+            } finally {
+                permit.invalidate()
+            }
+        }
 
     internal data class Reservation(val pairingIdentifier: String)
 
