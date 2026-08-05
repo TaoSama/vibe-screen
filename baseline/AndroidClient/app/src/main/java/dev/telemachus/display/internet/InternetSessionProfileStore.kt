@@ -53,6 +53,11 @@ private data class StoredPairingBinding(
     val sessionContext: ByteArray,
 )
 
+private data class PendingAuthenticatedRevocation(
+    val pairingIdentifier: String,
+    val reason: String,
+)
+
 internal class DeferredSecretCleanupPending {
     private val values = mutableSetOf<String>()
 
@@ -223,21 +228,70 @@ class InternetSessionProfileStore(
 
     fun verifiedHostKeyFingerprint(): String? = loadPairingBinding()?.hostIdentity?.keyId?.take(FINGERPRINT_CHARACTERS)
 
-    @SuppressLint("ApplySharedPref")
     fun markRevoked(pairingIdentifier: String) {
-        check(preferences.edit().putString(REVOKED_PAIRING_KEY, pairingIdentifier).commit()) {
-            "Failed to persist the local revocation tombstone"
+        synchronized(REVOCATION_STATE_LOCK) {
+            check(
+                preferences
+                    .edit()
+                    .putString(REVOKED_PAIRING_KEY, pairingIdentifier)
+                    .remove(PENDING_AUTHENTICATED_REVOCATION_KEY)
+                    .commit(),
+            ) {
+                "Failed to persist the local revocation tombstone"
+            }
         }
     }
 
+    @SuppressLint("ApplySharedPref")
+    fun persistPendingAuthenticatedRevocation(pairingIdentifier: String, reason: String) {
+        synchronized(REVOCATION_STATE_LOCK) {
+            require(reason.isNotBlank()) { "Authenticated revocation reason is required" }
+            require(verifiedPairingIdentifier() == pairingIdentifier) { "Authenticated revocation targets another pairing" }
+            val requested = PendingAuthenticatedRevocation(pairingIdentifier, reason)
+            val existing = loadPendingAuthenticatedRevocation()
+            require(existing == null || existing == requested) { "Another authenticated revocation is already pending" }
+            if (existing != null || preferences.getString(REVOKED_PAIRING_KEY, null) == pairingIdentifier) return
+            check(
+                preferences
+                    .edit()
+                    .putString(PENDING_AUTHENTICATED_REVOCATION_KEY, encodePendingAuthenticatedRevocation(requested))
+                    .commit(),
+            ) { "Failed to persist pending authenticated revocation" }
+        }
+    }
+
+    @SuppressLint("ApplySharedPref")
     fun markAuthenticatedRevoked(pairingIdentifier: String, reason: String) {
-        require(reason.isNotBlank()) { "Authenticated revocation reason is required" }
-        require(verifiedPairingIdentifier() == pairingIdentifier) { "Authenticated revocation targets another pairing" }
-        markRevoked(pairingIdentifier)
+        synchronized(REVOCATION_STATE_LOCK) {
+            require(reason.isNotBlank()) { "Authenticated revocation reason is required" }
+            require(verifiedPairingIdentifier() == pairingIdentifier) { "Authenticated revocation targets another pairing" }
+            val pending = loadPendingAuthenticatedRevocation()
+            require(pending == null || pending == PendingAuthenticatedRevocation(pairingIdentifier, reason)) {
+                "Authenticated revocation completion does not match the durable pending record"
+            }
+            check(
+                preferences
+                    .edit()
+                    .putString(REVOKED_PAIRING_KEY, pairingIdentifier)
+                    .remove(PENDING_AUTHENTICATED_REVOCATION_KEY)
+                    .commit(),
+            ) { "Failed to persist the authenticated revocation tombstone" }
+        }
+    }
+
+    fun retryPendingAuthenticatedRevocation(): Boolean {
+        synchronized(REVOCATION_STATE_LOCK) {
+            val pending = loadPendingAuthenticatedRevocation() ?: return false
+            markAuthenticatedRevoked(pending.pairingIdentifier, pending.reason)
+            return true
+        }
     }
 
     fun isRevoked(pairingIdentifier: String): Boolean =
-        preferences.getString(REVOKED_PAIRING_KEY, null) == pairingIdentifier
+        synchronized(REVOCATION_STATE_LOCK) {
+            preferences.getString(REVOKED_PAIRING_KEY, null) == pairingIdentifier ||
+                loadPendingAuthenticatedRevocation()?.pairingIdentifier == pairingIdentifier
+        }
 
     fun loadPublicProfile(): StoredInternetSessionProfile? =
         preferences.getString(PROFILE_KEY, null)?.let { InternetSessionProfileCodec.decodePublic(it, debuggable) }
@@ -321,6 +375,29 @@ class InternetSessionProfileStore(
         preferences
             .getString(PENDING_REVOCATION_CLEANUP_KEY, null)
             ?.let(PendingRevocationCleanupCodec::decode)
+
+    private fun loadPendingAuthenticatedRevocation(): PendingAuthenticatedRevocation? =
+        preferences
+            .getString(PENDING_AUTHENTICATED_REVOCATION_KEY, null)
+            ?.let(::decodePendingAuthenticatedRevocation)
+
+    private fun encodePendingAuthenticatedRevocation(pending: PendingAuthenticatedRevocation): String =
+        JsonObject().apply {
+            addProperty("version", 1)
+            addProperty("pairing_id", pending.pairingIdentifier)
+            addProperty("reason", pending.reason)
+        }.toString()
+
+    private fun decodePendingAuthenticatedRevocation(value: String): PendingAuthenticatedRevocation {
+        val root = JsonParser.parseString(value).asJsonObject
+        require(root.keySet() == PENDING_AUTHENTICATED_REVOCATION_KEYS && root.get("version")?.asInt == 1) {
+            "Stored pending authenticated revocation is malformed"
+        }
+        return PendingAuthenticatedRevocation(
+            pairingIdentifier = root.get("pairing_id").asString.also { require(it.isNotBlank()) },
+            reason = root.get("reason").asString.also { require(it.isNotBlank()) },
+        )
+    }
 
     @SuppressLint("ApplySharedPref")
     private fun persistPendingRevocationCleanup(pending: PendingRevocationCleanup?): Boolean {
@@ -411,9 +488,11 @@ class InternetSessionProfileStore(
         private const val PROFILE_KEY = "active_profile"
         private const val PAIRING_KEY = "verified_pairing"
         private const val REVOKED_PAIRING_KEY = "revoked_pairing"
+        private const val PENDING_AUTHENTICATED_REVOCATION_KEY = "pending_authenticated_revocation"
         private const val DEFERRED_SECRET_CLEANUP_KEY = "deferred_secret_cleanup"
         private const val PENDING_REVOCATION_CLEANUP_KEY = "pending_revocation_cleanup"
         private const val SECRET_PREFIX = "phase3.internet.profile.v1"
+        private val REVOCATION_STATE_LOCK = Any()
         private const val FINGERPRINT_CHARACTERS = 16
         private const val TAG = "InternetProfileStore"
         private val PAIRING_KEYS =
@@ -422,6 +501,7 @@ class InternetSessionProfileStore(
                 "host_signature_algorithm", "host_signing_public_key",
                 "local_device_id", "local_identity_epoch", "session_context",
             )
+        private val PENDING_AUTHENTICATED_REVOCATION_KEYS = setOf("version", "pairing_id", "reason")
     }
 }
 

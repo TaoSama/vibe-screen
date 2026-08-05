@@ -273,7 +273,14 @@ These are release blockers, not accepted architecture:
   operable integration surface, not a production pairing/session issuer.
 - Product revocation is not one cross-service transaction. macOS persists its
   peer-scoped signed tombstone and stops/deletes local session material; Android
-  UI currently removes its local profile/secrets; signaling invalidation and relay
+  first commits a durable pending-revocation admission barrier before releasing
+  the product session, then atomically promotes it to a tombstone. A failed
+  promotion leaves the pending record for startup retry and blocks new leases;
+  if even the pending commit fails, the process retains a quarantined session
+  owner and disables new import/connect while quiescing UI-side resources. This
+  last fail-stop boundary cannot survive an operating-system forced process kill
+  when durable storage itself is unavailable. Android UI otherwise removes its
+  local profile/secrets; signaling invalidation and relay
   revocation are separate authority APIs; an existing coturn allocation requires
   a separate data-plane disconnect. End-to-end signed propagation and reconnect
   rejection remain gates.

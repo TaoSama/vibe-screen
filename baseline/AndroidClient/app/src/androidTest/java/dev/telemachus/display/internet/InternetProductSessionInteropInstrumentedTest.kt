@@ -12,6 +12,7 @@ import java.io.File
 import java.util.Base64
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -146,7 +147,23 @@ class InternetProductSessionInteropInstrumentedTest {
                     clock = MonotonicClock { android.os.SystemClock.elapsedRealtime() },
                     codec = ProtobufProtocolV1ProductCodec(localDeviceId, "Android M144 interop", setOf(ProductVideoCodec.HEVC)),
                     callbacks = callbacks,
-                    revocationStore = InternetProductRevocationStore { _, _ -> },
+                    revocationStore =
+                        object : InternetProductRevocationStore {
+                            private val pending = AtomicBoolean(false)
+                            private val revoked = AtomicBoolean(false)
+
+                            override fun persistPendingAuthenticatedRevocation(pairingIdentifier: String, reason: String) {
+                                pending.set(true)
+                            }
+
+                            override fun persistAuthenticatedRevocation(pairingIdentifier: String, reason: String) {
+                                check(pending.get()) { "Durable pending revocation is required" }
+                                revoked.set(true)
+                                pending.set(false)
+                            }
+
+                            override fun isAdmissionBlocked(pairingIdentifier: String): Boolean = pending.get() || revoked.get()
+                        },
                     revocationCoordinator = InternetProductRevocationCoordinator(),
                 )
             } catch (failure: Throwable) {
