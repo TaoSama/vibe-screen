@@ -7,8 +7,8 @@ Date: 2026-08-05
 The full clean verification below ran from a detached worktree with:
 
 ```text
-tested commit: 3d5900be720d9af457ffd7665f0f47676b9279f9
-tested tree: 19473cc181aea894fa0af7e21d72c5e42d148b59
+tested commit: d80519c1792e34e2f5785c693027217a4bb295ae
+tested tree: 8ee3061927c2158c80b016c23f02107e5780248b
 git status --porcelain before gates: (empty)
 git status --porcelain after gates: (empty)
 upgrade acknowledgement bytes: 0d01
@@ -19,7 +19,7 @@ upgrade acknowledgement bytes: 0d01
 ```text
 cd apps/harmony && pnpm run verify
 Validated 32 HarmonyOS project files and semantic release boundaries (static only; no ArkTS/HAP claim).
-52 tests, 52 passed, 0 failed
+70 tests, 70 passed, 0 failed
 ```
 
 Coverage includes:
@@ -40,15 +40,18 @@ Coverage includes:
   decoder-configuration rejection, and SDR/8-bit video acceptance;
 - wait-keyframe recovery across queue overflow, frame gaps, decoder push
   failure, epoch reset, and keyframe push completion;
-- configure/surface/prepare/start failure injection with owner-safe decoder
-  detach plus aggregated stop/release diagnostics;
+- configure/surface/prepare/start failure injection plus configure/release
+  supersede at every await window, stage-rejection cleanup races, one
+  per-candidate cleanup promise, the A/B/C transition barrier, and old
+  continuation isolation;
 - deterministic parse/timeout/error/socket-close/controller-close/supersede
   races with one transport close owner and one notification;
 - pointer/scroll/key envelope separation, HID/button mapping, rotation, and backoff;
 - browser-global-free UTF-8 handling and advertised video-size/FPS enforcement;
 - parsed AppScope/entry/Hvigor/resource/version/native-dependency/permission
   graph, parse diagnostics, method-scoped production import/call checks,
-  packaged license/notices, and dead-code/other validator negative fixtures.
+  dominating capability guards, exact bounded-queue control flow, packaged
+  license/notices, and external/method-local/dead-path validator negatives.
 
 Hosted `HarmonyOS portable checks (no DevEco or HAP claim)` runs the same frozen
 install and verify command. It parses TypeScript-compatible ArkTS and an ArkUI
@@ -61,7 +64,7 @@ The following commands ran against the tested commit/tree above:
 
 ```text
 cd apps/harmony && pnpm install --frozen-lockfile && pnpm run verify
-  PASS: 32 semantic project files; 52/52 portable tests
+  PASS: 32 semantic project files; 70/70 portable tests
 make protocol
   PASS: Buf format/lint/build/breaking; 13/13 contract tests
 make evidence-tools-test release-tools-test
