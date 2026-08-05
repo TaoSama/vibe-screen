@@ -17,7 +17,6 @@ import androidx.test.espresso.FailureHandler
 import androidx.test.espresso.UiController
 import androidx.test.espresso.ViewAction
 import androidx.test.espresso.action.ViewActions.click
-import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isChecked
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
@@ -107,7 +106,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
 
                 val firstOffer = authority.createOffer().also(createdOffers::add)
                 acceptanceStage = "first_pairing_scan"
-                val firstRequest = scanAndCaptureRequest(instrumentation, firstOffer.encodedUrl)
+                val firstRequest = scanAndCaptureRequest(scenario, instrumentation, firstOffer.encodedUrl)
                 acceptanceStage = "first_pairing_acceptance"
                 completePairing(authority.accept(firstOffer, firstRequest))
                 assertTrue(profileStore.hasVerifiedPairing())
@@ -128,7 +127,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
 
                 val secondOffer = authority.createOffer().also(createdOffers::add)
                 acceptanceStage = "second_pairing_scan"
-                val secondRequest = scanAndCaptureRequest(instrumentation, secondOffer.encodedUrl)
+                val secondRequest = scanAndCaptureRequest(scenario, instrumentation, secondOffer.encodedUrl)
                 acceptanceStage = "second_pairing_acceptance"
                 completePairing(authority.accept(secondOffer, secondRequest))
                 val secondLease = authority.issueLease(secondOffer, secondRequest, firstEpoch + 1)
@@ -235,6 +234,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
     }
 
     private fun scanAndCaptureRequest(
+        scenario: ActivityScenario<MainActivity>,
         instrumentation: Instrumentation,
         encodedOffer: String,
     ): InternetPairingRequest {
@@ -246,7 +246,11 @@ class InternetMainActivityAcceptanceInstrumentedTest {
                 true,
             )
         try {
-            onView(withId(R.id.internetScanProfileButton)).perform(scrollTo(), click())
+            scenario.onActivity { activity ->
+                check(activity.findViewById<View>(R.id.internetScanProfileButton).performClick()) {
+                    "Internet pairing scan action was not handled"
+                }
+            }
             instrumentation.waitForIdleSync()
 
             val request = AtomicReference<String>()
