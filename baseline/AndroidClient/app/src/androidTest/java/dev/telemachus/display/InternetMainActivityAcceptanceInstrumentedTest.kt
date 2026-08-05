@@ -95,7 +95,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
 
         var primaryFailure: Throwable? = null
         try {
-            ActivityScenario.launch(MainActivity::class.java).use {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 acceptanceStage = "internet_tab"
                 onView(withId(R.id.modeInternet)).perform(click())
                 onView(withId(R.id.internetModeContent)).check(matches(isDisplayed()))
@@ -117,7 +117,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
                 val firstLease = authority.issueLease(firstOffer, firstRequest, firstEpoch)
                 createdLeases += firstOffer to firstLease
                 acceptanceStage = "first_lease_import"
-                importLease(firstLease.encoded)
+                importLease(scenario, firstLease.encoded)
                 assertEquals(firstEpoch, profileStore.loadPublicProfile()?.authoritativeSessionEpoch)
                 onView(withId(R.id.internetConnectButton)).check(matches(isEnabled()))
 
@@ -135,7 +135,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
                 val secondLease = authority.issueLease(secondOffer, secondRequest, firstEpoch + 1)
                 createdLeases += secondOffer to secondLease
                 acceptanceStage = "second_lease_import"
-                importLease(secondLease.encoded)
+                importLease(scenario, secondLease.encoded)
 
                 assertTrue(profileStore.hasVerifiedPairing())
                 assertTrue(
@@ -270,9 +270,17 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         onView(withId(R.id.internetRevokeButton)).check(matches(isEnabled()))
     }
 
-    private fun importLease(encodedLease: String) {
+    private fun importLease(
+        scenario: ActivityScenario<MainActivity>,
+        encodedLease: String,
+    ) {
         acceptanceStage = "lease_import_open"
-        onView(withId(R.id.internetImportProfileButton)).perform(scrollTo(), click())
+        scenario.onActivity { activity ->
+            check(activity.findViewById<View>(R.id.internetImportProfileButton).performClick()) {
+                "Internet profile import action was not handled"
+            }
+        }
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         acceptanceStage = "lease_import_input"
         onView(withHint(R.string.internet_import_hint))
             .perform(SetSensitiveTextAction(encodedLease))
