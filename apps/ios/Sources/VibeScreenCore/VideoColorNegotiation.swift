@@ -4,6 +4,7 @@ import VibeScreenProtocol
 public enum VideoColorDecision: Sendable {
     case accepted(VSVideoConfig)
     case fallback(VSVideoConfig, reason: String)
+    case rejected(reason: String)
 }
 
 public struct VideoColorNegotiator: Sendable {
@@ -14,26 +15,30 @@ public struct VideoColorNegotiator: Sendable {
     }
 
     public func evaluate(_ requested: VSVideoConfig) -> VideoColorDecision {
-        let color = requested.hasColorDescription ? requested.colorDescription : Self.legacySDRColor
-        let bitDepth = color.bitDepth == 0 ? 8 : color.bitDepth
-        let transfer = color.transferFunction == .unspecified ? .bt709 : color.transferFunction
-        let matchingCodec = decodeCapabilities.first { capability in
-            capability.codec == requested.codec &&
-                capability.maximumWidth >= requested.encodedSize.width &&
-                capability.maximumHeight >= requested.encodedSize.height &&
-                capability.maximumFramesPerSecond >= requested.framesPerSecond &&
-                capability.bitDepths.contains(bitDepth) &&
-                capability.transferFunctions.contains(transfer)
+        do {
+            try VideoConfigValidator(decodeCapabilities: decodeCapabilities).validate(requested)
+            return .accepted(requested)
+        } catch let error as VideoConfigValidationError {
+            guard error == .unsupportedDecodeProfile else {
+                return .rejected(reason: error.localizedDescription)
+            }
+        } catch {
+            return .rejected(reason: error.localizedDescription)
         }
-        if matchingCodec != nil { return .accepted(requested) }
 
         var fallback = requested
+        let nextEpoch = requested.configEpoch.addingReportingOverflow(1)
+        guard !nextEpoch.overflow else {
+            return .rejected(
+                reason: VideoConfigValidationError.fallbackConfigEpochExhausted.localizedDescription
+            )
+        }
         let fallbackCapability = decodeCapabilities.first { capability in
             capability.bitDepths.contains(8) &&
                 (capability.transferFunctions.contains(.bt709) || capability.transferFunctions.contains(.srgb))
         }
         fallback.codec = fallbackCapability?.codec ?? .h264
-        fallback.configEpoch = requested.configEpoch + 1
+        fallback.configEpoch = nextEpoch.partialValue
         fallback.colorDescription = Self.legacySDRColor
         return .fallback(fallback, reason: "unsupported_color_or_decode_profile")
     }

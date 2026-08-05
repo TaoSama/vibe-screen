@@ -233,6 +233,51 @@ final class ProtocolV1SessionTests: XCTestCase {
         )
     }
 
+    func testClientDisconnectNoticeClosesWithoutProtocolError() throws {
+        let session = try readySession()
+        var notice = VSDisconnectNotice()
+        notice.reasonCode = "client_shutdown"
+        notice.mayResume = true
+
+        let actions = session.handleControl(
+            try envelope(id: 4, payload: .disconnectNotice(notice)).serializedData()
+        )
+
+        XCTAssertEqual(session.phase, .closed)
+        XCTAssertTrue(actions.containsClose)
+        XCTAssertTrue(try controlEnvelopes(actions).isEmpty)
+        XCTAssertFalse(actions.contains { if case .peerError = $0 { true } else { false } })
+    }
+
+    func testTouchTargetAcceptsActiveOrEmptyAndRejectsWrongTarget() throws {
+        let session = try readySession()
+
+        var emptyTargetTouch = touchEvent()
+        emptyTargetTouch.target = VSInputTarget()
+        XCTAssertTrue(session.handleControl(
+            try envelope(id: 4, payload: .touchEvent(emptyTargetTouch)).serializedData()
+        ).containsTouch)
+
+        var activeTarget = VSInputTarget()
+        activeTarget.displayID = "active-display"
+        activeTarget.streamID = 1
+        var activeTargetTouch = touchEvent()
+        activeTargetTouch.target = activeTarget
+        XCTAssertTrue(session.handleControl(
+            try envelope(id: 5, payload: .touchEvent(activeTargetTouch)).serializedData()
+        ).containsTouch)
+
+        var wrongTarget = activeTarget
+        wrongTarget.streamID = 2
+        var wrongTargetTouch = touchEvent()
+        wrongTargetTouch.target = wrongTarget
+        let rejected = session.handleControl(
+            try envelope(id: 6, payload: .touchEvent(wrongTargetTouch)).serializedData()
+        )
+        XCTAssertEqual(try protocolError(from: rejected).code, .invalidState)
+        XCTAssertTrue(rejected.containsClose)
+    }
+
     private let sessionID = Data(repeating: 0xAB, count: 16)
     private let sessionEpoch: UInt64 = 7
 
@@ -288,6 +333,18 @@ final class ProtocolV1SessionTests: XCTestCase {
         request.mode = .existing
         request.sourceDisplayID = "active-display"
         return request
+    }
+
+    private func touchEvent() -> VSTouchEvent {
+        var point = VSNormalizedPoint()
+        point.x = 0.25
+        point.y = 0.75
+        var touch = VSTouchEvent()
+        touch.inputID = 1
+        touch.pointerID = 1
+        touch.phase = .began
+        touch.position = point
+        return touch
     }
 
     private func readySession() throws -> ProtocolV1SessionCoordinator {
@@ -346,6 +403,7 @@ private extension Array where Element == ProtocolV1SessionAction {
     var containsConnectionReady: Bool { contains { if case .connectionReady = $0 { true } else { false } } }
     var containsTouch: Bool { contains { if case .touch = $0 { true } else { false } } }
     var containsHeartbeat: Bool { contains { if case .heartbeat = $0 { true } else { false } } }
+    var containsClose: Bool { contains { if case .close = $0 { true } else { false } } }
     var containsPeerErrorAndClose: Bool {
         contains { if case .peerError = $0 { true } else { false } } &&
             contains { if case .close = $0 { true } else { false } }

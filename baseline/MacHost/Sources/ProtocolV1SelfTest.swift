@@ -13,8 +13,9 @@ enum ProtocolV1SelfTest {
         testNegotiationAndMediaGate(failures: &failures)
         testRejections(failures: &failures)
         testInputHeartbeatAndMedia(failures: &failures)
+        testTouchTargetAndDisconnect(failures: &failures)
         if failures.isEmpty {
-            print("Protocol v1 self-test: PASS (framing, golden, negotiation, display/video gate, epoch, input, heartbeat, error, media)")
+            print("Protocol v1 self-test: PASS (framing, golden, negotiation, display/video gate, epoch, targeted input, heartbeat, graceful disconnect, error, media)")
             return true
         }
         print("Protocol v1 self-test: FAIL (\(failures.joined(separator: "; ")))")
@@ -333,6 +334,67 @@ enum ProtocolV1SelfTest {
         } catch {
             failures.append("input/media test failed: \(error)")
         }
+    }
+
+    private static func testTouchTargetAndDisconnect(failures: inout [String]) {
+        do {
+            let accepted = try readySession()
+            var activeTarget = VSInputTarget()
+            activeTarget.displayID = "active-display"
+            activeTarget.streamID = 1
+            var targetedTouch = touchEvent()
+            targetedTouch.target = activeTarget
+            guard accepted.handleControl(try envelope(
+                id: 4,
+                payload: .touchEvent(targetedTouch)
+            ).serializedData()).contains(where: { if case .touch = $0 { true } else { false } }) else {
+                failures.append("active stream touch target was not accepted")
+                return
+            }
+
+            let rejected = try readySession()
+            var wrongTarget = activeTarget
+            wrongTarget.displayID = "different-display"
+            var wrongTouch = touchEvent()
+            wrongTouch.target = wrongTarget
+            let rejectedActions = rejected.handleControl(try envelope(
+                id: 4,
+                payload: .touchEvent(wrongTouch)
+            ).serializedData())
+            guard try protocolError(rejectedActions).code == .invalidState,
+                  rejectedActions.contains(where: { if case .close = $0 { true } else { false } }) else {
+                failures.append("wrong touch target did not fail closed")
+                return
+            }
+
+            let disconnected = try readySession()
+            var notice = VSDisconnectNotice()
+            notice.reasonCode = "client_shutdown"
+            let disconnectActions = disconnected.handleControl(try envelope(
+                id: 4,
+                payload: .disconnectNotice(notice)
+            ).serializedData())
+            guard disconnected.phase == .closed,
+                  disconnectActions.contains(where: { if case .close = $0 { true } else { false } }),
+                  try responseEnvelopes(disconnectActions).isEmpty else {
+                failures.append("client DisconnectNotice was not closed gracefully")
+                return
+            }
+        } catch {
+            failures.append("target/disconnect test failed: \(error)")
+        }
+    }
+
+    private static func touchEvent() -> VSTouchEvent {
+        var point = VSNormalizedPoint()
+        point.x = 0.25
+        point.y = 0.75
+        var touch = VSTouchEvent()
+        touch.inputID = 1
+        touch.pointerID = 1
+        touch.phase = .began
+        touch.position = point
+        return touch
     }
 
     private static func makeSession() -> ProtocolV1SessionCoordinator {

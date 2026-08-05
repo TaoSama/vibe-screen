@@ -1,6 +1,6 @@
 # Phase 5 verification record
 
-Date: 2026-08-04  
+Date: 2026-08-05
 Host: macOS 26.4.1, Apple silicon  
 Swift: 6.3.1  
 Selected developer directory: `/Library/Developer/CommandLineTools`
@@ -12,6 +12,7 @@ swift package --package-path apps/ios resolve
 swift build --package-path apps/ios
 swift build --package-path apps/ios -c release
 swift run --package-path apps/ios vibescreen-ios-selftest
+apps/ios/Scripts/verify-generated-protocol.sh
 make protocol
 ```
 
@@ -25,8 +26,24 @@ RUN: codec/backoff
 RUN: multi-display/audio
 RUN: clipboard/file/policy
 RUN: HDR/gesture/wake/advanced-proto
-PASS: Phase 5A-5D core protocol, limits, queues, digest, policy, fallback, wake
+RUN: trusted-LAN startup codecs
+RUN: owner/media/heartbeat generation gates
+PASS: Phase 5A-5D core and trusted-LAN Protocol v1 startup
 ```
+
+The workflow requires `swift test --package-path apps/ios -c release` under
+full Xcode. That Release XCTest target adds deterministic, no-sleep coverage for a
+single-writer control outbox (mixed display/Ping/Pong/config traffic,
+512-message pressure, deliberately held sends, owner rotation, and late
+completion), media pre-ACK/stale-config/replay/fragment rejection through a
+decoder spy, config-epoch frame watermark reset (`epoch 1 / frame 100` to
+`epoch 2 / frame 1`), full VideoConfig boundary validation (size, FPS, bitrate,
+rotation, codec/color enums, and decode limits), invalid-config state
+preservation, fallback state preservation, unknown-field forward compatibility,
+late control/media/error/pixel owner delivery, and heartbeat
+immediate-Pong, miss-budget, correlation, and rotation behavior. The local
+Command Line Tools installation cannot import XCTest; this suite is therefore
+a required full-Xcode GitHub gate rather than local XCTest evidence.
 
 The self-test additionally covers multi-client epoch replacement, per-client
 stream limits/routes, PCM validation and reorder, clipboard explicit-action
@@ -34,6 +51,10 @@ and feedback/digest rejection, managed deny-wins policy, safe filenames,
 sequential chunks, file limits/final SHA-256/cleanup, HDR10→SDR config-epoch
 fallback, gesture persistence/catalog enforcement, the 102-byte WOL vector,
 and every advanced Envelope branch used by the client.
+Trusted-LAN additions cover strict pairing/auth/upgrade codecs, transport
+startup disconnect and Task-cancellation completion, host control message
+ordering/session-epoch validation, Ping/Pong correlation, and the client
+disconnect envelope factory.
 
 Project metadata also passes:
 
@@ -46,9 +67,51 @@ Buf format/lint/build/breaking: pass
 Package.resolved revision: c6fe6442e6a64250495669325044052e113e990c
 Pinned Swift binding regeneration: pass; checked output current
 Second generation SHA-256 manifest diff: empty (deterministic)
+SwiftProtobuf license: bundled in the iOS application Resources
 Phase 3 protocol compatibility: 4/4 pass
 Go security package: pass
 ```
+
+## Baseline MacHost trusted-LAN interoperability
+
+Run the release-build, real two-process loopback from the repository root:
+
+```bash
+apps/ios/Scripts/run_machost_loopback.py
+```
+
+The harness starts the production `Telemachus` executable with its bounded iOS
+loopback adapter on `127.0.0.1:54321`, then starts the iOS Core transport/session
+executable as a separate process. The client uses the production
+generation-scoped `ControlOutbox` for every outbound control envelope. It runs
+a normal lifecycle and a separate invalid-target case. The covered boundary is:
+
+```text
+SSWA/SSWR authentication -> 0D/0D01 upgrade -> ClientHello/HostHello
+-> SessionAccepted/capabilities -> display list/start -> VideoConfigResult
+-> video media frame -> Ping/Pong -> display+stream-targeted TouchEvent
+-> DisconnectNotice
+
+invalid display+stream target -> ProtocolError(INVALID_STATE)
+```
+
+Observed result on the host recorded above:
+
+```text
+iOS Core MacHost loopback: PASS (auth=SSWA/SSWR, upgrade=0D/0D01,
+hello=true, displays=true, videoAck=true, media=true, pong=true,
+targetedTouch=true, disconnect=true)
+iOS Core MacHost loopback: PASS (scenario=invalid-target,
+protocolError=invalidState)
+MacHost loopback: PASS (external lifecycle + invalid-target
+production-process integration)
+```
+
+This proves the iOS Core trusted-LAN transport, FIFO control writer, and
+main-session composition
+against the baseline MacHost. It does not exercise `StreamViewModel`, the
+decoder, or UI; boot the iOS application; use an iOS device; or prove hardware
+VideoToolbox behavior.
 
 ## iOS SDK build evidence
 
@@ -65,6 +128,17 @@ gate adds an XCTest UI smoke test, automatic simulator selection, and unsigned
 generic-iOS archive validation; those new steps require their own CI result and
 must not be retroactively attributed to the earlier build job.
 
+GitHub Actions run
+[`30978213167`](https://github.com/TaoSama/vibe-screen/actions/runs/30978213167)
+from interoperability commit `650803ce461e8b157c2b067178b3427d3687fd6f`
+passed both jobs. The `core` job verified generated bindings, the release Core
+self-test, the real MacHost loopback, and all baseline MacHost self-tests. The
+`app-build-test-archive` job used Xcode 16.4 (`16F6`) and an iPhone 17 Pro
+Simulator on iOS 26.2; `VibeScreenAppUITests` executed 2 tests with 0 failures
+and ended with `** TEST SUCCEEDED **`. The unsigned iPhoneOS Release archive
+ended with `** ARCHIVE SUCCEEDED **`, passed the script's app/binary/license
+checks, and was uploaded as `VibeScreen-unsigned-xcarchive`.
+
 The portable self-test and HarmonyOS core test now consume the same exact
 `contracts/fixtures/client-hello-v1.hex` bytes. HarmonyOS must reproduce the
 fixture exactly; SwiftProtobuf must decode the same Hello fields. This does not
@@ -78,11 +152,12 @@ For the original local run, `xcode-select -p` returned Command Line Tools.
 zero valid signing identities. CI later closed only the SDK compilation gap.
 The following remain unproved until their dedicated gates produce evidence:
 
-- simulator launch and SwiftUI layout on iPhone/iPad sizes;
-- XCTest UI smoke test and unsigned generic-iOS archive creation;
+- iPad-class Simulator layout (the retained smoke run used an iPhone 17 Pro);
 - signing, installation, Local Network permission, and lifecycle behavior;
 - VideoToolbox hardware H.264/HEVC decode and sustained thermal/power behavior;
-- end-to-end Protocol v1 host connection, video, touch, disconnect/reconnect;
+- iOS app/Simulator/device end-to-end host connection, decoded video, touch,
+  and disconnect/reconnect (the macOS Core loopback proves only the transport
+  and Protocol v1 boundary listed above);
 - cross-client golden bytes against the Android application;
 - AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
   file picker/export, UDP broadcast, and managed App Configuration injection;
