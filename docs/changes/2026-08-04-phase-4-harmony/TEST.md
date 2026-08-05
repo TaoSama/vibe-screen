@@ -6,8 +6,8 @@ Date: 2026-08-05
 
 ```text
 cd apps/harmony && pnpm run verify
-Validated 13 HarmonyOS project files (static only; no ArkTS/HAP claim).
-13 tests, 13 passed, 0 failed
+Validated 29 HarmonyOS project files and semantic release boundaries (static only; no ArkTS/HAP claim).
+40 tests, 40 passed, 0 failed
 ```
 
 Coverage includes:
@@ -20,9 +20,19 @@ Coverage includes:
 - formal MediaPacketHeader/Annex-B parsing and payload length rejection;
 - additive unknown fields and truncated fixed-field rejection;
 - epoch/message/stream/config validation and capacity-one media queue;
+- negotiated-capability/input gates and non-finite input rejection;
+- single-writer FIFO, dequeue-time message IDs, response correlation, and a
+  delayed VideoConfigResult interleaved with heartbeat traffic;
+- matching-Pong timeout, retryable recovery policy, and cleanup error aggregation;
+- bounded/priority-aware control backpressure, handshake/config/first-frame watchdog wiring,
+  decoder-configuration rejection, and SDR/8-bit video acceptance;
+- wait-keyframe recovery across queue overflow, frame gaps, decoder push
+  failure, epoch reset, and keyframe push completion;
 - pointer/scroll/key envelope separation, HID/button mapping, rotation, and backoff;
 - browser-global-free UTF-8 handling and advertised video-size/FPS enforcement;
-- AppScope/entry/Hvigor/resource/version/native-dependency/permission static shape.
+- parsed AppScope/entry/Hvigor/resource/version/native-dependency/permission
+  graph, production seam checks, packaged license/notices, and validator
+  negative fixtures.
 
 Hosted `HarmonyOS portable checks (no DevEco or HAP claim)` runs the same frozen
 install and verify command. It cannot type-check `.ets` or validate vendor APIs.

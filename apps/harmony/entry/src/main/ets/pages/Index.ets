@@ -1,4 +1,4 @@
-import { InputPhase } from '../core/protocol/ProtocolModels';
+import { Capability, InputPhase } from '../core/protocol/ProtocolModels';
 import { PeripheralInputMapper } from '../core/input/PeripheralInputMapper';
 import { Rotation } from '../core/input/CoordinateMapper';
 import { SessionUiListener } from '../platform/HarmonySessionController';
@@ -10,9 +10,11 @@ const SURFACE_ID: string = 'video-surface';
 
 class PageSessionListener implements SessionUiListener {
   constructor(private statusCallback: (status: string, streaming: boolean) => void,
-    private geometryCallback: (width: number, height: number, rotation: number) => void) {}
+    private geometryCallback: (width: number, height: number, rotation: number) => void,
+    private capabilityCallback: (capabilities: Capability[]) => void) {}
   onStatus(status: string, streaming: boolean): void { this.statusCallback(status, streaming); }
   onVideoGeometry(width: number, height: number, rotation: number): void { this.geometryCallback(width, height, rotation); }
+  onCapabilities(capabilities: Capability[]): void { this.capabilityCallback(capabilities); }
 }
 
 @Entry
@@ -29,19 +31,37 @@ struct Index {
   @State viewportWidth: number = 1;
   @State viewportHeight: number = 1;
   @State rotation: Rotation = Rotation.DEG_0;
+  @State inputSummary: string = '等待能力协商';
   private surfaceController: XComponentController = new XComponentController();
   private keyMapper: PeripheralInputMapper = new PeripheralInputMapper();
+  private sessionListener: PageSessionListener | undefined;
 
   aboutToAppear(): void {
-    sessionRuntime.attachUi(new PageSessionListener(
-      (status: string, streaming: boolean) => { this.status = status; this.streaming = streaming; this.busy = false; },
+    this.sessionListener = new PageSessionListener(
+      (status: string, streaming: boolean) => {
+        this.status = status; this.streaming = streaming;
+        this.busy = status.startsWith('正在') || status.startsWith('等待') || status.includes('后重连');
+      },
       (width: number, height: number, rotation: number) => {
         this.videoWidth = width; this.videoHeight = height; this.rotation = rotation as Rotation;
-      }
-    ));
+      },
+      (capabilities: Capability[]) => {
+        const inputs: string[] = ['触控'];
+        if (capabilities.includes(Capability.KEYBOARD)) inputs.push('硬件键盘');
+        if (capabilities.includes(Capability.POINTER)) inputs.push('鼠标');
+        if (capabilities.includes(Capability.STYLUS)) inputs.push('手写笔压力');
+        this.inputSummary = inputs.join(' · ');
+      });
+    sessionRuntime.attachUi(this.sessionListener);
     sessionRuntime.restoreHost().then((record: TrustedHostRecord | undefined) => {
       if (record !== undefined) { this.host = record.host; this.port = record.port.toString(); }
     }).catch((error: Error) => { this.status = `读取主机记录失败：${error.message}`; });
+  }
+
+  aboutToDisappear(): void {
+    this.pairingLink = '';
+    if (this.sessionListener !== undefined) sessionRuntime.detachUi(this.sessionListener);
+    this.sessionListener = undefined;
   }
 
   private async connect(): Promise<void> {
@@ -56,9 +76,10 @@ struct Index {
     this.busy = true;
     try {
       const record: TrustedHostRecord = await sessionRuntime.importPairingLink(this.pairingLink);
-      this.host = record.host; this.port = record.port.toString(); this.pairingLink = '';
+      this.host = record.host; this.port = record.port.toString();
       this.status = '已导入地址；当前仅用于可信局域网开发模式';
     } catch (error) { this.status = (error as Error).message; }
+    this.pairingLink = '';
     this.busy = false;
   }
 
@@ -152,7 +173,7 @@ struct Index {
         .alignContent(Alignment.Center).padding(this.streaming ? 0 : 24)
 
       Row({ space: 20 }) {
-        Text('触控 · 硬件键鼠 · 手写笔压力').fontSize(13).fontColor('#AEB9CB')
+        Text(this.inputSummary).fontSize(13).fontColor('#AEB9CB')
         Blank()
         Text(`${this.videoWidth}×${this.videoHeight} · HEVC / H.264`).fontSize(13).fontColor('#AEB9CB')
       }.width('100%')

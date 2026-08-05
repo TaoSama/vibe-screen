@@ -1,4 +1,4 @@
-import { Capability, ClientHello, Codec, EnvelopeMetadata, InputTarget, KeyInput, NormalizedInput,
+import { Capability, ClientHello, Codec, ColorDescription, EnvelopeMetadata, InputTarget, KeyInput, NormalizedInput,
   PROTOCOL_VERSION, ScrollInput, TransportKind, VideoConfig } from './ProtocolModels';
 import { ProtobufWriter } from './ProtobufWriter';
 
@@ -7,6 +7,19 @@ export enum EnvelopePayloadField {
   LIST_DISPLAYS_REQUEST = 40, START_DISPLAY_REQUEST = 42, VIDEO_CONFIG_RESULT = 51,
   REQUEST_KEYFRAME = 52, TOUCH = 60, POINTER = 61, SCROLL = 62, KEY = 63
 }
+
+export type OutboundControlIntent =
+  | { kind: 'clientHello'; hello: ClientHello }
+  | { kind: 'ping'; sequence: bigint }
+  | { kind: 'pong'; sequence: bigint; correlationId: bigint }
+  | { kind: 'listDisplays' }
+  | { kind: 'startDisplay'; displayId: string }
+  | { kind: 'videoConfigResult'; correlationId: bigint; config: VideoConfig; accepted: boolean; reason: string }
+  | { kind: 'requestKeyframe'; streamId: bigint; reason: string }
+  | { kind: 'touch'; event: NormalizedInput; target?: InputTarget }
+  | { kind: 'pointer'; event: NormalizedInput; target?: InputTarget }
+  | { kind: 'scroll'; event: ScrollInput }
+  | { kind: 'key'; event: KeyInput };
 
 export class ProtocolEncoder {
   private envelope(metadata: EnvelopeMetadata, field: EnvelopePayloadField, payload: ProtobufWriter): Uint8Array {
@@ -37,6 +50,21 @@ export class ProtocolEncoder {
     return this.envelope(metadata, EnvelopePayloadField.CLIENT_HELLO, payload);
   }
 
+  intent(metadata: EnvelopeMetadata, intent: OutboundControlIntent): Uint8Array {
+    if (intent.kind === 'clientHello') return this.clientHello(metadata, intent.hello);
+    if (intent.kind === 'ping') return this.ping(metadata, intent.sequence);
+    if (intent.kind === 'pong') return this.pong({ ...metadata, correlationId: intent.correlationId }, intent.sequence);
+    if (intent.kind === 'listDisplays') return this.listDisplays(metadata);
+    if (intent.kind === 'startDisplay') return this.startDisplay(metadata, intent.displayId);
+    if (intent.kind === 'videoConfigResult') return this.videoConfigResult(metadata, intent.correlationId,
+      intent.config, intent.accepted, intent.reason);
+    if (intent.kind === 'requestKeyframe') return this.requestKeyframe(metadata, intent.streamId, intent.reason);
+    if (intent.kind === 'touch') return this.touch(metadata, intent.event, intent.target);
+    if (intent.kind === 'pointer') return this.pointer(metadata, intent.event, intent.target);
+    if (intent.kind === 'scroll') return this.scroll(metadata, intent.event);
+    return this.key(metadata, intent.event);
+  }
+
   ping(metadata: EnvelopeMetadata, sequence: bigint): Uint8Array {
     return this.envelope(metadata, EnvelopePayloadField.PING, new ProtobufWriter().uint64(1, sequence));
   }
@@ -65,6 +93,7 @@ export class ProtocolEncoder {
     const correlated: EnvelopeMetadata = { ...metadata, correlationId };
     const payload: ProtobufWriter = new ProtobufWriter().uint64(1, config.configEpoch).bool(2, accepted)
       .string(3, reason).uint64(4, config.streamId);
+    if (accepted && config.colorDescription !== undefined) payload.message(5, this.colorDescription(config.colorDescription));
     return this.envelope(correlated, EnvelopePayloadField.VIDEO_CONFIG_RESULT, payload);
   }
 
@@ -110,6 +139,11 @@ export class ProtocolEncoder {
 
   private inputTarget(target: InputTarget): ProtobufWriter {
     return new ProtobufWriter().string(1, target.displayId).uint64(2, target.streamId);
+  }
+
+  private colorDescription(color: ColorDescription): ProtobufWriter {
+    return new ProtobufWriter().uint32(1, color.primaries).uint32(2, color.transferFunction)
+      .uint32(3, color.matrixCoefficients).bool(4, color.fullRange).uint32(5, color.bitDepth);
   }
 
   private repeatedEnums(writer: ProtobufWriter, field: number, values: number[], packed: boolean): void {
