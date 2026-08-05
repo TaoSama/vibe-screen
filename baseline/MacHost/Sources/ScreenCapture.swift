@@ -81,6 +81,10 @@ class ScreenCapture {
     private var isRestarting = false
     private var isHealthCheckRunning = false
     private var isStopping = false
+    private var restartTask: Task<Void, Never>?
+    private let streamStopBarrier = AsyncStopBarrier()
+    private var streamStartTask: Task<Void, Error>?
+    private var isSCStreamStarted = false
 
     // CGDisplayStream fallback
     private var cgDisplayStream: CGDisplayStream?
@@ -524,10 +528,20 @@ class ScreenCapture {
                     ]
                 )
             }
-            try await stream.startCapture()
+            let startTask = Task {
+                try await stream.startCapture()
+                self.isSCStreamStarted = true
+            }
+            streamStartTask = startTask
+            try await startTask.value
+            streamStartTask = nil
+            guard !isStopping else { throw CancellationError() }
             debugLog("SCStream capture started — starting frame flow monitor")
             startFrameMonitor()
+        } catch is CancellationError where isStopping {
+            throw CancellationError()
         } catch {
+            streamStartTask = nil
             debugLog("Failed to start SCStream capture: \(error)")
             debugLog("Attempting CGDisplayStream fallback due to start failure")
             guard attemptFallbackCapture() else {
@@ -800,34 +814,57 @@ class ScreenCapture {
         restartAttempted = true
         stateLock.withLock { $0.hasReceivedFirstFrame = false }
 
-        Task {
+        restartTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                self.isRestarting = false
+                self.restartTask = nil
+            }
             do {
                 // Stop existing stream
-                try? await stream?.stopCapture()
-                stream = nil
-                streamOutput = nil
-                streamDelegate = nil
-                display = nil
+                let previousStream = self.stream
+                let previousStreamWasStarted = self.isSCStreamStarted
+                self.isSCStreamStarted = false
+                self.stream = nil
+                self.streamOutput = nil
+                self.streamDelegate = nil
+                self.display = nil
+                if previousStreamWasStarted {
+                    try await previousStream?.stopCapture()
+                }
+                await self.streamStopBarrier.waitForAll()
+                try Task.checkCancellation()
+                guard !self.isStopping else { return }
 
                 // Re-setup
-                try await setupDisplay()
-                try await setupStream()
+                try await self.setupDisplay()
+                try Task.checkCancellation()
+                guard !self.isStopping else { return }
+                try await self.setupStream()
+                try Task.checkCancellation()
+                guard !self.isStopping else { return }
 
                 // Re-attach encoding pipeline using shared handler
-                configureFrameHandler(label: "restart")
-                encoder?.requestKeyframe()
+                self.configureFrameHandler(label: "restart")
+                self.encoder?.requestKeyframe()
 
-                try await stream?.startCapture()
-                isRestarting = false
+                try await self.stream?.startCapture()
+                self.isSCStreamStarted = true
+                try Task.checkCancellation()
+                guard !self.isStopping else { return }
                 debugLog("SCStream restarted — starting frame flow monitor")
-                startFrameMonitor()
+                self.startFrameMonitor()
+            } catch is CancellationError {
+                if !self.isStopping {
+                    debugLog("SCStream restart superseded")
+                }
             } catch {
-                isRestarting = false
+                guard !self.isStopping else { return }
                 debugLog("SCStream restart failed: \(error) — falling back to CGDisplayStream")
-                if !attemptFallbackCapture() {
-                    reportTerminalCaptureFailure(underlying: error)
+                if !self.attemptFallbackCapture() {
+                    self.reportTerminalCaptureFailure(underlying: error)
                 } else {
-                    startFrameMonitor()
+                    self.startFrameMonitor()
                 }
             }
         }
@@ -867,13 +904,23 @@ class ScreenCapture {
         }
 
         if stopSCStream {
-            // Stop SCStream synchronously (nil out output first to prevent new frames)
+            // Detach output immediately, then retain the stop task so a host
+            // teardown can await ScreenCaptureKit before creating a new stream.
+            let streamToStop = stream
+            let streamWasStarted = isSCStreamStarted
+            isSCStreamStarted = false
             streamOutput?.onFrameReceived = nil
-            Task {
-                try? await stream?.stopCapture()
-                stream = nil
-                streamOutput = nil
-                streamDelegate = nil
+            stream = nil
+            streamOutput = nil
+            streamDelegate = nil
+            if streamWasStarted {
+                streamStopBarrier.enqueue {
+                    do {
+                        try await streamToStop?.stopCapture()
+                    } catch {
+                        debugLog("Failed to stop SCStream before fallback: \(error)")
+                    }
+                }
             }
         }
 
@@ -1044,7 +1091,7 @@ class ScreenCapture {
 
     // MARK: - Stop streaming
 
-    func stopStreaming() {
+    func stopStreaming() async {
         isStopping = true
         onTerminalCaptureFailure = nil
         // Cancel frame flow monitor
@@ -1053,10 +1100,34 @@ class ScreenCapture {
         framePacingTimer = nil
         pacingLock.withLock { $0.latestPixelBuffer = nil }
 
-        // Stop SCStream
-        Task {
+        restartTask?.cancel()
+        await restartTask?.value
+        restartTask = nil
+        if let streamStartTask {
             do {
-                try await stream?.stopCapture()
+                try await streamStartTask.value
+            } catch {
+                if !Task.isCancelled {
+                    debugLog("SCStream start ended during teardown: \(error)")
+                }
+            }
+        }
+        streamStartTask = nil
+        await streamStopBarrier.waitForAll()
+
+        // Detach references before suspension so no callback can reuse the
+        // stream while ScreenCaptureKit completes teardown.
+        let streamToStop = stream
+        let streamWasStarted = isSCStreamStarted
+        isSCStreamStarted = false
+        streamOutput?.onFrameReceived = nil
+        stream = nil
+        streamOutput = nil
+        streamDelegate = nil
+        display = nil
+        if streamWasStarted {
+            do {
+                try await streamToStop?.stopCapture()
             } catch {
                 debugLog("Failed to stop SCStream capture: \(error)")
             }
