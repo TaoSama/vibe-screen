@@ -828,17 +828,15 @@ class MainActivity : AppCompatActivity() {
                     revokeInternetPairing("user_requested")
                 }.show()
         }
-        try {
-            internetStoredSessionFactory.retryPendingPairingPersistenceCleanup(
-                internetProfileStore::removePairingBinding,
-            )
-        } catch (failure: Throwable) {
-            showInternetFailure(failure)
-        }
         val pendingCleanup = retryPendingInternetRevocationCleanup()
         if (pendingCleanup.isNotEmpty()) {
             binding.internetErrorText.text = getString(R.string.internet_revoke_partial_failure, pendingCleanup.joinToString())
             binding.internetErrorText.visibility = View.VISIBLE
+        }
+        try {
+            retryPendingPairingPersistenceCleanup()
+        } catch (failure: Throwable) {
+            showInternetFailure(failure)
         }
         refreshInternetProfileUi()
         if (internetSession != null && internetRevocationCoordinator.hasActiveReservation()) {
@@ -901,12 +899,10 @@ class MainActivity : AppCompatActivity() {
     private fun beginInternetPairing(encodedUrl: String) {
         try {
             check(allowInternetCredentialMutation()) { "Internet revocation quarantine is active" }
-            internetStoredSessionFactory.retryPendingPairingPersistenceCleanup(
-                internetProfileStore::removePairingBinding,
-            )
             check(retryPendingInternetRevocationCleanup().isEmpty()) {
                 "Finish the pending local revocation cleanup before pairing again"
             }
+            retryPendingPairingPersistenceCleanup()
             pendingInternetPairing?.close()
             val identityEpoch = internetStoredSessionFactory.reserveNextIdentityEpoch()
             val identity = AndroidDeviceIdentityStore().loadOrCreate(internetDeviceId, identityEpoch)
@@ -985,7 +981,7 @@ class MainActivity : AppCompatActivity() {
                             durableBlock = {
                                 internetProfileStore.hasDurableCredentialMutationBlock(
                                     pending.publicMetadata.pairingIdentifier,
-                                )
+                                ) || internetStoredSessionFactory.hasPendingPairingPersistenceCleanup()
                             },
                         ) { permit ->
                             pending.complete(parsed).also { completed ->
@@ -2264,7 +2260,8 @@ class MainActivity : AppCompatActivity() {
             ?: internetProfileStore.loadPublicProfile()?.pairingIdentifier
         val quarantined =
             internetRevocationCoordinator.isCredentialMutationBlocked {
-                internetProfileStore.hasDurableCredentialMutationBlock(pairingIdentifier)
+                internetProfileStore.hasDurableCredentialMutationBlock(pairingIdentifier) ||
+                    internetStoredSessionFactory.hasPendingPairingPersistenceCleanup()
             }
         if (quarantined && ::binding.isInitialized) {
             binding.internetConnectButton.isEnabled = false
@@ -2321,6 +2318,21 @@ class MainActivity : AppCompatActivity() {
         } catch (failure: Throwable) {
             android.util.Log.e(INTERNET_LOG_TAG, "Could not retry durable Internet revocation cleanup", failure)
             listOf("cleanup state")
+        }
+    }
+
+    private fun retryPendingPairingPersistenceCleanup(): Boolean {
+        val pairingIdentifier = internetProfileStore.verifiedPairingIdentifier()
+            ?: internetProfileStore.loadPublicProfile()?.pairingIdentifier
+        return internetRevocationCoordinator.withCredentialMutationAdmission(
+            durableBlock = { internetProfileStore.hasDurableCredentialMutationBlock(pairingIdentifier) },
+        ) { permit ->
+            internetStoredSessionFactory.retryPendingPairingPersistenceCleanup(
+                currentPairingIdentifier = pairingIdentifier,
+                cleanupBusinessState = { cleanupPairingIdentifier ->
+                    internetProfileStore.removePairingBindingIfMatches(permit, cleanupPairingIdentifier)
+                },
+            )
         }
     }
 

@@ -4,6 +4,7 @@ import android.content.Context
 import dev.telemachus.display.internet.AndroidWebRtcPeerEngine
 import dev.telemachus.display.internet.IceServer
 import dev.telemachus.display.internet.IceTransportPolicy
+import dev.telemachus.display.internet.InternetProductAdmissionGate
 import dev.telemachus.display.internet.PeerConfiguration
 import dev.telemachus.display.internet.PeerRole
 import dev.telemachus.display.internet.SignalingConfiguration
@@ -53,12 +54,13 @@ class AndroidStoredInternetSessionFactory(
         sharedSecret: ByteArray,
         bootstrapSecret: ByteArray,
     ) {
+        InternetProductAdmissionGate.requireHeld()
         require(pairingIdentifier.isNotBlank()) { "Pairing identifier must not be blank" }
         require(sharedSecret.isNotEmpty()) { "Shared secret must not be empty" }
         require(bootstrapSecret.size == BOOTSTRAP_SECRET_BYTES) { "Bootstrap secret must contain 32 bytes" }
         val record = PairingSecretRecordCodec.encode(sharedSecret, bootstrapSecret)
         try {
-            pairingPersistence.begin(secretName(pairingIdentifier), record)
+            pairingPersistence.begin(secretName(pairingIdentifier), record, pairingIdentifier)
         } finally {
             record.fill(0)
         }
@@ -69,6 +71,7 @@ class AndroidStoredInternetSessionFactory(
         commitBusinessState: () -> Unit,
         cleanupBusinessState: () -> Unit,
     ) {
+        InternetProductAdmissionGate.requireHeld()
         require(pairingIdentifier.isNotBlank()) { "Pairing identifier must not be blank" }
         pairingPersistence.complete(
             secretName(pairingIdentifier),
@@ -77,8 +80,23 @@ class AndroidStoredInternetSessionFactory(
         )
     }
 
-    fun retryPendingPairingPersistenceCleanup(cleanupBusinessState: () -> Unit = {}): Boolean =
-        pairingPersistence.retryPendingCleanup(cleanupBusinessState)
+    fun retryPendingPairingPersistenceCleanup(
+        currentPairingIdentifier: String? = null,
+        cleanupBusinessState: (String) -> Unit = {},
+    ): Boolean {
+        InternetProductAdmissionGate.requireHeld()
+        return pairingPersistence.retryPendingCleanup { targetName, storedPairingIdentifier ->
+            val pairingIdentifier =
+                storedPairingIdentifier
+                    ?: currentPairingIdentifier?.takeIf { secretName(it) == targetName }
+            if (pairingIdentifier != null) cleanupBusinessState(pairingIdentifier)
+        }
+    }
+
+    fun hasPendingPairingPersistenceCleanup(): Boolean {
+        InternetProductAdmissionGate.requireHeld()
+        return pairingPersistence.hasPendingCleanup()
+    }
 
     fun removePairingSecrets(pairingIdentifier: String) {
         require(pairingIdentifier.isNotBlank()) { "Pairing identifier must not be blank" }
