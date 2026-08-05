@@ -54,7 +54,10 @@ as zero-length oneof values rather than omitted.
 ## Platform seams
 
 `HarmonyTransport` owns socket generation, upgrade timeout, logical channel
-dispatch, and stale callback suppression. `HarmonySessionController` owns the
+dispatch, and stale callback suppression. Each socket generation has one close
+lease: parse failure, timeout, socket error/close, controller close, and connect
+supersede race to claim it, and only the winner detaches, closes, and emits at
+most one disconnect notification. `HarmonySessionController` owns the
 single active product session, heartbeat timer, decoder, reconnect timer,
 surface identity, input target, and UI status. Transport, controller, and
 decoder each use operation generations; cleanup synchronously detaches captured
@@ -70,7 +73,10 @@ but do not suppress an otherwise safe retryable reconnect.
 
 `HarmonyVideoDecoder` keeps input buffers until a latest frame is available,
 writes Annex-B payloads, renders output buffers to the XComponent surface, and
-reports the first rendered output before the page claims streaming. The exact
+reports the first rendered output before the page claims streaming. Once a
+candidate is registered, configure/surface/prepare/start run transactionally;
+any stage failure owner-safely detaches and best-effort stops/releases it, with
+the primary and cleanup failures aggregated. The exact
 commercial HarmonyOS SDK AVCodecKit declarations are not available in the
 portable environment; DevEco compilation and device behavior remain mandatory.
 
@@ -105,8 +111,10 @@ runtime behavior. Data handling and record deletion are documented in
 
 The static project validator checks the real AppScope/entry/Hvigor graph,
 resource/ability wiring, version consistency, native-only dependency boundary,
-permission boundary, production capability/writer/keyframe seams, packaged
-license resources, and that HAP targets call real OHPM/Hvigor commands. JSON5
-is parsed rather than searched as text, and negative fixtures cover broken
-references, extra permissions, comment-only build tokens, and disconnected
-production gates. It is explicitly not an ArkTS compiler or HAP substitute.
+permission boundary, method-scoped production imports/calls, packaged license
+resources, and that HAP targets call real OHPM/Hvigor commands. JSON5 is parsed
+rather than searched as text. TypeScript-compatible ArkTS sources and the
+non-declarative ArkUI page shell must have no portable parse diagnostics;
+negative fixtures retain misleading dead-code identifiers while disconnecting
+the real call path. This remains syntax/call-graph evidence, not the DevEco
+ArkTS API/type checker, full declarative ArkUI parser, or a HAP substitute.

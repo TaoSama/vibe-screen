@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isDeepStrictEqual, parseArgs } from 'node:util';
@@ -16,12 +16,15 @@ const REQUIRED_FILES = [
   'entry/src/main/module.json5', 'entry/src/main/ets/entryability/EntryAbility.ets',
   'entry/src/main/ets/pages/Index.ets', 'entry/src/main/resources/base/element/color.json',
   'entry/src/main/ets/core/media/LatestFrameQueue.ts',
+  'entry/src/main/ets/core/media/DecoderLifecycle.ts',
   'entry/src/main/ets/core/protocol/OutboundControlWriter.ts',
   'entry/src/main/ets/core/session/ClientCapabilities.ts',
   'entry/src/main/ets/core/session/HeartbeatMonitor.ts',
   'entry/src/main/ets/core/session/ProgressWatchdog.ts',
   'entry/src/main/ets/core/session/ProductSession.ts',
+  'entry/src/main/ets/core/transport/TransportCloseOwner.ts',
   'entry/src/main/ets/platform/HarmonySessionController.ets',
+  'entry/src/main/ets/platform/HarmonyTransport.ets',
   'entry/src/main/ets/platform/HarmonyVideoDecoder.ets',
   'entry/src/main/resources/base/element/string.json', 'entry/src/main/resources/base/profile/main_pages.json',
   'entry/src/main/resources/rawfile/license.txt', 'entry/src/main/resources/rawfile/third_party_notices.md',
@@ -54,6 +57,48 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
     const source = read(relative);
     try { return JSON5.parse(source); }
     catch (error) { fail(`${relative}: invalid JSON5: ${error.message}`); return undefined; }
+  };
+
+  const productionSourceFiles = ['hvigorfile.ts', 'entry/hvigorfile.ts'];
+  const collectProductionSources = (directory, prefix) => {
+    const entries = readdirSync(resolve(root, directory), { withFileTypes: true });
+    for (const entry of entries) {
+      const relative = `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) collectProductionSources(`${directory}/${entry.name}`, relative);
+      else if (entry.isFile() && (entry.name.endsWith('.ts') || entry.name.endsWith('.ets'))) productionSourceFiles.push(relative);
+    }
+  };
+  collectProductionSources('entry/src/main/ets', 'entry/src/main/ets');
+  productionSourceFiles.sort();
+
+  const normalizeArkUiForPortableParse = (relative, source) => {
+    if (relative !== 'entry/src/main/ets/pages/Index.ets') return source;
+    const builderOffset = source.indexOf('\n  @Builder');
+    const scriptSection = builderOffset < 0 ? source : `${source.slice(0, builderOffset)}\n}`;
+    return scriptSection
+      .replace(/^\s*@(Entry|Component)\s*$/gm, (match) => ' '.repeat(match.length))
+      .replace(/\bstruct\b/, 'class ')
+      .replace(/@State\s+/g, (match) => ' '.repeat(match.length));
+  };
+
+  const portableSourceFiles = new Map();
+  for (const relative of productionSourceFiles) {
+    const sourceFile = ts.createSourceFile(relative, normalizeArkUiForPortableParse(relative, read(relative)),
+      ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    portableSourceFiles.set(relative, sourceFile);
+    for (const diagnostic of sourceFile.parseDiagnostics) {
+      const position = sourceFile.getLineAndCharacterOfPosition(diagnostic.start ?? 0);
+      fail(`${relative}:${position.line + 1}:${position.character + 1}: portable parse error: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ')}`);
+    }
+  }
+
+  const relationshipSourceFile = (relative) => {
+    if (relative !== 'entry/src/main/ets/pages/Index.ets') return portableSourceFiles.get(relative);
+    const source = read(relative)
+      .replace(/^\s*@(Entry|Component)\s*$/gm, (match) => ' '.repeat(match.length))
+      .replace(/\bstruct\b/, 'class ')
+      .replace(/@State\s+/g, (match) => ' '.repeat(match.length));
+    return ts.createSourceFile(relative, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   };
 
   for (const relative of REQUIRED_FILES) {
@@ -177,29 +222,202 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   validateHvigor('hvigorfile.ts', 'appTasks');
   validateHvigor('entry/hvigorfile.ts', 'hapTasks');
 
-  const requireIdentifiers = (relative, identifiers) => {
-    const sourceFile = ts.createSourceFile(relative, read(relative), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-    const found = new Set();
-    const visit = (node) => { if (ts.isIdentifier(node)) found.add(node.text); ts.forEachChild(node, visit); };
+  const visitSource = (relative, visitor) => {
+    const sourceFile = relationshipSourceFile(relative);
+    if (sourceFile === undefined) { fail(`${relative}: source was not parsed`); return; }
+    const visit = (node) => { visitor(node, sourceFile); ts.forEachChild(node, visit); };
     visit(sourceFile);
-    for (const identifier of identifiers) check(found.has(identifier), `${relative}: missing identifier ${identifier}`);
   };
-  requireIdentifiers('entry/src/main/ets/pages/Index.ets',
-    ['XComponentController', 'sessionRuntime', 'onTouch', 'onMouse', 'onKeyEvent']);
-  requireIdentifiers('entry/src/main/ets/entryability/EntryAbility.ets', ['onForeground', 'onBackground', 'onDestroy']);
-  requireIdentifiers('entry/src/main/ets/platform/HarmonySessionController.ets',
-    ['OutboundControlWriter', 'HARMONY_ADVERTISED_CAPABILITIES', 'canSend', 'heartbeatTimedOut',
-      'completeVideoConfiguration', 'onKeyframeRequired', 'runAllCleanup', 'armSessionWatchdog', 'ProgressWatchdog']);
-  requireIdentifiers('entry/src/main/ets/core/protocol/OutboundControlWriter.ts',
-    ['MAX_PENDING_CONTROLS', 'nextMessageId', 'drain']);
-  requireIdentifiers('entry/src/main/ets/core/session/ProductSession.ts',
-    ['bitDepth', 'bitrateKbps', 'CONFIGURING_VIDEO', 'heartbeatTimedOut']);
-  requireIdentifiers('entry/src/main/ets/core/session/ClientCapabilities.ts',
-    ['HARMONY_ADVERTISED_CAPABILITIES', 'HARMONY_REQUIRED_CAPABILITIES', 'acceptNegotiated']);
-  requireIdentifiers('entry/src/main/ets/core/media/LatestFrameQueue.ts',
-    ['WAITING_FOR_KEYFRAME', 'KEYFRAME_PENDING', 'DECODABLE', 'requestKeyframe']);
-  requireIdentifiers('entry/src/main/ets/platform/PairingStore.ets',
-    ['serialized', 'upsert', 'update', 'decodeIdentity', 'legacy']);
+  const hasNamedImport = (relative, moduleName, importedName) => {
+    let found = false;
+    visitSource(relative, (node) => {
+      if (!ts.isImportDeclaration(node) || node.moduleSpecifier.text !== moduleName) return;
+      const bindings = node.importClause?.namedBindings;
+      if (bindings !== undefined && ts.isNamedImports(bindings) && bindings.elements.some((element) =>
+        (element.propertyName?.text ?? element.name.text) === importedName)) found = true;
+    });
+    return found;
+  };
+  const classMethod = (relative, className, methodName) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    if (sourceFile === undefined) return undefined;
+    for (const statement of sourceFile.statements) {
+      if (ts.isClassDeclaration(statement) && statement.name?.text === className) {
+        return statement.members.find((member) => ts.isMethodDeclaration(member) && member.name.getText(sourceFile) === methodName);
+      }
+    }
+    return undefined;
+  };
+  const nodeHasMethodCall = (node, sourceFile, receiver, methodName) => {
+    let found = false;
+    const visit = (candidate) => {
+      if (ts.isCallExpression(candidate) && ts.isPropertyAccessExpression(candidate.expression) &&
+        candidate.expression.name.text === methodName && candidate.expression.expression.getText(sourceFile) === receiver) found = true;
+      ts.forEachChild(candidate, visit);
+    };
+    visit(node);
+    return found;
+  };
+  const methodHasCall = (relative, className, containerMethod, receiver, calledMethod) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, containerMethod);
+    return sourceFile !== undefined && method !== undefined && nodeHasMethodCall(method, sourceFile, receiver, calledMethod);
+  };
+  const methodHasCallArgument = (relative, className, containerMethod, receiver, calledMethod, argumentText) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, containerMethod);
+    if (sourceFile === undefined || method === undefined) return false;
+    let found = false;
+    const visit = (node) => {
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === calledMethod && node.expression.expression.getText(sourceFile) === receiver &&
+        node.arguments.some((argument) => argument.getText(sourceFile) === argumentText)) found = true;
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return found;
+  };
+  const methodHasDirectCall = (relative, className, containerMethod, functionName) => {
+    const method = classMethod(relative, className, containerMethod);
+    if (method === undefined) return false;
+    let found = false;
+    const visit = (node) => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === functionName) found = true;
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return found;
+  };
+  const hasConstructorCall = (relative, className) => {
+    let found = false;
+    visitSource(relative, (node) => {
+      if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === className) found = true;
+    });
+    return found;
+  };
+  const hasClassMethod = (relative, className, methodName) => {
+    let found = false;
+    visitSource(relative, (node) => {
+      if (ts.isClassDeclaration(node) && node.name?.text === className && node.members.some((member) =>
+        ts.isMethodDeclaration(member) && member.name.getText() === methodName)) found = true;
+    });
+    return found;
+  };
+  const hasEnumMembers = (relative, enumName, members) => {
+    let found = false;
+    visitSource(relative, (node) => {
+      if (ts.isEnumDeclaration(node) && node.name.text === enumName) {
+        const names = new Set(node.members.map((member) => member.name.getText().replaceAll("'", '')));
+        found = members.every((member) => names.has(member));
+      }
+    });
+    return found;
+  };
+  const hasIdentifierUseOutsideDeclaration = (relative, identifier) => {
+    let count = 0;
+    visitSource(relative, (node) => { if (ts.isIdentifier(node) && node.text === identifier) count += 1; });
+    return count > 1;
+  };
+
+  const requireImport = (relative, moduleName, importedName) => check(hasNamedImport(relative, moduleName, importedName),
+    `${relative}: must import ${importedName} from ${moduleName}`);
+  const requireCallInMethod = (relative, className, containerMethod, receiver, calledMethod) =>
+    check(methodHasCall(relative, className, containerMethod, receiver, calledMethod),
+      `${relative}: ${className}.${containerMethod}() must call ${receiver}.${calledMethod}()`);
+  const requireCallArgumentInMethod = (relative, className, containerMethod, receiver, calledMethod, argumentText) =>
+    check(methodHasCallArgument(relative, className, containerMethod, receiver, calledMethod, argumentText),
+      `${relative}: ${className}.${containerMethod}() must call ${receiver}.${calledMethod}(${argumentText})`);
+  const requireConstructorCall = (relative, className) => check(hasConstructorCall(relative, className),
+    `${relative}: production path must construct ${className}`);
+
+  const indexPath = 'entry/src/main/ets/pages/Index.ets';
+  requireImport(indexPath, '../platform/SessionRuntime', 'sessionRuntime');
+  requireCallInMethod(indexPath, 'Index', 'aboutToAppear', 'sessionRuntime', 'attachUi');
+  requireCallInMethod(indexPath, 'Index', 'aboutToAppear', 'sessionRuntime', 'restoreHost');
+  requireCallInMethod(indexPath, 'Index', 'aboutToDisappear', 'sessionRuntime', 'detachUi');
+  requireCallInMethod(indexPath, 'Index', 'connect', 'sessionRuntime', 'connect');
+  requireCallInMethod(indexPath, 'Index', 'importLink', 'sessionRuntime', 'importPairingLink');
+  requireCallInMethod(indexPath, 'Index', 'handleTouch', 'sessionRuntime', 'sendTouch');
+  requireCallInMethod(indexPath, 'Index', 'handleMouse', 'sessionRuntime', 'sendPointer');
+  requireCallInMethod(indexPath, 'Index', 'handleKey', 'sessionRuntime', 'sendKey');
+  check(read(indexPath).includes('.onLoad(() => sessionRuntime.setSurface(') &&
+    read(indexPath).includes('.onDestroy(() => sessionRuntime.clearSurface())'),
+    `${indexPath}: XComponent lifecycle must call sessionRuntime.setSurface()/clearSurface()`);
+  requireConstructorCall(indexPath, 'XComponentController');
+
+  const abilityPath = 'entry/src/main/ets/entryability/EntryAbility.ets';
+  requireImport(abilityPath, '../platform/SessionRuntime', 'sessionRuntime');
+  requireCallInMethod(abilityPath, 'EntryAbility', 'onForeground', 'sessionRuntime', 'onForeground');
+  requireCallInMethod(abilityPath, 'EntryAbility', 'onBackground', 'sessionRuntime', 'onBackground');
+  requireCallInMethod(abilityPath, 'EntryAbility', 'onDestroy', 'sessionRuntime', 'disconnect');
+
+  const controllerPath = 'entry/src/main/ets/platform/HarmonySessionController.ets';
+  requireImport(controllerPath, '../core/protocol/OutboundControlWriter', 'OutboundControlWriter');
+  requireImport(controllerPath, '../core/session/ClientCapabilities', 'HARMONY_ADVERTISED_CAPABILITIES');
+  requireImport(controllerPath, '../core/session/CleanupCoordinator', 'runAllCleanup');
+  requireImport(controllerPath, '../core/session/ProgressWatchdog', 'ProgressWatchdog');
+  requireConstructorCall(controllerPath, 'OutboundControlWriter');
+  requireConstructorCall(controllerPath, 'ProgressWatchdog');
+  requireCallArgumentInMethod(controllerPath, 'HarmonySessionController', 'sendTouch', 'active', 'canSend', 'Capability.TOUCH');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendTouch', 'active', 'touch');
+  requireCallArgumentInMethod(controllerPath, 'HarmonySessionController', 'sendPointer', 'active', 'canSend', 'Capability.POINTER');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendPointer', 'active', 'pointer');
+  requireCallArgumentInMethod(controllerPath, 'HarmonySessionController', 'sendScroll', 'active', 'canSend', 'Capability.POINTER');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendScroll', 'active', 'scroll');
+  requireCallArgumentInMethod(controllerPath, 'HarmonySessionController', 'sendKey', 'active', 'canSend', 'Capability.KEYBOARD');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendKey', 'active', 'key');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendAction', 'writer', 'enqueue');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'configureVideo', 'this.videoDecoder', 'configure');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'configureVideo', 'active', 'completeVideoConfiguration');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'startHeartbeat', 'active', 'heartbeatTimedOut');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'onTransportReady', 'this', 'armSessionWatchdog');
+  check(methodHasDirectCall(controllerPath, 'HarmonySessionController', 'cleanupResources', 'runAllCleanup'),
+    `${controllerPath}: HarmonySessionController.cleanupResources() must call runAllCleanup()`);
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'cleanupResources', 'this.transport', 'close');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'cleanupResources', 'this.videoDecoder', 'release');
+
+  const decoderPath = 'entry/src/main/ets/platform/HarmonyVideoDecoder.ets';
+  requireImport(decoderPath, '../core/media/DecoderLifecycle', 'DecoderLifecycle');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'DecoderLifecycle', 'initialize');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'this', 'detachCandidateForCleanup');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'releaseDetached', 'detached.decoder', 'stop');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'releaseDetached', 'detached.decoder', 'release');
+
+  const transportPath = 'entry/src/main/ets/platform/HarmonyTransport.ets';
+  requireImport(transportPath, '../core/transport/TransportCloseOwner', 'TransportCloseOwner');
+  requireConstructorCall(transportPath, 'TransportCloseOwner');
+  requireCallInMethod(transportPath, 'HarmonyTransport', 'connect', 'this', 'terminate');
+  requireCallInMethod(transportPath, 'HarmonyTransport', 'close', 'this', 'terminate');
+  requireCallInMethod(transportPath, 'HarmonyTransport', 'terminate', 'this.closeOwner', 'claim');
+  requireCallInMethod(transportPath, 'HarmonyTransport', 'terminate', 'candidate', 'close');
+  requireCallInMethod(transportPath, 'HarmonyTransport', 'terminate', 'listener', 'onDisconnected');
+
+  const writerPath = 'entry/src/main/ets/core/protocol/OutboundControlWriter.ts';
+  check(hasIdentifierUseOutsideDeclaration(writerPath, 'MAX_PENDING_CONTROLS'),
+    `${writerPath}: MAX_PENDING_CONTROLS must bound the production queue`);
+  check(hasClassMethod(writerPath, 'OutboundControlWriter', 'drain'), `${writerPath}: OutboundControlWriter.drain() is required`);
+
+  const sessionPath = 'entry/src/main/ets/core/session/ProductSession.ts';
+  requireImport(sessionPath, './ClientCapabilities', 'ClientCapabilities');
+  requireImport(sessionPath, './HeartbeatMonitor', 'HeartbeatMonitor');
+  requireCallInMethod(sessionPath, 'ProductSession', 'onSessionAccepted', 'this.capabilityState', 'acceptNegotiated');
+  requireCallInMethod(sessionPath, 'ProductSession', 'heartbeatTimedOut', 'this.heartbeatMonitor', 'timedOut');
+  check(hasEnumMembers(sessionPath, 'ProductSessionState', ['CONFIGURING_VIDEO']),
+    `${sessionPath}: ProductSessionState.CONFIGURING_VIDEO is required`);
+
+  const capabilitiesPath = 'entry/src/main/ets/core/session/ClientCapabilities.ts';
+  check(hasClassMethod(capabilitiesPath, 'ClientCapabilities', 'acceptNegotiated'),
+    `${capabilitiesPath}: ClientCapabilities.acceptNegotiated() is required`);
+
+  const queuePath = 'entry/src/main/ets/core/media/LatestFrameQueue.ts';
+  check(hasEnumMembers(queuePath, 'FrameQueueState', ['WAITING_FOR_KEYFRAME', 'KEYFRAME_PENDING', 'DECODABLE']),
+    `${queuePath}: FrameQueueState must retain wait/keyframe/decodable states`);
+
+  const pairingPath = 'entry/src/main/ets/platform/PairingStore.ets';
+  requireImport(pairingPath, '@kit.AssetStoreKit', 'asset');
+  requireCallInMethod(pairingPath, 'PairingStore', 'saveTrustedHost', 'this', 'serialized');
+  requireCallInMethod(pairingPath, 'PairingStore', 'clientId', 'this', 'decodeIdentity');
+  requireCallInMethod(pairingPath, 'PairingStore', 'upsert', 'asset', 'update');
 
   for (const relative of ['entry/src/main/ets/core/protocol/ProtobufReader.ts',
     'entry/src/main/ets/core/protocol/ProtobufWriter.ts', 'entry/src/main/ets/platform/PairingStore.ets']) {

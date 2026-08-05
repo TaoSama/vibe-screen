@@ -33,9 +33,12 @@ make doctor
 ```
 
 `pnpm run verify` checks the real project layout, type-checks only the portable
-core, and runs golden/unit tests against the shared Protocol v1 fixtures. It
-does not compile `.ets`, invoke DevEco, or produce a HAP. `make doctor` reports
-whether OHPM and Hvigor are available.
+core, parses TypeScript-compatible production ArkTS plus the non-declarative
+ArkUI page shell, verifies method-scoped production imports/calls, and runs
+golden/unit tests against the shared Protocol v1 fixtures. It does not run the
+ArkTS API/type checker, parse the complete declarative ArkUI builder grammar,
+invoke DevEco, or produce a HAP. `make doctor` reports whether OHPM and Hvigor
+are available.
 
 ## DevEco build and test
 
@@ -102,6 +105,12 @@ The decoder ingress starts in wait-keyframe state. A queued keyframe cannot be
 replaced by a delta frame; losing any dependent delta clears the bounded queue,
 drops later deltas, and asks the host for a new keyframe. Recovery completes
 only when AVCodec accepts the keyframe input buffer.
+
+Decoder initialization is transactional after candidate registration:
+configure, surface binding, prepare, and start failures owner-safely detach and
+best-effort stop/release while preserving cleanup diagnostics. Transport parse,
+timeout, socket, controller-close, and supersede paths compete for one lease;
+only its winning close owner may detach, close, and notify.
 
 ## Permissions and privacy
 
