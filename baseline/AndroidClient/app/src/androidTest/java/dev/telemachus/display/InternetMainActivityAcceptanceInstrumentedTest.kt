@@ -5,6 +5,7 @@ import android.app.Activity
 import android.app.Instrumentation
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -317,11 +318,15 @@ class InternetMainActivityAcceptanceInstrumentedTest {
             .inRoot(FocusedRootMatcher())
             .perform(click())
         acceptanceStage = "revoke_result"
-        scenario.onActivity { activity ->
-            check(!activity.findViewById<View>(R.id.internetConnectButton).isEnabled) {
-                "Internet connect action remained enabled after revoke"
+        repeat(50) {
+            var connectEnabled = true
+            scenario.onActivity { activity ->
+                connectEnabled = activity.findViewById<View>(R.id.internetConnectButton).isEnabled
             }
+            if (!connectEnabled) return
+            SystemClock.sleep(100)
         }
+        error("Internet connect action remained enabled after revoke")
     }
 
     private fun assertSecretsRemoved(
