@@ -2,8 +2,6 @@
   "string": [
     { "name": "app_name", "value": "Vibe Screen" },
     { "name": "module_desc", "value": "把 HarmonyOS 平板变成 Mac 的低延迟屏幕" },
-    { "name": "entry_desc", "value": "Vibe Screen 主界面" },
-    { "name": "background_reason", "value": "保持屏幕串流连接并在短暂切换应用后恢复" }
+    { "name": "entry_desc", "value": "Vibe Screen 主界面" }
   ]
 }
-

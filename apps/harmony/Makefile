@@ -3,6 +3,7 @@
 HVIGOR ?= $(shell command -v hvigorw 2>/dev/null || command -v hvigor 2>/dev/null)
 OHPM ?= $(shell command -v ohpm 2>/dev/null)
 VERSION := 0.1.0
+HARMONY_NOTICE := entry/src/main/resources/rawfile/third_party_notices.md
 
 install:
 	pnpm install --frozen-lockfile
@@ -30,12 +31,19 @@ build-debug: sync-project
 	$(HVIGOR) --mode module -p module=entry@default -p product=default -p buildMode=debug assembleHap
 
 build-release: sync-project
+	rm -rf entry/build
 	$(HVIGOR) --mode module -p module=entry@default -p product=default -p buildMode=release assembleHap
 
 release: build-release
 	@mkdir -p dist/$(VERSION)
-	@find entry/build -name '*.hap' -type f -exec cp {} dist/$(VERSION)/vibe-screen-harmony-$(VERSION).hap \;
-	@shasum -a 256 dist/$(VERSION)/vibe-screen-harmony-$(VERSION).hap > dist/$(VERSION)/SHA256SUMS
+	@set -eu; files="$$(find entry/build -name '*signed.hap' -type f)"; count="$$(printf '%s\n' "$$files" | sed '/^$$/d' | wc -l | tr -d ' ')"; \
+		test "$$count" = "1" || (echo "release requires exactly one signed HAP, found $$count" >&2; exit 2); \
+		cp "$$files" dist/$(VERSION)/vibe-screen-harmony-$(VERSION).hap
+	@cp ../../LICENSE dist/$(VERSION)/LICENSE.txt
+	@cp ../../THIRD_PARTY.md dist/$(VERSION)/THIRD_PARTY.md
+	@cp $(HARMONY_NOTICE) dist/$(VERSION)/HARMONY_THIRD_PARTY_NOTICES.md
+	@cd dist/$(VERSION) && shasum -a 256 vibe-screen-harmony-$(VERSION).hap LICENSE.txt THIRD_PARTY.md \
+		HARMONY_THIRD_PARTY_NOTICES.md > SHA256SUMS
 
 clean:
 	rm -rf .test-dist dist entry/build build

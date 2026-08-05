@@ -33,6 +33,8 @@ notices are generated during the build and include the Apache License 2.0 text.
 | Project | Immutable source | License | Use and copy status |
 | --- | --- | --- | --- |
 | [Protocol Buffers compiler](https://github.com/protocolbuffers/protobuf) | tag `v32.1`, commit `7fcfd66022455635fa29af92987cdc0967efd4f3` | BSD-3-Clause | Build-time generator for iOS and MacHost Protocol v1 `*.pb.swift`; compiler source and binary are not copied. Generated files derive from this repository's schemas. |
+| [TypeScript](https://github.com/microsoft/TypeScript) | npm `5.9.3`, integrity `sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==` | Apache-2.0 | Portable Harmony core typecheck/test compiler only; it is not compiled into the HAP. |
+| [JSON5](https://github.com/json5/json5) | npm `2.2.3`, integrity `sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==` | MIT | Parses Harmony project JSON5 during portable static validation only; it is not compiled into the HAP. |
 
 ## Non-code design references
 
