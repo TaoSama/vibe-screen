@@ -6,6 +6,13 @@ import VibeScreenProtocol
 /// It validates startup capability negotiation, display configuration, a
 /// metadata-bearing keyframe, ping/pong, and client-to-host touch parsing.
 enum TransportSelfTest {
+    private static let legacyServerShutdownMessageType: UInt8 = 3
+
+    private enum LegacyServerShutdownPolicy: Equatable {
+        case consume
+        case failIncomplete
+    }
+
     private final class ResultState {
         let lock = NSLock()
         var receivedConfig = false
@@ -16,25 +23,40 @@ enum TransportSelfTest {
         var codecNegotiationCount = 0
         var failure: String?
 
+        private var requirementsAreComplete: Bool {
+            receivedConfig && receivedKeyframe && receivedPong &&
+                receivedTouch && rejectedMalformedTouch &&
+                codecNegotiationCount == 1
+        }
+
         var isComplete: Bool {
-            lock.withLock {
-                receivedConfig && receivedKeyframe && receivedPong &&
-                    receivedTouch && rejectedMalformedTouch &&
-                    codecNegotiationCount == 1
-            }
+            lock.withLock { requirementsAreComplete }
         }
 
         func recordFailureIfIncomplete(_ message: String) {
             lock.withLock {
-                guard !(receivedConfig && receivedKeyframe && receivedPong &&
-                        receivedTouch && rejectedMalformedTouch &&
-                        codecNegotiationCount == 1) else { return }
+                guard !requirementsAreComplete else { return }
                 failure = message
+            }
+        }
+
+        func recordServerShutdown() {
+            lock.withLock {
+                guard TransportSelfTest.legacyServerShutdownPolicy(
+                    requirementsAreComplete: requirementsAreComplete
+                ) == .failIncomplete else { return }
+                failure = "Server shutdown before all required transport messages arrived"
             }
         }
     }
 
     static func run() -> Bool {
+        guard legacyServerShutdownPolicy(requirementsAreComplete: true) == .consume,
+              legacyServerShutdownPolicy(requirementsAreComplete: false) == .failIncomplete,
+              runLegacyShutdownParserSelfCheck() else {
+            print("Transport self-test: FAIL (legacy shutdown policy self-check)")
+            return false
+        }
         let port: UInt16 = 55432
         let state = ResultState()
         let server = StreamingServer(port: port)
@@ -615,11 +637,49 @@ enum TransportSelfTest {
                 }
                 buffer.removeFirst(14 + payloadSize)
 
+            case legacyServerShutdownMessageType:
+                buffer.removeFirst()
+                state.recordServerShutdown()
+
             default:
                 state.lock.withLock { state.failure = "Unexpected server message type \(type)" }
                 return
             }
         }
+    }
+
+    private static func legacyServerShutdownPolicy(
+        requirementsAreComplete: Bool
+    ) -> LegacyServerShutdownPolicy {
+        requirementsAreComplete ? .consume : .failIncomplete
+    }
+
+    private static func runLegacyShutdownParserSelfCheck() -> Bool {
+        let incompleteState = ResultState()
+        var incompleteBuffer = Data([legacyServerShutdownMessageType])
+        parseServerMessages(buffer: &incompleteBuffer, state: incompleteState)
+        let incompleteFailed = incompleteState.lock.withLock {
+            incompleteState.failure ==
+                "Server shutdown before all required transport messages arrived"
+        }
+
+        let completeState = ResultState()
+        completeState.lock.withLock {
+            completeState.receivedConfig = true
+            completeState.receivedKeyframe = true
+            completeState.receivedPong = true
+            completeState.receivedTouch = true
+            completeState.rejectedMalformedTouch = true
+            completeState.codecNegotiationCount = 1
+        }
+        var completeBuffer = Data([legacyServerShutdownMessageType])
+        parseServerMessages(buffer: &completeBuffer, state: completeState)
+        let completeConsumedWithoutFailure = completeState.lock.withLock {
+            completeState.failure == nil
+        }
+
+        return incompleteBuffer.isEmpty && incompleteFailed &&
+            completeBuffer.isEmpty && completeConsumedWithoutFailure
     }
 
     private static func readInt32(_ data: Data, offset: Int) -> Int32 {
