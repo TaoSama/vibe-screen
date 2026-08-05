@@ -315,7 +315,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         acceptanceStage = "revoke_confirm"
         onView(withId(android.R.id.button1))
-            .inRoot(FocusedRootMatcher())
+            .inRoot(DialogTextRootMatcher(R.string.internet_revoke_confirm_message))
             .perform(click())
         acceptanceStage = "revoke_result"
         repeat(50) {
@@ -349,6 +349,29 @@ private class FocusedRootMatcher : TypeSafeMatcher<Root>() {
     }
 
     override fun matchesSafely(root: Root): Boolean = root.decorView.hasWindowFocus()
+}
+
+private class DialogTextRootMatcher(
+    private val textResource: Int,
+) : TypeSafeMatcher<Root>() {
+    override fun describeTo(description: Description) {
+        description.appendText("the expected production confirmation dialog")
+    }
+
+    override fun matchesSafely(root: Root): Boolean {
+        val expected = root.decorView.context.getString(textResource)
+        return containsText(root.decorView, expected)
+    }
+
+    private fun containsText(view: View, expected: String): Boolean {
+        if (view is TextView && view.text.toString() == expected) return true
+        if (view is ViewGroup) {
+            repeat(view.childCount) { index ->
+                if (containsText(view.getChildAt(index), expected)) return true
+            }
+        }
+        return false
+    }
 }
 
 private class CapturePairingRequestFromDialogAction(
