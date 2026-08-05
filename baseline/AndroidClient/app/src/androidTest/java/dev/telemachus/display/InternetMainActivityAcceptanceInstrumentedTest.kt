@@ -25,7 +25,6 @@ import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.isEnabled
 import androidx.test.espresso.matcher.ViewMatchers.withHint
 import androidx.test.espresso.matcher.ViewMatchers.withId
-import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
@@ -314,9 +313,9 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         }
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         acceptanceStage = "revoke_confirm"
-        onView(withText(R.string.internet_revoke_confirm_message))
+        onView(withId(android.R.id.button1))
             .inRoot(FocusedRootMatcher())
-            .perform(ClickDialogPositiveAction(requireSecure = false))
+            .perform(click())
         acceptanceStage = "revoke_result"
         onView(withId(R.id.internetConnectButton)).check(matches(not(isEnabled())))
     }
