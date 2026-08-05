@@ -272,7 +272,18 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
     return undefined;
   };
   const containsNode = (container, target) => target.pos >= container.pos && target.end <= container.end;
-  const statementAlwaysTerminates = (statement) => ts.isReturnStatement(statement) || ts.isThrowStatement(statement);
+  const statementAlwaysTerminates = (statement) => {
+    if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) return true;
+    if (ts.isBlock(statement)) return statement.statements.some((candidate) => statementAlwaysTerminates(candidate));
+    if (ts.isIfStatement(statement)) {
+      const condition = constantBoolean(statement.expression);
+      if (condition === true) return statementAlwaysTerminates(statement.thenStatement);
+      if (condition === false) return statement.elseStatement !== undefined && statementAlwaysTerminates(statement.elseStatement);
+      return statement.elseStatement !== undefined && statementAlwaysTerminates(statement.thenStatement) &&
+        statementAlwaysTerminates(statement.elseStatement);
+    }
+    return false;
+  };
   const isReachableInMethod = (node, method) => {
     let child = node;
     for (let parent = node.parent; parent !== undefined && parent !== method; parent = parent.parent) {
@@ -357,6 +368,29 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
     };
     visit(method);
     return found;
+  };
+  const methodHasOrderedCreationReservation = (relative, className, containerMethod) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, containerMethod);
+    if (sourceFile === undefined || method === undefined) return false;
+    let creation;
+    let install;
+    let start;
+    const visit = (node) => {
+      if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) &&
+        node.expression.text === 'DecoderCandidateLease' && isReachableInMethod(node, method)) creation = node;
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.expression.getText(sourceFile) === 'this.candidates' && node.expression.name.text === 'install' &&
+        isReachableInMethod(node, method)) install = node;
+      if (ts.isAwaitExpression(node) && ts.isCallExpression(node.expression) &&
+        ts.isPropertyAccessExpression(node.expression.expression) &&
+        node.expression.expression.expression.getText(sourceFile) === 'creation' &&
+        node.expression.expression.name.text === 'start' && isReachableInMethod(node, method)) start = node;
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return creation !== undefined && install !== undefined && start !== undefined &&
+      creation.end <= install.pos && install.end <= start.pos;
   };
   const methodHasDominatingCapabilityGuard = (relative, className, methodName, capability, protectedCall) => {
     const sourceFile = portableSourceFiles.get(relative);
@@ -517,11 +551,14 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
 
   const decoderPath = 'entry/src/main/ets/platform/HarmonyVideoDecoder.ets';
   requireImport(decoderPath, '../core/media/DecoderLifecycle', 'DecoderLifecycle');
+  requireImport(decoderPath, '../core/media/DecoderLifecycle', 'DecoderCandidateLease');
   requireImport(decoderPath, '../core/media/DecoderLifecycle', 'DecoderTransitionOwner');
   check(classPropertyUsesCleanupOwner(decoderPath, 'HarmonyVideoDecoder', 'candidates'),
     `${decoderPath}: HarmonyVideoDecoder.candidates must construct DecoderTransitionOwner with releaseDetached cleanup`);
   check(methodHasConstructorCall(decoderPath, 'HarmonyVideoDecoder', 'configure', 'DecoderLifecycle'),
     `${decoderPath}: HarmonyVideoDecoder.configure() must construct a reachable per-candidate DecoderLifecycle`);
+  check(methodHasOrderedCreationReservation(decoderPath, 'HarmonyVideoDecoder', 'configure'),
+    `${decoderPath}: HarmonyVideoDecoder.configure() must reserve DecoderCandidateLease before awaiting native creation`);
   requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'this.candidates', 'detachAndCleanup');
   check(methodAwaitsExpression(decoderPath, 'HarmonyVideoDecoder', 'configure', 'transition.completion'),
     `${decoderPath}: HarmonyVideoDecoder.configure() must await the decoder cleanup transition`);
@@ -530,7 +567,7 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'release', 'this.candidates', 'detachAndCleanup');
   check(methodAwaitsExpression(decoderPath, 'HarmonyVideoDecoder', 'release', 'transition.completion'),
     `${decoderPath}: HarmonyVideoDecoder.release() must await the decoder cleanup transition`);
-  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'releaseDetached', 'detached.lifecycle', 'cancelAndCleanup');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'releaseDetached', 'detached.lease', 'cancelAndCleanup');
 
   const transportPath = 'entry/src/main/ets/platform/HarmonyTransport.ets';
   requireImport(transportPath, '../core/transport/TransportCloseOwner', 'TransportCloseOwner');

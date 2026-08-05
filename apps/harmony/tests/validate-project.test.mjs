@@ -122,6 +122,17 @@ test('semantic validator rejects a capability guard placed after the protected s
     failure.includes('sendTouch() must use a dominating TOUCH early-return guard')));
 });
 
+test('semantic validator rejects capability guard and send after an always-true return', (t) => {
+  const fixture = projectFixture(t);
+  const controllerPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/platform/HarmonySessionController.ets');
+  const active = '    const active: ProductSession | undefined = this.session;';
+  const source = readFileSync(controllerPath, 'utf8').replace(active, `    if (true) return;\n${active}`);
+  writeFileSync(controllerPath, source);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('sendTouch() must use a dominating TOUCH early-return guard')));
+});
+
 test('semantic validator rejects TypeScript and ArkTS shell parse diagnostics', (t) => {
   const fixture = projectFixture(t);
   const controllerPath = resolve(fixture.fixtureHarmony,
@@ -169,6 +180,18 @@ test('semantic validator rejects a queue guard neutralized inside a wider condit
   const source = readFileSync(writerPath, 'utf8').replace(
     'this.queuedCount() >= MAX_PENDING_CONTROLS',
     '((this.queuedCount() >= MAX_PENDING_CONTROLS && false) || this.failure !== undefined)');
+  writeFileSync(writerPath, source);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('enqueue() must use a reachable MAX_PENDING_CONTROLS fail-closed guard')));
+});
+
+test('semantic validator rejects queue guard after an always-true throw', (t) => {
+  const fixture = projectFixture(t);
+  const writerPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/core/protocol/OutboundControlWriter.ts');
+  const guard = '    if (this.queuedCount() >= MAX_PENDING_CONTROLS) {';
+  const source = readFileSync(writerPath, 'utf8').replace(
+    guard, `    if (true) throw new Error('terminal');\n${guard}`);
   writeFileSync(writerPath, source);
   assert(validateFixture(fixture).some((failure) =>
     failure.includes('enqueue() must use a reachable MAX_PENDING_CONTROLS fail-closed guard')));

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DecoderLifecycle, DecoderLifecycleFailure,
+import { DecoderCandidateLease, DecoderLifecycle, DecoderLifecycleFailure,
   DecoderTransitionOwner } from '../.test-dist/media/DecoderLifecycle.js';
 
 const stages = ['configure', 'set_output_surface', 'prepare', 'start'];
@@ -193,4 +193,103 @@ test('a third configure or release cannot bypass a detached candidate cleanup', 
   target.owner.install({ name: 'after-cleanup' });
   await assert.rejects(initialization, /Decoder configuration superseded/);
   assert.equal(target.owner.current().name, 'after-cleanup');
+});
+
+const creationHarness = (releaseFailure = false) => {
+  const gate = deferred();
+  const calls = [];
+  let creationInFlight = false;
+  const resource = { name: 'native-decoder' };
+  const lease = new DecoderCandidateLease(async () => {
+    calls.push('create');
+    creationInFlight = true;
+    try { await gate.promise; }
+    finally { creationInFlight = false; }
+    return resource;
+  }, async (candidate) => {
+    assert.strictEqual(candidate, resource);
+    assert.equal(creationInFlight, false, 'release raced native create');
+    calls.push('release-uninitialized');
+    if (releaseFailure) throw new Error('uninitialized release failed');
+  });
+  const candidate = { name: 'creating', lease };
+  const owner = new DecoderTransitionOwner(async (detached) => detached.lease.cancelAndCleanup());
+  owner.install(candidate);
+  const configure = async () => {
+    await lease.start();
+    if (!lease.canContinue()) {
+      await lease.cancelAndCleanup();
+      throw new Error('Decoder creation superseded');
+    }
+    calls.push('setup');
+  };
+  return { gate, calls, candidate, configure, lease, owner };
+};
+
+for (const takeover of ['configure supersede', 'release']) {
+  test(`${takeover} waits for native decoder creation before one uninitialized release`, async () => {
+    const target = creationHarness();
+    const configuration = target.configure();
+    await waitFor(() => target.calls.includes('create'));
+    const configurationFailure = assert.rejects(configuration, /Decoder creation superseded/);
+
+    const handoff = target.owner.detachAndCleanup();
+    assert.strictEqual(target.owner.detachAndCleanup().completion, handoff.completion);
+    assert.deepEqual(target.calls, ['create']);
+    target.gate.resolve();
+
+    await handoff.completion;
+    await configurationFailure;
+    assert.deepEqual(target.calls, ['create', 'release-uninitialized']);
+    assert.equal(target.owner.current(), undefined);
+  });
+}
+
+test('A-B-C create handoff blocks a third caller until native creation cleanup settles', async () => {
+  const target = creationHarness();
+  const configuration = target.configure();
+  await waitFor(() => target.calls.includes('create'));
+  const configurationFailure = assert.rejects(configuration, /Decoder creation superseded/);
+
+  const secondConfigure = target.owner.detachAndCleanup();
+  const thirdRelease = target.owner.detachAndCleanup();
+  assert.strictEqual(thirdRelease.completion, secondConfigure.completion);
+  assert.throws(() => target.owner.install({ name: 'too-early' }), /prior cleanup completed/);
+  assert.deepEqual(target.calls, ['create']);
+
+  target.gate.resolve();
+  await thirdRelease.completion;
+  await configurationFailure;
+  const replacementLease = new DecoderCandidateLease(async () => {
+    target.calls.push('create-replacement');
+    return { name: 'replacement-native' };
+  }, async () => { target.calls.push('release-replacement'); });
+  target.owner.install({ name: 'replacement', lease: replacementLease });
+  await replacementLease.start();
+  assert.deepEqual(target.calls, ['create', 'release-uninitialized', 'create-replacement']);
+});
+
+test('native creation failure rejects both configure and every cleanup waiter', async () => {
+  const target = creationHarness();
+  const configuration = target.configure();
+  await waitFor(() => target.calls.includes('create'));
+  const configurationFailure = assert.rejects(configuration, /native create failed/);
+  const cleanupFailure = assert.rejects(target.owner.detachAndCleanup().completion, /native create failed/);
+
+  target.gate.reject(new Error('native create failed'));
+  await Promise.all([configurationFailure, cleanupFailure]);
+  assert.deepEqual(target.calls, ['create']);
+  assert.equal(target.owner.current(), undefined);
+});
+
+test('uninitialized release failure is visible to superseded configure and cleanup waiter', async () => {
+  const target = creationHarness(true);
+  const configuration = target.configure();
+  await waitFor(() => target.calls.includes('create'));
+  const configurationFailure = assert.rejects(configuration, /uninitialized release failed/);
+  const cleanupFailure = assert.rejects(target.owner.detachAndCleanup().completion, /uninitialized release failed/);
+
+  target.gate.resolve();
+  await Promise.all([configurationFailure, cleanupFailure]);
+  assert.deepEqual(target.calls, ['create', 'release-uninitialized']);
 });
