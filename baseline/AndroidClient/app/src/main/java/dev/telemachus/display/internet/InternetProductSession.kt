@@ -77,6 +77,19 @@ data class ProductVideoDecision(
     }
 }
 
+class ProductVideoConfigurationEffect internal constructor(
+    private val commitBlock: (() -> ProductVideoDecision) -> ProductVideoDecision,
+) {
+    private val committed = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    fun commit(effect: () -> ProductVideoDecision): ProductVideoDecision =
+        if (committed.compareAndSet(false, true)) {
+            commitBlock(effect)
+        } else {
+            ProductVideoDecision.reject("decoder_effect_already_committed")
+        }
+}
+
 data class ProductVideoFrame(
     val streamId: Long,
     val sessionEpoch: Long,
@@ -93,8 +106,11 @@ interface InternetProductSessionCallbacks {
 
     fun onRouteSelected(route: PeerRoute) = Unit
 
-    fun onVideoConfiguration(configuration: ProductVideoConfiguration): ProductVideoDecision =
-        ProductVideoDecision.reject("decoder_not_configured")
+    fun onVideoConfiguration(
+        configuration: ProductVideoConfiguration,
+        effect: ProductVideoConfigurationEffect,
+        completion: (ProductVideoDecision) -> Unit,
+    ) = completion(effect.commit { ProductVideoDecision.reject("decoder_not_configured") })
 
     fun onVideoFrame(frame: ProductVideoFrame) = Unit
 
@@ -110,6 +126,34 @@ interface InternetProductSessionCallbacks {
 /** Persists authenticated revocation before UI notification or transport close. */
 fun interface InternetProductRevocationStore {
     fun persistAuthenticatedRevocation(pairingIdentifier: String, reason: String)
+
+    fun isAuthenticatedRevoked(pairingIdentifier: String): Boolean = false
+}
+
+class InternetProductRevocationCoordinator {
+    private val lock = Any()
+    private val blockedPairings = mutableSetOf<String>()
+    private val reservations = mutableSetOf<Reservation>()
+
+    internal fun reserve(pairingIdentifier: String): Reservation =
+        synchronized(lock) {
+            check(pairingIdentifier !in blockedPairings) { "Authenticated revocation is already pending or committed" }
+            Reservation(pairingIdentifier).also {
+                blockedPairings += pairingIdentifier
+                reservations += it
+            }
+        }
+
+    internal fun commit(reservation: Reservation) {
+        synchronized(lock) {
+            check(reservations.remove(reservation)) { "Authenticated revocation reservation is not active" }
+            check(reservation.pairingIdentifier in blockedPairings) { "Authenticated revocation admission block was lost" }
+        }
+    }
+
+    fun isBlocked(pairingIdentifier: String): Boolean = synchronized(lock) { pairingIdentifier in blockedPairings }
+
+    internal data class Reservation(val pairingIdentifier: String)
 }
 
 internal data class InternetProductSessionTestHooks(
@@ -117,6 +161,9 @@ internal data class InternetProductSessionTestHooks(
     val afterMediaDecodeBeforeCommit: () -> Unit = {},
     val beforeMediaDispatchGate: () -> Unit = {},
     val afterStateCommitBeforeDispatchGate: (InternetProductSessionState) -> Unit = {},
+    val afterRevocationReservedBeforePersist: () -> Unit = {},
+    val afterRevocationPersistBeforeCommit: () -> Unit = {},
+    val afterRevocationStateCommitBeforeCallback: () -> Unit = {},
 )
 
 /**
@@ -133,13 +180,16 @@ class InternetProductSession internal constructor(
     private val codec: ProtocolV1ProductCodec,
     private val callbacks: InternetProductSessionCallbacks,
     private val revocationStore: InternetProductRevocationStore,
+    private val revocationCoordinator: InternetProductRevocationCoordinator,
     private val testHooks: InternetProductSessionTestHooks = InternetProductSessionTestHooks(),
 ) : AutoCloseable {
     private val lock = Any()
+    private val videoEffectGate = ReentrantLock(true)
     private val callbackGate = ReentrantLock(true)
     private val nextMessageId = AtomicLong(0)
     private var currentVideoConfiguration: ProductVideoConfiguration? = null
     private var pendingVideoConfiguration: PendingVideoConfiguration? = null
+    private var pendingRevocation: PendingRevocation? = null
     private var acceptedHostHello = false
     private var acceptedSession = false
     private var negotiationStarted = false
@@ -152,6 +202,12 @@ class InternetProductSession internal constructor(
     private val transportOwner = TransportOwner(generation = 1)
     private var activeTransportOwner: TransportOwner? = transportOwner
     private val frameAssembler = ProductMediaFrameAssembler()
+
+    init {
+        check(!revocationCoordinator.isBlocked(lease.pairingIdentifier) && !revocationStore.isAuthenticatedRevoked(lease.pairingIdentifier)) {
+            "This authenticated pairing is revoked"
+        }
+    }
 
     private val transport =
         WebRtcInternetTransport(
@@ -170,12 +226,22 @@ class InternetProductSession internal constructor(
         private set
 
     fun start() {
-        synchronized(lock) {
-            check(!closed) { "Product session is closed" }
-            check(state == InternetProductSessionState.IDLE) { "Product session has already started" }
-        }
-        transition(InternetProductSessionState.CONNECTING)
-        callbackGate.withLock {
+        withLifecycleGate {
+            synchronized(lock) {
+                check(!closed) { "Product session is closed" }
+                check(state == InternetProductSessionState.IDLE) { "Product session has already started" }
+                check(
+                    !revocationCoordinator.isBlocked(lease.pairingIdentifier) &&
+                        !revocationStore.isAuthenticatedRevoked(lease.pairingIdentifier),
+                ) {
+                    "This authenticated pairing is revoked"
+                }
+                state = InternetProductSessionState.CONNECTING
+            }
+            testHooks.afterStateCommitBeforeDispatchGate(InternetProductSessionState.CONNECTING)
+            if (synchronized(lock) { !closed && state == InternetProductSessionState.CONNECTING }) {
+                callbacks.onStateChanged(InternetProductSessionState.CONNECTING)
+            }
             if (synchronized(lock) { closed }) return
             try {
                 transport.start()
@@ -188,6 +254,7 @@ class InternetProductSession internal constructor(
 
     fun tick() {
         transport.tick()
+        expirePendingVideoConfiguration()
         heartbeatTick()
     }
 
@@ -216,7 +283,7 @@ class InternetProductSession internal constructor(
 
     override fun close() {
         val shouldClose =
-            callbackGate.withLock {
+            withLifecycleGate {
                 synchronized(lock) {
                     if (closed) return
                     closed = true
@@ -258,22 +325,7 @@ class InternetProductSession internal constructor(
                 notifyRouteIfOwned(owner, event.route)
             }
             is InternetTransportEvent.FreshSessionRequested -> {
-                val notify =
-                    callbackGate.withLock {
-                        synchronized(lock) {
-                            if (freshSessionRequested || closed || isTerminalStateLocked()) {
-                                false
-                            } else {
-                                freshSessionRequested = true
-                                invalidateTransportOwnerLocked()
-                                state = InternetProductSessionState.RECOVERING
-                                true
-                            }
-                        }
-                    }
-                if (notify) {
-                    notifyFreshSessionIfCurrent(event.reason)
-                }
+                requestFreshSession(owner, event.reason)
             }
             is InternetTransportEvent.Failure -> failIfOwned(owner, event.error)
             is InternetTransportEvent.VideoProfileChanged -> Unit
@@ -316,6 +368,13 @@ class InternetProductSession internal constructor(
                 return
             }
         testHooks.afterControlDecodeBeforeCommit()
+        val revocation = decoded.message as? ProductControlMessage.Revoked
+        if (revocation != null) {
+            val reservation = reserveAuthenticatedRevocation(owner, decoded) ?: return
+            testHooks.afterRevocationReservedBeforePersist()
+            handleReservedRevocation(reservation, revocation.reasonCode)
+            return
+        }
         val admissionFailure =
             synchronized(lock) {
                 if (!acceptsTransportCallbackLocked(owner)) return
@@ -352,12 +411,49 @@ class InternetProductSession internal constructor(
                 sendRequiredControlIfOwned(owner, response)
             }
             is ProductControlMessage.Disconnect -> requestFreshSessionIfAllowed(owner, message.reasonCode, message.mayResume)
-            is ProductControlMessage.Revoked -> handleRevocation(owner, message.reasonCode)
+            is ProductControlMessage.Revoked -> error("Revocation must be reserved during control admission")
             is ProductControlMessage.ProtocolFailure -> {
                 failIfOwned(owner, IllegalStateException("Protocol failure (${message.code}); retryable=${message.retryable}"))
             }
             ProductControlMessage.Ignored -> Unit
         }
+    }
+
+    private fun reserveAuthenticatedRevocation(
+        owner: TransportOwner,
+        decoded: DecodedProductControl,
+    ): PendingRevocation? {
+        var admissionFailure: Throwable? = null
+        var pending: PendingRevocation? = null
+        withLifecycleGate lifecycle@{
+            synchronized(lock) {
+                if (!acceptsTransportCallbackLocked(owner)) return@lifecycle
+                admissionFailure =
+                    when {
+                        !decoded.sessionId.contentEquals(lease.protocolSessionId) ||
+                            decoded.sessionEpoch != lease.authoritativeSessionEpoch ->
+                            IllegalArgumentException("Protocol v1 control routing metadata does not match the active session")
+                        decoded.messageId <= lastReceivedControlMessageId ->
+                            IllegalArgumentException("Protocol v1 control message ID is not positive and monotonic")
+                        else -> null
+                    }
+                if (admissionFailure == null) {
+                    val coordinatorReservation =
+                        try {
+                            revocationCoordinator.reserve(lease.pairingIdentifier)
+                        } catch (failure: Throwable) {
+                            admissionFailure = failure
+                            return@synchronized
+                        }
+                    pending = PendingRevocation(owner, coordinatorReservation)
+                    pendingRevocation = pending
+                    lastReceivedControlMessageId = decoded.messageId
+                    invalidateTransportOwnerLocked()
+                }
+            }
+        }
+        admissionFailure?.let { failIfOwned(owner, it) }
+        return pending
     }
 
     private fun handleHostHello(
@@ -450,7 +546,12 @@ class InternetProductSession internal constructor(
         configuration: ProductVideoConfiguration,
     ) {
         var validationFailure: Throwable? = null
-        val reservation = PendingVideoConfiguration(configuration.configEpoch)
+        val reservation =
+            PendingVideoConfiguration(
+                configEpoch = configuration.configEpoch,
+                owner = owner,
+                deadlineMillis = clock.nowMillis() + VIDEO_CONFIGURATION_TIMEOUT_MS,
+            )
         val reservationEpoch =
             synchronized(lock) {
                 if (!acceptsTransportCallbackLocked(owner)) return
@@ -470,53 +571,119 @@ class InternetProductSession internal constructor(
             failIfOwned(owner, it)
             return
         }
-        if (
-            !synchronized(lock) {
-                acceptsTransportCallbackLocked(owner) &&
-                    acceptedSession &&
-                    pendingVideoConfiguration === reservation &&
-                    (currentVideoConfiguration?.configEpoch ?: 0) == reservationEpoch
+        val completed = java.util.concurrent.atomic.AtomicBoolean(false)
+        val effect =
+            ProductVideoConfigurationEffect { install ->
+                videoEffectGate.withLock {
+                    if (!isVideoConfigurationReservationActive(owner, reservation, reservationEpoch)) {
+                        ProductVideoDecision.reject("stale_session")
+                    } else {
+                        install().also { decision ->
+                            if (decision.accepted) {
+                                synchronized(lock) {
+                                    if (isVideoConfigurationReservationActiveLocked(owner, reservation, reservationEpoch)) {
+                                        reservation.effectCommitted = true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
-        ) {
-            return
-        }
-        var decoderFailure: Throwable? = null
-        val decision =
+        withLifecycleGate {
+            if (!isVideoConfigurationReservationActive(owner, reservation, reservationEpoch)) return
             try {
-                callbacks.onVideoConfiguration(configuration)
+                callbacks.onVideoConfiguration(configuration, effect) { decision ->
+                    if (completed.compareAndSet(false, true)) {
+                        completeVideoConfiguration(owner, reservation, reservationEpoch, configuration, decision)
+                    }
+                }
             } catch (failure: Throwable) {
-                decoderFailure = failure
-                ProductVideoDecision.reject("decoder_configuration_failure")
-            }
-        val response =
-            codec.encodeVideoConfigResult(
-                nextMessageId(),
-                lease.protocolSessionId,
-                lease.authoritativeSessionEpoch,
-                configuration,
-                decision.accepted,
-                decision.rejectionReason,
-            )
-        var sendFailed = false
-        synchronized(lock) {
-            if (
-                !acceptsTransportCallbackLocked(owner) ||
-                !acceptedSession ||
-                pendingVideoConfiguration !== reservation ||
-                (currentVideoConfiguration?.configEpoch ?: 0) != reservationEpoch
-            ) {
-                return
-            }
-            pendingVideoConfiguration = null
-            if (!transport.sendControl(response)) {
-                sendFailed = true
-            } else if (decision.accepted) {
-                currentVideoConfiguration = configuration
-                frameAssembler.startConfiguration(configuration)
+                if (completed.compareAndSet(false, true)) {
+                    notifyFailureIfOwned(owner, failure)
+                    completeVideoConfiguration(
+                        owner,
+                        reservation,
+                        reservationEpoch,
+                        configuration,
+                        ProductVideoDecision.reject("decoder_configuration_failure"),
+                    )
+                }
             }
         }
-        decoderFailure?.let { notifyFailureIfOwned(owner, it) }
-        if (sendFailed) failIfOwned(owner, IllegalStateException("Required Protocol v1 control message could not be queued"))
+    }
+
+    private fun completeVideoConfiguration(
+        owner: TransportOwner,
+        reservation: PendingVideoConfiguration,
+        reservationEpoch: Long,
+        configuration: ProductVideoConfiguration,
+        decision: ProductVideoDecision,
+    ) {
+        withLifecycleGate {
+            if (!isVideoConfigurationReservationActive(owner, reservation, reservationEpoch)) return
+            val effectiveDecision =
+                if (decision.accepted && !reservation.effectCommitted) {
+                    ProductVideoDecision.reject("decoder_effect_not_committed")
+                } else {
+                    decision
+                }
+            val response =
+                codec.encodeVideoConfigResult(
+                    nextMessageId(),
+                    lease.protocolSessionId,
+                    lease.authoritativeSessionEpoch,
+                    configuration,
+                    effectiveDecision.accepted,
+                    effectiveDecision.rejectionReason,
+                )
+            var sendFailed = false
+            synchronized(lock) {
+                if (!isVideoConfigurationReservationActiveLocked(owner, reservation, reservationEpoch)) return
+                pendingVideoConfiguration = null
+                if (!transport.sendControl(response)) {
+                    sendFailed = true
+                } else if (effectiveDecision.accepted) {
+                    currentVideoConfiguration = configuration
+                    frameAssembler.startConfiguration(configuration)
+                }
+            }
+            if (sendFailed) {
+                failIfOwned(owner, IllegalStateException("Required Protocol v1 control message could not be queued"))
+            }
+        }
+    }
+
+    private fun isVideoConfigurationReservationActive(
+        owner: TransportOwner,
+        reservation: PendingVideoConfiguration,
+        reservationEpoch: Long,
+    ): Boolean = synchronized(lock) { isVideoConfigurationReservationActiveLocked(owner, reservation, reservationEpoch) }
+
+    private fun isVideoConfigurationReservationActiveLocked(
+        owner: TransportOwner,
+        reservation: PendingVideoConfiguration,
+        reservationEpoch: Long,
+    ): Boolean =
+        acceptsTransportCallbackLocked(owner) &&
+            acceptedSession &&
+            pendingVideoConfiguration === reservation &&
+            (currentVideoConfiguration?.configEpoch ?: 0) == reservationEpoch
+
+    private fun expirePendingVideoConfiguration() {
+        var expiredOwner: TransportOwner? = null
+        withLifecycleGate {
+            synchronized(lock) {
+                val pending = pendingVideoConfiguration ?: return@synchronized
+                if (clock.nowMillis() >= pending.deadlineMillis) {
+                    pendingVideoConfiguration = null
+                    expiredOwner = pending.owner
+                }
+            }
+            expiredOwner?.let { owner ->
+                failIfOwned(owner, IllegalStateException("Video configuration transaction timed out"))
+            }
+        }
     }
 
     private fun handleMedia(
@@ -553,7 +720,7 @@ class InternetProductSession internal constructor(
             }
                 ?: return
         testHooks.beforeMediaDispatchGate()
-        callbackGate.withLock {
+        withLifecycleGate {
             if (synchronized(lock) { acceptsTransportCallbackLocked(owner) && acceptedSession && currentVideoConfiguration == configuration }) {
                 callbacks.onVideoFrame(frame)
             }
@@ -569,57 +736,77 @@ class InternetProductSession internal constructor(
             failIfOwned(owner, IllegalStateException("Host ended the Internet session: $reason"))
             return
         }
-        val notify =
-            callbackGate.withLock {
+        requestFreshSession(owner, reason)
+    }
+
+    private fun requestFreshSession(
+        owner: TransportOwner,
+        reason: String,
+    ) {
+        withLifecycleGate {
+            var stateChanged = false
+            val reserved =
                 synchronized(lock) {
                     if (!acceptsTransportCallbackLocked(owner)) {
                         false
                     } else {
+                        stateChanged = state != InternetProductSessionState.RECOVERING
                         freshSessionRequested = true
                         invalidateTransportOwnerLocked()
                         state = InternetProductSessionState.RECOVERING
                         true
                     }
                 }
+            if (!reserved) return
+            if (stateChanged) callbacks.onStateChanged(InternetProductSessionState.RECOVERING)
+            if (synchronized(lock) { !closed && freshSessionRequested && state == InternetProductSessionState.RECOVERING }) {
+                callbacks.onFreshSessionRequired(reason)
             }
-        if (notify) {
-            notifyFreshSessionIfCurrent(reason)
         }
     }
 
-    private fun handleRevocation(
-        owner: TransportOwner,
+    private fun handleReservedRevocation(
+        reservation: PendingRevocation,
         reason: String,
     ) {
+        var persistenceFailure: Throwable? = null
         try {
             revocationStore.persistAuthenticatedRevocation(lease.pairingIdentifier, reason)
+            testHooks.afterRevocationPersistBeforeCommit()
+            revocationCoordinator.commit(reservation.coordinatorReservation)
         } catch (failure: Throwable) {
-            if (failIfOwned(owner, IllegalStateException("Authenticated revocation could not be persisted", failure))) close()
-            return
+            persistenceFailure = IllegalStateException("Authenticated revocation could not be persisted", failure)
         }
-        val shouldClose =
-            callbackGate.withLock {
+        val notify =
+            withLifecycleGate {
                 synchronized(lock) {
-                    if (!acceptsTransportCallbackLocked(owner)) {
+                    if (pendingRevocation !== reservation) {
                         false
                     } else {
-                        invalidateTransportOwnerLocked()
-                        state = InternetProductSessionState.FAILED
-                        true
+                        pendingRevocation = null
+                        if (!closed) state = InternetProductSessionState.FAILED
+                        !closed
                     }
                 }
             }
-        if (shouldClose) {
-            callbackGate.withLock {
-                if (synchronized(lock) { !closed && state == InternetProductSessionState.FAILED }) {
-                    callbacks.onStateChanged(InternetProductSessionState.FAILED)
+        if (notify) testHooks.afterRevocationStateCommitBeforeCallback()
+        runBestEffort(
+            {
+                withLifecycleGate {
+                    if (notify && synchronized(lock) { !closed && state == InternetProductSessionState.FAILED }) {
+                        callbacks.onStateChanged(InternetProductSessionState.FAILED)
+                        if (synchronized(lock) { !closed && state == InternetProductSessionState.FAILED }) {
+                            if (persistenceFailure == null) {
+                                callbacks.onRevoked(reason)
+                            } else {
+                                callbacks.onFailure(requireNotNull(persistenceFailure))
+                            }
+                        }
+                    }
                 }
-                if (synchronized(lock) { !closed && state == InternetProductSessionState.FAILED }) {
-                    callbacks.onRevoked(reason)
-                }
-            }
-            close()
-        }
+            },
+            { close() },
+        )
     }
 
     private fun sendApplicationControl(encode: () -> ByteArray): Boolean {
@@ -665,7 +852,7 @@ class InternetProductSession internal constructor(
 
     private fun fail(error: Throwable) {
         val notify =
-            callbackGate.withLock {
+            withLifecycleGate {
                 synchronized(lock) {
                     if (closed || state == InternetProductSessionState.FAILED) {
                         false
@@ -686,7 +873,7 @@ class InternetProductSession internal constructor(
         error: Throwable,
     ): Boolean {
         val notify =
-            callbackGate.withLock {
+            withLifecycleGate {
                 synchronized(lock) {
                     if (!acceptsTransportCallbackLocked(owner)) {
                         false
@@ -706,11 +893,12 @@ class InternetProductSession internal constructor(
         next: InternetProductSessionState,
     ) {
         val changed =
-            callbackGate.withLock {
+            withLifecycleGate {
                 synchronized(lock) {
                     if (!acceptsTransportCallbackLocked(owner) || state == next) {
                         false
                     } else {
+                        if (next == InternetProductSessionState.CLOSED) invalidateTransportOwnerLocked()
                         state = next
                         true
                     }
@@ -723,7 +911,7 @@ class InternetProductSession internal constructor(
         owner: TransportOwner,
         expected: InternetProductSessionState,
     ) {
-        callbackGate.withLock {
+        withLifecycleGate {
             if (synchronized(lock) { acceptsTransportCallbackLocked(owner) && state == expected }) {
                 callbacks.onStateChanged(expected)
             }
@@ -734,7 +922,7 @@ class InternetProductSession internal constructor(
         owner: TransportOwner,
         route: PeerRoute,
     ) {
-        callbackGate.withLock {
+        withLifecycleGate {
             if (synchronized(lock) { acceptsTransportCallbackLocked(owner) }) callbacks.onRouteSelected(route)
         }
     }
@@ -743,7 +931,7 @@ class InternetProductSession internal constructor(
         owner: TransportOwner,
         sequence: Long,
     ) {
-        callbackGate.withLock {
+        withLifecycleGate {
             if (synchronized(lock) { acceptsTransportCallbackLocked(owner) }) callbacks.onPong(sequence)
         }
     }
@@ -752,24 +940,13 @@ class InternetProductSession internal constructor(
         owner: TransportOwner,
         error: Throwable,
     ) {
-        callbackGate.withLock {
+        withLifecycleGate {
             if (synchronized(lock) { acceptsTransportCallbackLocked(owner) }) callbacks.onFailure(error)
         }
     }
 
-    private fun notifyFreshSessionIfCurrent(reason: String) {
-        callbackGate.withLock {
-            if (synchronized(lock) { !closed && freshSessionRequested && state == InternetProductSessionState.RECOVERING }) {
-                callbacks.onStateChanged(InternetProductSessionState.RECOVERING)
-            }
-            if (synchronized(lock) { !closed && freshSessionRequested && state == InternetProductSessionState.RECOVERING }) {
-                callbacks.onFreshSessionRequired(reason)
-            }
-        }
-    }
-
     private fun notifyTerminalFailureIfCurrent(error: Throwable) {
-        callbackGate.withLock {
+        withLifecycleGate {
             if (synchronized(lock) { !closed && state == InternetProductSessionState.FAILED }) {
                 callbacks.onStateChanged(InternetProductSessionState.FAILED)
             }
@@ -793,13 +970,16 @@ class InternetProductSession internal constructor(
             }
         if (changed) {
             testHooks.afterStateCommitBeforeDispatchGate(next)
-            callbackGate.withLock {
+            withLifecycleGate {
                 if (synchronized(lock) { state == next && (!closed || next == InternetProductSessionState.CLOSED) }) {
                     callbacks.onStateChanged(next)
                 }
             }
         }
     }
+
+    private inline fun <T> withLifecycleGate(block: () -> T): T =
+        videoEffectGate.withLock { callbackGate.withLock(block) }
 
     private fun acceptsTransportCallbackLocked(owner: TransportOwner = transportOwner): Boolean =
         !closed &&
@@ -822,11 +1002,23 @@ class InternetProductSession internal constructor(
 
     private data class TransportOwner(val generation: Long)
 
-    private data class PendingVideoConfiguration(val configEpoch: Long)
+    private class PendingVideoConfiguration(
+        val configEpoch: Long,
+        val owner: TransportOwner,
+        val deadlineMillis: Long,
+    ) {
+        var effectCommitted = false
+    }
+
+    private data class PendingRevocation(
+        val owner: TransportOwner,
+        val coordinatorReservation: InternetProductRevocationCoordinator.Reservation,
+    )
 
     companion object {
         private const val MIN_HEARTBEAT_INTERVAL_MS = 100L
         private const val MAX_HEARTBEAT_INTERVAL_MS = 60_000L
+        private const val VIDEO_CONFIGURATION_TIMEOUT_MS = 5_000L
         private val REQUIRED_SESSION_CAPABILITIES =
             setOf(
                 Capability.CAPABILITY_DEVICE_IDENTITY,
@@ -843,6 +1035,7 @@ class InternetProductSession internal constructor(
             codec: ProtocolV1ProductCodec,
             callbacks: InternetProductSessionCallbacks,
             revocationStore: InternetProductRevocationStore,
+            revocationCoordinator: InternetProductRevocationCoordinator,
         ): InternetProductSession {
             require(localDeviceId == storedSessionFactory.localDeviceId) {
                 "Stored security identity does not match the product session identity"
@@ -850,6 +1043,10 @@ class InternetProductSession internal constructor(
             require(localDeviceId == codec.localDeviceId) {
                 "Protocol identity does not match the product session identity"
             }
+            check(
+                !revocationCoordinator.isBlocked(lease.pairingIdentifier) &&
+                    !revocationStore.isAuthenticatedRevoked(lease.pairingIdentifier),
+            ) { "This authenticated pairing is revoked" }
             val boundContext = lease.boundTranscriptContext(localDeviceId)
             val stored =
                 try {
@@ -877,6 +1074,7 @@ class InternetProductSession internal constructor(
                     codec,
                     callbacks,
                     revocationStore,
+                    revocationCoordinator,
                 )
             } catch (failure: Throwable) {
                 stored.close()

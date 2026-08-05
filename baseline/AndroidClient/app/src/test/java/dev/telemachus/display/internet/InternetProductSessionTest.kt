@@ -18,6 +18,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -118,6 +119,7 @@ class InternetProductSessionTest {
         monitor.available("cellular")
         assertEquals(InternetProductSessionState.RECOVERING, session.state)
         assertEquals(1, callbacks.freshReasons.size)
+        assertEquals(1, callbacks.states.count { it == InternetProductSessionState.RECOVERING })
         assertEquals(0, peer.restartCalls)
         assertFalse(session.sendTouch(ProductTouchEvent(2, 0, ProductInputPhase.ENDED, 0.5, 0.5)))
         session.close()
@@ -289,11 +291,21 @@ class InternetProductSessionTest {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
         val sessionReference = AtomicReference<InternetProductSession>()
+        val installs = AtomicInteger(0)
         val callbacks =
             object : InternetProductSessionCallbacks {
-                override fun onVideoConfiguration(configuration: ProductVideoConfiguration): ProductVideoDecision {
+                override fun onVideoConfiguration(
+                    configuration: ProductVideoConfiguration,
+                    effect: ProductVideoConfigurationEffect,
+                    completion: (ProductVideoDecision) -> Unit,
+                ) {
                     sessionReference.get().close()
-                    return ProductVideoDecision.ACCEPT
+                    completion(
+                        effect.commit {
+                            installs.incrementAndGet()
+                            ProductVideoDecision.ACCEPT
+                        },
+                    )
                 }
             }
         val session = session(peer, monitor, callbacks)
@@ -310,6 +322,7 @@ class InternetProductSessionTest {
         executor.shutdown()
 
         assertEquals(InternetProductSessionState.CLOSED, session.state)
+        assertEquals(0, installs.get())
         assertEquals(1, peer.control.size)
     }
 
@@ -317,16 +330,18 @@ class InternetProductSessionTest {
     fun concurrentVideoConfigurationsFailClosedBeforeSecondDecoderInstall() {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
-        val callbackEntered = CountDownLatch(1)
-        val release = CountDownLatch(1)
         val configurationCallbacks = AtomicInteger(0)
+        val pendingEffect = AtomicReference<ProductVideoConfigurationEffect>()
+        val pendingCompletion = AtomicReference<(ProductVideoDecision) -> Unit>()
         val callbacks =
             object : InternetProductSessionCallbacks {
-                override fun onVideoConfiguration(configuration: ProductVideoConfiguration): ProductVideoDecision {
-                    configurationCallbacks.incrementAndGet()
-                    callbackEntered.countDown()
-                    assertTrue(release.await(2, TimeUnit.SECONDS))
-                    return ProductVideoDecision.ACCEPT
+                override fun onVideoConfiguration(
+                    configuration: ProductVideoConfiguration,
+                    effect: ProductVideoConfigurationEffect,
+                    completion: (ProductVideoDecision) -> Unit,
+                ) {
+                    pendingEffect.set(effect)
+                    pendingCompletion.set(completion)
                 }
             }
         val session = session(peer, monitor, callbacks)
@@ -336,16 +351,137 @@ class InternetProductSessionTest {
         peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
         peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
 
-        val executor = Executors.newSingleThreadExecutor()
-        val first = executor.submit { peer.receive(videoConfigurationEnvelope(3)) }
-        assertTrue(callbackEntered.await(2, TimeUnit.SECONDS))
+        peer.receive(videoConfigurationEnvelope(3))
         peer.receive(videoConfigurationEnvelope(4))
-        release.countDown()
-        first.get(2, TimeUnit.SECONDS)
-        executor.shutdown()
+        pendingCompletion.get().invoke(
+            pendingEffect.get().commit {
+                configurationCallbacks.incrementAndGet()
+                ProductVideoDecision.ACCEPT
+            },
+        )
 
         assertEquals(InternetProductSessionState.FAILED, session.state)
-        assertEquals(1, configurationCallbacks.get())
+        assertEquals(0, configurationCallbacks.get())
+        assertEquals(1, peer.control.size)
+    }
+
+    @Test
+    fun freshCancelsPendingVideoEffectBeforeDecoderOrUiSideEffects() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val installs = AtomicInteger(0)
+        val pendingEffect = AtomicReference<ProductVideoConfigurationEffect>()
+        val pendingCompletion = AtomicReference<(ProductVideoDecision) -> Unit>()
+        val callbacks =
+            object : InternetProductSessionCallbacks {
+                override fun onVideoConfiguration(
+                    configuration: ProductVideoConfiguration,
+                    effect: ProductVideoConfigurationEffect,
+                    completion: (ProductVideoDecision) -> Unit,
+                ) {
+                    pendingEffect.set(effect)
+                    pendingCompletion.set(completion)
+                }
+            }
+        val session = session(peer, monitor, callbacks)
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+        peer.receive(videoConfigurationEnvelope(3))
+
+        monitor.available("cellular")
+        pendingCompletion.get().invoke(
+            pendingEffect.get().commit {
+                installs.incrementAndGet()
+                ProductVideoDecision.ACCEPT
+            },
+        )
+
+        assertEquals(InternetProductSessionState.RECOVERING, session.state)
+        assertEquals(0, installs.get())
+        assertEquals(1, peer.control.size)
+    }
+
+    @Test
+    fun videoEffectIsOneShotAndAcceptedCompletionAcksOnce() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val installs = AtomicInteger(0)
+        val pendingEffect = AtomicReference<ProductVideoConfigurationEffect>()
+        val pendingCompletion = AtomicReference<(ProductVideoDecision) -> Unit>()
+        val callbacks =
+            object : InternetProductSessionCallbacks {
+                override fun onVideoConfiguration(
+                    configuration: ProductVideoConfiguration,
+                    effect: ProductVideoConfigurationEffect,
+                    completion: (ProductVideoDecision) -> Unit,
+                ) {
+                    pendingEffect.set(effect)
+                    pendingCompletion.set(completion)
+                }
+            }
+        val session = session(peer, monitor, callbacks)
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+        peer.receive(videoConfigurationEnvelope(3))
+
+        val first =
+            pendingEffect.get().commit {
+                installs.incrementAndGet()
+                ProductVideoDecision.ACCEPT
+            }
+        val second =
+            pendingEffect.get().commit {
+                installs.incrementAndGet()
+                ProductVideoDecision.ACCEPT
+            }
+        pendingCompletion.get().invoke(first)
+
+        assertTrue(first.accepted)
+        assertFalse(second.accepted)
+        assertEquals(1, installs.get())
+        assertEquals(Envelope.PayloadCase.VIDEO_CONFIG_RESULT, Envelope.parseFrom(peer.control.last()).payloadCase)
+    }
+
+    @Test
+    fun committedVideoEffectWithoutCompletionTimesOutFailClosed() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val clock = ProductFakeClock(0)
+        val installs = AtomicInteger(0)
+        val pendingEffect = AtomicReference<ProductVideoConfigurationEffect>()
+        val callbacks =
+            object : InternetProductSessionCallbacks {
+                override fun onVideoConfiguration(
+                    configuration: ProductVideoConfiguration,
+                    effect: ProductVideoConfigurationEffect,
+                    completion: (ProductVideoDecision) -> Unit,
+                ) {
+                    pendingEffect.set(effect)
+                }
+            }
+        val session = session(peer, monitor, callbacks, clock = clock)
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+        peer.receive(videoConfigurationEnvelope(3))
+        pendingEffect.get().commit {
+            installs.incrementAndGet()
+            ProductVideoDecision.ACCEPT
+        }
+
+        clock.now = 5_000
+        session.tick()
+
+        assertEquals(1, installs.get())
+        assertEquals(InternetProductSessionState.FAILED, session.state)
         assertEquals(1, peer.control.size)
     }
 
@@ -380,11 +516,17 @@ class InternetProductSessionTest {
     }
 
     @Test
-    fun closeBetweenStateCommitAndDispatchGateSuppressesConnectingAndStart() {
-        val peer = ProductFakePeerEngine()
+    fun closeWaitsForAtomicStartTransactionThenReleasesResources() {
+        val startEntered = CountDownLatch(1)
+        val releaseStart = CountDownLatch(1)
+        val peer =
+            ProductFakePeerEngine(
+                startHook = {
+                    startEntered.countDown()
+                    assertTrue(releaseStart.await(2, TimeUnit.SECONDS))
+                },
+            )
         val monitor = ProductFakeNetworkMonitor()
-        val committed = CountDownLatch(1)
-        val release = CountDownLatch(1)
         val states = mutableListOf<InternetProductSessionState>()
         val callbacks =
             object : InternetProductSessionCallbacks {
@@ -392,32 +534,88 @@ class InternetProductSessionTest {
                     states += state
                 }
             }
-        val session =
-            session(
-                peer,
-                monitor,
-                callbacks,
-                testHooks =
-                    InternetProductSessionTestHooks(
-                        afterStateCommitBeforeDispatchGate = { state ->
-                            if (state == InternetProductSessionState.CONNECTING) {
-                                committed.countDown()
-                                assertTrue(release.await(2, TimeUnit.SECONDS))
-                            }
-                        },
-                    ),
-            )
+        val session = session(peer, monitor, callbacks)
 
-        val executor = Executors.newSingleThreadExecutor()
+        val executor = Executors.newFixedThreadPool(2)
         val start = executor.submit { session.start() }
-        assertTrue(committed.await(2, TimeUnit.SECONDS))
-        session.close()
-        release.countDown()
+        assertTrue(startEntered.await(2, TimeUnit.SECONDS))
+        val close = executor.submit { session.close() }
+        assertFalse(close.isDone)
+        releaseStart.countDown()
         start.get(2, TimeUnit.SECONDS)
+        close.get(2, TimeUnit.SECONDS)
         executor.shutdown()
 
         assertEquals(InternetProductSessionState.CLOSED, session.state)
-        assertFalse(states.contains(InternetProductSessionState.CONNECTING))
+        assertEquals(listOf(InternetProductSessionState.CONNECTING, InternetProductSessionState.CLOSED), states)
+        assertEquals(1, peer.startCalls)
+        assertEquals(1, peer.closeCalls)
+        assertEquals(1, monitor.closeCalls)
+    }
+
+    @Test
+    fun concurrentStartReservesIdleOnceAndDoesNotFailSuccessfulSession() {
+        val startEntered = CountDownLatch(1)
+        val releaseStart = CountDownLatch(1)
+        val peer =
+            ProductFakePeerEngine(
+                startHook = {
+                    startEntered.countDown()
+                    assertTrue(releaseStart.await(2, TimeUnit.SECONDS))
+                },
+            )
+        val session = session(peer, ProductFakeNetworkMonitor(), ProductCallbacks())
+        val executor = Executors.newFixedThreadPool(2)
+        val ready = CountDownLatch(2)
+        val begin = CountDownLatch(1)
+        val starts =
+            List(2) {
+                executor.submit {
+                    ready.countDown()
+                    begin.await()
+                    session.start()
+                }
+            }
+        assertTrue(ready.await(2, TimeUnit.SECONDS))
+        begin.countDown()
+        assertTrue(startEntered.await(2, TimeUnit.SECONDS))
+        releaseStart.countDown()
+        val failures =
+            starts.mapNotNull { future ->
+                try {
+                    future.get(2, TimeUnit.SECONDS)
+                    null
+                } catch (failure: ExecutionException) {
+                    failure.cause
+                }
+            }
+        executor.shutdown()
+
+        assertEquals(1, peer.startCalls)
+        assertEquals(1, failures.size)
+        assertTrue(failures.single() is IllegalStateException)
+        assertEquals("Product session has already started", failures.single().message)
+        assertEquals(InternetProductSessionState.CONNECTING, session.state)
+    }
+
+    @Test
+    fun connectingCallbackCanCloseBeforeTransportStart() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val sessionReference = AtomicReference<InternetProductSession>()
+        val callbacks =
+            object : InternetProductSessionCallbacks {
+                override fun onStateChanged(state: InternetProductSessionState) {
+                    if (state == InternetProductSessionState.CONNECTING) sessionReference.get().close()
+                }
+            }
+        val session = session(peer, monitor, callbacks)
+        sessionReference.set(session)
+
+        session.start()
+
+        assertEquals(InternetProductSessionState.CLOSED, session.state)
+        assertEquals(0, peer.startCalls)
         assertEquals(1, peer.closeCalls)
         assertEquals(1, monitor.closeCalls)
     }
@@ -549,6 +747,185 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun revocationReservationBlocksFreshAndNewSessionUntilTombstoneCommits() {
+        val persistEntered = CountDownLatch(1)
+        val releasePersist = CountDownLatch(1)
+        val store =
+            ProductRevocationStore {
+                persistEntered.countDown()
+                assertTrue(releasePersist.await(2, TimeUnit.SECONDS))
+            }
+        val coordinator = InternetProductRevocationCoordinator()
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session =
+            session(
+                peer,
+                monitor,
+                callbacks,
+                revocationCoordinator = coordinator,
+                revocationStore = store,
+            )
+        activateWithVideo(session, peer, monitor)
+        val sentBeforeRevocation = peer.control.size
+
+        val executor = Executors.newFixedThreadPool(2)
+        val revoke = executor.submit { peer.receive(revocationEnvelope(4)) }
+        assertTrue(persistEntered.await(2, TimeUnit.SECONDS))
+        assertFalse(store.revoked.get())
+        assertFalse(session.sendTouch(ProductTouchEvent(30, 0, ProductInputPhase.BEGAN, 0.2, 0.3)))
+        peer.receive(controlEnvelope(5).setPing(Ping.newBuilder().setSequence(30)).build())
+        peer.media(media(frameId = 30, keyframe = true, payload = "revoked".toByteArray()))
+        assertEquals(sentBeforeRevocation, peer.control.size)
+        assertTrue(callbacks.frames.isEmpty())
+        assertThrows(IllegalStateException::class.java) {
+            session(
+                ProductFakePeerEngine(),
+                ProductFakeNetworkMonitor(),
+                ProductCallbacks(),
+                revocationCoordinator = coordinator,
+                revocationStore = store,
+            )
+        }
+        val fresh = executor.submit { monitor.available("cellular") }
+        fresh.get(2, TimeUnit.SECONDS)
+        assertTrue(callbacks.freshReasons.isEmpty())
+        releasePersist.countDown()
+        revoke.get(2, TimeUnit.SECONDS)
+        executor.shutdown()
+
+        assertTrue(store.revoked.get())
+        assertEquals(InternetProductSessionState.CLOSED, session.state)
+        assertTrue(callbacks.freshReasons.isEmpty())
+        assertEquals(1, callbacks.states.count { it == InternetProductSessionState.FAILED })
+    }
+
+    @Test
+    fun durableRevocationCommitWinsConcurrentCloseAndRemainsGloballyBlocked() {
+        val persisted = CountDownLatch(1)
+        val releaseCommit = CountDownLatch(1)
+        val store = ProductRevocationStore()
+        val coordinator = InternetProductRevocationCoordinator()
+        val peer = ProductFakePeerEngine()
+        val session =
+            session(
+                peer,
+                ProductFakeNetworkMonitor(),
+                ProductCallbacks(),
+                testHooks =
+                    InternetProductSessionTestHooks(
+                        afterRevocationPersistBeforeCommit = {
+                            persisted.countDown()
+                            assertTrue(releaseCommit.await(2, TimeUnit.SECONDS))
+                        },
+                    ),
+                revocationCoordinator = coordinator,
+                revocationStore = store,
+            )
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        val executor = Executors.newFixedThreadPool(2)
+        val revoke = executor.submit { peer.receive(revocationEnvelope(3)) }
+        assertTrue(persisted.await(2, TimeUnit.SECONDS))
+        assertTrue(store.revoked.get())
+        val close = executor.submit { session.close() }
+        close.get(2, TimeUnit.SECONDS)
+        assertEquals(InternetProductSessionState.CLOSED, session.state)
+        releaseCommit.countDown()
+        revoke.get(2, TimeUnit.SECONDS)
+        executor.shutdown()
+
+        assertEquals(InternetProductSessionState.CLOSED, session.state)
+        assertThrows(IllegalStateException::class.java) {
+            session(
+                ProductFakePeerEngine(),
+                ProductFakeNetworkMonitor(),
+                ProductCallbacks(),
+                revocationCoordinator = coordinator,
+                revocationStore = store,
+            )
+        }
+    }
+
+    @Test
+    fun closeAfterRevocationStateCommitSuppressesLateFailedAndRevokedCallbacks() {
+        val stateCommitted = CountDownLatch(1)
+        val releaseCallback = CountDownLatch(1)
+        val peer = ProductFakePeerEngine()
+        val callbacks = ProductCallbacks()
+        val revocationEvents = mutableListOf<String>()
+        callbacks.revocationEvents = revocationEvents
+        val session =
+            session(
+                peer,
+                ProductFakeNetworkMonitor(),
+                callbacks,
+                testHooks =
+                    InternetProductSessionTestHooks(
+                        afterRevocationStateCommitBeforeCallback = {
+                            stateCommitted.countDown()
+                            assertTrue(releaseCallback.await(2, TimeUnit.SECONDS))
+                        },
+                    ),
+                revocationStore = ProductRevocationStore(),
+            )
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        val executor = Executors.newSingleThreadExecutor()
+        val revoke = executor.submit { peer.receive(revocationEnvelope(3)) }
+        assertTrue(stateCommitted.await(2, TimeUnit.SECONDS))
+        session.close()
+        releaseCallback.countDown()
+        revoke.get(2, TimeUnit.SECONDS)
+        executor.shutdown()
+
+        assertEquals(InternetProductSessionState.CLOSED, session.state)
+        assertEquals(0, callbacks.states.count { it == InternetProductSessionState.FAILED })
+        assertTrue(revocationEvents.isEmpty())
+    }
+
+    @Test
+    fun revocationStateCallbackFailureStillClosesTransportExactlyOnce() {
+        val peer = ProductFakePeerEngine()
+        val revokedCallbacks = AtomicInteger(0)
+        val callbacks =
+            object : InternetProductSessionCallbacks {
+                override fun onStateChanged(state: InternetProductSessionState) {
+                    if (state == InternetProductSessionState.FAILED) throw IllegalStateException("state callback failed")
+                }
+
+                override fun onRevoked(reason: String) {
+                    revokedCallbacks.incrementAndGet()
+                }
+            }
+        val session =
+            session(
+                peer,
+                ProductFakeNetworkMonitor(),
+                callbacks,
+                revocationStore = ProductRevocationStore(),
+            )
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        val thrown = assertThrows(IllegalStateException::class.java) { peer.receive(revocationEnvelope(3)) }
+
+        assertEquals("state callback failed", thrown.message)
+        assertEquals(InternetProductSessionState.CLOSED, session.state)
+        assertEquals(0, revokedCallbacks.get())
+        assertEquals(1, peer.closeCalls)
+    }
+
+    @Test
     fun persistsAuthenticatedRevocationBeforeCallbackAndClose() {
         val peer = ProductFakePeerEngine()
         val callbacks = ProductCallbacks()
@@ -625,6 +1002,7 @@ class InternetProductSessionTest {
         callbacks: InternetProductSessionCallbacks,
         clock: ProductFakeClock = ProductFakeClock(0),
         testHooks: InternetProductSessionTestHooks = InternetProductSessionTestHooks(),
+        revocationCoordinator: InternetProductRevocationCoordinator = InternetProductRevocationCoordinator(),
         revocationStore: InternetProductRevocationStore = InternetProductRevocationStore { _, _ -> },
     ) = InternetProductSession(
         lease = lease,
@@ -640,6 +1018,7 @@ class InternetProductSessionTest {
         codec = codec,
         callbacks = callbacks,
         revocationStore = revocationStore,
+        revocationCoordinator = revocationCoordinator,
         testHooks = testHooks,
     )
 
@@ -669,6 +1048,11 @@ class InternetProductSessionTest {
                     .setBitrateKbps(12_000)
                     .setStreamId(5),
             ).build()
+
+    private fun revocationEnvelope(messageId: Long): Envelope =
+        controlEnvelope(messageId)
+            .setDeviceRevoked(DeviceRevoked.newBuilder().setDeviceId("device-1").setReasonCode("user_revoked"))
+            .build()
 
     private fun controlEnvelope(messageId: Long): Envelope.Builder =
         Envelope
@@ -718,16 +1102,39 @@ private class ProductFakeClock(var now: Long) : MonotonicClock {
 
 private fun String.hex(): ByteArray = chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
+private class ProductRevocationStore(
+    private val beforePersist: () -> Unit = {},
+) : InternetProductRevocationStore {
+    val revoked = AtomicBoolean(false)
+
+    override fun persistAuthenticatedRevocation(pairingIdentifier: String, reason: String) {
+        beforePersist()
+        revoked.set(true)
+    }
+
+    override fun isAuthenticatedRevoked(pairingIdentifier: String): Boolean = revoked.get()
+}
+
 private class ProductCallbacks : InternetProductSessionCallbacks {
+    val states = java.util.concurrent.CopyOnWriteArrayList<InternetProductSessionState>()
     val frames = mutableListOf<ProductVideoFrame>()
     val configurations = mutableListOf<ProductVideoConfiguration>()
     val freshReasons = mutableListOf<String>()
     val failures = mutableListOf<Throwable>()
     val routes = java.util.concurrent.CopyOnWriteArrayList<PeerRoute>()
     var revocationEvents: MutableList<String>? = null
-    override fun onVideoConfiguration(configuration: ProductVideoConfiguration): ProductVideoDecision {
-        configurations += configuration
-        return ProductVideoDecision.ACCEPT
+    override fun onStateChanged(state: InternetProductSessionState) { states += state }
+    override fun onVideoConfiguration(
+        configuration: ProductVideoConfiguration,
+        effect: ProductVideoConfigurationEffect,
+        completion: (ProductVideoDecision) -> Unit,
+    ) {
+        completion(
+            effect.commit {
+                configurations += configuration
+                ProductVideoDecision.ACCEPT
+            },
+        )
     }
     override fun onVideoFrame(frame: ProductVideoFrame) { frames += frame }
     override fun onFreshSessionRequired(reason: String) { freshReasons += reason }
@@ -751,14 +1158,20 @@ private class ProductFakeNetworkMonitor(
 
 private class ProductFakePeerEngine(
     private val closeFailure: Throwable? = null,
+    private val startHook: () -> Unit = {},
 ) : WebRtcPeerEngine {
     override val controlSemantics = DataChannelSemantics.RELIABLE_CONTROL
     override val mediaSemantics = DataChannelSemantics.LATEST_MEDIA
     lateinit var observer: WebRtcPeerEngine.Observer
     val control = mutableListOf<ByteArray>()
+    var startCalls = 0
     var restartCalls = 0
     var closeCalls = 0
-    override fun start(configuration: PeerConfiguration, observer: WebRtcPeerEngine.Observer) { this.observer = observer }
+    override fun start(configuration: PeerConfiguration, observer: WebRtcPeerEngine.Observer) {
+        startCalls++
+        this.observer = observer
+        startHook()
+    }
     override fun sendControl(payload: ByteArray): Boolean = control.add(payload)
     override fun sendMedia(payload: ByteArray): Boolean = true
     override fun restartIce() { restartCalls++ }
