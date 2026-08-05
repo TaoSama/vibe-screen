@@ -316,7 +316,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         acceptanceStage = "revoke_confirm"
         onView(withId(android.R.id.button1))
             .inRoot(DialogTextRootMatcher(R.string.internet_revoke_confirm_message))
-            .perform(click())
+            .perform(PerformViewListenerClickAction())
         acceptanceStage = "revoke_result"
         repeat(50) {
             var connectEnabled = true
@@ -420,6 +420,15 @@ private class ClickDialogPositiveAction(
         if (requireSecure) requireSecureWindow(view)
         val button = checkNotNull(view.rootView.findViewById<View>(android.R.id.button1))
         check(button.performClick()) { "Protected dialog action was not handled" }
+        uiController.loopMainThreadUntilIdle()
+    }
+}
+
+private class PerformViewListenerClickAction : ViewAction {
+    override fun getConstraints() = allOf(isDisplayed(), isEnabled())
+    override fun getDescription() = "invoke the matched production view listener"
+    override fun perform(uiController: UiController, view: View) {
+        check(view.performClick()) { "Matched production view action was not handled" }
         uiController.loopMainThreadUntilIdle()
     }
 }
