@@ -379,7 +379,7 @@ def private_config_device_commands(config_name: str) -> dict[str, Any]:
             ["shell", "run-as", APP_PACKAGE, "mkdir", "-p", "files"],
             ["shell", "run-as", APP_PACKAGE, "chmod", "700", "files"],
         ],
-        "import": ["exec-out", "run-as", APP_PACKAGE, "dd", f"of={path}", "status=none"],
+        "import": ["shell", "run-as", APP_PACKAGE, "dd", f"of={path}", "status=none"],
         "chmod": ["shell", "run-as", APP_PACKAGE, "chmod", "600", path],
         "consumed": ["shell", "run-as", APP_PACKAGE, "test", "!", "-e", path],
         "cleanup": ["shell", "run-as", APP_PACKAGE, "rm", "-f", path],

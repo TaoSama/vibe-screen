@@ -233,7 +233,7 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
             self.assertNotIn("sh -c", rendered)
             self.assertNotIn("cat", rendered)
             self.assertNotIn("credential", rendered)
-        self.assertEqual(commands["import"][:4], ["exec-out", "run-as", "dev.telemachus.display", "dd"])
+        self.assertEqual(commands["import"][:4], ["shell", "run-as", "dev.telemachus.display", "dd"])
         self.assertEqual(sum("dd" in command for command in flattened), 1)
         with self.assertRaisesRegex(InteropError, "basename"):
             private_config_device_commands("../escape")
