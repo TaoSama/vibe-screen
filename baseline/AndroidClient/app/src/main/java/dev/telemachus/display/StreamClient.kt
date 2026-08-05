@@ -473,6 +473,8 @@ class StreamClient(
         val outcome =
             if (firstByte == null) {
                 UpgradeProbeOutcome.TimedOut
+            } else if (firstByte < 0) {
+                throw IOException("Protocol upgrade probe closed before a response")
             } else {
                 when (val result = ProtocolUpgrade.classify(firstByte, input)) {
                     ProtocolUpgrade.Result.V1 -> UpgradeProbeOutcome.V1Acknowledged

@@ -188,7 +188,7 @@ named by that run:
   24 vectors, including direction reflection and global revocation sequencing;
 - Android clean `./gradlew --no-daemon clean testDebugUnitTest lintDebug
   assembleDebug compileDebugAndroidTestKotlin auditReleaseDependencies` passed
-  with 263 JVM tests and zero failures/errors/skips. The security tests cover
+  with 265 JVM tests and zero failures/errors/skips. The security tests cover
   paired-host lease signature mutation, reserved maximum epochs, stale durable
   cipher epochs, monotonic identity reauthorization, restart-safe credential and
   revocation cleanup, best-effort close aggregation, and generation-scoped route
@@ -209,7 +209,12 @@ named by that run:
   every old-pairing revocation stage, owner-aware legacy/current marker recovery,
   coexisting pairing/authenticated-revocation markers across simulated restart,
   and old-cleanup/new-owner upgrade recovery without profile, binding, or secret
-  cross-deletion; same-owner cleanup still deletes every owned resource.
+  cross-deletion; same-owner cleanup still deletes every owned resource. The
+  upgrade cases instantiate the production `InternetSessionProfileStore` with
+  in-memory preference/secret adapters, call its real
+  `retryPendingRevocationCleanup` entry point, and assert marker progression,
+  restart retry, profile secret and deferred-queue state. Legacy writer,
+  ready/EOF and fresh-fallback regressions passed five independent rerun rounds.
   `processReleaseMainManifest` also passed and the merged release
   manifest sets `usesCleartextTraffic=false`;
 - Android `./gradlew auditReleaseDependencies`: passed the fixed AAR, Gson,
