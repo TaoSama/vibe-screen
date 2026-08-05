@@ -58,6 +58,25 @@ private data class PendingAuthenticatedRevocation(
     val reason: String,
 )
 
+internal object InternetCredentialOwnershipPolicy {
+    fun blocksMutation(
+        targetPairingIdentifier: String?,
+        verifiedPairingIdentifier: String?,
+        profilePairingIdentifier: String?,
+        revokedPairingIdentifier: String?,
+        hasPendingAuthenticatedRevocation: Boolean,
+        hasPendingRevocationCleanup: Boolean,
+    ): Boolean =
+        hasPendingAuthenticatedRevocation ||
+            hasPendingRevocationCleanup ||
+            targetPairingIdentifier != null &&
+            (
+                revokedPairingIdentifier == targetPairingIdentifier ||
+                    verifiedPairingIdentifier != null && verifiedPairingIdentifier != targetPairingIdentifier ||
+                    profilePairingIdentifier != null && profilePairingIdentifier != targetPairingIdentifier
+            )
+}
+
 internal class DeferredSecretCleanupPending {
     private val values = mutableSetOf<String>()
 
@@ -88,7 +107,10 @@ class InternetSessionProfileStore(
         val decoded = InternetSessionProfileCodec.decode(json, debuggable)
         return try {
             revocationCoordinator.withCredentialMutationAdmission(
-                durableBlock = { hasDurableCredentialMutationBlock(decoded.profile.pairingIdentifier) },
+                durableBlock = {
+                    hasDurableCredentialMutationBlock(decoded.profile.pairingIdentifier) ||
+                        storedSessionFactory.hasPendingPairingPersistenceCleanup()
+                },
             ) {
                 val pairing = loadPairingBinding() ?: throw IllegalStateException("Complete signed pairing before importing a lease")
                 require(decoded.profile.pairingIdentifier == pairing.pairingIdentifier) { "Lease pairing does not match the verified Mac" }
@@ -223,7 +245,7 @@ class InternetSessionProfileStore(
                     "Failed to persist verified pairing metadata"
                 }
             },
-            cleanupBusinessState = ::removePairingBinding,
+            cleanupBusinessState = { removePairingBindingIfMatches(permit, metadata.pairingIdentifier) },
         )
     }
 
@@ -302,10 +324,16 @@ class InternetSessionProfileStore(
 
     fun hasDurableCredentialMutationBlock(targetPairingIdentifier: String?): Boolean =
         InternetProductAdmissionGate.withLock {
-            loadPendingAuthenticatedRevocation() != null ||
-                loadPendingRevocationCleanup() != null ||
-                targetPairingIdentifier != null &&
-                preferences.getString(REVOKED_PAIRING_KEY, null) == targetPairingIdentifier
+            val verifiedPairingIdentifier = loadPairingBinding()?.pairingIdentifier
+            val profilePairingIdentifier = loadPublicProfile()?.pairingIdentifier
+            InternetCredentialOwnershipPolicy.blocksMutation(
+                targetPairingIdentifier = targetPairingIdentifier,
+                verifiedPairingIdentifier = verifiedPairingIdentifier,
+                profilePairingIdentifier = profilePairingIdentifier,
+                revokedPairingIdentifier = preferences.getString(REVOKED_PAIRING_KEY, null),
+                hasPendingAuthenticatedRevocation = loadPendingAuthenticatedRevocation() != null,
+                hasPendingRevocationCleanup = loadPendingRevocationCleanup() != null,
+            )
         }
 
     fun loadPublicProfile(): StoredInternetSessionProfile? =
@@ -339,6 +367,16 @@ class InternetSessionProfileStore(
     @SuppressLint("ApplySharedPref")
     fun removePairingBinding() {
         check(preferences.edit().remove(PAIRING_KEY).commit()) { "Failed to delete verified pairing metadata" }
+    }
+
+    internal fun removePairingBindingIfMatches(
+        permit: InternetProductCredentialMutationPermit,
+        pairingIdentifier: String,
+    ) {
+        permit.requireActive()
+        val current = loadPairingBinding() ?: return
+        if (current.pairingIdentifier != pairingIdentifier) return
+        removePairingBinding()
     }
 
     @SuppressLint("ApplySharedPref")

@@ -73,7 +73,11 @@ class InternetProductSessionInteropInstrumentedTest {
         }
 
         val storedFactory = AndroidStoredInternetSessionFactory(context, localDeviceId)
-        storedFactory.persistPairingSecrets(pairingId, sharedSecret, bootstrapSecret)
+        val revocationCoordinator = InternetProductRevocationCoordinator()
+        revocationCoordinator.withCredentialMutationAdmission(durableBlock = { false }) {
+            storedFactory.persistPairingSecrets(pairingId, sharedSecret, bootstrapSecret)
+            storedFactory.completePairingPersistence(pairingId, commitBusinessState = {}, cleanupBusinessState = {})
+        }
         sharedSecret.fill(0)
         bootstrapSecret.fill(0)
         val sessionReference = AtomicReference<InternetProductSession?>()
@@ -164,7 +168,7 @@ class InternetProductSessionInteropInstrumentedTest {
 
                             override fun isAdmissionBlocked(pairingIdentifier: String): Boolean = pending.get() || revoked.get()
                         },
-                    revocationCoordinator = InternetProductRevocationCoordinator(),
+                    revocationCoordinator = revocationCoordinator,
                 )
             } catch (failure: Throwable) {
                 storedFactory.removePairingSecrets(pairingId)
