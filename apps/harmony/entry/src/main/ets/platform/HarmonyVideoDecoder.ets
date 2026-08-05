@@ -1,6 +1,7 @@
 import { media } from '@kit.AVCodecKit';
 import { Codec } from '../core/protocol/ProtocolModels';
-import { DecoderCleanupTransition, DecoderLifecycle, DecoderTransitionOwner } from '../core/media/DecoderLifecycle';
+import { DecoderCandidateLease, DecoderCleanupTransition, DecoderLifecycle,
+  DecoderTransitionOwner } from '../core/media/DecoderLifecycle';
 import { EncodedFrame, FrameQueueEffect, LatestFrameQueue } from '../core/media/LatestFrameQueue';
 
 const VIDEO_MIME_H264: string = 'video/avc';
@@ -14,7 +15,11 @@ export interface VideoDecoderListener {
   onDecoderWarning?(message: string): void;
 }
 interface InputSlot { index: number; buffer: media.AVBuffer; }
-interface DecoderCandidate { decoder: media.VideoDecoder; lifecycle: DecoderLifecycle; owner: number; }
+interface DecoderCandidate {
+  decoder?: media.VideoDecoder;
+  lease: DecoderCandidateLease<media.VideoDecoder>;
+  owner: number;
+}
 
 export class HarmonyVideoDecoder {
   private candidates: DecoderTransitionOwner<DecoderCandidate> = new DecoderTransitionOwner(
@@ -37,48 +42,59 @@ export class HarmonyVideoDecoder {
     if (surfaceId.length === 0) throw new Error('Video surface is not ready');
 
     const mime: string = codec === Codec.HEVC ? VIDEO_MIME_HEVC : VIDEO_MIME_H264;
-    const candidate: media.VideoDecoder = await media.createVideoDecoderByMime(mime);
-    if (owner !== this.generation) { await candidate.release(); throw new Error('Decoder configuration superseded'); }
-    const lifecycle: DecoderLifecycle = new DecoderLifecycle({
-      configure: async (): Promise<void> => candidate.configure({ mime, width, height }),
-      setOutputSurface: async (): Promise<void> => candidate.setOutputSurface(surfaceId),
-      prepare: async (): Promise<void> => candidate.prepare(),
-      start: async (): Promise<void> => candidate.start(),
-      stop: async (): Promise<void> => candidate.stop(),
-      release: async (): Promise<void> => candidate.release()
-    });
-    const registered: DecoderCandidate = { decoder: candidate, lifecycle, owner };
-    this.candidates.install(registered); this.listener = listener; this.epoch = epoch; this.consecutiveInputFailures = 0;
-    this.frames.reset(epoch);
-    candidate.on('error', (error: Error) => {
-      if (!this.isCurrent(owner, candidate)) return;
-      this.frames.clear(); listener.onDecoderError(error.message);
-    });
-    candidate.on('needInputData', (index: number, buffer: media.AVBuffer) => {
-      if (!this.isCurrent(owner, candidate)) return;
-      this.inputSlots.push({ index, buffer }); this.drain(candidate, owner);
-    });
-    candidate.on('newOutputData', (index: number, _buffer: media.AVBuffer) => {
-      if (!this.isCurrent(owner, candidate)) return;
-      try {
-        Promise.resolve(candidate.freeOutputBuffer(index, true)).then(() => {
-          if (this.isCurrent(owner, candidate)) listener.onFrameRendered();
-        }).catch((error: Error) => {
-          if (this.isCurrent(owner, candidate)) listener.onDecoderError(`output_render_failed:${error.message}`);
-        });
-      } catch (error) {
-        listener.onDecoderError(`output_render_failed:${this.errorMessage(error as Object)}`);
+    const creation: DecoderCandidateLease<media.VideoDecoder> = new DecoderCandidateLease(
+      async (): Promise<media.VideoDecoder> => media.createVideoDecoderByMime(mime),
+      async (uninitialized: media.VideoDecoder): Promise<void> => uninitialized.release());
+    const registered: DecoderCandidate = { lease: creation, owner };
+    this.candidates.install(registered);
+    try {
+      const candidate: media.VideoDecoder = await creation.start();
+      if (owner !== this.generation || !creation.canContinue()) {
+        await creation.cancelAndCleanup();
+        throw new Error('Decoder configuration superseded');
       }
-    });
-    try { await lifecycle.initialize(); }
-    catch (error) { this.clearCandidateIfCurrent(registered); throw error; }
-    if (!this.isCurrent(owner, candidate)) throw new Error('Decoder configuration superseded');
+      const lifecycle: DecoderLifecycle = new DecoderLifecycle({
+        configure: async (): Promise<void> => candidate.configure({ mime, width, height }),
+        setOutputSurface: async (): Promise<void> => candidate.setOutputSurface(surfaceId),
+        prepare: async (): Promise<void> => candidate.prepare(),
+        start: async (): Promise<void> => candidate.start(),
+        stop: async (): Promise<void> => candidate.stop(),
+        release: async (): Promise<void> => candidate.release()
+      });
+      creation.attachLifecycle(lifecycle); registered.decoder = candidate;
+      this.listener = listener; this.epoch = epoch; this.consecutiveInputFailures = 0; this.frames.reset(epoch);
+      candidate.on('error', (error: Error) => {
+        if (!this.isCurrent(owner, candidate)) return;
+        this.frames.clear(); listener.onDecoderError(error.message);
+      });
+      candidate.on('needInputData', (index: number, buffer: media.AVBuffer) => {
+        if (!this.isCurrent(owner, candidate)) return;
+        this.inputSlots.push({ index, buffer }); this.drain(candidate, owner);
+      });
+      candidate.on('newOutputData', (index: number, _buffer: media.AVBuffer) => {
+        if (!this.isCurrent(owner, candidate)) return;
+        try {
+          Promise.resolve(candidate.freeOutputBuffer(index, true)).then(() => {
+            if (this.isCurrent(owner, candidate)) listener.onFrameRendered();
+          }).catch((error: Error) => {
+            if (this.isCurrent(owner, candidate)) listener.onDecoderError(`output_render_failed:${error.message}`);
+          });
+        } catch (error) {
+          listener.onDecoderError(`output_render_failed:${this.errorMessage(error as Object)}`);
+        }
+      });
+      await lifecycle.initialize();
+      if (!this.isCurrent(owner, candidate)) throw new Error('Decoder configuration superseded');
+    } catch (error) {
+      this.clearCandidateIfCurrent(registered);
+      throw error;
+    }
   }
 
   submit(frame: EncodedFrame): void {
     this.emitQueueEffect(this.frames.offer(frame), 'decoder_reference_lost');
     const active: DecoderCandidate | undefined = this.candidates.current();
-    if (active !== undefined) this.drain(active.decoder, active.owner);
+    if (active?.decoder !== undefined) this.drain(active.decoder, active.owner);
   }
 
   droppedFrames(): number { return this.frames.droppedCount(); }
@@ -100,8 +116,7 @@ export class HarmonyVideoDecoder {
   }
 
   private async releaseDetached(detached: DecoderCandidate): Promise<void> {
-    const failures: string[] = await detached.lifecycle.cancelAndCleanup();
-    if (failures.length > 0) throw new Error(failures.join('; '));
+    await detached.lease.cancelAndCleanup();
   }
 
   private drain(candidate: media.VideoDecoder, owner: number): void {

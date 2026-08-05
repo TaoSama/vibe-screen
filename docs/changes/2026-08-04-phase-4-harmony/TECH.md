@@ -86,7 +86,11 @@ before one release, and conditional clearing prevents an old continuation from
 touching a replacement. The transition owner retains the detached cleanup
 promise even while no candidate is globally active. A third configure/release
 therefore joins that barrier instead of bypassing it, and a replacement cannot
-be installed until cleanup settles. The exact
+be installed until cleanup settles. A candidate-creation lease is installed
+before calling the native decoder factory. If ownership changes while creation
+is pending, cleanup waits for that exact promise, performs one uninitialized
+release, and propagates factory/release failure to configure, release, and all
+later barrier waiters; no later native create starts early. The exact
 commercial HarmonyOS SDK AVCodecKit declarations are not available in the
 portable environment; DevEco compilation and device behavior remain mandatory.
 
@@ -130,7 +134,9 @@ inside target methods. Critical gates must use the expected early-return or
 fail-closed control-flow shape, and constant-false, short-circuited, or directly
 post-return calls are rejected. Each capability guard must precede and dominate
 all protected sends in its straight-line method; late-but-reachable guards are
-negative-tested. Portable core tests prove negotiated input and bounded-queue
-behavior. This is deliberately limited syntax/control-flow
-evidence, not a general reachability proof, the DevEco ArkTS API/type checker,
+negative-tested. Direct return/throw and supported constant if/else termination
+also make all following calls unreachable; unrecognized control-flow shapes
+fail the conservative critical-guard checks. Portable core tests prove
+negotiated input and bounded-queue behavior. This is deliberately limited
+syntax/control-flow evidence, not a general reachability proof, the DevEco ArkTS API/type checker,
 the full declarative ArkUI parser, or a HAP substitute.

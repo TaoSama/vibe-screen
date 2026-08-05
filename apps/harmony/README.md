@@ -117,7 +117,10 @@ the current platform operation to settle, share one cleanup promise, and use
 stop-before-release whenever start may have taken effect; an old continuation
 cannot clear its replacement. A transition owner retains detached cleanup as a
 barrier, so later configure/release calls cannot start or return while that
-resource is still live. Transport parse, timeout, socket,
+resource is still live. The placeholder candidate is installed before native
+decoder creation begins, so the same barrier also covers a pending
+`createVideoDecoderByMime()` and exposes creation or uninitialized-release
+failure to every waiter. Transport parse, timeout, socket,
 controller-close, and supersede paths compete for one lease; only its winning
 close owner may detach, close, and notify.
 

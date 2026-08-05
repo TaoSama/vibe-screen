@@ -140,3 +140,47 @@ export class DecoderLifecycle {
 
   private errorMessage(error: Error): string { return error.message; }
 }
+
+/** Owns native creation before a decoder lifecycle can be attached. */
+export class DecoderCandidateLease<T> {
+  private creationPromise: Promise<T> | undefined;
+  private lifecycle: DecoderLifecycle | undefined;
+  private cancellationRequested: boolean = false;
+  private cleanupPromise: Promise<void> | undefined;
+
+  constructor(private createCandidate: () => Promise<T>, private releaseUninitialized: (candidate: T) => Promise<void>) {}
+
+  start(): Promise<T> {
+    if (this.creationPromise !== undefined) return this.creationPromise;
+    try { this.creationPromise = this.createCandidate(); }
+    catch (error) { this.creationPromise = Promise.reject(error); }
+    return this.creationPromise;
+  }
+
+  canContinue(): boolean { return !this.cancellationRequested; }
+
+  attachLifecycle(lifecycle: DecoderLifecycle): void {
+    if (this.cancellationRequested) throw new Error('Decoder creation superseded');
+    if (this.lifecycle !== undefined) throw new Error('Decoder lifecycle already attached');
+    this.lifecycle = lifecycle;
+  }
+
+  cancelAndCleanup(): Promise<void> {
+    this.cancellationRequested = true;
+    if (this.cleanupPromise === undefined) this.cleanupPromise = this.cleanupWhenReady();
+    return this.cleanupPromise;
+  }
+
+  private async cleanupWhenReady(): Promise<void> {
+    const creation: Promise<T> | undefined = this.creationPromise;
+    if (creation === undefined) throw new Error('Decoder cleanup requested before creation started');
+    const candidate: T = await creation;
+    const attached: DecoderLifecycle | undefined = this.lifecycle;
+    if (attached === undefined) {
+      await this.releaseUninitialized(candidate);
+      return;
+    }
+    const failures: string[] = await attached.cancelAndCleanup();
+    if (failures.length > 0) throw new Error(failures.join('; '));
+  }
+}
