@@ -17,9 +17,12 @@ sys.path.insert(0, str(ROOT))
 from scripts.phase3.android_product_session_interop_acceptance import (
     DEVICE_MARKER_PREFIX,
     HOST_MARKER_PREFIX,
+    UI_MARKER_FLAGS,
+    UI_MARKER_PREFIX,
     INTERNET_LEASE_LOCK,
     MANDATORY_DEVICE_LOCKS,
     Adb,
+    AdbGateJournal,
     InteropError,
     LEASE_TASK,
     build_parser,
@@ -29,12 +32,15 @@ from scripts.phase3.android_product_session_interop_acceptance import (
     redact,
     read_private_ice_configuration,
     read_private_external,
+    require_external_output,
     require_artifacts_unchanged,
     private_config_device_commands,
     require_lease,
+    run_both_routes,
     signaling_config,
     validate_instrumentation_result,
     validate_marker,
+    validate_ui_marker,
     write_private,
 )
 
@@ -122,6 +128,7 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
             lease = Path(directory) / "internet.lock"
             write_private(lease, self._lease_bytes())
             records = []
+            gate_path = Path(directory) / "gates.jsonl"
             completed = subprocess.CompletedProcess([], 0, stdout=b"private output", stderr=b"")
             with mock.patch(
                 "scripts.phase3.android_product_session_interop_acceptance.INTERNET_LEASE_LOCK", lease
@@ -136,7 +143,8 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
                 return_value=completed,
             ) as run_process:
                 snapshot = capture_lease("a" * 40)
-                adb = Adb("adb", "private-endpoint", snapshot, "a" * 40, [], records)
+                journal = AdbGateJournal(gate_path, snapshot, "a" * 40, [])
+                adb = Adb("adb", "private-endpoint", snapshot, "a" * 40, [], records, journal)
                 self.assertEqual(adb.device(["get-state"], name="state"), "private output")
                 lease.unlink()
                 with self.assertRaisesRegex(InteropError, "unavailable"):
@@ -146,12 +154,24 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
             self.assertFalse(hasattr(records[0], "stdout"))
             self.assertNotIn("private-endpoint", json.dumps(records[0].__dict__))
             self.assertNotIn("private output", json.dumps(records[0].__dict__))
+            gates = [json.loads(line) for line in gate_path.read_text().splitlines()]
+            self.assertEqual([gate["phase"] for gate in gates], ["before", "after", "before"])
+            self.assertEqual([gate["command"] for gate in gates], ["state", "state", "state-2"])
+            self.assertTrue(all(gate["commit"] == "a" * 40 for gate in gates))
+            self.assertTrue(all(gate["task"] == LEASE_TASK for gate in gates))
+            self.assertTrue(all(gate["inode"] == snapshot.inode for gate in gates))
+            self.assertTrue(all(gate["content_bytes"] == len(snapshot.content) for gate in gates))
+            self.assertEqual([gate["gate_valid"] for gate in gates], [True, True, False])
+            self.assertEqual(gates[-1]["execution"], "not_started")
+            self.assertNotIn("acceptance-owner", gate_path.read_text())
+            self.assertNotIn("private-endpoint", gate_path.read_text())
 
     def test_adb_rechecks_lease_after_subprocess_before_accepting_or_recording_result(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             lease = Path(directory) / "internet.lock"
             write_private(lease, self._lease_bytes())
             records = []
+            gate_path = Path(directory) / "gates.jsonl"
             with mock.patch(
                 "scripts.phase3.android_product_session_interop_acceptance.INTERNET_LEASE_LOCK", lease
             ), mock.patch(
@@ -162,7 +182,8 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
                 "scripts.phase3.android_product_session_interop_acceptance._pid_is_alive", return_value=True
             ):
                 snapshot = capture_lease("a" * 40)
-                adb = Adb("adb", "private-endpoint", snapshot, "a" * 40, [], records)
+                journal = AdbGateJournal(gate_path, snapshot, "a" * 40, [])
+                adb = Adb("adb", "private-endpoint", snapshot, "a" * 40, [], records, journal)
 
                 def delete_lease(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
                     lease.unlink()
@@ -175,6 +196,74 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
                     with self.assertRaisesRegex(InteropError, "unavailable"):
                         adb.device(["get-state"], name="state")
             self.assertEqual(records, [])
+            gates = [json.loads(line) for line in gate_path.read_text().splitlines()]
+            self.assertEqual([gate["phase"] for gate in gates], ["before", "after"])
+            self.assertEqual([gate["gate_valid"] for gate in gates], [True, False])
+
+    def test_gate_journal_rejects_replacement_and_mode_change(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lease = root / "internet.lock"
+            journal_path = root / "gates.jsonl"
+            write_private(lease, self._lease_bytes())
+            with mock.patch(
+                "scripts.phase3.android_product_session_interop_acceptance.INTERNET_LEASE_LOCK", lease
+            ), mock.patch(
+                "scripts.phase3.android_product_session_interop_acceptance.MANDATORY_DEVICE_LOCKS", ()
+            ), mock.patch(
+                "scripts.phase3.android_product_session_interop_acceptance.DEVICE_LOCK_GLOB", "no-test-locks-*"
+            ), mock.patch(
+                "scripts.phase3.android_product_session_interop_acceptance._pid_is_alive", return_value=True
+            ):
+                snapshot = capture_lease("a" * 40)
+                journal = AdbGateJournal(journal_path, snapshot, "a" * 40, [])
+                sequence = journal.next_sequence()
+                journal.record(sequence, "state", "before", "pending")
+                journal.record(sequence, "state", "after", "completed")
+                journal_path.chmod(0o644)
+                with self.assertRaisesRegex(InteropError, "0600"):
+                    journal.validate_complete()
+                journal_path.chmod(0o600)
+                write_private(journal_path, journal_path.read_bytes())
+                with self.assertRaisesRegex(InteropError, "identity changed"):
+                    journal.validate_complete()
+
+    def test_both_routes_require_same_lease_and_artifacts(self) -> None:
+        base = {
+            "source": {"commit": "a", "tree": "b", "origin_main_commit": "c"},
+            "device": {"product": "Nubia P0110"},
+            "evidence_boundaries": {},
+            "artifacts": {
+                "app_apk_sha256": "1", "test_apk_sha256": "2",
+                "mac_host_sha256": "3", "signaling_binary_sha256": "4",
+            },
+            "adb_gate": {
+                "pid": 42, "task": LEASE_TASK, "commit": "a", "filesystem_device": 7,
+                "inode": 8, "content_bytes": 9, "lease_comparison_tag": "tag",
+            },
+        }
+        with mock.patch(
+            "scripts.phase3.android_product_session_interop_acceptance.run",
+            side_effect=({**base, "route": "direct"}, {**base, "route": "relay"}),
+        ):
+            combined = run_both_routes(argparse.Namespace())
+        self.assertEqual(combined["routes"], ["direct", "relay"])
+        changed = {**base, "adb_gate": {**base["adb_gate"], "inode": 99}, "route": "relay"}
+        with mock.patch(
+            "scripts.phase3.android_product_session_interop_acceptance.run",
+            side_effect=({**base, "route": "direct"}, changed),
+        ), self.assertRaisesRegex(InteropError, "same device lease"):
+            run_both_routes(argparse.Namespace())
+
+    def test_output_paths_must_remain_outside_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            repo.mkdir()
+            outside = root / "evidence.json"
+            self.assertEqual(require_external_output(outside, repo, "evidence"), outside.resolve())
+            with self.assertRaisesRegex(InteropError, "outside"):
+                require_external_output(repo / "evidence.json", repo, "evidence")
 
     def test_controlled_build_uses_fixed_commands_and_rechecks_clean_source(self) -> None:
         source = {"commit": "a" * 40, "tree": "b" * 40, "origin_main_commit": "c" * 40}
@@ -276,6 +365,19 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
         for output in ("OK (2 tests)\n", "FAILURES!!!\nOK (1 test)\n", "INSTRUMENTATION_FAILED"):
             with self.assertRaises(InteropError):
                 validate_instrumentation_result(output)
+
+    def test_ui_marker_requires_exact_complete_assertions(self) -> None:
+        marker = " ".join((UI_MARKER_PREFIX, *UI_MARKER_FLAGS))
+        self.assertEqual(validate_ui_marker(marker), marker)
+        for broken in (
+            marker.replace("pairing=true ", ""),
+            marker.replace(UI_MARKER_PREFIX, UI_MARKER_PREFIX + "_EVIL"),
+            marker + " pairing=true",
+            marker + " unknown=true",
+            marker + "\n" + marker,
+        ):
+            with self.assertRaises(InteropError):
+                validate_ui_marker(broken)
 
     def test_kdf_material_is_well_formed_and_binds_epoch_and_roles(self) -> None:
         with mock.patch(

@@ -54,8 +54,10 @@ MANDATORY_DEVICE_LOCKS = (
 APP_PACKAGE = "dev.telemachus.display"
 TEST_RUNNER = f"{APP_PACKAGE}.test/androidx.test.runner.AndroidJUnitRunner"
 TEST_CLASS = f"{APP_PACKAGE}.internet.InternetProductSessionInteropInstrumentedTest"
+UI_TEST_CLASS = f"{APP_PACKAGE}.InternetMainActivityAcceptanceInstrumentedTest"
 HOST_MARKER_PREFIX = "PHASE3_ANDROID_INTEROP_HOST_PASS"
 DEVICE_MARKER_PREFIX = "PHASE3_ANDROID_INTEROP_DEVICE_PASS"
+UI_MARKER_PREFIX = "PHASE3_ANDROID_INTERNET_UI_PASS"
 MARKER_FLAGS = (
     "kdf_kat=true",
     "transcript_kat=true",
@@ -66,6 +68,15 @@ MARKER_FLAGS = (
     "application_e2ee=true",
 )
 DEVICE_ONLY_FLAGS = ("protocol_v1=true", "lifecycle_store=test_isolated")
+UI_MARKER_FLAGS = (
+    "internet_tab=true",
+    "route_toggle=true",
+    "pairing=true",
+    "strict_lease_import=true",
+    "local_revoke=true",
+    "repair=true",
+    "secure_dialogs=true",
+)
 
 
 class InteropError(RuntimeError):
@@ -81,6 +92,29 @@ class CommandRecord:
     stderr_sha256: str
     stderr_bytes: int
     elapsed_seconds: float
+
+
+@dataclass(frozen=True)
+class AdbGateRecord:
+    schema: str
+    run_id: str
+    adb_sequence: int
+    command: str
+    phase: str
+    execution: str
+    recorded_at_utc: str
+    gate_valid: bool
+    owner_matches_initial: bool
+    pid: int
+    pid_alive: bool
+    task: str
+    commit: str
+    filesystem_device: int
+    inode: int
+    inode_matches_initial: bool
+    content_bytes: int
+    content_matches_initial: bool
+    other_device_locks_empty: bool
 
 
 @dataclass(frozen=True)
@@ -100,6 +134,147 @@ class LeaseSnapshot:
     pid: int
     task: str
     commit: str
+
+
+class AdbGateJournal:
+    def __init__(self, path: Path, lease: LeaseSnapshot, expected_commit: str,
+                 additional_locks: Sequence[Path]) -> None:
+        self.path = path
+        self.lease = lease
+        self.expected_commit = expected_commit
+        self.additional_locks = tuple(additional_locks)
+        self.records: list[AdbGateRecord] = []
+        self.run_id = f"android-internet-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(4)}"
+        self.adb_commands = 0
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            descriptor = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except OSError as error:
+            raise InteropError("ADB gate journal must be a new file") from error
+        try:
+            status = os.fstat(descriptor)
+            self.journal_device = status.st_dev
+            self.journal_inode = status.st_ino
+        finally:
+            os.close(descriptor)
+        self.written_bytes = 0
+
+    def next_sequence(self) -> int:
+        self.adb_commands += 1
+        return self.adb_commands
+
+    def record(self, sequence: int, command: str, phase: str, execution: str) -> None:
+        require_lease(self.lease, self.expected_commit, self.additional_locks)
+        record = AdbGateRecord(
+            schema="dev.vibescreen.adb-lease-gate/v1",
+            run_id=self.run_id,
+            adb_sequence=sequence,
+            command=command,
+            phase=phase,
+            execution=execution,
+            recorded_at_utc=datetime.now(timezone.utc).isoformat(),
+            gate_valid=True,
+            owner_matches_initial=True,
+            pid=self.lease.pid,
+            pid_alive=True,
+            task=self.lease.task,
+            commit=self.lease.commit,
+            filesystem_device=self.lease.device,
+            inode=self.lease.inode,
+            inode_matches_initial=True,
+            content_bytes=len(self.lease.content),
+            content_matches_initial=True,
+            other_device_locks_empty=True,
+        )
+        self.records.append(record)
+        self._append(record)
+
+    def record_invalid(self, sequence: int, command: str, phase: str, execution: str) -> None:
+        record = AdbGateRecord(
+            schema="dev.vibescreen.adb-lease-gate/v1",
+            run_id=self.run_id,
+            adb_sequence=sequence,
+            command=command,
+            phase=phase,
+            execution=execution,
+            recorded_at_utc=datetime.now(timezone.utc).isoformat(),
+            gate_valid=False,
+            owner_matches_initial=False,
+            pid=self.lease.pid,
+            pid_alive=_pid_is_alive(self.lease.pid),
+            task=self.lease.task,
+            commit=self.lease.commit,
+            filesystem_device=self.lease.device,
+            inode=self.lease.inode,
+            inode_matches_initial=False,
+            content_bytes=len(self.lease.content),
+            content_matches_initial=False,
+            other_device_locks_empty=False,
+        )
+        self.records.append(record)
+        self._append(record)
+
+    def _append(self, record: AdbGateRecord) -> None:
+        encoded = (json.dumps(asdict(record), sort_keys=True, separators=(",", ":")) + "\n").encode()
+        flags = os.O_WRONLY | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(self.path, flags)
+        try:
+            status = os.fstat(descriptor)
+            if not stat.S_ISREG(status.st_mode) or status.st_mode & 0o777 != 0o600:
+                raise InteropError("ADB gate journal must remain a regular 0600 file")
+            if (status.st_dev, status.st_ino) != (self.journal_device, self.journal_inode):
+                raise InteropError("ADB gate journal identity changed")
+            if status.st_size != self.written_bytes:
+                raise InteropError("ADB gate journal size changed")
+            offset = 0
+            while offset < len(encoded):
+                written = os.write(descriptor, encoded[offset:])
+                if written <= 0:
+                    raise InteropError("ADB gate journal append was incomplete")
+                offset += written
+            os.fsync(descriptor)
+            self.written_bytes += len(encoded)
+        finally:
+            os.close(descriptor)
+
+    def validate_complete(self) -> str:
+        expected = self.adb_commands * 2
+        if len(self.records) != expected or any(not record.gate_valid for record in self.records):
+            raise InteropError("ADB gate journal is incomplete")
+        for sequence in range(1, self.adb_commands + 1):
+            pair = [record for record in self.records if record.adb_sequence == sequence]
+            if len(pair) != 2 or [record.phase for record in pair] != ["before", "after"]:
+                raise InteropError("ADB gate journal contains an orphaned command")
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(self.path, flags)
+        except OSError as error:
+            raise InteropError("ADB gate journal is unavailable") from error
+        try:
+            status = os.fstat(descriptor)
+            encoded = b""
+            while len(encoded) <= self.written_bytes:
+                chunk = os.read(descriptor, self.written_bytes + 1 - len(encoded))
+                if not chunk:
+                    break
+                encoded += chunk
+        finally:
+            os.close(descriptor)
+        try:
+            path_status = self.path.lstat()
+        except OSError as error:
+            raise InteropError("ADB gate journal disappeared during validation") from error
+        expected_identity = (self.journal_device, self.journal_inode)
+        if (status.st_dev, status.st_ino) != expected_identity or (path_status.st_dev, path_status.st_ino) != expected_identity:
+            raise InteropError("ADB gate journal identity changed")
+        if not stat.S_ISREG(status.st_mode) or status.st_mode & 0o777 != 0o600:
+            raise InteropError("ADB gate journal must remain a regular 0600 file")
+        if status.st_size != self.written_bytes or len(encoded) != self.written_bytes:
+            raise InteropError("ADB gate journal size changed")
+        expected_lines = [json.dumps(asdict(record), sort_keys=True, separators=(",", ":")) for record in self.records]
+        if encoded.decode().splitlines() != expected_lines:
+            raise InteropError("ADB gate journal content changed")
+        return sha256_bytes(encoded)
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -202,13 +377,15 @@ def require_lease(snapshot: LeaseSnapshot, expected_commit: str,
 
 class Adb:
     def __init__(self, executable: str, endpoint: str, lease: LeaseSnapshot, expected_commit: str,
-                 additional_locks: Sequence[Path], records: list[CommandRecord]) -> None:
+                 additional_locks: Sequence[Path], records: list[CommandRecord],
+                 gate_journal: AdbGateJournal) -> None:
         self.executable = executable
         self.endpoint = endpoint
         self.lease = lease
         self.expected_commit = expected_commit
         self.additional_locks = tuple(additional_locks)
         self.records = records
+        self.gate_journal = gate_journal
 
     def host(self, arguments: Sequence[str], *, timeout: float = 60,
              stdin: bytes | None = None, name: str = "adb-host") -> str:
@@ -219,13 +396,23 @@ class Adb:
         return self._run([self.executable, "-s", self.endpoint, *arguments], timeout, stdin, name)
 
     def _run(self, command: list[str], timeout: float, stdin: bytes | None, name: str) -> str:
-        require_lease(self.lease, self.expected_commit, self.additional_locks)
+        sequence = self.gate_journal.next_sequence()
+        try:
+            self.gate_journal.record(sequence, name, "before", "pending")
+        except InteropError:
+            self.gate_journal.record_invalid(sequence, name, "before", "not_started")
+            raise
         started = time.monotonic()
         try:
             result = subprocess.run(command, input=stdin, capture_output=True, timeout=timeout)
-        except (OSError, subprocess.TimeoutExpired) as error:
+        except subprocess.TimeoutExpired as error:
+            self._record_after(sequence, name, "timeout")
             raise InteropError(f"{name} could not complete") from error
-        require_lease(self.lease, self.expected_commit, self.additional_locks)
+        except OSError as error:
+            self._record_after(sequence, name, "os_error")
+            raise InteropError(f"{name} could not complete") from error
+        execution = "completed" if result.returncode == 0 else "nonzero"
+        self._record_after(sequence, name, execution)
         stdout = result.stdout or b""
         stderr = result.stderr or b""
         self.records.append(CommandRecord(
@@ -243,6 +430,13 @@ class Adb:
                 f"stderr_sha256={sha256_bytes(stderr)}"
             )
         return stdout.decode("utf-8", errors="replace").strip()
+
+    def _record_after(self, sequence: int, name: str, execution: str) -> None:
+        try:
+            self.gate_journal.record(sequence, name, "after", execution)
+        except InteropError:
+            self.gate_journal.record_invalid(sequence, name, "after", execution)
+            raise
 
 
 def _lp(value: bytes) -> bytes:
@@ -370,6 +564,19 @@ def validate_instrumentation_result(output: str) -> None:
         raise InteropError("Android instrumentation did not finish exactly one successful test")
 
 
+def validate_ui_marker(output: str) -> str:
+    matches = [line.strip() for line in output.splitlines() if UI_MARKER_PREFIX in line]
+    if len(matches) != 1:
+        raise InteropError("expected exactly one Android Internet UI pass marker")
+    marker = matches[0]
+    tokens = marker.split()
+    if not tokens or tokens[0] != UI_MARKER_PREFIX or set(tokens[1:]) != set(UI_MARKER_FLAGS):
+        raise InteropError("Android Internet UI marker omitted a required fail-closed assertion")
+    if len(tokens[1:]) != len(UI_MARKER_FLAGS):
+        raise InteropError("Android Internet UI marker contains duplicate assertions")
+    return marker
+
+
 def private_config_device_commands(config_name: str) -> dict[str, Any]:
     if re.fullmatch(r"[A-Za-z0-9._-]{1,128}", config_name) is None:
         raise InteropError("private config basename is invalid")
@@ -409,6 +616,15 @@ def write_private(path: Path, data: bytes) -> None:
         if descriptor >= 0:
             os.close(descriptor)
         Path(temporary_name).unlink(missing_ok=True)
+
+
+def require_external_output(path: Path, repo: Path, label: str) -> Path:
+    resolved = path.resolve()
+    try:
+        resolved.relative_to(repo.resolve())
+    except ValueError:
+        return resolved
+    raise InteropError(f"{label} must be outside the repository")
 
 
 def read_private_external(path: Path, repo: Path, maximum_bytes: int, label: str) -> tuple[Path, bytes]:
@@ -538,16 +754,22 @@ def toolchain(executable: str, arguments: Sequence[str]) -> dict[str, str]:
 def run(args: argparse.Namespace) -> dict[str, Any]:
     repo = args.repo.resolve()
     ice = read_private_ice_configuration(args.ice_config_file, repo)
-    raw_dir = args.raw_output_dir.resolve()
+    raw_dir = require_external_output(args.raw_output_dir, repo, "raw output directory")
+    route_raw_dir = raw_dir / args.route
     try:
-        raw_dir.relative_to(repo)
-    except ValueError:
-        pass
-    else:
-        raise InteropError("raw output directory must be outside the repository")
+        route_raw_dir.mkdir(parents=True, mode=0o700)
+    except FileExistsError as error:
+        raise InteropError("route raw output directory must be new for each attempt") from error
+    route_raw_dir.chmod(0o700)
     source = repository_state(repo)
     paths, artifacts, build_records = controlled_build(repo, source, args.build_timeout)
     lease = capture_lease(source["commit"], args.device_lock)
+    gate_journal = AdbGateJournal(
+        route_raw_dir / "adb-gates.jsonl",
+        lease,
+        source["commit"],
+        args.device_lock,
+    )
     coturn_log, coturn_log_bytes = read_private_external(
         args.coturn_log, repo, 10 * 1024 * 1024, "coturn raw log"
     )
@@ -556,7 +778,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     records: list[CommandRecord] = list(build_records)
-    adb = Adb(args.adb, args.adb_endpoint, lease, source["commit"], args.device_lock, records)
+    adb = Adb(
+        args.adb,
+        args.adb_endpoint,
+        lease,
+        source["commit"],
+        args.device_lock,
+        records,
+        gate_journal,
+    )
     adb_version_output = adb.host(["version"], name="adb-version-non-device")
     started = datetime.now(timezone.utc).isoformat()
     issuer_token = secrets.token_urlsafe(48)
@@ -646,6 +876,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 name="install-test",
             )
             require_artifacts_unchanged(paths, artifacts)
+            clear_result = adb.device(
+                ["shell", "pm", "clear", APP_PACKAGE],
+                name="clear-app-state-before-ui",
+            )
+            if clear_result != "Success":
+                raise InteropError("Android app state could not be reset before UI acceptance")
+            adb.device(["logcat", "-c"], name="clear-ui-marker-log")
+            ui_output = adb.device(
+                ["shell", "am", "instrument", "-w", "-r", "-e", "class", UI_TEST_CLASS, TEST_RUNNER],
+                timeout=args.timeout,
+                name="instrumentation-ui",
+            )
+            validate_instrumentation_result(ui_output)
+            ui_marker_log = adb.device(
+                ["logcat", "-d", "-v", "raw", "-s", "System.out:I", "*:S"],
+                name="read-ui-marker-log",
+            )
+            ui_marker = validate_ui_marker(ui_marker_log)
             adb.device(
                 ["reverse", f"tcp:{args.android_signaling_port}", f"tcp:{args.signaling_port}"],
                 name="adb-reverse-signaling",
@@ -706,6 +954,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             host_log_path = temp / "host.log"
             with host_log_path.open("wb") as host_log:
                 require_artifacts_unchanged(paths, artifacts)
+                require_lease(lease, source["commit"], args.device_lock)
                 host_process = subprocess.Popen(
                     [str(paths["mac_host"]), "--phase3-product-android-interop-host"],
                     cwd=paths["mac_host"].parent,
@@ -713,6 +962,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     stdout=host_log,
                     stderr=subprocess.STDOUT,
                 )
+                require_lease(lease, source["commit"], args.device_lock)
                 require_artifacts_unchanged(paths, artifacts)
             device_output = adb.device(
                 ["shell", "am", "instrument", "-w", "-r", "-e", "class", TEST_CLASS,
@@ -744,9 +994,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             )
 
             service_output = service_log_path.read_text(encoding="utf-8", errors="replace")
+            coturn_log, coturn_log_bytes = read_private_external(
+                args.coturn_log, repo, 10 * 1024 * 1024, "coturn raw log"
+            )
             raw_values = {
                 "host.log": redact(host_output, sensitive),
-                "device.log": redact(device_output + "\n" + device_marker_log, sensitive),
+                "device.log": redact(
+                    ui_output + "\n" + ui_marker_log + "\n" + device_output + "\n" + device_marker_log,
+                    sensitive,
+                ),
                 "signaling.log": redact(service_output, sensitive),
                 "coturn.log": redact(coturn_log_bytes.decode("utf-8", errors="replace"), sensitive),
                 "coturn-version.txt": redact(
@@ -756,7 +1012,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             for name, raw in raw_values.items():
                 if any(secret and secret in raw for secret in sensitive):
                     raise InteropError("raw artifact privacy scan failed")
-                write_private(raw_dir / route / name, raw.encode())
+                write_private(route_raw_dir / name, raw.encode())
         finally:
             cleanup_failures: list[Exception] = []
             if config_name is not None:
@@ -795,6 +1051,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     swift_toolchain = toolchain("swift", ["--version"])
     require_artifacts_unchanged(paths, artifacts)
     require_lease(lease, source["commit"], args.device_lock)
+    gate_log_sha256 = gate_journal.validate_complete()
     report = {
         "schema": "dev.vibescreen.phase3-android-product-interop/v1",
         "result": "pass",
@@ -806,6 +1063,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             **artifacts,
             "coturn_log_sha256": sha256_bytes(coturn_log_bytes),
             "coturn_version_record_sha256": sha256_bytes(coturn_version_bytes),
+            "adb_gate_log_sha256": gate_log_sha256,
         },
         "toolchain": {
             "adb": {
@@ -829,28 +1087,84 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "synthetic_video_config_keyframe_delta": "pass",
             "authenticated_touch": "pass",
             "durable_security_state": "not_claimed_interop_uses_test_isolated_store",
+            "internet_ui_pairing_signed_and_stale_lease_import": "pass",
+            "local_revoke_and_repair": "pass",
+            "secure_credential_dialogs": "pass",
         },
         "raw_markers": {
             "host_sha256": sha256_bytes(host_marker.encode()),
             "device_sha256": sha256_bytes(device_marker.encode()),
+            "ui_sha256": sha256_bytes(ui_marker.encode()),
         },
         "commands": [asdict(record) for record in records],
+        "adb_gate": {
+            "schema": "dev.vibescreen.adb-lease-gate/v1",
+            "run_id": gate_journal.run_id,
+            "records": len(gate_journal.records),
+            "expected_records_per_adb_subprocess": 2,
+            "owner_matches_initial": True,
+            "pid": lease.pid,
+            "task": lease.task,
+            "commit": lease.commit,
+            "filesystem_device": lease.device,
+            "inode": lease.inode,
+            "content_bytes": len(lease.content),
+            "content_matches_initial": True,
+            "lease_comparison_tag": hmac.new(
+                getattr(args, "lease_comparison_key", secrets.token_bytes(32)),
+                lease.content,
+                hashlib.sha256,
+            ).hexdigest(),
+        },
         "evidence_boundaries": {
-            "ui": "not_claimed",
+            "ui": "pairing_signed_and_stale_lease_import_local_revoke_repair_only",
             "screen_capture_kit": "not_claimed",
             "real_display_content": "not_claimed",
             "rotation": "open_harness_has_no_rotation_assertion",
             "disconnect_reconnect": "not_claimed",
-            "revocation_repair": "not_claimed",
+            "revocation_repair": "local_android_keystore_and_profile_store_only",
             "soak": "not_claimed",
         },
     }
     return report
 
 
+def run_both_routes(args: argparse.Namespace) -> dict[str, Any]:
+    reports: list[dict[str, Any]] = []
+    lease_comparison_key = secrets.token_bytes(32)
+    for route in ("direct", "relay"):
+        values = vars(args).copy()
+        values["route"] = route
+        values["lease_comparison_key"] = lease_comparison_key
+        reports.append(run(argparse.Namespace(**values)))
+    if reports[0]["source"] != reports[1]["source"]:
+        raise InteropError("direct and relay runs did not use identical source")
+    lease_fields = (
+        "pid", "task", "commit", "filesystem_device", "inode", "content_bytes", "lease_comparison_tag",
+    )
+    if any(reports[0]["adb_gate"][field] != reports[1]["adb_gate"][field] for field in lease_fields):
+        raise InteropError("direct and relay runs did not use the same device lease holder")
+    controlled_artifact_keys = ("app_apk_sha256", "test_apk_sha256", "mac_host_sha256", "signaling_binary_sha256")
+    if any(
+        reports[0]["artifacts"][field] != reports[1]["artifacts"][field]
+        for field in controlled_artifact_keys
+    ):
+        raise InteropError("direct and relay runs did not use identical controlled artifacts")
+    return {
+        "schema": "dev.vibescreen.phase3-android-product-interop-combined/v1",
+        "result": "pass",
+        "routes": ["direct", "relay"],
+        "source": reports[0]["source"],
+        "device": reports[0]["device"],
+        "same_device_lease_holder": True,
+        "runs": reports,
+        "evidence_boundaries": reports[0]["evidence_boundaries"],
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--route", choices=("direct", "relay"), required=True)
+    parser.add_argument("--route", choices=("direct", "relay", "both"), required=True)
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--adb", default="adb")
     parser.add_argument("--adb-endpoint", required=True)
@@ -882,12 +1196,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("error: timeouts must be positive", file=sys.stderr)
         return 2
     try:
-        report = run(args)
-        write_private(args.evidence, (json.dumps(report, indent=2, sort_keys=True) + "\n").encode())
+        evidence_path = require_external_output(args.evidence, args.repo.resolve(), "evidence report")
+    except InteropError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    try:
+        report = run_both_routes(args) if args.route == "both" else run(args)
+        write_private(evidence_path, (json.dumps(report, indent=2, sort_keys=True) + "\n").encode())
     except (InteropError, OSError) as error:
         message = redact(str(error), (args.adb_endpoint, args.signaling_bind_address,
                                       str(args.ice_config_file)))
-        write_private(args.evidence, (json.dumps({
+        write_private(evidence_path, (json.dumps({
             "schema": "dev.vibescreen.phase3-android-product-interop/v1",
             "result": "fail",
             "finished_at_utc": datetime.now(timezone.utc).isoformat(),
