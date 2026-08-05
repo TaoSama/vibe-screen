@@ -7,8 +7,8 @@ Date: 2026-08-05
 The full clean verification below ran from a detached worktree with:
 
 ```text
-tested commit: 11b478d900af9a2d7e862524afb09eb21c599f52
-tested tree: f2f1309043a698d10b958778ada288c97ca2bcfd
+tested commit: 3d5900be720d9af457ffd7665f0f47676b9279f9
+tested tree: 19473cc181aea894fa0af7e21d72c5e42d148b59
 git status --porcelain before gates: (empty)
 git status --porcelain after gates: (empty)
 upgrade acknowledgement bytes: 0d01
@@ -18,8 +18,8 @@ upgrade acknowledgement bytes: 0d01
 
 ```text
 cd apps/harmony && pnpm run verify
-Validated 29 HarmonyOS project files and semantic release boundaries (static only; no ArkTS/HAP claim).
-40 tests, 40 passed, 0 failed
+Validated 32 HarmonyOS project files and semantic release boundaries (static only; no ArkTS/HAP claim).
+52 tests, 52 passed, 0 failed
 ```
 
 Coverage includes:
@@ -40,14 +40,20 @@ Coverage includes:
   decoder-configuration rejection, and SDR/8-bit video acceptance;
 - wait-keyframe recovery across queue overflow, frame gaps, decoder push
   failure, epoch reset, and keyframe push completion;
+- configure/surface/prepare/start failure injection with owner-safe decoder
+  detach plus aggregated stop/release diagnostics;
+- deterministic parse/timeout/error/socket-close/controller-close/supersede
+  races with one transport close owner and one notification;
 - pointer/scroll/key envelope separation, HID/button mapping, rotation, and backoff;
 - browser-global-free UTF-8 handling and advertised video-size/FPS enforcement;
 - parsed AppScope/entry/Hvigor/resource/version/native-dependency/permission
-  graph, production seam checks, packaged license/notices, and validator
-  negative fixtures.
+  graph, parse diagnostics, method-scoped production import/call checks,
+  packaged license/notices, and dead-code/other validator negative fixtures.
 
 Hosted `HarmonyOS portable checks (no DevEco or HAP claim)` runs the same frozen
-install and verify command. It cannot type-check `.ets` or validate vendor APIs.
+install and verify command. It parses TypeScript-compatible ArkTS and an ArkUI
+lifecycle/input shell, but cannot run the DevEco ArkTS API/type checker, parse
+the full declarative ArkUI builder grammar, or validate vendor APIs.
 
 ## Clean cross-repository gates
 
@@ -55,7 +61,7 @@ The following commands ran against the tested commit/tree above:
 
 ```text
 cd apps/harmony && pnpm install --frozen-lockfile && pnpm run verify
-  PASS: 29 semantic project files; 40/40 portable tests
+  PASS: 32 semantic project files; 52/52 portable tests
 make protocol
   PASS: Buf format/lint/build/breaking; 13/13 contract tests
 make evidence-tools-test release-tools-test
