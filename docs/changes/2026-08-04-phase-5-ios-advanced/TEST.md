@@ -1,6 +1,6 @@
 # Phase 5 verification record
 
-Date: 2026-08-04  
+Date: 2026-08-05
 Host: macOS 26.4.1, Apple silicon  
 Swift: 6.3.1  
 Selected developer directory: `/Library/Developer/CommandLineTools`
@@ -12,6 +12,7 @@ swift package --package-path apps/ios resolve
 swift build --package-path apps/ios
 swift build --package-path apps/ios -c release
 swift run --package-path apps/ios vibescreen-ios-selftest
+apps/ios/Scripts/verify-generated-protocol.sh
 make protocol
 ```
 
@@ -34,6 +35,10 @@ and feedback/digest rejection, managed deny-wins policy, safe filenames,
 sequential chunks, file limits/final SHA-256/cleanup, HDR10→SDR config-epoch
 fallback, gesture persistence/catalog enforcement, the 102-byte WOL vector,
 and every advanced Envelope branch used by the client.
+Trusted-LAN additions cover strict pairing/auth/upgrade codecs, transport
+startup disconnect and Task-cancellation completion, host control message
+ordering/session-epoch validation, Ping/Pong correlation, and the client
+disconnect envelope factory.
 
 Project metadata also passes:
 
@@ -46,9 +51,49 @@ Buf format/lint/build/breaking: pass
 Package.resolved revision: c6fe6442e6a64250495669325044052e113e990c
 Pinned Swift binding regeneration: pass; checked output current
 Second generation SHA-256 manifest diff: empty (deterministic)
+SwiftProtobuf license: bundled in the iOS application Resources
 Phase 3 protocol compatibility: 4/4 pass
 Go security package: pass
 ```
+
+## Baseline MacHost trusted-LAN interoperability
+
+Run the release-build, real two-process loopback from the repository root:
+
+```bash
+apps/ios/Scripts/run_machost_loopback.py
+```
+
+The harness starts the production `Telemachus` executable with its bounded iOS
+loopback adapter on `127.0.0.1:54321`, then starts the iOS Core transport/session
+executable as a separate process. It runs a normal lifecycle and a separate
+invalid-target case. The covered boundary is:
+
+```text
+SSWA/SSWR authentication -> 0D/0D01 upgrade -> ClientHello/HostHello
+-> SessionAccepted/capabilities -> display list/start -> VideoConfigResult
+-> video media frame -> Ping/Pong -> display+stream-targeted TouchEvent
+-> DisconnectNotice
+
+invalid display+stream target -> ProtocolError(INVALID_STATE)
+```
+
+Observed result on the host recorded above:
+
+```text
+iOS Core MacHost loopback: PASS (auth=SSWA/SSWR, upgrade=0D/0D01,
+hello=true, displays=true, videoAck=true, media=true, pong=true,
+targetedTouch=true, disconnect=true)
+iOS Core MacHost loopback: PASS (scenario=invalid-target,
+protocolError=invalidState)
+MacHost loopback: PASS (external lifecycle + invalid-target
+production-process integration)
+```
+
+This proves the iOS Core trusted-LAN transport and main-session composition
+against the baseline MacHost. It does not exercise `StreamViewModel`, the
+decoder, or UI; boot the iOS application; use an iOS device; or prove hardware
+VideoToolbox behavior.
 
 ## iOS SDK build evidence
 
@@ -64,6 +109,12 @@ It did not boot a simulator or run the application. The subsequent engineering
 gate adds an XCTest UI smoke test, automatic simulator selection, and unsigned
 generic-iOS archive validation; those new steps require their own CI result and
 must not be retroactively attributed to the earlier build job.
+
+The workflow now also runs the generated-binding verifier, core self-test,
+MacHost loopback, iPhone Simulator XCTest, and unsigned archive gates. The
+Simulator test/archive steps remain unproved until a new GitHub Actions run for
+the current commit is retained; their presence in workflow YAML is not evidence
+that they passed.
 
 The portable self-test and HarmonyOS core test now consume the same exact
 `contracts/fixtures/client-hello-v1.hex` bytes. HarmonyOS must reproduce the
@@ -82,7 +133,9 @@ The following remain unproved until their dedicated gates produce evidence:
 - XCTest UI smoke test and unsigned generic-iOS archive creation;
 - signing, installation, Local Network permission, and lifecycle behavior;
 - VideoToolbox hardware H.264/HEVC decode and sustained thermal/power behavior;
-- end-to-end Protocol v1 host connection, video, touch, disconnect/reconnect;
+- iOS app/Simulator/device end-to-end host connection, decoded video, touch,
+  and disconnect/reconnect (the macOS Core loopback proves only the transport
+  and Protocol v1 boundary listed above);
 - cross-client golden bytes against the Android application;
 - AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
   file picker/export, UDP broadcast, and managed App Configuration injection;

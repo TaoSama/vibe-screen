@@ -13,6 +13,10 @@ let package = Package(
         .library(name: "VibeScreenCore", targets: ["VibeScreenCore"]),
         .library(name: "VibeScreenVideo", targets: ["VibeScreenVideo"]),
         .executable(name: "vibescreen-ios-selftest", targets: ["VibeScreenIOSSelfTest"]),
+        .executable(
+            name: "vibescreen-mac-host-loopback",
+            targets: ["VibeScreenMacHostLoopback"]
+        ),
     ],
     dependencies: [
         .package(
@@ -40,6 +44,10 @@ let package = Package(
         .executableTarget(
             name: "VibeScreenIOSSelfTest",
             dependencies: ["VibeScreenCore", "VibeScreenProtocol", "VibeScreenVideo"]
+        ),
+        .executableTarget(
+            name: "VibeScreenMacHostLoopback",
+            dependencies: ["VibeScreenCore", "VibeScreenProtocol"]
         ),
     ]
 )

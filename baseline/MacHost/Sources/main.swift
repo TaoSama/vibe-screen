@@ -47,6 +47,16 @@ if CommandLine.arguments.contains("--phase3-product-android-interop-host") {
     exit(InternetProductExternalHostE2E.run() ? EXIT_SUCCESS : EXIT_FAILURE)
 }
 
+if let scenario = ProcessInfo.processInfo.environment["VIBE_SCREEN_IOS_LOOPBACK_SCENARIO"] {
+    guard scenario == "lifecycle" || scenario == "invalid-target" else {
+        FileHandle.standardError.write(Data("Unknown iOS loopback scenario.\n".utf8))
+        exit(EXIT_FAILURE)
+    }
+    exit(IOSClientLoopbackHost.run(expectsInvalidTarget: scenario == "invalid-target")
+        ? EXIT_SUCCESS
+        : EXIT_FAILURE)
+}
+
 // Entry point
 let app = NSApplication.shared
 

@@ -15,6 +15,8 @@ public enum SessionStateError: Error, Equatable {
     case invalidTransition(from: SessionPhase, event: String)
     case unsupportedProtocol(UInt32)
     case staleEpoch(received: UInt64, current: UInt64)
+    case invalidSessionIdentifier
+    case invalidSessionEpoch(UInt64)
 }
 
 public struct SessionState: Sendable {
@@ -54,6 +56,8 @@ public struct SessionState: Sendable {
         guard selectedProtocol == Self.protocolVersion else {
             throw SessionStateError.unsupportedProtocol(selectedProtocol)
         }
+        guard !sessionID.isEmpty else { throw SessionStateError.invalidSessionIdentifier }
+        guard epoch > 0 else { throw SessionStateError.invalidSessionEpoch(epoch) }
         self.sessionID = sessionID
         sessionEpoch = epoch
         negotiatedCapabilities = localCapabilities.intersection(hostCapabilities)

@@ -4,8 +4,7 @@ import VibeScreenCore
 
 struct ContentView: View {
     @ObservedObject var model: StreamViewModel
-    @AppStorage("host") private var host = ""
-    @AppStorage("port") private var port = 58_008
+    @State private var pairingURL = ""
     @AppStorage("wakeMAC") private var wakeMAC = ""
     @State private var showsAdvancedControls = false
 
@@ -34,19 +33,19 @@ struct ContentView: View {
     private var connectionForm: some View {
         Form {
             Section("Mac 主机") {
-                TextField("主机名或 IP", text: $host)
+                TextField("telemachus:// 配对链接", text: $pairingURL, axis: .vertical)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                TextField("端口", value: $port, format: .number)
-                    .keyboardType(.numberPad)
             }
             Section {
                 Button(model.isConnecting ? "连接中…" : "连接") {
-                    Task { await model.connect(host: host, port: port) }
+                    let currentPairingURL = pairingURL
+                    pairingURL = ""
+                    Task { await model.connect(pairingURL: currentPairingURL) }
                 }
-                .disabled(host.isEmpty || model.isConnecting)
+                .disabled(pairingURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isConnecting)
             } footer: {
-                Text("首次连接时请允许本地网络访问。高级功能只有在双方协商且本地策略允许后启用。")
+                Text("粘贴 Mac 提供的 trusted-LAN 配对链接；未写端口时使用 54321。首次连接时请允许本地网络访问。")
             }
             Section {
                 TextField("MAC 地址", text: $wakeMAC)

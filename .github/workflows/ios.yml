@@ -1,6 +1,7 @@
 name: iOS engineering gates
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches: [main]
@@ -18,9 +19,13 @@ jobs:
       - name: Resolve pinned dependencies
         run: swift package --package-path apps/ios resolve
       - name: Build native protocol, session, transport, and video modules
-        run: swift build --package-path apps/ios
+        run: swift build --package-path apps/ios --configuration release
       - name: Run deterministic self-test and shared Protocol v1 compatibility fixture
-        run: swift run --package-path apps/ios vibescreen-ios-selftest
+        run: apps/ios/.build/release/vibescreen-ios-selftest
+      - name: Run trusted-LAN iOS Core to production MacHost loopback
+        run: apps/ios/Scripts/run_machost_loopback.py
+      - name: Run baseline MacHost self-tests
+        run: make baseline-macos-self-test
 
   app-build-test-archive:
     runs-on: macos-15

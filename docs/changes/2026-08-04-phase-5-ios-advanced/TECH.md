@@ -19,6 +19,21 @@ UIKit, SwiftUI, or VideoToolbox.
 
 ## Trusted-LAN transport adapter
 
+For the baseline MacHost on TCP `54321`, the client first sends authenticated
+`SSWA` admission using the pairing token and validates the `SSWR` result. It
+then sends the legacy upgrade marker `0D`, requires the `0D01` acknowledgement,
+and switches the same connection to the Protocol v1 framed main session below.
+Neither admission nor the upgrade marker is treated as an application message.
+Malformed/truncated admission responses, rejected authentication, or an
+invalid upgrade acknowledgement fail the connection before ClientHello.
+Startup and frame sends have bounded timeouts and explicit cancellation; a
+new connection cannot leave an older startup continuation suspended. Host
+control envelopes must keep Protocol v1, strictly increasing message IDs, and
+the negotiated session ID/epoch. Stale or cross-session control fails closed.
+The pairing URL carries a 32-byte bearer token and is connection input only;
+the iOS UI does not persist it and requires the user to paste it again for each
+connection.
+
 Each TCP frame is `channel: uint8`, `payload_length: uint32 big-endian`, then
 exactly `payload_length` bytes. Channels are control `1`, video `2`, audio `3`,
 and bulk transfer `4`. Control payload is a serialized Protocol v1 `Envelope`.
@@ -100,13 +115,18 @@ Negotiation rules:
 
 ## Host and security TODO
 
-No MacHost file is changed in this phase. A compatible host still must provide
-per-client resource allocation, multi-display stream IDs, target-aware input,
-PCM capture, advanced control handlers, bulk streaming, color retry, a finite
-host-action catalog, and an authenticated wake helper. `SecureChannel` now
-allocates audio `3` and bulk `4`; Internet mode must derive independent keys,
-sequence counters, and replay windows for them. The client's plaintext trusted-
-LAN implementation is not evidence of that security work.
+The minimal MacHost compatibility boundary composes its existing authenticated
+port `54321` admission/upgrade with the Protocol v1 session for iOS. The real
+two-process loopback covers Hello/capability negotiation, display list/start,
+video configuration acknowledgement and media framing, heartbeat, targeted
+touch, protocol error, and disconnect. It does not implement or prove advanced
+host behavior. A compatible advanced host still must provide per-client
+resource allocation, multi-display stream IDs, PCM capture, advanced control
+handlers, bulk streaming, color retry, a finite host-action catalog, and an
+authenticated wake helper. `SecureChannel` now allocates audio `3` and bulk
+`4`; Internet mode must derive independent keys, sequence counters, and replay
+windows for them. The client's plaintext trusted-LAN implementation is not
+evidence of that security work.
 
 ## Rendering and color
 
