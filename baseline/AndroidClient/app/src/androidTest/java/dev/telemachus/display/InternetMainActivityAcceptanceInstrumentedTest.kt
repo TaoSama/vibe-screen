@@ -267,7 +267,9 @@ class InternetMainActivityAcceptanceInstrumentedTest {
             .inRoot(SecureDialogRootMatcher())
             .perform(SetSensitiveTextAction(acceptance.encode()))
         acceptanceStage = "pairing_acceptance_submit"
-        onView(withId(android.R.id.button1)).perform(click())
+        onView(withHint(R.string.internet_pairing_acceptance_hint))
+            .inRoot(SecureDialogRootMatcher())
+            .perform(ClickDialogPositiveAction())
         acceptanceStage = "pairing_acceptance_result"
         onView(withId(R.id.internetRevokeButton)).check(matches(isEnabled()))
     }
@@ -277,7 +279,9 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         onView(withHint(R.string.internet_import_hint))
             .inRoot(SecureDialogRootMatcher())
             .perform(SetSensitiveTextAction(encodedLease))
-        onView(withId(android.R.id.button1)).perform(click())
+        onView(withHint(R.string.internet_import_hint))
+            .inRoot(SecureDialogRootMatcher())
+            .perform(ClickDialogPositiveAction())
     }
 
     private fun revokeThroughUi() {
@@ -341,6 +345,16 @@ private class SetSensitiveTextAction(
     override fun perform(uiController: UiController, view: View) {
         (view as EditText).setText(value)
         view.setSelection(value.length)
+        uiController.loopMainThreadUntilIdle()
+    }
+}
+
+private class ClickDialogPositiveAction : ViewAction {
+    override fun getConstraints() = allOf(isDisplayed(), isEnabled())
+    override fun getDescription() = "click the positive action in the protected dialog"
+    override fun perform(uiController: UiController, view: View) {
+        val button = checkNotNull(view.rootView.findViewById<View>(android.R.id.button1))
+        check(button.performClick()) { "Protected dialog action was not handled" }
         uiController.loopMainThreadUntilIdle()
     }
 }
