@@ -72,8 +72,9 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         val deviceId = preferences.internetDeviceId
         val storedFactory = AndroidStoredInternetSessionFactory(context, deviceId)
         val revocationCoordinator = InternetProductRevocationCoordinator.processShared()
+        var acceptanceStage = "initialization"
         Espresso.setFailureHandler(
-            FailureHandler { _, _ -> throw AssertionError("Protected Internet UI action failed") },
+            FailureHandler { _, _ -> throw AssertionError("Protected Internet UI action failed at $acceptanceStage") },
         )
         assertTrue("Acceptance requires a clean profile store", profileStore.loadPublicProfile() == null)
         assertFalse("Acceptance requires a clean pairing store", profileStore.hasVerifiedPairing())
@@ -94,8 +95,10 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         var primaryFailure: Throwable? = null
         try {
             ActivityScenario.launch(MainActivity::class.java).use {
+                acceptanceStage = "internet_tab"
                 onView(withId(R.id.modeInternet)).perform(click())
                 onView(withId(R.id.internetModeContent)).check(matches(isDisplayed()))
+                acceptanceStage = "route_toggle"
                 onView(withId(R.id.internetPreferDirect)).check(matches(isChecked()))
                 onView(withId(R.id.internetForceRelay)).perform(click())
                 assertTrue(PreferencesManager(context).internetForceRelay)
@@ -103,27 +106,34 @@ class InternetMainActivityAcceptanceInstrumentedTest {
                 assertFalse(PreferencesManager(context).internetForceRelay)
 
                 val firstOffer = authority.createOffer().also(createdOffers::add)
+                acceptanceStage = "first_pairing_scan"
                 val firstRequest = scanAndCaptureRequest(instrumentation, firstOffer.encodedUrl)
+                acceptanceStage = "first_pairing_acceptance"
                 completePairing(authority.accept(firstOffer, firstRequest))
                 assertTrue(profileStore.hasVerifiedPairing())
                 onView(withId(R.id.internetConnectButton)).check(matches(not(isEnabled())))
 
                 val firstLease = authority.issueLease(firstOffer, firstRequest, firstEpoch)
                 createdLeases += firstOffer to firstLease
+                acceptanceStage = "first_lease_import"
                 importLease(firstLease.encoded)
                 assertEquals(firstEpoch, profileStore.loadPublicProfile()?.authoritativeSessionEpoch)
                 onView(withId(R.id.internetConnectButton)).check(matches(isEnabled()))
 
+                acceptanceStage = "first_revoke"
                 revokeThroughUi()
                 assertTrue("Local revoke retained a profile", profileStore.loadPublicProfile() == null)
                 assertFalse(profileStore.hasVerifiedPairing())
                 assertSecretsRemoved(context, firstOffer, firstLease)
 
                 val secondOffer = authority.createOffer().also(createdOffers::add)
+                acceptanceStage = "second_pairing_scan"
                 val secondRequest = scanAndCaptureRequest(instrumentation, secondOffer.encodedUrl)
+                acceptanceStage = "second_pairing_acceptance"
                 completePairing(authority.accept(secondOffer, secondRequest))
                 val secondLease = authority.issueLease(secondOffer, secondRequest, firstEpoch + 1)
                 createdLeases += secondOffer to secondLease
+                acceptanceStage = "second_lease_import"
                 importLease(secondLease.encoded)
 
                 assertTrue(profileStore.hasVerifiedPairing())
@@ -137,6 +147,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
                 onView(withId(R.id.internetConnectButton)).check(matches(isEnabled()))
 
                 // Leave the dedicated acceptance installation clean for a repeat run.
+                acceptanceStage = "second_revoke"
                 revokeThroughUi()
                 assertSecretsRemoved(context, secondOffer, secondLease)
             }
