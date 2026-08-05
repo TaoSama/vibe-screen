@@ -38,12 +38,14 @@ class InternetProductSessionInteropInstrumentedTest {
         val hostId = secrets.hostId
         val sessionId = secrets.sessionId
         val pairingId = "interop-$sessionId"
+        val storedFactory = AndroidStoredInternetSessionFactory(context, localDeviceId)
+        val identityEpoch = storedFactory.reserveNextIdentityEpoch()
         val lease =
             InternetProductSessionLease(
                 pairingIdentifier = pairingId,
                 signalingSessionId = sessionId,
                 authoritativeSessionEpoch = epoch,
-                identityEpoch = 1,
+                identityEpoch = identityEpoch,
                 transcriptContext = transcriptContext,
                 iceServers =
                     listOf(
@@ -72,14 +74,17 @@ class InternetProductSessionInteropInstrumentedTest {
             keys.close()
         }
 
-        val storedFactory = AndroidStoredInternetSessionFactory(context, localDeviceId)
         val revocationCoordinator = InternetProductRevocationCoordinator()
         var pairingPersistenceCompleted = false
         var pairingPersistenceFailure: Throwable? = null
         try {
             revocationCoordinator.withCredentialMutationAdmission(durableBlock = { false }) {
                 storedFactory.persistPairingSecrets(pairingId, sharedSecret, bootstrapSecret)
-                storedFactory.completePairingPersistence(pairingId, commitBusinessState = {}, cleanupBusinessState = {})
+                storedFactory.completePairingPersistence(
+                    pairingId,
+                    commitBusinessState = { storedFactory.authorizeIdentityEpoch(identityEpoch) },
+                    cleanupBusinessState = {},
+                )
                 pairingPersistenceCompleted = true
             }
         } catch (failure: Throwable) {
