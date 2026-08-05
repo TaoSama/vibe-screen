@@ -181,10 +181,13 @@ check, AEAD, and replay commit, so an N+1 reservation cannot interleave after an
 N check. Pairing cleanup markers remain durable until identity authorization,
 reauthorization validation, and public metadata commit all succeed; failed
 business commits retain restart-retryable secret and metadata cleanup. The prior
-curated Android/macOS device interop pass is withdrawn:
-its claimed source commit is unavailable and its raw host, instrumentation, and
-UI evidence was not retained. Automatic authority issuance, device interop,
-real screen capture, and old-record injection across a real handoff remain unproved.
+curated Android/macOS record remains withdrawn because its source and raw files
+were unavailable. A fresh clean-commit run now records real Android UI and
+Android M144/macOS M150 product-session interoperability through direct and
+forced local coturn with Protocol v1 application AEAD. Its media source is
+synthetic; automatic authority issuance, real screen capture, rotation,
+disconnect/handoff, and old-record injection across a real handoff remain
+unproved.
 
 ## Adaptive media
 
@@ -238,14 +241,14 @@ semantic change requires a new protocol package/version.
 | Pairing and identity | `baseline/MacHost/Sources/Phase3/Security/InternetPairing*`, Android `security/InternetPairing*` | Swift/Kotlin implement the same strict pairing URL/request/acceptance shape, stable platform signing identities, ephemeral P-256 ECDH, signed canonical transcript, one-time/expiry checks, and protected pairing-secret storage. Durable transaction markers span secret writes, authorization/reauthorization and metadata commit; Android markers carry the owning pairing and recover under the global admission gate after authenticated-revocation recovery. A different verified/profile pairing cannot be replaced until its tombstone cleanup has removed binding, profile and old secrets. Upgrade cleanup is owner-aware: an old revocation deletes its pairing secret/identity, but treats a different current profile/binding as superseding state and durably retires those steps without cross-deletion. The local UI scans the offer QR and exchanges the request/acceptance as operator-copied strict JSON; automatic authenticated authority exchange and real cross-language pairing remain unproved |
 | Security core | `packages/security/` and platform security directories | Go implementation, restart snapshots, attack tests and vectors exist. macOS state is peer-scoped, keeps a Keychain-backed revoked-identity epoch floor per stable device ID, and persists signed targeted tombstones plus restart-safe secret-cleanup progress. Both platforms reserve the common authority epoch before first use. Cross-language product-session and real platform crash-boundary evidence remain gates |
 | macOS product session | `baseline/MacHost/Sources/Phase3/ProductSession/`, `AppDelegate.swift`, `SettingsWindow.swift`, stasel WebRTC `150.0.0` | Internet mode is separated from the legacy TCP server; real capture/HEVC, Protocol v1 control/media, protected DataChannels, touch injection, direct/forced-TURN selection, Keychain credentials, and actionable state UI are wired. Synthetic local direct/relay product sessions pass; Android interop and real ScreenCaptureKit device streaming remain gates |
-| Android product session | `MainActivity.kt`, `InternetSessionProfileStore.kt`, Android Internet packages, `io.github.webrtc-sdk:android:144.7559.09` | Internet UI scans the pairing offer, completes the copied request/acceptance flow, imports a strict host-signed short-lived lease, selects direct/forced TURN, drives Protocol v1 video/touch and decoder state, and exposes connect/disconnect/revoke/error/recovery. Lease verification precedes persistence/high-watermark changes; durable session/identity epochs reject stale ciphers and permit monotonic reauthorization after revoke. A fresh-session request or terminal failure invalidates the old transport owner, so late route/connected callbacks cannot restore touch or heartbeat. Credential, pairing and revocation cleanup retain restart-safe retry state. Tokens and pairing/session secrets are AndroidKeyStore-wrapped; sensitive dialogs disable screenshots/autofill, and release cleartext is disabled. Android interop, public Internet, real screen capture, handoff and soak remain gates |
+| Android product session | `MainActivity.kt`, `InternetSessionProfileStore.kt`, Android Internet packages, `io.github.webrtc-sdk:android:144.7559.09` | Internet UI scans the pairing offer, completes the copied request/acceptance flow, imports a strict host-signed short-lived lease, selects direct/forced TURN, drives Protocol v1 video/touch and decoder state, and exposes connect/disconnect/revoke/error/recovery. Lease verification precedes persistence/high-watermark changes; durable session/identity epochs reject stale ciphers and permit monotonic reauthorization after revoke. A fresh-session request or terminal failure invalidates the old transport owner, so late route/connected callbacks cannot restore touch or heartbeat. Credential, pairing and revocation cleanup retain restart-safe retry state. Tokens and pairing/session secrets are AndroidKeyStore-wrapped; sensitive dialogs disable screenshots/autofill, and release cleartext is disabled. The clean-commit Nubia run proves local UI, direct/forced-coturn Android↔Mac product interop and application AEAD with synthetic media; public Internet, real screen capture, rotation, handoff and soak remain gates |
 | Existing LAN security | `WirelessAuth.swift`, `AuthHandshake.kt`, `StreamingServer.swift`, `StreamClient.kt` | 32-byte bearer token over plaintext TCP; trusted LAN only, not E2EE |
 | Relay control/data plane | `services/relay/`, `deploy/phase3/` | Short-term credential control plane and pinned coturn Compose data plane exist. REST usernames map all sessions/expiries for one device to one coturn allocation-quota principal, and production peer ACLs deny private, CGNAT, link-local, ULA and other internal ranges. New credentials and usage events are rejected after a persisted revoke, and issuance/revoke are serialized. Existing coturn allocations are not terminated by this control-plane action; public deployment, authoritative byte usage, active-allocation disconnect, and multi-node state remain gates |
 | Signaling | `services/signaling/` plus Swift/Kotlin clients | Runnable single-instance service, real-process tests, and issuer-only session invalidation exist. It remains a one-offer rendezvous without durable/multi-instance identity authority or a device revocation feed |
 | Rotation/revocation/replay | Protocol, Go core, platform security and product-session directories | Record replay and old-epoch rejection plus peer-scoped signed local revocation have unit/self-test coverage. Android and macOS retain durable retry state for local secret cleanup; macOS prevents one device's revoke history from overwriting another's epoch floor. End-to-end revocation propagation to the peer, signaling and active TURN allocation; rotation interoperability; and real reconnect injection remain gates |
 | Adaptive video | policy types and unit tests | Policy foundation only; encoder/config acknowledgment integration pending |
 | Network simulation | `scripts/phase3/network_profile.py`, `tests/phase3/` | Deterministic contract simulation only; explicitly not OS-level impairment, ICE, or TURN evidence |
-| Android Internet evidence | [TEST.md](TEST.md), `evidence/android-product-interop.json` | Prior pass withdrawn: source commit and raw evidence are unavailable. All Android Internet product/UI acceptance gates remain open |
+| Android Internet evidence | [TEST.md](TEST.md), `evidence/android-product-interop.json`, `evidence/2026-08-05-nubia-p0110-internet/` | Prior record remains withdrawn. The new reachable-source evidence closes local Android UI plus direct/forced-coturn synthetic product-session interoperability on Nubia P0110; its README preserves the narrower boundary and open release gates |
 
 ### Open implementation findings
 
@@ -260,8 +263,9 @@ These are release blockers, not accepted architecture:
   pass, including application AES-GCM. Those legacy adapter checks do not by
   themselves prove the new Protocol v1 product session. The separate product
   slice now proves Protocol v1 negotiation, touch/control and keyframe/delta media
-  over both direct and forced local TURN with a synthetic peer. It still does not
-  start capture/UI or prove M150-to-Android-M144 interoperability. XCTest has not
+  over both direct and forced local TURN with a synthetic peer. The new device
+  run additionally proves Android UI and M150-to-Android-M144 interoperability,
+  but still does not start ScreenCaptureKit or send real display content. XCTest has not
   executed because full Xcode/XCTest is unavailable.
 - Recovery now fails closed into a fresh-session request instead of sending a
   second offer, but the local development UI requires manually supplied authority

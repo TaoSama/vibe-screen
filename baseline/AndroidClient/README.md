@@ -47,10 +47,11 @@ strict request/acceptance exchange, imports a short-lived session profile,
 selects direct or forced TURN, and drives the Protocol v1 video/touch product
 session. The request/acceptance and session profile are intentionally copied or
 scanned in this local integration surface; no production account/session
-authority is bundled. The prior curated M144↔M150/UI pass is withdrawn because
-its claimed source commit and raw evidence are unavailable; device acceptance
-must be rerun from a reachable clean commit.
-Public Internet, real ScreenCaptureKit output, handoff/reconnect, cross-service
+authority is bundled. The prior curated M144↔M150/UI pass remains withdrawn.
+A fresh reachable-source run now records the real UI plus direct and forced
+local-coturn M144↔M150 product sessions on Nubia P0110 with synthetic Protocol v1
+media; see the Phase 3 evidence README for its exact boundary.
+Public Internet, real ScreenCaptureKit output, rotation, handoff/reconnect, cross-service
 revocation and soak remain gates, so this is not yet a shipped Internet feature.
 
 ## Requirements
@@ -76,7 +77,7 @@ build scripts.
 route toggle, pairing, strict lease import, local revoke, and re-pair UI against
 AndroidKeyStore-backed storage. Its host authority and credentials are generated
 in memory, sensitive dialogs must retain `FLAG_SECURE`, and its output is limited
-to a fixed boolean marker. This test proves the local credential UI only; the
+to a fixed boolean marker. A passing device run proves the local credential UI only; the
 separate external-host instrumentation run is required for WebRTC, Protocol v1,
 application AEAD, media, and touch evidence.
 
@@ -197,12 +198,21 @@ can read the notice from **Open-source licenses** on the connection page.
 
 ## Verification status and known limits
 
-For the Phase 3 development-preview composition, the local JVM suite passed
-89/89 tests in 20 suites, lint and debug assembly passed, the Android
-instrumentation sources compiled, and the release-dependency audit passed. The
-merged release manifest disables cleartext traffic. The instrumentation APK was
-not executed, and no M150-to-M144 direct/forced-TURN stream, real video/touch,
-handoff, revocation, or soak result is claimed from those build checks.
+For the Phase 3 development-preview composition, the local JVM suite, lint,
+debug app/test assembly, instrumentation compilation and release-dependency
+audit pass. The merged release manifest disables cleartext traffic. On
+2026-08-05, clean reachable commit
+`597518f948075e396352bc353afcec01a30303f3` installed those controlled artifacts
+on `Nubia P0110 / pacific / Android 16`. The real credential UI and Android
+M144/macOS M150 adapters passed direct and forced local coturn with Protocol v1,
+AES-256-GCM control/media, synthetic video config/keyframe/delta and authenticated
+touch. Local revoke/re-pair used production listeners and AndroidKeyStore-backed
+state. The evidence contains paired before/after device-lock gates for every ADB
+subprocess and no private endpoint, hardware serial, or credential values.
+
+That device run does not claim ScreenCaptureKit, real display content, visible
+Mac input effects, Android rotation, disconnect/reconnect or handoff, public
+Internet, cross-service revoke, packet capture, latency, or soak.
 
 On 2026-08-04, the controlled remote ADB endpoint (redacted as
 `$ADB_ENDPOINT`) identified itself as a nubia P0110 (`pacific`) running

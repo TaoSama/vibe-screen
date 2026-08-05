@@ -11,12 +11,14 @@ for the Xiaomi 12 Internet end-to-end gate.
 The shared Android endpoint is lease-controlled. Before any `adb connect`,
 install, force-stop, launch, device query, media-port probe, or Mac host stream
 start, require the soak and Android coordination locks to be absent and atomically
-hold `/tmp/vibe-screen-device-internet.lock`. The acceptance script requires the
-Internet lock bytes to exactly match its caller-supplied owner token, checks all
-locks at entry and immediately before every ADB subprocess, and does not provide
-a parameter that can disable a mandatory check. A refusal before the first ADB
-call records an empty command list; a lock acquired during a run stops subsequent
-device access.
+hold `/tmp/vibe-screen-device-internet.lock`. The acceptance script requires a
+regular `0600` structured lease with exact `owner`, independent live holder
+`pid`, task and source `commit` fields. It checks the initial inode and bytes plus
+all other device locks before and after every ADB subprocess. Each check is
+fsync-appended to a new machine-readable JSONL journal without recording the
+owner value or command arguments. A missing/replaced lock, changed owner bytes,
+dead holder, other device lock, or changed journal invalidates the complete run;
+no parameter disables these checks.
 
 ## Reproducible local checks
 
@@ -182,7 +184,7 @@ named by that run:
 - `go test -race ./... && go vet ./...` in `packages/security`: passed;
 - `go test -race ./... && go vet ./...` in `services/relay`: passed after the
   concurrent relay source/test changes converged;
-- Phase 3 Python suite: 47 tests passed, including repository endpoint privacy,
+- Phase 3 Python suite: 66 tests passed, including repository endpoint privacy,
   fail-closed device-lock handling, and build/source evidence binding;
   security-vector CLI passed
   24 vectors, including direction reflection and global revocation sequencing;
@@ -303,13 +305,28 @@ named by that run:
   `relay(local=relay,remote=relay,protocol=udp)` and its independent coturn check
   relayed 3/3 datagrams. This did not start capture/UI and is not Android, real
   screen/input, or packet-capture evidence.
-- The prior curated Android interop record is
+- The prior curated Android interop record remains
   [withdrawn](evidence/android-product-interop.json). Its claimed source commit
   does not exist in this repository, and raw host output, instrumentation output,
   runtime timestamps, exact commands/environment, artifact provenance,
   candidate-pair/E2EE logs, and UI source files were not retained. No pass result
   is recoverable from the summary, and none is inferred or reconstructed.
+- A new combined Android acceptance PASS is archived under
+  [`evidence/2026-08-05-nubia-p0110-internet/`](evidence/2026-08-05-nubia-p0110-internet/README.md).
+  Its clean, reachable source is
+  `597518f948075e396352bc353afcec01a30303f3`; the device boundary is only
+  `Nubia P0110 / pacific / Android 16`. Direct and forced local coturn used the
+  same lease snapshot and controlled APK/host/signaling artifacts. Each route
+  recorded 24 ADB subprocesses and 48 valid before/after gate records. The real
+  Android app passed Internet tab/route selection, signed pairing, strict signed
+  lease import, local revoke/re-pair and secure-dialog checks. The Android M144
+  and macOS M150 production adapters passed Protocol v1, AES-256-GCM control and
+  media, synthetic config/keyframe/delta media, and authenticated touch through
+  direct and selected relay candidate pairs. Earlier failed attempts are not
+  included.
 
-Android direct/forced-TURN product interop, Internet UI, public Internet/STUN/TURN,
-carrier/CGNAT traversal, real ScreenCaptureKit capture, automatic authority
-reconnect, cross-service revoke, packet capture, latency, and soak all remain open.
+That pass is not ScreenCaptureKit, real display content, visible Mac input,
+Android rotation, disconnect/reconnect or network-handoff evidence. It also does
+not prove negative lease cases through the UI, cross-service revocation, public
+Internet/STUN/TURN or carrier/CGNAT traversal, packet capture, latency, or soak;
+those release gates remain open. Xiaomi 12 acceptance also remains open.
