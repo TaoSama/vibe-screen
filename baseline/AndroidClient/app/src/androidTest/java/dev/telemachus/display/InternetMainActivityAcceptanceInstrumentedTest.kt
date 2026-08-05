@@ -121,7 +121,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
                 onView(withId(R.id.internetConnectButton)).check(matches(isEnabled()))
 
                 acceptanceStage = "first_revoke"
-                revokeThroughUi()
+                revokeThroughUi(scenario)
                 assertTrue("Local revoke retained a profile", profileStore.loadPublicProfile() == null)
                 assertFalse(profileStore.hasVerifiedPairing())
                 assertSecretsRemoved(context, firstOffer, firstLease)
@@ -148,7 +148,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
 
                 // Leave the dedicated acceptance installation clean for a repeat run.
                 acceptanceStage = "second_revoke"
-                revokeThroughUi()
+                revokeThroughUi(scenario)
                 assertSecretsRemoved(context, secondOffer, secondLease)
             }
         } catch (failure: Throwable) {
@@ -289,9 +289,14 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         acceptanceStage = "lease_import_result"
     }
 
-    private fun revokeThroughUi() {
+    private fun revokeThroughUi(scenario: ActivityScenario<MainActivity>) {
         acceptanceStage = "revoke_open"
-        onView(withId(R.id.internetRevokeButton)).perform(scrollTo(), click())
+        scenario.onActivity { activity ->
+            check(activity.findViewById<View>(R.id.internetRevokeButton).performClick()) {
+                "Internet revoke action was not handled"
+            }
+        }
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         acceptanceStage = "revoke_confirm"
         onView(withText(R.string.internet_revoke_confirm_message))
             .perform(ClickDialogPositiveAction(requireSecure = false))
