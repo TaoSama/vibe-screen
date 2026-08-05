@@ -79,4 +79,73 @@ class InternetRevocationCleanupTest {
         assertTrue(committed)
         assertEquals(setOf("encrypted-slot"), committedQueue)
     }
+
+    @Test
+    fun `legacy pair one cleanup preserves superseding pair two state after restart`() {
+        val restarted = PendingRevocationCleanupCodec.decode(PendingRevocationCleanupCodec.encode(pending))
+        val pairingSecrets = mutableSetOf("pair-1", "pair-2")
+        val identityKeys = mutableSetOf("device-1:7", "device-2:8")
+        val sessionCredentials = mutableSetOf("pair-2")
+        var profileOwner: String? = "pair-2"
+        var bindingOwner: String? = "pair-2"
+        var durable: PendingRevocationCleanup? = restarted
+
+        val result =
+            retryOwnedRevocationCleanup(
+                initial = restarted,
+                currentProfilePairingIdentifier = { profileOwner },
+                currentBindingPairingIdentifier = { bindingOwner },
+                deletePairingSecret = { pairingSecrets.remove(it) },
+                deleteIdentityKey = { deviceId, epoch -> identityKeys.remove("$deviceId:$epoch") },
+                deleteSessionCredentials = {
+                    sessionCredentials.remove(it)
+                    profileOwner = null
+                },
+                deletePairingMetadata = {
+                    bindingOwner = null
+                },
+                persist = { next -> durable = next; true },
+            )
+
+        assertTrue(result.complete)
+        assertEquals(null, durable)
+        assertEquals(setOf("pair-2"), pairingSecrets)
+        assertEquals(setOf("device-2:8"), identityKeys)
+        assertEquals(setOf("pair-2"), sessionCredentials)
+        assertEquals("pair-2", profileOwner)
+        assertEquals("pair-2", bindingOwner)
+    }
+
+    @Test
+    fun `same owner revocation cleanup still deletes all owner state`() {
+        val pairingSecrets = mutableSetOf("pair-1")
+        val identityKeys = mutableSetOf("device-1:7")
+        val sessionCredentials = mutableSetOf("pair-1")
+        var profileOwner: String? = "pair-1"
+        var bindingOwner: String? = "pair-1"
+        var durable: PendingRevocationCleanup? = pending
+
+        val result =
+            retryOwnedRevocationCleanup(
+                initial = pending,
+                currentProfilePairingIdentifier = { profileOwner },
+                currentBindingPairingIdentifier = { bindingOwner },
+                deletePairingSecret = { pairingSecrets.remove(it) },
+                deleteIdentityKey = { deviceId, epoch -> identityKeys.remove("$deviceId:$epoch") },
+                deleteSessionCredentials = {
+                    sessionCredentials.remove(it)
+                    profileOwner = null
+                },
+                deletePairingMetadata = { bindingOwner = null },
+                persist = { next -> durable = next; true },
+            )
+
+        assertTrue(result.complete)
+        assertEquals(null, durable)
+        assertTrue(pairingSecrets.isEmpty())
+        assertTrue(identityKeys.isEmpty())
+        assertTrue(sessionCredentials.isEmpty())
+        assertEquals(null, profileOwner)
+        assertEquals(null, bindingOwner)
+    }
 }
