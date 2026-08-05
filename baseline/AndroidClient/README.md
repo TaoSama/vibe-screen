@@ -64,13 +64,21 @@ revocation and soak remain gates, so this is not yet a shipped Internet feature.
 From this directory:
 
 ```bash
-./gradlew clean testDebugUnitTest lintDebug assembleDebug
+./gradlew clean testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
 ```
 
 The debug APK is written to
 `app/build/outputs/apk/debug/app-debug.apk`. The Gradle wrapper pins Gradle 8.6;
 all Maven repositories and dependency versions are declared in the checked-in
 build scripts.
+
+`InternetMainActivityAcceptanceInstrumentedTest` drives the real Internet tab,
+route toggle, pairing, strict lease import, local revoke, and re-pair UI against
+AndroidKeyStore-backed storage. Its host authority and credentials are generated
+in memory, sensitive dialogs must retain `FLAG_SECURE`, and its output is limited
+to a fixed boolean marker. This test proves the local credential UI only; the
+separate external-host instrumentation run is required for WebRTC, Protocol v1,
+application AEAD, media, and touch evidence.
 
 ## Install and run over USB
 

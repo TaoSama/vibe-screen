@@ -74,12 +74,27 @@ class InternetProductSessionInteropInstrumentedTest {
 
         val storedFactory = AndroidStoredInternetSessionFactory(context, localDeviceId)
         val revocationCoordinator = InternetProductRevocationCoordinator()
-        revocationCoordinator.withCredentialMutationAdmission(durableBlock = { false }) {
-            storedFactory.persistPairingSecrets(pairingId, sharedSecret, bootstrapSecret)
-            storedFactory.completePairingPersistence(pairingId, commitBusinessState = {}, cleanupBusinessState = {})
+        var pairingPersistenceCompleted = false
+        var pairingPersistenceFailure: Throwable? = null
+        try {
+            revocationCoordinator.withCredentialMutationAdmission(durableBlock = { false }) {
+                storedFactory.persistPairingSecrets(pairingId, sharedSecret, bootstrapSecret)
+                storedFactory.completePairingPersistence(pairingId, commitBusinessState = {}, cleanupBusinessState = {})
+                pairingPersistenceCompleted = true
+            }
+        } catch (failure: Throwable) {
+            pairingPersistenceFailure = failure
+            throw failure
+        } finally {
+            val cleanupFailure =
+                if (pairingPersistenceCompleted) null else cleanupInteropPairing(storedFactory, revocationCoordinator, pairingId)
+            sharedSecret.fill(0)
+            bootstrapSecret.fill(0)
+            if (cleanupFailure != null) {
+                val redacted = AssertionError("Interop pairing persistence cleanup was incomplete")
+                if (pairingPersistenceFailure == null) throw redacted else pairingPersistenceFailure.addSuppressed(redacted)
+            }
         }
-        sharedSecret.fill(0)
-        bootstrapSecret.fill(0)
         val sessionReference = AtomicReference<InternetProductSession?>()
         val active = CountDownLatch(1)
         val configured = CountDownLatch(1)
@@ -171,7 +186,9 @@ class InternetProductSessionInteropInstrumentedTest {
                     revocationCoordinator = revocationCoordinator,
                 )
             } catch (failure: Throwable) {
-                storedFactory.removePairingSecrets(pairingId)
+                if (cleanupInteropPairing(storedFactory, revocationCoordinator, pairingId) != null) {
+                    failure.addSuppressed(AssertionError("Interop pairing cleanup was incomplete"))
+                }
                 transcriptContext.fill(0)
                 boundContext.fill(0)
                 throw failure
@@ -193,12 +210,34 @@ class InternetProductSessionInteropInstrumentedTest {
                     "protocol_v1=true application_e2ee=true",
             )
         } finally {
-            session.close()
-            storedFactory.removePairingSecrets(pairingId)
-            secretFile.delete()
+            val closeFailure = runCatching(session::close).exceptionOrNull()
+            val pairingCleanupFailure = cleanupInteropPairing(storedFactory, revocationCoordinator, pairingId)
+            val fileCleanupFailed = !secretFile.delete() && secretFile.exists()
             transcriptContext.fill(0)
             boundContext.fill(0)
+            if (closeFailure != null) {
+                if (pairingCleanupFailure != null) closeFailure.addSuppressed(AssertionError("Interop pairing cleanup was incomplete"))
+                if (fileCleanupFailed) closeFailure.addSuppressed(AssertionError("Interop private-file cleanup was incomplete"))
+                throw closeFailure
+            }
+            if (pairingCleanupFailure != null) throw AssertionError("Interop pairing cleanup was incomplete")
+            if (fileCleanupFailed) throw AssertionError("Interop private-file cleanup was incomplete")
         }
+    }
+
+    private fun cleanupInteropPairing(
+        storedFactory: AndroidStoredInternetSessionFactory,
+        revocationCoordinator: InternetProductRevocationCoordinator,
+        pairingId: String,
+    ): Throwable? {
+        val failures = mutableListOf<Throwable>()
+        runCatching {
+            revocationCoordinator.withCredentialMutationAdmission(durableBlock = { false }) {
+                storedFactory.retryPendingPairingPersistenceCleanup(currentPairingIdentifier = pairingId)
+            }
+        }.onFailure(failures::add)
+        runCatching { storedFactory.removePairingSecrets(pairingId) }.onFailure(failures::add)
+        return failures.firstOrNull()
     }
 
     private fun await(latch: CountDownLatch, gate: String) {
