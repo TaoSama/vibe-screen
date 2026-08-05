@@ -1,5 +1,4 @@
 import Foundation
-import VibeScreenCore
 import VibeScreenProtocol
 import XCTest
 @testable import Telemachus
@@ -14,7 +13,7 @@ final class InternetProductProtocolCodecTests: XCTestCase {
             timestamp: 42,
             isKeyframe: true
         )
-        let packet = try MediaPacket(serializedFrame: encoded.payload)
+        let packet = try ProtocolV1MediaPacketCodec.decode(encoded.payload)
 
         XCTAssertEqual(packet.payload, annexB)
         XCTAssertEqual(packet.header.streamID, 7)
