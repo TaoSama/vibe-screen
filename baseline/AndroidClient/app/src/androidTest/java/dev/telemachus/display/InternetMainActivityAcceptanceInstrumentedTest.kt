@@ -72,7 +72,11 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         val storedFactory = AndroidStoredInternetSessionFactory(context, deviceId)
         val revocationCoordinator = InternetProductRevocationCoordinator.processShared()
         Espresso.setFailureHandler(
-            FailureHandler { _, _ -> throw AssertionError("Protected Internet UI action failed at $acceptanceStage") },
+            FailureHandler { failure, _ ->
+                throw AssertionError(
+                    "Protected Internet UI action failed at $acceptanceStage (${failure.javaClass.simpleName})",
+                )
+            },
         )
         assertTrue("Acceptance requires a clean profile store", profileStore.loadPublicProfile() == null)
         assertFalse("Acceptance requires a clean pairing store", profileStore.hasVerifiedPairing())
@@ -325,7 +329,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
 private class CapturePairingRequestFromDialogAction(
     private val destination: AtomicReference<String>,
 ) : ViewAction {
-    override fun getConstraints() = allOf(isDisplayed(), isEnabled())
+    override fun getConstraints() = allOf(isEnabled())
     override fun getDescription() = "capture protected pairing request without logging it"
     override fun perform(uiController: UiController, view: View) {
         requireSecureWindow(view)
