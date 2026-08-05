@@ -1,6 +1,14 @@
 import Foundation
 import VibeScreenProtocol
 
+public enum VideoConfigurationStartDecision: Sendable {
+    case accepted(
+        token: VideoMediaGate.ConfigurationToken,
+        configuration: VSVideoConfig
+    )
+    case rejected(reason: String, fallback: VSVideoConfig?)
+}
+
 /// Owns the protocol state which must be satisfied before a video access unit
 /// can be delivered to a decoder.
 public struct VideoMediaGate: Sendable {
@@ -88,6 +96,7 @@ public struct VideoMediaGate: Sendable {
         guard Self.isSupportedVideoCodec(config.codec) else {
             throw VideoMediaGateError.invalidCodec
         }
+        try VideoConfigValidator.validateProtocol(config)
         guard var stream = streams[config.streamID] else {
             throw VideoMediaGateError.unboundStream(config.streamID)
         }
@@ -106,8 +115,31 @@ public struct VideoMediaGate: Sendable {
             token: token,
             acknowledgementSent: false
         )
+        // frame_id is monotonic within one config epoch. Installing a newer
+        // epoch atomically starts its independent sequence at zero.
+        stream.lastFrameID = 0
         streams[config.streamID] = stream
         return token
+    }
+
+    /// Production entry point: validate the complete request before changing
+    /// stream state, then atomically install only a locally decodable config.
+    public mutating func evaluateAndBeginConfiguration(
+        _ config: VSVideoConfig,
+        decodeCapabilities: [VSVideoDecodeCapability],
+        owner: SessionOwner
+    ) throws -> VideoConfigurationStartDecision {
+        switch VideoColorNegotiator(decodeCapabilities: decodeCapabilities).evaluate(config) {
+        case let .accepted(configuration):
+            return .accepted(
+                token: try beginConfiguration(configuration, owner: owner),
+                configuration: configuration
+            )
+        case let .fallback(fallback, reason):
+            return .rejected(reason: reason, fallback: fallback)
+        case let .rejected(reason):
+            return .rejected(reason: reason, fallback: nil)
+        }
     }
 
     /// Activates the configuration only after the caller has observed

@@ -63,8 +63,12 @@ message ID allocation, envelope encoding, and the TCP send therefore share one
 serialization boundary. Replacing a connection invalidates its pending queue,
 transport callbacks, heartbeat state, media gate, and decoder owners. Video is
 delivered to VideoToolbox only after the matching positive `VideoConfigResult`
-send completes and while session, stream, config epoch, codec, one-of-one
-fragment shape, and strictly increasing frame ID all match. Three expired Ping
+send completes. Before changing stream state, configs must carry a known codec,
+an encoded size of `16...8192` per dimension, `1...240` FPS, nonzero bitrate,
+rotation `0/90/180/270`, known color enums, and a matching local decode
+capability. Each accepted config epoch starts a fresh frame-ID sequence; media
+must then match session, stream, config epoch, codec, one-of-one fragment shape,
+and a strictly increasing nonzero frame ID. Three expired Ping
 deadlines without a matching Pong terminate the session.
 
 After editing Protocol v1 schemas, regenerate the checked Swift bindings:

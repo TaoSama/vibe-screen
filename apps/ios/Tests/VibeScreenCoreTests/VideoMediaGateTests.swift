@@ -56,17 +56,26 @@ final class VideoMediaGateTests: XCTestCase {
         let first = try gate.beginConfiguration(config(streamID: 5, epoch: 1), owner: owner)
         try gate.acknowledgementSent(first, streamID: 5, owner: owner)
         let decoder = DecoderSpy()
-        decoder.deliver(header(streamID: 5, sessionEpoch: 8, configEpoch: 1, frameID: 1), through: &gate, owner: owner)
+        decoder.deliver(header(streamID: 5, sessionEpoch: 8, configEpoch: 1, frameID: 100), through: &gate, owner: owner)
 
         let replacement = try gate.beginConfiguration(config(streamID: 5, epoch: 2), owner: owner)
-        decoder.deliver(header(streamID: 5, sessionEpoch: 8, configEpoch: 1, frameID: 2), through: &gate, owner: owner)
-        decoder.deliver(header(streamID: 5, sessionEpoch: 8, configEpoch: 2, frameID: 2), through: &gate, owner: owner)
-        XCTAssertEqual(decoder.decodedFrameIDs, [1])
+        decoder.deliver(header(streamID: 5, sessionEpoch: 8, configEpoch: 1, frameID: 101), through: &gate, owner: owner)
+        decoder.deliver(header(streamID: 5, sessionEpoch: 8, configEpoch: 2, frameID: 1), through: &gate, owner: owner)
+        XCTAssertEqual(decoder.decodedFrameIDs, [100])
         XCTAssertThrowsError(try gate.acknowledgementSent(first, streamID: 5, owner: owner))
 
         try gate.acknowledgementSent(replacement, streamID: 5, owner: owner)
-        decoder.deliver(header(streamID: 5, sessionEpoch: 8, configEpoch: 2, frameID: 2), through: &gate, owner: owner)
-        XCTAssertEqual(decoder.decodedFrameIDs, [1, 2])
+        XCTAssertEqual(
+            gate.admit(
+                header(streamID: 5, sessionEpoch: 8, configEpoch: 1, frameID: 101),
+                owner: owner
+            ),
+            .failure(.configEpochMismatch(expected: 2, received: 1))
+        )
+        decoder.deliver(header(streamID: 5, sessionEpoch: 8, configEpoch: 1, frameID: 101), through: &gate, owner: owner)
+        decoder.deliver(header(streamID: 5, sessionEpoch: 8, configEpoch: 2, frameID: 1), through: &gate, owner: owner)
+        decoder.deliver(header(streamID: 5, sessionEpoch: 8, configEpoch: 2, frameID: 1), through: &gate, owner: owner)
+        XCTAssertEqual(decoder.decodedFrameIDs, [100, 1])
     }
 }
 
@@ -75,6 +84,10 @@ private func config(streamID: UInt64, epoch: UInt64) -> VSVideoConfig {
     value.streamID = streamID
     value.configEpoch = epoch
     value.codec = .h264
+    value.encodedSize.width = 1_920
+    value.encodedSize.height = 1_080
+    value.framesPerSecond = 60
+    value.bitrateKbps = 8_000
     return value
 }
 

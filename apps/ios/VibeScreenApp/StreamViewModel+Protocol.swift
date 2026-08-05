@@ -179,31 +179,32 @@ extension StreamViewModel {
 
     func handleVideoConfig(_ config: VSVideoConfig) {
         guard let owner = sessionOwner else { return }
-        let negotiator = VideoColorNegotiator(decodeCapabilities: Self.sdrDecodeCapabilities)
         var result = VSVideoConfigResult()
         result.configEpoch = config.configEpoch
         result.streamID = config.streamID
         var configurationToken: VideoMediaGate.ConfigurationToken?
         do {
-            // Any new valid configuration immediately blocks the previous epoch;
-            // only a successfully sent positive acknowledgement reopens media.
-            configurationToken = try mediaGate.beginConfiguration(config, owner: owner)
-            decoders.removeValue(forKey: config.streamID)?.invalidate()
-            decoderOwners.removeValue(forKey: config.streamID)
+            switch try mediaGate.evaluateAndBeginConfiguration(
+                config,
+                decodeCapabilities: Self.sdrDecodeCapabilities,
+                owner: owner
+            ) {
+            case let .accepted(token, selected):
+                // A valid newer config immediately blocks the previous epoch;
+                // only a successfully sent positive acknowledgement reopens media.
+                configurationToken = token
+                result.accepted = true
+                result.selectedColorDescription = selected.colorDescription
+                decoders.removeValue(forKey: config.streamID)?.invalidate()
+                decoderOwners.removeValue(forKey: config.streamID)
+            case let .rejected(reason, fallback):
+                result.accepted = false
+                result.rejectionReason = reason
+                if let fallback { result.selectedColorDescription = fallback.colorDescription }
+            }
         } catch {
             result.accepted = false
             result.rejectionReason = error.localizedDescription
-        }
-        switch negotiator.evaluate(config) {
-        case let .accepted(selected):
-            if configurationToken != nil {
-                result.accepted = true
-                result.selectedColorDescription = selected.colorDescription
-            }
-        case let .fallback(fallback, reason):
-            result.accepted = false
-            result.rejectionReason = reason
-            result.selectedColorDescription = fallback.colorDescription
         }
         let sessionID = state.sessionID
         let sessionEpoch = state.sessionEpoch
