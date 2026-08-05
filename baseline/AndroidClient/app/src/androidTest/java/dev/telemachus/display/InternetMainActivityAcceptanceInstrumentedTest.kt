@@ -275,13 +275,17 @@ class InternetMainActivityAcceptanceInstrumentedTest {
     }
 
     private fun importLease(encodedLease: String) {
+        acceptanceStage = "lease_import_open"
         onView(withId(R.id.internetImportProfileButton)).perform(scrollTo(), click())
+        acceptanceStage = "lease_import_input"
         onView(withHint(R.string.internet_import_hint))
             .inRoot(SecureDialogRootMatcher())
             .perform(SetSensitiveTextAction(encodedLease))
+        acceptanceStage = "lease_import_submit"
         onView(withHint(R.string.internet_import_hint))
             .inRoot(SecureDialogRootMatcher())
             .perform(ClickDialogPositiveAction())
+        acceptanceStage = "lease_import_result"
     }
 
     private fun revokeThroughUi() {
