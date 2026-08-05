@@ -1,3 +1,5 @@
+import { encodeUtf8 } from './Utf8';
+
 const WIRE_VARINT: number = 0;
 const WIRE_FIXED64: number = 1;
 const WIRE_LENGTH_DELIMITED: number = 2;
@@ -42,7 +44,7 @@ export class ProtobufWriter {
   }
 
   string(fieldNumber: number, value: string): ProtobufWriter {
-    if (value.length > 0) this.bytesField(fieldNumber, new TextEncoder().encode(value));
+    if (value.length > 0) this.bytesField(fieldNumber, encodeUtf8(value));
     return this;
   }
 
@@ -56,7 +58,16 @@ export class ProtobufWriter {
   }
 
   message(fieldNumber: number, writer: ProtobufWriter): ProtobufWriter {
-    return this.bytesField(fieldNumber, writer.finish());
+    const value: Uint8Array = writer.finish();
+    this.writeTag(fieldNumber, WIRE_LENGTH_DELIMITED);
+    this.writeVarint(BigInt(value.length));
+    return this.raw(value);
+  }
+
+  packedVarints(fieldNumber: number, values: number[]): ProtobufWriter {
+    const packed: ProtobufWriter = new ProtobufWriter();
+    values.forEach((value: number) => packed.writeVarint(BigInt(value)));
+    return this.bytesField(fieldNumber, packed.finish());
   }
 
   raw(value: Uint8Array): ProtobufWriter {
@@ -66,4 +77,3 @@ export class ProtobufWriter {
 
   finish(): Uint8Array { return new Uint8Array(this.bytes); }
 }
-

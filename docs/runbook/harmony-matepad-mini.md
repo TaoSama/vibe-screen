@@ -4,11 +4,13 @@ Never substitute Android results for this runbook.
 
 1. Record repository commit, DevEco/Harmony SDK versions, `hdc -v`, HAP SHA-256,
    tablet model, OS build, free storage, battery, thermal state, and network.
-2. Run `pnpm verify`, `make build-release`, and verify `dist/*/SHA256SUMS`.
+2. Run `pnpm verify` and `make release`; verify the signed HAP and
+   `dist/*/SHA256SUMS`. `pnpm verify` alone is not ArkTS/HAP evidence.
 3. Run `hdc list targets -v`; match the serial in Settings before installing.
 4. Install the signed HAP, launch it, and capture `hdc hilog` filtered to the
    VibeScreen domain. Verify permission copy and denial/retry behavior.
-5. Pair with a one-time QR credential, connect over LAN, and verify the device
+5. Pair with a one-time QR credential using the completed cryptographic pairing
+   flow (address-link import is not sufficient), connect over LAN, and verify the device
    can be revoked and cannot reuse the credential.
 6. Stream both H.264 and HEVC. Record negotiated codec/resolution/FPS, hardware
    decoder name, dropped frames, queue depth, RSS, temperature, and power.
@@ -24,4 +26,3 @@ Never substitute Android results for this runbook.
 
 Store raw evidence under an ignored local directory or attach it to the release;
 do not commit device identifiers, pairing credentials, or private network data.
-
