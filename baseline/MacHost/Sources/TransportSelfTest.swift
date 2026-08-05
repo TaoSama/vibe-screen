@@ -23,6 +23,15 @@ enum TransportSelfTest {
                     codecNegotiationCount == 1
             }
         }
+
+        func recordFailureIfIncomplete(_ message: String) {
+            lock.withLock {
+                guard !(receivedConfig && receivedKeyframe && receivedPong &&
+                        receivedTouch && rejectedMalformedTouch &&
+                        codecNegotiationCount == 1) else { return }
+                failure = message
+            }
+        }
     }
 
     static func run() -> Bool {
@@ -100,13 +109,11 @@ enum TransportSelfTest {
                     parseServerMessages(buffer: &buffer, state: state)
                 }
                 if let error {
-                    state.lock.withLock { state.failure = error.localizedDescription }
+                    state.recordFailureIfIncomplete(error.localizedDescription)
                     return
                 }
                 if complete {
-                    if !state.isComplete {
-                        state.lock.withLock { state.failure = "Server closed before all messages arrived" }
-                    }
+                    state.recordFailureIfIncomplete("Server closed before all messages arrived")
                     return
                 }
                 receiveNext()
@@ -147,7 +154,7 @@ enum TransportSelfTest {
                 receiveNext()
 
             case .failed(let error):
-                state.lock.withLock { state.failure = error.localizedDescription }
+                state.recordFailureIfIncomplete(error.localizedDescription)
 
             default:
                 break
