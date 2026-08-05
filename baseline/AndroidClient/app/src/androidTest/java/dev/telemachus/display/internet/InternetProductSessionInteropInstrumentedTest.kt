@@ -95,14 +95,22 @@ class InternetProductSessionInteropInstrumentedTest {
                     routeSelected.countDown()
                 }
 
-                override fun onVideoConfiguration(configuration: ProductVideoConfiguration): ProductVideoDecision {
-                    assertEquals(ProductVideoCodec.HEVC, configuration.codec)
-                    assertEquals(1L, configuration.configEpoch)
-                    assertEquals(1L, configuration.streamId)
-                    assertEquals(1_920, configuration.width)
-                    assertEquals(1_080, configuration.height)
-                    configured.countDown()
-                    return ProductVideoDecision.ACCEPT
+                override fun onVideoConfiguration(
+                    configuration: ProductVideoConfiguration,
+                    effect: ProductVideoConfigurationEffect,
+                    completion: (ProductVideoDecision) -> Unit,
+                ) {
+                    completion(
+                        effect.commit {
+                            assertEquals(ProductVideoCodec.HEVC, configuration.codec)
+                            assertEquals(1L, configuration.configEpoch)
+                            assertEquals(1L, configuration.streamId)
+                            assertEquals(1_920, configuration.width)
+                            assertEquals(1_080, configuration.height)
+                            configured.countDown()
+                            ProductVideoDecision.ACCEPT
+                        },
+                    )
                 }
 
                 override fun onVideoFrame(frame: ProductVideoFrame) {
@@ -139,6 +147,7 @@ class InternetProductSessionInteropInstrumentedTest {
                     codec = ProtobufProtocolV1ProductCodec(localDeviceId, "Android M144 interop", setOf(ProductVideoCodec.HEVC)),
                     callbacks = callbacks,
                     revocationStore = InternetProductRevocationStore { _, _ -> },
+                    revocationCoordinator = InternetProductRevocationCoordinator(),
                 )
             } catch (failure: Throwable) {
                 storedFactory.removePairingSecrets(pairingId)

@@ -36,9 +36,9 @@ import dev.telemachus.display.protocol.MotionPointer
 import dev.telemachus.display.protocol.MotionSnapshot
 import dev.telemachus.display.protocol.TouchSampleMapper
 import dev.telemachus.display.internet.AndroidNetworkMonitor
-import dev.telemachus.display.internet.DecoderConfigurationCommitGate
 import dev.telemachus.display.internet.InternetProductSession
 import dev.telemachus.display.internet.InternetProductSessionCallbacks
+import dev.telemachus.display.internet.InternetProductRevocationCoordinator
 import dev.telemachus.display.internet.InternetProductSessionState
 import dev.telemachus.display.internet.InternetProductRevocationStore
 import dev.telemachus.display.internet.InternetSessionProfileStore
@@ -47,6 +47,7 @@ import dev.telemachus.display.internet.ProductInputPhase
 import dev.telemachus.display.internet.ProductTouchEvent
 import dev.telemachus.display.internet.ProductVideoCodec
 import dev.telemachus.display.internet.ProductVideoConfiguration
+import dev.telemachus.display.internet.ProductVideoConfigurationEffect
 import dev.telemachus.display.internet.ProductVideoDecision
 import dev.telemachus.display.internet.ProductVideoFrame
 import dev.telemachus.display.internet.ProtobufProtocolV1ProductCodec
@@ -62,9 +63,7 @@ import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.Locale
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -85,6 +84,7 @@ class MainActivity : AppCompatActivity() {
         set(value) = videoDecoderRef.set(value)
     private val internetDeviceId by lazy { prefs.internetDeviceId }
     private val internetProfileStore by lazy { InternetSessionProfileStore(applicationContext) }
+    private val internetRevocationCoordinator = InternetProductRevocationCoordinator()
     private val internetStoredSessionFactory by lazy {
         AndroidStoredInternetSessionFactory(applicationContext, internetDeviceId)
     }
@@ -1905,9 +1905,26 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                override fun onVideoConfiguration(configuration: ProductVideoConfiguration): ProductVideoDecision {
-                    if (!isCurrentInternetSession()) return ProductVideoDecision.reject("stale_session")
-                    return configureInternetDecoderOnMain(generation, sessionReference, configuration)
+                override fun onVideoConfiguration(
+                    configuration: ProductVideoConfiguration,
+                    effect: ProductVideoConfigurationEffect,
+                    completion: (ProductVideoDecision) -> Unit,
+                ) {
+                    if (!isCurrentInternetSession()) {
+                        completion(ProductVideoDecision.reject("stale_session"))
+                        return
+                    }
+                    runOnUiThread {
+                        completion(
+                            effect.commit {
+                                if (isCurrentInternetSession()) {
+                                    configureInternetDecoder(configuration, generation, sessionReference)
+                                } else {
+                                    ProductVideoDecision.reject("stale_session")
+                                }
+                            },
+                        )
+                    }
                 }
 
                 override fun onVideoFrame(frame: ProductVideoFrame) {
@@ -1962,9 +1979,15 @@ class MainActivity : AppCompatActivity() {
                     dev.telemachus.display.internet.MonotonicClock { android.os.SystemClock.elapsedRealtime() },
                     codec,
                     callbacks,
-                    InternetProductRevocationStore { pairingIdentifier, reason ->
-                        internetProfileStore.markAuthenticatedRevoked(pairingIdentifier, reason)
+                    object : InternetProductRevocationStore {
+                        override fun persistAuthenticatedRevocation(pairingIdentifier: String, reason: String) {
+                            internetProfileStore.markAuthenticatedRevoked(pairingIdentifier, reason)
+                        }
+
+                        override fun isAuthenticatedRevoked(pairingIdentifier: String): Boolean =
+                            internetProfileStore.isRevoked(pairingIdentifier)
                     },
+                    internetRevocationCoordinator,
                 )
             sessionReference.set(created)
             internetNetworkMonitor = monitor
@@ -1999,55 +2022,6 @@ class MainActivity : AppCompatActivity() {
             requiredFreshInternetEpoch = maxOf(requiredFreshInternetEpoch, lease.authoritativeSessionEpoch)
             android.util.Log.e(INTERNET_LOG_TAG, "internet_session_error type=${failure.javaClass.simpleName}")
             showInternetFailure(failure)
-        }
-    }
-
-    private fun configureInternetDecoderOnMain(
-        generation: Long,
-        sessionReference: AtomicReference<InternetProductSession?>,
-        configuration: ProductVideoConfiguration,
-    ): ProductVideoDecision {
-        fun isCurrent(): Boolean = generation == internetGeneration && internetSession === sessionReference.get()
-        if (!isCurrent()) return ProductVideoDecision.reject("stale_session")
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            return configureInternetDecoder(configuration, generation, sessionReference)
-        }
-        val latch = CountDownLatch(1)
-        val commitGate = DecoderConfigurationCommitGate()
-        val result = AtomicReference(ProductVideoDecision.reject("decoder_configuration_timeout"))
-        runOnUiThread {
-            try {
-                result.set(
-                    if (isCurrent() && commitGate.startInstallation()) {
-                        configureInternetDecoder(configuration, generation, sessionReference).also { decision ->
-                            if (decision.accepted) commitGate.markDone() else commitGate.markFailed()
-                        }
-                    } else {
-                        ProductVideoDecision.reject("stale_session")
-                    },
-                )
-            } finally {
-                latch.countDown()
-            }
-        }
-        return if (latch.await(INTERNET_DECODER_CONFIGURATION_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-            result.get()
-        } else if (commitGate.cancelPending()) {
-            ProductVideoDecision.reject("decoder_configuration_timeout")
-        } else {
-            // The main thread owns installation. Do not ACK until it has fully
-            // installed the decoder and updated UI state, or failed.
-            var interrupted = false
-            while (true) {
-                try {
-                    latch.await()
-                    break
-                } catch (_: InterruptedException) {
-                    interrupted = true
-                }
-            }
-            if (interrupted) Thread.currentThread().interrupt()
-            if (commitGate.done) result.get() else ProductVideoDecision.reject("decoder_configuration_failure")
         }
     }
 
@@ -2676,7 +2650,6 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_INTERNET_SCAN = 1101
         private const val REQ_INTERNET_CAMERA = 1102
         private const val INTERNET_TICK_INTERVAL_MS = 250L
-        private const val INTERNET_DECODER_CONFIGURATION_TIMEOUT_MS = 3_000L
         private const val INTERNET_LOG_TAG = "VibeInternet"
     }
 
