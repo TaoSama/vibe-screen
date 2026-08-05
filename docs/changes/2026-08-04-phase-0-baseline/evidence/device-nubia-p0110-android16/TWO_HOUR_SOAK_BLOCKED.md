@@ -23,7 +23,7 @@ The corresponding machine-readable record is
 
 - Repository commit: `6f7ffbe0be872390144899642636dbb24d89f120`
   (`origin/main` at preparation time).
-- ADB endpoint: `100.72.246.116:5555`.
+- ADB endpoint: `<redacted-controlled-endpoint>`.
 - Device: Nubia P0110 (`pacific`), Android 16 / SDK 36, hardware serial
   `[redacted]`.
 - Device fingerprint:

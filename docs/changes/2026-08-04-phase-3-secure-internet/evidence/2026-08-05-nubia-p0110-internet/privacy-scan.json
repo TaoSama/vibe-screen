@@ -1,0 +1,204 @@
+{
+  "artifacts": [
+    {
+      "bytes": 2383,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "e7e17b18ab655d8706d1ec97ef439375fd533e44175e2570ae2a108850f82483"
+    },
+    {
+      "bytes": 29236,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "acceptance.json",
+      "result": "pass",
+      "sha256": "5031e49b7fa6f44f844c967fe97e81edbe4e907db31fdf41620df1bdac11e035"
+    },
+    {
+      "bytes": 27500,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "direct/adb-gates.jsonl",
+      "result": "pass",
+      "sha256": "8c1c80d9ce3cf78077a36012e52851a1daa3ca1701b3fafd2f835733a6267e8b"
+    },
+    {
+      "bytes": 7,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "direct/coturn-version.txt",
+      "result": "pass",
+      "sha256": "27d440fa66d4cb754ba20fa5750c6f0cdc42fec23a7338aef95b4ee6272cfe46"
+    },
+    {
+      "bytes": 2785,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "direct/coturn.log",
+      "result": "pass",
+      "sha256": "49bed45064ee5f32767bf87388306f9e4887a84464b07f1da983f065bf21b156"
+    },
+    {
+      "bytes": 2317,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "direct/device.log",
+      "result": "pass",
+      "sha256": "8f9e954803936eb44fae540254d0ee5be60e2f7cb129333fd7cacc64b585c920"
+    },
+    {
+      "bytes": 199,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "direct/host.log",
+      "result": "pass",
+      "sha256": "f2ad319de28c7d774691671a7df3446f927bc7124f5b8125821861dfa97eab63"
+    },
+    {
+      "bytes": 117,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "direct/signaling.log",
+      "result": "pass",
+      "sha256": "f9263de84e504350219995b19b48ea999ddc588462abf9881a410d5787aa4250"
+    },
+    {
+      "bytes": 27498,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "relay/adb-gates.jsonl",
+      "result": "pass",
+      "sha256": "2c73d637921b5aba5e28aacf7b77602f819c1374e44162fce2d9ddf45d57abb7"
+    },
+    {
+      "bytes": 7,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "relay/coturn-version.txt",
+      "result": "pass",
+      "sha256": "27d440fa66d4cb754ba20fa5750c6f0cdc42fec23a7338aef95b4ee6272cfe46"
+    },
+    {
+      "bytes": 2785,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "relay/coturn.log",
+      "result": "pass",
+      "sha256": "49bed45064ee5f32767bf87388306f9e4887a84464b07f1da983f065bf21b156"
+    },
+    {
+      "bytes": 2316,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "relay/device.log",
+      "result": "pass",
+      "sha256": "45af40e0b9d1a648f870a4828b9a59d50b7cfdce73d69587e99d973956550415"
+    },
+    {
+      "bytes": 198,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "relay/host.log",
+      "result": "pass",
+      "sha256": "d25029a4119f7eb014293b3602e5c1861c441f308a053d1b868fec49f372b97c"
+    },
+    {
+      "bytes": 117,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "relay/signaling.log",
+      "result": "pass",
+      "sha256": "0eb1a6f4b6e449877b0d56ea4f6580618d10dced659519f39433ffe4cfd73cbc"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-06.4",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

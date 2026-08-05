@@ -1712,9 +1712,35 @@ class MainActivity : AppCompatActivity() {
     /**
      * Wire up all StreamClient callbacks. Used by both USB connect() and wireless connectWireless().
      */
+    private fun createSessionAutomaticRetryCoordinator(
+        callbackClient: StreamClient,
+        callbackGeneration: Long,
+        postAutomaticRetry: () -> Unit,
+    ): SessionAutomaticRetryCoordinator {
+        val cleanupAdapter =
+            SessionAutomaticRetryCleanupAdapter(
+                isCurrentGeneration = { isCurrentSession(callbackClient, callbackGeneration) },
+                disableAutomaticUsbConnect = { automaticUsbConnect = false },
+                cancelWirelessReconnect = ::cancelWirelessReconnect,
+                removeAutomaticUsbRunnable = { autoConnectHandler.removeCallbacks(autoConnectRunnable) },
+            )
+        return SessionAutomaticRetryCoordinator(
+            postAutomaticRetry = postAutomaticRetry,
+            cancelPendingAutomaticRetry = { runOnUiThread(cleanupAdapter::cleanup) },
+            handleServerShutdown = {
+                runOnUiThread {
+                    if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                    log("📴 Server initiated shutdown — closing app")
+                    finishAffinity()
+                }
+            },
+        )
+    }
+
     private fun setupStreamClientCallbacks(
         callbackClient: StreamClient,
         callbackGeneration: Long,
+        retryCoordinator: SessionAutomaticRetryCoordinator,
     ) {
         callbackClient.onFrameReceived = frame@{ frameData, frameSize, timestamp, isKeyframe, sessionEpoch ->
             if (!isCurrentSession(callbackClient, callbackGeneration)) {
@@ -1756,17 +1782,15 @@ class MainActivity : AppCompatActivity() {
 
         callbackClient.onSessionEnded = sessionEnded@{ failure ->
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@sessionEnded
+            val showTerminalGuidance = retryCoordinator.onSessionEnded(failure)
             mainDiag(
                 "session ended kind=${failure.kind} retryable=${failure.retryable} " +
                     "detail=${failure.detail}",
             )
-            if (!failure.retryable && !failure.intentional) {
+            if (showTerminalGuidance) {
                 val guidance = ConnectionGuidanceFactory.from(failure, currentUsbPort())
                 runOnUiThread {
                     if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
-                    automaticUsbConnect = false
-                    cancelWirelessReconnect()
-                    autoConnectHandler.removeCallbacks(autoConnectRunnable)
                     pendingTerminalGuidance = guidance
                 }
             }
@@ -1812,14 +1836,7 @@ class MainActivity : AppCompatActivity() {
 
         callbackClient.onServerShutdown = serverShutdown@{
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@serverShutdown
-            runOnUiThread {
-                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
-                automaticUsbConnect = false
-                cancelWirelessReconnect()
-                autoConnectHandler.removeCallbacks(autoConnectRunnable)
-                log("📴 Server initiated shutdown — closing app")
-                finishAffinity()
-            }
+            retryCoordinator.onServerShutdown()
         }
 
         callbackClient.onDisplaySize = displaySize@{ width, height, rotation ->
@@ -2352,7 +2369,15 @@ class MainActivity : AppCompatActivity() {
         connectionAttemptInProgress = true
         val callbackClient = StreamClient(host, port, applicationContext)
         val callbackGeneration = activateSession(callbackClient)
-        setupStreamClientCallbacks(callbackClient, callbackGeneration)
+        val retryCoordinator =
+            createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration) {
+                val delayMs =
+                    pendingWirelessReconnectDelayMs
+                        ?: initialWirelessReconnectBackoff.nextDelayMs(jitterUnit = 0.5)
+                pendingWirelessReconnectDelayMs = null
+                scheduleWirelessReconnect(delayMs)
+            }
+        setupStreamClientCallbacks(callbackClient, callbackGeneration, retryCoordinator)
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 log("Connecting wirelessly to $macName at $host:$port...")
@@ -2381,13 +2406,10 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                     connectionAttemptInProgress = false
-                    if (!isConnected && wirelessAutoReconnectEnabled) {
-                        val delayMs =
-                            pendingWirelessReconnectDelayMs
-                                ?: initialWirelessReconnectBackoff.nextDelayMs(jitterUnit = 0.5)
-                        pendingWirelessReconnectDelayMs = null
-                        scheduleWirelessReconnect(delayMs)
-                    }
+                    retryCoordinator.onConnectionFinally(
+                        automaticRetryEnabled = wirelessAutoReconnectEnabled,
+                        disconnected = !isConnected,
+                    )
                 }
             }
         }
@@ -2444,7 +2466,12 @@ class MainActivity : AppCompatActivity() {
         connectionAttemptInProgress = true
         val callbackClient = StreamClient(host, port, applicationContext)
         val callbackGeneration = activateSession(callbackClient)
-        setupStreamClientCallbacks(callbackClient, callbackGeneration)
+        val retryCoordinator =
+            createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration) {
+                showDisconnectedStreamUi()
+                scheduleAutomaticUsbConnect()
+            }
+        setupStreamClientCallbacks(callbackClient, callbackGeneration, retryCoordinator)
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 log("Connecting to $host:$port...")
@@ -2460,10 +2487,10 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                     connectionAttemptInProgress = false
-                    if (automaticUsbConnect && !isConnected) {
-                            showDisconnectedStreamUi()
-                            scheduleAutomaticUsbConnect()
-                    }
+                    retryCoordinator.onConnectionFinally(
+                        automaticRetryEnabled = automaticUsbConnect,
+                        disconnected = !isConnected,
+                    )
                 }
             }
         }

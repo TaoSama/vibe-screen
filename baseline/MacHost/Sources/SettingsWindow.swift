@@ -893,7 +893,7 @@ struct SettingsView: View {
                                         title: "Internet session",
                                         status: settings.internetStatus.title,
                                         color: settings.internetStatusColor,
-                                        hint: "The authenticated, end-to-end encrypted WebRTC product session state."
+                                        hint: "Experimental Internet transport state for authenticated, application-encrypted Protocol v1 records."
                                     )
                                     StatusRow(
                                         title: "Route",
@@ -1291,8 +1291,12 @@ private struct InternetSection: View {
     }
 
     var body: some View {
-        FrostedGroupBox(title: "Secure Internet", icon: "lock.shield") {
+        FrostedGroupBox(title: "Internet Development Preview", icon: "lock.shield") {
             VStack(alignment: .leading, spacing: 12) {
+                Text("Experimental Internet transport. Protocol v1 application records are encrypted on direct and TURN routes. Public Internet traversal, real display capture, cross-service revocation, and soak stability are not yet accepted.")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Signaling endpoint")
                         .font(.system(size: 11))

@@ -55,7 +55,7 @@ adb -s DEVICE_HOST:5555 install -r -t \
   baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The recorded endpoint `100.72.246.116:5555` has previously identified as a
+The lease-controlled endpoint has previously identified as a
 Nubia P0110, not Xiaomi 12. Recheck rather than assuming its identity.
 
 ## Viewport checks

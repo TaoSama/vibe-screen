@@ -256,7 +256,7 @@ struct InternetProductProtocolCodec {
         size.height = UInt32(video.height)
         var display = VSDisplayDescriptor()
         display.displayID = "internet-display"
-        display.name = "Secure Internet Display"
+        display.name = "Internet Preview Display"
         display.logicalSize = size
         display.scaleFactor = 1
         var changed = VSDisplayChanged()

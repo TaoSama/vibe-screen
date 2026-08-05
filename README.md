@@ -198,8 +198,9 @@ HiDPI scale, letterboxing, rotation, and safe areas.
 
 **Current status: baseline acceptance passed on the recorded Nubia P0110 test
 device using the legacy compatibility path, and Protocol v1 main-session
-offline gates pass. Protocol v1 device interoperability, Xiaomi 12 acceptance,
-full Xcode/XCTest, and two-hour leak testing remain open gates.**
+offline gates pass. The macOS XCTest suite passes on the current main commit in
+GitHub's Xcode runner. Protocol v1 device interoperability, Xiaomi 12
+acceptance, and two-hour leak testing remain open gates.**
 
 Implementation status and evidence are tracked in the
 [Phase 0 change docs](docs/changes/2026-08-04-phase-0-baseline/PRD.md).

@@ -835,7 +835,6 @@ class StreamClient(
                             diagLog("Server shut down gracefully — closing")
                             stopRequested = true
                             terminalFailure = SessionFailure.serverShutdown()
-                            onServerShutdown?.invoke()
                             break
                         }
 
@@ -1414,6 +1413,9 @@ class StreamClient(
         val ownsCurrentEpoch = connectionEpoch == 0L || SESSION_EPOCHS.accepts(connectionEpoch)
         if (ownsCurrentEpoch) {
             onSessionEnded?.invoke(failure)
+            if (failure.kind == SessionFailureKind.SERVER_SHUTDOWN) {
+                onServerShutdown?.invoke()
+            }
             onConnectionStatus?.invoke(false)
         }
         if (wasConnected) {

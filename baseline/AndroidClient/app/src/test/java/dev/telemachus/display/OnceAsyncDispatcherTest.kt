@@ -45,6 +45,33 @@ class OnceAsyncDispatcherTest {
         assertNotEquals(callerThread, cleanupThread)
     }
 
+    @Test
+    fun `first terminal path wins for both synchronous and queued completion order`() {
+        listOf(true, false).forEach { synchronousFirst ->
+            val recordingExecutor = RecordingExecutor()
+            val completed = mutableListOf<String>()
+            val dispatcher =
+                OnceAsyncDispatcher<String>(
+                    executor = recordingExecutor,
+                    onClaim = {},
+                    complete = { completed += it },
+                )
+
+            if (synchronousFirst) {
+                assertTrue(dispatcher.completeNow("receive_finally"))
+                assertFalse(dispatcher.dispatch("explicit_disconnect"))
+                assertEquals(listOf("receive_finally"), completed)
+                assertEquals(0, recordingExecutor.size)
+            } else {
+                assertTrue(dispatcher.dispatch("explicit_disconnect"))
+                assertFalse(dispatcher.completeNow("receive_finally"))
+                assertTrue(completed.isEmpty())
+                recordingExecutor.remove().run()
+                assertEquals(listOf("explicit_disconnect"), completed)
+            }
+        }
+    }
+
     private class RecordingExecutor : Executor {
         private val tasks = ArrayDeque<Runnable>()
 

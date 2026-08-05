@@ -40,7 +40,7 @@ enum InternetRoutePreference: String, Codable, CaseIterable, Identifiable {
         case .preferDirect:
             return "Uses a direct peer path when available and falls back to TURN."
         case .forceTURN:
-            return "Routes through TURN for diagnostics. Content remains end-to-end encrypted."
+            return "Routes through TURN for diagnostics. Protocol v1 application-record encryption is enabled in this development preview; Internet security acceptance is incomplete."
         }
     }
 }

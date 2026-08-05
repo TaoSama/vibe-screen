@@ -26,6 +26,7 @@ Run current repository checks first:
 
 ```bash
 make protocol
+make phase3-test
 make baseline-macos-build
 make baseline-macos-test
 make baseline-android-test
@@ -224,8 +225,9 @@ named by that run:
   task;
 - macOS `swift build`: an initial run failed while concurrent Phase 3 files were
   inconsistent; after the owning edits converged, a fresh rerun passed. The
-  `swift test` command still fails before execution because the XCTest module is
-  unavailable in the selected developer environment.
+  historical local `swift test` command failed before execution because XCTest
+  was unavailable in that selected developer environment. Current-main Xcode
+  execution is recorded separately below.
 - `services/signaling make verify`: format, vet, race tests and a real child-process
   offer/answer/candidate exchange passed; its container was not built because
   Docker is unavailable.
@@ -270,16 +272,18 @@ named by that run:
   expiry, downgrade, mutation, strict-wire, and protected-secret-storage tests;
   the Android pairing target passed 8/8 tests. They have not yet completed a real
   cross-language QR exchange. Swift and Kotlin do share a passing hard-coded
-  product-session bound-context known-answer value. The macOS package builds, but
-  its XCTest cases did not execute in the Command Line Tools-only environment.
+  product-session bound-context known-answer value. The macOS package built;
+  its XCTest cases did not execute in that historical Command Line Tools-only
+  environment.
 - Platform lifecycle tests cover peer-scoped durable epoch reservation, rollback
   rejection, signed targeted revocation, tombstone persistence, and pairing-secret
   deletion failure/retry. Added deterministic XCTest source covers an N open
   transaction latched across a concurrent N+1 reservation, post-persist pairing
   business failure plus deletion failure across coordinator restart, and lease
   issuance across concurrent callers and authority restart while ignoring an
-  abnormal caller epoch. Full macOS XCTest execution
-  remains unavailable in the selected Command Line Tools environment.
+  abnormal caller epoch. These XCTest cases now execute in the current-main CI
+  run recorded below; the local Command Line Tools environment remains unable
+  to run them.
 - The macOS executable Internet self-test keeps a selected route explicitly
   unknown until complete candidate-pair stats arrive and fails closed on timeout;
   the loopback self-test still selected a real direct host/host UDP pair after
@@ -290,7 +294,7 @@ named by that run:
   pairing-scoped durable authority allocation across restart/concurrency, rejects
   stale cipher seal/open after the durable epoch advances, and uses a deterministic
   latch to prove N+1 reservation waits while N open owns the durable epoch lock.
-  XCTest coverage is present but did not execute in the Command Line Tools-only environment.
+  The historical local run could not execute XCTest, while current-main CI did.
 - The local product slice passed in both modes:
   `run_local_e2e.py --mode direct --slice product` and
   `run_local_e2e.py --mode relay --slice product --skip-build`. Both traversed
@@ -330,3 +334,16 @@ Android rotation, disconnect/reconnect or network-handoff evidence. It also does
 not prove negative lease cases through the UI, cross-service revocation, public
 Internet/STUN/TURN or carrier/CGNAT traversal, packet capture, latency, or soak;
 those release gates remain open. Xiaomi 12 acceptance also remains open.
+
+### Current-main CI follow-up (2026-08-06)
+
+GitHub Actions [Phase 0 run 31026183305](https://github.com/TaoSama/vibe-screen/actions/runs/31026183305)
+completed successfully for
+`056b8c15e67e512f27d908ac9fc8ce3e16fdc63a`. Its `macos-15` job passed the
+full MacHost `swift test` suite via `make baseline-macos-test`, in addition to
+the release build, executable self-tests, and app packaging. The device
+acceptance remains bound to source commit
+`597518f948075e396352bc353afcec01a30303f3`; the later CI result is evidence
+for current main only. Public Internet, ScreenCaptureKit media, real input
+effects, network handoff, cross-service revocation, latency, and soak gates
+remain open.

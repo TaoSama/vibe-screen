@@ -30,6 +30,7 @@ import java.net.Socket
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 class StreamClientProtocolV1IntegrationTest {
     @Test
@@ -47,15 +48,33 @@ class StreamClientProtocolV1IntegrationTest {
             val ended = CountDownLatch(1)
             var failure: SessionFailure? = null
             val reconnect = CountDownLatch(1)
-            val client =
-                StreamClient("127.0.0.1", server.localPort).apply {
-                    onDisplaySize = { _, _, rotation -> rotations += rotation }
-                    onSessionEnded = {
-                        failure = it
-                        ended.countDown()
-                    }
-                    onReconnectSuggested = { reconnect.countDown() }
+            val shutdownCallbacks = AtomicInteger()
+            val retryCancellations = AtomicInteger()
+            val shutdownActions = AtomicInteger()
+            val terminationOrder = Collections.synchronizedList(mutableListOf<String>())
+            val retryCoordinator =
+                SessionAutomaticRetryCoordinator(
+                    postAutomaticRetry = {},
+                    cancelPendingAutomaticRetry = { retryCancellations.incrementAndGet() },
+                    handleServerShutdown = { shutdownActions.incrementAndGet() },
+                )
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.apply {
+                onDisplaySize = { _, _, rotation -> rotations += rotation }
+                onSessionEnded = {
+                    retryCoordinator.onSessionEnded(it)
+                    failure = it
+                    terminationOrder += "session_ended"
+                    ended.countDown()
                 }
+                onServerShutdown = {
+                    retryCoordinator.onServerShutdown()
+                    terminationOrder += "server_shutdown"
+                    shutdownCallbacks.incrementAndGet()
+                    client.disconnect()
+                }
+                onReconnectSuggested = { reconnect.countDown() }
+            }
 
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
             withTimeout(4_000) { serverJob.await() }
@@ -66,6 +85,11 @@ class StreamClientProtocolV1IntegrationTest {
             assertEquals(SessionFailureKind.SERVER_SHUTDOWN, failure?.kind)
             assertFalse(checkNotNull(failure).retryable)
             assertTrue(checkNotNull(failure).intentional)
+            client.disconnect()
+            assertEquals(listOf("session_ended", "server_shutdown"), terminationOrder)
+            assertEquals(1, shutdownCallbacks.get())
+            assertEquals(1, retryCancellations.get())
+            assertEquals(1, shutdownActions.get())
             assertFalse(reconnect.await(200, TimeUnit.MILLISECONDS))
         }
     }
