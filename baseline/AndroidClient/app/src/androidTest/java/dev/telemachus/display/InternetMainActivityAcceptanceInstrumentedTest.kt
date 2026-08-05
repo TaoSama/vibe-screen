@@ -15,6 +15,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.FailureHandler
+import androidx.test.espresso.Root
 import androidx.test.espresso.UiController
 import androidx.test.espresso.ViewAction
 import androidx.test.espresso.action.ViewActions.click
@@ -37,8 +38,10 @@ import dev.telemachus.display.internet.security.InternetPairingAcceptance
 import dev.telemachus.display.internet.security.InternetPairingRequest
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicReference
+import org.hamcrest.Description
 import org.hamcrest.Matchers.allOf
 import org.hamcrest.Matchers.not
+import org.hamcrest.TypeSafeMatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -258,6 +261,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
 
             val request = AtomicReference<String>()
             onView(withHint(R.string.internet_pairing_acceptance_hint))
+                .inRoot(FocusedRootMatcher())
                 .perform(CapturePairingRequestFromDialogAction(request))
             assertEquals("The pairing scanner result was not consumed", 1, monitor.hits)
             return InternetPairingRequest.parse(checkNotNull(request.get()))
@@ -269,9 +273,11 @@ class InternetMainActivityAcceptanceInstrumentedTest {
     private fun completePairing(acceptance: InternetPairingAcceptance) {
         acceptanceStage = "pairing_acceptance_input"
         onView(withHint(R.string.internet_pairing_acceptance_hint))
+            .inRoot(FocusedRootMatcher())
             .perform(SetSensitiveTextAction(acceptance.encode()))
         acceptanceStage = "pairing_acceptance_submit"
         onView(withHint(R.string.internet_pairing_acceptance_hint))
+            .inRoot(FocusedRootMatcher())
             .perform(ClickDialogPositiveAction())
         acceptanceStage = "pairing_acceptance_result"
         onView(withId(R.id.internetRevokeButton)).check(matches(isEnabled()))
@@ -290,9 +296,11 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         acceptanceStage = "lease_import_input"
         onView(withHint(R.string.internet_import_hint))
+            .inRoot(FocusedRootMatcher())
             .perform(SetSensitiveTextAction(encodedLease))
         acceptanceStage = "lease_import_submit"
         onView(withHint(R.string.internet_import_hint))
+            .inRoot(FocusedRootMatcher())
             .perform(ClickDialogPositiveAction())
         acceptanceStage = "lease_import_result"
     }
@@ -307,6 +315,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         acceptanceStage = "revoke_confirm"
         onView(withText(R.string.internet_revoke_confirm_message))
+            .inRoot(FocusedRootMatcher())
             .perform(ClickDialogPositiveAction(requireSecure = false))
         acceptanceStage = "revoke_result"
         onView(withId(R.id.internetConnectButton)).check(matches(not(isEnabled())))
@@ -324,6 +333,14 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         )
         assertTrue("Local revoke retained lease secrets", store.load(profileSecretSlot(offer, lease)) == null)
     }
+}
+
+private class FocusedRootMatcher : TypeSafeMatcher<Root>() {
+    override fun describeTo(description: Description) {
+        description.appendText("the focused Android window")
+    }
+
+    override fun matchesSafely(root: Root): Boolean = root.decorView.hasWindowFocus()
 }
 
 private class CapturePairingRequestFromDialogAction(
