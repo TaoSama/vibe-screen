@@ -722,7 +722,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             )
             validate_instrumentation_result(device_output)
             device_marker_log = adb.device(
-                ["logcat", "-d", "-v", "brief", "-s", "System.out:I", "*:S"],
+                ["logcat", "-d", "-v", "raw", "-s", "System.out:I", "*:S"],
                 name="read-device-marker-log",
             )
             adb.device(
