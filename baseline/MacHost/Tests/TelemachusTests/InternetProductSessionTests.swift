@@ -202,7 +202,7 @@ final class InternetProductSessionTests: XCTestCase {
         guard case .failed(let reason) = harness.session.snapshotState() else {
             return XCTFail("Unknown route must fail closed")
         }
-        XCTAssertTrue(reason.contains("path is still unknown"))
+        XCTAssertTrue(reason.contains("before selecting an ICE candidate pair"))
         XCTAssertTrue(harness.engine.didClose)
     }
 
