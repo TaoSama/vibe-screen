@@ -62,6 +62,42 @@ internal fun retryRevocationCleanup(
     return RevocationCleanupResult(current.remainingSteps, failures)
 }
 
+/**
+ * Applies a persisted cleanup plan without crossing pairing ownership. A null or
+ * different current owner means that owner-scoped state was already removed or
+ * superseded and the old step can be durably retired without deleting it.
+ */
+internal fun retryOwnedRevocationCleanup(
+    initial: PendingRevocationCleanup,
+    currentProfilePairingIdentifier: () -> String?,
+    currentBindingPairingIdentifier: () -> String?,
+    deletePairingSecret: (String) -> Unit,
+    deleteIdentityKey: (String, Long) -> Unit,
+    deleteSessionCredentials: (String) -> Unit,
+    deletePairingMetadata: (String) -> Unit,
+    persist: (PendingRevocationCleanup?) -> Boolean,
+): RevocationCleanupResult =
+    retryRevocationCleanup(
+        initial = initial,
+        execute = { step ->
+            when (step) {
+                RevocationCleanupStep.PAIRING_SECRET -> deletePairingSecret(initial.pairingIdentifier)
+                RevocationCleanupStep.IDENTITY_KEY -> deleteIdentityKey(initial.localDeviceId, initial.identityEpoch)
+                RevocationCleanupStep.SESSION_CREDENTIALS -> {
+                    if (currentProfilePairingIdentifier() == initial.pairingIdentifier) {
+                        deleteSessionCredentials(initial.pairingIdentifier)
+                    }
+                }
+                RevocationCleanupStep.PAIRING_METADATA -> {
+                    if (currentBindingPairingIdentifier() == initial.pairingIdentifier) {
+                        deletePairingMetadata(initial.pairingIdentifier)
+                    }
+                }
+            }
+        },
+        persist = persist,
+    )
+
 internal object PendingRevocationCleanupCodec {
     private val ROOT_KEYS = setOf("version", "pairing_id", "local_device_id", "identity_epoch", "remaining_steps")
 

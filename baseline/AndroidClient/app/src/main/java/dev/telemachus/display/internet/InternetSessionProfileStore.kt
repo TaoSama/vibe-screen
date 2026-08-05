@@ -411,16 +411,14 @@ class InternetSessionProfileStore(
     ): RevocationCleanupResult? {
         return InternetProductAdmissionGate.withLock {
             val pending = loadPendingRevocationCleanup() ?: return@withLock null
-            retryRevocationCleanup(
+            retryOwnedRevocationCleanup(
                 initial = pending,
-                execute = { step ->
-                    when (step) {
-                        RevocationCleanupStep.PAIRING_SECRET -> deletePairingSecret(pending.pairingIdentifier)
-                        RevocationCleanupStep.IDENTITY_KEY -> deleteIdentityKey(pending.localDeviceId, pending.identityEpoch)
-                        RevocationCleanupStep.SESSION_CREDENTIALS -> remove(pending.pairingIdentifier)
-                        RevocationCleanupStep.PAIRING_METADATA -> removePairingBinding()
-                    }
-                },
+                currentProfilePairingIdentifier = { loadPublicProfile()?.pairingIdentifier },
+                currentBindingPairingIdentifier = { loadPairingBinding()?.pairingIdentifier },
+                deletePairingSecret = deletePairingSecret,
+                deleteIdentityKey = deleteIdentityKey,
+                deleteSessionCredentials = ::remove,
+                deletePairingMetadata = { _ -> removePairingBinding() },
                 persist = ::persistPendingRevocationCleanup,
             )
         }

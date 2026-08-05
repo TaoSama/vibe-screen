@@ -188,7 +188,7 @@ named by that run:
   24 vectors, including direction reflection and global revocation sequencing;
 - Android clean `./gradlew --no-daemon clean testDebugUnitTest lintDebug
   assembleDebug compileDebugAndroidTestKotlin auditReleaseDependencies` passed
-  with 261 JVM tests and zero failures/errors/skips. The security tests cover
+  with 263 JVM tests and zero failures/errors/skips. The security tests cover
   paired-host lease signature mutation, reserved maximum epochs, stale durable
   cipher epochs, monotonic identity reauthorization, restart-safe credential and
   revocation cleanup, best-effort close aggregation, and generation-scoped route
@@ -207,7 +207,9 @@ named by that run:
   different-pairing metadata overwrite rejection, already-open pairing-dialog
   rejection, deterministic pairing-commit/revocation-reserve linearization,
   every old-pairing revocation stage, owner-aware legacy/current marker recovery,
-  and coexisting pairing/authenticated-revocation markers across simulated restart.
+  coexisting pairing/authenticated-revocation markers across simulated restart,
+  and old-cleanup/new-owner upgrade recovery without profile, binding, or secret
+  cross-deletion; same-owner cleanup still deletes every owned resource.
   `processReleaseMainManifest` also passed and the merged release
   manifest sets `usesCleartextTraffic=false`;
 - Android `./gradlew auditReleaseDependencies`: passed the fixed AAR, Gson,
