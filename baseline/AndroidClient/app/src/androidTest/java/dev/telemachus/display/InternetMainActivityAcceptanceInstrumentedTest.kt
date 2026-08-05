@@ -19,7 +19,6 @@ import androidx.test.espresso.ViewAction
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.ViewAssertions.matches
-import androidx.test.espresso.matcher.RootMatchers.isDialog
 import androidx.test.espresso.matcher.ViewMatchers.isChecked
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.isEnabled
@@ -291,10 +290,12 @@ class InternetMainActivityAcceptanceInstrumentedTest {
     }
 
     private fun revokeThroughUi() {
+        acceptanceStage = "revoke_open"
         onView(withId(R.id.internetRevokeButton)).perform(scrollTo(), click())
-        onView(withText(R.string.internet_revoke_confirm_action))
-            .inRoot(isDialog())
-            .perform(click())
+        acceptanceStage = "revoke_confirm"
+        onView(withText(R.string.internet_revoke_confirm_message))
+            .perform(ClickDialogPositiveAction(requireSecure = false))
+        acceptanceStage = "revoke_result"
         onView(withId(R.id.internetConnectButton)).check(matches(not(isEnabled())))
     }
 
@@ -346,11 +347,13 @@ private class SetSensitiveTextAction(
     }
 }
 
-private class ClickDialogPositiveAction : ViewAction {
+private class ClickDialogPositiveAction(
+    private val requireSecure: Boolean = true,
+) : ViewAction {
     override fun getConstraints() = allOf(isDisplayed(), isEnabled())
     override fun getDescription() = "click the positive action in the protected dialog"
     override fun perform(uiController: UiController, view: View) {
-        requireSecureWindow(view)
+        if (requireSecure) requireSecureWindow(view)
         val button = checkNotNull(view.rootView.findViewById<View>(android.R.id.button1))
         check(button.performClick()) { "Protected dialog action was not handled" }
         uiController.loopMainThreadUntilIdle()
