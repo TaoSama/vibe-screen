@@ -34,11 +34,14 @@ make doctor
 
 `pnpm run verify` checks the real project layout, type-checks only the portable
 core, parses TypeScript-compatible production ArkTS plus the non-declarative
-ArkUI page shell, verifies method-scoped production imports/calls, and runs
-golden/unit tests against the shared Protocol v1 fixtures. It does not run the
-ArkTS API/type checker, parse the complete declarative ArkUI builder grammar,
-invoke DevEco, or produce a HAP. `make doctor` reports whether OHPM and Hvigor
-are available.
+ArkUI page shell, verifies method-scoped production imports/calls and the
+expected early-return/fail-closed shape for critical guards, and runs
+golden/unit tests against the shared Protocol v1 fixtures. It rejects explicit
+constant-false, short-circuit, and directly post-return dead paths but is not a
+general control-flow proof; capability guards must also precede every protected
+send in their straight-line platform method. It does not run the ArkTS API/type checker, parse
+the complete declarative ArkUI builder grammar, invoke DevEco, or produce a
+HAP. `make doctor` reports whether OHPM and Hvigor are available.
 
 ## DevEco build and test
 
@@ -108,9 +111,15 @@ only when AVCodec accepts the keyframe input buffer.
 
 Decoder initialization is transactional after candidate registration:
 configure, surface binding, prepare, and start failures owner-safely detach and
-best-effort stop/release while preserving cleanup diagnostics. Transport parse,
-timeout, socket, controller-close, and supersede paths compete for one lease;
-only its winning close owner may detach, close, and notify.
+best-effort stop/release while preserving cleanup diagnostics. Each decoder
+instance carries its own lifecycle lease. Supersede/release requests wait for
+the current platform operation to settle, share one cleanup promise, and use
+stop-before-release whenever start may have taken effect; an old continuation
+cannot clear its replacement. A transition owner retains detached cleanup as a
+barrier, so later configure/release calls cannot start or return while that
+resource is still live. Transport parse, timeout, socket,
+controller-close, and supersede paths compete for one lease; only its winning
+close owner may detach, close, and notify.
 
 ## Permissions and privacy
 

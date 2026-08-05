@@ -248,11 +248,68 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
     }
     return undefined;
   };
+  const constantBoolean = (node) => {
+    if (node === undefined) return undefined;
+    if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
+    if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
+    if (ts.isParenthesizedExpression(node)) return constantBoolean(node.expression);
+    if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) {
+      const operand = constantBoolean(node.operand);
+      return operand === undefined ? undefined : !operand;
+    }
+    if (ts.isBinaryExpression(node)) {
+      const left = constantBoolean(node.left);
+      const right = constantBoolean(node.right);
+      if (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+        if (left === false || right === false) return false;
+        if (left === true && right === true) return true;
+      }
+      if (node.operatorToken.kind === ts.SyntaxKind.BarBarToken) {
+        if (left === true || right === true) return true;
+        if (left === false && right === false) return false;
+      }
+    }
+    return undefined;
+  };
+  const containsNode = (container, target) => target.pos >= container.pos && target.end <= container.end;
+  const statementAlwaysTerminates = (statement) => ts.isReturnStatement(statement) || ts.isThrowStatement(statement);
+  const isReachableInMethod = (node, method) => {
+    let child = node;
+    for (let parent = node.parent; parent !== undefined && parent !== method; parent = parent.parent) {
+      if (ts.isBinaryExpression(parent) && containsNode(parent.right, child)) {
+        const left = constantBoolean(parent.left);
+        if ((parent.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken && left === false) ||
+          (parent.operatorToken.kind === ts.SyntaxKind.BarBarToken && left === true)) return false;
+      }
+      if (ts.isIfStatement(parent)) {
+        const condition = constantBoolean(parent.expression);
+        if (containsNode(parent.thenStatement, child) && condition === false) return false;
+        if (parent.elseStatement !== undefined && containsNode(parent.elseStatement, child) && condition === true) return false;
+      }
+      if (ts.isConditionalExpression(parent)) {
+        const condition = constantBoolean(parent.condition);
+        if (containsNode(parent.whenTrue, child) && condition === false) return false;
+        if (containsNode(parent.whenFalse, child) && condition === true) return false;
+      }
+      if ((ts.isWhileStatement(parent) || ts.isDoStatement(parent)) && containsNode(parent.statement, child) &&
+        constantBoolean(parent.expression) === false) return false;
+      if (ts.isBlock(parent)) {
+        const directStatement = parent.statements.find((statement) => containsNode(statement, child));
+        if (directStatement !== undefined) {
+          const index = parent.statements.indexOf(directStatement);
+          if (parent.statements.slice(0, index).some((statement) => statementAlwaysTerminates(statement))) return false;
+        }
+      }
+      child = parent;
+    }
+    return true;
+  };
   const nodeHasMethodCall = (node, sourceFile, receiver, methodName) => {
     let found = false;
     const visit = (candidate) => {
       if (ts.isCallExpression(candidate) && ts.isPropertyAccessExpression(candidate.expression) &&
-        candidate.expression.name.text === methodName && candidate.expression.expression.getText(sourceFile) === receiver) found = true;
+        candidate.expression.name.text === methodName && candidate.expression.expression.getText(sourceFile) === receiver &&
+        isReachableInMethod(candidate, node)) found = true;
       ts.forEachChild(candidate, visit);
     };
     visit(node);
@@ -263,30 +320,98 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
     const method = classMethod(relative, className, containerMethod);
     return sourceFile !== undefined && method !== undefined && nodeHasMethodCall(method, sourceFile, receiver, calledMethod);
   };
-  const methodHasCallArgument = (relative, className, containerMethod, receiver, calledMethod, argumentText) => {
+  const methodHasDirectCall = (relative, className, containerMethod, functionName) => {
     const sourceFile = portableSourceFiles.get(relative);
     const method = classMethod(relative, className, containerMethod);
     if (sourceFile === undefined || method === undefined) return false;
     let found = false;
     const visit = (node) => {
-      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
-        node.expression.name.text === calledMethod && node.expression.expression.getText(sourceFile) === receiver &&
-        node.arguments.some((argument) => argument.getText(sourceFile) === argumentText)) found = true;
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === functionName &&
+        isReachableInMethod(node, method)) found = true;
       ts.forEachChild(node, visit);
     };
     visit(method);
     return found;
   };
-  const methodHasDirectCall = (relative, className, containerMethod, functionName) => {
+  const methodHasConstructorCall = (relative, className, containerMethod, constructedClass) => {
     const method = classMethod(relative, className, containerMethod);
     if (method === undefined) return false;
     let found = false;
     const visit = (node) => {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === functionName) found = true;
+      if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === constructedClass &&
+        isReachableInMethod(node, method)) found = true;
       ts.forEachChild(node, visit);
     };
     visit(method);
     return found;
+  };
+  const methodAwaitsExpression = (relative, className, containerMethod, expressionText) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, containerMethod);
+    if (sourceFile === undefined || method === undefined) return false;
+    let found = false;
+    const visit = (node) => {
+      if (ts.isAwaitExpression(node) && node.expression.getText(sourceFile) === expressionText &&
+        isReachableInMethod(node, method)) found = true;
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return found;
+  };
+  const methodHasDominatingCapabilityGuard = (relative, className, methodName, capability, protectedCall) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, methodName);
+    if (sourceFile === undefined || method === undefined) return false;
+    const guard = method.body?.statements.find((statement) => {
+      if (!ts.isIfStatement(statement) || !isReachableInMethod(statement, method)) return false;
+      const exits = ts.isReturnStatement(statement.thenStatement) ||
+        (ts.isBlock(statement.thenStatement) && statement.thenStatement.statements.some(ts.isReturnStatement));
+      if (!exits || constantBoolean(statement.expression) === false) return false;
+      const unwrap = (node) => ts.isParenthesizedExpression(node) ? unwrap(node.expression) : node;
+      const orTerms = (node) => {
+        const expression = unwrap(node);
+        return ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.BarBarToken
+          ? [...orTerms(expression.left), ...orTerms(expression.right)] : [expression];
+      };
+      return orTerms(statement.expression).some((term) => {
+        const expression = unwrap(term);
+        return ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.ExclamationToken &&
+          ts.isCallExpression(expression.operand) && ts.isPropertyAccessExpression(expression.operand.expression) &&
+          expression.operand.expression.expression.getText(sourceFile) === 'active' &&
+          expression.operand.expression.name.text === 'canSend' && expression.operand.arguments.length === 1 &&
+          expression.operand.arguments[0].getText(sourceFile) === capability;
+      });
+    });
+    if (guard === undefined) return false;
+    const protectedCalls = [];
+    const visit = (node) => {
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.expression.getText(sourceFile) === 'active' && node.expression.name.text === protectedCall &&
+        isReachableInMethod(node, method)) protectedCalls.push(node);
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return protectedCalls.length > 0 && protectedCalls.every((call) => guard.end <= call.pos);
+  };
+  const methodHasBoundedQueueGuard = (relative, className, methodName) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, methodName);
+    if (sourceFile === undefined || method === undefined) return false;
+    return method.body?.statements.some((statement) => {
+      if (!ts.isIfStatement(statement) || constantBoolean(statement.expression) === false ||
+        !isReachableInMethod(statement, method)) return false;
+      const expression = ts.isParenthesizedExpression(statement.expression)
+        ? statement.expression.expression : statement.expression;
+      const bounded = ts.isBinaryExpression(expression) &&
+        expression.operatorToken.kind === ts.SyntaxKind.GreaterThanEqualsToken &&
+        ts.isCallExpression(expression.left) && ts.isPropertyAccessExpression(expression.left.expression) &&
+        expression.left.expression.expression.kind === ts.SyntaxKind.ThisKeyword &&
+        expression.left.expression.name.text === 'queuedCount' && expression.left.arguments.length === 0 &&
+        ts.isIdentifier(expression.right) && expression.right.text === 'MAX_PENDING_CONTROLS';
+      return bounded && nodeHasMethodCall(statement.thenStatement, sourceFile, 'this', 'fail') &&
+        (ts.isReturnStatement(statement.thenStatement) ||
+          (ts.isBlock(statement.thenStatement) && statement.thenStatement.statements.some(ts.isReturnStatement)));
+    }) === true;
   };
   const hasConstructorCall = (relative, className) => {
     let found = false;
@@ -303,6 +428,25 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
     });
     return found;
   };
+  const classPropertyUsesCleanupOwner = (relative, className, propertyName) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    if (sourceFile === undefined) return false;
+    const declaration = sourceFile.statements.find((statement) =>
+      ts.isClassDeclaration(statement) && statement.name?.text === className);
+    if (declaration === undefined || !ts.isClassDeclaration(declaration)) return false;
+    const property = declaration.members.find((member) => ts.isPropertyDeclaration(member) &&
+      member.name.getText(sourceFile) === propertyName);
+    if (property === undefined || !ts.isPropertyDeclaration(property) ||
+      property.initializer === undefined || !ts.isNewExpression(property.initializer) ||
+      !ts.isIdentifier(property.initializer.expression) ||
+      property.initializer.expression.text !== 'DecoderTransitionOwner' || property.initializer.arguments.length !== 1) return false;
+    const cleanup = property.initializer.arguments[0];
+    if (!ts.isArrowFunction(cleanup) || !ts.isCallExpression(cleanup.body) ||
+      !ts.isPropertyAccessExpression(cleanup.body.expression)) return false;
+    return cleanup.body.expression.expression.kind === ts.SyntaxKind.ThisKeyword &&
+      cleanup.body.expression.name.text === 'releaseDetached' && cleanup.body.arguments.length === 1 &&
+      cleanup.body.arguments[0].getText(sourceFile) === 'candidate';
+  };
   const hasEnumMembers = (relative, enumName, members) => {
     let found = false;
     visitSource(relative, (node) => {
@@ -313,20 +457,11 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
     });
     return found;
   };
-  const hasIdentifierUseOutsideDeclaration = (relative, identifier) => {
-    let count = 0;
-    visitSource(relative, (node) => { if (ts.isIdentifier(node) && node.text === identifier) count += 1; });
-    return count > 1;
-  };
-
   const requireImport = (relative, moduleName, importedName) => check(hasNamedImport(relative, moduleName, importedName),
     `${relative}: must import ${importedName} from ${moduleName}`);
   const requireCallInMethod = (relative, className, containerMethod, receiver, calledMethod) =>
     check(methodHasCall(relative, className, containerMethod, receiver, calledMethod),
       `${relative}: ${className}.${containerMethod}() must call ${receiver}.${calledMethod}()`);
-  const requireCallArgumentInMethod = (relative, className, containerMethod, receiver, calledMethod, argumentText) =>
-    check(methodHasCallArgument(relative, className, containerMethod, receiver, calledMethod, argumentText),
-      `${relative}: ${className}.${containerMethod}() must call ${receiver}.${calledMethod}(${argumentText})`);
   const requireConstructorCall = (relative, className) => check(hasConstructorCall(relative, className),
     `${relative}: production path must construct ${className}`);
 
@@ -358,13 +493,17 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   requireImport(controllerPath, '../core/session/ProgressWatchdog', 'ProgressWatchdog');
   requireConstructorCall(controllerPath, 'OutboundControlWriter');
   requireConstructorCall(controllerPath, 'ProgressWatchdog');
-  requireCallArgumentInMethod(controllerPath, 'HarmonySessionController', 'sendTouch', 'active', 'canSend', 'Capability.TOUCH');
+  check(methodHasDominatingCapabilityGuard(controllerPath, 'HarmonySessionController', 'sendTouch', 'Capability.TOUCH', 'touch'),
+    `${controllerPath}: HarmonySessionController.sendTouch() must use a dominating TOUCH early-return guard`);
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendTouch', 'active', 'touch');
-  requireCallArgumentInMethod(controllerPath, 'HarmonySessionController', 'sendPointer', 'active', 'canSend', 'Capability.POINTER');
+  check(methodHasDominatingCapabilityGuard(controllerPath, 'HarmonySessionController', 'sendPointer', 'Capability.POINTER', 'pointer'),
+    `${controllerPath}: HarmonySessionController.sendPointer() must use a dominating POINTER early-return guard`);
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendPointer', 'active', 'pointer');
-  requireCallArgumentInMethod(controllerPath, 'HarmonySessionController', 'sendScroll', 'active', 'canSend', 'Capability.POINTER');
+  check(methodHasDominatingCapabilityGuard(controllerPath, 'HarmonySessionController', 'sendScroll', 'Capability.POINTER', 'scroll'),
+    `${controllerPath}: HarmonySessionController.sendScroll() must use a dominating POINTER early-return guard`);
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendScroll', 'active', 'scroll');
-  requireCallArgumentInMethod(controllerPath, 'HarmonySessionController', 'sendKey', 'active', 'canSend', 'Capability.KEYBOARD');
+  check(methodHasDominatingCapabilityGuard(controllerPath, 'HarmonySessionController', 'sendKey', 'Capability.KEYBOARD', 'key'),
+    `${controllerPath}: HarmonySessionController.sendKey() must use a dominating KEYBOARD early-return guard`);
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendKey', 'active', 'key');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendAction', 'writer', 'enqueue');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'configureVideo', 'this.videoDecoder', 'configure');
@@ -378,10 +517,20 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
 
   const decoderPath = 'entry/src/main/ets/platform/HarmonyVideoDecoder.ets';
   requireImport(decoderPath, '../core/media/DecoderLifecycle', 'DecoderLifecycle');
-  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'DecoderLifecycle', 'initialize');
-  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'this', 'detachCandidateForCleanup');
-  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'releaseDetached', 'detached.decoder', 'stop');
-  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'releaseDetached', 'detached.decoder', 'release');
+  requireImport(decoderPath, '../core/media/DecoderLifecycle', 'DecoderTransitionOwner');
+  check(classPropertyUsesCleanupOwner(decoderPath, 'HarmonyVideoDecoder', 'candidates'),
+    `${decoderPath}: HarmonyVideoDecoder.candidates must construct DecoderTransitionOwner with releaseDetached cleanup`);
+  check(methodHasConstructorCall(decoderPath, 'HarmonyVideoDecoder', 'configure', 'DecoderLifecycle'),
+    `${decoderPath}: HarmonyVideoDecoder.configure() must construct a reachable per-candidate DecoderLifecycle`);
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'this.candidates', 'detachAndCleanup');
+  check(methodAwaitsExpression(decoderPath, 'HarmonyVideoDecoder', 'configure', 'transition.completion'),
+    `${decoderPath}: HarmonyVideoDecoder.configure() must await the decoder cleanup transition`);
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'lifecycle', 'initialize');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'this', 'clearCandidateIfCurrent');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'release', 'this.candidates', 'detachAndCleanup');
+  check(methodAwaitsExpression(decoderPath, 'HarmonyVideoDecoder', 'release', 'transition.completion'),
+    `${decoderPath}: HarmonyVideoDecoder.release() must await the decoder cleanup transition`);
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'releaseDetached', 'detached.lifecycle', 'cancelAndCleanup');
 
   const transportPath = 'entry/src/main/ets/platform/HarmonyTransport.ets';
   requireImport(transportPath, '../core/transport/TransportCloseOwner', 'TransportCloseOwner');
@@ -393,8 +542,8 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   requireCallInMethod(transportPath, 'HarmonyTransport', 'terminate', 'listener', 'onDisconnected');
 
   const writerPath = 'entry/src/main/ets/core/protocol/OutboundControlWriter.ts';
-  check(hasIdentifierUseOutsideDeclaration(writerPath, 'MAX_PENDING_CONTROLS'),
-    `${writerPath}: MAX_PENDING_CONTROLS must bound the production queue`);
+  check(methodHasBoundedQueueGuard(writerPath, 'OutboundControlWriter', 'enqueue'),
+    `${writerPath}: enqueue() must use a reachable MAX_PENDING_CONTROLS fail-closed guard`);
   check(hasClassMethod(writerPath, 'OutboundControlWriter', 'drain'), `${writerPath}: OutboundControlWriter.drain() is required`);
 
   const sessionPath = 'entry/src/main/ets/core/session/ProductSession.ts';
