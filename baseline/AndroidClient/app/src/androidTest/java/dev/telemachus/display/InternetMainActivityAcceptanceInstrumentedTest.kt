@@ -268,7 +268,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
             .perform(SetSensitiveTextAction(acceptance.encode()))
         acceptanceStage = "pairing_acceptance_submit"
         onView(withText(R.string.internet_pairing_complete_action))
-            .inRoot(isDialog())
+            .inRoot(SecureDialogRootMatcher())
             .perform(click())
         acceptanceStage = "pairing_acceptance_result"
         onView(withId(R.id.internetRevokeButton)).check(matches(isEnabled()))
@@ -280,7 +280,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
             .inRoot(SecureDialogRootMatcher())
             .perform(SetSensitiveTextAction(encodedLease))
         onView(withText(R.string.internet_import_action))
-            .inRoot(isDialog())
+            .inRoot(SecureDialogRootMatcher())
             .perform(click())
     }
 
