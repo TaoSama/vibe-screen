@@ -267,9 +267,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
             .inRoot(SecureDialogRootMatcher())
             .perform(SetSensitiveTextAction(acceptance.encode()))
         acceptanceStage = "pairing_acceptance_submit"
-        onView(withText(R.string.internet_pairing_complete_action))
-            .inRoot(SecureDialogRootMatcher())
-            .perform(click())
+        onView(withId(android.R.id.button1)).perform(click())
         acceptanceStage = "pairing_acceptance_result"
         onView(withId(R.id.internetRevokeButton)).check(matches(isEnabled()))
     }
@@ -279,9 +277,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         onView(withHint(R.string.internet_import_hint))
             .inRoot(SecureDialogRootMatcher())
             .perform(SetSensitiveTextAction(encodedLease))
-        onView(withText(R.string.internet_import_action))
-            .inRoot(SecureDialogRootMatcher())
-            .perform(click())
+        onView(withId(android.R.id.button1)).perform(click())
     }
 
     private fun revokeThroughUi() {
