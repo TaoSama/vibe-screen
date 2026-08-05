@@ -66,3 +66,27 @@ internal object TouchMapper {
         }
     }
 }
+
+/** Applies the client-local viewport settings used by the Internet input path. */
+internal object InternetTouchMapper {
+    fun map(
+        x: Float,
+        y: Float,
+        viewWidth: Int,
+        viewHeight: Int,
+        videoWidth: Int,
+        videoHeight: Int,
+        scaleMode: VideoScaleMode,
+        clientRotation: ClientRotation,
+    ): TouchMapper.Point =
+        TouchMapper.map(
+            x = x,
+            y = y,
+            viewWidth = viewWidth,
+            viewHeight = viewHeight,
+            videoWidth = videoWidth,
+            videoHeight = videoHeight,
+            scaleMode = scaleMode,
+            renderRotation = clientRotation.degrees,
+        )
+}

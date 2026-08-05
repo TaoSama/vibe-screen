@@ -113,3 +113,41 @@ This uses a synthetic local Protocol v1 device harness and does not start screen
 capture or the product UI. It is not macOS-to-Android, real encoded-screen/input,
 packet-capture, public-Internet/NAT, or deployed STUN/TURN evidence. The default
 `transport` slice retains the narrower adapter/DataChannel smoke test.
+
+## Android M144 to Mac M150 product interop
+
+`android_product_session_interop_acceptance.py` installs commit-bound app and
+instrumentation APKs, starts the real local signaling service, and drives the
+external M150 host against the Android M144 product session. Run direct and
+relay as separate sessions with separate output directories. Relay mode requires
+a caller-managed, device-reachable local coturn process; pass its owner-only raw
+log and version record so the evidence remains auditable.
+
+Before reading the device lease, the runner verifies a clean `HEAD`, runs fixed
+Android app/instrumentation, release Mac host, and signaling builds, then verifies
+the same clean commit and tree again. It accepts only those fixed output paths
+and records each build command's result and output hashes. This controlled build
+is the source-to-artifact provenance gate; caller-supplied APKs and binaries are
+not accepted.
+
+The runner does not acquire the shared device. Before starting it, atomically
+create `/tmp/vibe-screen-device-internet.lock` as a regular `0600` JSON file with
+exactly `owner`, `pid`, `task`, and `commit`. `task` must be
+`phase3-android-internet-acceptance`, `commit` must equal the clean `HEAD`, and
+`pid` must be a separate, continuously alive lock-holder process. Every ADB
+subprocess rechecks all fields, the original inode and bytes, holder liveness,
+and the absence of every other `vibe-screen-device-*.lock`. Deletion,
+replacement, owner change, holder exit, or a new conflicting lock fails closed.
+
+Supply the ADB endpoint and signaling bind address only as runtime arguments.
+Supply STUN/TURN URLs and credentials in a bounded `0600` JSON file outside Git;
+the runner transfers the one-use Android configuration over ADB stdin, verifies
+that instrumentation consumed it, and removes both the private file and reverse
+mapping through the same lease gate. Raw host/device/signaling/coturn outputs and
+the JSON report must remain outside Git until their explicit privacy review.
+
+The fail-closed markers prove the selected direct/relay candidate path,
+Protocol v1, AES-256-GCM control and media records, synthetic video config plus
+keyframe/delta delivery, and authenticated touch. They do not prove the product
+UI, rotation, ScreenCaptureKit, visible Mac input effects, disconnect/reconnect,
+revocation propagation, public Internet traversal, or soak.

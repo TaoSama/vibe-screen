@@ -2657,13 +2657,15 @@ class MainActivity : AppCompatActivity() {
                     else -> activeInternetInputIds[pointerId] ?: return
                 }
             val point =
-                TouchMapper.map(
+                InternetTouchMapper.map(
                     x = event.getX(index),
                     y = event.getY(index),
                     viewWidth = view.width,
                     viewHeight = view.height,
                     videoWidth = displayWidth,
                     videoHeight = displayHeight,
+                    scaleMode = prefs.videoScaleMode,
+                    clientRotation = prefs.clientRotation,
                 )
             session.sendTouch(
                 ProductTouchEvent(
