@@ -761,9 +761,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     except FileExistsError as error:
         raise InteropError("route raw output directory must be new for each attempt") from error
     route_raw_dir.chmod(0o700)
-    source = repository_state(repo)
-    paths, artifacts, build_records = controlled_build(repo, source, args.build_timeout)
-    lease = capture_lease(source["commit"], args.device_lock)
+    prepared = getattr(args, "prepared_acceptance", None)
+    if prepared is None:
+        source = repository_state(repo)
+        paths, artifacts, build_records = controlled_build(repo, source, args.build_timeout)
+        lease = capture_lease(source["commit"], args.device_lock)
+    else:
+        source, paths, artifacts, build_records, lease = prepared
+        if repository_state(repo) != source:
+            raise InteropError("prepared acceptance source changed")
+        require_artifacts_unchanged(paths, artifacts)
+        require_lease(lease, source["commit"], args.device_lock)
     gate_journal = AdbGateJournal(
         route_raw_dir / "adb-gates.jsonl",
         lease,
@@ -1130,12 +1138,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def run_both_routes(args: argparse.Namespace) -> dict[str, Any]:
+    repo = args.repo.resolve()
+    source = repository_state(repo)
+    paths, artifacts, build_records = controlled_build(repo, source, args.build_timeout)
+    lease = capture_lease(source["commit"], args.device_lock)
+    prepared_acceptance = (source, paths, artifacts, build_records, lease)
     reports: list[dict[str, Any]] = []
     lease_comparison_key = secrets.token_bytes(32)
     for route in ("direct", "relay"):
         values = vars(args).copy()
         values["route"] = route
         values["lease_comparison_key"] = lease_comparison_key
+        values["prepared_acceptance"] = prepared_acceptance
         reports.append(run(argparse.Namespace(**values)))
     if reports[0]["source"] != reports[1]["source"]:
         raise InteropError("direct and relay runs did not use identical source")

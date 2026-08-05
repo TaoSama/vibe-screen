@@ -245,15 +245,33 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
         with mock.patch(
             "scripts.phase3.android_product_session_interop_acceptance.run",
             side_effect=({**base, "route": "direct"}, {**base, "route": "relay"}),
+        ), mock.patch(
+            "scripts.phase3.android_product_session_interop_acceptance.repository_state",
+            return_value=base["source"],
+        ), mock.patch(
+            "scripts.phase3.android_product_session_interop_acceptance.controlled_build",
+            return_value=({}, base["artifacts"], []),
+        ), mock.patch(
+            "scripts.phase3.android_product_session_interop_acceptance.capture_lease",
+            return_value=mock.sentinel.lease,
         ):
-            combined = run_both_routes(argparse.Namespace())
+            combined = run_both_routes(argparse.Namespace(repo=Path("."), build_timeout=1, device_lock=[]))
         self.assertEqual(combined["routes"], ["direct", "relay"])
         changed = {**base, "adb_gate": {**base["adb_gate"], "inode": 99}, "route": "relay"}
         with mock.patch(
             "scripts.phase3.android_product_session_interop_acceptance.run",
             side_effect=({**base, "route": "direct"}, changed),
+        ), mock.patch(
+            "scripts.phase3.android_product_session_interop_acceptance.repository_state",
+            return_value=base["source"],
+        ), mock.patch(
+            "scripts.phase3.android_product_session_interop_acceptance.controlled_build",
+            return_value=({}, base["artifacts"], []),
+        ), mock.patch(
+            "scripts.phase3.android_product_session_interop_acceptance.capture_lease",
+            return_value=mock.sentinel.lease,
         ), self.assertRaisesRegex(InteropError, "same device lease"):
-            run_both_routes(argparse.Namespace())
+            run_both_routes(argparse.Namespace(repo=Path("."), build_timeout=1, device_lock=[]))
 
     def test_output_paths_must_remain_outside_repository(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
