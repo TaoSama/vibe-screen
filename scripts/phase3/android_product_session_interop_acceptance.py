@@ -370,6 +370,22 @@ def validate_instrumentation_result(output: str) -> None:
         raise InteropError("Android instrumentation did not finish exactly one successful test")
 
 
+def private_config_device_commands(config_name: str) -> dict[str, Any]:
+    if re.fullmatch(r"[A-Za-z0-9._-]{1,128}", config_name) is None:
+        raise InteropError("private config basename is invalid")
+    path = f"files/{config_name}"
+    return {
+        "prepare": [
+            ["shell", "run-as", APP_PACKAGE, "mkdir", "-p", "files"],
+            ["shell", "run-as", APP_PACKAGE, "chmod", "700", "files"],
+        ],
+        "import": ["exec-out", "run-as", APP_PACKAGE, "dd", f"of={path}", "status=none"],
+        "chmod": ["shell", "run-as", APP_PACKAGE, "chmod", "600", path],
+        "consumed": ["shell", "run-as", APP_PACKAGE, "test", "!", "-e", path],
+        "cleanup": ["shell", "run-as", APP_PACKAGE, "rm", "-f", path],
+    }
+
+
 def redact(value: str, sensitive: Sequence[str]) -> str:
     result = value
     for secret in sorted((item for item in sensitive if item), key=len, reverse=True):
@@ -656,13 +672,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             }
             encoded_config = (json.dumps(private_config, separators=(",", ":")) + "\n").encode()
             config_name = f"interop-{secrets.token_hex(8)}.json"
-            adb.device(
-                ["exec-out", "run-as", APP_PACKAGE, "sh", "-c",
-                 f"umask 077 && mkdir -p files && chmod 700 files && "
-                 f"cat > files/{config_name} && chmod 600 files/{config_name}"],
+            config_commands = private_config_device_commands(config_name)
+            for index, command in enumerate(config_commands["prepare"]):
+                adb.device(command, name=f"private-config-prepare-{index + 1}")
+            import_output = adb.device(
+                config_commands["import"],
                 stdin=encoded_config,
                 name="private-config-import",
             )
+            if import_output:
+                raise InteropError("private config import unexpectedly produced output")
+            adb.device(config_commands["chmod"], name="private-config-mode")
             adb.device(["logcat", "-c"], name="clear-device-marker-log")
 
             host_environment = os.environ.copy()
@@ -706,7 +726,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 name="read-device-marker-log",
             )
             adb.device(
-                ["shell", "run-as", APP_PACKAGE, "sh", "-c", f"test ! -e files/{config_name}"],
+                config_commands["consumed"],
                 name="private-config-consumed",
             )
             try:
@@ -742,7 +762,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             if config_name is not None:
                 try:
                     adb.device(
-                        ["shell", "run-as", APP_PACKAGE, "sh", "-c", f"rm -f -- files/{config_name}"],
+                        private_config_device_commands(config_name)["cleanup"],
                         name="private-config-cleanup",
                     )
                 except InteropError as error:
