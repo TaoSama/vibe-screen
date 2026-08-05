@@ -7,6 +7,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
+import dev.telemachus.display.internet.security.AndroidSessionSecurity
+import dev.telemachus.display.internet.security.DurableSecurityState
+import dev.telemachus.display.internet.security.SecurityStateStore
 import dev.telemachus.display.internet.security.TrafficKeyDerivation
 import java.io.File
 import java.util.Base64
@@ -38,7 +41,17 @@ class InternetProductSessionInteropInstrumentedTest {
         val hostId = secrets.hostId
         val sessionId = secrets.sessionId
         val pairingId = "interop-$sessionId"
-        val storedFactory = AndroidStoredInternetSessionFactory(context, localDeviceId)
+        val storedFactory =
+            AndroidStoredInternetSessionFactory(
+                context,
+                localDeviceId,
+                sessionSecurity =
+                    AndroidSessionSecurity(
+                        localDeviceId,
+                        context,
+                        stateStore = InteropSecurityStateStore(),
+                    ),
+            )
         val identityEpoch = storedFactory.reserveNextIdentityEpoch()
         val lease =
             InternetProductSessionLease(
@@ -212,7 +225,7 @@ class InternetProductSessionInteropInstrumentedTest {
             println(
                 "PHASE3_ANDROID_INTEROP_DEVICE_PASS route=${expectedRoute.name.lowercase()} epoch=$epoch " +
                     "kdf_kat=true transcript_kat=true video_config=true keyframe=true delta=true touch=true " +
-                    "protocol_v1=true application_e2ee=true",
+                    "protocol_v1=true application_e2ee=true lifecycle_store=test_isolated",
             )
         } finally {
             val closeFailure = runCatching(session::close).exceptionOrNull()
@@ -361,6 +374,18 @@ class InternetProductSessionInteropInstrumentedTest {
         private val KEYFRAME = "VIBE-ANDROID-INTEROP-KEYFRAME".toByteArray()
         private val DELTA = "VIBE-ANDROID-INTEROP-DELTA".toByteArray()
         private const val TIMEOUT_SECONDS = 60L
+    }
+}
+
+private class InteropSecurityStateStore : SecurityStateStore {
+    private var state = DurableSecurityState()
+
+    @Synchronized
+    override fun load(): DurableSecurityState = state.copy()
+
+    @Synchronized
+    override fun persist(state: DurableSecurityState) {
+        this.state = state.copy()
     }
 }
 

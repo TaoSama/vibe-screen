@@ -65,7 +65,7 @@ MARKER_FLAGS = (
     "touch=true",
     "application_e2ee=true",
 )
-DEVICE_ONLY_FLAGS = ("protocol_v1=true",)
+DEVICE_ONLY_FLAGS = ("protocol_v1=true", "lifecycle_store=test_isolated")
 
 
 class InteropError(RuntimeError):
@@ -828,6 +828,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "aes_256_gcm_media": "pass",
             "synthetic_video_config_keyframe_delta": "pass",
             "authenticated_touch": "pass",
+            "durable_security_state": "not_claimed_interop_uses_test_isolated_store",
         },
         "raw_markers": {
             "host_sha256": sha256_bytes(host_marker.encode()),
