@@ -1,5 +1,4 @@
 import Foundation
-import VibeScreenCore
 import VibeScreenProtocol
 import XCTest
 @testable import Telemachus
@@ -116,9 +115,9 @@ final class InternetProductSessionTests: XCTestCase {
             sessionEpoch: 1
         )
         XCTAssertTrue(harness.waitForSentMediaCount(1))
-        let media = try MediaPacket(serializedFrame: harness.engine.sentPlaintext.first {
-            $0.channel == .media
-        }!.payload)
+        let media = try ProtocolV1MediaPacketCodec.decode(
+            harness.engine.sentPlaintext.first { $0.channel == .media }!.payload
+        )
         XCTAssertEqual(media.header.captureTimestampNs, 99)
         XCTAssertTrue(media.header.keyframe)
 
