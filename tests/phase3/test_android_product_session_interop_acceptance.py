@@ -30,6 +30,7 @@ from scripts.phase3.android_product_session_interop_acceptance import (
     read_private_ice_configuration,
     read_private_external,
     require_artifacts_unchanged,
+    private_config_device_commands,
     require_lease,
     signaling_config,
     validate_instrumentation_result,
@@ -222,6 +223,20 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
             artifact.write_bytes(b"replaced")
             with self.assertRaisesRegex(InteropError, "changed after"):
                 require_artifacts_unchanged(paths, artifacts)
+
+    def test_private_config_transfer_uses_only_direct_run_as_commands(self) -> None:
+        commands = private_config_device_commands("interop-safe.json")
+        flattened = [*commands["prepare"], commands["import"], commands["chmod"],
+                     commands["consumed"], commands["cleanup"]]
+        for command in flattened:
+            rendered = " ".join(command)
+            self.assertNotIn("sh -c", rendered)
+            self.assertNotIn("cat", rendered)
+            self.assertNotIn("credential", rendered)
+        self.assertEqual(commands["import"][:4], ["exec-out", "run-as", "dev.telemachus.display", "dd"])
+        self.assertEqual(sum("dd" in command for command in flattened), 1)
+        with self.assertRaisesRegex(InteropError, "basename"):
+            private_config_device_commands("../escape")
 
     def test_marker_validation_requires_exact_route_epoch_and_all_crypto_media_touch_flags(self) -> None:
         common = (
