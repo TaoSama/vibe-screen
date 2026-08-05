@@ -103,8 +103,15 @@ Negotiation rules:
   and config epoch, including when numeric protocol identifiers are reused.
 - `VideoMediaGate` is per stream. Starting a config immediately blocks media;
   only completion of the matching positive `VideoConfigResult` send activates
-  it. Admission then strictly requires the current session epoch, nonzero bound
-  stream, config epoch, codec, `fragment_count=1`, `fragment_index=0`, nonempty
+  it. Protocol validation happens before that state change: stream/config IDs
+  and bitrate must be nonzero, dimensions must each be `16...8192`, FPS must be
+  `1...240`, rotation must be `0/90/180/270`, codec/color enums must be known,
+  and the requested dimensions, FPS, bit depth, and transfer function must fit
+  one advertised decode capability. Invalid configs leave the active epoch and
+  decoder intact. A successfully installed newer config resets that stream's
+  frame watermark to zero. Admission then strictly requires the current
+  session epoch, nonzero bound stream, config epoch, codec,
+  `fragment_count=1`, `fragment_index=0`, nonempty
   payload, and a strictly increasing nonzero frame ID. Rejected packets never
   reach VideoToolbox.
 - Heartbeats register the Ping sequence and message ID before awaiting its send

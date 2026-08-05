@@ -433,10 +433,12 @@ func testHDRGesturesAndWake() throws {
     capability.transferFunctions = [.bt709]
     var request = VSVideoConfig()
     request.configEpoch = 4
+    request.streamID = 1
     request.codec = .hevc
     request.encodedSize.width = 1_920
     request.encodedSize.height = 1_080
     request.framesPerSecond = 60
+    request.bitrateKbps = 8_000
     request.colorDescription.bitDepth = 10
     request.colorDescription.primaries = .bt2020
     request.colorDescription.transferFunction = .pq
@@ -447,6 +449,8 @@ func testHDRGesturesAndWake() throws {
         try require(config.codec == .h264, "HDR codec fallback")
         try require(config.colorDescription.bitDepth == 8, "HDR bit-depth fallback")
         try require(config.configEpoch == 5, "fallback config epoch")
+    case .rejected:
+        throw SelfTestError.failed("valid unsupported HDR was rejected as malformed")
     }
 
     let profile = GestureProfile(mappings: [
@@ -721,6 +725,7 @@ do {
     FileHandle.standardError.write(Data("RUN: owner/media/heartbeat generation gates\n".utf8))
     try runOwnerGenerationSelfTests()
     try runVideoMediaGateSelfTest()
+    try runVideoConfigValidatorSelfTest()
     try runHeartbeatMonitorSelfTests()
     print("PASS: Phase 5A-5D core and trusted-LAN Protocol v1 startup")
 } catch {

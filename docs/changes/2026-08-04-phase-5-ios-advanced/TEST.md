@@ -36,7 +36,11 @@ full Xcode. That Release XCTest target adds deterministic, no-sleep coverage for
 single-writer control outbox (mixed display/Ping/Pong/config traffic,
 512-message pressure, deliberately held sends, owner rotation, and late
 completion), media pre-ACK/stale-config/replay/fragment rejection through a
-decoder spy, late control/media/error/pixel owner delivery, and heartbeat
+decoder spy, config-epoch frame watermark reset (`epoch 1 / frame 100` to
+`epoch 2 / frame 1`), full VideoConfig boundary validation (size, FPS, bitrate,
+rotation, codec/color enums, and decode limits), invalid-config state
+preservation, fallback state preservation, unknown-field forward compatibility,
+late control/media/error/pixel owner delivery, and heartbeat
 immediate-Pong, miss-budget, correlation, and rotation behavior. The local
 Command Line Tools installation cannot import XCTest; this suite is therefore
 a required full-Xcode GitHub gate rather than local XCTest evidence.

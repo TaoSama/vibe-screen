@@ -71,6 +71,10 @@ public func runVideoMediaGateSelfTest() throws {
         gate.admit(videoHeader(streamID: 10, sessionEpoch: 7, configEpoch: 3, frameID: 3), owner: firstOwner),
         "rejected headers advanced the frame watermark"
     )
+    try requireMediaGateSuccess(
+        gate.admit(videoHeader(streamID: 10, sessionEpoch: 7, configEpoch: 3, frameID: 100), owner: firstOwner),
+        "large frame watermark was rejected"
+    )
 
     let secondStreamToken = try gate.beginConfiguration(
         videoConfig(streamID: 11, epoch: 1, codec: .hevc),
@@ -93,14 +97,24 @@ public func runVideoMediaGateSelfTest() throws {
         // Expected.
     }
     try requireMediaGateFailure(
-        gate.admit(videoHeader(streamID: 10, sessionEpoch: 7, configEpoch: 4, frameID: 4, codec: .hevc), owner: firstOwner),
+        gate.admit(videoHeader(streamID: 10, sessionEpoch: 7, configEpoch: 4, frameID: 1, codec: .hevc), owner: firstOwner),
         equals: .configurationAcknowledgementPending(10),
         "reconfigured stream admitted media before ack"
     )
     try gate.acknowledgementSent(replacementToken, streamID: 10, owner: firstOwner)
+    try requireMediaGateFailure(
+        gate.admit(videoHeader(streamID: 10, sessionEpoch: 7, configEpoch: 3, frameID: 101), owner: firstOwner),
+        equals: .configEpochMismatch(expected: 4, received: 3),
+        "old epoch media was admitted after reconfiguration"
+    )
     try requireMediaGateSuccess(
-        gate.admit(videoHeader(streamID: 10, sessionEpoch: 7, configEpoch: 4, frameID: 4, codec: .hevc), owner: firstOwner),
-        "reconfigured stream rejected increasing frame"
+        gate.admit(videoHeader(streamID: 10, sessionEpoch: 7, configEpoch: 4, frameID: 1, codec: .hevc), owner: firstOwner),
+        "reconfigured stream did not reset frame watermark"
+    )
+    try requireMediaGateFailure(
+        gate.admit(videoHeader(streamID: 10, sessionEpoch: 7, configEpoch: 4, frameID: 1, codec: .hevc), owner: firstOwner),
+        equals: .nonIncreasingFrameID(previous: 1, received: 1),
+        "reconfigured stream accepted replayed frame one"
     )
 
     let secondOwner = SessionOwner(connectionOwner: ConnectionOwner())
@@ -139,6 +153,55 @@ public func runVideoMediaGateSelfTest() throws {
     }
 }
 
+public func runVideoConfigValidatorSelfTest() throws {
+    let valid = videoConfig(streamID: 1, epoch: 1, codec: .h264)
+    try VideoConfigValidator.validateProtocol(valid)
+
+    var capability = VSVideoDecodeCapability()
+    capability.codec = .h264
+    capability.maximumWidth = 1_920
+    capability.maximumHeight = 1_080
+    capability.maximumFramesPerSecond = 60
+    capability.bitDepths = [8]
+    capability.transferFunctions = [.bt709]
+    try VideoConfigValidator(decodeCapabilities: [capability]).validate(valid)
+
+    var invalidConfigurations: [VSVideoConfig] = []
+    var missingSize = valid
+    missingSize.clearEncodedSize()
+    invalidConfigurations.append(missingSize)
+    for width in [UInt32(0), 15, 8_193] {
+        var config = valid
+        config.encodedSize.width = width
+        invalidConfigurations.append(config)
+    }
+    for height in [UInt32(0), 15, 8_193] {
+        var config = valid
+        config.encodedSize.height = height
+        invalidConfigurations.append(config)
+    }
+    for fps in [UInt32(0), 241] {
+        var config = valid
+        config.framesPerSecond = fps
+        invalidConfigurations.append(config)
+    }
+    var zeroBitrate = valid
+    zeroBitrate.bitrateKbps = 0
+    invalidConfigurations.append(zeroBitrate)
+    var invalidRotation = valid
+    invalidRotation.rotationDegrees = 45
+    invalidConfigurations.append(invalidRotation)
+
+    for invalid in invalidConfigurations {
+        do {
+            try VideoConfigValidator.validateProtocol(invalid)
+            throw VideoMediaGateSelfTestError.failed("invalid VideoConfig was accepted")
+        } catch is VideoConfigValidationError {
+            // Expected.
+        }
+    }
+}
+
 private enum VideoMediaGateSelfTestError: Error {
     case failed(String)
 }
@@ -167,6 +230,10 @@ private func videoConfig(streamID: UInt64, epoch: UInt64, codec: VSCodec) -> VSV
     config.streamID = streamID
     config.configEpoch = epoch
     config.codec = codec
+    config.encodedSize.width = 1_920
+    config.encodedSize.height = 1_080
+    config.framesPerSecond = 60
+    config.bitrateKbps = 8_000
     return config
 }
 
