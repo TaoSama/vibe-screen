@@ -6,6 +6,7 @@ import android.app.Instrumentation
 import android.content.Context
 import android.content.Intent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.EditText
 import android.widget.TextView
@@ -36,10 +37,8 @@ import dev.telemachus.display.internet.security.InternetPairingAcceptance
 import dev.telemachus.display.internet.security.InternetPairingRequest
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicReference
-import org.hamcrest.Description
 import org.hamcrest.Matchers.allOf
 import org.hamcrest.Matchers.not
-import org.hamcrest.TypeSafeMatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -254,8 +253,8 @@ class InternetMainActivityAcceptanceInstrumentedTest {
             instrumentation.waitForIdleSync()
 
             val request = AtomicReference<String>()
-            onView(PairingRequestViewMatcher())
-                .perform(CaptureSensitiveTextAction(request))
+            onView(withHint(R.string.internet_pairing_acceptance_hint))
+                .perform(CapturePairingRequestFromDialogAction(request))
             assertEquals("The pairing scanner result was not consumed", 1, monitor.hits)
             return InternetPairingRequest.parse(checkNotNull(request.get()))
         } finally {
@@ -323,24 +322,27 @@ class InternetMainActivityAcceptanceInstrumentedTest {
     }
 }
 
-private class PairingRequestViewMatcher : TypeSafeMatcher<View>() {
-    override fun describeTo(description: Description) {
-        description.appendText("protected pairing request text")
-    }
-
-    override fun matchesSafely(view: View): Boolean =
-        view is TextView && runCatching { InternetPairingRequest.parse(view.text.toString()) }.isSuccess
-}
-
-private class CaptureSensitiveTextAction(
+private class CapturePairingRequestFromDialogAction(
     private val destination: AtomicReference<String>,
 ) : ViewAction {
-    override fun getConstraints() = allOf(isDisplayed())
-    override fun getDescription() = "capture protected text without logging it"
+    override fun getConstraints() = allOf(isDisplayed(), isEnabled())
+    override fun getDescription() = "capture protected pairing request without logging it"
     override fun perform(uiController: UiController, view: View) {
         requireSecureWindow(view)
-        destination.set((view as TextView).text.toString())
+        destination.set(checkNotNull(findPairingRequest(view.rootView)))
         uiController.loopMainThreadUntilIdle()
+    }
+
+    private fun findPairingRequest(view: View): String? {
+        if (view is TextView && runCatching { InternetPairingRequest.parse(view.text.toString()) }.isSuccess) {
+            return view.text.toString()
+        }
+        if (view is ViewGroup) {
+            repeat(view.childCount) { index ->
+                findPairingRequest(view.getChildAt(index))?.let { return it }
+            }
+        }
+        return null
     }
 }
 
