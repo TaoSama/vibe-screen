@@ -76,8 +76,11 @@ result.
   --deep --strict` passes. Developer ID signing and notarization are not
   claimed.
 - Both upstream macOS executables compile and link under Swift 6.3.1.
-- Both macOS test suites fail before test execution with
-  `error: no such module 'XCTest'` because full Xcode is not selected.
+- In the original local environment, both macOS test suites failed before test
+  execution with `error: no such module 'XCTest'` because full Xcode was not
+  selected. This historical local limitation was closed for current main by the
+  CI result recorded below; it is not retroactively attributed to the original
+  device artifact.
 
 ## Protocol v1 main-session offline verification (2026-08-05)
 
@@ -137,10 +140,21 @@ self-test. It does not replace device interoperability evidence.
   tracked changes and path-scoped untracked files. A temporary additive proto
   produced an untracked Swift binding and made the verifier fail; removing it
   and regenerating restored a clean pass.
-- `swift test --filter ProtocolV1SessionTests` still fails before test execution
-  with `no such module 'XCTest'`: this machine selects
+- `swift test --filter ProtocolV1SessionTests` failed in this historical local
+  run with `no such module 'XCTest'`: that machine selected
   `/Library/Developer/CommandLineTools`, not full Xcode. The equivalent pure
-  host self-test is evidence for this change, but it is not recorded as XCTest.
+  host self-test was the evidence available for this change at that time.
+
+## Current-main Xcode verification (2026-08-06)
+
+GitHub Actions [Phase 0 run 31026183305](https://github.com/TaoSama/vibe-screen/actions/runs/31026183305)
+completed successfully for commit
+`056b8c15e67e512f27d908ac9fc8ce3e16fdc63a`. Its `macos` job ran on
+`macos-15` and passed `make baseline-macos-build`,
+`make baseline-macos-self-test`, `make baseline-macos-test`, and
+`make baseline-macos-app`. This closes the current-main macOS XCTest execution
+gate. It does not prove Developer ID signing, notarization, private display
+integration, real-device behavior, latency, or soak stability.
 
 The available device lease was released after a screen-locked macOS host
 reported zero ScreenCaptureKit displays; its attempted two-hour pre-warm never
@@ -220,11 +234,11 @@ not used for the accepted result. The final Host was pre-warmed beyond the
 one-time probe before starting the accepted clock.
 
 Detailed commands, hashes, and artifact locations are recorded in
-[`evidence/device-controlled-endpoint/FINAL_ACCEPTANCE.md`](evidence/device-controlled-endpoint/FINAL_ACCEPTANCE.md).
+[`evidence/device-nubia-p0110-android16/FINAL_ACCEPTANCE.md`](evidence/device-nubia-p0110-android16/FINAL_ACCEPTANCE.md).
 
 ## Still unproved
 
-- macOS XCTest results, Developer ID signing, and notarization;
+- Developer ID signing and notarization;
 - private virtual-display behavior on macOS 26.4.1;
 - selected-display hot-plug behavior, true mirror mode, and real-window restore;
 - Xiaomi 12 install, hardware decode, input, disconnect, and soak behavior;

@@ -265,8 +265,11 @@ These are release blockers, not accepted architecture:
   slice now proves Protocol v1 negotiation, touch/control and keyframe/delta media
   over both direct and forced local TURN with a synthetic peer. The new device
   run additionally proves Android UI and M150-to-Android-M144 interoperability,
-  but still does not start ScreenCaptureKit or send real display content. XCTest has not
-  executed because full Xcode/XCTest is unavailable.
+  but still does not start ScreenCaptureKit or send real display content. The
+  current-main macOS XCTest suite passed in GitHub Actions
+  [run 31026183305](https://github.com/TaoSama/vibe-screen/actions/runs/31026183305)
+  at `056b8c15e67e512f27d908ac9fc8ce3e16fdc63a`; that later CI result is not
+  retroactive evidence for the device artifact's source commit.
 - Recovery now fails closed into a fresh-session request instead of sending a
   second offer, but the local development UI requires manually supplied authority
   credentials and epoch. Do not claim automatic network-handoff recovery until a

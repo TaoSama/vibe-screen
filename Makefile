@@ -4,7 +4,7 @@ EVIDENCE_SERIAL ?=
 EVIDENCE_DIR ?= .build/evidence
 EVIDENCE_PACKAGE ?= dev.telemachus.display
 
-.PHONY: protocol protocol-tests baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-android-test baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info soak-30m soak-2h soak-8h
+.PHONY: protocol protocol-tests phase3-test baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-android-test baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info soak-30m soak-2h soak-8h
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -15,6 +15,10 @@ protocol:
 
 protocol-tests:
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s contracts/tests -p 'test_*.py' -v
+
+phase3-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase3 -p 'test_*.py' -v
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-05-nubia-p0110-internet --check
 
 baseline-macos-build:
 	cd baseline/MacHost && swift build -c release

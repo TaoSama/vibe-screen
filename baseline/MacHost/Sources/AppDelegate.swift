@@ -2332,7 +2332,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case .invalidConfiguration:
             return "Check the local development profile and issue fresh credentials."
         case .protocolFailure:
-            return "Confirm both apps support Protocol v1 Internet E2EE and pair again."
+            return "Confirm both apps support Protocol v1 application-record encryption for this development preview and pair again."
         case .transportFailure:
             return "Check signaling/TURN reachability. A network handoff requires a fresh session profile."
         case .securityFailure:

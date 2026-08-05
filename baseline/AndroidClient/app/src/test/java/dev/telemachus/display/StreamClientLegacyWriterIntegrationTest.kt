@@ -5,6 +5,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.DataInputStream
@@ -15,6 +16,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 class StreamClientLegacyWriterIntegrationTest {
     @Test
@@ -25,6 +27,16 @@ class StreamClientLegacyWriterIntegrationTest {
             val ended = CountDownLatch(1)
             var terminal: SessionFailure? = null
             var writerFailure: String? = null
+            val reconnect = CountDownLatch(1)
+            val shutdownCallbacks = AtomicInteger()
+            val retryCancellations = AtomicInteger()
+            val shutdownActions = AtomicInteger()
+            val retryCoordinator =
+                SessionAutomaticRetryCoordinator(
+                    postAutomaticRetry = {},
+                    cancelPendingAutomaticRetry = { retryCancellations.incrementAndGet() },
+                    handleServerShutdown = { shutdownActions.incrementAndGet() },
+                )
             val receivedTypes = mutableListOf<Int>()
             val serverJob =
                 async(Dispatchers.IO) {
@@ -69,9 +81,15 @@ class StreamClientLegacyWriterIntegrationTest {
                 StreamClient("127.0.0.1", server.localPort).apply {
                     onConnectionStatus = { connected -> if (connected) ready.countDown() }
                     onSessionEnded = {
+                        retryCoordinator.onSessionEnded(it)
                         terminal = it
                         ended.countDown()
                     }
+                    onServerShutdown = {
+                        retryCoordinator.onServerShutdown()
+                        shutdownCallbacks.incrementAndGet()
+                    }
+                    onReconnectSuggested = { reconnect.countDown() }
                     onWriteFailure = { writerFailure = it }
                 }
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
@@ -86,6 +104,12 @@ class StreamClientLegacyWriterIntegrationTest {
             withTimeout(4_000) { clientJob.await() }
             assertEquals(1, receivedTypes.count { it == MESSAGE_CLIENT_DEVICE_INFO })
             assertEquals(1, receivedTypes.count { it == MESSAGE_TOUCH })
+            assertEquals(SessionFailureKind.SERVER_SHUTDOWN, terminal?.kind)
+            client.disconnect()
+            assertEquals(1, shutdownCallbacks.get())
+            assertEquals(1, retryCancellations.get())
+            assertEquals(1, shutdownActions.get())
+            assertFalse(reconnect.await(200, TimeUnit.MILLISECONDS))
         }
     }
 

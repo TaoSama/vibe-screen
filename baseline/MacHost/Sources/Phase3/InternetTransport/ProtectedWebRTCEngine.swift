@@ -48,7 +48,7 @@ final class ProtectedWebRTCEngine: WebRTCEnginePort {
                     }
                     if exhausted {
                         callbacks.connectionStateChanged(.failed(
-                            "Application E2EE authentication failure budget was exhausted."
+                            "Protocol v1 application-record authentication failed repeatedly; the development-preview session was closed."
                         ))
                     }
                     return

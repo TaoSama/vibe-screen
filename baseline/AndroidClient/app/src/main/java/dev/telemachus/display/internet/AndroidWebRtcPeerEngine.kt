@@ -74,7 +74,11 @@ class AndroidWebRtcPeerEngine internal constructor(
         observer: WebRtcPeerEngine.Observer,
     ) {
         val signaling = configuration.signaling ?: throw IllegalArgumentException("Signaling configuration is required")
-        val sessionCipher = configuration.sessionCipher ?: throw IllegalArgumentException("End-to-end session cipher is required")
+        val sessionCipher =
+            configuration.sessionCipher
+                ?: throw IllegalArgumentException(
+                    "Application-record encryption is required for this Internet development preview",
+                )
         require(sessionCipher.sessionEpoch == configuration.sessionEpoch) {
             "Session cipher epoch does not match PeerConfiguration"
         }

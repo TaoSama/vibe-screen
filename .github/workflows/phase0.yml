@@ -29,6 +29,20 @@ jobs:
       - run: make evidence-tools-test
       - run: make release-tools-test
 
+  phase3:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Bind verification to the workflow commit
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "Phase 3 verification commit: \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+      - name: Run Phase 3, privacy, evidence, and link gates
+        run: make phase3-test
+
   android:
     runs-on: ubuntu-latest
     steps:

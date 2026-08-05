@@ -20,8 +20,12 @@ subprocess. Gate records expose no lock owner value; they record owner/bytes
 equality, live holder PID, task, commit, filesystem device/inode, byte length,
 and the logical command name.
 
-The archived files were scanned for the private ADB address, hardware identifier,
-session/TURN credentials, tokens, URLs, IP literals, and local absolute paths.
+The 14 source artifacts were scanned for network endpoints, hardware identifiers,
+credential material, URLs, and user/workspace absolute paths. The deterministic
+per-file results, rule version, relative paths, byte counts, and SHA-256 values
+are recorded in [`privacy-scan.json`](privacy-scan.json). The manifest and
+`SHA256SUMS` are derived integrity files validated separately to avoid a circular
+self-hash.
 The archived coturn logs are structure-preserving redacted derivatives: their
 IP/path values are placeholders, while `acceptance.json` retains the SHA-256 of
 the private original and `SHA256SUMS` binds the committed derivative. Earlier
