@@ -256,7 +256,7 @@ final class WebRTCInternetTransportTests: XCTestCase {
         guard case .failed(let reason) = transport.snapshot().state else {
             return XCTFail("Authentication failure budget must fail the transport")
         }
-        XCTAssertTrue(reason.contains("authentication failure budget"))
+        XCTAssertTrue(reason.contains("application-record authentication failed repeatedly"))
     }
 
     func testFailedControlSendDoesNotDeliverLaterOrderedMessages() {
