@@ -331,6 +331,11 @@ network quality may increase it.
   display list/start, video-config acknowledgement, media framing,
   ping/pong, display/stream-targeted touch, protocol error, and disconnect
   covered by a real two-process loopback gate.
+- The iOS app serializes every outbound control envelope through a
+  session-owner-scoped FIFO, rejects old connection/decoder deliveries, gates
+  each stream on its sent video-config acknowledgement and exact media epochs,
+  fragments, and frame sequence, and closes half-open sessions after a bounded
+  Pong miss budget.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,

@@ -636,6 +636,7 @@ func testTransportStartupCancellation() throws {
                 host: "127.0.0.1",
                 port: port,
                 startup: .usbNoAuthentication,
+                owner: ConnectionOwner(),
                 timeout: 5
             )
             result.finish(.success(()))
@@ -664,6 +665,7 @@ func testTransportStartupCancellation() throws {
                 host: "127.0.0.1",
                 port: port,
                 startup: .usbNoAuthentication,
+                owner: ConnectionOwner(),
                 timeout: 5
             )
             cancelledResult.finish(.success(()))
@@ -716,6 +718,10 @@ do {
     FileHandle.standardError.write(Data("RUN: trusted-LAN startup codecs\n".utf8))
     try testTrustedLANStartupCodecs()
     try testTransportStartupCancellation()
+    FileHandle.standardError.write(Data("RUN: owner/media/heartbeat generation gates\n".utf8))
+    try runOwnerGenerationSelfTests()
+    try runVideoMediaGateSelfTest()
+    try runHeartbeatMonitorSelfTests()
     print("PASS: Phase 5A-5D core and trusted-LAN Protocol v1 startup")
 } catch {
     FileHandle.standardError.write(Data("FAIL: \(error)\n".utf8))

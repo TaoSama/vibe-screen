@@ -92,6 +92,25 @@ Negotiation rules:
 
 ## Implemented client mechanics
 
+- `ControlOutbox` is the only owner of outbound main-session message IDs. Its
+  MainActor enqueue operation performs owner validation, ID allocation,
+  envelope construction/encoding, and FIFO insertion synchronously, while one
+  drain awaits TCP completion at a time. Connection/session replacement drops
+  pending old-owner work and late completion cannot mutate the replacement.
+- TCP callbacks carry an unforgeable connection owner through the MainActor
+  delivery point. Session and decoder owners are separately unforgeable; the
+  final pixel-buffer publication rechecks the exact session, decoder, stream,
+  and config epoch, including when numeric protocol identifiers are reused.
+- `VideoMediaGate` is per stream. Starting a config immediately blocks media;
+  only completion of the matching positive `VideoConfigResult` send activates
+  it. Admission then strictly requires the current session epoch, nonzero bound
+  stream, config epoch, codec, `fragment_count=1`, `fragment_index=0`, nonempty
+  payload, and a strictly increasing nonzero frame ID. Rejected packets never
+  reach VideoToolbox.
+- Heartbeats register the Ping sequence and message ID before awaiting its send
+  completion, validate exact Pong correlation, and fail the owner-scoped
+  session after three expired intervals. Rotation clears pending deadlines and
+  rejects late old-owner Pong delivery.
 - `MultiDisplaySessionRegistry` isolates clients by `session_id + epoch`,
   enforces client/stream limits, rejects duplicate display/stream bindings, and
   releases old-epoch resources. The iOS model maintains a decoder per stream
@@ -117,7 +136,8 @@ Negotiation rules:
 
 The minimal MacHost compatibility boundary composes its existing authenticated
 port `54321` admission/upgrade with the Protocol v1 session for iOS. The real
-two-process loopback covers Hello/capability negotiation, display list/start,
+two-process loopback uses the production iOS Core control outbox and covers
+Hello/capability negotiation, display list/start,
 video configuration acknowledgement and media framing, heartbeat, targeted
 touch, protocol error, and disconnect. It does not implement or prove advanced
 host behavior. A compatible advanced host still must provide per-client

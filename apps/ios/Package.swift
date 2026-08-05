@@ -49,5 +49,9 @@ let package = Package(
             name: "VibeScreenMacHostLoopback",
             dependencies: ["VibeScreenCore", "VibeScreenProtocol"]
         ),
+        .testTarget(
+            name: "VibeScreenCoreTests",
+            dependencies: ["VibeScreenCore", "VibeScreenProtocol"]
+        ),
     ]
 )

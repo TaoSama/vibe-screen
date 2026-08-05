@@ -12,6 +12,7 @@ permissions:
 jobs:
   core:
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: Verify generated Protocol v1 bindings are current
@@ -20,6 +21,8 @@ jobs:
         run: swift package --package-path apps/ios resolve
       - name: Build native protocol, session, transport, and video modules
         run: swift build --package-path apps/ios --configuration release
+      - name: Run deterministic Core XCTest suite in release mode
+        run: swift test --package-path apps/ios --configuration release
       - name: Run deterministic self-test and shared Protocol v1 compatibility fixture
         run: apps/ios/.build/release/vibescreen-ios-selftest
       - name: Run trusted-LAN iOS Core to production MacHost loopback
@@ -29,6 +32,7 @@ jobs:
 
   app-build-test-archive:
     runs-on: macos-15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - name: Build and test on an iPhone simulator, then create an unsigned archive

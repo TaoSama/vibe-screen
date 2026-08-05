@@ -27,24 +27,37 @@ final class StreamViewModel: ObservableObject {
     let managedConfiguration = ManagedConfigurationProvider()
     var viewportSize = CGSize(width: 1, height: 1)
 
-    lazy var transport = TCPTransport { [weak self] result in
-        let delivery = TransportDelivery(result)
+    lazy var transport = TCPTransport { [weak self] delivery in
+        // TCPTransport emits frames serially; one serial Main queue hop preserves
+        // that order while the owner check runs at the final actor boundary.
         DispatchQueue.main.async { [weak self, delivery] in
-            MainActor.assumeIsolated { self?.handle(delivery.result) }
+            MainActor.assumeIsolated { self?.handle(delivery) }
         }
     }
+    lazy var controlOutbox = ControlOutbox(
+        sender: { [weak self] owner, frame, timeout in
+            guard let transport = await MainActor.run(body: { self?.transport }) else {
+                throw ControlOutboxError.inactive
+            }
+            try await transport.send(frame, owner: owner, timeout: timeout)
+        },
+        onFailure: { [weak self] failure in
+            guard let self, self.sessionOwner == failure.owner else { return }
+            self.terminateSession(message: failure.error.localizedDescription)
+        }
+    )
     let audioPlayback = AudioPlaybackController()
     var audioFormat: PCMStreamFormat?
     var audioConfig: VSAudioConfig?
     var audioJitter = AudioJitterBuffer(firstSequence: 0)
     var decoders: [UInt64: VideoDecoder] = [:]
-    var configuredCodecs: [UInt64: VSCodec] = [:]
+    var decoderOwners: [UInt64: DecoderOwner] = [:]
+    var mediaGate = VideoMediaGate()
     var registry = MultiDisplaySessionRegistry(
         maximumClients: 1,
         maximumStreamsPerClient: maximumDisplayStreams
     )
     var sessionKey: ClientSessionKey?
-    var factory = EnvelopeFactory()
     var state = SessionState()
     var nextInputID: UInt64 = 1
     var touchActive = false
@@ -54,10 +67,10 @@ final class StreamViewModel: ObservableObject {
     var negotiatedLimits = VSResourceLimits()
     var heartbeatIntervalMilliseconds: UInt32 = 0
     var heartbeatSequence: UInt64 = 0
-    var lastPongSequence: UInt64 = 0
-    var pendingHeartbeatCorrelations: [UInt64: UInt64] = [:]
+    var heartbeatMonitor = HeartbeatMonitor(nowNanoseconds: { DispatchTime.now().uptimeNanoseconds })
     var heartbeatTask: Task<Void, Never>?
-    var sessionGeneration: UInt64 = 0
+    var deliveryGate = OwnedDeliveryGate()
+    var sessionOwner: SessionOwner?
     var pendingFileOffers: [Data: VSFileOffer] = [:]
     var outgoingFiles: [Data: SecurityScopedOutgoingFile] = [:]
     let incomingFiles: IncomingFileTransferManager?
@@ -96,28 +109,41 @@ final class StreamViewModel: ObservableObject {
             return
         }
         endSession(disconnectTransport: true)
+        let newConnectionOwner = ConnectionOwner()
+        let newSessionOwner = SessionOwner(connectionOwner: newConnectionOwner)
+        deliveryGate.reset(to: newConnectionOwner)
+        sessionOwner = newSessionOwner
+        controlOutbox.activate(owner: newSessionOwner)
         isConnecting = true
         errorMessage = nil
         do {
             try state.beginConnection()
-            try await transport.connect(pairing: pairing, deviceName: UIDevice.current.name)
-            try state.transportConnected()
-            let hello = factory.clientHello(
-                deviceID: deviceID,
+            try await transport.connect(
+                pairing: pairing,
                 deviceName: UIDevice.current.name,
-                capabilities: advertisedCapabilities(policy: policy),
-                codecs: [.hevc, .h264],
-                resourceLimits: clientResourceLimits(policy: policy),
-                videoDecodeCapabilities: Self.sdrDecodeCapabilities
+                owner: newConnectionOwner
             )
+            guard sessionOwner == newSessionOwner else { return }
+            try state.transportConnected()
             controlValidator.reset()
-            try await send(hello)
+            try await controlOutbox.sendAndWait(owner: newSessionOwner) { factory in
+                factory.clientHello(
+                    deviceID: self.deviceID,
+                    deviceName: UIDevice.current.name,
+                    capabilities: self.advertisedCapabilities(policy: policy),
+                    codecs: [.hevc, .h264],
+                    resourceLimits: self.clientResourceLimits(policy: policy),
+                    videoDecodeCapabilities: Self.sdrDecodeCapabilities
+                )
+            }
+            guard sessionOwner == newSessionOwner else { return }
         } catch {
+            guard sessionOwner == newSessionOwner else { return }
             state.fail(error.localizedDescription)
             errorMessage = error.localizedDescription
             endSession(disconnectTransport: true, resetState: false)
         }
-        isConnecting = false
+        if sessionOwner == newSessionOwner { isConnecting = false }
     }
 
     func disconnect() {
@@ -127,23 +153,35 @@ final class StreamViewModel: ObservableObject {
             endSession(disconnectTransport: true)
             return
         }
-        let generation = sessionGeneration
-        let notice = factory.disconnectNotice(
-            reasonCode: "client_disconnect",
-            mayResume: false,
-            sessionID: state.sessionID,
-            sessionEpoch: state.sessionEpoch
-        )
+        guard let owner = sessionOwner else {
+            endSession(disconnectTransport: true)
+            return
+        }
         isStreaming = false
-        Task {
-            try? await send(notice, timeout: 0.25)
-            guard generation == sessionGeneration else { return }
+        let ticket = try? controlOutbox.enqueue(owner: owner, timeout: 0.25) { factory in
+            factory.disconnectNotice(
+                reasonCode: "client_disconnect",
+                mayResume: false,
+                sessionID: self.state.sessionID,
+                sessionEpoch: self.state.sessionEpoch
+            )
+        }
+        Task { [weak self] in
+            _ = try? await ticket?.wait()
+            guard let self, self.sessionOwner == owner else { return }
             endSession(disconnectTransport: true)
         }
     }
 
     func endSession(disconnectTransport: Bool, resetState: Bool = true) {
-        sessionGeneration &+= 1
+        // Invalidate every owner before cancelling work or touching the transport.
+        let endingOwner = sessionOwner
+        deliveryGate.reset()
+        sessionOwner = nil
+        controlOutbox.deactivate()
+        heartbeatMonitor.reset()
+        if let endingOwner { _ = mediaGate.endSession(owner: endingOwner) }
+        decoderOwners.removeAll()
         heartbeatTask?.cancel()
         heartbeatTask = nil
         if disconnectTransport { transport.disconnect() }
@@ -158,12 +196,9 @@ final class StreamViewModel: ObservableObject {
         negotiatedLimits = VSResourceLimits()
         heartbeatIntervalMilliseconds = 0
         heartbeatSequence = 0
-        lastPongSequence = 0
-        pendingHeartbeatCorrelations = [:]
         pendingHostHello = nil
         controlValidator.reset()
         decoders.removeAll()
-        configuredCodecs.removeAll()
         displayBindings = []
         selectedStreamID = nil
         pendingFileOffers = [:]
@@ -183,33 +218,37 @@ final class StreamViewModel: ObservableObject {
     func selectDisplay(streamID: UInt64) {
         guard displayBindings.contains(where: { $0.streamID == streamID }) else { return }
         selectedStreamID = streamID
+        touchActive = false
     }
 
     func sendTouch(location: CGPoint, size: CGSize, ended: Bool) {
-        guard isStreaming, size.width > 0, size.height > 0 else { return }
+        guard isStreaming, size.width > 0, size.height > 0,
+              let selectedStreamID,
+              decoderOwners[selectedStreamID] != nil else { return }
         let phase: VSInputPhase = ended ? .ended : (touchActive ? .changed : .began)
         var target: VSInputTarget?
-        if let selectedStreamID,
-           let binding = displayBindings.first(where: { $0.streamID == selectedStreamID }) {
+        if let binding = displayBindings.first(where: { $0.streamID == selectedStreamID }) {
             var value = VSInputTarget()
             value.displayID = binding.displayID
             value.streamID = binding.streamID
             target = value
         }
-        let envelope = factory.touch(
-            inputID: nextInputID,
-            pointerID: 0,
-            phase: phase,
-            x: location.x / size.width,
-            y: location.y / size.height,
-            pressure: ended ? 0 : 1,
-            sessionID: state.sessionID,
-            sessionEpoch: state.sessionEpoch,
-            target: target
-        )
+        let inputID = nextInputID
         nextInputID += 1
         touchActive = !ended
-        sendInBackground(envelope)
+        sendInBackground { factory in
+            factory.touch(
+                inputID: inputID,
+                pointerID: 0,
+                phase: phase,
+                x: location.x / size.width,
+                y: location.y / size.height,
+                pressure: ended ? 0 : 1,
+                sessionID: self.state.sessionID,
+                sessionEpoch: self.state.sessionEpoch,
+                target: target
+            )
+        }
     }
 
     func sendClipboardFromPasteboard() {
@@ -221,11 +260,13 @@ final class StreamViewModel: ObservableObject {
                 originDeviceID: deviceID,
                 policy: managedConfiguration.policy
             )
-            sendInBackground(factory.clipboardContent(
-                content,
-                sessionID: state.sessionID,
-                sessionEpoch: state.sessionEpoch
-            ))
+            sendInBackground { factory in
+                factory.clipboardContent(
+                    content,
+                    sessionID: self.state.sessionID,
+                    sessionEpoch: self.state.sessionEpoch
+                )
+            }
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -255,11 +296,13 @@ final class StreamViewModel: ObservableObject {
             )
             let transfer = scopedFile.transfer
             outgoingFiles[transfer.offer.transferID] = scopedFile
-            sendInBackground(factory.fileOffer(
-                transfer.offer,
-                sessionID: state.sessionID,
-                sessionEpoch: state.sessionEpoch
-            ))
+            sendInBackground { factory in
+                factory.fileOffer(
+                    transfer.offer,
+                    sessionID: self.state.sessionID,
+                    sessionEpoch: self.state.sessionEpoch
+                )
+            }
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -272,11 +315,13 @@ final class StreamViewModel: ObservableObject {
         do {
             let response = try incomingFiles.accept(offer, managedPolicy: managedConfiguration.policy)
             pendingFileName = nil
-            sendInBackground(factory.fileAccept(
-                response,
-                sessionID: state.sessionID,
-                sessionEpoch: state.sessionEpoch
-            ))
+            sendInBackground { factory in
+                factory.fileAccept(
+                    response,
+                    sessionID: self.state.sessionID,
+                    sessionEpoch: self.state.sessionEpoch
+                )
+            }
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -288,11 +333,9 @@ final class StreamViewModel: ObservableObject {
         response.transferID = offer.transferID
         response.accepted = false
         response.rejectionReason = "user_rejected"
-        sendInBackground(factory.fileAccept(
-            response,
-            sessionID: state.sessionID,
-            sessionEpoch: state.sessionEpoch
-        ))
+        sendInBackground { factory in
+            factory.fileAccept(response, sessionID: self.state.sessionID, sessionEpoch: self.state.sessionEpoch)
+        }
     }
 
     func cancelFileTransfer(transferID: Data) {
@@ -300,11 +343,9 @@ final class StreamViewModel: ObservableObject {
         var cancel = VSFileTransferCancel()
         cancel.transferID = transferID
         cancel.reasonCode = "user_cancelled"
-        sendInBackground(factory.fileTransferCancel(
-            cancel,
-            sessionID: state.sessionID,
-            sessionEpoch: state.sessionEpoch
-        ))
+        sendInBackground { factory in
+            factory.fileTransferCancel(cancel, sessionID: self.state.sessionID, sessionEpoch: self.state.sessionEpoch)
+        }
     }
 
     func wake(macAddress: String) {
@@ -351,13 +392,5 @@ final class StreamViewModel: ObservableObject {
                 UserDefaults.standard.set(data, forKey: "gestureProfile")
             }
         } catch { errorMessage = error.localizedDescription }
-    }
-}
-
-private struct TransportDelivery: @unchecked Sendable {
-    let result: Result<TransportFrame, Error>
-
-    init(_ result: Result<TransportFrame, Error>) {
-        self.result = result
     }
 }
