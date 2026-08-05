@@ -26,12 +26,23 @@ public enum TCPTransportStartup: Sendable {
     case usbNoAuthentication
 }
 
+public struct TransportDelivery: @unchecked Sendable {
+    public let owner: ConnectionOwner
+    public let result: Result<TransportFrame, Error>
+
+    public init(owner: ConnectionOwner, result: Result<TransportFrame, Error>) {
+        self.owner = owner
+        self.result = result
+    }
+}
+
 public final class TCPTransport: @unchecked Sendable {
-    public typealias FrameHandler = @Sendable (Result<TransportFrame, Error>) -> Void
+    public typealias FrameHandler = @Sendable (TransportDelivery) -> Void
 
     private let queue = DispatchQueue(label: "dev.vibescreen.ios.transport", qos: .userInteractive)
     private let lock = NSLock()
     private var connection: NWConnection?
+    private var connectionOwner: ConnectionOwner?
     private var startupCancellation: (@Sendable () -> Void)?
     private var framer = TransportFramer()
     private let onFrame: FrameHandler
@@ -47,12 +58,14 @@ public final class TCPTransport: @unchecked Sendable {
     public func connect(
         pairing: TrustedLANPairing,
         deviceName: String,
+        owner: ConnectionOwner,
         timeout: TimeInterval = 3
     ) async throws {
         try await connect(
             host: pairing.host,
             port: pairing.port,
             startup: .trustedLAN(token: pairing.token, deviceName: deviceName),
+            owner: owner,
             timeout: timeout
         )
     }
@@ -61,6 +74,7 @@ public final class TCPTransport: @unchecked Sendable {
         host: String,
         port: UInt16,
         startup: TCPTransportStartup,
+        owner: ConnectionOwner,
         timeout: TimeInterval = 3
     ) async throws {
         guard let networkPort = NWEndpoint.Port(rawValue: port) else {
@@ -71,6 +85,7 @@ public final class TCPTransport: @unchecked Sendable {
         let connection = NWConnection(host: NWEndpoint.Host(host), port: networkPort, using: .tcp)
         lock.withLock {
             self.connection = connection
+            connectionOwner = owner
             framer = TransportFramer()
         }
 
@@ -103,16 +118,22 @@ public final class TCPTransport: @unchecked Sendable {
                           self.lock.withLock({ self.connection === connection }) else { return }
                     switch state {
                     case let .failed(error):
-                        self.onFrame(.failure(TCPTransportError.connectionFailed(error.localizedDescription)))
+                        self.onFrame(TransportDelivery(
+                            owner: owner,
+                            result: .failure(TCPTransportError.connectionFailed(error.localizedDescription))
+                        ))
                         self.disconnect(connection)
                     case .cancelled:
-                        self.onFrame(.failure(TCPTransportError.connectionClosed))
+                        self.onFrame(TransportDelivery(
+                            owner: owner,
+                            result: .failure(TCPTransportError.connectionClosed)
+                        ))
                         self.disconnect(connection)
                     default:
                         break
                     }
                 }
-                receiveNext(on: connection)
+                receiveNext(on: connection, owner: owner)
             } onCancel: { [weak self, weak connection] in
                 guard let self, let connection else { return }
                 self.cancelStartup(for: connection)
@@ -124,9 +145,15 @@ public final class TCPTransport: @unchecked Sendable {
         }
     }
 
-    public func send(_ frame: TransportFrame, timeout: TimeInterval = 3) async throws {
+    public func send(
+        _ frame: TransportFrame,
+        owner: ConnectionOwner,
+        timeout: TimeInterval = 3
+    ) async throws {
         let data = try frame.encoded()
-        let connection = lock.withLock { self.connection }
+        let connection = lock.withLock {
+            connectionOwner == owner ? self.connection : nil
+        }
         guard let connection else { throw TCPTransportError.notConnected }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let gate = ContinuationGate()
@@ -151,6 +178,7 @@ public final class TCPTransport: @unchecked Sendable {
     public func disconnect() {
         let snapshot = lock.withLock { () -> (NWConnection?, (@Sendable () -> Void)?) in
             defer { self.connection = nil }
+            defer { connectionOwner = nil }
             defer { startupCancellation = nil }
             framer = TransportFramer()
             return (self.connection, startupCancellation)
@@ -160,29 +188,32 @@ public final class TCPTransport: @unchecked Sendable {
         snapshot.0?.cancel()
     }
 
-    private func receiveNext(on connection: NWConnection) {
+    private func receiveNext(on connection: NWConnection, owner: ConnectionOwner) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1_024) { [weak self] data, _, complete, error in
             guard let self else { return }
-            guard lock.withLock({ self.connection === connection }) else { return }
+            guard lock.withLock({ self.connection === connection && connectionOwner == owner }) else { return }
             if let data, !data.isEmpty {
                 do {
                     for frame in try lock.withLock({ try framer.append(data) }) {
-                        onFrame(.success(frame))
+                        onFrame(TransportDelivery(owner: owner, result: .success(frame)))
                     }
                 } catch {
-                    onFrame(.failure(error))
+                    onFrame(TransportDelivery(owner: owner, result: .failure(error)))
                     disconnect(connection)
                     return
                 }
             }
             if let error {
-                onFrame(.failure(TCPTransportError.connectionFailed(error.localizedDescription)))
+                onFrame(TransportDelivery(
+                    owner: owner,
+                    result: .failure(TCPTransportError.connectionFailed(error.localizedDescription))
+                ))
                 disconnect(connection)
             } else if complete {
-                onFrame(.failure(TCPTransportError.connectionClosed))
+                onFrame(TransportDelivery(owner: owner, result: .failure(TCPTransportError.connectionClosed)))
                 disconnect(connection)
             } else {
-                receiveNext(on: connection)
+                receiveNext(on: connection, owner: owner)
             }
         }
     }
@@ -350,6 +381,7 @@ public final class TCPTransport: @unchecked Sendable {
         let snapshot = lock.withLock { () -> (NWConnection?, (@Sendable () -> Void)?) in
             guard self.connection === expected else { return (nil, nil) }
             self.connection = nil
+            connectionOwner = nil
             let cancellation = startupCancellation
             startupCancellation = nil
             framer = TransportFramer()

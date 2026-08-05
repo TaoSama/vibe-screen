@@ -36,8 +36,9 @@ Core modules and the deterministic self-test do not need an iOS SDK:
 
 ```bash
 swift package --package-path apps/ios resolve
-swift build --package-path apps/ios
-swift run --package-path apps/ios vibescreen-ios-selftest
+swift build --package-path apps/ios --configuration release
+swift test --package-path apps/ios --configuration release
+apps/ios/.build/release/vibescreen-ios-selftest
 ```
 
 The self-test decodes the shared
@@ -56,6 +57,15 @@ capabilities, display list/start, video-config acknowledgement, video media
 framing, ping/pong, display/stream-targeted touch, invalid-target protocol
 error, and disconnect. Use `--skip-build` only after both release products have
 already been built.
+
+All outbound main-session control uses one session-owner-scoped FIFO writer;
+message ID allocation, envelope encoding, and the TCP send therefore share one
+serialization boundary. Replacing a connection invalidates its pending queue,
+transport callbacks, heartbeat state, media gate, and decoder owners. Video is
+delivered to VideoToolbox only after the matching positive `VideoConfigResult`
+send completes and while session, stream, config epoch, codec, one-of-one
+fragment shape, and strictly increasing frame ID all match. Three expired Ping
+deadlines without a matching Pong terminate the session.
 
 After editing Protocol v1 schemas, regenerate the checked Swift bindings:
 

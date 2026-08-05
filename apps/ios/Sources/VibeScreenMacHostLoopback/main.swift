@@ -48,9 +48,22 @@ private struct MacHostLoopbackClient {
 
     private let inbox = FrameInbox()
 
+    @MainActor
     func run(invalidTarget: Bool) async throws {
-        let transport = TCPTransport { inbox.append($0) }
-        defer { transport.disconnect() }
+        let connectionOwner = ConnectionOwner()
+        let sessionOwner = SessionOwner(connectionOwner: connectionOwner)
+        let transport = TCPTransport { delivery in
+            guard delivery.owner == connectionOwner else { return }
+            inbox.append(delivery.result)
+        }
+        let outbox = ControlOutbox { owner, frame, timeout in
+            try await transport.send(frame, owner: owner, timeout: timeout)
+        }
+        outbox.activate(owner: sessionOwner)
+        defer {
+            outbox.deactivate()
+            transport.disconnect()
+        }
 
         let encodedToken = Self.token.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
@@ -62,21 +75,23 @@ private struct MacHostLoopbackClient {
 
         var session = SessionState()
         try session.beginConnection()
-        try await transport.connect(pairing: pairing, deviceName: "iOS Core Loopback")
+        try await transport.connect(
+            pairing: pairing,
+            deviceName: "iOS Core Loopback",
+            owner: connectionOwner
+        )
         try session.transportConnected()
 
         let localCapabilities: Set<VSCapability> = [.touch, .telemetry]
-        var factory = EnvelopeFactory()
-        try await send(
+        try await outbox.sendAndWait(owner: sessionOwner) { factory in
             factory.clientHello(
                 deviceID: "ios-core-loopback",
                 deviceName: "iOS Core Loopback",
                 capabilities: Array(localCapabilities),
                 codecs: [.h264],
                 transports: [.lan]
-            ),
-            over: transport
-        )
+            )
+        }
 
         let hostHello = try nextControl()
         guard case .hostHello(let hello)? = hostHello.payload,
@@ -100,10 +115,9 @@ private struct MacHostLoopbackClient {
             hostCapabilities: Set(hello.capabilities)
         )
 
-        try await send(
-            factory.listDisplays(sessionID: session.sessionID, sessionEpoch: session.sessionEpoch),
-            over: transport
-        )
+        try await outbox.sendAndWait(owner: sessionOwner) { factory in
+            factory.listDisplays(sessionID: session.sessionID, sessionEpoch: session.sessionEpoch)
+        }
         let listEnvelope = try nextControl()
         guard case .listDisplaysResponse(let list)? = listEnvelope.payload,
               list.displays.count == 1,
@@ -112,14 +126,13 @@ private struct MacHostLoopbackClient {
             throw LoopbackError.unexpected("ListDisplaysResponse")
         }
 
-        try await send(
+        try await outbox.sendAndWait(owner: sessionOwner) { factory in
             factory.startExistingDisplay(
                 displayID: display.displayID,
                 sessionID: session.sessionID,
                 sessionEpoch: session.sessionEpoch
-            ),
-            over: transport
-        )
+            )
+        }
         let startEnvelope = try nextControl()
         guard case .startDisplayResponse(let started)? = startEnvelope.payload,
               started.accepted,
@@ -138,14 +151,13 @@ private struct MacHostLoopbackClient {
         configResult.configEpoch = config.configEpoch
         configResult.streamID = config.streamID
         configResult.accepted = true
-        try await send(
+        try await outbox.sendAndWait(owner: sessionOwner) { factory in
             factory.videoConfigResult(
                 configResult,
                 sessionID: session.sessionID,
                 sessionEpoch: session.sessionEpoch
-            ),
-            over: transport
-        )
+            )
+        }
         try session.startStreaming(streamID: config.streamID)
 
         let mediaFrame = try inbox.next()
@@ -163,14 +175,13 @@ private struct MacHostLoopbackClient {
         }
 
         let pingSequence: UInt64 = 0x0102_0304_0506_0708
-        try await send(
+        try await outbox.sendAndWait(owner: sessionOwner) { factory in
             factory.ping(
                 sequence: pingSequence,
                 sessionID: session.sessionID,
                 sessionEpoch: session.sessionEpoch
-            ),
-            over: transport
-        )
+            )
+        }
         let pongEnvelope = try nextControl()
         guard case .pong(let pong)? = pongEnvelope.payload,
               pong.sequence == pingSequence else {
@@ -180,7 +191,7 @@ private struct MacHostLoopbackClient {
         var target = VSInputTarget()
         target.displayID = invalidTarget ? "wrong-display" : display.displayID
         target.streamID = invalidTarget ? config.streamID + 1 : config.streamID
-        try await send(
+        try await outbox.sendAndWait(owner: sessionOwner) { factory in
             factory.touch(
                 inputID: 1,
                 pointerID: 7,
@@ -191,9 +202,8 @@ private struct MacHostLoopbackClient {
                 sessionID: session.sessionID,
                 sessionEpoch: session.sessionEpoch,
                 target: target
-            ),
-            over: transport
-        )
+            )
+        }
 
         let terminalEnvelope = try nextControl()
         if invalidTarget {
@@ -218,13 +228,6 @@ private struct MacHostLoopbackClient {
             "(auth=SSWA/SSWR, upgrade=0D/0D01, hello=true, displays=true, " +
             "videoAck=true, media=true, pong=true, targetedTouch=true, disconnect=true)"
         )
-    }
-
-    private func send(_ envelope: VSEnvelope, over transport: TCPTransport) async throws {
-        try await transport.send(TransportFrame(
-            channel: .control,
-            payload: try EnvelopeCodec.serialize(envelope)
-        ))
     }
 
     private func nextControl() throws -> VSEnvelope {

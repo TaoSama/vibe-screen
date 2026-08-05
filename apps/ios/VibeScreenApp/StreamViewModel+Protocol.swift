@@ -6,16 +6,10 @@ import VibeScreenProtocol
 import VibeScreenVideo
 
 extension StreamViewModel {
-    func send(_ envelope: VSEnvelope, timeout: TimeInterval = 3) async throws {
-        try await transport.send(
-            TransportFrame(channel: .control, payload: EnvelopeCodec.serialize(envelope)),
-            timeout: timeout
-        )
-    }
-
-    func handle(_ result: Result<TransportFrame, Error>) {
+    func handle(_ delivery: TransportDelivery) {
+        guard deliveryGate.accepts(owner: delivery.owner) else { return }
         do {
-            let frame = try result.get()
+            let frame = try delivery.result.get()
             switch frame.channel {
             case .control: try handleControl(EnvelopeCodec.deserialize(frame.payload))
             case .video: try handleVideo(MediaPacket(serializedFrame: frame.payload))
@@ -42,12 +36,14 @@ extension StreamViewModel {
         case .ping(let ping):
             sendPong(sequence: ping.sequence, correlationID: envelope.messageID)
         case .pong(let pong):
-            guard let correlationID = pendingHeartbeatCorrelations.removeValue(forKey: pong.sequence),
-                  envelope.correlationID == correlationID,
-                  pong.sequence > lastPongSequence else {
-                throw ProtocolClientError.invalidPong
-            }
-            lastPongSequence = max(lastPongSequence, pong.sequence)
+            guard let owner = sessionOwner else { throw ProtocolClientError.invalidPong }
+            do {
+                try heartbeatMonitor.observePong(
+                    owner: owner,
+                    sequence: pong.sequence,
+                    correlationID: envelope.correlationID
+                )
+            } catch { throw ProtocolClientError.invalidPong }
         case .disconnectNotice(let notice):
             terminateSession(message: "Mac 已断开会话：\(notice.reasonCode)")
         case .videoConfig(let config):
@@ -79,11 +75,13 @@ extension StreamViewModel {
                 rejection.transferID = offer.transferID
                 rejection.accepted = false
                 rejection.rejectionReason = "negotiated_file_limit_exceeded"
-                sendInBackground(factory.fileAccept(
-                    rejection,
-                    sessionID: state.sessionID,
-                    sessionEpoch: state.sessionEpoch
-                ))
+                sendInBackground { factory in
+                    factory.fileAccept(
+                        rejection,
+                        sessionID: self.state.sessionID,
+                        sessionEpoch: self.state.sessionEpoch
+                    )
+                }
             }
         case .fileAccept(let acceptance):
             handleFileAccept(acceptance)
@@ -114,6 +112,7 @@ extension StreamViewModel {
     }
 
     func acceptSession(_ accepted: VSSessionAccepted) throws {
+        guard let owner = sessionOwner else { throw ControlOutboxError.inactive }
         guard let host = pendingHostHello else {
             throw SessionStateError.invalidTransition(from: state.phase, event: "sessionAcceptedBeforeHostHello")
         }
@@ -137,9 +136,16 @@ extension StreamViewModel {
         let key = ClientSessionKey(sessionID: state.sessionID, epoch: state.sessionEpoch)
         try registry.register(key)
         sessionKey = key
+        try mediaGate.reset(owner: owner, sessionEpoch: state.sessionEpoch)
+        heartbeatMonitor.reset(
+            to: owner,
+            intervalNanoseconds: UInt64(heartbeatIntervalMilliseconds) * 1_000_000
+        )
         startHeartbeat()
         sendManagedPolicyStatus()
-        sendInBackground(factory.listDisplays(sessionID: state.sessionID, sessionEpoch: state.sessionEpoch))
+        sendInBackground { factory in
+            factory.listDisplays(sessionID: self.state.sessionID, sessionEpoch: self.state.sessionEpoch)
+        }
     }
 
     func startDisplays(_ displays: [VSDisplayDescriptor]) {
@@ -148,60 +154,102 @@ extension StreamViewModel {
         let maximum = negotiatedCapabilities.contains(.multiDisplay) ?
             min(Self.maximumDisplayStreams, hostMaximum) : 1
         for display in displays.prefix(maximum) {
-            sendInBackground(factory.startExistingDisplay(
-                displayID: display.displayID,
-                sessionID: state.sessionID,
-                sessionEpoch: state.sessionEpoch
-            ))
+            sendInBackground { factory in
+                factory.startExistingDisplay(
+                    displayID: display.displayID,
+                    sessionID: self.state.sessionID,
+                    sessionEpoch: self.state.sessionEpoch
+                )
+            }
         }
     }
 
     func bindDisplay(_ response: VSStartDisplayResponse) throws {
         guard response.accepted else { throw ProtocolClientError.rejected(response.rejectionReason) }
         guard let sessionKey else { throw SessionRegistryError.unknownSession }
-        let streamID = response.streamID == 0 ? UInt64(displayBindings.count + 1) : response.streamID
+        guard response.streamID > 0 else { throw VideoMediaGateError.invalidStreamID }
+        guard let owner = sessionOwner else { throw ControlOutboxError.inactive }
+        let streamID = response.streamID
         let binding = DisplayStreamBinding(displayID: response.display.displayID, streamID: streamID)
         try registry.bind(binding, to: sessionKey)
+        try mediaGate.bindStream(streamID, owner: owner)
         displayBindings = registry.bindings(in: sessionKey)
         selectedStreamID = selectedStreamID ?? streamID
     }
 
     func handleVideoConfig(_ config: VSVideoConfig) {
+        guard let owner = sessionOwner else { return }
         let negotiator = VideoColorNegotiator(decodeCapabilities: Self.sdrDecodeCapabilities)
         var result = VSVideoConfigResult()
         result.configEpoch = config.configEpoch
         result.streamID = config.streamID
+        var configurationToken: VideoMediaGate.ConfigurationToken?
+        do {
+            // Any new valid configuration immediately blocks the previous epoch;
+            // only a successfully sent positive acknowledgement reopens media.
+            configurationToken = try mediaGate.beginConfiguration(config, owner: owner)
+            decoders.removeValue(forKey: config.streamID)?.invalidate()
+            decoderOwners.removeValue(forKey: config.streamID)
+        } catch {
+            result.accepted = false
+            result.rejectionReason = error.localizedDescription
+        }
         switch negotiator.evaluate(config) {
         case let .accepted(selected):
-            result.accepted = true
-            result.selectedColorDescription = selected.colorDescription
-            configuredCodecs[selected.streamID] = selected.codec
+            if configurationToken != nil {
+                result.accepted = true
+                result.selectedColorDescription = selected.colorDescription
+            }
         case let .fallback(fallback, reason):
             result.accepted = false
             result.rejectionReason = reason
             result.selectedColorDescription = fallback.colorDescription
         }
-        let response = factory.videoConfigResult(
-            result,
-            sessionID: state.sessionID,
-            sessionEpoch: state.sessionEpoch
-        )
-        let generation = sessionGeneration
         let sessionID = state.sessionID
         let sessionEpoch = state.sessionEpoch
-        Task {
+        let ticket: ControlSendTicket
+        do {
+            ticket = try controlOutbox.enqueue(owner: owner) { factory in
+                factory.videoConfigResult(
+                    result,
+                    sessionID: sessionID,
+                    sessionEpoch: sessionEpoch
+                )
+            }
+        } catch {
+            terminateSession(message: "视频配置确认失败：\(error.localizedDescription)")
+            return
+        }
+        Task { [weak self] in
             do {
-                try await send(response)
-                guard generation == sessionGeneration,
-                      sessionID == state.sessionID,
-                      sessionEpoch == state.sessionEpoch else { return }
+                _ = try await ticket.wait()
+                guard let self, self.sessionOwner == owner,
+                      sessionID == self.state.sessionID,
+                      sessionEpoch == self.state.sessionEpoch else { return }
                 guard result.accepted else { return }
+                guard let configurationToken else { return }
+                do {
+                    try mediaGate.acknowledgementSent(
+                        configurationToken,
+                        streamID: result.streamID,
+                        owner: owner
+                    )
+                } catch is VideoMediaGateError {
+                    // A newer configuration or stream teardown superseded this
+                    // already-sent ACK; it must not activate or tear down that state.
+                    return
+                }
+                decoderOwners[result.streamID] = DecoderOwner(
+                    sessionOwner: owner,
+                    streamID: result.streamID,
+                    configEpoch: result.configEpoch
+                )
                 if case .ready = state.phase {
                     try state.startStreaming(streamID: result.streamID)
                 }
                 isStreaming = true
             } catch {
-                guard !Task.isCancelled, generation == sessionGeneration else { return }
+                guard let self, !Task.isCancelled, self.sessionOwner == owner else { return }
                 terminateSession(message: "视频配置确认失败：\(error.localizedDescription)")
             }
         }
@@ -210,7 +258,7 @@ extension StreamViewModel {
     func startHeartbeat() {
         heartbeatTask?.cancel()
         let interval = heartbeatIntervalMilliseconds
-        let generation = sessionGeneration
+        guard let owner = sessionOwner else { return }
         let sessionID = state.sessionID
         let sessionEpoch = state.sessionEpoch
         heartbeatTask = Task { [weak self] in
@@ -219,26 +267,27 @@ extension StreamViewModel {
                     try await Task.sleep(for: .milliseconds(Int(interval)))
                     try Task.checkCancellation()
                     guard let self else { return }
-                    guard generation == sessionGeneration,
+                    guard owner == sessionOwner,
                           sessionID == state.sessionID,
                           sessionEpoch == state.sessionEpoch else { return }
-                    heartbeatSequence += 1
-                    let envelope = factory.ping(
-                        sequence: heartbeatSequence,
-                        sessionID: state.sessionID,
-                        sessionEpoch: state.sessionEpoch
-                    )
-                    pendingHeartbeatCorrelations[heartbeatSequence] = envelope.messageID
-                    if pendingHeartbeatCorrelations.count > 4,
-                       let oldest = pendingHeartbeatCorrelations.keys.min() {
-                        pendingHeartbeatCorrelations.removeValue(forKey: oldest)
+                    if try heartbeatMonitor.status(owner: owner) == .timedOut {
+                        terminateSession(message: "心跳超时：连续 3 次未收到 Pong")
+                        return
                     }
-                    try await send(envelope)
+                    heartbeatSequence += 1
+                    let sequence = heartbeatSequence
+                    let ticket = try controlOutbox.enqueue(owner: owner) { factory in
+                        factory.ping(sequence: sequence, sessionID: sessionID, sessionEpoch: sessionEpoch)
+                    }
+                    let ping = try heartbeatMonitor.issuePing(owner: owner, messageID: ticket.messageID)
+                    guard ping.sequence == sequence else { throw ProtocolClientError.invalidHeartbeatSequence }
+                    _ = try await ticket.wait()
+                    guard owner == sessionOwner else { return }
                 } catch is CancellationError {
                     return
                 } catch {
                     guard let self else { return }
-                    guard !Task.isCancelled, generation == sessionGeneration else { return }
+                    guard !Task.isCancelled, owner == sessionOwner else { return }
                     terminateSession(message: "心跳发送失败：\(error.localizedDescription)")
                     return
                 }
@@ -247,18 +296,21 @@ extension StreamViewModel {
     }
 
     func sendPong(sequence: UInt64, correlationID: UInt64) {
-        sendInBackground(factory.pong(
-            sequence: sequence,
-            correlationID: correlationID,
-            sessionID: state.sessionID,
-            sessionEpoch: state.sessionEpoch
-        ))
+        sendInBackground { factory in
+            factory.pong(
+                sequence: sequence,
+                correlationID: correlationID,
+                sessionID: self.state.sessionID,
+                sessionEpoch: self.state.sessionEpoch
+            )
+        }
     }
 
     func handleVideoStreamEnded(_ ended: VSVideoStreamEnded) {
-        guard let sessionKey else { return }
+        guard let sessionKey, let owner = sessionOwner else { return }
         decoders.removeValue(forKey: ended.streamID)?.invalidate()
-        configuredCodecs.removeValue(forKey: ended.streamID)
+        decoderOwners.removeValue(forKey: ended.streamID)
+        _ = mediaGate.endStream(ended.streamID, owner: owner)
         _ = registry.release(streamID: ended.streamID, in: sessionKey)
         displayBindings = registry.bindings(in: sessionKey)
         if selectedStreamID == ended.streamID {
@@ -291,23 +343,31 @@ extension StreamViewModel {
             result.accepted = false
             result.rejectionReason = error.localizedDescription
         }
-        sendInBackground(factory.audioConfigResult(
-            result,
-            sessionID: state.sessionID,
-            sessionEpoch: state.sessionEpoch
-        ))
+        sendInBackground { factory in
+            factory.audioConfigResult(
+                result,
+                sessionID: self.state.sessionID,
+                sessionEpoch: self.state.sessionEpoch
+            )
+        }
     }
 
     func handleVideo(_ packet: MediaPacket) throws {
-        guard state.accepts(epoch: packet.header.sessionEpoch) else { return }
-        let streamID = packet.header.streamID == 0 ? selectedStreamID ?? 1 : packet.header.streamID
-        guard sessionKey.flatMap({ registry.binding(streamID: streamID, in: $0) }) != nil else { return }
-        let codec = packet.header.codec == .unspecified ? configuredCodecs[streamID] ?? .h264 : packet.header.codec
-        let decoder = decoder(for: streamID)
-        let parameterSets = VideoDecoder.parameterSets(codec: codec, from: packet.payload)
+        guard let owner = sessionOwner else { return }
+        guard case let .success(accepted) = mediaGate.admit(
+            packet.header,
+            payload: packet.payload,
+            owner: owner
+        ) else { return }
+        guard let sessionKey,
+              registry.binding(streamID: accepted.streamID, in: sessionKey) != nil,
+              let decoderOwner = decoderOwners[accepted.streamID],
+              decoderOwner.sessionOwner == owner,
+              decoderOwner.configEpoch == accepted.configEpoch else { return }
+        let decoder = decoder(for: decoderOwner)
+        let parameterSets = VideoDecoder.parameterSets(codec: accepted.codec, from: packet.payload)
         if !parameterSets.isEmpty {
-            try decoder.configure(codec: codec, parameterSets: parameterSets)
-            configuredCodecs[streamID] = codec
+            try decoder.configure(codec: accepted.codec, parameterSets: parameterSets)
         }
         try decoder.decode(
             annexB: packet.payload,
@@ -342,11 +402,13 @@ extension StreamViewModel {
             result.transferID = offer.transferID
             result.accepted = true
             result.sha256 = completed.sha256
-            sendInBackground(factory.fileTransferComplete(
-                result,
-                sessionID: state.sessionID,
-                sessionEpoch: state.sessionEpoch
-            ))
+            sendInBackground { factory in
+                factory.fileTransferComplete(
+                    result,
+                    sessionID: self.state.sessionID,
+                    sessionEpoch: self.state.sessionEpoch
+                )
+            }
         }
     }
 
@@ -356,19 +418,24 @@ extension StreamViewModel {
             return
         }
         let transfer = scopedFile.transfer
-        Task {
+        guard let owner = sessionOwner else { return }
+        let sessionEpoch = state.sessionEpoch
+        Task { [weak self] in
             do {
                 let negotiatedChunkBytes = response.maximumChunkBytes == 0 ?
                     nil : Int(response.maximumChunkBytes)
                 while let chunk = try transfer.nextChunk(
                     maximumBytes: negotiatedChunkBytes,
-                    sessionEpoch: state.sessionEpoch
+                    sessionEpoch: sessionEpoch
                 ) {
+                    guard let self, self.sessionOwner == owner else { return }
                     try await transport.send(
-                        TransportFrame(channel: .bulkTransfer, payload: try chunk.serializedFrame())
+                        TransportFrame(channel: .bulkTransfer, payload: try chunk.serializedFrame()),
+                        owner: owner.connectionOwner
                     )
                 }
             } catch {
+                guard let self, !Task.isCancelled, self.sessionOwner == owner else { return }
                 cancelLocalFileTransfer(transferID: response.transferID)
                 errorMessage = error.localizedDescription
             }
@@ -382,16 +449,22 @@ extension StreamViewModel {
         pendingFileName = pendingFileOffers.values.first?.fileName
     }
 
-    func decoder(for streamID: UInt64) -> VideoDecoder {
-        if let decoder = decoders[streamID] { return decoder }
+    func decoder(for owner: DecoderOwner) -> VideoDecoder {
+        if decoderOwners[owner.streamID] == owner, let decoder = decoders[owner.streamID] { return decoder }
         let decoder = VideoDecoder { [weak self] pixelBuffer, _ in
             let frame = DecodedPixelBuffer(pixelBuffer)
             Task { @MainActor in
-                guard self?.selectedStreamID == streamID else { return }
-                self?.pixelBuffer = frame.value
+                guard let self,
+                      DecoderDeliveryGate.accepts(
+                        owner: owner,
+                        activeOwner: self.decoderOwners[owner.streamID],
+                        sessionOwner: self.sessionOwner,
+                        selectedStreamID: self.selectedStreamID
+                      ) else { return }
+                self.pixelBuffer = frame.value
             }
         }
-        decoders[streamID] = decoder
+        decoders[owner.streamID] = decoder
         return decoder
     }
 
@@ -406,11 +479,13 @@ extension StreamViewModel {
             invocation.target.displayID = binding.displayID
             invocation.target.streamID = binding.streamID
         }
-        sendInBackground(factory.hostActionInvoke(
-            invocation,
-            sessionID: state.sessionID,
-            sessionEpoch: state.sessionEpoch
-        ))
+        sendInBackground { factory in
+            factory.hostActionInvoke(
+                invocation,
+                sessionID: self.state.sessionID,
+                sessionEpoch: self.state.sessionEpoch
+            )
+        }
     }
 
     func sendManagedPolicyStatus() {
@@ -425,11 +500,13 @@ extension StreamViewModel {
         status.maximumFileBytes = policy.maximumFileBytes
         status.customGesturesAllowed = policy.customGesturesAllowed
         status.hostActionsAllowed = policy.customGesturesAllowed
-        sendInBackground(factory.managedPolicyStatus(
-            status,
-            sessionID: state.sessionID,
-            sessionEpoch: state.sessionEpoch
-        ))
+        sendInBackground { factory in
+            factory.managedPolicyStatus(
+                status,
+                sessionID: self.state.sessionID,
+                sessionEpoch: self.state.sessionEpoch
+            )
+        }
     }
 
     func enforceCurrentPolicy() {
@@ -447,12 +524,22 @@ extension StreamViewModel {
         if !policy.customGesturesAllowed { availableHostActions = [] }
     }
 
-    func sendInBackground(_ envelope: VSEnvelope) {
-        let generation = sessionGeneration
-        Task {
-            do { try await send(envelope) }
+    func sendInBackground(
+        timeout: TimeInterval = 3,
+        build: @escaping (inout EnvelopeFactory) throws -> VSEnvelope
+    ) {
+        guard let owner = sessionOwner else { return }
+        let ticket: ControlSendTicket
+        do {
+            ticket = try controlOutbox.enqueue(owner: owner, timeout: timeout, build: build)
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
+        Task { [weak self] in
+            do { _ = try await ticket.wait() }
             catch {
-                guard !Task.isCancelled, generation == sessionGeneration else { return }
+                guard let self, !Task.isCancelled, self.sessionOwner == owner else { return }
                 errorMessage = error.localizedDescription
             }
         }
@@ -499,11 +586,13 @@ extension StreamViewModel {
 private enum ProtocolClientError: Error, LocalizedError {
     case rejected(String)
     case invalidPong
+    case invalidHeartbeatSequence
 
     var errorDescription: String? {
         switch self {
         case let .rejected(message): message
         case .invalidPong: "主机返回了不匹配当前心跳的 Pong"
+        case .invalidHeartbeatSequence: "本地心跳序列状态不一致"
         }
     }
 }

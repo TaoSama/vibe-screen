@@ -26,8 +26,20 @@ RUN: codec/backoff
 RUN: multi-display/audio
 RUN: clipboard/file/policy
 RUN: HDR/gesture/wake/advanced-proto
-PASS: Phase 5A-5D core protocol, limits, queues, digest, policy, fallback, wake
+RUN: trusted-LAN startup codecs
+RUN: owner/media/heartbeat generation gates
+PASS: Phase 5A-5D core and trusted-LAN Protocol v1 startup
 ```
+
+The workflow requires `swift test --package-path apps/ios -c release` under
+full Xcode. That Release XCTest target adds deterministic, no-sleep coverage for a
+single-writer control outbox (mixed display/Ping/Pong/config traffic,
+512-message pressure, deliberately held sends, owner rotation, and late
+completion), media pre-ACK/stale-config/replay/fragment rejection through a
+decoder spy, late control/media/error/pixel owner delivery, and heartbeat
+immediate-Pong, miss-budget, correlation, and rotation behavior. The local
+Command Line Tools installation cannot import XCTest; this suite is therefore
+a required full-Xcode GitHub gate rather than local XCTest evidence.
 
 The self-test additionally covers multi-client epoch replacement, per-client
 stream limits/routes, PCM validation and reorder, clipboard explicit-action
@@ -66,8 +78,9 @@ apps/ios/Scripts/run_machost_loopback.py
 
 The harness starts the production `Telemachus` executable with its bounded iOS
 loopback adapter on `127.0.0.1:54321`, then starts the iOS Core transport/session
-executable as a separate process. It runs a normal lifecycle and a separate
-invalid-target case. The covered boundary is:
+executable as a separate process. The client uses the production
+generation-scoped `ControlOutbox` for every outbound control envelope. It runs
+a normal lifecycle and a separate invalid-target case. The covered boundary is:
 
 ```text
 SSWA/SSWR authentication -> 0D/0D01 upgrade -> ClientHello/HostHello
@@ -90,7 +103,8 @@ MacHost loopback: PASS (external lifecycle + invalid-target
 production-process integration)
 ```
 
-This proves the iOS Core trusted-LAN transport and main-session composition
+This proves the iOS Core trusted-LAN transport, FIFO control writer, and
+main-session composition
 against the baseline MacHost. It does not exercise `StreamViewModel`, the
 decoder, or UI; boot the iOS application; use an iOS device; or prove hardware
 VideoToolbox behavior.
