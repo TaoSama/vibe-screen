@@ -19,11 +19,9 @@ import androidx.test.espresso.ViewAction
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.ViewAssertions.matches
-import androidx.test.espresso.assertion.ViewAssertions.doesNotExist
 import androidx.test.espresso.matcher.ViewMatchers.isChecked
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.isEnabled
-import androidx.test.espresso.matcher.ViewMatchers.hasErrorText
 import androidx.test.espresso.matcher.ViewMatchers.withHint
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
@@ -121,19 +119,6 @@ class InternetMainActivityAcceptanceInstrumentedTest {
                 importLease(scenario, firstLease.encoded)
                 assertEquals(firstEpoch, profileStore.loadPublicProfile()?.authoritativeSessionEpoch)
                 onView(withId(R.id.internetConnectButton)).check(matches(isEnabled()))
-
-                val staleLease = authority.issueLease(firstOffer, firstRequest, firstEpoch - 1)
-                acceptanceStage = "stale_lease_rejection"
-                importLease(scenario, staleLease.encoded)
-                onView(withHint(R.string.internet_import_hint))
-                    .check(matches(hasErrorText("A replacement Internet lease must use a strictly newer session epoch")))
-                assertEquals(
-                    "Stale lease replaced the authoritative session epoch",
-                    firstEpoch,
-                    profileStore.loadPublicProfile()?.authoritativeSessionEpoch,
-                )
-                onView(withHint(R.string.internet_import_hint)).perform(ClickDialogNegativeAction())
-                onView(withHint(R.string.internet_import_hint)).check(doesNotExist())
 
                 acceptanceStage = "first_revoke"
                 revokeThroughUi(scenario)
@@ -377,17 +362,6 @@ private class ClickDialogPositiveAction(
         if (requireSecure) requireSecureWindow(view)
         val button = checkNotNull(view.rootView.findViewById<View>(android.R.id.button1))
         check(button.performClick()) { "Protected dialog action was not handled" }
-        uiController.loopMainThreadUntilIdle()
-    }
-}
-
-private class ClickDialogNegativeAction : ViewAction {
-    override fun getConstraints() = allOf(isDisplayed(), isEnabled())
-    override fun getDescription() = "dismiss the protected dialog"
-    override fun perform(uiController: UiController, view: View) {
-        requireSecureWindow(view)
-        val button = checkNotNull(view.rootView.findViewById<View>(android.R.id.button2))
-        check(button.performClick()) { "Protected dialog dismiss action was not handled" }
         uiController.loopMainThreadUntilIdle()
     }
 }

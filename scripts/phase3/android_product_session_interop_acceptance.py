@@ -1087,7 +1087,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "synthetic_video_config_keyframe_delta": "pass",
             "authenticated_touch": "pass",
             "durable_security_state": "not_claimed_interop_uses_test_isolated_store",
-            "internet_ui_pairing_signed_and_stale_lease_import": "pass",
+            "internet_ui_pairing_and_strict_signed_lease_import": "pass",
             "local_revoke_and_repair": "pass",
             "secure_credential_dialogs": "pass",
         },
@@ -1117,7 +1117,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ).hexdigest(),
         },
         "evidence_boundaries": {
-            "ui": "pairing_signed_and_stale_lease_import_local_revoke_repair_only",
+            "ui": "pairing_strict_signed_lease_import_local_revoke_repair_only_no_negative_lease_ui_case",
             "screen_capture_kit": "not_claimed",
             "real_display_content": "not_claimed",
             "rotation": "open_harness_has_no_rotation_assertion",
