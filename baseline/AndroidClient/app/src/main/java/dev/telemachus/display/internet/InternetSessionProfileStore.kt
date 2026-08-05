@@ -82,59 +82,64 @@ class InternetSessionProfileStore(
     fun import(
         json: String,
         storedSessionFactory: AndroidStoredInternetSessionFactory,
+        revocationCoordinator: InternetProductRevocationCoordinator,
     ): StoredInternetSessionProfile {
         retryDeferredCredentialCleanup()
         val decoded = InternetSessionProfileCodec.decode(json, debuggable)
-        try {
-            val pairing = loadPairingBinding() ?: throw IllegalStateException("Complete signed pairing before importing a lease")
-            require(decoded.profile.pairingIdentifier == pairing.pairingIdentifier) { "Lease pairing does not match the verified Mac" }
-            require(decoded.profile.pinnedHostId == pairing.hostIdentity.deviceId) { "Lease host identity does not match the verified Mac" }
-            require(decoded.profile.identityEpoch == pairing.localIdentityEpoch) { "Lease local identity epoch does not match the paired identity" }
-            require(storedSessionFactory.localDeviceId == pairing.localDeviceId) {
-                "Lease lifecycle state does not belong to the paired local identity"
-            }
-            require(decoded.profile.transcriptContext.contentEquals(pairing.sessionContext)) {
-                "Lease transcript context does not match signed pairing"
-            }
-            verifySignedLease(decoded, pairing)
-            return storedSessionFactory.withFreshSessionEpochCandidate(decoded.profile.authoritativeSessionEpoch) {
-                val current = loadPublicProfile()
-                if (current != null) {
-                    require(decoded.profile.authoritativeSessionEpoch > current.authoritativeSessionEpoch) {
-                        "A replacement Internet lease must use a strictly newer session epoch"
+        return try {
+            revocationCoordinator.withCredentialMutationAdmission(
+                durableBlock = { hasDurableCredentialMutationBlock(decoded.profile.pairingIdentifier) },
+            ) {
+                val pairing = loadPairingBinding() ?: throw IllegalStateException("Complete signed pairing before importing a lease")
+                require(decoded.profile.pairingIdentifier == pairing.pairingIdentifier) { "Lease pairing does not match the verified Mac" }
+                require(decoded.profile.pinnedHostId == pairing.hostIdentity.deviceId) { "Lease host identity does not match the verified Mac" }
+                require(decoded.profile.identityEpoch == pairing.localIdentityEpoch) { "Lease local identity epoch does not match the paired identity" }
+                require(storedSessionFactory.localDeviceId == pairing.localDeviceId) {
+                    "Lease lifecycle state does not belong to the paired local identity"
+                }
+                require(decoded.profile.transcriptContext.contentEquals(pairing.sessionContext)) {
+                    "Lease transcript context does not match signed pairing"
+                }
+                verifySignedLease(decoded, pairing)
+                storedSessionFactory.withFreshSessionEpochCandidate(decoded.profile.authoritativeSessionEpoch) {
+                    val current = loadPublicProfile()
+                    if (current != null) {
+                        require(decoded.profile.authoritativeSessionEpoch > current.authoritativeSessionEpoch) {
+                            "A replacement Internet lease must use a strictly newer session epoch"
+                        }
                     }
+                    val encrypted = InternetSessionProfileCodec.encodeSecrets(decoded.secrets).toByteArray(Charsets.UTF_8)
+                    try {
+                        secretStore.persist(profileSecretName(decoded.profile), encrypted)
+                    } finally {
+                        encrypted.fill(0)
+                    }
+                    val newSecretName = profileSecretName(decoded.profile)
+                    val oldSecretName = current?.let(::profileSecretName)?.takeIf { it != newSecretName }
+                    val cleanupQueue = oldSecretName?.let { enqueueDeferredSecretCleanup(loadDeferredSecretCleanup(), it) }
+                        ?: loadDeferredSecretCleanup()
+                    val committed =
+                        commitProfileReplacement(
+                            cleanupQueue = cleanupQueue,
+                            commitPointerAndCleanup = { queued ->
+                                val editor =
+                                    preferences
+                                        .edit()
+                                        .putString(PROFILE_KEY, InternetSessionProfileCodec.encodePublic(decoded.profile))
+                                if (queued.isEmpty()) editor.remove(DEFERRED_SECRET_CLEANUP_KEY) else {
+                                    editor.putStringSet(DEFERRED_SECRET_CLEANUP_KEY, queued)
+                                }
+                                editor.commit()
+                            },
+                            rollbackNewSecret = { secretStore.delete(newSecretName) },
+                        )
+                    if (!committed) {
+                        error("Failed to persist the Internet session profile")
+                    }
+                    inMemoryDeferredCleanup.replaceAfterDurableCommit(cleanupQueue)
+                    retryDeferredCredentialCleanup()
+                    decoded.profile
                 }
-                val encrypted = InternetSessionProfileCodec.encodeSecrets(decoded.secrets).toByteArray(Charsets.UTF_8)
-                try {
-                    secretStore.persist(profileSecretName(decoded.profile), encrypted)
-                } finally {
-                    encrypted.fill(0)
-                }
-                val newSecretName = profileSecretName(decoded.profile)
-                val oldSecretName = current?.let(::profileSecretName)?.takeIf { it != newSecretName }
-                val cleanupQueue = oldSecretName?.let { enqueueDeferredSecretCleanup(loadDeferredSecretCleanup(), it) }
-                    ?: loadDeferredSecretCleanup()
-                val committed =
-                    commitProfileReplacement(
-                        cleanupQueue = cleanupQueue,
-                        commitPointerAndCleanup = { queued ->
-                            val editor =
-                                preferences
-                                    .edit()
-                                    .putString(PROFILE_KEY, InternetSessionProfileCodec.encodePublic(decoded.profile))
-                            if (queued.isEmpty()) editor.remove(DEFERRED_SECRET_CLEANUP_KEY) else {
-                                editor.putStringSet(DEFERRED_SECRET_CLEANUP_KEY, queued)
-                            }
-                            editor.commit()
-                        },
-                        rollbackNewSecret = { secretStore.delete(newSecretName) },
-                    )
-                if (!committed) {
-                    error("Failed to persist the Internet session profile")
-                }
-                inMemoryDeferredCleanup.replaceAfterDurableCommit(cleanupQueue)
-                retryDeferredCredentialCleanup()
-                decoded.profile
             }
         } finally {
             decoded.close()
@@ -190,11 +195,13 @@ class InternetSessionProfileStore(
     }
 
     @SuppressLint("ApplySharedPref")
-    fun recordVerifiedPairing(
+    internal fun recordVerifiedPairing(
+        permit: InternetProductCredentialMutationPermit,
         metadata: InternetPairingPublicMetadata,
         storedSessionFactory: AndroidStoredInternetSessionFactory,
     ) {
-        require(!isRevoked(metadata.pairingIdentifier)) { "This Mac pairing is locally revoked" }
+        permit.requireActive()
+        require(!hasDurableCredentialMutationBlock(metadata.pairingIdentifier)) { "This Mac pairing is locally revoked" }
         val context = requireNotNull(metadata.sessionContext) { "Completed pairing must include a session context" }
         val value =
             JsonObject().apply {
@@ -229,7 +236,7 @@ class InternetSessionProfileStore(
     fun verifiedHostKeyFingerprint(): String? = loadPairingBinding()?.hostIdentity?.keyId?.take(FINGERPRINT_CHARACTERS)
 
     fun markRevoked(pairingIdentifier: String) {
-        synchronized(REVOCATION_STATE_LOCK) {
+        InternetProductAdmissionGate.withLock {
             check(
                 preferences
                     .edit()
@@ -244,13 +251,13 @@ class InternetSessionProfileStore(
 
     @SuppressLint("ApplySharedPref")
     fun persistPendingAuthenticatedRevocation(pairingIdentifier: String, reason: String) {
-        synchronized(REVOCATION_STATE_LOCK) {
+        InternetProductAdmissionGate.withLock {
             require(reason.isNotBlank()) { "Authenticated revocation reason is required" }
             require(verifiedPairingIdentifier() == pairingIdentifier) { "Authenticated revocation targets another pairing" }
             val requested = PendingAuthenticatedRevocation(pairingIdentifier, reason)
             val existing = loadPendingAuthenticatedRevocation()
             require(existing == null || existing == requested) { "Another authenticated revocation is already pending" }
-            if (existing != null || preferences.getString(REVOKED_PAIRING_KEY, null) == pairingIdentifier) return
+            if (existing != null || preferences.getString(REVOKED_PAIRING_KEY, null) == pairingIdentifier) return@withLock
             check(
                 preferences
                     .edit()
@@ -262,7 +269,7 @@ class InternetSessionProfileStore(
 
     @SuppressLint("ApplySharedPref")
     fun markAuthenticatedRevoked(pairingIdentifier: String, reason: String) {
-        synchronized(REVOCATION_STATE_LOCK) {
+        InternetProductAdmissionGate.withLock {
             require(reason.isNotBlank()) { "Authenticated revocation reason is required" }
             require(verifiedPairingIdentifier() == pairingIdentifier) { "Authenticated revocation targets another pairing" }
             val pending = loadPendingAuthenticatedRevocation()
@@ -280,17 +287,25 @@ class InternetSessionProfileStore(
     }
 
     fun retryPendingAuthenticatedRevocation(): Boolean {
-        synchronized(REVOCATION_STATE_LOCK) {
-            val pending = loadPendingAuthenticatedRevocation() ?: return false
+        return InternetProductAdmissionGate.withLock {
+            val pending = loadPendingAuthenticatedRevocation() ?: return@withLock false
             markAuthenticatedRevoked(pending.pairingIdentifier, pending.reason)
-            return true
+            true
         }
     }
 
     fun isRevoked(pairingIdentifier: String): Boolean =
-        synchronized(REVOCATION_STATE_LOCK) {
+        InternetProductAdmissionGate.withLock {
             preferences.getString(REVOKED_PAIRING_KEY, null) == pairingIdentifier ||
                 loadPendingAuthenticatedRevocation()?.pairingIdentifier == pairingIdentifier
+        }
+
+    fun hasDurableCredentialMutationBlock(targetPairingIdentifier: String?): Boolean =
+        InternetProductAdmissionGate.withLock {
+            loadPendingAuthenticatedRevocation() != null ||
+                loadPendingRevocationCleanup() != null ||
+                targetPairingIdentifier != null &&
+                preferences.getString(REVOKED_PAIRING_KEY, null) == targetPairingIdentifier
         }
 
     fun loadPublicProfile(): StoredInternetSessionProfile? =
@@ -326,49 +341,51 @@ class InternetSessionProfileStore(
         check(preferences.edit().remove(PAIRING_KEY).commit()) { "Failed to delete verified pairing metadata" }
     }
 
-    @Synchronized
     @SuppressLint("ApplySharedPref")
     fun beginRevocationCleanup(
         pairingIdentifier: String,
         localDeviceId: String,
         identityEpoch: Long,
     ) {
-        val requested = PendingRevocationCleanup(pairingIdentifier, localDeviceId, identityEpoch)
-        val existing = loadPendingRevocationCleanup()
-        require(
-            existing == null ||
-                existing.pairingIdentifier == pairingIdentifier &&
-                existing.localDeviceId == localDeviceId &&
-                existing.identityEpoch == identityEpoch,
-        ) { "Another revocation cleanup is already pending" }
-        if (existing != null) return
-        check(
-            preferences
-                .edit()
-                .putString(REVOKED_PAIRING_KEY, pairingIdentifier)
-                .putString(PENDING_REVOCATION_CLEANUP_KEY, PendingRevocationCleanupCodec.encode(requested))
-                .commit(),
-        ) { "Failed to persist revocation cleanup intent" }
+        InternetProductAdmissionGate.withLock {
+            val requested = PendingRevocationCleanup(pairingIdentifier, localDeviceId, identityEpoch)
+            val existing = loadPendingRevocationCleanup()
+            require(
+                existing == null ||
+                    existing.pairingIdentifier == pairingIdentifier &&
+                    existing.localDeviceId == localDeviceId &&
+                    existing.identityEpoch == identityEpoch,
+            ) { "Another revocation cleanup is already pending" }
+            if (existing != null) return@withLock
+            check(
+                preferences
+                    .edit()
+                    .putString(REVOKED_PAIRING_KEY, pairingIdentifier)
+                    .putString(PENDING_REVOCATION_CLEANUP_KEY, PendingRevocationCleanupCodec.encode(requested))
+                    .commit(),
+            ) { "Failed to persist revocation cleanup intent" }
+        }
     }
 
-    @Synchronized
     internal fun retryPendingRevocationCleanup(
         deletePairingSecret: (String) -> Unit,
         deleteIdentityKey: (String, Long) -> Unit,
     ): RevocationCleanupResult? {
-        val pending = loadPendingRevocationCleanup() ?: return null
-        return retryRevocationCleanup(
-            initial = pending,
-            execute = { step ->
-                when (step) {
-                    RevocationCleanupStep.PAIRING_SECRET -> deletePairingSecret(pending.pairingIdentifier)
-                    RevocationCleanupStep.IDENTITY_KEY -> deleteIdentityKey(pending.localDeviceId, pending.identityEpoch)
-                    RevocationCleanupStep.SESSION_CREDENTIALS -> remove(pending.pairingIdentifier)
-                    RevocationCleanupStep.PAIRING_METADATA -> removePairingBinding()
-                }
-            },
-            persist = ::persistPendingRevocationCleanup,
-        )
+        return InternetProductAdmissionGate.withLock {
+            val pending = loadPendingRevocationCleanup() ?: return@withLock null
+            retryRevocationCleanup(
+                initial = pending,
+                execute = { step ->
+                    when (step) {
+                        RevocationCleanupStep.PAIRING_SECRET -> deletePairingSecret(pending.pairingIdentifier)
+                        RevocationCleanupStep.IDENTITY_KEY -> deleteIdentityKey(pending.localDeviceId, pending.identityEpoch)
+                        RevocationCleanupStep.SESSION_CREDENTIALS -> remove(pending.pairingIdentifier)
+                        RevocationCleanupStep.PAIRING_METADATA -> removePairingBinding()
+                    }
+                },
+                persist = ::persistPendingRevocationCleanup,
+            )
+        }
     }
 
     internal fun loadPendingRevocationCleanup(): PendingRevocationCleanup? =
@@ -492,7 +509,6 @@ class InternetSessionProfileStore(
         private const val DEFERRED_SECRET_CLEANUP_KEY = "deferred_secret_cleanup"
         private const val PENDING_REVOCATION_CLEANUP_KEY = "pending_revocation_cleanup"
         private const val SECRET_PREFIX = "phase3.internet.profile.v1"
-        private val REVOCATION_STATE_LOCK = Any()
         private const val FINGERPRINT_CHARACTERS = 16
         private const val TAG = "InternetProfileStore"
         private val PAIRING_KEYS =

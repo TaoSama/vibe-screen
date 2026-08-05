@@ -874,7 +874,11 @@ class MainActivity : AppCompatActivity() {
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
                     check(allowInternetCredentialMutation()) { "Internet revocation quarantine is active" }
-                    internetProfileStore.import(input.text.toString(), internetStoredSessionFactory)
+                    internetProfileStore.import(
+                        input.text.toString(),
+                        internetStoredSessionFactory,
+                        internetRevocationCoordinator,
+                    )
                     input.text?.clear()
                     requiredFreshInternetEpoch = 0L
                     binding.internetErrorText.visibility = View.GONE
@@ -977,8 +981,21 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val parsed = InternetPairingAcceptance.parse(acceptance.text.toString())
                     try {
-                        val result = pending.complete(parsed)
-                        internetProfileStore.recordVerifiedPairing(result.metadata, internetStoredSessionFactory)
+                        internetRevocationCoordinator.withCredentialMutationAdmission(
+                            durableBlock = {
+                                internetProfileStore.hasDurableCredentialMutationBlock(
+                                    pending.publicMetadata.pairingIdentifier,
+                                )
+                            },
+                        ) { permit ->
+                            pending.complete(parsed).also { completed ->
+                                internetProfileStore.recordVerifiedPairing(
+                                    permit,
+                                    completed.metadata,
+                                    internetStoredSessionFactory,
+                                )
+                            }
+                        }
                         refreshInternetProfileUi()
                     } catch (failure: Throwable) {
                         pending.close()
@@ -2244,9 +2261,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun allowInternetCredentialMutation(): Boolean {
         val pairingIdentifier = internetProfileStore.verifiedPairingIdentifier()
+            ?: internetProfileStore.loadPublicProfile()?.pairingIdentifier
         val quarantined =
-            internetRevocationCoordinator.hasActiveReservation() &&
-                (pairingIdentifier == null || !internetProfileStore.isRevoked(pairingIdentifier))
+            internetRevocationCoordinator.isCredentialMutationBlocked {
+                internetProfileStore.hasDurableCredentialMutationBlock(pairingIdentifier)
+            }
         if (quarantined && ::binding.isInitialized) {
             binding.internetConnectButton.isEnabled = false
             binding.internetImportProfileButton.isEnabled = false
