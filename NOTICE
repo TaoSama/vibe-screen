@@ -54,8 +54,9 @@ system libraries. No coturn source or image layer is copied into this repository
 The iOS and MacHost Protocol v1 runtimes link SwiftProtobuf 1.32.0 at commit
 c6fe6442e6a64250495669325044052e113e990c (Apache-2.0 with its runtime-library
 exception). Its exact license is retained and bundled at
-apps/ios/ThirdPartyLicenses/SwiftProtobuf-LICENSE.txt; runtime source is not
-copied. Protocol Buffers compiler v32.1 at commit
+apps/ios/ThirdPartyLicenses/SwiftProtobuf-LICENSE.txt and
+baseline/MacHost/Sources/Phase3/InternetTransport/ThirdParty/SwiftProtobuf-LICENSE.txt;
+runtime source is not copied. Protocol Buffers compiler v32.1 at commit
 7fcfd66022455635fa29af92987cdc0967efd4f3 (BSD-3-Clause) was used only as a
 build-time generator for sources derived from this repository's schemas; its
 source and binary are not copied.
