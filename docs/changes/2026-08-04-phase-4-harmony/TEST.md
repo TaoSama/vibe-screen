@@ -1,53 +1,77 @@
 # Phase 4 verification record
 
-Date: 2026-08-04
+Date: 2026-08-05
 
-## Passed locally
+## Portable checks passed
 
 ```text
 cd apps/harmony && pnpm run verify
-8 tests, 0 failures
+Validated 13 HarmonyOS project files (static only; no ArkTS/HAP claim).
+13 tests, 13 passed, 0 failed
 ```
 
-Covered behavior: exact shared Protocol v1 ClientHello bytes,
-SessionAccepted/unknown-field
-decoding, distinct touch/pointer/scroll/key envelopes, split/coalesced control
-framing, strict session epochs, capacity-one frame queue, rotated coordinate
-mapping, and capped deterministic reconnect backoff.
+Coverage includes:
 
-The hosted `HarmonyOS portable checks` workflow runs the same frozen install,
-type-check, and test commands. Its job name explicitly states that it supplies
-no DevEco or HAP evidence.
+- historical and formal ClientHello exact bytes, packed enum/resource/decode limits;
+- zero-length ListDisplaysRequest oneof encoding;
+- formal HostHello → SessionAccepted → list/start display → VideoConfig sequence;
+- touch fixture with display/stream target;
+- split/coalesced protocol upgrade and control/video channel framing;
+- formal MediaPacketHeader/Annex-B parsing and payload length rejection;
+- additive unknown fields and truncated fixed-field rejection;
+- epoch/message/stream/config validation and capacity-one media queue;
+- pointer/scroll/key envelope separation, HID/button mapping, rotation, and backoff;
+- browser-global-free UTF-8 handling and advertised video-size/FPS enforcement;
+- AppScope/entry/Hvigor/resource/version/native-dependency/permission static shape.
+
+Hosted `HarmonyOS portable checks (no DevEco or HAP claim)` runs the same frozen
+install and verify command. It cannot type-check `.ets` or validate vendor APIs.
 
 ## Environment evidence
 
 ```text
-node v26.5.0
-pnpm 11.15.1
-TypeScript 5.9.3
-hvigorw: not installed
-ohpm: not installed
-hdc: not installed
-DevEco Studio: not installed
+base commit: 36905b40b2457c9f156e0b9b273fd437303a1efe
+node: v26.5.0
+pnpm: 11.15.1
+TypeScript: 5.9.3
+hvigor: not found
+ohpm: not found
+hdc: not found
+DevEco Studio: not found
 ```
 
-The requested ADB endpoint connected successfully but identifies as:
+Public OpenHarmony 5.0 API declarations were inspected at immutable commit
+`85c68ed2a9ea8437377ce0a168db747629446b0a`. They confirm Asset Store's
+`Map<Tag, Value>`, XComponent surface ID, ArkUI changedTouches/mouse/key fields,
+and Ability/network seams. That public interface set does not include the
+commercial HarmonyOS NEXT AVCodecKit surface, so it cannot prove the decoder.
 
-```text
-[controlled endpoint, redacted] device product:pacific model:P0110
-manufacturer=nubia, model=P0110, Android=16, API=36
-```
+During this task an unrelated concurrent modification changed
+`contracts/fixtures/messages/v1/bin/upgrade_acknowledgement.bin` from binary
+`0d 01` to the text `0d\n`. All task subagents denied writing it and the source
+could not be proven, so the file was not overwritten and is excluded from the
+task commit. Contract gates that consume that working-tree file are not valid
+until it is restored by its owner or from a confirmed clean checkout.
 
-It is neither Xiaomi 12 nor HarmonyOS and therefore supplies no Phase 4 device
-evidence. The imported macOS host implements Telemachus's legacy message types,
-not Protocol v1, so Android cannot currently validate v1 server compatibility.
+## DevEco gates
 
-## Required before Phase 4 completion
+- clean OHPM sync with recorded lock/tool/SDK versions;
+- ArkTS/API checker for every `.ets` file and module schema;
+- confirmation/correction of AVCodecKit buffer callback, memory write, PTS,
+  render/free, flush, reconfigure, EOS, and release calls;
+- debug and signed release `assembleHap`, HAP contents/permissions/signature,
+  SHA-256, install, in-place upgrade, rollback behavior, and uninstall cleanup;
+- Asset Store client/host record CRUD and malformed-version removal;
+- XComponent surface creation/destruction across rotation/background/foreground.
 
-- DevEco sync and debug/release HAP build from a clean checkout;
-- static ArkTS/API checker and signing verification;
-- MatePad Mini install, pairing, H.264/HEVC render, touch, keyboard, mouse,
-  stylus pressure, foreground/background, network loss, reconnect, and revoke;
-- rotation/safe-area checks in portrait and landscape;
-- 8-hour thermal/power/RSS/frame-drop soak and external-camera latency samples;
-- host Protocol v1 integration and golden byte parity with generated bindings.
+## Host and device gates
+
+- real upgrade/HostHello/session/display/video/control/media interoperability;
+- secure PairingOffer/Request/Result proof, credential issue/revoke, replay and expiry;
+- H.264 and HEVC hardware render with decoder identity evidence;
+- multi-touch, Up/Cancel, keyboard/HID/modifiers, pointer/buttons, wheel/trackpad,
+  stylus pressure, focus, safe area, letterbox, and both orientations;
+- background/foreground, permission denial, Wi-Fi loss/restore/roam, host restart,
+  bounded reconnect, resume-result behavior, and no old-epoch render;
+- MatePad Mini eight-hour thermal/power/RSS/frame-drop soak and external-camera
+  glass-to-glass/input latency. Android evidence is never a substitute.

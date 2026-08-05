@@ -24,5 +24,9 @@ jobs:
           cache-dependency-path: apps/harmony/pnpm-lock.yaml
       - name: Install pinned portable test dependencies
         run: pnpm --dir apps/harmony install --frozen-lockfile
-      - name: Type-check core and verify shared Protocol v1 golden bytes
-        run: pnpm --dir apps/harmony verify
+      - name: Validate native DevEco project shape (static only)
+        run: pnpm --dir apps/harmony static
+      - name: Type-check portable Protocol v1 core
+        run: pnpm --dir apps/harmony typecheck
+      - name: Verify formal Protocol v1 golden and unit tests
+        run: pnpm --dir apps/harmony test

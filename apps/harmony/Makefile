@@ -34,7 +34,9 @@ build-release: sync-project
 
 release: build-release
 	@mkdir -p dist/$(VERSION)
-	@find entry/build -name '*.hap' -type f -exec cp {} dist/$(VERSION)/vibe-screen-harmony-$(VERSION).hap \;
+	@set -eu; files="$$(find entry/build -name '*signed.hap' -type f)"; count="$$(printf '%s\n' "$$files" | sed '/^$$/d' | wc -l | tr -d ' ')"; \
+		test "$$count" = "1" || (echo "release requires exactly one signed HAP, found $$count" >&2; exit 2); \
+		cp "$$files" dist/$(VERSION)/vibe-screen-harmony-$(VERSION).hap
 	@shasum -a 256 dist/$(VERSION)/vibe-screen-harmony-$(VERSION).hap > dist/$(VERSION)/SHA256SUMS
 
 clean:
