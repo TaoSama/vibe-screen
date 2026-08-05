@@ -244,10 +244,19 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
             "delta=true touch=true application_e2ee=true"
         )
         host = f"{HOST_MARKER_PREFIX} route=relay epoch=42 {common}"
-        device = f"{DEVICE_MARKER_PREFIX} route=relay epoch=42 {common} protocol_v1=true"
+        device = (
+            f"{DEVICE_MARKER_PREFIX} route=relay epoch=42 {common} "
+            "protocol_v1=true lifecycle_store=test_isolated"
+        )
         self.assertEqual(validate_marker(host, HOST_MARKER_PREFIX, "relay", 42), host)
         self.assertEqual(
-            validate_marker(device, DEVICE_MARKER_PREFIX, "relay", 42, ("protocol_v1=true",)),
+            validate_marker(
+                device,
+                DEVICE_MARKER_PREFIX,
+                "relay",
+                42,
+                ("protocol_v1=true", "lifecycle_store=test_isolated"),
+            ),
             device,
         )
         for broken in (
