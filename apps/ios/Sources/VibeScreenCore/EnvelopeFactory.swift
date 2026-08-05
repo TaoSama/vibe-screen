@@ -70,6 +70,46 @@ public struct EnvelopeFactory: Sendable {
         return envelope
     }
 
+    public mutating func ping(
+        sequence: UInt64,
+        sessionID: Data,
+        sessionEpoch: UInt64
+    ) -> VSEnvelope {
+        var ping = VSPing()
+        ping.sequence = sequence
+        var envelope = baseEnvelope(sessionID: sessionID, sessionEpoch: sessionEpoch)
+        envelope.ping = ping
+        return envelope
+    }
+
+    public mutating func pong(
+        sequence: UInt64,
+        correlationID: UInt64,
+        sessionID: Data,
+        sessionEpoch: UInt64
+    ) -> VSEnvelope {
+        var pong = VSPong()
+        pong.sequence = sequence
+        var envelope = baseEnvelope(sessionID: sessionID, sessionEpoch: sessionEpoch)
+        envelope.correlationID = correlationID
+        envelope.pong = pong
+        return envelope
+    }
+
+    public mutating func disconnectNotice(
+        reasonCode: String,
+        mayResume: Bool,
+        sessionID: Data,
+        sessionEpoch: UInt64
+    ) -> VSEnvelope {
+        var notice = VSDisconnectNotice()
+        notice.reasonCode = reasonCode
+        notice.mayResume = mayResume
+        var envelope = baseEnvelope(sessionID: sessionID, sessionEpoch: sessionEpoch)
+        envelope.disconnectNotice = notice
+        return envelope
+    }
+
     public mutating func startExistingDisplay(
         displayID: String,
         sessionID: Data,

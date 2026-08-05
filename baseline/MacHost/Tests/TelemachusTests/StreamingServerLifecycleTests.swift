@@ -195,6 +195,82 @@ final class StreamingServerLifecycleTests: XCTestCase {
         wait(for: [disconnected], timeout: 2)
     }
 
+    func testProtocolV1UpgradeInvalidatesPendingLegacyCodecCompletion() throws {
+        let port = testPort(offset: 8)
+        let server = StreamingServer(port: port)
+        defer { server.stop() }
+
+        let legacyNegotiationStarted = expectation(description: "legacy codec negotiation started")
+        let completionLock = NSLock()
+        var legacyCompletion: ((NegotiatedDisplayConfiguration?) -> Void)?
+        server.onCodecNegotiated = { _, _, completion in
+            completionLock.withLock { legacyCompletion = completion }
+            legacyNegotiationStarted.fulfill()
+        }
+        let incorrectlyConnected = expectation(description: "stale legacy completion connected")
+        incorrectlyConnected.isInverted = true
+        server.onClientConnected = { _ in incorrectlyConnected.fulfill() }
+        try server.start()
+
+        let client = try readyClient(port: port)
+        defer { client.cancel() }
+        wait(for: [legacyNegotiationStarted], timeout: 2)
+
+        let upgradeAcknowledged = expectation(description: "protocol v1 upgrade acknowledged")
+        client.receive(minimumIncompleteLength: 2, maximumLength: 2) { data, _, _, error in
+            XCTAssertNil(error)
+            XCTAssertEqual(data, ProtocolV1Upgrade.acknowledgement)
+            upgradeAcknowledged.fulfill()
+        }
+        client.send(
+            content: Data([ProtocolV1Upgrade.offer]),
+            completion: .contentProcessed { error in XCTAssertNil(error) }
+        )
+        wait(for: [upgradeAcknowledged], timeout: 2)
+
+        let completion = completionLock.withLock { legacyCompletion }
+        completion?(NegotiatedDisplayConfiguration(width: 1_920, height: 1_080, rotation: 0))
+        wait(for: [incorrectlyConnected], timeout: 0.25)
+    }
+
+    func testWirelessProtocolUpgradeAcceptsOfferAfterLANRoundTripDelay() throws {
+        let port = testPort(offset: 9)
+        let token = Data(repeating: 0x91, count: 32)
+        let server = StreamingServer(port: port, mode: .wireless(authToken: token))
+        defer { server.stop() }
+        try server.start()
+
+        let client = try readyClient(port: port)
+        defer { client.cancel() }
+        let authenticated = expectation(description: "wireless authentication response")
+        client.receive(minimumIncompleteLength: 5, maximumLength: 5) { data, _, _, error in
+            XCTAssertNil(error)
+            XCTAssertEqual(data, HandshakeCodec.encodeResponse(status: .ok))
+            authenticated.fulfill()
+        }
+        client.send(
+            content: handshakeRequest(token: token, name: "Delayed iOS"),
+            completion: .contentProcessed { error in XCTAssertNil(error) }
+        )
+        wait(for: [authenticated], timeout: 2)
+
+        let delayElapsed = expectation(description: "representative LAN scheduling delay")
+        queue.asyncAfter(deadline: .now() + .milliseconds(300)) { delayElapsed.fulfill() }
+        wait(for: [delayElapsed], timeout: 1)
+
+        let upgraded = expectation(description: "delayed protocol v1 offer accepted")
+        client.receive(minimumIncompleteLength: 2, maximumLength: 2) { data, _, _, error in
+            XCTAssertNil(error)
+            XCTAssertEqual(data, ProtocolV1Upgrade.acknowledgement)
+            upgraded.fulfill()
+        }
+        client.send(
+            content: Data([ProtocolV1Upgrade.offer]),
+            completion: .contentProcessed { error in XCTAssertNil(error) }
+        )
+        wait(for: [upgraded], timeout: 2)
+    }
+
     private func readyClient(port: UInt16) throws -> NWConnection {
         let ready = expectation(description: "client ready")
         var failure: Error?

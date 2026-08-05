@@ -110,6 +110,11 @@ final class ClientCallbackGenerationGate {
 
 class StreamingServer: EncodedFrameSink {
     private static let networkQueueKey = DispatchSpecificKey<ObjectIdentifier>()
+    // Wireless admission adds a full authentication round trip before the
+    // client can offer Protocol v1. Keep the legacy fallback bounded while
+    // allowing normal LAN scheduling jitter; USB has no authentication hop.
+    private static let usbProtocolUpgradeGraceMilliseconds = 100
+    private static let wirelessProtocolUpgradeGraceMilliseconds = 500
     private enum ConnectionProtocolMode: Equatable {
         case legacy
         case protocolV1
@@ -449,7 +454,11 @@ class StreamingServer: EncodedFrameSink {
         // Give new clients a short chance to opt in before the first frame.
         // Legacy clients send no capability message, so we continue shortly
         // after this window with the old frame type.
-        networkQueue.asyncAfter(deadline: .now() + .milliseconds(100)) { [weak self, weak conn] in
+        let upgradeGraceMilliseconds = isWireless
+            ? Self.wirelessProtocolUpgradeGraceMilliseconds
+            : Self.usbProtocolUpgradeGraceMilliseconds
+        networkQueue.asyncAfter(deadline: .now() + .milliseconds(upgradeGraceMilliseconds)) {
+            [weak self, weak conn] in
             guard let self = self, let conn = conn else { return }
             self.requestProtocolStartup(on: conn, generation: generation)
         }
@@ -559,6 +568,7 @@ class StreamingServer: EncodedFrameSink {
                 guard self.connection === conn,
                       self.activeConnectionGeneration == generation,
                       self.codecNegotiationGeneration == generation,
+                      self.connectionProtocolMode == .legacy,
                       !self.isStopped else { return }
                 self.codecNegotiationGeneration = nil
                 guard let configuration else {
@@ -595,6 +605,7 @@ class StreamingServer: EncodedFrameSink {
     ) {
         guard connection === conn,
               activeConnectionGeneration == generation,
+              connectionProtocolMode == .legacy,
               !isStopped,
               !connectionReady else { return }
 
@@ -1058,6 +1069,7 @@ class StreamingServer: EncodedFrameSink {
               activeConnectionGeneration == generation,
               connectionProtocolMode == .legacy,
               !connectionReady else { return }
+        codecNegotiationGeneration = nil
         connectionProtocolMode = .protocolV1
         protocolV1Framer = ProtocolV1Framer()
         let sessionID: Data = withUnsafeBytes(of: UUID().uuid) { Data($0) }

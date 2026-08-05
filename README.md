@@ -24,7 +24,8 @@ platform scaffolding under active development.
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; authenticated but not encrypted |
 | Protocol v1 | Baseline host/client main-session integration and cross-platform offline gates pass; real-device acceptance pending |
-| HarmonyOS/iOS/Internet | In development; not part of the current runnable baseline |
+| iOS trusted LAN | Core client interoperates with the baseline MacHost on TCP `54321` in a real two-process loopback; Simulator UI and device acceptance remain gated |
+| HarmonyOS/Internet | In development; not part of the current runnable baseline |
 
 ## Quick start
 
@@ -330,15 +331,27 @@ network quality may increase it.
   negotiation, multi-display routing, H.264/HEVC decode, PCM audio, explicit
   clipboard, bounded verified files, epoch filtering, and native input are
   implemented and core-self-tested.
+- The trusted-LAN iOS Core client now interoperates with the baseline MacHost
+  on TCP `54321`: authenticated `SSWA`/`SSWR` admission and the `0D` upgrade
+  lead into the Protocol v1 main session, with Hello/capability negotiation,
+  display list/start, video-config acknowledgement, media framing,
+  ping/pong, display/stream-targeted touch, protocol error, and disconnect
+  covered by a real two-process loopback gate.
+- The iOS app serializes every outbound control envelope through a
+  session-owner-scoped FIFO, rejects old connection/decoder deliveries, gates
+  each stream on its sent video-config acknowledgement and exact media epochs,
+  fragments, and frame sequence, and closes half-open sessions after a bounded
+  Pong miss budget.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
   Wake-on-LAN, and deny-wins managed configuration.
 - The unsigned app has built successfully with the iOS Simulator SDK in CI.
-  Simulator test execution, unsigned device archive, signing, iPhone/iPad
-  installation, host interoperability, host-side advanced adapters,
-  AVAudioEngine playback, HDR output, and all advanced real-device behavior
-  remain separate gates; see the
+  The iPhone Simulator XCTest and unsigned archive gates pass on the current
+  interoperability commit. Signing, iPhone/iPad installation, hardware
+  VideoToolbox behavior, host-side advanced adapters, AVAudioEngine playback,
+  HDR output, Internet transport, and all advanced real-device behavior remain
+  separate gates; see the
   [evidence record](docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md).
 
 ## Device Strategy
