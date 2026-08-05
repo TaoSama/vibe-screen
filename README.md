@@ -336,8 +336,8 @@ network quality may increase it.
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
   Wake-on-LAN, and deny-wins managed configuration.
 - The unsigned app has built successfully with the iOS Simulator SDK in CI.
-  The newly added iPhone Simulator XCTest and unsigned archive gates require a
-  new GitHub Actions result. Signing, iPhone/iPad installation, hardware
+  The iPhone Simulator XCTest and unsigned archive gates pass on the current
+  interoperability commit. Signing, iPhone/iPad installation, hardware
   VideoToolbox behavior, host-side advanced adapters, AVAudioEngine playback,
   HDR output, Internet transport, and all advanced real-device behavior remain
   separate gates; see the
