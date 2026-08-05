@@ -188,7 +188,7 @@ named by that run:
   24 vectors, including direction reflection and global revocation sequencing;
 - Android clean `./gradlew --no-daemon clean testDebugUnitTest lintDebug
   assembleDebug compileDebugAndroidTestKotlin auditReleaseDependencies` passed
-  with 236 JVM tests and zero failures/errors/skips. The security tests cover
+  with 255 JVM tests and zero failures/errors/skips. The security tests cover
   paired-host lease signature mutation, reserved maximum epochs, stale durable
   cipher epochs, monotonic identity reauthorization, restart-safe credential and
   revocation cleanup, best-effort close aggregation, and generation-scoped route
@@ -200,6 +200,10 @@ named by that run:
   heartbeat and touch disabled. Initial and runtime rotation values reach the
   product decoder configuration. `compileDebugAndroidTestKotlin` and the debug
   APK build passed.
+  Authenticated revocation tests additionally cover durable pending admission
+  before close, close while formal tombstone persistence is in flight, formal
+  persistence failure followed by restart/retry, pending-barrier failure with a
+  process-scoped owner recreation, and successful retry through final close.
   `processReleaseMainManifest` also passed and the merged release
   manifest sets `usesCleartextTraffic=false`;
 - Android `./gradlew auditReleaseDependencies`: passed the fixed AAR, Gson,

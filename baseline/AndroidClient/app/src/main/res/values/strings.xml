@@ -88,6 +88,7 @@
     <string name="internet_revoke_confirm_message">This closes the secure session and deletes the paired Mac secret, device identity key, session lease, and TURN/signaling credentials from this device. Pair again to reconnect.</string>
     <string name="internet_revoke_confirm_action">Revoke</string>
     <string name="internet_revoke_partial_failure">Session access was closed, but Android could not delete: %1$s. Retry revocation before pairing again.</string>
+    <string name="internet_revocation_quarantine">Secure revocation storage is unavailable. This session is quarantined; retry disconnect after storage recovers.</string>
     <string name="connection_checklist">Connection Checklist</string>
     <string name="developer_mode_enabled">Developer Mode enabled</string>
     <string name="usb_debugging_enabled">USB Debugging enabled</string>

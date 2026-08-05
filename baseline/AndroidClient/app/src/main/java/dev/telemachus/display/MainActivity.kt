@@ -43,6 +43,7 @@ import dev.telemachus.display.internet.InternetProductSessionState
 import dev.telemachus.display.internet.InternetProductRevocationStore
 import dev.telemachus.display.internet.InternetSessionProfileStore
 import dev.telemachus.display.internet.PeerRoute
+import dev.telemachus.display.internet.PendingRevocationBarrierException
 import dev.telemachus.display.internet.ProductInputPhase
 import dev.telemachus.display.internet.ProductTouchEvent
 import dev.telemachus.display.internet.ProductVideoCodec
@@ -84,7 +85,7 @@ class MainActivity : AppCompatActivity() {
         set(value) = videoDecoderRef.set(value)
     private val internetDeviceId by lazy { prefs.internetDeviceId }
     private val internetProfileStore by lazy { InternetSessionProfileStore(applicationContext) }
-    private val internetRevocationCoordinator = InternetProductRevocationCoordinator()
+    private val internetRevocationCoordinator = InternetProductRevocationCoordinator.processShared()
     private val internetStoredSessionFactory by lazy {
         AndroidStoredInternetSessionFactory(applicationContext, internetDeviceId)
     }
@@ -799,6 +800,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupInternetUi() {
+        QUARANTINED_INTERNET_SESSION.get()?.let { internetSession = it }
         binding.internetRouteToggleGroup.check(
             if (prefs.internetForceRelay) R.id.internetForceRelay else R.id.internetPreferDirect,
         )
@@ -839,9 +841,13 @@ class MainActivity : AppCompatActivity() {
             binding.internetErrorText.visibility = View.VISIBLE
         }
         refreshInternetProfileUi()
+        if (internetSession != null && internetRevocationCoordinator.hasActiveReservation()) {
+            binding.internetDisconnectButton.visibility = View.VISIBLE
+        }
     }
 
     private fun showInternetProfileImportDialog() {
+        if (!allowInternetCredentialMutation()) return
         val input =
             EditText(this).apply {
                 hint = getString(R.string.internet_import_hint)
@@ -867,6 +873,7 @@ class MainActivity : AppCompatActivity() {
             dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
+                    check(allowInternetCredentialMutation()) { "Internet revocation quarantine is active" }
                     internetProfileStore.import(input.text.toString(), internetStoredSessionFactory)
                     input.text?.clear()
                     requiredFreshInternetEpoch = 0L
@@ -883,11 +890,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun launchInternetScanner() {
+        if (!allowInternetCredentialMutation()) return
         startActivityForResult(Intent(this, QRScannerActivity::class.java), REQ_INTERNET_SCAN)
     }
 
     private fun beginInternetPairing(encodedUrl: String) {
         try {
+            check(allowInternetCredentialMutation()) { "Internet revocation quarantine is active" }
             internetStoredSessionFactory.retryPendingPairingPersistenceCleanup(
                 internetProfileStore::removePairingBinding,
             )
@@ -1020,6 +1029,7 @@ class MainActivity : AppCompatActivity() {
                 profile.authoritativeSessionEpoch > requiredFreshInternetEpoch &&
                 internetSession == null
         binding.internetRevokeButton.isEnabled = profile != null || internetProfileStore.hasVerifiedPairing()
+        allowInternetCredentialMutation()
     }
 
     private fun showConnectedStreamUi() {
@@ -1839,6 +1849,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun connectInternet() {
+        if (!allowInternetCredentialMutation()) return
         if (internetSession != null || connectionAttemptInProgress) return
         val lease =
             try {
@@ -1980,11 +1991,15 @@ class MainActivity : AppCompatActivity() {
                     codec,
                     callbacks,
                     object : InternetProductRevocationStore {
+                        override fun persistPendingAuthenticatedRevocation(pairingIdentifier: String, reason: String) {
+                            internetProfileStore.persistPendingAuthenticatedRevocation(pairingIdentifier, reason)
+                        }
+
                         override fun persistAuthenticatedRevocation(pairingIdentifier: String, reason: String) {
                             internetProfileStore.markAuthenticatedRevoked(pairingIdentifier, reason)
                         }
 
-                        override fun isAuthenticatedRevoked(pairingIdentifier: String): Boolean =
+                        override fun isAdmissionBlocked(pairingIdentifier: String): Boolean =
                             internetProfileStore.isRevoked(pairingIdentifier)
                     },
                     internetRevocationCoordinator,
@@ -2129,14 +2144,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun disconnectInternet(showIdle: Boolean) {
-        ++internetGeneration
         val tickJob = internetTickJob
-        internetTickJob = null
         val session = internetSession
-        internetSession = null
         val networkMonitor = internetNetworkMonitor
-        internetNetworkMonitor = null
         val decoder = videoDecoder
+        var sessionCloseFailure: Throwable? = null
+        try {
+            session?.close()
+        } catch (failure: PendingRevocationBarrierException) {
+            val recoveredReason = session?.retryPendingRevocationBarrier()
+            if (recoveredReason != null) {
+                disconnectInternet(showIdle = false)
+                revokeInternetPairing(recoveredReason, tombstonePersisted = true)
+                return
+            }
+            if (session?.hasUndurableRevocationBarrier() != true) {
+                disconnectInternet(showIdle)
+                return
+            }
+            quarantineInternetSession(tickJob, networkMonitor, decoder, failure)
+            return
+        } catch (failure: Throwable) {
+            sessionCloseFailure = failure
+        }
+        ++internetGeneration
+        internetTickJob = null
+        internetSession = null
+        QUARANTINED_INTERNET_SESSION.compareAndSet(session, null)
+        internetNetworkMonitor = null
         videoDecoder = null
         connectionAttemptInProgress = false
         internetRoute = null
@@ -2146,8 +2181,8 @@ class MainActivity : AppCompatActivity() {
         displayHeight = 0
         isConnected = false
         runBestEffort(
+            { sessionCloseFailure?.let { throw it } },
             { tickJob?.cancel() },
-            { session?.close() },
             { networkMonitor?.close() },
             { decoder?.release() },
             {
@@ -2163,6 +2198,63 @@ class MainActivity : AppCompatActivity() {
                 }
             },
         )
+    }
+
+    private fun quarantineInternetSession(
+        tickJob: kotlinx.coroutines.Job?,
+        networkMonitor: AndroidNetworkMonitor?,
+        decoder: VideoDecoder?,
+        failure: PendingRevocationBarrierException,
+    ) {
+        internetTickJob = null
+        internetNetworkMonitor = null
+        videoDecoder = null
+        connectionAttemptInProgress = false
+        internetRoute = null
+        activeInternetInputIds.clear()
+        internetVideoConfiguration = null
+        displayWidth = 0
+        displayHeight = 0
+        displayRotation = 0
+        isConnected = false
+        val quarantinedSession = requireNotNull(internetSession)
+        check(
+            QUARANTINED_INTERNET_SESSION.compareAndSet(null, quarantinedSession) ||
+                QUARANTINED_INTERNET_SESSION.get() === quarantinedSession,
+        ) { "Another Internet session already owns the process quarantine" }
+        listOf<() -> Unit>(
+            { tickJob?.cancel() },
+            { networkMonitor?.close() },
+            { decoder?.release() },
+        ).forEach { cleanup ->
+            try {
+                cleanup()
+            } catch (cleanupFailure: Throwable) {
+                failure.addSuppressed(cleanupFailure)
+            }
+        }
+        binding.internetConnectButton.isEnabled = false
+        binding.internetImportProfileButton.isEnabled = false
+        binding.internetScanProfileButton.isEnabled = false
+        binding.internetDisconnectButton.visibility = View.VISIBLE
+        setStreamingWindowState(false)
+        showDisconnectedStreamUi()
+        android.util.Log.e(INTERNET_LOG_TAG, "Internet session retained behind a failed durable revocation barrier", failure)
+    }
+
+    private fun allowInternetCredentialMutation(): Boolean {
+        val pairingIdentifier = internetProfileStore.verifiedPairingIdentifier()
+        val quarantined =
+            internetRevocationCoordinator.hasActiveReservation() &&
+                (pairingIdentifier == null || !internetProfileStore.isRevoked(pairingIdentifier))
+        if (quarantined && ::binding.isInitialized) {
+            binding.internetConnectButton.isEnabled = false
+            binding.internetImportProfileButton.isEnabled = false
+            binding.internetScanProfileButton.isEnabled = false
+            binding.internetErrorText.setText(R.string.internet_revocation_quarantine)
+            binding.internetErrorText.visibility = View.VISIBLE
+        }
+        return !quarantined
     }
 
     private fun revokeInternetPairing(reason: String, tombstonePersisted: Boolean = false) {
@@ -2200,6 +2292,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun retryPendingInternetRevocationCleanup(): List<String> {
         return try {
+            internetProfileStore.retryPendingAuthenticatedRevocation()
             val result =
                 internetProfileStore.retryPendingRevocationCleanup(
                     deletePairingSecret = internetStoredSessionFactory::removePairingSecrets,
@@ -2651,6 +2744,7 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_INTERNET_CAMERA = 1102
         private const val INTERNET_TICK_INTERVAL_MS = 250L
         private const val INTERNET_LOG_TAG = "VibeInternet"
+        private val QUARANTINED_INTERNET_SESSION = AtomicReference<InternetProductSession?>()
     }
 
     // ==================== Connection Checklist ====================

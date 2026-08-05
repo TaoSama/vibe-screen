@@ -124,11 +124,18 @@ interface InternetProductSessionCallbacks {
 }
 
 /** Persists authenticated revocation before UI notification or transport close. */
-fun interface InternetProductRevocationStore {
+interface InternetProductRevocationStore {
     fun persistAuthenticatedRevocation(pairingIdentifier: String, reason: String)
 
-    fun isAuthenticatedRevoked(pairingIdentifier: String): Boolean = false
+    /** Must durably block admission before this session can release its transport. */
+    fun persistPendingAuthenticatedRevocation(pairingIdentifier: String, reason: String)
+
+    /** Returns true for either a durable pending barrier or a completed tombstone. */
+    fun isAdmissionBlocked(pairingIdentifier: String): Boolean
 }
+
+class PendingRevocationBarrierException(cause: Throwable? = null) :
+    IllegalStateException("Cannot release the Internet session before pending revocation is durably persisted", cause)
 
 class InternetProductRevocationCoordinator {
     private val lock = Any()
@@ -153,7 +160,15 @@ class InternetProductRevocationCoordinator {
 
     fun isBlocked(pairingIdentifier: String): Boolean = synchronized(lock) { pairingIdentifier in blockedPairings }
 
+    fun hasActiveReservation(): Boolean = synchronized(lock) { reservations.isNotEmpty() }
+
     internal data class Reservation(val pairingIdentifier: String)
+
+    companion object {
+        private val PROCESS_SHARED = InternetProductRevocationCoordinator()
+
+        fun processShared(): InternetProductRevocationCoordinator = PROCESS_SHARED
+    }
 }
 
 internal data class InternetProductSessionTestHooks(
@@ -204,7 +219,7 @@ class InternetProductSession internal constructor(
     private val frameAssembler = ProductMediaFrameAssembler()
 
     init {
-        check(!revocationCoordinator.isBlocked(lease.pairingIdentifier) && !revocationStore.isAuthenticatedRevoked(lease.pairingIdentifier)) {
+        check(!revocationCoordinator.isBlocked(lease.pairingIdentifier) && !revocationStore.isAdmissionBlocked(lease.pairingIdentifier)) {
             "This authenticated pairing is revoked"
         }
     }
@@ -232,7 +247,7 @@ class InternetProductSession internal constructor(
                 check(state == InternetProductSessionState.IDLE) { "Product session has already started" }
                 check(
                     !revocationCoordinator.isBlocked(lease.pairingIdentifier) &&
-                        !revocationStore.isAuthenticatedRevoked(lease.pairingIdentifier),
+                        !revocationStore.isAdmissionBlocked(lease.pairingIdentifier),
                 ) {
                     "This authenticated pairing is revoked"
                 }
@@ -286,6 +301,7 @@ class InternetProductSession internal constructor(
             withLifecycleGate {
                 synchronized(lock) {
                     if (closed) return
+                    if (pendingRevocation?.durableBarrier == false) throw PendingRevocationBarrierException()
                     closed = true
                     invalidateTransportOwnerLocked()
                     true
@@ -298,6 +314,28 @@ class InternetProductSession internal constructor(
             )
         }
     }
+
+    /** Retries the only fallible durable step while retaining the process admission reservation. */
+    fun retryPendingRevocationBarrier(): String? {
+        val reservation =
+            withLifecycleGate {
+                val current = synchronized(lock) { pendingRevocation }
+                if (current == null || current.durableBarrier) return null
+                try {
+                    revocationStore.persistPendingAuthenticatedRevocation(lease.pairingIdentifier, current.reason)
+                    revocationCoordinator.commit(current.coordinatorReservation)
+                    synchronized(lock) { current.durableBarrier = true }
+                    current
+                } catch (_: Throwable) {
+                    null
+                }
+            } ?: return null
+        handleReservedRevocation(reservation, reservation.reason, notifyCallbacks = false)
+        return reservation.reason
+    }
+
+    fun hasUndurableRevocationBarrier(): Boolean =
+        synchronized(lock) { pendingRevocation?.durableBarrier == false }
 
     private fun handleTransportEvent(
         owner: TransportOwner,
@@ -370,7 +408,7 @@ class InternetProductSession internal constructor(
         testHooks.afterControlDecodeBeforeCommit()
         val revocation = decoded.message as? ProductControlMessage.Revoked
         if (revocation != null) {
-            val reservation = reserveAuthenticatedRevocation(owner, decoded) ?: return
+            val reservation = reserveAuthenticatedRevocation(owner, decoded, revocation.reasonCode) ?: return
             testHooks.afterRevocationReservedBeforePersist()
             handleReservedRevocation(reservation, revocation.reasonCode)
             return
@@ -422,8 +460,10 @@ class InternetProductSession internal constructor(
     private fun reserveAuthenticatedRevocation(
         owner: TransportOwner,
         decoded: DecodedProductControl,
+        reason: String,
     ): PendingRevocation? {
         var admissionFailure: Throwable? = null
+        var durableFailure: Throwable? = null
         var pending: PendingRevocation? = null
         withLifecycleGate lifecycle@{
             synchronized(lock) {
@@ -445,13 +485,27 @@ class InternetProductSession internal constructor(
                             admissionFailure = failure
                             return@synchronized
                         }
-                    pending = PendingRevocation(owner, coordinatorReservation)
+                    pending = PendingRevocation(owner, coordinatorReservation, reason)
                     pendingRevocation = pending
                     lastReceivedControlMessageId = decoded.messageId
                     invalidateTransportOwnerLocked()
                 }
             }
+            val reservation = pending
+            if (reservation != null) {
+                try {
+                    revocationStore.persistPendingAuthenticatedRevocation(lease.pairingIdentifier, reason)
+                    revocationCoordinator.commit(reservation.coordinatorReservation)
+                    synchronized(lock) { reservation.durableBarrier = true }
+                } catch (failure: Throwable) {
+                    durableFailure = IllegalStateException("Pending authenticated revocation could not be persisted", failure)
+                    synchronized(lock) { state = InternetProductSessionState.FAILED }
+                    callbacks.onStateChanged(InternetProductSessionState.FAILED)
+                    callbacks.onFailure(requireNotNull(durableFailure))
+                }
+            }
         }
+        if (durableFailure != null) return null
         admissionFailure?.let { failIfOwned(owner, it) }
         return pending
     }
@@ -768,12 +822,12 @@ class InternetProductSession internal constructor(
     private fun handleReservedRevocation(
         reservation: PendingRevocation,
         reason: String,
+        notifyCallbacks: Boolean = true,
     ) {
         var persistenceFailure: Throwable? = null
         try {
             revocationStore.persistAuthenticatedRevocation(lease.pairingIdentifier, reason)
             testHooks.afterRevocationPersistBeforeCommit()
-            revocationCoordinator.commit(reservation.coordinatorReservation)
         } catch (failure: Throwable) {
             persistenceFailure = IllegalStateException("Authenticated revocation could not be persisted", failure)
         }
@@ -789,11 +843,11 @@ class InternetProductSession internal constructor(
                     }
                 }
             }
-        if (notify) testHooks.afterRevocationStateCommitBeforeCallback()
+        if (notify && notifyCallbacks) testHooks.afterRevocationStateCommitBeforeCallback()
         runBestEffort(
             {
                 withLifecycleGate {
-                    if (notify && synchronized(lock) { !closed && state == InternetProductSessionState.FAILED }) {
+                    if (notifyCallbacks && notify && synchronized(lock) { !closed && state == InternetProductSessionState.FAILED }) {
                         callbacks.onStateChanged(InternetProductSessionState.FAILED)
                         if (synchronized(lock) { !closed && state == InternetProductSessionState.FAILED }) {
                             if (persistenceFailure == null) {
@@ -1010,10 +1064,13 @@ class InternetProductSession internal constructor(
         var effectCommitted = false
     }
 
-    private data class PendingRevocation(
+    private class PendingRevocation(
         val owner: TransportOwner,
         val coordinatorReservation: InternetProductRevocationCoordinator.Reservation,
-    )
+        val reason: String,
+    ) {
+        var durableBarrier = false
+    }
 
     companion object {
         private const val MIN_HEARTBEAT_INTERVAL_MS = 100L
@@ -1045,7 +1102,7 @@ class InternetProductSession internal constructor(
             }
             check(
                 !revocationCoordinator.isBlocked(lease.pairingIdentifier) &&
-                    !revocationStore.isAuthenticatedRevoked(lease.pairingIdentifier),
+                    !revocationStore.isAdmissionBlocked(lease.pairingIdentifier),
             ) { "This authenticated pairing is revoked" }
             val boundContext = lease.boundTranscriptContext(localDeviceId)
             val stored =

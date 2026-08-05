@@ -747,7 +747,7 @@ class InternetProductSessionTest {
     }
 
     @Test
-    fun revocationReservationBlocksFreshAndNewSessionUntilTombstoneCommits() {
+    fun durablePendingRevocationAllowsCloseWhileTombstonePersistIsInFlight() {
         val persistEntered = CountDownLatch(1)
         val releasePersist = CountDownLatch(1)
         val store =
@@ -770,7 +770,7 @@ class InternetProductSessionTest {
         activateWithVideo(session, peer, monitor)
         val sentBeforeRevocation = peer.control.size
 
-        val executor = Executors.newFixedThreadPool(2)
+        val executor = Executors.newFixedThreadPool(3)
         val revoke = executor.submit { peer.receive(revocationEnvelope(4)) }
         assertTrue(persistEntered.await(2, TimeUnit.SECONDS))
         assertFalse(store.revoked.get())
@@ -788,6 +788,9 @@ class InternetProductSessionTest {
                 revocationStore = store,
             )
         }
+        val close = executor.submit { session.close() }
+        close.get(2, TimeUnit.SECONDS)
+        assertEquals(InternetProductSessionState.CLOSED, session.state)
         val fresh = executor.submit { monitor.available("cellular") }
         fresh.get(2, TimeUnit.SECONDS)
         assertTrue(callbacks.freshReasons.isEmpty())
@@ -798,7 +801,91 @@ class InternetProductSessionTest {
         assertTrue(store.revoked.get())
         assertEquals(InternetProductSessionState.CLOSED, session.state)
         assertTrue(callbacks.freshReasons.isEmpty())
-        assertEquals(1, callbacks.states.count { it == InternetProductSessionState.FAILED })
+        assertEquals(0, callbacks.states.count { it == InternetProductSessionState.FAILED })
+    }
+
+    @Test
+    fun pendingRevocationPersistenceFailureRefusesTransportCloseFailClosed() {
+        val store =
+            ProductRevocationStore(
+                beforePending = { throw IllegalStateException("pending storage unavailable") },
+            )
+        val coordinator = InternetProductRevocationCoordinator()
+        val peer = ProductFakePeerEngine()
+        val callbacks = ProductCallbacks()
+        val session =
+            session(
+                peer,
+                ProductFakeNetworkMonitor(),
+                callbacks,
+                revocationCoordinator = coordinator,
+                revocationStore = store,
+            )
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        peer.receive(revocationEnvelope(3))
+
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals(1, callbacks.failures.size)
+        assertThrows(PendingRevocationBarrierException::class.java) { session.close() }
+        assertEquals(0, peer.closeCalls)
+        assertThrows(IllegalStateException::class.java) {
+            session(
+                ProductFakePeerEngine(),
+                ProductFakeNetworkMonitor(),
+                ProductCallbacks(),
+                revocationCoordinator = coordinator,
+                revocationStore = store,
+            )
+        }
+    }
+
+    @Test
+    fun pendingBarrierFailureSurvivesOwnerRecreationAndCanRetryToClose() {
+        val storageAvailable = AtomicBoolean(false)
+        val store =
+            ProductRevocationStore(
+                beforePending = {
+                    check(storageAvailable.get()) { "pending storage unavailable" }
+                },
+            )
+        val processCoordinator = InternetProductRevocationCoordinator()
+        val peer = ProductFakePeerEngine()
+        val session =
+            session(
+                peer,
+                ProductFakeNetworkMonitor(),
+                ProductCallbacks(),
+                revocationCoordinator = processCoordinator,
+                revocationStore = store,
+            )
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        peer.receive(revocationEnvelope(3))
+
+        assertTrue(processCoordinator.hasActiveReservation())
+        assertThrows(IllegalStateException::class.java) {
+            session(
+                ProductFakePeerEngine(),
+                ProductFakeNetworkMonitor(),
+                ProductCallbacks(),
+                revocationCoordinator = processCoordinator,
+                revocationStore = store,
+            )
+        }
+        storageAvailable.set(true)
+        assertEquals("user_revoked", session.retryPendingRevocationBarrier())
+        assertFalse(processCoordinator.hasActiveReservation())
+        assertTrue(store.revoked.get())
+        assertFalse(store.pending.get())
+        assertEquals(InternetProductSessionState.CLOSED, session.state)
+        assertEquals(1, peer.closeCalls)
     }
 
     @Test
@@ -931,12 +1018,12 @@ class InternetProductSessionTest {
         val callbacks = ProductCallbacks()
         val events = mutableListOf<String>()
         callbacks.revocationEvents = events
-        val session =
-            session(peer, ProductFakeNetworkMonitor(), callbacks) { pairingIdentifier, reason ->
-                assertEquals("pair-1", pairingIdentifier)
-                assertEquals("user_revoked", reason)
+        val store =
+            ProductRevocationStore {
                 events += "persisted"
             }
+        val session =
+            session(peer, ProductFakeNetworkMonitor(), callbacks, revocationStore = store)
         session.start()
         peer.observer.onConnected(PeerRoute.DIRECT)
         peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
@@ -954,13 +1041,12 @@ class InternetProductSessionTest {
     }
 
     @Test
-    fun closesWithoutRevocationCallbackWhenTombstonePersistenceFails() {
+    fun tombstoneFailureSurvivesRestartBlocksAdmissionAndRetriesSuccessfully() {
         val peer = ProductFakePeerEngine()
         val callbacks = ProductCallbacks()
+        val store = ProductRevocationStore().apply { failCompletionWith(IllegalStateException("disk unavailable")) }
         val session =
-            session(peer, ProductFakeNetworkMonitor(), callbacks) { _, _ ->
-                throw IllegalStateException("disk unavailable")
-            }
+            session(peer, ProductFakeNetworkMonitor(), callbacks, revocationStore = store)
         session.start()
         peer.observer.onConnected(PeerRoute.DIRECT)
         peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
@@ -976,6 +1062,29 @@ class InternetProductSessionTest {
         assertEquals(1, callbacks.failures.size)
         assertEquals(InternetProductSessionState.CLOSED, session.state)
         assertEquals(1, peer.closeCalls)
+        assertTrue(store.pending.get())
+        assertFalse(store.revoked.get())
+
+        val restartedStore = store.restarted()
+        assertThrows(IllegalStateException::class.java) {
+            session(
+                ProductFakePeerEngine(),
+                ProductFakeNetworkMonitor(),
+                ProductCallbacks(),
+                revocationStore = restartedStore,
+            )
+        }
+        restartedStore.retryPending("pair-1", "user_revoked")
+        assertFalse(restartedStore.pending.get())
+        assertTrue(restartedStore.revoked.get())
+        assertThrows(IllegalStateException::class.java) {
+            session(
+                ProductFakePeerEngine(),
+                ProductFakeNetworkMonitor(),
+                ProductCallbacks(),
+                revocationStore = restartedStore,
+            )
+        }
     }
 
     @Test
@@ -1003,7 +1112,7 @@ class InternetProductSessionTest {
         clock: ProductFakeClock = ProductFakeClock(0),
         testHooks: InternetProductSessionTestHooks = InternetProductSessionTestHooks(),
         revocationCoordinator: InternetProductRevocationCoordinator = InternetProductRevocationCoordinator(),
-        revocationStore: InternetProductRevocationStore = InternetProductRevocationStore { _, _ -> },
+        revocationStore: InternetProductRevocationStore = ProductRevocationStore(),
     ) = InternetProductSession(
         lease = lease,
         configuration =
@@ -1103,16 +1212,47 @@ private class ProductFakeClock(var now: Long) : MonotonicClock {
 private fun String.hex(): ByteArray = chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
 private class ProductRevocationStore(
-    private val beforePersist: () -> Unit = {},
+    private val backing: ProductRevocationBacking = ProductRevocationBacking(),
+    private val beforePending: () -> Unit = {},
+    private val beforeComplete: () -> Unit = {},
 ) : InternetProductRevocationStore {
-    val revoked = AtomicBoolean(false)
+    private val completionFailure = AtomicReference<Throwable?>()
+    val revoked: AtomicBoolean get() = backing.revoked
+    val pending: AtomicBoolean get() = backing.pending
 
-    override fun persistAuthenticatedRevocation(pairingIdentifier: String, reason: String) {
-        beforePersist()
-        revoked.set(true)
+    override fun persistPendingAuthenticatedRevocation(pairingIdentifier: String, reason: String) {
+        beforePending()
+        backing.pending.set(true)
     }
 
-    override fun isAuthenticatedRevoked(pairingIdentifier: String): Boolean = revoked.get()
+    override fun persistAuthenticatedRevocation(pairingIdentifier: String, reason: String) {
+        beforeComplete()
+        completionFailure.get()?.let { throw it }
+        check(backing.pending.get()) { "pending revocation is required" }
+        backing.revoked.set(true)
+        backing.pending.set(false)
+    }
+
+    override fun isAdmissionBlocked(pairingIdentifier: String): Boolean = backing.pending.get() || backing.revoked.get()
+
+    fun failCompletionWith(failure: Throwable) {
+        completionFailure.set(failure)
+    }
+
+    fun allowCompletion() {
+        completionFailure.set(null)
+    }
+
+    fun restarted(): ProductRevocationStore = ProductRevocationStore(backing = backing)
+
+    fun retryPending(pairingIdentifier: String, reason: String) {
+        persistAuthenticatedRevocation(pairingIdentifier, reason)
+    }
+}
+
+private class ProductRevocationBacking {
+    val pending = AtomicBoolean(false)
+    val revoked = AtomicBoolean(false)
 }
 
 private class ProductCallbacks : InternetProductSessionCallbacks {
