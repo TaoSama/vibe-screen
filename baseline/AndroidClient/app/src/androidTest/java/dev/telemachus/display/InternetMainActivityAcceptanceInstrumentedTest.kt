@@ -14,7 +14,6 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.FailureHandler
-import androidx.test.espresso.Root
 import androidx.test.espresso.UiController
 import androidx.test.espresso.ViewAction
 import androidx.test.espresso.action.ViewActions.click
@@ -256,7 +255,6 @@ class InternetMainActivityAcceptanceInstrumentedTest {
 
         val request = AtomicReference<String>()
         onView(PairingRequestViewMatcher())
-            .inRoot(SecureDialogRootMatcher())
             .perform(CaptureSensitiveTextAction(request))
         return InternetPairingRequest.parse(checkNotNull(request.get()))
     }
@@ -264,11 +262,9 @@ class InternetMainActivityAcceptanceInstrumentedTest {
     private fun completePairing(acceptance: InternetPairingAcceptance) {
         acceptanceStage = "pairing_acceptance_input"
         onView(withHint(R.string.internet_pairing_acceptance_hint))
-            .inRoot(SecureDialogRootMatcher())
             .perform(SetSensitiveTextAction(acceptance.encode()))
         acceptanceStage = "pairing_acceptance_submit"
         onView(withHint(R.string.internet_pairing_acceptance_hint))
-            .inRoot(SecureDialogRootMatcher())
             .perform(ClickDialogPositiveAction())
         acceptanceStage = "pairing_acceptance_result"
         onView(withId(R.id.internetRevokeButton)).check(matches(isEnabled()))
@@ -279,11 +275,9 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         onView(withId(R.id.internetImportProfileButton)).perform(scrollTo(), click())
         acceptanceStage = "lease_import_input"
         onView(withHint(R.string.internet_import_hint))
-            .inRoot(SecureDialogRootMatcher())
             .perform(SetSensitiveTextAction(encodedLease))
         acceptanceStage = "lease_import_submit"
         onView(withHint(R.string.internet_import_hint))
-            .inRoot(SecureDialogRootMatcher())
             .perform(ClickDialogPositiveAction())
         acceptanceStage = "lease_import_result"
     }
@@ -319,23 +313,13 @@ private class PairingRequestViewMatcher : TypeSafeMatcher<View>() {
         view is TextView && runCatching { InternetPairingRequest.parse(view.text.toString()) }.isSuccess
 }
 
-private class SecureDialogRootMatcher : TypeSafeMatcher<Root>() {
-    override fun describeTo(description: Description) {
-        description.appendText("dialog protected by FLAG_SECURE")
-    }
-
-    override fun matchesSafely(root: Root): Boolean {
-        val parameters = root.decorView.rootView.layoutParams as? WindowManager.LayoutParams ?: return false
-        return parameters.flags and WindowManager.LayoutParams.FLAG_SECURE != 0
-    }
-}
-
 private class CaptureSensitiveTextAction(
     private val destination: AtomicReference<String>,
 ) : ViewAction {
     override fun getConstraints() = allOf(isDisplayed())
     override fun getDescription() = "capture protected text without logging it"
     override fun perform(uiController: UiController, view: View) {
+        requireSecureWindow(view)
         destination.set((view as TextView).text.toString())
         uiController.loopMainThreadUntilIdle()
     }
@@ -347,6 +331,7 @@ private class SetSensitiveTextAction(
     override fun getConstraints() = allOf(isDisplayed(), isEnabled())
     override fun getDescription() = "enter protected test credential"
     override fun perform(uiController: UiController, view: View) {
+        requireSecureWindow(view)
         (view as EditText).setText(value)
         view.setSelection(value.length)
         uiController.loopMainThreadUntilIdle()
@@ -357,9 +342,17 @@ private class ClickDialogPositiveAction : ViewAction {
     override fun getConstraints() = allOf(isDisplayed(), isEnabled())
     override fun getDescription() = "click the positive action in the protected dialog"
     override fun perform(uiController: UiController, view: View) {
+        requireSecureWindow(view)
         val button = checkNotNull(view.rootView.findViewById<View>(android.R.id.button1))
         check(button.performClick()) { "Protected dialog action was not handled" }
         uiController.loopMainThreadUntilIdle()
+    }
+}
+
+private fun requireSecureWindow(view: View) {
+    val parameters = checkNotNull(view.rootView.layoutParams as? WindowManager.LayoutParams)
+    check(parameters.flags and WindowManager.LayoutParams.FLAG_SECURE != 0) {
+        "Protected dialog is missing FLAG_SECURE"
     }
 }
 
