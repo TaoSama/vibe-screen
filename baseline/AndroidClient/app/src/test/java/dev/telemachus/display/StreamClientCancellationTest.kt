@@ -471,6 +471,12 @@ class StreamClientCancellationTest {
     ) : Socket() {
         override fun getOutputStream(): OutputStream =
             FailAfterBytesOutputStream(super.getOutputStream(), allowedBytes)
+
+        override fun setSoTimeout(timeout: Int) {
+            // This test exercises writer/EOF ordering, not the 250 ms upgrade
+            // timeout. Keep CI scheduling stalls out of the fallback branch.
+            super.setSoTimeout(maxOf(timeout, 2_000))
+        }
     }
 
     private class FailAfterBytesOutputStream(

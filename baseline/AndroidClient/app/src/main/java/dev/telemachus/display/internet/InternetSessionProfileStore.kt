@@ -2,6 +2,7 @@ package dev.telemachus.display.internet
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -86,16 +87,68 @@ internal class DeferredSecretCleanupPending {
     @Synchronized fun snapshot(): Set<String> = values.toSet()
 }
 
+internal interface InternetProfilePreferences {
+    fun getString(key: String, defaultValue: String?): String?
+    fun getStringSet(key: String, defaultValue: Set<String>?): Set<String>?
+    fun edit(): InternetProfilePreferencesEditor
+}
+
+internal interface InternetProfilePreferencesEditor {
+    fun putString(key: String, value: String): InternetProfilePreferencesEditor
+    fun putStringSet(key: String, value: Set<String>): InternetProfilePreferencesEditor
+    fun remove(key: String): InternetProfilePreferencesEditor
+    fun commit(): Boolean
+}
+
+private class AndroidInternetProfilePreferences(
+    private val delegate: SharedPreferences,
+) : InternetProfilePreferences {
+    override fun getString(key: String, defaultValue: String?): String? = delegate.getString(key, defaultValue)
+    override fun getStringSet(key: String, defaultValue: Set<String>?): Set<String>? = delegate.getStringSet(key, defaultValue)
+    override fun edit(): InternetProfilePreferencesEditor = AndroidInternetProfilePreferencesEditor(delegate.edit())
+}
+
+private class AndroidInternetProfilePreferencesEditor(
+    private val delegate: SharedPreferences.Editor,
+) : InternetProfilePreferencesEditor {
+    override fun putString(key: String, value: String): InternetProfilePreferencesEditor = apply { delegate.putString(key, value) }
+    override fun putStringSet(key: String, value: Set<String>): InternetProfilePreferencesEditor = apply { delegate.putStringSet(key, value) }
+    override fun remove(key: String): InternetProfilePreferencesEditor = apply { delegate.remove(key) }
+    override fun commit(): Boolean = delegate.commit()
+}
+
+internal interface InternetProfileSecretStore {
+    fun persist(name: String, secret: ByteArray)
+    fun load(name: String): ByteArray?
+    fun delete(name: String)
+}
+
+private class AndroidInternetProfileSecretStore(
+    private val delegate: AndroidSecretStore,
+) : InternetProfileSecretStore {
+    override fun persist(name: String, secret: ByteArray) = delegate.persist(name, secret)
+    override fun load(name: String): ByteArray? = delegate.load(name)
+    override fun delete(name: String) = delegate.delete(name)
+}
+
 /**
  * Splits imported pairing material into ordinary preferences and AndroidKeyStore-wrapped records.
  * Tokens, TURN credentials, and pairing keys are never returned by [exportNonSecretSummary].
  */
-class InternetSessionProfileStore(
-    context: Context,
-    private val secretStore: AndroidSecretStore = AndroidSecretStore(context.applicationContext),
+class InternetSessionProfileStore internal constructor(
+    private val preferences: InternetProfilePreferences,
+    private val debuggable: Boolean,
+    private val secretStore: InternetProfileSecretStore,
 ) {
-    private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
-    private val debuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+    constructor(
+        context: Context,
+        secretStore: AndroidSecretStore = AndroidSecretStore(context.applicationContext),
+    ) : this(
+        AndroidInternetProfilePreferences(context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)),
+        context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
+        AndroidInternetProfileSecretStore(secretStore),
+    )
+
     private val inMemoryDeferredCleanup = DeferredSecretCleanupPending()
 
     fun import(
@@ -461,7 +514,7 @@ class InternetSessionProfileStore(
         return editor.commit()
     }
 
-    private fun profileSecretName(profile: StoredInternetSessionProfile): String =
+    internal fun profileSecretName(profile: StoredInternetSessionProfile): String =
         "$SECRET_PREFIX.${MessageDigest.getInstance("SHA-256").digest("${profile.pairingIdentifier}\u0000${profile.signalingSessionId}\u0000${profile.authoritativeSessionEpoch}".toByteArray()).toHex()}"
 
     @SuppressLint("ApplySharedPref")
@@ -538,12 +591,12 @@ class InternetSessionProfileStore(
 
     companion object {
         private const val PREFERENCES_NAME = "phase3_internet_profile"
-        private const val PROFILE_KEY = "active_profile"
-        private const val PAIRING_KEY = "verified_pairing"
+        internal const val PROFILE_KEY = "active_profile"
+        internal const val PAIRING_KEY = "verified_pairing"
         private const val REVOKED_PAIRING_KEY = "revoked_pairing"
         private const val PENDING_AUTHENTICATED_REVOCATION_KEY = "pending_authenticated_revocation"
-        private const val DEFERRED_SECRET_CLEANUP_KEY = "deferred_secret_cleanup"
-        private const val PENDING_REVOCATION_CLEANUP_KEY = "pending_revocation_cleanup"
+        internal const val DEFERRED_SECRET_CLEANUP_KEY = "deferred_secret_cleanup"
+        internal const val PENDING_REVOCATION_CLEANUP_KEY = "pending_revocation_cleanup"
         private const val SECRET_PREFIX = "phase3.internet.profile.v1"
         private const val FINGERPRINT_CHARACTERS = 16
         private const val TAG = "InternetProfileStore"
