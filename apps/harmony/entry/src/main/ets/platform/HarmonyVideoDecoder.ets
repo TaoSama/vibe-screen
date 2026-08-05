@@ -1,5 +1,6 @@
 import { media } from '@kit.AVCodecKit';
 import { Codec } from '../core/protocol/ProtocolModels';
+import { DecoderLifecycle } from '../core/media/DecoderLifecycle';
 import { EncodedFrame, FrameQueueEffect, LatestFrameQueue } from '../core/media/LatestFrameQueue';
 
 const VIDEO_MIME_H264: string = 'video/avc';
@@ -59,10 +60,17 @@ export class HarmonyVideoDecoder {
         listener.onDecoderError(`output_render_failed:${this.errorMessage(error as Object)}`);
       }
     });
-    await candidate.configure({ mime, width, height }); this.ensureCurrent(owner, candidate);
-    await candidate.setOutputSurface(surfaceId); this.ensureCurrent(owner, candidate);
-    await candidate.prepare(); this.ensureCurrent(owner, candidate);
-    await candidate.start(); this.ensureCurrent(owner, candidate);
+    await DecoderLifecycle.initialize({
+      configure: async (): Promise<void> => candidate.configure({ mime, width, height }),
+      setOutputSurface: async (): Promise<void> => candidate.setOutputSurface(surfaceId),
+      prepare: async (): Promise<void> => candidate.prepare(),
+      start: async (): Promise<void> => candidate.start(),
+      stop: async (): Promise<void> => candidate.stop(),
+      release: async (): Promise<void> => candidate.release()
+    }, {
+      isCurrent: (): boolean => this.isCurrent(owner, candidate),
+      claimForCleanup: (): boolean => this.detachCandidateForCleanup(candidate)
+    });
     this.started = true;
   }
 
@@ -86,6 +94,13 @@ export class HarmonyVideoDecoder {
     this.decoder = undefined; this.started = false; this.inputSlots = []; this.frames.clear(); this.listener = undefined;
     this.consecutiveInputFailures = 0;
     return detached;
+  }
+
+  private detachCandidateForCleanup(candidate: media.VideoDecoder): boolean {
+    if (this.decoder !== candidate) return false;
+    this.decoder = undefined; this.started = false; this.inputSlots = []; this.frames.clear(); this.listener = undefined;
+    this.consecutiveInputFailures = 0;
+    return true;
   }
 
   private async releaseDetached(detached: DetachedDecoder): Promise<void> {
@@ -130,10 +145,6 @@ export class HarmonyVideoDecoder {
 
   private emitQueueEffect(effect: FrameQueueEffect, reason: string): void {
     if (effect.requestKeyframe) this.listener?.onKeyframeRequired?.(reason);
-  }
-
-  private ensureCurrent(owner: number, candidate: media.VideoDecoder): void {
-    if (!this.isCurrent(owner, candidate)) throw new Error('Decoder configuration superseded');
   }
 
   private isCurrent(owner: number, candidate: media.VideoDecoder): boolean {

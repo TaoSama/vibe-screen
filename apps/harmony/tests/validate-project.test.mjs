@@ -78,15 +78,31 @@ test('semantic validator rejects a disconnected production capability gate', (t)
   const fixture = projectFixture(t);
   const controllerPath = resolve(fixture.fixtureHarmony,
     'entry/src/main/ets/platform/HarmonySessionController.ets');
-  writeFileSync(controllerPath, readFileSync(controllerPath, 'utf8').replaceAll('canSend', 'capabilityCheckRemoved'));
-  assert(validateFixture(fixture).some((failure) => failure.includes('missing identifier canSend')));
+  const source = readFileSync(controllerPath, 'utf8')
+    .replace('!active.canSend(Capability.TOUCH)', 'false')
+    .concat('\nfunction deadCapabilityGate(active: ProductSession): boolean { return active.canSend(Capability.TOUCH); }\n');
+  writeFileSync(controllerPath, source);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('sendTouch() must call active.canSend(Capability.TOUCH)')));
+});
+
+test('semantic validator rejects TypeScript and ArkTS shell parse diagnostics', (t) => {
+  const fixture = projectFixture(t);
+  const controllerPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/platform/HarmonySessionController.ets');
+  writeFileSync(controllerPath, `${readFileSync(controllerPath, 'utf8')}\nfunction brokenController( {\n`);
+  const pagePath = resolve(fixture.fixtureHarmony, 'entry/src/main/ets/pages/Index.ets');
+  writeFileSync(pagePath, readFileSync(pagePath, 'utf8').replace('  @Builder', '  private brokenPage(: void {}\n\n  @Builder'));
+  const failures = validateFixture(fixture);
+  assert(failures.some((failure) => failure.includes('HarmonySessionController.ets') && failure.includes('portable parse error')));
+  assert(failures.some((failure) => failure.includes('Index.ets') && failure.includes('portable parse error')));
 });
 
 test('semantic validator rejects removal of atomic Asset Store update wiring', (t) => {
   const fixture = projectFixture(t);
   const storePath = resolve(fixture.fixtureHarmony, 'entry/src/main/ets/platform/PairingStore.ets');
   writeFileSync(storePath, readFileSync(storePath, 'utf8').replaceAll('asset.update', 'asset.add'));
-  assert(validateFixture(fixture).some((failure) => failure.includes('missing identifier update')));
+  assert(validateFixture(fixture).some((failure) => failure.includes('PairingStore.upsert() must call asset.update()')));
 });
 
 test('semantic validator rejects removal of the bounded control backlog', (t) => {
@@ -94,5 +110,5 @@ test('semantic validator rejects removal of the bounded control backlog', (t) =>
   const writerPath = resolve(fixture.fixtureHarmony,
     'entry/src/main/ets/core/protocol/OutboundControlWriter.ts');
   writeFileSync(writerPath, readFileSync(writerPath, 'utf8').replaceAll('MAX_PENDING_CONTROLS', 'UNBOUNDED_CONTROLS'));
-  assert(validateFixture(fixture).some((failure) => failure.includes('missing identifier MAX_PENDING_CONTROLS')));
+  assert(validateFixture(fixture).some((failure) => failure.includes('MAX_PENDING_CONTROLS must bound the production queue')));
 });
