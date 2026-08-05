@@ -76,7 +76,17 @@ writes Annex-B payloads, renders output buffers to the XComponent surface, and
 reports the first rendered output before the page claims streaming. Once a
 candidate is registered, configure/surface/prepare/start run transactionally;
 any stage failure owner-safely detaches and best-effort stops/releases it, with
-the primary and cleanup failures aggregated. The exact
+the primary and cleanup failures aggregated. The candidate owns a lifecycle
+lease recording its current stage, in-flight operation, start invocation,
+cancellation, and the single cleanup promise. Supersede/release atomically
+detach that lease, wait for its active platform call to settle, and never run
+cleanup concurrently with configuration. All contenders observe the same
+cleanup result; a start that may have taken effect is stopped exactly once
+before one release, and conditional clearing prevents an old continuation from
+touching a replacement. The transition owner retains the detached cleanup
+promise even while no candidate is globally active. A third configure/release
+therefore joins that barrier instead of bypassing it, and a replacement cannot
+be installed until cleanup settles. The exact
 commercial HarmonyOS SDK AVCodecKit declarations are not available in the
 portable environment; DevEco compilation and device behavior remain mandatory.
 
@@ -115,6 +125,12 @@ permission boundary, method-scoped production imports/calls, packaged license
 resources, and that HAP targets call real OHPM/Hvigor commands. JSON5 is parsed
 rather than searched as text. TypeScript-compatible ArkTS sources and the
 non-declarative ArkUI page shell must have no portable parse diagnostics;
-negative fixtures retain misleading dead-code identifiers while disconnecting
-the real call path. This remains syntax/call-graph evidence, not the DevEco
-ArkTS API/type checker, full declarative ArkUI parser, or a HAP substitute.
+negative fixtures retain misleading dead-code identifiers both outside and
+inside target methods. Critical gates must use the expected early-return or
+fail-closed control-flow shape, and constant-false, short-circuited, or directly
+post-return calls are rejected. Each capability guard must precede and dominate
+all protected sends in its straight-line method; late-but-reachable guards are
+negative-tested. Portable core tests prove negotiated input and bounded-queue
+behavior. This is deliberately limited syntax/control-flow
+evidence, not a general reachability proof, the DevEco ArkTS API/type checker,
+the full declarative ArkUI parser, or a HAP substitute.

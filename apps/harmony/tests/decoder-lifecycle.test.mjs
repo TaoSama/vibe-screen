@@ -1,69 +1,196 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DecoderLifecycle, DecoderLifecycleFailure } from '../.test-dist/media/DecoderLifecycle.js';
+import { DecoderLifecycle, DecoderLifecycleFailure,
+  DecoderTransitionOwner } from '../.test-dist/media/DecoderLifecycle.js';
 
 const stages = ['configure', 'set_output_surface', 'prepare', 'start'];
 
-const harness = (failureStage, cleanupFailures = []) => {
+const deferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolveValue, rejectValue) => { resolve = resolveValue; reject = rejectValue; });
+  return { promise, resolve, reject };
+};
+
+const waitFor = async (predicate) => {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (predicate()) return;
+    await Promise.resolve();
+  }
+  assert.fail('deferred lifecycle stage was not reached');
+};
+
+const failureHarness = (failureStage, cleanupFailures = []) => {
   const calls = [];
-  let current = true;
   const operation = (name) => async () => {
     calls.push(name);
     if (name === failureStage || cleanupFailures.includes(name)) throw new Error(`${name} boom`);
   };
   return {
     calls,
-    operations: {
+    lifecycle: new DecoderLifecycle({
       configure: operation('configure'), setOutputSurface: operation('set_output_surface'),
       prepare: operation('prepare'), start: operation('start'), stop: operation('stop'), release: operation('release')
-    },
-    ownership: {
-      isCurrent: () => current,
-      claimForCleanup: () => { if (!current) return false; current = false; calls.push('detach'); return true; }
-    },
-    current: () => current
+    })
   };
 };
 
 for (const stage of stages) {
   test(`decoder lifecycle cleans a registered candidate when ${stage} fails`, async () => {
-    const target = harness(stage);
-    await assert.rejects(DecoderLifecycle.initialize(target.operations, target.ownership), (error) => {
+    const target = failureHarness(stage);
+    await assert.rejects(target.lifecycle.initialize(), (error) => {
       assert.ok(error instanceof DecoderLifecycleFailure);
       assert.equal(error.stage, stage);
       assert.equal(error.primaryMessage, `${stage} boom`);
       assert.deepEqual(error.cleanupFailures, []);
       return true;
     });
-    assert.equal(target.current(), false);
-    assert.deepEqual(target.calls.slice(-3), ['detach', 'stop', 'release']);
+    assert.deepEqual(target.calls.slice(-2), ['stop', 'release']);
   });
 }
 
 test('decoder lifecycle preserves the setup failure and every cleanup failure', async () => {
-  const target = harness('prepare', ['stop', 'release']);
-  await assert.rejects(DecoderLifecycle.initialize(target.operations, target.ownership), (error) => {
+  const target = failureHarness('prepare', ['stop', 'release']);
+  await assert.rejects(target.lifecycle.initialize(), (error) => {
     assert.ok(error instanceof DecoderLifecycleFailure);
     assert.equal(error.primaryMessage, 'prepare boom');
     assert.deepEqual(error.cleanupFailures, ['stop: stop boom', 'release: release boom']);
     assert.match(error.message, /prepare boom; cleanup stop: stop boom; release: release boom/);
     return true;
   });
-  assert.deepEqual(target.calls.slice(-3), ['detach', 'stop', 'release']);
+  assert.deepEqual(target.calls.slice(-2), ['stop', 'release']);
 });
 
-test('superseded setup never detaches or cleans the replacement owner', async () => {
+const cancellationHarness = (pendingStage) => {
+  const gate = deferred();
   const calls = [];
-  let current = true;
-  const operations = {
-    configure: async () => { calls.push('configure'); current = false; },
-    setOutputSurface: async () => { calls.push('set_output_surface'); },
-    prepare: async () => { calls.push('prepare'); }, start: async () => { calls.push('start'); },
-    stop: async () => { calls.push('stop'); }, release: async () => { calls.push('release'); }
+  let operationInFlight = false;
+  const operation = (name) => async () => {
+    calls.push(name);
+    if (name !== pendingStage) return;
+    operationInFlight = true;
+    try { await gate.promise; }
+    finally { operationInFlight = false; }
   };
-  const ownership = { isCurrent: () => current, claimForCleanup: () => { calls.push('claim'); return false; } };
-  await assert.rejects(DecoderLifecycle.initialize(operations, ownership), (error) => {
-    assert.ok(error instanceof DecoderLifecycleFailure); assert.equal(error.stage, 'ownership'); return true;
+  const cleanup = (name) => async () => {
+    assert.equal(operationInFlight, false, `${name} raced ${pendingStage}`);
+    calls.push(name);
+  };
+  const lifecycle = new DecoderLifecycle({
+    configure: operation('configure'), setOutputSurface: operation('set_output_surface'),
+    prepare: operation('prepare'), start: operation('start'), stop: cleanup('stop'), release: cleanup('release')
   });
-  assert.deepEqual(calls, ['configure', 'claim']);
+  const candidate = { name: 'old', lifecycle };
+  const owner = new DecoderTransitionOwner(async (detached) => {
+    const failures = await detached.lifecycle.cancelAndCleanup();
+    if (failures.length > 0) throw new Error(failures.join('; '));
+  });
+  owner.install(candidate);
+  return {
+    gate,
+    calls,
+    candidate,
+    lifecycle,
+    owner
+  };
+};
+
+for (const takeover of ['configure supersede', 'release']) {
+  for (const stage of stages) {
+    test(`${takeover} waits for the ${stage} await window and cleans the candidate once`, async () => {
+      const target = cancellationHarness(stage);
+      const initialization = target.lifecycle.initialize().catch((error) => {
+        target.owner.clearIfCurrent(target.candidate);
+        throw error;
+      });
+      await waitFor(() => target.calls.includes(stage));
+
+      const handoff = target.owner.detachAndCleanup();
+      assert.equal(handoff.detached, true);
+      assert.strictEqual(target.owner.detachAndCleanup().completion, handoff.completion);
+      assert.equal(target.calls.includes('stop'), false);
+      assert.equal(target.calls.includes('release'), false);
+
+      target.gate.resolve();
+      await handoff.completion;
+      const replacement = { name: 'replacement' };
+      if (takeover === 'configure supersede') target.owner.install(replacement);
+      await assert.rejects(initialization, (error) => {
+        assert.ok(error instanceof DecoderLifecycleFailure);
+        assert.equal(error.stage, 'ownership');
+        return true;
+      });
+
+      const stageIndex = stages.indexOf(stage);
+      for (const laterStage of stages.slice(stageIndex + 1)) assert.equal(target.calls.includes(laterStage), false);
+      assert.equal(target.calls.filter((call) => call === 'release').length, 1);
+      assert.equal(target.calls.filter((call) => call === 'stop').length, stage === 'start' ? 1 : 0);
+      if (stage === 'start') assert.deepEqual(target.calls.slice(-2), ['stop', 'release']);
+      assert.strictEqual(target.owner.current(), takeover === 'configure supersede' ? replacement : undefined);
+    });
+  }
+}
+
+for (const stage of stages) {
+  test(`cancellation racing a rejecting ${stage} still performs one stop before release`, async () => {
+    const target = cancellationHarness(stage);
+    const initialization = target.lifecycle.initialize();
+    await waitFor(() => target.calls.includes(stage));
+    const initializationFailure = assert.rejects(initialization, (error) => {
+      assert.ok(error instanceof DecoderLifecycleFailure);
+      assert.equal(error.stage, stage);
+      assert.equal(error.primaryMessage, `${stage} uncertain`);
+      return true;
+    });
+    const cleanup = target.owner.detachAndCleanup().completion;
+    target.gate.reject(new Error(`${stage} uncertain`));
+
+    await cleanup;
+    await initializationFailure;
+    assert.deepEqual(target.calls.slice(-2), ['stop', 'release']);
+    assert.equal(target.calls.filter((call) => call === 'stop').length, 1);
+    assert.equal(target.calls.filter((call) => call === 'release').length, 1);
+  });
+}
+
+test('an old continuation cannot clear a replacement candidate after cleanup handoff', async () => {
+  const target = cancellationHarness('start');
+  const replacement = { name: 'replacement' };
+  const initialization = target.lifecycle.initialize().catch((error) => {
+    target.owner.clearIfCurrent(target.candidate);
+    throw error;
+  });
+  await waitFor(() => target.calls.includes('start'));
+
+  const cleanup = target.owner.detachAndCleanup().completion;
+  target.gate.resolve();
+  await cleanup;
+  target.owner.install(replacement);
+  await assert.rejects(initialization, /Decoder configuration superseded/);
+
+  assert.strictEqual(target.owner.current(), replacement);
+  assert.equal(target.calls.filter((call) => call === 'stop').length, 1);
+  assert.equal(target.calls.filter((call) => call === 'release').length, 1);
+});
+
+test('a third configure or release cannot bypass a detached candidate cleanup', async () => {
+  const target = cancellationHarness('prepare');
+  const initialization = target.lifecycle.initialize().catch((error) => {
+    target.owner.clearIfCurrent(target.candidate);
+    throw error;
+  });
+  await waitFor(() => target.calls.includes('prepare'));
+
+  const secondConfigure = target.owner.detachAndCleanup();
+  const thirdRelease = target.owner.detachAndCleanup();
+  assert.strictEqual(thirdRelease.completion, secondConfigure.completion);
+  assert.throws(() => target.owner.install({ name: 'too-early' }), /prior cleanup completed/);
+  assert.equal(target.calls.includes('release'), false);
+
+  target.gate.resolve();
+  await thirdRelease.completion;
+  assert.equal(target.calls.filter((call) => call === 'release').length, 1);
+  target.owner.install({ name: 'after-cleanup' });
+  await assert.rejects(initialization, /Decoder configuration superseded/);
+  assert.equal(target.owner.current().name, 'after-cleanup');
 });

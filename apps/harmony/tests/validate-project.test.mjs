@@ -83,7 +83,43 @@ test('semantic validator rejects a disconnected production capability gate', (t)
     .concat('\nfunction deadCapabilityGate(active: ProductSession): boolean { return active.canSend(Capability.TOUCH); }\n');
   writeFileSync(controllerPath, source);
   assert(validateFixture(fixture).some((failure) =>
-    failure.includes('sendTouch() must call active.canSend(Capability.TOUCH)')));
+    failure.includes('sendTouch() must use a dominating TOUCH early-return guard')));
+});
+
+test('semantic validator rejects a capability call hidden in method-local short-circuit dead code', (t) => {
+  const fixture = projectFixture(t);
+  const controllerPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/platform/HarmonySessionController.ets');
+  const source = readFileSync(controllerPath, 'utf8').replace(
+    '!active.canSend(Capability.TOUCH)', 'false && !active.canSend(Capability.TOUCH)');
+  writeFileSync(controllerPath, source);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('sendTouch() must use a dominating TOUCH early-return guard')));
+});
+
+test('semantic validator rejects a capability guard neutralized by a constant-false right operand', (t) => {
+  const fixture = projectFixture(t);
+  const controllerPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/platform/HarmonySessionController.ets');
+  const source = readFileSync(controllerPath, 'utf8').replace(
+    '!active.canSend(Capability.TOUCH)', '(!active.canSend(Capability.TOUCH) && false)');
+  writeFileSync(controllerPath, source);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('sendTouch() must use a dominating TOUCH early-return guard')));
+});
+
+test('semantic validator rejects a capability guard placed after the protected send', (t) => {
+  const fixture = projectFixture(t);
+  const controllerPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/platform/HarmonySessionController.ets');
+  const source = readFileSync(controllerPath, 'utf8')
+    .replace('!active.canSend(Capability.TOUCH)', 'false')
+    .replace('    this.applyActions([active.touch(event)], this.operationGeneration);',
+      '    this.applyActions([active.touch(event)], this.operationGeneration);\n' +
+      '    if (!active.canSend(Capability.TOUCH)) return;');
+  writeFileSync(controllerPath, source);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('sendTouch() must use a dominating TOUCH early-return guard')));
 });
 
 test('semantic validator rejects TypeScript and ArkTS shell parse diagnostics', (t) => {
@@ -110,5 +146,30 @@ test('semantic validator rejects removal of the bounded control backlog', (t) =>
   const writerPath = resolve(fixture.fixtureHarmony,
     'entry/src/main/ets/core/protocol/OutboundControlWriter.ts');
   writeFileSync(writerPath, readFileSync(writerPath, 'utf8').replaceAll('MAX_PENDING_CONTROLS', 'UNBOUNDED_CONTROLS'));
-  assert(validateFixture(fixture).some((failure) => failure.includes('MAX_PENDING_CONTROLS must bound the production queue')));
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('enqueue() must use a reachable MAX_PENDING_CONTROLS fail-closed guard')));
+});
+
+test('semantic validator rejects a queue limit hidden in method-local constant-false control flow', (t) => {
+  const fixture = projectFixture(t);
+  const writerPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/core/protocol/OutboundControlWriter.ts');
+  const source = readFileSync(writerPath, 'utf8').replace(
+    'if (this.queuedCount() >= MAX_PENDING_CONTROLS)',
+    'if (false && this.queuedCount() >= MAX_PENDING_CONTROLS)');
+  writeFileSync(writerPath, source);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('enqueue() must use a reachable MAX_PENDING_CONTROLS fail-closed guard')));
+});
+
+test('semantic validator rejects a queue guard neutralized inside a wider condition', (t) => {
+  const fixture = projectFixture(t);
+  const writerPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/core/protocol/OutboundControlWriter.ts');
+  const source = readFileSync(writerPath, 'utf8').replace(
+    'this.queuedCount() >= MAX_PENDING_CONTROLS',
+    '((this.queuedCount() >= MAX_PENDING_CONTROLS && false) || this.failure !== undefined)');
+  writeFileSync(writerPath, source);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('enqueue() must use a reachable MAX_PENDING_CONTROLS fail-closed guard')));
 });
