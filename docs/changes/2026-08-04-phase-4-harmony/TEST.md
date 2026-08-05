@@ -2,6 +2,18 @@
 
 Date: 2026-08-05
 
+## Reproducible source identity
+
+The full clean verification below ran from a detached worktree with:
+
+```text
+tested commit: 11b478d900af9a2d7e862524afb09eb21c599f52
+tested tree: f2f1309043a698d10b958778ada288c97ca2bcfd
+git status --porcelain before gates: (empty)
+git status --porcelain after gates: (empty)
+upgrade acknowledgement bytes: 0d01
+```
+
 ## Portable checks passed
 
 ```text
@@ -37,6 +49,38 @@ Coverage includes:
 Hosted `HarmonyOS portable checks (no DevEco or HAP claim)` runs the same frozen
 install and verify command. It cannot type-check `.ets` or validate vendor APIs.
 
+## Clean cross-repository gates
+
+The following commands ran against the tested commit/tree above:
+
+```text
+cd apps/harmony && pnpm install --frozen-lockfile && pnpm run verify
+  PASS: 29 semantic project files; 40/40 portable tests
+make protocol
+  PASS: Buf format/lint/build/breaking; 13/13 contract tests
+make evidence-tools-test release-tools-test
+  PASS: 36/36 evidence tests; 4/4 release-tool tests
+cd baseline/AndroidClient && ./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug auditReleaseDependencies
+  PASS: 67 tasks, 66 executed, 1 up-to-date
+make baseline-macos-self-test baseline-macos-app
+  PASS: release build; host/transport/reliability/Protocol v1 self-tests; app/zip/checksum package
+apps/ios/Scripts/verify-generated-protocol.sh
+swift package --package-path apps/ios resolve
+swift build --package-path apps/ios
+swift run --package-path apps/ios vibescreen-ios-selftest
+  PASS: generated bindings current; native core build and deterministic self-test
+```
+
+Two platform test commands were attempted but are environment-blocked rather
+than product failures:
+
+```text
+make baseline-macos-test
+  BLOCKED: no such module 'XCTest' under active Command Line Tools
+apps/ios/Scripts/build_ios.py
+  BLOCKED: xcodebuild requires Full Xcode; active directory is CommandLineTools
+```
+
 ## Environment evidence
 
 ```text
@@ -44,6 +88,9 @@ base commit: 36905b40b2457c9f156e0b9b273fd437303a1efe
 node: v26.5.0
 pnpm: 11.15.1
 TypeScript: 5.9.3
+Go launcher: 1.24.13; Buf selected Go 1.25.12 toolchain
+Swift: 6.3.1
+JDK: 17.0.19
 hvigor: not found
 ohpm: not found
 hdc: not found
@@ -60,8 +107,9 @@ During this task an unrelated concurrent modification changed
 `contracts/fixtures/messages/v1/bin/upgrade_acknowledgement.bin` from binary
 `0d 01` to the text `0d\n`. All task subagents denied writing it and the source
 could not be proven, so the file was not overwritten and is excluded from the
-task commit. Contract gates that consume that working-tree file are not valid
-until it is restored by its owner or from a confirmed clean checkout.
+task commits. The detached clean verification worktree obtained the committed
+binary `0d 01` without modifying the unexplained working-tree file; the formal
+contract gate then passed `test_upgrade_bytes_are_pinned`.
 
 ## DevEco gates
 
