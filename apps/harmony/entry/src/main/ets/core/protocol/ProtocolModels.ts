@@ -25,7 +25,18 @@ export interface ClientHello {
   capabilities: Capability[];
   codecs: Codec[];
   transports: TransportKind[];
+  requiredCapabilities?: Capability[];
+  resourceLimits?: ResourceLimits;
+  videoDecodeCapabilities?: VideoDecodeCapability[];
 }
+
+export interface ResourceLimits { maximumClients: number; maximumDisplays: number; maximumVideoStreams: number; }
+export interface VideoDecodeCapability { codec: Codec; maximumWidth: number; maximumHeight: number; maximumFramesPerSecond: number; bitDepths: number[]; }
+export interface HostHello { selectedProtocol: number; capabilities: Capability[]; codecs: Codec[]; }
+export interface SessionAccepted { sessionId: Uint8Array; sessionEpoch: bigint; heartbeatIntervalMs: number; negotiatedCapabilities: Capability[]; }
+export interface DisplayDescriptor { displayId: string; name: string; width: number; height: number; scaleFactor: number; primary: boolean; }
+export interface VideoConfig { configEpoch: bigint; codec: Codec; width: number; height: number; framesPerSecond: number; streamId: bigint; rotationDegrees: number; }
+export interface InputTarget { displayId: string; streamId: bigint; }
 
 export interface MediaPacketHeader {
   streamId: bigint;
@@ -52,8 +63,8 @@ export interface NormalizedInput {
   buttonMask: number;
 }
 
-export interface ScrollInput { inputId: bigint; deltaX: number; deltaY: number; }
-export interface KeyInput { inputId: bigint; usbHidUsage: number; pressed: boolean; modifierMask: number; text: string; }
+export interface ScrollInput { inputId: bigint; deltaX: number; deltaY: number; target?: InputTarget; }
+export interface KeyInput { inputId: bigint; usbHidUsage: number; pressed: boolean; modifierMask: number; text: string; target?: InputTarget; }
 
 export function defaultCapabilities(): Capability[] {
   return [Capability.DISPLAY_MIRROR, Capability.VIRTUAL_DISPLAY, Capability.TOUCH,

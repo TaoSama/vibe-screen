@@ -1,4 +1,4 @@
-export interface EncodedFrame { frameId: bigint; epoch: bigint; keyframe: boolean; payload: Uint8Array; }
+export interface EncodedFrame { frameId: bigint; epoch: bigint; timestampNs: bigint; keyframe: boolean; payload: Uint8Array; }
 
 export class LatestFrameQueue {
   private pending: EncodedFrame | undefined;
@@ -20,4 +20,3 @@ export class LatestFrameQueue {
   depth(): number { return this.pending === undefined ? 0 : 1; }
   droppedCount(): number { return this.dropped; }
 }
-

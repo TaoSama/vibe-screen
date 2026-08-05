@@ -1,106 +1,115 @@
 # Vibe Screen for HarmonyOS NEXT
 
-Native ArkTS/ArkUI client for HarmonyOS NEXT tablets. The code implements the
-shared Vibe Screen Protocol v1 independently; it has no Kotlin Multiplatform or
-Android runtime dependency.
+Native ArkTS/ArkUI tablet client. It implements Vibe Screen Protocol v1
+independently and has no Kotlin Multiplatform or Android runtime dependency.
+
+The source now contains the product-session wiring that can be completed
+without a device: legacy-to-v1 upgrade, channel-aware TCP framing, host/session
+negotiation, display selection, video configuration, media epoch filtering,
+XComponent/AVCodec handoff, heartbeat, bounded reconnect, and ArkUI touch,
+keyboard, pointer, and stylus-pressure entry points. This is still a development
+preview. No DevEco SDK was available for this record, so ArkTS compilation, HAP
+output, platform API behavior, and device interoperability are not claimed.
 
 ## Requirements
 
 - DevEco Studio with HarmonyOS NEXT SDK API 12 or newer;
-- Node.js 20+ and pnpm 9+ for portable core tests;
-- a HarmonyOS NEXT tablet for installation and decoder/input verification;
-- a Mac host that implements Vibe Screen Protocol v1.
+- DevEco-managed OHPM and Hvigor 5.0.2 command-line tools;
+- Node.js 20+ and pnpm 9+ for portable checks;
+- a HarmonyOS NEXT tablet for install, hardware decode, input, and lifecycle tests;
+- a Protocol v1 Mac host.
 
 The repository does not redistribute the proprietary HarmonyOS SDK or signing
-credentials. Install those through DevEco Studio and use a certificate owned
-by your developer account.
+credentials. Install them through DevEco Studio and use a certificate owned by
+your developer account.
 
-## Build and test
+## Portable checks
 
 ```bash
 cd apps/harmony
-make ci
+pnpm install --frozen-lockfile
+pnpm run verify
 make doctor
-make build-debug
 ```
 
-`make ci` runs only the portable TypeScript core checks, including the exact
-shared Protocol v1 wire fixture. It does not compile ArkTS, invoke DevEco, or
-produce a HAP. `make doctor` reports whether the real `hvigorw`/`hvigor` and
-`ohpm` tools are available; HAP targets fail explicitly when either is absent.
+`pnpm run verify` checks the real project layout, type-checks only the portable
+core, and runs golden/unit tests against the shared Protocol v1 fixtures. It
+does not compile `.ets`, invoke DevEco, or produce a HAP. `make doctor` reports
+whether OHPM and Hvigor are available.
 
-If those tools are not on `PATH`, import `apps/harmony` in DevEco Studio, allow
-it to synchronize the API 12+ SDK, then select **entry > default > debug >
-Build HAP**. In a configured CLI environment, `make build-debug` runs `ohpm
-install` before Hvigor. The debug HAP is emitted below `entry/build/`. For a
-versioned signed artifact, configure a release signing profile and run `make
-release`; the HAP and `SHA256SUMS` are copied to `dist/0.1.0/`.
+## DevEco build and test
 
-## Install and run
+Import `apps/harmony` in DevEco Studio, install/synchronize the API 12+ SDK, and
+select **entry > default > debug > Build HAP**. In a configured CLI shell:
 
-1. Enable developer mode and USB debugging on the tablet.
-2. Connect it and confirm that `hdc list targets -v` shows the expected serial.
-3. Install with `hdc -t SERIAL install entry/build/.../entry-default-signed.hap`.
-4. Open Vibe Screen and enter the LAN address of a Protocol v1 host. One-time
-   QR scanning is not wired into the initial page yet.
-5. Grant network/background permission when prompted. Background operation is
-   used only to resume a recently interrupted session; the app does not bypass
-   HarmonyOS background limits.
+```bash
+cd apps/harmony
+make build-debug
+make build-release
+```
 
-Upgrade by installing a newer HAP with the same bundle name and signing key.
-Pairing data is retained. Changing the signing key requires uninstalling the
-old app, which also removes locally stored pairing credentials.
+Both targets call real `ohpm install` and Hvigor `assembleHap`; there is no Node
+packaging substitute. A release profile and signing certificate must be
+configured locally. `make release` accepts exactly one signed release HAP,
+copies it to `dist/0.1.0/`, and writes `SHA256SUMS`. The build must be repeated
+from a clean checkout in DevEco before any release claim.
+
+## Run in trusted-LAN development mode
+
+1. Start the Protocol v1 Mac host on TCP port `54321`.
+2. Paste its host address and connect, or import a `vibescreen://` link to fill
+   the address. The one-time credential in that link is never persisted.
+3. The client offers `0x0d`, requires `0x0d 0x01`, then negotiates the display
+   and H.264/HEVC configuration before accepting media.
+4. Backgrounding closes the connection and decoder. Returning to the
+   foreground establishes a fresh bounded-backoff session; the app does not
+   claim to bypass HarmonyOS background limits.
+
+This mode is authenticated neither by the imported link nor by the current
+Harmony controller and is not encrypted. Use it only on a trusted LAN. The
+secure PairingOffer/PairingRequest proof exchange and long-term device
+credential lifecycle remain a host-and-device integration gate; the UI does
+not present address import as completed secure pairing.
 
 ## Architecture
 
-- `core/protocol`: hand-written, dependency-free Protocol v1 wire codec;
-- `core/session`: strict connection state, session epochs, and backoff;
-- `core/media`: capacity-one latest-frame queue;
-- `core/input`: pixel/letterbox/rotation normalization;
-- `platform`: Harmony TCP, Asset Store, and AVCodec hardware adapters;
-- `pages`: 8–9 inch landscape/portrait ArkUI experience.
+- `core/protocol`: dependency-free Protocol v1 codec with formal golden vectors;
+- `core/session`: product negotiation, message/epoch validation, and backoff;
+- `core/transport`: streaming upgrade parser and control/video framing;
+- `core/media`: media packet parser and capacity-one latest-frame queue;
+- `core/input`: letterbox/rotation mapping and USB HID helpers;
+- `platform`: TCP, Asset Store, AVCodec, lifecycle, and session controller seams;
+- `pages`: adaptive tablet connection and streaming surface.
 
-Control messages are length-delimited Protobuf envelopes. Media is kept out of
-the control model and filtered by `session_epoch` before hardware decode. The
-decoder accepts only H.264/HEVC selected by an explicit `VideoConfig` exchange.
+Control messages are protobuf envelopes on channel 1. Channel 2 carries a
+varint-delimited `MediaPacketHeader` plus Annex-B media. Old session epochs are
+dropped, cross-stream/config media is rejected, and pending encoded media never
+exceeds one frame. A `VideoConfigResult(accepted=true)` is sent only after the
+decoder configuration promise succeeds.
 
 ## Permissions and privacy
 
-- `INTERNET`: connect directly to the selected Mac;
-- `GET_NETWORK_INFO`: give actionable offline/LAN errors;
-- `KEEP_BACKGROUND_RUNNING`: recover a session after a brief app switch.
+- `INTERNET`: direct TCP connection to the selected Mac.
 
-Pairing credentials stay in HarmonyOS Asset Store rather than plain Preferences. Protocol v1
-pairing reserves device credentials, but production Internet E2EE is a Phase 3
-host prerequisite and is not claimed by this client over a plaintext LAN.
+No background-running permission is declared. The stable client identifier and
+trusted-LAN host record use HarmonyOS Asset Store. The address-import credential
+is held only while parsing and is not written to disk. See [PRIVACY.md](PRIVACY.md)
+for data handling and [UPGRADE.md](UPGRADE.md) for install/migration policy.
 
-## Troubleshooting
+## Known gates
 
-- **Host never accepts:** the current imported Telemachus host uses a legacy
-  byte protocol and is not Protocol v1 compatible yet. Use a v1-enabled host.
-- **Black video:** confirm the host selected H.264/HEVC supported by the device,
-  then request a keyframe. AV1 is advertised only after device capability
-  detection is added.
-- **Reconnect loop:** revoke the device on the Mac and pair again; check both
-  devices are on the same trusted LAN.
-- **HAP does not build:** check the SDK API level, signing profile, and that the
-  DevEco-provided `hvigorw` is on `PATH`.
+- DevEco clean sync, ArkTS/API checker, debug/release HAP, and signature proof;
+- confirmation of the commercial SDK AVCodecKit declarations and buffer APIs;
+- Asset Store CRUD, XComponent surface, and H.264/HEVC hardware decode on device;
+- secure pairing proof, QR camera import, credential issue/revoke, and replay tests;
+- wheel/trackpad axis delivery and a complete physical-key USB HID map;
+- Protocol v1 resume-result flow (fresh reconnect is wired today);
+- controller-specific input, stylus tilt/azimuth, audio, and Internet transport;
+- Mac interoperability and the complete MatePad Mini acceptance/soak matrix.
 
-See the [device runbook](../../docs/runbook/harmony-matepad-mini.md) and the
+Controller input, stylus tilt/azimuth, and wheel-specific semantics cannot be
+claimed from encoder code alone. Protocol v1 currently has no controller event
+or stylus tilt/azimuth fields; those require an additive schema revision.
+
+See the [device runbook](../../docs/runbook/harmony-matepad-mini.md) and
 [Phase 4 verification record](../../docs/changes/2026-08-04-phase-4-harmony/TEST.md).
-
-## Known limitations
-
-- No HarmonyOS device or DevEco SDK was available for the initial implementation,
-  so HAP compilation and MatePad Mini behavior remain unverified.
-- Hosted CI verifies only the portable core and shared golden fixture. The
-  `.ets` page/platform adapters, SDK API checker, HAP packaging, and signing
-  require a genuine DevEco environment.
-- The repository host has not implemented Protocol v1, preventing stream/input
-  interoperability testing today.
-- Protocol v1 represents stylus pressure but not tilt/azimuth, and has no
-  controller-specific message. Those inputs cannot be claimed until an additive
-  contract revision lands.
-- QR camera scanning UI and pairing-store page wiring, Internet transport,
-  audio, clipboard, and multi-client
-  streaming are not included in this change.

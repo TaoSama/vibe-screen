@@ -20,10 +20,7 @@
       skills: [{ entities: ['entity.system.home'], actions: ['ohos.want.action.home'] }]
     }],
     requestPermissions: [
-      { name: 'ohos.permission.INTERNET' },
-      { name: 'ohos.permission.GET_NETWORK_INFO' },
-      { name: 'ohos.permission.KEEP_BACKGROUND_RUNNING', reason: '$string:background_reason', usedScene: { abilities: ['EntryAbility'], when: 'inuse' } }
+      { name: 'ohos.permission.INTERNET' }
     ]
   }
 }
-
