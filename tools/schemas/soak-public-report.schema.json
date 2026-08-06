@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/soak-public-report.schema.json",
+  "title": "Vibe Screen privacy-minimized exact-window soak report v1",
+  "type": "object",
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"}
+  },
+  "$defs": {
+    "statistics": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["count", "first", "final", "min", "mean", "max"],
+          "properties": {
+            "count": {"type": "integer", "minimum": 1},
+            "first": {"type": "number"},
+            "final": {"type": "number"},
+            "min": {"type": "number"},
+            "mean": {"type": "number"},
+            "max": {"type": "number"}
+          }
+        }
+      ]
+    },
+    "rss_statistics": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["count", "first", "final", "min", "mean", "max", "slope_kib_per_minute"],
+          "properties": {
+            "count": {"type": "integer", "minimum": 1},
+            "first": {"type": "number"},
+            "final": {"type": "number"},
+            "min": {"type": "number"},
+            "mean": {"type": "number"},
+            "max": {"type": "number"},
+            "slope_kib_per_minute": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["full_window", "second_half", "second_half_sample_count"],
+              "properties": {
+                "full_window": {"type": ["number", "null"]},
+                "second_half": {"type": ["number", "null"]},
+                "second_half_sample_count": {"type": "integer", "minimum": 0}
+              }
+            }
+          }
+        }
+      ]
+    },
+    "gap_statistics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "maximum_interval_seconds", "maximum_window_gap_seconds"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "maximum_interval_seconds": {"type": ["number", "null"]},
+        "maximum_window_gap_seconds": {"type": ["number", "null"]}
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "kind", "publication_profile", "derivation_status", "window", "source_summary", "metrics", "interpretation"],
+      "properties": {
+        "schema_version": {"const": "vibescreen.evidence/v1"},
+        "kind": {"const": "soak_exact_window_report"},
+        "publication_profile": {"const": "privacy-minimized-v1"},
+        "derivation_status": {"const": "complete"},
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["started_at", "finished_at", "duration_seconds", "sample_records_in_window", "telemetry_records_in_window", "telemetry_records_excluded"],
+          "properties": {
+            "started_at": {"type": "string", "format": "date-time"},
+            "finished_at": {"type": "string", "format": "date-time"},
+            "duration_seconds": {"type": "number", "exclusiveMinimum": 0},
+            "sample_records_in_window": {"type": "integer", "minimum": 1},
+            "telemetry_records_in_window": {"type": "integer", "minimum": 1},
+            "telemetry_records_excluded": {"type": "integer", "minimum": 0}
+          }
+        },
+        "source_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {"status": {"const": "complete"}}
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["stream", "telemetry", "memory_kib", "thermal", "battery"],
+          "properties": {
+            "stream": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["fps", "average_frame_age_ms", "reported_dropped_frames", "frame_queue_drop_total"],
+              "properties": {
+                "fps": {"$ref": "#/$defs/statistics"},
+                "average_frame_age_ms": {"$ref": "#/$defs/statistics"},
+                "reported_dropped_frames": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["statistics", "sum"],
+                  "properties": {
+                    "statistics": {"$ref": "#/$defs/statistics"},
+                    "sum": {"type": "number", "minimum": 0}
+                  }
+                },
+                "frame_queue_drop_total": {"type": "number", "minimum": 0}
+              }
+            },
+            "telemetry": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["event_counts", "stream_stats_gaps", "heartbeat_gaps", "accepted_heartbeat_count"],
+              "properties": {
+                "event_counts": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["session_admission_failed", "session_admitted", "session_disconnected", "heartbeat_received", "frame_queue_drop", "stream_stats"],
+                  "properties": {
+                    "session_admission_failed": {"type": "integer", "minimum": 0},
+                    "session_admitted": {"type": "integer", "minimum": 0},
+                    "session_disconnected": {"type": "integer", "minimum": 0},
+                    "heartbeat_received": {"type": "integer", "minimum": 0},
+                    "frame_queue_drop": {"type": "integer", "minimum": 0},
+                    "stream_stats": {"type": "integer", "minimum": 0}
+                  }
+                },
+                "stream_stats_gaps": {"$ref": "#/$defs/gap_statistics"},
+                "heartbeat_gaps": {"$ref": "#/$defs/gap_statistics"},
+                "accepted_heartbeat_count": {"type": "integer", "minimum": 0}
+              }
+            },
+            "memory_kib": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["host_rss", "client_total_pss"],
+              "properties": {
+                "host_rss": {"$ref": "#/$defs/rss_statistics"},
+                "client_total_pss": {"$ref": "#/$defs/rss_statistics"}
+              }
+            },
+            "thermal": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "sensors_celsius_aggregate"],
+              "properties": {
+                "status": {"$ref": "#/$defs/statistics"},
+                "sensors_celsius_aggregate": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["sensor_count", "min", "max"],
+                  "properties": {
+                    "sensor_count": {"type": "integer", "minimum": 0},
+                    "min": {"type": ["number", "null"]},
+                    "max": {"type": ["number", "null"]}
+                  }
+                }
+              }
+            },
+            "battery": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["level_percent", "temperature_celsius", "voltage_mv", "charge_counter"],
+              "properties": {
+                "level_percent": {"$ref": "#/$defs/statistics"},
+                "temperature_celsius": {"$ref": "#/$defs/statistics"},
+                "voltage_mv": {"$ref": "#/$defs/statistics"},
+                "charge_counter": {"$ref": "#/$defs/statistics"}
+              }
+            }
+          }
+        },
+        "interpretation": {"const": "Trend metrics are descriptive evidence, not a no-leak determination."}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "kind", "publication_profile", "derivation_status", "error_code"],
+      "properties": {
+        "schema_version": {"const": "vibescreen.evidence/v1"},
+        "kind": {"const": "soak_exact_window_report"},
+        "publication_profile": {"const": "privacy-minimized-v1"},
+        "derivation_status": {"const": "failed"},
+        "error_code": {"const": "evidence_derivation_failed"}
+      }
+    }
+  ]
+}

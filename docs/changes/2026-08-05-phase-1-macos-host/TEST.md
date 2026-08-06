@@ -1,6 +1,6 @@
 # Phase 1 macOS host verification record
 
-## Environment
+## Original local environment
 
 - host: macOS 26.4.1 (`25E253`), arm64;
 - Swift: 6.3.1;
@@ -62,20 +62,41 @@ replacement policy. XCTest sources add focused policy/lifecycle cases under
 The added cases cover concurrent double-start admission, stop invalidation of a
 suspended start, current/stale fallback stop generations, blank/idle fallback
 frames, missing private classes/selectors, and exact unchanged-bounds window
-recovery. They remain source-level regression coverage until XCTest can run.
+recovery. At the original local run they remained source-level regression
+coverage because XCTest could not run; the 2026-08-06 main CI result below
+subsequently executed them as part of the full suite.
 The second review adds queued-old-callback rejection, asynchronous codec
 startup de-duplication, stopped-first current-main replacement policy, and
 single-consumption automatic-launch intent cases. The queued-callback cases
 cover both host-session replacement and same-server client takeover before the
 new client's MainActor callback is observed.
 
-`make baseline-macos-test` compiles the application target but fails before
-test execution with `error: no such module 'XCTest'`; full Xcode is not
-installed/selected. No XCTest pass is claimed.
+In the original local Command Line Tools environment,
+`make baseline-macos-test` compiled the application target but failed before
+test execution with `error: no such module 'XCTest'`; full Xcode was not
+installed/selected. This historical environment result is distinct from the
+2026-08-06 main CI result.
+
+## Main Xcode verification snapshot (2026-08-06)
+
+On 2026-08-06, main commit `4c2e908fe31af4c187684991301e163371444eab`
+passed GitHub Actions Phase 0
+[run 31084214883](https://github.com/TaoSama/vibe-screen/actions/runs/31084214883).
+The `macos-15` job executed the full MacHost XCTest suite: 202/202 tests passed
+with zero failures, including the Phase 1 policy and lifecycle cases described
+above. The same SHA also passed iOS engineering
+[run 31084214830](https://github.com/TaoSama/vibe-screen/actions/runs/31084214830)
+and HarmonyOS portable
+[run 31084214856](https://github.com/TaoSama/vibe-screen/actions/runs/31084214856);
+those workflows do not prove platform real-device behavior.
+
+The 202-test pass proves the covered test cases on the CI runner. It does
+not prove private display creation/capture, actual mirroring, Accessibility or
+CGEvent effects, login-item approval, hot-plug, headless reboot, device input,
+latency, or sustained memory behavior.
 
 ## Remaining gates
 
-- `swift test` with full Xcode selected;
 - private normal/HiDPI extension creation and first captured frame;
 - true mirror state before start and cleared state after stop;
 - AX migration/restore of a disposable real window, including display removal;

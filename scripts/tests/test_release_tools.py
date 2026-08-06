@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -322,12 +323,56 @@ class PrepareReleaseTests(unittest.TestCase):
             ),
         )
 
-    def test_release_workflow_binds_tag_to_successful_main_tip_and_debug_audit(self) -> None:
+    def test_release_workflow_binds_tag_to_all_successful_main_gates_and_debug_audit(self) -> None:
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn('test "$commit" = "$(git rev-parse refs/remotes/origin/main)"', workflow)
         self.assertNotIn("merge-base --is-ancestor", workflow)
-        self.assertIn("actions/workflows/phase0.yml/runs", workflow)
-        self.assertIn("select(.head_sha", workflow)
+
+        validate_job_match = re.search(
+            r"(?ms)^  validate:\n(?P<body>.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)",
+            workflow,
+        )
+        self.assertIsNotNone(validate_job_match)
+        validate_job = validate_job_match.group("body")
+        permissions_match = re.search(
+            r"(?ms)^    permissions:\n(?P<body>(?:^      [a-z-]+: [a-z]+\n)+)",
+            validate_job,
+        )
+        self.assertIsNotNone(permissions_match)
+        validate_permissions = dict(
+            line.strip().split(": ", 1)
+            for line in permissions_match.group("body").splitlines()
+        )
+        self.assertEqual(
+            validate_permissions,
+            {"actions": "read", "contents": "read"},
+        )
+
+        self.assertEqual(validate_job.count("require_successful_main_run()"), 1)
+        helper_contracts = (
+            '"repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs"',
+            "-f branch=main",
+            "-f event=push",
+            "-f status=success",
+            'select(.head_sha == \\"$commit\\")',
+        )
+        for contract in helper_contracts:
+            self.assertIn(contract, validate_job)
+        gate_calls = set(
+            re.findall(
+                r'^          require_successful_main_run ([a-z0-9.]+) "([^"]+)"$',
+                validate_job,
+                flags=re.MULTILINE,
+            )
+        )
+        self.assertEqual(
+            gate_calls,
+            {
+                ("phase0.yml", "Phase 0 checks"),
+                ("ios.yml", "iOS engineering gates"),
+                ("harmony.yml", "HarmonyOS portable checks"),
+            },
+        )
         self.assertIn("-PdependencyAuditConfiguration=debugRuntimeClasspath", workflow)
         android_build = ANDROID_BUILD.read_text(encoding="utf-8")
         self.assertIn('getByName(dependencyAuditConfiguration)', android_build)

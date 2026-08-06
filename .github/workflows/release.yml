@@ -6,7 +6,6 @@ on:
       - "v*.*.*"
 
 permissions:
-  actions: read
   contents: read
 
 concurrency:
@@ -17,6 +16,9 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
     outputs:
       version: ${{ steps.release.outputs.version }}
       commit: ${{ steps.release.outputs.commit }}
@@ -37,17 +39,27 @@ jobs:
           test "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$commit"
           git fetch --no-tags origin main:refs/remotes/origin/main
           test "$commit" = "$(git rev-parse refs/remotes/origin/main)"
-          successful_main_run="$(
-            gh api --method GET \
-              "repos/${GITHUB_REPOSITORY}/actions/workflows/phase0.yml/runs" \
-              -f branch=main \
-              -f event=push \
-              -f status=success \
-              -f per_page=100 \
-              --jq ".workflow_runs[] | select(.head_sha == \"$commit\") | .id" \
-              | head -n 1
-          )"
-          test -n "$successful_main_run"
+          require_successful_main_run() {
+            workflow="$1"
+            name="$2"
+            run_id="$(
+              gh api --method GET \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs" \
+                -f branch=main \
+                -f event=push \
+                -f status=success \
+                -f per_page=100 \
+                --jq ".workflow_runs[] | select(.head_sha == \"$commit\") | .id" \
+                | head -n 1
+            )"
+            if test -z "$run_id"; then
+              echo "error: $name has no successful main push run for $commit" >&2
+              exit 1
+            fi
+          }
+          require_successful_main_run phase0.yml "Phase 0 checks"
+          require_successful_main_run ios.yml "iOS engineering gates"
+          require_successful_main_run harmony.yml "HarmonyOS portable checks"
           created="$(git show -s --format=%cI "$commit")"
           python3 scripts/prepare_release.py \
             --version "$version" \

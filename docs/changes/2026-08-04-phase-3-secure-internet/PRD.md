@@ -1,6 +1,6 @@
 # Phase 3: secure Internet access
 
-Status: implementation foundation; not production-ready  
+Status: runnable development-preview slice; not production-ready
 Owner: Vibe Screen core team  
 Started: 2026-08-04
 
@@ -33,19 +33,35 @@ The repository currently contains:
 - a runnable, single-instance Go signaling service and authenticated Swift/Kotlin
   HTTP signaling clients;
 - macOS/Android platform security lifecycle code and deterministic policy/network
-  simulation.
+  simulation;
+- macOS and Android product-session composition, manual pairing/profile import,
+  protected Protocol v1 control/media DataChannels, and direct/forced-TURN UI;
+- a pinned coturn Compose data plane used for local forced-relay verification.
 
-The adapters and signaling service are real code, but they are not yet a complete
-product path. The repository still lacks a deployed TURN data plane, main-app
-composition connecting capture/encode/decode/input to Internet mode, proven
-cross-platform security lifecycle interoperability, and a verified Android
-Internet stream. ICE restart also conflicts with signaling's current one-offer
-session contract. Existing wireless mode remains trusted-LAN plaintext TCP
-authenticated with a bearer token; it is not Phase 3 security.
+The macOS M150 and Android M144 production adapters have completed a controlled
+Nubia P0110 local direct/forced-coturn product-session pass with application
+AES-256-GCM, Protocol v1 control, authenticated touch records, and synthetic
+media. This is not public-Internet, real ScreenCaptureKit content, visible Mac
+input, carrier/CGNAT, automatic handoff, latency, or stability evidence. The
+services remain single-node development implementations; automatic authority
+issuance, cross-service revocation propagation, authoritative coturn byte
+accounting, and a production deployment remain open. Existing wireless mode
+remains trusted-LAN plaintext TCP authenticated with a bearer token; it is not
+Phase 3 security.
+
+As of 2026-08-06, main commit
+`4c2e908fe31af4c187684991301e163371444eab` had passed Phase 0
+[run 31084214883](https://github.com/TaoSama/vibe-screen/actions/runs/31084214883),
+iOS engineering
+[run 31084214830](https://github.com/TaoSama/vibe-screen/actions/runs/31084214830),
+and HarmonyOS portable
+[run 31084214856](https://github.com/TaoSama/vibe-screen/actions/runs/31084214856).
+Those CI results are offline evidence for that dated commit only and do not
+close any public-Internet or platform real-device gate.
 
 See [TECH.md](TECH.md#implementation-status-and-gates) for the precise boundary.
 
-## User outcomes
+## Target user outcomes (planned)
 
 1. A user pairs once with a short-lived QR offer and can recognize both endpoints
    before granting screen and input access.
@@ -62,7 +78,7 @@ See [TECH.md](TECH.md#implementation-status-and-gates) for the precise boundary.
 7. Errors identify whether the problem is pairing, authorization, signaling,
    NAT traversal, relay quota, network quality, codec, or permissions.
 
-## Scope
+## Planned completion scope
 
 ### Connectivity
 
@@ -120,7 +136,7 @@ cryptographic primitive may be introduced.
 - treating WebRTC DTLS/SRTP alone as the product's relay-independent E2EE claim;
 - silently routing trusted-LAN plaintext mode through the Internet.
 
-## Acceptance criteria
+## Target acceptance criteria
 
 ### Functional
 
@@ -164,7 +180,7 @@ cryptographic primitive may be introduced.
 
 ### Required device evidence
 
-The Xiaomi 12 at `$ADB_ENDPOINT` must be connected with ADB, identified,
+The target Xiaomi 12 at `$ADB_ENDPOINT` must be connected with ADB, identified,
 installed, paired, streamed across a genuine Internet/TURN path, exercised for
 touch and keyboard, disconnected/reconnected, switched between networks, and
 soaked. Commands, device properties, APK/version hashes, host/client revision,
@@ -173,6 +189,8 @@ relay route evidence, structured logs, and timestamps must be archived using the
 
 ## Release gate
 
-Until every acceptance item is backed by evidence, documentation and UI must use
-“experimental Internet transport foundation,” not “secure Internet access” or
-“end-to-end encrypted Internet streaming.”
+Until every acceptance item is backed by evidence, documentation and UI must
+describe Phase 3 as a development-preview Internet product slice, not a stable
+secure-Internet release. The implemented application record layer may be named
+precisely, but it must not be used to imply public-path, real-capture, handoff,
+latency, or stability proof.
