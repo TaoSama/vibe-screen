@@ -43,8 +43,9 @@ Compilation alone is not device acceptance.
 
 ## Known limitations
 
-- The runnable macOS/Android applications still use the legacy Telemachus byte
-  protocol; Protocol v1 and newer modules are not yet one product session.
+- Matching macOS/Android builds upgrade the main USB/LAN session to Protocol v1
+  while retaining an explicit legacy fallback. Protocol v1 real-device
+  acceptance, Xiaomi 12 acceptance, and the two-hour soak remain open gates.
 - Trusted LAN mode is authenticated but unencrypted and must not be used on an
   untrusted network.
 - Developer ID signing, Apple notarization, Android production signing, App

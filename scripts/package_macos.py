@@ -14,6 +14,8 @@ import subprocess
 import zipfile
 from pathlib import Path
 
+from webrtc_m150_notices import NOTICE_RELATIVE_PATH, validate_notice_bundle
+
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 HOST_ROOT = REPOSITORY_ROOT / "baseline" / "MacHost"
@@ -123,6 +125,7 @@ def create_reproducible_zip(app_path: Path, archive_path: Path) -> None:
 
 def main() -> int:
     args = parse_args()
+    validate_notice_bundle(REPOSITORY_ROOT)
     source_plist = read_source_plist()
     version = args.version or str(source_plist["CFBundleShortVersionString"])
     if not version or any(character.isspace() for character in version):
@@ -138,9 +141,20 @@ def main() -> int:
     for path in (app_path, archive_path, checksum_path):
         safe_remove(path, output_dir)
 
-    run("swift", "build", "-c", "release", cwd=HOST_ROOT)
+    swift_path_map = f"{REPOSITORY_ROOT}=."
+    build_command = (
+        "swift",
+        "build",
+        "-c",
+        "release",
+        "-Xswiftc",
+        "-file-prefix-map",
+        "-Xswiftc",
+        swift_path_map,
+    )
+    run(*build_command, cwd=HOST_ROOT)
     binary_dir = Path(
-        run("swift", "build", "-c", "release", "--show-bin-path", cwd=HOST_ROOT)
+        run(*build_command, "--show-bin-path", cwd=HOST_ROOT)
     )
     executable = binary_dir / APP_NAME
     if not executable.is_file():
@@ -155,6 +169,7 @@ def main() -> int:
     frameworks_dir.mkdir(parents=True)
     shutil.copy2(executable, macos_dir / APP_NAME)
     os.chmod(macos_dir / APP_NAME, 0o755)
+    run("strip", "-S", str(macos_dir / APP_NAME))
     shutil.copy2(HOST_ROOT / "Resources" / "AppIcon.icns", resources_dir)
     shutil.copy2(HOST_ROOT / "Resources" / "Credits.html", resources_dir)
     shutil.copy2(REPOSITORY_ROOT / "baseline" / "LICENSE", resources_dir / "LICENSE.txt")
@@ -171,6 +186,9 @@ def main() -> int:
         symlinks=True,
     )
     shutil.copytree(resource_bundle, resources_dir / RESOURCE_BUNDLE_NAME)
+    packaged_notice = resources_dir / RESOURCE_BUNDLE_NAME / "ThirdParty" / NOTICE_RELATIVE_PATH.name
+    if not packaged_notice.is_file():
+        raise FileNotFoundError(f"Swift resource bundle omitted required notice: {packaged_notice}")
 
     bundled_plist = dict(source_plist)
     bundled_plist["CFBundleExecutable"] = APP_NAME

@@ -7,7 +7,9 @@ packaging, or physical-device acceptance.
 ## Release boundary
 
 The tag workflow accepts only stable SemVer tags in the form `vMAJOR.MINOR.PATCH`
-and creates a **draft prerelease**. A draft must not be made public until a
+at the exact latest `origin/main` tip, after the `Phase 0 checks` push workflow
+has succeeded for that commit, and creates a **draft prerelease**. Being an
+ancestor of `main` is not sufficient. A draft must not be made public until a
 maintainer replaces every TODO in its notes and verifies the artifacts.
 
 The workflow produces:
@@ -17,6 +19,12 @@ The workflow produces:
 - an unsigned iOS Simulator ZIP, not an IPA or device build;
 - sorted SHA-256 checksums, an SPDX 2.3 runtime dependency SBOM, and a notices
   archive.
+
+The debug APK's dependency license inventory and SBOM are generated from
+`debugRuntimeClasspath`, matching the distributed APK. Before checksums are
+written, the workflow decompresses every final APK/ZIP and scans its contents,
+the final SBOM, and the notices archive for credential material, hardware
+identifiers, and local user paths. Any finding blocks the draft.
 
 These steps are repeatable from the tagged source and pinned dependencies. They
 do not promise byte-for-byte identical compiler output; in particular, a fresh
@@ -30,11 +38,16 @@ cryptographically signed and does not authenticate file origin.
    diff since the previous tag.
 2. Run the gates in `docs/testing.md`. Record commands, results, real-device
    evidence, and unverified behavior for the release notes.
-3. Confirm `THIRD_PARTY.md`, `NOTICE`, dependency locks, bundled licenses, and
-   the release notes template cover every distributed runtime dependency.
-4. Confirm GitHub private vulnerability reporting is enabled. The public bug
+3. Push `main` and wait for its `Phase 0 checks` push workflow to succeed. Fetch
+   `origin/main` again and verify the tag target is still exactly that tip.
+4. Confirm `THIRD_PARTY.md`, `NOTICE`, dependency locks, bundled licenses, and
+   the release notes template cover every distributed runtime dependency. For
+   macOS WebRTC M150, verify the component notice bundle SHA-256 against
+   `WEBRTC_PROVENANCE.md`; packaging and release assembly fail if it is absent
+   or changed without review.
+5. Confirm GitHub private vulnerability reporting is enabled. The public bug
    tracker is not an acceptable security-reporting channel.
-5. Create and push a new annotated tag. Never move or reuse a published tag:
+6. Create and push a new annotated tag. Never move or reuse a published tag:
 
    ```bash
    git tag -a vMAJOR.MINOR.PATCH -m "chore(release): vMAJOR.MINOR.PATCH"

@@ -6,6 +6,7 @@ on:
       - "v*.*.*"
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -28,13 +29,25 @@ jobs:
       - id: release
         name: Validate tag and release identity
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           version="${RELEASE_TAG#v}"
           commit="$(git rev-parse HEAD)"
           test "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$commit"
           git fetch --no-tags origin main:refs/remotes/origin/main
-          git merge-base --is-ancestor "$commit" refs/remotes/origin/main
+          test "$commit" = "$(git rev-parse refs/remotes/origin/main)"
+          successful_main_run="$(
+            gh api --method GET \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/phase0.yml/runs" \
+              -f branch=main \
+              -f event=push \
+              -f status=success \
+              -f per_page=100 \
+              --jq ".workflow_runs[] | select(.head_sha == \"$commit\") | .id" \
+              | head -n 1
+          )"
+          test -n "$successful_main_run"
           created="$(git show -s --format=%cI "$commit")"
           python3 scripts/prepare_release.py \
             --version "$version" \
@@ -98,7 +111,10 @@ jobs:
         working-directory: baseline/AndroidClient
         env:
           TELEMACHUS_VERSION: ${{ needs.validate.outputs.version }}
-        run: ./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug auditReleaseDependencies
+        run: >-
+          ./gradlew --no-daemon
+          -PdependencyAuditConfiguration=debugRuntimeClasspath
+          clean testDebugUnitTest lintDebug assembleDebug auditReleaseDependencies
       - name: Verify and collect Android artifacts
         env:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}

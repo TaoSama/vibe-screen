@@ -13,20 +13,16 @@ jobs:
     name: Portable core (no DevEco or HAP claim)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 11.15.1
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: apps/harmony/pnpm-lock.yaml
       - name: Install pinned portable test dependencies
         run: pnpm --dir apps/harmony install --frozen-lockfile
-      - name: Validate native DevEco project shape (static only)
-        run: pnpm --dir apps/harmony static
-      - name: Type-check portable Protocol v1 core
-        run: pnpm --dir apps/harmony typecheck
-      - name: Verify formal Protocol v1 golden and unit tests
-        run: pnpm --dir apps/harmony test
+      - name: Run canonical portable verification
+        run: pnpm --dir apps/harmony verify

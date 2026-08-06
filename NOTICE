@@ -42,9 +42,11 @@ metadata are retained under third_party/webrtc-android/ and bundled in Android
 open-source notices. No WebRTC source is copied.
 
 The macOS Internet adapter links stasel WebRTC 150.0.0 at package commit
-6ed87f05368632f71dc95c89c14c051561710925 (BSD-3-Clause). Its license and
-binary provenance are shipped in the MacHost resource bundle; no source is
-copied.
+6ed87f05368632f71dc95c89c14c051561710925 (BSD-3-Clause), built from Google
+WebRTC source commit 1f975dfd761af6e5d76d28333191973b258d82a8. Its top-level
+license, immutable provenance, and a source-revision-bound conservative
+third-party component notice superset are shipped in the MacHost resource
+bundle and release notices archive; no source is copied.
 
 The Phase 3 deployment runs the external coturn 4.7.0-r0 container at manifest
 sha256:99bf5bf6ab1c119862d0c3d2dfb2bbf805a86a131492cab18c148be64ae7d978.
