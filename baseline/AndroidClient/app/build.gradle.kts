@@ -33,6 +33,11 @@ val releasePackagingRequested =
     gradle.startParameter.taskNames.any {
         it.substringAfterLast(":") == "assembleRelease" || it.substringAfterLast(":") == "bundleRelease"
     }
+val dependencyAuditConfiguration =
+    providers.gradleProperty("dependencyAuditConfiguration").getOrElse("releaseRuntimeClasspath")
+require(dependencyAuditConfiguration in setOf("debugRuntimeClasspath", "releaseRuntimeClasspath")) {
+    "dependencyAuditConfiguration must be debugRuntimeClasspath or releaseRuntimeClasspath"
+}
 
 if (releasePackagingRequested && !releaseSigningConfigured) {
     throw GradleException(
@@ -143,6 +148,7 @@ val generateReleaseDependencyLicenses by tasks.registering {
             "generated/dependency-license-report/ANDROID_RUNTIME_DEPENDENCY_LICENSES.md",
         )
     outputs.file(outputFile)
+    inputs.property("dependencyAuditConfiguration", dependencyAuditConfiguration)
 
     doLast {
         val permittedApacheGroups =
@@ -163,7 +169,7 @@ val generateReleaseDependencyLicenses by tasks.registering {
             setOf("com.google.protobuf:protobuf-javalite:$protobufVersion")
         val dependencies =
             configurations
-                .getByName("releaseRuntimeClasspath")
+                .getByName(dependencyAuditConfiguration)
                 .resolvedConfiguration
                 .resolvedArtifacts
                 .map { artifact ->
@@ -188,7 +194,7 @@ val generateReleaseDependencyLicenses by tasks.registering {
             buildString {
                 appendLine("# Android Runtime Dependency Licenses")
                 appendLine()
-                appendLine("Generated from `releaseRuntimeClasspath`; test-only dependencies are excluded.")
+                appendLine("Generated from `$dependencyAuditConfiguration`; test-only dependencies are excluded.")
                 appendLine()
                 appendLine("| Dependency | License |")
                 appendLine("| --- | --- |")
@@ -220,11 +226,12 @@ val generateReleaseDependencyLicenses by tasks.registering {
 val generateReleaseSbom by tasks.registering {
     val outputFile = layout.buildDirectory.file("generated/sbom/android-runtime.spdx.json")
     outputs.file(outputFile)
+    inputs.property("dependencyAuditConfiguration", dependencyAuditConfiguration)
 
     doLast {
         val dependencies =
             configurations
-                .getByName("releaseRuntimeClasspath")
+                .getByName(dependencyAuditConfiguration)
                 .resolvedConfiguration
                 .resolvedArtifacts
                 .map { artifact ->
@@ -257,6 +264,7 @@ $packages
 
 val auditReleaseDependencies by tasks.registering {
     dependsOn(generateReleaseDependencyLicenses, generateReleaseSbom)
+    inputs.property("dependencyAuditConfiguration", dependencyAuditConfiguration)
     doLast {
         val repositoryRoot = rootProject.projectDir.parentFile.parentFile
         val gsonLicense = repositoryRoot.resolve("third_party/gson/LICENSE")
@@ -274,7 +282,7 @@ val auditReleaseDependencies by tasks.registering {
         }
         val runtimeArtifacts =
             configurations
-                .getByName("releaseRuntimeClasspath")
+                .getByName(dependencyAuditConfiguration)
                 .resolvedConfiguration
                 .resolvedArtifacts
         val gsonCoordinate = "com.google.code.gson:gson:2.13.1"
@@ -282,7 +290,9 @@ val auditReleaseDependencies by tasks.registering {
             runtimeArtifacts.filter {
                 "${it.moduleVersion.id.group}:${it.name}:${it.moduleVersion.id.version}" == gsonCoordinate
             }
-        check(gsonArtifacts.size == 1) { "Exactly $gsonCoordinate must be present in releaseRuntimeClasspath" }
+        check(gsonArtifacts.size == 1) {
+            "Exactly $gsonCoordinate must be present in $dependencyAuditConfiguration"
+        }
         val gsonArtifactDigest =
             MessageDigest
                 .getInstance("SHA-256")
@@ -296,7 +306,9 @@ val auditReleaseDependencies by tasks.registering {
             runtimeArtifacts.filter {
                 "${it.moduleVersion.id.group}:${it.name}:${it.moduleVersion.id.version}" == webRtcCoordinate
             }
-        check(webRtcArtifacts.size == 1) { "Exactly $webRtcCoordinate must be present in releaseRuntimeClasspath" }
+        check(webRtcArtifacts.size == 1) {
+            "Exactly $webRtcCoordinate must be present in $dependencyAuditConfiguration"
+        }
         val webRtcDigest =
             MessageDigest
                 .getInstance("SHA-256")
@@ -311,7 +323,7 @@ val auditReleaseDependencies by tasks.registering {
                 "${it.moduleVersion.id.group}:${it.name}:${it.moduleVersion.id.version}" == protobufCoordinate
             }
         check(protobufArtifacts.size == 1) {
-            "Exactly $protobufCoordinate must be present in releaseRuntimeClasspath"
+            "Exactly $protobufCoordinate must be present in $dependencyAuditConfiguration"
         }
         val protobufArtifactDigest =
             MessageDigest

@@ -10,9 +10,13 @@ import json
 import re
 import shutil
 import tempfile
+import zipfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from archive_artifact import create_deterministic_zip
+from generate_webrtc_m150_notices import SOURCES as WEBRTC_M150_NOTICE_SOURCES
+from webrtc_m150_notices import NOTICE_RELATIVE_PATH, validate_notice_bundle
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -48,6 +52,52 @@ NOTICE_PATHS = (
     "baseline/MacHost/Sources/Phase3/InternetTransport/ThirdParty",
     "apps/ios/THIRD_PARTY.md",
     "apps/ios/ThirdPartyLicenses",
+)
+RELEASE_CREDENTIAL_KEY = (
+    rb"(?:credential|token|password|secret|shared_secret_base64|bootstrap_secret_base64|"
+    rb"[A-Za-z][A-Za-z0-9_-]*(?:Credential|Token|Password|Secret)|"
+    rb"[A-Za-z][A-Za-z0-9_-]*[_-](?:credential|token|password|secret))"
+)
+RELEASE_QUOTED_VALUE = rb'(?P<quote>["\'])(?P<value>(?:\\.|[^"\'\\\r\n])*)(?P=quote)'
+RELEASE_JSON_CREDENTIAL = re.compile(
+    rb'["\']' + RELEASE_CREDENTIAL_KEY + rb'["\']\s*:\s*' + RELEASE_QUOTED_VALUE,
+    re.IGNORECASE,
+)
+RELEASE_KEY_VALUE_CREDENTIAL = re.compile(
+    rb"(?<![A-Za-z0-9_-])" + RELEASE_CREDENTIAL_KEY + rb"\s*=\s*" + RELEASE_QUOTED_VALUE,
+    re.IGNORECASE,
+)
+RELEASE_KEY_VALUE_UNQUOTED_CREDENTIAL = re.compile(
+    rb"(?<![A-Za-z0-9_-])"
+    + RELEASE_CREDENTIAL_KEY
+    + rb"\s*=\s*(?P<value>[A-Za-z0-9._~+/-]{12,})(?![A-Za-z0-9._~+/-])",
+    re.IGNORECASE,
+)
+RELEASE_DIRECT_CREDENTIALS = (
+    re.compile(rb"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----"),
+    re.compile(rb"\bAuthorization\s*:\s*Bearer\s+[A-Za-z0-9._~+/-]{8,}", re.IGNORECASE),
+    re.compile(rb"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"),
+    re.compile(rb"\bgh[pousr]_[A-Za-z0-9]{30,}\b"),
+    re.compile(rb"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
+)
+RELEASE_SAFE_CREDENTIAL_VALUES = frozenset(
+    {
+        b"device-token-abcdefghijklmnopqrstuvwxyz",
+        b"turn-password",
+    }
+)
+RELEASE_USER_PATH = re.compile(
+    rb"(?:/Users|/home|/Volumes)/[A-Za-z0-9._~+@%/=-]+|[A-Za-z]:\\Users\\[A-Za-z0-9._~+@%\\=-]+",
+    re.IGNORECASE,
+)
+RELEASE_HARDWARE_IDENTIFIER = re.compile(
+    rb'["\'](?:hardware_serial|device_serial)["\']\s*:\s*' + RELEASE_QUOTED_VALUE,
+    re.IGNORECASE,
+)
+RELEASE_ENDPOINT = re.compile(
+    rb'["\'](?:endpoint|server_url|signaling_url|stun_url|turn_url)["\']\s*:\s*'
+    + RELEASE_QUOTED_VALUE,
+    re.IGNORECASE,
 )
 
 
@@ -102,6 +152,112 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def release_finding_id(content: bytes) -> str:
+    return f"sha256:{hashlib.sha256(content).hexdigest()[:16]}"
+
+
+def safe_credential_value(value: bytes) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {
+        b"",
+        b"null",
+        b"none",
+        b"redacted",
+        b"<redacted>",
+        b"[redacted]",
+        b"...",
+    }:
+        return True
+    if value in RELEASE_SAFE_CREDENTIAL_VALUES:
+        return True
+    return re.fullmatch(
+        rb"\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\})",
+        value,
+    ) is not None
+
+
+def controlled_endpoint(value: bytes) -> bool:
+    text = value.decode("ascii", errors="strict").lower()
+    if text.startswith(("stun:", "turn:", "stuns:", "turns:")):
+        host = text.split(":", 1)[1].split(":", 1)[0]
+    else:
+        host = urlsplit(text).hostname
+    return host in {"localhost", "127.0.0.1", "0.0.0.0", "::1"} or bool(
+        host and (host == "example.test" or host.endswith(".example.test"))
+    )
+
+
+def release_scan_findings(content: bytes) -> dict[str, list[str]]:
+    findings: dict[str, list[str]] = {}
+    credential_findings = [
+        release_finding_id(match.group())
+        for pattern in RELEASE_DIRECT_CREDENTIALS
+        for match in pattern.finditer(content)
+    ]
+    for pattern in (
+        RELEASE_JSON_CREDENTIAL,
+        RELEASE_KEY_VALUE_CREDENTIAL,
+        RELEASE_KEY_VALUE_UNQUOTED_CREDENTIAL,
+    ):
+        for match in pattern.finditer(content):
+            if not safe_credential_value(match.group("value")):
+                credential_findings.append(release_finding_id(match.group()))
+    if credential_findings:
+        findings["credential_material"] = credential_findings
+
+    hardware_findings = [
+        release_finding_id(match.group())
+        for match in RELEASE_HARDWARE_IDENTIFIER.finditer(content)
+        if match.group("value").lower() not in {b"redacted", b"<redacted>", b"[redacted]"}
+    ]
+    if hardware_findings:
+        findings["hardware_identifier"] = hardware_findings
+
+    endpoint_findings = []
+    for match in RELEASE_ENDPOINT.finditer(content):
+        try:
+            is_controlled = controlled_endpoint(match.group("value"))
+        except UnicodeDecodeError:
+            is_controlled = False
+        if not is_controlled:
+            endpoint_findings.append(release_finding_id(match.group()))
+    if endpoint_findings:
+        findings["endpoint"] = endpoint_findings
+
+    path_findings = [
+        release_finding_id(match.group())
+        for match in RELEASE_USER_PATH.finditer(content)
+    ]
+    if path_findings:
+        findings["user_absolute_path"] = path_findings
+    return findings
+
+
+def scan_release_artifact(path: Path) -> None:
+    findings_by_location: list[tuple[str, dict[str, list[str]]]] = []
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as archive:
+            for member in archive.infolist():
+                if member.is_dir():
+                    continue
+                path_findings = release_scan_findings(member.filename.encode("utf-8"))
+                if path_findings:
+                    findings_by_location.append((f"{member.filename} (entry path)", path_findings))
+                findings = release_scan_findings(archive.read(member))
+                if findings:
+                    findings_by_location.append((member.filename, findings))
+    else:
+        findings = release_scan_findings(path.read_bytes())
+        if findings:
+            findings_by_location.append((path.name, findings))
+    if findings_by_location:
+        summary = "; ".join(
+            f"{location}: {','.join(sorted(findings))}"
+            for location, findings in findings_by_location
+        )
+        raise ValueError(f"release artifact privacy/secret scan failed for {path.name}: {summary}")
 
 
 def load_android_packages(artifacts_dir: Path) -> list[dict[str, object]]:
@@ -160,6 +316,29 @@ def load_swift_packages(resolved_path: Path) -> list[dict[str, object]]:
     return packages
 
 
+def load_webrtc_m150_components() -> list[dict[str, object]]:
+    packages = []
+    for name, repository, revision, license_path in WEBRTC_M150_NOTICE_SOURCES:
+        normalized_name = re.sub(r"[^A-Za-z0-9.-]", "-", name)
+        packages.append(
+            {
+                "SPDXID": f"SPDXRef-Package-webrtc-m150-component-{normalized_name}",
+                "name": name,
+                "versionInfo": revision,
+                "downloadLocation": repository,
+                "filesAnalyzed": False,
+                "licenseConcluded": "NOASSERTION",
+                "licenseDeclared": "NOASSERTION",
+                "copyrightText": "NOASSERTION",
+                "comment": (
+                    "Conservative WebRTC M150 notice component; license source path "
+                    f"{license_path}, retained in {NOTICE_RELATIVE_PATH}."
+                ),
+            }
+        )
+    return packages
+
+
 def write_release_sbom(
     version: str,
     commit: str,
@@ -167,12 +346,14 @@ def write_release_sbom(
     artifacts_dir: Path,
     output: Path,
 ) -> None:
+    validate_notice_bundle(REPOSITORY_ROOT)
     packages = load_android_packages(artifacts_dir)
     for resolved_path in (
         REPOSITORY_ROOT / "baseline/MacHost/Package.resolved",
         REPOSITORY_ROOT / "apps/ios/Package.resolved",
     ):
         packages.extend(load_swift_packages(resolved_path))
+    packages.extend(load_webrtc_m150_components())
     packages_by_id: dict[str, dict[str, object]] = {}
     for package in packages:
         package_id = str(package["SPDXID"])
@@ -182,6 +363,24 @@ def write_release_sbom(
         packages_by_id[package_id] = package
     packages = sorted(packages_by_id.values(), key=lambda package: str(package["SPDXID"]))
     package_ids = [str(package["SPDXID"]) for package in packages]
+    relationships = [
+        {
+            "spdxElementId": "SPDXRef-DOCUMENT",
+            "relationshipType": "DESCRIBES",
+            "relatedSpdxElement": package_id,
+        }
+        for package_id in package_ids
+    ]
+    webrtc_package_id = "SPDXRef-Package-webrtc"
+    relationships.extend(
+        {
+            "spdxElementId": webrtc_package_id,
+            "relationshipType": "CONTAINS",
+            "relatedSpdxElement": package_id,
+        }
+        for package_id in package_ids
+        if package_id.startswith("SPDXRef-Package-webrtc-m150-component-")
+    )
     document = {
         "spdxVersion": "SPDX-2.3",
         "dataLicense": "CC0-1.0",
@@ -190,19 +389,13 @@ def write_release_sbom(
         "documentNamespace": f"https://github.com/TaoSama/vibe-screen/releases/tag/v{version}/sbom/{commit}",
         "creationInfo": {"created": created, "creators": ["Tool: vibe-screen-prepare-release-v1"]},
         "packages": packages,
-        "relationships": [
-            {
-                "spdxElementId": "SPDXRef-DOCUMENT",
-                "relationshipType": "DESCRIBES",
-                "relatedSpdxElement": package_id,
-            }
-            for package_id in package_ids
-        ],
+        "relationships": relationships,
     }
     output.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def write_notices_archive(version: str, artifacts_dir: Path, output: Path) -> None:
+    validate_notice_bundle(REPOSITORY_ROOT)
     reports = sorted(artifacts_dir.rglob("ANDROID_RUNTIME_DEPENDENCY_LICENSES.md"))
     if len(reports) != 1:
         raise ValueError(f"expected exactly one Android dependency license report, found {len(reports)}")
@@ -261,6 +454,8 @@ def main() -> int:
 
     checksums_path = output_dir / "SHA256SUMS"
     checksum_targets = sorted([*published_artifacts, sbom_path, notices_path])
+    for path in checksum_targets:
+        scan_release_artifact(path)
     checksums_path.write_text(
         "".join(f"{sha256(path)}  {path.name}\n" for path in checksum_targets),
         encoding="utf-8",

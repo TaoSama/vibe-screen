@@ -3,15 +3,25 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
+
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from webrtc_m150_notices import NOTICE_RELATIVE_PATH, validate_notice_bundle
+import prepare_release
+import generate_webrtc_m150_notices
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ARCHIVE_SCRIPT = REPOSITORY_ROOT / "scripts/archive_artifact.py"
 PREPARE_SCRIPT = REPOSITORY_ROOT / "scripts/prepare_release.py"
+RELEASE_WORKFLOW = REPOSITORY_ROOT / ".github/workflows/release.yml"
+ANDROID_BUILD = REPOSITORY_ROOT / "baseline/AndroidClient/app/build.gradle.kts"
 VERSION = "1.2.3"
 TAG = f"v{VERSION}"
 COMMIT = "a" * 40
@@ -69,6 +79,37 @@ class PrepareReleaseTests(unittest.TestCase):
             *extra,
         ]
 
+    def write_artifacts(self, artifacts: Path, *, archive_content: bytes = b"binary") -> None:
+        artifacts.mkdir()
+        for name in (
+            f"Telemachus-macos-{VERSION}-arm64.zip",
+            f"Telemachus-android-{VERSION}-debug.apk",
+            f"VibeScreen-ios-simulator-{VERSION}.zip",
+        ):
+            with zipfile.ZipFile(artifacts / name, "w") as archive:
+                archive.writestr("payload.bin", archive_content)
+        (artifacts / "ANDROID_RUNTIME_DEPENDENCY_LICENSES.md").write_text(
+            "# licenses\nGenerated from `debugRuntimeClasspath`.\n",
+            encoding="utf-8",
+        )
+        (artifacts / "android-runtime.spdx.json").write_text(
+            json.dumps(
+                {
+                    "packages": [
+                        {
+                            "SPDXID": "SPDXRef-Package-example",
+                            "name": "example:runtime:1.0.0",
+                            "versionInfo": "1.0.0",
+                            "downloadLocation": "NOASSERTION",
+                            "licenseConcluded": "Apache-2.0",
+                            "licenseDeclared": "Apache-2.0",
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
     def test_validation_rejects_prerelease_tag(self) -> None:
         command = self.command("--validate-only")
         command[command.index(VERSION)] = "1.2.3-rc.1"
@@ -85,33 +126,47 @@ class PrepareReleaseTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("at most 99", result.stderr)
 
+    def test_macos_packaging_notice_validation_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            with self.assertRaisesRegex(FileNotFoundError, "notice bundle is missing"):
+                validate_notice_bundle(root)
+            notice = root / NOTICE_RELATIVE_PATH
+            notice.parent.mkdir(parents=True)
+            notice.write_text("incomplete notice", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
+                validate_notice_bundle(root)
+
+        with mock.patch.object(
+            generate_webrtc_m150_notices,
+            "SOURCES",
+            generate_webrtc_m150_notices.SOURCES[:-1],
+        ):
+            with self.assertRaisesRegex(ValueError, "exactly 32 components"):
+                validate_notice_bundle(REPOSITORY_ROOT)
+        altered_sources = list(generate_webrtc_m150_notices.SOURCES)
+        altered_sources[0] = (*altered_sources[0][:-1], "abseil-cpp/NOTICE")
+        with mock.patch.object(generate_webrtc_m150_notices, "SOURCES", tuple(altered_sources)):
+            with self.assertRaisesRegex(ValueError, "source manifest SHA-256 mismatch"):
+                validate_notice_bundle(REPOSITORY_ROOT)
+
+    def test_release_notice_archive_fails_when_m150_bundle_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            with mock.patch.object(prepare_release, "REPOSITORY_ROOT", root):
+                with self.assertRaisesRegex(FileNotFoundError, "notice bundle is missing"):
+                    prepare_release.write_notices_archive(
+                        VERSION,
+                        root / "artifacts",
+                        root / "notices.zip",
+                    )
+
     def test_prepare_generates_complete_release_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             artifacts = root / "artifacts"
             output = root / "output"
-            artifacts.mkdir()
-            (artifacts / f"Telemachus-macos-{VERSION}-arm64.zip").write_bytes(b"mac")
-            (artifacts / f"Telemachus-android-{VERSION}-debug.apk").write_bytes(b"android")
-            (artifacts / f"VibeScreen-ios-simulator-{VERSION}.zip").write_bytes(b"ios")
-            (artifacts / "ANDROID_RUNTIME_DEPENDENCY_LICENSES.md").write_text("# licenses\n", encoding="utf-8")
-            (artifacts / "android-runtime.spdx.json").write_text(
-                json.dumps(
-                    {
-                        "packages": [
-                            {
-                                "SPDXID": "SPDXRef-Package-example",
-                                "name": "example:runtime:1.0.0",
-                                "versionInfo": "1.0.0",
-                                "downloadLocation": "NOASSERTION",
-                                "licenseConcluded": "Apache-2.0",
-                                "licenseDeclared": "Apache-2.0",
-                            }
-                        ]
-                    }
-                ),
-                encoding="utf-8",
-            )
+            self.write_artifacts(artifacts)
 
             prepare_command = self.command("--artifacts-dir", str(artifacts), "--output-dir", str(output))
             subprocess.run(prepare_command, check=True, capture_output=True, text=True)
@@ -122,19 +177,161 @@ class PrepareReleaseTests(unittest.TestCase):
             self.assertEqual(len(checksum_lines), 5)
             sbom = json.loads((output / f"vibe-screen-{VERSION}.spdx.json").read_text(encoding="utf-8"))
             self.assertEqual(sbom["creationInfo"]["created"], "2026-08-05T02:00:00Z")
-            self.assertEqual(
-                {package["name"] for package in sbom["packages"]},
-                {"example:runtime:1.0.0", "webrtc", "swift-protobuf"},
-            )
+            package_names = {package["name"] for package in sbom["packages"]}
+            self.assertTrue({"example:runtime:1.0.0", "webrtc", "swift-protobuf"} <= package_names)
+            self.assertIn("boringssl", package_names)
+            self.assertIn("libsrtp", package_names)
+            component_packages = [
+                package
+                for package in sbom["packages"]
+                if package["SPDXID"].startswith("SPDXRef-Package-webrtc-m150-component-")
+            ]
+            self.assertEqual(len(component_packages), 32)
             self.assertEqual(
                 [package["name"] for package in sbom["packages"]].count("swift-protobuf"),
                 1,
             )
             self.assertTrue(all(package["filesAnalyzed"] is False for package in sbom["packages"]))
-            self.assertEqual(len(sbom["relationships"]), len(sbom["packages"]))
+            contains = [
+                relationship
+                for relationship in sbom["relationships"]
+                if relationship["relationshipType"] == "CONTAINS"
+            ]
+            self.assertEqual(len(contains), 32)
+            self.assertTrue(all(item["spdxElementId"] == "SPDXRef-Package-webrtc" for item in contains))
+            notices = output / f"vibe-screen-{VERSION}-notices.zip"
+            with zipfile.ZipFile(notices) as archive:
+                suffix = NOTICE_RELATIVE_PATH.as_posix()
+                self.assertTrue(any(name.endswith(suffix) for name in archive.namelist()))
             notes = (output / "RELEASE_NOTES.md").read_text(encoding="utf-8")
             self.assertIn(f"Vibe Screen {VERSION}", notes)
             self.assertNotIn("{{", notes)
+
+    def test_prepare_rejects_secret_inside_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            artifacts = root / "artifacts"
+            self.write_artifacts(
+                artifacts,
+                archive_content=b'api_token="0xP9vL2kQ7mN4sR8wT1yU6aD3fG5hJ0cB"',
+            )
+
+            result = subprocess.run(
+                self.command("--artifacts-dir", str(artifacts), "--output-dir", str(root / "output")),
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("privacy/secret scan failed", result.stderr)
+            self.assertIn("payload.bin", result.stderr)
+
+    def test_prepare_rejects_private_user_path_inside_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            artifacts = root / "artifacts"
+            self.write_artifacts(artifacts, archive_content=b"/Users/release-runner/private/file")
+
+            result = subprocess.run(
+                self.command("--artifacts-dir", str(artifacts), "--output-dir", str(root / "output")),
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("user_absolute_path", result.stderr)
+
+    def test_prepare_rejects_secret_in_final_sbom(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            artifacts = root / "artifacts"
+            self.write_artifacts(artifacts)
+            sbom_path = artifacts / "android-runtime.spdx.json"
+            sbom = json.loads(sbom_path.read_text(encoding="utf-8"))
+            sbom["packages"][0]["api_token"] = "0xP9vL2kQ7mN4sR8wT1yU6aD3fG5hJ0cB"
+            sbom_path.write_text(json.dumps(sbom), encoding="utf-8")
+
+            result = subprocess.run(
+                self.command("--artifacts-dir", str(artifacts), "--output-dir", str(root / "output")),
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(f"vibe-screen-{VERSION}.spdx.json", result.stderr)
+
+    def test_prepare_rejects_secret_in_final_notices(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            artifacts = root / "artifacts"
+            self.write_artifacts(artifacts)
+            (artifacts / "ANDROID_RUNTIME_DEPENDENCY_LICENSES.md").write_text(
+                'api_token="0xP9vL2kQ7mN4sR8wT1yU6aD3fG5hJ0cB"\n',
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                self.command("--artifacts-dir", str(artifacts), "--output-dir", str(root / "output")),
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(f"vibe-screen-{VERSION}-notices.zip", result.stderr)
+
+    def test_release_scan_distinguishes_compiled_literals_from_credentials(self) -> None:
+        compiled_literals = (
+            b"token=\x00\x01"
+            b'\x00"signaling_token":"device-token-abcdefghijklmnopqrstuvwxyz"'
+            b'\x00"credential":"turn-password"'
+            b'\x00"signaling_url":"https://signal.example.test"'
+        )
+        self.assertEqual(prepare_release.release_scan_findings(compiled_literals), {})
+
+        findings = prepare_release.release_scan_findings(
+            b'api_token="0xP9vL2kQ7mN4sR8wT1yU6aD3fG5hJ0cB"'
+        )
+        self.assertIn("credential_material", findings)
+        unquoted_findings = prepare_release.release_scan_findings(
+            b"api_token=0xP9vL2kQ7mN4sR8wT1yU6aD3fG5hJ0cB"
+        )
+        self.assertIn("credential_material", unquoted_findings)
+
+    def test_release_scan_rejects_hardware_identifier_and_uncontrolled_endpoint(self) -> None:
+        findings = prepare_release.release_scan_findings(
+            b'{"hardware_serial":"C02REALSECRET",'
+            b'"signaling_url":"https://signal.private.invalid"}'
+        )
+        self.assertIn("hardware_identifier", findings)
+        self.assertIn("endpoint", findings)
+
+    def test_release_scan_rejects_windows_user_path(self) -> None:
+        findings = prepare_release.release_scan_findings(
+            b"C:\\Users\\random-user\\private.bin"
+        )
+        self.assertIn("user_absolute_path", findings)
+
+    def test_macos_release_build_remaps_source_paths(self) -> None:
+        package_script = (REPOSITORY_ROOT / "scripts/package_macos.py").read_text(encoding="utf-8")
+        self.assertIn('"-file-prefix-map"', package_script)
+        self.assertIn('run("strip", "-S", str(macos_dir / APP_NAME))', package_script)
+        self.assertNotIn(
+            "#filePath",
+            (REPOSITORY_ROOT / "baseline/MacHost/Sources/ProtocolV1SelfTest.swift").read_text(
+                encoding="utf-8"
+            ),
+        )
+
+    def test_release_workflow_binds_tag_to_successful_main_tip_and_debug_audit(self) -> None:
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn('test "$commit" = "$(git rev-parse refs/remotes/origin/main)"', workflow)
+        self.assertNotIn("merge-base --is-ancestor", workflow)
+        self.assertIn("actions/workflows/phase0.yml/runs", workflow)
+        self.assertIn("select(.head_sha", workflow)
+        self.assertIn("-PdependencyAuditConfiguration=debugRuntimeClasspath", workflow)
+        android_build = ANDROID_BUILD.read_text(encoding="utf-8")
+        self.assertIn('getByName(dependencyAuditConfiguration)', android_build)
+        self.assertIn('inputs.property("dependencyAuditConfiguration"', android_build)
 
 
 if __name__ == "__main__":

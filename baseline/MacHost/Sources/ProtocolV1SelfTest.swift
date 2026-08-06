@@ -84,12 +84,22 @@ enum ProtocolV1SelfTest {
 
     private static func testSharedGoldenFixtures(failures: inout [String]) {
         do {
-            let root = URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .appendingPathComponent("contracts/fixtures/messages/v1/bin")
+            let workingDirectory = URL(
+                fileURLWithPath: FileManager.default.currentDirectoryPath,
+                isDirectory: true
+            )
+            let repositoryCandidates = [
+                workingDirectory,
+                workingDirectory
+                    .deletingLastPathComponent()
+                    .deletingLastPathComponent()
+            ]
+            guard let root = repositoryCandidates
+                .map({ $0.appendingPathComponent("contracts/fixtures/messages/v1/bin") })
+                .first(where: { FileManager.default.fileExists(atPath: $0.path) }) else {
+                failures.append("shared golden fixture directory is unavailable from the working directory")
+                return
+            }
             let controls = [
                 "client_hello", "host_hello", "session_accepted",
                 "list_displays_request", "list_displays_response",
