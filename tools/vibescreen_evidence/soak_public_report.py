@@ -17,6 +17,9 @@ PUBLIC_ERROR_DERIVATION_FAILED = "evidence_derivation_failed"
 PUBLIC_DERIVATION_ERROR_MESSAGE = "public evidence derivation failed"
 PUBLIC_OUTPUT_ERROR_MESSAGE = "public evidence output write failed"
 SOAK_REPORT_KIND = "soak_exact_window_report"
+INTERPRETATION = (
+    "Trend metrics are descriptive evidence, not a no-leak determination."
+)
 PUBLIC_EVENT_NAMES = (
     "session_admission_failed",
     "session_admitted",
@@ -422,9 +425,7 @@ def _project_public_report(report: dict[str, Any]) -> dict[str, Any]:
                 )
             },
         },
-        "interpretation": (
-            "Trend metrics are descriptive evidence, not a no-leak determination."
-        ),
+        "interpretation": INTERPRETATION,
     }
     json.dumps(projected, allow_nan=False, sort_keys=True)
     return projected
@@ -435,7 +436,7 @@ def derive_public_report(report: dict[str, Any]) -> dict[str, Any]:
 
     try:
         return _project_public_report(report)
-    except Exception:
+    except Exception:  # noqa: BLE001 - fail closed; never surface private detail
         return public_failure_report()
 
 
@@ -451,7 +452,7 @@ def write_public_report(output: Path, report: dict[str, Any]) -> int:
         temporary = output.with_suffix(output.suffix + ".tmp")
         temporary.write_text(encoded, encoding="utf-8")
         temporary.replace(output)
-    except Exception:
+    except Exception:  # noqa: BLE001 - fail closed; emit a fixed message only
         print(PUBLIC_OUTPUT_ERROR_MESSAGE, file=sys.stderr)
         return 1
     if public_report["derivation_status"] != "complete":

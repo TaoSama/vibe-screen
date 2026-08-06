@@ -20,6 +20,26 @@ from vibescreen_evidence.soak_report import (
 )
 
 
+SUPPORTED_SCHEMA_KEYWORDS = frozenset(
+    {
+        "$defs",
+        "$id",
+        "$ref",
+        "$schema",
+        "additionalProperties",
+        "const",
+        "exclusiveMinimum",
+        "format",
+        "minimum",
+        "oneOf",
+        "properties",
+        "required",
+        "title",
+        "type",
+    }
+)
+
+
 def expected_public_failure() -> dict:
     return {
         "schema_version": "vibescreen.evidence/v1",
@@ -31,6 +51,25 @@ def expected_public_failure() -> dict:
 
 
 class SoakPublicReportTest(unittest.TestCase):
+    def _assert_supported_schema_keywords(self, node, path="$"):
+        unsupported = set(node) - SUPPORTED_SCHEMA_KEYWORDS
+        self.assertFalse(
+            unsupported,
+            f"{path}: unsupported schema keywords {sorted(unsupported)}",
+        )
+        if "additionalProperties" in node:
+            self.assertIsInstance(
+                node["additionalProperties"],
+                bool,
+                f"{path}: additionalProperties only supports boolean values",
+            )
+        for name, child in node.get("$defs", {}).items():
+            self._assert_supported_schema_keywords(child, f"{path}.$defs.{name}")
+        for index, child in enumerate(node.get("oneOf", [])):
+            self._assert_supported_schema_keywords(child, f"{path}.oneOf[{index}]")
+        for name, child in node.get("properties", {}).items():
+            self._assert_supported_schema_keywords(child, f"{path}.properties.{name}")
+
     def _matches_json_type(self, value, expected_type):
         matches = {
             "null": value is None,
@@ -44,10 +83,12 @@ class SoakPublicReportTest(unittest.TestCase):
         return matches.get(expected_type, False)
 
     def _assert_schema_node(self, value, node, root, path="$"):
+        self._assert_supported_schema_keywords(node, path)
         if "$ref" in node:
             reference = node["$ref"]
             self.assertTrue(reference.startswith("#/$defs/"), reference)
             node = root["$defs"][reference.removeprefix("#/$defs/")]
+            self._assert_supported_schema_keywords(node, path)
         if "oneOf" in node:
             candidates = [
                 candidate
@@ -67,7 +108,8 @@ class SoakPublicReportTest(unittest.TestCase):
                 any(self._matches_json_type(value, item) for item in expected_types),
                 f"{path}: invalid type",
             )
-        if node.get("format") == "date-time":
+        if "format" in node:
+            self.assertEqual(node["format"], "date-time", f"{path}: unsupported format")
             parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
             self.assertIsNotNone(parsed.tzinfo, path)
         if "minimum" in node:
@@ -87,6 +129,7 @@ class SoakPublicReportTest(unittest.TestCase):
     def _assert_public_schema(self, instance):
         schema_path = Path(__file__).parents[1] / "schemas" / "soak-public-report.schema.json"
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        self._assert_supported_schema_keywords(schema)
         branches = [
             branch
             for branch in schema["oneOf"]
@@ -95,6 +138,28 @@ class SoakPublicReportTest(unittest.TestCase):
         ]
         self.assertEqual(len(branches), 1)
         self._assert_schema_node(instance, branches[0], schema)
+
+    def test_dependency_free_schema_validator_rejects_unknown_keywords(self):
+        with self.assertRaisesRegex(AssertionError, "unsupported schema keywords"):
+            self._assert_schema_node(
+                None,
+                {"type": "null", "unknownValidationKeyword": True},
+                {},
+                "$.fixture",
+            )
+        with self.assertRaisesRegex(AssertionError, "additionalProperties"):
+            self._assert_schema_node(
+                {},
+                {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string",
+                        "unknownNestedKeyword": True,
+                    },
+                },
+                {},
+                "$.fixture",
+            )
 
     def _assert_public_cli_failure(self, summary, samples, telemetry):
         output = summary.parent / "public-failure.json"
@@ -204,6 +269,7 @@ class SoakPublicReportTest(unittest.TestCase):
             ("schema_version", "vibescreen.evidence/v999"),
             ("kind", "input_latency"),
             ("run_id", ""),
+            ("status", "unknown"),
         )
         for field, value in cases:
             with self.subTest(field=field), tempfile.TemporaryDirectory() as raw_dir:
@@ -308,9 +374,12 @@ class SoakPublicReportTest(unittest.TestCase):
                     record["errors"] = []
                     summary.write_text(json.dumps(record), encoding="utf-8")
                     if source_name == "summary":
-                        raw = summary.read_text(encoding="utf-8").rstrip("}")
+                        record["unexpected_number"] = "NON_FINITE_PLACEHOLDER"
                         summary.write_text(
-                            raw + f', "unexpected_number": {token}}}', encoding="utf-8"
+                            json.dumps(record).replace(
+                                '"NON_FINITE_PLACEHOLDER"', token
+                            ),
+                            encoding="utf-8",
                         )
                     elif source_name == "samples":
                         lines = samples.read_text(encoding="utf-8").splitlines()

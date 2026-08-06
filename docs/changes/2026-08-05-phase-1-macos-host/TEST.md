@@ -65,9 +65,9 @@ frames, missing private classes/selectors, and exact unchanged-bounds window
 recovery. At the original local run they remained source-level regression
 coverage because XCTest could not run; the 2026-08-06 main CI result below
 subsequently executed them as part of the full suite.
-The second review adds queued-old-callback rejection, asynchronous codec
-startup de-duplication, stopped-first current-main replacement policy, and
-single-consumption automatic-launch intent cases. The queued-callback cases
+The XCTest sources also include queued-old-callback rejection, asynchronous
+codec startup de-duplication, stopped-first current-main replacement policy,
+and single-consumption automatic-launch intent cases. The queued-callback cases
 cover both host-session replacement and same-server client takeover before the
 new client's MainActor callback is observed.
 
