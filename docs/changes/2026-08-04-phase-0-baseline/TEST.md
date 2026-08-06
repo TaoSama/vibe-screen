@@ -29,7 +29,7 @@ result.
 | Transport | split/coalesced reads; disconnect; slow consumer; bounded backlog |
 | Host integration | fake capture through encoder and loopback transport |
 | Android integration | framing, session, and decoder lifecycle on emulator |
-| Device E2E | Xiaomi 12 video, touch, keyboard, reconnect, codec fallback |
+| Device E2E | recorded Nubia P0110 evidence plus the still-open target Xiaomi 12 video, touch, keyboard, reconnect, and codec fallback gate |
 | Soak | 1080p30 USB for 30 minutes with queue/RSS/latency series |
 | Latency | external-camera raw samples and measurement notes |
 
@@ -78,9 +78,10 @@ result.
 - Both upstream macOS executables compile and link under Swift 6.3.1.
 - In the original local environment, both macOS test suites failed before test
   execution with `error: no such module 'XCTest'` because full Xcode was not
-  selected. This historical local limitation was closed for current main by the
-  CI result recorded below; it is not retroactively attributed to the original
-  device artifact.
+  selected. For main commit `4c2e908fe31af4c187684991301e163371444eab`,
+  this historical local limitation was closed by the 2026-08-06 CI result
+  recorded below; it is not retroactively attributed to the original device
+  artifact.
 
 ## Protocol v1 main-session offline verification (2026-08-05)
 
@@ -145,16 +146,22 @@ self-test. It does not replace device interoperability evidence.
   `/Library/Developer/CommandLineTools`, not full Xcode. The equivalent pure
   host self-test was the evidence available for this change at that time.
 
-## Current-main Xcode verification (2026-08-06)
+## Main Xcode verification snapshot (2026-08-06)
 
-GitHub Actions [Phase 0 run 31026183305](https://github.com/TaoSama/vibe-screen/actions/runs/31026183305)
-completed successfully for commit
-`056b8c15e67e512f27d908ac9fc8ce3e16fdc63a`. Its `macos` job ran on
-`macos-15` and passed `make baseline-macos-build`,
-`make baseline-macos-self-test`, `make baseline-macos-test`, and
-`make baseline-macos-app`. This closes the current-main macOS XCTest execution
-gate. It does not prove Developer ID signing, notarization, private display
-integration, real-device behavior, latency, or soak stability.
+On 2026-08-06, main commit `4c2e908fe31af4c187684991301e163371444eab`
+completed GitHub Actions Phase 0
+[run 31084214883](https://github.com/TaoSama/vibe-screen/actions/runs/31084214883)
+successfully. Its `macos-15` job passed `make baseline-macos-build`,
+`make baseline-macos-self-test`, `make baseline-macos-test` (202/202 tests), and
+`make baseline-macos-app`; protocol, Android, Phase 3, and evidence-tool jobs
+also passed. The same SHA passed iOS engineering
+[run 31084214830](https://github.com/TaoSama/vibe-screen/actions/runs/31084214830)
+and HarmonyOS portable
+[run 31084214856](https://github.com/TaoSama/vibe-screen/actions/runs/31084214856).
+For that dated main commit, this closes the macOS XCTest execution gate. It
+does not prove Developer ID signing, notarization, private display integration,
+any new real-device behavior, iOS/HarmonyOS device behavior, latency, or soak
+stability.
 
 The available device lease was released after a screen-locked macOS host
 reported zero ScreenCaptureKit displays; its attempted two-hour pre-warm never

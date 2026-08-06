@@ -85,14 +85,15 @@ on). Keep durable knowledge flowing into `cookbook`, `pitfall`, and `runbook`.
 
 Typical loop: scope and build with `/go`, then hand the tested diff to `/ship`.
 
-## Product Vision
+## Product Vision (planned)
 
 Vibe Screen turns Android, HarmonyOS, and iOS devices into low-latency displays
 and input terminals for a Mac. The product is designed for a complete cross-
 platform destination from the start and delivered in phases without throwaway
 protocols or platform-specific architecture.
 
-The completed product supports:
+The target product is planned to support the following outcomes. This list is
+the roadmap destination, not a statement that each item is shipped today:
 
 - Virtual extended displays, display mirroring, and headless Mac mini use.
 - USB, local-network, and secure Internet connections.
@@ -102,10 +103,15 @@ The completed product supports:
 - End-to-end encryption, per-device authorization, and device revocation.
 - Native Android, HarmonyOS NEXT, and iOS clients.
 
-Development starts with an existing Xiaomi 12. Huawei MatePad Mini is the
-primary target device for the HarmonyOS product experience.
+Current Android real-device evidence comes from a Nubia P0110 running Android
+16. Xiaomi 12 acceptance remains an unrun target gate rather than verified
+behavior. Huawei MatePad Mini is the primary planned target device for the
+HarmonyOS product experience; no HarmonyOS device result is implied here.
 
-## Architecture
+## Target Architecture (planned)
+
+This section describes the intended end-state architecture. Implemented and
+verified subsets, plus their open gates, are listed under Delivery Plan below.
 
 ### macOS host
 
@@ -158,7 +164,7 @@ Pairing uses one-time QR credentials, per-device keys, encrypted sessions,
 replay protection, and explicit revocation. Relay servers forward encrypted
 traffic and never terminate screen-content encryption.
 
-## Display and Input Experience
+## Target Display and Input Experience (planned)
 
 At connection time the user can create a virtual extended display, mirror the
 main or another display, attach to an existing virtual display, or enter
@@ -198,16 +204,25 @@ HiDPI scale, letterboxing, rotation, and safe areas.
 
 **Current status: baseline acceptance passed on the recorded Nubia P0110 test
 device using the legacy compatibility path, and Protocol v1 main-session
-offline gates pass. The macOS XCTest suite passes on the current main commit in
-GitHub's Xcode runner. Protocol v1 device interoperability, Xiaomi 12
-acceptance, and two-hour leak testing remain open gates.**
+offline gates pass. As of 2026-08-06, main commit
+`4c2e908fe31af4c187684991301e163371444eab` had passed GitHub Actions Phase 0
+[run 31084214883](https://github.com/TaoSama/vibe-screen/actions/runs/31084214883)
+with the full 202-test MacHost XCTest suite plus protocol, Android, Phase 3,
+and evidence-tool jobs. The same commit also passed iOS engineering
+[run 31084214830](https://github.com/TaoSama/vibe-screen/actions/runs/31084214830)
+and HarmonyOS portable
+[run 31084214856](https://github.com/TaoSama/vibe-screen/actions/runs/31084214856),
+which do not constitute iOS or HarmonyOS real-device evidence. Protocol v1
+real-device interoperability, Xiaomi 12 acceptance, and a valid two-hour
+no-growth run remain open gates.**
 
 Implementation status and evidence are tracked in the
 [Phase 0 change docs](docs/changes/2026-08-04-phase-0-baseline/PRD.md).
 
 - Fork and build SideScreen as the initial codebase.
 - Evaluate and port the relevant Telemachus reliability improvements.
-- Build the Mac host and Android client and run them on the Xiaomi 12.
+- Build the Mac host and Android client and complete the planned Xiaomi 12
+  acceptance gate.
 - Establish versioned protocol schemas, transport interfaces, module ownership,
   automated tests, telemetry, and performance benchmarks.
 
@@ -220,7 +235,9 @@ identity/fallback, experimental virtual extension/mirroring, HiDPI
 configuration, window migration/recovery, validated touch-derived pointer
 handling, permission onboarding, login startup, and bounded unattended
 listener recovery are implemented. Pure display/input geometry, identity, and
-startup policies are covered by host self-tests; system integration is not.
+startup policies are covered by host self-tests; at main commit
+`4c2e908fe31af4c187684991301e163371444eab` on 2026-08-06, the MacHost XCTest
+suite passed 202/202 in CI. System integration is not thereby proved.
 Private `CGVirtualDisplay` creation/capture, true mirroring, real CGEvent/AX
 behavior, login-item approval, and headless reboot still require gated macOS
 integration evidence. The legacy
@@ -233,7 +250,7 @@ device soak remains owned by the coordinated Phase 0 run.
 - Complete touch, keyboard, mouse, and peripheral input.
 - Add window migration, disconnect recovery, automatic reconnect, permission
   onboarding, and actionable errors.
-- Validate sustained operation on the Xiaomi 12.
+- Validate sustained operation on the target Xiaomi 12.
 
 Initial targets are stable 1920×1080 or 1920×1200 at 60 FPS, sub-50 ms USB
 glass-to-glass latency, sub-80 ms on a healthy LAN, sub-50 ms P95 input latency,
@@ -357,8 +374,10 @@ network quality may increase it.
 
 ## Device Strategy
 
-The Xiaomi 12 validates decoding, protocol behavior, input, networking, and
-performance before hardware is purchased. Final tablet selection emphasizes
+The Xiaomi 12 is a planned acceptance target for decoding, protocol behavior,
+input, networking, and performance; no Xiaomi 12 result is currently recorded.
+The recorded Android evidence instead comes from Nubia P0110. Final tablet
+selection emphasizes
 an 8–9 inch high-density 90/120 Hz panel, Wi-Fi 6 or newer, stable low-latency
 HEVC decoding, USB data support, peripherals and stylus, and acceptable thermal
 and power behavior under sustained decoding.
