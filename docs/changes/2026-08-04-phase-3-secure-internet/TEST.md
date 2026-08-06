@@ -5,8 +5,10 @@
 Every result records UTC time, repository revision or tree hash, host/client
 version, artifact SHA-256, toolchain versions, configuration **without secrets**,
 network topology, direct/relay route, and raw log/evidence paths. A build, fake
-engine, emulator, or loopback result may prove its own layer only; none substitutes
-for the Xiaomi 12 Internet end-to-end gate.
+engine, emulator, or loopback result may prove its own layer only; none
+substitutes for the planned Xiaomi 12 Internet end-to-end gate. The existing
+Nubia P0110 record is identified separately and is never relabeled as Xiaomi
+evidence.
 
 The shared Android endpoint is lease-controlled. Before any `adb connect`,
 install, force-stop, launch, device query, media-port probe, or Mac host stream
@@ -173,9 +175,10 @@ adaptation decisions. Go tests also exercise the standalone cryptographic core.
 They do not prove the production composition of WebRTC, platform/product crypto,
 signaling and TURN, Internet connectivity, or E2E security.
 
-No Xiaomi 12 Phase 3 Internet acceptance evidence is recorded here yet. All
-device, security-review, network-simulation, relay-operation, latency, and soak
-criteria remain unproved until their raw artifacts exist and are reviewed.
+No Xiaomi 12 Phase 3 Internet acceptance evidence is recorded here. A narrower
+Nubia P0110 local direct/forced-coturn product-session record is listed below;
+it does not close the target Xiaomi, public-Internet, real-capture, handoff,
+latency, or soak criteria.
 
 Local verification on 2026-08-04 and 2026-08-05 proved the following layers in
 recorded shared-tree snapshots. A result applies only to the layer and tree state
@@ -226,8 +229,8 @@ named by that run:
 - macOS `swift build`: an initial run failed while concurrent Phase 3 files were
   inconsistent; after the owning edits converged, a fresh rerun passed. The
   historical local `swift test` command failed before execution because XCTest
-  was unavailable in that selected developer environment. Current-main Xcode
-  execution is recorded separately below.
+  was unavailable in that selected developer environment. The 2026-08-06 main
+  Xcode execution snapshot is recorded separately below.
 - `services/signaling make verify`: format, vet, race tests and a real child-process
   offer/answer/candidate exchange passed; its container was not built because
   Docker is unavailable.
@@ -281,7 +284,7 @@ named by that run:
   transaction latched across a concurrent N+1 reservation, post-persist pairing
   business failure plus deletion failure across coordinator restart, and lease
   issuance across concurrent callers and authority restart while ignoring an
-  abnormal caller epoch. These XCTest cases now execute in the current-main CI
+  abnormal caller epoch. These XCTest cases executed in the 2026-08-06 main CI
   run recorded below; the local Command Line Tools environment remains unable
   to run them.
 - The macOS executable Internet self-test keeps a selected route explicitly
@@ -294,7 +297,8 @@ named by that run:
   pairing-scoped durable authority allocation across restart/concurrency, rejects
   stale cipher seal/open after the durable epoch advances, and uses a deterministic
   latch to prove N+1 reservation waits while N open owns the durable epoch lock.
-  The historical local run could not execute XCTest, while current-main CI did.
+  The historical local run could not execute XCTest, while the 2026-08-06 main
+  CI run did.
 - The local product slice passed in both modes:
   `run_local_e2e.py --mode direct --slice product` and
   `run_local_e2e.py --mode relay --slice product --skip-build`. Both traversed
@@ -335,15 +339,20 @@ not prove negative lease cases through the UI, cross-service revocation, public
 Internet/STUN/TURN or carrier/CGNAT traversal, packet capture, latency, or soak;
 those release gates remain open. Xiaomi 12 acceptance also remains open.
 
-### Current-main CI follow-up (2026-08-06)
+### Main CI follow-up snapshot (2026-08-06)
 
-GitHub Actions [Phase 0 run 31026183305](https://github.com/TaoSama/vibe-screen/actions/runs/31026183305)
-completed successfully for
-`056b8c15e67e512f27d908ac9fc8ce3e16fdc63a`. Its `macos-15` job passed the
-full MacHost `swift test` suite via `make baseline-macos-test`, in addition to
-the release build, executable self-tests, and app packaging. The device
+On 2026-08-06, main commit `4c2e908fe31af4c187684991301e163371444eab`
+passed GitHub Actions Phase 0
+[run 31084214883](https://github.com/TaoSama/vibe-screen/actions/runs/31084214883),
+including the 202/202 MacHost XCTest suite, protocol, Android, Phase 3, and
+evidence-tool jobs. The same commit passed iOS engineering
+[run 31084214830](https://github.com/TaoSama/vibe-screen/actions/runs/31084214830)
+and HarmonyOS portable
+[run 31084214856](https://github.com/TaoSama/vibe-screen/actions/runs/31084214856).
+The latter workflows prove Simulator/core or portable gates only, not iOS or
+HarmonyOS real-device behavior. The device
 acceptance remains bound to source commit
 `597518f948075e396352bc353afcec01a30303f3`; the later CI result is evidence
-for current main only. Public Internet, ScreenCaptureKit media, real input
-effects, network handoff, cross-service revocation, latency, and soak gates
-remain open.
+for that dated main commit only. Public Internet, ScreenCaptureKit media, real
+input effects, network handoff, cross-service revocation, latency, and soak
+gates remain open.

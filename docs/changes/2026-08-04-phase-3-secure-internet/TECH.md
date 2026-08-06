@@ -1,5 +1,10 @@
 # Phase 3 technical design
 
+Unless a paragraph is explicitly labeled as current implementation status,
+this document describes the target Phase 3 architecture. Verified subsets and
+remaining release gates are recorded under
+[Implementation status and gates](#implementation-status-and-gates).
+
 ## Design constraints
 
 - Protocol and product session semantics remain independent of a concrete
@@ -240,7 +245,7 @@ semantic change requires a new protocol package/version.
 | Security contract | `contracts/proto/vibescreen/protocol/v1/security.proto`, pairing/session/envelope additions | P-256/HKDF/AES-GCM schema exists; generated/canonical cross-language crypto interoperability and security-semantic review remain gates |
 | Pairing and identity | `baseline/MacHost/Sources/Phase3/Security/InternetPairing*`, Android `security/InternetPairing*` | Swift/Kotlin implement the same strict pairing URL/request/acceptance shape, stable platform signing identities, ephemeral P-256 ECDH, signed canonical transcript, one-time/expiry checks, and protected pairing-secret storage. Durable transaction markers span secret writes, authorization/reauthorization and metadata commit; Android markers carry the owning pairing and recover under the global admission gate after authenticated-revocation recovery. A different verified/profile pairing cannot be replaced until its tombstone cleanup has removed binding, profile and old secrets. Upgrade cleanup is owner-aware: an old revocation deletes its pairing secret/identity, but treats a different current profile/binding as superseding state and durably retires those steps without cross-deletion. The local UI scans the offer QR and exchanges the request/acceptance as operator-copied strict JSON; automatic authenticated authority exchange and real cross-language pairing remain unproved |
 | Security core | `packages/security/` and platform security directories | Go implementation, restart snapshots, attack tests and vectors exist. macOS state is peer-scoped, keeps a Keychain-backed revoked-identity epoch floor per stable device ID, and persists signed targeted tombstones plus restart-safe secret-cleanup progress. Both platforms reserve the common authority epoch before first use. Cross-language product-session and real platform crash-boundary evidence remain gates |
-| macOS product session | `baseline/MacHost/Sources/Phase3/ProductSession/`, `AppDelegate.swift`, `SettingsWindow.swift`, stasel WebRTC `150.0.0` | Internet mode is separated from the legacy TCP server; real capture/HEVC, Protocol v1 control/media, protected DataChannels, touch injection, direct/forced-TURN selection, Keychain credentials, and actionable state UI are wired. Synthetic local direct/relay product sessions pass; Android interop and real ScreenCaptureKit device streaming remain gates |
+| macOS product session | `baseline/MacHost/Sources/Phase3/ProductSession/`, `AppDelegate.swift`, `SettingsWindow.swift`, stasel WebRTC `150.0.0` | Internet mode is separated from the legacy TCP server; capture/HEVC, Protocol v1 control/media, protected DataChannels, touch injection, direct/forced-TURN selection, Keychain credentials, and actionable state UI are wired. Synthetic local direct/relay product sessions and the narrower Nubia local synthetic-media interop pass; real ScreenCaptureKit device streaming, visible Mac input effects, public Internet, and handoff remain gates |
 | Android product session | `MainActivity.kt`, `InternetSessionProfileStore.kt`, Android Internet packages, `io.github.webrtc-sdk:android:144.7559.09` | Internet UI scans the pairing offer, completes the copied request/acceptance flow, imports a strict host-signed short-lived lease, selects direct/forced TURN, drives Protocol v1 video/touch and decoder state, and exposes connect/disconnect/revoke/error/recovery. Lease verification precedes persistence/high-watermark changes; durable session/identity epochs reject stale ciphers and permit monotonic reauthorization after revoke. A fresh-session request or terminal failure invalidates the old transport owner, so late route/connected callbacks cannot restore touch or heartbeat. Credential, pairing and revocation cleanup retain restart-safe retry state. Tokens and pairing/session secrets are AndroidKeyStore-wrapped; sensitive dialogs disable screenshots/autofill, and release cleartext is disabled. The clean-commit Nubia run proves local UI, direct/forced-coturn Android↔Mac product interop and application AEAD with synthetic media; public Internet, real screen capture, rotation, handoff and soak remain gates |
 | Existing LAN security | `WirelessAuth.swift`, `AuthHandshake.kt`, `StreamingServer.swift`, `StreamClient.kt` | 32-byte bearer token over plaintext TCP; trusted LAN only, not E2EE |
 | Relay control/data plane | `services/relay/`, `deploy/phase3/` | Short-term credential control plane and pinned coturn Compose data plane exist. REST usernames map all sessions/expiries for one device to one coturn allocation-quota principal, and production peer ACLs deny private, CGNAT, link-local, ULA and other internal ranges. New credentials and usage events are rejected after a persisted revoke, and issuance/revoke are serialized. Existing coturn allocations are not terminated by this control-plane action; public deployment, authoritative byte usage, active-allocation disconnect, and multi-node state remain gates |
@@ -266,10 +271,12 @@ These are release blockers, not accepted architecture:
   over both direct and forced local TURN with a synthetic peer. The new device
   run additionally proves Android UI and M150-to-Android-M144 interoperability,
   but still does not start ScreenCaptureKit or send real display content. The
-  current-main macOS XCTest suite passed in GitHub Actions
-  [run 31026183305](https://github.com/TaoSama/vibe-screen/actions/runs/31026183305)
-  at `056b8c15e67e512f27d908ac9fc8ce3e16fdc63a`; that later CI result is not
-  retroactive evidence for the device artifact's source commit.
+  macOS XCTest suite for the 2026-08-06 main verification snapshot passed in
+  GitHub Actions
+  [run 31084214883](https://github.com/TaoSama/vibe-screen/actions/runs/31084214883)
+  at main commit `4c2e908fe31af4c187684991301e163371444eab` (202/202 tests);
+  that later CI result is not retroactive evidence for the device
+  artifact's source commit.
 - Recovery now fails closed into a fresh-session request instead of sending a
   second offer, but the local development UI requires manually supplied authority
   credentials and epoch. Do not claim automatic network-handoff recovery until a

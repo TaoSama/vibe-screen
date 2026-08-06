@@ -7,8 +7,9 @@ packaging, or physical-device acceptance.
 ## Release boundary
 
 The tag workflow accepts only stable SemVer tags in the form `vMAJOR.MINOR.PATCH`
-at the exact latest `origin/main` tip, after the `Phase 0 checks` push workflow
-has succeeded for that commit, and creates a **draft prerelease**. Being an
+at the exact latest `origin/main` tip. The `Phase 0 checks`, `iOS engineering
+gates`, and `HarmonyOS portable checks` push workflows must all have succeeded
+for that commit. The workflow then creates a **draft prerelease**. Being an
 ancestor of `main` is not sufficient. A draft must not be made public until a
 maintainer replaces every TODO in its notes and verifies the artifacts.
 
@@ -38,16 +39,38 @@ cryptographically signed and does not authenticate file origin.
    diff since the previous tag.
 2. Run the gates in `docs/testing.md`. Record commands, results, real-device
    evidence, and unverified behavior for the release notes.
-3. Push `main` and wait for its `Phase 0 checks` push workflow to succeed. Fetch
-   `origin/main` again and verify the tag target is still exactly that tip.
+3. Push `main` and wait for its `Phase 0 checks`, `iOS engineering gates`, and
+   `HarmonyOS portable checks` push workflows to succeed for the same commit.
+   Fetch `origin/main` again and verify the tag target is still exactly that
+   tip. The release workflow checks these workflow runs again before building.
 4. Confirm `THIRD_PARTY.md`, `NOTICE`, dependency locks, bundled licenses, and
    the release notes template cover every distributed runtime dependency. For
    macOS WebRTC M150, verify the component notice bundle SHA-256 against
    `WEBRTC_PROVENANCE.md`; packaging and release assembly fail if it is absent
    or changed without review.
-5. Confirm GitHub private vulnerability reporting is enabled. The public bug
-   tracker is not an acceptable security-reporting channel.
-6. Create and push a new annotated tag. Never move or reuse a published tag:
+5. Confirm GitHub private vulnerability reporting is enabled and that
+   `SECURITY.md` links to the repository's private advisory form. The public
+   bug tracker is not an acceptable security-reporting channel. With GitHub CLI:
+
+   ```bash
+   test "$(gh api repos/{owner}/{repo}/private-vulnerability-reporting --jq .enabled)" = true
+   ```
+
+6. Confirm `main` branch protection is enabled before publishing any preview.
+   It must require pull requests, block force pushes and deletion, and require
+   the current checks from all three pull-request workflows:
+   `protocol`, `evidence-tools`, `phase3`, `android`, `macos`, `core`,
+   `app-build-test-archive`, and `Portable core (no DevEco or HAP claim)`.
+   Verify the live rule rather than assuming repository documentation configured
+   it:
+
+   ```bash
+   gh api repos/{owner}/{repo}/branches/main/protection
+   ```
+
+   A `404 Branch not protected` response blocks the release. Repository owners
+   configure protection in GitHub; the release workflow does not change it.
+7. Create and push a new annotated tag. Never move or reuse a published tag:
 
    ```bash
    git tag -a vMAJOR.MINOR.PATCH -m "chore(release): vMAJOR.MINOR.PATCH"
