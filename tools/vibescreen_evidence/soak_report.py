@@ -14,6 +14,7 @@ from typing import Any, Iterable, Sequence
 from . import SCHEMA_VERSION
 from .soak_public_report import (
     EvidenceInputError,
+    INTERPRETATION,
     PUBLICATION_PROFILE,
     PUBLIC_DERIVATION_ERROR_MESSAGE,
     PUBLIC_ERROR_DERIVATION_FAILED,
@@ -75,7 +76,7 @@ def _slope(points: list[tuple[datetime, float]]) -> float | None:
     if denominator == 0:
         return None
     numerator_terms: list[float] = []
-    for x_value, y_value in zip(x_values, y_values):
+    for x_value, y_value in zip(x_values, y_values, strict=True):
         y_delta = y_value - y_mean
         if not math.isfinite(y_delta):
             raise EvidenceInputError("rss slope numerator: numeric overflow")
@@ -142,7 +143,7 @@ def _validate_sample_record(
     run_id: str,
     previous_index: int | None,
     previous_elapsed: float | None,
-) -> tuple[int, float]:
+) -> tuple[int, float, datetime]:
     context = f"samples line {line}"
     if record.get("schema_version") != SCHEMA_VERSION:
         raise EvidenceInputError(f"{context}.schema_version: must be {SCHEMA_VERSION}")
@@ -163,7 +164,9 @@ def _validate_sample_record(
         raise EvidenceInputError(
             f"{context}.elapsed_seconds: must be monotonically non-decreasing"
         )
-    _parse_timestamp(record.get("captured_at"), f"{context}.captured_at")
+    captured_at = _parse_timestamp(
+        record.get("captured_at"), f"{context}.captured_at"
+    )
     if not isinstance(record.get("device"), dict):
         raise EvidenceInputError(f"{context}.device: must be an object")
     if "host" in record and not isinstance(record.get("host"), dict):
@@ -173,7 +176,7 @@ def _validate_sample_record(
         isinstance(error, str) for error in record_errors
     ):
         raise EvidenceInputError(f"{context}.errors: must be an array of strings")
-    return sample_index, elapsed_seconds
+    return sample_index, elapsed_seconds, captured_at
 
 
 def _validate_telemetry_record(record: dict[str, Any], line: int) -> datetime:
@@ -231,15 +234,12 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
     for record in samples:
         line = record.pop("_source_line")
         try:
-            sample_index, elapsed_seconds = _validate_sample_record(
+            sample_index, elapsed_seconds, timestamp = _validate_sample_record(
                 record,
                 line,
                 run_id,
                 previous_sample_index,
                 previous_elapsed_seconds,
-            )
-            timestamp = _parse_timestamp(
-                record.get("captured_at"), f"samples line {line}.captured_at"
             )
         except EvidenceInputError as error:
             errors.append(str(error))
@@ -414,7 +414,7 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
             },
         },
         "errors": errors,
-        "interpretation": "Trend metrics are descriptive evidence, not a no-leak determination.",
+        "interpretation": INTERPRETATION,
     }
 
 
@@ -441,7 +441,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             report = derive_report(
                 arguments.summary, arguments.samples, arguments.host_telemetry
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - fail closed; emit public failure only
             report = _public_failure()
         assert arguments.public_output is not None
         return write_public_report(arguments.public_output, report)

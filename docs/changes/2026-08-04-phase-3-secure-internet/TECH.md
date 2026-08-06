@@ -1,9 +1,9 @@
 # Phase 3 technical design
 
-Unless a paragraph is explicitly labeled as current implementation status,
-this document describes the target Phase 3 architecture. Verified subsets and
-remaining release gates are recorded under
-[Implementation status and gates](#implementation-status-and-gates).
+Except for paragraphs that explicitly describe current implementation status
+and the [Implementation status and gates](#implementation-status-and-gates)
+section, the architecture sections below describe the target Phase 3 design.
+That section consolidates verified subsets and remaining release gates.
 
 ## Design constraints
 

@@ -44,7 +44,7 @@ def write_inputs(directory: Path):
                 "schema_version": "vibescreen.evidence/v1",
                 "run_id": "run-1",
                 "sample_index": minute,
-                "captured_at": f"2026-08-05T00:0{minute}:00Z",
+                "captured_at": f"2026-08-05T00:{minute:02d}:00Z",
                 "elapsed_seconds": minute * 60,
                 "host": {"rss_kb": host_rss},
                 "device": {
@@ -234,6 +234,7 @@ class SoakReportTest(unittest.TestCase):
             ("schema_version", "vibescreen.evidence/v999", "schema_version"),
             ("kind", "input_latency", "summary.kind"),
             ("run_id", "", "summary.run_id"),
+            ("status", "unknown", "summary.status"),
         )
         for field, value, error_pattern in cases:
             with self.subTest(field=field), tempfile.TemporaryDirectory() as raw_dir:
@@ -294,14 +295,26 @@ class SoakReportTest(unittest.TestCase):
 
     def test_telemetry_contract_failures_are_partial(self):
         cases = (
-            ("schema_version", lambda row: row.update({"schema_version": 2})),
-            ("schema_version", lambda row: row.update({"schema_version": True})),
-            ("event", lambda row: row.update({"event": ""})),
-            ("monotonic_ns", lambda row: row.update({"monotonic_ns": -1})),
-            ("attributes", lambda row: row.update({"attributes": []})),
+            (
+                "integer_schema_version",
+                "schema_version",
+                lambda row: row.update({"schema_version": 2}),
+            ),
+            (
+                "boolean_schema_version",
+                "schema_version",
+                lambda row: row.update({"schema_version": True}),
+            ),
+            ("event", "event", lambda row: row.update({"event": ""})),
+            (
+                "monotonic_ns",
+                "monotonic_ns",
+                lambda row: row.update({"monotonic_ns": -1}),
+            ),
+            ("attributes", "attributes", lambda row: row.update({"attributes": []})),
         )
-        for error_pattern, mutate in cases:
-            with self.subTest(field=error_pattern), tempfile.TemporaryDirectory() as raw_dir:
+        for name, error_pattern, mutate in cases:
+            with self.subTest(case=name), tempfile.TemporaryDirectory() as raw_dir:
                 summary, samples, telemetry = write_inputs(Path(raw_dir))
                 records = [json.loads(line) for line in telemetry.read_text(
                     encoding="utf-8").splitlines()]
