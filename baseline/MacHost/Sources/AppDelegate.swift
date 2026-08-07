@@ -225,6 +225,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var permissionCheckTimer: Timer?
     private var statusRefreshTimer: Timer?
     private var permissionMonitoringReady = false
+    /// Guards against re-prompting for Screen Recording within a single
+    /// process lifetime. Without a visible settings window (for example when
+    /// the host is launched from a non-GUI context), checkPermissions() is the
+    /// only place that can register the app into the Screen Recording list, so
+    /// it issues the system request exactly once while the permission is still
+    /// missing.
+    private var didRequestScreenRecordingThisSession = false
     private var unattendedRecoveryTask: Task<Void, Never>?
     private var teardownTask: Task<Void, Never>?
     private var unattendedRecoveryAttempt = 0
@@ -1406,6 +1413,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } else {
             debugLog("Screen recording permission not granted yet")
+            // Register the app into System Settings > Privacy & Security >
+            // Screen Recording and surface the system prompt even when no
+            // settings window is available to drive the request. Debounced to
+            // a single prompt per process so the 2s permission poll and manual
+            // refreshes never stack system dialogs.
+            await MainActor.run {
+                guard !didRequestScreenRecordingThisSession else { return }
+                didRequestScreenRecordingThisSession = true
+                debugLog("Requesting screen capture access to register app and prompt user")
+                requestScreenRecordingPermission()
+            }
         }
 
         // Check Accessibility permission (required for touch/mouse injection)
