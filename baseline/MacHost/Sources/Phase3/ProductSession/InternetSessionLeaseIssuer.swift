@@ -402,7 +402,9 @@ enum InternetSessionLeaseIssuer {
             )
         }
         let identity = try identityStore.loadVerifiedExisting(binding: identityBinding)
-        let epoch = try lifecycle.advanceSessionEpoch()
+        let epoch = try lifecycle.advanceSessionEpoch(
+            pairingIdentifier: requested.pairingIdentifier
+        )
         let nowSeconds = now().timeIntervalSince1970
         guard nowSeconds >= 0,
               nowSeconds + lifetime < TimeInterval(UInt64(Int64.max)) else {

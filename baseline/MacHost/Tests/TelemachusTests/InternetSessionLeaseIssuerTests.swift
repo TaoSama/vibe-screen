@@ -72,10 +72,17 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         let executableURL = try telemachusExecutableURL()
         let gateURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("vibe-screen-lease-gate-\(scope)")
+        let readyDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vibe-screen-lease-ready-\(scope)")
+        try FileManager.default.createDirectory(
+            at: readyDirectory,
+            withIntermediateDirectories: false
+        )
         let childCount = 6
-        var children: [(process: Process, output: Pipe, error: Pipe)] = []
+        var children: [(process: Process, output: TestProcessOutputDrain)] = []
         defer {
             try? FileManager.default.removeItem(at: gateURL)
+            try? FileManager.default.removeItem(at: readyDirectory)
             for child in children {
                 TestProcessDeadline.terminateAndReap(
                     child.process,
@@ -83,7 +90,7 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
                 )
             }
         }
-        for _ in 0..<childCount {
+        for index in 0..<childCount {
             let process = Process()
             let input = Pipe()
             let output = Pipe()
@@ -91,18 +98,34 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
             process.arguments = [
                 "-c",
-                "while [ ! -e \"$1\" ]; do sleep 0.01; done; exec \"$2\" --issue-phase3-internet-lease",
+                ": > \"$3\"; while [ ! -e \"$1\" ]; do sleep 0.01; done; exec \"$2\" --issue-phase3-internet-lease",
                 "lease-process-test",
                 gateURL.path,
-                executableURL.path
+                executableURL.path,
+                readyDirectory.appendingPathComponent("child-\(index)").path
             ]
             process.standardInput = input
             process.standardOutput = output
             process.standardError = error
+            let outputDrain = TestProcessOutputDrain.start(output: output, error: error)
             try process.run()
             input.fileHandleForWriting.write(unsigned)
             try input.fileHandleForWriting.close()
-            children.append((process, output, error))
+            children.append((process, outputDrain))
+        }
+        let readyDeadline = Date().addingTimeInterval(Self.childProcessTimeout)
+        while Date() < readyDeadline {
+            let readyCount = (try? FileManager.default.contentsOfDirectory(
+                atPath: readyDirectory.path
+            ).count) ?? 0
+            if readyCount == childCount { break }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        let readyCount = try FileManager.default.contentsOfDirectory(
+            atPath: readyDirectory.path
+        ).count
+        guard readyCount == childCount else {
+            return XCTFail("Only \(readyCount) of \(childCount) lease workers reached the start gate.")
         }
         try Data().write(to: gateURL, options: .atomic)
 
@@ -113,8 +136,12 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
                 timeout: Self.childProcessTimeout,
                 terminationGrace: Self.childTerminationGrace
             )
-            let output = child.output.fileHandleForReading.readDataToEndOfFile()
-            let error = child.error.fileHandleForReading.readDataToEndOfFile()
+            guard let drained = child.output.finish(timeout: Self.childTerminationGrace) else {
+                XCTFail("Lease worker output pipes did not close after process exit.")
+                continue
+            }
+            let output = drained.output
+            let error = drained.error
             guard exited else {
                 XCTFail(
                     "Lease worker exceeded the process deadline: "

@@ -1836,11 +1836,20 @@ class StreamClient(
                         return@synchronized false
                     }
                     state = VideoConfigurationCommitState.RESERVED
-                    timeout?.cancel(false)
                     true
                 }
             if (!claimed) return false
-            return publish()
+            val published = publish()
+            if (published) {
+                timeout?.cancel(false)
+            } else {
+                complete(
+                    StreamVideoConfigurationDecision.reject(
+                        "decoder_configuration_not_published",
+                    ),
+                )
+            }
+            return published
         }
 
         override fun complete(decision: StreamVideoConfigurationDecision) {

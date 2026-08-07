@@ -201,6 +201,20 @@ final class SecurityLifecycle {
         }
     }
 
+    func advanceSessionEpoch(pairingIdentifier: String) throws -> UInt64 {
+        try store.withExclusiveTransaction {
+            self.pairingIdentifier = pairingIdentifier
+            var state = try loadState()
+            try requireActive(state)
+            guard state.sessionEpoch < Self.maximumCrossPlatformSessionEpoch else {
+                throw PlatformSecurityError.exhausted("Session epoch is exhausted; pair the device again.")
+            }
+            state.sessionEpoch += 1
+            try persistState(state)
+            return state.sessionEpoch
+        }
+    }
+
     func requirePairingBinding(
         _ pairingIdentifier: String,
         allowRevoked: Bool = false
