@@ -29,13 +29,19 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
+import java.io.OutputStream
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
-import java.io.IOException
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
@@ -275,6 +281,161 @@ class StreamClientProtocolV1IntegrationTest {
             configure = {},
             expectedReason = "decoder_configuration_timeout",
         )
+    }
+
+    @Test
+    fun slowPublishDoesNotBlockOtherClientTimeout() = runBlocking {
+        val timeoutExecutor = GatedFirstScheduledExecutor()
+        val terminationExecutor =
+            Executors.newCachedThreadPool { runnable ->
+                Thread(runnable, "StreamClientTerminationTest").apply { isDaemon = true }
+            }
+        val releasePublish = CountDownLatch(1)
+        val closeFirstPeer = CountDownLatch(1)
+
+        try {
+            ServerSocket(0).use { firstServer ->
+                ServerSocket(0).use { secondServer ->
+                    val firstConfigured = CountDownLatch(1)
+                    val firstCommit = AtomicReference<StreamVideoConfigurationCommit?>()
+                    val firstServerJob =
+                        async(Dispatchers.IO) {
+                            firstServer.accept().use { peer ->
+                                beginHandshake(peer, initialRotation = 0)
+                                assertTrue(closeFirstPeer.await(5, TimeUnit.SECONDS))
+                            }
+                        }
+                    val firstClient =
+                        StreamClient(
+                            host = "127.0.0.1",
+                            port = firstServer.localPort,
+                            videoConfigurationCommitTimeoutMs = 1,
+                            videoConfigurationTimeoutExecutor = timeoutExecutor,
+                            terminationExecutor = terminationExecutor,
+                        )
+                    firstClient.onVideoConfiguration = { _, commit ->
+                        firstCommit.set(commit)
+                        firstConfigured.countDown()
+                    }
+                    val firstClientJob = async(Dispatchers.IO) { runCatching { firstClient.connect() } }
+
+                    assertTrue(firstConfigured.await(3, TimeUnit.SECONDS))
+                    assertTrue(timeoutExecutor.firstTaskStarted.await(3, TimeUnit.SECONDS))
+                    val publishStarted = CountDownLatch(1)
+                    val publishJob =
+                        async(Dispatchers.Default) {
+                            checkNotNull(firstCommit.get()).tryPublish {
+                                publishStarted.countDown()
+                                assertTrue(releasePublish.await(5, TimeUnit.SECONDS))
+                                true
+                            }
+                        }
+                    assertTrue(publishStarted.await(3, TimeUnit.SECONDS))
+                    timeoutExecutor.releaseFirstTask.countDown()
+
+                    val secondConfigured = CountDownLatch(1)
+                    val secondServerJob =
+                        async(Dispatchers.IO) {
+                            secondServer.accept().use { peer ->
+                                beginHandshake(peer, initialRotation = 0)
+                                val result = readEnvelope(peer)
+                                assertEquals(Envelope.PayloadCase.VIDEO_CONFIG_RESULT, result.payloadCase)
+                                assertFalse(result.videoConfigResult.accepted)
+                                result.videoConfigResult.rejectionReason
+                            }
+                        }
+                    val secondClient =
+                        StreamClient(
+                            host = "127.0.0.1",
+                            port = secondServer.localPort,
+                            videoConfigurationCommitTimeoutMs = 1,
+                            videoConfigurationTimeoutExecutor = timeoutExecutor,
+                            terminationExecutor = terminationExecutor,
+                        )
+                    secondClient.onVideoConfiguration = { _, _ -> secondConfigured.countDown() }
+                    val secondClientJob = async(Dispatchers.IO) { runCatching { secondClient.connect() } }
+
+                    try {
+                        assertTrue(secondConfigured.await(3, TimeUnit.SECONDS))
+                        assertEquals(
+                            "decoder_configuration_timeout",
+                            withTimeout(4_000) { secondServerJob.await() },
+                        )
+                    } finally {
+                        releasePublish.countDown()
+                        closeFirstPeer.countDown()
+                        firstClient.disconnect()
+                        secondClient.disconnect()
+                    }
+
+                    assertTrue(withTimeout(2_000) { publishJob.await() })
+                    withTimeout(4_000) { firstServerJob.await() }
+                    withTimeout(4_000) { firstClientJob.await() }
+                    withTimeout(4_000) { secondClientJob.await() }
+                }
+            }
+        } finally {
+            releasePublish.countDown()
+            closeFirstPeer.countDown()
+            timeoutExecutor.releaseFirstTask.countDown()
+            timeoutExecutor.shutdownNow()
+            terminationExecutor.shutdownNow()
+        }
+        Unit
+    }
+
+    @Test
+    fun decoderRejectionFlushesBeforeTermination() = runBlocking {
+        val flushCount = AtomicInteger()
+        val flushCountBeforeRejection = AtomicInteger(-1)
+        val flushedBeforeTermination = AtomicBoolean(false)
+        val terminationExecutor =
+            ManualExecutor {
+                val baseline = flushCountBeforeRejection.get()
+                flushedBeforeTermination.set(baseline >= 0 && flushCount.get() > baseline)
+            }
+        val timeoutExecutor = Executors.newSingleThreadScheduledExecutor()
+        try {
+            ServerSocket(0).use { server ->
+                val serverJob =
+                    async(Dispatchers.IO) {
+                        server.accept().use { peer ->
+                            beginHandshake(peer, initialRotation = 0)
+                            readEnvelope(peer)
+                        }
+                    }
+                val client =
+                    StreamClient(
+                        host = "127.0.0.1",
+                        port = server.localPort,
+                        socketFactory = { FlushTrackingSocket(flushCount) },
+                        videoConfigurationTimeoutExecutor = timeoutExecutor,
+                        terminationExecutor = terminationExecutor,
+                    )
+                client.onVideoConfiguration = { _, commit ->
+                    flushCountBeforeRejection.set(flushCount.get())
+                    commit.complete(StreamVideoConfigurationDecision.reject("decoder_configuration_failure"))
+                }
+                val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+                try {
+                    assertTrue(terminationExecutor.submitted.await(3, TimeUnit.SECONDS))
+                    assertTrue(flushedBeforeTermination.get())
+                    val result = withTimeout(4_000) { serverJob.await() }
+                    assertEquals(Envelope.PayloadCase.VIDEO_CONFIG_RESULT, result.payloadCase)
+                    assertFalse(result.videoConfigResult.accepted)
+                    assertEquals("decoder_configuration_failure", result.videoConfigResult.rejectionReason)
+                } finally {
+                    terminationExecutor.runSubmittedIfPresent()
+                }
+
+                withTimeout(4_000) { clientJob.await() }
+            }
+        } finally {
+            terminationExecutor.runSubmittedIfPresent()
+            timeoutExecutor.shutdownNow()
+        }
+        Unit
     }
 
     @Test
@@ -563,6 +724,76 @@ class StreamClientProtocolV1IntegrationTest {
             ProtocolChannel.VIDEO,
             ProtocolV1Framing.encodeVideo(header, payload),
         )
+    }
+
+    private class ManualExecutor(
+        private val onSubmit: () -> Unit,
+    ) : Executor {
+        val submitted = CountDownLatch(1)
+        private val command = AtomicReference<Runnable?>()
+
+        override fun execute(command: Runnable) {
+            onSubmit()
+            check(this.command.compareAndSet(null, command)) { "termination command already submitted" }
+            submitted.countDown()
+        }
+
+        fun runSubmittedIfPresent() {
+            command.getAndSet(null)?.run()
+        }
+    }
+
+    private class GatedFirstScheduledExecutor :
+        ScheduledThreadPoolExecutor(
+            1,
+            { runnable -> Thread(runnable, "StreamClientTimeoutTest").apply { isDaemon = true } },
+        ) {
+        val firstTaskStarted = CountDownLatch(1)
+        val releaseFirstTask = CountDownLatch(1)
+        private val scheduledTaskCount = AtomicInteger()
+
+        override fun schedule(
+            command: Runnable,
+            delay: Long,
+            unit: TimeUnit,
+        ): ScheduledFuture<*> {
+            val taskIndex = scheduledTaskCount.getAndIncrement()
+            return super.schedule(
+                {
+                    if (taskIndex == 0) {
+                        firstTaskStarted.countDown()
+                        releaseFirstTask.await()
+                    }
+                    command.run()
+                },
+                delay,
+                unit,
+            )
+        }
+    }
+
+    private class FlushTrackingSocket(
+        private val flushCount: AtomicInteger,
+    ) : Socket() {
+        override fun getOutputStream(): OutputStream {
+            val delegate = super.getOutputStream()
+            return object : OutputStream() {
+                override fun write(value: Int) = delegate.write(value)
+
+                override fun write(
+                    bytes: ByteArray,
+                    offset: Int,
+                    length: Int,
+                ) = delegate.write(bytes, offset, length)
+
+                override fun flush() {
+                    delegate.flush()
+                    flushCount.incrementAndGet()
+                }
+
+                override fun close() = delegate.close()
+            }
+        }
     }
 
     private fun hostHello(

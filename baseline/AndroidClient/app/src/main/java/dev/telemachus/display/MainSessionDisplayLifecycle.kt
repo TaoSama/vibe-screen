@@ -133,6 +133,7 @@ internal class MainSessionDisplayLifecycle(
         pending.attemptInFlight = true
         val attemptId = ++nextAttemptId
         val attemptSurfaceRevision = surfaceRevision
+        val attemptConfigurationPublished = AtomicBoolean()
         pending.attemptId = attemptId
         try {
             val isAttemptCurrent = {
@@ -143,18 +144,25 @@ internal class MainSessionDisplayLifecycle(
                     isCurrentSession()
             }
             val tryPublishCommit = { publish: () -> Boolean ->
-                isAttemptCurrent() && pending.commit.tryPublish(publish)
+                isAttemptCurrent() &&
+                    pending.commit.tryPublish {
+                        publish().also { published ->
+                            if (published) attemptConfigurationPublished.set(true)
+                        }
+                    }
             }
             configureDecoder(
                 pending.configuration,
                 isAttemptCurrent,
                 tryPublishCommit,
             ) { result ->
+                val configurationPublished = attemptConfigurationPublished.get()
                 postToUi {
                     handleDecoderConfigurationResult(
                         pending = pending,
                         attemptId = attemptId,
                         attemptSurfaceRevision = attemptSurfaceRevision,
+                        configurationPublished = configurationPublished,
                         result = result,
                     )
                 }
@@ -174,6 +182,7 @@ internal class MainSessionDisplayLifecycle(
         pending: PendingVideoConfiguration,
         attemptId: Long,
         attemptSurfaceRevision: Long,
+        configurationPublished: Boolean,
         result: MainSessionDecoderConfigurationResult,
     ) {
         if (pendingVideoConfiguration !== pending || pending.attemptId != attemptId) return
@@ -184,7 +193,16 @@ internal class MainSessionDisplayLifecycle(
         }
         when (result) {
             MainSessionDecoderConfigurationResult.Configured ->
-                finish(pending, StreamVideoConfigurationDecision.ACCEPTED)
+                finish(
+                    pending,
+                    if (configurationPublished) {
+                        StreamVideoConfigurationDecision.ACCEPTED
+                    } else {
+                        StreamVideoConfigurationDecision.reject(
+                            "decoder_configuration_not_published",
+                        )
+                    },
+                )
             MainSessionDecoderConfigurationResult.RetryWhenSurfaceReady -> {
                 if (surfaceRevision > attemptSurfaceRevision) {
                     startDecoderConfiguration(pending)

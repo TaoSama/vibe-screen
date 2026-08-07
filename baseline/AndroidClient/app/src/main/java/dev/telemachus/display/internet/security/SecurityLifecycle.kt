@@ -281,7 +281,7 @@ class SecurityLifecycle(
 
                 else -> error("Legacy session security state cannot be attributed to this pairing")
             }
-        store.persist(resolved)
+        if (resolved !== current) store.persist(resolved)
         return resolved
     }
 
@@ -333,6 +333,29 @@ internal data class DecodedSecurityPreferences(
     val state: DurableSecurityState,
     val migratedFromLegacy: Boolean,
 )
+
+internal fun DecodedSecurityPreferences.resolveAuthorizedIdentityKeyBinding(
+    localDeviceId: String,
+    loadExistingIdentity: (String, Long) -> AndroidPublicIdentity?,
+): DurableSecurityState {
+    val current = state
+    if (!migratedFromLegacy || current.authorizedIdentityEpoch == 0L || current.authorizedIdentityKeyId != null) {
+        return current
+    }
+    val identityEpoch = current.authorizedIdentityEpoch
+    val identity = loadExistingIdentity(localDeviceId, identityEpoch) ?: return current
+    check(identity.deviceId == localDeviceId && identity.keyEpoch == identityEpoch) {
+        "Stored authorized identity does not match the migrated device and epoch; pair again"
+    }
+    val computedKeyId = MessageDigest.getInstance("SHA-256").digest(identity.signingPublicKey).toHex()
+    check(
+        isSHA256Hex(identity.keyId) &&
+            MessageDigest.isEqual(computedKeyId.toByteArray(), identity.keyId.toByteArray()),
+    ) {
+        "Stored authorized identity key binding is invalid; pair again"
+    }
+    return current.copy(authorizedIdentityKeyId = identity.keyId)
+}
 
 internal object SecurityStatePreferenceCodec {
     private const val VERSION = 3
@@ -664,7 +687,10 @@ internal object SecurityStatePreferenceCodec {
 /** SharedPreferences contains counters and revocation status only, never keys. */
 class SharedPreferencesSecurityStateStore(
     context: Context,
-    localDeviceId: String,
+    private val localDeviceId: String,
+    private val loadExistingIdentity: (String, Long) -> AndroidPublicIdentity? = { deviceId, identityEpoch ->
+        AndroidDeviceIdentityStore().loadExisting(deviceId, identityEpoch)?.publicIdentity
+    },
 ) : SecurityStateStore {
     private val applicationContext = context.applicationContext
     private val preferences: SharedPreferences =
@@ -680,8 +706,9 @@ class SharedPreferencesSecurityStateStore(
                 allowEmptyInitialization =
                     storedValues.isEmpty() && !hasDurableSecurityArtifacts(applicationContext),
             )
-        if (decoded.migratedFromLegacy) persist(decoded.state)
-        return decoded.state
+        val resolved = decoded.resolveAuthorizedIdentityKeyBinding(localDeviceId, loadExistingIdentity)
+        if (decoded.migratedFromLegacy) persist(resolved)
+        return resolved
     }
 
     override fun persist(state: DurableSecurityState) {

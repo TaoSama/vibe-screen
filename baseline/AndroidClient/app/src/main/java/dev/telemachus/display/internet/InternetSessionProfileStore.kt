@@ -890,7 +890,7 @@ internal object InternetSessionProfileCodec {
     }
 
     fun encodeSecrets(secrets: ImportedInternetSecrets): ByteArray {
-        val output = ZeroizableByteArrayOutputStream()
+        val output = ZeroizableByteArrayOutputStream(MAX_PROFILE_BYTES)
         val writer = JsonWriter(OutputStreamWriter(output, Charsets.UTF_8))
         try {
             writer.beginObject()
@@ -1227,9 +1227,39 @@ internal object InternetSessionProfileCodec {
     private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1")
 }
 
-private class ZeroizableByteArrayOutputStream : ByteArrayOutputStream() {
+internal class ZeroizableByteArrayOutputStream(
+    initialCapacity: Int,
+) : ByteArrayOutputStream(initialCapacity) {
+    @Synchronized
+    override fun write(value: Int) {
+        val previousBuffer = buf
+        try {
+            super.write(value)
+        } finally {
+            zeroRetiredBuffer(previousBuffer)
+        }
+    }
+
+    @Synchronized
+    override fun write(value: ByteArray, offset: Int, length: Int) {
+        val previousBuffer = buf
+        try {
+            super.write(value, offset, length)
+        } finally {
+            zeroRetiredBuffer(previousBuffer)
+        }
+    }
+
+    @Synchronized
     fun destroy() {
         buf.fill(0)
         reset()
+    }
+
+    @Synchronized
+    internal fun backingBufferForTest(): ByteArray = buf
+
+    private fun zeroRetiredBuffer(previousBuffer: ByteArray) {
+        if (buf !== previousBuffer) previousBuffer.fill(0)
     }
 }
