@@ -30,7 +30,7 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
         )
         let gateURL = temporaryDirectory.appendingPathComponent("start")
         let childCount = 8
-        var children: [(process: Process, resultURL: URL, output: Pipe, error: Pipe)] = []
+        var children: [(process: Process, resultURL: URL, output: TestProcessOutputDrain)] = []
         defer {
             for child in children {
                 TestProcessDeadline.terminateAndReap(
@@ -63,8 +63,9 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
             ]
             process.standardOutput = output
             process.standardError = error
+            let outputDrain = TestProcessOutputDrain.start(output: output, error: error)
             try process.run()
-            children.append((process, resultURL, output, error))
+            children.append((process, resultURL, outputDrain))
         }
         try Data().write(to: gateURL, options: .atomic)
 
@@ -76,21 +77,24 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
                 timeout: Self.childProcessTimeout,
                 terminationGrace: Self.childTerminationGrace
             )
-            let output = child.output.fileHandleForReading.readDataToEndOfFile()
-            let error = child.error.fileHandleForReading.readDataToEndOfFile()
+            guard let drained = child.output.finish(timeout: Self.childTerminationGrace) else {
+                XCTFail("Security counter worker output pipes did not close after process exit.")
+                continue
+            }
+            let output = drained.output
+            let error = drained.error
+            let diagnostics = (String(data: output, encoding: .utf8) ?? "")
+                + (String(data: error, encoding: .utf8) ?? "")
             guard exited else {
                 XCTFail(
-                    "Security counter worker exceeded the process deadline: "
-                        + String(decoding: output, as: UTF8.self)
-                        + String(decoding: error, as: UTF8.self)
+                    "Security counter worker exceeded the process deadline: \(diagnostics)"
                 )
                 continue
             }
             XCTAssertEqual(
                 child.process.terminationStatus,
                 0,
-                String(decoding: output, as: UTF8.self)
-                    + String(decoding: error, as: UTF8.self)
+                diagnostics
             )
             guard child.process.terminationStatus == 0 else { continue }
             let result = try JSONSerialization.jsonObject(
@@ -323,7 +327,7 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
         XCTAssertThrowsError(try KeychainCrossProcessTransactionLock.acquireFileLock(
             descriptor: -1,
             timeoutNanoseconds: 10,
-            clock: { times.removeFirst() },
+            clock: { times.count > 1 ? times.removeFirst() : (times.first ?? 10) },
             sleep: { _ in sleepCalls += 1 },
             flockOperation: { _, _ in
                 lockAttempts += 1
@@ -344,7 +348,7 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
         XCTAssertThrowsError(try KeychainCrossProcessTransactionLock.acquireFileLock(
             descriptor: -1,
             timeoutNanoseconds: 10,
-            clock: { times.removeFirst() },
+            clock: { times.count > 1 ? times.removeFirst() : (times.first ?? 10) },
             sleep: { _ in XCTFail("Interrupted flock retries must not sleep.") },
             flockOperation: { _, _ in
                 lockAttempts += 1

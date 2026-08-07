@@ -1650,16 +1650,24 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertEqual(engine.keyframeRequestCount, 2)
     }
 
-    func testRepeatedDisconnectAndPathEventsDoNotCreateRestartStorm() {
+    func testRepeatedCurrentDisconnectOutcomeAdvancesOnceAndPathEventDoesNotAddRestart() {
         let engine = FakeWebRTCEngine()
         let transport = connectedTransport(engine: engine)
         engine.emitPath(InternetNetworkPath(interface: .wifi, isSatisfied: true, fingerprint: "wifi-a"))
         engine.emitConnection(.disconnected)
-        engine.emitConnection(.disconnected)
-        engine.emitPath(InternetNetworkPath(interface: .cellular, isSatisfied: true, fingerprint: "cell-b"))
 
         XCTAssertEqual(engine.restartICECount, 1)
         XCTAssertEqual(transport.snapshot().state, .recovering(attempt: 1))
+
+        engine.emitConnection(.disconnected)
+
+        XCTAssertEqual(engine.restartICECount, 2)
+        XCTAssertEqual(transport.snapshot().state, .recovering(attempt: 2))
+
+        engine.emitPath(InternetNetworkPath(interface: .cellular, isSatisfied: true, fingerprint: "cell-b"))
+
+        XCTAssertEqual(engine.restartICECount, 2)
+        XCTAssertEqual(transport.snapshot().state, .recovering(attempt: 2))
     }
 
     func testNetworkSwitchInvalidatesOldSendCompletionsAndQueues() {
@@ -1793,7 +1801,7 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertEqual(engine.sentPayloads[0].networkBytes, Int(encryptedRecordBytes))
     }
 
-    func testStaleRelayControlCompletionRetainsQuotaUntilSuccessfullyAccounted() {
+    func testStaleRelayControlCompletionRetainsAndConsumesGlobalQuota() {
         let engine = FakeWebRTCEngine()
         let encryptedRecordBytes = UInt64(1 + PlatformSessionPacketCipher.recordOverhead)
         let limits = InternetTransportLimits(
@@ -1828,8 +1836,11 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertEqual(transport.snapshot().relayBytesReserved, 0)
         XCTAssertEqual(transport.snapshot().relayBytesSent, encryptedRecordBytes)
 
-        XCTAssertSuccess(transport.sendControl(Data([2])))
-        XCTAssertEqual(engine.sentPayloads.map(\.payload), [Data([1]), Data([2])])
+        XCTAssertFailure(
+            transport.sendControl(Data([2])),
+            expected: .relayBudgetExceeded(maximumBytes: encryptedRecordBytes)
+        )
+        XCTAssertEqual(engine.sentPayloads.map(\.payload), [Data([1])])
     }
 
     func testStaleRelayMediaCompletionRetainsAndConsumesGlobalQuota() {

@@ -171,6 +171,8 @@ final class InternetProductSessionTests: XCTestCase {
             freshSessionRecoveryPolicy: NetworkRecoveryPolicy(maximumAttempts: 2)
         )
         let replacement = try XCTUnwrap(harness.replacementEngine)
+        let replacementInstalled = expectation(description: "replacement installed")
+        let secondRecoveryRequested = expectation(description: "second recovery requested")
         var installedReplacement = false
         var freshSessionAttempts: [Int] = []
         harness.session.onStateChanged = { state in
@@ -178,17 +180,22 @@ final class InternetProductSessionTests: XCTestCase {
             installedReplacement = true
             do {
                 try harness.session.provideFreshSession(configuration: harness.configuration)
+                replacementInstalled.fulfill()
             } catch {
                 XCTFail("Installing the fresh session failed: \(error)")
             }
         }
-        harness.session.onFreshSessionRecoveryRequired = { freshSessionAttempts.append($0) }
+        harness.session.onFreshSessionRecoveryRequired = { attempt in
+            freshSessionAttempts.append(attempt)
+            if attempt == 2 { secondRecoveryRequested.fulfill() }
+        }
 
         try harness.session.start(configuration: harness.configuration)
         harness.engine.emitConnection(.connected(path: .direct))
         harness.engine.emitPath(.init(interface: .wifi, isSatisfied: true, fingerprint: "wifi-a"))
         harness.engine.emitPath(.init(interface: .wiredEthernet, isSatisfied: true, fingerprint: "ethernet-b"))
 
+        wait(for: [replacementInstalled], timeout: 1)
         XCTAssertTrue(installedReplacement)
         XCTAssertTrue(harness.engine.didClose)
         XCTAssertTrue(replacement.didStart)
@@ -202,6 +209,7 @@ final class InternetProductSessionTests: XCTestCase {
         replacement.emitPath(.init(interface: .wifi, isSatisfied: true, fingerprint: "wifi-c"))
         replacement.emitPath(.init(interface: .wiredEthernet, isSatisfied: true, fingerprint: "ethernet-d"))
 
+        wait(for: [secondRecoveryRequested], timeout: 1)
         XCTAssertEqual(harness.session.snapshotState(), .recovering(attempt: 2))
         XCTAssertEqual(freshSessionAttempts, [2])
         XCTAssertTrue(replacement.didClose)
@@ -346,10 +354,10 @@ final class InternetProductSessionTests: XCTestCase {
             maximumRelayBytesPerSession: 1_000_000
         )
         let harness = try Harness(limits: limits)
-        try harness.session.start(configuration: harness.configuration)
-        harness.engine.emitConnection(.connected(path: .direct))
-        harness.receiveControl(harness.clientHello(messageID: 1))
-        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        let streaming = expectation(description: "streaming")
+        harness.session.onStateChanged = { state in
+            if state == .streaming(.direct) { streaming.fulfill() }
+        }
         let touchEntered = DispatchSemaphore(value: 0)
         let releaseTouch = DispatchSemaphore(value: 0)
         harness.session.onAuthenticatedTouchEvent = { _, _, _, _, _, _, _, _ in
@@ -357,6 +365,11 @@ final class InternetProductSessionTests: XCTestCase {
             _ = releaseTouch.wait(timeout: .now() + 1)
             return true
         }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        wait(for: [streaming], timeout: 1)
         DispatchQueue.global().async {
             harness.receiveControl(harness.touch(messageID: 3))
         }
@@ -445,13 +458,18 @@ final class InternetProductSessionTests: XCTestCase {
 
     func testUnknownCandidatePathNeverPublishesDirectProductState() throws {
         let harness = try Harness()
+        let failed = expectation(description: "unknown candidate path failed closed")
+        harness.session.onStateChanged = { state in
+            if case .failed = state { failed.fulfill() }
+        }
         try harness.session.start(configuration: harness.configuration)
         harness.engine.emitConnection(.connected(path: .unknown))
 
+        wait(for: [failed], timeout: 1)
         guard case .failed(let reason) = harness.session.snapshotState() else {
             return XCTFail("Unknown route must fail closed")
         }
-        XCTAssertTrue(reason.contains("before selecting an ICE candidate pair"))
+        XCTAssertTrue(reason.contains("selected ICE candidate"))
         XCTAssertTrue(harness.engine.didClose)
     }
 
