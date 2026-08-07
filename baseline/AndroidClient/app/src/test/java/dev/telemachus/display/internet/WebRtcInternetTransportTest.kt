@@ -47,7 +47,7 @@ class WebRtcInternetTransportTest {
         peer.observer.onConnected(PeerRoute.DIRECT)
 
         assertTrue(transport.sendControl(byteArrayOf(1)))
-        assertTrue(transport.sendMedia(byteArrayOf(2)))
+        assertTrue(transport.sendMedia(OutboundMediaFrame.single(byteArrayOf(2))))
         assertEquals(listOf(1.toByte()), peer.controlPayloads.map { it.single() })
         assertEquals(listOf(2.toByte()), peer.mediaPayloads.map { it.single() })
     }
@@ -343,7 +343,10 @@ private class FakePeerEngine(
 
     override fun sendControl(payload: ByteArray): Boolean = controlPayloads.add(payload)
 
-    override fun sendMedia(payload: ByteArray): Boolean = mediaPayloads.add(payload)
+    override fun sendMedia(frame: OutboundMediaFrame): Boolean {
+        mediaPayloads += frame.records.map(ByteArray::copyOf)
+        return true
+    }
 
     override fun restartIce() {
         iceRestartCalls++

@@ -48,7 +48,7 @@ class AndroidWebRtcPeerEngineInstrumentedTest {
             assertTrue("PeerConnections did not connect", connected.await(CONNECTION_TIMEOUT_SECONDS, TimeUnit.SECONDS))
 
             assertTrue(host.sendControl(byteArrayOf(1, 2)))
-            assertTrue(host.sendMedia(byteArrayOf(3, 4)))
+            assertTrue(host.sendMedia(OutboundMediaFrame.single(byteArrayOf(3, 4))))
             assertTrue("Control packet timed out", controlReceived.await(PACKET_TIMEOUT_SECONDS, TimeUnit.SECONDS))
             assertTrue("Media packet timed out", mediaReceived.await(PACKET_TIMEOUT_SECONDS, TimeUnit.SECONDS))
             assertArrayEquals(byteArrayOf(1, 2), controlPayload)

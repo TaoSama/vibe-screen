@@ -1,24 +1,94 @@
 package dev.telemachus.display.internet
 
 /** ICE server configuration consumed by a concrete WebRTC peer implementation. */
-data class IceServer(
+class DestroyableUtf8 private constructor(
+    private val value: ByteArray,
+) : AutoCloseable {
+    private var destroyed = false
+
+    @Synchronized
+    internal fun <T> withString(block: (String) -> T): T {
+        check(!destroyed) { "Secret has been destroyed" }
+        // Android, HttpURLConnection, and libwebrtc accept only String credentials. The
+        // transient String created here cannot be proven erasable if those APIs copy it.
+        return block(value.toString(Charsets.UTF_8))
+    }
+
+    @Synchronized
+    internal fun <T> withBytes(block: (ByteArray) -> T): T {
+        check(!destroyed) { "Secret has been destroyed" }
+        return block(value)
+    }
+
+    @Synchronized
+    internal fun copy(): DestroyableUtf8 {
+        check(!destroyed) { "Secret has been destroyed" }
+        return DestroyableUtf8(value.copyOf())
+    }
+
+    @Synchronized
+    internal fun byteLength(): Int {
+        check(!destroyed) { "Secret has been destroyed" }
+        return value.size
+    }
+
+    @Synchronized
+    internal fun isBlank(): Boolean {
+        check(!destroyed) { "Secret has been destroyed" }
+        return value.isEmpty() || value.all { it.toInt().toChar().isWhitespace() }
+    }
+
+    @Synchronized
+    internal fun isDestroyedForTest(): Boolean = destroyed && value.all { it == 0.toByte() }
+
+    @Synchronized
+    override fun close() {
+        if (destroyed) return
+        value.fill(0)
+        destroyed = true
+    }
+
+    override fun toString(): String = "DestroyableUtf8(<redacted>)"
+
+    companion object {
+        internal fun fromString(value: String): DestroyableUtf8 = DestroyableUtf8(value.toByteArray(Charsets.UTF_8))
+
+        internal fun fromBytes(value: ByteArray): DestroyableUtf8 = DestroyableUtf8(value.copyOf())
+    }
+}
+
+class IceServer internal constructor(
     val urls: List<String>,
-    val username: String? = null,
-    val credential: String? = null,
-) {
+    internal val usernameSecret: DestroyableUtf8?,
+    internal val credentialSecret: DestroyableUtf8?,
+) : AutoCloseable {
+    constructor(urls: List<String>, username: String? = null, credential: String? = null) :
+        this(urls, username?.let(DestroyableUtf8::fromString), credential?.let(DestroyableUtf8::fromString))
+
     init {
-        require(urls.isNotEmpty()) { "At least one ICE server URL is required" }
-        require(urls.all { it.startsWith("stun:") || it.startsWith("stuns:") || it.startsWith("turn:") || it.startsWith("turns:") }) {
-            "ICE URLs must use stun, stuns, turn, or turns"
-        }
-        if (urls.any { it.startsWith("turn:") || it.startsWith("turns:") }) {
-            require(!username.isNullOrBlank() && !credential.isNullOrBlank()) {
-                "TURN servers require username and credential"
+        try {
+            require(urls.isNotEmpty()) { "At least one ICE server URL is required" }
+            require(urls.all { it.startsWith("stun:") || it.startsWith("stuns:") || it.startsWith("turn:") || it.startsWith("turns:") }) {
+                "ICE URLs must use stun, stuns, turn, or turns"
             }
+            if (urls.any { it.startsWith("turn:") || it.startsWith("turns:") }) {
+                require(usernameSecret != null && !usernameSecret.isBlank() && credentialSecret != null && !credentialSecret.isBlank()) {
+                    "TURN servers require username and credential"
+                }
+            }
+        } catch (failure: Throwable) {
+            usernameSecret?.close()
+            credentialSecret?.close()
+            throw failure
         }
     }
 
     override fun toString(): String = "IceServer(urls=$urls, username=<redacted>, credential=<redacted>)"
+
+    override fun close() {
+        usernameSecret?.close()
+        credentialSecret?.close()
+    }
 }
 
 data class PeerConfiguration(
@@ -79,31 +149,54 @@ enum class PeerRole {
 }
 
 /** Short-lived signaling session credentials issued by the rendezvous service. */
-class SignalingConfiguration(
+class SignalingConfiguration internal constructor(
     val baseUrl: String,
-    val bearerToken: String,
+    internal val bearerTokenSecret: DestroyableUtf8,
     val role: PeerRole,
     val pollWaitSeconds: Int = 20,
     val allowInsecureForTesting: Boolean = false,
     val supportsInSessionRenegotiation: Boolean = false,
-) {
+) : AutoCloseable {
+    constructor(
+        baseUrl: String,
+        bearerToken: String,
+        role: PeerRole,
+        pollWaitSeconds: Int = 20,
+        allowInsecureForTesting: Boolean = false,
+        supportsInSessionRenegotiation: Boolean = false,
+    ) : this(
+        baseUrl,
+        DestroyableUtf8.fromString(bearerToken),
+        role,
+        pollWaitSeconds,
+        allowInsecureForTesting,
+        supportsInSessionRenegotiation,
+    )
+
     init {
-        val url = java.net.URI(baseUrl)
-        require(url.scheme == "https" || (url.scheme == "http" && allowInsecureForTesting)) {
-            "Signaling requires HTTPS; HTTP is allowed only by an explicit test configuration"
+        try {
+            val url = java.net.URI(baseUrl)
+            require(url.scheme == "https" || (url.scheme == "http" && allowInsecureForTesting)) {
+                "Signaling requires HTTPS; HTTP is allowed only by an explicit test configuration"
+            }
+            require(!url.host.isNullOrBlank()) { "Signaling URL must include a host" }
+            require(url.rawQuery == null && url.rawFragment == null) {
+                "Signaling base URL must not include a query or fragment"
+            }
+            require(bearerTokenSecret.byteLength() >= 32) { "Signaling bearer token is invalid" }
+            require(pollWaitSeconds in 0..60) { "Signaling poll wait must be between 0 and 60 seconds" }
+        } catch (failure: Throwable) {
+            bearerTokenSecret.close()
+            throw failure
         }
-        require(!url.host.isNullOrBlank()) { "Signaling URL must include a host" }
-        require(url.rawQuery == null && url.rawFragment == null) {
-            "Signaling base URL must not include a query or fragment"
-        }
-        require(bearerToken.length >= 32) { "Signaling bearer token is invalid" }
-        require(pollWaitSeconds in 0..60) { "Signaling poll wait must be between 0 and 60 seconds" }
     }
 
     override fun toString(): String =
         "SignalingConfiguration(baseUrl=$baseUrl, bearerToken=<redacted>, role=$role, " +
             "pollWaitSeconds=$pollWaitSeconds, allowInsecureForTesting=$allowInsecureForTesting, " +
             "supportsInSessionRenegotiation=$supportsInSessionRenegotiation)"
+
+    override fun close() = bearerTokenSecret.close()
 }
 
 /** Documents the required WebRTC data-channel behavior without depending on an SDK. */
@@ -135,6 +228,35 @@ data class VideoProfile(
     val framesPerSecond: Int,
     val bitrateKbps: Int,
 )
+
+/** One encoded frame represented by complete Protocol v1 media records. */
+class OutboundMediaFrame(records: List<ByteArray>) {
+    internal val records: List<ByteArray> = records.map(ByteArray::copyOf)
+
+    init {
+        require(records.isNotEmpty()) { "Outbound media frame must contain at least one record" }
+        require(records.size <= InternetMediaRecordContract.MAXIMUM_FRAGMENTS_PER_FRAME) {
+            "Outbound media frame has too many records"
+        }
+        require(
+            records.all {
+                it.isNotEmpty() && it.size <= InternetMediaRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES
+            },
+        ) { "Outbound media frame contains an invalid record" }
+        val maximumBatchBytes =
+            InternetMediaRecordContract.MAXIMUM_FRAME_BYTES.toLong() +
+                records.size.toLong() *
+                (InternetMediaRecordContract.MAXIMUM_MEDIA_HEADER_BYTES +
+                    InternetMediaRecordContract.MAXIMUM_HEADER_LENGTH_VARINT_BYTES)
+        require(records.sumOf { it.size.toLong() } <= maximumBatchBytes) {
+            "Outbound media frame exceeds the bounded record batch limit"
+        }
+    }
+
+    companion object {
+        fun single(record: ByteArray): OutboundMediaFrame = OutboundMediaFrame(listOf(record))
+    }
+}
 
 interface WebRtcPeerEngine : AutoCloseable {
     interface Observer {
@@ -170,8 +292,8 @@ interface WebRtcPeerEngine : AutoCloseable {
 
     fun sendControl(payload: ByteArray): Boolean
 
-    /** Must prefer a current decodable packet over retaining stale media backlog. */
-    fun sendMedia(payload: ByteArray): Boolean
+    /** Must finish a started frame batch before switching to the newest pending frame. */
+    fun sendMedia(frame: OutboundMediaFrame): Boolean
 
     fun restartIce()
 

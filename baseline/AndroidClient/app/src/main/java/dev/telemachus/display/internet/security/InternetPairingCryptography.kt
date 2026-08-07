@@ -33,10 +33,21 @@ internal fun validateP256PublicKey(encoded: ByteArray) {
 internal fun ecdh(privateKey: PrivateKey, publicKey: ByteArray): ByteArray =
     KeyAgreement.getInstance("ECDH").run { init(privateKey); doPhase(decodePublicKey(publicKey), true); generateSecret() }
 
-internal fun verify(publicKey: ByteArray, digest: ByteArray, signature: ByteArray): Boolean =
-    runCatching {
-        Signature.getInstance("NONEwithECDSA").run { initVerify(decodePublicKey(publicKey)); update(digest); verify(signature) }
+internal fun verify(publicKey: ByteArray, digest: ByteArray, signature: ByteArray): Boolean {
+    if (digest.size != SHA256_DIGEST_BYTES ||
+        publicKey.size != PUBLIC_KEY_BYTES || publicKey[0] != 4.toByte() ||
+        signature.size !in MIN_ECDSA_DER_BYTES..MAX_ECDSA_DER_BYTES
+    ) {
+        return false
+    }
+    return runCatching {
+        Signature.getInstance("NONEwithECDSA").run {
+            initVerify(decodePublicKey(publicKey))
+            update(digest)
+            verify(signature)
+        }
     }.getOrDefault(false)
+}
 
 internal fun hkdf(input: ByteArray, salt: ByteArray, info: ByteArray): ByteArray {
     val extract = hmac(salt, input)
@@ -71,3 +82,6 @@ private fun decodePublicKey(encoded: ByteArray): ECPublicKey {
 
 private const val COORDINATE_BYTES = 32
 private const val PUBLIC_KEY_BYTES = 65
+private const val SHA256_DIGEST_BYTES = 32
+private const val MIN_ECDSA_DER_BYTES = 8
+private const val MAX_ECDSA_DER_BYTES = 80

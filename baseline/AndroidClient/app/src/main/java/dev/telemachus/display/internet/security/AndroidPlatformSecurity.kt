@@ -8,6 +8,7 @@ import java.math.BigInteger
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.MessageDigest
+import java.security.PrivateKey
 import java.security.Signature
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
@@ -43,6 +44,22 @@ data class AndroidPublicIdentity(
     }
 }
 
+internal fun AndroidPublicIdentity.matches(other: InternetPairingIdentity): Boolean =
+    deviceId == other.deviceId &&
+        keyId == other.keyId &&
+        keyEpoch == other.keyEpoch &&
+        other.signatureAlgorithm == AndroidPublicIdentity.ALGORITHM &&
+        MessageDigest.isEqual(signingPublicKey, other.signingPublicKey)
+
+internal fun AndroidPublicIdentity.toPairingIdentity(): InternetPairingIdentity =
+    InternetPairingIdentity(
+        deviceId = deviceId,
+        keyId = keyId,
+        keyEpoch = keyEpoch,
+        signatureAlgorithm = AndroidPublicIdentity.ALGORITHM,
+        signingPublicKey = signingPublicKey.copyOf(),
+    )
+
 class AndroidDeviceIdentity internal constructor(
     val publicIdentity: AndroidPublicIdentity,
     private val keyAlias: String,
@@ -61,11 +78,31 @@ class AndroidDeviceIdentity internal constructor(
     }
 }
 
-class AndroidDeviceIdentityStore {
+internal interface DeviceIdentityStore {
+    fun loadExisting(deviceId: String, keyEpoch: Long): AndroidDeviceIdentity?
+
+    fun loadOrCreateForPairing(deviceId: String, keyEpoch: Long = 1): AndroidDeviceIdentity
+
+    fun delete(deviceId: String, keyEpoch: Long)
+}
+
+class AndroidDeviceIdentityStore : DeviceIdentityStore {
     @Synchronized
-    fun loadOrCreate(
+    override fun loadExisting(
         deviceId: String,
-        keyEpoch: Long = 1,
+        keyEpoch: Long,
+    ): AndroidDeviceIdentity? {
+        require(deviceId.isNotBlank() && keyEpoch > 0) { "Device ID and positive key epoch are required" }
+        val alias = identityAlias(deviceId, keyEpoch)
+        val keyStore = androidKeyStore()
+        if (!keyStore.containsAlias(alias)) return null
+        return loadIdentity(keyStore, deviceId, keyEpoch, alias)
+    }
+
+    @Synchronized
+    override fun loadOrCreateForPairing(
+        deviceId: String,
+        keyEpoch: Long,
     ): AndroidDeviceIdentity {
         require(deviceId.isNotBlank() && keyEpoch > 0) { "Device ID and positive key epoch are required" }
         val alias = identityAlias(deviceId, keyEpoch)
@@ -84,6 +121,16 @@ class AndroidDeviceIdentityStore {
                     )
                 }.generateKeyPair()
         }
+        return loadIdentity(keyStore, deviceId, keyEpoch, alias)
+    }
+
+    private fun loadIdentity(
+        keyStore: KeyStore,
+        deviceId: String,
+        keyEpoch: Long,
+        alias: String,
+    ): AndroidDeviceIdentity {
+        check(keyStore.getKey(alias, null) is PrivateKey) { "Identity private key is unavailable; pair again" }
         val publicKey = keyStore.getCertificate(alias)?.publicKey as? ECPublicKey
             ?: error("Identity public key is unavailable")
         val encoded = byteArrayOf(UNCOMPRESSED_POINT) + coordinate(publicKey.w.affineX) + coordinate(publicKey.w.affineY)
@@ -95,7 +142,7 @@ class AndroidDeviceIdentityStore {
     }
 
     @Synchronized
-    fun delete(
+    override fun delete(
         deviceId: String,
         keyEpoch: Long,
     ) {
@@ -185,25 +232,41 @@ data class ActiveAndroidSecuritySession(
 )
 
 /** Product-facing composition point for identity and session key lifecycle. */
-class AndroidSessionSecurity(
+class AndroidSessionSecurity private constructor(
     private val deviceId: String,
-    context: Context,
-    private val identityStore: AndroidDeviceIdentityStore = AndroidDeviceIdentityStore(),
-    stateStore: SecurityStateStore = SharedPreferencesSecurityStateStore(context),
+    private val identityStore: DeviceIdentityStore,
+    stateStore: SecurityStateStore,
 ) {
     private val lifecycle = SecurityLifecycle(stateStore)
 
+    constructor(
+        deviceId: String,
+        context: Context,
+        stateStore: SecurityStateStore = SharedPreferencesSecurityStateStore(context, deviceId),
+    ) : this(deviceId, AndroidDeviceIdentityStore(), stateStore)
+
+    internal constructor(
+        deviceId: String,
+        stateStore: SecurityStateStore,
+        identityStore: DeviceIdentityStore,
+    ) : this(deviceId, identityStore, stateStore)
+
     fun startSession(
-        identityEpoch: Long,
+        pairingIdentifier: String,
+        expectedIdentity: InternetPairingIdentity,
         authoritativeSessionEpoch: Long,
         sharedSecret: ByteArray,
         bootstrapSecret: ByteArray,
         transcriptContext: ByteArray,
     ): ActiveAndroidSecuritySession {
-        lifecycle.requireAuthorizedIdentityEpoch(identityEpoch)
-        val sessionEpoch = lifecycle.reserveSessionEpoch(authoritativeSessionEpoch)
+        val identity = requireExistingAuthorizedIdentity(expectedIdentity)
+        val sessionEpoch =
+            lifecycle.reserveSessionEpoch(
+                pairingSecurityScope(deviceId, pairingIdentifier),
+                expectedIdentity.keyEpoch,
+                authoritativeSessionEpoch,
+            )
         val keys = TrafficKeyDerivation.initial(sharedSecret, bootstrapSecret, transcriptContext)
-        val identity = identityStore.loadOrCreate(deviceId, identityEpoch)
         return ActiveAndroidSecuritySession(identity, sessionEpoch, keys)
     }
 
@@ -216,42 +279,123 @@ class AndroidSessionSecurity(
     }
 
     fun reserveNonce(
+        pairingIdentifier: String,
+        identityEpoch: Long,
         channel: Int,
         senderRole: Int,
         keyEpoch: Long,
-    ): ByteArray = lifecycle.reserveNonce(channel, senderRole, keyEpoch)
+    ): ByteArray =
+        lifecycle.reserveNonce(
+            pairingSecurityScope(deviceId, pairingIdentifier),
+            identityEpoch,
+            channel,
+            senderRole,
+            keyEpoch,
+        )
 
     fun reserveNextIdentityEpoch(): Long = lifecycle.reserveNextIdentityEpoch()
 
-    fun authorizeIdentityEpoch(identityEpoch: Long) = lifecycle.authorizeIdentityEpoch(identityEpoch)
+    fun authorizeIdentity(identity: InternetPairingIdentity) {
+        require(identity.deviceId == deviceId) { "Authorized identity belongs to another local device" }
+        val existing = checkNotNull(identityStore.loadExisting(deviceId, identity.keyEpoch)) {
+            "Authorized identity private key is unavailable; pair again"
+        }
+        require(existing.publicIdentity.matches(identity)) {
+            "Authorized identity does not match the Android Keystore key; pair again"
+        }
+        lifecycle.authorizeIdentityEpoch(identity.keyEpoch, identity.keyId)
+    }
 
-    fun <T> withFreshSessionEpochCandidate(sessionEpoch: Long, block: () -> T): T =
-        lifecycle.withFreshSessionEpochCandidate(sessionEpoch, block)
+    internal fun requireExistingAuthorizedIdentity(expected: InternetPairingIdentity): AndroidDeviceIdentity {
+        require(expected.deviceId == deviceId) { "Stored identity belongs to another local device" }
+        val identity = requireExistingAuthorizedIdentity(expected.keyEpoch)
+        require(identity.publicIdentity.matches(expected)) {
+            "Stored pairing identity does not match the Android Keystore key; pair again"
+        }
+        return identity
+    }
 
-    fun <T> withActiveSessionEpoch(sessionEpoch: Long, block: () -> T): T = lifecycle.withActiveSessionEpoch(sessionEpoch, block)
+    private fun requireExistingAuthorizedIdentity(identityEpoch: Long): AndroidDeviceIdentity {
+        val expectedKeyId = lifecycle.requireAuthorizedIdentityKeyId(identityEpoch)
+        val identity = checkNotNull(identityStore.loadExisting(deviceId, identityEpoch)) {
+            "Authorized identity private key is unavailable; pair again"
+        }
+        require(MessageDigest.isEqual(identity.publicIdentity.keyId.toByteArray(), expectedKeyId.toByteArray())) {
+            "Authorized identity does not match the durable key binding; pair again"
+        }
+        return identity
+    }
+
+    fun <T> withFreshSessionEpochCandidate(
+        pairingIdentifier: String,
+        identity: InternetPairingIdentity,
+        sessionEpoch: Long,
+        block: () -> T,
+    ): T {
+        requireExistingAuthorizedIdentity(identity)
+        return lifecycle.withFreshSessionEpochCandidate(
+            pairingSecurityScope(deviceId, pairingIdentifier),
+            identity.keyEpoch,
+            sessionEpoch,
+            block,
+        )
+    }
+
+    fun <T> withActiveSessionEpoch(
+        pairingIdentifier: String,
+        identityEpoch: Long,
+        sessionEpoch: Long,
+        block: () -> T,
+    ): T =
+        lifecycle.withActiveSessionEpoch(
+            pairingSecurityScope(deviceId, pairingIdentifier),
+            identityEpoch,
+            sessionEpoch,
+            block,
+        )
 
     fun <T> withReservedSessionNonce(
+        pairingIdentifier: String,
+        identityEpoch: Long,
         sessionEpoch: Long,
         channel: Int,
         senderRole: Int,
         keyEpoch: Long,
         block: (ByteArray) -> T,
-    ): T = lifecycle.withReservedSessionNonce(sessionEpoch, channel, senderRole, keyEpoch, block)
+    ): T =
+        lifecycle.withReservedSessionNonce(
+            pairingSecurityScope(deviceId, pairingIdentifier),
+            identityEpoch,
+            sessionEpoch,
+            channel,
+            senderRole,
+            keyEpoch,
+            block,
+        )
 
     fun consumeRotationNonce(
+        identityEpoch: Long,
         authority: AndroidPublicIdentity,
         nonce: ByteArray,
     ) {
-        lifecycle.consumeRotationNonceHash(authority.rotationNonceHash(nonce))
+        lifecycle.consumeRotationNonceHash(
+            identityEpoch,
+            authority.rotationNonceHash(nonce),
+        )
     }
 
     fun revoke(
+        pairingIdentifier: String,
         sequence: Long,
         identityEpoch: Long,
     ) {
         // Persist revocation before deleting the private key so deletion
         // failures cannot accidentally re-authorize the local identity.
-        lifecycle.applyRevocation(sequence)
+        lifecycle.applyRevocation(
+            pairingSecurityScope(deviceId, pairingIdentifier),
+            identityEpoch,
+            sequence,
+        )
         identityStore.delete(deviceId, identityEpoch)
     }
 }

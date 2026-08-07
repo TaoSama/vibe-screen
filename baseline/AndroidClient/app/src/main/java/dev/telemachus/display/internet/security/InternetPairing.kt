@@ -177,7 +177,7 @@ class PendingInternetPairing internal constructor(
         check(!consumed) { "Pairing attempt was already completed" }
         consumed = true
         try {
-            require(clock.instant().epochSecond <= offer.expiresAtUnixSeconds) { "Pairing offer expired" }
+            require(clock.instant().epochSecond < offer.expiresAtUnixSeconds) { "Pairing offer expired" }
             require(acceptance.accepted) { "Host rejected pairing" }
             require(acceptance.hostSignature.size in 1..MAX_ECDSA_DER_BYTES) { "Host pairing signature is invalid" }
             require(acceptance.offerId.contentEquals(offer.offerId)) { "Host accepted a different pairing offer" }
@@ -214,7 +214,18 @@ class PendingInternetPairing internal constructor(
                 require(verify(offer.hostIdentity.signingPublicKey, resultDigest, acceptance.hostSignature)) {
                     "Host pairing acceptance signature is invalid"
                 }
-                secretSink.persistPairingSecrets(pairingSha256(offer.offerId).toPairingHex(), pairingSecret.copyOf(), bootstrapSecret.copyOf())
+                val persistedPairingSecret = pairingSecret.copyOf()
+                val persistedBootstrapSecret = bootstrapSecret.copyOf()
+                try {
+                    secretSink.persistPairingSecrets(
+                        pairingSha256(offer.offerId).toPairingHex(),
+                        persistedPairingSecret,
+                        persistedBootstrapSecret,
+                    )
+                } finally {
+                    persistedPairingSecret.fill(0)
+                    persistedBootstrapSecret.fill(0)
+                }
                 return InternetPairingResult(publicMetadata.copy(sessionKeyId = expectedKeyId, sessionContext = expectedContext))
             } finally {
                 pairingSecret.fill(0)
@@ -361,7 +372,7 @@ private fun validateOffer(offer: InternetPairingOffer, now: Long) {
         offer.offerId.size == OFFER_ID_BYTES && offer.challenge.size == CHALLENGE_BYTES &&
             offer.oneTimeCredential.size == CREDENTIAL_BYTES && offer.hostEphemeralPublicKey.size == P256_PUBLIC_KEY_BYTES,
     ) { "Pairing offer has invalid field sizes" }
-    require(offer.expiresAtUnixSeconds > 0 && offer.expiresAtUnixSeconds >= now) { "Pairing offer expired" }
+    require(offer.expiresAtUnixSeconds > 0 && now < offer.expiresAtUnixSeconds) { "Pairing offer expired" }
     validateP256PublicKey(offer.hostIdentity.signingPublicKey)
     validateP256PublicKey(offer.hostEphemeralPublicKey)
 }

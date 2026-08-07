@@ -10,7 +10,10 @@ import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.SessionRejected
 import dev.vibescreen.protocol.v1.SessionAccepted
 import com.google.protobuf.ByteString
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -22,6 +25,7 @@ import java.net.ServerSocket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class StreamClientProtocolFailureTest {
@@ -58,15 +62,17 @@ class StreamClientProtocolFailureTest {
 
     @Test
     fun invalidMediaHeaderReachesUiAndStopsReconnect() =
-        runBlocking {
+        runProtocolTest { serverDispatcher ->
             ServerSocket(0).use { server ->
+                val serverReady = CountDownLatch(1)
                 val serverJob =
-                    async(Dispatchers.IO) {
+                    async(serverDispatcher) {
+                        serverReady.countDown()
                         server.accept().use { peer ->
                             assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
                             peer.getOutputStream().write(byteArrayOf(PROTOCOL_UPGRADE_BYTE.toByte(), 1))
                             peer.getOutputStream().flush()
-                            ProtocolV1Framing.read(peer.getInputStream())
+                            assertProductionClientHello(ProtocolV1Framing.read(peer.getInputStream()).payload)
                             write(peer, hostHello())
                             write(
                                 peer,
@@ -76,9 +82,7 @@ class StreamClientProtocolFailureTest {
                                     .setSessionAccepted(
                                         SessionAccepted.newBuilder()
                                             .setSessionId(ByteString.copyFrom(ByteArray(16) { 1 }))
-                                            .setSessionEpoch(1)
-                                            .addNegotiatedCapabilities(Capability.CAPABILITY_TOUCH)
-                                            .addNegotiatedCapabilities(Capability.CAPABILITY_TELEMETRY),
+                                            .setSessionEpoch(1),
                                     ).build(),
                             )
                             ProtocolV1Framing.read(peer.getInputStream())
@@ -100,14 +104,16 @@ class StreamClientProtocolFailureTest {
                 }
                 client.onReconnectSuggested = { reconnect.countDown() }
 
-                runCatching { withTimeout(3_000) { client.connect() } }
-                withTimeout(3_000) { serverJob.await() }
+                assertTrue("fake protocol server did not start", serverReady.await(1, TimeUnit.SECONDS))
+                val connectResult = runCatching { withTimeout(TEST_OPERATION_TIMEOUT_MS) { client.connect() } }
+                withTimeout(TEST_OPERATION_TIMEOUT_MS) { serverJob.await() }
                 assertTrue(callback.await(1, TimeUnit.SECONDS))
                 val failure = checkNotNull(reportedFailure)
                 assertEquals(SessionFailureKind.INVALID_MEDIA_HEADER, failure.kind)
                 assertTrue(failure.detail.startsWith("invalid_media_header:"))
                 assertFalse(failure.retryable)
                 assertFalse(reconnect.await(200, TimeUnit.MILLISECONDS))
+                assertProtocolConnectFailure(connectResult, failure)
             }
         }
 
@@ -130,10 +136,12 @@ class StreamClientProtocolFailureTest {
         rawFrame: ByteArray? = null,
         channel: ProtocolChannel = ProtocolChannel.CONTROL,
         expectedReason: String,
-    ) = runBlocking {
+    ) = runProtocolTest { serverDispatcher ->
         ServerSocket(0).use { server ->
+            val serverReady = CountDownLatch(1)
             val serverJob =
-                async(Dispatchers.IO) {
+                async(serverDispatcher) {
+                    serverReady.countDown()
                     server.accept().use { peer ->
                         assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
                         peer.getOutputStream().write(byteArrayOf(PROTOCOL_UPGRADE_BYTE.toByte(), 1))
@@ -161,30 +169,34 @@ class StreamClientProtocolFailureTest {
             }
             client.onReconnectSuggested = { reconnect.countDown() }
 
-            runCatching { withTimeout(3_000) { client.connect() } }
-            withTimeout(3_000) { serverJob.await() }
+            assertTrue("fake protocol server did not start", serverReady.await(1, TimeUnit.SECONDS))
+            val connectResult = runCatching { withTimeout(TEST_OPERATION_TIMEOUT_MS) { client.connect() } }
+            withTimeout(TEST_OPERATION_TIMEOUT_MS) { serverJob.await() }
             assertTrue(callback.await(1, TimeUnit.SECONDS))
             val failure = checkNotNull(reportedFailure)
             assertEquals(expectedKind(expectedReason), failure.kind)
             assertTrue(failure.detail.startsWith("$expectedReason:"))
             assertFalse(failure.retryable)
             assertFalse(reconnect.await(200, TimeUnit.MILLISECONDS))
+            assertProtocolConnectFailure(connectResult, failure)
         }
     }
 
     private fun runRejectedSession(
         retryable: Boolean,
         assertions: (Result) -> Unit,
-    ) = runBlocking {
+    ) = runProtocolTest { serverDispatcher ->
         ServerSocket(0).use { server ->
+            val serverReady = CountDownLatch(1)
             val serverJob =
-                async(Dispatchers.IO) {
+                async(serverDispatcher) {
+                    serverReady.countDown()
                     server.accept().use { peer ->
                         assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
                         peer.getOutputStream().write(byteArrayOf(PROTOCOL_UPGRADE_BYTE.toByte(), 1))
                         peer.getOutputStream().flush()
                         val hello = ProtocolV1Framing.read(peer.getInputStream())
-                        assertEquals(Envelope.PayloadCase.CLIENT_HELLO, Envelope.parseFrom(hello.payload).payloadCase)
+                        assertProductionClientHello(hello.payload)
                         write(peer, hostHello())
                         write(peer, rejection(retryable))
                     }
@@ -199,11 +211,40 @@ class StreamClientProtocolFailureTest {
             }
             client.onReconnectSuggested = { reconnect.countDown() }
 
-            runCatching { withTimeout(3_000) { client.connect() } }
-            withTimeout(3_000) { serverJob.await() }
+            assertTrue("fake protocol server did not start", serverReady.await(1, TimeUnit.SECONDS))
+            val connectResult = runCatching { withTimeout(TEST_OPERATION_TIMEOUT_MS) { client.connect() } }
+            withTimeout(TEST_OPERATION_TIMEOUT_MS) { serverJob.await() }
             assertTrue(protocolFailure.await(1, TimeUnit.SECONDS))
+            assertConnectTerminatedWithoutTimeout(connectResult)
             assertions(Result(checkNotNull(reportedFailure), reconnect))
         }
+    }
+
+    private fun runProtocolTest(block: suspend CoroutineScope.(CoroutineDispatcher) -> Unit) =
+        runBlocking {
+            Executors
+                .newSingleThreadExecutor { runnable ->
+                    Thread(runnable, "StreamClientProtocolFailureTestServer").apply { isDaemon = true }
+                }.asCoroutineDispatcher()
+                .use { serverDispatcher -> block(serverDispatcher) }
+        }
+
+    private fun assertProtocolConnectFailure(
+        result: kotlin.Result<Unit>,
+        expectedFailure: SessionFailure,
+    ) {
+        assertConnectTerminatedWithoutTimeout(result)
+        val error = result.exceptionOrNull()
+        assertTrue("connect failed with ${error?.javaClass?.name}", error is SessionProtocolException)
+        assertEquals(expectedFailure, (error as SessionProtocolException).failure)
+    }
+
+    private fun assertConnectTerminatedWithoutTimeout(result: kotlin.Result<Unit>) {
+        assertTrue("connect unexpectedly completed normally", result.isFailure)
+        assertFalse(
+            "connect timed out instead of observing the peer failure",
+            result.exceptionOrNull() is TimeoutCancellationException,
+        )
     }
 
     private fun write(
@@ -220,10 +261,15 @@ class StreamClientProtocolFailureTest {
                 HostHello
                     .newBuilder()
                     .setSelectedProtocol(1)
-                    .addCapabilities(Capability.CAPABILITY_TOUCH)
-                    .addCapabilities(Capability.CAPABILITY_TELEMETRY)
                     .addCodecs(Codec.CODEC_HEVC),
             ).build()
+
+    private fun assertProductionClientHello(payload: ByteArray) {
+        val envelope = Envelope.parseFrom(payload)
+        assertEquals(Envelope.PayloadCase.CLIENT_HELLO, envelope.payloadCase)
+        assertEquals(listOf(Capability.CAPABILITY_TOUCH), envelope.clientHello.capabilitiesList)
+        assertEquals(emptyList<Capability>(), envelope.clientHello.requiredCapabilitiesList)
+    }
 
     private fun rejection(retryable: Boolean): Envelope =
         Envelope
@@ -253,5 +299,6 @@ class StreamClientProtocolFailureTest {
 
     companion object {
         private const val PROTOCOL_UPGRADE_BYTE = 0x0d
+        private const val TEST_OPERATION_TIMEOUT_MS = 3_000L
     }
 }
