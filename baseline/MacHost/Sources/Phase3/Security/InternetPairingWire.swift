@@ -11,6 +11,9 @@ struct InternetPairingPublicAcceptance: Equatable {
 }
 
 enum InternetPairingURL {
+    private static let maximumURLBytes = 16_384
+    private static let prefix = "vibescreen://pair?v=1&o="
+
     static func encode(_ offer: InternetPairingOffer) throws -> URL {
         try InternetPairingCanonical.validateOffer(offer)
         let payload = try JSONEncoder().encode(OfferWire(offer))
@@ -26,11 +29,24 @@ enum InternetPairingURL {
     }
 
     static func parse(_ url: URL) throws -> InternetPairingOffer {
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              components.scheme == "vibescreen", components.host == "pair", components.path.isEmpty,
-              let items = components.queryItems, items.count == 2,
-              items[0].name == "v", items[0].value == "1",
-              items[1].name == "o", let encoded = items[1].value,
+        let raw = url.absoluteString
+        guard raw.utf8.count <= maximumURLBytes,
+              raw.hasPrefix(prefix),
+              !raw.contains("%"),
+              !raw.contains("#"),
+              !raw.contains("&"),
+              !raw.contains("+"),
+              raw.count > prefix.count else {
+            throw InternetPairingError.invalidURL
+        }
+        let encoded = String(raw.dropFirst(prefix.count))
+        guard encoded.utf8.count <= maximumURLBytes - prefix.utf8.count,
+              encoded.utf8.allSatisfy({ byte in
+                  (0x41...0x5a).contains(byte) ||
+                    (0x61...0x7a).contains(byte) ||
+                    (0x30...0x39).contains(byte) ||
+                    byte == 0x2d || byte == 0x5f
+              }),
               let payload = Base64URL.decode(encoded) else { throw InternetPairingError.invalidURL }
         try StrictPairingJSON.validate(payload, keys: OfferWire.expectedKeys, identities: ["host_identity"])
         let wire: OfferWire = try StrictPairingJSON.decode(payload)

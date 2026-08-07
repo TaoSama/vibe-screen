@@ -60,6 +60,7 @@ func debugLog(_ message: String) {
     TelemachusLog.write(message)
 }
 
+
 // MARK: - Gesture State Machine
 
 enum GestureState {
@@ -771,9 +772,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if !handledLegacyRevocation, internetPairingMetadataIsComplete {
             do {
                 let peerIdentity = try pinnedInternetPeerIdentity()
+                let secretNames = try PairedDeviceSecretNames.persistedPairing(
+                    sharedSecret: settings.internetSharedSecretName,
+                    bootstrapSecret: settings.internetBootstrapSecretName
+                )
+                guard let pairingIdentifier = secretNames.pairingIdentifier else {
+                    throw PlatformSecurityError.persistenceFailure(
+                        "The paired-device durable security owner is unknown. Pair again."
+                    )
+                }
                 let persisted = try KeychainSecurityStateStore(
                     peerID: PairedDeviceSecurityScope.identifier(peerIdentity)
-                ).load()
+                ).validatePairingBinding(pairingIdentifier: pairingIdentifier)
                 if persisted.revoked {
                     try rememberRevokedInternetIdentity(peerIdentity)
                 }
@@ -804,12 +814,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func recoverPendingInternetPairingPersistence() -> Bool {
         do {
-            let identity = try KeychainDeviceIdentityStore().loadOrCreate(
-                deviceID: settings.internetHostDeviceID
-            )
-            let coordinator = InternetPairingCoordinator(signer: identity)
-            _ = try coordinator.retryPendingPersistenceCleanup {
-                self.clearInternetPairingMetadata()
+            let pendingContexts = try InternetPairingCoordinator
+                .pendingPersistenceContexts()
+            for pendingContext in pendingContexts {
+                _ = try InternetPairingCoordinator.retryPendingPersistenceCleanup(
+                    pairingIdentifier: pendingContext.pairingIdentifier,
+                    cleanupBusinessState: {
+                        try KeychainSecurityStateStore(
+                            peerID: "lease-authority.\(pendingContext.pairingIdentifier)"
+                        ).rollbackPairingBinding(
+                            pairingIdentifier: pendingContext.pairingIdentifier
+                        )
+                        try KeychainSecurityStateStore(
+                            peerID: pendingContext.peerSecurityScopeID
+                        ).rollbackPairingBinding(
+                            pairingIdentifier: pendingContext.pairingIdentifier
+                        )
+                        if self.settings.internetSharedSecretName ==
+                            "pairing.\(pendingContext.pairingIdentifier).shared.v1" {
+                            self.clearInternetPairingMetadata()
+                        }
+                    }
+                )
             }
             return true
         } catch {
@@ -979,7 +1005,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func beginInternetPairing() {
         guard recoverPendingInternetPairingPersistence() else { return }
         do {
-            let identity = try KeychainDeviceIdentityStore().loadOrCreate(
+            let identity = try KeychainDeviceIdentityStore().createIfMissing(
                 deviceID: settings.internetHostDeviceID
             )
             let coordinator = InternetPairingCoordinator(signer: identity)
@@ -1008,6 +1034,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let trimmed = deviceResponse.trimmingCharacters(in: .whitespacesAndNewlines)
         let responseData = Data(base64Encoded: trimmed) ?? Data(trimmed.utf8)
+        let previousPairingMetadata = (
+            deviceID: settings.internetPeerDeviceID,
+            keyID: settings.internetPeerKeyID,
+            keyEpoch: settings.internetPeerKeyEpoch,
+            signingPublicKey: settings.internetPeerSigningPublicKeyBase64,
+            sharedSecretName: settings.internetSharedSecretName,
+            bootstrapSecretName: settings.internetBootstrapSecretName,
+            transcriptContext: settings.internetTranscriptContextBase64,
+            displayName: settings.internetPeerDisplayName,
+            acceptance: settings.internetPairingAcceptance
+        )
         do {
             let request = try InternetPairingDeviceRequestWire.parse(responseData)
             let acceptance = try coordinator.accept(request)
@@ -1021,6 +1058,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         signingPublicKey: acceptance.deviceIdentity.signingPublicKey
                     )
                     try self.validateInternetReauthorization(acceptedIdentity)
+                    try KeychainSecurityStateStore(
+                        peerID: PairedDeviceSecurityScope.identifier(acceptedIdentity)
+                    ).initializePairingBinding(
+                        pairingIdentifier: acceptance.pairingIdentifier
+                    )
+                    try KeychainSecurityStateStore(
+                        peerID: "lease-authority.\(acceptance.pairingIdentifier)"
+                    ).initializePairingBinding(
+                        pairingIdentifier: acceptance.pairingIdentifier
+                    )
                     let encodedAcceptance = try InternetPairingAcceptanceWire.encode(acceptance)
                     self.settings.internetPeerDeviceID = acceptance.deviceIdentity.deviceID
                     self.settings.internetPeerKeyID = acceptance.deviceIdentity.keyID
@@ -1033,9 +1080,48 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.settings.internetPairingAcceptance = encodedAcceptance.base64EncodedString()
                 },
                 cleanupBusinessState: {
-                    self.clearInternetPairingMetadata()
+                    let acceptedIdentity = PlatformPublicIdentity(
+                        deviceID: acceptance.deviceIdentity.deviceID,
+                        keyID: acceptance.deviceIdentity.keyID,
+                        keyEpoch: acceptance.deviceIdentity.keyEpoch,
+                        signingPublicKey: acceptance.deviceIdentity.signingPublicKey
+                    )
+                    try KeychainSecurityStateStore(
+                        peerID: "lease-authority.\(acceptance.pairingIdentifier)"
+                    ).rollbackPairingBinding(
+                        pairingIdentifier: acceptance.pairingIdentifier
+                    )
+                    try KeychainSecurityStateStore(
+                        peerID: PairedDeviceSecurityScope.identifier(acceptedIdentity)
+                    ).rollbackPairingBinding(
+                        pairingIdentifier: acceptance.pairingIdentifier
+                    )
+                    self.settings.internetPeerDeviceID = previousPairingMetadata.deviceID
+                    self.settings.internetPeerKeyID = previousPairingMetadata.keyID
+                    self.settings.internetPeerKeyEpoch = previousPairingMetadata.keyEpoch
+                    self.settings.internetPeerSigningPublicKeyBase64 = previousPairingMetadata.signingPublicKey
+                    self.settings.internetSharedSecretName = previousPairingMetadata.sharedSecretName
+                    self.settings.internetBootstrapSecretName = previousPairingMetadata.bootstrapSecretName
+                    self.settings.internetTranscriptContextBase64 = previousPairingMetadata.transcriptContext
+                    self.settings.internetPeerDisplayName = previousPairingMetadata.displayName
+                    self.settings.internetPairingAcceptance = previousPairingMetadata.acceptance
                 }
             )
+            let acceptedIdentity = PlatformPublicIdentity(
+                deviceID: acceptance.deviceIdentity.deviceID,
+                keyID: acceptance.deviceIdentity.keyID,
+                keyEpoch: acceptance.deviceIdentity.keyEpoch,
+                signingPublicKey: acceptance.deviceIdentity.signingPublicKey
+            )
+            do {
+                try KeychainSecurityStateStore(
+                    peerID: PairedDeviceSecurityScope.identifier(acceptedIdentity)
+                ).finalizePairingBinding(
+                    pairingIdentifier: acceptance.pairingIdentifier
+                )
+            } catch {
+                debugLog("Committed pairing retained its rollback checkpoint")
+            }
             settings.internetPairingURL = nil
             settings.internetPairingCode = nil
             settings.internetStatus = .paired
@@ -1067,7 +1153,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let stateStore = KeychainSecurityStateStore(
                 peerID: peerScopeID
             )
-            let persistedSequence = try stateStore.load().revocationSequence
+            let secretNames = try PairedDeviceSecretNames.persistedPairing(
+                sharedSecret: settings.internetSharedSecretName,
+                bootstrapSecret: settings.internetBootstrapSecretName
+            )
+            guard let pairingIdentifier = secretNames.pairingIdentifier else {
+                throw PlatformSecurityError.persistenceFailure(
+                    "The paired-device durable security owner is unknown. Pair again."
+                )
+            }
+            let persistedSequence = try stateStore.validatePairingBinding(
+                pairingIdentifier: pairingIdentifier
+            ).revocationSequence
             guard persistedSequence < UInt64.max else {
                 throw PlatformSecurityError.exhausted(
                     "The revocation sequence is exhausted."
@@ -1085,8 +1182,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 try session.revoke(sequence: sequence)
             } else {
                 let identityStore = KeychainDeviceIdentityStore()
-                let authority = try identityStore.loadOrCreate(
-                    deviceID: settings.internetHostDeviceID
+                guard let identityBindingName = secretNames.identityBinding,
+                      let encodedIdentityBinding = try KeychainSecretStore().load(
+                        name: identityBindingName
+                      ) else {
+                    throw PlatformSecurityError.persistenceFailure(
+                        "The paired host identity binding is missing. Pair again; existing credentials were retained."
+                    )
+                }
+                let identityBinding = try PairedHostIdentityBinding.decode(
+                    encodedIdentityBinding
+                )
+                guard identityBinding.deviceID == settings.internetHostDeviceID else {
+                    throw PlatformSecurityError.persistenceFailure(
+                        "The paired host identity binding targets another device. Pair again."
+                    )
+                }
+                let authority = try identityStore.loadVerifiedExisting(
+                    binding: identityBinding
                 )
                 var nonce = Data(count: 32)
                 let status = nonce.withUnsafeMutableBytes { bytes in
@@ -1108,19 +1221,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     nonce: nonce,
                     reasonCode: "user_revoked"
                 )
-                try PlatformSessionSecurity(
+                let security = PlatformSessionSecurity(
                     deviceID: settings.internetHostDeviceID,
                     peerID: peerScopeID,
                     identityStore: identityStore,
                     stateStore: stateStore
-                ).revokePeer(
+                )
+                try security.requirePairingBinding(pairingIdentifier)
+                try security.revokePeer(
                     tombstone,
                     expectedAuthority: authority.publicIdentity,
                     expectedPeer: peerIdentity,
-                    secretNames: PairedDeviceSecretNames(
-                        sharedSecret: settings.internetSharedSecretName,
-                        bootstrapSecret: settings.internetBootstrapSecretName
-                    )
+                    secretNames: secretNames
                 )
             }
             try rememberRevokedInternetIdentity(peerIdentity)
@@ -1159,19 +1271,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func currentInternetRevocationCleanupPending() throws -> Bool {
         let peerIdentity = try pinnedInternetPeerIdentity()
-        return try PlatformSessionSecurity(
-            deviceID: settings.internetHostDeviceID,
-            peerID: PairedDeviceSecurityScope.identifier(peerIdentity),
-            stateStore: KeychainSecurityStateStore(
-                peerID: PairedDeviceSecurityScope.identifier(peerIdentity)
+        let peerID = PairedDeviceSecurityScope.identifier(peerIdentity)
+        let secretNames = try PairedDeviceSecretNames.persistedPairing(
+            sharedSecret: settings.internetSharedSecretName,
+            bootstrapSecret: settings.internetBootstrapSecretName
+        )
+        guard let pairingIdentifier = secretNames.pairingIdentifier else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired-device durable security owner is unknown. Pair again."
             )
-        ).hasPendingRevocationSecretCleanup()
+        }
+        let stateStore = KeychainSecurityStateStore(peerID: peerID)
+        let security = PlatformSessionSecurity(
+            deviceID: settings.internetHostDeviceID,
+            peerID: peerID,
+            stateStore: stateStore
+        )
+        try security.requireRevokedPairingBinding(pairingIdentifier)
+        return try security.hasPendingRevocationSecretCleanup()
     }
 
     private func retryInternetRevocationSecretCleanup() {
         do {
             let peerIdentity = try pinnedInternetPeerIdentity()
             let peerID = PairedDeviceSecurityScope.identifier(peerIdentity)
+            let secretNames = try PairedDeviceSecretNames.persistedPairing(
+                sharedSecret: settings.internetSharedSecretName,
+                bootstrapSecret: settings.internetBootstrapSecretName
+            )
+            guard let pairingIdentifier = secretNames.pairingIdentifier else {
+                throw PlatformSecurityError.persistenceFailure(
+                    "The paired-device durable security owner is unknown. Pair again."
+                )
+            }
+            let stateStore = KeychainSecurityStateStore(peerID: peerID)
             // The per-device epoch floor is a separate durable record. Commit it
             // before clearing the cleanup gate so a completed secret deletion
             // cannot make a lower-epoch replacement identity eligible.
@@ -1179,8 +1312,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let security = PlatformSessionSecurity(
                 deviceID: settings.internetHostDeviceID,
                 peerID: peerID,
-                stateStore: KeychainSecurityStateStore(peerID: peerID)
+                stateStore: stateStore
             )
+            try security.requireRevokedPairingBinding(pairingIdentifier)
             try security.retryRevocationSecretCleanup()
             settings.internetRevocationCleanupPending = false
             settings.internetStatus = .revoked

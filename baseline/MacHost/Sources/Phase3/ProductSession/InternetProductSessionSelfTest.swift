@@ -292,6 +292,7 @@ private final class ProductDeviceHarness {
     private let lock = NSLock()
     private var nextMessageID: UInt64 = 1
     private var connectedPath: InternetPathKind?
+    private var transmissionContext: WebRTCEngineTransmissionContext?
     private var selectedCandidatePair: WebRTCSelectedCandidatePair?
     private var epoch: UInt64 = 0
     private var configEpoch: UInt64 = 0
@@ -316,6 +317,9 @@ private final class ProductDeviceHarness {
     func start() throws {
         engine.install(callbacks: WebRTCEngineCallbacks(
             connectionStateChanged: { [weak self] state in self?.handleConnection(state) },
+            transmissionContextChanged: { [weak self] context in
+                self?.lock.withProductSelfTestLock { self?.transmissionContext = context }
+            },
             networkPathChanged: { _ in },
             networkQualitySampled: { _ in },
             messageReceived: { [weak self] payload, channel in self?.handle(payload, channel: channel) },
@@ -430,9 +434,19 @@ private final class ProductDeviceHarness {
         hello.supportedProtocols = range
         hello.deviceID = "local-e2e-device"
         hello.deviceName = "Synthetic Protocol v1 Device"
-        hello.capabilities = [.deviceIdentity, .endToEndEncryption, .replayProtection, .touch]
+        hello.capabilities = [
+            .deviceIdentity, .endToEndEncryption, .mediaRecordFragmentation, .replayProtection, .touch,
+        ]
+        hello.requiredCapabilities = [
+            .deviceIdentity, .endToEndEncryption, .mediaRecordFragmentation, .replayProtection,
+        ]
         hello.codecs = [.hevc]
         hello.transports = [.internet]
+        var limits = VSResourceLimits()
+        limits.maximumEncryptedMediaRecordBytes = UInt32(
+            InternetMediaRecordContract.maximumEncryptedRecordBytes
+        )
+        hello.resourceLimits = limits
         var envelope = baseEnvelope(scoped: false)
         envelope.clientHello = hello
         return envelope
@@ -494,11 +508,14 @@ private final class ProductDeviceHarness {
     }
 
     private func sendNextControlPayload() {
-        guard let payload = lock.withProductSelfTestLock({ pendingControlPayloads.first }) else {
+        guard let (payload, context) = lock.withProductSelfTestLock({ () -> (Data, WebRTCEngineTransmissionContext)? in
+            guard let payload = pendingControlPayloads.first, let transmissionContext else { return nil }
+            return (payload, transmissionContext)
+        }) else {
             lock.withProductSelfTestLock { controlSendInFlight = false }
             return
         }
-        engine.send(payload, channel: .control) { [weak self] result in
+        engine.send(payload, channel: .control, expectedContext: context) { [weak self] result in
             guard let self else { return }
             let shouldContinue = self.lock.withProductSelfTestLock { () -> Bool in
                 if !self.pendingControlPayloads.isEmpty {

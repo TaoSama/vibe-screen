@@ -4,6 +4,17 @@ import VibeScreenProtocol
 @testable import Telemachus
 
 final class ProtocolV1SessionTests: XCTestCase {
+    func testProductionHostCapabilitiesAreExact() {
+        XCTAssertEqual(
+            ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true),
+            [.touch]
+        )
+        XCTAssertEqual(
+            ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false),
+            []
+        )
+    }
+
     func testFramerHandlesSplitAndCoalescedFrames() throws {
         let first = try ProtocolV1TransportFrame(channel: .control, payload: Data([1, 2])).encoded()
         let second = try ProtocolV1TransportFrame(channel: .video, payload: Data([3])).encoded()
@@ -96,10 +107,12 @@ final class ProtocolV1SessionTests: XCTestCase {
             return XCTFail("Expected HostHello")
         }
         XCTAssertEqual(hostHello.selectedProtocol, 1)
+        XCTAssertEqual(hostHello.capabilities, [.touch])
         guard case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected SessionAccepted")
         }
         XCTAssertEqual(accepted.sessionID, sessionID)
+        XCTAssertEqual(accepted.negotiatedCapabilities, [.touch])
         XCTAssertNil(try session.makeMediaFrame(payload: Data([1]), timestamp: 1, keyframe: true))
 
         let listActions = session.handleControl(try envelope(
@@ -146,6 +159,21 @@ final class ProtocolV1SessionTests: XCTestCase {
             try protocolError(from: unsupported.handleControl(required.serializedData())).code,
             .unsupportedCapability
         )
+    }
+
+    func testUnimplementedTelemetryIsNotAdvertisedOrNegotiated() throws {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities.append(.telemetry)
+
+        _ = session.handleControl(try hello.serializedData())
+        let responses = try controlEnvelopes(session.completeCodecNegotiation())
+        guard case .hostHello(let hostHello)? = responses[0].payload,
+              case .sessionAccepted(let accepted)? = responses[1].payload else {
+            return XCTFail("Expected HostHello + SessionAccepted")
+        }
+        XCTAssertEqual(hostHello.capabilities, [.touch])
+        XCTAssertEqual(accepted.negotiatedCapabilities, [.touch])
     }
 
     func testInvalidDisplayAndStaleEpochFailClosed() throws {
@@ -290,7 +318,9 @@ final class ProtocolV1SessionTests: XCTestCase {
             rotation: 90,
             framesPerSecond: 60,
             bitrateKbps: 20_000,
-            hostCapabilities: [.touch, .telemetry],
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true
+            ),
             requiredClientCapabilities: [.touch],
             supportedCodecs: [.hevc, .h264],
             hostID: "host",
@@ -309,7 +339,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         hello.supportedProtocols = range
         hello.deviceID = "device"
         hello.deviceName = "Tablet"
-        hello.capabilities = [.touch, .telemetry]
+        hello.capabilities = [.touch]
         hello.codecs = [.hevc, .h264]
         var envelope = VSEnvelope()
         envelope.protocolVersion = 1
