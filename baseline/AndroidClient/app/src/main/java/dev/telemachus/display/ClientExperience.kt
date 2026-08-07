@@ -151,6 +151,15 @@ internal enum class ClientControl {
     NATIVE_POINTER,
 }
 
+/** A host display the client can select, surfaced to the UI without protocol imports. */
+data class StreamDisplayOption(
+    val id: String,
+    val name: String,
+    val width: Int,
+    val height: Int,
+    val isPrimary: Boolean,
+)
+
 internal object ClientControlAvailability {
     fun isSupported(
         control: ClientControl,

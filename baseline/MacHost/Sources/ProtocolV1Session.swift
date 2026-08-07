@@ -1,11 +1,21 @@
 import Foundation
 import VibeScreenProtocol
 
+/// A physical/virtual display the host can expose for client-driven selection.
+struct ProtocolV1DisplayInfo: Equatable {
+    let id: String
+    let name: String
+    let width: Int
+    let height: Int
+    let isPrimary: Bool
+    let isVirtual: Bool
+}
+
 struct ProtocolV1SessionConfiguration {
     static let version: UInt32 = 1
 
     static func productionHostCapabilities(touchEnabled: Bool) -> Set<VSCapability> {
-        touchEnabled ? [.touch] : []
+        touchEnabled ? [.touch, .multiDisplay] : [.multiDisplay]
     }
 
     let sessionID: Data
@@ -23,6 +33,10 @@ struct ProtocolV1SessionConfiguration {
     var displayID: String
     var displayName: String
     var displayIsVirtual: Bool
+    /// Full catalog exposed by ListDisplays. When empty, the session
+    /// synthesizes a single entry from the currently captured identity so the
+    /// single-display path keeps ListDisplays count == 1.
+    var displays: [ProtocolV1DisplayInfo] = []
 }
 
 enum ProtocolV1SessionPhase: Equatable {
@@ -45,6 +59,7 @@ enum ProtocolV1SessionAction {
     case key(usage: UInt32, pressed: Bool, modifiers: UInt32, text: String)
     case heartbeat
     case requestKeyframe(force: Bool)
+    case selectDisplay(id: String)
     case peerError(VSProtocolError)
     case close
 }
@@ -83,6 +98,47 @@ final class ProtocolV1SessionCoordinator {
             changed.rotationDegrees = UInt32(clamping: configuration.rotation)
             advertisedVideoRotation = configuration.rotation
             return sendActions(payload: .displayChanged(changed), correlationID: 0)
+        }
+    }
+
+    /// Runtime display switch initiated by the host after a client selection has
+    /// recaptured a different source. Re-runs the StartDisplay negotiation with a
+    /// bumped configEpoch so the client re-negotiates video for the new geometry.
+    /// The DisplayChanged notice is emitted after the client accepts the new
+    /// VideoConfig, reusing the awaitingVideoConfig -> streaming transition.
+    func selectDisplayFromClient(displayID: String) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard case .streaming(let configEpoch, let streamID) = phase else { return [] }
+            guard displayID.isEmpty || configuration.displayID == displayID
+                    || configuredDisplays().contains(where: { $0.id == displayID }) else {
+                return []
+            }
+            if !displayID.isEmpty { adoptDisplay(id: displayID) }
+            let nextEpoch = configEpoch + 1
+            var response = VSStartDisplayResponse()
+            response.accepted = true
+            response.display = displayDescriptor()
+            response.streamID = streamID
+
+            var config = VSVideoConfig()
+            config.configEpoch = nextEpoch
+            config.codec = selectedCodec
+            config.encodedSize = dimensions()
+            config.framesPerSecond = configuration.framesPerSecond
+            config.bitrateKbps = configuration.bitrateKbps
+            config.streamID = streamID
+            config.rotationDegrees = UInt32(clamping: configuration.rotation)
+            advertisedVideoRotation = configuration.rotation
+
+            phase = .awaitingVideoConfig(configEpoch: nextEpoch, streamID: streamID)
+            do {
+                return [
+                    .sendControl(try encode(payload: .startDisplayResponse(response), correlationID: 0)),
+                    .sendControl(try encode(payload: .videoConfig(config), correlationID: 0))
+                ]
+            } catch {
+                return serializationFailure()
+            }
         }
     }
 
@@ -183,7 +239,7 @@ final class ProtocolV1SessionCoordinator {
                 return invalidState("ListDisplays is not valid in the current state.", envelope.messageID)
             }
             var response = VSListDisplaysResponse()
-            response.displays = [displayDescriptor()]
+            response.displays = configuredDisplayDescriptors()
             return sendActions(
                 payload: .listDisplaysResponse(response),
                 correlationID: envelope.messageID
@@ -193,15 +249,29 @@ final class ProtocolV1SessionCoordinator {
             guard phase == .awaitingDisplayStart else {
                 return invalidState("StartDisplay is not valid in the current state.", envelope.messageID)
             }
-            guard request.mode == .existing,
-                  request.sourceDisplayID.isEmpty || request.sourceDisplayID == configuration.displayID else {
+            guard request.mode == .existing else {
                 return fail(
                     code: .invalidState,
-                    message: "The current host session only exposes its configured existing display.",
+                    message: "The host session only supports selecting an existing display.",
                     correlationID: envelope.messageID
                 )
             }
-            return startDisplay(correlationID: envelope.messageID)
+            let requestedID = request.sourceDisplayID
+            if requestedID.isEmpty || requestedID == configuration.displayID {
+                return startDisplay(correlationID: envelope.messageID)
+            }
+            guard configuredDisplays().contains(where: { $0.id == requestedID }) else {
+                return fail(
+                    code: .invalidState,
+                    message: "StartDisplay referenced an unknown or offline display.",
+                    correlationID: envelope.messageID
+                )
+            }
+            // A different, known display was requested before streaming began:
+            // adopt it as the captured identity, ask the host to switch capture,
+            // and start it as the active display.
+            adoptDisplay(id: requestedID)
+            return [.selectDisplay(id: requestedID)] + startDisplay(correlationID: envelope.messageID)
 
         case .videoConfigResult(let result):
             guard case .awaitingVideoConfig(let configEpoch, let streamID) = phase,
@@ -434,9 +504,64 @@ final class ProtocolV1SessionCoordinator {
         display.name = configuration.displayName
         display.logicalSize = dimensions()
         display.scaleFactor = 1
-        display.isPrimary = true
+        display.isPrimary = activeDisplayInfo()?.isPrimary ?? true
         display.isVirtual = configuration.displayIsVirtual
         return display
+    }
+
+    /// The full catalog to advertise. Falls back to a single synthesized entry
+    /// built from the currently captured identity when no catalog was supplied.
+    private func configuredDisplays() -> [ProtocolV1DisplayInfo] {
+        if configuration.displays.isEmpty {
+            return [ProtocolV1DisplayInfo(
+                id: configuration.displayID,
+                name: configuration.displayName,
+                width: max(0, configuration.displayWidth),
+                height: max(0, configuration.displayHeight),
+                isPrimary: true,
+                isVirtual: configuration.displayIsVirtual
+            )]
+        }
+        return configuration.displays
+    }
+
+    private func activeDisplayInfo() -> ProtocolV1DisplayInfo? {
+        configuredDisplays().first { $0.id == configuration.displayID }
+    }
+
+    private func configuredDisplayDescriptors() -> [VSDisplayDescriptor] {
+        configuredDisplays().map { info in
+            var descriptor = VSDisplayDescriptor()
+            descriptor.displayID = info.id
+            // The active display's descriptor must equal displayDescriptor() so
+            // the client's expected-display matching still holds.
+            if info.id == configuration.displayID {
+                descriptor.name = configuration.displayName
+                descriptor.logicalSize = dimensions()
+                descriptor.isVirtual = configuration.displayIsVirtual
+            } else {
+                descriptor.name = info.name
+                var size = VSDimensions()
+                size.width = UInt32(max(0, info.width))
+                size.height = UInt32(max(0, info.height))
+                descriptor.logicalSize = size
+                descriptor.isVirtual = info.isVirtual
+            }
+            descriptor.scaleFactor = 1
+            descriptor.isPrimary = info.isPrimary
+            return descriptor
+        }
+    }
+
+    /// Adopt a known catalog display as the captured identity so subsequent
+    /// descriptors and geometry reflect the selected source.
+    private func adoptDisplay(id: String) {
+        guard let info = configuration.displays.first(where: { $0.id == id }) else { return }
+        configuration.displayID = info.id
+        configuration.displayName = info.name
+        configuration.displayWidth = info.width
+        configuration.displayHeight = info.height
+        configuration.displayIsVirtual = info.isVirtual
     }
 
     private func dimensions() -> VSDimensions {

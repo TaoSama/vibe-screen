@@ -12,7 +12,7 @@
         android:id="@+id/videoViewport"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:visibility="gone"
+        android:visibility="visible"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -152,6 +152,89 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
+    <!-- Tap-to-reveal control bar shown while streaming -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/controlBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/control_bar_margin_top"
+        android:elevation="10dp"
+        android:visibility="gone"
+        app:cardCornerRadius="@dimen/control_bar_corner_radius"
+        app:cardBackgroundColor="#E6101418"
+        app:layout_constraintWidth_max="@dimen/control_bar_max_width"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="@dimen/control_bar_content_padding">
+
+            <!-- Display picker collapses entirely unless multi-display is
+                 negotiated, so single-display sessions expose no dead tap area. -->
+            <LinearLayout
+                android:id="@+id/displayCapsuleGroup"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:visibility="gone">
+
+                <ImageButton
+                    android:id="@+id/controlDisplaysButton"
+                    android:layout_width="@dimen/control_bar_button_size"
+                    android:layout_height="@dimen/control_bar_button_size"
+                    android:layout_marginEnd="@dimen/control_bar_button_margin"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/control_displays"
+                    android:src="@drawable/ic_displays"
+                    android:scaleType="centerInside"
+                    app:tint="#FFFFFF" />
+
+                <HorizontalScrollView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:scrollbars="none"
+                    android:fillViewport="true">
+
+                    <com.google.android.material.button.MaterialButtonToggleGroup
+                        android:id="@+id/displayToggleGroup"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        app:selectionRequired="true"
+                        app:singleSelection="true" />
+                </HorizontalScrollView>
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/controlSettingsButton"
+                android:layout_width="@dimen/control_bar_button_size"
+                android:layout_height="@dimen/control_bar_button_size"
+                android:layout_marginStart="@dimen/control_bar_button_margin"
+                android:layout_marginEnd="@dimen/control_bar_button_margin"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/control_settings"
+                android:src="@drawable/ic_settings"
+                android:scaleType="centerInside"
+                app:tint="#FFFFFF" />
+
+            <ImageButton
+                android:id="@+id/controlDisconnectButton"
+                android:layout_width="@dimen/control_bar_button_size"
+                android:layout_height="@dimen/control_bar_button_size"
+                android:layout_marginStart="@dimen/control_bar_button_margin"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/control_disconnect"
+                android:src="@drawable/ic_disconnect"
+                android:scaleType="centerInside"
+                app:tint="#FF6B6B" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
     <!-- Settings Button -->
     <androidx.cardview.widget.CardView
         android:id="@+id/settingsButton"
@@ -274,6 +357,14 @@
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:text="@string/usb"
+                    android:maxLines="1"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:autoSizeTextType="uniform"
+                    app:autoSizeMinTextSize="10sp"
+                    app:autoSizeMaxTextSize="14sp"
                     android:textColor="@color/mode_toggle_text"
                     app:backgroundTint="@color/mode_toggle_bg"
                     app:strokeColor="#444444"
@@ -285,6 +376,14 @@
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:text="@string/trusted_lan"
+                    android:maxLines="1"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:autoSizeTextType="uniform"
+                    app:autoSizeMinTextSize="10sp"
+                    app:autoSizeMaxTextSize="14sp"
                     android:textColor="@color/mode_toggle_text"
                     app:backgroundTint="@color/mode_toggle_bg"
                     app:strokeColor="#444444"
@@ -296,6 +395,14 @@
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:text="@string/internet"
+                    android:maxLines="1"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:autoSizeTextType="uniform"
+                    app:autoSizeMinTextSize="10sp"
+                    app:autoSizeMaxTextSize="14sp"
                     android:textColor="@color/mode_toggle_text"
                     app:backgroundTint="@color/mode_toggle_bg"
                     app:strokeColor="#444444"

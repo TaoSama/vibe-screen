@@ -49,6 +49,11 @@ internal class ProtocolV1Session(
     sealed class Action {
         data class Send(val envelope: Envelope) : Action()
 
+        data class DisplaysAvailable(
+            val displays: List<DisplayOption>,
+            val selectedId: String,
+        ) : Action()
+
         data class VideoConfigurationRequested(
             val width: Int,
             val height: Int,
@@ -82,7 +87,24 @@ internal class ProtocolV1Session(
         ) : Action()
     }
 
-    private enum class State { AWAITING_HOST_HELLO, AWAITING_SESSION, ACTIVE, DISPLAY_REQUESTED, STREAMING, CLOSED }
+    /** A display advertised by the host that the client may select. */
+    data class DisplayOption(
+        val id: String,
+        val name: String,
+        val width: Int,
+        val height: Int,
+        val isPrimary: Boolean,
+    )
+
+    private enum class State {
+        AWAITING_HOST_HELLO,
+        AWAITING_SESSION,
+        ACTIVE,
+        DISPLAY_REQUESTED,
+        STREAMING,
+        REDISPLAY_REQUESTED,
+        CLOSED,
+    }
 
     private var state = State.AWAITING_HOST_HELLO
     private var nextMessageId = 1L
@@ -101,16 +123,33 @@ internal class ProtocolV1Session(
     private var displayWidth = 0
     private var displayHeight = 0
     private var displayGeometryPublished = false
+    private var availableDisplays = emptyList<DisplayOption>()
     private var negotiatedCapabilities = emptySet<Capability>()
     private var hostCapabilities = emptySet<Capability>()
     private var hostCodecs = emptySet<Codec>()
 
-    private val advertisedCapabilities = setOf(Capability.CAPABILITY_TOUCH)
+    private val advertisedCapabilities =
+        setOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY)
     private val requiredCapabilities = emptySet<Capability>()
 
     val activeSessionEpoch: Long
         @Synchronized
         get() = sessionEpoch
+
+    /** Capabilities agreed by both peers; drives client-side control availability. */
+    val negotiated: Set<Capability>
+        @Synchronized
+        get() = negotiatedCapabilities
+
+    /** Host displays discovered during negotiation, empty until the list arrives. */
+    val displays: List<DisplayOption>
+        @Synchronized
+        get() = availableDisplays
+
+    /** Currently selected/active display id. */
+    val selectedDisplayId: String
+        @Synchronized
+        get() = displayId
 
     val isStreaming: Boolean
         @Synchronized
@@ -220,6 +259,32 @@ internal class ProtocolV1Session(
         return envelope()
             .setRequestKeyframe(RequestKeyframe.newBuilder().setStreamId(streamId).setReasonCode(reason.take(128)))
             .build()
+    }
+
+    /**
+     * Ask the host to switch the captured display at runtime. Valid only while
+     * streaming, when display selection was negotiated, and for a known display
+     * other than the current one. Returns the StartDisplay request to send, or
+     * null when the request is not applicable.
+     */
+    @Synchronized
+    fun selectDisplay(targetDisplayId: String): Envelope? {
+        if (state != State.STREAMING) return null
+        if (Capability.CAPABILITY_MULTI_DISPLAY !in negotiatedCapabilities) return null
+        if (targetDisplayId.isBlank() || targetDisplayId == displayId) return null
+        if (availableDisplays.none { it.id == targetDisplayId }) return null
+        state = State.REDISPLAY_REQUESTED
+        displayGeometryPublished = false
+        // Adopt the requested id up front so the StartDisplayResponse and later
+        // DisplayChanged for the new display validate against the selection.
+        displayId = targetDisplayId
+        val request =
+            StartDisplayRequest
+                .newBuilder()
+                .setMode(dev.vibescreen.protocol.v1.DisplayMode.DISPLAY_MODE_EXISTING)
+                .setSourceDisplayId(targetDisplayId)
+                .build()
+        return envelope().setStartDisplayRequest(request).build()
     }
 
     @Synchronized
@@ -335,9 +400,13 @@ internal class ProtocolV1Session(
 
     private fun onDisplays(envelope: Envelope): List<Action> {
         if (state != State.ACTIVE) throw protocolFailure("Display list in state $state")
-        val display = envelope.listDisplaysResponse.displaysList.firstOrNull()
-            ?: throw protocolFailure("Host reported no displays")
-        updateDisplayDescriptor(display, expectedDisplayId = null)
+        val descriptors = envelope.listDisplaysResponse.displaysList
+        if (descriptors.isEmpty()) throw protocolFailure("Host reported no displays")
+        val options = descriptors.map(::toDisplayOption)
+        availableDisplays = options
+        val selected = options.firstOrNull { it.isPrimary } ?: options.first()
+        val descriptor = descriptors.first { it.displayId == selected.id }
+        updateDisplayDescriptor(descriptor, expectedDisplayId = null)
         state = State.DISPLAY_REQUESTED
         val request =
             StartDisplayRequest
@@ -345,11 +414,16 @@ internal class ProtocolV1Session(
                 .setMode(dev.vibescreen.protocol.v1.DisplayMode.DISPLAY_MODE_EXISTING)
                 .setSourceDisplayId(displayId)
                 .build()
-        return listOf(Action.Send(envelope().setStartDisplayRequest(request).build()))
+        return listOf(
+            Action.DisplaysAvailable(options, displayId),
+            Action.Send(envelope().setStartDisplayRequest(request).build()),
+        )
     }
 
     private fun onStartDisplay(envelope: Envelope): List<Action> {
-        if (state != State.DISPLAY_REQUESTED) throw protocolFailure("StartDisplayResponse in state $state")
+        if (state != State.DISPLAY_REQUESTED && state != State.REDISPLAY_REQUESTED) {
+            throw protocolFailure("StartDisplayResponse in state $state")
+        }
         val response = envelope.startDisplayResponse
         if (!response.accepted || response.streamId <= 0) {
             throw protocolFailure("Display start rejected: ${response.rejectionReason}")
@@ -360,7 +434,12 @@ internal class ProtocolV1Session(
     }
 
     private fun onVideoConfig(envelope: Envelope): List<Action> {
-        if (state != State.DISPLAY_REQUESTED && state != State.STREAMING) throw protocolFailure("VideoConfig in state $state")
+        if (state != State.DISPLAY_REQUESTED &&
+            state != State.REDISPLAY_REQUESTED &&
+            state != State.STREAMING
+        ) {
+            throw protocolFailure("VideoConfig in state $state")
+        }
         val config = envelope.videoConfig
         if (pendingVideoConfiguration != null) {
             return listOf(
@@ -426,7 +505,12 @@ internal class ProtocolV1Session(
         accepted: Boolean,
         rejectionReason: String,
     ): List<Action> {
-        if (state != State.DISPLAY_REQUESTED && state != State.STREAMING) return emptyList()
+        if (state != State.DISPLAY_REQUESTED &&
+            state != State.REDISPLAY_REQUESTED &&
+            state != State.STREAMING
+        ) {
+            return emptyList()
+        }
         val pending = pendingVideoConfiguration ?: return emptyList()
         if (pending.configEpoch != completedConfigEpoch ||
             pending.configurationToken != configurationToken
@@ -516,6 +600,23 @@ internal class ProtocolV1Session(
         displayId = display.displayId
         displayWidth = display.logicalSize.width
         displayHeight = display.logicalSize.height
+    }
+
+    private fun toDisplayOption(display: dev.vibescreen.protocol.v1.DisplayDescriptor): DisplayOption {
+        if (display.displayId.isBlank() ||
+            !display.hasLogicalSize() ||
+            display.logicalSize.width !in 16..8192 ||
+            display.logicalSize.height !in 16..8192
+        ) {
+            throw protocolFailure("Invalid display descriptor")
+        }
+        return DisplayOption(
+            id = display.displayId,
+            name = display.name.ifBlank { display.displayId },
+            width = display.logicalSize.width,
+            height = display.logicalSize.height,
+            isPrimary = display.isPrimary,
+        )
     }
 
     private fun videoConfigResult(

@@ -1,0 +1,25 @@
+08-08 03:46:47.295 I/VibeScreenTelemetry(17671): {"schema_version":1,"timestamp_ms":1786132007293,"event":"stream_stats","session_epoch":1,"fps":60.636182902584494,"mbps":0.5482385685884692}
+08-08 03:46:48.035 D/VD      (17671): Decode stats: input=3540, output=3539, dropped=0, availBufs=4
+08-08 03:46:48.041 D/VD      (17671): Output #3540: decoder latency avg=6.3ms max=8.9ms over 60 samples, input bufs avail=4, dropped=0
+08-08 03:46:48.296 I/VibeScreenTelemetry(17671): {"schema_version":1,"timestamp_ms":1786132008293,"event":"stream_stats","session_epoch":1,"fps":60.0,"mbps":0.549032}
+08-08 03:46:49.035 D/VD      (17671): Decode stats: input=3600, output=3599, dropped=0, availBufs=4
+08-08 03:46:49.040 D/VD      (17671): Output #3600: decoder latency avg=6.0ms max=9.2ms over 60 samples, input bufs avail=4, dropped=0
+08-08 03:46:49.295 I/VibeScreenTelemetry(17671): {"schema_version":1,"timestamp_ms":1786132009293,"event":"stream_stats","session_epoch":1,"fps":60.0,"mbps":0.552008}
+08-08 03:46:50.034 D/VD      (17671): Decode stats: input=3660, output=3659, dropped=0, availBufs=4
+08-08 03:46:50.041 D/VD      (17671): Output #3660: decoder latency avg=6.1ms max=8.5ms over 60 samples, input bufs avail=4, dropped=0
+08-08 03:46:50.295 I/VibeScreenTelemetry(17671): {"schema_version":1,"timestamp_ms":1786132010295,"event":"stream_stats","session_epoch":1,"fps":59.880239520958085,"mbps":0.5481437125748503}
+08-08 03:46:51.034 D/VD      (17671): Decode stats: input=3720, output=3719, dropped=0, availBufs=4
+08-08 03:46:51.040 D/VD      (17671): Output #3720: decoder latency avg=5.8ms max=8.7ms over 60 samples, input bufs avail=4, dropped=0
+08-08 03:46:51.299 I/VibeScreenTelemetry(17671): {"schema_version":1,"timestamp_ms":1786132011298,"event":"stream_stats","session_epoch":1,"fps":59.82053838484546,"mbps":0.5476131605184448}
+08-08 03:46:52.034 D/VD      (17671): Decode stats: input=3780, output=3779, dropped=0, availBufs=4
+08-08 03:46:52.042 D/VD      (17671): Output #3780: decoder latency avg=6.5ms max=16.4ms over 60 samples, input bufs avail=4, dropped=0
+08-08 03:46:52.307 I/VibeScreenTelemetry(17671): {"schema_version":1,"timestamp_ms":1786132012299,"event":"stream_stats","session_epoch":1,"fps":60.0,"mbps":0.603912}
+08-08 03:46:53.033 D/VD      (17671): Decode stats: input=3840, output=3839, dropped=0, availBufs=4
+08-08 03:46:53.039 D/VD      (17671): Output #3840: decoder latency avg=6.4ms max=9.4ms over 60 samples, input bufs avail=4, dropped=0
+08-08 03:46:53.302 I/VibeScreenTelemetry(17671): {"schema_version":1,"timestamp_ms":1786132013300,"event":"stream_stats","session_epoch":1,"fps":59.94005994005994,"mbps":0.6000559440559441}
+08-08 03:46:54.035 D/VD      (17671): Decode stats: input=3900, output=3899, dropped=0, availBufs=4
+08-08 03:46:54.042 D/VD      (17671): Output #3900: decoder latency avg=6.2ms max=11.4ms over 60 samples, input bufs avail=4, dropped=0
+08-08 03:46:54.305 I/VibeScreenTelemetry(17671): {"schema_version":1,"timestamp_ms":1786132014303,"event":"stream_stats","session_epoch":1,"fps":59.7609561752988,"mbps":0.5957211155378486}
+08-08 03:46:55.034 D/VD      (17671): Decode stats: input=3960, output=3959, dropped=0, availBufs=4
+08-08 03:46:55.042 D/VD      (17671): Output #3960: decoder latency avg=6.1ms max=8.9ms over 60 samples, input bufs avail=4, dropped=0
+08-08 03:46:55.310 I/VibeScreenTelemetry(17671): {"schema_version":1,"timestamp_ms":1786132015307,"event":"stream_stats","session_epoch":1,"fps":60.93906093906094,"mbps":0.532955044955045}

@@ -1858,6 +1858,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 displayName: "Telemachus Display",
                 isVirtual: configuration.displaySource == .extended || configuration.displaySource == .mirrorMain
             )
+            // Advertise every online physical display so the client can offer a
+            // selection capsule. The captured display keeps its String(id)
+            // identity so its descriptor matches the active-stream descriptor.
+            streamingServer?.setProtocolV1Displays(
+                DisplayCatalog.onlineDisplays().map { display in
+                    ProtocolV1DisplayInfo(
+                        id: String(display.id),
+                        name: display.name,
+                        width: display.width,
+                        height: display.height,
+                        isPrimary: display.isMain,
+                        isVirtual: false
+                    )
+                }
+            )
+            streamingServer?.onDisplaySelectionRequested = {
+                [weak self, weak configuredServer] requestedDisplayID in
+                Task { @MainActor in
+                    guard let self, let configuredServer,
+                          self.streamingServer === configuredServer else { return }
+                    self.handleClientDisplaySelection(
+                        requestedDisplayID,
+                        server: configuredServer
+                    )
+                }
+            }
             streamingServer?.onClientConnected = {
                 [weak self, weak configuredServer, weak configuredCapture]
                 clientGeneration in
@@ -2504,6 +2530,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         teardownTask = task
         await task.value
         teardownTask = nil
+    }
+
+    /// Switch the capture source to a client-selected display, then drive the
+    /// Protocol v1 re-negotiation so the client re-negotiates video for the new
+    /// geometry. An offline or non-numeric id is ignored, keeping the switch
+    /// safe; the session gate already rejected unknown ids before streaming.
+    private func handleClientDisplaySelection(
+        _ requestedDisplayID: String,
+        server: StreamingServer
+    ) {
+        guard let numericID = UInt32(requestedDisplayID) else {
+            debugLog("Ignoring client display selection with non-numeric id \(requestedDisplayID)")
+            return
+        }
+        guard let resolved = DisplayCatalog.onlineDisplays().first(where: { $0.id == numericID }) else {
+            debugLog("Client selected an offline display \(requestedDisplayID); ignoring")
+            return
+        }
+        // Drive the existing selected-display reconfiguration path. Setting the
+        // published id recomputes the persistent UUID and recaptures the source.
+        settings.displaySource = .selectedDisplay
+        settings.selectedDisplayID = resolved.id
+        // Push the protocol re-negotiation with the selected identity so the
+        // client re-negotiates video and receives a DisplayChanged afterwards.
+        server.selectProtocolV1Display(requestedDisplayID)
     }
 
     private func handleServerFailure(sessionToken: UInt64) async {
