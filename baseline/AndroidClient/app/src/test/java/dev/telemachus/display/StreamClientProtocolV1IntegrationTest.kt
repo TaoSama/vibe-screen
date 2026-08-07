@@ -261,8 +261,8 @@ class StreamClientProtocolV1IntegrationTest {
     fun decoderConfigurationFailureRejectsAndFailsClosed() = runBlocking {
         assertRejectedDecoderConfiguration(
             clientFactory = { port -> StreamClient("127.0.0.1", port) },
-            configure = { completion ->
-                completion(StreamVideoConfigurationDecision.reject("decoder_configuration_failure"))
+            configure = { commit ->
+                commit.complete(StreamVideoConfigurationDecision.reject("decoder_configuration_failure"))
             },
             expectedReason = "decoder_configuration_failure",
         )
@@ -280,6 +280,17 @@ class StreamClientProtocolV1IntegrationTest {
             },
             configure = {},
             expectedReason = "decoder_configuration_timeout",
+        )
+    }
+
+    @Test
+    fun failedPublishRejectsAndFailsClosed() = runBlocking {
+        assertRejectedDecoderConfiguration(
+            clientFactory = { port -> StreamClient("127.0.0.1", port) },
+            configure = { commit ->
+                assertFalse(commit.tryPublish { false })
+            },
+            expectedReason = "decoder_configuration_not_published",
         )
     }
 
@@ -639,7 +650,7 @@ class StreamClientProtocolV1IntegrationTest {
 
     private suspend fun assertRejectedDecoderConfiguration(
         clientFactory: (Int) -> StreamClient,
-        configure: ((StreamVideoConfigurationDecision) -> Unit) -> Unit,
+        configure: (StreamVideoConfigurationCommit) -> Unit,
         expectedReason: String,
     ) = kotlinx.coroutines.coroutineScope {
         ServerSocket(0).use { server ->
@@ -656,7 +667,7 @@ class StreamClientProtocolV1IntegrationTest {
                     }
                 }
             val client = clientFactory(server.localPort)
-            client.onVideoConfiguration = { _, commit -> configure(commit::complete) }
+            client.onVideoConfiguration = { _, commit -> configure(commit) }
             client.onSessionEnded = {
                 failure = it
                 ended.countDown()

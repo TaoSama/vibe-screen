@@ -46,3 +46,42 @@ enum TestProcessDeadline {
         return !process.isRunning
     }
 }
+
+final class TestProcessOutputDrain {
+    private let group = DispatchGroup()
+    private let lock = NSLock()
+    private var output = Data()
+    private var error = Data()
+
+    static func start(output: Pipe, error: Pipe) -> TestProcessOutputDrain {
+        let drain = TestProcessOutputDrain()
+        drain.start(output: output.fileHandleForReading, error: error.fileHandleForReading)
+        return drain
+    }
+
+    func finish(timeout: TimeInterval) -> (output: Data, error: Data)? {
+        guard group.wait(timeout: .now() + max(0, timeout)) == .success else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
+        return (output, error)
+    }
+
+    private func start(output outputHandle: FileHandle, error errorHandle: FileHandle) {
+        group.enter()
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let data = outputHandle.readDataToEndOfFile()
+            self?.lock.lock()
+            self?.output = data
+            self?.lock.unlock()
+            self?.group.leave()
+        }
+        group.enter()
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let data = errorHandle.readDataToEndOfFile()
+            self?.lock.lock()
+            self?.error = data
+            self?.lock.unlock()
+            self?.group.leave()
+        }
+    }
+}
