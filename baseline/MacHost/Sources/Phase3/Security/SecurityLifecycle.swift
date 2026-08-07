@@ -134,7 +134,13 @@ struct RevocationSecretCleanupMarker: Codable, Equatable {
 
     init(secretNames: PairedDeviceSecretNames) {
         version = Self.currentVersion
-        remainingSecretNames = [secretNames.sharedSecret, secretNames.bootstrapSecret]
+        remainingSecretNames = [
+            secretNames.sharedSecret,
+            secretNames.bootstrapSecret
+        ] + [
+            secretNames.identityBinding,
+            secretNames.peerIdentityBinding
+        ].compactMap { $0 }
     }
 
     func validate() throws {
@@ -152,32 +158,59 @@ struct RevocationSecretCleanupMarker: Codable, Equatable {
 protocol SecurityStateStore {
     func load() throws -> PersistedSecurityState
     func persist(_ state: PersistedSecurityState) throws
+    func validatePairingBinding(pairingIdentifier: String) throws -> PersistedSecurityState
+    func withExclusiveTransaction<T>(_ operation: () throws -> T) throws -> T
 }
 
-/// Serializes all durable counters in-process. Every value is committed before
-/// it is returned, so a crash can skip values but cannot reuse them.
+extension SecurityStateStore {
+    func validatePairingBinding(pairingIdentifier _: String) throws -> PersistedSecurityState {
+        try load()
+    }
+
+    func withExclusiveTransaction<T>(_ operation: () throws -> T) throws -> T {
+        try SecurityStateStoreFallbackLock.lock.withLock(operation)
+    }
+}
+
+private enum SecurityStateStoreFallbackLock {
+    static let lock = NSRecursiveLock()
+}
+
+/// Every durable counter mutation runs inside the store's exclusive
+/// transaction. Production Keychain stores provide an OS-level cross-process
+/// lock; injected stores retain the recursive in-process fallback.
 final class SecurityLifecycle {
     static let maximumCrossPlatformSessionEpoch = UInt64(Int64.max)
-    // Cipher seal holds this lock while reserving a durable nonce. Recursive
-    // entry lets reserveNonce share the same epoch transaction without opening
-    // a check/use window for a concurrent session reservation.
-    private static let persistenceLock = NSRecursiveLock()
     private let store: any SecurityStateStore
+    private var pairingIdentifier: String?
 
     init(store: any SecurityStateStore) {
         self.store = store
     }
 
     func advanceSessionEpoch() throws -> UInt64 {
-        try Self.persistenceLock.withLock {
-            var state = try store.load()
+        try store.withExclusiveTransaction {
+            var state = try loadState()
             try requireActive(state)
             guard state.sessionEpoch < Self.maximumCrossPlatformSessionEpoch else {
                 throw PlatformSecurityError.exhausted("Session epoch is exhausted; pair the device again.")
             }
             state.sessionEpoch += 1
-            try store.persist(state)
+            try persistState(state)
             return state.sessionEpoch
+        }
+    }
+
+    func requirePairingBinding(
+        _ pairingIdentifier: String,
+        allowRevoked: Bool = false
+    ) throws {
+        try store.withExclusiveTransaction {
+            let state = try store.validatePairingBinding(
+                pairingIdentifier: pairingIdentifier
+            )
+            if !allowRevoked { try requireActive(state) }
+            self.pairingIdentifier = pairingIdentifier
         }
     }
 
@@ -190,14 +223,14 @@ final class SecurityLifecycle {
                 "Session epoch must be positive and fit the cross-platform signed 64-bit range."
             )
         }
-        return try Self.persistenceLock.withLock {
-            var state = try store.load()
+        return try store.withExclusiveTransaction {
+            var state = try loadState()
             try requireActive(state)
             guard proposedEpoch > state.sessionEpoch else {
                 throw PlatformSecurityError.invalidInput("Session epoch must advance and cannot be reused.")
             }
             state.sessionEpoch = proposedEpoch
-            try store.persist(state)
+            try persistState(state)
             return proposedEpoch
         }
     }
@@ -215,8 +248,8 @@ final class SecurityLifecycle {
         _ expectedEpoch: UInt64,
         operation: () throws -> T
     ) throws -> T {
-        try Self.persistenceLock.withLock {
-            let state = try store.load()
+        try store.withExclusiveTransaction {
+            let state = try loadState()
             try requireActive(state)
             guard expectedEpoch > 0, state.sessionEpoch == expectedEpoch else {
                 throw PlatformSecurityError.invalidInput(
@@ -240,8 +273,8 @@ final class SecurityLifecycle {
         guard channel > 0, senderRole > 0, keyEpoch > 0 else {
             throw PlatformSecurityError.invalidInput("Channel, sender role, and key epoch must be positive.")
         }
-        return try Self.persistenceLock.withLock {
-            var state = try store.load()
+        return try store.withExclusiveTransaction {
+            var state = try loadState()
             try requireActive(state)
             if let sessionEpoch, sessionEpoch != state.sessionEpoch {
                 throw PlatformSecurityError.invalidInput("The session epoch is stale or was not reserved.")
@@ -253,7 +286,7 @@ final class SecurityLifecycle {
             }
             let sequence = current + 1
             state.nonceHighWatermarks[counterKey] = sequence
-            try store.persist(state)
+            try persistState(state)
 
             var channelValue = channel.bigEndian
             var sequenceValue = sequence.bigEndian
@@ -264,14 +297,14 @@ final class SecurityLifecycle {
     }
 
     func applyRevocation(sequence: UInt64) throws {
-        try Self.persistenceLock.withLock {
-            var state = try store.load()
+        try store.withExclusiveTransaction {
+            var state = try loadState()
             guard sequence > state.revocationSequence else {
                 throw PlatformSecurityError.invalidInput("Revocation sequence must increase.")
             }
             state.revocationSequence = sequence
             state.revoked = true
-            try store.persist(state)
+            try persistState(state)
         }
     }
 
@@ -282,8 +315,8 @@ final class SecurityLifecycle {
         secretNames: PairedDeviceSecretNames? = nil
     ) throws {
         try tombstone.verify(expectedAuthority: expectedAuthority, expectedPeer: expectedPeer)
-        try Self.persistenceLock.withLock {
-            var state = try store.load()
+        try store.withExclusiveTransaction {
+            var state = try loadState()
             if state.peerRevocation == tombstone { return }
             guard tombstone.sequence > state.revocationSequence else {
                 throw PlatformSecurityError.invalidInput("Revocation sequence must increase.")
@@ -294,13 +327,13 @@ final class SecurityLifecycle {
             state.revocationSecretCleanup = secretNames.map(
                 RevocationSecretCleanupMarker.init(secretNames:)
             )
-            try store.persist(state)
+            try persistState(state)
         }
     }
 
     func hasPendingRevocationSecretCleanup() throws -> Bool {
-        try Self.persistenceLock.withLock {
-            try store.load().revocationSecretCleanup != nil
+        try store.withExclusiveTransaction {
+            try loadState().revocationSecretCleanup != nil
         }
     }
 
@@ -310,8 +343,8 @@ final class SecurityLifecycle {
     func retryRevocationSecretCleanup(
         secretStore: any PairedDeviceSecretStore
     ) throws {
-        let pendingNames = try Self.persistenceLock.withLock { () -> [String] in
-            let state = try store.load()
+        let pendingNames = try store.withExclusiveTransaction { () -> [String] in
+            let state = try loadState()
             guard state.revoked, state.peerRevocation != nil else {
                 if state.revocationSecretCleanup != nil {
                     throw PlatformSecurityError.persistenceFailure(
@@ -341,13 +374,13 @@ final class SecurityLifecycle {
     }
 
     private func markRevocationSecretDeleted(_ name: String) throws {
-        try Self.persistenceLock.withLock {
-            var state = try store.load()
+        try store.withExclusiveTransaction {
+            var state = try loadState()
             guard var marker = state.revocationSecretCleanup else { return }
             try marker.validate()
             marker.remainingSecretNames.removeAll { $0 == name }
             state.revocationSecretCleanup = marker.remainingSecretNames.isEmpty ? nil : marker
-            try store.persist(state)
+            try persistState(state)
         }
     }
 
@@ -357,19 +390,38 @@ final class SecurityLifecycle {
         guard nonceHash.count == 32 else {
             throw PlatformSecurityError.invalidInput("Rotation nonce hashes must be SHA-256 values.")
         }
-        try Self.persistenceLock.withLock {
-            var state = try store.load()
+        try store.withExclusiveTransaction {
+            var state = try loadState()
             try requireActive(state)
             let encoded = nonceHash.map { String(format: "%02x", $0) }.joined()
             guard !state.usedRotationNonceHashes.contains(encoded) else {
                 throw PlatformSecurityError.invalidInput("Rotation nonce was already used.")
             }
             state.usedRotationNonceHashes.insert(encoded)
-            try store.persist(state)
+            try persistState(state)
         }
     }
     private func requireActive(_ state: PersistedSecurityState) throws {
         guard !state.revoked, state.peerRevocation == nil else { throw PlatformSecurityError.revoked }
+    }
+
+    private func loadState() throws -> PersistedSecurityState {
+        if let pairingIdentifier {
+            return try store.validatePairingBinding(
+                pairingIdentifier: pairingIdentifier
+            )
+        }
+        return try store.load()
+    }
+
+    private func persistState(_ state: PersistedSecurityState) throws {
+        try store.persist(state)
+        let verified = try loadState()
+        guard verified == state else {
+            throw PlatformSecurityError.persistenceFailure(
+                "Durable security state changed during its exclusive transaction."
+            )
+        }
     }
 }
 

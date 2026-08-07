@@ -243,14 +243,26 @@ extension PlatformSessionSecurity {
         sessionIdentifier: String,
         localRole: PlatformSenderRole,
         identityEpoch: UInt64,
-        sharedSecretName: String,
-        bootstrapSecretName: String,
+        secretNames: PairedDeviceSecretNames,
         transcriptContext: Data,
         agreedSessionEpoch: UInt64? = nil,
-        secretStore: KeychainSecretStore = KeychainSecretStore()
+        secretStore: any InternetPairingSecretStore = KeychainSecretStore()
     ) throws -> ActiveProtectedInternetSession {
-        guard let sharedSecret = try secretStore.load(name: sharedSecretName),
-              let bootstrapSecret = try secretStore.load(name: bootstrapSecretName) else {
+        guard let pairingIdentifier = secretNames.pairingIdentifier else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired-device durable security owner is unknown. Pair again; existing credentials were retained."
+            )
+        }
+        try requirePairingBinding(pairingIdentifier)
+        guard let identityBindingName = secretNames.identityBinding,
+              let encodedIdentityBinding = try secretStore.load(name: identityBindingName) else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired host identity binding is missing. Pair again; existing credentials were retained."
+            )
+        }
+        let identityBinding = try PairedHostIdentityBinding.decode(encodedIdentityBinding)
+        guard let sharedSecret = try secretStore.load(name: secretNames.sharedSecret),
+              let bootstrapSecret = try secretStore.load(name: secretNames.bootstrapSecret) else {
             throw PlatformSecurityError.persistenceFailure(
                 "Paired-device session secrets are missing from Keychain."
             )
@@ -258,6 +270,7 @@ extension PlatformSessionSecurity {
         return try startProtectedInternetSession(
             sessionIdentifier: sessionIdentifier,
             localRole: localRole,
+            expectedIdentity: identityBinding,
             identityEpoch: identityEpoch,
             sharedSecret: sharedSecret,
             bootstrapSecret: bootstrapSecret,
@@ -269,6 +282,7 @@ extension PlatformSessionSecurity {
     func startProtectedInternetSession(
         sessionIdentifier: String,
         localRole: PlatformSenderRole,
+        expectedIdentity: PairedHostIdentityBinding,
         identityEpoch: UInt64,
         sharedSecret: Data,
         bootstrapSecret: Data,
@@ -281,6 +295,7 @@ extension PlatformSessionSecurity {
         let active: ActivePlatformSecuritySession
         if let agreedSessionEpoch {
             active = try startSession(
+                expectedIdentity: expectedIdentity,
                 agreedSessionEpoch: agreedSessionEpoch,
                 identityEpoch: identityEpoch,
                 sharedSecret: sharedSecret,
@@ -289,6 +304,7 @@ extension PlatformSessionSecurity {
             )
         } else {
             active = try startSession(
+                expectedIdentity: expectedIdentity,
                 identityEpoch: identityEpoch,
                 sharedSecret: sharedSecret,
                 bootstrapSecret: bootstrapSecret,
