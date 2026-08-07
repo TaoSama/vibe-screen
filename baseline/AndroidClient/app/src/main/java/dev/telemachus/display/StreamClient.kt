@@ -31,7 +31,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -86,6 +88,8 @@ class StreamClient(
     private val context: Context? = null,
     private val socketFactory: () -> Socket = ::Socket,
     private val videoConfigurationCommitTimeoutMs: Long = VIDEO_CONFIGURATION_COMMIT_TIMEOUT_MS,
+    private val videoConfigurationTimeoutExecutor: ScheduledExecutorService = VIDEO_CONFIGURATION_TIMEOUT_EXECUTOR,
+    private val terminationExecutor: Executor = SESSION_TERMINATION_EXECUTOR,
 ) {
     @Volatile private var socket: Socket? = null
     private var inputStream: DataInputStream? = null
@@ -215,7 +219,7 @@ class StreamClient(
         )
     private val terminationDispatcher =
         OnceAsyncDispatcher(
-            executor = SESSION_TERMINATION_EXECUTOR,
+            executor = terminationExecutor,
             onClaim = { request ->
                 lastTerminationFailure = request.failure
                 isConnected = false
@@ -1445,9 +1449,6 @@ class StreamClient(
                 .filterIsInstance<ProtocolV1Session.Action.VideoConfigurationRejected>()
                 .singleOrNull()
                 ?.reason
-        rejectedReason?.let { reason ->
-            requestConnectionEnd(SessionFailure.codec(reason))
-        }
         actions.forEach { action ->
             when (action) {
                 is ProtocolV1Session.Action.Send -> writeProtocolEnvelope(out, action.envelope)
@@ -1473,6 +1474,10 @@ class StreamClient(
                 is ProtocolV1Session.Action.Disconnected,
                 -> throw IllegalStateException("Unexpected action while completing decoder configuration")
             }
+        }
+        out.flush()
+        rejectedReason?.let { reason ->
+            requestConnectionEnd(SessionFailure.codec(reason))
         }
     }
 
@@ -1803,7 +1808,7 @@ class StreamClient(
 
         fun scheduleTimeout() {
             timeout =
-                VIDEO_CONFIGURATION_TIMEOUT_EXECUTOR.schedule(
+                videoConfigurationTimeoutExecutor.schedule(
                     {
                         timeout(
                             StreamVideoConfigurationDecision.reject(
@@ -1822,17 +1827,21 @@ class StreamClient(
                     isCurrentProtocolSession(session, connectionGeneration)
             }
 
-        override fun tryPublish(publish: () -> Boolean): Boolean =
-            synchronized(stateLock) {
-                if (state != VideoConfigurationCommitState.PENDING ||
-                    !isCurrentProtocolSession(session, connectionGeneration)
-                ) {
-                    return@synchronized false
+        override fun tryPublish(publish: () -> Boolean): Boolean {
+            val claimed =
+                synchronized(stateLock) {
+                    if (state != VideoConfigurationCommitState.PENDING ||
+                        !isCurrentProtocolSession(session, connectionGeneration)
+                    ) {
+                        return@synchronized false
+                    }
+                    state = VideoConfigurationCommitState.RESERVED
+                    timeout?.cancel(false)
+                    true
                 }
-                state = VideoConfigurationCommitState.RESERVED
-                timeout?.cancel(false)
-                publish()
-            }
+            if (!claimed) return false
+            return publish()
+        }
 
         override fun complete(decision: StreamVideoConfigurationDecision) {
             val claimed =

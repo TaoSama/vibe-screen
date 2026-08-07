@@ -82,26 +82,45 @@ internal class PairingPersistenceTransaction(
     }
 
     fun retryPendingCleanup(cleanupBusinessState: (String, String?) -> Unit = { _, _ -> }): Boolean {
-        val pending = loadPendingTarget() ?: return false
-        if (pending.status == PendingStatus.PREPARED) {
-            slots.delete(pending.targetName)
-            cleanupBusinessState(pending.targetName, pending.cleanupContext)
-        }
+        val pendingTargets = loadPendingTargetsForRecovery()
+        if (pendingTargets.isEmpty()) return false
+        val committedTargetNames =
+            pendingTargets
+                .filter { it.status == PendingStatus.COMMITTED }
+                .mapTo(mutableSetOf()) { it.targetName }
+        val deletedTargetNames = mutableSetOf<String>()
+        pendingTargets
+            .filter { it.status == PendingStatus.PREPARED }
+            .forEach { pending ->
+                if (pending.targetName !in committedTargetNames && deletedTargetNames.add(pending.targetName)) {
+                    slots.delete(pending.targetName)
+                }
+                cleanupBusinessState(pending.targetName, pending.cleanupContext)
+            }
         slots.delete(markerName)
         slots.delete(recoveryMarkerName)
         return true
     }
 
-    fun hasPendingCleanup(): Boolean = loadPendingTarget() != null
+    private fun loadPendingTargetsForRecovery(): List<PendingTarget> =
+        loadMarkers()
+            .groupBy { it.targetName to it.cleanupContext }
+            .values
+            .map { markers -> markers.maxBy { it.status.ordinal } }
+
+    fun hasPendingCleanup(): Boolean = loadMarkers().isNotEmpty()
 
     private fun loadPendingTarget(): PendingTarget? {
-        val markers = listOfNotNull(loadMarker(markerName), loadMarker(recoveryMarkerName))
+        val markers = loadMarkers()
         if (markers.isEmpty()) return null
         check(markers.map { it.targetName to it.cleanupContext }.distinct().size == 1) {
             "Stored pairing cleanup markers disagree"
         }
         return markers.maxBy { it.status.ordinal }
     }
+
+    private fun loadMarkers(): List<PendingTarget> =
+        listOfNotNull(loadMarker(markerName), loadMarker(recoveryMarkerName))
 
     private fun loadMarker(name: String): PendingTarget? {
         val marker = slots.load(name) ?: return null
