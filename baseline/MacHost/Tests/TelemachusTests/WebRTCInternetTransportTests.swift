@@ -3,6 +3,8 @@ import VibeScreenProtocol
 import XCTest
 @testable import Telemachus
 
+private enum TestError: Error { case sendFailed }
+
 final class WebRTCInternetTransportTests: XCTestCase {
     func testPeerDelegateGenerationAcceptsOnlyCurrentReplacementPeer() throws {
         var state = WebRTCPeerConnectionDelegateGenerationState()
@@ -160,8 +162,6 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertNil(state.beginRequest())
         XCTAssertEqual(state.nextSequence, UInt64.max)
     }
-
-    private enum TestError: Error { case sendFailed }
 
     func testCandidatePathResolutionFailsClosedForMissingOrUnknownStats() {
         XCTAssertEqual(

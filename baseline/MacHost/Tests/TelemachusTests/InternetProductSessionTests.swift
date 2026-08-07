@@ -176,9 +176,11 @@ final class InternetProductSessionTests: XCTestCase {
         harness.session.onStateChanged = { state in
             guard state == .recovering(attempt: 1), !installedReplacement else { return }
             installedReplacement = true
-            XCTAssertNoThrow(try harness.session.provideFreshSession(
-                configuration: harness.configuration
-            ))
+            do {
+                try harness.session.provideFreshSession(configuration: harness.configuration)
+            } catch {
+                XCTFail("Installing the fresh session failed: \(error)")
+            }
         }
         harness.session.onFreshSessionRecoveryRequired = { freshSessionAttempts.append($0) }
 
@@ -409,7 +411,6 @@ final class InternetProductSessionTests: XCTestCase {
                 throw PlatformSecurityError.persistenceFailure("injected cleanup failure")
             }
         )
-        var sessionReference: InternetProductSession?
         let session = InternetProductSession(
             engineFactory: { harness.engine },
             securitySessionFactory: { _ in mismatched },
@@ -479,6 +480,7 @@ final class InternetProductSessionTests: XCTestCase {
         let revocationHandlerEntered = DispatchSemaphore(value: 0)
         let releaseRevocationHandler = DispatchSemaphore(value: 0)
         var persistedSequence: UInt64?
+        var sessionReference: InternetProductSession?
         let tombstone = PairedDeviceRevocationTombstone(
             peerIdentity: harness.configuration.peerIdentity,
             sequence: 8,
@@ -517,7 +519,11 @@ final class InternetProductSessionTests: XCTestCase {
 
         try session.start(configuration: harness.configuration)
         DispatchQueue.global().async {
-            XCTAssertNoThrow(try session.revoke(sequence: 8))
+            do {
+                try session.revoke(sequence: 8)
+            } catch {
+                XCTFail("Revoking the session failed: \(error)")
+            }
             revokeFinished.fulfill()
         }
         XCTAssertEqual(revocationHandlerEntered.wait(timeout: .now() + 1), .success)
