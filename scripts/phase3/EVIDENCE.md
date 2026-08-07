@@ -90,11 +90,11 @@ through real signaling/libwebrtc and, in relay mode, forced local coturn:
 ```bash
 python3 scripts/phase3_webrtc/run_local_e2e.py \
   --mode direct --slice product \
-  --output /tmp/vibe-phase3-product-direct.json \
+  --output .build/phase3-local-synthetic-product-e2e/direct.json \
   --timeout-seconds 60
 python3 scripts/phase3_webrtc/run_local_e2e.py \
   --mode relay --slice product --skip-build \
-  --output /tmp/vibe-phase3-product-relay.json \
+  --output .build/phase3-local-synthetic-product-e2e/relay.json \
   --timeout-seconds 60
 ```
 
@@ -104,10 +104,15 @@ keyframe and delta media, application AEAD, seeded-plaintext log scan, tool
 versions, and the complete repository source fingerprint. Dirty-tree evidence is
 explicitly labelled non-commit evidence and includes the tracked diff hash plus
 the untracked-file manifest/hash. The build manifest binds that source fingerprint
-to both executable hashes; `--skip-build` fails closed if source or binaries have
-changed. Relay credentials are supplied through a temporary `0600` coturn config,
-not process arguments. The forced libwebrtc relay candidate pair is the TURN
-proof; there is no separate `turnutils` smoke.
+to the signaling executable, MacHost executable, and the actual WebRTC framework
+Mach-O plus its required runtime bundle layout. MacHost and the framework execute
+from one random `0700` private snapshot, and `DYLD_FRAMEWORK_PATH` points only to
+that snapshot. The manifest records direct coturn use as `not_used`; a successful
+relay run records the SHA-256 of the verified coturn snapshot used for both
+`--version` and the real process. `--skip-build` fails closed if source or bound
+build artifacts have changed. Relay credentials are supplied through a temporary
+`0600` coturn config, not process arguments. The forced libwebrtc relay candidate
+pair is the TURN proof; there is no separate `turnutils` smoke.
 
 This uses a synthetic local Protocol v1 device harness and does not start screen
 capture or the product UI. It is not macOS-to-Android, real encoded-screen/input,
