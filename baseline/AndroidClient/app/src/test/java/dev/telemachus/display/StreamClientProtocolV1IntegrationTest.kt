@@ -655,7 +655,10 @@ class StreamClientProtocolV1IntegrationTest {
         peer.getOutputStream().flush()
         val clientHello = readEnvelope(peer)
         assertEquals(Envelope.PayloadCase.CLIENT_HELLO, clientHello.payloadCase)
-        assertEquals(listOf(Capability.CAPABILITY_TOUCH), clientHello.clientHello.capabilitiesList)
+        assertEquals(
+            listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY),
+            clientHello.clientHello.capabilitiesList,
+        )
         assertEquals(emptyList<Capability>(), clientHello.clientHello.requiredCapabilitiesList)
         write(peer, hostHello(1, hostCapabilities))
         write(peer, sessionAccepted(2, negotiatedCapabilities))

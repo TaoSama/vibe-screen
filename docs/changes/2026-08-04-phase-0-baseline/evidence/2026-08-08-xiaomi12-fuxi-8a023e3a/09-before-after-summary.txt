@@ -1,0 +1,19 @@
+# 修复前 (03-logcat-video.txt) 关键统计
+onVideoConfiguration: 10
+waiting for a valid surface: 10
+decoder_surface_timeout: 30
+surfaceCreated/Changed: 0
+onDisplayGeometry: 0
+Selected decoder: 0
+First frame: 0
+Decode stats: 0
+
+# 修复后 (05-logcat-video-after-fix.txt) 关键统计
+decoder_surface_timeout: 0
+surfaceCreated/Changed: 5
+onDisplayGeometry: 1
+Selected decoder: 1
+First frame: 1
+Decode stats lines: 32
+last Decode stats: 08-08 01:06:13.726 D/VD      (10641): Decode stats: input=1920, output=1919, dropped=0, availBufs=4
+Codec error: 0

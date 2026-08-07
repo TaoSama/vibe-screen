@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tap-to-reveal control bar geometry. Tuned for a compact, centered
+         capsule that minimizes the resting tap target. -->
+    <dimen name="control_bar_margin_top">20dp</dimen>
+    <dimen name="control_bar_max_width">320dp</dimen>
+    <dimen name="control_bar_corner_radius">18dp</dimen>
+    <dimen name="control_bar_content_padding">3dp</dimen>
+    <dimen name="control_bar_button_size">36dp</dimen>
+    <dimen name="control_bar_button_margin">2dp</dimen>
+</resources>

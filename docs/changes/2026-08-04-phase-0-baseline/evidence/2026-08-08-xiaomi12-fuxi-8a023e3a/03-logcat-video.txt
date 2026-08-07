@@ -1,0 +1,271 @@
+--------- beginning of main
+08-08 00:55:28.734 D/MA      ( 9433): session ended kind=CODEC_CONFIGURATION retryable=true detail=decoder_surface_timeout
+08-08 00:55:28.735 E/StreamClient( 9433): ❌ Connection error
+08-08 00:55:28.735 E/StreamClient( 9433): java.io.IOException: Mac connection closed before display configuration
+08-08 00:55:28.735 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invokeSuspend(StreamClient.kt:276)
+08-08 00:55:28.735 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:8)
+08-08 00:55:28.735 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:4)
+08-08 00:55:28.735 E/StreamClient( 9433): 	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+08-08 00:55:28.735 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+08-08 00:55:28.735 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+08-08 00:55:28.735 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient.connect(StreamClient.kt:231)
+08-08 00:55:28.735 E/StreamClient( 9433): 	at dev.telemachus.display.MainActivity$connect$1.invokeSuspend(MainActivity.kt:2934)
+08-08 00:55:28.735 E/StreamClient( 9433): 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+08-08 00:55:28.735 E/StreamClient( 9433): 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+08-08 00:55:28.735 E/StreamClient( 9433): 	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+08-08 00:55:28.735 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+08-08 00:55:28.735 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+08-08 00:55:28.735 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+08-08 00:55:28.735 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+08-08 00:55:28.735 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+08-08 00:55:28.739 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121728736,"event":"connection_closed","reason":"decoder_surface_timeout","failure_kind":"CODEC_CONFIGURATION","retryable":true,"session_epoch":80,"intentional":false}
+08-08 00:55:28.740 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121728740,"event":"reconnect_scheduled","delay_ms":521,"session_epoch":80}
+08-08 00:55:28.741 D/StreamClient( 9433): Disconnected: CODEC_CONFIGURATION: decoder_surface_timeout
+08-08 00:55:30.259 D/SC      ( 9433): Protocol v1 upgrade accepted
+08-08 00:55:30.259 D/SC      ( 9433): Connected to 127.0.0.1:54321
+08-08 00:55:30.262 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121730260,"event":"connection_opened","host":"127.0.0.1","port":54321,"session_epoch":81}
+08-08 00:55:30.278 D/MA      ( 9433): onVideoConfiguration: 1512x982 @ 0° epoch=1
+08-08 00:55:30.278 D/MA      ( 9433): Video config is waiting for a valid surface
+08-08 00:55:31.786 D/MA      ( 9433): session ended kind=CODEC_CONFIGURATION retryable=true detail=decoder_surface_timeout
+08-08 00:55:31.787 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121731786,"event":"connection_closed","reason":"decoder_surface_timeout","failure_kind":"CODEC_CONFIGURATION","retryable":true,"session_epoch":81,"intentional":false}
+08-08 00:55:31.787 E/StreamClient( 9433): ❌ Connection error
+08-08 00:55:31.787 E/StreamClient( 9433): java.io.IOException: Mac connection closed before display configuration
+08-08 00:55:31.787 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invokeSuspend(StreamClient.kt:276)
+08-08 00:55:31.787 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:8)
+08-08 00:55:31.787 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:4)
+08-08 00:55:31.787 E/StreamClient( 9433): 	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+08-08 00:55:31.787 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+08-08 00:55:31.787 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+08-08 00:55:31.787 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient.connect(StreamClient.kt:231)
+08-08 00:55:31.787 E/StreamClient( 9433): 	at dev.telemachus.display.MainActivity$connect$1.invokeSuspend(MainActivity.kt:2934)
+08-08 00:55:31.787 E/StreamClient( 9433): 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+08-08 00:55:31.787 E/StreamClient( 9433): 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+08-08 00:55:31.787 E/StreamClient( 9433): 	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+08-08 00:55:31.787 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+08-08 00:55:31.787 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+08-08 00:55:31.787 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+08-08 00:55:31.787 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+08-08 00:55:31.787 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+08-08 00:55:31.788 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121731787,"event":"reconnect_scheduled","delay_ms":499,"session_epoch":81}
+08-08 00:55:31.788 D/StreamClient( 9433): Disconnected: CODEC_CONFIGURATION: decoder_surface_timeout
+08-08 00:55:33.319 D/SC      ( 9433): Protocol v1 upgrade accepted
+08-08 00:55:33.320 D/SC      ( 9433): Connected to 127.0.0.1:54321
+08-08 00:55:33.321 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121733320,"event":"connection_opened","host":"127.0.0.1","port":54321,"session_epoch":82}
+08-08 00:55:33.338 D/MA      ( 9433): onVideoConfiguration: 1512x982 @ 0° epoch=1
+08-08 00:55:33.339 D/MA      ( 9433): Video config is waiting for a valid surface
+08-08 00:55:34.847 D/MA      ( 9433): session ended kind=CODEC_CONFIGURATION retryable=true detail=decoder_surface_timeout
+08-08 00:55:34.850 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121734848,"event":"connection_closed","reason":"decoder_surface_timeout","failure_kind":"CODEC_CONFIGURATION","retryable":true,"session_epoch":82,"intentional":false}
+08-08 00:55:34.852 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121734851,"event":"reconnect_scheduled","delay_ms":440,"session_epoch":82}
+08-08 00:55:34.852 D/StreamClient( 9433): Disconnected: CODEC_CONFIGURATION: decoder_surface_timeout
+08-08 00:55:34.855 E/StreamClient( 9433): ❌ Connection error
+08-08 00:55:34.855 E/StreamClient( 9433): java.io.IOException: Mac connection closed before display configuration
+08-08 00:55:34.855 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invokeSuspend(StreamClient.kt:276)
+08-08 00:55:34.855 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:8)
+08-08 00:55:34.855 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:4)
+08-08 00:55:34.855 E/StreamClient( 9433): 	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+08-08 00:55:34.855 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+08-08 00:55:34.855 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+08-08 00:55:34.855 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient.connect(StreamClient.kt:231)
+08-08 00:55:34.855 E/StreamClient( 9433): 	at dev.telemachus.display.MainActivity$connect$1.invokeSuspend(MainActivity.kt:2934)
+08-08 00:55:34.855 E/StreamClient( 9433): 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+08-08 00:55:34.855 E/StreamClient( 9433): 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+08-08 00:55:34.855 E/StreamClient( 9433): 	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+08-08 00:55:34.855 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+08-08 00:55:34.855 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+08-08 00:55:34.855 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+08-08 00:55:34.855 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+08-08 00:55:34.855 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+08-08 00:55:36.378 D/SC      ( 9433): Protocol v1 upgrade accepted
+08-08 00:55:36.379 D/SC      ( 9433): Connected to 127.0.0.1:54321
+08-08 00:55:36.381 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121736379,"event":"connection_opened","host":"127.0.0.1","port":54321,"session_epoch":83}
+08-08 00:55:36.395 D/MA      ( 9433): onVideoConfiguration: 1512x982 @ 0° epoch=1
+08-08 00:55:36.395 D/MA      ( 9433): Video config is waiting for a valid surface
+08-08 00:55:37.904 D/MA      ( 9433): session ended kind=CODEC_CONFIGURATION retryable=true detail=decoder_surface_timeout
+08-08 00:55:37.905 E/StreamClient( 9433): ❌ Connection error
+08-08 00:55:37.905 E/StreamClient( 9433): java.io.IOException: Mac connection closed before display configuration
+08-08 00:55:37.905 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invokeSuspend(StreamClient.kt:276)
+08-08 00:55:37.905 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:8)
+08-08 00:55:37.905 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:4)
+08-08 00:55:37.905 E/StreamClient( 9433): 	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+08-08 00:55:37.905 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+08-08 00:55:37.905 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+08-08 00:55:37.905 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient.connect(StreamClient.kt:231)
+08-08 00:55:37.905 E/StreamClient( 9433): 	at dev.telemachus.display.MainActivity$connect$1.invokeSuspend(MainActivity.kt:2934)
+08-08 00:55:37.905 E/StreamClient( 9433): 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+08-08 00:55:37.905 E/StreamClient( 9433): 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+08-08 00:55:37.905 E/StreamClient( 9433): 	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+08-08 00:55:37.905 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+08-08 00:55:37.905 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+08-08 00:55:37.905 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+08-08 00:55:37.905 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+08-08 00:55:37.905 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+08-08 00:55:37.907 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121737905,"event":"connection_closed","reason":"decoder_surface_timeout","failure_kind":"CODEC_CONFIGURATION","retryable":true,"session_epoch":83,"intentional":false}
+08-08 00:55:37.909 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121737908,"event":"reconnect_scheduled","delay_ms":487,"session_epoch":83}
+08-08 00:55:37.909 D/StreamClient( 9433): Disconnected: CODEC_CONFIGURATION: decoder_surface_timeout
+08-08 00:55:39.466 D/SC      ( 9433): Protocol v1 upgrade accepted
+08-08 00:55:39.466 D/SC      ( 9433): Connected to 127.0.0.1:54321
+08-08 00:55:39.468 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121739467,"event":"connection_opened","host":"127.0.0.1","port":54321,"session_epoch":84}
+08-08 00:55:39.552 D/MA      ( 9433): onVideoConfiguration: 1512x982 @ 0° epoch=1
+08-08 00:55:39.552 D/MA      ( 9433): Video config is waiting for a valid surface
+08-08 00:55:41.063 D/MA      ( 9433): session ended kind=CODEC_CONFIGURATION retryable=true detail=decoder_surface_timeout
+08-08 00:55:41.064 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121741063,"event":"connection_closed","reason":"decoder_surface_timeout","failure_kind":"CODEC_CONFIGURATION","retryable":true,"session_epoch":84,"intentional":false}
+08-08 00:55:41.065 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121741064,"event":"reconnect_scheduled","delay_ms":564,"session_epoch":84}
+08-08 00:55:41.065 D/StreamClient( 9433): Disconnected: CODEC_CONFIGURATION: decoder_surface_timeout
+08-08 00:55:41.069 E/StreamClient( 9433): ❌ Connection error
+08-08 00:55:41.069 E/StreamClient( 9433): java.io.IOException: Mac connection closed before display configuration
+08-08 00:55:41.069 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invokeSuspend(StreamClient.kt:276)
+08-08 00:55:41.069 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:8)
+08-08 00:55:41.069 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:4)
+08-08 00:55:41.069 E/StreamClient( 9433): 	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+08-08 00:55:41.069 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+08-08 00:55:41.069 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+08-08 00:55:41.069 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient.connect(StreamClient.kt:231)
+08-08 00:55:41.069 E/StreamClient( 9433): 	at dev.telemachus.display.MainActivity$connect$1.invokeSuspend(MainActivity.kt:2934)
+08-08 00:55:41.069 E/StreamClient( 9433): 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+08-08 00:55:41.069 E/StreamClient( 9433): 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+08-08 00:55:41.069 E/StreamClient( 9433): 	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+08-08 00:55:41.069 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+08-08 00:55:41.069 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+08-08 00:55:41.069 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+08-08 00:55:41.069 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+08-08 00:55:41.069 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+08-08 00:55:42.602 D/SC      ( 9433): Protocol v1 upgrade accepted
+08-08 00:55:42.602 D/SC      ( 9433): Connected to 127.0.0.1:54321
+08-08 00:55:42.605 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121742603,"event":"connection_opened","host":"127.0.0.1","port":54321,"session_epoch":85}
+08-08 00:55:42.625 D/MA      ( 9433): onVideoConfiguration: 1512x982 @ 0° epoch=1
+08-08 00:55:42.625 D/MA      ( 9433): Video config is waiting for a valid surface
+08-08 00:55:44.136 D/MA      ( 9433): session ended kind=CODEC_CONFIGURATION retryable=true detail=decoder_surface_timeout
+08-08 00:55:44.137 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121744136,"event":"connection_closed","reason":"decoder_surface_timeout","failure_kind":"CODEC_CONFIGURATION","retryable":true,"session_epoch":85,"intentional":false}
+08-08 00:55:44.137 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121744137,"event":"reconnect_scheduled","delay_ms":482,"session_epoch":85}
+08-08 00:55:44.138 D/StreamClient( 9433): Disconnected: CODEC_CONFIGURATION: decoder_surface_timeout
+08-08 00:55:44.139 E/StreamClient( 9433): ❌ Connection error
+08-08 00:55:44.139 E/StreamClient( 9433): java.io.IOException: Mac connection closed before display configuration
+08-08 00:55:44.139 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invokeSuspend(StreamClient.kt:276)
+08-08 00:55:44.139 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:8)
+08-08 00:55:44.139 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:4)
+08-08 00:55:44.139 E/StreamClient( 9433): 	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+08-08 00:55:44.139 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+08-08 00:55:44.139 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+08-08 00:55:44.139 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient.connect(StreamClient.kt:231)
+08-08 00:55:44.139 E/StreamClient( 9433): 	at dev.telemachus.display.MainActivity$connect$1.invokeSuspend(MainActivity.kt:2934)
+08-08 00:55:44.139 E/StreamClient( 9433): 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+08-08 00:55:44.139 E/StreamClient( 9433): 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+08-08 00:55:44.139 E/StreamClient( 9433): 	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+08-08 00:55:44.139 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+08-08 00:55:44.139 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+08-08 00:55:44.139 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+08-08 00:55:44.139 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+08-08 00:55:44.139 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+08-08 00:55:45.681 D/SC      ( 9433): Protocol v1 upgrade accepted
+08-08 00:55:45.682 D/SC      ( 9433): Connected to 127.0.0.1:54321
+08-08 00:55:45.682 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121745682,"event":"connection_opened","host":"127.0.0.1","port":54321,"session_epoch":86}
+08-08 00:55:45.721 D/MA      ( 9433): onVideoConfiguration: 1512x982 @ 0° epoch=1
+08-08 00:55:45.721 D/MA      ( 9433): Video config is waiting for a valid surface
+08-08 00:55:47.232 D/MA      ( 9433): session ended kind=CODEC_CONFIGURATION retryable=true detail=decoder_surface_timeout
+08-08 00:55:47.234 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121747233,"event":"connection_closed","reason":"decoder_surface_timeout","failure_kind":"CODEC_CONFIGURATION","retryable":true,"session_epoch":86,"intentional":false}
+08-08 00:55:47.234 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121747234,"event":"reconnect_scheduled","delay_ms":425,"session_epoch":86}
+08-08 00:55:47.235 D/StreamClient( 9433): Disconnected: CODEC_CONFIGURATION: decoder_surface_timeout
+08-08 00:55:47.235 E/StreamClient( 9433): ❌ Connection error
+08-08 00:55:47.235 E/StreamClient( 9433): java.io.IOException: Mac connection closed before display configuration
+08-08 00:55:47.235 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invokeSuspend(StreamClient.kt:276)
+08-08 00:55:47.235 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:8)
+08-08 00:55:47.235 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:4)
+08-08 00:55:47.235 E/StreamClient( 9433): 	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+08-08 00:55:47.235 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+08-08 00:55:47.235 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+08-08 00:55:47.235 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient.connect(StreamClient.kt:231)
+08-08 00:55:47.235 E/StreamClient( 9433): 	at dev.telemachus.display.MainActivity$connect$1.invokeSuspend(MainActivity.kt:2934)
+08-08 00:55:47.235 E/StreamClient( 9433): 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+08-08 00:55:47.235 E/StreamClient( 9433): 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+08-08 00:55:47.235 E/StreamClient( 9433): 	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+08-08 00:55:47.235 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+08-08 00:55:47.235 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+08-08 00:55:47.235 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+08-08 00:55:47.235 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+08-08 00:55:47.235 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+08-08 00:55:48.758 D/SC      ( 9433): Protocol v1 upgrade accepted
+08-08 00:55:48.758 D/SC      ( 9433): Connected to 127.0.0.1:54321
+08-08 00:55:48.759 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121748758,"event":"connection_opened","host":"127.0.0.1","port":54321,"session_epoch":87}
+08-08 00:55:48.773 D/MA      ( 9433): onVideoConfiguration: 1512x982 @ 0° epoch=1
+08-08 00:55:48.773 D/MA      ( 9433): Video config is waiting for a valid surface
+08-08 00:55:50.283 D/MA      ( 9433): session ended kind=CODEC_CONFIGURATION retryable=true detail=decoder_surface_timeout
+08-08 00:55:50.286 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121750284,"event":"connection_closed","reason":"decoder_surface_timeout","failure_kind":"CODEC_CONFIGURATION","retryable":true,"session_epoch":87,"intentional":false}
+08-08 00:55:50.287 E/StreamClient( 9433): ❌ Connection error
+08-08 00:55:50.287 E/StreamClient( 9433): java.io.IOException: Mac connection closed before display configuration
+08-08 00:55:50.287 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invokeSuspend(StreamClient.kt:276)
+08-08 00:55:50.287 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:8)
+08-08 00:55:50.287 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:4)
+08-08 00:55:50.287 E/StreamClient( 9433): 	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+08-08 00:55:50.287 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+08-08 00:55:50.287 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+08-08 00:55:50.287 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient.connect(StreamClient.kt:231)
+08-08 00:55:50.287 E/StreamClient( 9433): 	at dev.telemachus.display.MainActivity$connect$1.invokeSuspend(MainActivity.kt:2934)
+08-08 00:55:50.287 E/StreamClient( 9433): 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+08-08 00:55:50.287 E/StreamClient( 9433): 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+08-08 00:55:50.287 E/StreamClient( 9433): 	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+08-08 00:55:50.287 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+08-08 00:55:50.287 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+08-08 00:55:50.287 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+08-08 00:55:50.287 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+08-08 00:55:50.287 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+08-08 00:55:50.287 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121750286,"event":"reconnect_scheduled","delay_ms":422,"session_epoch":87}
+08-08 00:55:50.288 D/StreamClient( 9433): Disconnected: CODEC_CONFIGURATION: decoder_surface_timeout
+08-08 00:55:51.817 D/SC      ( 9433): Protocol v1 upgrade accepted
+08-08 00:55:51.817 D/SC      ( 9433): Connected to 127.0.0.1:54321
+08-08 00:55:51.818 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121751817,"event":"connection_opened","host":"127.0.0.1","port":54321,"session_epoch":88}
+08-08 00:55:51.837 D/MA      ( 9433): onVideoConfiguration: 1512x982 @ 0° epoch=1
+08-08 00:55:51.837 D/MA      ( 9433): Video config is waiting for a valid surface
+08-08 00:55:53.344 D/MA      ( 9433): session ended kind=CODEC_CONFIGURATION retryable=true detail=decoder_surface_timeout
+08-08 00:55:53.346 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121753345,"event":"connection_closed","reason":"decoder_surface_timeout","failure_kind":"CODEC_CONFIGURATION","retryable":true,"session_epoch":88,"intentional":false}
+08-08 00:55:53.346 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121753346,"event":"reconnect_scheduled","delay_ms":593,"session_epoch":88}
+08-08 00:55:53.346 D/StreamClient( 9433): Disconnected: CODEC_CONFIGURATION: decoder_surface_timeout
+08-08 00:55:53.353 E/StreamClient( 9433): ❌ Connection error
+08-08 00:55:53.353 E/StreamClient( 9433): java.io.IOException: Mac connection closed before display configuration
+08-08 00:55:53.353 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invokeSuspend(StreamClient.kt:276)
+08-08 00:55:53.353 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:8)
+08-08 00:55:53.353 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:4)
+08-08 00:55:53.353 E/StreamClient( 9433): 	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+08-08 00:55:53.353 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+08-08 00:55:53.353 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+08-08 00:55:53.353 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient.connect(StreamClient.kt:231)
+08-08 00:55:53.353 E/StreamClient( 9433): 	at dev.telemachus.display.MainActivity$connect$1.invokeSuspend(MainActivity.kt:2934)
+08-08 00:55:53.353 E/StreamClient( 9433): 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+08-08 00:55:53.353 E/StreamClient( 9433): 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+08-08 00:55:53.353 E/StreamClient( 9433): 	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+08-08 00:55:53.353 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+08-08 00:55:53.353 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+08-08 00:55:53.353 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+08-08 00:55:53.353 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+08-08 00:55:53.353 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+08-08 00:55:54.883 D/SC      ( 9433): Protocol v1 upgrade accepted
+08-08 00:55:54.884 D/SC      ( 9433): Connected to 127.0.0.1:54321
+08-08 00:55:54.886 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121754884,"event":"connection_opened","host":"127.0.0.1","port":54321,"session_epoch":89}
+08-08 00:55:54.942 D/MA      ( 9433): onVideoConfiguration: 1512x982 @ 0° epoch=1
+08-08 00:55:54.942 D/MA      ( 9433): Video config is waiting for a valid surface
+08-08 00:55:56.454 D/MA      ( 9433): session ended kind=CODEC_CONFIGURATION retryable=true detail=decoder_surface_timeout
+08-08 00:55:56.459 E/StreamClient( 9433): ❌ Connection error
+08-08 00:55:56.459 E/StreamClient( 9433): java.io.IOException: Mac connection closed before display configuration
+08-08 00:55:56.459 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invokeSuspend(StreamClient.kt:276)
+08-08 00:55:56.459 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:8)
+08-08 00:55:56.459 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:4)
+08-08 00:55:56.459 E/StreamClient( 9433): 	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+08-08 00:55:56.459 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+08-08 00:55:56.459 E/StreamClient( 9433): 	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+08-08 00:55:56.459 E/StreamClient( 9433): 	at dev.telemachus.display.StreamClient.connect(StreamClient.kt:231)
+08-08 00:55:56.459 E/StreamClient( 9433): 	at dev.telemachus.display.MainActivity$connect$1.invokeSuspend(MainActivity.kt:2934)
+08-08 00:55:56.459 E/StreamClient( 9433): 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+08-08 00:55:56.459 E/StreamClient( 9433): 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+08-08 00:55:56.459 E/StreamClient( 9433): 	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+08-08 00:55:56.459 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+08-08 00:55:56.459 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+08-08 00:55:56.459 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+08-08 00:55:56.459 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+08-08 00:55:56.459 E/StreamClient( 9433): 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+08-08 00:55:56.460 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121756454,"event":"connection_closed","reason":"decoder_surface_timeout","failure_kind":"CODEC_CONFIGURATION","retryable":true,"session_epoch":89,"intentional":false}
+08-08 00:55:56.460 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121756460,"event":"reconnect_scheduled","delay_ms":595,"session_epoch":89}
+08-08 00:55:56.461 D/StreamClient( 9433): Disconnected: CODEC_CONFIGURATION: decoder_surface_timeout
+08-08 00:55:57.992 D/SC      ( 9433): Protocol v1 upgrade accepted
+08-08 00:55:57.993 D/SC      ( 9433): Connected to 127.0.0.1:54321
+08-08 00:55:57.995 I/VibeScreenTelemetry( 9433): {"schema_version":1,"timestamp_ms":1786121757993,"event":"connection_opened","host":"127.0.0.1","port":54321,"session_epoch":90}
+08-08 00:55:58.052 D/MA      ( 9433): onVideoConfiguration: 1512x982 @ 0° epoch=1
+08-08 00:55:58.052 D/MA      ( 9433): Video config is waiting for a valid surface

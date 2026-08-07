@@ -1,0 +1,10 @@
+# dumpsys activity top — controlBar geometry (landscape 2400x1080, density 420 -> 2.625 px/dp)
+# captured 2026-08-08 on Xiaomi 12 fuxi (8a023e3a) while streaming
+            InsetsSource id=16cb0000 type=statusBars frame=[0,0][1080,110] visible=true flags= sideHint=TOP boundingRects=null
+            InsetsSource id=16cb0000 type=statusBars frame=[0,0][2400,84] visible=false flags= sideHint=TOP boundingRects=null
+                  androidx.cardview.widget.CardView{801e61d V.E...... ........ 1566,42-2358,202 #7f0801f6 app:id/statusBar}
+                  androidx.cardview.widget.CardView{f6c4dc V.E...... ........ 1090,53-1311,164 #7f080093 app:id/controlBar}
+                      android.widget.LinearLayout{b279689 G.E...... ......I. 0,0-0,0 #7f0800bb app:id/displayCapsuleGroup}
+                        androidx.appcompat.widget.AppCompatImageButton{6af068e VF.D..C.. ......I. 0,0-0,0 #7f080095 app:id/controlDisplaysButton}
+                      androidx.appcompat.widget.AppCompatImageButton{73509e5 VFED..C.. ........ 13,8-108,103 #7f080096 app:id/controlSettingsButton}
+                      androidx.appcompat.widget.AppCompatImageButton{6b72cba VFED..C.. ........ 118,8-213,103 #7f080094 app:id/controlDisconnectButton}

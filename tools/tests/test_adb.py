@@ -60,12 +60,25 @@ class ADBClientTest(unittest.TestCase):
     def test_connect_requires_adb_confirmation_and_ready_state(self):
         responses = iter(
             [
-                subprocess.CompletedProcess([], 0, "connected to serial\n", ""),
+                subprocess.CompletedProcess([], 0, "connected to device.example:5555\n", ""),
                 subprocess.CompletedProcess([], 0, "device\n", ""),
             ]
         )
-        client = ADBClient("serial", command_runner=lambda *args, **kwargs: next(responses))
-        self.assertEqual(client.connect(), "connected to serial")
+        client = ADBClient("device.example:5555", command_runner=lambda *args, **kwargs: next(responses))
+        self.assertEqual(client.connect(), "connected to device.example:5555")
+
+    def test_connect_over_usb_serial_only_checks_readiness(self):
+        commands = []
+
+        def run(command, **kwargs):
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 0, "device\n", "")
+
+        client = ADBClient("8a023e3a", command_runner=run)
+        result = client.connect()
+
+        self.assertEqual(result, "already connected to 8a023e3a")
+        self.assertEqual(commands, [["adb", "-s", "8a023e3a", "get-state"]])
 
 
 class ADBParserTest(unittest.TestCase):

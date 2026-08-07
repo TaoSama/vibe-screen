@@ -74,6 +74,11 @@ class ADBClient:
         return self._run(("version",), device=False).stdout
 
     def connect(self) -> str:
+        if not _is_tcp_endpoint(self.serial):
+            # USB-attached serials are not valid "adb connect" targets; the
+            # device is already present, so only verify that it is ready.
+            self.require_device()
+            return f"already connected to {self.serial}"
         result = self._run(("connect", self.serial), device=False).stdout
         normalized = result.lower()
         if "connected to" not in normalized and "already connected" not in normalized:
@@ -173,6 +178,11 @@ class ADBClient:
             output = self._safe_shell(f"power.{name}", errors, "cat", path)
             values[name] = int(output) if output and re.fullmatch(r"-?\d+", output) else None
         return values
+
+
+def _is_tcp_endpoint(serial: str) -> bool:
+    """Return True when the serial is an adb connect host:port target."""
+    return bool(re.fullmatch(r"[^\s]+:\d{1,5}", serial.strip()))
 
 
 def _parse_meminfo(output: str) -> dict[str, int]:

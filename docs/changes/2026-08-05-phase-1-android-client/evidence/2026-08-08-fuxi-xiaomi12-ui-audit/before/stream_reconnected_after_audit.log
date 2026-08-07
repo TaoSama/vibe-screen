@@ -1,0 +1,6 @@
+08-08 02:15:43.563 13889 13955 D VD      : Decode stats: input=2160, output=2159, dropped=0, availBufs=4
+08-08 02:15:44.563 13889 13955 D VD      : Decode stats: input=2220, output=2219, dropped=0, availBufs=4
+08-08 02:15:45.562 13889 13955 D VD      : Decode stats: input=2280, output=2279, dropped=0, availBufs=4
+08-08 02:15:46.570 13889 13955 D VD      : Decode stats: input=2340, output=2339, dropped=0, availBufs=4
+08-08 02:15:47.564 13889 13955 D VD      : Decode stats: input=2400, output=2399, dropped=0, availBufs=4
+08-08 02:15:48.563 13889 13955 D VD      : Decode stats: input=2460, output=2459, dropped=0, availBufs=4
