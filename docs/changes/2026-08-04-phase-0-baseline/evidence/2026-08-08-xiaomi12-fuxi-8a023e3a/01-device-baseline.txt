@@ -1,0 +1,48 @@
+
+$ date '+%Y-%m-%dT%H:%M:%S%z'
+2026-08-08T00:47:43+0800
+
+$ adb devices -l
+List of devices attached
+8a023e3a               device usb:0-1 product:lineage_fuxi model:2211133C device:fuxi transport_id:9
+
+
+$ adb -s 8a023e3a shell getprop ro.product.manufacturer
+Xiaomi
+
+$ adb -s 8a023e3a shell getprop ro.product.model
+2211133C
+
+$ adb -s 8a023e3a shell getprop ro.product.device
+fuxi
+
+$ adb -s 8a023e3a shell getprop ro.build.version.release
+16
+
+$ adb -s 8a023e3a shell getprop ro.build.version.sdk
+36
+
+$ adb -s 8a023e3a shell getprop ro.build.fingerprint
+Xiaomi/fuxi/fuxi:16/BP2A.250605.031.A3/OS3.0.2.0.WMCCNXM:user/release-keys
+
+$ adb -s 8a023e3a shell getprop ro.serialno
+8a023e3a
+
+$ adb -s 8a023e3a shell wm size
+Physical size: 1080x2400
+
+$ adb -s 8a023e3a shell wm density
+Physical density: 420
+
+$ adb -s 8a023e3a shell dumpsys battery | egrep -i 'level|status|temperature'
+  status: 2
+  level: 12
+  temperature: 294
+  Capacity level: -1
+
+$ adb -s 8a023e3a shell getprop sys.boot_completed
+1
+
+$ adb -s 8a023e3a get-state
+device
+

@@ -1,0 +1,6 @@
+{
+  "derivation_status_internal": "partial (only because heartbeat_received events are absent; all liveness/frame/memory/thermal metrics derived successfully)",
+  "internal_report": "12-soak-report.json",
+  "note": "public (privacy-minimized) report intentionally not produced",
+  "reason": "soak_report.py public profile requires heartbeat_received host telemetry in the exact window; the live host process was not started with VIBE_SCREEN_TELEMETRY_PATH, so no structured host heartbeat/session telemetry exists for this session. The stream_stats records in 11b are a faithful re-encode of the host log Pipeline lines and are sufficient for the internal descriptive report (12-soak-report.json)."
+}

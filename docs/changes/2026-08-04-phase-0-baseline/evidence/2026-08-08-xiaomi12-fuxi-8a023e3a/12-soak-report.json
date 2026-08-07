@@ -1,0 +1,436 @@
+{
+  "derivation_status": "partial",
+  "errors": [
+    "host telemetry: no heartbeat_received events in exact window"
+  ],
+  "interpretation": "Trend metrics are descriptive evidence, not a no-leak determination.",
+  "kind": "soak_exact_window_report",
+  "metrics": {
+    "battery": {
+      "level_percent": {
+        "count": 30,
+        "final": 52.0,
+        "first": 35.0,
+        "max": 52.0,
+        "mean": 43.833333333333336,
+        "min": 35.0
+      },
+      "temperature_celsius": {
+        "count": 30,
+        "final": 33.3,
+        "first": 33.1,
+        "max": 33.3,
+        "mean": 33.016666666666666,
+        "min": 32.9
+      },
+      "voltage_mv": {
+        "count": 30,
+        "final": 3987.0,
+        "first": 3916.0,
+        "max": 3987.0,
+        "mean": 3952.733333333333,
+        "min": 3916.0
+      }
+    },
+    "memory_kib": {
+      "client_total_pss": {
+        "count": 30,
+        "final": 96111.0,
+        "first": 99530.0,
+        "max": 99530.0,
+        "mean": 92591.76666666666,
+        "min": 89537.0,
+        "slope_kib_per_minute": {
+          "full_window": 13.801777653358783,
+          "second_half": 312.2668208759228,
+          "second_half_sample_count": 14
+        }
+      },
+      "host_rss": {
+        "count": 30,
+        "final": 146336.0,
+        "first": 127248.0,
+        "max": 146336.0,
+        "mean": 135082.66666666666,
+        "min": 127248.0,
+        "slope_kib_per_minute": {
+          "full_window": 587.5875203879096,
+          "second_half": 1086.5568113356262,
+          "second_half_sample_count": 14
+        }
+      }
+    },
+    "power": {},
+    "stream": {
+      "average_frame_age_ms": null,
+      "fps": {
+        "count": 29,
+        "final": 59.9,
+        "first": 60.0,
+        "max": 60.2,
+        "mean": 59.95172413793103,
+        "min": 59.7
+      },
+      "frame_queue_drop_total": 0.0,
+      "reported_dropped_frames": {
+        "statistics": null,
+        "sum": 0.0
+      }
+    },
+    "telemetry": {
+      "accepted_heartbeat_count": 0,
+      "event_counts": {
+        "stream_stats": 29
+      },
+      "heartbeat_gaps": {
+        "count": 0,
+        "maximum_interval_seconds": null,
+        "maximum_window_gap_seconds": null
+      },
+      "stream_stats_gaps": {
+        "count": 29,
+        "maximum_interval_seconds": 60.025784,
+        "maximum_window_gap_seconds": 60.407396
+      }
+    },
+    "thermal": {
+      "sensors_celsius": {
+        "CPU0": {
+          "count": 60,
+          "final": 40.4,
+          "first": 56.3,
+          "max": 56.3,
+          "mean": 49.235,
+          "min": 40.4
+        },
+        "CPU1": {
+          "count": 60,
+          "final": 40.4,
+          "first": 53.1,
+          "max": 53.1,
+          "mean": 47.55,
+          "min": 40.0
+        },
+        "CPU2": {
+          "count": 60,
+          "final": 40.4,
+          "first": 53.5,
+          "max": 53.5,
+          "mean": 47.63,
+          "min": 40.0
+        },
+        "CPU3": {
+          "count": 60,
+          "final": 42.2,
+          "first": 62.1,
+          "max": 62.1,
+          "mean": 51.44166666666667,
+          "min": 39.0
+        },
+        "CPU4": {
+          "count": 60,
+          "final": 40.6,
+          "first": 59.7,
+          "max": 59.7,
+          "mean": 50.85,
+          "min": 39.8
+        },
+        "CPU5": {
+          "count": 60,
+          "final": 41.0,
+          "first": 61.7,
+          "max": 61.7,
+          "mean": 51.708333333333336,
+          "min": 39.8
+        },
+        "CPU6": {
+          "count": 60,
+          "final": 39.8,
+          "first": 57.3,
+          "max": 57.3,
+          "mean": 48.79666666666666,
+          "min": 38.6
+        },
+        "CPU7": {
+          "count": 60,
+          "final": 40.6,
+          "first": 62.9,
+          "max": 62.9,
+          "mean": 51.781666666666666,
+          "min": 39.8
+        },
+        "GPU0": {
+          "count": 60,
+          "final": 37.6,
+          "first": 44.4,
+          "max": 44.4,
+          "mean": 41.04666666666667,
+          "min": 37.2
+        },
+        "GPU1": {
+          "count": 60,
+          "final": 38.4,
+          "first": 44.4,
+          "max": 44.4,
+          "mean": 41.313333333333325,
+          "min": 37.6
+        },
+        "GPU2": {
+          "count": 60,
+          "final": 38.0,
+          "first": 43.6,
+          "max": 43.6,
+          "mean": 40.44666666666667,
+          "min": 36.8
+        },
+        "GPU3": {
+          "count": 60,
+          "final": 38.0,
+          "first": 43.2,
+          "max": 43.2,
+          "mean": 40.42,
+          "min": 37.2
+        },
+        "GPU4": {
+          "count": 60,
+          "final": 38.4,
+          "first": 49.1,
+          "max": 49.1,
+          "mean": 43.68333333333333,
+          "min": 37.6
+        },
+        "GPU5": {
+          "count": 60,
+          "final": 38.0,
+          "first": 47.5,
+          "max": 47.5,
+          "mean": 42.723333333333336,
+          "min": 37.2
+        },
+        "GPU6": {
+          "count": 60,
+          "final": 37.6,
+          "first": 44.8,
+          "max": 44.8,
+          "mean": 41.093333333333334,
+          "min": 36.8
+        },
+        "GPU7": {
+          "count": 60,
+          "final": 38.8,
+          "first": 45.9,
+          "max": 45.9,
+          "mean": 42.02333333333333,
+          "min": 37.6
+        },
+        "battery": {
+          "count": 60,
+          "final": 33.3,
+          "first": 27.5,
+          "max": 33.3,
+          "mean": 30.258333333333333,
+          "min": 27.5
+        },
+        "ibat": {
+          "count": 60,
+          "final": -0.843,
+          "first": 1.781,
+          "max": 1.781,
+          "mean": 0.5454166666666665,
+          "min": -1.125
+        },
+        "nsp0": {
+          "count": 60,
+          "final": 38.4,
+          "first": 45.1,
+          "max": 45.1,
+          "mean": 41.74333333333333,
+          "min": 38.0
+        },
+        "nsp1": {
+          "count": 60,
+          "final": 39.2,
+          "first": 46.3,
+          "max": 46.3,
+          "mean": 42.51,
+          "min": 38.0
+        },
+        "nsp2": {
+          "count": 60,
+          "final": 38.0,
+          "first": 42.4,
+          "max": 42.4,
+          "mean": 40.20666666666667,
+          "min": 37.6
+        },
+        "nsp3": {
+          "count": 60,
+          "final": 38.0,
+          "first": 42.8,
+          "max": 42.8,
+          "mean": 40.26,
+          "min": 37.2
+        },
+        "socd": {
+          "count": 60,
+          "final": 0.0,
+          "first": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0
+        },
+        "vbat": {
+          "count": 60,
+          "final": 3.986,
+          "first": 3.587,
+          "max": 3.986,
+          "mean": 3.7515,
+          "min": 3.587
+        }
+      },
+      "status": {
+        "count": 30,
+        "final": 0.0,
+        "first": 0.0,
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0
+      }
+    }
+  },
+  "run_id": "xiaomi12-fuxi-8a023e3a-2026-08-08-30m",
+  "schema_version": "vibescreen.evidence/v1",
+  "source_summary": {
+    "errors": [
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied",
+      "power.current_now_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_now: cat: /sys/class/power_supply/battery/current_now: Permission denied",
+      "power.current_average_ua: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/current_avg: cat: /sys/class/power_supply/battery/current_avg: Permission denied",
+      "power.charge_counter_uah: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/charge_counter: cat: /sys/class/power_supply/battery/charge_counter: Permission denied",
+      "power.voltage_now_uv: ADB command failed (1): adb -s 8a023e3a shell cat /sys/class/power_supply/battery/voltage_now: cat: /sys/class/power_supply/battery/voltage_now: Permission denied"
+    ],
+    "status": "partial"
+  },
+  "window": {
+    "duration_seconds": 1800.061997,
+    "finished_at": "2026-08-07T17:56:05.874240Z",
+    "sample_records_in_window": 30,
+    "started_at": "2026-08-07T17:26:05.812243Z",
+    "telemetry_records_excluded": 1,
+    "telemetry_records_in_window": 29
+  }
+}

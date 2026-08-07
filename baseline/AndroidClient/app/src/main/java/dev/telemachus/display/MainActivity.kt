@@ -206,6 +206,12 @@ class MainActivity : AppCompatActivity() {
     private var wirelessAutoReconnectEnabled = false
     private var pendingWirelessReconnectDelayMs: Long? = null
     private var pendingTerminalGuidance: ConnectionGuidance? = null
+    private var isReconnecting = false
+    private var hasConnectedThisRun = false
+    private val controlBarHandler = Handler(Looper.getMainLooper())
+    private val controlBarHideRunnable = Runnable { hideControlBar() }
+    private var availableDisplays = emptyList<StreamDisplayOption>()
+    private var selectedDisplayId = ""
     private val autoConnectRunnable =
         Runnable {
             if (automaticUsbConnect && isInForeground && !isConnected && !connectionAttemptInProgress) {
@@ -258,6 +264,7 @@ class MainActivity : AppCompatActivity() {
         setupUI()
         setupDraggableOverlay()
         setupSettingsButton()
+        setupControlBar()
         restoreOverlayPosition()
         restoreSettingsButtonPosition()
         startChecklistUpdates()
@@ -265,8 +272,12 @@ class MainActivity : AppCompatActivity() {
         setupWirelessController()
         if (savedInstanceState?.getBoolean(STATE_AUTOMATIC_USB_CONNECT) == true) {
             enableAutomaticUsbConnect()
-        } else {
-            handleLaunchIntent(intent)
+        } else if (!handleLaunchIntent(intent) && prefs.connectionMode == ConnectionMode.USB) {
+            // USB is the default mode and the host is reachable over adb-reverse
+            // loopback, so a plain launch (icon tap, or a relaunch that dropped the
+            // auto_connect extra) should still attach automatically, matching the
+            // behavior when the Mac host starts the client with the extra.
+            enableAutomaticUsbConnect()
         }
     }
 
@@ -353,12 +364,13 @@ class MainActivity : AppCompatActivity() {
             keyCode == KeyEvent.KEYCODE_VOLUME_MUTE ||
             keyCode == KeyEvent.KEYCODE_POWER
 
-    private fun handleLaunchIntent(intent: Intent?) {
-        if (intent?.getBooleanExtra(EXTRA_AUTO_CONNECT, false) != true) return
+    private fun handleLaunchIntent(intent: Intent?): Boolean {
+        if (intent?.getBooleanExtra(EXTRA_AUTO_CONNECT, false) != true) return false
         // Treat the launch extra as an event. Persisting it on the Activity's
         // Intent would make a deliberate Disconnect resume after recreation.
         intent.removeExtra(EXTRA_AUTO_CONNECT)
         enableAutomaticUsbConnect()
+        return true
     }
 
     private fun enableAutomaticUsbConnect() {
@@ -378,6 +390,10 @@ class MainActivity : AppCompatActivity() {
         if (!automaticUsbConnect || isConnected || !isInForeground) return
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         autoConnectHandler.postDelayed(autoConnectRunnable, delayMs)
+        if (hasConnectedThisRun) {
+            isReconnecting = true
+            if (prefs.connectionMode == ConnectionMode.USB) updateDisconnectedHeader(ConnectionMode.USB)
+        }
     }
 
     private fun setupModeToggle() {
@@ -861,7 +877,9 @@ class MainActivity : AppCompatActivity() {
         if (!::binding.isInitialized || isConnected) return
         when (mode) {
             ConnectionMode.USB -> {
-                binding.connectionTitle.setText(R.string.waiting_for_mac)
+                binding.connectionTitle.setText(
+                    if (isReconnecting) R.string.reconnecting_short else R.string.waiting_for_mac,
+                )
                 binding.connectionSubtitle.setText(R.string.usb_waiting_description)
                 binding.connectionProgress.visibility = View.VISIBLE
                 binding.connectButton.setText(R.string.try_again)
@@ -1177,9 +1195,11 @@ class MainActivity : AppCompatActivity() {
         binding.videoViewport.visibility = View.VISIBLE
         binding.disconnectedBackdrop.visibility = View.GONE
         binding.settingsPanel.visibility = View.GONE
-        binding.settingsButton.visibility = View.VISIBLE
-        restoreSettingsButtonPosition()
+        // Route settings through the tap-to-reveal control bar instead of a
+        // persistent floating button that occludes the video.
+        binding.settingsButton.visibility = View.GONE
         updateOverlayVisibility(prefs.showStatsOverlay)
+        revealControlBar()
     }
 
     private fun showDisconnectedStreamUi() {
@@ -1187,14 +1207,91 @@ class MainActivity : AppCompatActivity() {
         // bars or changing orientation here resized/recreated the Activity and
         // made the waiting state visibly flash.
         enableFullscreenMode()
-        binding.videoViewport.visibility = View.GONE
+        // Keep the video viewport laid out so the SurfaceView holds a live
+        // surface while waiting to connect. The opaque backdrop above it hides
+        // any stale frames. This lets an incoming video configuration bind the
+        // decoder immediately instead of deadlocking on a surface that a GONE
+        // view never creates.
+        binding.videoViewport.visibility = View.VISIBLE
         binding.disconnectedBackdrop.visibility = View.VISIBLE
         binding.settingsPanel.visibility = View.VISIBLE
         binding.settingsButton.visibility = View.GONE
         binding.statusBar.visibility = View.GONE
         binding.connectButton.isEnabled = true
         binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_waiting)
+        hideControlBar()
         updateDisconnectedHeader(prefs.connectionMode)
+    }
+
+    /** Wires the tap-to-reveal control bar (display capsule, settings, disconnect). */
+    private fun setupControlBar() {
+        binding.controlSettingsButton.setOnClickListener {
+            showSettingsDialog()
+            revealControlBar()
+        }
+        binding.controlDisconnectButton.setOnClickListener { disconnect() }
+        binding.controlDisplaysButton.setOnClickListener { revealControlBar() }
+    }
+
+    private fun revealControlBar() {
+        if (!isConnected) return
+        binding.controlBar.visibility = View.VISIBLE
+        binding.controlBar.animate().alpha(1f).setDuration(120).start()
+        controlBarHandler.removeCallbacks(controlBarHideRunnable)
+        controlBarHandler.postDelayed(controlBarHideRunnable, CONTROL_BAR_AUTO_HIDE_MS)
+    }
+
+    private fun hideControlBar() {
+        controlBarHandler.removeCallbacks(controlBarHideRunnable)
+        binding.controlBar.visibility = View.GONE
+    }
+
+    /**
+     * Rebuild the display-selection capsule from the host list. Enabled only when
+     * display selection was negotiated; a single display renders as one selected,
+     * disabled chip so the current display stays legible.
+     */
+    private fun populateDisplayCapsule(
+        displays: List<StreamDisplayOption>,
+        selectedId: String,
+    ) {
+        val group = binding.displayToggleGroup
+        group.removeAllViews()
+        val selectable =
+            currentSessionBinding().capabilities.displaySelection && displays.size > 1
+        binding.controlDisplaysButton.isEnabled = selectable
+        // Collapse the whole display picker on single-display or un-negotiated
+        // sessions so the resting capsule stays a minimal, low-misfire target.
+        binding.displayCapsuleGroup.visibility = if (selectable) View.VISIBLE else View.GONE
+        if (!selectable) return
+        displays.forEach { option ->
+            val button =
+                MaterialButton(
+                    this,
+                    null,
+                    com.google.android.material.R.attr.materialButtonOutlinedStyle,
+                ).apply {
+                    id = View.generateViewId()
+                    text = getString(R.string.display_option_format, option.name, option.width, option.height)
+                    isAllCaps = false
+                    maxLines = 1
+                    setTextColor(getColorStateList(R.color.mode_toggle_text))
+                    tag = option.id
+                    isEnabled = selectable
+                }
+            group.addView(button)
+            if (option.id == selectedId) group.check(button.id)
+        }
+        group.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked || !selectable) return@addOnButtonCheckedListener
+            val target = group.findViewById<MaterialButton>(checkedId)?.tag as? String ?: return@addOnButtonCheckedListener
+            if (target != selectedDisplayId) {
+                mainDiag("capsule selectDisplay target=$target from=$selectedDisplayId")
+                streamClient?.selectDisplay(target)
+                selectedDisplayId = target
+                revealControlBar()
+            }
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility", "InflateParams")
@@ -2124,6 +2221,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (connected) {
                     if (prefs.connectionMode == ConnectionMode.USB) automaticUsbConnect = true
+                    hasConnectedThisRun = true
+                    isReconnecting = false
                     unsupportedKeyboardNoticeShown = false
                     pendingWirelessReconnectDelayMs = null
                     initialWirelessReconnectBackoff.reset()
@@ -2156,6 +2255,34 @@ class MainActivity : AppCompatActivity() {
 
         callbackClient.onVideoConfiguration = displayLifecycle::onVideoConfiguration
         callbackClient.onDisplayGeometry = displayLifecycle::onDisplayGeometry
+        callbackClient.onDisplaysAvailable = displays@{ options, selectedId ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@displays
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                mainDiag(
+                    "onDisplaysAvailable: count=${options.size} selected=$selectedId " +
+                        "negotiated=${callbackClient.negotiatedCapabilities()} " +
+                        "displays=${options.joinToString { "${it.id}:${it.name}:${it.width}x${it.height}:primary=${it.isPrimary}" }}",
+                )
+                // Promote the session binding to reflect negotiated capabilities so
+                // the display capsule and other controls unlock only when agreed.
+                val displaySelection =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_MULTI_DISPLAY in
+                        callbackClient.negotiatedCapabilities()
+                if (displaySelection) {
+                    applyNegotiatedSession(
+                        callbackClient,
+                        callbackGeneration,
+                        ClientSessionBinding(
+                            ClientSessionCapabilities.LEGACY_TOUCH_ONLY.copy(displaySelection = true),
+                        ),
+                    )
+                }
+                availableDisplays = options
+                selectedDisplayId = selectedId
+                populateDisplayCapsule(options, selectedId)
+            }
+        }
 
         callbackClient.onStats = stats@{ fps, mbps ->
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@stats
@@ -2884,6 +3011,7 @@ class MainActivity : AppCompatActivity() {
         wirelessController.showAutomaticReconnect(entry.macName, entry.host, entry.port, delayMs)
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
         wirelessReconnectHandler.postDelayed(wirelessReconnectRunnable, delayMs)
+        isReconnecting = true
         mainDiag("Wireless reconnect scheduled in ${delayMs}ms")
     }
 
@@ -2891,6 +3019,7 @@ class MainActivity : AppCompatActivity() {
         wirelessAutoReconnectEnabled = false
         pendingWirelessReconnectDelayMs = null
         initialWirelessReconnectBackoff.reset()
+        isReconnecting = false
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
     }
 
@@ -2962,6 +3091,8 @@ class MainActivity : AppCompatActivity() {
         cancelWirelessReconnect()
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         stopPingTimer()
+        isReconnecting = false
+        hasConnectedThisRun = false
         val client = streamClient
         val generation = activeSessionGeneration
         client?.disconnect()
@@ -3045,6 +3176,8 @@ class MainActivity : AppCompatActivity() {
             MotionEvent.ACTION_DOWN -> {
                 inputPredictor.reset()
                 inputPredictor.addSample(x.toFloat(), y.toFloat())
+                // A touch on the video reveals the control bar; it fades on its own.
+                revealControlBar()
             }
 
             MotionEvent.ACTION_MOVE -> {
@@ -3257,6 +3390,7 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_FORWARDED_POINTERS = 2
         private const val LEGACY_RIGHT_CLICK_HOLD_MS = 650L
         private const val FOREGROUND_RECONNECT_DELAY_MS = 150L
+        private const val CONTROL_BAR_AUTO_HIDE_MS = 3_000L
         private val DECODER_LIFECYCLE_EXECUTOR =
             Executors.newSingleThreadExecutor { runnable ->
                 Thread(runnable, "VibeDecoderLifecycle").apply { isDaemon = true }

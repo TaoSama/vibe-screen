@@ -7,11 +7,11 @@ final class ProtocolV1SessionTests: XCTestCase {
     func testProductionHostCapabilitiesAreExact() {
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true),
-            [.touch]
+            [.touch, .multiDisplay]
         )
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false),
-            []
+            [.multiDisplay]
         )
     }
 
@@ -107,12 +107,12 @@ final class ProtocolV1SessionTests: XCTestCase {
             return XCTFail("Expected HostHello")
         }
         XCTAssertEqual(hostHello.selectedProtocol, 1)
-        XCTAssertEqual(hostHello.capabilities, [.touch])
+        XCTAssertEqual(hostHello.capabilities, [.touch, .multiDisplay])
         guard case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected SessionAccepted")
         }
         XCTAssertEqual(accepted.sessionID, sessionID)
-        XCTAssertEqual(accepted.negotiatedCapabilities, [.touch])
+        XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .multiDisplay])
         XCTAssertNil(try session.makeMediaFrame(payload: Data([1]), timestamp: 1, keyframe: true))
 
         let listActions = session.handleControl(try envelope(
@@ -145,6 +145,56 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertNotNil(try session.makeMediaFrame(payload: Data([1]), timestamp: 1, keyframe: true))
     }
 
+    func testMultiDisplayEnumerationAndSelection() throws {
+        let session = makeMultiDisplaySession()
+        _ = session.handleControl(try clientHello().serializedData())
+        _ = session.completeCodecNegotiation()
+
+        let listActions = session.handleControl(try envelope(
+            id: 2,
+            payload: .listDisplaysRequest(VSListDisplaysRequest())
+        ).serializedData())
+        guard case .listDisplaysResponse(let displays)? = try controlEnvelopes(listActions).first?.payload else {
+            return XCTFail("Expected ListDisplaysResponse")
+        }
+        XCTAssertEqual(displays.displays.count, 2)
+        XCTAssertEqual(displays.displays[0].displayID, "active-display")
+        XCTAssertTrue(displays.displays[0].isPrimary)
+        XCTAssertEqual(displays.displays[1].displayID, "second-display")
+        XCTAssertFalse(displays.displays[1].isPrimary)
+        XCTAssertEqual(displays.displays[1].logicalSize.width, 3840)
+        XCTAssertEqual(displays.displays[1].logicalSize.height, 2160)
+
+        let startActions = session.handleControl(try envelope(
+            id: 3,
+            payload: .startDisplayRequest(displayRequest(sourceDisplayID: "second-display"))
+        ).serializedData())
+        XCTAssertTrue(startActions.contains {
+            if case .selectDisplay(let id) = $0 { return id == "second-display" }
+            return false
+        })
+        let startResponses = try controlEnvelopes(startActions)
+        XCTAssertEqual(startResponses.count, 2)
+        guard case .startDisplayResponse(let response)? = startResponses[0].payload,
+              case .videoConfig(let config)? = startResponses[1].payload else {
+            return XCTFail("Expected StartDisplayResponse + VideoConfig")
+        }
+        XCTAssertTrue(response.accepted)
+        XCTAssertEqual(response.display.displayID, "second-display")
+        XCTAssertFalse(response.display.isPrimary)
+        XCTAssertEqual(config.encodedSize.width, 3840)
+        XCTAssertEqual(config.encodedSize.height, 2160)
+
+        let unknownSession = makeMultiDisplaySession()
+        _ = unknownSession.handleControl(try clientHello().serializedData())
+        _ = unknownSession.completeCodecNegotiation()
+        let unknown = unknownSession.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(displayRequest(sourceDisplayID: "does-not-exist"))
+        ).serializedData())
+        XCTAssertEqual(try protocolError(from: unknown).code, .invalidState)
+    }
+
     func testHandshakeRejectsVersionAndUnsupportedRequiredCapability() throws {
         let wrongVersion = makeSession()
         var hello = clientHello()
@@ -172,8 +222,8 @@ final class ProtocolV1SessionTests: XCTestCase {
               case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected HostHello + SessionAccepted")
         }
-        XCTAssertEqual(hostHello.capabilities, [.touch])
-        XCTAssertEqual(accepted.negotiatedCapabilities, [.touch])
+        XCTAssertEqual(hostHello.capabilities, [.touch, .multiDisplay])
+        XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .multiDisplay])
     }
 
     func testInvalidDisplayAndStaleEpochFailClosed() throws {
@@ -331,6 +381,38 @@ final class ProtocolV1SessionTests: XCTestCase {
         ))
     }
 
+    private func makeMultiDisplaySession() -> ProtocolV1SessionCoordinator {
+        ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
+            sessionID: sessionID,
+            sessionEpoch: sessionEpoch,
+            displayWidth: 1920,
+            displayHeight: 1080,
+            rotation: 90,
+            framesPerSecond: 60,
+            bitrateKbps: 20_000,
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true
+            ),
+            requiredClientCapabilities: [.touch],
+            supportedCodecs: [.hevc, .h264],
+            hostID: "host",
+            hostName: "Mac",
+            displayID: "active-display",
+            displayName: "Display",
+            displayIsVirtual: true,
+            displays: [
+                ProtocolV1DisplayInfo(
+                    id: "active-display", name: "Built-in Display",
+                    width: 1920, height: 1080, isPrimary: true, isVirtual: false
+                ),
+                ProtocolV1DisplayInfo(
+                    id: "second-display", name: "External 4K",
+                    width: 3840, height: 2160, isPrimary: false, isVirtual: false
+                )
+            ]
+        ))
+    }
+
     private func clientHello() -> VSEnvelope {
         var range = VSProtocolRange()
         range.minimum = 1
@@ -339,7 +421,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         hello.supportedProtocols = range
         hello.deviceID = "device"
         hello.deviceName = "Tablet"
-        hello.capabilities = [.touch]
+        hello.capabilities = [.touch, .multiDisplay]
         hello.codecs = [.hevc, .h264]
         var envelope = VSEnvelope()
         envelope.protocolVersion = 1
@@ -362,6 +444,13 @@ final class ProtocolV1SessionTests: XCTestCase {
         var request = VSStartDisplayRequest()
         request.mode = .existing
         request.sourceDisplayID = "active-display"
+        return request
+    }
+
+    private func displayRequest(sourceDisplayID: String) -> VSStartDisplayRequest {
+        var request = VSStartDisplayRequest()
+        request.mode = .existing
+        request.sourceDisplayID = sourceDisplayID
         return request
     }
 
