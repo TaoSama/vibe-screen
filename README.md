@@ -183,12 +183,13 @@ HiDPI scale, letterboxing, rotation, and safe areas.
 
 ## Open-source Baseline
 
-- [SideScreen](https://github.com/tranvuongquocdat/SideScreen) is the primary
-  MIT-licensed engineering baseline for the macOS host, Android client,
-  virtual display, codecs, USB/LAN transport, and touch pipeline.
-- [Telemachus](https://github.com/aaditagrawal/telemachus) supplies applicable
-  MIT-licensed USB-first reliability, bounded queues, stale-frame recovery,
-  telemetry, automatic reconnection, and codec fallback improvements.
+- [Telemachus](https://github.com/aaditagrawal/telemachus) is the direct
+  MIT-licensed source import for selected macOS and Android application code,
+  including its USB-first reliability, bounded queues, stale-frame recovery,
+  telemetry, automatic reconnection, and codec fallback work.
+- [SideScreen](https://github.com/tranvuongquocdat/SideScreen) is the upstream
+  MIT-licensed foundation inherited indirectly through Telemachus for virtual
+  display, capture, encoding, ADB/TCP, Android decoding, pairing, and touch.
 - [node-mac-virtual-display](https://github.com/enfp-dev-studio/node-mac-virtual-display)
   is a non-code design reference for virtual-display identity, display
   lifecycle, and HiDPI configuration; no source was copied.
@@ -281,10 +282,13 @@ relay handles only ciphertext.
 The macOS M150 adapter has completed real local offer/answer, ICE and
 bidirectional DataChannel tests through both direct and forced coturn relay
 candidate pairs. Its application record layer is wired to the Keychain-backed
-identity/session lifecycle. The Android M144 adapter, AndroidKeyStore lifecycle,
-REST signaling client, product-session UI and encrypted DataChannel
-instrumentation now have one clean-commit Nubia P0110 device pass through direct
-and forced local coturn using synthetic Protocol v1 media. This is not real
+identity/session lifecycle. On 2026-08-05, source commit
+`597518f948075e396352bc353afcec01a30303f3` recorded one Nubia P0110 device pass
+for the Android M144 adapter, AndroidKeyStore lifecycle, REST signaling client,
+product-session UI, and encrypted DataChannel instrumentation through direct and
+forced local coturn using synthetic Protocol v1 media. This historical result is
+limited to that dated source/device combination and must not be extrapolated to
+the current working tree or later commits. It is not real ScreenCaptureKit or
 display-capture evidence.
 The existing trusted-LAN path is still a separate plaintext mode and must not be
 presented as Internet E2EE.
@@ -312,8 +316,10 @@ See the [Phase 3 requirements](docs/changes/2026-08-04-phase-3-secure-internet/P
 [test plan](docs/changes/2026-08-04-phase-3-secure-internet/TEST.md), and
 [relay operations](docs/changes/2026-08-04-phase-3-secure-internet/OPERATIONS.md).
 The previous curated Android interop pass remains withdrawn because its source
-commit and raw evidence were unavailable. A new reachable-source record retains
-raw host/device/UI, service and per-ADB lease-gate evidence with a privacy scan.
+commit and raw evidence were unavailable. The separate 2026-08-05
+reachable-source record retains raw host/device/UI, service and per-ADB
+lease-gate evidence with a privacy scan, without extending its result to current
+code.
 Automatic account/session-authority issuance, real
 encoded ScreenCaptureKit output through the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
