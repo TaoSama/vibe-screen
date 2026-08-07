@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stdout
+import fcntl
 import hashlib
 import io
 import os
@@ -96,6 +97,11 @@ class LocalWebRTCE2ETests(unittest.TestCase):
                 for snapshot in snapshots[:2]:
                     if snapshot.private_directory is not None:
                         private_directories.append(snapshot.private_directory)
+                    self.assertEqual(
+                        fcntl.fcntl(snapshot.execution_descriptor, fcntl.F_GETFL)
+                        & os.O_ACCMODE,
+                        os.O_RDONLY,
+                    )
                     original = snapshot.source_path.with_name(snapshot.source_path.name + ".original")
                     snapshot.source_path.replace(original)
                     snapshot.source_path.write_bytes(malicious_bytes)
@@ -164,6 +170,11 @@ class LocalWebRTCE2ETests(unittest.TestCase):
                 return_value=None,
             ), open_verified_external_executable(turnserver, "coturn binary") as snapshot:
                 snapshot_directory = snapshot.private_directory
+                self.assertEqual(
+                    fcntl.fcntl(snapshot.execution_descriptor, fcntl.F_GETFL)
+                    & os.O_ACCMODE,
+                    os.O_RDONLY,
+                )
                 original = root / "turnserver.original"
                 turnserver.replace(original)
                 turnserver.write_bytes(malicious)
