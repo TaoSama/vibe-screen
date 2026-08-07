@@ -19,6 +19,7 @@ import java.security.KeyPair
 import java.security.SecureRandom
 import java.security.Signature
 import java.util.Base64
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -39,19 +40,56 @@ class InternetSessionProfileCodecTest {
     fun `concurrent reads and close never expose a partially zeroized credential`() {
         val secret = DestroyableUtf8.fromString("concurrent-credential")
         val executor = Executors.newFixedThreadPool(4)
-        repeat(32) {
-            executor.execute {
-                runCatching {
-                    secret.withString { value -> assertEquals("concurrent-credential", value) }
+        val start = CountDownLatch(1)
+        val closeFuture =
+            executor.submit {
+                start.await()
+                secret.close()
+            }
+        val readFutures =
+            List(32) {
+                executor.submit {
+                    start.await()
+                    try {
+                        secret.withString { value -> assertEquals("concurrent-credential", value) }
+                    } catch (failure: IllegalStateException) {
+                        assertEquals("Secret has been destroyed", failure.message)
+                    }
                 }
             }
-        }
-        executor.execute(secret::close)
+        start.countDown()
         executor.shutdown()
 
         assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS))
+        closeFuture.get()
+        readFutures.forEach { it.get() }
         secret.close()
         assertTrue(secret.isDestroyedForTest())
+    }
+
+    @Test
+    fun `growth and destroy zero every owned output buffer`() {
+        val output = ZeroizableByteArrayOutputStream(initialCapacity = 2)
+        val initialBuffer = output.backingBufferForTest()
+
+        output.write(byteArrayOf(1, 2, 3), 0, 3)
+
+        assertTrue(initialBuffer.all { it == 0.toByte() })
+        val bufferAfterBulkGrowth = output.backingBufferForTest()
+        assertTrue(bufferAfterBulkGrowth !== initialBuffer)
+
+        repeat(bufferAfterBulkGrowth.size - output.size()) { output.write(4) }
+        output.write(5)
+
+        assertTrue(bufferAfterBulkGrowth.all { it == 0.toByte() })
+        val currentBuffer = output.backingBufferForTest()
+        assertTrue(currentBuffer !== bufferAfterBulkGrowth)
+        assertTrue(currentBuffer.any { it != 0.toByte() })
+
+        output.destroy()
+
+        assertTrue(currentBuffer.all { it == 0.toByte() })
+        assertEquals(0, output.size())
     }
 
     @Test

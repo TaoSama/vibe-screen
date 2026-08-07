@@ -2,6 +2,7 @@ package dev.telemachus.display.internet.security
 
 import dev.telemachus.display.internet.InternetProductRevocationCoordinator
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -57,6 +58,62 @@ class PairingPersistenceTransactionTest {
 
         assertTrue(cleanedOwner == "pair-2")
         assertFalse(TARGET in slots.values)
+        assertFalse(RECOVERY_MARKER in slots.values)
+    }
+
+    @Test
+    fun disagreeingMarkersRecoverEveryDistinctPreparedTargetAndBusinessOwner() {
+        val slots = MemorySlots()
+        slots.values[MARKER] = preparedMarker(TARGET, "pair-1")
+        slots.values[RECOVERY_MARKER] = preparedMarker(OLD_TARGET, "pair-2")
+        slots.values[TARGET] = byteArrayOf(1)
+        slots.values[OLD_TARGET] = byteArrayOf(2)
+        val cleaned = mutableListOf<Pair<String, String?>>()
+        val transaction = PairingPersistenceTransaction(slots, MARKER)
+
+        assertTrue(transaction.hasPendingCleanup())
+        assertThrows(IllegalStateException::class.java) {
+            transaction.commit(TARGET)
+        }
+        assertTrue(
+            transaction.retryPendingCleanup { target, owner ->
+                cleaned += target to owner
+            },
+        )
+
+        assertEquals(setOf(TARGET to "pair-1", OLD_TARGET to "pair-2"), cleaned.toSet())
+        assertFalse(TARGET in slots.values)
+        assertFalse(OLD_TARGET in slots.values)
+        assertFalse(MARKER in slots.values)
+        assertFalse(RECOVERY_MARKER in slots.values)
+    }
+
+    @Test
+    fun disagreeingMarkerCleanupFailureRetainsMarkersForRetry() {
+        val slots = MemorySlots()
+        slots.values[MARKER] = preparedMarker(TARGET, "pair-1")
+        slots.values[RECOVERY_MARKER] = preparedMarker(OLD_TARGET, "pair-2")
+        slots.values[TARGET] = byteArrayOf(1)
+        slots.values[OLD_TARGET] = byteArrayOf(2)
+        var failOwner = "pair-2"
+        val cleanupAttempts = mutableMapOf<String?, Int>()
+        val cleanupBusinessState = { _: String, owner: String? ->
+            cleanupAttempts[owner] = cleanupAttempts.getOrDefault(owner, 0) + 1
+            if (owner == failOwner) throw IllegalStateException("injected cleanup failure")
+        }
+
+        assertThrows(IllegalStateException::class.java) {
+            PairingPersistenceTransaction(slots, MARKER).retryPendingCleanup(cleanupBusinessState)
+        }
+        assertTrue(MARKER in slots.values)
+        assertTrue(RECOVERY_MARKER in slots.values)
+
+        failOwner = ""
+        assertTrue(PairingPersistenceTransaction(slots, MARKER).retryPendingCleanup(cleanupBusinessState))
+        assertEquals(2, cleanupAttempts["pair-2"])
+        assertFalse(TARGET in slots.values)
+        assertFalse(OLD_TARGET in slots.values)
+        assertFalse(MARKER in slots.values)
         assertFalse(RECOVERY_MARKER in slots.values)
     }
 
@@ -201,5 +258,8 @@ class PairingPersistenceTransactionTest {
         private const val RECOVERY_MARKER = "$MARKER.recovery"
         private const val TARGET = "phase3.pairing.v1.0123456789abcdef"
         private const val OLD_TARGET = "phase3.pairing.v1.fedcba9876543210"
+
+        private fun preparedMarker(target: String, owner: String): ByteArray =
+            "v2\nprepared\n$target\n$owner".toByteArray()
     }
 }

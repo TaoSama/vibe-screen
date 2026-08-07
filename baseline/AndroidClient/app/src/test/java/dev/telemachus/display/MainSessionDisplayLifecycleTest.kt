@@ -66,6 +66,32 @@ class MainSessionDisplayLifecycleTest {
     }
 
     @Test
+    fun configuredWithoutPublishRejectsExactlyOnce() {
+        val decisions = mutableListOf<StreamVideoConfigurationDecision>()
+        val lifecycle =
+            lifecycle(
+                configureDecoder = { _, _, _, completion ->
+                    completion(MainSessionDecoderConfigurationResult.Configured)
+                    completion(MainSessionDecoderConfigurationResult.Configured)
+                },
+            )
+
+        lifecycle.onVideoConfiguration(StreamVideoConfiguration(1_280, 720, 0, 4)) {
+            decisions += it
+        }
+
+        assertEquals(
+            listOf(
+                StreamVideoConfigurationDecision.reject(
+                    "decoder_configuration_not_published",
+                ),
+            ),
+            decisions,
+        )
+        assertFalse(lifecycle.hasPendingVideoConfiguration)
+    }
+
+    @Test
     fun queuedUiDoesNotCompleteBeforeDecoderConfigurationRuns() {
         val queued = mutableListOf<() -> Unit>()
         var configurations = 0

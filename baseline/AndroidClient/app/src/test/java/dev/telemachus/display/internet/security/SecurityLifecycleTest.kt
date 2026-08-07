@@ -1,5 +1,6 @@
 package dev.telemachus.display.internet.security
 
+import java.security.MessageDigest
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -310,6 +311,32 @@ class SecurityLifecycleTest {
     }
 
     @Test
+    fun newerIdentityReadDoesNotRewriteUnownedLegacyState() {
+        val legacy =
+            LegacySessionSecurityState(
+                sessionEpoch = 9,
+                nonceHighWatermarks = emptyMap(),
+                ownerIdentityEpoch = 1,
+                revocationSequence = 0,
+                revoked = false,
+            )
+        val store =
+            MemoryStore(
+                DurableSecurityState(
+                    identityEpochHighWatermark = 2,
+                    authorizedIdentityEpoch = 2,
+                    authorizedIdentityKeyId = identityKeyTwo,
+                    legacySessionState = legacy,
+                ),
+            )
+
+        SecurityLifecycle(store).withFreshSessionEpochCandidate(pairingScopeB, 2, 1) { Unit }
+
+        assertEquals(0, store.persistCount)
+        assertEquals(legacy, store.state.legacySessionState)
+    }
+
+    @Test
     fun legacyPreferencesMigrateOnceWithoutDroppingRevocationOrReplayState() {
         val deviceScope = deviceSecurityScope("device-a")
         val legacyValues =
@@ -338,6 +365,59 @@ class SecurityLifecycleTest {
         val restarted = SecurityStatePreferenceCodec.decode(encoded, deviceScope)
         assertEquals(false, restarted.migratedFromLegacy)
         assertEquals(migrated.state, restarted.state)
+    }
+
+    @Test
+    fun version2MigrationBackfillsAuthorizedIdentityKeyFromMatchingStoredIdentity() {
+        val deviceId = "device-a"
+        val deviceScope = deviceSecurityScope(deviceId)
+        val identity = storedIdentity(deviceId, 1)
+        val decoded = SecurityStatePreferenceCodec.decode(version2Preferences(deviceScope), deviceScope)
+
+        val resolved =
+            decoded.resolveAuthorizedIdentityKeyBinding(deviceId) { resolvedDeviceId, resolvedEpoch ->
+                assertEquals(deviceId, resolvedDeviceId)
+                assertEquals(1L, resolvedEpoch)
+                identity
+            }
+
+        assertEquals(identity.keyId, resolved.authorizedIdentityKeyId)
+        val encoded = SecurityStatePreferenceCodec.encode(resolved, deviceScope)
+        assertEquals(3, encoded["schema_version"])
+        assertEquals(identity.keyId, encoded["authorized_identity_key_id"])
+    }
+
+    @Test
+    fun version2MigrationMakesSameEpochAuthorizationIdempotent() {
+        val deviceId = "device-a"
+        val deviceScope = deviceSecurityScope(deviceId)
+        val identity = storedIdentity(deviceId, 1)
+        val decoded = SecurityStatePreferenceCodec.decode(version2Preferences(deviceScope), deviceScope)
+        val store = MemoryStore(decoded.resolveAuthorizedIdentityKeyBinding(deviceId) { _, _ -> identity })
+
+        SecurityLifecycle(store).authorizeIdentityEpoch(1, identity.keyId)
+
+        assertEquals(0, store.persistCount)
+        assertEquals(identity.keyId, SecurityLifecycle(store).requireAuthorizedIdentityKeyId(1))
+    }
+
+    @Test
+    fun version2MigrationRetainsMissingBindingAndRejectsMismatchedStoredIdentity() {
+        val deviceId = "device-a"
+        val deviceScope = deviceSecurityScope(deviceId)
+        val decoded = SecurityStatePreferenceCodec.decode(version2Preferences(deviceScope), deviceScope)
+
+        val missing = decoded.resolveAuthorizedIdentityKeyBinding(deviceId) { _, _ -> null }
+        assertEquals(null, missing.authorizedIdentityKeyId)
+        assertThrows(IllegalStateException::class.java) {
+            SecurityLifecycle(MemoryStore(missing)).requireAuthorizedIdentityKeyId(1)
+        }
+        assertThrows(IllegalStateException::class.java) {
+            decoded.resolveAuthorizedIdentityKeyBinding(deviceId) { _, _ -> storedIdentity("device-b", 1) }
+        }
+        assertThrows(IllegalStateException::class.java) {
+            decoded.resolveAuthorizedIdentityKeyBinding(deviceId) { _, _ -> storedIdentity(deviceId, 2) }
+        }
     }
 
     @Test
@@ -471,6 +551,31 @@ private class MemoryStore(
 private fun String.hex(): ByteArray = chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
 private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
+
+private fun version2Preferences(deviceScope: String): Map<String, Any> =
+    SecurityStatePreferenceCodec
+        .encode(
+            DurableSecurityState(
+                identityEpochHighWatermark = 1,
+                authorizedIdentityEpoch = 1,
+                authorizedIdentityKeyId = identityKeyOne,
+            ),
+            deviceScope,
+        ).toMutableMap()
+        .apply {
+            this["schema_version"] = 2
+            remove("authorized_identity_key_id")
+        }
+
+private fun storedIdentity(deviceId: String, keyEpoch: Long): AndroidPublicIdentity {
+    val publicKey = byteArrayOf(0x04) + ByteArray(64) { (it + keyEpoch.toInt()).toByte() }
+    return AndroidPublicIdentity(
+        deviceId = deviceId,
+        keyId = MessageDigest.getInstance("SHA-256").digest(publicKey).toHex(),
+        keyEpoch = keyEpoch,
+        signingPublicKey = publicKey,
+    )
+}
 
 private val identityKeyOne = "1".repeat(64)
 private val identityKeyTwo = "2".repeat(64)
