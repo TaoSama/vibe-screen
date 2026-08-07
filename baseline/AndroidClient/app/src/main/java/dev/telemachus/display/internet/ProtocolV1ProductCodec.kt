@@ -13,9 +13,29 @@ import dev.vibescreen.protocol.v1.Ping
 import dev.vibescreen.protocol.v1.ProtocolRange
 import dev.vibescreen.protocol.v1.Pong
 import dev.vibescreen.protocol.v1.RequestKeyframe
+import dev.vibescreen.protocol.v1.ResourceLimits
 import dev.vibescreen.protocol.v1.TouchEvent
 import dev.vibescreen.protocol.v1.TransportKind
 import dev.vibescreen.protocol.v1.VideoConfigResult
+
+internal object InternetMediaRecordContract {
+    const val MAXIMUM_ENCRYPTED_RECORD_BYTES = 4 * 1024 * 1024
+    // Protocol v1 secure-record header (51 bytes) plus the AES-GCM tag (16 bytes).
+    const val APPLICATION_AEAD_RECORD_OVERHEAD_BYTES = 51 + 16
+    const val MAXIMUM_PLAINTEXT_RECORD_BYTES =
+        MAXIMUM_ENCRYPTED_RECORD_BYTES - APPLICATION_AEAD_RECORD_OVERHEAD_BYTES
+    const val MAXIMUM_MEDIA_HEADER_BYTES = 64 * 1024
+    const val MAXIMUM_HEADER_LENGTH_VARINT_BYTES = 5
+    const val MAXIMUM_FRAGMENT_PAYLOAD_BYTES =
+        MAXIMUM_PLAINTEXT_RECORD_BYTES - MAXIMUM_MEDIA_HEADER_BYTES - MAXIMUM_HEADER_LENGTH_VARINT_BYTES
+    const val MAXIMUM_FRAGMENTS_PER_FRAME = 256
+    const val MAXIMUM_FRAME_BYTES = 16 * 1024 * 1024
+    const val MINIMUM_NEGOTIATED_ENCRYPTED_RECORD_BYTES =
+        APPLICATION_AEAD_RECORD_OVERHEAD_BYTES +
+            MAXIMUM_MEDIA_HEADER_BYTES +
+            MAXIMUM_HEADER_LENGTH_VARINT_BYTES +
+            (MAXIMUM_FRAME_BYTES + MAXIMUM_FRAGMENTS_PER_FRAME - 1) / MAXIMUM_FRAGMENTS_PER_FRAME
+}
 
 enum class ProductVideoCodec {
     H264,
@@ -87,6 +107,7 @@ sealed class ProductControlMessage {
         val hostId: String,
         val hostName: String,
         val capabilities: Set<Capability>,
+        val maximumEncryptedMediaRecordBytes: Long,
     ) : ProductControlMessage()
 
     data class SessionAccepted(
@@ -94,6 +115,7 @@ sealed class ProductControlMessage {
         val sessionEpoch: Long,
         val capabilities: Set<Capability>,
         val heartbeatIntervalMillis: Long,
+        val maximumEncryptedMediaRecordBytes: Long,
     ) : ProductControlMessage()
 
     data class SessionRejected(
@@ -176,9 +198,17 @@ class ProtobufProtocolV1ProductCodec(
                 .setSupportedProtocols(ProtocolRange.newBuilder().setMinimum(PROTOCOL_VERSION).setMaximum(PROTOCOL_VERSION))
                 .setDeviceId(localDeviceId)
                 .setDeviceName(deviceName)
-                .addAllCapabilities(REQUIRED_CLIENT_CAPABILITIES)
+                .addAllCapabilities(OFFERED_CLIENT_CAPABILITIES)
+                .addAllRequiredCapabilities(REQUIRED_CLIENT_CAPABILITIES)
                 .addAllCodecs(supportedCodecs.map { it.toProto() })
                 .addTransports(TransportKind.TRANSPORT_KIND_INTERNET)
+                .setResourceLimits(
+                    ResourceLimits
+                        .newBuilder()
+                        .setMaximumEncryptedMediaRecordBytes(
+                            InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
+                        ),
+                )
                 .build()
         return envelope(messageId, sessionId, sessionEpoch).setClientHello(hello).build().toByteArray()
     }
@@ -274,6 +304,7 @@ class ProtobufProtocolV1ProductCodec(
                         value.hostId,
                         value.hostName,
                         value.capabilitiesList.toSet(),
+                        Integer.toUnsignedLong(value.resourceLimits.maximumEncryptedMediaRecordBytes),
                     )
                 }
                 Envelope.PayloadCase.SESSION_ACCEPTED -> {
@@ -283,6 +314,7 @@ class ProtobufProtocolV1ProductCodec(
                         value.sessionEpoch,
                         value.negotiatedCapabilitiesList.toSet(),
                         value.heartbeatIntervalMs.toLong(),
+                        Integer.toUnsignedLong(value.negotiatedResourceLimits.maximumEncryptedMediaRecordBytes),
                     )
                 }
                 Envelope.PayloadCase.SESSION_REJECTED -> {
@@ -316,7 +348,9 @@ class ProtobufProtocolV1ProductCodec(
     }
 
     override fun decodeMediaFragment(payload: ByteArray): ProductMediaFragment {
-        require(payload.size in 2..MAX_MEDIA_PACKET_BYTES) { "Media packet size is invalid" }
+        require(payload.size in 2..InternetMediaRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES) {
+            "Media packet size is invalid"
+        }
         val (headerLength, prefixBytes) = decodeBoundedVarint(payload)
         require(headerLength in 1..MAX_MEDIA_HEADER_BYTES && headerLength <= payload.size - prefixBytes) {
             "Media header length is invalid"
@@ -330,7 +364,10 @@ class ProtobufProtocolV1ProductCodec(
             }
         val body = payload.copyOfRange(prefixBytes + headerLength, payload.size)
         require(header.payloadLength == body.size) { "Media payload length does not match its authenticated header" }
-        require(header.fragmentCount in 1..MAX_MEDIA_FRAGMENTS && header.fragmentIndex < header.fragmentCount) {
+        require(
+            header.fragmentCount in 1..InternetMediaRecordContract.MAXIMUM_FRAGMENTS_PER_FRAME &&
+                header.fragmentIndex < header.fragmentCount,
+        ) {
             "Media fragment coordinates are invalid"
         }
         return ProductMediaFragment(
@@ -415,18 +452,18 @@ class ProtobufProtocolV1ProductCodec(
     companion object {
         const val PROTOCOL_VERSION = 1
         private const val MAX_CONTROL_BYTES = 1_048_576
-        private const val MAX_MEDIA_PACKET_BYTES = 4_194_304
-        private const val MAX_MEDIA_HEADER_BYTES = 64 * 1024
-        private const val MAX_MEDIA_FRAGMENTS = 256
+        private const val MAX_MEDIA_HEADER_BYTES = InternetMediaRecordContract.MAXIMUM_MEDIA_HEADER_BYTES
         private const val MAX_VARINT_BYTES = 5
         private const val MAX_REASON_BYTES = 256
-        val REQUIRED_CLIENT_CAPABILITIES =
+        val OFFERED_CLIENT_CAPABILITIES =
             listOf(
                 Capability.CAPABILITY_TOUCH,
                 Capability.CAPABILITY_DEVICE_IDENTITY,
                 Capability.CAPABILITY_END_TO_END_ENCRYPTION,
+                Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION,
                 Capability.CAPABILITY_REPLAY_PROTECTION,
             )
+        val REQUIRED_CLIENT_CAPABILITIES = OFFERED_CLIENT_CAPABILITIES
 
         /** Test/host helper for the Protocol v1 `uint32 header length | header | payload` media-channel framing. */
         fun encodeMediaFragment(header: MediaPacketHeader, payload: ByteArray): ByteArray {
@@ -434,7 +471,11 @@ class ProtobufProtocolV1ProductCodec(
             val encodedHeader = header.toByteArray()
             require(encodedHeader.size <= MAX_MEDIA_HEADER_BYTES) { "Media header is too large" }
             val prefix = encodeVarint(encodedHeader.size)
-            return prefix + encodedHeader + payload
+            val record = prefix + encodedHeader + payload
+            require(record.size <= InternetMediaRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES) {
+                "Media packet exceeds the encrypted record limit"
+            }
+            return record
         }
 
         private fun encodeVarint(value: Int): ByteArray {

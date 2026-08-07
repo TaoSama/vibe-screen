@@ -14,6 +14,7 @@ import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.ECParameterSpec
 import java.security.spec.ECPoint
+import java.security.spec.ECPrivateKeySpec
 import java.security.spec.ECPublicKeySpec
 import java.time.Clock
 import java.time.Instant
@@ -62,6 +63,44 @@ class InternetPairingTest {
         clock.epochSeconds = NOW + 2
         assertThrows(IllegalArgumentException::class.java) { pending.complete(acceptance) }
         assertEquals(null, fixture.sink.sharedSecret)
+    }
+
+    @Test
+    fun expirationBoundaryIsExclusiveAtScanAndAcceptance() {
+        val scanBoundary = Fixture(expiresAt = NOW)
+        assertThrows(IllegalArgumentException::class.java) {
+            scanBoundary.coordinator.begin(scanBoundary.url.encode(), DEVICE_NAME)
+        }
+
+        val clock = MutableClock(NOW)
+        val acceptanceBoundary = Fixture(expiresAt = NOW + 1, clock = clock)
+        val pending = acceptanceBoundary.coordinator.begin(acceptanceBoundary.url.encode(), DEVICE_NAME)
+        val acceptance = acceptanceBoundary.accept(pending.request).acceptance
+        clock.epochSeconds = NOW + 1
+
+        assertThrows(IllegalArgumentException::class.java) { pending.complete(acceptance) }
+        assertEquals(null, acceptanceBoundary.sink.sharedSecret)
+    }
+
+    @Test
+    fun temporarySecretSinkCopiesAreZeroizedAfterSuccessAndFailure() {
+        val successSink = ReferencingSink()
+        val successFixture = Fixture(sinkOverride = successSink)
+        val successPending = successFixture.coordinator.begin(successFixture.url.encode(), DEVICE_NAME)
+        successPending.complete(successFixture.accept(successPending.request).acceptance)
+
+        assertEquals(setOf(0.toByte()), successSink.sharedReference?.toSet())
+        assertEquals(setOf(0.toByte()), successSink.bootstrapReference?.toSet())
+
+        val failureSink = ReferencingSink(throwOnPersist = true)
+        val failureFixture = Fixture(sinkOverride = failureSink)
+        val failurePending = failureFixture.coordinator.begin(failureFixture.url.encode(), DEVICE_NAME)
+
+        assertThrows(IllegalStateException::class.java) {
+            failurePending.complete(failureFixture.accept(failurePending.request).acceptance)
+        }
+        assertEquals(setOf(0.toByte()), failureSink.sharedReference?.toSet())
+        assertEquals(setOf(0.toByte()), failureSink.bootstrapReference?.toSet())
     }
 
     @Test
@@ -155,11 +194,250 @@ class InternetPairingTest {
         }.toString()
         assertThrows(IllegalArgumentException::class.java) { InternetPairingRequest.parse(padded) }
     }
+
+    @Test
+    fun sharedWireFixtureRunsThroughProductionCanonicalSignAndVerify() {
+        val fixture = SharedPairingWireFixture.load()
+        assertEquals("vibescreen.pairing-wire-fixture.v1", fixture.schema)
+        assertEquals("TEST_ONLY_SYNTHETIC_MATERIAL_DO_NOT_USE_IN_PRODUCTION", fixture.fixtureScope)
+        assertEquals(1, fixture.protocolVersion)
+        assertEquals(66, fixture.materialInt("device_ephemeral_random_fill_byte"))
+
+        val qrWire = fixture.wire("qr_offer")
+        val requestWire = fixture.wire("pairing_request")
+        val acceptanceWire = fixture.wire("acceptance")
+        listOf(qrWire, requestWire, acceptanceWire).forEach { wire ->
+            assertEquals(wire.byteLength, wire.utf8.toByteArray().size)
+            assertEquals(wire.sha256, pairingFixtureSha256Hex(wire.utf8))
+        }
+        assertEquals(qrWire.utf8, InternetPairingURL.parse(qrWire.utf8).encode())
+
+        val expectedRequest = InternetPairingRequest.parse(requestWire.utf8)
+        assertEquals(requestWire.utf8, expectedRequest.encode())
+        val acceptance = InternetPairingAcceptance.parse(acceptanceWire.utf8)
+        assertEquals(acceptanceWire.utf8, acceptance.encode())
+        assertArrayEquals(
+            decodePairingFixtureBase64URL(fixture.material("device_signing_public_key")),
+            expectedRequest.deviceIdentity.signingPublicKey,
+        )
+        assertArrayEquals(
+            decodePairingFixtureBase64URL(fixture.material("device_ephemeral_public_key")),
+            expectedRequest.deviceEphemeralPublicKey,
+        )
+        assertArrayEquals(
+            decodePairingFixtureBase64URL(fixture.material("host_signing_public_key")),
+            acceptance.hostIdentity.signingPublicKey,
+        )
+
+        val execution = beginSharedFixture(fixture)
+        assertEquals(1, execution.signer.calls)
+        assertArrayEquals(
+            decodePairingFixtureBase64URL(fixture.expected("request_digest")),
+            execution.signer.lastDigest,
+        )
+        assertEquals(expectedRequest, execution.pending.request)
+        assertEquals(requestWire.utf8, execution.pending.request.encode())
+
+        val result = execution.pending.complete(acceptance)
+        assertEquals(fixture.expected("pairing_identifier"), result.metadata.pairingIdentifier)
+        assertEquals(fixture.expected("session_key_id"), result.metadata.sessionKeyId)
+        assertArrayEquals(
+            decodePairingFixtureBase64URL(fixture.expected("session_context")),
+            result.metadata.sessionContext,
+        )
+        assertEquals(fixture.expected("pairing_identifier"), execution.sink.pairingIdentifier)
+        assertTrue(execution.sink.sharedSecret?.size == 32)
+        assertTrue(execution.sink.bootstrapSecret?.size == 32)
+    }
+
+    @Test
+    fun sharedFixtureRawDigestSignaturesRejectDoubleHashAndBadInputs() {
+        val fixture = SharedPairingWireFixture.load()
+        val request = InternetPairingRequest.parse(fixture.wire("pairing_request").utf8)
+        val digest = decodePairingFixtureBase64URL(fixture.expected("request_digest"))
+        assertTrue(verify(request.deviceIdentity.signingPublicKey, digest, request.requestSignature))
+        assertFalse(verify(request.deviceIdentity.signingPublicKey, sha256(digest), request.requestSignature))
+
+        val privateKey = decodeFixturePrivateKey(fixture.material("device_signing_private_scalar"))
+        val rawDigestSignature =
+            Signature.getInstance("NONEwithECDSA").run {
+                initSign(privateKey, FixedFillSecureRandom(0x24.toByte()))
+                update(digest)
+                sign()
+            }
+        assertTrue(verify(request.deviceIdentity.signingPublicKey, digest, rawDigestSignature))
+        val doubleHashedSignature =
+            Signature.getInstance("SHA256withECDSA").run {
+                initSign(privateKey, FixedFillSecureRandom(0x25.toByte()))
+                update(digest)
+                sign()
+            }
+        assertFalse(verify(request.deviceIdentity.signingPublicKey, digest, doubleHashedSignature))
+
+        val shortDigest = digest.copyOf(31)
+        val validShortDigestSignature =
+            Signature.getInstance("NONEwithECDSA").run {
+                initSign(privateKey, FixedFillSecureRandom(0x26.toByte()))
+                update(shortDigest)
+                sign()
+            }
+        assertTrue(
+            Signature.getInstance("NONEwithECDSA").run {
+                initVerify(decodePublic(request.deviceIdentity.signingPublicKey))
+                update(shortDigest)
+                verify(validShortDigestSignature)
+            },
+        )
+        assertFalse(verify(request.deviceIdentity.signingPublicKey, shortDigest, validShortDigestSignature))
+
+        val wrongDigest = digest.copyOf().apply { this[0] = (this[0].toInt() xor 1).toByte() }
+        val wrongSignature = request.requestSignature.copyOf().apply {
+            this[lastIndex] = (this[lastIndex].toInt() xor 1).toByte()
+        }
+        assertFalse(verify(request.deviceIdentity.signingPublicKey, wrongDigest, request.requestSignature))
+        assertFalse(verify(request.deviceIdentity.signingPublicKey, digest, wrongSignature))
+        assertFalse(
+            verify(
+                decodePairingFixtureBase64URL(fixture.material("host_signing_public_key")),
+                digest,
+                request.requestSignature,
+            ),
+        )
+        assertFalse(verify(ByteArray(65), digest, request.requestSignature))
+        assertFalse(verify(request.deviceIdentity.signingPublicKey.copyOf(64), digest, request.requestSignature))
+        assertFalse(verify(request.deviceIdentity.signingPublicKey, digest, byteArrayOf()))
+        assertFalse(verify(request.deviceIdentity.signingPublicKey, digest, ByteArray(81) { 0x30 }))
+        assertFalse(verify(request.deviceIdentity.signingPublicKey, digest, ByteArray(8) { 0x30 }))
+        assertFalse(verify(request.deviceIdentity.signingPublicKey, digest, byteArrayOf(0x30, 0x00)))
+    }
+
+    @Test
+    fun sharedWireFixtureNegativeCasesFailClosed() {
+        val fixture = SharedPairingWireFixture.load()
+        assertEquals(setOf("field_tamper", "signature", "size", "order"), fixture.negativeCategories)
+        listOf(
+            "reordered_required_capabilities",
+            "tampered_request_field",
+            "tampered_request_signature",
+            "oversized_device_name",
+            "tampered_acceptance_signature",
+            "tampered_session_context",
+        ).forEach { name ->
+            val negative = fixture.negative(name)
+            assertEquals(name, negative.sha256, pairingFixtureSha256Hex(negative.wireUtf8))
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            beginSharedFixture(
+                fixture,
+                qrWire = fixture.negative("reordered_required_capabilities").wireUtf8,
+            )
+        }
+
+        val changedField = InternetPairingRequest.parse(fixture.negative("tampered_request_field").wireUtf8)
+        val changedExecution = beginSharedFixture(fixture, deviceName = changedField.deviceName, enforceDigest = false)
+        assertFalse(
+            verify(
+                changedField.deviceIdentity.signingPublicKey,
+                checkNotNull(changedExecution.signer.lastDigest),
+                changedField.requestSignature,
+            ),
+        )
+        changedExecution.pending.close()
+
+        val changedSignature = InternetPairingRequest.parse(fixture.negative("tampered_request_signature").wireUtf8)
+        assertFalse(
+            verify(
+                changedSignature.deviceIdentity.signingPublicKey,
+                decodePairingFixtureBase64URL(fixture.expected("request_digest")),
+                changedSignature.requestSignature,
+            ),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            InternetPairingRequest.parse(fixture.negative("oversized_device_name").wireUtf8)
+        }
+
+        val changedAcceptanceSignature = InternetPairingAcceptance.parse(
+            fixture.negative("tampered_acceptance_signature").wireUtf8,
+        )
+        val signatureExecution = beginSharedFixture(fixture)
+        assertThrows(IllegalArgumentException::class.java) {
+            signatureExecution.pending.complete(changedAcceptanceSignature)
+        }
+        assertEquals(null, signatureExecution.sink.sharedSecret)
+
+        val changedContext = InternetPairingAcceptance.parse(
+            fixture.negative("tampered_session_context").wireUtf8,
+        )
+        val contextExecution = beginSharedFixture(fixture)
+        assertThrows(IllegalArgumentException::class.java) {
+            contextExecution.pending.complete(changedContext)
+        }
+        assertEquals(null, contextExecution.sink.sharedSecret)
+    }
+}
+
+private data class SharedFixtureExecution(
+    val pending: PendingInternetPairing,
+    val signer: FixtureDigestSigner,
+    val sink: MemorySink,
+)
+
+private class FixtureDigestSigner(
+    override val publicIdentity: InternetPairingIdentity,
+    private val expectedDigest: ByteArray?,
+    private val fixtureSignature: ByteArray,
+) : InternetPairingSigner {
+    var calls = 0
+        private set
+    var lastDigest: ByteArray? = null
+        private set
+
+    override fun signTranscriptDigest(digest: ByteArray): ByteArray {
+        calls += 1
+        lastDigest = digest.copyOf()
+        if (expectedDigest != null) {
+            check(MessageDigest.isEqual(expectedDigest, digest)) { "Production canonical digest drifted from the shared fixture" }
+        }
+        return fixtureSignature.copyOf()
+    }
+}
+
+private fun beginSharedFixture(
+    fixture: SharedPairingWireFixture,
+    qrWire: String = fixture.wire("qr_offer").utf8,
+    deviceName: String = "Fixture Android",
+    enforceDigest: Boolean = true,
+): SharedFixtureExecution {
+    val expectedRequest = InternetPairingRequest.parse(fixture.wire("pairing_request").utf8)
+    val signer =
+        FixtureDigestSigner(
+            expectedRequest.deviceIdentity,
+            if (enforceDigest) decodePairingFixtureBase64URL(fixture.expected("request_digest")) else null,
+            expectedRequest.requestSignature,
+        )
+    val sink = MemorySink()
+    val coordinator =
+        InternetPairingCoordinator(
+            signer,
+            sink,
+            Clock.fixed(Instant.ofEpochSecond(2_000_000_000L), ZoneOffset.UTC),
+            FixedFillSecureRandom(fixture.materialInt("device_ephemeral_random_fill_byte").toByte()),
+        )
+    return SharedFixtureExecution(coordinator.begin(qrWire, deviceName), signer, sink)
+}
+
+private fun decodeFixturePrivateKey(value: String): PrivateKey {
+    val parameters = AlgorithmParameters.getInstance("EC").apply { init(ECGenParameterSpec("secp256r1")) }
+    val spec = parameters.getParameterSpec(ECParameterSpec::class.java)
+    val scalar = BigInteger(1, decodePairingFixtureBase64URL(value))
+    return KeyFactory.getInstance("EC").generatePrivate(ECPrivateKeySpec(scalar, spec))
 }
 
 private class Fixture(
     val expiresAt: Long = NOW + 300,
     clock: Clock = Clock.fixed(Instant.ofEpochSecond(NOW), ZoneOffset.UTC),
+    sinkOverride: InternetPairingSecretSink? = null,
 ) {
     val hostSigning = keyPair()
     val hostEphemeral = keyPair()
@@ -179,7 +457,7 @@ private class Fixture(
             encodePublic(hostEphemeral),
         )
     val sink = MemorySink()
-    val coordinator = InternetPairingCoordinator(JvmSigner(deviceIdentity, deviceSigning.private), sink, clock)
+    val coordinator = InternetPairingCoordinator(JvmSigner(deviceIdentity, deviceSigning.private), sinkOverride ?: sink, clock)
 
     fun verifyRequest(request: InternetPairingRequest): Boolean {
         val parts = parts(request)
@@ -238,6 +516,19 @@ private class MemorySink : InternetPairingSecretSink {
     }
 }
 
+private class ReferencingSink(
+    private val throwOnPersist: Boolean = false,
+) : InternetPairingSecretSink {
+    var sharedReference: ByteArray? = null
+    var bootstrapReference: ByteArray? = null
+
+    override fun persistPairingSecrets(pairingIdentifier: String, sharedSecret: ByteArray, bootstrapSecret: ByteArray) {
+        sharedReference = sharedSecret
+        bootstrapReference = bootstrapSecret
+        if (throwOnPersist) throw IllegalStateException("persist failed")
+    }
+}
+
 private class JvmSigner(
     override val publicIdentity: InternetPairingIdentity,
     private val privateKey: PrivateKey,
@@ -290,10 +581,6 @@ private fun ecdh(privateKey: PrivateKey, publicKey: ByteArray): ByteArray =
 
 private fun sign(privateKey: PrivateKey, digest: ByteArray): ByteArray =
     Signature.getInstance("NONEwithECDSA").run { initSign(privateKey); update(digest); sign() }
-
-private fun verify(publicKey: ByteArray, digest: ByteArray, signature: ByteArray): Boolean =
-    runCatching { Signature.getInstance("NONEwithECDSA").run { initVerify(decodePublic(publicKey)); update(digest); verify(signature) } }
-        .getOrDefault(false)
 
 private fun identityParts(identity: InternetPairingIdentity) =
     arrayOf(

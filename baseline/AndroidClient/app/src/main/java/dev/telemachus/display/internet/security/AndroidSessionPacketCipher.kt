@@ -26,6 +26,8 @@ class AndroidSessionPacketCipher internal constructor(
     constructor(
         sessionId: String,
         sessionEpoch: Long,
+        pairingIdentifier: String,
+        identityEpoch: Long,
         localRole: PeerRole,
         platformSecurity: AndroidSessionSecurity,
         initialKeys: SessionTrafficKeys,
@@ -34,8 +36,25 @@ class AndroidSessionPacketCipher internal constructor(
         sessionEpoch,
         localRole,
         initialKeys,
-        platformSecurity::withReservedSessionNonce,
-        platformSecurity::withActiveSessionEpoch,
+        { epoch, channel, sender, keyEpoch, operation ->
+            platformSecurity.withReservedSessionNonce(
+                pairingIdentifier,
+                identityEpoch,
+                epoch,
+                channel,
+                sender,
+                keyEpoch,
+                operation,
+            )
+        },
+        { epoch, operation ->
+            platformSecurity.withActiveSessionEpoch(
+                pairingIdentifier,
+                identityEpoch,
+                epoch,
+                operation,
+            )
+        },
         platformSecurity::rotateTrafficKeys,
     )
 

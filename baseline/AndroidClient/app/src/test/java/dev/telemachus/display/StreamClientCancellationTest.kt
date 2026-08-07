@@ -1,6 +1,9 @@
 package dev.telemachus.display
 
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -19,6 +22,7 @@ import java.net.SocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -117,11 +121,13 @@ class StreamClientCancellationTest {
 
     @Test
     fun readySessionRejectsMalformedDisplayWithoutReconnectLoop() =
-        runBlocking {
+        runWithServerDispatcher { serverDispatcher ->
             repeat(25) { iteration ->
                 ServerSocket(0).use { server ->
+                    val serverReady = CountDownLatch(1)
                     val serverJob =
-                        async(Dispatchers.IO) {
+                        async(serverDispatcher) {
+                            serverReady.countDown()
                             server.accept().use { socket ->
                                 socket.getInputStream().read()
                                 DataOutputStream(socket.getOutputStream()).apply {
@@ -133,13 +139,19 @@ class StreamClientCancellationTest {
                         }
                     val failures = mutableListOf<SessionFailure>()
                     val retries = mutableListOf<Long>()
-                    StreamClient("127.0.0.1", server.localPort)
-                        .apply {
+                    val client =
+                        StreamClient("127.0.0.1", server.localPort).apply {
                             onSessionEnded = { failures += it }
                             onReconnectSuggested = { retries += it }
-                        }.connect()
+                        }
 
-                    serverJob.await()
+                    assertTrue(
+                        "iteration $iteration fake server did not start",
+                        serverReady.await(1, TimeUnit.SECONDS),
+                    )
+                    val connectResult = runCatching { client.connect() }
+                    withTimeout(2_000) { serverJob.await() }
+                    connectResult.getOrThrow()
                     assertEquals("iteration $iteration", SessionFailureKind.INVALID_DISPLAY, failures.single().kind)
                     assertFalse("iteration $iteration", failures.single().retryable)
                     assertTrue("iteration $iteration", retries.isEmpty())
@@ -177,13 +189,16 @@ class StreamClientCancellationTest {
 
     @Test
     fun readySessionEofRemainsRetryableWithSpecificReason() =
-        runBlocking {
+        runWithServerDispatcher { serverDispatcher ->
             repeat(25) { iteration ->
                 ServerSocket(0).use { server ->
                     val writerFailureObserved = CountDownLatch(1)
+                    val displayReadyObserved = CountDownLatch(1)
+                    val serverReady = CountDownLatch(1)
                     val clientSocket = FailAfterBytesSocket(allowedBytes = 1)
                     val serverJob =
-                        async(Dispatchers.IO) {
+                        async(serverDispatcher) {
+                            serverReady.countDown()
                             server.accept().use { socket ->
                                 assertEquals(0x0d, socket.getInputStream().read())
                                 DataOutputStream(socket.getOutputStream()).apply {
@@ -194,21 +209,35 @@ class StreamClientCancellationTest {
                                     "iteration $iteration did not inject the concurrent writer failure",
                                     writerFailureObserved.await(2, TimeUnit.SECONDS),
                                 )
+                                assertTrue(
+                                    "iteration $iteration closed before the display became ready",
+                                    displayReadyObserved.await(2, TimeUnit.SECONDS),
+                                )
                             }
                         }
                     val failures = mutableListOf<SessionFailure>()
                     val retries = mutableListOf<Long>()
-                    StreamClient(
-                        "127.0.0.1",
-                        server.localPort,
-                        socketFactory = { clientSocket },
-                    ).apply {
-                        onWriteFailure = { writerFailureObserved.countDown() }
-                        onSessionEnded = { failures += it }
-                        onReconnectSuggested = { retries += it }
-                    }.connect()
+                    val client =
+                        StreamClient(
+                            "127.0.0.1",
+                            server.localPort,
+                            socketFactory = { clientSocket },
+                        ).apply {
+                            onWriteFailure = { writerFailureObserved.countDown() }
+                            onConnectionStatus = { connected ->
+                                if (connected) displayReadyObserved.countDown()
+                            }
+                            onSessionEnded = { failures += it }
+                            onReconnectSuggested = { retries += it }
+                        }
 
-                    serverJob.await()
+                    assertTrue(
+                        "iteration $iteration fake server did not start",
+                        serverReady.await(1, TimeUnit.SECONDS),
+                    )
+                    val connectResult = runCatching { client.connect() }
+                    withTimeout(2_000) { serverJob.await() }
+                    connectResult.getOrThrow()
                     assertEquals(
                         "iteration $iteration",
                         SessionFailureKind.TRANSPORT_CLOSED,
@@ -454,6 +483,15 @@ class StreamClientCancellationTest {
             assertEquals(2, sockets.get())
         }
     }
+
+    private fun runWithServerDispatcher(block: suspend CoroutineScope.(CoroutineDispatcher) -> Unit) =
+        runBlocking {
+            Executors
+                .newSingleThreadExecutor { runnable ->
+                    Thread(runnable, "StreamClientCancellationTestServer").apply { isDaemon = true }
+                }.asCoroutineDispatcher()
+                .use { serverDispatcher -> block(serverDispatcher) }
+        }
 
     private fun DataOutputStream.writeDisplay(
         width: Int,

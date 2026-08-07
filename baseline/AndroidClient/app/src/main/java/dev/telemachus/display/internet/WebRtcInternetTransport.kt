@@ -63,9 +63,9 @@ class WebRtcInternetTransport(
         return canSend && peerEngine.sendControl(payload)
     }
 
-    fun sendMedia(payload: ByteArray): Boolean {
+    fun sendMedia(frame: OutboundMediaFrame): Boolean {
         val canSend = synchronized(lock) { !closed && state.isConnected() }
-        return canSend && peerEngine.sendMedia(payload)
+        return canSend && peerEngine.sendMedia(frame)
     }
 
     override fun onConnected(route: PeerRoute) {

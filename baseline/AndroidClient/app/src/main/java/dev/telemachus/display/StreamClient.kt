@@ -32,17 +32,60 @@ import java.nio.ByteOrder
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
+internal data class StreamVideoConfiguration(
+    val encodedWidth: Int,
+    val encodedHeight: Int,
+    val rotation: Int,
+    val configEpoch: Long,
+)
+
+internal data class StreamDisplayGeometry(
+    val logicalWidth: Int,
+    val logicalHeight: Int,
+    val rotation: Int,
+)
+
+internal data class StreamVideoConfigurationDecision(
+    val accepted: Boolean,
+    val rejectionReason: String = "",
+) {
+    companion object {
+        val ACCEPTED = StreamVideoConfigurationDecision(accepted = true)
+
+        fun reject(reason: String) =
+            StreamVideoConfigurationDecision(
+                accepted = false,
+                rejectionReason = reason.ifBlank { "decoder_configuration_failure" }.take(128),
+            )
+    }
+}
+
+internal interface StreamVideoConfigurationCommit {
+    val canSupersedePendingConfiguration: Boolean
+        get() = false
+
+    fun isPending(): Boolean
+
+    fun tryPublish(publish: () -> Boolean): Boolean
+
+    fun complete(decision: StreamVideoConfigurationDecision)
+
+    fun cancel()
+}
+
 class StreamClient(
     private val host: String,
     private val port: Int,
     private val context: Context? = null,
     private val socketFactory: () -> Socket = ::Socket,
+    private val videoConfigurationCommitTimeoutMs: Long = VIDEO_CONFIGURATION_COMMIT_TIMEOUT_MS,
 ) {
     @Volatile private var socket: Socket? = null
     private var inputStream: DataInputStream? = null
@@ -56,12 +99,13 @@ class StreamClient(
     @Volatile private var lastTerminationFailure: SessionFailure? = null
     @Volatile private var wireMode = WireMode.LEGACY
     private var pendingLegacyFirstByte: Int? = null
-    private var protocolSession: ProtocolV1Session? = null
+    @Volatile private var protocolSession: ProtocolV1Session? = null
     private val transportOwnerLock = Any()
     private var pendingFreshTransport: FreshTransportCandidate? = null
     private val nextInputId = AtomicLong(1L)
     private val nextPingSequence = AtomicLong(1L)
     private val pendingOutboundFailure = AtomicReference<SessionFailure?>(null)
+    private val pendingVideoConfigurationCommit = AtomicReference<PendingVideoConfigurationCommit?>(null)
     @Volatile private var lastV1PingSequence = 0L
     @Volatile private var lastV1PingSentNs = 0L
 
@@ -70,9 +114,11 @@ class StreamClient(
 
     // Callback includes actual frame size (may differ from buffer.size due to pooling),
     // receive timestamp, and whether the frame can restart HEVC decoding.
-    var onFrameReceived: ((ByteArray, Int, Long, Boolean, Long) -> Unit)? = null
+    var onFrameReceived: ((ByteArray, Int, Long, Boolean, Long, Long) -> Unit)? = null
     var onConnectionStatus: ((Boolean) -> Unit)? = null
-    var onDisplaySize: ((Int, Int, Int) -> Unit)? = null // width, height, rotation
+    internal var onVideoConfiguration:
+        ((StreamVideoConfiguration, StreamVideoConfigurationCommit) -> Unit)? = null
+    internal var onDisplayGeometry: ((StreamDisplayGeometry) -> Unit)? = null
     var onStats: ((Double, Double) -> Unit)? = null
     var onReconnectSuggested: ((delayMs: Long) -> Unit)? = null
     var onWriteFailure: ((reason: String) -> Unit)? = null
@@ -89,6 +135,10 @@ class StreamClient(
     /** True once a MESSAGE_CODEC_SELECTED arrived — distinguishes new Macs from old. */
     @Volatile var codecNegotiated = false
         private set
+
+    init {
+        require(videoConfigurationCommitTimeoutMs > 0L) { "videoConfigurationCommitTimeoutMs must be positive" }
+    }
 
     private var bytesReceived = 0L
     private var framesReceived = 0L
@@ -799,7 +849,28 @@ class StreamClient(
                                 reconnectBackoff.reset()
                                 onConnectionStatus?.invoke(true)
                             }
-                            onDisplaySize?.invoke(width, height, rotation)
+                            val configuration =
+                                StreamVideoConfiguration(
+                                    encodedWidth = width,
+                                    encodedHeight = height,
+                                    rotation = rotation,
+                                    configEpoch = LEGACY_CONFIG_EPOCH,
+                                )
+                            val callbackEpoch = connectionEpoch
+                            val callback = onVideoConfiguration
+                            if (callback != null) {
+                                callback.invoke(
+                                    configuration,
+                                    LegacyVideoConfigurationCommit(callbackEpoch),
+                                )
+                            }
+                            onDisplayGeometry?.invoke(
+                                StreamDisplayGeometry(
+                                    logicalWidth = width,
+                                    logicalHeight = height,
+                                    rotation = rotation,
+                                ),
+                            )
                         }
 
                         5 -> { // Pong response — measure round-trip latency
@@ -832,9 +903,10 @@ class StreamClient(
                         }
 
                         MESSAGE_SERVER_SHUTDOWN -> {
-                            diagLog("Server shut down gracefully — closing")
                             stopRequested = true
                             terminalFailure = SessionFailure.serverShutdown()
+                            completeConnectionEndNow(checkNotNull(terminalFailure))
+                            diagLog("Server shut down gracefully — closing")
                             break
                         }
 
@@ -850,12 +922,18 @@ class StreamClient(
                 }
             } catch (error: SessionProtocolException) {
                 terminalFailure = error.failure
+                pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
+                completeConnectionEndNow(error.failure)
                 Log.e(TAG, "Session protocol failure: ${error.failure.detail}", error)
             } catch (error: ProtocolV1Failure) {
                 terminalFailure = error.toSessionFailure()
+                pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
+                completeConnectionEndNow(checkNotNull(terminalFailure))
                 Log.e(TAG, "Protocol v1 failure: ${error.message}", error)
             } catch (e: IOException) {
                 terminalFailure = SessionFailure.transport(e.message ?: e.javaClass.simpleName)
+                pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
+                completeConnectionEndNow(checkNotNull(terminalFailure))
                 if (isConnected) {
                     Log.e(TAG, "❌ Read error", e)
                 }
@@ -902,6 +980,9 @@ class StreamClient(
                             cause = failure,
                         )
                     }
+                if (envelope.payloadCase == Envelope.PayloadCase.DISCONNECT_NOTICE) {
+                    pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
+                }
                 val completion = CompletableFuture<Unit>()
                 val submission = submitOutbound(
                     kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
@@ -933,7 +1014,19 @@ class StreamClient(
                         )
                     }
                 val session = checkNotNull(protocolSession)
-                session.validateMedia(payload.header)
+                val mediaDisposition = session.validateMedia(payload.header)
+                if (mediaDisposition != ProtocolV1Session.MediaDisposition.ACCEPT) {
+                    releaseBuffer(payload.annexB)
+                    emitTelemetry(
+                        "frame_dropped",
+                        mapOf(
+                            "reason" to mediaDisposition.name.lowercase(),
+                            "config_epoch" to payload.header.configEpoch,
+                            "session_epoch" to connectionEpoch,
+                        ),
+                    )
+                    return
+                }
                 val receiveTimestamp = System.nanoTime()
                 checkKeyframeFreshness(receiveTimestamp, payload.header.keyframe)
                 val callback = onFrameReceived
@@ -946,6 +1039,7 @@ class StreamClient(
                         receiveTimestamp,
                         payload.header.keyframe,
                         connectionEpoch,
+                        payload.header.configEpoch,
                     )
                 }
                 updateStats(payload.annexB.size)
@@ -988,7 +1082,7 @@ class StreamClient(
         if (!isConnected) return
         if (wireMode == WireMode.V1) {
             val session = protocolSession ?: return
-            if (!session.isStreaming) return
+            if (!session.canSendTouch) return
             val samples = v1Samples.toList()
             if (samples.isEmpty()) return
             submitOutbound(
@@ -1174,8 +1268,16 @@ class StreamClient(
             }
 
             is OutboundCommand.ProtocolReceive -> processProtocolReceive(out, command)
+
+            is OutboundCommand.ProtocolVideoConfigurationCompletion ->
+                processVideoConfigurationCompletion(out, command)
         }
-        if (command !is OutboundCommand.ProtocolBatch && command !is OutboundCommand.ProtocolReceive) out.flush()
+        if (command !is OutboundCommand.ProtocolBatch &&
+            command !is OutboundCommand.ProtocolReceive &&
+            command !is OutboundCommand.ProtocolVideoConfigurationCompletion
+        ) {
+            out.flush()
+        }
     }
 
     private fun processProtocolReceive(
@@ -1188,19 +1290,32 @@ class StreamClient(
             actions.forEach { action ->
                 when (action) {
                     is ProtocolV1Session.Action.Send -> writeProtocolEnvelope(out, action.envelope)
-                    is ProtocolV1Session.Action.VideoConfigured -> {
+                    is ProtocolV1Session.Action.VideoConfigurationRequested -> {
                         streamCodecIsHevc = action.codec == Codec.CODEC_HEVC
                         codecNegotiated = true
-                        if (!sessionReady) {
-                            sessionReady = true
-                            reconnectBackoff.reset()
-                            onConnectionStatus?.invoke(true)
-                        }
                         onCodecSelected?.invoke(streamCodecIsHevc)
-                        onDisplaySize?.invoke(action.width, action.height, action.rotation)
+                        beginVideoConfiguration(
+                            session = session,
+                            configurationToken = action.configurationToken,
+                            configuration = StreamVideoConfiguration(
+                                encodedWidth = action.width,
+                                encodedHeight = action.height,
+                                rotation = action.rotation,
+                                configEpoch = action.configEpoch,
+                            ),
+                        )
                     }
-                    is ProtocolV1Session.Action.DisplayChanged -> {
-                        onDisplaySize?.invoke(action.width, action.height, action.rotation)
+                    is ProtocolV1Session.Action.VideoConfigurationCommitted,
+                    is ProtocolV1Session.Action.VideoConfigurationRejected,
+                    -> throw IllegalStateException("Unexpected decoder completion action during protocol receive")
+                    is ProtocolV1Session.Action.DisplayGeometryChanged -> {
+                        onDisplayGeometry?.invoke(
+                            StreamDisplayGeometry(
+                                logicalWidth = action.width,
+                                logicalHeight = action.height,
+                                rotation = action.rotation,
+                            ),
+                        )
                     }
                     is ProtocolV1Session.Action.PongReceived -> {
                         if (action.sequence == lastV1PingSequence && lastV1PingSentNs > 0L) {
@@ -1208,6 +1323,7 @@ class StreamClient(
                         }
                     }
                     is ProtocolV1Session.Action.Disconnected -> {
+                        pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
                         stopRequested = !action.mayResume
                         val failure =
                             if (action.mayResume) {
@@ -1221,6 +1337,7 @@ class StreamClient(
                                     retryable = false,
                                 )
                             }
+                        requestConnectionEnd(failure)
                         command.completion.completeExceptionally(SessionProtocolException(failure))
                         return
                     }
@@ -1228,6 +1345,7 @@ class StreamClient(
             }
             command.completion.complete(Unit)
         } catch (failure: ProtocolV1Failure) {
+            pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
             if (failure.source == ProtocolV1Failure.Source.PEER_PROTOCOL_VIOLATION &&
                 command.envelope.payloadCase != Envelope.PayloadCase.PROTOCOL_ERROR
             ) {
@@ -1245,15 +1363,127 @@ class StreamClient(
                     throw writeFailure
                 }
             }
+            requestConnectionEnd(failure.toSessionFailure())
             command.completion.completeExceptionally(failure)
         } catch (failure: IOException) {
+            pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
+            requestConnectionEnd(
+                SessionFailure.write(failure.message ?: "Protocol v1 receive write failed"),
+            )
             command.completion.completeExceptionally(failure)
             throw failure
         } catch (failure: RuntimeException) {
+            pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
+            requestConnectionEnd(
+                SessionFailure.protocol(
+                    SessionFailureKind.INVALID_PEER_MESSAGE,
+                    failure.message ?: "Protocol v1 receive processing failed",
+                ),
+            )
             command.completion.completeExceptionally(failure)
             throw failure
         }
     }
+
+    private fun beginVideoConfiguration(
+        session: ProtocolV1Session,
+        configurationToken: Long,
+        configuration: StreamVideoConfiguration,
+    ) {
+        val pending =
+            PendingVideoConfigurationCommit(
+                session = session,
+                connectionGeneration = connectionEpoch,
+                configuration = configuration,
+                configurationToken = configurationToken,
+            )
+        if (!pendingVideoConfigurationCommit.compareAndSet(null, pending)) {
+            throw IllegalStateException("A decoder configuration commit is already pending")
+        }
+        pending.scheduleTimeout()
+        val callback = onVideoConfiguration
+        if (callback == null) {
+            pending.complete(StreamVideoConfigurationDecision.reject("decoder_configuration_callback_missing"))
+            return
+        }
+        try {
+            callback.invoke(configuration, pending)
+        } catch (failure: RuntimeException) {
+            pending.complete(
+                StreamVideoConfigurationDecision.reject(
+                    failure.message ?: "decoder_configuration_callback_failure",
+                ),
+            )
+        }
+    }
+
+    private fun processVideoConfigurationCompletion(
+        out: java.io.DataOutputStream,
+        command: OutboundCommand.ProtocolVideoConfigurationCompletion,
+    ) {
+        val pending = command.pending
+        if (!pendingVideoConfigurationCommit.compareAndSet(pending, null)) return
+        if (!isCurrentProtocolSession(pending.session, pending.connectionGeneration)) return
+        val actions =
+            pending.session.completeVideoConfiguration(
+                completedConfigEpoch = pending.configuration.configEpoch,
+                configurationToken = pending.configurationToken,
+                accepted = command.decision.accepted,
+                rejectionReason = command.decision.rejectionReason,
+            )
+        if (actions.isEmpty()) {
+            requestConnectionEnd(
+                SessionFailure.protocol(
+                    SessionFailureKind.INVALID_PEER_MESSAGE,
+                    "Decoder completion no longer matches the pending VideoConfig",
+                ),
+            )
+            return
+        }
+        val rejectedReason =
+            actions
+                .filterIsInstance<ProtocolV1Session.Action.VideoConfigurationRejected>()
+                .singleOrNull()
+                ?.reason
+        rejectedReason?.let { reason ->
+            requestConnectionEnd(SessionFailure.codec(reason))
+        }
+        actions.forEach { action ->
+            when (action) {
+                is ProtocolV1Session.Action.Send -> writeProtocolEnvelope(out, action.envelope)
+                is ProtocolV1Session.Action.VideoConfigurationCommitted -> {
+                    if (!sessionReady) {
+                        sessionReady = true
+                        reconnectBackoff.reset()
+                        onConnectionStatus?.invoke(true)
+                    }
+                }
+                is ProtocolV1Session.Action.VideoConfigurationRejected -> Unit
+                is ProtocolV1Session.Action.DisplayGeometryChanged -> {
+                    onDisplayGeometry?.invoke(
+                        StreamDisplayGeometry(
+                            logicalWidth = action.width,
+                            logicalHeight = action.height,
+                            rotation = action.rotation,
+                        ),
+                    )
+                }
+                is ProtocolV1Session.Action.VideoConfigurationRequested,
+                is ProtocolV1Session.Action.PongReceived,
+                is ProtocolV1Session.Action.Disconnected,
+                -> throw IllegalStateException("Unexpected action while completing decoder configuration")
+            }
+        }
+    }
+
+    private fun isCurrentProtocolSession(
+        expectedSession: ProtocolV1Session,
+        expectedConnectionGeneration: Long,
+    ): Boolean =
+        isConnected &&
+            connectionEpoch == expectedConnectionGeneration &&
+            SESSION_EPOCHS.accepts(expectedConnectionGeneration) &&
+            protocolSession === expectedSession
 
     private fun writeProtocolEnvelope(
         out: java.io.DataOutputStream,
@@ -1360,7 +1590,14 @@ class StreamClient(
 
         val callback = onFrameReceived
         if (callback != null) {
-            callback.invoke(frameData, frameSize, receiveTimestamp, isKeyframe, epoch)
+            callback.invoke(
+                frameData,
+                frameSize,
+                receiveTimestamp,
+                isKeyframe,
+                epoch,
+                LEGACY_CONFIG_EPOCH,
+            )
         } else {
             releaseBuffer(frameData)
         }
@@ -1442,6 +1679,7 @@ class StreamClient(
     }
 
     private fun cleanup() {
+        pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
         try {
             try {
                 if (!outboundScheduler.shutdownGracefully(OUTBOUND_DRAIN_TIMEOUT_MS)) {
@@ -1546,6 +1784,171 @@ class StreamClient(
             val envelope: Envelope,
             val completion: CompletableFuture<Unit>,
         ) : OutboundCommand
+
+        data class ProtocolVideoConfigurationCompletion(
+            val pending: PendingVideoConfigurationCommit,
+            val decision: StreamVideoConfigurationDecision,
+        ) : OutboundCommand
+    }
+
+    private inner class PendingVideoConfigurationCommit(
+        val session: ProtocolV1Session,
+        val connectionGeneration: Long,
+        val configuration: StreamVideoConfiguration,
+        val configurationToken: Long,
+    ) : StreamVideoConfigurationCommit {
+        private val stateLock = Any()
+        private var state = VideoConfigurationCommitState.PENDING
+        @Volatile private var timeout: ScheduledFuture<*>? = null
+
+        fun scheduleTimeout() {
+            timeout =
+                VIDEO_CONFIGURATION_TIMEOUT_EXECUTOR.schedule(
+                    {
+                        timeout(
+                            StreamVideoConfigurationDecision.reject(
+                                "decoder_configuration_timeout",
+                            ),
+                        )
+                    },
+                    videoConfigurationCommitTimeoutMs,
+                    TimeUnit.MILLISECONDS,
+                )
+        }
+
+        override fun isPending(): Boolean =
+            synchronized(stateLock) {
+                state in ACTIVE_VIDEO_CONFIGURATION_COMMIT_STATES &&
+                    isCurrentProtocolSession(session, connectionGeneration)
+            }
+
+        override fun tryPublish(publish: () -> Boolean): Boolean =
+            synchronized(stateLock) {
+                if (state != VideoConfigurationCommitState.PENDING ||
+                    !isCurrentProtocolSession(session, connectionGeneration)
+                ) {
+                    return@synchronized false
+                }
+                state = VideoConfigurationCommitState.RESERVED
+                timeout?.cancel(false)
+                publish()
+            }
+
+        override fun complete(decision: StreamVideoConfigurationDecision) {
+            val claimed =
+                synchronized(stateLock) {
+                    if (decision.accepted) {
+                        if (state != VideoConfigurationCommitState.RESERVED) return@synchronized false
+                    } else if (state !in ACTIVE_VIDEO_CONFIGURATION_COMMIT_STATES) {
+                        return@synchronized false
+                    }
+                    state = VideoConfigurationCommitState.COMPLETED
+                    true
+                }
+            if (!claimed) return
+            timeout?.cancel(false)
+            completeClaimed(decision)
+        }
+
+        private fun timeout(decision: StreamVideoConfigurationDecision) {
+            val claimed =
+                synchronized(stateLock) {
+                    if (state != VideoConfigurationCommitState.PENDING) return@synchronized false
+                    state = VideoConfigurationCommitState.COMPLETED
+                    true
+                }
+            if (claimed) {
+                completeClaimed(decision)
+            }
+        }
+
+        private fun completeClaimed(decision: StreamVideoConfigurationDecision) {
+            if (!isCurrentProtocolSession(session, connectionGeneration)) return
+            val submission =
+                submitOutbound(
+                    kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                    command = OutboundCommand.ProtocolVideoConfigurationCompletion(this, decision),
+                    timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
+                )
+            if (submission == OutboundCommandScheduler.Submission.TIMED_OUT ||
+                submission == OutboundCommandScheduler.Submission.CLOSED
+            ) {
+                pendingVideoConfigurationCommit.compareAndSet(this, null)
+                requestConnectionEnd(
+                    SessionFailure.protocol(
+                        SessionFailureKind.OUTBOUND_BACKPRESSURE,
+                        "Decoder configuration completion queue unavailable: $submission",
+                    ),
+                )
+            }
+        }
+
+        override fun cancel() {
+            val previous =
+                synchronized(stateLock) {
+                    val current = state
+                    state = VideoConfigurationCommitState.CANCELLED
+                    current
+                }
+            if (previous in ACTIVE_VIDEO_CONFIGURATION_COMMIT_STATES) timeout?.cancel(false)
+        }
+    }
+
+    private inner class LegacyVideoConfigurationCommit(
+        private val connectionGeneration: Long,
+    ) : StreamVideoConfigurationCommit {
+        private val stateLock = Any()
+        private var state = VideoConfigurationCommitState.PENDING
+
+        override val canSupersedePendingConfiguration = true
+
+        override fun isPending(): Boolean =
+            synchronized(stateLock) {
+                state in ACTIVE_VIDEO_CONFIGURATION_COMMIT_STATES &&
+                    isConnected &&
+                    connectionEpoch == connectionGeneration &&
+                    SESSION_EPOCHS.accepts(connectionGeneration)
+            }
+
+        override fun tryPublish(publish: () -> Boolean): Boolean =
+            synchronized(stateLock) {
+                if (state != VideoConfigurationCommitState.PENDING ||
+                    !isConnected ||
+                    connectionEpoch != connectionGeneration ||
+                    !SESSION_EPOCHS.accepts(connectionGeneration)
+                ) {
+                    return@synchronized false
+                }
+                state = VideoConfigurationCommitState.RESERVED
+                publish()
+            }
+
+        override fun complete(decision: StreamVideoConfigurationDecision) {
+            val claimed =
+                synchronized(stateLock) {
+                    if (decision.accepted) {
+                        if (state != VideoConfigurationCommitState.RESERVED) return@synchronized false
+                    } else if (state !in ACTIVE_VIDEO_CONFIGURATION_COMMIT_STATES) {
+                        return@synchronized false
+                    }
+                    state = VideoConfigurationCommitState.COMPLETED
+                    true
+                }
+            if (!claimed || !isConnected || connectionEpoch != connectionGeneration) return
+            if (decision.accepted) {
+                requestKeyframe(force = true, reason = "decoder_configuration_committed")
+            } else {
+                failCurrentSession(decision.rejectionReason)
+            }
+        }
+
+        override fun cancel() {
+            synchronized(stateLock) {
+                if (state in ACTIVE_VIDEO_CONFIGURATION_COMMIT_STATES) {
+                    state = VideoConfigurationCommitState.CANCELLED
+                }
+            }
+        }
     }
 
     private data class TerminationRequest(
@@ -1570,6 +1973,15 @@ class StreamClient(
     }
 
     companion object {
+        private enum class VideoConfigurationCommitState {
+            PENDING,
+            RESERVED,
+            COMPLETED,
+            CANCELLED,
+        }
+
+        private val ACTIVE_VIDEO_CONFIGURATION_COMMIT_STATES =
+            setOf(VideoConfigurationCommitState.PENDING, VideoConfigurationCommitState.RESERVED)
         private const val TAG = "StreamClient"
         private const val MAX_FRAME_SIZE = 5 * 1024 * 1024 // 5MB
         private const val KEYFRAME_REQUEST_INTERVAL_NS = 500_000_000L
@@ -1580,6 +1992,8 @@ class StreamClient(
         private const val HANDSHAKE_TIMEOUT_MS = 5_000
         private const val PROTOCOL_UPGRADE_TIMEOUT_MS = 250
         private const val PROTOCOL_ACTION_TIMEOUT_MS = 2_000L
+        private const val VIDEO_CONFIGURATION_COMMIT_TIMEOUT_MS = 2_000L
+        private const val LEGACY_CONFIG_EPOCH = 0L
         private const val AUTH_RESPONSE_BYTES = 5
         private const val MAX_FORWARDED_POINTERS = 2
         private const val HEARTBEAT_POLL_INTERVAL_MS = 1_000
@@ -1607,6 +2021,10 @@ class StreamClient(
         private const val KEYFRAME_REQUEST_FLAG_FORCE = 1
         private const val TOUCH_ACTION_MOVE = 1
         private val SESSION_EPOCHS = SessionEpochGate()
+        private val VIDEO_CONFIGURATION_TIMEOUT_EXECUTOR =
+            Executors.newSingleThreadScheduledExecutor { runnable ->
+                Thread(runnable, "VibeVideoConfigurationTimeout").apply { isDaemon = true }
+            }
         private val SESSION_TERMINATION_EXECUTOR =
             Executors.newSingleThreadExecutor { runnable ->
                 Thread(runnable, "VibeSessionTerminator").apply { isDaemon = true }
