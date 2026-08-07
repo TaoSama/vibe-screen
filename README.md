@@ -103,10 +103,15 @@ the roadmap destination, not a statement that each item is shipped today:
 - End-to-end encryption, per-device authorization, and device revocation.
 - Native Android, HarmonyOS NEXT, and iOS clients.
 
-Current Android real-device evidence comes from a Nubia P0110 running Android
-16. Xiaomi 12 acceptance remains an unrun target gate rather than verified
-behavior. Huawei MatePad Mini is the primary planned target device for the
-HarmonyOS product experience; no HarmonyOS device result is implied here.
+Current Android real-device evidence comes from a Xiaomi 12 (codename fuxi)
+running Android 16 over USB, plus earlier evidence from a Nubia P0110 on the
+same Android version. On the Xiaomi 12 the streaming baseline is verified:
+stable 60 FPS with zero dropped frames, hardware HEVC decode at roughly 6 ms,
+touch-to-pointer control, reconnect recovery, a 30-minute soak, and Protocol
+v1 display-selection negotiation. Two-chip virtual-display switching and the
+two-hour no-growth soak are not yet verified on device. Huawei MatePad Mini is
+the primary planned target device for the HarmonyOS product experience; no
+HarmonyOS device result is implied here.
 
 ## Target Architecture (planned)
 
@@ -217,6 +222,28 @@ which do not constitute iOS or HarmonyOS real-device evidence. Protocol v1
 real-device interoperability, Xiaomi 12 acceptance, and a valid two-hour
 no-growth run remain open gates.**
 
+Since that recorded run, main has advanced to commit `73be8c0` with the Phase 3
+hardening change on top (see Phase 3 below). On that tip the MacHost release
+build, `--phase3-internet-self-test`, and `--phase3-webrtc-loopback-self-test`
+pass locally, and the Android `StreamClientProtocolV1IntegrationTest` passes
+12/12; these are local self-tests, not a CI run, and the full MacHost XCTest
+suite has not been re-run on `73be8c0` in this environment (only Command Line
+Tools were available, not full Xcode). The 202/202 XCTest figure remains
+anchored to the historical 2026-08-06 CI run on
+`4c2e908fe31af4c187684991301e163371444eab`.
+
+On 2026-08-08 a Xiaomi 12 (codename fuxi, Android 16, USB) recorded the first
+Xiaomi 12 streaming evidence: a stale-Surface reconnect-loop fix, then stable
+60 FPS with zero dropped frames, hardware HEVC decode at roughly 6 ms,
+touch-to-pointer control, reconnect recovery, and a 30-minute soak (mean 59.95
+FPS, zero drops). Host resident memory grew over that 30-minute window, so the
+two-hour no-growth gate stays open rather than closed. Protocol v1
+display-selection negotiation is verified on device; two-chip virtual-display
+switching is implemented and offline-verified but not yet exercised on device
+(it needs a host relaunch and a manual Screen Recording re-grant). The Xiaomi
+12 evidence is recorded under
+[docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a/README.md).
+
 Implementation status and evidence are tracked in the
 [Phase 0 change docs](docs/changes/2026-08-04-phase-0-baseline/PRD.md).
 
@@ -244,6 +271,18 @@ behavior, login-item approval, and headless reboot still require gated macOS
 integration evidence. The legacy
 session has no keyboard/native-mouse transport entry point, and the two-hour
 device soak remains owned by the coordinated Phase 0 run.
+
+The Android client now shows a compact, centered, tap-to-reveal control capsule
+that selects the display, opens settings, and disconnects; it collapses the
+display picker on single-display sessions to avoid mis-taps. The host advertises
+its online physical displays plus, when the private virtual-display API is
+available, one selectable virtual extended display so a single-monitor Mac can
+still offer a second display to switch to; selecting it drives the existing
+extended-capture path with a bumped config epoch. Capsule geometry and
+display-selection negotiation are verified on the Xiaomi 12, but the actual
+virtual-display capture switch is still an open on-device gate because
+relaunching the GUI host requires an Aqua session and a manual Screen Recording
+re-grant that cannot be scripted.
 
 - Deliver USB and LAN connectivity.
 - Support virtual extension, mirroring, display selection, HiDPI, rotation, and
@@ -278,6 +317,14 @@ production libwebrtc adapters. Control uses a reliable ordered DataChannel;
 media uses an unordered zero-retransmit channel with bounded latest-frame policy.
 Protocol v1 AES-256-GCM records protect both channels above WebRTC so a TURN
 relay handles only ciphertext.
+
+Main commit `73be8c0` hardens this slice at the source level: the Internet
+session lease issuer validates the pairing binding before reading identity
+credentials, the durable session epoch advances atomically through a single
+pairing-scoped transaction, the cross-process security tests are stabilized
+against pipe-buffer deadlocks, and the Android decoder-config publish now fails
+closed when it cannot publish. These are offline-verified source changes; the
+release gates below are unchanged.
 
 The macOS M150 adapter has completed real local offer/answer, ICE and
 bidirectional DataChannel tests through both direct and forced coturn relay
@@ -380,9 +427,12 @@ network quality may increase it.
 
 ## Device Strategy
 
-The Xiaomi 12 is a planned acceptance target for decoding, protocol behavior,
-input, networking, and performance; no Xiaomi 12 result is currently recorded.
-The recorded Android evidence instead comes from Nubia P0110. Final tablet
+The Xiaomi 12 is the primary acceptance target for decoding, protocol behavior,
+input, networking, and performance. As of 2026-08-08 the Xiaomi 12 has recorded
+verified streaming, touch, reconnect, a 30-minute soak, and display-selection
+negotiation over USB; the two-hour no-growth soak and on-device virtual-display
+switching remain open gates. Earlier Android evidence also comes from Nubia
+P0110. Final tablet
 selection emphasizes
 an 8–9 inch high-density 90/120 Hz panel, Wi-Fi 6 or newer, stable low-latency
 HEVC decoding, USB data support, peripherals and stylus, and acceptable thermal
