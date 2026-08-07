@@ -4,6 +4,9 @@ import VibeScreenProtocol
 enum ProtocolV1SelfTest {
     private static let sessionID = Data(repeating: 0xAB, count: 16)
     private static let sessionEpoch: UInt64 = 7
+    /// Mirrors AppDelegate.virtualExtendedDisplaySyntheticID for the host-side
+    /// contract asserted by testVirtualDisplayCatalog.
+    private static let virtualSyntheticID = "telemachus-virtual-extended"
 
     static func run() -> Bool {
         var failures: [String] = []
@@ -12,6 +15,7 @@ enum ProtocolV1SelfTest {
         testSharedGoldenFixtures(failures: &failures)
         testNegotiationAndMediaGate(failures: &failures)
         testMultiDisplaySelection(failures: &failures)
+        testVirtualDisplayCatalog(failures: &failures)
         testRejections(failures: &failures)
         testInputHeartbeatAndMedia(failures: &failures)
         testTouchTargetAndDisconnect(failures: &failures)
@@ -292,6 +296,63 @@ enum ProtocolV1SelfTest {
         }
     }
 
+    /// Covers the single-physical-display host contract: a synthetic virtual
+    /// extended entry is enumerated by ListDisplays as isVirtual, StartDisplay
+    /// accepts its id, and a runtime selection bumps the configEpoch so the
+    /// client re-negotiates video for the virtual source.
+    private static func testVirtualDisplayCatalog(failures: inout [String]) {
+        do {
+            let session = makeVirtualCatalogSession()
+            _ = session.handleControl(try clientHello().serializedData())
+            _ = session.completeCodecNegotiation()
+
+            let list = session.handleControl(try envelope(
+                id: 2,
+                payload: .listDisplaysRequest(VSListDisplaysRequest())
+            ).serializedData())
+            guard case .listDisplaysResponse(let displays)? = try responseEnvelopes(list).first?.payload,
+                  displays.displays.count == 2,
+                  displays.displays[0].displayID == "active-display",
+                  displays.displays[0].isVirtual == false,
+                  displays.displays[1].displayID == virtualSyntheticID,
+                  displays.displays[1].isVirtual,
+                  displays.displays[1].isPrimary == false else {
+                failures.append("ListDisplays did not enumerate the virtual extended display")
+                return
+            }
+
+            // Drive to streaming on the physical display first.
+            _ = session.handleControl(try envelope(
+                id: 3,
+                payload: .startDisplayRequest(displayRequest(sourceDisplayID: "active-display"))
+            ).serializedData())
+            var result = VSVideoConfigResult()
+            result.configEpoch = 1
+            result.streamID = 1
+            result.accepted = true
+            _ = session.handleControl(try envelope(
+                id: 4,
+                payload: .videoConfigResult(result)
+            ).serializedData())
+
+            // Runtime switch to the virtual display bumps the epoch.
+            let switchActions = session.selectDisplayFromClient(displayID: virtualSyntheticID)
+            let switchResponses = try responseEnvelopes(switchActions)
+            guard switchResponses.count == 2,
+                  case .startDisplayResponse(let response)? = switchResponses[0].payload,
+                  response.accepted,
+                  response.display.displayID == virtualSyntheticID,
+                  response.display.isVirtual,
+                  case .videoConfig(let config)? = switchResponses[1].payload,
+                  config.configEpoch == 2 else {
+                failures.append("Runtime selection of the virtual display did not bump the configEpoch")
+                return
+            }
+        } catch {
+            failures.append("virtual display catalog test failed: \(error)")
+        }
+    }
+
     private static func testRejections(failures: inout [String]) {
         do {
             let versionSession = makeSession()
@@ -542,6 +603,50 @@ enum ProtocolV1SelfTest {
     }
 
     private static func clientHello() -> VSEnvelope {
+        return clientHelloEnvelope()
+    }
+
+    private static func makeVirtualCatalogSession() -> ProtocolV1SessionCoordinator {
+        ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
+            sessionID: sessionID,
+            sessionEpoch: sessionEpoch,
+            displayWidth: 1920,
+            displayHeight: 1080,
+            rotation: 0,
+            framesPerSecond: 60,
+            bitrateKbps: 20_000,
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true
+            ),
+            requiredClientCapabilities: [.touch],
+            supportedCodecs: [.hevc, .h264],
+            hostID: "host",
+            hostName: "Mac",
+            displayID: "active-display",
+            displayName: "Built-in Liquid Retina XDR",
+            displayIsVirtual: false,
+            displays: [
+                ProtocolV1DisplayInfo(
+                    id: "active-display",
+                    name: "Built-in Liquid Retina XDR",
+                    width: 1920,
+                    height: 1080,
+                    isPrimary: true,
+                    isVirtual: false
+                ),
+                ProtocolV1DisplayInfo(
+                    id: virtualSyntheticID,
+                    name: "Telemachus Virtual",
+                    width: 1920,
+                    height: 1080,
+                    isPrimary: false,
+                    isVirtual: true
+                )
+            ]
+        ))
+    }
+
+    private static func clientHelloEnvelope() -> VSEnvelope {
         var range = VSProtocolRange()
         range.minimum = 1
         range.maximum = 1
