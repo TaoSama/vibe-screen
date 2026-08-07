@@ -280,7 +280,7 @@ private final class ProductSelfTestState {
     }
 }
 
-private final class ProductDeviceHarness {
+final class ProductDeviceHarness {
     let keyframeComplete = DispatchSemaphore(value: 0)
     let mediaComplete = DispatchSemaphore(value: 0)
     let candidatePairObserved = DispatchSemaphore(value: 0)
@@ -318,7 +318,16 @@ private final class ProductDeviceHarness {
         engine.install(callbacks: WebRTCEngineCallbacks(
             connectionStateChanged: { [weak self] state in self?.handleConnection(state) },
             transmissionContextChanged: { [weak self] context in
-                self?.lock.withProductSelfTestLock { self?.transmissionContext = context }
+                guard let self else { return }
+                let shouldResume = self.lock.withProductSelfTestLock { () -> Bool in
+                    self.transmissionContext = context
+                    guard context != nil,
+                          !self.pendingControlPayloads.isEmpty,
+                          !self.controlSendInFlight else { return false }
+                    self.controlSendInFlight = true
+                    return true
+                }
+                if shouldResume { self.sendNextControlPayload() }
             },
             networkPathChanged: { _ in },
             networkQualitySampled: { _ in },
@@ -336,7 +345,7 @@ private final class ProductDeviceHarness {
 
     func close() { engine.close() }
 
-    func evidence(hostPath: InternetPathKind?) -> ProductSelfTestEvidence? {
+    fileprivate func evidence(hostPath: InternetPathKind?) -> ProductSelfTestEvidence? {
         lock.withProductSelfTestLock {
             guard let pair = selectedCandidatePair,
                   pair.path == hostPath,

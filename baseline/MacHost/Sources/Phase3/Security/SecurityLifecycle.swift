@@ -286,7 +286,7 @@ final class SecurityLifecycle {
             }
             let sequence = current + 1
             state.nonceHighWatermarks[counterKey] = sequence
-            try persistState(state)
+            try persistState(state, verifyReadBack: false)
 
             var channelValue = channel.bigEndian
             var sequenceValue = sequence.bigEndian
@@ -414,8 +414,12 @@ final class SecurityLifecycle {
         return try store.load()
     }
 
-    private func persistState(_ state: PersistedSecurityState) throws {
+    private func persistState(
+        _ state: PersistedSecurityState,
+        verifyReadBack: Bool = true
+    ) throws {
         try store.persist(state)
+        guard verifyReadBack else { return }
         let verified = try loadState()
         guard verified == state else {
             throw PlatformSecurityError.persistenceFailure(

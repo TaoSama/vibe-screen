@@ -34,7 +34,6 @@ enum InternetPairingURL {
               raw.hasPrefix(prefix),
               !raw.contains("%"),
               !raw.contains("#"),
-              !raw.contains("&"),
               !raw.contains("+"),
               raw.count > prefix.count else {
             throw InternetPairingError.invalidURL
