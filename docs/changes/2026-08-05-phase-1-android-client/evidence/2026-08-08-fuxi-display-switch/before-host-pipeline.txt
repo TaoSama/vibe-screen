@@ -1,0 +1,5 @@
+2026-08-07T20:10:07Z Pipeline: 60.0fps, 0.7Mbps, avg frame age: 6.0ms, dropped: 0
+2026-08-07T20:10:08Z Pipeline: 60.0fps, 1.1Mbps, avg frame age: 5.6ms, dropped: 0
+2026-08-07T20:10:09Z Pipeline: 60.1fps, 0.2Mbps, avg frame age: 7.8ms, dropped: 0
+2026-08-07T20:10:10Z Pipeline: 60.0fps, 1.6Mbps, avg frame age: 7.2ms, dropped: 0
+2026-08-07T20:10:11Z Pipeline: 60.0fps, 0.7Mbps, avg frame age: 6.0ms, dropped: 0

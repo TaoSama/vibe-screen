@@ -1,0 +1,293 @@
+diff --git a/baseline/MacHost/Sources/AppDelegate.swift b/baseline/MacHost/Sources/AppDelegate.swift
+index 5889954..2925c79 100644
+--- a/baseline/MacHost/Sources/AppDelegate.swift
++++ b/baseline/MacHost/Sources/AppDelegate.swift
+@@ -190,6 +190,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
+     private static let internetSignalingTokenName = "internet.local.signaling.host-token.v1"
+     private static let internetTURNCredentialName = "internet.local.turn.credential.v1"
+ 
++    /// Stable synthetic identity for the optional virtual extended display that
++    /// is advertised (but not yet captured) so a single-physical-display Mac can
++    /// still offer a second selectable display chip. It never collides with a
++    /// real CGDirectDisplayID because it is not numeric. Once the virtual
++    /// display is actually created its real numeric id is advertised instead.
++    static let virtualExtendedDisplaySyntheticID = "telemachus-virtual-extended"
++    /// User-facing name for the virtual extended display chip.
++    static let virtualExtendedDisplayName = "Telemachus Virtual (扩展屏)"
++    /// Fallback advertised size for the virtual extended chip when no explicit
++    /// resolution is configured. Actual capture uses the configured resolution.
++    static let virtualExtendedDefaultWidth = 1920
++    static let virtualExtendedDefaultHeight = 1080
++
+     var streamingServer: StreamingServer?
+     private var internetProductSession: InternetProductSession?
+     private var internetPairingCoordinator: InternetPairingCoordinator?
+@@ -1858,20 +1871,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
+                 displayName: "Telemachus Display",
+                 isVirtual: configuration.displaySource == .extended || configuration.displaySource == .mirrorMain
+             )
+-            // Advertise every online physical display so the client can offer a
+-            // selection capsule. The captured display keeps its String(id)
++            // Advertise every online physical display plus, when the private
++            // virtual-display API is available, one optional virtual extended
++            // display so a single-physical-display Mac still offers a second
++            // selectable chip. The captured display keeps its String(id)
+             // identity so its descriptor matches the active-stream descriptor.
+             streamingServer?.setProtocolV1Displays(
+-                DisplayCatalog.onlineDisplays().map { display in
+-                    ProtocolV1DisplayInfo(
+-                        id: String(display.id),
+-                        name: display.name,
+-                        width: display.width,
+-                        height: display.height,
+-                        isPrimary: display.isMain,
+-                        isVirtual: false
+-                    )
+-                }
++                protocolV1DisplayCatalog(
++                    activeCaptureID: captureDisplayID,
++                    activeDisplaySource: configuration.displaySource,
++                    configuredSize: size
++                )
+             )
+             streamingServer?.onDisplaySelectionRequested = {
+                 [weak self, weak configuredServer] requestedDisplayID in
+@@ -2540,6 +2550,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
+         _ requestedDisplayID: String,
+         server: StreamingServer
+     ) {
++        // The virtual extended chip is advertised either with its stable
++        // synthetic id (while a physical display is captured) or with the real
++        // numeric id of the live virtual display (while it is captured). Treat
++        // both as a request for the extended source.
++        let activeVirtualID = (activeRuntimeConfiguration?.displaySource == .extended)
++            ? virtualDisplayManager?.displayID
++            : nil
++        let selectsVirtual = requestedDisplayID == Self.virtualExtendedDisplaySyntheticID
++            || (activeVirtualID.map { requestedDisplayID == String($0) } ?? false)
++        if selectsVirtual {
++            guard VirtualDisplayPrivateAPICapability.evaluate().isAvailable else {
++                debugLog("Client requested the virtual display but the private API is unavailable; ignoring")
++                return
++            }
++            if settings.displaySource == .extended {
++                debugLog("Client re-selected the already-active virtual display; no switch needed")
++                return
++            }
++            // The .extended reconfiguration path creates (or reuses) the virtual
++            // display and recaptures it. The client reconnects and re-negotiates
++            // video against the freshly advertised catalog.
++            debugLog("Client selected the virtual extended display; switching capture to .extended")
++            settings.displaySource = .extended
++            server.selectProtocolV1Display(requestedDisplayID)
++            return
++        }
+         guard let numericID = UInt32(requestedDisplayID) else {
+             debugLog("Ignoring client display selection with non-numeric id \(requestedDisplayID)")
+             return
+@@ -2550,6 +2586,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
+         }
+         // Drive the existing selected-display reconfiguration path. Setting the
+         // published id recomputes the persistent UUID and recaptures the source.
++        // This also switches away from .extended back to a physical capture.
+         settings.displaySource = .selectedDisplay
+         settings.selectedDisplayID = resolved.id
+         // Push the protocol re-negotiation with the selected identity so the
+@@ -2557,6 +2594,60 @@ class AppDelegate: NSObject, NSApplicationDelegate {
+         server.selectProtocolV1Display(requestedDisplayID)
+     }
+ 
++    /// Build the ListDisplays catalog advertised for the current capture. Every
++    /// online physical display is included with its real numeric id. When the
++    /// private virtual-display API is available, one virtual extended entry is
++    /// appended so a single-physical-display Mac still offers a second chip:
++    /// while a physical display is captured the entry carries the stable
++    /// synthetic id; while the virtual display is captured it carries the live
++    /// numeric id so the active descriptor matches the streamed identity.
++    private func protocolV1DisplayCatalog(
++        activeCaptureID: CGDirectDisplayID,
++        activeDisplaySource: DisplaySourceMode,
++        configuredSize: (width: Int, height: Int)
++    ) -> [ProtocolV1DisplayInfo] {
++        var catalog = DisplayCatalog.onlineDisplays().compactMap { display -> ProtocolV1DisplayInfo? in
++            // While capturing the virtual display it is already an online
++            // display; skip the physical duplicate so it is only advertised once
++            // (with the live numeric id) by the virtual entry below.
++            if activeDisplaySource == .extended && display.id == activeCaptureID {
++                return nil
++            }
++            return ProtocolV1DisplayInfo(
++                id: String(display.id),
++                name: display.name,
++                width: display.width,
++                height: display.height,
++                isPrimary: display.isMain,
++                isVirtual: false
++            )
++        }
++        guard VirtualDisplayPrivateAPICapability.evaluate().isAvailable else {
++            return catalog
++        }
++        let capturingVirtual = activeDisplaySource == .extended
++        let virtualID = capturingVirtual
++            ? String(activeCaptureID)
++            : Self.virtualExtendedDisplaySyntheticID
++        let virtualWidth = capturingVirtual
++            ? (configuredSize.width > 0 ? configuredSize.width : Self.virtualExtendedDefaultWidth)
++            : Self.virtualExtendedDefaultWidth
++        let virtualHeight = capturingVirtual
++            ? (configuredSize.height > 0 ? configuredSize.height : Self.virtualExtendedDefaultHeight)
++            : Self.virtualExtendedDefaultHeight
++        catalog.append(
++            ProtocolV1DisplayInfo(
++                id: virtualID,
++                name: Self.virtualExtendedDisplayName,
++                width: virtualWidth,
++                height: virtualHeight,
++                isPrimary: false,
++                isVirtual: true
++            )
++        )
++        return catalog
++    }
++
+     private func handleServerFailure(sessionToken: UInt64) async {
+         guard serverLifecycle.ownsSession(sessionToken) else { return }
+         let stopResult = await stopServer(
+diff --git a/baseline/MacHost/Sources/ProtocolV1SelfTest.swift b/baseline/MacHost/Sources/ProtocolV1SelfTest.swift
+index d98e0d4..00c0c15 100644
+--- a/baseline/MacHost/Sources/ProtocolV1SelfTest.swift
++++ b/baseline/MacHost/Sources/ProtocolV1SelfTest.swift
+@@ -4,6 +4,9 @@ import VibeScreenProtocol
+ enum ProtocolV1SelfTest {
+     private static let sessionID = Data(repeating: 0xAB, count: 16)
+     private static let sessionEpoch: UInt64 = 7
++    /// Mirrors AppDelegate.virtualExtendedDisplaySyntheticID for the host-side
++    /// contract asserted by testVirtualDisplayCatalog.
++    private static let virtualSyntheticID = "telemachus-virtual-extended"
+ 
+     static func run() -> Bool {
+         var failures: [String] = []
+@@ -12,6 +15,7 @@ enum ProtocolV1SelfTest {
+         testSharedGoldenFixtures(failures: &failures)
+         testNegotiationAndMediaGate(failures: &failures)
+         testMultiDisplaySelection(failures: &failures)
++        testVirtualDisplayCatalog(failures: &failures)
+         testRejections(failures: &failures)
+         testInputHeartbeatAndMedia(failures: &failures)
+         testTouchTargetAndDisconnect(failures: &failures)
+@@ -292,6 +296,63 @@ enum ProtocolV1SelfTest {
+         }
+     }
+ 
++    /// Covers the single-physical-display host contract: a synthetic virtual
++    /// extended entry is enumerated by ListDisplays as isVirtual, StartDisplay
++    /// accepts its id, and a runtime selection bumps the configEpoch so the
++    /// client re-negotiates video for the virtual source.
++    private static func testVirtualDisplayCatalog(failures: inout [String]) {
++        do {
++            let session = makeVirtualCatalogSession()
++            _ = session.handleControl(try clientHello().serializedData())
++            _ = session.completeCodecNegotiation()
++
++            let list = session.handleControl(try envelope(
++                id: 2,
++                payload: .listDisplaysRequest(VSListDisplaysRequest())
++            ).serializedData())
++            guard case .listDisplaysResponse(let displays)? = try responseEnvelopes(list).first?.payload,
++                  displays.displays.count == 2,
++                  displays.displays[0].displayID == "active-display",
++                  displays.displays[0].isVirtual == false,
++                  displays.displays[1].displayID == virtualSyntheticID,
++                  displays.displays[1].isVirtual,
++                  displays.displays[1].isPrimary == false else {
++                failures.append("ListDisplays did not enumerate the virtual extended display")
++                return
++            }
++
++            // Drive to streaming on the physical display first.
++            _ = session.handleControl(try envelope(
++                id: 3,
++                payload: .startDisplayRequest(displayRequest(sourceDisplayID: "active-display"))
++            ).serializedData())
++            var result = VSVideoConfigResult()
++            result.configEpoch = 1
++            result.streamID = 1
++            result.accepted = true
++            _ = session.handleControl(try envelope(
++                id: 4,
++                payload: .videoConfigResult(result)
++            ).serializedData())
++
++            // Runtime switch to the virtual display bumps the epoch.
++            let switchActions = session.selectDisplayFromClient(displayID: virtualSyntheticID)
++            let switchResponses = try responseEnvelopes(switchActions)
++            guard switchResponses.count == 2,
++                  case .startDisplayResponse(let response)? = switchResponses[0].payload,
++                  response.accepted,
++                  response.display.displayID == virtualSyntheticID,
++                  response.display.isVirtual,
++                  case .videoConfig(let config)? = switchResponses[1].payload,
++                  config.configEpoch == 2 else {
++                failures.append("Runtime selection of the virtual display did not bump the configEpoch")
++                return
++            }
++        } catch {
++            failures.append("virtual display catalog test failed: \(error)")
++        }
++    }
++
+     private static func testRejections(failures: inout [String]) {
+         do {
+             let versionSession = makeSession()
+@@ -542,6 +603,50 @@ enum ProtocolV1SelfTest {
+     }
+ 
+     private static func clientHello() -> VSEnvelope {
++        return clientHelloEnvelope()
++    }
++
++    private static func makeVirtualCatalogSession() -> ProtocolV1SessionCoordinator {
++        ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
++            sessionID: sessionID,
++            sessionEpoch: sessionEpoch,
++            displayWidth: 1920,
++            displayHeight: 1080,
++            rotation: 0,
++            framesPerSecond: 60,
++            bitrateKbps: 20_000,
++            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
++                touchEnabled: true
++            ),
++            requiredClientCapabilities: [.touch],
++            supportedCodecs: [.hevc, .h264],
++            hostID: "host",
++            hostName: "Mac",
++            displayID: "active-display",
++            displayName: "Built-in Liquid Retina XDR",
++            displayIsVirtual: false,
++            displays: [
++                ProtocolV1DisplayInfo(
++                    id: "active-display",
++                    name: "Built-in Liquid Retina XDR",
++                    width: 1920,
++                    height: 1080,
++                    isPrimary: true,
++                    isVirtual: false
++                ),
++                ProtocolV1DisplayInfo(
++                    id: virtualSyntheticID,
++                    name: "Telemachus Virtual",
++                    width: 1920,
++                    height: 1080,
++                    isPrimary: false,
++                    isVirtual: true
++                )
++            ]
++        ))
++    }
++
++    private static func clientHelloEnvelope() -> VSEnvelope {
+         var range = VSProtocolRange()
+         range.minimum = 1
+         range.maximum = 1
