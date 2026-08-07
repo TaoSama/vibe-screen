@@ -89,7 +89,10 @@ class LocalWebRTCE2ETests(unittest.TestCase):
             )
 
             private_directories: list[Path] = []
-            with open_verified_binaries(repo) as snapshots:
+            with mock.patch(
+                "scripts.phase3_webrtc.source_artifacts._descriptor_execution_path",
+                return_value=None,
+            ), open_verified_binaries(repo) as snapshots:
                 for snapshot in snapshots[:2]:
                     if snapshot.private_directory is not None:
                         private_directories.append(snapshot.private_directory)
@@ -114,6 +117,7 @@ class LocalWebRTCE2ETests(unittest.TestCase):
                     self.assertEqual(completed.returncode, 0, completed.stderr)
                     self.assertEqual(completed.stdout, f"verified:{mode}\n")
                     self.assertEqual(snapshot.sha256, hashlib.sha256(verified_bytes).hexdigest())
+                    self.assertEqual(snapshot.source_path.read_bytes(), verified_bytes)
                 mac_snapshot = snapshots[1]
                 self.assertEqual(
                     mac_snapshot.environment_overrides,
@@ -134,6 +138,10 @@ class LocalWebRTCE2ETests(unittest.TestCase):
                 finally:
                     shutil.rmtree(framework)
                     original_framework.replace(framework)
+                self.assertEqual(
+                    (framework / "Versions/A/WebRTC").read_bytes(),
+                    b"\xca\xfe\xba\xbeverified",
+                )
             self.assertTrue(all(not path.exists() for path in private_directories))
 
     def test_direct_replace_restore_executes_verified_snapshot(self) -> None:
@@ -151,7 +159,10 @@ class LocalWebRTCE2ETests(unittest.TestCase):
             turnserver.write_bytes(verified)
             turnserver.chmod(0o700)
             snapshot_directory: Path | None = None
-            with open_verified_external_executable(turnserver, "coturn binary") as snapshot:
+            with mock.patch(
+                "scripts.phase3_webrtc.source_artifacts._descriptor_execution_path",
+                return_value=None,
+            ), open_verified_external_executable(turnserver, "coturn binary") as snapshot:
                 snapshot_directory = snapshot.private_directory
                 original = root / "turnserver.original"
                 turnserver.replace(original)
@@ -175,6 +186,7 @@ class LocalWebRTCE2ETests(unittest.TestCase):
                 self.assertEqual(completed.returncode, 0, completed.stderr)
                 self.assertEqual(completed.stdout, "verified\n")
                 self.assertEqual(snapshot.sha256, hashlib.sha256(verified).hexdigest())
+                self.assertEqual(turnserver.read_bytes(), verified)
             self.assertIsNotNone(snapshot_directory)
             self.assertFalse(snapshot_directory.exists())
 
