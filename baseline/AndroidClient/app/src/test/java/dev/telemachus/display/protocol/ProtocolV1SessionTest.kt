@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Dimensions
+import dev.vibescreen.protocol.v1.DisconnectNotice
 import dev.vibescreen.protocol.v1.DisplayDescriptor
 import dev.vibescreen.protocol.v1.DisplayChanged
 import dev.vibescreen.protocol.v1.Envelope
@@ -27,7 +28,7 @@ import org.junit.Test
 
 class ProtocolV1SessionTest {
     @Test
-    fun clientHelloPinsVersionRequiredCapabilityAndDeterministicGoldenFields() {
+    fun clientHelloPinsVersionAndExactProductionCapabilities() {
         val session = session()
         val hello = session.clientHello()
 
@@ -36,7 +37,8 @@ class ProtocolV1SessionTest {
         assertEquals(1_000L, hello.sentAtMonotonicNs)
         assertEquals(1, hello.clientHello.supportedProtocols.minimum)
         assertEquals(1, hello.clientHello.supportedProtocols.maximum)
-        assertEquals(listOf(Capability.CAPABILITY_TOUCH), hello.clientHello.requiredCapabilitiesList)
+        assertEquals(listOf(Capability.CAPABILITY_TOUCH), hello.clientHello.capabilitiesList)
+        assertEquals(emptyList<Capability>(), hello.clientHello.requiredCapabilitiesList)
         assertEquals(listOf(Codec.CODEC_HEVC, Codec.CODEC_H264), hello.clientHello.codecsList)
     }
 
@@ -54,15 +56,36 @@ class ProtocolV1SessionTest {
         assertEquals("display-main", start.envelope.startDisplayRequest.sourceDisplayId)
         assertTrue(session.receive(startDisplay(5)).isEmpty())
 
-        val actions = session.receive(videoConfig(6))
+        val requested = session.receive(videoConfig(6)).single() as ProtocolV1Session.Action.VideoConfigurationRequested
+        assertEquals(1920, requested.width)
+        assertEquals(1080, requested.height)
+        assertEquals(90, requested.rotation)
+        assertEquals(3L, requested.configEpoch)
+        assertEquals(7L, requested.sessionEpoch)
+        assertFalse(session.isStreaming)
+        assertEquals(
+            ProtocolV1Session.MediaDisposition.DROP_PENDING_CONFIGURATION,
+            session.validateMedia(mediaHeader()),
+        )
+
+        val actions =
+            session.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
         val result = actions[0] as ProtocolV1Session.Action.Send
-        val configured = actions[1] as ProtocolV1Session.Action.VideoConfigured
+        val keyframe = actions[1] as ProtocolV1Session.Action.Send
+        val committed = actions[2] as ProtocolV1Session.Action.VideoConfigurationCommitted
+        val geometry = actions[3] as ProtocolV1Session.Action.DisplayGeometryChanged
         assertTrue(result.envelope.videoConfigResult.accepted)
         assertEquals(6L, result.envelope.correlationId)
-        assertEquals(1920, configured.width)
-        assertEquals(1080, configured.height)
-        assertEquals(90, configured.rotation)
-        assertEquals(7L, configured.sessionEpoch)
+        assertEquals(Envelope.PayloadCase.REQUEST_KEYFRAME, keyframe.envelope.payloadCase)
+        assertEquals(3L, committed.configEpoch)
+        assertEquals(1920, geometry.width)
+        assertEquals(1080, geometry.height)
+        assertEquals(90, geometry.rotation)
         assertTrue(session.isStreaming)
     }
 
@@ -82,7 +105,7 @@ class ProtocolV1SessionTest {
                                     .setLogicalSize(Dimensions.newBuilder().setWidth(1080).setHeight(1920)),
                             ).setRotationDegrees(270),
                     ).build(),
-            ).single() as ProtocolV1Session.Action.DisplayChanged
+            ).single() as ProtocolV1Session.Action.DisplayGeometryChanged
 
         assertEquals(1080, action.width)
         assertEquals(1920, action.height)
@@ -91,15 +114,142 @@ class ProtocolV1SessionTest {
     }
 
     @Test
-    fun rejectsVersionCapabilitySessionEpochAndUnexpectedPayload() {
+    fun staleVideoConfigEpochIsRejectedWithoutAReconfigurationAction() {
+        val session = streamingSession()
+
+        val actions = session.receive(videoConfig(id = 7, configEpoch = 3))
+        val result = actions.single() as ProtocolV1Session.Action.Send
+
+        assertFalse(result.envelope.videoConfigResult.accepted)
+        assertEquals(3L, result.envelope.videoConfigResult.configEpoch)
+    }
+
+    @Test
+    fun reconfigurationDropsPendingAndRetiredEpochsUntilNewKeyframe() {
+        val session = streamingSession()
+        assertEquals(
+            ProtocolV1Session.MediaDisposition.ACCEPT,
+            session.validateMedia(mediaHeader(frameId = 1)),
+        )
+
+        val requested =
+            session.receive(videoConfig(id = 7, configEpoch = 4)).single()
+                as ProtocolV1Session.Action.VideoConfigurationRequested
+        assertEquals(
+            ProtocolV1Session.MediaDisposition.DROP_PENDING_CONFIGURATION,
+            session.validateMedia(mediaHeader(configEpoch = 3, frameId = 2)),
+        )
+        assertEquals(
+            ProtocolV1Session.MediaDisposition.DROP_PENDING_CONFIGURATION,
+            session.validateMedia(mediaHeader(configEpoch = 4, frameId = 1)),
+        )
+
+        session.completeVideoConfiguration(
+            completedConfigEpoch = 4,
+            configurationToken = requested.configurationToken,
+            accepted = true,
+            rejectionReason = "",
+        )
+        assertEquals(
+            ProtocolV1Session.MediaDisposition.DROP_RETIRED_CONFIGURATION,
+            session.validateMedia(mediaHeader(configEpoch = 3, frameId = 2)),
+        )
+        assertEquals(
+            ProtocolV1Session.MediaDisposition.DROP_AWAITING_KEYFRAME,
+            session.validateMedia(mediaHeader(configEpoch = 4, frameId = 1, keyframe = false)),
+        )
+        assertEquals(
+            ProtocolV1Session.MediaDisposition.ACCEPT,
+            session.validateMedia(mediaHeader(configEpoch = 4, frameId = 2, keyframe = true)),
+        )
+    }
+
+    @Test
+    fun staleDecoderCompletionProducesNoAckAndLeavesPendingRequestIntact() {
+        val session = sessionThroughDisplayStart()
+        val requested =
+            session.receive(videoConfig(6)).single()
+                as ProtocolV1Session.Action.VideoConfigurationRequested
+
+        assertTrue(
+            session.completeVideoConfiguration(
+                completedConfigEpoch = 99,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            ).isEmpty(),
+        )
+        assertTrue(
+            session.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken + 1,
+                accepted = true,
+                rejectionReason = "",
+            ).isEmpty(),
+        )
+        assertFalse(session.isStreaming)
+        val completion =
+            session.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        assertTrue((completion.first() as ProtocolV1Session.Action.Send).envelope.videoConfigResult.accepted)
+    }
+
+    @Test
+    fun disconnectNoticeInvalidatesPendingVideoConfigurationAndLateCompletion() {
+        val session = sessionThroughDisplayStart()
+        val requested =
+            session.receive(videoConfig(6)).single()
+                as ProtocolV1Session.Action.VideoConfigurationRequested
+
+        val disconnected =
+            session.receive(
+                base(7)
+                    .setDisconnectNotice(
+                        DisconnectNotice.newBuilder().setReasonCode("host_shutdown").setMayResume(false),
+                    ).build(),
+            ).single()
+        assertTrue(disconnected is ProtocolV1Session.Action.Disconnected)
+        assertTrue(
+            session.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            ).isEmpty(),
+        )
+        assertFalse(session.isStreaming)
+        assertFalse(session.canSendTouch)
+        assertInvalidMediaHeader { session.validateMedia(mediaHeader()) }
+    }
+
+    @Test
+    fun displayChangeForAnotherDisplayIsRejected() {
+        val session = streamingSession()
+        val changed =
+            DisplayChanged
+                .newBuilder()
+                .setDisplay(
+                    DisplayDescriptor
+                        .newBuilder()
+                        .setDisplayId("stale-display")
+                        .setLogicalSize(Dimensions.newBuilder().setWidth(1080).setHeight(1920)),
+                ).setRotationDegrees(270)
+
+        assertInvalidPeerMessage {
+            session.receive(base(7).setDisplayChanged(changed).build())
+        }
+    }
+
+    @Test
+    fun rejectsVersionSessionEpochAndUnexpectedPayload() {
         val wrongVersion = session().also { it.clientHello() }
         assertInvalidPeerMessage {
             wrongVersion.receive(hostHello(2).toBuilder().setProtocolVersion(2).build())
         }
-
-        val missingRequired = session().also { it.clientHello() }
-        val hello = hostHello(2).toBuilder().setHostHello(HostHello.newBuilder().setSelectedProtocol(1)).build()
-        assertInvalidPeerMessage { missingRequired.receive(hello) }
 
         val active = streamingSession()
         assertInvalidPeerMessage {
@@ -206,8 +356,112 @@ class ProtocolV1SessionTest {
         assertFalse(session.isStreaming)
     }
 
+    @Test
+    fun rejectsSessionAcceptedWithCapabilityClientDidNotAdvertise() {
+        val session = session()
+        session.clientHello()
+        session.receive(
+            hostHello(
+                id = 2,
+                advertisedCapabilities =
+                    listOf(
+                        Capability.CAPABILITY_TOUCH,
+                        Capability.CAPABILITY_TELEMETRY,
+                    ),
+            ),
+        )
+        val acceptedMessage = sessionAccepted(3)
+        val accepted =
+            acceptedMessage.toBuilder()
+                .setSessionAccepted(
+                    acceptedMessage.sessionAccepted.toBuilder()
+                        .addNegotiatedCapabilities(Capability.CAPABILITY_TELEMETRY),
+                ).build()
+
+        assertInvalidPeerMessage { session.receive(accepted) }
+    }
+
+    @Test
+    fun acceptsExactIntersectionWhenHostAdvertisesAdditionalCapabilities() {
+        val session = session()
+        session.clientHello()
+        session.receive(
+            hostHello(
+                id = 2,
+                advertisedCapabilities =
+                    listOf(
+                        Capability.CAPABILITY_TOUCH,
+                        Capability.CAPABILITY_TELEMETRY,
+                    ),
+            ),
+        )
+
+        val listRequest = session.receive(sessionAccepted(3)).single() as ProtocolV1Session.Action.Send
+
+        assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, listRequest.envelope.payloadCase)
+    }
+
+    @Test
+    fun rejectsSessionAcceptedWithCapabilityHostDidNotAdvertise() {
+        val session = session()
+        session.clientHello()
+        session.receive(hostHello(2, advertisedCapabilities = emptyList()))
+
+        assertInvalidPeerMessage { session.receive(sessionAccepted(3)) }
+    }
+
+    @Test
+    fun rejectsSessionAcceptedThatOmitsMutuallyAdvertisedTouch() {
+        val session = session()
+        session.clientHello()
+        session.receive(hostHello(2))
+
+        assertInvalidPeerMessage {
+            session.receive(sessionAccepted(3, negotiatedCapabilities = emptyList()))
+        }
+    }
+
+    @Test
+    fun displayOnlyNegotiationStreamsButBlocksTouch() {
+        val session = session()
+        session.clientHello()
+        assertTrue(session.receive(hostHello(2, advertisedCapabilities = emptyList())).isEmpty())
+        val listRequest =
+            session.receive(sessionAccepted(3, negotiatedCapabilities = emptyList())).single()
+                as ProtocolV1Session.Action.Send
+        assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, listRequest.envelope.payloadCase)
+        session.receive(displayList(4))
+        session.receive(startDisplay(5))
+        val configured =
+            session.receive(videoConfig(6)).single()
+                as ProtocolV1Session.Action.VideoConfigurationRequested
+        assertFalse(session.isStreaming)
+        session.completeVideoConfiguration(
+            completedConfigEpoch = 3,
+            configurationToken = configured.configurationToken,
+            accepted = true,
+            rejectionReason = "",
+        )
+
+        assertTrue(session.isStreaming)
+        assertFalse(session.canSendTouch)
+        assertThrows(IllegalStateException::class.java) {
+            session.touch(100, 1, InputPhase.INPUT_PHASE_BEGAN, 0.25, 0.75)
+        }
+    }
+
     private fun streamingSession(): ProtocolV1Session =
-        sessionThroughDisplayStart().also { it.receive(videoConfig(6)) }
+        sessionThroughDisplayStart().also {
+            val requested =
+                it.receive(videoConfig(6)).single()
+                    as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        }
 
     private fun sessionThroughDisplayStart(): ProtocolV1Session =
         session().also {
@@ -244,6 +498,7 @@ class ProtocolV1SessionTest {
     private fun hostHello(
         id: Long,
         advertisedCodecs: List<Codec> = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
+        advertisedCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
     ): Envelope =
         Envelope
             .newBuilder()
@@ -253,12 +508,14 @@ class ProtocolV1SessionTest {
                 HostHello
                     .newBuilder()
                     .setSelectedProtocol(1)
-                    .addCapabilities(Capability.CAPABILITY_TOUCH)
-                    .addCapabilities(Capability.CAPABILITY_TELEMETRY)
+                    .addAllCapabilities(advertisedCapabilities)
                     .addAllCodecs(advertisedCodecs),
             ).build()
 
-    private fun sessionAccepted(id: Long): Envelope =
+    private fun sessionAccepted(
+        id: Long,
+        negotiatedCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
+    ): Envelope =
         Envelope
             .newBuilder()
             .setProtocolVersion(1)
@@ -269,12 +526,8 @@ class ProtocolV1SessionTest {
                     .setSessionId(SESSION_ID)
                     .setSessionEpoch(7)
                     .setHeartbeatIntervalMs(1_000)
-                    .addCapabilitiesCompat(),
+                    .addAllNegotiatedCapabilities(negotiatedCapabilities),
             ).build()
-
-    private fun SessionAccepted.Builder.addCapabilitiesCompat(): SessionAccepted.Builder =
-        addNegotiatedCapabilities(Capability.CAPABILITY_TOUCH)
-            .addNegotiatedCapabilities(Capability.CAPABILITY_TELEMETRY)
 
     private fun displayList(id: Long): Envelope =
         base(id)
@@ -298,12 +551,15 @@ class ProtocolV1SessionTest {
                     .setStreamId(42),
             ).build()
 
-    private fun videoConfig(id: Long): Envelope =
+    private fun videoConfig(
+        id: Long,
+        configEpoch: Long = 3,
+    ): Envelope =
         base(id)
             .setVideoConfig(
                 VideoConfig
                     .newBuilder()
-                    .setConfigEpoch(3)
+                    .setConfigEpoch(configEpoch)
                     .setCodec(Codec.CODEC_HEVC)
                     .setEncodedSize(Dimensions.newBuilder().setWidth(1920).setHeight(1080))
                     .setFramesPerSecond(60)
@@ -320,16 +576,20 @@ class ProtocolV1SessionTest {
             .setSessionId(SESSION_ID)
             .setSessionEpoch(7)
 
-    private fun mediaHeader(): MediaPacketHeader =
+    private fun mediaHeader(
+        configEpoch: Long = 3,
+        frameId: Long = 1,
+        keyframe: Boolean = true,
+    ): MediaPacketHeader =
         MediaPacketHeader
             .newBuilder()
             .setStreamId(42)
             .setSessionEpoch(7)
-            .setConfigEpoch(3)
-            .setFrameId(1)
+            .setConfigEpoch(configEpoch)
+            .setFrameId(frameId)
             .setFragmentIndex(0)
             .setFragmentCount(1)
-            .setKeyframe(true)
+            .setKeyframe(keyframe)
             .setCodec(Codec.CODEC_HEVC)
             .setPayloadLength(4)
             .build()

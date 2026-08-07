@@ -1,10 +1,9 @@
 package dev.telemachus.display.internet.security
 
-import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.security.MessageDigest
-import javax.crypto.Mac
 import javax.crypto.Cipher
+import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
@@ -16,8 +15,6 @@ class SessionTrafficKeys(
     val hostMedia: ByteArray,
     val deviceMedia: ByteArray,
 ) : AutoCloseable {
-    internal fun combined(): ByteArray = hostControl + deviceControl + hostMedia + deviceMedia
-
     /** Clears the in-memory copies owned by this instance after disconnect/rotation. */
     override fun close() {
         hostControl.fill(0)
@@ -94,17 +91,31 @@ object TrafficKeyDerivation {
         sharedSecret: ByteArray,
         bootstrapSecret: ByteArray,
         context: ByteArray,
+    ): SessionTrafficKeys = initial(sharedSecret, bootstrapSecret, context, SensitiveBufferObserver.NONE)
+
+    internal fun initial(
+        sharedSecret: ByteArray,
+        bootstrapSecret: ByteArray,
+        context: ByteArray,
+        observer: SensitiveBufferObserver,
     ): SessionTrafficKeys {
         require(sharedSecret.isNotEmpty() && bootstrapSecret.size == 32 && context.size == 32) {
             "Initial key derivation requires a shared secret, 32-byte bootstrap secret, and 32-byte transcript context"
         }
-        return split(hkdf(sharedSecret, bootstrapSecret, context), context, 1)
+        return split(hkdf(arrayOf(sharedSecret), bootstrapSecret, context, observer), context, 1, observer)
     }
 
     fun rotate(
         current: SessionTrafficKeys,
         nextEpoch: Long,
         updateNonce: ByteArray,
+    ): SessionTrafficKeys = rotate(current, nextEpoch, updateNonce, SensitiveBufferObserver.NONE)
+
+    internal fun rotate(
+        current: SessionTrafficKeys,
+        nextEpoch: Long,
+        updateNonce: ByteArray,
+        observer: SensitiveBufferObserver,
     ): SessionTrafficKeys {
         require(
             current.keyEpoch in 1 until Long.MAX_VALUE &&
@@ -113,60 +124,128 @@ object TrafficKeyDerivation {
                 updateNonce.size >= 16,
         ) { "Traffic-key rotation must advance exactly one epoch and use at least 16 nonce bytes" }
         val context =
-            SecurityTranscript.digest(
-                ROTATION_DOMAIN,
-                current.keyId.toByteArray(Charsets.UTF_8),
-                SecurityTranscript.uint64(current.keyEpoch),
-                SecurityTranscript.uint64(nextEpoch),
-                updateNonce,
+            SecurityTranscript.digest(ROTATION_DOMAIN, observer) {
+                text(current.keyId)
+                uint64(current.keyEpoch)
+                uint64(nextEpoch)
+                part(updateNonce)
+            }
+        return try {
+            split(
+                hkdf(
+                    arrayOf(current.hostControl, current.deviceControl, current.hostMedia, current.deviceMedia),
+                    updateNonce,
+                    context,
+                    observer,
+                ),
+                context,
+                nextEpoch,
+                observer,
             )
-        return split(hkdf(current.combined(), updateNonce, context), context, nextEpoch)
+        } finally {
+            context.fill(0)
+        }
     }
 
     private fun hkdf(
-        input: ByteArray,
+        inputParts: Array<out ByteArray>,
         salt: ByteArray,
         info: ByteArray,
+        observer: SensitiveBufferObserver,
     ): ByteArray {
         val extract = Mac.getInstance(HMAC_SHA256)
         extract.init(SecretKeySpec(salt, HMAC_SHA256))
-        val pseudorandomKey = extract.doFinal(input)
-        val output = ByteArrayOutputStream(MATERIAL_BYTES)
-        var previous = byteArrayOf()
-        var counter = 1
-        while (output.size() < MATERIAL_BYTES) {
-            val expand = Mac.getInstance(HMAC_SHA256)
-            expand.init(SecretKeySpec(pseudorandomKey, HMAC_SHA256))
-            expand.update(previous)
-            expand.update(info)
-            expand.update(counter.toByte())
-            previous = expand.doFinal()
-            output.write(previous)
-            counter += 1
+        inputParts.forEach(extract::update)
+        val pseudorandomKey = extract.doFinal()
+        var output: ByteArray? = null
+        var previous: ByteArray? = null
+        var completed = false
+        try {
+            observer.allocated("hkdf-prk", pseudorandomKey)
+            output = ByteArray(MATERIAL_BYTES)
+            observer.allocated("hkdf-material", output)
+            var offset = 0
+            var counter = 1
+            while (offset < output.size) {
+                val expand = Mac.getInstance(HMAC_SHA256)
+                expand.init(SecretKeySpec(pseudorandomKey, HMAC_SHA256))
+                previous?.let(expand::update)
+                expand.update(info)
+                expand.update(counter.toByte())
+                val next = expand.doFinal()
+                try {
+                    observer.allocated("hkdf-block-$counter", next)
+                } catch (failure: Throwable) {
+                    next.fill(0)
+                    throw failure
+                }
+                previous?.fill(0)
+                previous = next
+                val copyLength = minOf(next.size, output.size - offset)
+                next.copyInto(output, offset, 0, copyLength)
+                offset += copyLength
+                counter += 1
+            }
+            completed = true
+            return output
+        } finally {
+            previous?.fill(0)
+            pseudorandomKey.fill(0)
+            if (!completed) output?.fill(0)
         }
-        pseudorandomKey.fill(0)
-        return output.toByteArray().copyOf(MATERIAL_BYTES)
     }
 
     private fun split(
         material: ByteArray,
         context: ByteArray,
         epoch: Long,
+        observer: SensitiveBufferObserver,
     ): SessionTrafficKeys {
-        val firstDigest = sha256(context + material)
-        val keyId = sha256(firstDigest).toHex()
-        firstDigest.fill(0)
-        return SessionTrafficKeys(
-            keyId = keyId,
-            keyEpoch = epoch,
-            hostControl = material.copyOfRange(0, 32),
-            deviceControl = material.copyOfRange(32, 64),
-            hostMedia = material.copyOfRange(64, 96),
-            deviceMedia = material.copyOfRange(96, 128),
-        ).also { material.fill(0) }
+        var firstDigest: ByteArray? = null
+        var keyIdDigest: ByteArray? = null
+        var hostControl: ByteArray? = null
+        var deviceControl: ByteArray? = null
+        var hostMedia: ByteArray? = null
+        var deviceMedia: ByteArray? = null
+        var completed = false
+        try {
+            val computedFirstDigest = MessageDigest.getInstance("SHA-256").run {
+                update(context)
+                digest(material)
+            }
+            firstDigest = computedFirstDigest
+            observer.allocated("key-id-first-digest", computedFirstDigest)
+            val computedKeyIdDigest = MessageDigest.getInstance("SHA-256").digest(computedFirstDigest)
+            keyIdDigest = computedKeyIdDigest
+            observer.allocated("key-id-final-digest", computedKeyIdDigest)
+            val keyId = computedKeyIdDigest.toHex()
+            hostControl = material.copyOfRange(0, 32)
+            deviceControl = material.copyOfRange(32, 64)
+            hostMedia = material.copyOfRange(64, 96)
+            deviceMedia = material.copyOfRange(96, 128)
+            val keys =
+                SessionTrafficKeys(
+                    keyId = keyId,
+                    keyEpoch = epoch,
+                    hostControl = hostControl,
+                    deviceControl = deviceControl,
+                    hostMedia = hostMedia,
+                    deviceMedia = deviceMedia,
+                )
+            completed = true
+            return keys
+        } finally {
+            firstDigest?.fill(0)
+            keyIdDigest?.fill(0)
+            material.fill(0)
+            if (!completed) {
+                hostControl?.fill(0)
+                deviceControl?.fill(0)
+                hostMedia?.fill(0)
+                deviceMedia?.fill(0)
+            }
+        }
     }
-
-    private fun sha256(value: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(value)
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 
@@ -179,14 +258,60 @@ internal object SecurityTranscript {
     fun digest(
         domain: String,
         vararg parts: ByteArray,
+    ): ByteArray = digest(domain, SensitiveBufferObserver.NONE) { parts.forEach(::part) }
+
+    internal fun digest(
+        domain: String,
+        observer: SensitiveBufferObserver,
+        update: TranscriptDigestUpdater.() -> Unit,
     ): ByteArray {
-        val bytes = ByteArrayOutputStream()
-        listOf(IDENTITY_DOMAIN.toByteArray(), domain.toByteArray(), *parts).forEach { part ->
-            bytes.write(uint64(part.size.toLong()))
-            bytes.write(part)
-        }
-        return MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray())
+        val digest = MessageDigest.getInstance("SHA-256")
+        val updater = TranscriptDigestUpdater(digest, observer)
+        updater.text(IDENTITY_DOMAIN)
+        updater.text(domain)
+        updater.update()
+        return digest.digest()
     }
 
     fun uint64(value: Long): ByteArray = ByteBuffer.allocate(Long.SIZE_BYTES).putLong(value).array()
+}
+
+internal class TranscriptDigestUpdater(
+    private val digest: MessageDigest,
+    private val observer: SensitiveBufferObserver,
+) {
+    fun part(value: ByteArray) {
+        lengthPrefix(value.size.toLong())
+        digest.update(value)
+    }
+
+    fun text(value: String) = withOwned("transcript-text", value.toByteArray(Charsets.UTF_8), ::part)
+
+    fun uint64(value: Long) = withOwned("transcript-uint64", SecurityTranscript.uint64(value), ::part)
+
+    fun byte(value: Byte) = withOwned("transcript-byte", byteArrayOf(value), ::part)
+
+    private fun lengthPrefix(value: Long) =
+        withOwned("transcript-length", SecurityTranscript.uint64(value)) { digest.update(it) }
+
+    private inline fun withOwned(
+        label: String,
+        value: ByteArray,
+        block: (ByteArray) -> Unit,
+    ) {
+        try {
+            observer.allocated(label, value)
+            block(value)
+        } finally {
+            value.fill(0)
+        }
+    }
+}
+
+internal fun interface SensitiveBufferObserver {
+    fun allocated(label: String, buffer: ByteArray)
+
+    companion object {
+        val NONE = SensitiveBufferObserver { _, _ -> }
+    }
 }

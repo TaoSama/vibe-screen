@@ -1,29 +1,32 @@
 package dev.telemachus.display.internet
 
 import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
+import dev.telemachus.display.internet.security.InternetPairingIdentity
 import dev.telemachus.display.internet.security.SecurityTranscript
 import dev.vibescreen.protocol.v1.Capability
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
-data class InternetProductSessionLease(
+class InternetProductSessionLease(
     val pairingIdentifier: String,
     val signalingSessionId: String,
     val authoritativeSessionEpoch: Long,
     val identityEpoch: Long,
+    val localIdentity: InternetPairingIdentity,
     val transcriptContext: ByteArray,
     val iceServers: List<IceServer>,
     val signaling: SignalingConfiguration,
     val pinnedHostId: String,
     val iceTransportPolicy: IceTransportPolicy = IceTransportPolicy.ALL,
     val protocolSessionId: ByteArray = signalingSessionId.toByteArray(Charsets.UTF_8),
-) {
+) : AutoCloseable {
     init {
         require(pairingIdentifier.isNotBlank() && signalingSessionId.isNotBlank()) { "Session lease identifiers are required" }
         require(authoritativeSessionEpoch in 1 until Long.MAX_VALUE && identityEpoch in 1 until Long.MAX_VALUE) {
             "Session and identity epochs must be positive and below the reserved maximum"
         }
+        require(localIdentity.keyEpoch == identityEpoch) { "Session lease local identity epoch is inconsistent" }
         require(protocolSessionId.isNotEmpty()) { "Protocol session identifier is required" }
         require(pinnedHostId.isNotBlank()) { "Pinned host identity is required" }
         require(signaling.role == PeerRole.DEVICE) { "Android product sessions must use a device signaling credential" }
@@ -43,6 +46,17 @@ data class InternetProductSessionLease(
             SecurityTranscript.uint64(DEVICE_ROLE),
         )
     }
+
+    override fun close() {
+        signaling.close()
+        iceServers.forEach(IceServer::close)
+        transcriptContext.fill(0)
+        protocolSessionId.fill(0)
+    }
+
+    override fun toString(): String =
+        "InternetProductSessionLease(pairingIdentifier=$pairingIdentifier, signalingSessionId=$signalingSessionId, " +
+            "authoritativeSessionEpoch=$authoritativeSessionEpoch, identityEpoch=$identityEpoch, credentials=<redacted>)"
 
     private companion object {
         const val PRODUCT_SESSION_CONTEXT_DOMAIN = "vibescreen/product-session-context/v1"
@@ -250,6 +264,9 @@ class InternetProductSession internal constructor(
     private var pendingRevocation: PendingRevocation? = null
     private var acceptedHostHello = false
     private var acceptedSession = false
+    private var expectedNegotiatedCapabilities = emptySet<Capability>()
+    private var hostMaximumEncryptedMediaRecordBytes = 0L
+    private var negotiatedMaximumEncryptedMediaRecordBytes = 0
     private var negotiationStarted = false
     private var freshSessionRequested = false
     private var heartbeatIntervalMillis = 0L
@@ -259,7 +276,7 @@ class InternetProductSession internal constructor(
     private var closed = false
     private val transportOwner = TransportOwner(generation = 1)
     private var activeTransportOwner: TransportOwner? = transportOwner
-    private val frameAssembler = ProductMediaFrameAssembler()
+    private val frameAssembler = ProductMediaFrameAssembler(clock)
 
     init {
         check(!revocationCoordinator.isBlocked(lease.pairingIdentifier) && !revocationStore.isAdmissionBlocked(lease.pairingIdentifier)) {
@@ -313,6 +330,7 @@ class InternetProductSession internal constructor(
     fun tick() {
         transport.tick()
         expirePendingVideoConfiguration()
+        expirePendingMediaFrame()
         heartbeatTick()
     }
 
@@ -353,6 +371,7 @@ class InternetProductSession internal constructor(
         if (shouldClose) {
             runBestEffort(
                 { transport.close() },
+                { lease.close() },
                 { transition(InternetProductSessionState.CLOSED) },
             )
         }
@@ -558,16 +577,28 @@ class InternetProductSession internal constructor(
         message: ProductControlMessage.HostHello,
     ) {
         val required = ProtobufProtocolV1ProductCodec.REQUIRED_CLIENT_CAPABILITIES.toSet()
+        val expectedCapabilities =
+            message.capabilities.intersect(ProtobufProtocolV1ProductCodec.OFFERED_CLIENT_CAPABILITIES.toSet())
         if (
             message.hostId != lease.pinnedHostId ||
             message.selectedProtocol != ProtobufProtocolV1ProductCodec.PROTOCOL_VERSION ||
-            !message.capabilities.containsAll(required)
+            !message.capabilities.containsAll(required) ||
+            !expectedCapabilities.containsAll(required) ||
+            message.maximumEncryptedMediaRecordBytes <
+            InternetMediaRecordContract.MINIMUM_NEGOTIATED_ENCRYPTED_RECORD_BYTES.toLong()
         ) {
-            failIfOwned(owner, IllegalArgumentException("Host does not support the required Internet security capabilities"))
+            failIfOwned(
+                owner,
+                IllegalArgumentException("Host does not support the required Internet capabilities and media record limit"),
+            )
             return
         }
         synchronized(lock) {
-            if (acceptsTransportCallbackLocked(owner)) acceptedHostHello = true
+            if (acceptsTransportCallbackLocked(owner)) {
+                acceptedHostHello = true
+                expectedNegotiatedCapabilities = expectedCapabilities
+                hostMaximumEncryptedMediaRecordBytes = message.maximumEncryptedMediaRecordBytes
+            }
         }
     }
 
@@ -583,12 +614,17 @@ class InternetProductSession internal constructor(
                 !acceptedHostHello ||
                 !message.sessionId.contentEquals(lease.protocolSessionId) ||
                 message.sessionEpoch != lease.authoritativeSessionEpoch ||
-                !message.capabilities.containsAll(REQUIRED_SESSION_CAPABILITIES) ||
+                message.capabilities != expectedNegotiatedCapabilities ||
+                message.maximumEncryptedMediaRecordBytes != minOf(
+                    hostMaximumEncryptedMediaRecordBytes,
+                    InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES.toLong(),
+                ) ||
                 message.heartbeatIntervalMillis !in MIN_HEARTBEAT_INTERVAL_MS..MAX_HEARTBEAT_INTERVAL_MS
             ) {
                 invalidAcceptance = true
             } else {
                 acceptedSession = true
+                negotiatedMaximumEncryptedMediaRecordBytes = Math.toIntExact(message.maximumEncryptedMediaRecordBytes)
                 heartbeatIntervalMillis = message.heartbeatIntervalMillis
                 scheduleNextHeartbeatLocked()
                 if (state != InternetProductSessionState.ACTIVE) {
@@ -742,7 +778,7 @@ class InternetProductSession internal constructor(
                     sendFailed = true
                 } else if (effectiveDecision.accepted) {
                     currentVideoConfiguration = configuration
-                    frameAssembler.startConfiguration(configuration)
+                    frameAssembler.startConfiguration(configuration, lease.authoritativeSessionEpoch)
                 }
             }
             if (sendFailed) {
@@ -783,6 +819,20 @@ class InternetProductSession internal constructor(
         }
     }
 
+    private fun expirePendingMediaFrame() {
+        val result =
+            synchronized(lock) {
+                if (!acceptedSession || currentVideoConfiguration == null) {
+                    ProductMediaAssemblyResult.Pending
+                } else {
+                    frameAssembler.expire()
+                }
+            }
+        if (result is ProductMediaAssemblyResult.KeyframeRequired) {
+            requestKeyframe(result.reason)
+        }
+    }
+
     private fun handleMedia(
         owner: TransportOwner,
         payload: ByteArray,
@@ -794,28 +844,41 @@ class InternetProductSession internal constructor(
             } ?: return
         val fragment =
             try {
+                val maximumPlaintextRecordBytes =
+                    synchronized(lock) {
+                        negotiatedMaximumEncryptedMediaRecordBytes -
+                            InternetMediaRecordContract.APPLICATION_AEAD_RECORD_OVERHEAD_BYTES
+                    }
+                require(payload.size <= maximumPlaintextRecordBytes) {
+                    "Protocol v1 media record exceeds the negotiated session limit"
+                }
                 codec.decodeMediaFragment(payload)
             } catch (failure: Throwable) {
+                requestKeyframe(MEDIA_KEYFRAME_REASON_INVALID_FRAGMENT)
                 failIfOwned(owner, IllegalArgumentException("Protocol v1 media packet was rejected", failure))
                 return
             }
         testHooks.afterMediaDecodeBeforeCommit()
-        val frame =
+        val assemblyResult =
             synchronized(lock) {
                 if (
                     !acceptsTransportCallbackLocked(owner) ||
                     !acceptedSession ||
-                    currentVideoConfiguration != configuration ||
-                    fragment.sessionEpoch != lease.authoritativeSessionEpoch ||
-                    fragment.streamId != configuration.streamId ||
-                    fragment.configEpoch != configuration.configEpoch ||
-                    fragment.codec != configuration.codec
+                    currentVideoConfiguration != configuration
                 ) {
                     return
                 }
                 frameAssembler.offer(fragment)
             }
-                ?: return
+        val frame =
+            when (assemblyResult) {
+                ProductMediaAssemblyResult.Pending -> return
+                is ProductMediaAssemblyResult.KeyframeRequired -> {
+                    requestKeyframe(assemblyResult.reason)
+                    return
+                }
+                is ProductMediaAssemblyResult.FrameReady -> assemblyResult.frame
+            }
         testHooks.beforeMediaDispatchGate()
         withLifecycleGate {
             if (synchronized(lock) { acceptsTransportCallbackLocked(owner) && acceptedSession && currentVideoConfiguration == configuration }) {
@@ -962,6 +1025,7 @@ class InternetProductSession internal constructor(
             }
         if (notify) {
             notifyTerminalFailureIfCurrent(error)
+            releaseFailedSessionCredentials()
         }
     }
 
@@ -981,8 +1045,18 @@ class InternetProductSession internal constructor(
                     }
                 }
             }
-        if (notify) notifyTerminalFailureIfCurrent(error)
+        if (notify) {
+            notifyTerminalFailureIfCurrent(error)
+            releaseFailedSessionCredentials()
+        }
         return notify
+    }
+
+    private fun releaseFailedSessionCredentials() {
+        runBestEffort(
+            { transport.close() },
+            { lease.close() },
+        )
     }
 
     private fun transitionIfOwned(
@@ -1091,6 +1165,7 @@ class InternetProductSession internal constructor(
         activeTransportOwner = null
         acceptedHostHello = false
         acceptedSession = false
+        expectedNegotiatedCapabilities = emptySet()
         currentVideoConfiguration = null
         pendingVideoConfiguration = null
         nextHeartbeatAtMillis = Long.MAX_VALUE
@@ -1118,14 +1193,8 @@ class InternetProductSession internal constructor(
     companion object {
         private const val MIN_HEARTBEAT_INTERVAL_MS = 100L
         private const val MAX_HEARTBEAT_INTERVAL_MS = 60_000L
+        private const val MEDIA_KEYFRAME_REASON_INVALID_FRAGMENT = "invalid_media_fragment"
         private const val VIDEO_CONFIGURATION_TIMEOUT_MS = 5_000L
-        private val REQUIRED_SESSION_CAPABILITIES =
-            setOf(
-                Capability.CAPABILITY_DEVICE_IDENTITY,
-                Capability.CAPABILITY_END_TO_END_ENCRYPTION,
-                Capability.CAPABILITY_REPLAY_PROTECTION,
-            )
-
         fun create(
             storedSessionFactory: AndroidStoredInternetSessionFactory,
             localDeviceId: String,
@@ -1154,13 +1223,16 @@ class InternetProductSession internal constructor(
                         pairingIdentifier = lease.pairingIdentifier,
                         sessionId = lease.signalingSessionId,
                         localRole = PeerRole.DEVICE,
-                        identityEpoch = lease.identityEpoch,
+                        expectedIdentity = lease.localIdentity,
                         authoritativeSessionEpoch = lease.authoritativeSessionEpoch,
                         transcriptContext = boundContext,
                         iceServers = lease.iceServers,
                         signaling = lease.signaling,
                         iceTransportPolicy = lease.iceTransportPolicy,
                     )
+                } catch (failure: Throwable) {
+                    lease.close()
+                    throw failure
                 } finally {
                     boundContext.fill(0)
                 }
@@ -1178,64 +1250,183 @@ class InternetProductSession internal constructor(
                 )
             } catch (failure: Throwable) {
                 stored.close()
+                lease.close()
                 throw failure
             }
         }
     }
 }
 
-private class ProductMediaFrameAssembler {
+internal sealed interface ProductMediaAssemblyResult {
+    data object Pending : ProductMediaAssemblyResult
+
+    data class FrameReady(val frame: ProductVideoFrame) : ProductMediaAssemblyResult
+
+    data class KeyframeRequired(val reason: String) : ProductMediaAssemblyResult
+}
+
+internal class ProductMediaFrameAssembler(
+    private val clock: MonotonicClock,
+    private val assemblyDeadlineMillis: Long = DEFAULT_ASSEMBLY_DEADLINE_MS,
+) {
     private var configuration: ProductVideoConfiguration? = null
+    private var sessionEpoch: Long? = null
     private var current: PendingFrame? = null
     private var waitingForKeyframe = true
     private var highestFrameId = 0L
 
-    fun startConfiguration(configuration: ProductVideoConfiguration) {
+    init {
+        require(assemblyDeadlineMillis > 0) { "Media assembly deadline must be positive" }
+    }
+
+    fun startConfiguration(configuration: ProductVideoConfiguration, sessionEpoch: Long) {
+        require(sessionEpoch > 0) { "Media session epoch must be positive" }
         this.configuration = configuration
+        this.sessionEpoch = sessionEpoch
         current = null
         waitingForKeyframe = true
         highestFrameId = 0
     }
 
-    fun offer(fragment: ProductMediaFragment): ProductVideoFrame? {
-        val active = configuration ?: return null
-        if (fragment.frameId <= highestFrameId || fragment.fragmentCount !in 1..MAX_FRAGMENTS) return null
+    fun offer(fragment: ProductMediaFragment): ProductMediaAssemblyResult {
+        val active = configuration ?: return ProductMediaAssemblyResult.KeyframeRequired(REASON_NO_CONFIGURATION)
+        val activeSessionEpoch = sessionEpoch
+            ?: return ProductMediaAssemblyResult.KeyframeRequired(REASON_NO_CONFIGURATION)
+        val nowMillis = clock.nowMillis()
+        val expired = expireCurrentIfNeeded(nowMillis)
+        when (classifyScope(fragment, active, activeSessionEpoch)) {
+            MediaScope.CURRENT -> Unit
+            MediaScope.STALE -> {
+                return if (expired) {
+                    ProductMediaAssemblyResult.KeyframeRequired(REASON_ASSEMBLY_TIMEOUT)
+                } else {
+                    ProductMediaAssemblyResult.Pending
+                }
+            }
+            MediaScope.CONFLICTING -> {
+                return ProductMediaAssemblyResult.KeyframeRequired(
+                    if (expired) REASON_ASSEMBLY_TIMEOUT else REASON_SCOPE_MISMATCH,
+                )
+            }
+        }
+        if (!isAdmissible(fragment)) {
+            return ProductMediaAssemblyResult.KeyframeRequired(REASON_INVALID_FRAGMENT)
+        }
+        if (fragment.frameId <= highestFrameId) {
+            return if (expired) {
+                ProductMediaAssemblyResult.KeyframeRequired(REASON_ASSEMBLY_TIMEOUT)
+            } else {
+                ProductMediaAssemblyResult.Pending
+            }
+        }
         val pending = current
         if (pending == null || fragment.frameId > pending.frameId) {
-            current = PendingFrame(fragment)
+            if (pending != null && !fragment.keyframe) {
+                rejectAdmittedFrame(fragment.frameId)
+                return ProductMediaAssemblyResult.KeyframeRequired(REASON_MISSING_FRAGMENT)
+            }
+            if (waitingForKeyframe && !fragment.keyframe) {
+                rejectAdmittedFrame(fragment.frameId)
+                return ProductMediaAssemblyResult.KeyframeRequired(REASON_KEYFRAME_REQUIRED)
+            }
+            current = PendingFrame(fragment, deadlineFrom(nowMillis))
         } else if (fragment.frameId < pending.frameId || !pending.matches(fragment)) {
-            return null
+            if (fragment.frameId == pending.frameId) {
+                rejectAdmittedFrame(fragment.frameId)
+                return ProductMediaAssemblyResult.KeyframeRequired(REASON_FRAGMENT_MISMATCH)
+            }
+            return ProductMediaAssemblyResult.Pending
         }
         val target = checkNotNull(current)
-        if (!target.add(fragment) || target.totalBytes > MAX_FRAME_BYTES) {
-            if (target.totalBytes > MAX_FRAME_BYTES) current = null
-            return null
+        if (!target.canAdd(fragment)) {
+            rejectAdmittedFrame(fragment.frameId)
+            return ProductMediaAssemblyResult.KeyframeRequired(REASON_DUPLICATE_FRAGMENT)
         }
-        if (!target.complete()) return null
+        if (target.totalBytes > InternetMediaRecordContract.MAXIMUM_FRAME_BYTES - fragment.payload.size) {
+            rejectAdmittedFrame(fragment.frameId)
+            return ProductMediaAssemblyResult.KeyframeRequired(REASON_FRAME_TOO_LARGE)
+        }
+        target.commit(fragment)
+        if (!target.complete()) return ProductMediaAssemblyResult.Pending
         current = null
         highestFrameId = target.frameId
-        if (waitingForKeyframe && !target.keyframe) return null
+        if (waitingForKeyframe && !target.keyframe) {
+            return ProductMediaAssemblyResult.KeyframeRequired(REASON_KEYFRAME_REQUIRED)
+        }
         waitingForKeyframe = false
-        return ProductVideoFrame(
-            streamId = active.streamId,
-            sessionEpoch = fragment.sessionEpoch,
-            configEpoch = active.configEpoch,
-            frameId = target.frameId,
-            captureTimestampNs = target.captureTimestampNs,
-            keyframe = target.keyframe,
-            codec = active.codec,
-            payload = target.combine(),
+        return ProductMediaAssemblyResult.FrameReady(
+            ProductVideoFrame(
+                streamId = active.streamId,
+                sessionEpoch = fragment.sessionEpoch,
+                configEpoch = active.configEpoch,
+                frameId = target.frameId,
+                captureTimestampNs = target.captureTimestampNs,
+                keyframe = target.keyframe,
+                codec = active.codec,
+                payload = target.combine(),
+            ),
         )
     }
 
+    fun expire(): ProductMediaAssemblyResult =
+        if (expireCurrentIfNeeded(clock.nowMillis())) {
+            ProductMediaAssemblyResult.KeyframeRequired(REASON_ASSEMBLY_TIMEOUT)
+        } else {
+            ProductMediaAssemblyResult.Pending
+        }
+
     fun reset() {
         configuration = null
+        sessionEpoch = null
         current = null
         waitingForKeyframe = true
         highestFrameId = 0
     }
 
-    private class PendingFrame(fragment: ProductMediaFragment) {
+    private fun isAdmissible(fragment: ProductMediaFragment): Boolean =
+        fragment.frameId in 1 until Long.MAX_VALUE &&
+            fragment.fragmentCount in 1..InternetMediaRecordContract.MAXIMUM_FRAGMENTS_PER_FRAME &&
+            fragment.fragmentIndex in 0 until fragment.fragmentCount &&
+            fragment.payload.isNotEmpty()
+
+    private fun classifyScope(
+        fragment: ProductMediaFragment,
+        active: ProductVideoConfiguration,
+        activeSessionEpoch: Long,
+    ): MediaScope =
+        when {
+            fragment.sessionEpoch < activeSessionEpoch -> MediaScope.STALE
+            fragment.sessionEpoch > activeSessionEpoch -> MediaScope.CONFLICTING
+            fragment.configEpoch < active.configEpoch -> MediaScope.STALE
+            fragment.configEpoch > active.configEpoch -> MediaScope.CONFLICTING
+            fragment.streamId != active.streamId || fragment.codec != active.codec -> MediaScope.CONFLICTING
+            else -> MediaScope.CURRENT
+        }
+
+    private fun rejectAdmittedFrame(frameId: Long) {
+        current = null
+        highestFrameId = maxOf(highestFrameId, frameId)
+        waitingForKeyframe = true
+    }
+
+    private fun expireCurrentIfNeeded(nowMillis: Long): Boolean {
+        val pending = current ?: return false
+        if (nowMillis < pending.deadlineMillis) return false
+        rejectAdmittedFrame(pending.frameId)
+        return true
+    }
+
+    private fun deadlineFrom(nowMillis: Long): Long =
+        if (nowMillis > Long.MAX_VALUE - assemblyDeadlineMillis) {
+            Long.MAX_VALUE
+        } else {
+            nowMillis + assemblyDeadlineMillis
+        }
+
+    private class PendingFrame(
+        fragment: ProductMediaFragment,
+        val deadlineMillis: Long,
+    ) {
         val frameId = fragment.frameId
         val fragmentCount = fragment.fragmentCount
         val captureTimestampNs = fragment.captureTimestampNs
@@ -1258,11 +1449,12 @@ private class ProductMediaFrameAssembler {
                 fragment.configEpoch == configEpoch &&
                 fragment.codec == codec
 
-        fun add(fragment: ProductMediaFragment): Boolean {
-            if (fragment.fragmentIndex !in fragments.indices || fragments[fragment.fragmentIndex] != null) return false
+        fun canAdd(fragment: ProductMediaFragment): Boolean =
+            fragment.fragmentIndex in fragments.indices && fragments[fragment.fragmentIndex] == null
+
+        fun commit(fragment: ProductMediaFragment) {
             fragments[fragment.fragmentIndex] = fragment.payload.copyOf()
             totalBytes += fragment.payload.size
-            return true
         }
 
         fun complete(): Boolean = fragments.all { it != null }
@@ -1279,8 +1471,22 @@ private class ProductMediaFrameAssembler {
         }
     }
 
+    private enum class MediaScope {
+        CURRENT,
+        STALE,
+        CONFLICTING,
+    }
+
     companion object {
-        private const val MAX_FRAGMENTS = 256
-        private const val MAX_FRAME_BYTES = 16 * 1024 * 1024
+        internal const val REASON_NO_CONFIGURATION = "media_without_configuration"
+        internal const val REASON_SCOPE_MISMATCH = "media_scope_mismatch"
+        internal const val REASON_INVALID_FRAGMENT = "invalid_media_fragment"
+        internal const val REASON_MISSING_FRAGMENT = "missing_media_fragment"
+        internal const val REASON_FRAGMENT_MISMATCH = "media_fragment_mismatch"
+        internal const val REASON_DUPLICATE_FRAGMENT = "duplicate_media_fragment"
+        internal const val REASON_FRAME_TOO_LARGE = "media_frame_too_large"
+        internal const val REASON_KEYFRAME_REQUIRED = "media_keyframe_required"
+        internal const val REASON_ASSEMBLY_TIMEOUT = "media_assembly_timeout"
+        internal const val DEFAULT_ASSEMBLY_DEADLINE_MS = 1_000L
     }
 }

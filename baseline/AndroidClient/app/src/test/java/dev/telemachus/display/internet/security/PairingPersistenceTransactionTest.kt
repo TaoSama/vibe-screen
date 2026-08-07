@@ -38,7 +38,51 @@ class PairingPersistenceTransactionTest {
         transaction.complete(TARGET, commitBusinessState = {}, cleanupBusinessState = {})
 
         assertFalse(MARKER in slots.values)
+        assertFalse(RECOVERY_MARKER in slots.values)
         assertArrayEquals(byteArrayOf(4, 5), slots.values.getValue(TARGET))
+    }
+
+    @Test
+    fun missingPrimaryMarkerUsesRecoveryMarkerToRemovePendingSecret() {
+        val slots = MemorySlots()
+        PairingPersistenceTransaction(slots, MARKER).begin(TARGET, byteArrayOf(4, 5), "pair-2")
+        slots.values.remove(MARKER)
+        var cleanedOwner: String? = null
+
+        assertTrue(
+            PairingPersistenceTransaction(slots, MARKER).retryPendingCleanup { _, owner ->
+                cleanedOwner = owner
+            },
+        )
+
+        assertTrue(cleanedOwner == "pair-2")
+        assertFalse(TARGET in slots.values)
+        assertFalse(RECOVERY_MARKER in slots.values)
+    }
+
+    @Test
+    fun restartAfterCommitMarkerPromotionKeepsCommittedSecret() {
+        val slots = MemorySlots()
+        val transaction = PairingPersistenceTransaction(slots, MARKER)
+        transaction.begin(TARGET, byteArrayOf(4, 5), "pair-2")
+        slots.failDelete = setOf(MARKER)
+
+        transaction.complete(TARGET, commitBusinessState = {}, cleanupBusinessState = {})
+        assertTrue(MARKER in slots.values)
+        assertTrue(RECOVERY_MARKER in slots.values)
+        slots.failDelete = emptySet()
+        var businessCleanupCalled = false
+
+        assertTrue(
+            PairingPersistenceTransaction(slots, MARKER).retryPendingCleanup { _, _ ->
+                businessCleanupCalled = true
+            },
+        )
+
+        assertFalse(businessCleanupCalled)
+        assertArrayEquals(byteArrayOf(4, 5), slots.values.getValue(TARGET))
+        assertFalse(MARKER in slots.values)
+        assertFalse(RECOVERY_MARKER in slots.values)
     }
 
     @Test
@@ -154,6 +198,7 @@ class PairingPersistenceTransactionTest {
 
     companion object {
         private const val MARKER = "phase3.pairing.persistence-cleanup.v1"
+        private const val RECOVERY_MARKER = "$MARKER.recovery"
         private const val TARGET = "phase3.pairing.v1.0123456789abcdef"
         private const val OLD_TARGET = "phase3.pairing.v1.fedcba9876543210"
     }

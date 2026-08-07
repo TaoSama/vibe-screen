@@ -19,7 +19,12 @@ class AndroidStoredInternetSession internal constructor(
     val configuration: PeerConfiguration,
 ) : AutoCloseable {
     override fun close() {
-        engine.close()
+        try {
+            engine.close()
+        } finally {
+            configuration.signaling?.close()
+            configuration.iceServers.forEach(IceServer::close)
+        }
     }
 }
 
@@ -27,20 +32,50 @@ class AndroidStoredInternetSession internal constructor(
  * Fail-closed bridge from AndroidKeyStore-backed pairing state to the production WebRTC adapter.
  * Pairing secrets are persisted as one AES-GCM record so a crash cannot expose a half-written pair.
  */
-class AndroidStoredInternetSessionFactory(
-    context: Context,
+class AndroidStoredInternetSessionFactory private constructor(
     val localDeviceId: String,
-    private val secretStore: AndroidSecretStore = AndroidSecretStore(context.applicationContext),
-    private val sessionSecurity: AndroidSessionSecurity =
-        AndroidSessionSecurity(localDeviceId, context.applicationContext),
+    private val sessionSecurity: AndroidSessionSecurity,
+    private val loadSecret: (String) -> ByteArray?,
+    private val persistSecret: (String, ByteArray) -> Unit,
+    private val deleteSecret: (String) -> Unit,
+    private val engineFactory: ((VideoProfile) -> Unit) -> AndroidWebRtcPeerEngine,
 ) {
-    private val applicationContext = context.applicationContext
+    constructor(
+        context: Context,
+        localDeviceId: String,
+        secretStore: AndroidSecretStore = AndroidSecretStore(context.applicationContext),
+        sessionSecurity: AndroidSessionSecurity =
+            AndroidSessionSecurity(localDeviceId, context.applicationContext),
+    ) : this(
+        localDeviceId = localDeviceId,
+        sessionSecurity = sessionSecurity,
+        loadSecret = secretStore::load,
+        persistSecret = secretStore::persist,
+        deleteSecret = secretStore::delete,
+        engineFactory = { videoProfileSink -> AndroidWebRtcPeerEngine(context.applicationContext, videoProfileSink) },
+    )
+
+    internal constructor(
+        localDeviceId: String,
+        sessionSecurity: AndroidSessionSecurity,
+        loadSecret: (String) -> ByteArray?,
+        persistSecret: (String, ByteArray) -> Unit,
+        deleteSecret: (String) -> Unit,
+    ) : this(
+        localDeviceId = localDeviceId,
+        sessionSecurity = sessionSecurity,
+        loadSecret = loadSecret,
+        persistSecret = persistSecret,
+        deleteSecret = deleteSecret,
+        engineFactory = { error("Android WebRTC engine is unavailable in this test seam") },
+    )
+
     private val pairingPersistence =
         PairingPersistenceTransaction(
             object : PairingPersistenceSlots {
-                override fun load(name: String): ByteArray? = secretStore.load(name)
-                override fun persist(name: String, value: ByteArray) = secretStore.persist(name, value)
-                override fun delete(name: String) = secretStore.delete(name)
+                override fun load(name: String): ByteArray? = loadSecret(name)
+                override fun persist(name: String, value: ByteArray) = persistSecret(name, value)
+                override fun delete(name: String) = deleteSecret(name)
             },
             PAIRING_CLEANUP_MARKER_NAME,
         )
@@ -100,21 +135,31 @@ class AndroidStoredInternetSessionFactory(
 
     fun removePairingSecrets(pairingIdentifier: String) {
         require(pairingIdentifier.isNotBlank()) { "Pairing identifier must not be blank" }
-        secretStore.delete(secretName(pairingIdentifier))
+        deleteSecret(secretName(pairingIdentifier))
     }
 
     fun reserveNextIdentityEpoch(): Long = sessionSecurity.reserveNextIdentityEpoch()
 
-    fun authorizeIdentityEpoch(identityEpoch: Long) = sessionSecurity.authorizeIdentityEpoch(identityEpoch)
+    fun authorizeIdentity(identity: InternetPairingIdentity) = sessionSecurity.authorizeIdentity(identity)
 
-    fun <T> withFreshSessionEpochCandidate(sessionEpoch: Long, block: () -> T): T =
-        sessionSecurity.withFreshSessionEpochCandidate(sessionEpoch, block)
+    fun <T> withFreshSessionEpochCandidate(
+        pairingIdentifier: String,
+        identity: InternetPairingIdentity,
+        sessionEpoch: Long,
+        block: () -> T,
+    ): T =
+        sessionSecurity.withFreshSessionEpochCandidate(
+            pairingIdentifier,
+            identity,
+            sessionEpoch,
+            block,
+        )
 
     fun create(
         pairingIdentifier: String,
         sessionId: String,
         localRole: PeerRole,
-        identityEpoch: Long,
+        expectedIdentity: InternetPairingIdentity,
         authoritativeSessionEpoch: Long,
         transcriptContext: ByteArray,
         iceServers: List<IceServer>,
@@ -127,7 +172,7 @@ class AndroidStoredInternetSessionFactory(
         require(signaling.role == localRole) { "Signaling role must match the local session role" }
         require(transcriptContext.size == TRANSCRIPT_CONTEXT_BYTES) { "Transcript context must contain 32 bytes" }
         val stored =
-            checkNotNull(secretStore.load(secretName(pairingIdentifier))) {
+            checkNotNull(loadSecret(secretName(pairingIdentifier))) {
                 "Paired-device session secrets are missing from encrypted Android storage"
             }
         val decoded =
@@ -139,7 +184,8 @@ class AndroidStoredInternetSessionFactory(
         try {
             val active =
                 sessionSecurity.startSession(
-                    identityEpoch = identityEpoch,
+                    pairingIdentifier = pairingIdentifier,
+                    expectedIdentity = expectedIdentity,
                     authoritativeSessionEpoch = authoritativeSessionEpoch,
                     sharedSecret = decoded.sharedSecret,
                     bootstrapSecret = decoded.bootstrapSecret,
@@ -151,6 +197,8 @@ class AndroidStoredInternetSessionFactory(
                     AndroidSessionPacketCipher(
                         sessionId = sessionId,
                         sessionEpoch = active.sessionEpoch,
+                        pairingIdentifier = pairingIdentifier,
+                        identityEpoch = expectedIdentity.keyEpoch,
                         localRole = localRole,
                         platformSecurity = sessionSecurity,
                         initialKeys = active.trafficKeys,
@@ -169,7 +217,7 @@ class AndroidStoredInternetSessionFactory(
                     )
                 return AndroidStoredInternetSession(
                     identity = active.identity,
-                    engine = AndroidWebRtcPeerEngine(applicationContext, videoProfileSink),
+                    engine = engineFactory(videoProfileSink),
                     configuration = configuration,
                 )
             } catch (failure: Throwable) {
