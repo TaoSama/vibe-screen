@@ -17,14 +17,12 @@ if __package__ in (None, ""):
 from scripts.phase3_webrtc.model import (  # noqa: E402
     DEFAULT_TIMEOUT_SECONDS,
     E2EFailure,
-    RELAY_HOOK_ENVIRONMENT,
     SLICE_CONFIGURATION,
 )
 from scripts.phase3_webrtc.privacy import (  # noqa: E402
     project_and_validate_public_diagnostic,
     remove_private_diagnostics,
     remove_private_file,
-    write_evidence,
     write_private_text,
 )
 from scripts.phase3_webrtc.session import (  # noqa: E402
@@ -321,17 +319,6 @@ def main(arguments: list[str] | None = None) -> int:
             print_success_summary(arguments.mode, arguments.slice)
             return 0
         if not production_relay_hook_available(repo_root):
-            evidence = {
-                "schema": "dev.vibescreen.phase3-webrtc-e2e/v1",
-                "mode": "relay",
-                "result": "blocked",
-                "production_peer": {
-                    "result": "not_run",
-                    "reason": "production relay configuration hooks are unavailable",
-                    "required_environment": list(RELAY_HOOK_ENVIRONMENT),
-                },
-            }
-            write_evidence(output_path, evidence)
             raise E2EFailure("production forced-relay ICE is unavailable")
         coturn, peer_result = run_coturn_forced_relay(
             arguments,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 import hashlib
 import io
 from pathlib import Path
@@ -383,6 +383,42 @@ class RunnerTests(unittest.TestCase):
                 self.assertEqual(main(), 1)
 
             self.assertFalse(output_path.exists())
+
+    def test_missing_relay_hook_fails_without_writing_blocked_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo_root = Path(temporary)
+            output_path = repo_root / ".build/relay.json"
+            output_path.parent.mkdir()
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            with (
+                mock.patch(
+                    "scripts.phase3_webrtc.run_local_e2e.build_binaries",
+                    return_value=(Path("signaling"), Path("mac"), []),
+                ),
+                mock.patch(
+                    "scripts.phase3_webrtc.run_local_e2e.production_relay_hook_available",
+                    return_value=False,
+                ),
+                redirect_stdout(stdout),
+                redirect_stderr(stderr),
+            ):
+                result = main([
+                    "--repo-root", str(repo_root),
+                    "--mode", "relay",
+                    "--slice", "product",
+                    "--output", str(output_path),
+                ])
+
+            self.assertEqual(result, 1)
+            self.assertFalse(output_path.exists())
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertEqual(
+                stderr.getvalue(),
+                "Phase 3 local WebRTC E2E: FAIL "
+                "(production forced-relay ICE is unavailable)\n",
+            )
 
     def test_invalid_timeout_removes_declared_stale_output(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
