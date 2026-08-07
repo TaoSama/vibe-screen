@@ -22,6 +22,9 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ARCHIVE_SCRIPT = REPOSITORY_ROOT / "scripts/archive_artifact.py"
 PREPARE_SCRIPT = REPOSITORY_ROOT / "scripts/prepare_release.py"
 RELEASE_WORKFLOW = REPOSITORY_ROOT / ".github/workflows/release.yml"
+PHASE0_WORKFLOW = REPOSITORY_ROOT / ".github/workflows/phase0.yml"
+MAKEFILE = REPOSITORY_ROOT / "Makefile"
+PHASE3_RUNNER = REPOSITORY_ROOT / "scripts/phase3_webrtc/run_local_e2e.py"
 ANDROID_BUILD = REPOSITORY_ROOT / "baseline/AndroidClient/app/build.gradle.kts"
 VERSION = "1.2.3"
 TAG = f"v{VERSION}"
@@ -377,6 +380,123 @@ class PrepareReleaseTests(unittest.TestCase):
         android_build = ANDROID_BUILD.read_text(encoding="utf-8")
         self.assertIn('getByName(dependencyAuditConfiguration)', android_build)
         self.assertIn('inputs.property("dependencyAuditConfiguration"', android_build)
+
+    def test_phase0_android_job_builds_instrumentation_test_apk(self) -> None:
+        workflow = PHASE0_WORKFLOW.read_text(encoding="utf-8")
+        android_job_match = re.search(
+            r"(?ms)^  android:\n(?P<body>.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)",
+            workflow,
+        )
+        self.assertIsNotNone(android_job_match)
+        android_job = android_job_match.group("body")
+
+        baseline_gate = "- run: make baseline-android-check"
+        instrumentation_gate = (
+            "- name: Build Android instrumentation test APK\n"
+            "        run: cd baseline/AndroidClient && ./gradlew assembleDebugAndroidTest"
+        )
+        self.assertIn(baseline_gate, android_job)
+        self.assertIn(instrumentation_gate, android_job)
+        self.assertLess(android_job.index(baseline_gate), android_job.index(instrumentation_gate))
+        self.assertEqual(android_job.count("assembleDebugAndroidTest"), 1)
+        self.assertNotIn("connectedDebugAndroidTest", android_job)
+
+    def test_phase3_gate_discovers_current_and_legacy_runner_tests(self) -> None:
+        workflow = PHASE0_WORKFLOW.read_text(encoding="utf-8")
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+        self.assertIn("run: make phase3-test", workflow)
+        for discovery in (
+            "python3 -m unittest discover -s tests/phase3 -p 'test_*.py' -v",
+            "python3 -m unittest discover -s tests/phase3_webrtc -p 'test_*.py' -v",
+        ):
+            self.assertEqual(makefile.count(discovery), 1)
+        runner = PHASE3_RUNNER.read_text(encoding="utf-8")
+        self.assertNotIn("print(peer_output", runner)
+        self.assertIn("print_success_summary(arguments.mode, arguments.slice)", runner)
+
+    def test_phase0_macos_job_gates_local_synthetic_product_direct_and_forced_relay_e2e(
+        self,
+    ) -> None:
+        workflow = PHASE0_WORKFLOW.read_text(encoding="utf-8")
+        macos_job_match = re.search(
+            r"(?ms)^  macos:\n(?P<body>.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)",
+            workflow,
+        )
+        self.assertIsNotNone(macos_job_match)
+        macos_job = macos_job_match.group("body")
+        for contract in (
+            "runs-on: macos-15",
+            "timeout-minutes: 30",
+            "go-version: 1.25.12",
+            'python-version: "3.11"',
+            "brew install coturn",
+            'turnserver_path="$(brew --prefix coturn)/bin/turnserver"',
+            "4.16.0|4.17.0",
+            "Unsupported Homebrew coturn version",
+            "Install local Phase 3 synthetic product E2E dependencies",
+            "Gate local synthetic Protocol v1 harness direct and forced-relay product E2E",
+            "make phase3-local-synthetic-product-e2e",
+            'jq -e -s --arg commit "$GITHUB_SHA"',
+            ".environment.repository_commit == $commit",
+            ".environment.repository_source.dirty == false",
+            "id: phase3_synthetic_gate",
+            "--output .build/phase3-local-synthetic-product-e2e/public",
+            "steps.phase3_synthetic_gate.outcome == 'success'",
+            "steps.phase3_synthetic_public_summaries.outcome == 'success'",
+            "name: phase3-local-synthetic-product-e2e-public",
+            "path: .build/phase3-local-synthetic-product-e2e/public",
+            "if-no-files-found: error",
+            "--output .build/phase3-local-synthetic-product-e2e/public-failure --failure-diagnostic",
+            "steps.phase3_synthetic_gate.outcome == 'failure'",
+            "name: phase3-local-synthetic-product-e2e-failure-diagnostic",
+            "path: .build/phase3-local-synthetic-product-e2e/public-failure",
+            "include-hidden-files: true",
+        ):
+            self.assertIn(contract, macos_job)
+        self.assertNotIn("--allow-missing", macos_job)
+        self.assertRegex(
+            macos_job,
+            r"(?ms)Validate local Phase 3 synthetic product E2E public summaries.*?"
+            r"if: \$\{\{ always\(\) && steps\.phase3_synthetic_gate\.outcome == 'success' \}\}.*?"
+            r"public_artifacts\.py.*?--output \.build/phase3-local-synthetic-product-e2e/public\s*$",
+        )
+        self.assertNotIn("make phase3-local-product-e2e", macos_job)
+        self.assertNotIn(".build/phase3-local-product-e2e", macos_job)
+        self.assertNotRegex(
+            macos_job,
+            r"(?m)^\s+path: \.build/phase3-local-synthetic-product-e2e\s*$",
+        )
+        self.assertIn(
+            ".build/phase3-local-synthetic-product-e2e/relay.json >/dev/null",
+            macos_job,
+        )
+
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+        for contract in (
+            "phase3-local-synthetic-product-e2e:",
+            "PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= "
+            ".build/phase3-local-synthetic-product-e2e",
+            "PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90",
+            "phase3-local-product-e2e:",
+            "phase3-local-product-e2e is deprecated; use "
+            "phase3-local-synthetic-product-e2e",
+            "synthetic Protocol v1 harness only; no Android device or "
+            "ScreenCaptureKit capture",
+            "$(MAKE) phase3-local-synthetic-product-e2e",
+            "PHASE3_COTURN_COMPATIBLE_VERSIONS := 4.16.0 4.17.0",
+            "--mode direct --slice product",
+            "--mode relay --slice product --skip-build",
+            "--diagnostics-dir",
+            '--output "$(PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR)"',
+            "@jq -e 'select(",
+            '.product_session.device == "synthetic Protocol v1 harness"',
+            ".product_session.capture_or_stream_server_started == false",
+            '.coturn.forced_libwebrtc_relay == "pass"',
+        ):
+            self.assertIn(contract, makefile)
+        self.assertEqual(makefile.count('json" >/dev/null'), 2)
+        self.assertNotIn(".build/phase3-local-product-e2e", makefile)
+        self.assertNotIn("PHASE3_LOCAL_E2E_", makefile)
 
 
 if __name__ == "__main__":
