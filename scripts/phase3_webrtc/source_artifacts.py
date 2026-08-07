@@ -854,6 +854,7 @@ def _open_verified_executable(
     label: str,
 ) -> VerifiedExecutable:
     execution_descriptor = -1
+    snapshot_write_descriptor = -1
     private_directory: Path | None = None
     private_directory_descriptor = -1
     try:
@@ -880,13 +881,13 @@ def _open_verified_executable(
                 os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
             )
             snapshot_name = "executable"
-            execution_descriptor = os.open(
+            snapshot_write_descriptor = os.open(
                 snapshot_name,
                 os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
                 0o700,
                 dir_fd=private_directory_descriptor,
             )
-            os.fchmod(execution_descriptor, 0o700)
+            os.fchmod(snapshot_write_descriptor, 0o700)
             os.lseek(descriptor, 0, os.SEEK_SET)
             while True:
                 chunk = os.read(descriptor, 1024 * 1024)
@@ -894,10 +895,28 @@ def _open_verified_executable(
                     break
                 view = memoryview(chunk)
                 while view:
-                    written = os.write(execution_descriptor, view)
+                    written = os.write(snapshot_write_descriptor, view)
                     view = view[written:]
-            os.fsync(execution_descriptor)
+            os.fsync(snapshot_write_descriptor)
+            written_stat = os.fstat(snapshot_write_descriptor)
             os.fsync(private_directory_descriptor)
+            os.close(snapshot_write_descriptor)
+            snapshot_write_descriptor = -1
+            execution_descriptor = os.open(
+                snapshot_name,
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=private_directory_descriptor,
+            )
+            reopened_stat = os.fstat(execution_descriptor)
+            current_stat = os.stat(
+                snapshot_name,
+                dir_fd=private_directory_descriptor,
+                follow_symlinks=False,
+            )
+            if not _same_inode(written_stat, reopened_stat) or not _same_inode(
+                reopened_stat, current_stat
+            ):
+                raise E2EFailure(f"{label} private execution snapshot changed after write")
             if _descriptor_sha256(execution_descriptor) != expected_hash:
                 raise E2EFailure(f"{label} private execution snapshot hash mismatch")
             execution_path = private_directory / snapshot_name
@@ -914,6 +933,8 @@ def _open_verified_executable(
         verified.validate_execution_target()
         return verified
     except Exception:
+        if snapshot_write_descriptor >= 0:
+            os.close(snapshot_write_descriptor)
         if execution_descriptor >= 0 and execution_descriptor != descriptor:
             os.close(execution_descriptor)
         os.close(descriptor)
