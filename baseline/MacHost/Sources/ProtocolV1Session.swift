@@ -4,6 +4,10 @@ import VibeScreenProtocol
 struct ProtocolV1SessionConfiguration {
     static let version: UInt32 = 1
 
+    static func productionHostCapabilities(touchEnabled: Bool) -> Set<VSCapability> {
+        touchEnabled ? [.touch] : []
+    }
+
     let sessionID: Data
     let sessionEpoch: UInt64
     var displayWidth: Int

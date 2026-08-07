@@ -16,30 +16,211 @@ enum ProductionWebRTCEngineSelfTest {
     }
 
     static func run() -> Bool {
-        let hub = LoopbackSignalingHub()
-        let offererSignaling = LoopbackSignalingClient(role: .offerer, hub: hub)
-        let answererSignaling = LoopbackSignalingClient(role: .answerer, hub: hub)
         do {
-            let peers = try protectedPair(
+            guard runTerminalStartContract(),
+                  runDataChannelClosureContract(kind: .control),
+                  runDataChannelClosureContract(kind: .media),
+                  runDataChannelClosureContract(kind: .control, simulatePreConnection: true),
+                  runDataChannelClosureContract(kind: .media, simulatePreConnection: true) else {
+                return false
+            }
+            let initialHub = LoopbackSignalingHub()
+            let initialPeers = try protectedPair(
                 sessionIdentifier: "loopback-session",
-                offerer: ProductionWebRTCEngine(signaling: offererSignaling),
-                answerer: ProductionWebRTCEngine(signaling: answererSignaling)
+                offerer: ProductionWebRTCEngine(signaling: LoopbackSignalingClient(
+                    role: .offerer,
+                    hub: initialHub
+                )),
+                answerer: ProductionWebRTCEngine(signaling: LoopbackSignalingClient(
+                    role: .answerer,
+                    hub: initialHub
+                ))
+            )
+            guard runPair(
+                label: "loopback-initial",
+                offerer: initialPeers.offerer,
+                answerer: initialPeers.answerer,
+                offererConfiguration: configuration(role: .offerer),
+                answererConfiguration: configuration(role: .answerer)
+            ) else { return false }
+
+            let recoveryHub = LoopbackSignalingHub()
+            let recoveryPeers = try protectedPair(
+                sessionIdentifier: "loopback-session",
+                offerer: ProductionWebRTCEngine(signaling: LoopbackSignalingClient(
+                    role: .offerer,
+                    hub: recoveryHub
+                )),
+                answerer: ProductionWebRTCEngine(signaling: LoopbackSignalingClient(
+                    role: .answerer,
+                    hub: recoveryHub
+                ))
             )
             return runPair(
                 label: "loopback",
-                offerer: peers.offerer,
-                answerer: peers.answerer,
+                offerer: recoveryPeers.offerer,
+                answerer: recoveryPeers.answerer,
                 offererConfiguration: configuration(role: .offerer),
                 answererConfiguration: configuration(role: .answerer),
                 verifyRecovery: {
-                    peers.offerer.restartICE()
-                    return hub.waitForRestartOffer(timeout: timeout)
+                    guard recoveryPeers.offerer.restartICE() == .peerReplacementStarted else { return false }
+                    return recoveryHub.waitForRestartOffer(timeout: timeout)
                 }
             )
         } catch {
             print("Phase 3 WebRTC loopback self-test: FAIL (cipher setup: \(error.localizedDescription))")
             return false
         }
+    }
+
+    private static func runTerminalStartContract() -> Bool {
+        let closedEngine = ProductionWebRTCEngine(signaling: LoopbackSignalingClient(
+            role: .answerer,
+            hub: LoopbackSignalingHub()
+        ))
+        closedEngine.close()
+        let closedRejected: Bool
+        do {
+            try closedEngine.start(
+                configuration: configuration(role: .answerer),
+                channels: InternetTransportChannel.allCases.map(\.dataChannelConfiguration)
+            )
+            closedRejected = false
+        } catch {
+            closedRejected = error.localizedDescription.contains("closed")
+        }
+
+        let startedEngine = ProductionWebRTCEngine(signaling: LoopbackSignalingClient(
+            role: .answerer,
+            hub: LoopbackSignalingHub()
+        ))
+        let startedOnce: Bool
+        let repeatedStartRejected: Bool
+        do {
+            try startedEngine.start(
+                configuration: configuration(role: .answerer),
+                channels: InternetTransportChannel.allCases.map(\.dataChannelConfiguration)
+            )
+            startedOnce = true
+        } catch {
+            startedOnce = false
+        }
+        do {
+            try startedEngine.start(
+                configuration: configuration(role: .answerer),
+                channels: InternetTransportChannel.allCases.map(\.dataChannelConfiguration)
+            )
+            repeatedStartRejected = false
+        } catch {
+            repeatedStartRejected = error.localizedDescription.contains("already started")
+        }
+        startedEngine.close()
+
+        let failedSignaling = RejectingSelfTestSignalingClient()
+        let failedEngine = ProductionWebRTCEngine(signaling: failedSignaling)
+        let initialFailureObserved: Bool
+        do {
+            try failedEngine.start(
+                configuration: configuration(role: .answerer),
+                channels: InternetTransportChannel.allCases.map(\.dataChannelConfiguration)
+            )
+            initialFailureObserved = false
+        } catch {
+            initialFailureObserved = true
+        }
+        let failedStartRejected: Bool
+        do {
+            try failedEngine.start(
+                configuration: configuration(role: .answerer),
+                channels: InternetTransportChannel.allCases.map(\.dataChannelConfiguration)
+            )
+            failedStartRejected = false
+        } catch {
+            failedStartRejected = error.localizedDescription.contains("failed")
+        }
+
+        let passed = closedRejected
+            && startedOnce
+            && repeatedStartRejected
+            && initialFailureObserved
+            && failedSignaling.connectCount == 1
+            && failedStartRejected
+        print(
+            "Phase 3 WebRTC terminal-start self-test: \(passed ? "PASS" : "FAIL") "
+                + "(closedRejected=\(closedRejected), startedOnce=\(startedOnce), "
+                + "repeatedStartRejected=\(repeatedStartRejected), "
+                + "failedStartRejected=\(failedStartRejected))"
+        )
+        return passed
+    }
+
+    private static func runDataChannelClosureContract(
+        kind: InternetTransportChannel,
+        simulatePreConnection: Bool = false
+    ) -> Bool {
+        let hub = LoopbackSignalingHub()
+        let offerer = ProductionWebRTCEngine(signaling: LoopbackSignalingClient(
+            role: .offerer,
+            hub: hub
+        ))
+        let answerer = ProductionWebRTCEngine(signaling: LoopbackSignalingClient(
+            role: .answerer,
+            hub: hub
+        ))
+        let offererConnected = DispatchSemaphore(value: 0)
+        let answererConnected = DispatchSemaphore(value: 0)
+        offerer.install(callbacks: callbacks(
+            connected: offererConnected,
+            transmissionContext: { _ in },
+            failure: { _ in },
+            received: { _, _ in }
+        ))
+        answerer.install(callbacks: callbacks(
+            connected: answererConnected,
+            transmissionContext: { _ in },
+            failure: { _ in },
+            received: { _, _ in }
+        ))
+        do {
+            let channels = InternetTransportChannel.allCases.map(\.dataChannelConfiguration)
+            try answerer.start(configuration: configuration(role: .answerer), channels: channels)
+            try offerer.start(configuration: configuration(role: .offerer), channels: channels)
+        } catch {
+            offerer.close()
+            answerer.close()
+            print("Phase 3 WebRTC \(kind) close self-test: FAIL (start: \(error.localizedDescription))")
+            return false
+        }
+        guard offererConnected.wait(timeout: .now() + timeout) == .success,
+              answererConnected.wait(timeout: .now() + timeout) == .success,
+              let report = offerer.runDataChannelClosureSelfTest(
+                  kind: kind,
+                  simulatePreConnection: simulatePreConnection
+              ) else {
+            offerer.close()
+            answerer.close()
+            print("Phase 3 WebRTC \(kind) close self-test: FAIL (connection/report unavailable)")
+            return false
+        }
+        offerer.close()
+        answerer.close()
+        let passed = report.invalidatedConnectedState
+            && report.pendingCompletionsFailedExactlyOnce
+            && report.lateInboundRejected
+            && report.lateDrainRejected
+            && report.staleClosureIgnored
+            && report.selectedDeterministicTerminalEvent
+        let phase = simulatePreConnection ? "pre-connect" : "connected"
+        print(
+            "Phase 3 WebRTC \(kind) \(phase) close self-test: \(passed ? "PASS" : "FAIL") "
+                + "(connectedRevoked=\(report.invalidatedConnectedState), "
+                + "pendingExactlyOnce=\(report.pendingCompletionsFailedExactlyOnce), "
+                + "lateInboundRejected=\(report.lateInboundRejected), "
+                + "lateDrainRejected=\(report.lateDrainRejected), "
+                + "staleCloseIgnored=\(report.staleClosureIgnored), "
+                + "deterministicTerminal=\(report.selectedDeterministicTerminalEvent))"
+        )
+        return passed
     }
 
     static func runWithSignalingService(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
@@ -102,20 +283,38 @@ enum ProductionWebRTCEngineSelfTest {
         let offererControlReceived = DispatchSemaphore(value: 0)
         let offererMediaReceived = DispatchSemaphore(value: 0)
         let candidatePairReceived = DispatchSemaphore(value: 0)
+        let offererRecoveredContext = DispatchSemaphore(value: 0)
+        let answererRecoveredContext = DispatchSemaphore(value: 0)
+        let staleContextSendCompleted = DispatchSemaphore(value: 0)
         let offererControl = Data("control-offerer-to-answerer".utf8)
         let offererMedia = Data("media-offerer-to-answerer".utf8)
         let answererControl = Data("control-answerer-to-offerer".utf8)
         let answererMedia = Data("media-answerer-to-offerer".utf8)
+        let staleOffererControl = Data("stale-control-from-old-transmission-context".utf8)
         let stateLock = NSLock()
         var answererReceivedControl: Data?
         var answererReceivedMedia: Data?
         var offererReceivedControl: Data?
         var offererReceivedMedia: Data?
         var selectedCandidatePair: WebRTCSelectedCandidatePair?
+        var offererTransmissionContext: WebRTCEngineTransmissionContext?
+        var answererTransmissionContext: WebRTCEngineTransmissionContext?
+        var offererRecoveryBaseline: WebRTCEngineTransmissionContext?
+        var answererRecoveryBaseline: WebRTCEngineTransmissionContext?
+        var staleContextWasRejected = false
+        var stalePayloadWasDelivered = false
         var failures: [String] = []
 
         offerer.install(callbacks: callbacks(
             connected: offererConnected,
+            transmissionContext: { context in
+                let recovered = stateLock.withLock { () -> Bool in
+                    offererTransmissionContext = context
+                    guard let context, let baseline = offererRecoveryBaseline else { return false }
+                    return context.epoch > baseline.epoch && context.path == baseline.path
+                }
+                if recovered { offererRecoveredContext.signal() }
+            },
             failure: { reason in stateLock.withLock { failures.append(reason) } },
             received: { payload, channel in
                 stateLock.withLock {
@@ -132,11 +331,22 @@ enum ProductionWebRTCEngineSelfTest {
         ))
         answerer.install(callbacks: callbacks(
             connected: answererConnected,
+            transmissionContext: { context in
+                let recovered = stateLock.withLock { () -> Bool in
+                    answererTransmissionContext = context
+                    guard let context, let baseline = answererRecoveryBaseline else { return false }
+                    return context.epoch > baseline.epoch && context.path == baseline.path
+                }
+                if recovered { answererRecoveredContext.signal() }
+            },
             failure: { reason in stateLock.withLock { failures.append(reason) } },
             received: { payload, channel in
                 stateLock.withLock {
                     switch channel {
-                    case .control: answererReceivedControl = payload; answererControlReceived.signal()
+                    case .control:
+                        if payload == staleOffererControl { stalePayloadWasDelivered = true }
+                        answererReceivedControl = payload
+                        answererControlReceived.signal()
                     case .media: answererReceivedMedia = payload; answererMediaReceived.signal()
                     }
                 }
@@ -168,18 +378,83 @@ enum ProductionWebRTCEngineSelfTest {
         let expectedPath: InternetPathKind = offererConfiguration.forceRelay ? .relay : .direct
         let candidatePairMatches = stateLock.withLock { selectedCandidatePair?.path == expectedPath }
 
-        let recoveryPassed = verifyRecovery?() ?? true
+        guard let initialOffererContext = stateLock.withLock({ offererTransmissionContext }),
+              let initialAnswererContext = stateLock.withLock({ answererTransmissionContext }) else {
+            print("Phase 3 WebRTC \(label) self-test: FAIL (missing transmission context)")
+            offerer.close()
+            answerer.close()
+            return false
+        }
+        let recoveryPassed: Bool
+        let currentOffererContext: WebRTCEngineTransmissionContext
+        let currentAnswererContext: WebRTCEngineTransmissionContext
+        let staleContextRejected: Bool
+        if let verifyRecovery {
+            stateLock.withLock {
+                offererRecoveryBaseline = initialOffererContext
+                answererRecoveryBaseline = initialAnswererContext
+            }
+            recoveryPassed = verifyRecovery()
+                && offererRecoveredContext.wait(timeout: .now() + timeout) == .success
+                && answererRecoveredContext.wait(timeout: .now() + timeout) == .success
+            guard let recoveredOffererContext = stateLock.withLock({ offererTransmissionContext }),
+                  recoveredOffererContext.epoch > initialOffererContext.epoch,
+                  recoveredOffererContext.path == expectedPath,
+                  let recoveredAnswererContext = stateLock.withLock({ answererTransmissionContext }),
+                  recoveredAnswererContext.epoch > initialAnswererContext.epoch,
+                  recoveredAnswererContext.path == expectedPath else {
+                print("Phase 3 WebRTC \(label) self-test: FAIL (missing recovered transmission context)")
+                offerer.close()
+                answerer.close()
+                return false
+            }
+            currentOffererContext = recoveredOffererContext
+            currentAnswererContext = recoveredAnswererContext
+            offerer.send(
+                staleOffererControl,
+                channel: .control,
+                expectedContext: initialOffererContext
+            ) { result in
+                stateLock.withLock {
+                    if case .failure = result { staleContextWasRejected = true }
+                }
+                staleContextSendCompleted.signal()
+            }
+            staleContextRejected = staleContextSendCompleted.wait(timeout: .now() + timeout) == .success
+                && stateLock.withLock { staleContextWasRejected }
+        } else {
+            recoveryPassed = true
+            currentOffererContext = initialOffererContext
+            currentAnswererContext = initialAnswererContext
+            staleContextRejected = true
+        }
 
-        offerer.send(offererControl, channel: .control) { result in
+        offerer.send(
+            offererControl,
+            channel: .control,
+            expectedContext: currentOffererContext
+        ) { result in
             if case .failure(let error) = result { stateLock.withLock { failures.append(error.localizedDescription) } }
         }
-        offerer.send(offererMedia, channel: .media) { result in
+        offerer.send(
+            offererMedia,
+            channel: .media,
+            expectedContext: currentOffererContext
+        ) { result in
             if case .failure(let error) = result { stateLock.withLock { failures.append(error.localizedDescription) } }
         }
-        answerer.send(answererControl, channel: .control) { result in
+        answerer.send(
+            answererControl,
+            channel: .control,
+            expectedContext: currentAnswererContext
+        ) { result in
             if case .failure(let error) = result { stateLock.withLock { failures.append(error.localizedDescription) } }
         }
-        answerer.send(answererMedia, channel: .media) { result in
+        answerer.send(
+            answererMedia,
+            channel: .media,
+            expectedContext: currentAnswererContext
+        ) { result in
             if case .failure(let error) = result { stateLock.withLock { failures.append(error.localizedDescription) } }
         }
         let delivered = answererControlReceived.wait(timeout: .now() + timeout) == .success
@@ -191,15 +466,25 @@ enum ProductionWebRTCEngineSelfTest {
                 && answererReceivedMedia == offererMedia
                 && offererReceivedControl == answererControl
                 && offererReceivedMedia == answererMedia
+                && !stalePayloadWasDelivered
                 && failures.isEmpty
         }
         let pairEvidence = stateLock.withLock { selectedCandidatePair }
+        let failureSummary = stateLock.withLock { failures.joined(separator: "; ") }
         offerer.close()
         answerer.close()
 
         let passed = connected && candidatePairObserved && candidatePairMatches
-            && recoveryPassed && delivered && payloadsMatch
+            && recoveryPassed && staleContextRejected && delivered && payloadsMatch
         let recoveryEvidence = verifyRecovery == nil ? "not-run" : String(recoveryPassed)
+        let offererEpochEvidence = verifyRecovery == nil
+            ? "not-run"
+            : String(currentOffererContext.epoch > initialOffererContext.epoch)
+        let answererEpochEvidence = verifyRecovery == nil
+            ? "not-run"
+            : String(currentAnswererContext.epoch > initialAnswererContext.epoch)
+        let staleContextEvidence = verifyRecovery == nil ? "not-run" : String(staleContextRejected)
+        let failureEvidence = failureSummary.isEmpty ? "none" : failureSummary
         let pairSummary = pairEvidence.map {
             "\(pathLabel($0.path))(local=\($0.localCandidateType),remote=\($0.remoteCandidateType),protocol=\($0.networkProtocol))"
         } ?? "missing"
@@ -207,7 +492,12 @@ enum ProductionWebRTCEngineSelfTest {
             "Phase 3 WebRTC \(label) self-test: \(passed ? "PASS" : "FAIL") "
                 + "(peerConnection=true, iceRestart=\(recoveryEvidence), "
                 + "applicationE2EE=true, "
+                + "transmissionEpochAdvanced=\(offererEpochEvidence), "
+                + "answererTransmissionEpochAdvanced=\(answererEpochEvidence), "
+                + "staleContextRejected=\(staleContextEvidence), "
+                + "delivered=\(delivered), payloadsMatch=\(payloadsMatch), "
                 + "controlOrderedReliableBidirectional=true, mediaUnorderedZeroRetransmitBidirectional=true, "
+                + "failures=\(failureEvidence), "
                 + "selectedCandidatePair=\(pairSummary))"
         )
         return passed
@@ -215,6 +505,7 @@ enum ProductionWebRTCEngineSelfTest {
 
     private static func callbacks(
         connected: DispatchSemaphore,
+        transmissionContext: @escaping (WebRTCEngineTransmissionContext?) -> Void,
         failure: @escaping (String) -> Void,
         received: @escaping (Data, InternetTransportChannel) -> Void,
         selectedPair: @escaping (WebRTCSelectedCandidatePair) -> Void = { _ in }
@@ -227,6 +518,7 @@ enum ProductionWebRTCEngineSelfTest {
                 default: break
                 }
             },
+            transmissionContextChanged: transmissionContext,
             networkPathChanged: { _ in },
             networkQualitySampled: { _ in },
             messageReceived: received,
@@ -348,6 +640,7 @@ private final class LoopbackSignalingHub {
 private final class LoopbackSignalingClient: WebRTCSignalingClientPort {
     var onSignal: ((WebRTCSignal) -> Void)?
     var onFailure: ((Error) -> Void)?
+    let supportsNegotiationGeneration = true
 
     private let role: WebRTCSignalingRole
     private let hub: LoopbackSignalingHub
@@ -372,6 +665,23 @@ private final class LoopbackSignalingClient: WebRTCSignalingClientPort {
     func receive(_ signal: WebRTCSignal) {
         DispatchQueue.global().async { [weak self] in self?.onSignal?(signal) }
     }
+}
+
+private final class RejectingSelfTestSignalingClient: WebRTCSignalingClientPort {
+    var onSignal: ((WebRTCSignal) -> Void)?
+    var onFailure: ((Error) -> Void)?
+    private(set) var connectCount = 0
+
+    func connect(configuration: WebRTCTransportConfiguration) throws {
+        connectCount += 1
+        throw WebRTCSignalingError.notConnected
+    }
+
+    func send(_ signal: WebRTCSignal, completion: @escaping (Result<Void, Error>) -> Void) {
+        completion(.failure(WebRTCSignalingError.notConnected))
+    }
+
+    func close() {}
 }
 
 private extension NSLock {

@@ -1,18 +1,25 @@
 import Foundation
 
 enum WebRTCSignal: Equatable {
-    case offer(String)
-    case answer(String)
-    case candidate(sdp: String, mid: String?, lineIndex: Int32)
+    case offer(sdp: String, generation: UInt64)
+    case answer(sdp: String, generation: UInt64)
+    case candidate(sdp: String, mid: String?, lineIndex: Int32, generation: UInt64)
     case peerReady
 }
 
 protocol WebRTCSignalingClientPort: AnyObject {
     var onSignal: ((WebRTCSignal) -> Void)? { get set }
     var onFailure: ((Error) -> Void)? { get set }
+    /// True only when offer, answer, and candidate messages preserve their
+    /// explicit negotiation generation and reject cross-generation mixing.
+    var supportsNegotiationGeneration: Bool { get }
     func connect(configuration: WebRTCTransportConfiguration) throws
     func send(_ signal: WebRTCSignal, completion: @escaping (Result<Void, Error>) -> Void)
     func close()
+}
+
+extension WebRTCSignalingClientPort {
+    var supportsNegotiationGeneration: Bool { false }
 }
 
 enum WebRTCSignalingError: Error, LocalizedError {
@@ -21,6 +28,7 @@ enum WebRTCSignalingError: Error, LocalizedError {
     case invalidMessage
     case unsupportedSignal
     case notConnected
+    case alreadyConnected
 
     var errorDescription: String? {
         switch self {
@@ -30,6 +38,7 @@ enum WebRTCSignalingError: Error, LocalizedError {
         case .invalidMessage: return "The signaling service returned an invalid message."
         case .unsupportedSignal: return "The signaling service returned an unsupported message type."
         case .notConnected: return "The signaling client is not connected."
+        case .alreadyConnected: return "The signaling client is single-use and has already connected."
         }
     }
 }
@@ -98,6 +107,7 @@ final class HTTPSignalingClient: WebRTCSignalingClientPort {
     private var messageTask: URLSessionDataTask?
     private var pendingMessages: [PendingMessage] = []
     private var isClosed = true
+    private var hasConnected = false
 
     init(session: URLSession = .shared) {
         self.session = session
@@ -105,7 +115,9 @@ final class HTTPSignalingClient: WebRTCSignalingClientPort {
 
     func connect(configuration: WebRTCTransportConfiguration) throws {
         guard configuration.signaling != nil else { throw WebRTCSignalingError.missingConfiguration }
-        queue.sync {
+        try queue.sync {
+            guard !hasConnected else { throw WebRTCSignalingError.alreadyConnected }
+            hasConnected = true
             self.configuration = configuration
             cursor = 0
             isClosed = false
@@ -168,12 +180,16 @@ final class HTTPSignalingClient: WebRTCSignalingClientPort {
               signal != .peerReady else { return nil }
         let message: MessageRequest
         switch signal {
-        case .offer(let sdp):
+        case .offer(let sdp, let generation):
+            guard generation == 0 else { return nil }
             message = MessageRequest(messageID: UUID().uuidString.lowercased(), type: "offer", sdp: sdp, candidate: nil)
-        case .answer(let sdp):
+        case .answer(let sdp, let generation):
+            guard generation == 0 else { return nil }
             message = MessageRequest(messageID: UUID().uuidString.lowercased(), type: "answer", sdp: sdp, candidate: nil)
-        case .candidate(let sdp, let mid, let lineIndex):
-            guard lineIndex >= 0, lineIndex <= Int32(UInt16.max) else { return nil }
+        case .candidate(let sdp, let mid, let lineIndex, let generation):
+            guard generation == 0,
+                  lineIndex >= 0,
+                  lineIndex <= Int32(UInt16.max) else { return nil }
             message = MessageRequest(
                 messageID: UUID().uuidString.lowercased(),
                 type: "ice_candidate",
@@ -246,16 +262,17 @@ final class HTTPSignalingClient: WebRTCSignalingClientPort {
         switch event.type {
         case "offer":
             guard let sdp = event.sdp else { throw WebRTCSignalingError.invalidMessage }
-            return .offer(sdp)
+            return .offer(sdp: sdp, generation: 0)
         case "answer":
             guard let sdp = event.sdp else { throw WebRTCSignalingError.invalidMessage }
-            return .answer(sdp)
+            return .answer(sdp: sdp, generation: 0)
         case "ice_candidate":
             guard let candidate = event.candidate else { throw WebRTCSignalingError.invalidMessage }
             return .candidate(
                 sdp: candidate.candidate,
                 mid: candidate.sdpMid,
-                lineIndex: Int32(candidate.sdpMLineIndex ?? 0)
+                lineIndex: Int32(candidate.sdpMLineIndex ?? 0),
+                generation: 0
             )
         case "end_of_candidates":
             return .peerReady

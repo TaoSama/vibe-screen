@@ -140,8 +140,15 @@ enum ProtocolV1SelfTest {
 
     private static func testNegotiationAndMediaGate(failures: inout [String]) {
         do {
+            guard ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true) == [.touch],
+                  ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false).isEmpty else {
+                failures.append("production HostHello capabilities are not exact")
+                return
+            }
             let session = makeSession()
-            let preparation = session.handleControl(try clientHello().serializedData())
+            var offeredHello = clientHello()
+            offeredHello.clientHello.capabilities.append(.telemetry)
+            let preparation = session.handleControl(try offeredHello.serializedData())
             guard preparation.contains(where: { if case .codecNegotiated = $0 { true } else { false } }) else {
                 failures.append("ClientHello did not request codec preparation")
                 return
@@ -150,9 +157,11 @@ enum ProtocolV1SelfTest {
                 session.completeCodecNegotiation()
             )
             guard helloResponses.count == 2,
-                  case .hostHello? = helloResponses[0].payload,
+                  case .hostHello(let hostHello)? = helloResponses[0].payload,
                   case .sessionAccepted(let accepted)? = helloResponses[1].payload,
-                  accepted.sessionID == sessionID else {
+                  hostHello.capabilities == [.touch],
+                  accepted.sessionID == sessionID,
+                  accepted.negotiatedCapabilities == [.touch] else {
                 failures.append("ClientHello did not produce HostHello + SessionAccepted")
                 return
             }
@@ -416,7 +425,9 @@ enum ProtocolV1SelfTest {
             rotation: 90,
             framesPerSecond: 60,
             bitrateKbps: 20_000,
-            hostCapabilities: [.touch, .telemetry],
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true
+            ),
             requiredClientCapabilities: [.touch],
             supportedCodecs: [.hevc, .h264],
             hostID: "host",
@@ -435,7 +446,7 @@ enum ProtocolV1SelfTest {
         hello.supportedProtocols = range
         hello.deviceID = "device"
         hello.deviceName = "Tablet"
-        hello.capabilities = [.touch, .telemetry]
+        hello.capabilities = [.touch]
         hello.codecs = [.hevc, .h264]
         var envelope = VSEnvelope()
         envelope.protocolVersion = 1

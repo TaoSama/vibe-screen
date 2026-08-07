@@ -26,14 +26,14 @@ final class ProtectedWebRTCEngine: WebRTCEnginePort {
         lock.withProtectedEngineLock { self.callbacks = callbacks }
         engine.install(callbacks: WebRTCEngineCallbacks(
             connectionStateChanged: callbacks.connectionStateChanged,
+            transmissionContextChanged: callbacks.transmissionContextChanged,
             networkPathChanged: callbacks.networkPathChanged,
             networkQualitySampled: callbacks.networkQualitySampled,
             messageReceived: { [weak self] record, channel in
                 guard let self else { return }
-                let plaintextMaximum = channel == .control
-                    ? self.limits.maximumControlMessageBytes
-                    : self.limits.maximumMediaFrameBytes
-                let encryptedMaximum = plaintextMaximum + PlatformSessionPacketCipher.recordOverhead
+                let encryptedMaximum = channel == .control
+                    ? self.limits.maximumControlMessageBytes + PlatformSessionPacketCipher.recordOverhead
+                    : InternetMediaRecordContract.maximumEncryptedRecordBytes
                 guard record.count <= encryptedMaximum else {
                     callbacks.connectionStateChanged(.failed(
                         "Encrypted \(channel) record exceeded the configured inbound limit."
@@ -80,17 +80,39 @@ final class ProtectedWebRTCEngine: WebRTCEnginePort {
     func send(
         _ payload: Data,
         channel: InternetTransportChannel,
+        expectedContext: WebRTCEngineTransmissionContext,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
         do {
+            if channel == .media,
+               payload.count > InternetMediaRecordContract.maximumPlaintextRecordBytes {
+                throw InternetTransportError.payloadTooLarge(
+                    channel: .media,
+                    actual: payload.count,
+                    maximum: InternetMediaRecordContract.maximumPlaintextRecordBytes
+                )
+            }
             let record = try packetCipher.seal(payload, channel: channel)
-            engine.send(record, channel: channel, completion: completion)
+            if channel == .media,
+               record.count > InternetMediaRecordContract.maximumEncryptedRecordBytes {
+                throw InternetTransportError.payloadTooLarge(
+                    channel: .media,
+                    actual: record.count,
+                    maximum: InternetMediaRecordContract.maximumEncryptedRecordBytes
+                )
+            }
+            engine.send(
+                record,
+                channel: channel,
+                expectedContext: expectedContext,
+                completion: completion
+            )
         } catch {
             completion(.failure(error))
         }
     }
 
-    func restartICE() { engine.restartICE() }
+    func restartICE() -> WebRTCEngineRecoveryDisposition { engine.restartICE() }
     func requestMediaKeyframe() { engine.requestMediaKeyframe() }
 
     func close() {

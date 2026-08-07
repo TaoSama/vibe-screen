@@ -9,12 +9,82 @@ final class WebRTCInternetTransport {
     var onMediaReceived: ((Data) -> Void)?
     var onFreshSessionRecoveryRequired: ((Int) -> Void)?
 
+    private struct ControlTransmission {
+        let identifier: UInt64
+        let payload: Data
+        let generation: UInt64
+        let path: InternetPathKind
+        let engineContext: WebRTCEngineTransmissionContext
+        let relayReservationBytes: UInt64
+    }
+
+    private struct ControlTransmissionQueue {
+        private var storage: [ControlTransmission?] = []
+        private var head = 0
+
+        var count: Int { storage.count - head }
+
+        mutating func append(_ transmission: ControlTransmission) {
+            storage.append(transmission)
+        }
+
+        mutating func popFirst() -> ControlTransmission? {
+            guard head < storage.count else { return nil }
+            let transmission = storage[head]
+            storage[head] = nil
+            head += 1
+            if head >= 64, head * 2 >= storage.count {
+                storage.removeFirst(head)
+                head = 0
+            }
+            return transmission
+        }
+
+        mutating func removeAll() {
+            storage.removeAll(keepingCapacity: true)
+            head = 0
+        }
+
+        func payloadBytes() -> Int {
+            storage[head...].compactMap { $0 }.reduce(0) { $0 + $1.payload.count }
+        }
+
+        func relayReservationBytes() -> UInt64 {
+            storage[head...].compactMap { $0 }.reduce(0) { partial, transmission in
+                partial.addingClamped(transmission.relayReservationBytes)
+            }
+        }
+    }
+
+    private struct FailureTransition {
+        let failedState: InternetTransportState
+        let generation: UInt64
+        let error: InternetTransportError
+        let reportError: Bool
+    }
+
+    private struct RecoveryTransition {
+        let attempt: Int
+        let changed: Bool
+        let generation: UInt64
+        let recoveringState: InternetTransportState
+    }
+
     private struct MutableState {
         var transportState: InternetTransportState = .idle
         var activePath: InternetPathKind?
+        var engineTransmissionContext: WebRTCEngineTransmissionContext?
         var pipelineGeneration: UInt64 = 0
+        var pipelineGenerationExhausted = false
+        var nextControlTransmissionIdentifier: UInt64 = 0
         var controlInFlight = false
-        var controlQueue: [Data] = []
+        var activeControlTransmissionIdentifier: UInt64?
+        var controlQueue = ControlTransmissionQueue()
+        var dispatchedControlTransmissionIdentifiers: Set<UInt64> = []
+        var dispatchedControlRelayReservations: [UInt64: UInt64] = [:]
+        var nextMediaTransmissionIdentifier: UInt64 = 0
+        var dispatchedMediaTransmissionIdentifiers: Set<UInt64> = []
+        var dispatchedMediaRelayReservations: [UInt64: UInt64] = [:]
         var bufferedControlBytes = 0
         var mediaInFlight = false
         var pendingMediaFrame: EncodedInternetFrame?
@@ -25,6 +95,7 @@ final class WebRTCInternetTransport {
         var relayBytesReserved: UInt64 = 0
         var droppedMediaFrames: UInt64 = 0
         var iceRestartCount: UInt64 = 0
+        var recoveryAttemptAwaitingOutcome = false
         var recovery: NetworkRecoveryStateMachine
     }
 
@@ -34,6 +105,14 @@ final class WebRTCInternetTransport {
     private let adaptivePolicy: AdaptiveMediaPolicy
     private let recoveryStrategy: InternetRecoveryStrategy
     private let lock = NSLock()
+    private let sendGate = NSRecursiveLock()
+    private let engineLifecycleGate = NSRecursiveLock()
+    private let beforeEngineStart: (() -> Void)?
+    private let beforeControlSend: (() -> Void)?
+    private let beforeMediaRecordSend: (() -> Void)?
+    private let beforeFailureSideEffects: (() -> Void)?
+    private let duringRecoveryDecision: (() -> Void)?
+    private let duringMediaRecoveryTransition: (() -> Void)?
     private var mutableState: MutableState
 
     init(
@@ -42,7 +121,19 @@ final class WebRTCInternetTransport {
         limits: InternetTransportLimits = .standard,
         recoveryPolicy: NetworkRecoveryPolicy = .standard,
         adaptivePolicy: AdaptiveMediaPolicy = AdaptiveMediaPolicy(),
-        recoveryStrategy: InternetRecoveryStrategy = .restartICE
+        recoveryStrategy: InternetRecoveryStrategy = .restartICE,
+        beforeEngineStart: (() -> Void)? = nil,
+        beforeControlSend: (() -> Void)? = nil,
+        beforeMediaRecordSend: (() -> Void)? = nil,
+        beforeFailureSideEffects: (() -> Void)? = nil,
+        duringRecoveryDecision: (() -> Void)? = nil,
+        duringMediaRecoveryTransition: (() -> Void)? = nil,
+        initialPipelineGeneration: UInt64 = 0,
+        initialControlTransmissionIdentifier: UInt64 = 0,
+        initialMediaTransmissionIdentifier: UInt64 = 0,
+        initialMediaBytesSent: UInt64 = 0,
+        initialRelayBytesSent: UInt64 = 0,
+        initialRelayBytesReserved: UInt64 = 0
     ) {
         if let packetCipher {
             self.engine = ProtectedWebRTCEngine(
@@ -58,9 +149,25 @@ final class WebRTCInternetTransport {
         self.limits = limits
         self.adaptivePolicy = adaptivePolicy
         self.recoveryStrategy = recoveryStrategy
-        self.mutableState = MutableState(recovery: NetworkRecoveryStateMachine(policy: recoveryPolicy))
+        self.beforeEngineStart = beforeEngineStart
+        self.beforeControlSend = beforeControlSend
+        self.beforeMediaRecordSend = beforeMediaRecordSend
+        self.beforeFailureSideEffects = beforeFailureSideEffects
+        self.duringRecoveryDecision = duringRecoveryDecision
+        self.duringMediaRecoveryTransition = duringMediaRecoveryTransition
+        var initialState = MutableState(recovery: NetworkRecoveryStateMachine(policy: recoveryPolicy))
+        initialState.pipelineGeneration = initialPipelineGeneration
+        initialState.nextControlTransmissionIdentifier = initialControlTransmissionIdentifier
+        initialState.nextMediaTransmissionIdentifier = initialMediaTransmissionIdentifier
+        initialState.mediaBytesSent = initialMediaBytesSent
+        initialState.relayBytesSent = initialRelayBytesSent
+        initialState.relayBytesReserved = initialRelayBytesReserved
+        self.mutableState = initialState
         self.engine.install(callbacks: WebRTCEngineCallbacks(
             connectionStateChanged: { [weak self] state in self?.handleEngineState(state) },
+            transmissionContextChanged: { [weak self] context in
+                self?.handleEngineTransmissionContext(context)
+            },
             networkPathChanged: { [weak self] path in self?.handleNetworkPath(path) },
             networkQualitySampled: { [weak self] sample in self?.handleNetworkQuality(sample) },
             messageReceived: { [weak self] payload, channel in
@@ -76,7 +183,37 @@ final class WebRTCInternetTransport {
                 "Protocol v1 application encryption and a platform-backed session cipher are required."
             )
         }
-        setState(.connecting)
+        beforeEngineStart?()
+        engineLifecycleGate.lock()
+        defer { engineLifecycleGate.unlock() }
+        let startupAdmission = withSendGate {
+            withLock { state -> Result<UInt64, InternetTransportError> in
+                switch state.transportState {
+                case .idle:
+                    state.transportState = .connecting
+                    return .success(state.pipelineGeneration)
+                case .failed(let reason):
+                    return .failure(.engineUnavailable(
+                        "The Internet transport failed and cannot be restarted: \(reason)"
+                    ))
+                case .closed:
+                    return .failure(.engineUnavailable(
+                        "The Internet transport is closed and cannot be restarted."
+                    ))
+                case .connecting, .connected, .recovering:
+                    return .failure(.engineUnavailable(
+                        "The Internet transport is already started."
+                    ))
+                }
+            }
+        }
+        let startupGeneration: UInt64
+        switch startupAdmission {
+        case .success(let generation):
+            startupGeneration = generation
+        case .failure(let error):
+            throw error
+        }
         do {
             try engine.start(
                 configuration: configuration,
@@ -91,6 +228,13 @@ final class WebRTCInternetTransport {
             setState(.failed(transportError.localizedDescription))
             throw transportError
         }
+        let shouldPublishConnecting = withSendGate {
+            withLock {
+                $0.pipelineGeneration == startupGeneration
+                    && $0.transportState == .connecting
+            }
+        }
+        if shouldPublishConnecting { onStateChanged?(.connecting) }
     }
 
     @discardableResult
@@ -106,104 +250,164 @@ final class WebRTCInternetTransport {
             ))
         }
 
-        var shouldTransmit = false
-        var transmissionGeneration: UInt64 = 0
-        let admissionError: InternetTransportError? = withLock {
-            guard isConnected($0.transportState) else { return .notConnected }
-            guard $0.bufferedControlBytes + payload.count <= limits.maximumBufferedControlBytes else {
-                return .controlBacklogExceeded(maximumBytes: limits.maximumBufferedControlBytes)
-            }
-            if $0.activePath == .relay {
-                let payloadBytes = UInt64(payload.count)
-                guard $0.relayBytesSent + $0.relayBytesReserved + payloadBytes
-                        <= limits.maximumRelayBytesPerSession else {
-                    return .relayBudgetExceeded(maximumBytes: limits.maximumRelayBytesPerSession)
+        let encryptedPayloadBytes = InternetMediaRecordContract.encryptedRecordBytes(
+            forPlaintextBytes: payload.count
+        )
+        var failureTransition: FailureTransition?
+        var transmission: ControlTransmission?
+        let result: Result<Void, InternetTransportError> = withSendGate {
+            let admissionError: InternetTransportError? = withLock { state in
+                guard isConnected(state.transportState),
+                      !state.pipelineGenerationExhausted,
+                      let activePath = state.activePath,
+                      let engineContext = state.engineTransmissionContext,
+                      engineContext.path == activePath else {
+                    return .notConnected
                 }
-                $0.relayBytesReserved += payloadBytes
+                guard state.bufferedControlBytes + payload.count <= limits.maximumBufferedControlBytes else {
+                    return .controlBacklogExceeded(maximumBytes: limits.maximumBufferedControlBytes)
+                }
+                let bufferedControlMessages = state.controlQueue.count + (state.controlInFlight ? 1 : 0)
+                guard bufferedControlMessages < limits.maximumBufferedControlMessages else {
+                    return .controlBacklogExceeded(maximumBytes: limits.maximumBufferedControlBytes)
+                }
+                let relayReservationBytes = activePath == .relay ? encryptedPayloadBytes : 0
+                if relayReservationBytes > 0 {
+                    guard relayReservationFits(
+                        sent: state.relayBytesSent,
+                        reserved: state.relayBytesReserved,
+                        additional: relayReservationBytes
+                    ) else {
+                        return .relayBudgetExceeded(maximumBytes: limits.maximumRelayBytesPerSession)
+                    }
+                    state.relayBytesReserved = state.relayBytesReserved.addingClamped(
+                        relayReservationBytes
+                    )
+                }
+                guard state.nextControlTransmissionIdentifier < UInt64.max else {
+                    return .sequenceExhausted("control transmission identifier")
+                }
+                state.nextControlTransmissionIdentifier += 1
+                let admitted = ControlTransmission(
+                    identifier: state.nextControlTransmissionIdentifier,
+                    payload: payload,
+                    generation: state.pipelineGeneration,
+                    path: activePath,
+                    engineContext: engineContext,
+                    relayReservationBytes: relayReservationBytes
+                )
+                state.bufferedControlBytes += payload.count
+                if state.controlInFlight {
+                    state.controlQueue.append(admitted)
+                } else {
+                    state.controlInFlight = true
+                    state.activeControlTransmissionIdentifier = admitted.identifier
+                    transmission = admitted
+                }
+                return nil
             }
-            $0.bufferedControlBytes += payload.count
-            transmissionGeneration = $0.pipelineGeneration
-            if $0.controlInFlight {
-                $0.controlQueue.append(payload)
-            } else {
-                $0.controlInFlight = true
-                shouldTransmit = true
-            }
-            return nil
-        }
 
-        if let admissionError {
-            if case .controlBacklogExceeded = admissionError {
-                failTransport(admissionError)
+            if let admissionError {
+                if case .controlBacklogExceeded = admissionError {
+                    failureTransition = prepareFailureWithinSendGate(admissionError)
+                } else if case .sequenceExhausted = admissionError {
+                    failureTransition = prepareFailureWithinSendGate(admissionError)
+                }
+                return .failure(admissionError)
             }
-            return .failure(admissionError)
+            return .success(())
         }
-        if shouldTransmit { transmitControl(payload, generation: transmissionGeneration) }
-        return .success(())
+        if let failureTransition { performFailureTransition(failureTransition) }
+        if let transmission { transmitControl(transmission) }
+        return result
     }
 
     @discardableResult
     func sendMedia(_ frame: EncodedInternetFrame) -> Result<Void, InternetTransportError> {
-        guard !frame.payload.isEmpty else {
+        guard frame.mediaPayloadBytes > 0,
+              !frame.records.isEmpty,
+              !frame.records.contains(where: \.isEmpty) else {
             return .failure(.emptyPayload(channel: .media))
         }
-        guard frame.payload.count <= limits.maximumMediaFrameBytes else {
+        guard frame.mediaPayloadBytes <= limits.maximumMediaFrameBytes else {
             return .failure(.payloadTooLarge(
                 channel: .media,
-                actual: frame.payload.count,
+                actual: frame.mediaPayloadBytes,
                 maximum: limits.maximumMediaFrameBytes
+            ))
+        }
+        if let oversizedRecord = frame.records.first(where: {
+            $0.count > InternetMediaRecordContract.maximumPlaintextRecordBytes
+        }) {
+            return .failure(.payloadTooLarge(
+                channel: .media,
+                actual: oversizedRecord.count,
+                maximum: InternetMediaRecordContract.maximumPlaintextRecordBytes
             ))
         }
 
         var frameToTransmit: EncodedInternetFrame?
         var shouldRequestKeyframe = false
         var transmissionGeneration: UInt64 = 0
-        let admissionError: InternetTransportError? = withLock { state in
-            guard isConnected(state.transportState) else { return .notConnected }
-            if state.activePath == .relay,
-               state.relayBytesSent + state.relayBytesReserved + UInt64(frame.payload.count)
-                    > limits.maximumRelayBytesPerSession {
-                return .relayBudgetExceeded(maximumBytes: limits.maximumRelayBytesPerSession)
-            }
-            if state.waitingForKeyframe {
-                guard frame.isKeyframe else {
-                    state.droppedMediaFrames += 1
+        let encryptedFrameBytes = frame.totalEncryptedRecordBytes
+        let admissionError: InternetTransportError? = withSendGate {
+            withLock { state in
+                guard isConnected(state.transportState),
+                      !state.pipelineGenerationExhausted,
+                      let activePath = state.activePath,
+                      let engineContext = state.engineTransmissionContext,
+                      engineContext.path == activePath else { return .notConnected }
+                let releasesKeyframeGate = state.waitingForKeyframe
+                if releasesKeyframeGate {
+                    guard frame.isKeyframe else {
+                        state.droppedMediaFrames += 1
+                        return nil
+                    }
+                }
+                transmissionGeneration = state.pipelineGeneration
+                guard state.mediaInFlight else {
+                    guard reserveRelayBytes(encryptedFrameBytes, state: &state) else {
+                        return .relayBudgetExceeded(maximumBytes: limits.maximumRelayBytesPerSession)
+                    }
+                    if releasesKeyframeGate { state.waitingForKeyframe = false }
+                    state.mediaInFlight = true
+                    frameToTransmit = frame
                     return nil
                 }
-                state.waitingForKeyframe = false
-            }
-            if state.activePath == .relay {
-                state.relayBytesReserved += UInt64(frame.payload.count)
-            }
-            transmissionGeneration = state.pipelineGeneration
-            guard state.mediaInFlight else {
-                state.mediaInFlight = true
-                frameToTransmit = frame
+
+                if let pending = state.pendingMediaFrame {
+                    if pending.isKeyframe && !frame.isKeyframe {
+                        state.droppedMediaFrames += 1
+                    } else if frame.isKeyframe {
+                        guard reserveRelayBytes(
+                            encryptedFrameBytes,
+                            replacing: pending.totalEncryptedRecordBytes,
+                            state: &state
+                        ) else {
+                            return .relayBudgetExceeded(maximumBytes: limits.maximumRelayBytesPerSession)
+                        }
+                        if releasesKeyframeGate { state.waitingForKeyframe = false }
+                        state.pendingMediaFrame = frame
+                        state.droppedMediaFrames += 1
+                    } else {
+                        state.pendingMediaFrame = nil
+                        state.waitingForKeyframe = true
+                        state.droppedMediaFrames += 2
+                        releaseRelayReservation(
+                            for: pending.totalEncryptedRecordBytes,
+                            state: &state
+                        )
+                        shouldRequestKeyframe = true
+                    }
+                } else {
+                    guard reserveRelayBytes(encryptedFrameBytes, state: &state) else {
+                        return .relayBudgetExceeded(maximumBytes: limits.maximumRelayBytesPerSession)
+                    }
+                    if releasesKeyframeGate { state.waitingForKeyframe = false }
+                    state.pendingMediaFrame = frame
+                }
                 return nil
             }
-
-            if let pending = state.pendingMediaFrame {
-                if pending.isKeyframe && !frame.isKeyframe {
-                    state.droppedMediaFrames += 1
-                    releaseRelayReservation(for: frame.payload.count, state: &state)
-                } else if frame.isKeyframe {
-                    state.pendingMediaFrame = frame
-                    state.droppedMediaFrames += 1
-                    releaseRelayReservation(for: pending.payload.count, state: &state)
-                } else {
-                    state.pendingMediaFrame = nil
-                    state.waitingForKeyframe = true
-                    state.droppedMediaFrames += 2
-                    releaseRelayReservation(
-                        for: pending.payload.count + frame.payload.count,
-                        state: &state
-                    )
-                    shouldRequestKeyframe = true
-                }
-            } else {
-                state.pendingMediaFrame = frame
-            }
-            return nil
         }
 
         if let admissionError { return .failure(admissionError) }
@@ -216,11 +420,18 @@ final class WebRTCInternetTransport {
     }
 
     func close() {
-        withLock {
-            $0.transportState = .closed
-            $0.activePath = nil
-            invalidatePipeline(state: &$0)
+        engineLifecycleGate.lock()
+        defer { engineLifecycleGate.unlock() }
+        let shouldClose = withSendGate {
+            withLock { state -> Bool in
+                guard state.transportState != .closed else { return false }
+                state.transportState = .closed
+                state.activePath = nil
+                invalidatePipeline(state: &state)
+                return true
+            }
         }
+        guard shouldClose else { return }
         engine.close()
         onStateChanged?(.closed)
     }
@@ -237,90 +448,276 @@ final class WebRTCInternetTransport {
                 droppedMediaFrames: $0.droppedMediaFrames,
                 iceRestartCount: $0.iceRestartCount,
                 bufferedControlBytes: $0.bufferedControlBytes,
+                bufferedControlMessages: $0.controlQueue.count + ($0.controlInFlight ? 1 : 0),
+                mediaInFlight: $0.mediaInFlight,
                 hasPendingMediaFrame: $0.pendingMediaFrame != nil
             )
         }
     }
 
-    private func transmitControl(_ payload: Data, generation: UInt64) {
-        let wasRelay = withLock { $0.activePath == .relay }
-        engine.send(payload, channel: .control) { [weak self] result in
-            guard let self else { return }
-            var next: Data?
-            var reportedError: InternetTransportError?
-            self.withLock {
-                guard $0.pipelineGeneration == generation else { return }
-                $0.bufferedControlBytes = max(0, $0.bufferedControlBytes - payload.count)
-                if wasRelay {
-                    $0.relayBytesReserved = $0.relayBytesReserved.subtractingClamped(UInt64(payload.count))
+    private func transmitControl(_ transmission: ControlTransmission) {
+        beforeControlSend?()
+        let canSend = withSendGate {
+            withLock { state -> Bool in
+                guard state.pipelineGeneration == transmission.generation,
+                      state.controlInFlight,
+                      state.activeControlTransmissionIdentifier == transmission.identifier,
+                      isConnected(state.transportState),
+                      state.activePath == transmission.path,
+                      state.engineTransmissionContext == transmission.engineContext else {
+                    recoverRejectedControlSend(transmission, state: &state)
+                    return false
                 }
-                switch result {
-                case .success:
-                    $0.controlBytesSent += UInt64(payload.count)
-                    if wasRelay { $0.relayBytesSent += UInt64(payload.count) }
-                    if !$0.controlQueue.isEmpty {
-                        next = $0.controlQueue.removeFirst()
-                    } else {
-                        $0.controlInFlight = false
-                    }
-                case .failure(let error):
-                    reportedError = .engineSendFailed(error.localizedDescription)
+                state.dispatchedControlTransmissionIdentifiers.insert(transmission.identifier)
+                if transmission.relayReservationBytes > 0 {
+                    state.dispatchedControlRelayReservations[transmission.identifier] =
+                        transmission.relayReservationBytes
                 }
+                return true
             }
-            if let reportedError { self.failTransport(reportedError) }
-            if let next { self.transmitControl(next, generation: generation) }
+        }
+        guard canSend else { return }
+
+        let completionHandoff = EngineSendCompletionHandoff()
+        engine.send(
+            transmission.payload,
+            channel: .control,
+            expectedContext: transmission.engineContext
+        ) { [weak self] result in
+            guard let self else { return }
+            if completionHandoff.receive(result) {
+                self.handleControlCompletion(transmission, result: result)
+            }
+        }
+        let synchronousResult = completionHandoff.markEngineSendReturned()
+        if let synchronousResult {
+            handleControlCompletion(transmission, result: synchronousResult)
         }
     }
 
-    private func transmitMedia(_ frame: EncodedInternetFrame, generation: UInt64) {
-        let wasRelay = withLock { $0.activePath == .relay }
-        engine.send(frame.payload, channel: .media) { [weak self] result in
-            guard let self else { return }
-            var next: EncodedInternetFrame?
+    private func handleControlCompletion(
+        _ transmission: ControlTransmission,
+        result: Result<Void, Error>
+    ) {
+        var next: ControlTransmission?
+        var failureTransition: FailureTransition?
+        withSendGate {
             var reportedError: InternetTransportError?
-            var shouldRequestKeyframe = false
-            self.withLock {
-                guard $0.pipelineGeneration == generation else { return }
-                if wasRelay {
-                    $0.relayBytesReserved = $0.relayBytesReserved.subtractingClamped(UInt64(frame.payload.count))
+            withLock { state in
+                guard state.dispatchedControlTransmissionIdentifiers.remove(
+                    transmission.identifier
+                ) != nil else { return }
+                let relayReservationBytes = state.dispatchedControlRelayReservations
+                    .removeValue(forKey: transmission.identifier) ?? 0
+                state.relayBytesReserved = state.relayBytesReserved.subtractingClamped(
+                    relayReservationBytes
+                )
+                let isCurrent = state.pipelineGeneration == transmission.generation
+                    && state.controlInFlight
+                    && state.activeControlTransmissionIdentifier == transmission.identifier
+                if case .success = result {
+                    let (controlBytesSent, controlOverflow) = state.controlBytesSent
+                        .addingReportingOverflow(UInt64(transmission.payload.count))
+                    let (relayBytesSent, relayOverflow) = state.relayBytesSent
+                        .addingReportingOverflow(relayReservationBytes)
+                    guard !controlOverflow, !relayOverflow else {
+                        reportedError = .sequenceExhausted("transport byte accounting")
+                        return
+                    }
+                    state.controlBytesSent = controlBytesSent
+                    state.relayBytesSent = relayBytesSent
                 }
+                guard isCurrent else { return }
+                state.bufferedControlBytes = max(
+                    0,
+                    state.bufferedControlBytes - transmission.payload.count
+                )
                 switch result {
                 case .success:
-                    $0.mediaBytesSent += UInt64(frame.payload.count)
-                    if wasRelay { $0.relayBytesSent += UInt64(frame.payload.count) }
-                    if let pending = $0.pendingMediaFrame {
-                        next = pending
-                        $0.pendingMediaFrame = nil
+                    if let queued = state.controlQueue.popFirst() {
+                        next = queued
+                        state.activeControlTransmissionIdentifier = next?.identifier
                     } else {
-                        $0.mediaInFlight = false
+                        state.controlInFlight = false
+                        state.activeControlTransmissionIdentifier = nil
                     }
                 case .failure(let error):
-                    $0.droppedMediaFrames += 1
-                    $0.waitingForKeyframe = true
                     reportedError = .engineSendFailed(error.localizedDescription)
-                    if let pending = $0.pendingMediaFrame, pending.isKeyframe {
-                        next = pending
-                        $0.pendingMediaFrame = nil
-                        $0.waitingForKeyframe = false
-                    } else {
-                        if let pending = $0.pendingMediaFrame {
-                            $0.droppedMediaFrames += 1
-                            self.releaseRelayReservation(for: pending.payload.count, state: &$0)
-                        }
-                        $0.pendingMediaFrame = nil
-                        $0.mediaInFlight = false
-                        shouldRequestKeyframe = true
-                    }
                 }
             }
             if let reportedError {
-                if shouldRequestKeyframe {
-                    self.engine.requestMediaKeyframe()
-                    self.onKeyframeRequired?()
+                failureTransition = prepareFailureWithinSendGate(reportedError)
+            }
+        }
+        if let failureTransition {
+            performFailureTransition(failureTransition)
+        } else if let next {
+            transmitControl(next)
+        }
+    }
+
+    private func transmitMedia(
+        _ frame: EncodedInternetFrame,
+        recordIndex: Int = 0,
+        generation: UInt64
+    ) {
+        let record = frame.records[recordIndex]
+        var rejectedRecovery = RejectedMediaSendRecovery.none
+        var failureTransition: FailureTransition?
+        beforeMediaRecordSend?()
+        let transmission = withSendGate {
+            var sequenceError: InternetTransportError?
+            let claimed = withLock { state -> (UInt64, WebRTCEngineTransmissionContext)? in
+                guard state.pipelineGeneration == generation,
+                      !state.pipelineGenerationExhausted,
+                      state.mediaInFlight,
+                      isConnected(state.transportState),
+                      let activePath = state.activePath,
+                      let engineContext = state.engineTransmissionContext,
+                      engineContext.path == activePath else {
+                    rejectedRecovery = recoverRejectedMediaSend(
+                        frame,
+                        recordIndex: recordIndex,
+                        generation: generation,
+                        state: &state
+                    )
+                    return nil
                 }
+                guard state.nextMediaTransmissionIdentifier < UInt64.max else {
+                    sequenceError = .sequenceExhausted("media transmission identifier")
+                    return nil
+                }
+                state.nextMediaTransmissionIdentifier += 1
+                let identifier = state.nextMediaTransmissionIdentifier
+                state.dispatchedMediaTransmissionIdentifiers.insert(identifier)
+                if state.activePath == .relay {
+                    state.dispatchedMediaRelayReservations[identifier] =
+                        InternetMediaRecordContract.encryptedRecordBytes(
+                            forPlaintextBytes: record.count
+                        )
+                }
+                return (identifier, engineContext)
+            }
+            if let sequenceError {
+                failureTransition = prepareFailureWithinSendGate(sequenceError)
+            }
+            return claimed
+        }
+        if let failureTransition {
+            performFailureTransition(failureTransition)
+            return
+        }
+        guard let (transmissionIdentifier, engineContext) = transmission else {
+            if rejectedRecovery.shouldRequestKeyframe {
+                engine.requestMediaKeyframe()
+                onKeyframeRequired?()
+            }
+            if let nextFrame = rejectedRecovery.nextFrame {
+                transmitMedia(nextFrame, generation: generation)
+            }
+            return
+        }
+        engine.send(
+            record,
+            channel: .media,
+            expectedContext: engineContext
+        ) { [weak self] result in
+            guard let self else { return }
+            var nextFrame: EncodedInternetFrame?
+            var nextRecordIndex: Int?
+            var reportedError: InternetTransportError?
+            var accountingFailure: InternetTransportError?
+            var completionFailureTransition: FailureTransition?
+            var shouldRequestKeyframe = false
+            self.withSendGate {
+                self.withLock { state in
+                    guard state.dispatchedMediaTransmissionIdentifiers.remove(
+                        transmissionIdentifier
+                    ) != nil else { return }
+                    let relayReservationBytes = state.dispatchedMediaRelayReservations
+                        .removeValue(forKey: transmissionIdentifier) ?? 0
+                    state.relayBytesReserved = state.relayBytesReserved.subtractingClamped(
+                        relayReservationBytes
+                    )
+                    if case .success = result {
+                        let (mediaBytesSent, mediaOverflow) = state.mediaBytesSent
+                            .addingReportingOverflow(UInt64(record.count))
+                        let (relayBytesSent, relayOverflow) = state.relayBytesSent
+                            .addingReportingOverflow(relayReservationBytes)
+                        guard !mediaOverflow, !relayOverflow else {
+                            accountingFailure = .sequenceExhausted("transport byte accounting")
+                            return
+                        }
+                        state.mediaBytesSent = mediaBytesSent
+                        state.relayBytesSent = relayBytesSent
+                    }
+                    guard state.pipelineGeneration == generation,
+                          state.mediaInFlight else { return }
+                    switch result {
+                    case .success:
+                        if recordIndex + 1 < frame.records.count {
+                            nextFrame = frame
+                            nextRecordIndex = recordIndex + 1
+                        } else if let pending = state.pendingMediaFrame {
+                            nextFrame = pending
+                            nextRecordIndex = 0
+                            state.pendingMediaFrame = nil
+                        } else {
+                            state.mediaInFlight = false
+                        }
+                    case .failure(let error):
+                        let remainingEncryptedBytes = frame.records
+                            .dropFirst(recordIndex + 1)
+                            .reduce(UInt64(0)) {
+                                $0 + InternetMediaRecordContract.encryptedRecordBytes(
+                                    forPlaintextBytes: $1.count
+                                )
+                            }
+                        self.releaseRelayReservation(for: remainingEncryptedBytes, state: &state)
+                        state.droppedMediaFrames += 1
+                        state.waitingForKeyframe = true
+                        reportedError = .engineSendFailed(error.localizedDescription)
+                        if let pending = state.pendingMediaFrame, pending.isKeyframe {
+                            nextFrame = pending
+                            nextRecordIndex = 0
+                            state.pendingMediaFrame = nil
+                            state.waitingForKeyframe = false
+                        } else {
+                            if let pending = state.pendingMediaFrame {
+                                state.droppedMediaFrames += 1
+                                self.releaseRelayReservation(
+                                    for: pending.totalEncryptedRecordBytes,
+                                    state: &state
+                                )
+                            }
+                            state.pendingMediaFrame = nil
+                            state.mediaInFlight = false
+                            shouldRequestKeyframe = true
+                        }
+                    }
+                }
+                if let accountingFailure {
+                    completionFailureTransition = self.prepareFailureWithinSendGate(accountingFailure)
+                }
+            }
+            if let completionFailureTransition {
+                self.performFailureTransition(completionFailureTransition)
+                return
+            }
+            if let reportedError {
                 self.onError?(reportedError)
             }
-            if let next { self.transmitMedia(next, generation: generation) }
+            if shouldRequestKeyframe {
+                self.engine.requestMediaKeyframe()
+                self.onKeyframeRequired?()
+            }
+            if let nextFrame, let nextRecordIndex {
+                self.transmitMedia(
+                    nextFrame,
+                    recordIndex: nextRecordIndex,
+                    generation: generation
+                )
+            }
         }
     }
 
@@ -329,24 +726,44 @@ final class WebRTCInternetTransport {
         guard !isClosed else { return }
         switch state {
         case .connecting:
-            setState(.connecting)
+            handleEngineConnecting()
         case .connected(let path):
-            guard path != .unknown else {
+            if withLock({ $0.pipelineGenerationExhausted }) {
+                failTransport(.sequenceExhausted("pipeline generation"), reportError: false)
+                return
+            }
+            let announcedContext = withLock { $0.engineTransmissionContext }
+            guard path != .unknown, announcedContext?.path == path else {
                 failTransport(
-                    .engineSendFailed("WebRTC reported connected before selecting an ICE candidate pair."),
+                    .engineSendFailed(
+                        "WebRTC reported connected without a matching transmission context and selected ICE candidate pair."
+                    ),
                     reportError: false
                 )
                 return
             }
-            withLock {
-                if let previousPath = $0.activePath, previousPath != path {
-                    invalidatePipeline(state: &$0)
+            let update = withSendGate {
+                withLock { state -> (accepted: Bool, changed: Bool) in
+                    guard state.transportState != .closed else { return (false, false) }
+                    if case .failed = state.transportState { return (false, false) }
+                    guard let engineContext = state.engineTransmissionContext,
+                          engineContext.path == path else { return (false, false) }
+                    if let previousPath = state.activePath, previousPath != path {
+                        invalidatePipeline(state: &state)
+                        state.engineTransmissionContext = engineContext
+                    }
+                    state.activePath = path
+                    state.recovery.connected()
+                    state.recoveryAttemptAwaitingOutcome = false
+                    state.waitingForKeyframe = true
+                    let connectedState = InternetTransportState.connected(path)
+                    guard state.transportState != connectedState else { return (true, false) }
+                    state.transportState = connectedState
+                    return (true, true)
                 }
-                $0.activePath = path
-                $0.recovery.connected()
-                $0.waitingForKeyframe = true
             }
-            setState(.connected(path))
+            guard update.accepted else { return }
+            if update.changed { onStateChanged?(.connected(path)) }
             engine.requestMediaKeyframe()
             onKeyframeRequired?()
         case .disconnected:
@@ -354,54 +771,199 @@ final class WebRTCInternetTransport {
         case .failed(let reason):
             failTransport(.engineSendFailed(reason), reportError: false)
         case .closed:
-            let shouldReportClosed = withLock { state -> Bool in
-                if case .failed = state.transportState { return false }
-                guard state.transportState != .closed else { return false }
-                state.transportState = .closed
-                state.activePath = nil
-                invalidatePipeline(state: &state)
-                return true
+            let shouldReportClosed = withSendGate {
+                withLock { state -> Bool in
+                    if case .failed = state.transportState { return false }
+                    guard state.transportState != .closed else { return false }
+                    state.transportState = .closed
+                    state.activePath = nil
+                    invalidatePipeline(state: &state)
+                    return true
+                }
             }
             if shouldReportClosed { onStateChanged?(.closed) }
         }
     }
 
     private func handleNetworkPath(_ path: InternetNetworkPath) {
-        let action: NetworkRecoveryAction? = withLock {
-            let action = $0.recovery.pathChanged(path)
-            return isConnected($0.transportState) ? action : nil
+        var failureTransition: FailureTransition?
+        let transition = withSendGate { () -> RecoveryTransition? in
+            let action = withLock { state -> NetworkRecoveryAction? in
+                guard isConnected(state.transportState) else {
+                    state.recovery.observePath(path)
+                    return nil
+                }
+                return state.recovery.pathChanged(path)
+            }
+            switch action {
+            case .restartICE:
+                return prepareICERestartWithinSendGate()
+            case .fail(let reason):
+                failureTransition = prepareFailureWithinSendGate(
+                    .engineSendFailed(reason),
+                    reportError: false
+                )
+                return nil
+            case nil:
+                return nil
+            }
         }
-        if action == .restartICE { executeICERestart() }
+        if let failureTransition {
+            performFailureTransition(failureTransition)
+        } else {
+            performPreparedICERestart(transition)
+        }
+    }
+
+    private func handleEngineConnecting() {
+        let shouldNotify = withSendGate {
+            withLock { state -> Bool in
+                guard state.transportState != .closed else { return false }
+                if case .failed = state.transportState { return false }
+                if case .recovering = state.transportState {
+                    state.recoveryAttemptAwaitingOutcome = true
+                    return false
+                }
+                guard state.transportState != .connecting else { return false }
+                state.transportState = .connecting
+                return true
+            }
+        }
+        if shouldNotify { onStateChanged?(.connecting) }
+    }
+
+    private func handleEngineTransmissionContext(
+        _ context: WebRTCEngineTransmissionContext?
+    ) {
+        var didExhaustPipeline = false
+        withSendGate {
+            withLock { state in
+                guard state.transportState != .closed else { return }
+                if case .failed = state.transportState { return }
+                guard state.engineTransmissionContext != context
+                        || (context == nil && state.activePath != nil) else { return }
+                if state.engineTransmissionContext != nil || state.activePath != nil {
+                    invalidatePipeline(state: &state)
+                    didExhaustPipeline = state.pipelineGenerationExhausted
+                }
+                state.activePath = nil
+                state.engineTransmissionContext = context
+            }
+        }
+        if didExhaustPipeline {
+            failTransport(.sequenceExhausted("pipeline generation"), reportError: false)
+        }
     }
 
     private func recoverConnectivity() {
-        let action: NetworkRecoveryAction? = withLock {
-            guard isConnected($0.transportState) else { return nil }
-            return $0.recovery.connectivityLost()
+        var failureTransition: FailureTransition?
+        let transition = withSendGate { () -> RecoveryTransition? in
+            let action: NetworkRecoveryAction? = withLock {
+                if isConnected($0.transportState) || $0.transportState == .connecting {
+                    return $0.recovery.connectivityLost()
+                }
+                guard case .recovering = $0.transportState,
+                      $0.recoveryAttemptAwaitingOutcome else { return nil }
+                $0.recoveryAttemptAwaitingOutcome = false
+                return $0.recovery.connectivityLost()
+            }
+            switch action {
+            case .restartICE:
+                return prepareICERestartWithinSendGate()
+            case .fail(let reason):
+                failureTransition = prepareFailureWithinSendGate(
+                    .engineSendFailed(reason),
+                    reportError: false
+                )
+                return nil
+            case nil:
+                return nil
+            }
         }
-        guard let action else { return }
-        switch action {
-        case .restartICE:
-            executeICERestart()
-        case .fail(let reason):
-            setState(.failed(reason))
+        if let failureTransition {
+            performFailureTransition(failureTransition)
+        } else {
+            performPreparedICERestart(transition)
         }
     }
 
-    private func executeICERestart() {
-        let attempt = withLock { state -> Int in
-            state.iceRestartCount += 1
+    private func prepareICERestartWithinSendGate() -> RecoveryTransition? {
+        withLock { state -> RecoveryTransition? in
+            let canRestart: Bool
+            if isConnected(state.transportState) {
+                canRestart = true
+            } else if state.transportState == .connecting {
+                canRestart = true
+            } else if case .recovering = state.transportState {
+                canRestart = true
+            } else {
+                canRestart = false
+            }
+            guard canRestart else { return nil }
             invalidatePipeline(state: &state)
             state.activePath = nil
             state.waitingForKeyframe = true
-            return state.recovery.attempt
+            state.recoveryAttemptAwaitingOutcome = false
+            let attempt = state.recovery.attempt
+            let recoveringState = InternetTransportState.recovering(attempt: attempt)
+            guard state.transportState != recoveringState else {
+                return RecoveryTransition(
+                    attempt: attempt,
+                    changed: false,
+                    generation: state.pipelineGeneration,
+                    recoveringState: recoveringState
+                )
+            }
+            state.transportState = recoveringState
+            return RecoveryTransition(
+                attempt: attempt,
+                changed: true,
+                generation: state.pipelineGeneration,
+                recoveringState: recoveringState
+            )
         }
-        setState(.recovering(attempt: attempt))
+    }
+
+    private func performPreparedICERestart(_ transition: RecoveryTransition?) {
+        guard let transition else { return }
+        duringRecoveryDecision?()
+        guard isCurrentRecovery(transition) else { return }
+        duringMediaRecoveryTransition?()
+        guard isCurrentRecovery(transition) else { return }
+        if transition.changed { onStateChanged?(.recovering(attempt: transition.attempt)) }
+        guard isCurrentRecovery(transition) else { return }
         switch recoveryStrategy {
         case .restartICE:
-            engine.restartICE()
+            switch engine.restartICE() {
+            case .peerReplacementStarted:
+                withLock { $0.iceRestartCount += 1 }
+            case .requiresFreshSession(let reason):
+                guard let onFreshSessionRecoveryRequired else {
+                    failTransport(.engineSendFailed(reason), reportError: false)
+                    return
+                }
+                onFreshSessionRecoveryRequired(transition.attempt)
+            case .failed(let reason):
+                failTransport(.engineSendFailed(reason), reportError: false)
+            }
         case .freshSession:
-            onFreshSessionRecoveryRequired?(attempt)
+            guard let onFreshSessionRecoveryRequired else {
+                failTransport(
+                    .engineSendFailed("Fresh-session recovery was required but no recovery callback was installed."),
+                    reportError: false
+                )
+                return
+            }
+            onFreshSessionRecoveryRequired(transition.attempt)
+        }
+    }
+
+    private func isCurrentRecovery(_ transition: RecoveryTransition) -> Bool {
+        withSendGate {
+            withLock {
+                $0.pipelineGeneration == transition.generation
+                    && $0.transportState == transition.recoveringState
+            }
         }
     }
 
@@ -409,21 +971,37 @@ final class WebRTCInternetTransport {
         let maximum = channel == .control
             ? limits.maximumControlMessageBytes
             : limits.maximumMediaFrameBytes
-        guard !payload.isEmpty else {
-            failTransport(.emptyPayload(channel: channel))
-            return
+        var failureTransition: FailureTransition?
+        var shouldDeliver = false
+        withSendGate {
+            let acceptsInbound = withLock { state in
+                guard isConnected(state.transportState),
+                      let activePath = state.activePath,
+                      let engineContext = state.engineTransmissionContext else { return false }
+                return engineContext.path == activePath
+            }
+            guard acceptsInbound else { return }
+            if payload.isEmpty {
+                failureTransition = prepareFailureWithinSendGate(.emptyPayload(channel: channel))
+                return
+            }
+            if payload.count > maximum {
+                failureTransition = prepareFailureWithinSendGate(.payloadTooLarge(
+                    channel: channel,
+                    actual: payload.count,
+                    maximum: maximum
+                ))
+                return
+            }
+            shouldDeliver = true
         }
-        guard payload.count <= maximum else {
-            failTransport(.payloadTooLarge(
-                channel: channel,
-                actual: payload.count,
-                maximum: maximum
-            ))
-            return
-        }
-        switch channel {
-        case .control: onControlReceived?(payload)
-        case .media: onMediaReceived?(payload)
+        if let failureTransition {
+            performFailureTransition(failureTransition)
+        } else if shouldDeliver {
+            switch channel {
+            case .control: onControlReceived?(payload)
+            case .media: onMediaReceived?(payload)
+            }
         }
     }
 
@@ -435,10 +1013,14 @@ final class WebRTCInternetTransport {
     }
 
     private func setState(_ state: InternetTransportState) {
-        let changed = withLock { mutable -> Bool in
-            guard mutable.transportState != state else { return false }
-            mutable.transportState = state
-            return true
+        let changed = withSendGate {
+            withLock { mutable -> Bool in
+                guard mutable.transportState != .closed else { return false }
+                if case .failed = mutable.transportState { return false }
+                guard mutable.transportState != state else { return false }
+                mutable.transportState = state
+                return true
+            }
         }
         if changed { onStateChanged?(state) }
     }
@@ -447,31 +1029,91 @@ final class WebRTCInternetTransport {
         _ error: InternetTransportError,
         reportError: Bool = true
     ) {
+        let transition = withSendGate {
+            prepareFailureWithinSendGate(error, reportError: reportError)
+        }
+        if let transition { performFailureTransition(transition) }
+    }
+
+    private func prepareFailureWithinSendGate(
+        _ error: InternetTransportError,
+        reportError: Bool = true
+    ) -> FailureTransition? {
         let failedState = InternetTransportState.failed(error.localizedDescription)
+        var failureGeneration: UInt64 = 0
         let changed = withLock { state -> Bool in
             guard state.transportState != .closed else { return false }
             if case .failed = state.transportState { return false }
             state.transportState = failedState
             state.activePath = nil
             invalidatePipeline(state: &state)
+            failureGeneration = state.pipelineGeneration
             return true
         }
-        guard changed else { return }
+        guard changed else { return nil }
+        return FailureTransition(
+            failedState: failedState,
+            generation: failureGeneration,
+            error: error,
+            reportError: reportError
+        )
+    }
+
+    private func performFailureTransition(_ transition: FailureTransition) {
+        beforeFailureSideEffects?()
         engine.close()
-        onStateChanged?(failedState)
-        if reportError { onError?(error) }
+        let shouldPublish = withSendGate {
+            let isCurrent = withLock {
+                $0.pipelineGeneration == transition.generation
+                    && $0.transportState == transition.failedState
+            }
+            return isCurrent
+        }
+        guard shouldPublish else { return }
+        onStateChanged?(transition.failedState)
+        if transition.reportError { onError?(transition.error) }
     }
 
     private func invalidatePipeline(state: inout MutableState) {
-        state.pipelineGeneration &+= 1
+        if state.pipelineGeneration < UInt64.max {
+            state.pipelineGeneration += 1
+        } else {
+            state.pipelineGenerationExhausted = true
+        }
+        state.engineTransmissionContext = nil
         state.controlQueue.removeAll()
         state.bufferedControlBytes = 0
         if state.mediaInFlight { state.droppedMediaFrames += 1 }
         if state.pendingMediaFrame != nil { state.droppedMediaFrames += 1 }
         state.pendingMediaFrame = nil
         state.controlInFlight = false
+        state.activeControlTransmissionIdentifier = nil
         state.mediaInFlight = false
-        state.relayBytesReserved = 0
+        state.recoveryAttemptAwaitingOutcome = false
+        state.relayBytesReserved =
+            state.dispatchedControlRelayReservations.values.reduce(0, +)
+            + state.dispatchedMediaRelayReservations.values.reduce(0, +)
+    }
+
+    private func recoverRejectedControlSend(
+        _ transmission: ControlTransmission,
+        state: inout MutableState
+    ) {
+        // A generation change already invalidated the old queue and released its reservations.
+        guard state.pipelineGeneration == transmission.generation,
+              state.controlInFlight else { return }
+        let queuedPayloadBytes = state.controlQueue.payloadBytes()
+        let queuedRelayReservationBytes = state.controlQueue.relayReservationBytes()
+        state.bufferedControlBytes = max(
+            0,
+            state.bufferedControlBytes - transmission.payload.count - queuedPayloadBytes
+        )
+        state.relayBytesReserved = state.relayBytesReserved.subtractingClamped(
+            transmission.relayReservationBytes.addingClamped(queuedRelayReservationBytes)
+        )
+        state.controlQueue.removeAll()
+        state.controlInFlight = false
+        state.activeControlTransmissionIdentifier = nil
     }
 
     private func isConnected(_ state: InternetTransportState) -> Bool {
@@ -479,9 +1121,98 @@ final class WebRTCInternetTransport {
         return false
     }
 
-    private func releaseRelayReservation(for byteCount: Int, state: inout MutableState) {
+    private func releaseRelayReservation(for byteCount: UInt64, state: inout MutableState) {
         guard state.activePath == .relay else { return }
-        state.relayBytesReserved = state.relayBytesReserved.subtractingClamped(UInt64(byteCount))
+        state.relayBytesReserved = state.relayBytesReserved.subtractingClamped(byteCount)
+    }
+
+    private func reserveRelayBytes(
+        _ byteCount: UInt64,
+        replacing replacedBytes: UInt64 = 0,
+        state: inout MutableState
+    ) -> Bool {
+        guard state.activePath == .relay else { return true }
+        let retainedReservation = state.relayBytesReserved.subtractingClamped(replacedBytes)
+        guard relayReservationFits(
+            sent: state.relayBytesSent,
+            reserved: retainedReservation,
+            additional: byteCount
+        ) else {
+            return false
+        }
+        state.relayBytesReserved = retainedReservation.addingClamped(byteCount)
+        return true
+    }
+
+    private func relayReservationFits(
+        sent: UInt64,
+        reserved: UInt64,
+        additional: UInt64
+    ) -> Bool {
+        let (committed, committedOverflow) = sent.addingReportingOverflow(reserved)
+        guard !committedOverflow else { return false }
+        let (projected, projectedOverflow) = committed.addingReportingOverflow(additional)
+        return !projectedOverflow && projected <= limits.maximumRelayBytesPerSession
+    }
+
+    private struct RejectedMediaSendRecovery {
+        static let none = RejectedMediaSendRecovery(nextFrame: nil, shouldRequestKeyframe: false)
+
+        let nextFrame: EncodedInternetFrame?
+        let shouldRequestKeyframe: Bool
+    }
+
+    private func recoverRejectedMediaSend(
+        _ frame: EncodedInternetFrame,
+        recordIndex: Int,
+        generation: UInt64,
+        state: inout MutableState
+    ) -> RejectedMediaSendRecovery {
+        // A generation change already invalidated and released the old pipeline.
+        guard state.pipelineGeneration == generation else { return .none }
+
+        if state.mediaInFlight {
+            let remainingEncryptedBytes = frame.records
+                .dropFirst(recordIndex)
+                .reduce(UInt64(0)) {
+                    $0 + InternetMediaRecordContract.encryptedRecordBytes(
+                        forPlaintextBytes: $1.count
+                    )
+                }
+            releaseRelayReservation(for: remainingEncryptedBytes, state: &state)
+            state.droppedMediaFrames += 1
+        }
+        state.waitingForKeyframe = true
+
+        if isConnected(state.transportState),
+           let pending = state.pendingMediaFrame,
+           pending.isKeyframe {
+            state.pendingMediaFrame = nil
+            state.mediaInFlight = true
+            state.waitingForKeyframe = false
+            return RejectedMediaSendRecovery(
+                nextFrame: pending,
+                shouldRequestKeyframe: false
+            )
+        }
+
+        if let pending = state.pendingMediaFrame {
+            releaseRelayReservation(for: pending.totalEncryptedRecordBytes, state: &state)
+            state.droppedMediaFrames += 1
+        }
+        state.pendingMediaFrame = nil
+        state.mediaInFlight = false
+        return RejectedMediaSendRecovery(
+            nextFrame: nil,
+            shouldRequestKeyframe: isConnected(state.transportState)
+        )
+    }
+
+    @discardableResult
+    private func withSendGate<T>(_ operation: () -> T) -> T {
+        sendGate.lock()
+        defer { sendGate.unlock() }
+        return operation()
     }
 
     @discardableResult
@@ -492,7 +1223,38 @@ final class WebRTCInternetTransport {
     }
 }
 
+private final class EngineSendCompletionHandoff {
+    private let lock = NSLock()
+    private var engineSendReturned = false
+    private var callbackReceived = false
+    private var pendingResult: Result<Void, Error>?
+
+    /// Returns true when the caller must process the completion immediately.
+    func receive(_ result: Result<Void, Error>) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !callbackReceived else { return false }
+        callbackReceived = true
+        guard !engineSendReturned else { return true }
+        pendingResult = result
+        return false
+    }
+
+    func markEngineSendReturned() -> Result<Void, Error>? {
+        lock.lock()
+        defer { lock.unlock() }
+        engineSendReturned = true
+        defer { pendingResult = nil }
+        return pendingResult
+    }
+}
+
 private extension UInt64 {
+    func addingClamped(_ value: UInt64) -> UInt64 {
+        let (result, overflow) = addingReportingOverflow(value)
+        return overflow ? UInt64.max : result
+    }
+
     func subtractingClamped(_ value: UInt64) -> UInt64 {
         value > self ? 0 : self - value
     }

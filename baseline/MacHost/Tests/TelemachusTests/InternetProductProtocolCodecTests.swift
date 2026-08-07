@@ -13,7 +13,7 @@ final class InternetProductProtocolCodecTests: XCTestCase {
             timestamp: 42,
             isKeyframe: true
         )
-        let packet = try ProtocolV1MediaPacketCodec.decode(encoded.payload)
+        let packet = try ProtocolV1MediaPacketCodec.decode(try XCTUnwrap(encoded.records.first))
 
         XCTAssertEqual(packet.payload, annexB)
         XCTAssertEqual(packet.header.streamID, 7)
@@ -25,6 +25,180 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         XCTAssertEqual(packet.header.captureTimestampNs, 42)
         XCTAssertTrue(packet.header.keyframe)
         XCTAssertEqual(packet.header.codec, .hevc)
+    }
+
+    func testHandshakeNegotiatesFragmentationCapabilityAndEncryptedRecordLimit() throws {
+        var codec = try makeCodec(negotiate: false)
+        let negotiatedMaximum = InternetMediaRecordContract.minimumNegotiatedEncryptedRecordBytes
+        let hello = clientHello(maximumEncryptedMediaRecordBytes: negotiatedMaximum)
+
+        try codec.validate(hello)
+        let hostEnvelope = try VSEnvelope(serializedBytes: codec.hostHello())
+        let acceptedEnvelope = try VSEnvelope(serializedBytes: codec.sessionAccepted(
+            heartbeatIntervalMilliseconds: 1_000,
+            peerSupportsTouch: true
+        ))
+
+        XCTAssertEqual(codec.negotiatedMaximumEncryptedMediaRecordBytes, negotiatedMaximum)
+        XCTAssertEqual(hostEnvelope.hostHello.resourceLimits.maximumEncryptedMediaRecordBytes, UInt32(
+            InternetMediaRecordContract.maximumEncryptedRecordBytes
+        ))
+        XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.mediaRecordFragmentation))
+        XCTAssertEqual(
+            acceptedEnvelope.sessionAccepted.negotiatedResourceLimits.maximumEncryptedMediaRecordBytes,
+            UInt32(negotiatedMaximum)
+        )
+        XCTAssertTrue(acceptedEnvelope.sessionAccepted.negotiatedCapabilities.contains(.mediaRecordFragmentation))
+
+        let encoded = try codec.mediaFrame(
+            payload: Data(repeating: 0x41, count: 256 * 1_024),
+            timestamp: 7,
+            isKeyframe: true
+        )
+        XCTAssertGreaterThan(encoded.records.count, 1)
+        XCTAssertTrue(encoded.records.allSatisfy {
+            $0.count + InternetMediaRecordContract.applicationAEADRecordOverheadBytes <= negotiatedMaximum
+        })
+    }
+
+    func testHandshakeRejectsLegacyOrInvalidMediaRecordOffer() throws {
+        for maximum in [0, InternetMediaRecordContract.minimumNegotiatedEncryptedRecordBytes - 1] {
+            var codec = try makeCodec(negotiate: false)
+            var hello = clientHello(maximumEncryptedMediaRecordBytes: maximum)
+            if maximum == 0 {
+                hello.capabilities.removeAll { $0 == .mediaRecordFragmentation }
+            }
+            XCTAssertThrowsError(try codec.validate(hello))
+            XCTAssertThrowsError(try codec.sessionAccepted(
+                heartbeatIntervalMilliseconds: 1_000,
+                peerSupportsTouch: true
+            ))
+        }
+    }
+
+    func testMediaFrameFragmentsFourAndSixteenMiBBoundariesWithinAndroidRecordLimit() throws {
+        XCTAssertEqual(
+            InternetMediaRecordContract.maximumEncryptedRecordBytes,
+            InternetMediaRecordContract.maximumPlaintextRecordBytes
+                + InternetMediaRecordContract.applicationAEADRecordOverheadBytes
+        )
+        for payloadBytes in [4 * 1_024 * 1_024, 16 * 1_024 * 1_024] {
+            var codec = try makeCodec()
+            let payload = Data(repeating: 0x41, count: payloadBytes)
+
+            let encoded = try codec.mediaFrame(
+                payload: payload,
+                timestamp: 99,
+                isKeyframe: true
+            )
+
+            XCTAssertEqual(encoded.mediaPayloadBytes, payloadBytes)
+            XCTAssertGreaterThan(encoded.records.count, 1)
+            XCTAssertLessThanOrEqual(
+                encoded.records.count,
+                InternetMediaRecordContract.maximumFragmentsPerFrame
+            )
+            var reassembled = Data()
+            for (index, record) in encoded.records.enumerated() {
+                XCTAssertLessThanOrEqual(
+                    record.count,
+                    InternetMediaRecordContract.maximumPlaintextRecordBytes
+                )
+                XCTAssertLessThanOrEqual(
+                    record.count + InternetMediaRecordContract.applicationAEADRecordOverheadBytes,
+                    InternetMediaRecordContract.maximumEncryptedRecordBytes
+                )
+                let packet = try ProtocolV1MediaPacketCodec.decode(record)
+                XCTAssertEqual(packet.header.frameID, 1)
+                XCTAssertEqual(packet.header.fragmentIndex, UInt32(index))
+                XCTAssertEqual(packet.header.fragmentCount, UInt32(encoded.records.count))
+                reassembled.append(packet.payload)
+            }
+            XCTAssertEqual(reassembled, payload)
+        }
+    }
+
+    func testMediaFrameRejectsPayloadAboveSixteenMiB() throws {
+        var codec = try makeCodec()
+        let payloadBytes = 16 * 1_024 * 1_024 + 1
+
+        XCTAssertThrowsError(try codec.mediaFrame(
+            payload: Data(repeating: 0x41, count: payloadBytes),
+            timestamp: 1,
+            isKeyframe: true
+        )) { error in
+            XCTAssertEqual(
+                error as? InternetProductProtocolError,
+                .mediaPayloadTooLarge(actual: payloadBytes, maximum: 16 * 1_024 * 1_024)
+            )
+        }
+    }
+
+    func testEncodedFrameRejectsMalformedOversizedAndInconsistentBatches() throws {
+        let first = try mediaRecord(
+            payload: Data([1]),
+            frameID: 1,
+            fragmentIndex: 0,
+            fragmentCount: 2
+        )
+        let second = try mediaRecord(
+            payload: Data([2]),
+            frameID: 1,
+            fragmentIndex: 1,
+            fragmentCount: 2
+        )
+        XCTAssertNoThrow(try EncodedInternetFrame(
+            records: [first, second],
+            mediaPayloadBytes: 2,
+            captureTimestamp: 42,
+            isKeyframe: true
+        ))
+        XCTAssertThrowsError(try EncodedInternetFrame(
+            records: [],
+            mediaPayloadBytes: 0,
+            captureTimestamp: 42,
+            isKeyframe: true
+        ))
+        XCTAssertThrowsError(try EncodedInternetFrame(
+            records: [first, second],
+            mediaPayloadBytes: 3,
+            captureTimestamp: 42,
+            isKeyframe: true
+        ))
+        XCTAssertThrowsError(try EncodedInternetFrame(
+            records: Array(repeating: first, count: InternetMediaRecordContract.maximumFragmentsPerFrame + 1),
+            mediaPayloadBytes: 1,
+            captureTimestamp: 42,
+            isKeyframe: true
+        ))
+        XCTAssertThrowsError(try EncodedInternetFrame(
+            records: [Data(
+                repeating: 0x41,
+                count: InternetMediaRecordContract.maximumPlaintextRecordBytes + 1
+            )],
+            mediaPayloadBytes: 1,
+            captureTimestamp: 42,
+            isKeyframe: true
+        ))
+        XCTAssertThrowsError(try EncodedInternetFrame(
+            records: [first],
+            mediaPayloadBytes: InternetMediaRecordContract.maximumFrameBytes + 1,
+            captureTimestamp: 42,
+            isKeyframe: true
+        ))
+
+        let wrongScope = try mediaRecord(
+            payload: Data([2]),
+            frameID: 2,
+            fragmentIndex: 1,
+            fragmentCount: 2
+        )
+        XCTAssertThrowsError(try EncodedInternetFrame(
+            records: [first, wrongScope],
+            mediaPayloadBytes: 2,
+            captureTimestamp: 42,
+            isKeyframe: true
+        ))
     }
 
     func testControlDecoderRejectsOversizeBeforeParsing() throws {
@@ -80,9 +254,10 @@ final class InternetProductProtocolCodecTests: XCTestCase {
 
     private func makeCodec(
         controlLimit: Int = 64 * 1_024,
-        rotationDegrees: Int = 0
+        rotationDegrees: Int = 0,
+        negotiate: Bool = true
     ) throws -> InternetProductProtocolCodec {
-        try InternetProductProtocolCodec(
+        var codec = try InternetProductProtocolCodec(
             sessionIdentifier: "product-session",
             sessionEpoch: 3,
             hostID: "host-1",
@@ -105,6 +280,30 @@ final class InternetProductProtocolCodecTests: XCTestCase {
                 maximumRelayBytesPerSession: 1_024 * 1_024
             )
         )
+        if negotiate {
+            try codec.validate(clientHello())
+        }
+        return codec
+    }
+
+    private func clientHello(
+        maximumEncryptedMediaRecordBytes: Int = InternetMediaRecordContract.maximumEncryptedRecordBytes
+    ) -> VSClientHello {
+        var range = VSProtocolRange()
+        range.minimum = 1
+        range.maximum = 1
+        var limits = VSResourceLimits()
+        limits.maximumEncryptedMediaRecordBytes = UInt32(maximumEncryptedMediaRecordBytes)
+        var hello = VSClientHello()
+        hello.supportedProtocols = range
+        hello.deviceID = "device-1"
+        hello.deviceName = "Android"
+        hello.capabilities = Array(InternetProductProtocolCodec.requiredCapabilities) + [.touch]
+        hello.requiredCapabilities = Array(InternetProductProtocolCodec.requiredCapabilities)
+        hello.codecs = [.hevc]
+        hello.transports = [.internet]
+        hello.resourceLimits = limits
+        return hello
     }
 
     private func envelope(messageID: UInt64, epoch: UInt64) -> VSEnvelope {
@@ -117,5 +316,24 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         ping.sequence = messageID
         envelope.ping = ping
         return envelope
+    }
+
+    private func mediaRecord(
+        payload: Data,
+        frameID: UInt64,
+        fragmentIndex: UInt32,
+        fragmentCount: UInt32
+    ) throws -> Data {
+        var header = VSMediaPacketHeader()
+        header.streamID = 7
+        header.sessionEpoch = 3
+        header.configEpoch = 9
+        header.frameID = frameID
+        header.fragmentIndex = fragmentIndex
+        header.fragmentCount = fragmentCount
+        header.captureTimestampNs = 42
+        header.keyframe = true
+        header.codec = .hevc
+        return try ProtocolV1MediaPacketCodec.encode(header: header, payload: payload)
     }
 }

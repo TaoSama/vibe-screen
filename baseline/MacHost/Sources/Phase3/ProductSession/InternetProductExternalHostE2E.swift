@@ -22,9 +22,12 @@ enum InternetProductExternalHostE2E {
             guard configuration.boundTranscriptContext.hex == values.expectedBoundContext else {
                 throw Failure("bound transcript KAT mismatch")
             }
+            let identityStore = KeychainDeviceIdentityStore()
+            let identity = try identityStore.createIfMissing(deviceID: values.hostID)
             let platformSecurity = PlatformSessionSecurity(
                 deviceID: values.hostID,
-                peerID: "interop.\(values.deviceID)"
+                peerID: "interop.\(values.deviceID)",
+                identityStore: identityStore
             )
             let session = InternetProductSession(
                 engineFactory: { ProductionWebRTCEngine(signaling: HTTPSignalingClient()) },
@@ -32,6 +35,9 @@ enum InternetProductExternalHostE2E {
                     let active = try platformSecurity.startProtectedInternetSession(
                         sessionIdentifier: values.sessionID,
                         localRole: .host,
+                        expectedIdentity: PairedHostIdentityBinding(
+                            identity: identity.publicIdentity
+                        ),
                         identityEpoch: 1,
                         sharedSecret: values.sharedSecret,
                         bootstrapSecret: values.bootstrapSecret,

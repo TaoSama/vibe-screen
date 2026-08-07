@@ -1,4 +1,5 @@
 import Foundation
+import VibeScreenProtocol
 
 enum InternetTransportChannel: Equatable {
     case control
@@ -195,24 +196,179 @@ struct InternetNetworkPath: Equatable {
     let fingerprint: String
 }
 
+enum InternetMediaRecordContract {
+    static let maximumEncryptedRecordBytes = 4 * 1_024 * 1_024
+    static let maximumFrameBytes = 16 * 1_024 * 1_024
+    static let applicationAEADRecordOverheadBytes = PlatformSessionPacketCipher.recordOverhead
+    static let maximumPlaintextRecordBytes =
+        maximumEncryptedRecordBytes - applicationAEADRecordOverheadBytes
+    static let maximumMediaHeaderBytes = 64 * 1_024
+    static let maximumHeaderLengthVarintBytes = 5
+    static let maximumFragmentPayloadBytes =
+        maximumPlaintextRecordBytes - maximumMediaHeaderBytes - maximumHeaderLengthVarintBytes
+    static let maximumFragmentsPerFrame = 256
+
+    static let minimumNegotiatedEncryptedRecordBytes =
+        applicationAEADRecordOverheadBytes
+        + maximumMediaHeaderBytes
+        + maximumHeaderLengthVarintBytes
+        + (maximumFrameBytes + maximumFragmentsPerFrame - 1) / maximumFragmentsPerFrame
+
+    static func maximumPlaintextRecordBytes(negotiatedEncryptedRecordBytes: Int) -> Int {
+        negotiatedEncryptedRecordBytes - applicationAEADRecordOverheadBytes
+    }
+
+    static func maximumFragmentPayloadBytes(negotiatedEncryptedRecordBytes: Int) -> Int {
+        maximumPlaintextRecordBytes(negotiatedEncryptedRecordBytes: negotiatedEncryptedRecordBytes)
+            - maximumMediaHeaderBytes
+            - maximumHeaderLengthVarintBytes
+    }
+
+    static func encryptedRecordBytes(forPlaintextBytes plaintextBytes: Int) -> UInt64 {
+        UInt64(plaintextBytes + applicationAEADRecordOverheadBytes)
+    }
+}
+
+enum EncodedInternetFrameError: Error, Equatable {
+    case emptyRecords
+    case tooManyRecords(actual: Int, maximum: Int)
+    case invalidMediaPayloadBytes(Int)
+    case mediaPayloadTooLarge(actual: Int, maximum: Int)
+    case invalidRecordSize(index: Int, actual: Int, maximum: Int)
+    case malformedRecord(index: Int)
+    case invalidFragmentLayout(index: Int)
+    case inconsistentHeaderScope(index: Int)
+    case mediaPayloadBytesMismatch(declared: Int, actual: Int)
+}
+
 struct EncodedInternetFrame: Equatable {
-    let payload: Data
+    let records: [Data]
+    let mediaPayloadBytes: Int
     let captureTimestamp: UInt64
     let isKeyframe: Bool
+
+    init(
+        records: [Data],
+        mediaPayloadBytes: Int,
+        captureTimestamp: UInt64,
+        isKeyframe: Bool
+    ) throws {
+        guard !records.isEmpty else {
+            throw EncodedInternetFrameError.emptyRecords
+        }
+        guard records.count <= InternetMediaRecordContract.maximumFragmentsPerFrame else {
+            throw EncodedInternetFrameError.tooManyRecords(
+                actual: records.count,
+                maximum: InternetMediaRecordContract.maximumFragmentsPerFrame
+            )
+        }
+        guard mediaPayloadBytes >= 0 else {
+            throw EncodedInternetFrameError.invalidMediaPayloadBytes(mediaPayloadBytes)
+        }
+        guard mediaPayloadBytes <= InternetMediaRecordContract.maximumFrameBytes else {
+            throw EncodedInternetFrameError.mediaPayloadTooLarge(
+                actual: mediaPayloadBytes,
+                maximum: InternetMediaRecordContract.maximumFrameBytes
+            )
+        }
+
+        var firstHeader: VSMediaPacketHeader?
+        var decodedPayloadBytes = 0
+        for (index, record) in records.enumerated() {
+            guard !record.isEmpty,
+                  record.count <= InternetMediaRecordContract.maximumPlaintextRecordBytes else {
+                throw EncodedInternetFrameError.invalidRecordSize(
+                    index: index,
+                    actual: record.count,
+                    maximum: InternetMediaRecordContract.maximumPlaintextRecordBytes
+                )
+            }
+            let packet: (header: VSMediaPacketHeader, payload: Data)
+            do {
+                packet = try ProtocolV1MediaPacketCodec.decode(record)
+            } catch {
+                throw EncodedInternetFrameError.malformedRecord(index: index)
+            }
+            guard packet.header.fragmentCount == UInt32(records.count),
+                  packet.header.fragmentIndex == UInt32(index) else {
+                throw EncodedInternetFrameError.invalidFragmentLayout(index: index)
+            }
+            guard packet.header.captureTimestampNs == captureTimestamp,
+                  packet.header.keyframe == isKeyframe else {
+                throw EncodedInternetFrameError.inconsistentHeaderScope(index: index)
+            }
+            if let firstHeader {
+                guard packet.header.streamID == firstHeader.streamID,
+                      packet.header.sessionEpoch == firstHeader.sessionEpoch,
+                      packet.header.configEpoch == firstHeader.configEpoch,
+                      packet.header.frameID == firstHeader.frameID,
+                      packet.header.fragmentCount == firstHeader.fragmentCount,
+                      packet.header.captureTimestampNs == firstHeader.captureTimestampNs,
+                      packet.header.keyframe == firstHeader.keyframe,
+                      packet.header.codec == firstHeader.codec else {
+                    throw EncodedInternetFrameError.inconsistentHeaderScope(index: index)
+                }
+            } else {
+                firstHeader = packet.header
+            }
+            let (updatedPayloadBytes, overflow) = decodedPayloadBytes.addingReportingOverflow(packet.payload.count)
+            guard !overflow,
+                  updatedPayloadBytes <= InternetMediaRecordContract.maximumFrameBytes else {
+                throw EncodedInternetFrameError.mediaPayloadTooLarge(
+                    actual: overflow ? Int.max : updatedPayloadBytes,
+                    maximum: InternetMediaRecordContract.maximumFrameBytes
+                )
+            }
+            decodedPayloadBytes = updatedPayloadBytes
+        }
+        guard decodedPayloadBytes == mediaPayloadBytes else {
+            throw EncodedInternetFrameError.mediaPayloadBytesMismatch(
+                declared: mediaPayloadBytes,
+                actual: decodedPayloadBytes
+            )
+        }
+
+        self.records = records
+        self.mediaPayloadBytes = mediaPayloadBytes
+        self.captureTimestamp = captureTimestamp
+        self.isKeyframe = isKeyframe
+    }
+
+    var totalEncryptedRecordBytes: UInt64 {
+        records.reduce(0) {
+            $0 + InternetMediaRecordContract.encryptedRecordBytes(forPlaintextBytes: $1.count)
+        }
+    }
 }
 
 struct InternetTransportLimits: Equatable {
     static let standard = InternetTransportLimits(
         maximumControlMessageBytes: 256 * 1_024,
         maximumBufferedControlBytes: 2 * 1_024 * 1_024,
+        maximumBufferedControlMessages: 256,
         maximumMediaFrameBytes: 16 * 1_024 * 1_024,
         maximumRelayBytesPerSession: 10 * 1_024 * 1_024 * 1_024
     )
 
     let maximumControlMessageBytes: Int
     let maximumBufferedControlBytes: Int
+    let maximumBufferedControlMessages: Int
     let maximumMediaFrameBytes: Int
     let maximumRelayBytesPerSession: UInt64
+
+    init(
+        maximumControlMessageBytes: Int,
+        maximumBufferedControlBytes: Int,
+        maximumBufferedControlMessages: Int = 256,
+        maximumMediaFrameBytes: Int,
+        maximumRelayBytesPerSession: UInt64
+    ) {
+        self.maximumControlMessageBytes = maximumControlMessageBytes
+        self.maximumBufferedControlBytes = maximumBufferedControlBytes
+        self.maximumBufferedControlMessages = maximumBufferedControlMessages
+        self.maximumMediaFrameBytes = maximumMediaFrameBytes
+        self.maximumRelayBytesPerSession = maximumRelayBytesPerSession
+    }
 }
 
 struct InternetTransportSnapshot: Equatable {
@@ -225,6 +381,8 @@ struct InternetTransportSnapshot: Equatable {
     let droppedMediaFrames: UInt64
     let iceRestartCount: UInt64
     let bufferedControlBytes: Int
+    let bufferedControlMessages: Int
+    let mediaInFlight: Bool
     let hasPendingMediaFrame: Bool
 }
 
@@ -236,6 +394,7 @@ enum InternetTransportError: Error, Equatable, LocalizedError {
     case payloadTooLarge(channel: InternetTransportChannel, actual: Int, maximum: Int)
     case controlBacklogExceeded(maximumBytes: Int)
     case relayBudgetExceeded(maximumBytes: UInt64)
+    case sequenceExhausted(String)
     case engineSendFailed(String)
 
     var errorDescription: String? {
@@ -252,6 +411,8 @@ enum InternetTransportError: Error, Equatable, LocalizedError {
             return "Reliable control backlog exceeded \(maximumBytes) bytes."
         case .relayBudgetExceeded(let maximumBytes):
             return "TURN relay budget exceeded \(maximumBytes) bytes."
+        case .sequenceExhausted(let sequence):
+            return "The \(sequence) sequence was exhausted; the Internet transport failed closed."
         case .engineSendFailed(let reason):
             return "WebRTC engine send failed: \(reason)"
         }
