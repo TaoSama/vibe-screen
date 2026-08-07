@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from webrtc_m150_notices import NOTICE_RELATIVE_PATH, validate_notice_bundle
 import prepare_release
 import generate_webrtc_m150_notices
+from phase3_webrtc.model import SUPPORTED_COTURN_VERSIONS
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -417,6 +418,12 @@ class PrepareReleaseTests(unittest.TestCase):
     def test_phase0_macos_job_gates_local_synthetic_product_direct_and_forced_relay_e2e(
         self,
     ) -> None:
+        self.assertEqual(
+            SUPPORTED_COTURN_VERSIONS,
+            ("4.15.0", "4.16.0", "4.17.0"),
+        )
+        workflow_coturn_versions = "|".join(SUPPORTED_COTURN_VERSIONS)
+        makefile_coturn_versions = " ".join(SUPPORTED_COTURN_VERSIONS)
         workflow = PHASE0_WORKFLOW.read_text(encoding="utf-8")
         macos_job_match = re.search(
             r"(?ms)^  macos:\n(?P<body>.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)",
@@ -431,7 +438,7 @@ class PrepareReleaseTests(unittest.TestCase):
             'python-version: "3.11"',
             "brew install coturn",
             'turnserver_path="$(brew --prefix coturn)/bin/turnserver"',
-            "4.16.0|4.17.0",
+            workflow_coturn_versions,
             "Unsupported Homebrew coturn version",
             "Install local Phase 3 synthetic product E2E dependencies",
             "Gate local synthetic Protocol v1 harness direct and forced-relay product E2E",
@@ -483,7 +490,7 @@ class PrepareReleaseTests(unittest.TestCase):
             "synthetic Protocol v1 harness only; no Android device or "
             "ScreenCaptureKit capture",
             "$(MAKE) phase3-local-synthetic-product-e2e",
-            "PHASE3_COTURN_COMPATIBLE_VERSIONS := 4.16.0 4.17.0",
+            f"PHASE3_COTURN_COMPATIBLE_VERSIONS := {makefile_coturn_versions}",
             "--mode direct --slice product",
             "--mode relay --slice product --skip-build",
             "--diagnostics-dir",
