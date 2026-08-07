@@ -1193,11 +1193,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let identityBinding = try PairedHostIdentityBinding.decode(
                     encodedIdentityBinding
                 )
-                guard identityBinding.deviceID == settings.internetHostDeviceID else {
-                    throw PlatformSecurityError.persistenceFailure(
-                        "The paired host identity binding targets another device. Pair again."
-                    )
-                }
+                try identityBinding.requireTarget(
+                    deviceID: settings.internetHostDeviceID,
+                    keyEpoch: PlatformPublicIdentity.initialKeyEpoch
+                )
                 let authority = try identityStore.loadVerifiedExisting(
                     binding: identityBinding
                 )

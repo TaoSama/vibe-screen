@@ -5,6 +5,7 @@ import Security
 
 struct PlatformPublicIdentity: Codable, Equatable {
     static let algorithm = "ECDSA_P256_SHA256"
+    static let initialKeyEpoch: UInt64 = 1
 
     let deviceID: String
     let keyID: String
@@ -100,7 +101,10 @@ final class KeychainDeviceIdentityStore {
         self.service = service
     }
 
-    func createIfMissing(deviceID: String, keyEpoch: UInt64 = 1) throws -> KeychainDeviceIdentity {
+    func createIfMissing(
+        deviceID: String,
+        keyEpoch: UInt64 = PlatformPublicIdentity.initialKeyEpoch
+    ) throws -> KeychainDeviceIdentity {
         guard !deviceID.isEmpty, keyEpoch > 0 else {
             throw PlatformSecurityError.invalidInput("Device ID and positive key epoch are required.")
         }
@@ -111,7 +115,10 @@ final class KeychainDeviceIdentityStore {
         }
     }
 
-    func loadOrCreate(deviceID: String, keyEpoch: UInt64 = 1) throws -> KeychainDeviceIdentity {
+    func loadOrCreate(
+        deviceID: String,
+        keyEpoch: UInt64 = PlatformPublicIdentity.initialKeyEpoch
+    ) throws -> KeychainDeviceIdentity {
         try createIfMissing(deviceID: deviceID, keyEpoch: keyEpoch)
     }
 
@@ -119,7 +126,7 @@ final class KeychainDeviceIdentityStore {
     /// Lease issuance must fail closed when pairing has not created this key.
     func loadExisting(
         deviceID: String,
-        keyEpoch: UInt64 = 1
+        keyEpoch: UInt64 = PlatformPublicIdentity.initialKeyEpoch
     ) throws -> KeychainDeviceIdentity? {
         guard !deviceID.isEmpty, keyEpoch > 0 else {
             throw PlatformSecurityError.invalidInput(
@@ -346,18 +353,20 @@ struct KeychainSecurityStateStore:
     func validatePairingBinding(
         pairingIdentifier: String
     ) throws -> PersistedSecurityState {
-        guard let peerID, let bindingAccount,
-              let marker = try loadBinding(account: bindingAccount) else {
-            throw PlatformSecurityError.persistenceFailure(
-                "The paired-device durable security binding is missing. Pair again; existing credentials were retained."
+        try withExclusiveTransaction {
+            guard let peerID, let bindingAccount,
+                  let marker = try loadBinding(account: bindingAccount) else {
+                throw PlatformSecurityError.persistenceFailure(
+                    "The paired-device durable security binding is missing. Pair again; existing credentials were retained."
+                )
+            }
+            try marker.validate(
+                peerID: peerID,
+                pairingIdentifier: pairingIdentifier,
+                stateAccount: account
             )
+            return try loadCurrentStateRequired()
         }
-        try marker.validate(
-            peerID: peerID,
-            pairingIdentifier: pairingIdentifier,
-            stateAccount: account
-        )
-        return try loadCurrentStateRequired()
     }
 
     func rollbackPairingBinding(pairingIdentifier: String) throws {
@@ -625,17 +634,22 @@ struct KeychainSecurityStateStore:
     }
 }
 
-private enum KeychainCrossProcessTransactionLock {
-    private static let processLock = NSRecursiveLock()
+enum KeychainCrossProcessTransactionLock {
+    static let defaultAcquisitionTimeoutNanoseconds: UInt64 = 10_000_000_000
+    private static let retryDelayMicroseconds: useconds_t = 20_000
+    private static let registryLock = NSLock()
+    private static var processLocks: [String: NSRecursiveLock] = [:]
     private static let threadDepthPrefix = "dev.telemachus.security-lock-depth."
 
     static func withLock<T>(
         service: String,
         account: String,
+        acquisitionTimeoutNanoseconds: UInt64 = defaultAcquisitionTimeoutNanoseconds,
         operation: () throws -> T
     ) throws -> T {
-        try processLock.withCriticalSection {
-            let lockURL = try lockFileURL(service: service, account: account)
+        let lockURL = try lockFileURL(service: service, account: account)
+        let processLock = processLock(for: lockURL)
+        return try processLock.withCriticalSection {
             let depthKey = threadDepthPrefix + lockURL.lastPathComponent
             let dictionary = Thread.current.threadDictionary
             let depth = dictionary[depthKey] as? Int ?? 0
@@ -656,13 +670,10 @@ private enum KeychainCrossProcessTransactionLock {
                 )
             }
             defer { close(descriptor) }
-            while flock(descriptor, LOCK_EX) != 0 {
-                guard errno == EINTR else {
-                    throw PlatformSecurityError.persistenceFailure(
-                        "Unable to acquire the durable security transaction lock."
-                    )
-                }
-            }
+            try acquireFileLock(
+                descriptor: descriptor,
+                timeoutNanoseconds: acquisitionTimeoutNanoseconds
+            )
             dictionary[depthKey] = 1
             defer {
                 dictionary.removeObject(forKey: depthKey)
@@ -672,7 +683,37 @@ private enum KeychainCrossProcessTransactionLock {
         }
     }
 
-    private static func lockFileURL(service: String, account: String) throws -> URL {
+    static func acquireFileLock(
+        descriptor: Int32,
+        timeoutNanoseconds: UInt64 = defaultAcquisitionTimeoutNanoseconds,
+        clock: () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
+        sleep: (useconds_t) -> Void = { usleep($0) },
+        flockOperation: (Int32, Int32) -> Int32 = { descriptor, operation in
+            flock(descriptor, operation)
+        }
+    ) throws {
+        let startedAt = clock()
+        while flockOperation(descriptor, LOCK_EX | LOCK_NB) != 0 {
+            let lockError = errno
+            guard lockError == EINTR || lockError == EWOULDBLOCK || lockError == EAGAIN else {
+                throw PlatformSecurityError.persistenceFailure(
+                    "Unable to acquire the durable security transaction lock."
+                )
+            }
+            let now = clock()
+            let elapsed = now >= startedAt ? now - startedAt : UInt64.max
+            guard elapsed < timeoutNanoseconds else {
+                throw PlatformSecurityError.persistenceFailure(
+                    "Timed out acquiring the durable security transaction lock."
+                )
+            }
+            if lockError != EINTR {
+                sleep(retryDelayMicroseconds)
+            }
+        }
+    }
+
+    static func lockFileURL(service: String, account: String) throws -> URL {
         guard let applicationSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
@@ -703,6 +744,16 @@ private enum KeychainCrossProcessTransactionLock {
             .map { String(format: "%02x", $0) }
             .joined()
         return directory.appendingPathComponent("\(digest).lock", isDirectory: false)
+    }
+
+    private static func processLock(for lockURL: URL) -> NSRecursiveLock {
+        registryLock.withCriticalSection {
+            let key = lockURL.path
+            if let existing = processLocks[key] { return existing }
+            let created = NSRecursiveLock()
+            processLocks[key] = created
+            return created
+        }
     }
 }
 
@@ -940,6 +991,11 @@ struct PairedDeviceSecretNames: Equatable {
         guard sharedSecret.hasPrefix(sharedPrefix), sharedSecret.hasSuffix(sharedSuffix) else {
             return try Self(sharedSecret: sharedSecret, bootstrapSecret: bootstrapSecret)
         }
+        guard sharedSecret.count > sharedPrefix.count + sharedSuffix.count else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired-device shared secret name has no pairing identity. Pair again."
+            )
+        }
         let identifierStart = sharedSecret.index(
             sharedSecret.startIndex,
             offsetBy: sharedPrefix.count
@@ -1085,6 +1141,15 @@ struct PairedHostIdentityBinding: Codable, Equatable {
         } catch {
             throw PlatformSecurityError.persistenceFailure(
                 "The paired host identity binding contains an invalid public key. Pair again."
+            )
+        }
+    }
+
+    func requireTarget(deviceID expectedDeviceID: String, keyEpoch expectedKeyEpoch: UInt64) throws {
+        try validate()
+        guard deviceID == expectedDeviceID, keyEpoch == expectedKeyEpoch else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired host identity binding targets another device or key epoch. Pair again."
             )
         }
     }

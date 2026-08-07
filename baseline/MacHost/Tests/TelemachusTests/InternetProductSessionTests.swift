@@ -540,6 +540,35 @@ final class InternetProductSessionTests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.05)
         XCTAssertEqual(harness.engine.sentPlaintext.count, count)
     }
+
+    func testProductSelfTestControlQueueResumesWhenTransmissionContextReturns() throws {
+        let engine = ProductHarnessTransmissionEngine()
+        let harness = ProductDeviceHarness(
+            engine: engine,
+            configuration: WebRTCTransportConfiguration(
+                iceServers: [],
+                peerIdentity: "device-key",
+                sessionIdentifier: "product-harness-context-restore",
+                forceRelay: false
+            ),
+            sessionID: Data("product-harness-context-restore".utf8)
+        )
+        try harness.start()
+
+        engine.emitConnection(.connected(path: .direct))
+        XCTAssertTrue(engine.sentPayloads.isEmpty)
+
+        engine.emitTransmissionContext(
+            WebRTCEngineTransmissionContext(epoch: 1, path: .direct)
+        )
+
+        let sent = try XCTUnwrap(engine.sentPayloads.first)
+        let envelope = try VSEnvelope(serializedBytes: sent)
+        guard case .clientHello = envelope.payload else {
+            return XCTFail("Restored context must resume the queued ClientHello.")
+        }
+        XCTAssertTrue(harness.failures.isEmpty)
+    }
 }
 
 private final class Harness {
@@ -831,5 +860,52 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
         activeTransmissionPath = nil
         transmissionEpoch &+= 1
         callbacks?.transmissionContextChanged(nil)
+    }
+}
+
+private final class ProductHarnessTransmissionEngine: WebRTCEnginePort {
+    private var callbacks: WebRTCEngineCallbacks?
+    private var context: WebRTCEngineTransmissionContext?
+    private(set) var sentPayloads: [Data] = []
+
+    func install(callbacks: WebRTCEngineCallbacks) {
+        self.callbacks = callbacks
+    }
+
+    func start(
+        configuration: WebRTCTransportConfiguration,
+        channels: [WebRTCDataChannelConfiguration]
+    ) throws {}
+
+    func send(
+        _ payload: Data,
+        channel: InternetTransportChannel,
+        expectedContext: WebRTCEngineTransmissionContext,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        guard channel == .control, expectedContext == context else {
+            completion(.failure(
+                PlatformSecurityError.invalidInput("stale harness transmission context")
+            ))
+            return
+        }
+        sentPayloads.append(payload)
+        completion(.success(()))
+    }
+
+    func restartICE() -> WebRTCEngineRecoveryDisposition {
+        .failed("not used")
+    }
+
+    func requestMediaKeyframe() {}
+    func close() {}
+
+    func emitConnection(_ state: WebRTCEngineConnectionState) {
+        callbacks?.connectionStateChanged(state)
+    }
+
+    func emitTransmissionContext(_ context: WebRTCEngineTransmissionContext?) {
+        self.context = context
+        callbacks?.transmissionContextChanged(context)
     }
 }

@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 import Security
 import XCTest
@@ -8,6 +9,8 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
     private static let childServiceEnvironment = "VIBE_SCREEN_SECURITY_CHILD_SERVICE"
     private static let childAccountEnvironment = "VIBE_SCREEN_SECURITY_CHILD_ACCOUNT"
     private static let childResultEnvironment = "VIBE_SCREEN_SECURITY_CHILD_RESULT"
+    private static let childProcessTimeout: TimeInterval = 20
+    private static let childTerminationGrace: TimeInterval = 1
     private static let counterTestSelector =
         "TelemachusTests.Phase3SecurityLifecycleTests/testKeychainCountersAreUniqueAcrossChildProcesses"
 
@@ -29,9 +32,11 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
         let childCount = 8
         var children: [(process: Process, resultURL: URL, output: Pipe, error: Pipe)] = []
         defer {
-            for child in children where child.process.isRunning {
-                child.process.terminate()
-                child.process.waitUntilExit()
+            for child in children {
+                TestProcessDeadline.terminateAndReap(
+                    child.process,
+                    terminationGrace: Self.childTerminationGrace
+                )
             }
             try? FileManager.default.removeItem(at: temporaryDirectory)
             try? KeychainSecretStore(service: service).delete(name: account)
@@ -66,9 +71,21 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
         var epochs: Set<UInt64> = []
         var nonces: Set<Data> = []
         for child in children {
-            child.process.waitUntilExit()
+            let exited = TestProcessDeadline.waitForExit(
+                child.process,
+                timeout: Self.childProcessTimeout,
+                terminationGrace: Self.childTerminationGrace
+            )
             let output = child.output.fileHandleForReading.readDataToEndOfFile()
             let error = child.error.fileHandleForReading.readDataToEndOfFile()
+            guard exited else {
+                XCTFail(
+                    "Security counter worker exceeded the process deadline: "
+                        + String(decoding: output, as: UTF8.self)
+                        + String(decoding: error, as: UTF8.self)
+                )
+                continue
+            }
             XCTAssertEqual(
                 child.process.terminationStatus,
                 0,
@@ -174,6 +191,170 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
         let afterRestart = SecurityLifecycle(store: store)
         XCTAssertEqual(try afterRestart.beginSession(), 2)
         XCTAssertEqual(store.state.sessionEpoch, 2)
+    }
+
+    func testNonceReservationSkipsReadBackVerification() throws {
+        let store = MemorySecurityStateStore()
+
+        _ = try SecurityLifecycle(store: store).reserveNonce(
+            channel: 1,
+            senderRole: 1,
+            keyEpoch: 1
+        )
+
+        XCTAssertEqual(store.loadCallCount, 1)
+        XCTAssertEqual(store.persistCallCount, 1)
+    }
+
+    func testPairingBindingValidationParticipatesInExclusiveTransaction() throws {
+        let fixture = KeychainPairingStateFixture()
+        defer { fixture.cleanup() }
+        try fixture.store.initializePairingBinding(
+            pairingIdentifier: fixture.pairingIdentifier
+        )
+        let holderEntered = DispatchSemaphore(value: 0)
+        let releaseHolder = DispatchSemaphore(value: 0)
+        let holderFinished = DispatchSemaphore(value: 0)
+        let validationFinished = DispatchSemaphore(value: 0)
+        let holderResult = LockedEpochReservation()
+        let validationResult = LockedEpochReservation()
+
+        DispatchQueue.global().async {
+            do {
+                try fixture.store.withExclusiveTransaction {
+                    holderEntered.signal()
+                    _ = releaseHolder.wait(timeout: .now() + 2)
+                }
+                holderResult.succeed(1)
+            } catch {
+                holderResult.fail(error)
+            }
+            holderFinished.signal()
+        }
+        XCTAssertEqual(holderEntered.wait(timeout: .now() + 2), .success)
+
+        DispatchQueue.global().async {
+            do {
+                let state = try fixture.store.validatePairingBinding(
+                    pairingIdentifier: fixture.pairingIdentifier
+                )
+                validationResult.succeed(state.sessionEpoch)
+            } catch {
+                validationResult.fail(error)
+            }
+            validationFinished.signal()
+        }
+        XCTAssertEqual(validationFinished.wait(timeout: .now() + 0.05), .timedOut)
+
+        releaseHolder.signal()
+        XCTAssertEqual(holderFinished.wait(timeout: .now() + 2), .success)
+        XCTAssertEqual(validationFinished.wait(timeout: .now() + 2), .success)
+        XCTAssertEqual(holderResult.value, 1)
+        XCTAssertNil(holderResult.errorDescription)
+        XCTAssertEqual(validationResult.value, 0)
+        XCTAssertNil(validationResult.errorDescription)
+    }
+
+    func testDifferentSecurityAccountsDoNotShareProcessTransactionLock() throws {
+        let service = "dev.vibescreen.transaction-lock-tests.\(UUID().uuidString)"
+        let firstURL = try KeychainCrossProcessTransactionLock.lockFileURL(
+            service: service,
+            account: "first"
+        )
+        let secondURL = try KeychainCrossProcessTransactionLock.lockFileURL(
+            service: service,
+            account: "second"
+        )
+        defer {
+            try? FileManager.default.removeItem(at: firstURL)
+            try? FileManager.default.removeItem(at: secondURL)
+        }
+        let firstEntered = DispatchSemaphore(value: 0)
+        let releaseFirst = DispatchSemaphore(value: 0)
+        let firstFinished = DispatchSemaphore(value: 0)
+        let secondFinished = DispatchSemaphore(value: 0)
+        let firstResult = LockedEpochReservation()
+        let secondResult = LockedEpochReservation()
+
+        DispatchQueue.global().async {
+            do {
+                try KeychainCrossProcessTransactionLock.withLock(
+                    service: service,
+                    account: "first"
+                ) {
+                    firstEntered.signal()
+                    _ = releaseFirst.wait(timeout: .now() + 2)
+                }
+                firstResult.succeed(1)
+            } catch {
+                firstResult.fail(error)
+            }
+            firstFinished.signal()
+        }
+        XCTAssertEqual(firstEntered.wait(timeout: .now() + 2), .success)
+
+        DispatchQueue.global().async {
+            do {
+                try KeychainCrossProcessTransactionLock.withLock(
+                    service: service,
+                    account: "second"
+                ) {}
+                secondResult.succeed(1)
+            } catch {
+                secondResult.fail(error)
+            }
+            secondFinished.signal()
+        }
+        XCTAssertEqual(secondFinished.wait(timeout: .now() + 0.5), .success)
+
+        releaseFirst.signal()
+        XCTAssertEqual(firstFinished.wait(timeout: .now() + 2), .success)
+        XCTAssertEqual(firstResult.value, 1)
+        XCTAssertNil(firstResult.errorDescription)
+        XCTAssertEqual(secondResult.value, 1)
+        XCTAssertNil(secondResult.errorDescription)
+    }
+
+    func testSecurityTransactionFileLockTimesOutUnderPersistentContention() {
+        var times: [UInt64] = [0, 5, 10]
+        var sleepCalls = 0
+        var lockAttempts = 0
+
+        XCTAssertThrowsError(try KeychainCrossProcessTransactionLock.acquireFileLock(
+            descriptor: -1,
+            timeoutNanoseconds: 10,
+            clock: { times.removeFirst() },
+            sleep: { _ in sleepCalls += 1 },
+            flockOperation: { _, _ in
+                lockAttempts += 1
+                errno = EWOULDBLOCK
+                return -1
+            }
+        )) { error in
+            XCTAssertTrue(error.localizedDescription.contains("Timed out"))
+        }
+        XCTAssertEqual(lockAttempts, 2)
+        XCTAssertEqual(sleepCalls, 1)
+    }
+
+    func testSecurityTransactionFileLockBoundsRepeatedInterrupts() {
+        var times: [UInt64] = [0, 5, 10]
+        var lockAttempts = 0
+
+        XCTAssertThrowsError(try KeychainCrossProcessTransactionLock.acquireFileLock(
+            descriptor: -1,
+            timeoutNanoseconds: 10,
+            clock: { times.removeFirst() },
+            sleep: { _ in XCTFail("Interrupted flock retries must not sleep.") },
+            flockOperation: { _, _ in
+                lockAttempts += 1
+                errno = EINTR
+                return -1
+            }
+        )) { error in
+            XCTAssertTrue(error.localizedDescription.contains("Timed out"))
+        }
+        XCTAssertEqual(lockAttempts, 2)
     }
 
     func testAuthorityEpochMustFitAndroidSignedLong() throws {
@@ -784,6 +965,30 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
         XCTAssertNotEqual(first, "durable-state-v1")
     }
 
+    func testPersistedPairingRejectsOverlappingSecretNameWithoutCrashing() throws {
+        XCTAssertThrowsError(try PairedDeviceSecretNames.persistedPairing(
+            sharedSecret: "pairing.shared.v1",
+            bootstrapSecret: "pairing.bootstrap.v1"
+        )) { error in
+            XCTAssertTrue(error.localizedDescription.contains("no pairing identity"))
+        }
+
+        let legacy = try PairedDeviceSecretNames.persistedPairing(
+            sharedSecret: "legacy.shared",
+            bootstrapSecret: "legacy.bootstrap"
+        )
+        XCTAssertNil(legacy.pairingIdentifier)
+    }
+
+    func testPairedHostIdentityBindingRejectsUnexpectedDeviceOrEpoch() throws {
+        let identity = try TestSigningKey(deviceID: "mac-host", keyEpoch: 1).identity
+        let binding = PairedHostIdentityBinding(identity: identity)
+
+        XCTAssertNoThrow(try binding.requireTarget(deviceID: "mac-host", keyEpoch: 1))
+        XCTAssertThrowsError(try binding.requireTarget(deviceID: "other-host", keyEpoch: 1))
+        XCTAssertThrowsError(try binding.requireTarget(deviceID: "mac-host", keyEpoch: 2))
+    }
+
     func testRevocationScopeDistinguishesNewSigningIdentityForSameDeviceID() {
         let oldIdentity = PlatformPublicIdentity(
             deviceID: "tablet",
@@ -1184,8 +1389,12 @@ private final class MemorySecurityStateStore: SecurityStateStore {
     var state = PersistedSecurityState()
     var failPersist = false
     var failPersistCalls: Set<Int> = []
-    private var persistCallCount = 0
-    func load() throws -> PersistedSecurityState { state }
+    private(set) var loadCallCount = 0
+    private(set) var persistCallCount = 0
+    func load() throws -> PersistedSecurityState {
+        loadCallCount += 1
+        return state
+    }
     func persist(_ state: PersistedSecurityState) throws {
         persistCallCount += 1
         if failPersist || failPersistCalls.contains(persistCallCount) {

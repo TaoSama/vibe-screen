@@ -38,6 +38,14 @@ final class InternetPairingTests: XCTestCase {
         )
     }
 
+    func testEncodedPairingURLRoundTripsWithCanonicalQuerySeparator() throws {
+        let fixture = Fixture()
+        let created = try fixture.coordinator.createOffer()
+
+        XCTAssertEqual(try InternetPairingURL.parse(created.url), created.offer)
+        XCTAssertTrue(created.url.absoluteString.hasPrefix("vibescreen://pair?v=1&o="))
+    }
+
     func testHappyPathPersistsDerivedSecretsAndReturnsSignedPublicMetadata() throws {
         let fixture = Fixture()
         let created = try fixture.coordinator.createOffer()
