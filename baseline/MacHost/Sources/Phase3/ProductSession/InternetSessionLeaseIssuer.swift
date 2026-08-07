@@ -449,10 +449,7 @@ enum InternetSessionLeaseSelfTest {
             let peerKey = P256.Signing.PrivateKey()
             let peerPublicKey = peerKey.publicKey.x963Representation
             let peerKeyID = Data(SHA256.hash(data: peerPublicKey)).hex
-            let leaseJSON = fixtureJSON.replacingOccurrences(
-                of: "3d72b4d5f8a0f3f5ef9c3aef38f8a80dcf691f19877005e4d874a998441cb2be",
-                with: peerKeyID
-            )
+            let leaseJSON = fixtureJSON(peerKeyID: peerKeyID)
             let fixture = try InternetSessionLeaseCodec.decodeUnsigned(
                 Data(leaseJSON.utf8)
             )
@@ -604,9 +601,7 @@ enum InternetSessionLeaseSelfTest {
             let mismatchedPublicKey = mismatchedKey.publicKey.x963Representation
             let mismatchedIdentity = PlatformPublicIdentity(
                 deviceID: fixture.pinnedHostID,
-                keyID: Data(SHA256.hash(data: mismatchedPublicKey))
-                    .map { String(format: "%02x", $0) }
-                    .joined(),
+                keyID: Data(SHA256.hash(data: mismatchedPublicKey)).hex,
                 keyEpoch: fixture.hostIdentityEpoch,
                 signingPublicKey: mismatchedPublicKey
             )
@@ -778,6 +773,13 @@ enum InternetSessionLeaseSelfTest {
             _ = try InternetSessionLeaseCodec.decodeUnsigned(Data(value.utf8))
             return false
         } catch { return true }
+    }
+
+    static func fixtureJSON(peerKeyID: String) -> String {
+        fixtureJSON.replacingOccurrences(
+            of: "LEASE_DEVICE_KEY_ID",
+            with: peerKeyID
+        )
     }
 
     private static func rawDigestSignature(

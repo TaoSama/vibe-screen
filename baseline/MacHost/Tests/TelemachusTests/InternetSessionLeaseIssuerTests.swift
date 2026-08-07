@@ -4,6 +4,8 @@ import XCTest
 @testable import Telemachus
 
 final class InternetSessionLeaseIssuerTests: XCTestCase {
+    private static let childProcessTimeout: TimeInterval = 20
+    private static let childTerminationGrace: TimeInterval = 1
     private let deviceSigningKey = P256.Signing.PrivateKey()
 
     private var deviceIdentity: PlatformPublicIdentity {
@@ -24,6 +26,12 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         let pairingIdentifier = "pairing-process-test-\(scope)"
         let identityStore = KeychainDeviceIdentityStore()
         let hostIdentity = try identityStore.createIfMissing(deviceID: hostDeviceID)
+        addTeardownBlock {
+            try? identityStore.delete(
+                deviceID: hostDeviceID,
+                keyEpoch: PlatformPublicIdentity.initialKeyEpoch
+            )
+        }
         let secretStore = KeychainSecretStore()
         let stateStore = KeychainSecurityStateStore(
             peerID: "lease-authority.\(pairingIdentifier)"
@@ -43,7 +51,6 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
                     pairingIdentifier: pairingIdentifier
                 )
             )
-            try? identityStore.delete(deviceID: hostDeviceID, keyEpoch: 1)
         }
         try secretStore.persist(
             name: PairedHostIdentityBinding.keychainName(
@@ -69,9 +76,11 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         var children: [(process: Process, output: Pipe, error: Pipe)] = []
         defer {
             try? FileManager.default.removeItem(at: gateURL)
-            for child in children where child.process.isRunning {
-                child.process.terminate()
-                child.process.waitUntilExit()
+            for child in children {
+                TestProcessDeadline.terminateAndReap(
+                    child.process,
+                    terminationGrace: Self.childTerminationGrace
+                )
             }
         }
         for _ in 0..<childCount {
@@ -99,9 +108,20 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
 
         var epochs: Set<UInt64> = []
         for child in children {
-            child.process.waitUntilExit()
+            let exited = TestProcessDeadline.waitForExit(
+                child.process,
+                timeout: Self.childProcessTimeout,
+                terminationGrace: Self.childTerminationGrace
+            )
             let output = child.output.fileHandleForReading.readDataToEndOfFile()
             let error = child.error.fileHandleForReading.readDataToEndOfFile()
+            guard exited else {
+                XCTFail(
+                    "Lease worker exceeded the process deadline: "
+                        + String(decoding: error, as: UTF8.self)
+                )
+                continue
+            }
             XCTAssertEqual(
                 child.process.terminationStatus,
                 0,
@@ -112,6 +132,29 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             }
         }
         XCTAssertEqual(epochs, Set(UInt64(1)...UInt64(childCount)))
+    }
+
+    func testLeaseWorkerDeadlineTerminatesAndReapsHungProcess() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "exec /bin/sleep 30"]
+        try process.run()
+
+        XCTAssertFalse(TestProcessDeadline.waitForExit(
+            process,
+            timeout: 0.05,
+            terminationGrace: Self.childTerminationGrace
+        ))
+        XCTAssertFalse(process.isRunning)
+    }
+
+    func testSelfTestFixtureUsesGeneratedPeerKeyID() throws {
+        let keyID = String(repeating: "a", count: 64)
+        let payload = try InternetSessionLeaseCodec.decodeUnsigned(
+            Data(InternetSessionLeaseSelfTest.fixtureJSON(peerKeyID: keyID).utf8)
+        )
+
+        XCTAssertEqual(payload.leaseDeviceKeyID, keyID)
     }
     func testAuthorityIgnoresCallerEpochAndReservesMonotonicEpochAcrossRestartAndConcurrency() throws {
         let service = "dev.vibescreen.lease-tests.\(UUID().uuidString)"
@@ -410,13 +453,30 @@ private final class LeasePairingValidationFailureStore: SecurityStateStore {
 }
 
 private final class LeaseMemorySecretStore: InternetPairingSecretStore {
+    private let lock = NSLock()
     private var values: [String: Data] = [:]
-    private(set) var loadCalls = 0
+    private var storedLoadCalls = 0
+
+    var loadCalls: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedLoadCalls
+    }
 
     func load(name: String) throws -> Data? {
-        loadCalls += 1
+        lock.lock()
+        defer { lock.unlock() }
+        storedLoadCalls += 1
         return values[name]
     }
-    func persist(name: String, secret: Data) throws { values[name] = secret }
-    func delete(name: String) throws { values.removeValue(forKey: name) }
+    func persist(name: String, secret: Data) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        values[name] = secret
+    }
+    func delete(name: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        values.removeValue(forKey: name)
+    }
 }

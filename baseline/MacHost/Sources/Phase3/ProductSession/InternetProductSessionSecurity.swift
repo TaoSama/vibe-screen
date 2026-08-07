@@ -56,12 +56,10 @@ extension InternetProductSession {
             )
         }
         let identityBinding = try PairedHostIdentityBinding.decode(encodedIdentityBinding)
-        guard identityBinding.deviceID == configuration.hostDeviceID,
-              identityBinding.keyEpoch == configuration.identityEpoch else {
-            throw PlatformSecurityError.persistenceFailure(
-                "The paired host identity binding targets another device or key epoch. Pair again."
-            )
-        }
+        try identityBinding.requireTarget(
+            deviceID: configuration.hostDeviceID,
+            keyEpoch: configuration.identityEpoch
+        )
         let identityStore = KeychainDeviceIdentityStore()
         let authority = try identityStore.loadVerifiedExisting(binding: identityBinding)
         var nonce = Data(count: 32)

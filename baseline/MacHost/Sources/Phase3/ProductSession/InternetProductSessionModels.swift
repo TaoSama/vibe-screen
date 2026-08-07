@@ -53,7 +53,7 @@ struct InternetProductSessionConfiguration {
         peerDeviceID: String,
         peerIdentity: PlatformPublicIdentity,
         authoritativeSessionEpoch: UInt64,
-        identityEpoch: UInt64 = 1,
+        identityEpoch: UInt64 = PlatformPublicIdentity.initialKeyEpoch,
         sharedSecretName: String,
         bootstrapSecretName: String,
         transcriptContext: Data,
