@@ -208,6 +208,8 @@ public struct VSResourceLimits: Sendable {
 
   public var maximumFileChunkBytes: UInt32 = 0
 
+  public var maximumEncryptedMediaRecordBytes: UInt32 = 0
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -652,7 +654,7 @@ extension VSAudioCodec: SwiftProtobuf._ProtoNameProviding {
 
 extension VSResourceLimits: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ResourceLimits"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}maximum_clients\0\u{3}maximum_displays\0\u{3}maximum_video_streams\0\u{3}maximum_audio_streams\0\u{3}maximum_clipboard_bytes\0\u{3}maximum_file_bytes\0\u{3}maximum_file_chunk_bytes\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}maximum_clients\0\u{3}maximum_displays\0\u{3}maximum_video_streams\0\u{3}maximum_audio_streams\0\u{3}maximum_clipboard_bytes\0\u{3}maximum_file_bytes\0\u{3}maximum_file_chunk_bytes\0\u{3}maximum_encrypted_media_record_bytes\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -667,6 +669,7 @@ extension VSResourceLimits: SwiftProtobuf.Message, SwiftProtobuf._MessageImpleme
       case 5: try { try decoder.decodeSingularUInt64Field(value: &self.maximumClipboardBytes) }()
       case 6: try { try decoder.decodeSingularUInt64Field(value: &self.maximumFileBytes) }()
       case 7: try { try decoder.decodeSingularUInt32Field(value: &self.maximumFileChunkBytes) }()
+      case 8: try { try decoder.decodeSingularUInt32Field(value: &self.maximumEncryptedMediaRecordBytes) }()
       default: break
       }
     }
@@ -694,6 +697,9 @@ extension VSResourceLimits: SwiftProtobuf.Message, SwiftProtobuf._MessageImpleme
     if self.maximumFileChunkBytes != 0 {
       try visitor.visitSingularUInt32Field(value: self.maximumFileChunkBytes, fieldNumber: 7)
     }
+    if self.maximumEncryptedMediaRecordBytes != 0 {
+      try visitor.visitSingularUInt32Field(value: self.maximumEncryptedMediaRecordBytes, fieldNumber: 8)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -705,6 +711,7 @@ extension VSResourceLimits: SwiftProtobuf.Message, SwiftProtobuf._MessageImpleme
     if lhs.maximumClipboardBytes != rhs.maximumClipboardBytes {return false}
     if lhs.maximumFileBytes != rhs.maximumFileBytes {return false}
     if lhs.maximumFileChunkBytes != rhs.maximumFileChunkBytes {return false}
+    if lhs.maximumEncryptedMediaRecordBytes != rhs.maximumEncryptedMediaRecordBytes {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
