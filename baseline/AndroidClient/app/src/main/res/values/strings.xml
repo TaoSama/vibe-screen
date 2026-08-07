@@ -50,6 +50,11 @@
     <string name="placeholder_dashes">--</string>
     <string name="wordmark">VIBE SCREEN</string>
     <string name="waiting_for_mac">Waiting for your Mac</string>
+    <string name="reconnecting_short">Reconnecting…</string>
+    <string name="control_disconnect">Disconnect</string>
+    <string name="control_settings">Settings</string>
+    <string name="control_displays">Choose display</string>
+    <string name="display_option_format">%1$s · %2$d×%3$d</string>
     <string name="usb_waiting_description">Keep the USB cable connected and open Vibe Screen on your Mac. This device will connect automatically.</string>
     <string name="usb">USB</string>
     <string name="trusted_lan">Trusted LAN</string>

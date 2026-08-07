@@ -260,7 +260,7 @@ enum TransportSelfTest {
             hello.supportedProtocols = range
             hello.deviceID = "transport-self-test"
             hello.deviceName = "Transport Self Test"
-            hello.capabilities = [.touch]
+            hello.capabilities = [.touch, .multiDisplay]
             hello.requiredCapabilities = [.touch]
             hello.codecs = [.hevc]
             hello.transports = [.usb]
@@ -268,9 +268,9 @@ enum TransportSelfTest {
             let hostHello = try client.readEnvelope()
             let accepted = try client.readEnvelope()
             guard case .hostHello(let advertised)? = hostHello.payload,
-                  advertised.capabilities == [.touch],
+                  advertised.capabilities == [.touch, .multiDisplay],
                   case .sessionAccepted(let session)? = accepted.payload,
-                  session.negotiatedCapabilities == [.touch] else {
+                  session.negotiatedCapabilities == [.touch, .multiDisplay] else {
                 server.stop()
                 return false
             }
@@ -432,7 +432,7 @@ enum TransportSelfTest {
                     hello.supportedProtocols = range
                     hello.deviceID = "stop-stage"
                     hello.deviceName = "Stop Stage"
-                    hello.capabilities = [.touch]
+                    hello.capabilities = [.touch, .multiDisplay]
                     hello.requiredCapabilities = [.touch]
                     hello.codecs = [.hevc]
                     hello.transports = [.usb]

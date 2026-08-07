@@ -1,0 +1,31 @@
+diff --git a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt
+index 6542dbf..62da7db 100644
+--- a/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt
++++ b/baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt
+@@ -1187,7 +1187,12 @@ class MainActivity : AppCompatActivity() {
+         // bars or changing orientation here resized/recreated the Activity and
+         // made the waiting state visibly flash.
+         enableFullscreenMode()
+-        binding.videoViewport.visibility = View.GONE
++        // Keep the video viewport laid out so the SurfaceView holds a live
++        // surface while waiting to connect. The opaque backdrop above it hides
++        // any stale frames. This lets an incoming video configuration bind the
++        // decoder immediately instead of deadlocking on a surface that a GONE
++        // view never creates.
++        binding.videoViewport.visibility = View.VISIBLE
+         binding.disconnectedBackdrop.visibility = View.VISIBLE
+         binding.settingsPanel.visibility = View.VISIBLE
+         binding.settingsButton.visibility = View.GONE
+diff --git a/baseline/AndroidClient/app/src/main/res/layout/activity_main.xml b/baseline/AndroidClient/app/src/main/res/layout/activity_main.xml
+index 37bb897..6d2c1a5 100644
+--- a/baseline/AndroidClient/app/src/main/res/layout/activity_main.xml
++++ b/baseline/AndroidClient/app/src/main/res/layout/activity_main.xml
+@@ -12,7 +12,7 @@
+         android:id="@+id/videoViewport"
+         android:layout_width="0dp"
+         android:layout_height="0dp"
+-        android:visibility="gone"
++        android:visibility="visible"
+         app:layout_constraintTop_toTopOf="parent"
+         app:layout_constraintBottom_toBottomOf="parent"
+         app:layout_constraintStart_toStartOf="parent"

@@ -1,0 +1,120 @@
+--------- beginning of main
+08-08 01:09:42.582 D/MA      (11143): lifecycle foreground connected=false
+08-08 01:09:42.632 D/MA      (11143): surfaceCreated
+08-08 01:09:42.633 D/MA      (11143): surfaceChanged: 1080x2400
+08-08 01:09:42.812 D/SC      (11143): Protocol v1 upgrade accepted
+08-08 01:09:42.813 D/SC      (11143): Connected to 127.0.0.1:54321
+08-08 01:09:42.813 I/VibeScreenTelemetry(11143): {"schema_version":1,"timestamp_ms":1786122582813,"event":"connection_opened","host":"127.0.0.1","port":54321,"session_epoch":1}
+08-08 01:09:42.851 D/MA      (11143): onVideoConfiguration: 1512x982 @ 0° epoch=1
+08-08 01:09:42.852 D/MA      (11143): Video config arrived, initializing decoder 1512x982
+08-08 01:09:42.852 D/MA      (11143): initializeDecoder called, surface=Surface(name=null mNativeObject=-5476376659840811184)/@0xc54cb15, valid=true, encoded=1512x982
+08-08 01:09:42.854 D/VD      (11143): Skipping decoder 'c2.qti.alac.sw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.854 D/VD      (11143): Skipping decoder 'c2.qti.ape.sw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.854 D/VD      (11143): Skipping decoder 'c2.qti.dsd.sw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.854 D/VD      (11143): Skipping decoder 'c2.qti.amrwbplus.hw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.854 D/VD      (11143): Skipping decoder 'c2.qti.amrwb+.hw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.854 D/VD      (11143): Skipping decoder 'c2.qti.wma.hw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.854 D/VD      (11143): Skipping decoder 'c2.qti.alac.hw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.854 D/VD      (11143): Skipping decoder 'c2.qti.ape.hw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.855 D/VD      (11143): Skipping decoder 'c2.android.aac.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.855 D/VD      (11143): Skipping decoder 'c2.android.amrnb.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.855 D/VD      (11143): Skipping decoder 'c2.android.amrwb.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.855 D/VD      (11143): Skipping decoder 'c2.android.flac.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.855 D/VD      (11143): Skipping decoder 'c2.android.g711.alaw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.855 D/VD      (11143): Skipping decoder 'c2.android.g711.mlaw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.855 D/VD      (11143): Skipping decoder 'c2.android.iamf.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.855 D/VD      (11143): Skipping decoder 'c2.android.mp3.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.855 D/VD      (11143): Skipping decoder 'c2.android.opus.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.855 D/VD      (11143): Skipping decoder 'c2.android.raw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.855 D/VD      (11143): Skipping decoder 'c2.android.vorbis.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.855 D/VD      (11143): Skipping decoder 'c2.qti.avc.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.855 D/VD      (11143): Skipping decoder 'c2.qti.avc.decoder.low_latency' for video/hevc: codec does not support type
+08-08 01:09:42.855 D/VD      (11143): Skipping decoder 'c2.qti.avc.decoder.secure' for video/hevc: codec does not support type
+08-08 01:09:42.856 D/VD      (11143): video/hevc decoder 'c2.qti.hevc.decoder': width=[96, 8192], height=[96, 8192], hw=true, supports 1512x982=true, supports @120fps=true
+08-08 01:09:42.856 D/VD      (11143): video/hevc decoder 'c2.qti.hevc.decoder.low_latency': width=[96, 8192], height=[96, 8192], hw=true, supports 1512x982=true, supports @120fps=true
+08-08 01:09:42.856 D/VD      (11143): video/hevc decoder 'c2.qti.hevc.decoder.secure': width=[96, 4096], height=[96, 4096], hw=true, supports 1512x982=true, supports @120fps=false
+08-08 01:09:42.856 D/VD      (11143): Skipping decoder 'c2.qti.vp9.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.856 D/VD      (11143): Skipping decoder 'c2.qti.vp9.decoder.low_latency' for video/hevc: codec does not support type
+08-08 01:09:42.856 D/VD      (11143): Skipping decoder 'c2.qti.vp9.decoder.secure' for video/hevc: codec does not support type
+08-08 01:09:42.856 D/VD      (11143): Skipping decoder 'c2.qti.av1.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.856 D/VD      (11143): Skipping decoder 'c2.qti.av1.decoder.low_latency' for video/hevc: codec does not support type
+08-08 01:09:42.856 D/VD      (11143): Skipping decoder 'c2.qti.av1.decoder.secure' for video/hevc: codec does not support type
+08-08 01:09:42.856 D/VD      (11143): Skipping decoder 'c2.qti.flac.sw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.856 D/VD      (11143): Skipping decoder 'c2.qti.aac.hw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.856 D/VD      (11143): Skipping decoder 'c2.android.apv.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'c2.android.av1-dav1d.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'c2.android.avc.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'c2.android.h263.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): video/hevc decoder 'c2.android.hevc.decoder': width=[2, 4096], height=[2, 4096], hw=false, supports 1512x982=true, supports @120fps=false
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'c2.android.mpeg4.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'c2.android.vp8.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'c2.android.vp9.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'c2.android.av1.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'OMX.google.aac.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'OMX.google.amrnb.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'OMX.google.amrwb.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'OMX.google.flac.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'OMX.google.g711.alaw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'OMX.google.g711.mlaw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'OMX.google.mp3.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'OMX.google.opus.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'OMX.google.raw.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'OMX.google.vorbis.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'OMX.qcom.video.decoder.avc' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'OMX.qcom.video.decoder.avc.low_latency' for video/hevc: codec does not support type
+08-08 01:09:42.857 D/VD      (11143): Skipping decoder 'OMX.qcom.video.decoder.avc.secure' for video/hevc: codec does not support type
+08-08 01:09:42.858 D/VD      (11143): video/hevc decoder 'OMX.qcom.video.decoder.hevc': width=[96, 8192], height=[96, 8192], hw=true, supports 1512x982=true, supports @120fps=true
+08-08 01:09:42.858 D/VD      (11143): video/hevc decoder 'OMX.qcom.video.decoder.hevc.low_latency': width=[96, 8192], height=[96, 8192], hw=true, supports 1512x982=true, supports @120fps=true
+08-08 01:09:42.858 D/VD      (11143): video/hevc decoder 'OMX.qcom.video.decoder.hevc.secure': width=[96, 4096], height=[96, 4096], hw=true, supports 1512x982=true, supports @120fps=false
+08-08 01:09:42.858 D/VD      (11143): Skipping decoder 'OMX.qcom.video.decoder.vp9' for video/hevc: codec does not support type
+08-08 01:09:42.858 D/VD      (11143): Skipping decoder 'OMX.qcom.video.decoder.vp9.low_latency' for video/hevc: codec does not support type
+08-08 01:09:42.858 D/VD      (11143): Skipping decoder 'OMX.qcom.video.decoder.vp9.secure' for video/hevc: codec does not support type
+08-08 01:09:42.858 D/VD      (11143): Skipping decoder 'OMX.google.h264.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.858 D/VD      (11143): Skipping decoder 'OMX.google.h263.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.858 D/VD      (11143): video/hevc decoder 'OMX.google.hevc.decoder': width=[2, 4096], height=[2, 4096], hw=false, supports 1512x982=true, supports @120fps=false
+08-08 01:09:42.858 D/VD      (11143): Skipping decoder 'OMX.google.mpeg4.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.858 D/VD      (11143): Skipping decoder 'OMX.google.vp8.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.858 D/VD      (11143): Skipping decoder 'OMX.google.vp9.decoder' for video/hevc: codec does not support type
+08-08 01:09:42.858 D/VD      (11143): Selected decoder: c2.qti.hevc.decoder (rateSupported=true)
+08-08 01:09:42.858 D/VD      (11143): setupDecoder: 1512x982, decoder=c2.qti.hevc.decoder
+08-08 01:09:42.878 D/VD      (11143): Configured with full low-latency
+08-08 01:09:42.878 D/VD      (11143): Surface frame rate requested: 120.00001Hz fixed-source
+08-08 01:09:42.896 D/VD      (11143): Decoder started: 1512x982 @ 120.00001Hz, surface=Surface(name=null mNativeObject=-5476376659840811184)/@0xc54cb15, valid=true
+08-08 01:09:42.898 D/MA      (11143): Decoder configuration committed 1512x982 epoch=1
+08-08 01:09:42.902 D/MA      (11143): onDisplayGeometry: 1512x982 @ 0°
+08-08 01:09:42.918 D/VD      (11143): First frame: size=74906, header=[00 00 00 01 40 01 0c 01 ff ff 01 60 00 00 03 00], keyframe=true, surface=Surface(name=null mNativeObject=-5476376659840811184)/@0xc54cb15, valid=true
+08-08 01:09:42.928 I/VibeScreenTelemetry(11143): {"schema_version":1,"timestamp_ms":1786122582928,"event":"frame_dropped","reason":"latest_frame_queue_backpressure","queue_capacity":1,"dropped_total":1,"keyframe_required":true}
+08-08 01:09:42.928 D/VD      (11143): Requesting keyframe: reason=latest-frame queue replacement, force=true
+08-08 01:09:42.929 D/VD      (11143): Output format changed: {crop-right=1511, max-height=4320, sar-width=1, color-format=2130708361, mime=video/raw, hdr-static-info=java.nio.HeapByteBuffer[pos=0 lim=25 cap=25], priority=0, color-standard=1, feature-secure-playback=0, color-transfer=3, sar-height=1, hdr10-plus-info=java.nio.HeapByteBuffer[pos=0 lim=0 cap=0], crop-bottom=981, max-width=8192, crop-left=0, width=1520, color-range=1, crop-top=0, rotation-degrees=0, frame-rate=30, height=992}
+08-08 01:09:42.930 D/VD      (11143): First output frame! size=1, flags=1
+08-08 01:09:42.936 D/MA      (11143): surfaceChanged: 1080x701
+08-08 01:09:42.945 D/VD      (11143): Dropping frame (waiting for keyframe, keyframe=false, dropped=2)
+08-08 01:09:42.946 D/MA      (11143): surfaceChanged: 1080x701
+08-08 01:09:42.948 D/MA      (11143): surfaceChanged: 1662x1080
+08-08 01:09:43.746 I/VibeScreenTelemetry(11143): {"schema_version":1,"timestamp_ms":1786122583745,"event":"stream_stats","session_epoch":1,"fps":54.40158259149357,"mbps":1.9240435212660734}
+08-08 01:09:43.828 D/VD      (11143): Decode stats: input=60, output=57, dropped=2, availBufs=4
+08-08 01:09:43.866 D/VD      (11143): Output #60: decoder latency avg=4.6ms max=15.8ms over 60 samples, input bufs avail=4, dropped=2
+08-08 01:09:44.751 I/VibeScreenTelemetry(11143): {"schema_version":1,"timestamp_ms":1786122584748,"event":"stream_stats","session_epoch":1,"fps":59.880239520958085,"mbps":0.7372455089820359}
+08-08 01:09:44.828 D/VD      (11143): Decode stats: input=120, output=117, dropped=0, availBufs=4
+08-08 01:09:44.866 D/VD      (11143): Output #120: decoder latency avg=6.0ms max=8.6ms over 60 samples, input bufs avail=4, dropped=0
+08-08 01:09:45.752 I/VibeScreenTelemetry(11143): {"schema_version":1,"timestamp_ms":1786122585749,"event":"stream_stats","session_epoch":1,"fps":59.94005994005994,"mbps":0.8042357642357643}
+08-08 01:09:45.829 D/VD      (11143): Decode stats: input=180, output=177, dropped=0, availBufs=4
+08-08 01:09:45.869 D/VD      (11143): Output #180: decoder latency avg=5.8ms max=9.1ms over 60 samples, input bufs avail=4, dropped=0
+08-08 01:09:46.768 I/VibeScreenTelemetry(11143): {"schema_version":1,"timestamp_ms":1786122586766,"event":"stream_stats","session_epoch":1,"fps":59.9803343166175,"mbps":0.7575693215339234}
+08-08 01:09:46.829 D/VD      (11143): Decode stats: input=240, output=237, dropped=0, availBufs=4
+08-08 01:09:46.870 D/VD      (11143): Output #240: decoder latency avg=6.2ms max=8.5ms over 60 samples, input bufs avail=4, dropped=0
+08-08 01:09:47.785 I/VibeScreenTelemetry(11143): {"schema_version":1,"timestamp_ms":1786122587783,"event":"stream_stats","session_epoch":1,"fps":59.9803343166175,"mbps":0.7293844641101279}
+08-08 01:09:47.832 D/VD      (11143): Decode stats: input=300, output=297, dropped=0, availBufs=4
+08-08 01:09:47.869 D/VD      (11143): Output #300: decoder latency avg=6.3ms max=7.9ms over 60 samples, input bufs avail=4, dropped=0
+08-08 01:09:48.797 I/VibeScreenTelemetry(11143): {"schema_version":1,"timestamp_ms":1786122588795,"event":"stream_stats","session_epoch":1,"fps":60.21717670286279,"mbps":0.7026890424481739}
+08-08 01:09:48.829 D/VD      (11143): Decode stats: input=360, output=357, dropped=0, availBufs=4
+08-08 01:09:48.870 D/VD      (11143): Output #360: decoder latency avg=6.4ms max=7.9ms over 60 samples, input bufs avail=4, dropped=0
+08-08 01:09:49.800 I/VibeScreenTelemetry(11143): {"schema_version":1,"timestamp_ms":1786122589797,"event":"stream_stats","session_epoch":1,"fps":59.880239520958085,"mbps":0.7037445109780439}
+08-08 01:09:49.829 D/VD      (11143): Decode stats: input=420, output=417, dropped=0, availBufs=4
+08-08 01:09:49.870 D/VD      (11143): Output #420: decoder latency avg=5.8ms max=10.5ms over 60 samples, input bufs avail=4, dropped=0
+08-08 01:09:50.803 I/VibeScreenTelemetry(11143): {"schema_version":1,"timestamp_ms":1786122590800,"event":"stream_stats","session_epoch":1,"fps":59.880239520958085,"mbps":0.7042075848303393}
+08-08 01:09:50.828 D/VD      (11143): Decode stats: input=480, output=477, dropped=0, availBufs=4
+08-08 01:09:50.869 D/VD      (11143): Output #480: decoder latency avg=6.6ms max=8.3ms over 60 samples, input bufs avail=4, dropped=0
+08-08 01:09:51.816 I/VibeScreenTelemetry(11143): {"schema_version":1,"timestamp_ms":1786122591815,"event":"stream_stats","session_epoch":1,"fps":60.09852216748769,"mbps":0.6971980295566503}
+08-08 01:09:51.828 D/VD      (11143): Decode stats: input=540, output=537, dropped=0, availBufs=4
+08-08 01:09:51.867 D/VD      (11143): Output #540: decoder latency avg=6.8ms max=9.2ms over 60 samples, input bufs avail=4, dropped=0

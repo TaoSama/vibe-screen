@@ -11,6 +11,7 @@ enum ProtocolV1SelfTest {
         testGoldenBytes(failures: &failures)
         testSharedGoldenFixtures(failures: &failures)
         testNegotiationAndMediaGate(failures: &failures)
+        testMultiDisplaySelection(failures: &failures)
         testRejections(failures: &failures)
         testInputHeartbeatAndMedia(failures: &failures)
         testTouchTargetAndDisconnect(failures: &failures)
@@ -140,8 +141,8 @@ enum ProtocolV1SelfTest {
 
     private static func testNegotiationAndMediaGate(failures: inout [String]) {
         do {
-            guard ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true) == [.touch],
-                  ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false).isEmpty else {
+            guard ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true) == [.touch, .multiDisplay],
+                  ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false) == [.multiDisplay] else {
                 failures.append("production HostHello capabilities are not exact")
                 return
             }
@@ -159,9 +160,9 @@ enum ProtocolV1SelfTest {
             guard helloResponses.count == 2,
                   case .hostHello(let hostHello)? = helloResponses[0].payload,
                   case .sessionAccepted(let accepted)? = helloResponses[1].payload,
-                  hostHello.capabilities == [.touch],
+                  hostHello.capabilities == [.touch, .multiDisplay],
                   accepted.sessionID == sessionID,
-                  accepted.negotiatedCapabilities == [.touch] else {
+                  accepted.negotiatedCapabilities == [.touch, .multiDisplay] else {
                 failures.append("ClientHello did not produce HostHello + SessionAccepted")
                 return
             }
@@ -226,6 +227,68 @@ enum ProtocolV1SelfTest {
             }
         } catch {
             failures.append("negotiation test failed: \(error)")
+        }
+    }
+
+    private static func testMultiDisplaySelection(failures: inout [String]) {
+        do {
+            let session = makeMultiDisplaySession()
+            _ = session.handleControl(try clientHello().serializedData())
+            _ = session.completeCodecNegotiation()
+
+            let list = session.handleControl(try envelope(
+                id: 2,
+                payload: .listDisplaysRequest(VSListDisplaysRequest())
+            ).serializedData())
+            guard case .listDisplaysResponse(let displays)? = try responseEnvelopes(list).first?.payload,
+                  displays.displays.count == 2,
+                  displays.displays[0].displayID == "active-display",
+                  displays.displays[0].isPrimary,
+                  displays.displays[1].displayID == "second-display",
+                  displays.displays[1].isPrimary == false,
+                  displays.displays[1].logicalSize.width == 3840,
+                  displays.displays[1].logicalSize.height == 2160 else {
+                failures.append("ListDisplays did not enumerate both configured displays")
+                return
+            }
+
+            let start = session.handleControl(try envelope(
+                id: 3,
+                payload: .startDisplayRequest(displayRequest(sourceDisplayID: "second-display"))
+            ).serializedData())
+            guard start.contains(where: {
+                if case .selectDisplay(let id) = $0 { return id == "second-display" }
+                return false
+            }) else {
+                failures.append("StartDisplay on a second display did not emit a selectDisplay action")
+                return
+            }
+            let startResponses = try responseEnvelopes(start)
+            guard startResponses.count == 2,
+                  case .startDisplayResponse(let response)? = startResponses[0].payload,
+                  response.accepted,
+                  response.display.displayID == "second-display",
+                  response.display.isPrimary == false,
+                  case .videoConfig(let config)? = startResponses[1].payload,
+                  config.encodedSize.width == 3840,
+                  config.encodedSize.height == 2160 else {
+                failures.append("StartDisplay on the second display did not adopt its descriptor")
+                return
+            }
+
+            let unknownSession = makeMultiDisplaySession()
+            _ = unknownSession.handleControl(try clientHello().serializedData())
+            _ = unknownSession.completeCodecNegotiation()
+            let unknown = unknownSession.handleControl(try envelope(
+                id: 2,
+                payload: .startDisplayRequest(displayRequest(sourceDisplayID: "does-not-exist"))
+            ).serializedData())
+            guard try protocolError(unknown).code == .invalidState else {
+                failures.append("StartDisplay on an unknown display id was not rejected with invalidState")
+                return
+            }
+        } catch {
+            failures.append("multi-display selection test failed: \(error)")
         }
     }
 
@@ -438,6 +501,46 @@ enum ProtocolV1SelfTest {
         ))
     }
 
+    private static func makeMultiDisplaySession() -> ProtocolV1SessionCoordinator {
+        ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
+            sessionID: sessionID,
+            sessionEpoch: sessionEpoch,
+            displayWidth: 1920,
+            displayHeight: 1080,
+            rotation: 90,
+            framesPerSecond: 60,
+            bitrateKbps: 20_000,
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true
+            ),
+            requiredClientCapabilities: [.touch],
+            supportedCodecs: [.hevc, .h264],
+            hostID: "host",
+            hostName: "Mac",
+            displayID: "active-display",
+            displayName: "Display",
+            displayIsVirtual: true,
+            displays: [
+                ProtocolV1DisplayInfo(
+                    id: "active-display",
+                    name: "Built-in Display",
+                    width: 1920,
+                    height: 1080,
+                    isPrimary: true,
+                    isVirtual: false
+                ),
+                ProtocolV1DisplayInfo(
+                    id: "second-display",
+                    name: "External 4K",
+                    width: 3840,
+                    height: 2160,
+                    isPrimary: false,
+                    isVirtual: false
+                )
+            ]
+        ))
+    }
+
     private static func clientHello() -> VSEnvelope {
         var range = VSProtocolRange()
         range.minimum = 1
@@ -446,7 +549,7 @@ enum ProtocolV1SelfTest {
         hello.supportedProtocols = range
         hello.deviceID = "device"
         hello.deviceName = "Tablet"
-        hello.capabilities = [.touch]
+        hello.capabilities = [.touch, .multiDisplay]
         hello.codecs = [.hevc, .h264]
         var envelope = VSEnvelope()
         envelope.protocolVersion = 1
@@ -465,10 +568,10 @@ enum ProtocolV1SelfTest {
         return envelope
     }
 
-    private static func displayRequest() -> VSStartDisplayRequest {
+    private static func displayRequest(sourceDisplayID: String = "active-display") -> VSStartDisplayRequest {
         var request = VSStartDisplayRequest()
         request.mode = .existing
-        request.sourceDisplayID = "active-display"
+        request.sourceDisplayID = sourceDisplayID
         return request
     }
 

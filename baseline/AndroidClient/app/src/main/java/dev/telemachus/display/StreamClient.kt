@@ -123,6 +123,7 @@ class StreamClient(
     internal var onVideoConfiguration:
         ((StreamVideoConfiguration, StreamVideoConfigurationCommit) -> Unit)? = null
     internal var onDisplayGeometry: ((StreamDisplayGeometry) -> Unit)? = null
+    internal var onDisplaysAvailable: ((List<StreamDisplayOption>, selectedId: String) -> Unit)? = null
     var onStats: ((Double, Double) -> Unit)? = null
     var onReconnectSuggested: ((delayMs: Long) -> Unit)? = null
     var onWriteFailure: ((reason: String) -> Unit)? = null
@@ -1139,6 +1140,27 @@ class StreamClient(
     // Callback for latency measurement (round-trip ping/pong)
     var onLatencyMeasured: ((Double) -> Unit)? = null
 
+    /** Capabilities negotiated for the active Protocol v1 session, empty otherwise. */
+    internal fun negotiatedCapabilities(): Set<dev.vibescreen.protocol.v1.Capability> =
+        if (wireMode == WireMode.V1) protocolSession?.negotiated ?: emptySet() else emptySet()
+
+    /**
+     * Ask the host to switch the captured display at runtime. No-op unless the
+     * session is streaming, display selection was negotiated, and the id names a
+     * known, non-current display.
+     */
+    fun selectDisplay(displayId: String) {
+        if (!isConnected || wireMode != WireMode.V1) return
+        val session = protocolSession ?: return
+        if (!session.isStreaming) return
+        submitOutbound(
+            kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+            command = OutboundCommand.ProtocolBatch { activeSession ->
+                activeSession.selectDisplay(displayId)?.let { listOf(it) } ?: emptyList()
+            },
+        )
+    }
+
     /**
      * Ask the host to send an IDR/sync frame.
      *
@@ -1294,6 +1316,13 @@ class StreamClient(
             actions.forEach { action ->
                 when (action) {
                     is ProtocolV1Session.Action.Send -> writeProtocolEnvelope(out, action.envelope)
+                    is ProtocolV1Session.Action.DisplaysAvailable -> {
+                        val options =
+                            action.displays.map {
+                                StreamDisplayOption(it.id, it.name, it.width, it.height, it.isPrimary)
+                            }
+                        onDisplaysAvailable?.invoke(options, action.selectedId)
+                    }
                     is ProtocolV1Session.Action.VideoConfigurationRequested -> {
                         streamCodecIsHevc = action.codec == Codec.CODEC_HEVC
                         codecNegotiated = true
@@ -1472,6 +1501,7 @@ class StreamClient(
                 is ProtocolV1Session.Action.VideoConfigurationRequested,
                 is ProtocolV1Session.Action.PongReceived,
                 is ProtocolV1Session.Action.Disconnected,
+                is ProtocolV1Session.Action.DisplaysAvailable,
                 -> throw IllegalStateException("Unexpected action while completing decoder configuration")
             }
         }

@@ -1,0 +1,10 @@
+
+initial_mac_pointer=597,325
+after_tap_A(dev 300,300)=597,325
+after_tap_B(dev 1800,900)=1235,842
+after_tap_C(dev 1000,500)=309,218
+
+TAP_1 dev(600,540) -> mac(210,491)
+TAP_2 dev(1800,540) -> mac(1013,389)
+TAP_3 dev(1200,250) -> mac(735,452)
+TAP_4 dev(1200,850) -> mac(754,558)

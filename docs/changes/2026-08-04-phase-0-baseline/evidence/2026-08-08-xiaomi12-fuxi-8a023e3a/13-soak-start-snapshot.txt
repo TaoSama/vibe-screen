@@ -1,0 +1,14 @@
+# Soak start snapshot
+2026-08-07T17:24:34Z
+## Host PID
+89286
+## Client PID
+11143
+## Host Pipeline (last 3)
+Pipeline: 59.9fps, 0.4Mbps, avg frame age: 8.7ms, dropped: 0
+Pipeline: 59.9fps, 0.4Mbps, avg frame age: 9.7ms, dropped: 0
+Pipeline: 60.1fps, 0.8Mbps, avg frame age: 8.1ms, dropped: 0
+## Client VD Decode stats (last 3)
+08-08 01:24:31.837 11143 11229 D VD      : Decode stats: input=53340, output=53337, dropped=0, availBufs=4
+08-08 01:24:32.838 11143 11229 D VD      : Decode stats: input=53400, output=53397, dropped=0, availBufs=4
+08-08 01:24:33.835 11143 11229 D VD      : Decode stats: input=53460, output=53457, dropped=0, availBufs=4

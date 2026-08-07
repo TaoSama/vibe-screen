@@ -152,6 +152,10 @@ class StreamingServer: EncodedFrameSink {
     var onScrollEvent: ((Double, Double, UInt64) -> Void)?
     var onKeyEvent: ((UInt32, Bool, UInt32, String, UInt64) -> Void)?
     var onProtocolErrorReceived: ((VSProtocolError, UInt64) -> Void)?
+    /// Fired on the network queue when a Protocol v1 client selects a different
+    /// display. The AppDelegate hops to the main actor to switch the capture
+    /// source and drive protocol re-negotiation.
+    var onDisplaySelectionRequested: ((String) -> Void)?
 
     private let frameQueue = DispatchQueue(label: "frameQueue", qos: .userInteractive)
     private let receiveQueue = DispatchQueue(label: "receiveQueue", qos: .userInteractive)
@@ -183,6 +187,7 @@ class StreamingServer: EncodedFrameSink {
     private var protocolV1DisplayID = "active-display"
     private var protocolV1DisplayName = "Telemachus Display"
     private var protocolV1DisplayIsVirtual = true
+    private var protocolV1Displays: [ProtocolV1DisplayInfo] = []
     private var isReceiving = false
     private var isStopped = false
     private var connectionReady = false
@@ -818,6 +823,30 @@ class StreamingServer: EncodedFrameSink {
         }
     }
 
+    /// Supply the full display catalog advertised by ListDisplays. Passing an
+    /// empty list keeps the single-display behavior (session synthesizes one).
+    func setProtocolV1Displays(_ displays: [ProtocolV1DisplayInfo]) {
+        performOnNetworkQueue {
+            self.protocolV1Displays = displays
+        }
+    }
+
+    /// Re-run the StartDisplay negotiation against a client-selected display
+    /// once the host has switched its capture source. Called on the main actor
+    /// via the network queue; safe no-op when the session is not streaming.
+    func selectProtocolV1Display(_ displayID: String) {
+        networkQueue.async { [weak self] in
+            guard let self, !self.isStopped,
+                  self.connectionProtocolMode == .protocolV1,
+                  let session = self.protocolV1Session,
+                  let conn = self.connection else { return }
+            let generation = self.activeConnectionGeneration
+            let actions = session.selectDisplayFromClient(displayID: displayID)
+            guard !actions.isEmpty else { return }
+            self.applyProtocolV1Actions(actions, connection: conn, generation: generation)
+        }
+    }
+
     private func performOnNetworkQueue(_ operation: @escaping () -> Void) {
         if DispatchQueue.getSpecific(key: Self.networkQueueKey) == ObjectIdentifier(self) {
             operation()
@@ -1090,7 +1119,8 @@ class StreamingServer: EncodedFrameSink {
             hostName: Host.current().localizedName ?? "Mac",
             displayID: protocolV1DisplayID,
             displayName: protocolV1DisplayName,
-            displayIsVirtual: protocolV1DisplayIsVirtual
+            displayIsVirtual: protocolV1DisplayIsVirtual,
+            displays: protocolV1Displays
         ))
         conn.send(content: ProtocolV1Upgrade.acknowledgement, completion: .contentProcessed { [weak self] error in
             if let error {
@@ -1251,6 +1281,12 @@ class StreamingServer: EncodedFrameSink {
                 )
             case .requestKeyframe(let force):
                 onKeyframeRequested?(force, generation)
+            case .selectDisplay(let displayID):
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onDisplaySelectionRequested?(displayID)
+                }
             case .peerError(let error):
                 onProtocolErrorReceived?(error, generation)
             }

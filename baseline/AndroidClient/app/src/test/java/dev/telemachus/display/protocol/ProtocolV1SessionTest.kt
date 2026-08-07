@@ -22,6 +22,7 @@ import dev.vibescreen.protocol.v1.TransportKind
 import dev.vibescreen.protocol.v1.VideoConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -37,7 +38,10 @@ class ProtocolV1SessionTest {
         assertEquals(1_000L, hello.sentAtMonotonicNs)
         assertEquals(1, hello.clientHello.supportedProtocols.minimum)
         assertEquals(1, hello.clientHello.supportedProtocols.maximum)
-        assertEquals(listOf(Capability.CAPABILITY_TOUCH), hello.clientHello.capabilitiesList)
+        assertEquals(
+            listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY),
+            hello.clientHello.capabilitiesList,
+        )
         assertEquals(emptyList<Capability>(), hello.clientHello.requiredCapabilitiesList)
         assertEquals(listOf(Codec.CODEC_HEVC, Codec.CODEC_H264), hello.clientHello.codecsList)
     }
@@ -52,7 +56,11 @@ class ProtocolV1SessionTest {
         assertEquals(SESSION_ID, listRequest.envelope.sessionId)
         assertEquals(7L, listRequest.envelope.sessionEpoch)
 
-        val start = session.receive(displayList(4)).single() as ProtocolV1Session.Action.Send
+        val displayActions = session.receive(displayList(4))
+        val available = displayActions[0] as ProtocolV1Session.Action.DisplaysAvailable
+        assertEquals(listOf("display-main"), available.displays.map { it.id })
+        assertEquals("display-main", available.selectedId)
+        val start = displayActions[1] as ProtocolV1Session.Action.Send
         assertEquals("display-main", start.envelope.startDisplayRequest.sourceDisplayId)
         assertTrue(session.receive(startDisplay(5)).isEmpty())
 
@@ -450,8 +458,99 @@ class ProtocolV1SessionTest {
         }
     }
 
+    @Test
+    fun multiDisplayNegotiationListsAllDisplaysAndSelectsPrimaryFirst() {
+        val session = session()
+        session.clientHello()
+        session.receive(
+            hostHello(2, advertisedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY)),
+        )
+        session.receive(
+            sessionAccepted(3, negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY)),
+        )
+
+        val actions = session.receive(twoDisplayList(4))
+        val available = actions[0] as ProtocolV1Session.Action.DisplaysAvailable
+        assertEquals(listOf("display-main", "display-2"), available.displays.map { it.id })
+        assertEquals("display-main", available.selectedId)
+        val start = actions[1] as ProtocolV1Session.Action.Send
+        assertEquals("display-main", start.envelope.startDisplayRequest.sourceDisplayId)
+    }
+
+    @Test
+    fun runtimeDisplaySelectionEmitsStartDisplayForKnownDisplayOnly() {
+        val session = multiDisplayStreamingSession()
+
+        assertNull(session.selectDisplay("display-main"))
+        assertNull(session.selectDisplay("unknown-display"))
+
+        val request = session.selectDisplay("display-2")!!
+        assertEquals(
+            Envelope.PayloadCase.START_DISPLAY_REQUEST,
+            request.payloadCase,
+        )
+        assertEquals("display-2", request.startDisplayRequest.sourceDisplayId)
+    }
+
+    @Test
+    fun runtimeDisplaySelectionRepublishesGeometryOnNewVideoConfig() {
+        val session = multiDisplayStreamingSession()
+        session.selectDisplay("display-2")
+        session.receive(
+            base(20).setStartDisplayResponse(
+                StartDisplayResponse
+                    .newBuilder()
+                    .setAccepted(true)
+                    .setStreamId(42)
+                    .setDisplay(
+                        DisplayDescriptor
+                            .newBuilder()
+                            .setDisplayId("display-2")
+                            .setName("Display 2")
+                            .setLogicalSize(Dimensions.newBuilder().setWidth(2560).setHeight(1440)),
+                    ),
+            ).build(),
+        )
+        val requested =
+            session.receive(videoConfig(21, configEpoch = 4)).single()
+                as ProtocolV1Session.Action.VideoConfigurationRequested
+        val committed =
+            session.completeVideoConfiguration(
+                completedConfigEpoch = 4,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        val geometry = committed.last() as ProtocolV1Session.Action.DisplayGeometryChanged
+        assertEquals(2560, geometry.width)
+        assertEquals(1440, geometry.height)
+        assertTrue(session.isStreaming)
+    }
+
     private fun streamingSession(): ProtocolV1Session =
         sessionThroughDisplayStart().also {
+            val requested =
+                it.receive(videoConfig(6)).single()
+                    as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        }
+
+    private fun multiDisplayStreamingSession(): ProtocolV1Session =
+        session().also {
+            it.clientHello()
+            it.receive(
+                hostHello(2, advertisedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY)),
+            )
+            it.receive(
+                sessionAccepted(3, negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY)),
+            )
+            it.receive(twoDisplayList(4))
+            it.receive(startDisplay(5))
             val requested =
                 it.receive(videoConfig(6)).single()
                     as ProtocolV1Session.Action.VideoConfigurationRequested
@@ -549,6 +648,27 @@ class ProtocolV1SessionTest {
                     .newBuilder()
                     .setAccepted(true)
                     .setStreamId(42),
+            ).build()
+
+    private fun twoDisplayList(id: Long): Envelope =
+        base(id)
+            .setListDisplaysResponse(
+                ListDisplaysResponse
+                    .newBuilder()
+                    .addDisplays(
+                        DisplayDescriptor
+                            .newBuilder()
+                            .setDisplayId("display-main")
+                            .setName("Built-in Retina")
+                            .setIsPrimary(true)
+                            .setLogicalSize(Dimensions.newBuilder().setWidth(1920).setHeight(1080)),
+                    ).addDisplays(
+                        DisplayDescriptor
+                            .newBuilder()
+                            .setDisplayId("display-2")
+                            .setName("Display 2")
+                            .setLogicalSize(Dimensions.newBuilder().setWidth(2560).setHeight(1440)),
+                    ),
             ).build()
 
     private fun videoConfig(
