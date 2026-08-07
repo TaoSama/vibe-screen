@@ -1,88 +1,126 @@
 import CryptoKit
-import Darwin
 import Foundation
 import Security
 import XCTest
 @testable import Telemachus
 
 final class Phase3SecurityLifecycleTests: XCTestCase {
+    private static let childServiceEnvironment = "VIBE_SCREEN_SECURITY_CHILD_SERVICE"
+    private static let childAccountEnvironment = "VIBE_SCREEN_SECURITY_CHILD_ACCOUNT"
+    private static let childResultEnvironment = "VIBE_SCREEN_SECURITY_CHILD_RESULT"
+    private static let counterTestSelector =
+        "TelemachusTests.Phase3SecurityLifecycleTests/testKeychainCountersAreUniqueAcrossChildProcesses"
+
     func testKeychainCountersAreUniqueAcrossChildProcesses() throws {
+        if let childConfiguration = childCounterConfiguration() {
+            try runCounterChild(configuration: childConfiguration)
+            return
+        }
+
         let service = "dev.vibescreen.cross-process-security.\(UUID().uuidString)"
         let account = "shared-state"
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vibe-screen-security-processes-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: temporaryDirectory,
+            withIntermediateDirectories: true
+        )
+        let gateURL = temporaryDirectory.appendingPathComponent("start")
         let childCount = 8
-        var readers: [Int32] = []
-        var children: [pid_t] = []
-
-        for _ in 0..<childCount {
-            var descriptors: [Int32] = [0, 0]
-            XCTAssertEqual(pipe(&descriptors), 0)
-            let child = fork()
-            XCTAssertGreaterThanOrEqual(child, 0)
-            if child == 0 {
-                close(descriptors[0])
-                do {
-                    let lifecycle = SecurityLifecycle(
-                        store: KeychainSecurityStateStore(
-                            service: service,
-                            account: account
-                        )
-                    )
-                    let epoch = try lifecycle.advanceSessionEpoch()
-                    let nonce = try lifecycle.reserveNonce(
-                        channel: 1,
-                        senderRole: 1,
-                        keyEpoch: 1
-                    )
-                    var encodedEpoch = epoch.bigEndian
-                    var output = Data(
-                        bytes: &encodedEpoch,
-                        count: MemoryLayout<UInt64>.size
-                    )
-                    output.append(nonce)
-                    _ = output.withUnsafeBytes {
-                        write(descriptors[1], $0.baseAddress, $0.count)
-                    }
-                    close(descriptors[1])
-                    _exit(0)
-                } catch {
-                    close(descriptors[1])
-                    _exit(1)
-                }
+        var children: [(process: Process, resultURL: URL, output: Pipe, error: Pipe)] = []
+        defer {
+            for child in children where child.process.isRunning {
+                child.process.terminate()
+                child.process.waitUntilExit()
             }
-            close(descriptors[1])
-            readers.append(descriptors[0])
-            children.append(child)
+            try? FileManager.default.removeItem(at: temporaryDirectory)
+            try? KeychainSecretStore(service: service).delete(name: account)
         }
+
+        for index in 0..<childCount {
+            let resultURL = temporaryDirectory.appendingPathComponent("result-\(index).json")
+            let process = Process()
+            let output = Pipe()
+            let error = Pipe()
+            var environment = ProcessInfo.processInfo.environment
+            environment[Self.childServiceEnvironment] = service
+            environment[Self.childAccountEnvironment] = account
+            environment[Self.childResultEnvironment] = resultURL.path
+            process.environment = environment
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = [
+                "-c",
+                "while [ ! -e \"$1\" ]; do sleep 0.01; done; exec /usr/bin/xcrun xctest -XCTest \"$2\" \"$3\"",
+                "security-process-test",
+                gateURL.path,
+                Self.counterTestSelector,
+                Bundle(for: Self.self).bundleURL.path
+            ]
+            process.standardOutput = output
+            process.standardError = error
+            try process.run()
+            children.append((process, resultURL, output, error))
+        }
+        try Data().write(to: gateURL, options: .atomic)
 
         var epochs: Set<UInt64> = []
         var nonces: Set<Data> = []
-        for reader in readers {
-            var bytes = [UInt8](repeating: 0, count: 20)
-            var offset = 0
-            while offset < bytes.count {
-                let remaining = bytes.count - offset
-                let count = bytes.withUnsafeMutableBytes {
-                    read(reader, $0.baseAddress!.advanced(by: offset), remaining)
-                }
-                if count <= 0 { break }
-                offset += count
-            }
-            close(reader)
-            XCTAssertEqual(offset, bytes.count)
-            guard offset == bytes.count else { continue }
-            let epoch = bytes.prefix(8).reduce(UInt64(0)) {
-                ($0 << 8) | UInt64($1)
-            }
-            epochs.insert(epoch)
-            nonces.insert(Data(bytes.suffix(12)))
-        }
         for child in children {
-            var status: Int32 = 0
-            XCTAssertEqual(waitpid(child, &status, 0), child)
-            XCTAssertEqual(status, 0)
+            child.process.waitUntilExit()
+            let output = child.output.fileHandleForReading.readDataToEndOfFile()
+            let error = child.error.fileHandleForReading.readDataToEndOfFile()
+            XCTAssertEqual(
+                child.process.terminationStatus,
+                0,
+                String(decoding: output, as: UTF8.self)
+                    + String(decoding: error, as: UTF8.self)
+            )
+            guard child.process.terminationStatus == 0 else { continue }
+            let result = try JSONSerialization.jsonObject(
+                with: Data(contentsOf: child.resultURL)
+            ) as? [String: Any]
+            let epoch = try XCTUnwrap((result?["epoch"] as? NSNumber)?.uint64Value)
+            let encodedNonce = try XCTUnwrap(result?["nonce"] as? String)
+            let nonce = try XCTUnwrap(Data(base64Encoded: encodedNonce))
+            XCTAssertEqual(nonce.count, 12)
+            epochs.insert(epoch)
+            nonces.insert(nonce)
         }
         XCTAssertEqual(epochs, Set(UInt64(1)...UInt64(childCount)))
         XCTAssertEqual(nonces.count, childCount)
+    }
+
+    private func childCounterConfiguration() -> (service: String, account: String, resultURL: URL)? {
+        let environment = ProcessInfo.processInfo.environment
+        guard let service = environment[Self.childServiceEnvironment],
+              let account = environment[Self.childAccountEnvironment],
+              let resultPath = environment[Self.childResultEnvironment] else {
+            return nil
+        }
+        return (service, account, URL(fileURLWithPath: resultPath))
+    }
+
+    private func runCounterChild(
+        configuration: (service: String, account: String, resultURL: URL)
+    ) throws {
+        let lifecycle = SecurityLifecycle(
+            store: KeychainSecurityStateStore(
+                service: configuration.service,
+                account: configuration.account
+            )
+        )
+        let epoch = try lifecycle.advanceSessionEpoch()
+        let nonce = try lifecycle.reserveNonce(
+            channel: 1,
+            senderRole: 1,
+            keyEpoch: 1
+        )
+        let result: [String: Any] = [
+            "epoch": epoch,
+            "nonce": nonce.base64EncodedString()
+        ]
+        try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
+            .write(to: configuration.resultURL, options: .atomic)
     }
 
     func testCommittedPairingBindingRollsBackFailedRepairAndFinalizesSuccess() throws {
