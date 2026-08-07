@@ -46,6 +46,7 @@ public enum VSCapability: SwiftProtobuf.Enum, Swift.CaseIterable {
   case hostActions // = 20
   case wakeHost // = 21
   case managedConfiguration // = 22
+  case mediaRecordFragmentation // = 23
   case UNRECOGNIZED(Int)
 
   public init() {
@@ -77,6 +78,7 @@ public enum VSCapability: SwiftProtobuf.Enum, Swift.CaseIterable {
     case 20: self = .hostActions
     case 21: self = .wakeHost
     case 22: self = .managedConfiguration
+    case 23: self = .mediaRecordFragmentation
     default: self = .UNRECOGNIZED(rawValue)
     }
   }
@@ -106,6 +108,7 @@ public enum VSCapability: SwiftProtobuf.Enum, Swift.CaseIterable {
     case .hostActions: return 20
     case .wakeHost: return 21
     case .managedConfiguration: return 22
+    case .mediaRecordFragmentation: return 23
     case .UNRECOGNIZED(let i): return i
     }
   }
@@ -135,53 +138,74 @@ public enum VSCapability: SwiftProtobuf.Enum, Swift.CaseIterable {
     .hostActions,
     .wakeHost,
     .managedConfiguration,
+    .mediaRecordFragmentation,
   ]
 
 }
 
-public struct VSClientHello: Sendable {
+public struct VSClientHello: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   public var supportedProtocols: VSProtocolRange {
-    get {return _supportedProtocols ?? VSProtocolRange()}
-    set {_supportedProtocols = newValue}
+    get {return _storage._supportedProtocols ?? VSProtocolRange()}
+    set {_uniqueStorage()._supportedProtocols = newValue}
   }
   /// Returns true if `supportedProtocols` has been explicitly set.
-  public var hasSupportedProtocols: Bool {return self._supportedProtocols != nil}
+  public var hasSupportedProtocols: Bool {return _storage._supportedProtocols != nil}
   /// Clears the value of `supportedProtocols`. Subsequent reads from it will return its default value.
-  public mutating func clearSupportedProtocols() {self._supportedProtocols = nil}
+  public mutating func clearSupportedProtocols() {_uniqueStorage()._supportedProtocols = nil}
 
-  public var deviceID: String = String()
+  public var deviceID: String {
+    get {return _storage._deviceID}
+    set {_uniqueStorage()._deviceID = newValue}
+  }
 
-  public var deviceName: String = String()
+  public var deviceName: String {
+    get {return _storage._deviceName}
+    set {_uniqueStorage()._deviceName = newValue}
+  }
 
-  public var capabilities: [VSCapability] = []
+  public var capabilities: [VSCapability] {
+    get {return _storage._capabilities}
+    set {_uniqueStorage()._capabilities = newValue}
+  }
 
-  public var codecs: [VSCodec] = []
+  public var codecs: [VSCodec] {
+    get {return _storage._codecs}
+    set {_uniqueStorage()._codecs = newValue}
+  }
 
-  public var transports: [VSTransportKind] = []
+  public var transports: [VSTransportKind] {
+    get {return _storage._transports}
+    set {_uniqueStorage()._transports = newValue}
+  }
 
   public var resourceLimits: VSResourceLimits {
-    get {return _resourceLimits ?? VSResourceLimits()}
-    set {_resourceLimits = newValue}
+    get {return _storage._resourceLimits ?? VSResourceLimits()}
+    set {_uniqueStorage()._resourceLimits = newValue}
   }
   /// Returns true if `resourceLimits` has been explicitly set.
-  public var hasResourceLimits: Bool {return self._resourceLimits != nil}
+  public var hasResourceLimits: Bool {return _storage._resourceLimits != nil}
   /// Clears the value of `resourceLimits`. Subsequent reads from it will return its default value.
-  public mutating func clearResourceLimits() {self._resourceLimits = nil}
+  public mutating func clearResourceLimits() {_uniqueStorage()._resourceLimits = nil}
 
-  public var videoDecodeCapabilities: [VSVideoDecodeCapability] = []
+  public var videoDecodeCapabilities: [VSVideoDecodeCapability] {
+    get {return _storage._videoDecodeCapabilities}
+    set {_uniqueStorage()._videoDecodeCapabilities = newValue}
+  }
 
-  public var requiredCapabilities: [VSCapability] = []
+  public var requiredCapabilities: [VSCapability] {
+    get {return _storage._requiredCapabilities}
+    set {_uniqueStorage()._requiredCapabilities = newValue}
+  }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
-  fileprivate var _supportedProtocols: VSProtocolRange? = nil
-  fileprivate var _resourceLimits: VSResourceLimits? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 public struct VSHostHello: Sendable {
@@ -335,78 +359,130 @@ public struct VSDisconnectNotice: Sendable {
 fileprivate let _protobuf_package = "vibescreen.protocol.v1"
 
 extension VSCapability: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CAPABILITY_UNSPECIFIED\0\u{1}CAPABILITY_DISPLAY_MIRROR\0\u{1}CAPABILITY_VIRTUAL_DISPLAY\0\u{1}CAPABILITY_TOUCH\0\u{1}CAPABILITY_KEYBOARD\0\u{1}CAPABILITY_POINTER\0\u{1}CAPABILITY_STYLUS\0\u{1}CAPABILITY_TELEMETRY\0\u{1}CAPABILITY_SESSION_RESUME\0\u{1}CAPABILITY_DEVICE_IDENTITY\0\u{1}CAPABILITY_END_TO_END_ENCRYPTION\0\u{1}CAPABILITY_KEY_ROTATION\0\u{1}CAPABILITY_REPLAY_PROTECTION\0\u{1}CAPABILITY_AUDIO\0\u{1}CAPABILITY_CLIPBOARD\0\u{1}CAPABILITY_FILE_TRANSFER\0\u{1}CAPABILITY_HDR_VIDEO\0\u{1}CAPABILITY_COLOR_MANAGEMENT\0\u{1}CAPABILITY_MULTI_DISPLAY\0\u{1}CAPABILITY_MULTI_CLIENT\0\u{1}CAPABILITY_HOST_ACTIONS\0\u{1}CAPABILITY_WAKE_HOST\0\u{1}CAPABILITY_MANAGED_CONFIGURATION\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CAPABILITY_UNSPECIFIED\0\u{1}CAPABILITY_DISPLAY_MIRROR\0\u{1}CAPABILITY_VIRTUAL_DISPLAY\0\u{1}CAPABILITY_TOUCH\0\u{1}CAPABILITY_KEYBOARD\0\u{1}CAPABILITY_POINTER\0\u{1}CAPABILITY_STYLUS\0\u{1}CAPABILITY_TELEMETRY\0\u{1}CAPABILITY_SESSION_RESUME\0\u{1}CAPABILITY_DEVICE_IDENTITY\0\u{1}CAPABILITY_END_TO_END_ENCRYPTION\0\u{1}CAPABILITY_KEY_ROTATION\0\u{1}CAPABILITY_REPLAY_PROTECTION\0\u{1}CAPABILITY_AUDIO\0\u{1}CAPABILITY_CLIPBOARD\0\u{1}CAPABILITY_FILE_TRANSFER\0\u{1}CAPABILITY_HDR_VIDEO\0\u{1}CAPABILITY_COLOR_MANAGEMENT\0\u{1}CAPABILITY_MULTI_DISPLAY\0\u{1}CAPABILITY_MULTI_CLIENT\0\u{1}CAPABILITY_HOST_ACTIONS\0\u{1}CAPABILITY_WAKE_HOST\0\u{1}CAPABILITY_MANAGED_CONFIGURATION\0\u{1}CAPABILITY_MEDIA_RECORD_FRAGMENTATION\0")
 }
 
 extension VSClientHello: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ClientHello"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}supported_protocols\0\u{3}device_id\0\u{3}device_name\0\u{1}capabilities\0\u{1}codecs\0\u{1}transports\0\u{3}resource_limits\0\u{3}video_decode_capabilities\0\u{3}required_capabilities\0")
 
+  fileprivate class _StorageClass {
+    var _supportedProtocols: VSProtocolRange? = nil
+    var _deviceID: String = String()
+    var _deviceName: String = String()
+    var _capabilities: [VSCapability] = []
+    var _codecs: [VSCodec] = []
+    var _transports: [VSTransportKind] = []
+    var _resourceLimits: VSResourceLimits? = nil
+    var _videoDecodeCapabilities: [VSVideoDecodeCapability] = []
+    var _requiredCapabilities: [VSCapability] = []
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _supportedProtocols = source._supportedProtocols
+      _deviceID = source._deviceID
+      _deviceName = source._deviceName
+      _capabilities = source._capabilities
+      _codecs = source._codecs
+      _transports = source._transports
+      _resourceLimits = source._resourceLimits
+      _videoDecodeCapabilities = source._videoDecodeCapabilities
+      _requiredCapabilities = source._requiredCapabilities
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularMessageField(value: &self._supportedProtocols) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.deviceID) }()
-      case 3: try { try decoder.decodeSingularStringField(value: &self.deviceName) }()
-      case 4: try { try decoder.decodeRepeatedEnumField(value: &self.capabilities) }()
-      case 5: try { try decoder.decodeRepeatedEnumField(value: &self.codecs) }()
-      case 6: try { try decoder.decodeRepeatedEnumField(value: &self.transports) }()
-      case 7: try { try decoder.decodeSingularMessageField(value: &self._resourceLimits) }()
-      case 8: try { try decoder.decodeRepeatedMessageField(value: &self.videoDecodeCapabilities) }()
-      case 9: try { try decoder.decodeRepeatedEnumField(value: &self.requiredCapabilities) }()
-      default: break
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularMessageField(value: &_storage._supportedProtocols) }()
+        case 2: try { try decoder.decodeSingularStringField(value: &_storage._deviceID) }()
+        case 3: try { try decoder.decodeSingularStringField(value: &_storage._deviceName) }()
+        case 4: try { try decoder.decodeRepeatedEnumField(value: &_storage._capabilities) }()
+        case 5: try { try decoder.decodeRepeatedEnumField(value: &_storage._codecs) }()
+        case 6: try { try decoder.decodeRepeatedEnumField(value: &_storage._transports) }()
+        case 7: try { try decoder.decodeSingularMessageField(value: &_storage._resourceLimits) }()
+        case 8: try { try decoder.decodeRepeatedMessageField(value: &_storage._videoDecodeCapabilities) }()
+        case 9: try { try decoder.decodeRepeatedEnumField(value: &_storage._requiredCapabilities) }()
+        default: break
+        }
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    // The use of inline closures is to circumvent an issue where the compiler
-    // allocates stack space for every if/case branch local when no optimizations
-    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-    // https://github.com/apple/swift-protobuf/issues/1182
-    try { if let v = self._supportedProtocols {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
-    } }()
-    if !self.deviceID.isEmpty {
-      try visitor.visitSingularStringField(value: self.deviceID, fieldNumber: 2)
-    }
-    if !self.deviceName.isEmpty {
-      try visitor.visitSingularStringField(value: self.deviceName, fieldNumber: 3)
-    }
-    if !self.capabilities.isEmpty {
-      try visitor.visitPackedEnumField(value: self.capabilities, fieldNumber: 4)
-    }
-    if !self.codecs.isEmpty {
-      try visitor.visitPackedEnumField(value: self.codecs, fieldNumber: 5)
-    }
-    if !self.transports.isEmpty {
-      try visitor.visitPackedEnumField(value: self.transports, fieldNumber: 6)
-    }
-    try { if let v = self._resourceLimits {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
-    } }()
-    if !self.videoDecodeCapabilities.isEmpty {
-      try visitor.visitRepeatedMessageField(value: self.videoDecodeCapabilities, fieldNumber: 8)
-    }
-    if !self.requiredCapabilities.isEmpty {
-      try visitor.visitPackedEnumField(value: self.requiredCapabilities, fieldNumber: 9)
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      try { if let v = _storage._supportedProtocols {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+      } }()
+      if !_storage._deviceID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._deviceID, fieldNumber: 2)
+      }
+      if !_storage._deviceName.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._deviceName, fieldNumber: 3)
+      }
+      if !_storage._capabilities.isEmpty {
+        try visitor.visitPackedEnumField(value: _storage._capabilities, fieldNumber: 4)
+      }
+      if !_storage._codecs.isEmpty {
+        try visitor.visitPackedEnumField(value: _storage._codecs, fieldNumber: 5)
+      }
+      if !_storage._transports.isEmpty {
+        try visitor.visitPackedEnumField(value: _storage._transports, fieldNumber: 6)
+      }
+      try { if let v = _storage._resourceLimits {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
+      } }()
+      if !_storage._videoDecodeCapabilities.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._videoDecodeCapabilities, fieldNumber: 8)
+      }
+      if !_storage._requiredCapabilities.isEmpty {
+        try visitor.visitPackedEnumField(value: _storage._requiredCapabilities, fieldNumber: 9)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: VSClientHello, rhs: VSClientHello) -> Bool {
-    if lhs._supportedProtocols != rhs._supportedProtocols {return false}
-    if lhs.deviceID != rhs.deviceID {return false}
-    if lhs.deviceName != rhs.deviceName {return false}
-    if lhs.capabilities != rhs.capabilities {return false}
-    if lhs.codecs != rhs.codecs {return false}
-    if lhs.transports != rhs.transports {return false}
-    if lhs._resourceLimits != rhs._resourceLimits {return false}
-    if lhs.videoDecodeCapabilities != rhs.videoDecodeCapabilities {return false}
-    if lhs.requiredCapabilities != rhs.requiredCapabilities {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._supportedProtocols != rhs_storage._supportedProtocols {return false}
+        if _storage._deviceID != rhs_storage._deviceID {return false}
+        if _storage._deviceName != rhs_storage._deviceName {return false}
+        if _storage._capabilities != rhs_storage._capabilities {return false}
+        if _storage._codecs != rhs_storage._codecs {return false}
+        if _storage._transports != rhs_storage._transports {return false}
+        if _storage._resourceLimits != rhs_storage._resourceLimits {return false}
+        if _storage._videoDecodeCapabilities != rhs_storage._videoDecodeCapabilities {return false}
+        if _storage._requiredCapabilities != rhs_storage._requiredCapabilities {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

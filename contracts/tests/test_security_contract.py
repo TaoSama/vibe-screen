@@ -23,6 +23,20 @@ class SecurityContractTest(unittest.TestCase):
         source = (PROTO_ROOT / "session.proto").read_text()
         self.assertEqual(9, message_fields(source, "ClientHello")["required_capabilities"])
 
+    def test_media_record_fragmentation_negotiation_is_additive(self) -> None:
+        session_source = (PROTO_ROOT / "session.proto").read_text()
+        advanced_source = (PROTO_ROOT / "advanced.proto").read_text()
+        capability = re.search(
+            r"CAPABILITY_MEDIA_RECORD_FRAGMENTATION\s*=\s*(\d+)\s*;",
+            session_source,
+        )
+        self.assertIsNotNone(capability)
+        self.assertEqual(23, int(capability.group(1)))
+        self.assertEqual(
+            8,
+            message_fields(advanced_source, "ResourceLimits")["maximum_encrypted_media_record_bytes"],
+        )
+
     def test_legacy_pairing_field_numbers_remain_stable(self) -> None:
         source = (PROTO_ROOT / "pairing.proto").read_text()
         self.assertEqual(
