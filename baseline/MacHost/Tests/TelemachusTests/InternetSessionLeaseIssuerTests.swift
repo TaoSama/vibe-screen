@@ -1,5 +1,4 @@
 import CryptoKit
-import Darwin
 import Foundation
 import XCTest
 @testable import Telemachus
@@ -20,13 +19,32 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
     }
 
     func testLeaseAuthorityIsUniqueAcrossChildProcesses() throws {
-        let identityService = "dev.vibescreen.lease-process.identity.\(UUID().uuidString)"
-        let secretService = "dev.vibescreen.lease-process.secret.\(UUID().uuidString)"
-        let stateService = "dev.vibescreen.lease-process.state.\(UUID().uuidString)"
-        let pairingIdentifier = "pairing-process-test"
-        let identityStore = KeychainDeviceIdentityStore(service: identityService)
-        let hostIdentity = try identityStore.createIfMissing(deviceID: "lease-host")
-        let secretStore = KeychainSecretStore(service: secretService)
+        let scope = UUID().uuidString
+        let hostDeviceID = "lease-host-\(scope)"
+        let pairingIdentifier = "pairing-process-test-\(scope)"
+        let identityStore = KeychainDeviceIdentityStore()
+        let hostIdentity = try identityStore.createIfMissing(deviceID: hostDeviceID)
+        let secretStore = KeychainSecretStore()
+        let stateStore = KeychainSecurityStateStore(
+            peerID: "lease-authority.\(pairingIdentifier)"
+        )
+        try stateStore.initializePairingBinding(pairingIdentifier: pairingIdentifier)
+        defer {
+            try? stateStore.deleteCommittedPairingBinding(
+                pairingIdentifier: pairingIdentifier
+            )
+            try? secretStore.delete(
+                name: PairedHostIdentityBinding.keychainName(
+                    pairingIdentifier: pairingIdentifier
+                )
+            )
+            try? secretStore.delete(
+                name: PairedPeerIdentityBinding.keychainName(
+                    pairingIdentifier: pairingIdentifier
+                )
+            )
+            try? identityStore.delete(deviceID: hostDeviceID, keyEpoch: 1)
+        }
         try secretStore.persist(
             name: PairedHostIdentityBinding.keychainName(
                 pairingIdentifier: pairingIdentifier
@@ -39,67 +57,61 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             ),
             secret: PairedPeerIdentityBinding.encode(deviceIdentity)
         )
-        let unsigned = try unsignedLease(epoch: 99, pairingIdentifier: pairingIdentifier)
+        let unsigned = try unsignedLease(
+            epoch: 99,
+            pairingIdentifier: pairingIdentifier,
+            pinnedHostID: hostDeviceID
+        )
+        let executableURL = try telemachusExecutableURL()
+        let gateURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vibe-screen-lease-gate-\(scope)")
         let childCount = 6
-        var readers: [Int32] = []
-        var children: [pid_t] = []
-
-        for _ in 0..<childCount {
-            var descriptors: [Int32] = [0, 0]
-            XCTAssertEqual(pipe(&descriptors), 0)
-            let child = fork()
-            XCTAssertGreaterThanOrEqual(child, 0)
-            if child == 0 {
-                close(descriptors[0])
-                do {
-                    let signed = try InternetSessionLeaseIssuer.issue(
-                        unsignedJSON: unsigned,
-                        identityStore: KeychainDeviceIdentityStore(
-                            service: identityService
-                        ),
-                        secretStore: KeychainSecretStore(service: secretService),
-                        stateStoreFactory: { _ in
-                            KeychainSecurityStateStore(
-                                service: stateService,
-                                account: "authority"
-                            )
-                        }
-                    )
-                    var epoch = try self.issuedEpoch(signed).bigEndian
-                    _ = withUnsafeBytes(of: &epoch) {
-                        write(descriptors[1], $0.baseAddress, $0.count)
-                    }
-                    close(descriptors[1])
-                    _exit(0)
-                } catch {
-                    close(descriptors[1])
-                    _exit(1)
-                }
+        var children: [(process: Process, output: Pipe, error: Pipe)] = []
+        defer {
+            try? FileManager.default.removeItem(at: gateURL)
+            for child in children where child.process.isRunning {
+                child.process.terminate()
+                child.process.waitUntilExit()
             }
-            close(descriptors[1])
-            readers.append(descriptors[0])
-            children.append(child)
         }
+        for _ in 0..<childCount {
+            let process = Process()
+            let input = Pipe()
+            let output = Pipe()
+            let error = Pipe()
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = [
+                "-c",
+                "while [ ! -e \"$1\" ]; do sleep 0.01; done; exec \"$2\" --issue-phase3-internet-lease",
+                "lease-process-test",
+                gateURL.path,
+                executableURL.path
+            ]
+            process.standardInput = input
+            process.standardOutput = output
+            process.standardError = error
+            try process.run()
+            input.fileHandleForWriting.write(unsigned)
+            try input.fileHandleForWriting.close()
+            children.append((process, output, error))
+        }
+        try Data().write(to: gateURL, options: .atomic)
 
         var epochs: Set<UInt64> = []
-        for reader in readers {
-            var bytes = [UInt8](repeating: 0, count: 8)
-            let count = bytes.withUnsafeMutableBytes {
-                read(reader, $0.baseAddress, $0.count)
-            }
-            close(reader)
-            XCTAssertEqual(count, 8)
-            if count == 8 {
-                epochs.insert(bytes.reduce(UInt64(0)) { ($0 << 8) | UInt64($1) })
-            }
-        }
         for child in children {
-            var status: Int32 = 0
-            XCTAssertEqual(waitpid(child, &status, 0), child)
-            XCTAssertEqual(status, 0)
+            child.process.waitUntilExit()
+            let output = child.output.fileHandleForReading.readDataToEndOfFile()
+            let error = child.error.fileHandleForReading.readDataToEndOfFile()
+            XCTAssertEqual(
+                child.process.terminationStatus,
+                0,
+                String(decoding: error, as: UTF8.self)
+            )
+            if child.process.terminationStatus == 0 {
+                epochs.insert(try issuedEpoch(output))
+            }
         }
         XCTAssertEqual(epochs, Set(UInt64(1)...UInt64(childCount)))
-        try identityStore.delete(deviceID: "lease-host", keyEpoch: 1)
     }
     func testAuthorityIgnoresCallerEpochAndReservesMonotonicEpochAcrossRestartAndConcurrency() throws {
         let service = "dev.vibescreen.lease-tests.\(UUID().uuidString)"
@@ -300,12 +312,13 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
 
     private func unsignedLease(
         epoch: UInt64,
-        pairingIdentifier: String = "pairing-authority-test"
+        pairingIdentifier: String = "pairing-authority-test",
+        pinnedHostID: String = "lease-host"
     ) throws -> Data {
         let root: [String: Any] = [
             "version": 1,
             "pairing_id": pairingIdentifier,
-            "pinned_host_id": "lease-host",
+            "pinned_host_id": pinnedHostID,
             "pinned_device_id": deviceIdentity.deviceID,
             "lease_device_key_id": deviceIdentity.keyID,
             "signaling_url": "https://signal.example.test",
@@ -324,6 +337,31 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             "allow_insecure_for_testing": false
         ]
         return try JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])
+    }
+
+    private func telemachusExecutableURL() throws -> URL {
+        let environment = ProcessInfo.processInfo.environment
+        let testBundleDirectory = Bundle(for: Self.self).bundleURL.deletingLastPathComponent()
+        var candidates = [
+            environment["TELEMACHUS_EXECUTABLE_PATH"].map(URL.init(fileURLWithPath:)),
+            environment["BUILT_PRODUCTS_DIR"].map {
+                URL(fileURLWithPath: $0).appendingPathComponent("Telemachus")
+            },
+            environment["BUILT_PRODUCTS_DIR"].map {
+                URL(fileURLWithPath: $0)
+                    .appendingPathComponent("Telemachus.app/Contents/MacOS/Telemachus")
+            },
+            Optional(testBundleDirectory.appendingPathComponent("Telemachus")),
+            Optional(
+                testBundleDirectory
+                    .appendingPathComponent("Telemachus.app/Contents/MacOS/Telemachus")
+            )
+        ].compactMap { $0 }
+        candidates.removeAll { !FileManager.default.isExecutableFile(atPath: $0.path) }
+        return try XCTUnwrap(
+            candidates.first,
+            "Unable to locate the built Telemachus executable."
+        )
     }
 
     private func issuedEpoch(_ signed: Data) throws -> UInt64 {
