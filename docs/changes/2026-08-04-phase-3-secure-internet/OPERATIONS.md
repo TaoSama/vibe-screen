@@ -3,10 +3,12 @@
 This runbook describes the required production shape. `services/signaling/` and
 `services/relay/` are runnable experimental control-plane binaries with local
 tests and container definitions. The pinned coturn data plane is bundled through
-Compose and has passed local REST-credential, Allocation, ChannelBind and forced
-WebRTC relay integration. This is still not a deployable production stack:
-signaling is single-instance/in-memory, no authoritative usage exporter is
-bundled, and the pinned container has not run on a public host in this environment.
+Compose. The recorded local REST-credential, Allocation, ChannelBind and forced
+WebRTC relay integration used the host-installed coturn 4.16.0 binary; it does
+not prove execution of the pinned container image. This is still not a
+deployable production stack: signaling is single-instance/in-memory, no
+authoritative usage exporter is bundled, and neither implementation has run on
+a public host in this environment.
 
 The current `services/relay/` binary is an experimental credential/usage control
 service, not the production shape below. A trusted control-plane bearer requests

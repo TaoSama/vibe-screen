@@ -36,18 +36,24 @@ The repository currently contains:
   simulation;
 - macOS and Android product-session composition, manual pairing/profile import,
   protected Protocol v1 control/media DataChannels, and direct/forced-TURN UI;
-- a pinned coturn Compose data plane used for local forced-relay verification.
+- a pinned coturn Compose data-plane definition. The recorded local
+  forced-relay verification used the host-installed coturn 4.16.0 binary; it
+  does not prove execution of the pinned container image.
 
-The macOS M150 and Android M144 production adapters have completed a controlled
-Nubia P0110 local direct/forced-coturn product-session pass with application
-AES-256-GCM, Protocol v1 control, authenticated touch records, and synthetic
-media. This is not public-Internet, real ScreenCaptureKit content, visible Mac
-input, carrier/CGNAT, automatic handoff, latency, or stability evidence. The
-services remain single-node development implementations; automatic authority
-issuance, cross-service revocation propagation, authoritative coturn byte
-accounting, and a production deployment remain open. Existing wireless mode
-remains trusted-LAN plaintext TCP authenticated with a bearer token; it is not
-Phase 3 security.
+Those entries describe current code capabilities. The real-device evidence is
+separately bound to one historical record: on 2026-08-05, source commit
+`597518f948075e396352bc353afcec01a30303f3` completed a controlled local direct
+and forced-coturn product-session pass on `Nubia P0110 / pacific / Android 16`
+using the macOS M150 and Android M144 adapters, application AES-256-GCM,
+Protocol v1 control, authenticated touch records, and synthetic media. That
+record proves only the dated source/device combination and must not be
+extrapolated to this working tree or later commits. It is not public-Internet,
+real ScreenCaptureKit content, visible Mac input, carrier/CGNAT, automatic
+handoff, latency, or stability evidence. The services remain single-node
+development implementations; automatic authority issuance, cross-service
+revocation propagation, authoritative coturn byte accounting, and a production
+deployment remain open. Existing wireless mode remains trusted-LAN plaintext
+TCP authenticated with a bearer token; it is not Phase 3 security.
 
 As of 2026-08-06, main commit
 `4c2e908fe31af4c187684991301e163371444eab` had passed Phase 0
