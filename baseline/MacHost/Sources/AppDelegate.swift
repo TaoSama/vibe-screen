@@ -190,6 +190,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private static let internetSignalingTokenName = "internet.local.signaling.host-token.v1"
     private static let internetTURNCredentialName = "internet.local.turn.credential.v1"
 
+    /// Stable synthetic identity for the optional virtual extended display that
+    /// is advertised (but not yet captured) so a single-physical-display Mac can
+    /// still offer a second selectable display chip. It never collides with a
+    /// real CGDirectDisplayID because it is not numeric. Once the virtual
+    /// display is actually created its real numeric id is advertised instead.
+    static let virtualExtendedDisplaySyntheticID = "telemachus-virtual-extended"
+    /// User-facing name for the virtual extended display chip.
+    static let virtualExtendedDisplayName = "Telemachus Virtual (扩展屏)"
+    /// Fallback advertised size for the virtual extended chip when no explicit
+    /// resolution is configured. Actual capture uses the configured resolution.
+    static let virtualExtendedDefaultWidth = 1920
+    static let virtualExtendedDefaultHeight = 1080
+
     var streamingServer: StreamingServer?
     private var internetProductSession: InternetProductSession?
     private var internetPairingCoordinator: InternetPairingCoordinator?
@@ -1858,20 +1871,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 displayName: "Telemachus Display",
                 isVirtual: configuration.displaySource == .extended || configuration.displaySource == .mirrorMain
             )
-            // Advertise every online physical display so the client can offer a
-            // selection capsule. The captured display keeps its String(id)
+            // Advertise every online physical display plus, when the private
+            // virtual-display API is available, one optional virtual extended
+            // display so a single-physical-display Mac still offers a second
+            // selectable chip. The captured display keeps its String(id)
             // identity so its descriptor matches the active-stream descriptor.
             streamingServer?.setProtocolV1Displays(
-                DisplayCatalog.onlineDisplays().map { display in
-                    ProtocolV1DisplayInfo(
-                        id: String(display.id),
-                        name: display.name,
-                        width: display.width,
-                        height: display.height,
-                        isPrimary: display.isMain,
-                        isVirtual: false
-                    )
-                }
+                protocolV1DisplayCatalog(
+                    activeCaptureID: captureDisplayID,
+                    activeDisplaySource: configuration.displaySource,
+                    configuredSize: size
+                )
             )
             streamingServer?.onDisplaySelectionRequested = {
                 [weak self, weak configuredServer] requestedDisplayID in
@@ -2540,6 +2550,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         _ requestedDisplayID: String,
         server: StreamingServer
     ) {
+        // The virtual extended chip is advertised either with its stable
+        // synthetic id (while a physical display is captured) or with the real
+        // numeric id of the live virtual display (while it is captured). Treat
+        // both as a request for the extended source.
+        let activeVirtualID = (activeRuntimeConfiguration?.displaySource == .extended)
+            ? virtualDisplayManager?.displayID
+            : nil
+        let selectsVirtual = requestedDisplayID == Self.virtualExtendedDisplaySyntheticID
+            || (activeVirtualID.map { requestedDisplayID == String($0) } ?? false)
+        if selectsVirtual {
+            guard VirtualDisplayPrivateAPICapability.evaluate().isAvailable else {
+                debugLog("Client requested the virtual display but the private API is unavailable; ignoring")
+                return
+            }
+            if settings.displaySource == .extended {
+                debugLog("Client re-selected the already-active virtual display; no switch needed")
+                return
+            }
+            // The .extended reconfiguration path creates (or reuses) the virtual
+            // display and recaptures it. The client reconnects and re-negotiates
+            // video against the freshly advertised catalog.
+            debugLog("Client selected the virtual extended display; switching capture to .extended")
+            settings.displaySource = .extended
+            server.selectProtocolV1Display(requestedDisplayID)
+            return
+        }
         guard let numericID = UInt32(requestedDisplayID) else {
             debugLog("Ignoring client display selection with non-numeric id \(requestedDisplayID)")
             return
@@ -2550,11 +2586,66 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Drive the existing selected-display reconfiguration path. Setting the
         // published id recomputes the persistent UUID and recaptures the source.
+        // This also switches away from .extended back to a physical capture.
         settings.displaySource = .selectedDisplay
         settings.selectedDisplayID = resolved.id
         // Push the protocol re-negotiation with the selected identity so the
         // client re-negotiates video and receives a DisplayChanged afterwards.
         server.selectProtocolV1Display(requestedDisplayID)
+    }
+
+    /// Build the ListDisplays catalog advertised for the current capture. Every
+    /// online physical display is included with its real numeric id. When the
+    /// private virtual-display API is available, one virtual extended entry is
+    /// appended so a single-physical-display Mac still offers a second chip:
+    /// while a physical display is captured the entry carries the stable
+    /// synthetic id; while the virtual display is captured it carries the live
+    /// numeric id so the active descriptor matches the streamed identity.
+    private func protocolV1DisplayCatalog(
+        activeCaptureID: CGDirectDisplayID,
+        activeDisplaySource: DisplaySourceMode,
+        configuredSize: (width: Int, height: Int)
+    ) -> [ProtocolV1DisplayInfo] {
+        var catalog = DisplayCatalog.onlineDisplays().compactMap { display -> ProtocolV1DisplayInfo? in
+            // While capturing the virtual display it is already an online
+            // display; skip the physical duplicate so it is only advertised once
+            // (with the live numeric id) by the virtual entry below.
+            if activeDisplaySource == .extended && display.id == activeCaptureID {
+                return nil
+            }
+            return ProtocolV1DisplayInfo(
+                id: String(display.id),
+                name: display.name,
+                width: display.width,
+                height: display.height,
+                isPrimary: display.isMain,
+                isVirtual: false
+            )
+        }
+        guard VirtualDisplayPrivateAPICapability.evaluate().isAvailable else {
+            return catalog
+        }
+        let capturingVirtual = activeDisplaySource == .extended
+        let virtualID = capturingVirtual
+            ? String(activeCaptureID)
+            : Self.virtualExtendedDisplaySyntheticID
+        let virtualWidth = capturingVirtual
+            ? (configuredSize.width > 0 ? configuredSize.width : Self.virtualExtendedDefaultWidth)
+            : Self.virtualExtendedDefaultWidth
+        let virtualHeight = capturingVirtual
+            ? (configuredSize.height > 0 ? configuredSize.height : Self.virtualExtendedDefaultHeight)
+            : Self.virtualExtendedDefaultHeight
+        catalog.append(
+            ProtocolV1DisplayInfo(
+                id: virtualID,
+                name: Self.virtualExtendedDisplayName,
+                width: virtualWidth,
+                height: virtualHeight,
+                isPrimary: false,
+                isVirtual: true
+            )
+        )
+        return catalog
     }
 
     private func handleServerFailure(sessionToken: UInt64) async {
