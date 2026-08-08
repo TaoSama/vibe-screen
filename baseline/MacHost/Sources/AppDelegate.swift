@@ -1682,26 +1682,44 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 streamSize = size
 
             case .mirrorMain:
-                let manager = VirtualDisplayManager()
-                virtualDisplayManager = manager
                 let mainDisplayID = CGMainDisplayID()
                 let mainRefreshRate = Int(
                     CGDisplayCopyDisplayMode(mainDisplayID)?.refreshRate ?? 60
                 )
-                try manager.createDisplay(
-                    width: CGDisplayPixelsWide(mainDisplayID),
-                    height: CGDisplayPixelsHigh(mainDisplayID),
-                    refreshRate: max(30, mainRefreshRate),
-                    hiDPI: false,
-                    name: "Telemachus Mirror"
-                )
-                try manager.enableMirrorMode()
-                guard let createdID = manager.displayID else {
-                    throw VirtualDisplayError.creationFailed(
-                        "Mirror display was created without a display ID"
+                // Preferred path: create a private virtual display and hardware
+                // mirror the main display onto it. Some macOS versions/GPUs
+                // reject CGConfigureDisplayMirrorOfDisplay for a virtual target
+                // (observed as CGError 1001 on macOS 26). In that case fall back
+                // to capturing the physical main display directly, which yields
+                // the same user-facing outcome (the Mac's main screen on the
+                // client) instead of looping unattended recovery forever.
+                var mirrorCaptureID: CGDirectDisplayID?
+                do {
+                    let manager = VirtualDisplayManager()
+                    virtualDisplayManager = manager
+                    try manager.createDisplay(
+                        width: CGDisplayPixelsWide(mainDisplayID),
+                        height: CGDisplayPixelsHigh(mainDisplayID),
+                        refreshRate: max(30, mainRefreshRate),
+                        hiDPI: false,
+                        name: "Telemachus Mirror"
                     )
+                    try manager.enableMirrorMode()
+                    guard let createdID = manager.displayID else {
+                        throw VirtualDisplayError.creationFailed(
+                            "Mirror display was created without a display ID"
+                        )
+                    }
+                    mirrorCaptureID = createdID
+                } catch {
+                    debugLog(
+                        "Virtual-display mirror unavailable (\(error.localizedDescription)); " +
+                        "falling back to direct main-display capture"
+                    )
+                    virtualDisplayManager = nil
+                    mirrorCaptureID = mainDisplayID
                 }
-                captureDisplayID = createdID
+                captureDisplayID = mirrorCaptureID ?? mainDisplayID
                 streamSize = Self.aspectFitStreamSize(
                     sourceWidth: CGDisplayPixelsWide(mainDisplayID),
                     sourceHeight: CGDisplayPixelsHigh(mainDisplayID),
@@ -1890,7 +1908,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 bitrateKbps: settings.effectiveBitrate * 1_000,
                 displayID: String(captureDisplayID),
                 displayName: "Telemachus Display",
-                isVirtual: configuration.displaySource == .extended || configuration.displaySource == .mirrorMain
+                // Reflect whether a virtual display actually backs this
+                // capture. Extended always is; mirrorMain is virtual only when
+                // the private-API hardware mirror succeeded (else it degraded to
+                // direct main-display capture, which is physical).
+                isVirtual: configuration.displaySource == .extended
+                    || (configuration.displaySource == .mirrorMain && virtualDisplayManager != nil)
             )
             // Advertise every online physical display plus, when the private
             // virtual-display API is available, one optional virtual extended

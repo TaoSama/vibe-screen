@@ -266,7 +266,7 @@ The output is a maintainable product mainline rather than a disposable demo.
 
 **macOS host status:** display-source selection, stable existing-display
 identity/fallback, on-device-verified virtual extension and HiDPI
-configuration, experimental mirroring, window migration/recovery, validated
+configuration, on-device screen mirroring, window migration/recovery, validated
 touch-derived pointer
 handling, permission onboarding, login startup, and bounded unattended
 listener recovery are implemented. Pure display/input geometry, identity, and
@@ -276,8 +276,13 @@ suite passed 202/202 in CI. System integration is not thereby proved.
 Private `CGVirtualDisplay` creation/capture and HiDPI are now verified on
 device: switching to the extended display creates a real virtual display that
 macOS reports as 4000x2400 physical / 2000x1200 logical (2x Retina) and streams
-at 60 FPS with zero drops (see Phase 1). True mirroring, login-item approval,
-and headless reboot still require gated macOS integration evidence. Real CGEvent
+at 60 FPS with zero drops (see Phase 1). Screen mirroring is verified on
+device: because macOS 26.4.1 rejects hardware-mirroring a physical display onto
+a virtual display (CGError 1001), mirror mode now degrades gracefully to direct
+main-display capture, so the client shows the Mac's main screen at 60 FPS with
+zero drops instead of looping unattended recovery (see Phase 1). Login-item
+approval and headless reboot still require gated macOS integration evidence.
+Real CGEvent
 injection under Accessibility is now exercised on device for keyboard and
 mouse-wheel scroll (see Phase 1). The legacy compatibility session
 still has no keyboard/native-mouse entry point; keyboard and native mouse are
