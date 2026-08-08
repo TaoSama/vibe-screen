@@ -329,20 +329,37 @@ class ScreenCapture {
             }
         }
 
-        try await setupDisplay()
-        try await setupStream()
-        configureFrameHandler(label: "switch")
-        encoder?.requestKeyframe()
-        guard let stream else {
-            throw NSError(
-                domain: "ScreenCapture",
-                code: 12,
-                userInfo: [NSLocalizedDescriptionKey: "Switched capture stream was not configured."]
-            )
+        // The old SCStream/CGDisplayStream were already stopped above. If the
+        // new source fails to set up or start, mirror startStreaming's recovery
+        // so the session does not end up reporting a running stream while no
+        // frames are produced: try the CGDisplayStream fallback, and surface a
+        // terminal failure (which drives session teardown/recovery) if that
+        // also fails, instead of leaving the host silently frozen.
+        do {
+            try await setupDisplay()
+            try await setupStream()
+            configureFrameHandler(label: "switch")
+            encoder?.requestKeyframe()
+            guard let stream else {
+                throw NSError(
+                    domain: "ScreenCapture",
+                    code: 12,
+                    userInfo: [NSLocalizedDescriptionKey: "Switched capture stream was not configured."]
+                )
+            }
+            try await stream.startCapture()
+            isSCStreamStarted = true
+            startFrameMonitor()
+        } catch is CancellationError where isStopping {
+            throw CancellationError()
+        } catch {
+            debugLog("Switch: SCStream setup/start failed (\(error)) — attempting CGDisplayStream fallback")
+            guard attemptFallbackCapture() else {
+                reportTerminalCaptureFailure(underlying: error)
+                throw error
+            }
+            startFrameMonitor()
         }
-        try await stream.startCapture()
-        isSCStreamStarted = true
-        startFrameMonitor()
     }
 
     // MARK: - SCShareableContent with timeout

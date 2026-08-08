@@ -100,9 +100,12 @@ final class StreamInputInjector {
         self.eventSource = eventSource
     }
 
-    /// Resets transient button state so a held button does not leak across sessions.
+    /// Resets transient button state so a held button does not leak across
+    /// sessions. Any button still pressed is released at the last known
+    /// pointer location first, so a drag interrupted by a reset does not leave
+    /// the WindowServer with a stuck button-down.
     func reset() {
-        pressedButtons = 0
+        updateButtons(target: 0, at: lastPointerLocation)
     }
 
     func handlePointer(
