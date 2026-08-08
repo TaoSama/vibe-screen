@@ -25,10 +25,10 @@
 - 连接持续：PASS（30/30 连接，0 重连）。
 - 帧计数单调上升：PASS（客户端 VD output 53337→174237 严格递增，dropped=0；主机 Pipeline dropped 全程 0）。
 - 无致命 codec error：PASS（主机日志 codec/fatal 计数为 0；客户端无 Codec error）。
-- 无内存无界增长：PASS（客户端 PSS 末值低于首值、峰值=首样本，无泄漏迹象）；主机 RSS 30 分钟净增约 18.6 MiB、斜率有界，但后半窗斜率翻倍（+587.6 → +1086.6 KiB/min）是需在 Phase 1 两小时 gate 复核的观察项，非本轮 30 分钟不合格项。
+- 无内存无界增长：客户端 PASS（PSS 末值低于首值、峰值=首样本，无泄漏迹象）；主机 RSS 为 CAVEAT（30 分钟净增约 18.6 MiB、斜率有界，但后半窗斜率翻倍 +587.6 → +1086.6 KiB/min）。有限的 30 分钟斜率无法区分平台期与泄漏，故本项对主机记为 CAVEAT 而非 PASS，需由两小时 gate 证实收敛。
 - thermal 受控：PASS（thermal status 恒为 0，CPU 峰值 62.9°C 且走低）。
 
-结论：本轮 30 分钟 soak 判定 PASS。主机 RSS 后半段斜率上升为 WATCH（留待 2 小时 gate 证实是否收敛）。
+结论：本轮 30 分钟 soak 判定 PASS with CAVEAT——功能/帧计数/thermal/客户端内存均 PASS，唯主机 RSS 因后半段斜率上升记为 CAVEAT，两小时无增长 gate 仍为未关闭项（留待其证实是否收敛）。
 
 ## 证据文件
 

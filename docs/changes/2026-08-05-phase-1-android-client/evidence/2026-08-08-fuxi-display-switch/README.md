@@ -1,6 +1,7 @@
 # 2026-08-08 fuxi 顶部胶囊切 display（单物理屏 → 物理屏 + 虚拟扩展屏）
 
-设备：小米 12 (fuxi)，adb 序列号 8a023e3a，Android 16 LineageOS，USB。
+设备：小米 12 (fuxi)，Android 16 LineageOS，USB。下文命令用占位符 `$ADB_SERIAL`
+代表该机的 adb 序列号，`$REPO` 代表本仓库检出根目录；执行前先各自 export 实际值。
 主机：macOS 26.4.1 (Build 25E253)，仅 1 块物理屏（Built-in Liquid Retina XDR）。
 
 ## 目标
@@ -81,15 +82,15 @@ before-host-pipeline.txt：切换前旧 Host 稳定 60.0fps、dropped=0。
 ## 给用户的精确复现步骤（重启 + 重授 + 抓证据）
 
 1. 从 GUI 启动新 Host（不要产 .app、不要重签）：
-   - Finder：前往 /Users/luwentao/Workspaces/vibe-screen/baseline/MacHost/.build/release/
+   - Finder：前往 $REPO/baseline/MacHost/.build/release/
      ，双击 Telemachus；或 Spotlight/终端里用 open 之外的 GUI 方式启动。
    - 也可在有图形会话的终端里直接运行：
-       /Users/luwentao/Workspaces/vibe-screen/baseline/MacHost/.build/release/Telemachus
+       $REPO/baseline/MacHost/.build/release/Telemachus
 2. 重新授权屏幕录制：系统设置 → 隐私与安全性 → 屏幕录制 → 打开 Telemachus 的
    开关（若已存在旧条目，先移除再重新添加/勾选）；按提示可能需要退出并重开
    Telemachus 一次使授权生效。需要触控则同时在「辅助功能」里勾选 Telemachus。
 3. USB 桥接：
-       adb -s 8a023e3a reverse tcp:54321 tcp:54321
+       adb -s "$ADB_SERIAL" reverse tcp:54321 tcp:54321
 4. 启动 Android 客户端并连接（自动 USB 连接开启即可）。
 5. 观察两枚 chip 并切换：
    - 顶部胶囊应出现 2 枚 chip：物理屏 + "Telemachus Virtual (扩展屏)"。
@@ -99,11 +100,11 @@ before-host-pipeline.txt：切换前旧 Host 稳定 60.0fps、dropped=0。
 ## 抓哪些日志作为权威证据（FLAG_SECURE 下 screencap 抓不到视频，用日志）
 
 - ListDisplays count=2 与虚拟条目：客户端 logcat
-    adb -s 8a023e3a logcat | grep -i onDisplaysAvailable
+    adb -s "$ADB_SERIAL" logcat | grep -i onDisplaysAvailable
   应出现 count=2，displays 里含 telemachus-virtual-extended:...:isVirtual 与
   negotiated 含 CAPABILITY_MULTI_DISPLAY。
 - 胶囊两枚可点 chip：
-    adb -s 8a023e3a shell dumpsys activity top | grep -Ei 'displayToggleGroup|displayCapsuleGroup'
+    adb -s "$ADB_SERIAL" shell dumpsys activity top | grep -Ei 'displayToggleGroup|displayCapsuleGroup'
   displayCapsuleGroup 变 V（VISIBLE），displayToggleGroup 下含 2 个
   MaterialButton 且 bounds 非 0。
 - 切换动作与重协商：客户端 logcat 出现 "capsule selectDisplay target=..."、
@@ -126,4 +127,3 @@ bounds）保存到本目录，命名如 after-*.txt，并在本 README 追加 af
   设备证据 —— 被 GUI/WindowServer 会话限制 + TCC 屏幕录制需手动重授阻断。
 - 环境已清理：无残留 Telemachus/setsid/swift build 进程；54321 无监听；
   为跑 transport self-test 已移除 adb reverse，如需联调请按上面步骤重建。
-
