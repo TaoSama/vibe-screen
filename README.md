@@ -21,6 +21,7 @@ platform scaffolding under active development.
 | USB transport | ADB reverse on TCP port `54321`; real-device stream verified |
 | Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264, MediaCodec decode |
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified |
+| Input (keyboard/mouse/peripheral) | Touch and touch-derived pointer gestures only; keyboard, native mouse, stylus, and peripheral transport is scaffolding and not wired end to end |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; authenticated but not encrypted |
 | Protocol v1 | Baseline host/client main-session integration and cross-platform offline gates pass; real-device acceptance pending |
@@ -108,9 +109,10 @@ running Android 16 over USB, plus earlier evidence from a Nubia P0110 on the
 same Android version. On the Xiaomi 12 the streaming baseline is verified:
 stable 60 FPS with zero dropped frames, hardware HEVC decode at roughly 6 ms,
 touch-to-pointer control, reconnect recovery, a 30-minute soak, and Protocol
-v1 display-selection negotiation. Two-chip virtual-display switching and the
-two-hour no-growth soak are not yet verified on device. Huawei MatePad Mini is
-the primary planned target device for the HarmonyOS product experience; no
+v1 display-selection negotiation. On 2026-08-08 physical<->virtual display
+switching was also verified on device through the client display dropdown
+with no session teardown; the two-hour no-growth soak is not yet verified.
+Huawei MatePad Mini is the primary planned target device for the HarmonyOS product experience; no
 HarmonyOS device result is implied here.
 
 ## Target Architecture (planned)
@@ -238,11 +240,15 @@ Xiaomi 12 streaming evidence: a stale-Surface reconnect-loop fix, then stable
 touch-to-pointer control, reconnect recovery, and a 30-minute soak (mean 59.95
 FPS, zero drops). Host resident memory grew over that 30-minute window, so the
 two-hour no-growth gate stays open rather than closed. Protocol v1
-display-selection negotiation is verified on device; two-chip virtual-display
-switching is implemented and offline-verified but not yet exercised on device
-(it needs a host relaunch and a manual Screen Recording re-grant). The Xiaomi
+display-selection negotiation is verified on device. On 2026-08-08 the
+physical<->virtual<->physical display switch was verified end to end on the
+Xiaomi 12 through the client display dropdown: the switch renegotiates video
+in place with a bumped config epoch and no INVALID_MEDIA_HEADER, INVALID_STATE,
+or session teardown, dropping only the expected transient reconfiguration
+frames before returning to 60 FPS with zero drops. The Xiaomi
 12 evidence is recorded under
-[docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a/README.md).
+[docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a/README.md). The display-switch round-trip and offline self-tests are recorded under
+[docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-08-fuxi-display-switch](docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-08-fuxi-display-switch/roundtrip-verification.md).
 
 Implementation status and evidence are tracked in the
 [Phase 0 change docs](docs/changes/2026-08-04-phase-0-baseline/PRD.md).
@@ -272,17 +278,18 @@ integration evidence. The legacy
 session has no keyboard/native-mouse transport entry point, and the two-hour
 device soak remains owned by the coordinated Phase 0 run.
 
-The Android client now shows a compact, centered, tap-to-reveal control capsule
-that selects the display, opens settings, and disconnects; it collapses the
-display picker on single-display sessions to avoid mis-taps. The host advertises
-its online physical displays plus, when the private virtual-display API is
-available, one selectable virtual extended display so a single-monitor Mac can
-still offer a second display to switch to; selecting it drives the existing
-extended-capture path with a bumped config epoch. Capsule geometry and
-display-selection negotiation are verified on the Xiaomi 12, but the actual
-virtual-display capture switch is still an open on-device gate because
-relaunching the GUI host requires an Aqua session and a manual Screen Recording
-re-grant that cannot be scripted.
+The Android client shows a compact, centered, tap-to-reveal control capsule
+that opens a display dropdown menu, opens settings, and disconnects; the
+dropdown lists each available display with the active one checked, and the
+picker collapses entirely on single-display sessions to avoid mis-taps. The
+host advertises its online physical displays plus, when the private
+virtual-display API is available, one selectable virtual extended display so a
+single-monitor Mac can still offer a second display to switch to; selecting it
+switches the capture source in place and renegotiates video with a bumped
+config epoch. On 2026-08-08 the capsule dropdown and the actual
+physical<->virtual<->physical capture switch were verified on the Xiaomi 12
+with no session teardown; keyboard, native mouse, and peripheral input remain
+unwired scaffolding rather than shipped features.
 
 - Deliver USB and LAN connectivity.
 - Support virtual extension, mirroring, display selection, HiDPI, rotation, and
