@@ -1183,7 +1183,12 @@ class StreamClient(
         val session = protocolSession ?: return false
         if (!session.canSendPointer) return false
         submitOutbound(
-            kind = OutboundCommandScheduler.Kind.MOVE,
+            // Scroll deltas are incremental: coalescing (Kind.MOVE) would drop
+            // prior wheel deltas when the queue is busy, losing scroll distance.
+            // Send each delta as a non-coalesced structural command so every
+            // wheel sample reaches the host in order; queue saturation fails
+            // closed via TIMED_OUT rather than silently discarding motion.
+            kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
             command =
                 OutboundCommand.ProtocolBatch { activeSession ->
                     listOf(
