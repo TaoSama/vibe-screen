@@ -11,7 +11,16 @@ class DisplayCapsulePolicyTest {
         id: String,
         name: String = id,
         primary: Boolean = false,
-    ) = StreamDisplayOption(id = id, name = name, width = 1920, height = 1080, isPrimary = primary)
+        virtual: Boolean = false,
+    ) =
+        StreamDisplayOption(
+            id = id,
+            name = name,
+            width = 1920,
+            height = 1080,
+            isPrimary = primary,
+            isVirtual = virtual,
+        )
 
     @Test
     fun `capsule stays collapsed unless negotiated and more than one display`() {

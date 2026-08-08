@@ -1438,7 +1438,14 @@ class StreamClient(
                     is ProtocolV1Session.Action.DisplaysAvailable -> {
                         val options =
                             action.displays.map {
-                                StreamDisplayOption(it.id, it.name, it.width, it.height, it.isPrimary)
+                                StreamDisplayOption(
+                                    it.id,
+                                    it.name,
+                                    it.width,
+                                    it.height,
+                                    it.isPrimary,
+                                    it.isVirtual,
+                                )
                             }
                         onDisplaysAvailable?.invoke(options, action.selectedId)
                     }
