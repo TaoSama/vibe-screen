@@ -189,6 +189,7 @@ data class StreamDisplayOption(
     val width: Int,
     val height: Int,
     val isPrimary: Boolean,
+    val isVirtual: Boolean,
 )
 
 /**

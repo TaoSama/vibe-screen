@@ -1378,12 +1378,23 @@ class MainActivity : AppCompatActivity() {
         val menu = popup.menu
         menu.setGroupCheckable(0, true, true)
         displays.forEachIndexed { index, option ->
+            val kindTag =
+                if (option.isVirtual) {
+                    getString(R.string.display_option_virtual)
+                } else {
+                    getString(R.string.display_option_builtin)
+                }
             val item =
                 menu.add(
                     0,
                     index,
                     index,
-                    getString(R.string.display_option_format, option.name, option.width, option.height),
+                    getString(
+                        R.string.display_option_format,
+                        "${option.name} · $kindTag",
+                        option.width,
+                        option.height,
+                    ),
                 )
             item.isChecked = option.id == selectedDisplayId
         }
@@ -1611,7 +1622,14 @@ class MainActivity : AppCompatActivity() {
         val closeButton = view.findViewById<View>(R.id.closeButton)
         val scaleFitButton = view.findViewById<MaterialButton>(R.id.scaleFitButton)
         val scaleFillButton = view.findViewById<MaterialButton>(R.id.scaleFillButton)
-        val rotationButton = view.findViewById<MaterialButton>(R.id.rotationButton)
+        val rotationGroup = view.findViewById<MaterialButtonToggleGroup>(R.id.rotationGroup)
+        val rotationButtons =
+            mapOf(
+                ClientRotation.FOLLOW_HOST to view.findViewById<MaterialButton>(R.id.rotationFollow),
+                ClientRotation.CLOCKWISE_90 to view.findViewById<MaterialButton>(R.id.rotation90),
+                ClientRotation.UPSIDE_DOWN to view.findViewById<MaterialButton>(R.id.rotation180),
+                ClientRotation.COUNTER_CLOCKWISE_90 to view.findViewById<MaterialButton>(R.id.rotation270),
+            )
         val displayCapability = view.findViewById<TextView>(R.id.displayCapability)
 
         // Video tuning controls.
@@ -1657,16 +1675,7 @@ class MainActivity : AppCompatActivity() {
         fun updateViewportButtons() {
             scaleFitButton.isChecked = prefs.videoScaleMode == VideoScaleMode.FIT
             scaleFillButton.isChecked = prefs.videoScaleMode == VideoScaleMode.FILL
-            rotationButton.text =
-                getString(
-                    R.string.rotation_value,
-                    when (prefs.clientRotation) {
-                        ClientRotation.FOLLOW_HOST -> getString(R.string.rotation_follow_host)
-                        ClientRotation.CLOCKWISE_90 -> getString(R.string.rotation_90)
-                        ClientRotation.UPSIDE_DOWN -> getString(R.string.rotation_180)
-                        ClientRotation.COUNTER_CLOCKWISE_90 -> getString(R.string.rotation_270)
-                    },
-                )
+            rotationButtons[prefs.clientRotation]?.let { rotationGroup.check(it.id) }
         }
         updateViewportButtons()
 
@@ -1720,16 +1729,14 @@ class MainActivity : AppCompatActivity() {
             updateSurfaceViewportLayout()
             updateViewportButtons()
         }
-        rotationButton.setOnClickListener {
-            prefs.clientRotation =
-                when (prefs.clientRotation) {
-                    ClientRotation.FOLLOW_HOST -> ClientRotation.CLOCKWISE_90
-                    ClientRotation.CLOCKWISE_90 -> ClientRotation.UPSIDE_DOWN
-                    ClientRotation.UPSIDE_DOWN -> ClientRotation.COUNTER_CLOCKWISE_90
-                    ClientRotation.COUNTER_CLOCKWISE_90 -> ClientRotation.FOLLOW_HOST
-                }
+        rotationGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            val rotation =
+                rotationButtons.entries.firstOrNull { it.value.id == checkedId }?.key
+                    ?: return@addOnButtonCheckedListener
+            if (prefs.clientRotation == rotation) return@addOnButtonCheckedListener
+            prefs.clientRotation = rotation
             applyRotation(displayRotation)
-            updateViewportButtons()
         }
 
         // Video tuning. The controls are only actionable when the host
