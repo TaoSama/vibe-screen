@@ -274,9 +274,10 @@ startup policies are covered by host self-tests; at main commit
 suite passed 202/202 in CI. System integration is not thereby proved.
 Private `CGVirtualDisplay` creation/capture, true mirroring, real CGEvent/AX
 behavior, login-item approval, and headless reboot still require gated macOS
-integration evidence. The legacy
-session has no keyboard/native-mouse transport entry point, and the two-hour
-device soak remains owned by the coordinated Phase 0 run.
+integration evidence. The legacy compatibility session still has no
+keyboard/native-mouse entry point; keyboard and native mouse are provided only
+through the Protocol v1 session (wired in source, on-device verification
+pending). The two-hour device soak remains owned by the coordinated Phase 0 run.
 
 The Android client shows a compact, centered, tap-to-reveal control capsule
 that opens a display dropdown menu, opens settings, and disconnects; the
@@ -286,14 +287,18 @@ host advertises its online physical displays plus, when the private
 virtual-display API is available, one selectable virtual extended display so a
 single-monitor Mac can still offer a second display to switch to; selecting it
 switches the capture source in place and renegotiates video with a bumped
-config epoch. On 2026-08-08 the capsule dropdown and the actual
-physical<->virtual<->physical capture switch were verified on the Xiaomi 12
-with no session teardown; keyboard, native mouse, and peripheral input remain
-unwired scaffolding rather than shipped features.
+config epoch. An earlier inline-chip build verified the in-place
+physical<->virtual<->physical capture switch on the Xiaomi 12 with no session
+teardown; the current dropdown-selector capsule passes offline unit and build
+gates but its on-device round-trip re-verification is still pending a host
+Screen Recording re-grant. Keyboard, native mouse, and scroll input are now
+wired end to end in source (host CGEvent injection plus client capability
+negotiation and forwarding) but remain unverified on device rather than shipped.
 
 - Deliver USB and LAN connectivity.
 - Support virtual extension, mirroring, display selection, HiDPI, rotation, and
-  adaptive video configuration.
+  manual video configuration (bitrate/quality/frame-rate presets). Network-driven
+  automatic adaptation is a later-phase goal, not part of the Phase 1 USB/LAN path.
 - Complete touch, keyboard, mouse, and peripheral input.
 - Add window migration, disconnect recovery, automatic reconnect, permission
   onboarding, and actionable errors.
