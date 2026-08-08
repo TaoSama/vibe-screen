@@ -493,6 +493,14 @@ public struct VSEnvelope: @unchecked Sendable {
     set {_uniqueStorage()._payload = .managedPolicyStatus(newValue)}
   }
 
+  public var setVideoPreferences: VSSetVideoPreferences {
+    get {
+      if case .setVideoPreferences(let v)? = _storage._payload {return v}
+      return VSSetVideoPreferences()
+    }
+    set {_uniqueStorage()._payload = .setVideoPreferences(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public enum OneOf_Payload: Equatable, Sendable {
@@ -550,6 +558,7 @@ public struct VSEnvelope: @unchecked Sendable {
     case wakeHostRequest(VSWakeHostRequest)
     case wakeHostResult(VSWakeHostResult)
     case managedPolicyStatus(VSManagedPolicyStatus)
+    case setVideoPreferences(VSSetVideoPreferences)
 
   }
 
@@ -564,7 +573,7 @@ fileprivate let _protobuf_package = "vibescreen.protocol.v1"
 
 extension VSEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Envelope"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}protocol_version\0\u{3}message_id\0\u{3}correlation_id\0\u{3}session_id\0\u{3}session_epoch\0\u{3}sent_at_monotonic_ns\0\u{4}\u{e}client_hello\0\u{3}host_hello\0\u{3}session_accepted\0\u{3}session_rejected\0\u{1}ping\0\u{1}pong\0\u{3}resume_session_request\0\u{3}resume_session_result\0\u{3}disconnect_notice\0\u{4}\u{2}pairing_offer\0\u{3}pairing_request\0\u{3}pairing_result\0\u{3}device_revoked\0\u{3}key_rotation_request\0\u{3}key_rotation_result\0\u{3}device_revocation\0\u{3}traffic_key_update\0\u{3}traffic_key_ack\0\u{4}\u{2}list_displays_request\0\u{3}list_displays_response\0\u{3}start_display_request\0\u{3}start_display_response\0\u{3}stop_display\0\u{3}display_changed\0\u{4}\u{5}video_config\0\u{3}video_config_result\0\u{3}request_keyframe\0\u{3}video_stream_ended\0\u{4}\u{7}touch_event\0\u{3}pointer_event\0\u{3}scroll_event\0\u{3}key_event\0\u{3}input_ack\0\u{4}\u{6}stream_stats\0\u{3}transport_stats\0\u{3}error_report\0\u{4}\u{8}protocol_error\0\u{4}\u{a}encrypted_control_packet\0\u{4}\u{a}audio_config\0\u{3}audio_config_result\0\u{3}clipboard_offer\0\u{3}clipboard_request\0\u{3}clipboard_content\0\u{3}file_offer\0\u{3}file_accept\0\u{3}file_transfer_progress\0\u{3}file_transfer_cancel\0\u{3}file_transfer_complete\0\u{3}host_action_catalog\0\u{3}host_action_invoke\0\u{3}host_action_result\0\u{3}wake_host_request\0\u{3}wake_host_result\0\u{3}managed_policy_status\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}protocol_version\0\u{3}message_id\0\u{3}correlation_id\0\u{3}session_id\0\u{3}session_epoch\0\u{3}sent_at_monotonic_ns\0\u{4}\u{e}client_hello\0\u{3}host_hello\0\u{3}session_accepted\0\u{3}session_rejected\0\u{1}ping\0\u{1}pong\0\u{3}resume_session_request\0\u{3}resume_session_result\0\u{3}disconnect_notice\0\u{4}\u{2}pairing_offer\0\u{3}pairing_request\0\u{3}pairing_result\0\u{3}device_revoked\0\u{3}key_rotation_request\0\u{3}key_rotation_result\0\u{3}device_revocation\0\u{3}traffic_key_update\0\u{3}traffic_key_ack\0\u{4}\u{2}list_displays_request\0\u{3}list_displays_response\0\u{3}start_display_request\0\u{3}start_display_response\0\u{3}stop_display\0\u{3}display_changed\0\u{4}\u{5}video_config\0\u{3}video_config_result\0\u{3}request_keyframe\0\u{3}video_stream_ended\0\u{4}\u{7}touch_event\0\u{3}pointer_event\0\u{3}scroll_event\0\u{3}key_event\0\u{3}input_ack\0\u{4}\u{6}stream_stats\0\u{3}transport_stats\0\u{3}error_report\0\u{4}\u{8}protocol_error\0\u{4}\u{a}encrypted_control_packet\0\u{4}\u{a}audio_config\0\u{3}audio_config_result\0\u{3}clipboard_offer\0\u{3}clipboard_request\0\u{3}clipboard_content\0\u{3}file_offer\0\u{3}file_accept\0\u{3}file_transfer_progress\0\u{3}file_transfer_cancel\0\u{3}file_transfer_complete\0\u{3}host_action_catalog\0\u{3}host_action_invoke\0\u{3}host_action_result\0\u{3}wake_host_request\0\u{3}wake_host_result\0\u{3}managed_policy_status\0\u{3}set_video_preferences\0")
 
   fileprivate class _StorageClass {
     var _protocolVersion: UInt32 = 0
@@ -1317,6 +1326,19 @@ extension VSEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementatio
             _storage._payload = .managedPolicyStatus(v)
           }
         }()
+        case 116: try {
+          var v: VSSetVideoPreferences?
+          var hadOneofValue = false
+          if let current = _storage._payload {
+            hadOneofValue = true
+            if case .setVideoPreferences(let m) = current {v = m}
+          }
+          try decoder.decodeSingularMessageField(value: &v)
+          if let v = v {
+            if hadOneofValue {try decoder.handleConflictingOneOf()}
+            _storage._payload = .setVideoPreferences(v)
+          }
+        }()
         default: break
         }
       }
@@ -1563,6 +1585,10 @@ extension VSEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementatio
       case .managedPolicyStatus?: try {
         guard case .managedPolicyStatus(let v)? = _storage._payload else { preconditionFailure() }
         try visitor.visitSingularMessageField(value: v, fieldNumber: 115)
+      }()
+      case .setVideoPreferences?: try {
+        guard case .setVideoPreferences(let v)? = _storage._payload else { preconditionFailure() }
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 116)
       }()
       case nil: break
       }

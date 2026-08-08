@@ -28,6 +28,31 @@ message VideoConfigResult {
   ColorDescription selected_color_description = 5;
 }
 
+// Coarse client-selectable quality intent. The host maps a preset to its
+// internal encoder quality when the client does not request an explicit
+// bitrate, so clients can express intent without knowing host encoder units.
+enum VideoQualityPreset {
+  VIDEO_QUALITY_PRESET_UNSPECIFIED = 0;
+  VIDEO_QUALITY_PRESET_SMOOTH = 1;
+  VIDEO_QUALITY_PRESET_BALANCED = 2;
+  VIDEO_QUALITY_PRESET_SHARP = 3;
+}
+
+// Client-driven video tuning request sent to the host on the active session.
+// Every field is optional so a client can adjust one dimension at a time; an
+// unset field leaves the corresponding host setting unchanged. The host
+// clamps values to the negotiated capabilities and its supported range, then
+// re-advertises the applied VideoConfig with a bumped config_epoch. Requires
+// the CAPABILITY_CLIENT_VIDEO_CONTROL capability to be negotiated.
+message SetVideoPreferences {
+  // Requested encoder bitrate in kbps. 0 leaves the current bitrate unchanged.
+  uint32 bitrate_kbps = 1;
+  // Requested capture/encode frame rate. 0 leaves the current rate unchanged.
+  uint32 frames_per_second = 2;
+  // Coarse quality intent applied when no explicit bitrate is requested.
+  VideoQualityPreset quality_preset = 3;
+}
+
 message RequestKeyframe {
   uint64 stream_id = 1;
   string reason_code = 2;
