@@ -1,19 +1,13 @@
-# Preconditions: adb reverse on 54321 removed so the transport self-test loopback port is free.
-# swift build -c release
-Building for production...
-[1/3] Write swift-version--1AB21518FC5DEDBE.txt
-Build complete! (0.10s)
+# Offline self-tests on codex/phase1-display-selection-capsule @ 272bbc8 (host in-place switch + client media-drop + CGError/settle tolerance)
 
-# Telemachus --protocol-v1-self-test
-🚀 Telemachus starting...
+$ Telemachus --protocol-v1-self-test
 Protocol v1 self-test: PASS (framing, golden, negotiation, display/video gate, epoch, targeted input, heartbeat, graceful disconnect, error, media)
 
-# Telemachus --transport-self-test
-🚀 Telemachus starting...
+$ Telemachus --transport-self-test
 Transport self-test: PASS (config=true, keyframe=true, pong=true, touch=true, malformedTouchRejected=true, portConflict=true, codecNegotiations=1, protocolV1Lifecycle=true, protocolV1ReadyLifecycle=true, protocolV1PreReadyStops=true, error=none)
 
-# Telemachus --host-self-test
-🚀 Telemachus starting...
+$ Telemachus --host-self-test
 Host display evidence: id=1, uuid=37D8832A-2D66-02CA-B9F7-8F30A301B230, logical=1512x982, physical=3024x1964
 Private virtual display API shape check: available (class/selector presence is not creation/capture evidence)
 Host self-test: PASS (display identity/catalog, input/window geometry, startup/recovery policy, callback generation, fallback replacement)
+
