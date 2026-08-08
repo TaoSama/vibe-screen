@@ -1,6 +1,25 @@
 import Foundation
 import VibeScreenProtocol
 
+struct FreshSessionRecoveryBudget {
+    private(set) var attempt = 0
+    let maximumAttempts: Int
+
+    init(policy: NetworkRecoveryPolicy = .standard) {
+        maximumAttempts = policy.maximumAttempts
+    }
+
+    mutating func reset() {
+        attempt = 0
+    }
+
+    mutating func nextAttempt() -> Int? {
+        guard attempt < maximumAttempts else { return nil }
+        attempt += 1
+        return attempt
+    }
+}
+
 final class InternetProductSession: EncodedFrameSink {
     typealias EngineFactory = () -> WebRTCEnginePort
     typealias SecuritySessionFactory = (
@@ -10,6 +29,35 @@ final class InternetProductSession: EncodedFrameSink {
         InternetProductSessionConfiguration,
         UInt64
     ) throws -> PairedDeviceRevocationTombstone?
+
+    private struct PendingFrameSubmission {
+        let data: Data
+        let timestamp: UInt64
+        let isKeyframe: Bool
+        let sessionEpoch: UInt64
+        let generation: UInt64
+    }
+
+    private struct FrameAdmissionState {
+        var generation: UInt64 = 0
+        var sessionEpoch: UInt64 = 0
+        var maximumFrameBytes = 0
+        var accepting = false
+        var drainScheduled = false
+        var overloadFailureScheduled = false
+        var pending: PendingFrameSubmission?
+    }
+
+    private struct ControlAdmissionState {
+        var generation: UInt64 = 0
+        var maximumEntries = 0
+        var maximumBytes = 0
+        var maximumMessageBytes = 0
+        var accepting = false
+        var entries = 0
+        var bytes = 0
+        var overloadFailureScheduled = false
+    }
 
     var onStateChanged: ((InternetProductSessionState) -> Void)?
     var onError: ((InternetProductSessionError) -> Void)?
@@ -24,9 +72,12 @@ final class InternetProductSession: EncodedFrameSink {
 
     private let queue = DispatchQueue(label: "dev.vibescreen.internet-product-session")
     private let queueKey = DispatchSpecificKey<UInt8>()
+    private let frameAdmissionLock = NSLock()
+    private let controlAdmissionLock = NSLock()
     private let engineFactory: EngineFactory
     private let securitySessionFactory: SecuritySessionFactory
     private let revocationHandler: RevocationHandler
+    private var freshSessionRecoveryBudget: FreshSessionRecoveryBudget
     private var state: InternetProductSessionState = .idle
     private var configuration: InternetProductSessionConfiguration?
     private var transport: WebRTCInternetTransport?
@@ -38,6 +89,8 @@ final class InternetProductSession: EncodedFrameSink {
     private var nextHeartbeatSequence: UInt64 = 1
     private var lastPeerActivityNanoseconds: UInt64 = 0
     private var peerSupportsTouch = false
+    private var frameAdmission = FrameAdmissionState()
+    private var controlAdmission = ControlAdmissionState()
 
     var currentSessionEpoch: UInt64 {
         performSync { codec?.sessionEpoch ?? 0 }
@@ -46,11 +99,15 @@ final class InternetProductSession: EncodedFrameSink {
     init(
         engineFactory: @escaping EngineFactory = { ProductionWebRTCEngine() },
         securitySessionFactory: SecuritySessionFactory? = nil,
-        revocationHandler: RevocationHandler? = nil
+        revocationHandler: RevocationHandler? = nil,
+        freshSessionRecoveryPolicy: NetworkRecoveryPolicy = .standard
     ) {
         self.engineFactory = engineFactory
         self.securitySessionFactory = securitySessionFactory ?? Self.makeStoredSecuritySession
         self.revocationHandler = revocationHandler ?? Self.persistPeerRevocation
+        self.freshSessionRecoveryBudget = FreshSessionRecoveryBudget(
+            policy: freshSessionRecoveryPolicy
+        )
         queue.setSpecific(key: queueKey, value: 1)
     }
 
@@ -62,6 +119,7 @@ final class InternetProductSession: EncodedFrameSink {
                 )
             }
             try configuration.validate()
+            freshSessionRecoveryBudget.reset()
             try startFreshSession(configuration)
         }
     }
@@ -80,15 +138,19 @@ final class InternetProductSession: EncodedFrameSink {
 
     func close() {
         performSync {
-            sessionGeneration &+= 1
+            _ = advanceSessionGeneration()
+            resetQueuedWork(generation: sessionGeneration, limits: nil)
             stopHeartbeat()
             stopNegotiationDeadline()
-            transport?.close()
+            let retiredTransport = transport
             transport = nil
             codec = nil
             activePath = nil
             configuration = nil
-            setState(.closed)
+            let changed = state != .closed
+            state = .closed
+            retiredTransport?.close()
+            if changed { onStateChanged?(.closed) }
         }
     }
 
@@ -99,21 +161,37 @@ final class InternetProductSession: EncodedFrameSink {
                     "No paired Internet device is active."
                 )
             }
-            do {
-                if let tombstone = try revocationHandler(configuration, sequence) {
-                    onRevocationPropagationRequired?(tombstone)
-                }
-            } catch {
-                throw InternetProductSessionError.securityFailure(error.localizedDescription)
-            }
-            sessionGeneration &+= 1
+            _ = advanceSessionGeneration()
+            resetQueuedWork(generation: sessionGeneration, limits: nil)
             stopHeartbeat()
             stopNegotiationDeadline()
-            transport?.close()
+            let retiredTransport = transport
             transport = nil
             codec = nil
             activePath = nil
-            setState(.revoked)
+            peerSupportsTouch = false
+            let changed = state != .revoked
+            state = .revoked
+            let revocationGeneration = sessionGeneration
+            retiredTransport?.close()
+            let tombstone: PairedDeviceRevocationTombstone?
+            do {
+                tombstone = try revocationHandler(configuration, sequence)
+            } catch {
+                if changed,
+                   sessionGeneration == revocationGeneration,
+                   state == .revoked {
+                    onStateChanged?(.revoked)
+                }
+                onRevoked?()
+                throw InternetProductSessionError.securityFailure(error.localizedDescription)
+            }
+            if changed,
+               sessionGeneration == revocationGeneration,
+               state == .revoked {
+                onStateChanged?(.revoked)
+            }
+            if let tombstone { onRevocationPropagationRequired?(tombstone) }
             onRevoked?()
         }
     }
@@ -124,27 +202,39 @@ final class InternetProductSession: EncodedFrameSink {
         isKeyframe: Bool,
         sessionEpoch: UInt64
     ) {
-        queue.async { [weak self] in
-            guard let self,
-                  case .streaming = self.state,
-                  let transport = self.transport,
-                  var codec = self.codec,
-                  sessionEpoch == codec.sessionEpoch else { return }
-            do {
-                let frame = try codec.mediaFrame(
-                    payload: data,
-                    timestamp: timestamp,
-                    isKeyframe: isKeyframe
-                )
-                self.codec = codec
-                if case .failure(let error) = transport.sendMedia(frame) {
-                    self.fail(.transportFailure(error))
-                }
-            } catch let error as InternetProductProtocolError {
-                self.fail(.protocolFailure(error))
-            } catch {
-                self.fail(.securityFailure(error.localizedDescription))
+        let submittedBytes = data.count
+        let scheduling = withFrameAdmissionLock { state -> (UInt64, Bool, Bool) in
+            guard state.accepting else { return (state.generation, false, false) }
+            guard state.sessionEpoch == sessionEpoch else {
+                return (state.generation, false, false)
             }
+            guard !data.isEmpty, data.count <= state.maximumFrameBytes else {
+                let shouldFail = !state.overloadFailureScheduled
+                state.overloadFailureScheduled = true
+                return (state.generation, false, shouldFail)
+            }
+            state.pending = PendingFrameSubmission(
+                data: data,
+                timestamp: timestamp,
+                isKeyframe: isKeyframe,
+                sessionEpoch: sessionEpoch,
+                generation: state.generation
+            )
+            guard !state.drainScheduled else { return (state.generation, false, false) }
+            state.drainScheduled = true
+            return (state.generation, true, false)
+        }
+        if scheduling.2 {
+            queue.async { [weak self] in
+                guard let self, self.sessionGeneration == scheduling.0 else { return }
+                self.fail(.transportFailure(.payloadTooLarge(
+                    channel: .media,
+                    actual: submittedBytes,
+                    maximum: self.configuration?.limits.maximumMediaFrameBytes ?? 0
+                )))
+            }
+        } else if scheduling.1 {
+            queue.async { [weak self] in self?.drainLatestFrame(generation: scheduling.0) }
         }
     }
 
@@ -169,8 +259,17 @@ final class InternetProductSession: EncodedFrameSink {
     private func startFreshSession(_ configuration: InternetProductSessionConfiguration) throws {
         stopHeartbeat()
         stopNegotiationDeadline()
-        sessionGeneration &+= 1
+        guard advanceSessionGeneration() else {
+            throw InternetProductSessionError.securityFailure(
+                "Internet product session generation was exhausted."
+            )
+        }
         let generation = sessionGeneration
+        resetQueuedWork(
+            generation: generation,
+            sessionEpoch: configuration.authoritativeSessionEpoch,
+            limits: configuration.limits
+        )
         let securitySession: InternetProductSecuritySession
         do {
             securitySession = try securitySessionFactory(configuration)
@@ -214,7 +313,9 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsTouch = false
         nextHeartbeatSequence = 1
         lastPeerActivityNanoseconds = DispatchTime.now().uptimeNanoseconds
-        setState(.connecting)
+        let connectingState = InternetProductSessionState.connecting
+        let stateChanged = state != connectingState
+        state = connectingState
         do {
             try transport.start(configuration: configuration.transport)
         } catch let error as InternetTransportError {
@@ -225,6 +326,10 @@ final class InternetProductSession: EncodedFrameSink {
             fail(wrapped)
             throw wrapped
         }
+        guard generation == sessionGeneration,
+              self.transport === transport,
+              state == connectingState else { return }
+        if stateChanged { onStateChanged?(connectingState) }
     }
 
     private func installCallbacks(
@@ -241,15 +346,15 @@ final class InternetProductSession: EncodedFrameSink {
             }
         }
         transport.onControlReceived = { [weak self] data in
-            self?.queue.async { self?.handleControl(data, generation: generation) }
+            self?.enqueueInboundControl(data, generation: generation)
         }
         transport.onMediaReceived = { [weak self] _ in
-            self?.queue.async {
-                guard let self, self.sessionGeneration == generation else { return }
-                self.fail(.protocolFailure(.unexpectedMessage(
+            self?.scheduleInboundFailure(
+                .protocolFailure(.unexpectedMessage(
                     "the host received an unsupported inbound media message"
-                )))
-            }
+                )),
+                generation: generation
+            )
         }
         transport.onKeyframeRequired = { [weak self] in
             self?.queue.async {
@@ -284,7 +389,14 @@ final class InternetProductSession: EncodedFrameSink {
             } else if state == .connecting {
                 setState(.authenticating)
             }
-        case .recovering(let attempt): setState(.recovering(attempt: attempt))
+        case .recovering:
+            // Fresh-session recovery is driven solely by
+            // onFreshSessionRecoveryRequired, which publishes the session's
+            // .recovering state through beginFreshSessionRecovery. Reacting to
+            // the transport's own .recovering here would publish the state
+            // twice and race the synchronous fresh-session install performed
+            // inside the recovering-state callback.
+            break
         case .failed(let reason): fail(.securityFailure(reason))
         case .closed:
             if state != .revoked { setState(.closed) }
@@ -348,8 +460,8 @@ final class InternetProductSession: EncodedFrameSink {
                 onKeyframeRequired?()
 
             case .touchEvent(let touch) where isStreaming:
-                try routeTouch(touch, sessionEpoch: codec.sessionEpoch)
                 self.codec = codec
+                try routeTouch(touch, sessionEpoch: codec.sessionEpoch)
 
             case .disconnectNotice:
                 self.codec = codec
@@ -442,8 +554,12 @@ final class InternetProductSession: EncodedFrameSink {
             return
         }
         do {
+            guard nextHeartbeatSequence < UInt64.max else {
+                fail(.securityFailure("Internet heartbeat sequence was exhausted."))
+                return
+            }
             try sendControl(codec.ping(sequence: nextHeartbeatSequence))
-            nextHeartbeatSequence &+= 1
+            nextHeartbeatSequence += 1
             self.codec = codec
         } catch let error as InternetProductSessionError {
             fail(error)
@@ -454,16 +570,168 @@ final class InternetProductSession: EncodedFrameSink {
 
     private func beginFreshSessionRecovery(attempt: Int, generation: UInt64) {
         guard generation == sessionGeneration else { return }
+        guard attempt > 0,
+              let sessionAttempt = freshSessionRecoveryBudget.nextAttempt() else {
+            fail(.securityFailure(
+                "Fresh-session recovery exhausted after \(freshSessionRecoveryBudget.attempt) attempts."
+            ))
+            return
+        }
         stopHeartbeat()
         stopNegotiationDeadline()
-        setState(.recovering(attempt: attempt))
-        sessionGeneration &+= 1
-        transport?.close()
+        guard advanceSessionGeneration() else {
+            fail(.securityFailure("Internet product session generation was exhausted."))
+            return
+        }
+        let recoveryGeneration = sessionGeneration
+        resetQueuedWork(generation: recoveryGeneration, limits: nil)
+        let retiredTransport = transport
         transport = nil
         codec = nil
         activePath = nil
         peerSupportsTouch = false
-        onFreshSessionRecoveryRequired?(attempt)
+        let recoveringState = InternetProductSessionState.recovering(attempt: sessionAttempt)
+        let stateChanged = state != recoveringState
+        state = recoveringState
+        retiredTransport?.close()
+        if stateChanged { onStateChanged?(recoveringState) }
+        guard sessionGeneration == recoveryGeneration,
+              state == recoveringState else { return }
+        onFreshSessionRecoveryRequired?(sessionAttempt)
+    }
+
+    private func resetQueuedWork(
+        generation: UInt64,
+        sessionEpoch: UInt64 = 0,
+        limits: InternetTransportLimits?
+    ) {
+        withFrameAdmissionLock { state in
+            state = FrameAdmissionState(
+                generation: generation,
+                sessionEpoch: sessionEpoch,
+                maximumFrameBytes: limits?.maximumMediaFrameBytes ?? 0,
+                accepting: limits != nil
+            )
+        }
+        withControlAdmissionLock { state in
+            state = ControlAdmissionState(
+                generation: generation,
+                maximumEntries: limits?.maximumBufferedControlMessages ?? 0,
+                maximumBytes: limits?.maximumBufferedControlBytes ?? 0,
+                maximumMessageBytes: limits?.maximumControlMessageBytes ?? 0,
+                accepting: limits != nil
+            )
+        }
+    }
+
+    private func drainLatestFrame(generation: UInt64) {
+        let submission = withFrameAdmissionLock { state -> PendingFrameSubmission? in
+            guard state.generation == generation else { return nil }
+            let pending = state.pending
+            state.pending = nil
+            return pending
+        }
+        guard let submission else { return finishFrameDrain(generation: generation) }
+        guard submission.generation == sessionGeneration,
+              case .streaming = state,
+              let transport,
+              var codec,
+              submission.sessionEpoch == codec.sessionEpoch else {
+            return finishFrameDrain(generation: generation)
+        }
+        do {
+            let frame = try codec.mediaFrame(
+                payload: submission.data,
+                timestamp: submission.timestamp,
+                isKeyframe: submission.isKeyframe
+            )
+            self.codec = codec
+            if case .failure(let error) = transport.sendMedia(frame) {
+                fail(.transportFailure(error))
+            }
+        } catch let error as InternetProductProtocolError {
+            fail(.protocolFailure(error))
+        } catch {
+            fail(.securityFailure(error.localizedDescription))
+        }
+        finishFrameDrain(generation: generation)
+    }
+
+    private func finishFrameDrain(generation: UInt64) {
+        let shouldContinue = withFrameAdmissionLock { state -> Bool in
+            guard state.generation == generation else { return false }
+            guard state.pending != nil else {
+                state.drainScheduled = false
+                return false
+            }
+            return true
+        }
+        if shouldContinue {
+            queue.async { [weak self] in self?.drainLatestFrame(generation: generation) }
+        }
+    }
+
+    private func enqueueInboundControl(_ data: Data, generation: UInt64) {
+        let admission = withControlAdmissionLock {
+            state -> (admitted: Bool, shouldFail: Bool, maximumBytes: Int) in
+            guard state.accepting, state.generation == generation else {
+                return (false, false, state.maximumBytes)
+            }
+            let exceedsLimit = data.isEmpty
+                || data.count > state.maximumMessageBytes
+                || data.count > state.maximumBytes
+                || state.entries >= state.maximumEntries
+                || state.bytes > state.maximumBytes - data.count
+            guard !exceedsLimit else {
+                let shouldFail = !state.overloadFailureScheduled
+                state.overloadFailureScheduled = true
+                return (false, shouldFail, state.maximumBytes)
+            }
+            state.entries += 1
+            state.bytes += data.count
+            return (true, false, state.maximumBytes)
+        }
+        if admission.admitted {
+            queue.async { [weak self] in
+                guard let self else { return }
+                defer { self.releaseInboundControl(bytes: data.count, generation: generation) }
+                self.handleControl(data, generation: generation)
+            }
+        } else if admission.shouldFail {
+            scheduleInboundFailure(
+                .transportFailure(.controlBacklogExceeded(
+                    maximumBytes: admission.maximumBytes
+                )),
+                generation: generation,
+                alreadyReserved: true
+            )
+        }
+    }
+
+    private func releaseInboundControl(bytes: Int, generation: UInt64) {
+        withControlAdmissionLock { state in
+            guard state.generation == generation else { return }
+            state.entries = max(0, state.entries - 1)
+            state.bytes = max(0, state.bytes - bytes)
+        }
+    }
+
+    private func scheduleInboundFailure(
+        _ error: InternetProductSessionError,
+        generation: UInt64,
+        alreadyReserved: Bool = false
+    ) {
+        let shouldSchedule = alreadyReserved || withControlAdmissionLock { state -> Bool in
+            guard state.accepting, state.generation == generation,
+                  !state.overloadFailureScheduled else { return false }
+            state.overloadFailureScheduled = true
+            return true
+        }
+        guard shouldSchedule else { return }
+        queue.async { [weak self] in
+            guard let self, self.sessionGeneration == generation else { return }
+            self.fail(error)
+        }
     }
 
     private func stopHeartbeat() {
@@ -503,15 +771,19 @@ final class InternetProductSession: EncodedFrameSink {
         if case .failed = state { return }
         stopHeartbeat()
         stopNegotiationDeadline()
-        sessionGeneration &+= 1
+        _ = advanceSessionGeneration()
+        resetQueuedWork(generation: sessionGeneration, limits: nil)
         let failedTransport = transport
         transport = nil
         codec = nil
         activePath = nil
         peerSupportsTouch = false
+        // Close the retired transport before publishing the terminal state so
+        // any observer waking on .failed already sees the transport closed,
+        // instead of racing the queue that would otherwise close it afterward.
+        failedTransport?.close()
         setState(.failed(error.localizedDescription))
         onError?(error)
-        failedTransport?.close()
     }
 
     private func setState(_ newState: InternetProductSessionState) {
@@ -533,6 +805,31 @@ final class InternetProductSession: EncodedFrameSink {
         case .failed, .closed: return true
         default: return false
         }
+    }
+
+    @discardableResult
+    private func advanceSessionGeneration() -> Bool {
+        guard sessionGeneration < UInt64.max else { return false }
+        sessionGeneration += 1
+        return true
+    }
+
+    @discardableResult
+    private func withFrameAdmissionLock<T>(
+        _ operation: (inout FrameAdmissionState) -> T
+    ) -> T {
+        frameAdmissionLock.lock()
+        defer { frameAdmissionLock.unlock() }
+        return operation(&frameAdmission)
+    }
+
+    @discardableResult
+    private func withControlAdmissionLock<T>(
+        _ operation: (inout ControlAdmissionState) -> T
+    ) -> T {
+        controlAdmissionLock.lock()
+        defer { controlAdmissionLock.unlock() }
+        return operation(&controlAdmission)
     }
 
     @discardableResult

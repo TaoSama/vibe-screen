@@ -76,6 +76,11 @@ protocol InternetPairingSecretStore {
     func load(name: String) throws -> Data?
     func persist(name: String, secret: Data) throws
     func delete(name: String) throws
+    func names(prefix: String) throws -> [String]
+}
+
+extension InternetPairingSecretStore {
+    func names(prefix _: String) throws -> [String] { [] }
 }
 
 extension KeychainSecretStore: InternetPairingSecretStore {}
@@ -124,6 +129,11 @@ struct InternetPairingAcceptance: Equatable {
     let sessionKeyID: String
     let hostSignature: Data
     let secretNames: PairedDeviceSecretNames
+}
+
+struct PendingPairingPersistenceContext: Equatable {
+    let peerSecurityScopeID: String
+    let pairingIdentifier: String
 }
 
 final class InternetPairingCoordinator {
@@ -248,7 +258,14 @@ final class InternetPairingCoordinator {
         let pairingIdentifier = InternetPairingCanonical.hexDigest(offer.offerID)
         let names = try PairedDeviceSecretNames(
             sharedSecret: "pairing.\(pairingIdentifier).shared.v1",
-            bootstrapSecret: "pairing.\(pairingIdentifier).bootstrap.v1"
+            bootstrapSecret: "pairing.\(pairingIdentifier).bootstrap.v1",
+            identityBinding: PairedHostIdentityBinding.keychainName(
+                pairingIdentifier: pairingIdentifier
+            ),
+            peerIdentityBinding: PairedPeerIdentityBinding.keychainName(
+                pairingIdentifier: pairingIdentifier
+            ),
+            pairingIdentifier: pairingIdentifier
         )
 
         let acceptanceDigest = SecurityTranscript.digest(
@@ -261,7 +278,31 @@ final class InternetPairingCoordinator {
             ]
         )
         let signature = try signer.signPairingDigest(acceptanceDigest)
-        try persist(derived: derived, names: names)
+        try persist(
+            derived: derived,
+            hostIdentity: PlatformPublicIdentity(
+                deviceID: offer.hostIdentity.deviceID,
+                keyID: offer.hostIdentity.keyID,
+                keyEpoch: offer.hostIdentity.keyEpoch,
+                signingPublicKey: offer.hostIdentity.signingPublicKey
+            ),
+            peerIdentity: PlatformPublicIdentity(
+                deviceID: request.deviceIdentity.deviceID,
+                keyID: request.deviceIdentity.keyID,
+                keyEpoch: request.deviceIdentity.keyEpoch,
+                signingPublicKey: request.deviceIdentity.signingPublicKey
+            ),
+            names: names,
+            peerSecurityScopeID: PairedDeviceSecurityScope.identifier(
+                PlatformPublicIdentity(
+                    deviceID: request.deviceIdentity.deviceID,
+                    keyID: request.deviceIdentity.keyID,
+                    keyEpoch: request.deviceIdentity.keyEpoch,
+                    signingPublicKey: request.deviceIdentity.signingPublicKey
+                )
+            ),
+            pairingIdentifier: pairingIdentifier
+        )
         return InternetPairingAcceptance(
             accepted: true,
             offerID: offer.offerID,
@@ -276,17 +317,45 @@ final class InternetPairingCoordinator {
         )
     }
 
-    private func persist(derived: InternetPairingDerivedSecrets, names: PairedDeviceSecretNames) throws {
+    private func persist(
+        derived: InternetPairingDerivedSecrets,
+        hostIdentity: PlatformPublicIdentity,
+        peerIdentity: PlatformPublicIdentity,
+        names: PairedDeviceSecretNames,
+        peerSecurityScopeID: String,
+        pairingIdentifier: String
+    ) throws {
+        guard let identityBindingName = names.identityBinding,
+              let peerIdentityBindingName = names.peerIdentityBinding else {
+            throw InternetPairingError.persistenceFailure(
+                "The paired host identity binding name is missing."
+            )
+        }
         let marker = PairingPersistenceCleanupMarker(
-            remainingSecretNames: [names.sharedSecret, names.bootstrapSecret]
+            remainingSecretNames: [
+                names.sharedSecret,
+                names.bootstrapSecret,
+                identityBindingName,
+                peerIdentityBindingName
+            ],
+            peerSecurityScopeID: peerSecurityScopeID,
+            pairingIdentifier: pairingIdentifier
         )
         do {
             try secretStore.persist(
-                name: Self.persistenceCleanupMarkerName,
+                name: Self.persistenceCleanupMarkerName(pairingIdentifier),
                 secret: try JSONEncoder().encode(marker)
             )
             try secretStore.persist(name: names.sharedSecret, secret: derived.sharedSecret)
             try secretStore.persist(name: names.bootstrapSecret, secret: derived.bootstrapSecret)
+            try secretStore.persist(
+                name: identityBindingName,
+                secret: PairedHostIdentityBinding.encode(hostIdentity)
+            )
+            try secretStore.persist(
+                name: peerIdentityBindingName,
+                secret: PairedPeerIdentityBinding.encode(peerIdentity)
+            )
         } catch {
             var cleanupFailures: [Error] = []
             for name in marker.remainingSecretNames {
@@ -294,7 +363,11 @@ final class InternetPairingCoordinator {
                 catch { cleanupFailures.append(error) }
             }
             if cleanupFailures.isEmpty {
-                do { try secretStore.delete(name: Self.persistenceCleanupMarkerName) }
+                do {
+                    try secretStore.delete(
+                        name: Self.persistenceCleanupMarkerName(pairingIdentifier)
+                    )
+                }
                 catch { cleanupFailures.append(error) }
             }
             let details = cleanupFailures.map(\.localizedDescription).joined(separator: "; ")
@@ -308,22 +381,32 @@ final class InternetPairingCoordinator {
 
     func commitPersistence(secretNames: PairedDeviceSecretNames) throws {
         guard let encoded = try secretStore.load(
-            name: Self.persistenceCleanupMarkerName
+            name: Self.persistenceCleanupMarkerName(
+                try Self.requiredPairingIdentifier(secretNames)
+            )
         ) else {
             throw InternetPairingError.persistenceFailure(
                 "The pairing persistence transaction marker is missing."
             )
         }
-        let marker = try decodePersistenceCleanupMarker(encoded)
-        guard Set(marker.remainingSecretNames) == Set([
-            secretNames.sharedSecret,
-            secretNames.bootstrapSecret
-        ]) else {
+        let marker = try Self.decodePersistenceCleanupMarker(encoded)
+        guard let identityBindingName = secretNames.identityBinding,
+              let peerIdentityBindingName = secretNames.peerIdentityBinding,
+              Set(marker.remainingSecretNames) == Set([
+                secretNames.sharedSecret,
+                secretNames.bootstrapSecret,
+                identityBindingName,
+                peerIdentityBindingName
+              ]) else {
             throw InternetPairingError.persistenceFailure(
                 "The pairing persistence transaction targets another secret set."
             )
         }
-        try secretStore.delete(name: Self.persistenceCleanupMarkerName)
+        try secretStore.delete(
+            name: Self.persistenceCleanupMarkerName(
+                try Self.requiredPairingIdentifier(secretNames)
+            )
+        )
     }
 
     func completePersistence(
@@ -337,7 +420,11 @@ final class InternetPairingCoordinator {
         } catch {
             let businessError = error
             do {
-                let recovered = try retryPendingPersistenceCleanup(
+                let recovered = try Self.retryPendingPersistenceCleanup(
+                    pairingIdentifier: try Self.requiredPairingIdentifier(
+                        secretNames
+                    ),
+                    secretStore: secretStore,
                     cleanupBusinessState: cleanupBusinessState
                 )
                 if !recovered { try cleanupBusinessState() }
@@ -354,10 +441,64 @@ final class InternetPairingCoordinator {
     func retryPendingPersistenceCleanup(
         cleanupBusinessState: () throws -> Void = {}
     ) throws -> Bool {
-        guard let encoded = try secretStore.load(
-            name: Self.persistenceCleanupMarkerName
-        ) else { return false }
-        let marker = try decodePersistenceCleanupMarker(encoded)
+        try Self.retryPendingPersistenceCleanup(
+            secretStore: secretStore,
+            cleanupBusinessState: cleanupBusinessState
+        )
+    }
+
+    @discardableResult
+    static func retryPendingPersistenceCleanup(
+        secretStore: any InternetPairingSecretStore = KeychainSecretStore(),
+        cleanupBusinessState: () throws -> Void = {}
+    ) throws -> Bool {
+        let markerNames = try secretStore.names(
+            prefix: Self.persistenceCleanupMarkerPrefix
+        )
+        var recovered = false
+        for markerName in markerNames.sorted() {
+            guard let encoded = try secretStore.load(name: markerName) else { continue }
+            let marker = try Self.decodePersistenceCleanupMarker(encoded)
+            try Self.retryPendingPersistenceCleanup(
+                markerName: markerName,
+                marker: marker,
+                secretStore: secretStore,
+                cleanupBusinessState: cleanupBusinessState
+            )
+            recovered = true
+        }
+        return recovered
+    }
+
+    @discardableResult
+    static func retryPendingPersistenceCleanup(
+        pairingIdentifier: String,
+        secretStore: any InternetPairingSecretStore = KeychainSecretStore(),
+        cleanupBusinessState: () throws -> Void = {}
+    ) throws -> Bool {
+        let markerName = Self.persistenceCleanupMarkerName(pairingIdentifier)
+        guard let encoded = try secretStore.load(name: markerName) else { return false }
+        let marker = try Self.decodePersistenceCleanupMarker(encoded)
+        guard marker.pairingIdentifier == pairingIdentifier else {
+            throw InternetPairingError.persistenceFailure(
+                "The pairing cleanup marker owner is invalid."
+            )
+        }
+        try Self.retryPendingPersistenceCleanup(
+            markerName: markerName,
+            marker: marker,
+            secretStore: secretStore,
+            cleanupBusinessState: cleanupBusinessState
+        )
+        return true
+    }
+
+    private static func retryPendingPersistenceCleanup(
+        markerName: String,
+        marker: PairingPersistenceCleanupMarker,
+        secretStore: any InternetPairingSecretStore,
+        cleanupBusinessState: () throws -> Void
+    ) throws {
         var failures: [Error] = []
         for name in marker.remainingSecretNames {
             do { try secretStore.delete(name: name) }
@@ -372,11 +513,37 @@ final class InternetPairingCoordinator {
                 "Pairing cleanup remains pending after \(failures.count) failed step(s)."
             )
         }
-        try secretStore.delete(name: Self.persistenceCleanupMarkerName)
-        return true
+        try secretStore.delete(name: markerName)
     }
 
-    private func decodePersistenceCleanupMarker(
+    static func pendingPersistenceContext(
+        secretStore: any InternetPairingSecretStore = KeychainSecretStore()
+    ) throws -> PendingPairingPersistenceContext? {
+        let contexts = try Self.pendingPersistenceContexts(secretStore: secretStore)
+        guard contexts.count <= 1 else {
+            throw InternetPairingError.persistenceFailure(
+                "Multiple pairing persistence transactions require scoped recovery."
+            )
+        }
+        return contexts.first
+    }
+
+    static func pendingPersistenceContexts(
+        secretStore: any InternetPairingSecretStore = KeychainSecretStore()
+    ) throws -> [PendingPairingPersistenceContext] {
+        try secretStore.names(prefix: Self.persistenceCleanupMarkerPrefix).sorted().compactMap {
+            guard let encoded = try secretStore.load(name: $0) else { return nil }
+            let marker = try Self.decodePersistenceCleanupMarker(encoded)
+            guard let peerSecurityScopeID = marker.peerSecurityScopeID,
+                  let pairingIdentifier = marker.pairingIdentifier else { return nil }
+            return PendingPairingPersistenceContext(
+                peerSecurityScopeID: peerSecurityScopeID,
+                pairingIdentifier: pairingIdentifier
+            )
+        }
+    }
+
+    private static func decodePersistenceCleanupMarker(
         _ encoded: Data
     ) throws -> PairingPersistenceCleanupMarker {
         let marker: PairingPersistenceCleanupMarker
@@ -390,7 +557,26 @@ final class InternetPairingCoordinator {
         return marker
     }
 
-    private static let persistenceCleanupMarkerName = "pairing.persistence-cleanup.v1"
+    private static let persistenceCleanupMarkerPrefix = "pairing.persistence-cleanup.v2."
+
+    private static func persistenceCleanupMarkerName(
+        _ pairingIdentifier: String
+    ) -> String {
+        Self.persistenceCleanupMarkerPrefix + InternetPairingCanonical.hexDigest(
+            Data(pairingIdentifier.utf8)
+        )
+    }
+
+    private static func requiredPairingIdentifier(
+        _ secretNames: PairedDeviceSecretNames
+    ) throws -> String {
+        guard let pairingIdentifier = secretNames.pairingIdentifier else {
+            throw InternetPairingError.persistenceFailure(
+                "The pairing persistence transaction owner is missing."
+            )
+        }
+        return pairingIdentifier
+    }
 
     private static func secureRandomBytes(count: Int) throws -> Data {
         guard count > 0 else { throw InternetPairingError.invalidOffer("Random byte count must be positive.") }
@@ -408,17 +594,28 @@ final class InternetPairingCoordinator {
 private struct PairingPersistenceCleanupMarker: Codable {
     let version: Int
     let remainingSecretNames: [String]
+    let peerSecurityScopeID: String?
+    let pairingIdentifier: String?
 
-    init(remainingSecretNames: [String]) {
+    init(
+        remainingSecretNames: [String],
+        peerSecurityScopeID: String,
+        pairingIdentifier: String
+    ) {
         version = 1
         self.remainingSecretNames = remainingSecretNames
+        self.peerSecurityScopeID = peerSecurityScopeID
+        self.pairingIdentifier = pairingIdentifier
     }
 
     func validate() throws {
         guard version == 1,
-              remainingSecretNames.count == 2,
+              (2...4).contains(remainingSecretNames.count),
               remainingSecretNames.allSatisfy({ !$0.isEmpty }),
-              Set(remainingSecretNames).count == remainingSecretNames.count else {
+              Set(remainingSecretNames).count == remainingSecretNames.count,
+              peerSecurityScopeID?.isEmpty != true,
+              pairingIdentifier?.isEmpty != true,
+              (peerSecurityScopeID == nil) == (pairingIdentifier == nil) else {
             throw InternetPairingError.persistenceFailure(
                 "Stored pairing cleanup marker is invalid; its Keychain slot was retained."
             )

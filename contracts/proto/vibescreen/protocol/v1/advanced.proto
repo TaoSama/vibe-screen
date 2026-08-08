@@ -16,6 +16,7 @@ message ResourceLimits {
   uint64 maximum_clipboard_bytes = 5;
   uint64 maximum_file_bytes = 6;
   uint32 maximum_file_chunk_bytes = 7;
+  uint32 maximum_encrypted_media_record_bytes = 8;
 }
 
 enum ColorPrimaries {

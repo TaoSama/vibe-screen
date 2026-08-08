@@ -2,13 +2,23 @@ package dev.telemachus.display.internet.security
 
 import dev.telemachus.display.internet.PeerRole
 import dev.telemachus.display.internet.SessionChannel
+import dev.telemachus.display.internet.InternetMediaRecordContract
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class AndroidSessionPacketCipherTest {
-    private val securityStore = CipherSecurityStore(DurableSecurityState(sessionEpoch = 7))
+    private val pairingScope = pairingSecurityScope("cipher-device", "cipher-pairing")
+    private val securityStore =
+        CipherSecurityStore(
+            DurableSecurityState(
+                sessionEpochHighWatermarks = mapOf(pairingScope to 7),
+                identityEpochHighWatermark = 1,
+                authorizedIdentityEpoch = 1,
+            ),
+        )
     private val securityLifecycle = SecurityLifecycle(securityStore)
 
     @Test
@@ -69,13 +79,25 @@ class AndroidSessionPacketCipherTest {
     }
 
     @Test
+    fun maximumPlaintextMediaRecordSealsWithinFourMiBAndroidBoundary() {
+        val host = cipher(PeerRole.HOST)
+        val plaintext = ByteArray(InternetMediaRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES)
+
+        val record = host.seal(SessionChannel.MEDIA, plaintext)
+
+        assertEquals(InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES, record.size)
+    }
+
+    @Test
     fun staleDurableSessionEpochRejectsSealAndOpenBeforeCryptography() {
         val host = cipher(PeerRole.HOST)
         val device = cipher(PeerRole.DEVICE)
         val record = host.seal(SessionChannel.CONTROL, byteArrayOf(9))
 
-        assertThrows(IllegalArgumentException::class.java) { securityLifecycle.reserveSessionEpoch(Long.MAX_VALUE) }
-        securityLifecycle.reserveSessionEpoch(8)
+        assertThrows(IllegalArgumentException::class.java) {
+            securityLifecycle.reserveSessionEpoch(pairingScope, 1, Long.MAX_VALUE)
+        }
+        securityLifecycle.reserveSessionEpoch(pairingScope, 1, 8)
 
         assertThrows(IllegalStateException::class.java) { host.seal(SessionChannel.CONTROL, byteArrayOf(10)) }
         assertThrows(IllegalStateException::class.java) { device.open(SessionChannel.CONTROL, record) }
@@ -90,8 +112,20 @@ class AndroidSessionPacketCipherTest {
             sessionEpoch = 7,
             localRole = role,
             initialKeys = keys(),
-            sealWithActiveEpoch = securityLifecycle::withReservedSessionNonce,
-            openWithActiveEpoch = securityLifecycle::withActiveSessionEpoch,
+            sealWithActiveEpoch = { epoch, channel, sender, keyEpoch, operation ->
+                securityLifecycle.withReservedSessionNonce(
+                    pairingScope,
+                    1,
+                    epoch,
+                    channel,
+                    sender,
+                    keyEpoch,
+                    operation,
+                )
+            },
+            openWithActiveEpoch = { epoch, operation ->
+                securityLifecycle.withActiveSessionEpoch(pairingScope, 1, epoch, operation)
+            },
             rotateKeys = { current, updateNonce ->
                 TrafficKeyDerivation.rotate(current, current.keyEpoch + 1, updateNonce)
             },

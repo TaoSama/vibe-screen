@@ -1,6 +1,6 @@
 # Third-party sources and design references
 
-Audit date: 2026-08-04
+Audit date: 2026-08-07
 
 This file distinguishes code that entered the repository from projects used
 only as non-code design references. A reference does not grant permission to
@@ -12,6 +12,10 @@ copy its implementation.
 | --- | --- | --- | --- |
 | [SideScreen](https://github.com/tranvuongquocdat/SideScreen) | `a651a81b7d6468c7a564c038551872d3346a2d55` | MIT | Foundational virtual display, capture, encoding, ADB/TCP, Android decoding, pairing, and touch code enters indirectly through Telemachus. Copyright and MIT terms are retained. |
 | [Telemachus](https://github.com/aaditagrawal/telemachus) | tag `v0.0.5-experimental-graceful-shutdown`, commit `a5dd1298870846d749175812f936ceebfd8b6b69` | MIT | Selected macOS/Android application sources were imported directly and then modified. Original `LICENSE`, `NOTICE`, and credits remain bundled. |
+
+The repository imports selected Telemachus sources directly. SideScreen code is
+present only through Telemachus's upstream lineage; no separate SideScreen source
+import is claimed.
 
 The retained upstream files are available at `baseline/LICENSE`,
 `baseline/NOTICE`, and `third_party/telemachus/`. Android runtime dependency

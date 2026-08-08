@@ -1,6 +1,11 @@
 package dev.telemachus.display.internet
 
 import com.google.protobuf.ByteString
+import dev.telemachus.display.internet.security.InternetPairingIdentity
+import dev.telemachus.display.internet.security.generateEphemeral
+import dev.telemachus.display.internet.security.pairingSha256
+import dev.telemachus.display.internet.security.publicPoint
+import dev.telemachus.display.internet.security.toPairingHex
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Dimensions
@@ -9,6 +14,7 @@ import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.Ping
+import dev.vibescreen.protocol.v1.ResourceLimits
 import dev.vibescreen.protocol.v1.SessionAccepted
 import dev.vibescreen.protocol.v1.VideoConfig
 import org.junit.Assert.assertEquals
@@ -24,8 +30,18 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import java.security.SecureRandom
 
 class InternetProductSessionTest {
+    private val localIdentity =
+        publicPoint(generateEphemeral(SecureRandom())).let { publicKey ->
+            InternetPairingIdentity(
+                deviceId = "device-1",
+                keyId = pairingSha256(publicKey).toPairingHex(),
+                keyEpoch = 1,
+                signingPublicKey = publicKey,
+            )
+        }
     private val signaling =
         SignalingConfiguration(
             baseUrl = "https://signal.example.test",
@@ -38,6 +54,7 @@ class InternetProductSessionTest {
             signalingSessionId = "session-1",
             authoritativeSessionEpoch = 7,
             identityEpoch = 1,
+            localIdentity = localIdentity,
             transcriptContext = ByteArray(32),
             iceServers = listOf(IceServer(listOf("stun:stun.example.test:3478"))),
             signaling = signaling,
@@ -48,13 +65,17 @@ class InternetProductSessionTest {
     @Test
     fun boundTranscriptContextMatchesSwiftKnownAnswer() {
         val context =
-            lease
-                .copy(
-                    signalingSessionId = "session-1",
-                    authoritativeSessionEpoch = 7,
-                    pinnedHostId = "host-1",
-                    transcriptContext = ByteArray(32) { it.toByte() },
-                ).boundTranscriptContext("device-1")
+            InternetProductSessionLease(
+                pairingIdentifier = "pair-1",
+                signalingSessionId = "session-1",
+                authoritativeSessionEpoch = 7,
+                identityEpoch = 1,
+                localIdentity = localIdentity,
+                transcriptContext = ByteArray(32) { it.toByte() },
+                iceServers = listOf(IceServer(listOf("stun:stun.example.test:3478"))),
+                signaling = SignalingConfiguration("https://signal.example.test", "x".repeat(32), PeerRole.DEVICE),
+                pinnedHostId = "host-1",
+            ).use { it.boundTranscriptContext("device-1") }
 
         assertArrayEquals(
             "dd7e26a6d119e9d8d62e3f967d311c7c0ef78357a985947e33083b8c2c683735".hex(),
@@ -95,6 +116,7 @@ class InternetProductSessionTest {
 
         peer.media(media(frameId = 1, keyframe = false, payload = "delta".toByteArray()))
         assertEquals(0, callbacks.frames.size)
+        assertEquals(Envelope.PayloadCase.REQUEST_KEYFRAME, Envelope.parseFrom(peer.control.last()).payloadCase)
         peer.media(media(frameId = 2, keyframe = true, payload = "key".toByteArray()))
         assertEquals("key", callbacks.frames.single().payload.toString(Charsets.UTF_8))
         assertTrue(session.sendTouch(ProductTouchEvent(1, 0, ProductInputPhase.BEGAN, 0.5, 0.5)))
@@ -151,6 +173,240 @@ class InternetProductSessionTest {
         secondPeer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
         assertEquals(InternetProductSessionState.FAILED, second.state)
         assertEquals(1, secondCallbacks.failures.size)
+    }
+
+    @Test
+    fun rejectsLegacyHostWithoutMediaFragmentationDuringHandshake() {
+        val peer = ProductFakePeerEngine()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+
+        peer.receive(
+            controlEnvelope(1)
+                .setHostHello(
+                    hostHello()
+                        .clearCapabilities()
+                        .addAllCapabilities(
+                            ProtobufProtocolV1ProductCodec.REQUIRED_CLIENT_CAPABILITIES.filterNot {
+                                it == Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION
+                            },
+                        ),
+                ).build(),
+        )
+
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals(1, callbacks.failures.size)
+    }
+
+    @Test
+    fun rejectsSessionAcceptanceCapabilitiesThatDifferFromTheExactHelloIntersection() {
+        val requiredCapabilities = ProtobufProtocolV1ProductCodec.REQUIRED_CLIENT_CAPABILITIES
+        val invalidHandshakes =
+            listOf(
+                hostHello() to
+                    sessionAccepted()
+                        .clearNegotiatedCapabilities()
+                        .addAllNegotiatedCapabilities(
+                            requiredCapabilities.filterNot {
+                                it == Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION
+                            },
+                        ),
+                hostHello() to sessionAccepted().addNegotiatedCapabilities(Capability.CAPABILITY_AUDIO),
+                hostHello().addCapabilities(Capability.CAPABILITY_AUDIO) to
+                    sessionAccepted().addNegotiatedCapabilities(Capability.CAPABILITY_AUDIO),
+            )
+
+        invalidHandshakes.forEach { (advertisedHostHello, invalidAcceptance) ->
+            val peer = ProductFakePeerEngine()
+            val callbacks = ProductCallbacks()
+            val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+            session.start()
+            peer.observer.onConnected(PeerRoute.DIRECT)
+            peer.receive(controlEnvelope(1).setHostHello(advertisedHostHello).build())
+            peer.receive(controlEnvelope(2).setSessionAccepted(invalidAcceptance).build())
+
+            assertEquals(InternetProductSessionState.FAILED, session.state)
+            assertEquals(1, callbacks.failures.size)
+            assertTrue(callbacks.configurations.isEmpty())
+        }
+    }
+
+    @Test
+    fun acceptsHostOnlyFutureCapabilityWhenSessionAcceptanceUsesTheExactIntersection() {
+        val peer = ProductFakePeerEngine()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(
+            controlEnvelope(1)
+                .setHostHello(hostHello().addCapabilities(Capability.CAPABILITY_AUDIO))
+                .build(),
+        )
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(callbacks.failures.isEmpty())
+    }
+
+    @Test
+    fun acceptsFutureLargerUnsignedHostLimitsAndClampsNegotiationToTheLocalMaximum() {
+        val futureHostLimits =
+            listOf(
+                InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES * 2,
+                -1,
+            )
+
+        futureHostLimits.forEach { advertisedLimit ->
+            val peer = ProductFakePeerEngine()
+            val callbacks = ProductCallbacks()
+            val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+            session.start()
+            peer.observer.onConnected(PeerRoute.DIRECT)
+            peer.receive(
+                controlEnvelope(1)
+                    .setHostHello(hostHello().setResourceLimits(mediaRecordLimits(advertisedLimit)))
+                    .build(),
+            )
+            peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+            assertEquals(InternetProductSessionState.ACTIVE, session.state)
+            assertTrue(callbacks.failures.isEmpty())
+        }
+    }
+
+    @Test
+    fun rejectsFutureHostLimitWhenSessionAcceptanceDoesNotClampToTheLocalMaximum() {
+        val advertisedLimit = InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES * 2
+        val peer = ProductFakePeerEngine()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(
+            controlEnvelope(1)
+                .setHostHello(hostHello().setResourceLimits(mediaRecordLimits(advertisedLimit)))
+                .build(),
+        )
+        peer.receive(
+            controlEnvelope(2)
+                .setSessionAccepted(
+                    sessionAccepted().setNegotiatedResourceLimits(mediaRecordLimits(advertisedLimit)),
+                ).build(),
+        )
+
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals(1, callbacks.failures.size)
+    }
+
+    @Test
+    fun rejectsMissingHostMediaRecordLimitDuringHandshake() {
+        val peer = ProductFakePeerEngine()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello().clearResourceLimits()).build())
+
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals(1, callbacks.failures.size)
+    }
+
+    @Test
+    fun rejectsMissingOrMismatchedNegotiatedMediaRecordLimitBeforeVideo() {
+        for (acceptedLimit in listOf(0, InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES - 1)) {
+            val peer = ProductFakePeerEngine()
+            val callbacks = ProductCallbacks()
+            val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+            session.start()
+            peer.observer.onConnected(PeerRoute.DIRECT)
+            peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+            peer.receive(
+                controlEnvelope(2)
+                    .setSessionAccepted(
+                        sessionAccepted().setNegotiatedResourceLimits(
+                            mediaRecordLimits(acceptedLimit),
+                        ),
+                    ).build(),
+            )
+
+            assertEquals(InternetProductSessionState.FAILED, session.state)
+            assertEquals(1, callbacks.failures.size)
+        }
+    }
+
+    @Test
+    fun rejectsPlaintextMediaRecordAboveNegotiatedLimit() {
+        val peer = ProductFakePeerEngine()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        val negotiatedLimit = InternetMediaRecordContract.MINIMUM_NEGOTIATED_ENCRYPTED_RECORD_BYTES
+        peer.receive(
+            controlEnvelope(1)
+                .setHostHello(
+                    hostHello().setResourceLimits(mediaRecordLimits(negotiatedLimit)),
+                ).build(),
+        )
+        peer.receive(
+            controlEnvelope(2)
+                .setSessionAccepted(
+                    sessionAccepted().setNegotiatedResourceLimits(mediaRecordLimits(negotiatedLimit)),
+                ).build(),
+        )
+        peer.receive(videoConfigurationEnvelope(3))
+        val negotiatedPlaintextLimit = negotiatedLimit - InternetMediaRecordContract.APPLICATION_AEAD_RECORD_OVERHEAD_BYTES
+        val oversizedRecord = mediaRecordWithExactSize(negotiatedPlaintextLimit + 1)
+
+        assertEquals(negotiatedPlaintextLimit + 1, oversizedRecord.size)
+        assertTrue(codec.decodeMediaFragment(oversizedRecord).payload.isNotEmpty())
+        peer.media(oversizedRecord)
+
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals(1, callbacks.failures.size)
+        assertEquals(
+            "Protocol v1 media record exceeds the negotiated session limit",
+            callbacks.failures.single().cause?.message,
+        )
+        assertEquals(0, callbacks.frames.size)
+    }
+
+    @Test
+    fun tickExpiresIncompleteMediaAssemblyAndRequestsOneKeyframe() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val clock = ProductFakeClock(0)
+        val session = session(peer, monitor, callbacks, clock)
+        activateWithVideo(session, peer, monitor)
+        peer.media(
+            media(
+                frameId = 5,
+                keyframe = true,
+                payload = "partial".toByteArray(),
+                fragmentIndex = 0,
+                fragmentCount = 2,
+            ),
+        )
+        val requestsBeforeDeadline = peer.keyframeRequests().size
+
+        clock.now = ProductMediaFrameAssembler.DEFAULT_ASSEMBLY_DEADLINE_MS
+        session.tick()
+
+        val requestsAfterDeadline = peer.keyframeRequests()
+        assertEquals(requestsBeforeDeadline + 1, requestsAfterDeadline.size)
+        assertEquals(
+            ProductMediaFrameAssembler.REASON_ASSEMBLY_TIMEOUT,
+            requestsAfterDeadline.last().requestKeyframe.reasonCode,
+        )
+        session.tick()
+        assertEquals(requestsAfterDeadline.size, peer.keyframeRequests().size)
+
+        peer.media(media(frameId = 6, keyframe = true, payload = "fresh".toByteArray()))
+        assertEquals("fresh", callbacks.frames.single().payload.toString(Charsets.UTF_8))
     }
 
     @Test
@@ -1260,6 +1516,7 @@ class InternetProductSessionTest {
             .setHostId("host-1")
             .setHostName("Mac")
             .addAllCapabilities(ProtobufProtocolV1ProductCodec.REQUIRED_CLIENT_CAPABILITIES)
+            .setResourceLimits(mediaRecordLimits())
 
     private fun sessionAccepted(): SessionAccepted.Builder =
         SessionAccepted
@@ -1268,8 +1525,22 @@ class InternetProductSessionTest {
             .setSessionEpoch(lease.authoritativeSessionEpoch)
             .setHeartbeatIntervalMs(1_000)
             .addAllNegotiatedCapabilities(ProtobufProtocolV1ProductCodec.REQUIRED_CLIENT_CAPABILITIES)
+            .setNegotiatedResourceLimits(mediaRecordLimits())
 
-    private fun media(frameId: Long, keyframe: Boolean, payload: ByteArray): ByteArray =
+    private fun mediaRecordLimits(
+        maximumEncryptedMediaRecordBytes: Int = InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
+    ): ResourceLimits.Builder =
+        ResourceLimits
+            .newBuilder()
+            .setMaximumEncryptedMediaRecordBytes(maximumEncryptedMediaRecordBytes)
+
+    private fun media(
+        frameId: Long,
+        keyframe: Boolean,
+        payload: ByteArray,
+        fragmentIndex: Int = 0,
+        fragmentCount: Int = 1,
+    ): ByteArray =
         ProtobufProtocolV1ProductCodec.encodeMediaFragment(
             MediaPacketHeader
                 .newBuilder()
@@ -1277,7 +1548,8 @@ class InternetProductSessionTest {
                 .setSessionEpoch(7)
                 .setConfigEpoch(3)
                 .setFrameId(frameId)
-                .setFragmentCount(1)
+                .setFragmentIndex(fragmentIndex)
+                .setFragmentCount(fragmentCount)
                 .setCaptureTimestampNs(frameId * 100)
                 .setKeyframe(keyframe)
                 .setCodec(Codec.CODEC_HEVC)
@@ -1285,6 +1557,18 @@ class InternetProductSessionTest {
                 .build(),
             payload,
         )
+
+    private fun mediaRecordWithExactSize(targetBytes: Int): ByteArray {
+        require(targetBytes in 2..InternetMediaRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES)
+        var payloadBytes = targetBytes
+        repeat(8) {
+            val record = media(frameId = 1, keyframe = true, payload = ByteArray(payloadBytes))
+            if (record.size == targetBytes) return record
+            payloadBytes += targetBytes - record.size
+            require(payloadBytes > 0) { "Target media record size cannot contain a valid payload" }
+        }
+        error("Could not construct a media record with exactly $targetBytes bytes")
+    }
 }
 
 private class ProductFakeClock(var now: Long) : MonotonicClock {
@@ -1395,7 +1679,7 @@ private class ProductFakePeerEngine(
         startHook()
     }
     override fun sendControl(payload: ByteArray): Boolean = control.add(payload)
-    override fun sendMedia(payload: ByteArray): Boolean = true
+    override fun sendMedia(frame: OutboundMediaFrame): Boolean = true
     override fun restartIce() { restartCalls++ }
     override fun applyVideoProfile(profile: VideoProfile) = Unit
     override fun close() {
@@ -1404,4 +1688,9 @@ private class ProductFakePeerEngine(
     }
     fun receive(envelope: Envelope) = observer.onControlMessage(7, envelope.toByteArray())
     fun media(payload: ByteArray) = observer.onMediaPacket(7, payload)
+
+    fun keyframeRequests(): List<Envelope> =
+        control
+            .map(Envelope::parseFrom)
+            .filter { it.payloadCase == Envelope.PayloadCase.REQUEST_KEYFRAME }
 }

@@ -1,10 +1,193 @@
 import CryptoKit
+import Darwin
 import Foundation
 import Security
 import XCTest
 @testable import Telemachus
 
 final class Phase3SecurityLifecycleTests: XCTestCase {
+    private static let childServiceEnvironment = "VIBE_SCREEN_SECURITY_CHILD_SERVICE"
+    private static let childAccountEnvironment = "VIBE_SCREEN_SECURITY_CHILD_ACCOUNT"
+    private static let childResultEnvironment = "VIBE_SCREEN_SECURITY_CHILD_RESULT"
+    private static let childProcessTimeout: TimeInterval = 20
+    private static let childTerminationGrace: TimeInterval = 1
+    private static let counterTestSelector =
+        "TelemachusTests.Phase3SecurityLifecycleTests/testKeychainCountersAreUniqueAcrossChildProcesses"
+
+    func testKeychainCountersAreUniqueAcrossChildProcesses() throws {
+        if let childConfiguration = childCounterConfiguration() {
+            try runCounterChild(configuration: childConfiguration)
+            return
+        }
+
+        let service = "dev.vibescreen.cross-process-security.\(UUID().uuidString)"
+        let account = "shared-state"
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vibe-screen-security-processes-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: temporaryDirectory,
+            withIntermediateDirectories: true
+        )
+        let gateURL = temporaryDirectory.appendingPathComponent("start")
+        let childCount = 8
+        var children: [(process: Process, resultURL: URL, output: TestProcessOutputDrain)] = []
+        defer {
+            for child in children {
+                TestProcessDeadline.terminateAndReap(
+                    child.process,
+                    terminationGrace: Self.childTerminationGrace
+                )
+            }
+            try? FileManager.default.removeItem(at: temporaryDirectory)
+            try? KeychainSecretStore(service: service).delete(name: account)
+        }
+
+        for index in 0..<childCount {
+            let resultURL = temporaryDirectory.appendingPathComponent("result-\(index).json")
+            let process = Process()
+            let output = Pipe()
+            let error = Pipe()
+            var environment = ProcessInfo.processInfo.environment
+            environment[Self.childServiceEnvironment] = service
+            environment[Self.childAccountEnvironment] = account
+            environment[Self.childResultEnvironment] = resultURL.path
+            process.environment = environment
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = [
+                "-c",
+                "while [ ! -e \"$1\" ]; do sleep 0.01; done; exec /usr/bin/xcrun xctest -XCTest \"$2\" \"$3\"",
+                "security-process-test",
+                gateURL.path,
+                Self.counterTestSelector,
+                Bundle(for: Self.self).bundleURL.path
+            ]
+            process.standardOutput = output
+            process.standardError = error
+            let outputDrain = TestProcessOutputDrain.start(output: output, error: error)
+            try process.run()
+            children.append((process, resultURL, outputDrain))
+        }
+        try Data().write(to: gateURL, options: .atomic)
+
+        var epochs: Set<UInt64> = []
+        var nonces: Set<Data> = []
+        for child in children {
+            let exited = TestProcessDeadline.waitForExit(
+                child.process,
+                timeout: Self.childProcessTimeout,
+                terminationGrace: Self.childTerminationGrace
+            )
+            guard let drained = child.output.finish(timeout: Self.childTerminationGrace) else {
+                XCTFail("Security counter worker output pipes did not close after process exit.")
+                continue
+            }
+            let output = drained.output
+            let error = drained.error
+            let diagnostics = (String(data: output, encoding: .utf8) ?? "")
+                + (String(data: error, encoding: .utf8) ?? "")
+            guard exited else {
+                XCTFail(
+                    "Security counter worker exceeded the process deadline: \(diagnostics)"
+                )
+                continue
+            }
+            XCTAssertEqual(
+                child.process.terminationStatus,
+                0,
+                diagnostics
+            )
+            guard child.process.terminationStatus == 0 else { continue }
+            let result = try JSONSerialization.jsonObject(
+                with: Data(contentsOf: child.resultURL)
+            ) as? [String: Any]
+            let epoch = try XCTUnwrap((result?["epoch"] as? NSNumber)?.uint64Value)
+            let encodedNonce = try XCTUnwrap(result?["nonce"] as? String)
+            let nonce = try XCTUnwrap(Data(base64Encoded: encodedNonce))
+            XCTAssertEqual(nonce.count, 12)
+            epochs.insert(epoch)
+            nonces.insert(nonce)
+        }
+        XCTAssertEqual(epochs, Set(UInt64(1)...UInt64(childCount)))
+        XCTAssertEqual(nonces.count, childCount)
+    }
+
+    private func childCounterConfiguration() -> (service: String, account: String, resultURL: URL)? {
+        let environment = ProcessInfo.processInfo.environment
+        guard let service = environment[Self.childServiceEnvironment],
+              let account = environment[Self.childAccountEnvironment],
+              let resultPath = environment[Self.childResultEnvironment] else {
+            return nil
+        }
+        return (service, account, URL(fileURLWithPath: resultPath))
+    }
+
+    private func runCounterChild(
+        configuration: (service: String, account: String, resultURL: URL)
+    ) throws {
+        let lifecycle = SecurityLifecycle(
+            store: KeychainSecurityStateStore(
+                service: configuration.service,
+                account: configuration.account
+            )
+        )
+        let epoch = try lifecycle.advanceSessionEpoch()
+        let nonce = try lifecycle.reserveNonce(
+            channel: 1,
+            senderRole: 1,
+            keyEpoch: 1
+        )
+        let result: [String: Any] = [
+            "epoch": epoch,
+            "nonce": nonce.base64EncodedString()
+        ]
+        try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
+            .write(to: configuration.resultURL, options: .atomic)
+    }
+
+    func testCommittedPairingBindingRollsBackFailedRepairAndFinalizesSuccess() throws {
+        let service = "dev.vibescreen.repair-binding.\(UUID().uuidString)"
+        let store = KeychainSecurityStateStore(
+            peerID: "repair-peer",
+            service: service,
+            legacyAccount: nil,
+            legacyCleanupAccount: nil
+        )
+        try store.initializePairingBinding(pairingIdentifier: "pairing-old")
+        var state = try store.validatePairingBinding(
+            pairingIdentifier: "pairing-old"
+        )
+        state.sessionEpoch = 9
+        try store.persist(state)
+
+        try store.initializePairingBinding(pairingIdentifier: "pairing-new")
+        XCTAssertEqual(
+            try store.validatePairingBinding(
+                pairingIdentifier: "pairing-new"
+            ).sessionEpoch,
+            9
+        )
+        try store.rollbackPairingBinding(pairingIdentifier: "pairing-new")
+        XCTAssertEqual(
+            try store.validatePairingBinding(
+                pairingIdentifier: "pairing-old"
+            ).sessionEpoch,
+            9
+        )
+
+        try store.initializePairingBinding(pairingIdentifier: "pairing-new")
+        try store.finalizePairingBinding(pairingIdentifier: "pairing-new")
+        XCTAssertThrowsError(
+            try store.validatePairingBinding(pairingIdentifier: "pairing-old")
+        )
+        XCTAssertEqual(
+            try store.validatePairingBinding(
+                pairingIdentifier: "pairing-new"
+            ).sessionEpoch,
+            9
+        )
+        try store.deleteCommittedPairingBinding(pairingIdentifier: "pairing-new")
+    }
+
     func testSessionEpochIsPersistedBeforeItIsReturned() throws {
         let store = MemorySecurityStateStore()
         XCTAssertEqual(try SecurityLifecycle(store: store).beginSession(), 1)
@@ -12,6 +195,170 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
         let afterRestart = SecurityLifecycle(store: store)
         XCTAssertEqual(try afterRestart.beginSession(), 2)
         XCTAssertEqual(store.state.sessionEpoch, 2)
+    }
+
+    func testNonceReservationSkipsReadBackVerification() throws {
+        let store = MemorySecurityStateStore()
+
+        _ = try SecurityLifecycle(store: store).reserveNonce(
+            channel: 1,
+            senderRole: 1,
+            keyEpoch: 1
+        )
+
+        XCTAssertEqual(store.loadCallCount, 1)
+        XCTAssertEqual(store.persistCallCount, 1)
+    }
+
+    func testPairingBindingValidationParticipatesInExclusiveTransaction() throws {
+        let fixture = KeychainPairingStateFixture()
+        defer { fixture.cleanup() }
+        try fixture.store.initializePairingBinding(
+            pairingIdentifier: fixture.pairingIdentifier
+        )
+        let holderEntered = DispatchSemaphore(value: 0)
+        let releaseHolder = DispatchSemaphore(value: 0)
+        let holderFinished = DispatchSemaphore(value: 0)
+        let validationFinished = DispatchSemaphore(value: 0)
+        let holderResult = LockedEpochReservation()
+        let validationResult = LockedEpochReservation()
+
+        DispatchQueue.global().async {
+            do {
+                try fixture.store.withExclusiveTransaction {
+                    holderEntered.signal()
+                    _ = releaseHolder.wait(timeout: .now() + 2)
+                }
+                holderResult.succeed(1)
+            } catch {
+                holderResult.fail(error)
+            }
+            holderFinished.signal()
+        }
+        XCTAssertEqual(holderEntered.wait(timeout: .now() + 2), .success)
+
+        DispatchQueue.global().async {
+            do {
+                let state = try fixture.store.validatePairingBinding(
+                    pairingIdentifier: fixture.pairingIdentifier
+                )
+                validationResult.succeed(state.sessionEpoch)
+            } catch {
+                validationResult.fail(error)
+            }
+            validationFinished.signal()
+        }
+        XCTAssertEqual(validationFinished.wait(timeout: .now() + 0.05), .timedOut)
+
+        releaseHolder.signal()
+        XCTAssertEqual(holderFinished.wait(timeout: .now() + 2), .success)
+        XCTAssertEqual(validationFinished.wait(timeout: .now() + 2), .success)
+        XCTAssertEqual(holderResult.value, 1)
+        XCTAssertNil(holderResult.errorDescription)
+        XCTAssertEqual(validationResult.value, 0)
+        XCTAssertNil(validationResult.errorDescription)
+    }
+
+    func testDifferentSecurityAccountsDoNotShareProcessTransactionLock() throws {
+        let service = "dev.vibescreen.transaction-lock-tests.\(UUID().uuidString)"
+        let firstURL = try KeychainCrossProcessTransactionLock.lockFileURL(
+            service: service,
+            account: "first"
+        )
+        let secondURL = try KeychainCrossProcessTransactionLock.lockFileURL(
+            service: service,
+            account: "second"
+        )
+        defer {
+            try? FileManager.default.removeItem(at: firstURL)
+            try? FileManager.default.removeItem(at: secondURL)
+        }
+        let firstEntered = DispatchSemaphore(value: 0)
+        let releaseFirst = DispatchSemaphore(value: 0)
+        let firstFinished = DispatchSemaphore(value: 0)
+        let secondFinished = DispatchSemaphore(value: 0)
+        let firstResult = LockedEpochReservation()
+        let secondResult = LockedEpochReservation()
+
+        DispatchQueue.global().async {
+            do {
+                try KeychainCrossProcessTransactionLock.withLock(
+                    service: service,
+                    account: "first"
+                ) {
+                    firstEntered.signal()
+                    _ = releaseFirst.wait(timeout: .now() + 2)
+                }
+                firstResult.succeed(1)
+            } catch {
+                firstResult.fail(error)
+            }
+            firstFinished.signal()
+        }
+        XCTAssertEqual(firstEntered.wait(timeout: .now() + 2), .success)
+
+        DispatchQueue.global().async {
+            do {
+                try KeychainCrossProcessTransactionLock.withLock(
+                    service: service,
+                    account: "second"
+                ) {}
+                secondResult.succeed(1)
+            } catch {
+                secondResult.fail(error)
+            }
+            secondFinished.signal()
+        }
+        XCTAssertEqual(secondFinished.wait(timeout: .now() + 0.5), .success)
+
+        releaseFirst.signal()
+        XCTAssertEqual(firstFinished.wait(timeout: .now() + 2), .success)
+        XCTAssertEqual(firstResult.value, 1)
+        XCTAssertNil(firstResult.errorDescription)
+        XCTAssertEqual(secondResult.value, 1)
+        XCTAssertNil(secondResult.errorDescription)
+    }
+
+    func testSecurityTransactionFileLockTimesOutUnderPersistentContention() {
+        var times: [UInt64] = [0, 5, 10]
+        var sleepCalls = 0
+        var lockAttempts = 0
+
+        XCTAssertThrowsError(try KeychainCrossProcessTransactionLock.acquireFileLock(
+            descriptor: -1,
+            timeoutNanoseconds: 10,
+            clock: { times.count > 1 ? times.removeFirst() : (times.first ?? 10) },
+            sleep: { _ in sleepCalls += 1 },
+            flockOperation: { _, _ in
+                lockAttempts += 1
+                errno = EWOULDBLOCK
+                return -1
+            }
+        )) { error in
+            XCTAssertTrue(error.localizedDescription.contains("Timed out"))
+        }
+        XCTAssertEqual(lockAttempts, 2)
+        XCTAssertEqual(sleepCalls, 1)
+    }
+
+    func testSecurityTransactionFileLockBoundsRepeatedInterrupts() {
+        var times: [UInt64] = [0, 5, 10]
+        var lockAttempts = 0
+
+        XCTAssertThrowsError(try KeychainCrossProcessTransactionLock.acquireFileLock(
+            descriptor: -1,
+            timeoutNanoseconds: 10,
+            clock: { times.count > 1 ? times.removeFirst() : (times.first ?? 10) },
+            sleep: { _ in XCTFail("Interrupted flock retries must not sleep.") },
+            flockOperation: { _, _ in
+                lockAttempts += 1
+                errno = EINTR
+                return -1
+            }
+        )) { error in
+            XCTAssertTrue(error.localizedDescription.contains("Timed out"))
+        }
+        XCTAssertEqual(lockAttempts, 2)
     }
 
     func testAuthorityEpochMustFitAndroidSignedLong() throws {
@@ -47,6 +394,260 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
     func testLegacyRevocationRequiresExplicitMigration() {
         let legacy = PersistedSecurityState(revocationSequence: 1, revoked: true)
         XCTAssertThrowsError(try KeychainSecurityStateStore.migratedLegacyState(legacy))
+    }
+
+    func testUnpairedKeychainStateMayInitializeOnce() throws {
+        let fixture = KeychainPairingStateFixture()
+        defer { fixture.cleanup() }
+
+        XCTAssertEqual(try fixture.store.load(), PersistedSecurityState())
+        try fixture.store.initializePairingBinding(
+            pairingIdentifier: fixture.pairingIdentifier
+        )
+        XCTAssertEqual(
+            try fixture.store.validatePairingBinding(
+                pairingIdentifier: fixture.pairingIdentifier
+            ),
+            PersistedSecurityState()
+        )
+    }
+
+    func testPairingBindingRejectsMissingOrCorruptDurableState() throws {
+        let fixture = KeychainPairingStateFixture()
+        defer { fixture.cleanup() }
+        try fixture.store.initializePairingBinding(
+            pairingIdentifier: fixture.pairingIdentifier
+        )
+
+        try fixture.rawStore.delete(name: fixture.store.account)
+        XCTAssertThrowsError(
+            try fixture.store.validatePairingBinding(
+                pairingIdentifier: fixture.pairingIdentifier
+            )
+        ) { error in
+            XCTAssertTrue(error.localizedDescription.contains("durable security state is missing"))
+        }
+
+        try fixture.rawStore.persist(
+            name: fixture.store.account,
+            secret: Data("not-json".utf8)
+        )
+        XCTAssertThrowsError(
+            try fixture.store.validatePairingBinding(
+                pairingIdentifier: fixture.pairingIdentifier
+            )
+        ) { error in
+            XCTAssertTrue(error.localizedDescription.contains("security state is invalid"))
+        }
+    }
+
+    func testPairingBindingRejectsMissingCorruptOrWrongOwnerMarker() throws {
+        let fixture = KeychainPairingStateFixture()
+        defer { fixture.cleanup() }
+        try fixture.store.initializePairingBinding(
+            pairingIdentifier: fixture.pairingIdentifier
+        )
+        let bindingAccount = try XCTUnwrap(fixture.store.bindingAccount)
+
+        try fixture.rawStore.delete(name: bindingAccount)
+        XCTAssertThrowsError(
+            try fixture.store.validatePairingBinding(
+                pairingIdentifier: fixture.pairingIdentifier
+            )
+        ) { error in
+            XCTAssertTrue(error.localizedDescription.contains("binding is missing"))
+        }
+
+        try fixture.rawStore.persist(
+            name: bindingAccount,
+            secret: Data("not-json".utf8)
+        )
+        XCTAssertThrowsError(
+            try fixture.store.validatePairingBinding(
+                pairingIdentifier: fixture.pairingIdentifier
+            )
+        ) { error in
+            XCTAssertTrue(error.localizedDescription.contains("binding is invalid"))
+        }
+
+        try fixture.rawStore.delete(name: bindingAccount)
+        try fixture.store.initializePairingBinding(
+            pairingIdentifier: fixture.pairingIdentifier
+        )
+        XCTAssertThrowsError(
+            try fixture.store.validatePairingBinding(
+                pairingIdentifier: String(repeating: "b", count: 64)
+            )
+        ) { error in
+            XCTAssertTrue(error.localizedDescription.contains("wrong owner"))
+        }
+    }
+
+    func testPairingBindingPreservesEpochAndNonceHighWatermarks() throws {
+        let fixture = KeychainPairingStateFixture()
+        defer { fixture.cleanup() }
+        try fixture.store.initializePairingBinding(
+            pairingIdentifier: fixture.pairingIdentifier
+        )
+        let lifecycle = SecurityLifecycle(store: fixture.store)
+        try lifecycle.requirePairingBinding(fixture.pairingIdentifier)
+        XCTAssertEqual(try lifecycle.reserveSessionEpoch(41), 41)
+        XCTAssertEqual(
+            try lifecycle.reserveNonce(
+                sessionEpoch: 41,
+                channel: 1,
+                senderRole: 1,
+                keyEpoch: 1
+            ).hex,
+            "000000010000000000000001"
+        )
+
+        let restarted = KeychainSecurityStateStore(
+            peerID: fixture.peerID,
+            service: fixture.service,
+            legacyAccount: nil,
+            legacyCleanupAccount: nil
+        )
+        let restored = try restarted.validatePairingBinding(
+            pairingIdentifier: fixture.pairingIdentifier
+        )
+        XCTAssertEqual(restored.sessionEpoch, 41)
+        XCTAssertEqual(restored.nonceHighWatermarks["1:1:1"], 1)
+        XCTAssertThrowsError(try SecurityLifecycle(store: restarted).reserveSessionEpoch(41))
+
+        try fixture.rawStore.delete(name: restarted.account)
+        XCTAssertThrowsError(
+            try restarted.validatePairingBinding(
+                pairingIdentifier: fixture.pairingIdentifier
+            )
+        )
+    }
+
+    func testBoundLifecycleRejectsMarkerLossBeforeNonceReservation() throws {
+        let fixture = KeychainPairingStateFixture()
+        defer { fixture.cleanup() }
+        try fixture.store.initializePairingBinding(
+            pairingIdentifier: fixture.pairingIdentifier
+        )
+        let lifecycle = SecurityLifecycle(store: fixture.store)
+        try lifecycle.requirePairingBinding(fixture.pairingIdentifier)
+        XCTAssertEqual(try lifecycle.reserveSessionEpoch(3), 3)
+
+        try fixture.rawStore.delete(
+            name: try XCTUnwrap(fixture.store.bindingAccount)
+        )
+        XCTAssertThrowsError(
+            try lifecycle.reserveNonce(
+                sessionEpoch: 3,
+                channel: 1,
+                senderRole: 1,
+                keyEpoch: 1
+            )
+        )
+        XCTAssertTrue(try fixture.store.load().nonceHighWatermarks.isEmpty)
+    }
+
+    func testPairingBindingKeepsRevokedPeerFailClosed() throws {
+        let fixture = KeychainPairingStateFixture()
+        defer { fixture.cleanup() }
+        try fixture.store.initializePairingBinding(
+            pairingIdentifier: fixture.pairingIdentifier
+        )
+        try SecurityLifecycle(store: fixture.store).applyRevocation(sequence: 7)
+
+        XCTAssertThrowsError(
+            try SecurityLifecycle(store: fixture.store).requirePairingBinding(
+                fixture.pairingIdentifier
+            )
+        ) { error in
+            XCTAssertEqual(error as? PlatformSecurityError, .revoked)
+        }
+    }
+
+    func testPairingRollbackDeletesNewStateAndAllowsRepair() throws {
+        let fixture = KeychainPairingStateFixture()
+        defer { fixture.cleanup() }
+        try fixture.store.initializePairingBinding(
+            pairingIdentifier: fixture.pairingIdentifier
+        )
+        try SecurityLifecycle(store: fixture.store).reserveSessionEpoch(9)
+        try fixture.store.rollbackPairingBinding(
+            pairingIdentifier: fixture.pairingIdentifier
+        )
+
+        XCTAssertEqual(try fixture.store.load(), PersistedSecurityState())
+        XCTAssertThrowsError(
+            try fixture.store.validatePairingBinding(
+                pairingIdentifier: fixture.pairingIdentifier
+            )
+        )
+
+        let repairedIdentifier = String(repeating: "c", count: 64)
+        try fixture.store.initializePairingBinding(
+            pairingIdentifier: repairedIdentifier
+        )
+        XCTAssertEqual(
+            try fixture.store.validatePairingBinding(
+                pairingIdentifier: repairedIdentifier
+            ),
+            PersistedSecurityState()
+        )
+    }
+
+    func testPairingRollbackPreservesPreexistingHighWatermarks() throws {
+        let fixture = KeychainPairingStateFixture()
+        defer { fixture.cleanup() }
+        let preexisting = PersistedSecurityState(
+            sessionEpoch: 27,
+            nonceHighWatermarks: ["1:1:1": 19]
+        )
+        try fixture.store.persist(preexisting)
+        try fixture.store.initializePairingBinding(
+            pairingIdentifier: fixture.pairingIdentifier
+        )
+        try fixture.store.rollbackPairingBinding(
+            pairingIdentifier: fixture.pairingIdentifier
+        )
+
+        XCTAssertEqual(try fixture.store.load(), preexisting)
+        XCTAssertThrowsError(
+            try fixture.store.validatePairingBinding(
+                pairingIdentifier: fixture.pairingIdentifier
+            )
+        )
+    }
+
+    func testStoredSessionValidatesDurableStateBeforeReadingCredentials() throws {
+        let stateStore = PairingValidationFailureStore()
+        let secretStore = CountingInternetPairingSecretStore()
+        let security = PlatformSessionSecurity(
+            deviceID: "mac-host",
+            peerID: "tablet|key:test",
+            stateStore: stateStore
+        )
+        let pairingIdentifier = String(repeating: "d", count: 64)
+        let names = try PairedDeviceSecretNames(
+            sharedSecret: "pairing.\(pairingIdentifier).shared.v1",
+            bootstrapSecret: "pairing.\(pairingIdentifier).bootstrap.v1",
+            identityBinding: PairedHostIdentityBinding.keychainName(
+                pairingIdentifier: pairingIdentifier
+            ),
+            pairingIdentifier: pairingIdentifier
+        )
+
+        XCTAssertThrowsError(
+            try security.startStoredProtectedInternetSession(
+                sessionIdentifier: "state-before-credentials",
+                localRole: .host,
+                identityEpoch: 1,
+                secretNames: names,
+                transcriptContext: Data(repeating: 1, count: 32),
+                agreedSessionEpoch: 1,
+                secretStore: secretStore
+            )
+        )
+        XCTAssertEqual(stateStore.validationCalls, 1)
+        XCTAssertEqual(secretStore.loadCalls, 0)
     }
 
     func testAgreedSessionEpochIsPersistedAndRejectsRollbackOrReuse() throws {
@@ -368,6 +969,30 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
         XCTAssertNotEqual(first, "durable-state-v1")
     }
 
+    func testPersistedPairingRejectsOverlappingSecretNameWithoutCrashing() throws {
+        XCTAssertThrowsError(try PairedDeviceSecretNames.persistedPairing(
+            sharedSecret: "pairing.shared.v1",
+            bootstrapSecret: "pairing.bootstrap.v1"
+        )) { error in
+            XCTAssertTrue(error.localizedDescription.contains("no pairing identity"))
+        }
+
+        let legacy = try PairedDeviceSecretNames.persistedPairing(
+            sharedSecret: "legacy.shared",
+            bootstrapSecret: "legacy.bootstrap"
+        )
+        XCTAssertNil(legacy.pairingIdentifier)
+    }
+
+    func testPairedHostIdentityBindingRejectsUnexpectedDeviceOrEpoch() throws {
+        let identity = try TestSigningKey(deviceID: "mac-host", keyEpoch: 1).identity
+        let binding = PairedHostIdentityBinding(identity: identity)
+
+        XCTAssertNoThrow(try binding.requireTarget(deviceID: "mac-host", keyEpoch: 1))
+        XCTAssertThrowsError(try binding.requireTarget(deviceID: "other-host", keyEpoch: 1))
+        XCTAssertThrowsError(try binding.requireTarget(deviceID: "mac-host", keyEpoch: 2))
+    }
+
     func testRevocationScopeDistinguishesNewSigningIdentityForSameDeviceID() {
         let oldIdentity = PlatformPublicIdentity(
             deviceID: "tablet",
@@ -408,6 +1033,92 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
         XCTAssertTrue(store.state.nonceHighWatermarks.isEmpty)
         XCTAssertThrowsError(try SecurityLifecycle(store: store).consumeRotationNonceHash(Data(repeating: 1, count: 32)))
         XCTAssertTrue(store.state.usedRotationNonceHashes.isEmpty)
+    }
+
+    func testStoredSessionIdentityBindingFailsBeforeEpochReservation() throws {
+        let service = "dev.vibescreen.session-identity-tests.\(UUID().uuidString)"
+        let identityStore = KeychainDeviceIdentityStore(service: service)
+        let original = try identityStore.createIfMissing(deviceID: "mac-host")
+        let pairingIdentifier = String(repeating: "a", count: 64)
+        let names = try PairedDeviceSecretNames(
+            sharedSecret: "pairing.\(pairingIdentifier).shared.v1",
+            bootstrapSecret: "pairing.\(pairingIdentifier).bootstrap.v1",
+            identityBinding: PairedHostIdentityBinding.keychainName(
+                pairingIdentifier: pairingIdentifier
+            ),
+            pairingIdentifier: pairingIdentifier
+        )
+        let secrets = MemoryInternetPairingSecretStore()
+        try secrets.persist(name: names.sharedSecret, secret: Data(repeating: 0x21, count: 32))
+        try secrets.persist(name: names.bootstrapSecret, secret: Data(repeating: 0x22, count: 32))
+        try secrets.persist(
+            name: try XCTUnwrap(names.identityBinding),
+            secret: PairedHostIdentityBinding.encode(original.publicIdentity)
+        )
+        let stateStore = MemorySecurityStateStore()
+        stateStore.state.sessionEpoch = 10
+        let security = PlatformSessionSecurity(
+            deviceID: "mac-host",
+            peerID: "tablet|key:test",
+            identityStore: identityStore,
+            stateStore: stateStore
+        )
+
+        let valid = try security.startStoredProtectedInternetSession(
+            sessionIdentifier: "identity-binding-valid",
+            localRole: .host,
+            identityEpoch: 1,
+            secretNames: names,
+            transcriptContext: Data(repeating: 0x23, count: 32),
+            agreedSessionEpoch: 11,
+            secretStore: secrets
+        )
+        XCTAssertEqual(valid.identity.publicIdentity, original.publicIdentity)
+        XCTAssertEqual(stateStore.state.sessionEpoch, 11)
+        valid.packetCipher.close()
+
+        try identityStore.delete(deviceID: "mac-host", keyEpoch: 1)
+        XCTAssertThrowsError(try security.startStoredProtectedInternetSession(
+            sessionIdentifier: "identity-binding-missing-alias",
+            localRole: .host,
+            identityEpoch: 1,
+            secretNames: names,
+            transcriptContext: Data(repeating: 0x24, count: 32),
+            agreedSessionEpoch: 12,
+            secretStore: secrets
+        ))
+        XCTAssertEqual(stateStore.state.sessionEpoch, 11)
+
+        let replacement = try identityStore.createIfMissing(deviceID: "mac-host")
+        XCTAssertNotEqual(replacement.publicIdentity.keyID, original.publicIdentity.keyID)
+        XCTAssertThrowsError(try security.startStoredProtectedInternetSession(
+            sessionIdentifier: "identity-binding-mismatch",
+            localRole: .host,
+            identityEpoch: 1,
+            secretNames: names,
+            transcriptContext: Data(repeating: 0x25, count: 32),
+            agreedSessionEpoch: 12,
+            secretStore: secrets
+        ))
+        XCTAssertEqual(stateStore.state.sessionEpoch, 11)
+
+        try secrets.delete(name: try XCTUnwrap(names.identityBinding))
+        XCTAssertThrowsError(try security.startStoredProtectedInternetSession(
+            sessionIdentifier: "identity-binding-legacy",
+            localRole: .host,
+            identityEpoch: 1,
+            secretNames: names,
+            transcriptContext: Data(repeating: 0x26, count: 32),
+            agreedSessionEpoch: 12,
+            secretStore: secrets
+        )) { error in
+            XCTAssertTrue(error.localizedDescription.contains("credentials were retained"))
+        }
+        XCTAssertEqual(stateStore.state.sessionEpoch, 11)
+        XCTAssertNotNil(try secrets.load(name: names.sharedSecret))
+        XCTAssertNotNil(try secrets.load(name: names.bootstrapSecret))
+
+        try identityStore.delete(deviceID: "mac-host", keyEpoch: 1)
     }
 
     func testRotationNonceTombstoneMatchesGoAndSurvivesRestart() throws {
@@ -682,14 +1393,70 @@ private final class MemorySecurityStateStore: SecurityStateStore {
     var state = PersistedSecurityState()
     var failPersist = false
     var failPersistCalls: Set<Int> = []
-    private var persistCallCount = 0
-    func load() throws -> PersistedSecurityState { state }
+    private(set) var loadCallCount = 0
+    private(set) var persistCallCount = 0
+    func load() throws -> PersistedSecurityState {
+        loadCallCount += 1
+        return state
+    }
     func persist(_ state: PersistedSecurityState) throws {
         persistCallCount += 1
         if failPersist || failPersistCalls.contains(persistCallCount) {
             throw PlatformSecurityError.persistenceFailure("injected")
         }
         self.state = state
+    }
+}
+
+private final class PairingValidationFailureStore: SecurityStateStore {
+    private(set) var validationCalls = 0
+
+    func load() throws -> PersistedSecurityState {
+        XCTFail("Pairing validation must not fall back to an unbound state load.")
+        return PersistedSecurityState()
+    }
+
+    func persist(_ state: PersistedSecurityState) throws {
+        XCTFail("Pairing validation failure must not persist state.")
+    }
+
+    func validatePairingBinding(
+        pairingIdentifier _: String
+    ) throws -> PersistedSecurityState {
+        validationCalls += 1
+        throw PlatformSecurityError.persistenceFailure("injected missing durable state")
+    }
+}
+
+private final class CountingInternetPairingSecretStore: InternetPairingSecretStore {
+    private(set) var loadCalls = 0
+
+    func load(name _: String) throws -> Data? {
+        loadCalls += 1
+        return nil
+    }
+
+    func persist(name _: String, secret _: Data) throws {}
+    func delete(name _: String) throws {}
+}
+
+private final class KeychainPairingStateFixture {
+    let service = "dev.vibescreen.pairing-state-tests.\(UUID().uuidString)"
+    let peerID = "tablet|key:\(UUID().uuidString)"
+    let pairingIdentifier = String(repeating: "a", count: 64)
+    lazy var store = KeychainSecurityStateStore(
+        peerID: peerID,
+        service: service,
+        legacyAccount: nil,
+        legacyCleanupAccount: nil
+    )
+    lazy var rawStore = KeychainSecretStore(service: service)
+
+    func cleanup() {
+        try? rawStore.delete(name: store.account)
+        if let bindingAccount = store.bindingAccount {
+            try? rawStore.delete(name: bindingAccount)
+        }
     }
 }
 
@@ -761,6 +1528,14 @@ private final class MemoryPairedDeviceSecretStore: PairedDeviceSecretStore {
         }
         deletedNames.append(name)
     }
+}
+
+private final class MemoryInternetPairingSecretStore: InternetPairingSecretStore {
+    private var values: [String: Data] = [:]
+
+    func load(name: String) throws -> Data? { values[name] }
+    func persist(name: String, secret: Data) throws { values[name] = secret }
+    func delete(name: String) throws { values.removeValue(forKey: name) }
 }
 
 private extension Data {

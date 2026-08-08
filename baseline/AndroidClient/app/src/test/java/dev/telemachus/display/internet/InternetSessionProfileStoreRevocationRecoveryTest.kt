@@ -24,7 +24,7 @@ class InternetSessionProfileStoreRevocationRecoveryTest {
         val pairTwoProfileSecret = store.profileSecretName(pairTwoProfile)
         val deferredSecret = "phase3.internet.profile.v1.deferred-pair-2"
         preferences.seed(InternetSessionProfileStore.PROFILE_KEY, InternetSessionProfileCodec.encodePublic(pairTwoProfile))
-        preferences.seed(InternetSessionProfileStore.PAIRING_KEY, pairingBinding("pair-2", 8))
+        preferences.seed(InternetSessionProfileStore.PAIRING_KEY, version2PairingBinding("pair-2", 8))
         preferences.seed(
             InternetSessionProfileStore.PENDING_REVOCATION_CLEANUP_KEY,
             PendingRevocationCleanupCodec.encode(PendingRevocationCleanup("pair-1", "device-1", 7)),
@@ -77,7 +77,7 @@ class InternetSessionProfileStoreRevocationRecoveryTest {
         val pairOneProfile = profile("pair-1", "session-1", 7)
         val pairOneProfileSecret = store.profileSecretName(pairOneProfile)
         preferences.seed(InternetSessionProfileStore.PROFILE_KEY, InternetSessionProfileCodec.encodePublic(pairOneProfile))
-        preferences.seed(InternetSessionProfileStore.PAIRING_KEY, pairingBinding("pair-1", 7))
+        preferences.seed(InternetSessionProfileStore.PAIRING_KEY, version2PairingBinding("pair-1", 7))
         preferences.seed(
             InternetSessionProfileStore.PENDING_REVOCATION_CLEANUP_KEY,
             PendingRevocationCleanupCodec.encode(PendingRevocationCleanup("pair-1", "device-1", 7)),
@@ -127,10 +127,14 @@ class InternetSessionProfileStoreRevocationRecoveryTest {
         StoredInternetSessionProfile(
             pairingIdentifier = pairingIdentifier,
             pinnedHostId = "host-$pairingIdentifier",
+            pinnedDeviceId = "device-${pairingIdentifier.removePrefix("pair-")}",
+            leaseDeviceKeyId = "device-key-$pairingIdentifier",
             signalingUrl = "https://signal.example.test",
             signalingSessionId = sessionId,
             authoritativeSessionEpoch = epoch,
-            identityEpoch = epoch,
+            hostIdentityEpoch = epoch,
+            deviceIdentityEpoch = epoch,
+            expiresAtUnixSeconds = 4_102_444_800,
             transcriptContext = ByteArray(32) { 1 },
             protocolSessionId = sessionId.toByteArray(),
             iceServerUrls = listOf(listOf("stun:stun.example.test:3478")),
@@ -139,23 +143,29 @@ class InternetSessionProfileStoreRevocationRecoveryTest {
             leaseSignature = byteArrayOf(1),
         )
 
-    private fun pairingBinding(pairingIdentifier: String, epoch: Long): String {
-        val signingPublicKey = publicPoint(generateEphemeral(SecureRandom()))
+    private fun version2PairingBinding(pairingIdentifier: String, epoch: Long): String {
+        val hostSigningPublicKey = publicPoint(generateEphemeral(SecureRandom()))
+        val localSigningPublicKey = publicPoint(generateEphemeral(SecureRandom()))
+        val localDeviceId = "device-${pairingIdentifier.removePrefix("pair-")}"
         return JsonObject().apply {
+            addProperty("version", 2)
             addProperty("pairing_id", pairingIdentifier)
             addProperty("host_device_id", "host-$pairingIdentifier")
-            addProperty("host_key_id", pairingSha256(signingPublicKey).toPairingHex())
+            addProperty("host_key_id", pairingSha256(hostSigningPublicKey).toPairingHex())
             addProperty("host_identity_epoch", epoch)
             addProperty("host_signature_algorithm", "ECDSA_P256_SHA256")
-            addProperty("host_signing_public_key", Base64.getEncoder().encodeToString(signingPublicKey))
-            addProperty("local_device_id", "device-$pairingIdentifier")
+            addProperty("host_signing_public_key", Base64.getEncoder().encodeToString(hostSigningPublicKey))
+            addProperty("local_device_id", localDeviceId)
+            addProperty("local_key_id", pairingSha256(localSigningPublicKey).toPairingHex())
             addProperty("local_identity_epoch", epoch)
+            addProperty("local_signature_algorithm", "ECDSA_P256_SHA256")
+            addProperty("local_signing_public_key", Base64.getEncoder().encodeToString(localSigningPublicKey))
             addProperty("session_context", Base64.getEncoder().encodeToString(ByteArray(32) { 1 }))
         }.toString()
     }
 }
 
-private class MemoryInternetProfilePreferences : InternetProfilePreferences {
+internal class MemoryInternetProfilePreferences : InternetProfilePreferences {
     private val values = mutableMapOf<String, Any>()
 
     override fun getString(key: String, defaultValue: String?): String? =
@@ -206,16 +216,25 @@ private class MemoryInternetProfilePreferences : InternetProfilePreferences {
     }
 }
 
-private class MemoryInternetProfileSecretStore : InternetProfileSecretStore {
+internal class MemoryInternetProfileSecretStore : InternetProfileSecretStore {
     private val values = mutableMapOf<String, ByteArray>()
+    var persistCount = 0
+        private set
+    val entryCount: Int
+        get() = values.size
 
     override fun persist(name: String, secret: ByteArray) {
         values[name] = secret.copyOf()
+        persistCount += 1
     }
 
     override fun load(name: String): ByteArray? = values[name]?.copyOf()
 
     override fun delete(name: String) {
         values.remove(name)
+    }
+
+    fun resetPersistCount() {
+        persistCount = 0
     }
 }

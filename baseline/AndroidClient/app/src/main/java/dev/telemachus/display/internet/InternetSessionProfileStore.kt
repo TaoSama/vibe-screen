@@ -7,13 +7,23 @@ import android.content.pm.ApplicationInfo
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
+import com.google.gson.stream.JsonWriter
 import dev.telemachus.display.internet.security.AndroidSecretStore
 import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
 import dev.telemachus.display.internet.security.InternetPairingPublicMetadata
 import dev.telemachus.display.internet.security.InternetPairingIdentity
 import dev.telemachus.display.internet.security.SecurityTranscript
+import dev.telemachus.display.internet.security.SensitiveBufferObserver
+import dev.telemachus.display.internet.security.TranscriptDigestUpdater
 import dev.telemachus.display.internet.security.verify
 import java.net.URI
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.io.StringReader
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.Base64
@@ -22,37 +32,72 @@ import java.util.Base64
 data class StoredInternetSessionProfile(
     val pairingIdentifier: String,
     val pinnedHostId: String,
+    val pinnedDeviceId: String,
+    val leaseDeviceKeyId: String,
     val signalingUrl: String,
     val signalingSessionId: String,
     val authoritativeSessionEpoch: Long,
-    val identityEpoch: Long,
+    val hostIdentityEpoch: Long,
+    val deviceIdentityEpoch: Long,
+    val expiresAtUnixSeconds: Long,
     val transcriptContext: ByteArray,
     val protocolSessionId: ByteArray,
     val iceServerUrls: List<List<String>>,
     val allowInsecureForTesting: Boolean,
     val leaseHostKeyId: String,
     val leaseSignature: ByteArray,
-)
+) {
+    val identityEpoch: Long
+        get() = deviceIdentityEpoch
+}
 
-internal data class ImportedInternetSecrets(
-    val signalingToken: String,
-    val turnCredentials: List<Pair<String?, String?>>,
-)
+internal class ImportedInternetSecrets(
+    val signalingToken: DestroyableUtf8,
+    val turnCredentials: List<Pair<DestroyableUtf8?, DestroyableUtf8?>>,
+) : AutoCloseable {
+    override fun close() {
+        signalingToken.close()
+        turnCredentials.forEach { (username, credential) ->
+            username?.close()
+            credential?.close()
+        }
+    }
+
+    override fun toString(): String = "ImportedInternetSecrets(<redacted>)"
+}
 
 internal data class DecodedInternetProfile(
     val profile: StoredInternetSessionProfile,
     val secrets: ImportedInternetSecrets,
 ) : AutoCloseable {
-    override fun close() = Unit
+    override fun close() = secrets.close()
+}
+
+private sealed interface StoredPairingRecord {
+    val pairingIdentifier: String
+    val hostIdentity: InternetPairingIdentity
+    val localDeviceId: String
+    val localIdentityEpoch: Long
+    val sessionContext: ByteArray
 }
 
 private data class StoredPairingBinding(
-    val pairingIdentifier: String,
-    val hostIdentity: InternetPairingIdentity,
-    val localDeviceId: String,
-    val localIdentityEpoch: Long,
-    val sessionContext: ByteArray,
-)
+    override val pairingIdentifier: String,
+    override val hostIdentity: InternetPairingIdentity,
+    val localIdentity: InternetPairingIdentity,
+    override val sessionContext: ByteArray,
+) : StoredPairingRecord {
+    override val localDeviceId: String = localIdentity.deviceId
+    override val localIdentityEpoch: Long = localIdentity.keyEpoch
+}
+
+private data class LegacyStoredPairingBinding(
+    override val pairingIdentifier: String,
+    override val hostIdentity: InternetPairingIdentity,
+    override val localDeviceId: String,
+    override val localIdentityEpoch: Long,
+    override val sessionContext: ByteArray,
+) : StoredPairingRecord
 
 private data class PendingAuthenticatedRevocation(
     val pairingIdentifier: String,
@@ -139,6 +184,7 @@ class InternetSessionProfileStore internal constructor(
     private val preferences: InternetProfilePreferences,
     private val debuggable: Boolean,
     private val secretStore: InternetProfileSecretStore,
+    private val nowUnixSeconds: () -> Long = { System.currentTimeMillis() / 1_000 },
 ) {
     constructor(
         context: Context,
@@ -165,10 +211,14 @@ class InternetSessionProfileStore internal constructor(
                         storedSessionFactory.hasPendingPairingPersistenceCleanup()
                 },
             ) {
-                val pairing = loadPairingBinding() ?: throw IllegalStateException("Complete signed pairing before importing a lease")
+                val pairing = loadVerifiedPairingBinding() ?: throw IllegalStateException("Complete signed pairing before importing a lease")
                 require(decoded.profile.pairingIdentifier == pairing.pairingIdentifier) { "Lease pairing does not match the verified Mac" }
                 require(decoded.profile.pinnedHostId == pairing.hostIdentity.deviceId) { "Lease host identity does not match the verified Mac" }
-                require(decoded.profile.identityEpoch == pairing.localIdentityEpoch) { "Lease local identity epoch does not match the paired identity" }
+                require(decoded.profile.hostIdentityEpoch == pairing.hostIdentity.keyEpoch) { "Lease host identity epoch does not match the paired identity" }
+                require(decoded.profile.pinnedDeviceId == pairing.localIdentity.deviceId) { "Lease device identity does not match the paired identity" }
+                require(decoded.profile.leaseDeviceKeyId == pairing.localIdentity.keyId) { "Lease device signing key does not match the paired identity" }
+                require(decoded.profile.deviceIdentityEpoch == pairing.localIdentityEpoch) { "Lease local identity epoch does not match the paired identity" }
+                require(nowUnixSeconds() < decoded.profile.expiresAtUnixSeconds) { "Internet session lease has expired; request a fresh lease" }
                 require(storedSessionFactory.localDeviceId == pairing.localDeviceId) {
                     "Lease lifecycle state does not belong to the paired local identity"
                 }
@@ -176,14 +226,18 @@ class InternetSessionProfileStore internal constructor(
                     "Lease transcript context does not match signed pairing"
                 }
                 verifySignedLease(decoded, pairing)
-                storedSessionFactory.withFreshSessionEpochCandidate(decoded.profile.authoritativeSessionEpoch) {
+                storedSessionFactory.withFreshSessionEpochCandidate(
+                    pairingIdentifier = decoded.profile.pairingIdentifier,
+                    identity = pairing.localIdentity,
+                    sessionEpoch = decoded.profile.authoritativeSessionEpoch,
+                ) {
                     val current = loadPublicProfile()
                     if (current != null) {
                         require(decoded.profile.authoritativeSessionEpoch > current.authoritativeSessionEpoch) {
                             "A replacement Internet lease must use a strictly newer session epoch"
                         }
                     }
-                    val encrypted = InternetSessionProfileCodec.encodeSecrets(decoded.secrets).toByteArray(Charsets.UTF_8)
+                    val encrypted = InternetSessionProfileCodec.encodeSecrets(decoded.secrets)
                     try {
                         secretStore.persist(profileSecretName(decoded.profile), encrypted)
                     } finally {
@@ -224,48 +278,62 @@ class InternetSessionProfileStore internal constructor(
     fun loadLease(forceRelay: Boolean): InternetProductSessionLease? {
         retryDeferredCredentialCleanup()
         val profile = loadPublicProfile() ?: return null
-        val pairing = loadPairingBinding() ?: return null
+        val pairing = loadVerifiedPairingBinding() ?: return null
         check(profile.pairingIdentifier == pairing.pairingIdentifier && profile.pinnedHostId == pairing.hostIdentity.deviceId) {
             "Stored Internet lease is not bound to the verified pairing"
         }
-        check(profile.identityEpoch == pairing.localIdentityEpoch && profile.transcriptContext.contentEquals(pairing.sessionContext)) {
+        check(profile.hostIdentityEpoch == pairing.hostIdentity.keyEpoch &&
+            profile.pinnedDeviceId == pairing.localIdentity.deviceId &&
+            profile.leaseDeviceKeyId == pairing.localIdentity.keyId &&
+            profile.deviceIdentityEpoch == pairing.localIdentityEpoch &&
+            profile.transcriptContext.contentEquals(pairing.sessionContext)) {
             "Stored Internet lease identity binding is invalid"
+        }
+        check(nowUnixSeconds() < profile.expiresAtUnixSeconds) {
+            "Internet session lease has expired; request a fresh lease"
         }
         check(!isRevoked(profile.pairingIdentifier)) { "This paired Mac is locally revoked" }
         val encrypted = secretStore.load(profileSecretName(profile)) ?: return null
         val secrets =
             try {
-                InternetSessionProfileCodec.decodeSecrets(encrypted.toString(Charsets.UTF_8), profile.iceServerUrls.size)
+                InternetSessionProfileCodec.decodeSecrets(encrypted, profile.iceServerUrls.size)
             } finally {
                 encrypted.fill(0)
             }
+        val iceServers = mutableListOf<IceServer>()
+        var signaling: SignalingConfiguration? = null
         try {
             verifySignedLease(DecodedInternetProfile(profile, secrets), pairing)
-            val iceServers =
-                profile.iceServerUrls.mapIndexed { index, urls ->
-                    val credential = secrets.turnCredentials[index]
-                    IceServer(urls, credential.first, credential.second)
-                }
+            profile.iceServerUrls.forEachIndexed { index, urls ->
+                val credential = secrets.turnCredentials[index]
+                iceServers += IceServer(urls, credential.first?.copy(), credential.second?.copy())
+            }
+            signaling =
+                SignalingConfiguration(
+                    baseUrl = profile.signalingUrl,
+                    bearerTokenSecret = secrets.signalingToken.copy(),
+                    role = PeerRole.DEVICE,
+                    allowInsecureForTesting = profile.allowInsecureForTesting,
+                )
             return InternetProductSessionLease(
                 pairingIdentifier = profile.pairingIdentifier,
                 pinnedHostId = profile.pinnedHostId,
                 signalingSessionId = profile.signalingSessionId,
                 authoritativeSessionEpoch = profile.authoritativeSessionEpoch,
-                identityEpoch = profile.identityEpoch,
+                identityEpoch = profile.deviceIdentityEpoch,
+                localIdentity = pairing.localIdentity,
                 transcriptContext = profile.transcriptContext.copyOf(),
                 protocolSessionId = profile.protocolSessionId.copyOf(),
                 iceServers = iceServers,
-                signaling =
-                    SignalingConfiguration(
-                        baseUrl = profile.signalingUrl,
-                        bearerToken = secrets.signalingToken,
-                        role = PeerRole.DEVICE,
-                        allowInsecureForTesting = profile.allowInsecureForTesting,
-                    ),
+                signaling = signaling,
                 iceTransportPolicy = if (forceRelay) IceTransportPolicy.RELAY_ONLY else IceTransportPolicy.ALL,
             )
+        } catch (failure: Throwable) {
+            signaling?.close()
+            iceServers.forEach(IceServer::close)
+            throw failure
         } finally {
-            Unit
+            secrets.close()
         }
     }
 
@@ -280,6 +348,7 @@ class InternetSessionProfileStore internal constructor(
         val context = requireNotNull(metadata.sessionContext) { "Completed pairing must include a session context" }
         val value =
             JsonObject().apply {
+                addProperty("version", PAIRING_VERSION)
                 addProperty("pairing_id", metadata.pairingIdentifier)
                 addProperty("host_device_id", metadata.hostIdentity.deviceId)
                 addProperty("host_key_id", metadata.hostIdentity.keyId)
@@ -287,13 +356,16 @@ class InternetSessionProfileStore internal constructor(
                 addProperty("host_signature_algorithm", metadata.hostIdentity.signatureAlgorithm)
                 addProperty("host_signing_public_key", Base64.getEncoder().encodeToString(metadata.hostIdentity.signingPublicKey))
                 addProperty("local_device_id", metadata.deviceIdentity.deviceId)
+                addProperty("local_key_id", metadata.deviceIdentity.keyId)
                 addProperty("local_identity_epoch", metadata.deviceIdentity.keyEpoch)
+                addProperty("local_signature_algorithm", metadata.deviceIdentity.signatureAlgorithm)
+                addProperty("local_signing_public_key", Base64.getEncoder().encodeToString(metadata.deviceIdentity.signingPublicKey))
                 addProperty("session_context", Base64.getEncoder().encodeToString(context))
             }.toString()
         storedSessionFactory.completePairingPersistence(
             pairingIdentifier = metadata.pairingIdentifier,
             commitBusinessState = {
-                storedSessionFactory.authorizeIdentityEpoch(metadata.deviceIdentity.keyEpoch)
+                storedSessionFactory.authorizeIdentity(metadata.deviceIdentity)
                 check(preferences.edit().putString(PAIRING_KEY, value).commit()) {
                     "Failed to persist verified pairing metadata"
                 }
@@ -302,13 +374,13 @@ class InternetSessionProfileStore internal constructor(
         )
     }
 
-    fun hasVerifiedPairing(): Boolean = loadPairingBinding() != null
+    fun hasVerifiedPairing(): Boolean = loadPairingRecord() != null
 
-    fun verifiedPairingIdentifier(): String? = loadPairingBinding()?.pairingIdentifier
+    fun verifiedPairingIdentifier(): String? = loadPairingRecord()?.pairingIdentifier
 
-    fun verifiedLocalIdentityEpoch(): Long? = loadPairingBinding()?.localIdentityEpoch
+    fun verifiedLocalIdentityEpoch(): Long? = loadPairingRecord()?.localIdentityEpoch
 
-    fun verifiedHostKeyFingerprint(): String? = loadPairingBinding()?.hostIdentity?.keyId?.take(FINGERPRINT_CHARACTERS)
+    fun verifiedHostKeyFingerprint(): String? = loadPairingRecord()?.hostIdentity?.keyId?.take(FINGERPRINT_CHARACTERS)
 
     fun markRevoked(pairingIdentifier: String) {
         InternetProductAdmissionGate.withLock {
@@ -377,7 +449,7 @@ class InternetSessionProfileStore internal constructor(
 
     fun hasDurableCredentialMutationBlock(targetPairingIdentifier: String?): Boolean =
         InternetProductAdmissionGate.withLock {
-            val verifiedPairingIdentifier = loadPairingBinding()?.pairingIdentifier
+            val verifiedPairingIdentifier = loadPairingRecord()?.pairingIdentifier
             val profilePairingIdentifier = loadPublicProfile()?.pairingIdentifier
             InternetCredentialOwnershipPolicy.blocksMutation(
                 targetPairingIdentifier = targetPairingIdentifier,
@@ -427,7 +499,7 @@ class InternetSessionProfileStore internal constructor(
         pairingIdentifier: String,
     ) {
         permit.requireActive()
-        val current = loadPairingBinding() ?: return
+        val current = loadPairingRecord() ?: return
         if (current.pairingIdentifier != pairingIdentifier) return
         removePairingBinding()
     }
@@ -467,7 +539,7 @@ class InternetSessionProfileStore internal constructor(
             retryOwnedRevocationCleanup(
                 initial = pending,
                 currentProfilePairingIdentifier = { loadPublicProfile()?.pairingIdentifier },
-                currentBindingPairingIdentifier = { loadPairingBinding()?.pairingIdentifier },
+                currentBindingPairingIdentifier = { loadPairingRecord()?.pairingIdentifier },
                 deletePairingSecret = deletePairingSecret,
                 deleteIdentityKey = deleteIdentityKey,
                 deleteSessionCredentials = ::remove,
@@ -554,22 +626,53 @@ class InternetSessionProfileStore internal constructor(
         return inMemoryDeferredCleanup.snapshot()
     }
 
-    private fun loadPairingBinding(): StoredPairingBinding? {
+    private fun loadVerifiedPairingBinding(): StoredPairingBinding? =
+        when (val record = loadPairingRecord()) {
+            null -> null
+            is StoredPairingBinding -> record
+            is LegacyStoredPairingBinding -> throw IllegalStateException(LEGACY_PAIRING_REPAIR_MESSAGE)
+        }
+
+    private fun loadPairingRecord(): StoredPairingRecord? {
         val root = preferences.getString(PAIRING_KEY, null)?.let { JsonParser.parseString(it).asJsonObject } ?: return null
-        require(root.keySet() == PAIRING_KEYS) { "Stored pairing metadata is malformed" }
-        return StoredPairingBinding(
-            root.bindingString("pairing_id"),
-            InternetPairingIdentity(
-                deviceId = root.bindingString("host_device_id"),
-                keyId = root.bindingString("host_key_id"),
-                keyEpoch = root.bindingPositiveLong("host_identity_epoch"),
-                signatureAlgorithm = root.bindingString("host_signature_algorithm"),
-                signingPublicKey = Base64.getDecoder().decode(root.bindingString("host_signing_public_key")),
-            ),
-            root.bindingString("local_device_id"),
-            root.bindingPositiveLong("local_identity_epoch"),
-            root.bindingContext(),
+        return when (root.keySet()) {
+            PAIRING_V2_KEYS -> {
+                require(root.bindingVersion() == PAIRING_VERSION) { "Stored pairing metadata version is unsupported" }
+                StoredPairingBinding(
+                    pairingIdentifier = root.bindingString("pairing_id"),
+                    hostIdentity = root.bindingIdentity("host"),
+                    localIdentity = root.bindingIdentity("local"),
+                    sessionContext = root.bindingContext(),
+                )
+            }
+
+            LEGACY_PAIRING_V1_KEYS ->
+                LegacyStoredPairingBinding(
+                    pairingIdentifier = root.bindingString("pairing_id"),
+                    hostIdentity = root.bindingIdentity("host"),
+                    localDeviceId = root.bindingString("local_device_id"),
+                    localIdentityEpoch = root.bindingPositiveLong("local_identity_epoch"),
+                    sessionContext = root.bindingContext(),
+                )
+
+            else -> throw IllegalArgumentException("Stored pairing metadata is malformed")
+        }
+    }
+
+    private fun JsonObject.bindingIdentity(prefix: String): InternetPairingIdentity =
+        InternetPairingIdentity(
+            deviceId = bindingString("${prefix}_device_id"),
+            keyId = bindingString("${prefix}_key_id"),
+            keyEpoch = bindingPositiveLong("${prefix}_identity_epoch"),
+            signatureAlgorithm = bindingString("${prefix}_signature_algorithm"),
+            signingPublicKey = Base64.getDecoder().decode(bindingString("${prefix}_signing_public_key")),
         )
+
+    private fun JsonObject.bindingVersion(): Int {
+        val literal = get("version")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.toString()
+            ?: throw IllegalArgumentException("Stored pairing metadata version is invalid")
+        require(literal.matches(Regex("[0-9]+"))) { "Stored pairing metadata version is invalid" }
+        return literal.toIntOrNull() ?: throw IllegalArgumentException("Stored pairing metadata version is invalid")
     }
 
     private fun JsonObject.bindingString(name: String): String =
@@ -577,10 +680,13 @@ class InternetSessionProfileStore internal constructor(
             ?.also { require(it.isNotBlank() && it.toByteArray().size <= 256) { "Stored pairing field is invalid" } }
             ?: throw IllegalArgumentException("Stored pairing field is invalid")
 
-    private fun JsonObject.bindingPositiveLong(name: String): Long =
-        get(name)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asLong
-            ?.also { require(it in 1 until Long.MAX_VALUE) { "Stored pairing epoch is invalid" } }
+    private fun JsonObject.bindingPositiveLong(name: String): Long {
+        val literal = get(name)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.toString()
             ?: throw IllegalArgumentException("Stored pairing epoch is invalid")
+        require(literal.matches(Regex("[0-9]+"))) { "Stored pairing epoch is invalid" }
+        return (literal.toLongOrNull() ?: throw IllegalArgumentException("Stored pairing epoch is invalid"))
+            .also { require(it in 1 until Long.MAX_VALUE) { "Stored pairing epoch is invalid" } }
+    }
 
     private fun JsonObject.bindingContext(): ByteArray =
         Base64.getDecoder().decode(bindingString("session_context")).also {
@@ -600,12 +706,20 @@ class InternetSessionProfileStore internal constructor(
         private const val SECRET_PREFIX = "phase3.internet.profile.v1"
         private const val FINGERPRINT_CHARACTERS = 16
         private const val TAG = "InternetProfileStore"
-        private val PAIRING_KEYS =
+        private const val PAIRING_VERSION = 2
+        private const val LEGACY_PAIRING_REPAIR_MESSAGE =
+            "Stored pairing metadata predates local identity binding; pair again"
+        private val LEGACY_PAIRING_V1_KEYS =
             setOf(
                 "pairing_id", "host_device_id", "host_key_id", "host_identity_epoch",
                 "host_signature_algorithm", "host_signing_public_key",
                 "local_device_id", "local_identity_epoch", "session_context",
             )
+        private val PAIRING_V2_KEYS =
+            LEGACY_PAIRING_V1_KEYS +
+                setOf(
+                    "version", "local_key_id", "local_signature_algorithm", "local_signing_public_key",
+                )
         private val PENDING_AUTHENTICATED_REVOCATION_KEYS = setOf("version", "pairing_id", "reason")
     }
 }
@@ -640,32 +754,42 @@ internal object InternetSessionLeaseSignature {
     fun digest(
         profile: StoredInternetSessionProfile,
         secrets: ImportedInternetSecrets,
+    ): ByteArray = digest(profile, secrets, SensitiveBufferObserver.NONE)
+
+    internal fun digest(
+        profile: StoredInternetSessionProfile,
+        secrets: ImportedInternetSecrets,
+        observer: SensitiveBufferObserver,
     ): ByteArray {
         require(profile.iceServerUrls.size == secrets.turnCredentials.size) {
             "Stored ICE credentials do not match the lease"
         }
-        val parts = mutableListOf<ByteArray>()
-        parts += u64(VERSION)
-        parts += text(profile.pairingIdentifier)
-        parts += text(profile.pinnedHostId)
-        parts += text(profile.leaseHostKeyId)
-        parts += text(profile.signalingUrl)
-        parts += text(profile.signalingSessionId)
-        parts += u64(profile.authoritativeSessionEpoch)
-        parts += u64(profile.identityEpoch)
-        parts += profile.transcriptContext
-        parts += profile.protocolSessionId
-        parts += text(secrets.signalingToken)
-        parts += u64(profile.iceServerUrls.size.toLong())
-        profile.iceServerUrls.forEachIndexed { index, urls ->
-            parts += u64(urls.size.toLong())
-            urls.forEach { parts += text(it) }
-            val credentials = secrets.turnCredentials[index]
-            parts.addNullable(credentials.first)
-            parts.addNullable(credentials.second)
+        return SecurityTranscript.digest(DOMAIN, observer) {
+            uint64(VERSION)
+            text(profile.pairingIdentifier)
+            text(profile.pinnedHostId)
+            text(profile.leaseHostKeyId)
+            text(profile.pinnedDeviceId)
+            text(profile.leaseDeviceKeyId)
+            text(profile.signalingUrl)
+            text(profile.signalingSessionId)
+            uint64(profile.authoritativeSessionEpoch)
+            uint64(profile.hostIdentityEpoch)
+            uint64(profile.deviceIdentityEpoch)
+            uint64(profile.expiresAtUnixSeconds)
+            part(profile.transcriptContext)
+            part(profile.protocolSessionId)
+            secrets.signalingToken.withBytes(::part)
+            uint64(profile.iceServerUrls.size.toLong())
+            profile.iceServerUrls.forEachIndexed { index, urls ->
+                uint64(urls.size.toLong())
+                urls.forEach(::text)
+                val credentials = secrets.turnCredentials[index]
+                nullableSecret(credentials.first)
+                nullableSecret(credentials.second)
+            }
+            byte(if (profile.allowInsecureForTesting) 1.toByte() else 0.toByte())
         }
-        parts += byteArrayOf(if (profile.allowInsecureForTesting) 1 else 0)
-        return SecurityTranscript.digest(DOMAIN, *parts.toTypedArray())
     }
 
     fun verify(
@@ -678,18 +802,18 @@ internal object InternetSessionLeaseSignature {
         require(decoded.profile.leaseHostKeyId == hostIdentity.keyId) {
             "Lease signing key does not match the verified Mac"
         }
+        require(decoded.profile.hostIdentityEpoch == hostIdentity.keyEpoch) {
+            "Lease host identity epoch does not match the verified Mac"
+        }
         require(verify(hostIdentity.signingPublicKey, digest(decoded), decoded.profile.leaseSignature)) {
             "Internet session lease signature is invalid"
         }
     }
 
-    private fun MutableList<ByteArray>.addNullable(value: String?) {
-        add(byteArrayOf(if (value == null) 0 else 1))
-        if (value != null) add(text(value))
+    private fun TranscriptDigestUpdater.nullableSecret(value: DestroyableUtf8?) {
+        byte(if (value == null) 0.toByte() else 1.toByte())
+        value?.withBytes(::part)
     }
-
-    private fun text(value: String): ByteArray = value.toByteArray(StandardCharsets.UTF_8)
-    private fun u64(value: Long): ByteArray = SecurityTranscript.uint64(value)
 }
 
 private fun verifySignedLease(
@@ -703,10 +827,14 @@ internal object InternetSessionProfileCodec {
             "version",
             "pairing_id",
             "pinned_host_id",
+            "pinned_device_id",
+            "lease_device_key_id",
             "signaling_url",
             "signaling_session_id",
             "session_epoch",
-            "identity_epoch",
+            "host_identity_epoch",
+            "device_identity_epoch",
+            "expires_at",
             "transcript_context",
             "protocol_session_id",
             "signaling_token",
@@ -720,59 +848,8 @@ internal object InternetSessionProfileCodec {
     private val SECRET_KEYS = setOf("signaling_token", "turn_credentials")
 
     fun decode(json: String, debuggable: Boolean): DecodedInternetProfile {
-        require(json.toByteArray(Charsets.UTF_8).size <= MAX_PROFILE_BYTES) { "Internet profile is too large" }
-        val root = JsonParser.parseString(json).asJsonObject
-        require(root.keySet() == ROOT_KEYS) {
-            "Internet profile contains missing or unknown fields"
-        }
-        require(root.requiredInt("version") == VERSION) { "Unsupported Internet profile version" }
-        val pairingIdentifier = root.requiredString("pairing_id", MAX_IDENTIFIER_BYTES)
-        val signalingUrl = root.requiredString("signaling_url", MAX_URL_BYTES)
-        val allowInsecure = root.requiredBoolean("allow_insecure_for_testing")
-        validateSignalingUrl(signalingUrl, allowInsecure, debuggable)
-        val signalingToken = root.requiredString("signaling_token", MAX_TOKEN_BYTES)
-        require(signalingToken.length >= MIN_SIGNALING_TOKEN_BYTES) { "Signaling token is invalid" }
-        val ice = root.requiredArray("ice_servers")
-        require(ice.size() in 1..MAX_ICE_SERVERS) { "ICE server count is invalid" }
-        val urls = mutableListOf<List<String>>()
-        val credentials = mutableListOf<Pair<String?, String?>>()
-        ice.forEach { element ->
-            val server = element.asJsonObject
-            require(server.keySet() == ICE_KEYS) { "ICE server contains missing or unknown fields" }
-            val serverUrls =
-                server.requiredArray("urls").map {
-                    require(it.isJsonPrimitive && it.asJsonPrimitive.isString) { "ICE URL must be a string" }
-                    it.asString
-                }
-            require(serverUrls.isNotEmpty() && serverUrls.size <= MAX_ICE_URLS) { "ICE URL count is invalid" }
-            require(serverUrls.all { it.length <= MAX_URL_BYTES }) { "ICE URL is too large" }
-            val username = server.nullableString("username", MAX_CREDENTIAL_BYTES)
-            val credential = server.nullableString("credential", MAX_CREDENTIAL_BYTES)
-            IceServer(serverUrls, username, credential)
-            urls += serverUrls
-            credentials += username to credential
-        }
-        val sessionId = root.requiredString("signaling_session_id", MAX_IDENTIFIER_BYTES)
-        val protocolSessionId = root.requiredBase64("protocol_session_id", 1..MAX_IDENTIFIER_BYTES)
-        val profile =
-            StoredInternetSessionProfile(
-                pairingIdentifier = pairingIdentifier,
-                pinnedHostId = root.requiredString("pinned_host_id", MAX_IDENTIFIER_BYTES),
-                signalingUrl = signalingUrl,
-                signalingSessionId = sessionId,
-                authoritativeSessionEpoch = root.requiredPositiveLong("session_epoch"),
-                identityEpoch = root.requiredPositiveLong("identity_epoch"),
-                transcriptContext = root.requiredBase64("transcript_context", TRANSCRIPT_BYTES..TRANSCRIPT_BYTES),
-                protocolSessionId = protocolSessionId,
-                iceServerUrls = urls,
-                allowInsecureForTesting = allowInsecure,
-                leaseHostKeyId = root.requiredString("lease_host_key_id", MAX_IDENTIFIER_BYTES),
-                leaseSignature = root.requiredBase64("lease_signature", 1..MAX_SIGNATURE_BYTES),
-            )
-        return DecodedInternetProfile(
-            profile,
-            ImportedInternetSecrets(signalingToken, credentials),
-        )
+        require(json.utf8LengthAtMost(MAX_PROFILE_BYTES)) { "Internet profile is too large" }
+        return decodeProfile(JsonReader(StringReader(json)), debuggable)
     }
 
     fun encodePublic(profile: StoredInternetSessionProfile): String =
@@ -780,10 +857,14 @@ internal object InternetSessionProfileCodec {
             addProperty("version", VERSION)
             addProperty("pairing_id", profile.pairingIdentifier)
             addProperty("pinned_host_id", profile.pinnedHostId)
+            addProperty("pinned_device_id", profile.pinnedDeviceId)
+            addProperty("lease_device_key_id", profile.leaseDeviceKeyId)
             addProperty("signaling_url", profile.signalingUrl)
             addProperty("signaling_session_id", profile.signalingSessionId)
             addProperty("session_epoch", profile.authoritativeSessionEpoch)
-            addProperty("identity_epoch", profile.identityEpoch)
+            addProperty("host_identity_epoch", profile.hostIdentityEpoch)
+            addProperty("device_identity_epoch", profile.deviceIdentityEpoch)
+            addProperty("expires_at", profile.expiresAtUnixSeconds)
             addProperty("transcript_context", profile.transcriptContext.base64())
             addProperty("protocol_session_id", profile.protocolSessionId.base64())
             add("ice_servers", JsonArray().apply { profile.iceServerUrls.forEach { server -> add(JsonObject().apply { add("urls", server.toJsonArray()); add("username", null); add("credential", null) }) } })
@@ -808,34 +889,244 @@ internal object InternetSessionProfileCodec {
         return decode(synthetic.toString(), debuggable).also { it.close() }.profile
     }
 
-    fun encodeSecrets(secrets: ImportedInternetSecrets): String =
-        JsonObject().apply {
-            addProperty("signaling_token", secrets.signalingToken)
-            add(
-                "turn_credentials",
-                JsonArray().apply {
-                    secrets.turnCredentials.forEach { value ->
-                        add(JsonObject().apply { addNullable("username", value.first); addNullable("credential", value.second) })
-                    }
-                },
-            )
-        }.toString()
-
-    fun decodeSecrets(json: String, expectedIceServers: Int): ImportedInternetSecrets {
-        val root = JsonParser.parseString(json).asJsonObject
-        require(root.keySet() == SECRET_KEYS) { "Stored Internet credentials are malformed" }
-        val credentials = root.requiredArray("turn_credentials")
-        require(credentials.size() == expectedIceServers) { "Stored ICE credentials do not match the lease" }
-        return ImportedInternetSecrets(
-            signalingToken = root.requiredString("signaling_token", MAX_TOKEN_BYTES),
-            turnCredentials =
-                credentials.map { element ->
-                    val value = element.asJsonObject
-                    require(value.keySet() == setOf("username", "credential")) { "Stored TURN credential is malformed" }
-                    value.nullableString("username", MAX_CREDENTIAL_BYTES) to value.nullableString("credential", MAX_CREDENTIAL_BYTES)
-                },
-        )
+    fun encodeSecrets(secrets: ImportedInternetSecrets): ByteArray {
+        val output = ZeroizableByteArrayOutputStream(MAX_PROFILE_BYTES)
+        val writer = JsonWriter(OutputStreamWriter(output, Charsets.UTF_8))
+        try {
+            writer.beginObject()
+            writer.name("signaling_token")
+            secrets.signalingToken.withString(writer::value)
+            writer.name("turn_credentials").beginArray()
+            secrets.turnCredentials.forEach { (username, credential) ->
+                writer.beginObject()
+                writer.name("username")
+                if (username == null) writer.nullValue() else username.withString(writer::value)
+                writer.name("credential")
+                if (credential == null) writer.nullValue() else credential.withString(writer::value)
+                writer.endObject()
+            }
+            writer.endArray().endObject()
+            writer.flush()
+            return output.toByteArray()
+        } finally {
+            runCatching { writer.close() }
+            output.destroy()
+        }
     }
+
+    fun decodeSecrets(json: ByteArray, expectedIceServers: Int): ImportedInternetSecrets {
+        require(json.size <= MAX_PROFILE_BYTES) { "Stored Internet credentials are too large" }
+        // JsonReader is bounded and streaming, so no whole plaintext JSON String is created.
+        // Its internal parser buffers, like Android/OkHttp/libwebrtc String copies, are third-party
+        // memory that cannot be proven zeroized; all containers owned by this module are erased.
+        val reader = JsonReader(InputStreamReader(ByteArrayInputStream(json), Charsets.UTF_8))
+        var token: DestroyableUtf8? = null
+        val credentials = mutableListOf<Pair<DestroyableUtf8?, DestroyableUtf8?>>()
+        val keys = mutableSetOf<String>()
+        try {
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (val name = reader.nextName()) {
+                    "signaling_token" -> {
+                        require(keys.add(name)) { "Stored Internet credentials contain duplicate fields" }
+                        token = reader.nextSecret(MAX_TOKEN_BYTES, "signaling_token")
+                    }
+                    "turn_credentials" -> {
+                        require(keys.add(name)) { "Stored Internet credentials contain duplicate fields" }
+                        reader.beginArray()
+                        while (reader.hasNext()) credentials += reader.readCredentialPair()
+                        reader.endArray()
+                    }
+                    else -> throw IllegalArgumentException("Stored Internet credentials contain unknown field: $name")
+                }
+            }
+            reader.endObject()
+            require(keys == SECRET_KEYS && credentials.size == expectedIceServers) { "Stored Internet credentials are malformed" }
+            return ImportedInternetSecrets(requireNotNull(token), credentials.toList()).also { token = null; credentials.clear() }
+        } catch (failure: Throwable) {
+            token?.close()
+            credentials.forEach { (username, credential) -> username?.close(); credential?.close() }
+            throw failure
+        }
+    }
+
+    private fun decodeProfile(reader: JsonReader, debuggable: Boolean): DecodedInternetProfile {
+        val fields = mutableMapOf<String, Any>()
+        var signalingToken: DestroyableUtf8? = null
+        val iceUrls = mutableListOf<List<String>>()
+        val credentials = mutableListOf<Pair<DestroyableUtf8?, DestroyableUtf8?>>()
+        try {
+            reader.beginObject()
+            while (reader.hasNext()) {
+                val name = reader.nextName()
+                require(name in ROOT_KEYS && name !in fields) { "Internet profile contains duplicate or unknown field: $name" }
+                when (name) {
+                    "version" -> fields[name] = reader.nextStrictInteger(name).toIntOrNull() ?: throw IllegalArgumentException("$name is outside the integer range")
+                    "session_epoch", "host_identity_epoch", "device_identity_epoch", "expires_at" ->
+                        fields[name] = reader.nextStrictInteger(name).toLongOrNull() ?: throw IllegalArgumentException("$name is outside the integer range")
+                    "allow_insecure_for_testing" -> fields[name] = reader.nextBoolean()
+                    "signaling_token" -> {
+                        signalingToken = reader.nextSecret(MAX_TOKEN_BYTES, name)
+                        fields[name] = true
+                    }
+                    "ice_servers" -> {
+                        reader.beginArray()
+                        while (reader.hasNext()) {
+                            require(iceUrls.size < MAX_ICE_SERVERS) { "ICE server count is invalid" }
+                            val (urls, credential) = reader.readIceServer()
+                            iceUrls += urls
+                            credentials += credential
+                        }
+                        reader.endArray()
+                        fields[name] = true
+                    }
+                    else -> fields[name] = reader.nextBoundedString(maximumBytesFor(name), name)
+                }
+            }
+            reader.endObject()
+            require(fields.keys == ROOT_KEYS) { "Internet profile contains missing or unknown fields" }
+            require(fields.getValue("version") == VERSION) { "Unsupported Internet profile version" }
+            require(iceUrls.isNotEmpty()) { "ICE server count is invalid" }
+            val token = requireNotNull(signalingToken)
+            require(token.byteLength() >= MIN_SIGNALING_TOKEN_BYTES) { "Signaling token is invalid" }
+            val signalingUrl = fields.string("signaling_url")
+            val allowInsecure = fields.getValue("allow_insecure_for_testing") as Boolean
+            validateSignalingUrl(signalingUrl, allowInsecure, debuggable)
+            fun positiveLong(name: String): Long =
+                (fields.getValue(name) as Long).also { require(it in 1 until Long.MAX_VALUE) { "$name must be positive and below the reserved maximum" } }
+            val profile =
+                StoredInternetSessionProfile(
+                    pairingIdentifier = fields.string("pairing_id"),
+                    pinnedHostId = fields.string("pinned_host_id"),
+                    pinnedDeviceId = fields.string("pinned_device_id"),
+                    leaseDeviceKeyId = fields.string("lease_device_key_id"),
+                    signalingUrl = signalingUrl,
+                    signalingSessionId = fields.string("signaling_session_id"),
+                    authoritativeSessionEpoch = positiveLong("session_epoch"),
+                    hostIdentityEpoch = positiveLong("host_identity_epoch"),
+                    deviceIdentityEpoch = positiveLong("device_identity_epoch"),
+                    expiresAtUnixSeconds = positiveLong("expires_at"),
+                    transcriptContext = fields.base64("transcript_context", TRANSCRIPT_BYTES..TRANSCRIPT_BYTES),
+                    protocolSessionId = fields.base64("protocol_session_id", 1..MAX_IDENTIFIER_BYTES),
+                    iceServerUrls = iceUrls.toList(),
+                    allowInsecureForTesting = allowInsecure,
+                    leaseHostKeyId = fields.string("lease_host_key_id"),
+                    leaseSignature = fields.base64("lease_signature", 1..MAX_SIGNATURE_BYTES),
+                )
+            return DecodedInternetProfile(profile, ImportedInternetSecrets(token, credentials.toList())).also {
+                signalingToken = null
+                credentials.clear()
+            }
+        } catch (failure: Throwable) {
+            signalingToken?.close()
+            credentials.forEach { (username, credential) -> username?.close(); credential?.close() }
+            throw failure
+        }
+    }
+
+    private fun JsonReader.readIceServer(): Pair<List<String>, Pair<DestroyableUtf8?, DestroyableUtf8?>> {
+        val keys = mutableSetOf<String>()
+        val urls = mutableListOf<String>()
+        var username: DestroyableUtf8? = null
+        var credential: DestroyableUtf8? = null
+        try {
+            beginObject()
+            while (hasNext()) {
+                when (val name = nextName()) {
+                    "urls" -> {
+                        require(keys.add(name)) { "ICE server contains duplicate fields" }
+                        beginArray()
+                        while (hasNext()) {
+                            require(urls.size < MAX_ICE_URLS) { "ICE URL count is invalid" }
+                            urls += nextBoundedString(MAX_URL_BYTES, "ICE URL")
+                        }
+                        endArray()
+                    }
+                    "username" -> {
+                        require(keys.add(name)) { "ICE server contains duplicate fields" }
+                        username = nextNullableSecret(MAX_CREDENTIAL_BYTES, name)
+                    }
+                    "credential" -> {
+                        require(keys.add(name)) { "ICE server contains duplicate fields" }
+                        credential = nextNullableSecret(MAX_CREDENTIAL_BYTES, name)
+                    }
+                    else -> throw IllegalArgumentException("ICE server contains unknown field: $name")
+                }
+            }
+            endObject()
+            require(keys == ICE_KEYS && urls.isNotEmpty()) { "ICE server contains missing fields" }
+            require(urls.all { it.startsWith("stun:") || it.startsWith("stuns:") || it.startsWith("turn:") || it.startsWith("turns:") }) {
+                "ICE URLs must use stun, stuns, turn, or turns"
+            }
+            if (urls.any { it.startsWith("turn:") || it.startsWith("turns:") }) {
+                require(username != null && !username.isBlank() && credential != null && !credential.isBlank()) {
+                    "TURN servers require username and credential"
+                }
+            }
+            return urls.toList() to (username to credential).also { username = null; credential = null }
+        } catch (failure: Throwable) {
+            username?.close()
+            credential?.close()
+            throw failure
+        }
+    }
+
+    private fun JsonReader.readCredentialPair(): Pair<DestroyableUtf8?, DestroyableUtf8?> {
+        val keys = mutableSetOf<String>()
+        var username: DestroyableUtf8? = null
+        var credential: DestroyableUtf8? = null
+        try {
+            beginObject()
+            while (hasNext()) {
+                when (val name = nextName()) {
+                    "username" -> { require(keys.add(name)); username = nextNullableSecret(MAX_CREDENTIAL_BYTES, name) }
+                    "credential" -> { require(keys.add(name)); credential = nextNullableSecret(MAX_CREDENTIAL_BYTES, name) }
+                    else -> throw IllegalArgumentException("Stored TURN credential contains unknown field: $name")
+                }
+            }
+            endObject()
+            require(keys == setOf("username", "credential")) { "Stored TURN credential is malformed" }
+            return (username to credential).also { username = null; credential = null }
+        } catch (failure: Throwable) {
+            username?.close()
+            credential?.close()
+            throw failure
+        }
+    }
+
+    private fun JsonReader.nextNullableSecret(maxBytes: Int, name: String): DestroyableUtf8? =
+        if (peek() == JsonToken.NULL) { nextNull(); null } else nextSecret(maxBytes, name)
+
+    private fun JsonReader.nextSecret(maxBytes: Int, name: String): DestroyableUtf8 {
+        val transient = nextBoundedString(maxBytes, name)
+        return DestroyableUtf8.fromString(transient)
+    }
+
+    private fun JsonReader.nextBoundedString(maxBytes: Int, name: String): String {
+        require(peek() == JsonToken.STRING) { "$name must be a string" }
+        return nextString().also { require(it.isNotBlank() && it.utf8LengthAtMost(maxBytes)) { "$name is invalid" } }
+    }
+
+    private fun JsonReader.nextStrictInteger(name: String): String {
+        require(peek() == JsonToken.NUMBER) { "$name must be an integer" }
+        return nextString().also { require(it.matches(Regex("-?[0-9]+"))) { "$name must be an integer" } }
+    }
+
+    private fun maximumBytesFor(name: String): Int =
+        when (name) {
+            "signaling_url" -> MAX_URL_BYTES
+            "transcript_context", "protocol_session_id", "lease_signature" -> MAX_BASE64_BYTES
+            else -> MAX_IDENTIFIER_BYTES
+        }
+
+    private fun Map<String, Any>.string(name: String): String = getValue(name) as String
+
+    private fun Map<String, Any>.base64(name: String, size: IntRange): ByteArray =
+        try {
+            Base64.getDecoder().decode(string(name)).also { require(it.size in size) { "$name decoded length is invalid" } }
+        } catch (failure: IllegalArgumentException) {
+            throw IllegalArgumentException("$name is invalid base64", failure)
+        }
 
     private fun validateSignalingUrl(url: String, allowInsecure: Boolean, debuggable: Boolean) {
         val uri = URI(url)
@@ -898,6 +1189,29 @@ internal object InternetSessionProfileCodec {
     private fun ByteArray.base64(): String = Base64.getEncoder().encodeToString(this)
     private fun List<String>.toJsonArray() = JsonArray().also { array -> forEach(array::add) }
 
+    private fun String.utf8LengthAtMost(limit: Int): Boolean {
+        var bytes = 0
+        var index = 0
+        while (index < length) {
+            val character = this[index]
+            bytes +=
+                when {
+                    character.code <= 0x7f -> 1
+                    character.code <= 0x7ff -> 2
+                    character.isHighSurrogate() -> {
+                        require(index + 1 < length && this[index + 1].isLowSurrogate()) { "Invalid UTF-16 input" }
+                        index++
+                        4
+                    }
+                    character.isLowSurrogate() -> throw IllegalArgumentException("Invalid UTF-16 input")
+                    else -> 3
+                }
+            if (bytes > limit) return false
+            index++
+        }
+        return true
+    }
+
     private const val VERSION = 1
     private const val MAX_PROFILE_BYTES = 65_536
     private const val MAX_IDENTIFIER_BYTES = 256
@@ -911,4 +1225,41 @@ internal object InternetSessionProfileCodec {
     private const val MAX_ICE_URLS = 8
     private const val TRANSCRIPT_BYTES = 32
     private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1")
+}
+
+internal class ZeroizableByteArrayOutputStream(
+    initialCapacity: Int,
+) : ByteArrayOutputStream(initialCapacity) {
+    @Synchronized
+    override fun write(value: Int) {
+        val previousBuffer = buf
+        try {
+            super.write(value)
+        } finally {
+            zeroRetiredBuffer(previousBuffer)
+        }
+    }
+
+    @Synchronized
+    override fun write(value: ByteArray, offset: Int, length: Int) {
+        val previousBuffer = buf
+        try {
+            super.write(value, offset, length)
+        } finally {
+            zeroRetiredBuffer(previousBuffer)
+        }
+    }
+
+    @Synchronized
+    fun destroy() {
+        buf.fill(0)
+        reset()
+    }
+
+    @Synchronized
+    internal fun backingBufferForTest(): ByteArray = buf
+
+    private fun zeroRetiredBuffer(previousBuffer: ByteArray) {
+        if (buf !== previousBuffer) previousBuffer.fill(0)
+    }
 }

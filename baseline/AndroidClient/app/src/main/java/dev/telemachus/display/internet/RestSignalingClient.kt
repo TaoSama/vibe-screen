@@ -20,7 +20,13 @@ class RestSignalingClient(
     sessionId: String,
     private val gson: Gson = Gson(),
 ) : SignalingClient {
-    private val sessionUrl = buildSessionUrl(configuration.baseUrl, sessionId)
+    private val sessionUrl =
+        try {
+            buildSessionUrl(configuration.baseUrl, sessionId)
+        } catch (failure: Throwable) {
+            configuration.close()
+            throw failure
+        }
     private val closed = AtomicBoolean(false)
     private val started = AtomicBoolean(false)
     private val activePoll = AtomicReference<HttpURLConnection?>()
@@ -60,6 +66,7 @@ class RestSignalingClient(
         activePoll.getAndSet(null)?.disconnect()
         pollExecutor.shutdownNow()
         sendExecutor.shutdownNow()
+        configuration.close()
     }
 
     private fun enqueue(message: SignalingMessage) {
@@ -161,7 +168,9 @@ class RestSignalingClient(
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = configuration.pollWaitSeconds * 1_000 + READ_TIMEOUT_MARGIN_MS
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("Authorization", "Bearer ${configuration.bearerToken}")
+            configuration.bearerTokenSecret.withString { token ->
+                setRequestProperty("Authorization", "Bearer $token")
+            }
             if (method == "POST") setRequestProperty("Content-Type", "application/json; charset=utf-8")
             useCaches = false
         }

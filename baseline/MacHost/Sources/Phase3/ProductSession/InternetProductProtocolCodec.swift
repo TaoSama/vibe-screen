@@ -104,6 +104,7 @@ struct InternetProductProtocolCodec {
     static let requiredCapabilities: Set<VSCapability> = [
         .deviceIdentity,
         .endToEndEncryption,
+        .mediaRecordFragmentation,
         .replayProtection,
     ]
 
@@ -115,6 +116,7 @@ struct InternetProductProtocolCodec {
     private(set) var video: InternetProductVideoConfiguration
     let maximumControlBytes: Int
     let maximumMediaBytes: Int
+    private(set) var negotiatedMaximumEncryptedMediaRecordBytes: Int?
 
     private(set) var nextMessageID: UInt64 = 1
     private(set) var nextFrameID: UInt64 = 1
@@ -142,6 +144,7 @@ struct InternetProductProtocolCodec {
         self.video = video
         self.maximumControlBytes = limits.maximumControlMessageBytes
         self.maximumMediaBytes = limits.maximumMediaFrameBytes
+        self.negotiatedMaximumEncryptedMediaRecordBytes = nil
     }
 
     mutating func decodeControl(_ data: Data, allowUnscopedHello: Bool = false) throws -> VSEnvelope {
@@ -183,7 +186,8 @@ struct InternetProductProtocolCodec {
         return envelope
     }
 
-    func validate(_ hello: VSClientHello) throws {
+    mutating func validate(_ hello: VSClientHello) throws {
+        negotiatedMaximumEncryptedMediaRecordBytes = nil
         guard hello.deviceID == peerDeviceID else {
             throw InternetProductProtocolError.peerIdentityMismatch
         }
@@ -197,6 +201,26 @@ struct InternetProductProtocolCodec {
         for capability in Self.requiredCapabilities where !capabilities.contains(capability) {
             throw InternetProductProtocolError.missingCapability(capability)
         }
+        let requiredByClient = Set(hello.requiredCapabilities)
+        guard requiredByClient.isSubset(of: capabilities) else {
+            throw InternetProductProtocolError.unexpectedMessage(
+                "ClientHello required capabilities were not included in its offer"
+            )
+        }
+        let hostCapabilities = Self.requiredCapabilities.union([.touch])
+        for capability in requiredByClient where !hostCapabilities.contains(capability) {
+            throw InternetProductProtocolError.missingCapability(capability)
+        }
+        let offeredMaximum = Int(hello.resourceLimits.maximumEncryptedMediaRecordBytes)
+        guard offeredMaximum >= InternetMediaRecordContract.minimumNegotiatedEncryptedRecordBytes else {
+            throw InternetProductProtocolError.unexpectedMessage(
+                "ClientHello did not offer a usable encrypted media record limit"
+            )
+        }
+        negotiatedMaximumEncryptedMediaRecordBytes = min(
+            offeredMaximum,
+            InternetMediaRecordContract.maximumEncryptedRecordBytes
+        )
         guard hello.codecs.contains(video.codec) else {
             throw InternetProductProtocolError.unsupportedCodec
         }
@@ -211,6 +235,11 @@ struct InternetProductProtocolCodec {
             $0.rawValue < $1.rawValue
         }
         hello.codecs = [video.codec]
+        var limits = VSResourceLimits()
+        limits.maximumEncryptedMediaRecordBytes = UInt32(
+            InternetMediaRecordContract.maximumEncryptedRecordBytes
+        )
+        hello.resourceLimits = limits
         var envelope = baseEnvelope()
         envelope.hostHello = hello
         return try encode(envelope)
@@ -227,6 +256,16 @@ struct InternetProductProtocolCodec {
         accepted.negotiatedCapabilities = (
             Array(Self.requiredCapabilities) + (peerSupportsTouch ? [.touch] : [])
         ).sorted { $0.rawValue < $1.rawValue }
+        guard let negotiatedMaximumEncryptedMediaRecordBytes else {
+            throw InternetProductProtocolError.unexpectedMessage(
+                "media record limits were not negotiated before session acceptance"
+            )
+        }
+        var limits = VSResourceLimits()
+        limits.maximumEncryptedMediaRecordBytes = UInt32(
+            negotiatedMaximumEncryptedMediaRecordBytes
+        )
+        accepted.negotiatedResourceLimits = limits
         var envelope = baseEnvelope()
         envelope.sessionAccepted = accepted
         return try encode(envelope)
@@ -294,32 +333,67 @@ struct InternetProductProtocolCodec {
                 maximum: maximumMediaBytes
             )
         }
-        var header = VSMediaPacketHeader()
-        header.streamID = video.streamID
-        header.sessionEpoch = sessionEpoch
-        header.configEpoch = video.configEpoch
-        header.frameID = nextFrameID
-        header.fragmentIndex = 0
-        header.fragmentCount = 1
-        header.captureTimestampNs = timestamp
-        header.keyframe = isKeyframe
-        header.codec = video.codec
-        header.payloadLength = UInt32(payload.count)
-        nextFrameID &+= 1
-
-        let headerBytes = try header.serializedData()
-        var framed = Data()
-        appendVarint(headerBytes.count, to: &framed)
-        framed.append(headerBytes)
-        framed.append(payload)
-        guard framed.count <= maximumMediaBytes else {
+        guard let negotiatedMaximumEncryptedMediaRecordBytes else {
+            throw InternetProductProtocolError.unexpectedMessage(
+                "media record limits were not negotiated before media encoding"
+            )
+        }
+        let maximumPlaintextRecordBytes = InternetMediaRecordContract.maximumPlaintextRecordBytes(
+            negotiatedEncryptedRecordBytes: negotiatedMaximumEncryptedMediaRecordBytes
+        )
+        let fragmentPayloadBytes = InternetMediaRecordContract.maximumFragmentPayloadBytes(
+            negotiatedEncryptedRecordBytes: negotiatedMaximumEncryptedMediaRecordBytes
+        )
+        let fragmentCount = max(1, (payload.count + fragmentPayloadBytes - 1) / fragmentPayloadBytes)
+        guard fragmentCount <= InternetMediaRecordContract.maximumFragmentsPerFrame else {
             throw InternetProductProtocolError.mediaPayloadTooLarge(
-                actual: framed.count,
+                actual: payload.count,
                 maximum: maximumMediaBytes
             )
         }
-        return EncodedInternetFrame(
-            payload: framed,
+
+        let frameID = nextFrameID
+        var records: [Data] = []
+        records.reserveCapacity(fragmentCount)
+        for fragmentIndex in 0..<fragmentCount {
+            let start = fragmentIndex * fragmentPayloadBytes
+            let end = min(payload.count, start + fragmentPayloadBytes)
+            let fragment = payload.subdata(in: start..<end)
+            var header = VSMediaPacketHeader()
+            header.streamID = video.streamID
+            header.sessionEpoch = sessionEpoch
+            header.configEpoch = video.configEpoch
+            header.frameID = frameID
+            header.fragmentIndex = UInt32(fragmentIndex)
+            header.fragmentCount = UInt32(fragmentCount)
+            header.captureTimestampNs = timestamp
+            header.keyframe = isKeyframe
+            header.codec = video.codec
+            header.payloadLength = UInt32(fragment.count)
+
+            let headerBytes = try header.serializedData()
+            guard headerBytes.count <= InternetMediaRecordContract.maximumMediaHeaderBytes else {
+                throw InternetProductProtocolError.mediaPayloadTooLarge(
+                    actual: headerBytes.count,
+                    maximum: InternetMediaRecordContract.maximumMediaHeaderBytes
+                )
+            }
+            var record = Data()
+            appendVarint(headerBytes.count, to: &record)
+            record.append(headerBytes)
+            record.append(fragment)
+            guard record.count <= maximumPlaintextRecordBytes else {
+                throw InternetProductProtocolError.mediaPayloadTooLarge(
+                    actual: record.count,
+                    maximum: maximumPlaintextRecordBytes
+                )
+            }
+            records.append(record)
+        }
+        nextFrameID &+= 1
+        return try EncodedInternetFrame(
+            records: records,
+            mediaPayloadBytes: payload.count,
             captureTimestamp: timestamp,
             isKeyframe: isKeyframe
         )

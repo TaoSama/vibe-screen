@@ -1081,7 +1081,9 @@ class StreamingServer: EncodedFrameSink {
             rotation: rotation,
             framesPerSecond: protocolV1FramesPerSecond,
             bitrateKbps: protocolV1BitrateKbps,
-            hostCapabilities: touchEnabled ? [.touch, .telemetry] : [.telemetry],
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: touchEnabled
+            ),
             requiredClientCapabilities: touchEnabled ? [.touch] : [],
             supportedCodecs: [.hevc, .h264],
             hostID: "macos-host",

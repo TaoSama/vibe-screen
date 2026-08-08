@@ -24,6 +24,10 @@ struct NetworkRecoveryStateMachine {
         attempt = 0
     }
 
+    mutating func observePath(_ path: InternetNetworkPath) {
+        lastPath = path
+    }
+
     mutating func connectivityLost() -> NetworkRecoveryAction {
         guard attempt < policy.maximumAttempts else {
             return .fail("ICE recovery exhausted after \(attempt) attempts.")
@@ -37,7 +41,10 @@ struct NetworkRecoveryStateMachine {
         guard path.isSatisfied else { return nil }
         guard let previous = lastPath else { return nil }
         guard previous.fingerprint != path.fingerprint else { return nil }
-        attempt = 1
+        guard attempt < policy.maximumAttempts else {
+            return .fail("ICE recovery exhausted after \(attempt) attempts.")
+        }
+        attempt += 1
         return .restartICE
     }
 }

@@ -24,7 +24,14 @@ class VideoDecoder(
     initialHeight: Int = 1200,
     private val mime: String = MediaFormat.MIMETYPE_VIDEO_HEVC,
     initialScaleMode: VideoScaleMode = VideoScaleMode.FIT,
+    private val onFrameDecoded: (VideoDecoder, ByteArray) -> Unit = { _, _ -> },
+    private val onFrameRendered: (VideoDecoder, Long) -> Unit = { _, _ -> },
+    private val onFrameStats: (VideoDecoder, fps: Double, variance: Double) -> Unit = { _, _, _ -> },
+    onKeyframeRequired: (VideoDecoder, force: Boolean, reason: String) -> Unit,
+    onCodecFallbackRequired: (VideoDecoder, reason: String) -> Unit,
 ) {
+    private val keyframeCallback = onKeyframeRequired
+    private val codecFallbackCallback = onCodecFallbackRequired
     private var decoder: MediaCodec? = null
     private var decoderThread: HandlerThread? = null
     private var decoderHandler: Handler? = null
@@ -62,11 +69,7 @@ class VideoDecoder(
 
     private var lastKeyframeRequestNs = 0L
 
-    var onFrameRendered: ((Long) -> Unit)? = null
-    var onFrameStats: ((fps: Double, variance: Double) -> Unit)? = null
-    var onFrameDecoded: ((ByteArray) -> Unit)? = null
-    var onKeyframeRequired: ((force: Boolean, reason: String) -> Unit)? = null
-    var onCodecFallbackRequired: ((reason: String) -> Unit)? = null
+    private var startupGate = createStartupGate()
 
     // Available input buffer indices — fed by onInputBufferAvailable callback
     private val availableInputBuffers = ConcurrentLinkedQueue<Int>()
@@ -88,7 +91,13 @@ class VideoDecoder(
             currentWidth = width
             currentHeight = height
             release()
+            startupGate = createStartupGate()
             setupDecoder()
+            when (val result = startupGate.commit { true }) {
+                DecoderStartupCommitResult.Committed -> Unit
+                DecoderStartupCommitResult.NotCommitted -> error("Decoder recreation was discarded")
+                is DecoderStartupCommitResult.Failed -> error(result.reason)
+            }
             requestKeyframe("resolution changed", force = true)
         }
     }
@@ -151,8 +160,10 @@ class VideoDecoder(
                         mapOf("mime" to mime, "diagnostic_info" to e.diagnosticInfo),
                     )
                     needsKeyframe = true
-                    requestKeyframe("codec error", force = true)
-                    onCodecFallbackRequired?.invoke("codec_runtime_failure")
+                    startupGate.reportFatal(
+                        reason = "codec_runtime_failure",
+                        keyframeReason = "codec error",
+                    )
                 }
 
                 override fun onOutputFormatChanged(
@@ -253,13 +264,21 @@ class VideoDecoder(
         needsKeyframe = true
         nextRenderTimeNs = 0L
         isRunning = true
-        codec.start()
+        startupGate.start { codec.start() }
         decoder = codec
         diagLog(
             "Decoder started: ${currentWidth}x$currentHeight @ ${displayRefreshRate}Hz, " +
                 "surface=$surface, valid=${surface.isValid}",
         )
     }
+
+    internal fun commitStartup(publish: () -> Boolean): DecoderStartupCommitResult = startupGate.commit(publish)
+
+    private fun createStartupGate(): DecoderStartupGate =
+        DecoderStartupGate(
+            onKeyframeRequired = { force, reason -> keyframeCallback(this, force, reason) },
+            onCodecFallbackRequired = { reason -> codecFallbackCallback(this, reason) },
+        )
 
     private fun VideoScaleMode.mediaCodecValue(): Int =
         when (this) {
@@ -376,14 +395,14 @@ class VideoDecoder(
                     "current_epoch" to currentSessionEpoch,
                 ),
             )
-            onFrameDecoded?.invoke(frameData)
+            onFrameDecoded(this, frameData)
             return
         }
-        abandonedFrames.forEach { pending -> onFrameDecoded?.invoke(pending.data) }
+        abandonedFrames.forEach { pending -> onFrameDecoded(this, pending.data) }
 
         if (!isRunning) {
             diagLog("decode called but isRunning=false")
-            onFrameDecoded?.invoke(frameData)
+            onFrameDecoded(this, frameData)
             return
         }
 
@@ -408,7 +427,7 @@ class VideoDecoder(
         val codec =
             decoder ?: run {
                 diagLog("decoder is null in decode()")
-                onFrameDecoded?.invoke(frameData)
+                onFrameDecoded(this, frameData)
                 return
             }
 
@@ -437,7 +456,7 @@ class VideoDecoder(
             }
         if (index == null) {
             val result = requireNotNull(offerResult)
-            result.dropped.forEach { dropped -> onFrameDecoded?.invoke(dropped.data) }
+            result.dropped.forEach { dropped -> onFrameDecoded(this, dropped.data) }
             if (result.dropped.isNotEmpty()) {
                 droppedFrames += result.dropped.size
                 emitTelemetry(
@@ -479,7 +498,7 @@ class VideoDecoder(
         val ageNs = System.nanoTime() - frame.timestampNs
         if (ageNs > MAX_RENDER_LATENCY_NS) {
             droppedFrames++
-            onFrameDecoded?.invoke(frame.data)
+            onFrameDecoded(this, frame.data)
             availableInputBuffers.offer(index)
             emitTelemetry(
                 "frame_dropped",
@@ -531,7 +550,7 @@ class VideoDecoder(
             requestKeyframe("queue input failed")
             Log.e(TAG, "decode direct feed error", e)
         } finally {
-            onFrameDecoded?.invoke(frameData)
+            onFrameDecoded(this, frameData)
         }
     }
 
@@ -552,7 +571,7 @@ class VideoDecoder(
         if (requestRefresh) {
             requestKeyframe(reason)
         }
-        onFrameDecoded?.invoke(frameData)
+        onFrameDecoded(this, frameData)
     }
 
     private fun requestKeyframe(
@@ -567,7 +586,7 @@ class VideoDecoder(
         }
         lastKeyframeRequestNs = now
         diagLog("Requesting keyframe: reason=$reason, force=$force")
-        onKeyframeRequired?.invoke(force, reason)
+        startupGate.requestKeyframe(force, reason)
     }
 
     private fun handleOutputBuffer(
@@ -678,10 +697,10 @@ class VideoDecoder(
                 val avgDelta = deltas.average()
                 val variance = deltas.map { (it - avgDelta) * (it - avgDelta) }.average()
                 val stdDev = kotlin.math.sqrt(variance)
-                onFrameStats?.invoke(1000.0 / avgDelta, stdDev)
+                onFrameStats(this, 1000.0 / avgDelta, stdDev)
             }
         }
-        onFrameRendered?.invoke(timestamp)
+        onFrameRendered(this, timestamp)
     }
 
     private fun updateStats() {
@@ -697,10 +716,11 @@ class VideoDecoder(
     }
 
     fun release() {
+        startupGate.discard()
         isRunning = false
         nextRenderTimeNs = 0L
         val abandonedFrames = synchronized(inputQueueLock) { pendingFrames.drain() }
-        abandonedFrames.forEach { frame -> onFrameDecoded?.invoke(frame.data) }
+        abandonedFrames.forEach { frame -> onFrameDecoded(this, frame.data) }
         availableInputBuffers.clear()
         queuedFrameEpochs.clear()
         val codec = decoder

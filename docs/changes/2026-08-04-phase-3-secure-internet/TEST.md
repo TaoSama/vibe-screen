@@ -243,8 +243,10 @@ named by that run:
 - The reproducible local runner passed a real signaling process using both direct
   UDP and `forceRelay=true`. Local coturn 4.16.0 selected
   `relay(local=relay,remote=relay,protocol=udp)` and delivered application
-  AES-256-GCM control/media records bidirectionally. Its independent allocation
-  check relayed 3/3 datagrams and scanned generated credentials out of logs.
+  AES-256-GCM control/media records bidirectionally. The forced selected
+  libwebrtc relay candidate pair is the current runner's TURN proof; the earlier
+  standalone `turnutils` 3/3 datagram smoke is historical and is not inferred
+  from the current runner.
 - `services/relay/integration/test-turn-rest.sh` passed short-term control-plane
   credential issuance, authenticated coturn allocation, ChannelBind and relayed
   messages. A deterministic one-socket TURN helper filled `user-quota=2` with
@@ -310,9 +312,9 @@ named by that run:
   keyframe plus delta media, application AEAD, and the seeded-plaintext log scan
   passed. Direct reported
   `direct(local=host,remote=host,protocol=udp)`; forced TURN reported
-  `relay(local=relay,remote=relay,protocol=udp)` and its independent coturn check
-  relayed 3/3 datagrams. This did not start capture/UI and is not Android, real
-  screen/input, or packet-capture evidence.
+  `relay(local=relay,remote=relay,protocol=udp)`. No independent `turnutils`
+  datagram result is claimed by this runner. This did not start capture/UI and
+  is not Android, real screen/input, or packet-capture evidence.
 - The prior curated Android interop record remains
   [withdrawn](evidence/android-product-interop.json). Its claimed source commit
   does not exist in this repository, and raw host output, instrumentation output,

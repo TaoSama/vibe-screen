@@ -61,15 +61,79 @@ jobs:
       - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
       - run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
       - run: make baseline-android-check
+      - name: Build Android instrumentation test APK
+        run: cd baseline/AndroidClient && ./gradlew assembleDebugAndroidTest
 
   macos:
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - run: make baseline-macos-build
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: 1.25.12
+          cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+      - name: Install local Phase 3 synthetic product E2E dependencies
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          brew install coturn
+          turnserver_path="$(brew --prefix coturn)/bin/turnserver"
+          test -x "$turnserver_path"
+          command -v jq
+          coturn_version="$("$turnserver_path" --version 2>&1 | awk '/^[0-9]+\.[0-9]+\.[0-9]+$/ { version=$0 } END { print version }')"
+          case "$coturn_version" in
+            4.15.0|4.16.0|4.17.0) ;;
+            *) echo "Unsupported Homebrew coturn version: $coturn_version" >&2; exit 1 ;;
+          esac
+          echo "PHASE3_TURNSERVER=$turnserver_path" >> "$GITHUB_ENV"
+          echo "Local coturn compatibility version: $coturn_version" >> "$GITHUB_STEP_SUMMARY"
+      - name: Gate local synthetic Protocol v1 harness direct and forced-relay product E2E
+        id: phase3_synthetic_gate
+        run: |
+          make phase3-local-synthetic-product-e2e
+          jq -e -s --arg commit "$GITHUB_SHA" '
+            length == 2 and
+            (map(.mode) | sort) == ["direct", "relay"] and
+            all(.[];
+              .result == "pass" and
+              .slice == "product" and
+              .environment.repository_commit == $commit and
+              .environment.repository_source.dirty == false
+            )
+          ' .build/phase3-local-synthetic-product-e2e/direct.json .build/phase3-local-synthetic-product-e2e/relay.json >/dev/null
       - run: make baseline-macos-self-test
       - run: make baseline-macos-test
       - run: make baseline-macos-app
+      - name: Validate local Phase 3 synthetic product E2E public summaries
+        id: phase3_synthetic_public_summaries
+        if: ${{ always() && steps.phase3_synthetic_gate.outcome == 'success' }}
+        run: python3 scripts/phase3_webrtc/public_artifacts.py --root .build/phase3-local-synthetic-product-e2e --output .build/phase3-local-synthetic-product-e2e/public
+      - name: Upload local Phase 3 synthetic product E2E public summaries
+        if: ${{ always() && steps.phase3_synthetic_gate.outcome == 'success' && steps.phase3_synthetic_public_summaries.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: phase3-local-synthetic-product-e2e-public
+          path: .build/phase3-local-synthetic-product-e2e/public
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+      - name: Create local Phase 3 synthetic product E2E failure diagnostic
+        id: phase3_synthetic_failure_diagnostic
+        if: ${{ always() && steps.phase3_synthetic_gate.outcome == 'failure' }}
+        run: python3 scripts/phase3_webrtc/public_artifacts.py --root .build/phase3-local-synthetic-product-e2e --output .build/phase3-local-synthetic-product-e2e/public-failure --failure-diagnostic
+      - name: Upload local Phase 3 synthetic product E2E failure diagnostic
+        if: ${{ always() && steps.phase3_synthetic_gate.outcome == 'failure' && steps.phase3_synthetic_failure_diagnostic.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: phase3-local-synthetic-product-e2e-failure-diagnostic
+          path: .build/phase3-local-synthetic-product-e2e/public-failure
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: telemachus-macos-ad-hoc-signed

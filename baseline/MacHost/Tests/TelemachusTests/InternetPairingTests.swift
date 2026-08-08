@@ -4,6 +4,48 @@ import XCTest
 @testable import Telemachus
 
 final class InternetPairingTests: XCTestCase {
+    func testConcurrentAcceptsUseIndependentPersistenceMarkers() throws {
+        let fixture = Fixture()
+        let firstOffer = try fixture.coordinator.createOffer().offer
+        let secondOffer = try fixture.coordinator.createOffer().offer
+        let first = try fixture.coordinator.accept(
+            fixture.prepareRequest(for: firstOffer).request
+        )
+        let second = try fixture.coordinator.accept(
+            fixture.prepareRequest(for: secondOffer).request
+        )
+
+        XCTAssertEqual(
+            try fixture.store.names(prefix: "pairing.persistence-cleanup.v2.").count,
+            2
+        )
+        try fixture.coordinator.commitPersistence(secretNames: first.secretNames)
+        XCTAssertNotNil(fixture.store.values[second.secretNames.sharedSecret])
+        XCTAssertEqual(
+            try fixture.store.names(prefix: "pairing.persistence-cleanup.v2.").count,
+            1
+        )
+        try fixture.coordinator.commitPersistence(secretNames: second.secretNames)
+        XCTAssertTrue(
+            try fixture.store.names(prefix: "pairing.persistence-cleanup.v2.").isEmpty
+        )
+    }
+
+    func testPairingURLRejectsOversizeBeforePayloadDecode() throws {
+        let oversized = "vibescreen://pair?v=1&o=" + String(repeating: "A", count: 16_384)
+        XCTAssertThrowsError(
+            try InternetPairingURL.parse(try XCTUnwrap(URL(string: oversized)))
+        )
+    }
+
+    func testEncodedPairingURLRoundTripsWithCanonicalQuerySeparator() throws {
+        let fixture = Fixture()
+        let created = try fixture.coordinator.createOffer()
+
+        XCTAssertEqual(try InternetPairingURL.parse(created.url), created.offer)
+        XCTAssertTrue(created.url.absoluteString.hasPrefix("vibescreen://pair?v=1&o="))
+    }
+
     func testHappyPathPersistsDerivedSecretsAndReturnsSignedPublicMetadata() throws {
         let fixture = Fixture()
         let created = try fixture.coordinator.createOffer()
@@ -23,8 +65,49 @@ final class InternetPairingTests: XCTestCase {
         XCTAssertEqual(accepted.sessionKeyID, prepared.derived.sessionKeyID)
         XCTAssertEqual(fixture.store.values[accepted.secretNames.sharedSecret], prepared.derived.sharedSecret)
         XCTAssertEqual(fixture.store.values[accepted.secretNames.bootstrapSecret], prepared.derived.bootstrapSecret)
+        let identityBindingName = try XCTUnwrap(accepted.secretNames.identityBinding)
+        let identityBinding = try PairedHostIdentityBinding.decode(
+            XCTUnwrap(fixture.store.values[identityBindingName])
+        )
+        XCTAssertEqual(identityBinding.deviceID, accepted.hostIdentity.deviceID)
+        XCTAssertEqual(identityBinding.keyID, accepted.hostIdentity.keyID)
+        XCTAssertEqual(identityBinding.keyEpoch, accepted.hostIdentity.keyEpoch)
+        XCTAssertEqual(identityBinding.signatureAlgorithm, accepted.hostIdentity.signatureAlgorithm)
+        XCTAssertEqual(identityBinding.signingPublicKey, accepted.hostIdentity.signingPublicKey)
+        let peerIdentityBinding = try PairedPeerIdentityBinding.decode(
+            XCTUnwrap(
+                fixture.store.values[
+                    try XCTUnwrap(accepted.secretNames.peerIdentityBinding)
+                ]
+            )
+        )
+        XCTAssertEqual(
+            peerIdentityBinding.identity.deviceID,
+            accepted.deviceIdentity.deviceID
+        )
+        XCTAssertEqual(
+            peerIdentityBinding.identity.keyID,
+            accepted.deviceIdentity.keyID
+        )
         XCTAssertFalse(accepted.secretNames.sharedSecret.contains(fixture.deviceSigner.pairingPublicIdentity.deviceID))
         XCTAssertTrue(fixture.store.values.keys.contains { $0.contains("persistence-cleanup") })
+        let pendingContext = try XCTUnwrap(
+            InternetPairingCoordinator.pendingPersistenceContext(
+                secretStore: fixture.store
+            )
+        )
+        XCTAssertEqual(pendingContext.pairingIdentifier, accepted.pairingIdentifier)
+        XCTAssertEqual(
+            pendingContext.peerSecurityScopeID,
+            PairedDeviceSecurityScope.identifier(
+                PlatformPublicIdentity(
+                    deviceID: accepted.deviceIdentity.deviceID,
+                    keyID: accepted.deviceIdentity.keyID,
+                    keyEpoch: accepted.deviceIdentity.keyEpoch,
+                    signingPublicKey: accepted.deviceIdentity.signingPublicKey
+                )
+            )
+        )
 
         let parts = InternetPairingCanonical.transcriptParts(offer: created.offer, request: prepared.request)
         let resultDigest = SecurityTranscript.digest(
@@ -51,6 +134,7 @@ final class InternetPairingTests: XCTestCase {
         XCTAssertFalse(fixture.store.values.keys.contains { $0.contains("persistence-cleanup") })
         XCTAssertNotNil(fixture.store.values[accepted.secretNames.sharedSecret])
         XCTAssertNotNil(fixture.store.values[accepted.secretNames.bootstrapSecret])
+        XCTAssertNotNil(fixture.store.values[identityBindingName])
     }
 
     func testOfferIsConsumedExactlyOnce() throws {
@@ -197,6 +281,276 @@ final class InternetPairingTests: XCTestCase {
         XCTAssertThrowsError(try InternetPairingAcceptanceWire.encode(invalidAcceptance))
     }
 
+    func testSharedWireFixtureMatchesCanonicalPairingContract() throws {
+        let fixture = try SharedPairingWireFixture.load()
+        XCTAssertEqual(fixture.schema, "vibescreen.pairing-wire-fixture.v1")
+        XCTAssertEqual(
+            fixture.fixtureScope,
+            "TEST_ONLY_SYNTHETIC_MATERIAL_DO_NOT_USE_IN_PRODUCTION"
+        )
+        XCTAssertEqual(fixture.protocolVersion, 1)
+        XCTAssertEqual(fixture.testMaterial.deviceEphemeralRandomFillByte, 66)
+
+        for wire in [fixture.wire.qrOffer, fixture.wire.pairingRequest, fixture.wire.acceptance] {
+            let data = Data(wire.utf8.utf8)
+            XCTAssertEqual(data.count, wire.byteLength)
+            XCTAssertEqual(InternetPairingCanonical.hexDigest(data), wire.sha256)
+        }
+        let offerPayload = try XCTUnwrap(fixture.wire.qrOffer.payloadUtf8)
+        XCTAssertEqual(
+            InternetPairingCanonical.hexDigest(Data(offerPayload.utf8)),
+            fixture.wire.qrOffer.payloadSha256
+        )
+
+        let offerURL = try XCTUnwrap(URL(string: fixture.wire.qrOffer.utf8))
+        let offer = try InternetPairingURL.parse(offerURL)
+        let requestData = Data(fixture.wire.pairingRequest.utf8.utf8)
+        let request = try InternetPairingDeviceRequestWire.parse(requestData)
+        let acceptance = try InternetPairingAcceptanceWire.parse(
+            Data(fixture.wire.acceptance.utf8.utf8)
+        )
+
+        XCTAssertEqual(
+            offer.hostIdentity.signingPublicKey,
+            try pairingFixtureBase64URL(fixture.testMaterial.hostSigningPublicKey)
+        )
+        XCTAssertEqual(
+            offer.ephemeralPublicKey,
+            try pairingFixtureBase64URL(fixture.testMaterial.hostEphemeralPublicKey)
+        )
+        XCTAssertEqual(
+            request.deviceIdentity.signingPublicKey,
+            try pairingFixtureBase64URL(fixture.testMaterial.deviceSigningPublicKey)
+        )
+        XCTAssertEqual(
+            request.ephemeralPublicKey,
+            try pairingFixtureBase64URL(fixture.testMaterial.deviceEphemeralPublicKey)
+        )
+
+        let deviceSigningKey = try P256.Signing.PrivateKey(
+            rawRepresentation: pairingFixtureBase64URL(
+                fixture.testMaterial.deviceSigningPrivateScalar
+            )
+        )
+        XCTAssertEqual(
+            deviceSigningKey.publicKey.x963Representation,
+            request.deviceIdentity.signingPublicKey
+        )
+        let hostSigningKey = try P256.Signing.PrivateKey(
+            rawRepresentation: pairingFixtureBase64URL(
+                fixture.testMaterial.hostSigningPrivateScalar
+            )
+        )
+        XCTAssertEqual(hostSigningKey.publicKey.x963Representation, offer.hostIdentity.signingPublicKey)
+
+        let parts = InternetPairingCanonical.transcriptParts(offer: offer, request: request)
+        let requestDigest = SecurityTranscript.digest(
+            domain: "vibescreen/pairing-request/v1",
+            parts: parts
+        )
+        XCTAssertEqual(
+            requestDigest,
+            try pairingFixtureBase64URL(fixture.expected.requestDigest)
+        )
+        XCTAssertTrue(InternetPairingCanonical.verify(
+            signature: request.requestSignature,
+            digest: requestDigest,
+            publicKey: request.deviceIdentity.signingPublicKey
+        ))
+
+        let bootstrapDigest = SecurityTranscript.digest(
+            domain: "vibescreen/pairing-bootstrap/v1",
+            parts: parts + [request.requestSignature]
+        )
+        XCTAssertEqual(
+            bootstrapDigest,
+            try pairingFixtureBase64URL(fixture.expected.bootstrapDigest)
+        )
+        XCTAssertTrue(HMAC<SHA256>.isValidAuthenticationCode(
+            request.bootstrapMAC,
+            authenticating: bootstrapDigest,
+            using: SymmetricKey(data: offer.oneTimeCredential)
+        ))
+
+        let deviceEphemeral = try P256.KeyAgreement.PrivateKey(
+            rawRepresentation: pairingFixtureBase64URL(
+                fixture.testMaterial.deviceEphemeralPrivateScalar
+            )
+        )
+        XCTAssertEqual(deviceEphemeral.publicKey.x963Representation, request.ephemeralPublicKey)
+        let hostEphemeral = try P256.KeyAgreement.PublicKey(
+            x963Representation: offer.ephemeralPublicKey
+        )
+        let derived = InternetPairingCanonical.derive(
+            ecdh: try deviceEphemeral.sharedSecretFromKeyAgreement(with: hostEphemeral),
+            oneTime: offer.oneTimeCredential,
+            parts: parts
+        )
+        XCTAssertEqual(
+            derived.sessionContext,
+            try pairingFixtureBase64URL(fixture.expected.sessionContext)
+        )
+        XCTAssertEqual(derived.sessionKeyID, fixture.expected.sessionKeyId)
+        XCTAssertEqual(
+            InternetPairingCanonical.hexDigest(offer.offerID),
+            fixture.expected.pairingIdentifier
+        )
+        XCTAssertEqual(acceptance.sessionContext, derived.sessionContext)
+        XCTAssertEqual(acceptance.sessionKeyID, derived.sessionKeyID)
+
+        let resultDigest = SecurityTranscript.digest(
+            domain: "vibescreen/pairing-result/v1",
+            parts: parts + [
+                request.requestSignature,
+                request.bootstrapMAC,
+                Data([0x01]),
+                Data(derived.sessionKeyID.utf8)
+            ]
+        )
+        XCTAssertEqual(
+            resultDigest,
+            try pairingFixtureBase64URL(fixture.expected.pairingResultDigest)
+        )
+        XCTAssertTrue(InternetPairingCanonical.verify(
+            signature: acceptance.hostSignature,
+            digest: resultDigest,
+            publicKey: acceptance.hostIdentity.signingPublicKey
+        ))
+    }
+
+    func testPairingVerifierUsesRawDigestAndFailsClosed() throws {
+        let fixture = try SharedPairingWireFixture.load()
+        let request = try InternetPairingDeviceRequestWire.parse(
+            Data(fixture.wire.pairingRequest.utf8.utf8)
+        )
+        let digest = try pairingFixtureBase64URL(fixture.expected.requestDigest)
+        let devicePrivateKey = try P256.Signing.PrivateKey(
+            rawRepresentation: pairingFixtureBase64URL(
+                fixture.testMaterial.deviceSigningPrivateScalar
+            )
+        )
+        XCTAssertTrue(InternetPairingCanonical.verify(
+            signature: request.requestSignature,
+            digest: digest,
+            publicKey: request.deviceIdentity.signingPublicKey
+        ))
+        XCTAssertTrue(InternetPairingCanonical.verify(
+            signature: try pairingRawDigestSignature(privateKey: devicePrivateKey, digest: digest),
+            digest: digest,
+            publicKey: request.deviceIdentity.signingPublicKey
+        ))
+
+        let doubleHashedSignature = try devicePrivateKey.signature(for: digest).derRepresentation
+        XCTAssertFalse(InternetPairingCanonical.verify(
+            signature: doubleHashedSignature,
+            digest: digest,
+            publicKey: request.deviceIdentity.signingPublicKey
+        ))
+
+        var wrongDigest = digest
+        wrongDigest[0] ^= 0x01
+        var wrongSignature = request.requestSignature
+        wrongSignature[wrongSignature.count - 1] ^= 0x01
+        XCTAssertFalse(InternetPairingCanonical.verify(
+            signature: request.requestSignature,
+            digest: wrongDigest,
+            publicKey: request.deviceIdentity.signingPublicKey
+        ))
+        XCTAssertFalse(InternetPairingCanonical.verify(
+            signature: wrongSignature,
+            digest: digest,
+            publicKey: request.deviceIdentity.signingPublicKey
+        ))
+        XCTAssertFalse(InternetPairingCanonical.verify(
+            signature: request.requestSignature,
+            digest: digest,
+            publicKey: try pairingFixtureBase64URL(fixture.testMaterial.hostSigningPublicKey)
+        ))
+        XCTAssertFalse(InternetPairingCanonical.verify(
+            signature: Data([0x30, 0x00]),
+            digest: digest,
+            publicKey: request.deviceIdentity.signingPublicKey
+        ))
+        XCTAssertFalse(InternetPairingCanonical.verify(
+            signature: request.requestSignature,
+            digest: Data(digest.dropLast()),
+            publicKey: request.deviceIdentity.signingPublicKey
+        ))
+        XCTAssertFalse(InternetPairingCanonical.verify(
+            signature: request.requestSignature,
+            digest: digest,
+            publicKey: Data(repeating: 0, count: 65)
+        ))
+    }
+
+    func testSharedWireFixtureNegativeCasesFailClosed() throws {
+        let fixture = try SharedPairingWireFixture.load()
+        XCTAssertEqual(
+            Set(fixture.negativeCases.map(\.category)),
+            Set(["field_tamper", "signature", "size", "order"])
+        )
+        for negative in fixture.negativeCases {
+            XCTAssertEqual(
+                InternetPairingCanonical.hexDigest(Data(negative.wireUtf8.utf8)),
+                negative.sha256,
+                negative.name
+            )
+        }
+
+        let reordered = try fixture.negative("reordered_required_capabilities")
+        XCTAssertThrowsError(
+            try InternetPairingURL.parse(try XCTUnwrap(URL(string: reordered.wireUtf8)))
+        ) { error in
+            XCTAssertEqual(error as? InternetPairingError, .downgradeDetected)
+        }
+
+        let offer = try InternetPairingURL.parse(
+            try XCTUnwrap(URL(string: fixture.wire.qrOffer.utf8))
+        )
+        let changedField = try InternetPairingDeviceRequestWire.parse(
+            Data(try fixture.negative("tampered_request_field").wireUtf8.utf8)
+        )
+        let changedDigest = SecurityTranscript.digest(
+            domain: "vibescreen/pairing-request/v1",
+            parts: InternetPairingCanonical.transcriptParts(offer: offer, request: changedField)
+        )
+        XCTAssertFalse(InternetPairingCanonical.verify(
+            signature: changedField.requestSignature,
+            digest: changedDigest,
+            publicKey: changedField.deviceIdentity.signingPublicKey
+        ))
+
+        let changedSignature = try InternetPairingDeviceRequestWire.parse(
+            Data(try fixture.negative("tampered_request_signature").wireUtf8.utf8)
+        )
+        XCTAssertFalse(InternetPairingCanonical.verify(
+            signature: changedSignature.requestSignature,
+            digest: try pairingFixtureBase64URL(fixture.expected.requestDigest),
+            publicKey: changedSignature.deviceIdentity.signingPublicKey
+        ))
+        XCTAssertThrowsError(
+            try InternetPairingDeviceRequestWire.parse(
+                Data(try fixture.negative("oversized_device_name").wireUtf8.utf8)
+            )
+        )
+
+        let changedAcceptanceSignature = try InternetPairingAcceptanceWire.parse(
+            Data(try fixture.negative("tampered_acceptance_signature").wireUtf8.utf8)
+        )
+        XCTAssertFalse(InternetPairingCanonical.verify(
+            signature: changedAcceptanceSignature.hostSignature,
+            digest: try pairingFixtureBase64URL(fixture.expected.pairingResultDigest),
+            publicKey: changedAcceptanceSignature.hostIdentity.signingPublicKey
+        ))
+        let changedContext = try InternetPairingAcceptanceWire.parse(
+            Data(try fixture.negative("tampered_session_context").wireUtf8.utf8)
+        )
+        XCTAssertNotEqual(
+            changedContext.sessionContext,
+            try pairingFixtureBase64URL(fixture.expected.sessionContext)
+        )
+    }
+
     func testPartialPairingPersistenceLeavesDurableCleanupAndRetriesAfterRestart() throws {
         let fixture = Fixture()
         let created = try fixture.coordinator.createOffer()
@@ -265,6 +619,7 @@ final class InternetPairingTests: XCTestCase {
         XCTAssertFalse(metadataCommitted)
         XCTAssertNil(fixture.store.values[accepted.secretNames.sharedSecret])
         XCTAssertNil(fixture.store.values[accepted.secretNames.bootstrapSecret])
+        XCTAssertNil(fixture.store.values[try XCTUnwrap(accepted.secretNames.identityBinding)])
         XCTAssertFalse(fixture.store.values.keys.contains { $0.contains("persistence-cleanup") })
     }
 
@@ -370,7 +725,7 @@ private final class MemorySigner: InternetPairingSigner {
     }
 
     func signPairingDigest(_ digest: Data) throws -> Data {
-        try key.signature(for: digest).derRepresentation
+        try pairingRawDigestSignature(privateKey: key, digest: digest)
     }
 }
 
@@ -386,5 +741,8 @@ private final class MemorySecretStore: InternetPairingSecretStore {
     func delete(name: String) throws {
         if failingDeletes.contains(name) { throw PlatformSecurityError.persistenceFailure("injected delete") }
         values.removeValue(forKey: name)
+    }
+    func names(prefix: String) throws -> [String] {
+        values.keys.filter { $0.hasPrefix(prefix) }
     }
 }

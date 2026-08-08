@@ -49,15 +49,26 @@ internal class ProtocolV1Session(
     sealed class Action {
         data class Send(val envelope: Envelope) : Action()
 
-        data class VideoConfigured(
+        data class VideoConfigurationRequested(
             val width: Int,
             val height: Int,
             val rotation: Int,
             val codec: Codec,
+            val configEpoch: Long,
             val sessionEpoch: Long,
+            val configurationToken: Long,
         ) : Action()
 
-        data class DisplayChanged(
+        data class VideoConfigurationCommitted(
+            val configEpoch: Long,
+        ) : Action()
+
+        data class VideoConfigurationRejected(
+            val configEpoch: Long,
+            val reason: String,
+        ) : Action()
+
+        data class DisplayGeometryChanged(
             val width: Int,
             val height: Int,
             val rotation: Int,
@@ -75,20 +86,27 @@ internal class ProtocolV1Session(
 
     private var state = State.AWAITING_HOST_HELLO
     private var nextMessageId = 1L
+    private var nextVideoConfigurationToken = 1L
     private var lastInboundMessageId = 0L
     private var sessionId = ByteString.EMPTY
     private var sessionEpoch = 0L
     private var streamId = 0L
     private var configEpoch = 0L
+    private var retiredConfigEpoch = 0L
     private var configuredCodec = Codec.CODEC_UNSPECIFIED
+    private var pendingVideoConfiguration: PendingVideoConfiguration? = null
+    private var awaitingConfigurationKeyframe = false
     private var lastFrameId = 0L
     private var displayId = ""
+    private var displayWidth = 0
+    private var displayHeight = 0
+    private var displayGeometryPublished = false
     private var negotiatedCapabilities = emptySet<Capability>()
     private var hostCapabilities = emptySet<Capability>()
     private var hostCodecs = emptySet<Codec>()
 
-    private val advertisedCapabilities = setOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_TELEMETRY)
-    private val requiredCapabilities = setOf(Capability.CAPABILITY_TOUCH)
+    private val advertisedCapabilities = setOf(Capability.CAPABILITY_TOUCH)
+    private val requiredCapabilities = emptySet<Capability>()
 
     val activeSessionEpoch: Long
         @Synchronized
@@ -97,6 +115,17 @@ internal class ProtocolV1Session(
     val isStreaming: Boolean
         @Synchronized
         get() = state == State.STREAMING
+
+    val canSendTouch: Boolean
+        @Synchronized
+        get() = state == State.STREAMING && Capability.CAPABILITY_TOUCH in negotiatedCapabilities
+
+    enum class MediaDisposition {
+        ACCEPT,
+        DROP_PENDING_CONFIGURATION,
+        DROP_RETIRED_CONFIGURATION,
+        DROP_AWAITING_KEYFRAME,
+    }
 
     init {
         require(deviceId.isNotBlank()) { "deviceId must not be blank" }
@@ -156,6 +185,7 @@ internal class ProtocolV1Session(
                 )
             Envelope.PayloadCase.PONG -> listOf(Action.PongReceived(envelope.pong.sequence))
             Envelope.PayloadCase.DISCONNECT_NOTICE -> {
+                pendingVideoConfiguration = null
                 state = State.CLOSED
                 listOf(
                     Action.Disconnected(
@@ -201,6 +231,7 @@ internal class ProtocolV1Session(
         y: Double,
     ): Envelope {
         check(state == State.STREAMING)
+        check(Capability.CAPABILITY_TOUCH in negotiatedCapabilities) { "Touch was not negotiated" }
         require(inputId > 0 && pointerId >= 0 && phase != InputPhase.INPUT_PHASE_UNSPECIFIED)
         require(x in 0.0..1.0 && y in 0.0..1.0)
         val event =
@@ -216,18 +247,36 @@ internal class ProtocolV1Session(
     }
 
     @Synchronized
-    fun validateMedia(header: dev.vibescreen.protocol.v1.MediaPacketHeader) {
-        if (state != State.STREAMING) throw mediaFailure("Media received before VideoConfig acceptance")
-        if (header.sessionEpoch != sessionEpoch || header.streamId != streamId || header.configEpoch != configEpoch) {
+    fun validateMedia(header: dev.vibescreen.protocol.v1.MediaPacketHeader): MediaDisposition {
+        if (header.sessionEpoch != sessionEpoch || header.streamId != streamId) {
             throw mediaFailure("Stale or cross-stream media header")
         }
-        if (header.codec != configuredCodec) throw mediaFailure("Media codec differs from accepted VideoConfig")
         if (header.fragmentCount != 1 || header.fragmentIndex != 0) {
             throw mediaFailure("Fragmented Protocol v1 media is unsupported")
         }
-        if (header.frameId <= lastFrameId) throw mediaFailure("Non-monotonic media frame_id")
         if (header.payloadLength <= 0) throw mediaFailure("Media payload must not be empty")
+        val pending = pendingVideoConfiguration
+        if (pending != null) {
+            if (header.configEpoch == pending.configEpoch ||
+                (configEpoch > 0L && header.configEpoch == configEpoch)
+            ) {
+                return MediaDisposition.DROP_PENDING_CONFIGURATION
+            }
+            throw mediaFailure("Stale or cross-stream media header")
+        }
+        if (state != State.STREAMING) throw mediaFailure("Media received before VideoConfig acceptance")
+        if (retiredConfigEpoch > 0L && header.configEpoch == retiredConfigEpoch) {
+            return MediaDisposition.DROP_RETIRED_CONFIGURATION
+        }
+        if (header.configEpoch != configEpoch) throw mediaFailure("Stale or cross-stream media header")
+        if (header.codec != configuredCodec) throw mediaFailure("Media codec differs from accepted VideoConfig")
+        if (awaitingConfigurationKeyframe && !header.keyframe) {
+            return MediaDisposition.DROP_AWAITING_KEYFRAME
+        }
+        if (header.frameId <= lastFrameId) throw mediaFailure("Non-monotonic media frame_id")
+        awaitingConfigurationKeyframe = false
         lastFrameId = header.frameId
+        return MediaDisposition.ACCEPT
     }
 
     @Synchronized
@@ -273,7 +322,8 @@ internal class ProtocolV1Session(
         if (!negotiated.containsAll(requiredCapabilities)) {
             throw protocolFailure("Required capabilities were not negotiated")
         }
-        if (!advertisedCapabilities.containsAll(negotiated) || !hostCapabilities.containsAll(negotiated)) {
+        val expectedCapabilities = advertisedCapabilities.intersect(hostCapabilities)
+        if (negotiated != expectedCapabilities) {
             throw protocolFailure("Negotiated capabilities are not the peer intersection")
         }
         sessionId = accepted.sessionId
@@ -287,7 +337,7 @@ internal class ProtocolV1Session(
         if (state != State.ACTIVE) throw protocolFailure("Display list in state $state")
         val display = envelope.listDisplaysResponse.displaysList.firstOrNull()
             ?: throw protocolFailure("Host reported no displays")
-        displayId = display.displayId
+        updateDisplayDescriptor(display, expectedDisplayId = null)
         state = State.DISPLAY_REQUESTED
         val request =
             StartDisplayRequest
@@ -305,13 +355,26 @@ internal class ProtocolV1Session(
             throw protocolFailure("Display start rejected: ${response.rejectionReason}")
         }
         streamId = response.streamId
-        if (response.hasDisplay() && response.display.displayId.isNotBlank()) displayId = response.display.displayId
+        if (response.hasDisplay()) updateDisplayDescriptor(response.display, expectedDisplayId = displayId)
         return emptyList()
     }
 
     private fun onVideoConfig(envelope: Envelope): List<Action> {
         if (state != State.DISPLAY_REQUESTED && state != State.STREAMING) throw protocolFailure("VideoConfig in state $state")
         val config = envelope.videoConfig
+        if (pendingVideoConfiguration != null) {
+            return listOf(
+                Action.Send(
+                    videoConfigResult(
+                        configEpoch = config.configEpoch,
+                        streamId = config.streamId,
+                        accepted = false,
+                        rejectionReason = "video_configuration_pending",
+                        correlationId = envelope.messageId,
+                    ),
+                ),
+            )
+        }
         val accepted =
             config.streamId == streamId &&
                 config.configEpoch > configEpoch &&
@@ -320,35 +383,98 @@ internal class ProtocolV1Session(
                 config.rotationDegrees.toInt() in VALID_ROTATIONS &&
                 config.codec in codecs &&
                 config.codec in hostCodecs
-        val result =
-            VideoConfigResult
-                .newBuilder()
-                .setConfigEpoch(config.configEpoch)
-                .setStreamId(config.streamId)
-                .setAccepted(accepted)
-                .setRejectionReason(if (accepted) "" else "unsupported_video_config")
-                .build()
-        val actions =
-            mutableListOf<Action>(
+        if (!accepted) {
+            return listOf(
                 Action.Send(
-                    envelope(correlationId = envelope.messageId)
-                        .setVideoConfigResult(result)
-                        .build(),
+                    videoConfigResult(
+                        configEpoch = config.configEpoch,
+                        streamId = config.streamId,
+                        accepted = false,
+                        rejectionReason = "unsupported_video_config",
+                        correlationId = envelope.messageId,
+                    ),
                 ),
             )
-        if (!accepted) return actions
-        configEpoch = config.configEpoch
-        configuredCodec = config.codec
-        lastFrameId = 0L
-        state = State.STREAMING
-        actions +=
-            Action.VideoConfigured(
+        }
+        val configurationToken = nextVideoConfigurationToken++
+        pendingVideoConfiguration =
+            PendingVideoConfiguration(
+                correlationId = envelope.messageId,
+                streamId = config.streamId,
+                configEpoch = config.configEpoch,
+                rotation = config.rotationDegrees.toInt(),
+                codec = config.codec,
+                configurationToken = configurationToken,
+            )
+        return listOf(
+            Action.VideoConfigurationRequested(
                 config.encodedSize.width,
                 config.encodedSize.height,
                 config.rotationDegrees.toInt(),
                 config.codec,
+                config.configEpoch,
                 sessionEpoch,
+                configurationToken,
+            ),
+        )
+    }
+
+    @Synchronized
+    fun completeVideoConfiguration(
+        completedConfigEpoch: Long,
+        configurationToken: Long,
+        accepted: Boolean,
+        rejectionReason: String,
+    ): List<Action> {
+        if (state != State.DISPLAY_REQUESTED && state != State.STREAMING) return emptyList()
+        val pending = pendingVideoConfiguration ?: return emptyList()
+        if (pending.configEpoch != completedConfigEpoch ||
+            pending.configurationToken != configurationToken
+        ) {
+            return emptyList()
+        }
+        pendingVideoConfiguration = null
+        val result =
+            Action.Send(
+                videoConfigResult(
+                    configEpoch = pending.configEpoch,
+                    streamId = pending.streamId,
+                    accepted = accepted,
+                    rejectionReason = if (accepted) "" else rejectionReason.ifBlank { "decoder_configuration_failure" },
+                    correlationId = pending.correlationId,
+                ),
             )
+        if (!accepted) {
+            return listOf(
+                result,
+                Action.VideoConfigurationRejected(
+                    configEpoch = pending.configEpoch,
+                    reason = rejectionReason.ifBlank { "decoder_configuration_failure" },
+                ),
+            )
+        }
+
+        retiredConfigEpoch = configEpoch
+        configEpoch = pending.configEpoch
+        configuredCodec = pending.codec
+        lastFrameId = 0L
+        awaitingConfigurationKeyframe = true
+        state = State.STREAMING
+        val actions =
+            mutableListOf<Action>(
+                result,
+                Action.Send(requestKeyframe("decoder_configuration_committed")),
+                Action.VideoConfigurationCommitted(configEpoch),
+            )
+        if (!displayGeometryPublished) {
+            actions +=
+                Action.DisplayGeometryChanged(
+                    width = displayWidth,
+                    height = displayHeight,
+                    rotation = pending.rotation,
+                )
+            displayGeometryPublished = true
+        }
         return actions
     }
 
@@ -363,14 +489,51 @@ internal class ProtocolV1Session(
         ) {
             throw protocolFailure("Invalid DisplayChanged")
         }
+        displayWidth = changed.display.logicalSize.width
+        displayHeight = changed.display.logicalSize.height
+        displayGeometryPublished = true
         return listOf(
-            Action.DisplayChanged(
-                width = changed.display.logicalSize.width,
-                height = changed.display.logicalSize.height,
+            Action.DisplayGeometryChanged(
+                width = displayWidth,
+                height = displayHeight,
                 rotation = changed.rotationDegrees.toInt(),
             ),
         )
     }
+
+    private fun updateDisplayDescriptor(
+        display: dev.vibescreen.protocol.v1.DisplayDescriptor,
+        expectedDisplayId: String?,
+    ) {
+        if (display.displayId.isBlank() ||
+            (expectedDisplayId != null && display.displayId != expectedDisplayId) ||
+            !display.hasLogicalSize() ||
+            display.logicalSize.width !in 16..8192 ||
+            display.logicalSize.height !in 16..8192
+        ) {
+            throw protocolFailure("Invalid display descriptor")
+        }
+        displayId = display.displayId
+        displayWidth = display.logicalSize.width
+        displayHeight = display.logicalSize.height
+    }
+
+    private fun videoConfigResult(
+        configEpoch: Long,
+        streamId: Long,
+        accepted: Boolean,
+        rejectionReason: String,
+        correlationId: Long,
+    ): Envelope =
+        envelope(correlationId = correlationId)
+            .setVideoConfigResult(
+                VideoConfigResult
+                    .newBuilder()
+                    .setConfigEpoch(configEpoch)
+                    .setStreamId(streamId)
+                    .setAccepted(accepted)
+                    .setRejectionReason(rejectionReason),
+            ).build()
 
     private fun validateEnvelope(envelope: Envelope) {
         if (envelope.protocolVersion != VERSION) throw protocolFailure("Unsupported envelope version ${envelope.protocolVersion}")
@@ -413,6 +576,15 @@ internal class ProtocolV1Session(
             source = ProtocolV1Failure.Source.PEER_PROTOCOL_VIOLATION,
             message = "Protocol v1: $message",
         )
+
+    private data class PendingVideoConfiguration(
+        val correlationId: Long,
+        val streamId: Long,
+        val configEpoch: Long,
+        val rotation: Int,
+        val codec: Codec,
+        val configurationToken: Long,
+    )
 
     companion object {
         const val VERSION = 1

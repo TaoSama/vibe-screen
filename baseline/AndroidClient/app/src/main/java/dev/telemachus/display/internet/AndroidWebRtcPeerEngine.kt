@@ -38,10 +38,19 @@ class AndroidWebRtcPeerEngine internal constructor(
 
     private val applicationContext = context.applicationContext
     private val lock = Any()
+    private val channelObserverLifecycle = Any()
+    private val sendLinearizer = PeerSendLinearizer()
     private val statsExecutor: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { runnable ->
             Thread(runnable, "vibe-webrtc-stats").apply { isDaemon = true }
         }
+    private val mediaRetryGate =
+        PeerMediaRetryGate<PeerMediaRetryKey>(
+            PeerRetryScheduler { task ->
+                val future = statsExecutor.schedule(task, MEDIA_RETRY_DELAY_MS, TimeUnit.MILLISECONDS)
+                PeerRetryCancellation { future.cancel(false) }
+            },
+        )
     private val routeResolutionTimeout =
         RouteResolutionTimeout(
             scheduler = RouteResolutionScheduler { delayMillis, task ->
@@ -59,7 +68,7 @@ class AndroidWebRtcPeerEngine internal constructor(
     private var mediaChannel: DataChannel? = null
     private var remoteDescriptionSet = false
     private val pendingRemoteCandidates = ArrayDeque<IceCandidate>()
-    private val pendingMedia = LatestFrameSlot()
+    private val mediaBatches = LatestFrameBatchQueue()
     private var selectedRoute: PeerRoute? = null
     private var connectedReported = false
     private var routeResolutionFailed = false
@@ -97,8 +106,14 @@ class AndroidWebRtcPeerEngine internal constructor(
                 createdFactory.dispose()
                 throw IllegalStateException("WebRTC engine was closed while starting")
             }
+            val webRtcIceServers =
+                try {
+                    configuration.iceServers.map { it.toWebRtc() }
+                } finally {
+                    configuration.iceServers.forEach(IceServer::close)
+                }
             val rtcConfiguration =
-                PeerConnection.RTCConfiguration(configuration.iceServers.map { it.toWebRtc() }).apply {
+                PeerConnection.RTCConfiguration(webRtcIceServers).apply {
                     sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
                     continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
                     tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.ENABLED
@@ -143,52 +158,123 @@ class AndroidWebRtcPeerEngine internal constructor(
 
     override fun sendControl(payload: ByteArray): Boolean {
         require(payload.size <= MAX_CONTROL_BYTES) { "Control payload exceeds $MAX_CONTROL_BYTES bytes" }
-        val channel = synchronized(lock) { controlChannel.takeIf { !closed && it?.state() == DataChannel.State.OPEN } }
-        return channel
-            ?.takeIf { it.bufferedAmount() < CONTROL_BUFFER_HIGH_WATER_BYTES }
-            ?.send(secureBuffer(SessionChannel.CONTROL, payload)) ?: false
+        return sendLinearizer.sendControl(
+            snapshot = {
+                synchronized(lock) {
+                    val channel = controlChannel
+                    val cipher = configuration?.sessionCipher
+                    if (
+                        closed ||
+                        !connectedReported ||
+                        routeResolutionFailed ||
+                        selectedRoute == null ||
+                        channel == null ||
+                        cipher == null ||
+                        channel.state() != DataChannel.State.OPEN ||
+                        channel.bufferedAmount() >= CONTROL_BUFFER_HIGH_WATER_BYTES
+                    ) {
+                        null
+                    } else {
+                        PeerControlSendSnapshot(channel, cipher, routeGeneration)
+                    }
+                }
+            },
+            seal = { cipher -> cipher.seal(SessionChannel.CONTROL, payload) },
+            isCurrent = { candidate ->
+                synchronized(lock) {
+                    !closed &&
+                        connectedReported &&
+                        !routeResolutionFailed &&
+                        selectedRoute != null &&
+                        routeGeneration == candidate.generation &&
+                        controlChannel === candidate.channel &&
+                        configuration?.sessionCipher === candidate.cipher &&
+                        candidate.channel.state() == DataChannel.State.OPEN &&
+                        candidate.channel.bufferedAmount() < CONTROL_BUFFER_HIGH_WATER_BYTES
+                }
+            },
+            transmit = { channel, record ->
+                channel.send(DataChannel.Buffer(java.nio.ByteBuffer.wrap(record), true))
+            },
+        )
     }
 
-    override fun sendMedia(payload: ByteArray): Boolean {
-        require(payload.size <= MAX_MEDIA_PACKET_BYTES) { "Media packet exceeds $MAX_MEDIA_PACKET_BYTES bytes" }
-        val channel = synchronized(lock) { mediaChannel.takeIf { !closed && it?.state() == DataChannel.State.OPEN } } ?: return false
-        val queued =
-            synchronized(lock) {
-                if (pendingMedia.hasPending() || channel.bufferedAmount() >= MEDIA_BUFFER_HIGH_WATER_BYTES) {
-                    pendingMedia.replace(payload)
-                    true
-                } else {
-                    false
+    override fun sendMedia(frame: OutboundMediaFrame): Boolean {
+        val snapshot =
+            sendLinearizer.withGate {
+                synchronized(lock) {
+                    currentMediaPathLocked()?.also { mediaBatches.offer(frame) }
                 }
-            }
-        if (queued) {
-            drainLatestMedia(channel)
-            return true
-        }
-        return channel.send(secureBuffer(SessionChannel.MEDIA, payload))
+            } ?: return false
+        return drainLatestMedia(snapshot)
     }
 
     override fun restartIce() {
-        val activeConfiguration = synchronized(lock) { configuration.takeIf { !closed } }
-            ?: throw IllegalStateException("WebRTC engine is not running")
-        check(activeConfiguration.signaling?.supportsInSessionRenegotiation == true) {
-            "The configured signaling service requires a fresh session for ICE restart"
-        }
-        val peer = synchronized(lock) { peerConnection.takeIf { !closed } }
-            ?: throw IllegalStateException("WebRTC engine is not running")
-        synchronized(lock) {
-            routeGeneration++
-            endOfCandidatesSent = false
-            remoteDescriptionSet = false
-            pendingRemoteCandidates.clear()
-            selectedRoute = null
-            routeResolutionFailed = false
-            connectedReported = false
-            acceptCandidateRoutes = false
-        }
+        val restart =
+            try {
+                sendLinearizer.withGate {
+                    val snapshot =
+                        synchronized(lock) {
+                            val activeConfiguration = configuration.takeIf { !closed }
+                                ?: throw IllegalStateException("WebRTC engine is not running")
+                            check(activeConfiguration.signaling?.supportsInSessionRenegotiation == true) {
+                                "The configured signaling service requires a fresh session for ICE restart"
+                            }
+                            val activePeer = peerConnection.takeIf { !closed }
+                                ?: throw IllegalStateException("WebRTC engine is not running")
+                            routeGeneration++
+                            mediaBatches.clear()
+                            endOfCandidatesSent = false
+                            remoteDescriptionSet = false
+                            pendingRemoteCandidates.clear()
+                            selectedRoute = null
+                            routeResolutionFailed = false
+                            connectedReported = false
+                            acceptCandidateRoutes = false
+                            PeerRestartSnapshot(
+                                activePeer,
+                                routeGeneration,
+                                activeConfiguration.signaling?.role == PeerRole.HOST,
+                                channelObserverBindingsLocked(routeGeneration),
+                            )
+                        }
+                    mediaRetryGate.cancel()
+                    snapshot
+                }
+            } catch (failure: Throwable) {
+                fail(failure)
+                throw failure
+            }
         routeResolutionTimeout.cancel()
-        peer.restartIce()
-        if (configuration?.signaling?.role == PeerRole.HOST) createOffer()
+        try {
+            rebindChannelObservers(restart.observerBindings)
+        } catch (failure: Throwable) {
+            fail(failure)
+            throw failure
+        }
+        val shouldCreateOffer =
+            try {
+                sendLinearizer.withGate {
+                    val current =
+                        synchronized(lock) {
+                            !closed &&
+                                routeGeneration == restart.generation &&
+                                peerConnection === restart.peer
+                        }
+                    check(current) { "WebRTC engine changed before ICE restart" }
+                    restart.peer.restartIce()
+                    synchronized(lock) {
+                        !closed &&
+                            routeGeneration == restart.generation &&
+                            peerConnection === restart.peer &&
+                            restart.shouldCreateOffer
+                    }
+                }
+            } catch (failure: Throwable) {
+                fail(failure)
+                throw failure
+            }
+        if (shouldCreateOffer) createOffer()
     }
 
     override fun applyVideoProfile(profile: VideoProfile) {
@@ -233,33 +319,46 @@ class AndroidWebRtcPeerEngine internal constructor(
 
     override fun close() {
         val resources =
-            synchronized(lock) {
-                if (closed) return
-                routeGeneration++
-                closed = true
-                val channels = listOfNotNull(controlChannel, mediaChannel).distinct()
-                controlChannel = null
-                mediaChannel = null
-                pendingMedia.clear()
-                pendingRemoteCandidates.clear()
-                Resources(signalingClient, peerConnection, factory, configuration?.sessionCipher, channels)
-                    .also {
-                        signalingClient = null
-                        peerConnection = null
-                        factory = null
-                        observer = null
-                        configuration = null
+            sendLinearizer.withGate {
+                val detached = synchronized(lock) {
+                    if (closed) {
+                        null
+                    } else {
+                        routeGeneration++
+                        closed = true
+                        val channels = listOfNotNull(controlChannel, mediaChannel).distinct()
+                        controlChannel = null
+                        mediaChannel = null
+                        mediaBatches.clear()
+                        pendingRemoteCandidates.clear()
+                        Resources(signalingClient, peerConnection, factory, configuration?.sessionCipher, channels)
+                            .also {
+                                signalingClient = null
+                                peerConnection = null
+                                factory = null
+                                observer = null
+                                configuration = null
+                            }
                     }
-            }
+                }
+                if (detached != null) mediaRetryGate.cancel()
+                detached
+            } ?: return
         routeResolutionTimeout.cancel()
         val cleanupActions =
             buildList<() -> Unit> {
                 add { statsExecutor.shutdownNow() }
                 resources.signaling?.let { signaling -> add { signaling.close() } }
                 resources.channels.forEach { channel ->
-                    add { channel.unregisterObserver() }
-                    add { channel.close() }
-                    add { channel.dispose() }
+                    add {
+                        synchronized(channelObserverLifecycle) {
+                            runBestEffort(
+                                { channel.unregisterObserver() },
+                                { channel.close() },
+                                { channel.dispose() },
+                            )
+                        }
+                    }
                 }
                 resources.peer?.let { peer ->
                     add { peer.close() }
@@ -273,7 +372,7 @@ class AndroidWebRtcPeerEngine internal constructor(
 
     private fun createLocalChannelsLocked(peer: PeerConnection) {
         controlChannel = peer.createDataChannel(CONTROL_CHANNEL_LABEL, DataChannel.Init().apply { ordered = true })
-            .also { registerChannel(it, isControl = true) }
+            .also { registerChannel(it, isControl = true, generation = routeGeneration) }
         mediaChannel =
             peer.createDataChannel(
                 MEDIA_CHANNEL_LABEL,
@@ -281,11 +380,15 @@ class AndroidWebRtcPeerEngine internal constructor(
                     ordered = false
                     maxRetransmits = 0
                 },
-            ).also { registerChannel(it, isControl = false) }
+            ).also { registerChannel(it, isControl = false, generation = routeGeneration) }
     }
 
     private fun registerRemoteChannel(channel: DataChannel) {
         synchronized(lock) {
+            if (closed) {
+                channel.close()
+                return channel.dispose()
+            }
             when (channel.label()) {
                 CONTROL_CHANNEL_LABEL -> {
                     if (controlChannel != null) {
@@ -293,7 +396,7 @@ class AndroidWebRtcPeerEngine internal constructor(
                         return channel.dispose()
                     }
                     controlChannel = channel
-                    registerChannel(channel, isControl = true)
+                    registerChannel(channel, isControl = true, generation = routeGeneration)
                 }
                 MEDIA_CHANNEL_LABEL -> {
                     if (mediaChannel != null) {
@@ -301,7 +404,7 @@ class AndroidWebRtcPeerEngine internal constructor(
                         return channel.dispose()
                     }
                     mediaChannel = channel
-                    registerChannel(channel, isControl = false)
+                    registerChannel(channel, isControl = false, generation = routeGeneration)
                 }
                 else -> {
                     channel.close()
@@ -314,53 +417,237 @@ class AndroidWebRtcPeerEngine internal constructor(
     private fun registerChannel(
         channel: DataChannel,
         isControl: Boolean,
+        generation: Long,
     ) {
+        val callbackSource = PeerInboundCallbackSource(channel, generation)
         channel.registerObserver(
             object : DataChannel.Observer {
                 override fun onBufferedAmountChange(previousAmount: Long) {
-                    if (!isControl) drainLatestMedia(channel)
+                    if (!isControl) {
+                        val snapshot =
+                            sendLinearizer.withGate {
+                                synchronized(lock) {
+                                    currentMediaPathLocked(channel)
+                                        ?.takeIf { it.generation == callbackSource.generation }
+                                }
+                            }
+                        if (snapshot != null) drainLatestMedia(snapshot)
+                    }
                 }
 
                 override fun onStateChange() {
-                    if (channel.state() == DataChannel.State.OPEN) maybeReportConnected()
+                    val isCurrent =
+                        synchronized(lock) {
+                            routeGeneration == callbackSource.generation &&
+                                (if (isControl) controlChannel else mediaChannel) === callbackSource.channel
+                        }
+                    if (isCurrent && channel.state() == DataChannel.State.OPEN) maybeReportConnected()
                 }
 
                 override fun onMessage(buffer: DataChannel.Buffer) {
                     if (!buffer.binary) return
-                    val source = buffer.data.slice()
-                    val maximumRecordBytes =
-                        (if (isControl) MAX_CONTROL_BYTES else MAX_MEDIA_PACKET_BYTES) + MAX_RECORD_OVERHEAD_BYTES
-                    if (source.remaining() !in MIN_RECORD_BYTES..maximumRecordBytes) {
-                        fail(IllegalArgumentException("Inbound WebRTC data-channel record has an invalid size"))
-                        return
-                    }
-                    val record = ByteArray(source.remaining()).also(source::get)
-                    val session = synchronized(lock) { configuration.takeIf { !closed } } ?: return
                     val channelType = if (isControl) SessionChannel.CONTROL else SessionChannel.MEDIA
-                    val payload = session.sessionCipher?.open(channelType, record) ?: return
-                    val target = synchronized(lock) { observer.takeIf { !closed } } ?: return
-                    if (isControl) target.onControlMessage(session.sessionEpoch, payload) else target.onMediaPacket(session.sessionEpoch, payload)
+                    sendLinearizer.receiveInbound(
+                        snapshot = {
+                            synchronized(lock) {
+                                currentInboundPathLocked(callbackSource, isControl)
+                            }
+                        },
+                        decode = { cipher ->
+                            val source = buffer.data.slice()
+                            val maximumRecordBytes =
+                                if (isControl) {
+                                    MAX_CONTROL_BYTES + MAX_CONTROL_RECORD_OVERHEAD_BYTES
+                                } else {
+                                    InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES
+                                }
+                            require(source.remaining() in MIN_RECORD_BYTES..maximumRecordBytes) {
+                                "Inbound WebRTC data-channel record has an invalid size"
+                            }
+                            val record = ByteArray(source.remaining()).also(source::get)
+                            cipher.open(channelType, record)
+                        },
+                        isCurrent = { candidate ->
+                            synchronized(lock) { isCurrentInboundPathLocked(candidate, isControl) }
+                        },
+                        onDecodeFailure = ::fail,
+                    ) { target, sessionEpoch, payload ->
+                        if (isControl) {
+                            target.onControlMessage(sessionEpoch, payload)
+                        } else {
+                            target.onMediaPacket(sessionEpoch, payload)
+                        }
+                    }
                 }
             },
         )
     }
 
-    private fun drainLatestMedia(channel: DataChannel) {
-        val payload =
-            synchronized(lock) {
-                if (closed || channel.state() != DataChannel.State.OPEN || channel.bufferedAmount() >= MEDIA_BUFFER_LOW_WATER_BYTES) return
-                pendingMedia.take()
-            } ?: return
-        if (!channel.send(secureBuffer(SessionChannel.MEDIA, payload))) {
-            synchronized(lock) { pendingMedia.replace(payload) }
-            scheduleMediaRetry(channel)
+    private fun rebindChannelObservers(bindings: List<ChannelObserverBinding>) {
+        synchronized(channelObserverLifecycle) {
+            bindings.forEach { binding ->
+                val isCurrent =
+                    synchronized(lock) {
+                        !closed &&
+                            routeGeneration == binding.source.generation &&
+                            (if (binding.isControl) controlChannel else mediaChannel) === binding.source.channel
+                    }
+                if (isCurrent) {
+                    registerChannel(
+                        binding.source.channel,
+                        binding.isControl,
+                        binding.source.generation,
+                    )
+                }
+            }
         }
     }
 
-    private fun scheduleMediaRetry(channel: DataChannel) {
-        if (statsExecutor.isShutdown) return
-        statsExecutor.schedule({ drainLatestMedia(channel) }, MEDIA_RETRY_DELAY_MS, TimeUnit.MILLISECONDS)
+    private fun channelObserverBindingsLocked(generation: Long): List<ChannelObserverBinding> =
+        buildList {
+            controlChannel?.let { add(ChannelObserverBinding(PeerInboundCallbackSource(it, generation), true)) }
+            mediaChannel?.let { add(ChannelObserverBinding(PeerInboundCallbackSource(it, generation), false)) }
+        }
+
+    private fun currentInboundPathLocked(
+        callbackSource: PeerInboundCallbackSource<DataChannel>,
+        isControl: Boolean,
+    ): PeerInboundReceiveSnapshot<DataChannel, SessionPacketCipher, WebRtcPeerEngine.Observer>? {
+        val session = configuration
+        val cipher = session?.sessionCipher
+        val target = observer
+        val expectedChannel = if (isControl) controlChannel else mediaChannel
+        return if (
+            closed ||
+            !connectedReported ||
+            routeResolutionFailed ||
+            selectedRoute == null ||
+            routeGeneration != callbackSource.generation ||
+            expectedChannel !== callbackSource.channel ||
+            session == null ||
+            cipher == null ||
+            target == null ||
+            peerConnection?.connectionState() != PeerConnection.PeerConnectionState.CONNECTED ||
+            callbackSource.channel.state() != DataChannel.State.OPEN
+        ) {
+            null
+        } else {
+            PeerInboundReceiveSnapshot(callbackSource, cipher, target, session.sessionEpoch)
+        }
     }
+
+    private fun isCurrentInboundPathLocked(
+        snapshot: PeerInboundReceiveSnapshot<DataChannel, SessionPacketCipher, WebRtcPeerEngine.Observer>,
+        isControl: Boolean,
+    ): Boolean {
+        val expectedChannel = if (isControl) controlChannel else mediaChannel
+        return !closed &&
+            connectedReported &&
+            !routeResolutionFailed &&
+            selectedRoute != null &&
+            routeGeneration == snapshot.generation &&
+            expectedChannel === snapshot.channel &&
+            configuration?.sessionCipher === snapshot.cipher &&
+            configuration?.sessionEpoch == snapshot.sessionEpoch &&
+            observer === snapshot.target &&
+            peerConnection?.connectionState() == PeerConnection.PeerConnectionState.CONNECTED &&
+            snapshot.channel.state() == DataChannel.State.OPEN
+    }
+
+    private fun drainLatestMedia(initialSnapshot: PeerMediaSendSnapshot<DataChannel, SessionPacketCipher>): Boolean {
+        var snapshot = initialSnapshot
+        while (true) {
+            val outcome =
+                try {
+                    sendLinearizer.withCurrentMediaPath(
+                        snapshot = { synchronized(lock) { currentMediaPathLocked(snapshot.channel) } },
+                        isCurrent = { candidate -> synchronized(lock) { isCurrentMediaPathLocked(candidate) } },
+                    ) { candidate ->
+                        if (candidate.channel.bufferedAmount() >= MEDIA_BUFFER_LOW_WATER_BYTES) {
+                            MediaDrainOutcome.BLOCKED
+                        } else {
+                            val accepted =
+                                mediaBatches.sendNext { payload ->
+                                    candidate.channel.send(secureBuffer(candidate.cipher, SessionChannel.MEDIA, payload))
+                                }
+                            when (accepted) {
+                                null -> MediaDrainOutcome.EMPTY
+                                true -> MediaDrainOutcome.ACCEPTED
+                                false -> MediaDrainOutcome.RETRY
+                            }
+                        }
+                    } ?: MediaDrainOutcome.STALE
+                } catch (failure: Throwable) {
+                    fail(failure)
+                    return false
+                }
+            when (outcome) {
+                MediaDrainOutcome.ACCEPTED -> {
+                    val current = synchronized(lock) { currentMediaPathLocked(snapshot.channel) }
+                        ?: return false
+                    snapshot = current
+                }
+                MediaDrainOutcome.BLOCKED,
+                MediaDrainOutcome.RETRY,
+                -> {
+                    scheduleMediaRetry(snapshot)
+                    return true
+                }
+                MediaDrainOutcome.EMPTY -> return true
+                MediaDrainOutcome.STALE -> {
+                    sendLinearizer.withGate { mediaBatches.clear() }
+                    return false
+                }
+            }
+        }
+    }
+
+    private fun scheduleMediaRetry(snapshot: PeerMediaSendSnapshot<DataChannel, SessionPacketCipher>) {
+        try {
+            sendLinearizer.withGate {
+                val isCurrent = synchronized(lock) { isCurrentMediaPathLocked(snapshot) }
+                if (!isCurrent || statsExecutor.isShutdown) return@withGate
+                mediaRetryGate.schedule(PeerMediaRetryKey(snapshot.channel, snapshot.generation)) { retry ->
+                    val current =
+                        synchronized(lock) {
+                            currentMediaPathLocked(retry.channel)
+                                ?.takeIf { it.generation == retry.generation }
+                        }
+                    if (current != null) drainLatestMedia(current)
+                }
+            }
+        } catch (failure: Throwable) {
+            if (!statsExecutor.isShutdown) fail(failure)
+        }
+    }
+
+    private fun currentMediaPathLocked(channel: DataChannel? = mediaChannel): PeerMediaSendSnapshot<DataChannel, SessionPacketCipher>? {
+        val cipher = configuration?.sessionCipher
+        return if (
+            closed ||
+            !connectedReported ||
+            routeResolutionFailed ||
+            selectedRoute == null ||
+            channel == null ||
+            mediaChannel !== channel ||
+            cipher == null ||
+            channel.state() != DataChannel.State.OPEN
+        ) {
+            null
+        } else {
+            PeerMediaSendSnapshot(channel, cipher, routeGeneration)
+        }
+    }
+
+    private fun isCurrentMediaPathLocked(snapshot: PeerMediaSendSnapshot<DataChannel, SessionPacketCipher>): Boolean =
+        !closed &&
+            connectedReported &&
+            !routeResolutionFailed &&
+            selectedRoute != null &&
+            routeGeneration == snapshot.generation &&
+            mediaChannel === snapshot.channel &&
+            configuration?.sessionCipher === snapshot.cipher &&
+            snapshot.channel.state() == DataChannel.State.OPEN
 
     private fun createOffer() = createDescription(isOffer = true)
 
@@ -441,17 +728,19 @@ class AndroidWebRtcPeerEngine internal constructor(
 
     private fun routeResolutionTimedOut(generation: Long) {
         val shouldFail =
-            synchronized(lock) {
-                if (
-                    generation != routeGeneration ||
-                    !isReadyForRouteResolutionLocked() ||
-                    connectedReported ||
-                    selectedRoute != null
-                ) {
-                    false
-                } else {
-                    routeResolutionFailed = true
-                    true
+            sendLinearizer.withGate {
+                synchronized(lock) {
+                    if (
+                        generation != routeGeneration ||
+                        !isReadyForRouteResolutionLocked() ||
+                        connectedReported ||
+                        selectedRoute != null
+                    ) {
+                        false
+                    } else {
+                        routeResolutionFailed = true
+                        true
+                    }
                 }
             }
         if (shouldFail) {
@@ -461,13 +750,18 @@ class AndroidWebRtcPeerEngine internal constructor(
 
     private fun fail(error: Throwable) {
         val target =
-            synchronized(lock) {
-                routeGeneration++
-                routeResolutionFailed = true
-                acceptCandidateRoutes = false
-                selectedRoute = null
-                connectedReported = false
-                observer.takeIf { !closed }
+            sendLinearizer.withGate {
+                val failedTarget = synchronized(lock) {
+                    routeGeneration++
+                    routeResolutionFailed = true
+                    acceptCandidateRoutes = false
+                    selectedRoute = null
+                    connectedReported = false
+                    mediaBatches.clear()
+                    observer.takeIf { !closed }
+                }
+                mediaRetryGate.cancel()
+                failedTarget
             }
         routeResolutionTimeout.cancel()
         target ?: return
@@ -494,17 +788,31 @@ class AndroidWebRtcPeerEngine internal constructor(
                 PeerConnection.PeerConnectionState.DISCONNECTED,
                 PeerConnection.PeerConnectionState.CLOSED,
                 -> {
-                    val target =
-                        synchronized(lock) {
-                            routeGeneration++
-                            connectedReported = false
-                            selectedRoute = null
-                            routeResolutionFailed = false
-                            acceptCandidateRoutes = false
-                            observer.takeIf { !closed }
+                    val transition =
+                        sendLinearizer.withGate {
+                            val snapshot = synchronized(lock) {
+                                routeGeneration++
+                                connectedReported = false
+                                selectedRoute = null
+                                routeResolutionFailed = false
+                                acceptCandidateRoutes = false
+                                mediaBatches.clear()
+                                PeerDisconnectSnapshot(
+                                    observer.takeIf { !closed },
+                                    channelObserverBindingsLocked(routeGeneration),
+                                )
+                            }
+                            mediaRetryGate.cancel()
+                            snapshot
                         }
                     routeResolutionTimeout.cancel()
-                    target?.onDisconnected()
+                    try {
+                        rebindChannelObservers(transition.observerBindings)
+                    } catch (failure: Throwable) {
+                        fail(failure)
+                        return
+                    }
+                    transition.target?.onDisconnected()
                 }
                 PeerConnection.PeerConnectionState.FAILED -> fail(IllegalStateException("WebRTC ICE/DTLS connection failed"))
                 else -> Unit
@@ -565,11 +873,12 @@ class AndroidWebRtcPeerEngine internal constructor(
         override fun onSetFailure(error: String) = fail(IllegalStateException(error))
     }
 
-    private fun IceServer.toWebRtc(): PeerConnection.IceServer =
-        PeerConnection.IceServer.builder(urls).apply {
-            username?.let(::setUsername)
-            credential?.let(::setPassword)
-        }.createIceServer()
+    private fun IceServer.toWebRtc(): PeerConnection.IceServer {
+        val builder = PeerConnection.IceServer.builder(urls)
+        usernameSecret?.withString(builder::setUsername)
+        credentialSecret?.withString(builder::setPassword)
+        return builder.createIceServer()
+    }
 
     private fun String.extractUsernameFragment(): String? =
         split(' ')
@@ -578,12 +887,25 @@ class AndroidWebRtcPeerEngine internal constructor(
             ?.get(1)
 
     private fun secureBuffer(
+        cipher: SessionPacketCipher,
         channel: SessionChannel,
         payload: ByteArray,
     ): DataChannel.Buffer {
-        val cipher = synchronized(lock) { configuration?.sessionCipher.takeIf { !closed } }
-            ?: throw IllegalStateException("WebRTC engine is not running")
-        return DataChannel.Buffer(java.nio.ByteBuffer.wrap(cipher.seal(channel, payload)), true)
+        val record = cipher.seal(channel, payload)
+        if (channel == SessionChannel.MEDIA) {
+            require(record.size <= InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES) {
+                "Encrypted media record exceeds ${InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES} bytes"
+            }
+        }
+        return DataChannel.Buffer(java.nio.ByteBuffer.wrap(record), true)
+    }
+
+    private enum class MediaDrainOutcome {
+        ACCEPTED,
+        BLOCKED,
+        EMPTY,
+        RETRY,
+        STALE,
     }
 
     private data class Resources(
@@ -592,6 +914,28 @@ class AndroidWebRtcPeerEngine internal constructor(
         val factory: PeerConnectionFactory?,
         val sessionCipher: SessionPacketCipher?,
         val channels: List<DataChannel>,
+    )
+
+    private data class PeerRestartSnapshot(
+        val peer: PeerConnection,
+        val generation: Long,
+        val shouldCreateOffer: Boolean,
+        val observerBindings: List<ChannelObserverBinding>,
+    )
+
+    private data class PeerDisconnectSnapshot(
+        val target: WebRtcPeerEngine.Observer?,
+        val observerBindings: List<ChannelObserverBinding>,
+    )
+
+    private data class ChannelObserverBinding(
+        val source: PeerInboundCallbackSource<DataChannel>,
+        val isControl: Boolean,
+    )
+
+    private data class PeerMediaRetryKey(
+        val channel: DataChannel,
+        val generation: Long,
     )
 
     private fun closeAfterStartFailure(failure: Throwable) {
@@ -606,12 +950,10 @@ class AndroidWebRtcPeerEngine internal constructor(
         internal const val CONTROL_CHANNEL_LABEL = "vibescreen.control.v1"
         internal const val MEDIA_CHANNEL_LABEL = "vibescreen.media.v1"
         private const val MAX_CONTROL_BYTES = 1_048_576
-        private const val MAX_MEDIA_PACKET_BYTES = 4_194_304
-        private const val MAX_RECORD_OVERHEAD_BYTES = 256
+        private const val MAX_CONTROL_RECORD_OVERHEAD_BYTES = 256
         private const val MIN_RECORD_BYTES = 16
         private const val CONTROL_BUFFER_HIGH_WATER_BYTES = 1_048_576L
         private const val MEDIA_BUFFER_LOW_WATER_BYTES = 131_072L
-        private const val MEDIA_BUFFER_HIGH_WATER_BYTES = 524_288L
         private const val STATS_INTERVAL_SECONDS = 2L
         private const val MEDIA_RETRY_DELAY_MS = 50L
         internal const val ROUTE_RESOLUTION_TIMEOUT_MS = 5_000L

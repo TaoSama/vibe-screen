@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import Security
 
 struct InternetPairingDerivedSecrets: Equatable {
     let sharedSecret: Data
@@ -86,11 +87,38 @@ enum InternetPairingCanonical {
     }
 
     static func verify(signature: Data, digest: Data, publicKey: Data) -> Bool {
+        guard digest.count == SHA256.byteCount,
+              publicKey.count == 65, publicKey.first == 0x04,
+              (8...80).contains(signature.count) else { return false }
         do {
-            let key = try P256.Signing.PublicKey(x963Representation: publicKey)
-            let parsed = try P256.Signing.ECDSASignature(derRepresentation: signature)
-            return key.isValidSignature(parsed, for: digest)
+            _ = try P256.Signing.PublicKey(x963Representation: publicKey)
+            _ = try P256.Signing.ECDSASignature(derRepresentation: signature)
         } catch { return false }
+
+        let attributes: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecAttrKeyClass as String: kSecAttrKeyClassPublic,
+            kSecAttrKeySizeInBits as String: 256
+        ]
+        guard let key = SecKeyCreateWithData(
+            publicKey as CFData,
+            attributes as CFDictionary,
+            nil
+        ) else { return false }
+
+        var error: Unmanaged<CFError>?
+        let valid = SecKeyVerifySignature(
+            key,
+            .ecdsaSignatureDigestX962SHA256,
+            digest as CFData,
+            signature as CFData,
+            &error
+        )
+        if let error {
+            _ = error.takeRetainedValue()
+            return false
+        }
+        return valid
     }
 
     static func hexDigest(_ data: Data) -> String {

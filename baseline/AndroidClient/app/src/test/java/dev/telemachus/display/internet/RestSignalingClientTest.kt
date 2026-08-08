@@ -94,9 +94,11 @@ class RestSignalingClientTest {
 
     @Test
     fun rejectsUnsafeSessionIdentifierBeforeNetworkAccess() {
+        val configuration = testConfiguration()
         assertThrows(IllegalArgumentException::class.java) {
-            RestSignalingClient(testConfiguration(), "../other-session")
+            RestSignalingClient(configuration, "../other-session")
         }
+        assertTrue(configuration.bearerTokenSecret.isDestroyedForTest())
     }
 
     @Test

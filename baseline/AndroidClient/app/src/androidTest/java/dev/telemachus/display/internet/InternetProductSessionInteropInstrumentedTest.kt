@@ -8,6 +8,8 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
 import dev.telemachus.display.internet.security.AndroidSessionSecurity
+import dev.telemachus.display.internet.security.AndroidDeviceIdentityPairingSigner
+import dev.telemachus.display.internet.security.AndroidDeviceIdentityStore
 import dev.telemachus.display.internet.security.DurableSecurityState
 import dev.telemachus.display.internet.security.SecurityStateStore
 import dev.telemachus.display.internet.security.TrafficKeyDerivation
@@ -53,12 +55,17 @@ class InternetProductSessionInteropInstrumentedTest {
                     ),
             )
         val identityEpoch = storedFactory.reserveNextIdentityEpoch()
+        val localIdentity =
+            AndroidDeviceIdentityPairingSigner(
+                AndroidDeviceIdentityStore().loadOrCreateForPairing(localDeviceId, identityEpoch),
+            ).publicIdentity
         val lease =
             InternetProductSessionLease(
                 pairingIdentifier = pairingId,
                 signalingSessionId = sessionId,
                 authoritativeSessionEpoch = epoch,
                 identityEpoch = identityEpoch,
+                localIdentity = localIdentity,
                 transcriptContext = transcriptContext,
                 iceServers =
                     listOf(
@@ -95,7 +102,7 @@ class InternetProductSessionInteropInstrumentedTest {
                 storedFactory.persistPairingSecrets(pairingId, sharedSecret, bootstrapSecret)
                 storedFactory.completePairingPersistence(
                     pairingId,
-                    commitBusinessState = { storedFactory.authorizeIdentityEpoch(identityEpoch) },
+                    commitBusinessState = { storedFactory.authorizeIdentity(localIdentity) },
                     cleanupBusinessState = {},
                 )
                 pairingPersistenceCompleted = true

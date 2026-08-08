@@ -1,9 +1,11 @@
 import CryptoKit
+import Darwin
 import Foundation
 import Security
 
 struct PlatformPublicIdentity: Codable, Equatable {
     static let algorithm = "ECDSA_P256_SHA256"
+    static let initialKeyEpoch: UInt64 = 1
 
     let deviceID: String
     let keyID: String
@@ -99,7 +101,10 @@ final class KeychainDeviceIdentityStore {
         self.service = service
     }
 
-    func loadOrCreate(deviceID: String, keyEpoch: UInt64 = 1) throws -> KeychainDeviceIdentity {
+    func createIfMissing(
+        deviceID: String,
+        keyEpoch: UInt64 = PlatformPublicIdentity.initialKeyEpoch
+    ) throws -> KeychainDeviceIdentity {
         guard !deviceID.isEmpty, keyEpoch > 0 else {
             throw PlatformSecurityError.invalidInput("Device ID and positive key epoch are required.")
         }
@@ -110,11 +115,18 @@ final class KeychainDeviceIdentityStore {
         }
     }
 
+    func loadOrCreate(
+        deviceID: String,
+        keyEpoch: UInt64 = PlatformPublicIdentity.initialKeyEpoch
+    ) throws -> KeychainDeviceIdentity {
+        try createIfMissing(deviceID: deviceID, keyEpoch: keyEpoch)
+    }
+
     /// Loads an already-provisioned identity without creating a replacement.
     /// Lease issuance must fail closed when pairing has not created this key.
     func loadExisting(
         deviceID: String,
-        keyEpoch: UInt64 = 1
+        keyEpoch: UInt64 = PlatformPublicIdentity.initialKeyEpoch
     ) throws -> KeychainDeviceIdentity? {
         guard !deviceID.isEmpty, keyEpoch > 0 else {
             throw PlatformSecurityError.invalidInput(
@@ -131,6 +143,22 @@ final class KeychainDeviceIdentityStore {
                 privateKey: privateKey
             )
         }
+    }
+
+    func loadVerifiedExisting(
+        binding: PairedHostIdentityBinding
+    ) throws -> KeychainDeviceIdentity {
+        try binding.validate()
+        guard let identity = try loadExisting(
+            deviceID: binding.deviceID,
+            keyEpoch: binding.keyEpoch
+        ) else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired host Keychain identity is missing. Pair again."
+            )
+        }
+        try binding.verify(existing: identity.publicIdentity)
+        return identity
     }
 
     func delete(deviceID: String, keyEpoch: UInt64) throws {
@@ -212,8 +240,10 @@ final class KeychainDeviceIdentityStore {
 struct KeychainSecurityStateStore:
     SecurityStateStore,
     LegacyGlobalRevocationCleanupPersistence {
+    private static let bindingLock = NSLock()
     let service: String
     let account: String
+    let bindingAccount: String?
     let legacyAccount: String?
     let legacyCleanupAccount: String?
     let peerID: String?
@@ -227,6 +257,7 @@ struct KeychainSecurityStateStore:
         precondition(!peerID.isEmpty, "Peer ID must not be empty.")
         self.service = service
         self.account = Self.accountName(peerID: peerID)
+        self.bindingAccount = Self.bindingAccountName(peerID: peerID)
         self.legacyAccount = legacyAccount
         self.legacyCleanupAccount = legacyCleanupAccount
         self.peerID = peerID
@@ -237,13 +268,28 @@ struct KeychainSecurityStateStore:
     init(service: String, account: String) {
         self.service = service
         self.account = account
+        self.bindingAccount = nil
         self.legacyAccount = nil
         self.legacyCleanupAccount = nil
         self.peerID = nil
     }
 
+    func withExclusiveTransaction<T>(_ operation: () throws -> T) throws -> T {
+        try KeychainCrossProcessTransactionLock.withLock(
+            service: service,
+            account: account,
+            operation: operation
+        )
+    }
+
     func load() throws -> PersistedSecurityState {
         if let current = try load(account: account, expectedPeerID: peerID) { return current }
+        if let bindingAccount, try loadData(account: bindingAccount) != nil {
+            _ = try loadBinding(account: bindingAccount)
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired-device durable security state is missing. Pair again; existing credentials were retained."
+            )
+        }
         guard let legacyAccount,
               let legacy = try load(account: legacyAccount, expectedPeerID: nil) else {
             return PersistedSecurityState()
@@ -251,6 +297,165 @@ struct KeychainSecurityStateStore:
         let migrated = try Self.migratedLegacyState(legacy)
         try persist(migrated)
         return migrated
+    }
+
+    func initializePairingBinding(pairingIdentifier: String) throws {
+        guard let peerID, let bindingAccount else {
+            throw PlatformSecurityError.persistenceFailure(
+                "Pairing-bound durable state requires a peer-scoped store."
+            )
+        }
+        try withExclusiveTransaction {
+            try Self.bindingLock.withCriticalSection {
+                if let existing = try loadBinding(account: bindingAccount) {
+                try existing.validateOwner(peerID: peerID, stateAccount: account)
+                _ = try loadCurrentStateRequired()
+                if existing.matches(pairingIdentifier: pairingIdentifier) { return }
+                    let replacement = existing.replacingPairingIdentifier(
+                        pairingIdentifier
+                    )
+                    try persist(
+                        data: try replacement.encoded(),
+                        account: bindingAccount
+                    )
+                    try loadBinding(account: bindingAccount)?.validate(
+                        peerID: peerID,
+                        pairingIdentifier: pairingIdentifier,
+                        stateAccount: account
+                    )
+                    return
+                }
+                let statePreexisted = try loadData(account: account) != nil
+                let marker = PairingBoundSecurityStateMarker(
+                    peerID: peerID,
+                    pairingIdentifier: pairingIdentifier,
+                    stateAccount: account,
+                    statePreexisted: statePreexisted
+                )
+                try persist(
+                    data: try marker.encoded(),
+                    account: bindingAccount
+                )
+                if !statePreexisted {
+                    try persist(PersistedSecurityState())
+                } else {
+                    _ = try loadCurrentStateRequired()
+                }
+                try loadBinding(account: bindingAccount)?.validate(
+                    peerID: peerID,
+                    pairingIdentifier: pairingIdentifier,
+                    stateAccount: account
+                )
+            }
+        }
+    }
+
+    func validatePairingBinding(
+        pairingIdentifier: String
+    ) throws -> PersistedSecurityState {
+        try withExclusiveTransaction {
+            guard let peerID, let bindingAccount,
+                  let marker = try loadBinding(account: bindingAccount) else {
+                throw PlatformSecurityError.persistenceFailure(
+                    "The paired-device durable security binding is missing. Pair again; existing credentials were retained."
+                )
+            }
+            try marker.validate(
+                peerID: peerID,
+                pairingIdentifier: pairingIdentifier,
+                stateAccount: account
+            )
+            return try loadCurrentStateRequired()
+        }
+    }
+
+    func rollbackPairingBinding(pairingIdentifier: String) throws {
+        try withExclusiveTransaction {
+            try rollbackPairingBindingLocked(pairingIdentifier: pairingIdentifier)
+        }
+    }
+
+    private func rollbackPairingBindingLocked(pairingIdentifier: String) throws {
+        guard let peerID, let bindingAccount,
+              let marker = try loadBinding(account: bindingAccount) else { return }
+        try marker.validateOwner(peerID: peerID, stateAccount: account)
+        guard marker.matches(pairingIdentifier: pairingIdentifier) else { return }
+        if let restored = marker.restoringPreviousPairingIdentifier() {
+            try persist(data: try restored.encoded(), account: bindingAccount)
+            return
+        }
+        if !marker.statePreexisted {
+            try delete(account: account)
+        }
+        try delete(account: bindingAccount)
+    }
+
+    func finalizePairingBinding(pairingIdentifier: String) throws {
+        try withExclusiveTransaction {
+            try finalizePairingBindingLocked(pairingIdentifier: pairingIdentifier)
+        }
+    }
+
+    private func finalizePairingBindingLocked(pairingIdentifier: String) throws {
+        guard let peerID, let bindingAccount,
+              let marker = try loadBinding(account: bindingAccount) else { return }
+        try marker.validate(
+            peerID: peerID,
+            pairingIdentifier: pairingIdentifier,
+            stateAccount: account
+        )
+        guard marker.previousPairingIdentifierDigest != nil else { return }
+        try persist(
+            data: try marker.finalized().encoded(),
+            account: bindingAccount
+        )
+    }
+
+    func deleteCommittedPairingBinding(pairingIdentifier: String) throws {
+        try withExclusiveTransaction {
+            try deleteCommittedPairingBindingLocked(
+                pairingIdentifier: pairingIdentifier
+            )
+        }
+    }
+
+    private func deleteCommittedPairingBindingLocked(
+        pairingIdentifier: String
+    ) throws {
+        guard let peerID, let bindingAccount,
+              let marker = try loadBinding(account: bindingAccount) else { return }
+        try marker.validate(
+            peerID: peerID,
+            pairingIdentifier: pairingIdentifier,
+            stateAccount: account
+        )
+        try delete(account: account)
+        try delete(account: bindingAccount)
+    }
+
+    private func loadCurrentStateRequired() throws -> PersistedSecurityState {
+        guard let state = try load(account: account, expectedPeerID: peerID) else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired-device durable security state is missing. Pair again; existing credentials were retained."
+            )
+        }
+        return state
+    }
+
+    private func loadBinding(
+        account: String
+    ) throws -> PairingBoundSecurityStateMarker? {
+        guard let data = try loadData(account: account) else { return nil }
+        do {
+            return try JSONDecoder().decode(
+                PairingBoundSecurityStateMarker.self,
+                from: data
+            )
+        } catch {
+            throw PlatformSecurityError.persistenceFailure(
+                "Stored paired-device durable security binding is invalid: \(error.localizedDescription)"
+            )
+        }
     }
 
     private func load(
@@ -334,6 +539,13 @@ struct KeychainSecurityStateStore:
     static func accountName(peerID: String) -> String {
         let digest = SHA256.hash(data: Data(peerID.utf8))
         return "durable-state-v2.peer." + digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func bindingAccountName(peerID: String) -> String {
+        let digest = SHA256.hash(data: Data(peerID.utf8))
+        return "durable-state-binding-v1.peer." + digest.map {
+            String(format: "%02x", $0)
+        }.joined()
     }
 
     static func migratedLegacyState(_ legacy: PersistedSecurityState) throws -> PersistedSecurityState {
@@ -422,6 +634,248 @@ struct KeychainSecurityStateStore:
     }
 }
 
+enum KeychainCrossProcessTransactionLock {
+    static let defaultAcquisitionTimeoutNanoseconds: UInt64 = 10_000_000_000
+    private static let retryDelayMicroseconds: useconds_t = 20_000
+    private static let registryLock = NSLock()
+    private static var processLocks: [String: NSRecursiveLock] = [:]
+    private static let threadDepthPrefix = "dev.telemachus.security-lock-depth."
+
+    static func withLock<T>(
+        service: String,
+        account: String,
+        acquisitionTimeoutNanoseconds: UInt64 = defaultAcquisitionTimeoutNanoseconds,
+        operation: () throws -> T
+    ) throws -> T {
+        let lockURL = try lockFileURL(service: service, account: account)
+        let processLock = processLock(for: lockURL)
+        return try processLock.withCriticalSection {
+            let depthKey = threadDepthPrefix + lockURL.lastPathComponent
+            let dictionary = Thread.current.threadDictionary
+            let depth = dictionary[depthKey] as? Int ?? 0
+            if depth > 0 {
+                dictionary[depthKey] = depth + 1
+                defer { dictionary[depthKey] = depth }
+                return try operation()
+            }
+
+            let descriptor = open(
+                lockURL.path,
+                O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW,
+                S_IRUSR | S_IWUSR
+            )
+            guard descriptor >= 0 else {
+                throw PlatformSecurityError.persistenceFailure(
+                    "Unable to open the durable security transaction lock."
+                )
+            }
+            defer { close(descriptor) }
+            try acquireFileLock(
+                descriptor: descriptor,
+                timeoutNanoseconds: acquisitionTimeoutNanoseconds
+            )
+            dictionary[depthKey] = 1
+            defer {
+                dictionary.removeObject(forKey: depthKey)
+                _ = flock(descriptor, LOCK_UN)
+            }
+            return try operation()
+        }
+    }
+
+    static func acquireFileLock(
+        descriptor: Int32,
+        timeoutNanoseconds: UInt64 = defaultAcquisitionTimeoutNanoseconds,
+        clock: () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
+        sleep: (useconds_t) -> Void = { usleep($0) },
+        flockOperation: (Int32, Int32) -> Int32 = { descriptor, operation in
+            flock(descriptor, operation)
+        }
+    ) throws {
+        let startedAt = clock()
+        while flockOperation(descriptor, LOCK_EX | LOCK_NB) != 0 {
+            let lockError = errno
+            guard lockError == EINTR || lockError == EWOULDBLOCK || lockError == EAGAIN else {
+                throw PlatformSecurityError.persistenceFailure(
+                    "Unable to acquire the durable security transaction lock."
+                )
+            }
+            let now = clock()
+            let elapsed = now >= startedAt ? now - startedAt : UInt64.max
+            guard elapsed < timeoutNanoseconds else {
+                throw PlatformSecurityError.persistenceFailure(
+                    "Timed out acquiring the durable security transaction lock."
+                )
+            }
+            if lockError != EINTR {
+                sleep(retryDelayMicroseconds)
+            }
+        }
+    }
+
+    static func lockFileURL(service: String, account: String) throws -> URL {
+        guard let applicationSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first else {
+            throw PlatformSecurityError.persistenceFailure(
+                "Application Support is unavailable for durable security locks."
+            )
+        }
+        let directory = applicationSupport
+            .appendingPathComponent("VibeScreen", isDirectory: true)
+            .appendingPathComponent("SecurityLocks", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o700],
+                ofItemAtPath: directory.path
+            )
+        } catch {
+            throw PlatformSecurityError.persistenceFailure(
+                "Unable to prepare durable security locks: \(error.localizedDescription)"
+            )
+        }
+        let digest = SHA256.hash(data: Data("\(service)\u{0}\(account)".utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return directory.appendingPathComponent("\(digest).lock", isDirectory: false)
+    }
+
+    private static func processLock(for lockURL: URL) -> NSRecursiveLock {
+        registryLock.withCriticalSection {
+            let key = lockURL.path
+            if let existing = processLocks[key] { return existing }
+            let created = NSRecursiveLock()
+            processLocks[key] = created
+            return created
+        }
+    }
+}
+
+private struct PairingBoundSecurityStateMarker: Codable {
+    private static let currentVersion = 2
+
+    let version: Int
+    let peerScopeDigest: String
+    let pairingIdentifierDigest: String
+    let previousPairingIdentifierDigest: String?
+    let stateAccount: String
+    let statePreexisted: Bool
+
+    init(
+        peerID: String,
+        pairingIdentifier: String,
+        stateAccount: String,
+        statePreexisted: Bool
+    ) {
+        version = Self.currentVersion
+        peerScopeDigest = Self.digest(peerID)
+        pairingIdentifierDigest = Self.digest(pairingIdentifier)
+        previousPairingIdentifierDigest = nil
+        self.stateAccount = stateAccount
+        self.statePreexisted = statePreexisted
+    }
+
+    func validate(
+        peerID: String,
+        pairingIdentifier: String,
+        stateAccount: String
+    ) throws {
+        try validateOwner(peerID: peerID, stateAccount: stateAccount)
+        guard pairingIdentifierDigest == Self.digest(pairingIdentifier) else {
+            throw PlatformSecurityError.persistenceFailure(
+                "Stored paired-device durable security binding has the wrong owner. Pair again."
+            )
+        }
+    }
+
+    func validateOwner(peerID: String, stateAccount: String) throws {
+        guard (1...Self.currentVersion).contains(version),
+              peerScopeDigest == Self.digest(peerID),
+              pairingIdentifierDigest.count == 64,
+              previousPairingIdentifierDigest.map({ $0.count == 64 }) ?? true,
+              self.stateAccount == stateAccount else {
+            throw PlatformSecurityError.persistenceFailure(
+                "Stored paired-device durable security binding has the wrong owner. Pair again."
+            )
+        }
+    }
+
+    func matches(pairingIdentifier: String) -> Bool {
+        pairingIdentifierDigest == Self.digest(pairingIdentifier)
+    }
+
+    func replacingPairingIdentifier(_ pairingIdentifier: String) -> Self {
+        Self(
+            version: Self.currentVersion,
+            peerScopeDigest: peerScopeDigest,
+            pairingIdentifierDigest: Self.digest(pairingIdentifier),
+            previousPairingIdentifierDigest: pairingIdentifierDigest,
+            stateAccount: stateAccount,
+            statePreexisted: statePreexisted
+        )
+    }
+
+    func restoringPreviousPairingIdentifier() -> Self? {
+        guard let previousPairingIdentifierDigest else { return nil }
+        return Self(
+            version: Self.currentVersion,
+            peerScopeDigest: peerScopeDigest,
+            pairingIdentifierDigest: previousPairingIdentifierDigest,
+            previousPairingIdentifierDigest: nil,
+            stateAccount: stateAccount,
+            statePreexisted: true
+        )
+    }
+
+    func finalized() -> Self {
+        Self(
+            version: Self.currentVersion,
+            peerScopeDigest: peerScopeDigest,
+            pairingIdentifierDigest: pairingIdentifierDigest,
+            previousPairingIdentifierDigest: nil,
+            stateAccount: stateAccount,
+            statePreexisted: true
+        )
+    }
+
+    private init(
+        version: Int,
+        peerScopeDigest: String,
+        pairingIdentifierDigest: String,
+        previousPairingIdentifierDigest: String?,
+        stateAccount: String,
+        statePreexisted: Bool
+    ) {
+        self.version = version
+        self.peerScopeDigest = peerScopeDigest
+        self.pairingIdentifierDigest = pairingIdentifierDigest
+        self.previousPairingIdentifierDigest = previousPairingIdentifierDigest
+        self.stateAccount = stateAccount
+        self.statePreexisted = statePreexisted
+    }
+
+    func encoded() throws -> Data {
+        do { return try JSONEncoder().encode(self) }
+        catch {
+            throw PlatformSecurityError.persistenceFailure(
+                "Unable to encode the paired-device durable security binding: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private static func digest(_ value: String) -> String {
+        SHA256.hash(data: Data(value.utf8)).map {
+            String(format: "%02x", $0)
+        }.joined()
+    }
+}
+
 /// Stores issued pairing credentials as device-local Keychain data. Traffic
 /// keys remain memory-only and are never written here.
 struct KeychainSecretStore {
@@ -465,6 +919,23 @@ struct KeychainSecretStore {
         guard status == errSecSuccess || status == errSecItemNotFound else { throw keychainError(status) }
     }
 
+    func names(prefix: String) throws -> [String] {
+        guard !prefix.isEmpty else { return [] }
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching([
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrSynchronizable as String: kCFBooleanFalse as Any,
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitAll
+        ] as CFDictionary, &result)
+        if status == errSecItemNotFound { return [] }
+        guard status == errSecSuccess else { throw keychainError(status) }
+        let items = result as? [[String: Any]] ?? []
+        return items.compactMap { $0[kSecAttrAccount as String] as? String }
+            .filter { $0.hasPrefix(prefix) }
+    }
+
     private func baseQuery(name: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
@@ -484,13 +955,249 @@ extension KeychainSecretStore: PairedDeviceSecretStore {}
 struct PairedDeviceSecretNames: Equatable {
     let sharedSecret: String
     let bootstrapSecret: String
+    let identityBinding: String?
+    let peerIdentityBinding: String?
+    let pairingIdentifier: String?
 
-    init(sharedSecret: String, bootstrapSecret: String) throws {
-        guard !sharedSecret.isEmpty, !bootstrapSecret.isEmpty, sharedSecret != bootstrapSecret else {
+    init(
+        sharedSecret: String,
+        bootstrapSecret: String,
+        identityBinding: String? = nil,
+        peerIdentityBinding: String? = nil,
+        pairingIdentifier: String? = nil
+    ) throws {
+        guard !sharedSecret.isEmpty, !bootstrapSecret.isEmpty,
+              identityBinding?.isEmpty != true,
+              peerIdentityBinding?.isEmpty != true,
+              pairingIdentifier?.isEmpty != true,
+              Set([sharedSecret, bootstrapSecret] +
+                [identityBinding, peerIdentityBinding].compactMap { $0 }).count ==
+                2 + (identityBinding == nil ? 0 : 1) + (peerIdentityBinding == nil ? 0 : 1) else {
             throw PlatformSecurityError.invalidInput("Distinct paired-device secret names are required.")
         }
         self.sharedSecret = sharedSecret
         self.bootstrapSecret = bootstrapSecret
+        self.identityBinding = identityBinding
+        self.peerIdentityBinding = peerIdentityBinding
+        self.pairingIdentifier = pairingIdentifier
+    }
+
+    static func persistedPairing(
+        sharedSecret: String,
+        bootstrapSecret: String
+    ) throws -> Self {
+        let sharedPrefix = "pairing."
+        let sharedSuffix = ".shared.v1"
+        guard sharedSecret.hasPrefix(sharedPrefix), sharedSecret.hasSuffix(sharedSuffix) else {
+            return try Self(sharedSecret: sharedSecret, bootstrapSecret: bootstrapSecret)
+        }
+        guard sharedSecret.count > sharedPrefix.count + sharedSuffix.count else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired-device shared secret name has no pairing identity. Pair again."
+            )
+        }
+        let identifierStart = sharedSecret.index(
+            sharedSecret.startIndex,
+            offsetBy: sharedPrefix.count
+        )
+        let identifierEnd = sharedSecret.index(
+            sharedSecret.endIndex,
+            offsetBy: -sharedSuffix.count
+        )
+        let pairingIdentifier = String(sharedSecret[identifierStart..<identifierEnd])
+        guard bootstrapSecret == "pairing.\(pairingIdentifier).bootstrap.v1" else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired-device secret names do not share one pairing identity. Pair again."
+            )
+        }
+        return try Self(
+            sharedSecret: sharedSecret,
+            bootstrapSecret: bootstrapSecret,
+            identityBinding: PairedHostIdentityBinding.keychainName(
+                pairingIdentifier: pairingIdentifier
+            ),
+            peerIdentityBinding: PairedPeerIdentityBinding.keychainName(
+                pairingIdentifier: pairingIdentifier
+            ),
+            pairingIdentifier: pairingIdentifier
+        )
+    }
+}
+
+struct PairedPeerIdentityBinding: Codable, Equatable {
+    private static let currentVersion = 1
+
+    let version: Int
+    let identity: PlatformPublicIdentity
+
+    init(identity: PlatformPublicIdentity) {
+        version = Self.currentVersion
+        self.identity = identity
+    }
+
+    func validate() throws {
+        let calculatedKeyID = Data(SHA256.hash(data: identity.signingPublicKey))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        guard version == Self.currentVersion,
+              !identity.deviceID.isEmpty, identity.deviceID.utf8.count <= 256,
+              identity.keyID.count == 64,
+              identity.keyEpoch > 0,
+              identity.signingPublicKey.count == 65,
+              identity.signingPublicKey.first == 0x04,
+              identity.keyID == calculatedKeyID else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired peer identity binding is invalid. Pair again."
+            )
+        }
+        do {
+            _ = try P256.Signing.PublicKey(x963Representation: identity.signingPublicKey)
+        } catch {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired peer identity binding contains an invalid public key. Pair again."
+            )
+        }
+    }
+
+    static func encode(_ identity: PlatformPublicIdentity) throws -> Data {
+        let binding = Self(identity: identity)
+        try binding.validate()
+        return try JSONEncoder().encode(binding)
+    }
+
+    static func decode(_ data: Data) throws -> Self {
+        do {
+            let binding = try JSONDecoder().decode(Self.self, from: data)
+            try binding.validate()
+            return binding
+        } catch let error as PlatformSecurityError {
+            throw error
+        } catch {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired peer identity binding is unreadable. Pair again."
+            )
+        }
+    }
+
+    static func keychainName(pairingIdentifier: String) throws -> String {
+        guard !pairingIdentifier.isEmpty, pairingIdentifier.utf8.count <= 256 else {
+            throw PlatformSecurityError.invalidInput(
+                "A bounded pairing identifier is required for the peer identity binding."
+            )
+        }
+        let digest = SHA256.hash(data: Data(pairingIdentifier.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return "pairing.peer-identity.v1.\(digest)"
+    }
+}
+
+struct PairedHostIdentityBinding: Codable, Equatable {
+    private static let currentVersion = 1
+
+    let version: Int
+    let deviceID: String
+    let keyID: String
+    let keyEpoch: UInt64
+    let signatureAlgorithm: String
+    let signingPublicKey: Data
+
+    init(identity: PlatformPublicIdentity) {
+        version = Self.currentVersion
+        deviceID = identity.deviceID
+        keyID = identity.keyID
+        keyEpoch = identity.keyEpoch
+        signatureAlgorithm = PlatformPublicIdentity.algorithm
+        signingPublicKey = identity.signingPublicKey
+    }
+
+    var publicIdentity: PlatformPublicIdentity {
+        PlatformPublicIdentity(
+            deviceID: deviceID,
+            keyID: keyID,
+            keyEpoch: keyEpoch,
+            signingPublicKey: signingPublicKey
+        )
+    }
+
+    func validate() throws {
+        let calculatedKeyID = Data(SHA256.hash(data: signingPublicKey))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        guard version == Self.currentVersion,
+              !deviceID.isEmpty, deviceID.utf8.count <= 256,
+              keyID.count == 64,
+              keyEpoch > 0,
+              signatureAlgorithm == PlatformPublicIdentity.algorithm,
+              signingPublicKey.count == 65,
+              signingPublicKey.first == 0x04,
+              keyID == calculatedKeyID else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired host identity binding is invalid. Pair again."
+            )
+        }
+        do {
+            _ = try P256.Signing.PublicKey(x963Representation: signingPublicKey)
+        } catch {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired host identity binding contains an invalid public key. Pair again."
+            )
+        }
+    }
+
+    func requireTarget(deviceID expectedDeviceID: String, keyEpoch expectedKeyEpoch: UInt64) throws {
+        try validate()
+        guard deviceID == expectedDeviceID, keyEpoch == expectedKeyEpoch else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired host identity binding targets another device or key epoch. Pair again."
+            )
+        }
+    }
+
+    func verify(existing identity: PlatformPublicIdentity) throws {
+        try validate()
+        guard publicIdentity == identity else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired host identity no longer matches the Keychain signing key. Pair again."
+            )
+        }
+    }
+
+    static func encode(_ identity: PlatformPublicIdentity) throws -> Data {
+        let binding = Self(identity: identity)
+        try binding.validate()
+        do { return try JSONEncoder().encode(binding) }
+        catch {
+            throw PlatformSecurityError.persistenceFailure(
+                "Unable to encode the paired host identity binding: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    static func decode(_ data: Data) throws -> Self {
+        do {
+            let binding = try JSONDecoder().decode(Self.self, from: data)
+            try binding.validate()
+            return binding
+        } catch let error as PlatformSecurityError {
+            throw error
+        } catch {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired host identity binding is unreadable. Pair again."
+            )
+        }
+    }
+
+    static func keychainName(pairingIdentifier: String) throws -> String {
+        guard !pairingIdentifier.isEmpty, pairingIdentifier.utf8.count <= 256 else {
+            throw PlatformSecurityError.invalidInput(
+                "A bounded pairing identifier is required for the host identity binding."
+            )
+        }
+        let digest = SHA256.hash(data: Data(pairingIdentifier.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return "pairing.host-identity.v1.\(digest)"
     }
 }
 
@@ -523,40 +1230,73 @@ final class PlatformSessionSecurity {
     }
 
     func startSession(
+        expectedIdentity: PairedHostIdentityBinding,
         identityEpoch: UInt64,
         sharedSecret: Data,
         bootstrapSecret: Data,
         transcriptContext: Data
     ) throws -> ActivePlatformSecuritySession {
+        let identity = try requireExistingIdentity(
+            expectedIdentity,
+            identityEpoch: identityEpoch
+        )
         let keys = try TrafficKeyDerivation.initial(
             sharedSecret: sharedSecret,
             bootstrapSecret: bootstrapSecret,
             context: transcriptContext
         )
         let sessionEpoch = try lifecycle.beginSession()
-        let identity = try identityStore.loadOrCreate(deviceID: deviceID, keyEpoch: identityEpoch)
         return ActivePlatformSecuritySession(identity: identity, sessionEpoch: sessionEpoch, trafficKeys: keys)
     }
 
     func startSession(
+        expectedIdentity: PairedHostIdentityBinding,
         agreedSessionEpoch: UInt64,
         identityEpoch: UInt64,
         sharedSecret: Data,
         bootstrapSecret: Data,
         transcriptContext: Data
     ) throws -> ActivePlatformSecuritySession {
+        let identity = try requireExistingIdentity(
+            expectedIdentity,
+            identityEpoch: identityEpoch
+        )
         let keys = try TrafficKeyDerivation.initial(
             sharedSecret: sharedSecret,
             bootstrapSecret: bootstrapSecret,
             context: transcriptContext
         )
         let sessionEpoch = try lifecycle.reserveSessionEpoch(agreedSessionEpoch)
-        let identity = try identityStore.loadOrCreate(deviceID: deviceID, keyEpoch: identityEpoch)
         return ActivePlatformSecuritySession(identity: identity, sessionEpoch: sessionEpoch, trafficKeys: keys)
+    }
+
+    private func requireExistingIdentity(
+        _ binding: PairedHostIdentityBinding,
+        identityEpoch: UInt64
+    ) throws -> KeychainDeviceIdentity {
+        try binding.validate()
+        guard binding.deviceID == deviceID,
+              binding.keyEpoch == identityEpoch else {
+            throw PlatformSecurityError.persistenceFailure(
+                "The paired host identity binding targets another device or key epoch. Pair again."
+            )
+        }
+        return try identityStore.loadVerifiedExisting(binding: binding)
     }
 
     func advanceSessionEpoch() throws -> UInt64 {
         try lifecycle.advanceSessionEpoch()
+    }
+
+    func requirePairingBinding(_ pairingIdentifier: String) throws {
+        try lifecycle.requirePairingBinding(pairingIdentifier)
+    }
+
+    func requireRevokedPairingBinding(_ pairingIdentifier: String) throws {
+        try lifecycle.requirePairingBinding(
+            pairingIdentifier,
+            allowRevoked: true
+        )
     }
 
     func reserveSessionEpoch(_ agreedSessionEpoch: UInt64) throws -> UInt64 {
@@ -650,6 +1390,14 @@ private func keychainError(_ status: OSStatus) -> PlatformSecurityError {
 }
 
 private extension NSLock {
+    func withCriticalSection<T>(_ operation: () throws -> T) rethrows -> T {
+        lock()
+        defer { unlock() }
+        return try operation()
+    }
+}
+
+private extension NSRecursiveLock {
     func withCriticalSection<T>(_ operation: () throws -> T) rethrows -> T {
         lock()
         defer { unlock() }
