@@ -79,3 +79,31 @@ host 侧同一次选择触发两条会各发一个 StartDisplayResponse 的路�
 renegotiateSelectedDisplayLocked 回应，host 主动路径不应再发第二个 StartDisplayResponse
 （selectProtocolV1Display/selectDisplayFromClient 仅用于 GUI 端发起、无客户端请求的切换）。
 
+
+
+## 2026-08-08 修复后真机复验（双向往返均不断连）+ 稳定签名免重授权验证
+
+修复 commit 83243c7：删除 AppDelegate.switchCaptureSourceInPlace 末尾多余的
+server.selectProtocolV1Display（客户端 StartDisplayRequest 已被 in-place 分支应答一次）。
+
+### 稳定签名免重授权
+host 源码改动后重新打包，二进制 cdhash 从 d0679aec 变为 e22f0f26，但签名身份仍是 Telemachus Dev。
+安装新构建后 open 启动，日志直接 Pipeline: 60fps 捕获，无权限请求、无重新授权 —— TCC 按签名
+designated requirement（而非 cdhash）匹配，证明稳定自签根治了"每次重建都要重新授权"。
+
+### 双向往返（8a023e3a，两轮均通过）
+清爽会话 onDisplaysAvailable count=2（物理主屏 + 虚拟扩展屏），negotiated 含 KEYBOARD/POINTER/MULTI_DISPLAY。
+Round 1:
+  capsule selectDisplay target=telemachus-virtual-extended from=1
+    host: Runtime display switch: source=extended captureID=13 -> Pipeline 60fps dropped:0，无 INVALID
+  capsule selectDisplay target=1 from=telemachus-virtual-extended
+    host: Runtime display switch: source=selectedDisplay captureID=1 -> Pipeline 60fps dropped:0
+    客户端无 INVALID_PEER_MESSAGE / 无 session ended / 无 Disconnected（修复前必断连）
+Round 2（同样两次切换）：全部干净，host Runtime display switch x2，客户端零断连。
+
+结论：虚拟<->物理双向切换往返不再断连，修复有效且稳定（非时序侥幸）。
+
+### 顺带定位（未改）
+反复断连重连曾导致 onDisplaysAvailable count=3（残留虚拟屏 displayID 10/11/12 泄漏）+
+键盘 toast "Update both apps" 误报（binding 在重连乱序后 sendKey 走 UNSUPPORTED）。host 重启清除残留虚拟屏后恢复 count=2。这些均为断连 bug 的连带效应；断连修复后重连不再发生，现场已消失。若后续仍复现残留虚拟屏，再单独收敛虚拟屏生命周期。
+
