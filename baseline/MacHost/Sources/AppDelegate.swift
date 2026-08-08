@@ -1942,6 +1942,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     )
                 }
             }
+            streamingServer?.onVideoPreferencesRequested = {
+                [weak self, weak configuredServer] bitrateKbps, framesPerSecond, qualityPreset in
+                Task { @MainActor in
+                    guard let self, let configuredServer,
+                          self.streamingServer === configuredServer else { return }
+                    self.applyClientVideoPreferences(
+                        bitrateKbps: bitrateKbps,
+                        framesPerSecond: framesPerSecond,
+                        qualityPreset: qualityPreset
+                    )
+                }
+            }
             streamingServer?.onClientConnected = {
                 [weak self, weak configuredServer, weak configuredCapture]
                 clientGeneration in
@@ -2654,6 +2666,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// escape to the client before it accepts the new VideoConfig. An offline
     /// or non-numeric id is ignored, keeping the switch safe; the session gate
     /// already rejected unknown ids before streaming.
+    /// Apply client-driven video preferences to the host encoder settings. The
+    /// session has already clamped the values and re-advertised the applied
+    /// VideoConfig with a bumped epoch, so this only writes the settings that
+    /// the runtime encoder observers watch. bitrate arrives in kbps and the
+    /// host stores Mbps; a quality preset is honored only when no explicit
+    /// bitrate was requested, matching the session's apply-action contract.
+    @MainActor
+    private func applyClientVideoPreferences(
+        bitrateKbps: UInt32,
+        framesPerSecond: UInt32,
+        qualityPreset: VSVideoQualityPreset
+    ) {
+        let bitrateMbps = max(1, Int((bitrateKbps + 500) / 1_000))
+        if qualityPreset != .unspecified {
+            let mappedQuality: String
+            switch qualityPreset {
+            case .smooth: mappedQuality = "low"
+            case .balanced: mappedQuality = "medium"
+            case .sharp: mappedQuality = "high"
+            default: mappedQuality = settings.quality
+            }
+            if settings.quality != mappedQuality { settings.quality = mappedQuality }
+        }
+        if settings.bitrate != bitrateMbps { settings.bitrate = bitrateMbps }
+        if settings.refreshRate != Int(framesPerSecond) {
+            settings.refreshRate = Int(framesPerSecond)
+        }
+    }
+
     private func handleClientDisplaySelection(
         _ requestedDisplayID: String,
         server: StreamingServer
