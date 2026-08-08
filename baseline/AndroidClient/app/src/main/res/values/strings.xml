@@ -65,6 +65,10 @@
     <string name="control_disconnect">Disconnect</string>
     <string name="control_settings">Settings</string>
     <string name="control_displays">Choose display</string>
+    <string name="disconnect_confirm_title">Disconnect?</string>
+    <string name="disconnect_confirm_message">This ends the current screen session with the Mac.</string>
+    <string name="disconnect_confirm_action">Disconnect</string>
+    <string name="disconnect_confirm_cancel">Cancel</string>
     <string name="display_option_format">%1$s · %2$d×%3$d</string>
     <!-- Accessibility label for the dropdown selector; %1$s is the active display name. -->
     <string name="control_displays_current">Choose display, currently %1$s</string>

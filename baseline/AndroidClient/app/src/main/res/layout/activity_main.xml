@@ -52,8 +52,8 @@
         android:visibility="gone"
         app:cardCornerRadius="20dp"
         app:cardBackgroundColor="#CC000000"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
 
         <LinearLayout
             android:layout_width="wrap_content"
@@ -241,17 +241,19 @@
                 android:contentDescription="@string/control_settings"
                 android:src="@drawable/ic_settings"
                 android:scaleType="centerInside"
+                android:padding="12dp"
                 app:tint="#FFFFFF" />
 
             <ImageButton
                 android:id="@+id/controlDisconnectButton"
                 android:layout_width="@dimen/control_bar_button_size"
                 android:layout_height="@dimen/control_bar_button_size"
-                android:layout_marginStart="@dimen/control_bar_button_margin"
+                android:layout_marginStart="@dimen/control_bar_disconnect_margin_start"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/control_disconnect"
                 android:src="@drawable/ic_disconnect"
                 android:scaleType="centerInside"
+                android:padding="12dp"
                 app:tint="#FF6B6B" />
         </LinearLayout>
     </androidx.cardview.widget.CardView>
