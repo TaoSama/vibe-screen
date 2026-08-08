@@ -533,15 +533,43 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Screen capture of streamed Mac pixels is blocked with FLAG_SECURE in
+     * production. Debuggable builds may opt into allowing capture for on-device
+     * UI verification by setting the system property
+     * debug.vibescreen.allow_capture to 1 (via: adb shell setprop). Release
+     * builds always keep FLAG_SECURE regardless of the property.
+     */
+    private fun screenCaptureAllowedForDebug(): Boolean {
+        val debuggable =
+            (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (!debuggable) return false
+        return try {
+            @Suppress("PrivateApi")
+            val systemProperties = Class.forName("android.os.SystemProperties")
+            val get = systemProperties.getMethod("get", String::class.java)
+            (get.invoke(null, "debug.vibescreen.allow_capture") as? String) == "1"
+        } catch (error: ReflectiveOperationException) {
+            false
+        }
+    }
+
+    /** FLAG_SECURE unless a debuggable build has explicitly opted into capture. */
+    private fun secureFlagIfProtected(): Int =
+        if (screenCaptureAllowedForDebug()) 0 else WindowManager.LayoutParams.FLAG_SECURE
+
     /** Keep the tablet awake and its streamed Mac pixels out of screenshots only while connected. */
     private fun setStreamingWindowState(enabled: Boolean) {
         val streamingFlags =
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_SECURE
+                secureFlagIfProtected()
         if (enabled) {
             window.addFlags(streamingFlags)
         } else {
-            window.clearFlags(streamingFlags)
+            window.clearFlags(
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_SECURE,
+            )
         }
     }
 
@@ -2277,7 +2305,7 @@ class MainActivity : AppCompatActivity() {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                 isConnected = connected
                 if (connected && !isInForeground) {
-                    window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    window.addFlags(secureFlagIfProtected())
                     window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 } else {
                     setStreamingWindowState(connected)
@@ -2786,10 +2814,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isStreamingWindowStateEnabled(): Boolean {
-        val streamingFlags =
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_SECURE
-        return (window.attributes.flags and streamingFlags) == streamingFlags
+        // Keep-screen-on is the reliable streaming indicator: FLAG_SECURE may be
+        // intentionally absent when a debuggable build opts into screen capture.
+        return (window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0
     }
 
     private fun updateInternetState(state: InternetProductSessionState) {
