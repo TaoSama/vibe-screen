@@ -20,6 +20,7 @@ import dev.vibescreen.protocol.v1.SessionRejected
 import dev.vibescreen.protocol.v1.StartDisplayResponse
 import dev.vibescreen.protocol.v1.TransportKind
 import dev.vibescreen.protocol.v1.VideoConfig
+import dev.vibescreen.protocol.v1.VideoQualityPreset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -44,6 +45,7 @@ class ProtocolV1SessionTest {
                 Capability.CAPABILITY_KEYBOARD,
                 Capability.CAPABILITY_POINTER,
                 Capability.CAPABILITY_MULTI_DISPLAY,
+                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
             ),
             hello.clientHello.capabilitiesList,
         )
@@ -541,6 +543,50 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun setVideoPreferencesRequiresStreamingCapabilityAndANonEmptyRequest() {
+        // Without CLIENT_VIDEO_CONTROL negotiated the request is a no-op.
+        val ungated = multiDisplayStreamingSession()
+        assertNull(
+            ungated.setVideoPreferences(
+                bitrateKbps = 8_000,
+                framesPerSecond = 30,
+                qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+            ),
+        )
+
+        val session = videoControlStreamingSession()
+        // An all-empty request changes nothing, so it produces no envelope.
+        assertNull(
+            session.setVideoPreferences(
+                bitrateKbps = 0,
+                framesPerSecond = 0,
+                qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+            ),
+        )
+
+        val request =
+            session.setVideoPreferences(
+                bitrateKbps = 8_000,
+                framesPerSecond = 30,
+                qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_SHARP,
+            )!!
+        assertEquals(Envelope.PayloadCase.SET_VIDEO_PREFERENCES, request.payloadCase)
+        assertEquals(8_000, request.setVideoPreferences.bitrateKbps)
+        assertEquals(30, request.setVideoPreferences.framesPerSecond)
+        assertEquals(
+            VideoQualityPreset.VIDEO_QUALITY_PRESET_SHARP,
+            request.setVideoPreferences.qualityPreset,
+        )
+
+        // After sending, the session gates media until the host's re-advertised
+        // VideoConfig is accepted, mirroring a display switch.
+        assertEquals(
+            ProtocolV1Session.MediaDisposition.DROP_PENDING_CONFIGURATION,
+            session.validateMedia(mediaHeader()),
+        )
+    }
+
+    @Test
     fun runtimeDisplaySelectionRepublishesGeometryOnNewVideoConfig() {
         val session = multiDisplayStreamingSession()
         session.selectDisplay("display-2")
@@ -643,6 +689,42 @@ class ProtocolV1SessionTest {
             it.receive(sessionAccepted(3))
             it.receive(displayList(4))
             it.receive(startDisplay(5))
+        }
+
+    private fun videoControlStreamingSession(): ProtocolV1Session =
+        session().also {
+            it.clientHello()
+            it.receive(
+                hostHello(
+                    2,
+                    advertisedCapabilities =
+                        listOf(
+                            Capability.CAPABILITY_TOUCH,
+                            Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
+                        ),
+                ),
+            )
+            it.receive(
+                sessionAccepted(
+                    3,
+                    negotiatedCapabilities =
+                        listOf(
+                            Capability.CAPABILITY_TOUCH,
+                            Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
+                        ),
+                ),
+            )
+            it.receive(displayList(4))
+            it.receive(startDisplay(5))
+            val requested =
+                it.receive(videoConfig(6)).single()
+                    as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
         }
 
     private fun session(): ProtocolV1Session =

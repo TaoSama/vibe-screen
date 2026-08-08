@@ -139,6 +139,7 @@ internal class ProtocolV1Session(
             Capability.CAPABILITY_KEYBOARD,
             Capability.CAPABILITY_POINTER,
             Capability.CAPABILITY_MULTI_DISPLAY,
+            Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
         )
     private val requiredCapabilities = emptySet<Capability>()
 
