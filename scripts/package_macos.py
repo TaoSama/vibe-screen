@@ -66,6 +66,32 @@ def run(*command: str, cwd: Path | None = None) -> str:
     return completed.stdout.strip()
 
 
+def resolve_sign_identity(requested: str) -> str:
+    """Return a usable codesign identity, falling back to ad-hoc.
+
+    The default identity ('Telemachus Dev') keeps the signing hash stable across
+    local rebuilds so macOS Screen Recording/Accessibility grants survive. CI
+    runners do not have that self-signed identity in their keychain, so fall back
+    to an ad-hoc signature there instead of failing the codesign step.
+    """
+    if requested == "-":
+        return requested
+    lookup = subprocess.run(
+        ("security", "find-identity", "-v", "-p", "codesigning"),
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if lookup.returncode == 0 and requested in lookup.stdout:
+        return requested
+    print(
+        f"codesign identity '{requested}' not found in the keychain; "
+        "falling back to an ad-hoc signature.",
+    )
+    return "-"
+
+
 def read_source_plist() -> dict[str, object]:
     with SOURCE_INFO_PLIST.open("rb") as plist_file:
         return plistlib.load(plist_file)
@@ -204,18 +230,19 @@ def main() -> int:
     with (contents / "Info.plist").open("wb") as plist_file:
         plistlib.dump(bundled_plist, plist_file, sort_keys=True)
 
+    sign_identity = resolve_sign_identity(args.sign_identity)
     run(
         "codesign",
         "--force",
         "--sign",
-        args.sign_identity,
+        sign_identity,
         str(frameworks_dir / WEBRTC_FRAMEWORK_NAME),
     )
     run(
         "codesign",
         "--force",
         "--sign",
-        args.sign_identity,
+        sign_identity,
         "--entitlements",
         str(HOST_ROOT / "Telemachus.entitlements"),
         str(app_path),
