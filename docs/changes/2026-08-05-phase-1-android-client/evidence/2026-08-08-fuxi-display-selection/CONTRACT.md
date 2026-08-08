@@ -123,15 +123,15 @@ Session is AppKit-free; it must NOT call DisplayCatalog directly. Feed it a disp
      existing displayLifecycle (do NOT break surface lifecycle).
 4. Tests: update ProtocolV1SessionTest + StreamClientProtocolV1IntegrationTest for new action
    ordering + MULTI_DISPLAY negotiated set + selectDisplay path. Keep them green (JVM unit tests):
-   cd baseline/AndroidClient && ANDROID_HOME=/Users/luwentao/Library/Android/sdk TELEMACHUS_VERSION=0.0.0 \
+   cd baseline/AndroidClient && ANDROID_HOME="$ANDROID_HOME" TELEMACHUS_VERSION=0.0.0 \
      ./gradlew --no-daemon :app:testDebugUnitTest --tests '*ProtocolV1SessionTest' \
      --tests '*StreamClientProtocolV1IntegrationTest'
 
-## Build/verify (device 8a023e3a, USB, keep stream alive)
+## Build/verify (device $ADB_SERIAL, USB, keep stream alive)
 - Host: cd baseline/MacHost && swift build -c release; run self-tests.
-- Android debug: cd baseline/AndroidClient && ANDROID_HOME=/Users/luwentao/Library/Android/sdk \
+- Android debug: cd baseline/AndroidClient && ANDROID_HOME="$ANDROID_HOME" \
   TELEMACHUS_VERSION=0.0.0 ./gradlew --no-daemon :app:assembleDebug
-- Install: adb -s 8a023e3a install -r -g <apk>
+- Install: adb -s "$ADB_SERIAL" install -r -g <apk>
 - Evidence dir: docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-08-fuxi-display-selection/
 - Connected screen has FLAG_SECURE -> screencap black; use logcat VD Decode stats
   (dropped=0, counts increasing, no decoder_surface_timeout) + Host log as authority.
@@ -140,7 +140,6 @@ Session is AppKit-free; it must NOT call DisplayCatalog directly. Feed it a disp
   reaches host (host log); stream not regressed after selection.
 
 ## Constraints
-- No proto field renumber; no README/tools changes; no push/PR. Device -s 8a023e3a only.
+- No proto field renumber; no README/tools changes; no push/PR. Device -s "$ADB_SERIAL" only.
 - Files <=500 lines where reasonable; handle all errors; icon buttons need contentDescription+tooltip.
 - Don't revert pre-existing user edits (videoViewport visible; MainActivity waiting-surface comment).
-
