@@ -1367,7 +1367,7 @@ class MainActivity : AppCompatActivity() {
         popup.setOnMenuItemClickListener { item ->
             val option = displays.getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
             if (option.id != selectedDisplayId) {
-                mainDiag("capsule selectDisplay target=" + option.id + " from=" + selectedDisplayId)
+                mainDiag("capsule selectDisplay target=${option.id} from=$selectedDisplayId")
                 streamClient?.selectDisplay(option.id)
                 selectedDisplayId = option.id
                 refreshDisplayCapsuleLabel()
@@ -2387,8 +2387,6 @@ class MainActivity : AppCompatActivity() {
                             "keyboard=$keyboard nativePointer=$nativePointer",
                     )
                 }
-                availableDisplays = options
-                selectedDisplayId = selectedId
                 populateDisplayCapsule(options, selectedId)
             }
         }
