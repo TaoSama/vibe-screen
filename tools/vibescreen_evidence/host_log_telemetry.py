@@ -55,6 +55,12 @@ def collect(
     written = 0
     started = monotonic()
     index = 0
+    # Guard against emitting the same host sample twice: if the host has not
+    # printed a fresh Pipeline line since the last tick, the newest match is
+    # identical and re-recording it would fabricate telemetry motion (e.g.
+    # hiding a stalled stream during a soak). Only write when the matched line
+    # actually changed.
+    last_emitted: str | None = None
     with output_jsonl.open("w", encoding="utf-8") as output:
         while index == 0 or monotonic() - started < duration_seconds:
             try:
@@ -63,7 +69,8 @@ def collect(
                 print(f"warning: could not read {log_path}: {error}", file=sys.stderr)
                 text = ""
             match = _last_pipeline_line(text)
-            if match is not None:
+            if match is not None and match.group(0) != last_emitted:
+                last_emitted = match.group(0)
                 record = {
                     "schema_version": SCHEMA_VERSION,
                     "event": EVENT_NAME,
@@ -79,8 +86,13 @@ def collect(
                 output.write(json.dumps(record, sort_keys=True) + "\n")
                 output.flush()
                 written += 1
-            else:
+            elif match is None:
                 print("warning: no Pipeline line found in host log yet", file=sys.stderr)
+            else:
+                print(
+                    "warning: host log has no fresh Pipeline line since the last sample",
+                    file=sys.stderr,
+                )
             index += 1
             remaining = duration_seconds - (monotonic() - started)
             if remaining <= 0:
