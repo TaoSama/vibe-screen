@@ -268,7 +268,7 @@ enum TransportSelfTest {
             let hostHello = try client.readEnvelope()
             let accepted = try client.readEnvelope()
             guard case .hostHello(let advertised)? = hostHello.payload,
-                  advertised.capabilities == [.touch, .multiDisplay],
+                  Set(advertised.capabilities) == [.touch, .keyboard, .pointer, .multiDisplay],
                   case .sessionAccepted(let session)? = accepted.payload,
                   session.negotiatedCapabilities == [.touch, .multiDisplay] else {
                 server.stop()
