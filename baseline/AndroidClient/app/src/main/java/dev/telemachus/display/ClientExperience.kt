@@ -1,5 +1,7 @@
 package dev.telemachus.display
 
+import dev.vibescreen.protocol.v1.VideoQualityPreset
+
 /** Client-local viewport choices that do not require a wire-protocol change. */
 enum class VideoScaleMode {
     FIT,
@@ -9,6 +11,35 @@ enum class VideoScaleMode {
     companion object {
         fun fromName(value: String?): VideoScaleMode = entries.firstOrNull { it.name == value } ?: FIT
     }
+}
+
+/**
+ * Coarse video-quality intent surfaced in settings. Each choice maps to a wire
+ * [VideoQualityPreset]; the host clamps and applies it, honoring the preset
+ * only when no explicit bitrate is requested. AUTO defers entirely to the host
+ * default and sends no preset.
+ */
+enum class VideoQualityChoice(
+    val preset: VideoQualityPreset,
+) {
+    AUTO(VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED),
+    SMOOTH(VideoQualityPreset.VIDEO_QUALITY_PRESET_SMOOTH),
+    BALANCED(VideoQualityPreset.VIDEO_QUALITY_PRESET_BALANCED),
+    SHARP(VideoQualityPreset.VIDEO_QUALITY_PRESET_SHARP),
+    ;
+
+    companion object {
+        fun fromName(value: String?): VideoQualityChoice = entries.firstOrNull { it.name == value } ?: AUTO
+    }
+}
+
+/** Client video-tuning bounds mirrored from the host's accepted range. */
+object ClientVideoBounds {
+    const val MIN_BITRATE_MBPS = 1
+    const val MAX_BITRATE_MBPS = 100
+    const val DEFAULT_BITRATE_MBPS = 20
+    val FRAME_RATE_CHOICES = listOf(30, 60, 120)
+    const val DEFAULT_FRAME_RATE = 60
 }
 
 enum class ClientRotation(
