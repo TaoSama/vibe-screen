@@ -389,7 +389,14 @@ final class InternetProductSession: EncodedFrameSink {
             } else if state == .connecting {
                 setState(.authenticating)
             }
-        case .recovering(let attempt): setState(.recovering(attempt: attempt))
+        case .recovering:
+            // Fresh-session recovery is driven solely by
+            // onFreshSessionRecoveryRequired, which publishes the session's
+            // .recovering state through beginFreshSessionRecovery. Reacting to
+            // the transport's own .recovering here would publish the state
+            // twice and race the synchronous fresh-session install performed
+            // inside the recovering-state callback.
+            break
         case .failed(let reason): fail(.securityFailure(reason))
         case .closed:
             if state != .revoked { setState(.closed) }
@@ -771,9 +778,12 @@ final class InternetProductSession: EncodedFrameSink {
         codec = nil
         activePath = nil
         peerSupportsTouch = false
+        // Close the retired transport before publishing the terminal state so
+        // any observer waking on .failed already sees the transport closed,
+        // instead of racing the queue that would otherwise close it afterward.
+        failedTransport?.close()
         setState(.failed(error.localizedDescription))
         onError?(error)
-        failedTransport?.close()
     }
 
     private func setState(_ newState: InternetProductSessionState) {
