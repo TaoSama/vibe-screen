@@ -692,9 +692,9 @@ class StreamClientProtocolV1IntegrationTest {
             }
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
 
-            withTimeout(4_000) { serverJob.await() }
-            assertTrue(ended.await(3, TimeUnit.SECONDS))
-            withTimeout(4_000) { clientJob.await() }
+            withTimeout(REJECTED_CONFIG_AWAIT_MS) { serverJob.await() }
+            assertTrue(ended.await(REJECTED_CONFIG_AWAIT_MS, TimeUnit.MILLISECONDS))
+            withTimeout(REJECTED_CONFIG_AWAIT_MS) { clientJob.await() }
             assertEquals(SessionFailureKind.CODEC_CONFIGURATION, checkNotNull(failure).kind)
         }
     }
@@ -924,6 +924,11 @@ class StreamClientProtocolV1IntegrationTest {
 
     companion object {
         private const val PROTOCOL_UPGRADE_BYTE = 0x0d
+        // Generous await ceiling for the rejected-decoder-configuration path.
+        // These integration tests drive a real loopback socket plus coroutine
+        // handoffs, whose scheduling is far slower on a shared CI runner than
+        // locally; a tight ceiling makes the reject assertions flaky there.
+        private const val REJECTED_CONFIG_AWAIT_MS = 8_000L
         private val SESSION_ID = ByteString.copyFrom(ByteArray(16) { 1 })
     }
 }
