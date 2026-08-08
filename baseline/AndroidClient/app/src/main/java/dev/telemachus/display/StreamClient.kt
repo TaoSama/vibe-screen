@@ -1839,13 +1839,28 @@ class StreamClient(
                     true
                 }
             if (!claimed) return false
-            val published = publish()
+            val published =
+                try {
+                    publish()
+                } catch (failure: RuntimeException) {
+                    // The commit is already RESERVED, and timeout() can only
+                    // claim a PENDING commit, so a throwing publish() would
+                    // otherwise strand the state machine in RESERVED with
+                    // isPending() stuck true. Reject the commit before
+                    // rethrowing so it leaves the active states.
+                    complete(
+                        StreamVideoConfigurationDecision.reject(
+                            DECODER_CONFIGURATION_PUBLISH_FAILED_REASON,
+                        ),
+                    )
+                    throw failure
+                }
             if (published) {
                 timeout?.cancel(false)
             } else {
                 complete(
                     StreamVideoConfigurationDecision.reject(
-                        "decoder_configuration_not_published",
+                        DECODER_CONFIGURATION_NOT_PUBLISHED_REASON,
                     ),
                 )
             }
@@ -1928,18 +1943,34 @@ class StreamClient(
                     SESSION_EPOCHS.accepts(connectionGeneration)
             }
 
-        override fun tryPublish(publish: () -> Boolean): Boolean =
-            synchronized(stateLock) {
-                if (state != VideoConfigurationCommitState.PENDING ||
-                    !isConnected ||
-                    connectionEpoch != connectionGeneration ||
-                    !SESSION_EPOCHS.accepts(connectionGeneration)
-                ) {
-                    return@synchronized false
+        override fun tryPublish(publish: () -> Boolean): Boolean {
+            val claimed =
+                synchronized(stateLock) {
+                    if (state != VideoConfigurationCommitState.PENDING ||
+                        !isConnected ||
+                        connectionEpoch != connectionGeneration ||
+                        !SESSION_EPOCHS.accepts(connectionGeneration)
+                    ) {
+                        return@synchronized false
+                    }
+                    state = VideoConfigurationCommitState.RESERVED
+                    true
                 }
-                state = VideoConfigurationCommitState.RESERVED
+            if (!claimed) return false
+            return try {
                 publish()
+            } catch (failure: RuntimeException) {
+                // A throwing publish() must not strand the commit in RESERVED:
+                // isPending() would stay true and no timeout can reclaim it.
+                // Release the reservation before rethrowing.
+                synchronized(stateLock) {
+                    if (state == VideoConfigurationCommitState.RESERVED) {
+                        state = VideoConfigurationCommitState.CANCELLED
+                    }
+                }
+                throw failure
             }
+        }
 
         override fun complete(decision: StreamVideoConfigurationDecision) {
             val claimed =
@@ -2010,6 +2041,10 @@ class StreamClient(
         private const val HANDSHAKE_TIMEOUT_MS = 5_000
         private const val PROTOCOL_UPGRADE_TIMEOUT_MS = 250
         private const val PROTOCOL_ACTION_TIMEOUT_MS = 2_000L
+        private const val DECODER_CONFIGURATION_NOT_PUBLISHED_REASON =
+            "decoder_configuration_not_published"
+        private const val DECODER_CONFIGURATION_PUBLISH_FAILED_REASON =
+            "decoder_configuration_publish_failed"
         private const val VIDEO_CONFIGURATION_COMMIT_TIMEOUT_MS = 2_000L
         private const val LEGACY_CONFIG_EPOCH = 0L
         private const val AUTH_RESPONSE_BYTES = 5

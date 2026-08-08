@@ -27,6 +27,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
@@ -291,6 +292,23 @@ class StreamClientProtocolV1IntegrationTest {
                 assertFalse(commit.tryPublish { false })
             },
             expectedReason = "decoder_configuration_not_published",
+        )
+    }
+
+    @Test
+    fun throwingPublishRejectsAndFailsClosed() = runBlocking {
+        assertRejectedDecoderConfiguration(
+            clientFactory = { port -> StreamClient("127.0.0.1", port) },
+            configure = { commit ->
+                // A publish() that throws after the commit is reserved must not
+                // strand the state machine: the commit rejects and stops being
+                // pending, and the throwable still surfaces to the caller.
+                assertThrows(IllegalStateException::class.java) {
+                    commit.tryPublish { throw IllegalStateException("publish blew up") }
+                }
+                assertFalse(commit.isPending())
+            },
+            expectedReason = "decoder_configuration_publish_failed",
         )
     }
 
