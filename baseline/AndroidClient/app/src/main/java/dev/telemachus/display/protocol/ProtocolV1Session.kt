@@ -99,6 +99,7 @@ internal class ProtocolV1Session(
         val width: Int,
         val height: Int,
         val isPrimary: Boolean,
+        val isVirtual: Boolean,
     )
 
     private enum class State {
@@ -757,6 +758,7 @@ internal class ProtocolV1Session(
             width = display.logicalSize.width,
             height = display.logicalSize.height,
             isPrimary = display.isPrimary,
+            isVirtual = display.isVirtual,
         )
     }
 
