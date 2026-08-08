@@ -16,5 +16,9 @@
   'package_macos.py' now defaults to it (override with $TELEMACHUS_SIGN_IDENTITY
   or '--sign-identity -'). If codesign fails with 'errSecInternalComponent',
   authorize the private key for non-interactive use once via
-  'security set-key-partition-list -S apple-tool:,apple: -l <identity>
-  login.keychain-db'.
+  'security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD"
+  "$HOME/Library/Keychains/login.keychain-db"' (supply the keychain password
+  through the '$KEYCHAIN_PASSWORD' variable rather than embedding it, and
+  verify the exact 'security(1)' syntax on the target macOS version). CI runners
+  lack the self-signed identity, so 'package_macos.py' now falls back to an
+  ad-hoc signature there automatically.
