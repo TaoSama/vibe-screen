@@ -77,7 +77,7 @@ def resolve_sign_identity(requested: str) -> str:
     if requested == "-":
         return requested
     lookup = subprocess.run(
-        ("security", "find-identity", "-v", "-p", "codesigning"),
+        ("/usr/bin/security", "find-identity", "-v", "-p", "codesigning"),
         check=False,
         text=True,
         stdout=subprocess.PIPE,
