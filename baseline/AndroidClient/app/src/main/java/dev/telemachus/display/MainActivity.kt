@@ -25,6 +25,7 @@ import android.view.WindowManager
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.EditText
+import android.widget.PopupMenu
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.lifecycle.lifecycleScope
@@ -1230,7 +1231,10 @@ class MainActivity : AppCompatActivity() {
             revealControlBar()
         }
         binding.controlDisconnectButton.setOnClickListener { disconnect() }
-        binding.controlDisplaysButton.setOnClickListener { revealControlBar() }
+        binding.controlDisplaysButton.setOnClickListener {
+            revealControlBar()
+            showDisplaysMenu()
+        }
     }
 
     private fun revealControlBar() {
@@ -1247,51 +1251,64 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Rebuild the display-selection capsule from the host list. Enabled only when
-     * display selection was negotiated; a single display renders as one selected,
-     * disabled chip so the current display stays legible.
+     * Reconcile the display-selection capsule with the host list. The capsule
+     * is a single displays icon that opens a dropdown menu on tap; the inline
+     * chip row was removed because it overflowed the compact, centered capsule
+     * and pushed selectable displays off-screen. Display selection is offered
+     * only when it was negotiated and more than one display exists; otherwise
+     * the whole capsule collapses so single-display sessions expose no dead tap
+     * area. The menu itself is built lazily in showDisplaysMenu() from the
+     * stored availableDisplays/selectedDisplayId state.
      */
     private fun populateDisplayCapsule(
         displays: List<StreamDisplayOption>,
         selectedId: String,
     ) {
-        val group = binding.displayToggleGroup
-        group.removeAllViews()
+        availableDisplays = displays
+        selectedDisplayId = selectedId
         val selectable =
             currentSessionBinding().capabilities.displaySelection && displays.size > 1
         binding.controlDisplaysButton.isEnabled = selectable
         // Collapse the whole display picker on single-display or un-negotiated
         // sessions so the resting capsule stays a minimal, low-misfire target.
         binding.displayCapsuleGroup.visibility = if (selectable) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * Present the negotiated displays as a single-choice dropdown anchored on
+     * the displays icon. The active display carries a check; selecting a
+     * different one drives the existing runtime selectDisplay() path and
+     * closes the menu. Ignored when display selection is not selectable.
+     */
+    private fun showDisplaysMenu() {
+        val selectable =
+            currentSessionBinding().capabilities.displaySelection && availableDisplays.size > 1
         if (!selectable) return
-        displays.forEach { option ->
-            val button =
-                MaterialButton(
-                    this,
-                    null,
-                    com.google.android.material.R.attr.materialButtonOutlinedStyle,
-                ).apply {
-                    id = View.generateViewId()
-                    text = getString(R.string.display_option_format, option.name, option.width, option.height)
-                    isAllCaps = false
-                    maxLines = 1
-                    setTextColor(getColorStateList(R.color.mode_toggle_text))
-                    tag = option.id
-                    isEnabled = selectable
-                }
-            group.addView(button)
-            if (option.id == selectedId) group.check(button.id)
+        val displays = availableDisplays
+        val popup = PopupMenu(this, binding.controlDisplaysButton)
+        val menu = popup.menu
+        menu.setGroupCheckable(0, true, true)
+        displays.forEachIndexed { index, option ->
+            val item =
+                menu.add(
+                    0,
+                    index,
+                    index,
+                    getString(R.string.display_option_format, option.name, option.width, option.height),
+                )
+            item.isChecked = option.id == selectedDisplayId
         }
-        group.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (!isChecked || !selectable) return@addOnButtonCheckedListener
-            val target = group.findViewById<MaterialButton>(checkedId)?.tag as? String ?: return@addOnButtonCheckedListener
-            if (target != selectedDisplayId) {
-                mainDiag("capsule selectDisplay target=$target from=$selectedDisplayId")
-                streamClient?.selectDisplay(target)
-                selectedDisplayId = target
+        popup.setOnMenuItemClickListener { item ->
+            val option = displays.getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
+            if (option.id != selectedDisplayId) {
+                mainDiag("capsule selectDisplay target=" + option.id + " from=" + selectedDisplayId)
+                streamClient?.selectDisplay(option.id)
+                selectedDisplayId = option.id
                 revealControlBar()
             }
+            true
         }
+        popup.show()
     }
 
     @SuppressLint("ClickableViewAccessibility", "InflateParams")

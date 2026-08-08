@@ -194,20 +194,6 @@
                     android:src="@drawable/ic_displays"
                     android:scaleType="centerInside"
                     app:tint="#FFFFFF" />
-
-                <HorizontalScrollView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:scrollbars="none"
-                    android:fillViewport="true">
-
-                    <com.google.android.material.button.MaterialButtonToggleGroup
-                        android:id="@+id/displayToggleGroup"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        app:selectionRequired="true"
-                        app:singleSelection="true" />
-                </HorizontalScrollView>
             </LinearLayout>
 
             <ImageButton
