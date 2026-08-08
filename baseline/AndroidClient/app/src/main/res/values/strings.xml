@@ -55,6 +55,10 @@
     <string name="control_settings">Settings</string>
     <string name="control_displays">Choose display</string>
     <string name="display_option_format">%1$s · %2$d×%3$d</string>
+    <!-- Accessibility label for the dropdown selector; %1$s is the active display name. -->
+    <string name="control_displays_current">Choose display, currently %1$s</string>
+    <!-- Fallback capsule label before any display name is known. -->
+    <string name="display_capsule_placeholder">Display</string>
     <string name="usb_waiting_description">Keep the USB cable connected and open Vibe Screen on your Mac. This device will connect automatically.</string>
     <string name="usb">USB</string>
     <string name="trusted_lan">Trusted LAN</string>
