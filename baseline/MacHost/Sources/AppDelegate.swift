@@ -2846,9 +2846,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             settings.selectedDisplayID = newSelectedDisplayID
         }
 
-        // Refresh what the server advertises for the new capture, then bump the
-        // Protocol v1 epoch on the same session. The client re-negotiates video
-        // and the session gate withholds media until VideoConfig is accepted.
+        // Refresh what the server advertises for the new capture so future
+        // ListDisplays requests and any reconnect negotiate against the source
+        // that is now actually captured.
         server.setDisplaySize(
             width: streamSize.width,
             height: streamSize.height,
@@ -2868,7 +2868,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 configuredSize: size
             )
         )
-        server.selectProtocolV1Display(String(captureDisplayID))
+        // Do NOT re-run the Protocol v1 StartDisplay/VideoConfig negotiation
+        // here. This switch is always driven by a client StartDisplayRequest
+        // (the only source of the selectDisplay action that reaches
+        // onDisplaySelectionRequested), and the session already answered that
+        // request in place with a single StartDisplayResponse + VideoConfig and
+        // a bumped config epoch. Calling server.selectProtocolV1Display here
+        // would emit a second StartDisplayResponse; by the time it arrived the
+        // client had returned to STREAMING and rejected it with
+        // INVALID_PEER_MESSAGE ("StartDisplayResponse in state STREAMING"),
+        // tearing down the session on the virtual->physical switch. A future
+        // GUI/menu-initiated switch that has no client request behind it may
+        // still call server.selectProtocolV1Display to drive the client.
     }
 
     /// Build the ListDisplays catalog advertised for the current capture. Every
