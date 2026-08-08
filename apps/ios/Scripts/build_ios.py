@@ -42,6 +42,25 @@ def run(command: list[str]) -> None:
     subprocess.run(command, cwd=IOS_ROOT, check=True)
 
 
+# The iPhone UITests launch the app in the simulator, which occasionally wedges
+# on hosted runners ("Timed out while launching application via Xcode" /
+# "Failed to get background assertion"). That is simulator-launch flakiness, not
+# a product regression, so retry the test action a bounded number of times after
+# resetting simulator state, mirroring the CI test-retry the Android client uses.
+SIMULATOR_TEST_ATTEMPTS = 2
+
+
+def reset_simulators() -> None:
+    # Shut down any wedged simulator so the retry boots cleanly. Avoid 'erase'
+    # here: shutting down clears the launch-hang state without the extra cost of
+    # wiping and re-provisioning every device.
+    subprocess.run(
+        ["xcrun", "simctl", "shutdown", "all"],
+        cwd=IOS_ROOT,
+        check=False,
+    )
+
+
 def action_arguments(name: str) -> list[str]:
     return [
         *COMMON_ARGUMENTS,
@@ -87,14 +106,30 @@ def simulator_build() -> None:
 
 
 def simulator_test() -> None:
-    run([
-        "xcodebuild",
-        *action_arguments("simulator-test"),
-        "-destination",
-        available_iphone_destination(),
-        "ONLY_ACTIVE_ARCH=YES",
-        "test",
-    ])
+    last_error: subprocess.CalledProcessError | None = None
+    for attempt in range(1, SIMULATOR_TEST_ATTEMPTS + 1):
+        if attempt > 1:
+            print(
+                f"Simulator test attempt {attempt - 1} failed; "
+                "resetting simulator state and retrying.",
+                flush=True,
+            )
+            reset_simulators()
+        try:
+            run([
+                "xcodebuild",
+                *action_arguments("simulator-test"),
+                "-destination",
+                available_iphone_destination(),
+                "ONLY_ACTIVE_ARCH=YES",
+                "test",
+            ])
+            return
+        except subprocess.CalledProcessError as error:
+            last_error = error
+    raise SystemExit(
+        f"iOS simulator tests failed after {SIMULATOR_TEST_ATTEMPTS} attempts: {last_error}"
+    )
 
 
 def unsigned_archive() -> None:
