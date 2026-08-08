@@ -294,6 +294,60 @@ enum ProtocolV1SelfTest {
                 failures.append("StartDisplay on an unknown display id was not rejected with invalidState")
                 return
             }
+
+            // Regression: a client-initiated runtime switch (a StartDisplayRequest
+            // that arrives while already streaming) must be answered by exactly
+            // one StartDisplayResponse + VideoConfig on this session, plus the
+            // selectDisplay action that tells the host to re-point capture. The
+            // host must not turn around and re-run the negotiation a second time
+            // (via selectProtocolV1Display) for the same client request: the
+            // client is back in STREAMING and a second StartDisplayResponse would
+            // trip its INVALID_PEER_MESSAGE guard and tear down the session.
+            let switchSession = makeMultiDisplaySession()
+            _ = switchSession.handleControl(try clientHello().serializedData())
+            _ = switchSession.completeCodecNegotiation()
+            _ = switchSession.handleControl(try envelope(
+                id: 2,
+                payload: .startDisplayRequest(displayRequest(sourceDisplayID: "active-display"))
+            ).serializedData())
+            var accept = VSVideoConfigResult()
+            accept.configEpoch = 1
+            accept.streamID = 1
+            accept.accepted = true
+            _ = switchSession.handleControl(try envelope(
+                id: 3,
+                payload: .videoConfigResult(accept)
+            ).serializedData())
+
+            let runtimeSwitch = switchSession.handleControl(try envelope(
+                id: 4,
+                payload: .startDisplayRequest(displayRequest(sourceDisplayID: "second-display"))
+            ).serializedData())
+            guard runtimeSwitch.contains(where: {
+                if case .selectDisplay(let id) = $0 { return id == "second-display" }
+                return false
+            }) else {
+                failures.append("streaming StartDisplayRequest did not emit a selectDisplay action to switch capture")
+                return
+            }
+            let runtimeResponses = try responseEnvelopes(runtimeSwitch)
+            let startResponseCount = runtimeResponses.filter {
+                if case .startDisplayResponse = $0.payload { return true }
+                return false
+            }.count
+            guard startResponseCount == 1 else {
+                failures.append("streaming StartDisplayRequest produced \(startResponseCount) StartDisplayResponse(s); expected exactly one")
+                return
+            }
+            guard runtimeResponses.count == 2,
+                  case .startDisplayResponse(let switched)? = runtimeResponses[0].payload,
+                  switched.accepted,
+                  switched.display.displayID == "second-display",
+                  case .videoConfig(let switchedConfig)? = runtimeResponses[1].payload,
+                  switchedConfig.configEpoch == 2 else {
+                failures.append("streaming StartDisplayRequest did not renegotiate in place with a bumped epoch")
+                return
+            }
         } catch {
             failures.append("multi-display selection test failed: \(error)")
         }
