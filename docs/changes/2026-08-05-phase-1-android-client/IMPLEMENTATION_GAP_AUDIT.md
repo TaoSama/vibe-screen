@@ -5,6 +5,24 @@
 - 审计范围：只读源码核对，未构建、未连设备、未改动任何源码
 - 结论定级：已实现并有测试 / 已实现但未验证 / 部分实现 / 桩代码 / 完全缺失
 
+## 2026-08-08 晚间更新（键盘/鼠标输入已接线）
+
+本报告初版写于键鼠输入接线之前。此后分支已提交 `dab844f` / `ee617ae`，把下文
+"缺口 2"描述的三层写死全部改掉，键盘/原生鼠标/滚轮输入在代码层已端到端接通：
+
+- host 生产能力不再写死 touch-only：ProtocolV1Session.swift:17-23
+  productionHostCapabilities 现返回 `[.touch, .keyboard, .pointer, .multiDisplay]`，
+  并在 :393/:410/:418 分别处理 pointerEvent/scrollEvent/keyEvent（校验 .pointer/.keyboard 已协商）。
+- host 回调已接线：AppDelegate.swift:2064/2080/2094 分别 assign onPointerEvent /
+  onScrollEvent / onKeyEvent，注入走 CGEvent。
+- client 已 advertise 全套：protocol/ProtocolV1Session.kt:134-139
+  advertisedCapabilities 含 CAPABILITY_TOUCH/KEYBOARD/POINTER/MULTI_DISPLAY；
+  MainActivity.kt:2300 起按协商结果提升 session binding（keyboard/nativePointer）。
+
+因此下文"缺口 2"及对照表中键盘/原生鼠标两行的"桩代码（生产永不触发）"定级已过时，
+当前应视为**已实现但未真机验证**：真机端到端（手机接外设 -> host CGEvent 注入 -> Mac 端可见）
+仍是 open gate，需在 8a023e3a 上补证据后再把 README 的输入行从 scaffolding 升级为 verified。
+
 ## 概述
 
 README 在措辞上整体是克制且诚实的：它反复用 "verified / offline gates pass /
@@ -43,8 +61,8 @@ real-device acceptance pending / open gate" 区分"写了代码"和"真机验证
 | HiDPI 配置 | 已实现但未验证 | VirtualDisplayManager.swift:26/49 hiDPI 2x 物理像素；仅在虚拟屏创建时生效，私有 API 未验证 | 否 |
 | 旋转 | 已实现但未验证（真机视觉未过） | host settings.rotation -> updateRotation (AppDelegate.swift:534-542)；Android 客户端本地 Surface 旋转 + 逆变换（TEST.md 标注 device check pending） | 否 |
 | 自适应码率 | 部分实现（手动档位，非自动自适应） | VideoEncoder.swift:36-89 bitrate/quality/gamingBoost 为手动设置；无基于网络的自动降码率（自动自适应仅存在于 Phase3 Internet 的 AdaptiveMediaPolicy） | 中等：Phase 1 的 "adaptive video configuration" 实为手动配置 |
-| **键盘 / 快捷键输入** | 桩代码（生产永不触发） | 见"高优先级缺口 2" | 是（清单并列为交付，实际不可用） |
-| **原生鼠标 / 外设输入** | 桩代码（生产永不触发） | 见"高优先级缺口 2" | 是（同上） |
+| **键盘 / 快捷键输入** | 已实现但未验证（原桩代码定级已过时，见晚间更新） | host 能力+回调已接线，client 已 advertise；真机 open gate | 否（代码已接通，待真机） |
+| **原生鼠标 / 外设输入** | 已实现但未验证（原桩代码定级已过时，见晚间更新） | 同上（pointer/scroll 经 CGEvent 注入） | 否（代码已接通，待真机） |
 | Window migration（迁移窗口到 client 屏 / 断连恢复） | 已实现但未验证 | WindowRecoveryManager.swift:45 moveFocusedWindow / :92 restoreManagedWindows；AppDelegate.swift:1357/2539 调用；AX 真实效果为 open gate | 否 |
 | 权限引导（Screen Recording / Accessibility） | 已实现但未验证（真机审批未过） | PermissionOnboardingView.swift；host self-test 覆盖策略 | 否 |
 | 可操作错误 | 已实现并有测试 | ConnectionGuidance.kt + ConnectionGuidanceTest；真机 "Open Vibe Screen on your Mac" 提示 | 否 |
@@ -149,4 +167,3 @@ mirror 前后态、AX 真窗口迁移/恢复、Launch at Login 审批、热插�
 未触碰 /Applications 与设备。所有结论均带 file:line 或测试名；未找到实现的项如实标注。
 （说明：审计中 rg 在部分调用下把标识符归一化输出，相关结论已改用逐段直接读取源码复核，不影响
 上述 file:line 证据。）
-
