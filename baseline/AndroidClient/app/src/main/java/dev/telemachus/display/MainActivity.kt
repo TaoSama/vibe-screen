@@ -27,6 +27,7 @@ import android.widget.Toast
 import android.widget.EditText
 import android.widget.PopupMenu
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.TooltipCompat
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
@@ -1268,13 +1269,34 @@ class MainActivity : AppCompatActivity() {
             showSettingsDialog()
             revealControlBar()
         }
-        binding.controlDisconnectButton.setOnClickListener { disconnect() }
+        binding.controlDisconnectButton.setOnClickListener { confirmDisconnect() }
         // The whole capsule row is the dropdown-selector tap target so touch
         // users hit it reliably, not just the leading icon.
         binding.displayCapsuleGroup.setOnClickListener {
             revealControlBar()
             showDisplaysMenu()
         }
+        // Icon-only controls carry a tooltip so their purpose is discoverable
+        // on long-press/hover, not just to screen readers via contentDescription.
+        TooltipCompat.setTooltipText(binding.controlSettingsButton, getText(R.string.control_settings))
+        TooltipCompat.setTooltipText(binding.controlDisconnectButton, getText(R.string.control_disconnect))
+        TooltipCompat.setTooltipText(binding.displayCapsuleGroup, getText(R.string.control_displays))
+    }
+
+    /**
+     * Disconnect is destructive and sits on the same compact bar as the other
+     * controls, so confirm before tearing the session down. Keeping the bar
+     * revealed while the dialog is up avoids it auto-hiding under the prompt.
+     */
+    private fun confirmDisconnect() {
+        revealControlBar()
+        android.app.AlertDialog
+            .Builder(this)
+            .setTitle(R.string.disconnect_confirm_title)
+            .setMessage(R.string.disconnect_confirm_message)
+            .setPositiveButton(R.string.disconnect_confirm_action) { _, _ -> disconnect() }
+            .setNegativeButton(R.string.disconnect_confirm_cancel, null)
+            .show()
     }
 
     private fun revealControlBar() {
@@ -1742,14 +1764,23 @@ class MainActivity : AppCompatActivity() {
         resetButton.setOnClickListener {
             prefs.overlayX = -1f
             prefs.overlayY = -1f
-            // Use displayMetrics for reliable positioning
-            val dm = resources.displayMetrics
-            binding.statusBar
-                .animate()
-                .x(dm.widthPixels - binding.statusBar.width - 48f)
-                .y(48f)
-                .setDuration(300)
-                .start()
+            // Return to the resting spot (bottom-left), away from the
+            // top-center control bar. The overlay is positioned absolutely to
+            // match the drag handler, so compute the bottom-left corner from
+            // the parent bounds once the view is measured.
+            val overlay = binding.statusBar
+            overlay.post {
+                val parent = overlay.parent as View
+                val margin = resources.displayMetrics.density * OVERLAY_RESET_MARGIN_DP
+                val targetX = margin
+                val targetY = parent.height - overlay.height - margin
+                overlay
+                    .animate()
+                    .x(targetX)
+                    .y(targetY)
+                    .setDuration(300)
+                    .start()
+            }
         }
 
         // Position button listeners (8 directions)
@@ -3670,6 +3701,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val EXTRA_AUTO_CONNECT = "auto_connect"
         private const val KBPS_PER_MBPS = 1_000
+        private const val OVERLAY_RESET_MARGIN_DP = 16f
         private const val STATE_AUTOMATIC_USB_CONNECT = "automatic_usb_connect"
         private const val ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE"
         private const val EXTRA_USB_CONNECTED = "connected"
