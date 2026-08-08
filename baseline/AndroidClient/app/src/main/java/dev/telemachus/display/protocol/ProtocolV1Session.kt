@@ -19,10 +19,12 @@ import dev.vibescreen.protocol.v1.ProtocolRange
 import dev.vibescreen.protocol.v1.RequestKeyframe
 import dev.vibescreen.protocol.v1.ResourceLimits
 import dev.vibescreen.protocol.v1.ScrollEvent
+import dev.vibescreen.protocol.v1.SetVideoPreferences
 import dev.vibescreen.protocol.v1.StartDisplayRequest
 import dev.vibescreen.protocol.v1.TransportKind
 import dev.vibescreen.protocol.v1.TouchEvent
 import dev.vibescreen.protocol.v1.VideoConfigResult
+import dev.vibescreen.protocol.v1.VideoQualityPreset
 import java.io.IOException
 
 internal class ProtocolV1Failure(
@@ -301,6 +303,45 @@ internal class ProtocolV1Session(
                 .setSourceDisplayId(targetDisplayId)
                 .build()
         return envelope().setStartDisplayRequest(request).build()
+    }
+
+    /**
+     * Ask the host to change video encoding preferences at runtime. Valid only
+     * while streaming and when client video control was negotiated. Any field
+     * left at zero/unspecified tells the host to keep its current setting. The
+     * host clamps the values, applies them, and re-advertises a fresh
+     * VideoConfig with a bumped epoch, so this reuses the same reconfiguration
+     * transition as a runtime display switch (media stays gated until the new
+     * config is accepted). Returns the request to send, or null when the
+     * request is not applicable.
+     */
+    @Synchronized
+    fun setVideoPreferences(
+        bitrateKbps: Int,
+        framesPerSecond: Int,
+        qualityPreset: VideoQualityPreset,
+    ): Envelope? {
+        if (state != State.STREAMING) return null
+        if (Capability.CAPABILITY_CLIENT_VIDEO_CONTROL !in negotiatedCapabilities) return null
+        if (bitrateKbps <= 0 &&
+            framesPerSecond <= 0 &&
+            qualityPreset == VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED
+        ) {
+            return null
+        }
+        val request =
+            SetVideoPreferences
+                .newBuilder()
+                .setBitrateKbps(maxOf(0, bitrateKbps))
+                .setFramesPerSecond(maxOf(0, framesPerSecond))
+                .setQualityPreset(qualityPreset)
+                .build()
+        // The host answers with StartDisplayResponse + VideoConfig on a bumped
+        // epoch exactly like a display switch, so enter the same state and let
+        // the existing reconfiguration path gate media until the client accepts.
+        state = State.REDISPLAY_REQUESTED
+        displayGeometryPublished = false
+        return envelope().setSetVideoPreferences(request).build()
     }
 
     @Synchronized
