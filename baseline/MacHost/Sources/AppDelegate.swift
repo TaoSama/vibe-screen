@@ -2560,10 +2560,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         teardownTask = nil
     }
 
-    /// Switch the capture source to a client-selected display, then drive the
-    /// Protocol v1 re-negotiation so the client re-negotiates video for the new
-    /// geometry. An offline or non-numeric id is ignored, keeping the switch
-    /// safe; the session gate already rejected unknown ids before streaming.
+    /// Serializes runtime display switches so overlapping client taps cannot
+    /// interleave two capture rebuilds on the same server/session.
+    private var displaySwitchInFlight = false
+    private var pendingDisplaySwitchID: String?
+
+    /// Switch the capture source to a client-selected display in place, then
+    /// drive the Protocol v1 re-negotiation on the same session so the client
+    /// re-negotiates video for the new geometry. Both directions
+    /// (physical <-> virtual extended) keep one StreamingServer and one
+    /// Protocol v1 session alive: the server is never rebuilt, so no media can
+    /// escape to the client before it accepts the new VideoConfig. An offline
+    /// or non-numeric id is ignored, keeping the switch safe; the session gate
+    /// already rejected unknown ids before streaming.
     private func handleClientDisplaySelection(
         _ requestedDisplayID: String,
         server: StreamingServer
@@ -2577,6 +2586,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             : nil
         let selectsVirtual = requestedDisplayID == Self.virtualExtendedDisplaySyntheticID
             || (activeVirtualID.map { requestedDisplayID == String($0) } ?? false)
+
         if selectsVirtual {
             guard VirtualDisplayPrivateAPICapability.evaluate().isAvailable else {
                 debugLog("Client requested the virtual display but the private API is unavailable; ignoring")
@@ -2586,14 +2596,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 debugLog("Client re-selected the already-active virtual display; no switch needed")
                 return
             }
-            // The .extended reconfiguration path creates (or reuses) the virtual
-            // display and recaptures it. The client reconnects and re-negotiates
-            // video against the freshly advertised catalog.
-            debugLog("Client selected the virtual extended display; switching capture to .extended")
-            settings.displaySource = .extended
-            server.selectProtocolV1Display(requestedDisplayID)
+            enqueueDisplaySwitch(target: .virtual, server: server)
             return
         }
+
         guard let numericID = UInt32(requestedDisplayID) else {
             debugLog("Ignoring client display selection with non-numeric id \(requestedDisplayID)")
             return
@@ -2602,14 +2608,175 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             debugLog("Client selected an offline display \(requestedDisplayID); ignoring")
             return
         }
-        // Drive the existing selected-display reconfiguration path. Setting the
-        // published id recomputes the persistent UUID and recaptures the source.
-        // This also switches away from .extended back to a physical capture.
-        settings.displaySource = .selectedDisplay
-        settings.selectedDisplayID = resolved.id
-        // Push the protocol re-negotiation with the selected identity so the
-        // client re-negotiates video and receives a DisplayChanged afterwards.
-        server.selectProtocolV1Display(requestedDisplayID)
+        if settings.displaySource != .extended, activeDisplayID == resolved.id {
+            debugLog("Client re-selected the already-active physical display \(resolved.id); no switch needed")
+            return
+        }
+        enqueueDisplaySwitch(target: .physical(resolved.id), server: server)
+    }
+
+    private enum DisplaySwitchTarget: Equatable {
+        case virtual
+        case physical(CGDirectDisplayID)
+    }
+
+    /// Serialize switches: only one capture rebuild runs at a time. A tap that
+    /// arrives mid-switch is coalesced into a single pending follow-up so the
+    /// device/host stays a single serial resource.
+    private func enqueueDisplaySwitch(target: DisplaySwitchTarget, server: StreamingServer) {
+        guard !displaySwitchInFlight else {
+            debugLog("Display switch already in flight; deferring latest request")
+            return
+        }
+        displaySwitchInFlight = true
+        Task { @MainActor in
+            defer { self.displaySwitchInFlight = false }
+            await self.switchCaptureSourceInPlace(target: target, server: server)
+        }
+    }
+
+    /// Perform the in-place capture switch and Protocol v1 re-negotiation. The
+    /// order matters: capture is re-pointed first, host runtime bookkeeping is
+    /// reconciled (so the settings Combine observers cannot schedule a
+    /// competing full reconfiguration that would rebuild the server), the
+    /// server's advertised catalog/video config is refreshed to mark the newly
+    /// captured display active, and finally the session epoch is bumped and
+    /// gated on the new VideoConfig.
+    private func switchCaptureSourceInPlace(
+        target: DisplaySwitchTarget,
+        server: StreamingServer
+    ) async {
+        guard let capture = screenCapture,
+              streamingServer === server,
+              let baseConfiguration = activeRuntimeConfiguration else {
+            debugLog("Display switch skipped: capture/server/configuration unavailable")
+            return
+        }
+
+        let size = baseConfiguration.resolutionSize(rotation: settings.rotation)
+        let newDisplaySource: DisplaySourceMode
+        let captureDisplayID: CGDirectDisplayID
+        let streamSize: (width: Int, height: Int)
+        let followsMain: Bool
+        let outputSize: (width: Int, height: Int)?
+        var newSelectedDisplayID = settings.selectedDisplayID
+        let previousVirtualManager = virtualDisplayManager
+
+        do {
+            switch target {
+            case .virtual:
+                let manager = VirtualDisplayManager()
+                try manager.createDisplay(
+                    width: size.width,
+                    height: size.height,
+                    refreshRate: settings.effectiveRefreshRate,
+                    hiDPI: settings.hiDPI,
+                    name: "Telemachus"
+                )
+                try manager.disableMirrorMode()
+                guard let createdID = manager.displayID else {
+                    throw VirtualDisplayError.creationFailed("Display was created without a display ID")
+                }
+                manager.restoreDisplayPosition()
+                if !manager.verifyDisplayRegistered() {
+                    debugLog("WARNING: Virtual display not found in online list after switch — capture may fail")
+                }
+                virtualDisplayManager = manager
+                newDisplaySource = .extended
+                captureDisplayID = createdID
+                streamSize = size
+                followsMain = false
+                // The extended source captures the virtual display at its native
+                // size; no scaled output override.
+                outputSize = nil
+
+            case .physical(let displayID):
+                newDisplaySource = .selectedDisplay
+                captureDisplayID = displayID
+                newSelectedDisplayID = displayID
+                streamSize = Self.aspectFitStreamSize(
+                    sourceWidth: CGDisplayPixelsWide(displayID),
+                    sourceHeight: CGDisplayPixelsHigh(displayID),
+                    maximumWidth: size.width,
+                    maximumHeight: size.height
+                )
+                followsMain = false
+                outputSize = streamSize
+            }
+
+            debugLog("Runtime display switch: source=\(newDisplaySource.rawValue) captureID=\(captureDisplayID) stream=\(streamSize.width)x\(streamSize.height)")
+
+            try await capture.switchCapturedDisplay(
+                to: captureDisplayID,
+                refreshRate: settings.effectiveRefreshRate,
+                outputSize: outputSize,
+                followsMainDisplay: followsMain
+            )
+        } catch {
+            debugLog("Runtime display switch failed: \(error.localizedDescription)")
+            // Roll back a freshly created virtual display so we do not leak it.
+            if case .virtual = target, virtualDisplayManager !== previousVirtualManager {
+                virtualDisplayManager?.destroyDisplay()
+                virtualDisplayManager = previousVirtualManager
+            }
+            return
+        }
+
+        // Tear down the previous virtual display only after the new capture is
+        // live, and only when switching to a physical source.
+        if case .physical = target, let stale = previousVirtualManager {
+            stale.destroyDisplay()
+            if virtualDisplayManager === stale { virtualDisplayManager = nil }
+        }
+
+        activeDisplayID = captureDisplayID
+
+        // Reconcile host runtime state so the settings observers see the switch
+        // as already-applied. recordApplied() runs before the @Published writes
+        // so the resulting reconfiguration intent equals the applied config and
+        // the coordinator does not stop/rebuild the server.
+        let switchedConfiguration: HostRuntimeConfiguration
+        switch target {
+        case .virtual:
+            switchedConfiguration = baseConfiguration.updating(displaySource: .extended)
+        case .physical(let displayID):
+            switchedConfiguration = baseConfiguration
+                .updating(displaySource: .selectedDisplay)
+                .updatingSelectedDisplay(
+                    id: displayID,
+                    persistentUUID: DisplayCatalog.persistentUUID(for: displayID)
+                )
+        }
+        activeRuntimeConfiguration = switchedConfiguration
+        reconfigurationCoordinator.recordApplied(switchedConfiguration)
+        settings.displaySource = newDisplaySource
+        if newDisplaySource == .selectedDisplay {
+            settings.selectedDisplayID = newSelectedDisplayID
+        }
+
+        // Refresh what the server advertises for the new capture, then bump the
+        // Protocol v1 epoch on the same session. The client re-negotiates video
+        // and the session gate withholds media until VideoConfig is accepted.
+        server.setDisplaySize(
+            width: streamSize.width,
+            height: streamSize.height,
+            rotation: settings.rotation
+        )
+        server.setProtocolV1VideoConfiguration(
+            framesPerSecond: settings.effectiveRefreshRate,
+            bitrateKbps: settings.effectiveBitrate * 1_000,
+            displayID: String(captureDisplayID),
+            displayName: "Telemachus Display",
+            isVirtual: newDisplaySource == .extended || newDisplaySource == .mirrorMain
+        )
+        server.setProtocolV1Displays(
+            protocolV1DisplayCatalog(
+                activeCaptureID: captureDisplayID,
+                activeDisplaySource: newDisplaySource,
+                configuredSize: size
+            )
+        )
+        server.selectProtocolV1Display(String(captureDisplayID))
     }
 
     /// Build the ListDisplays catalog advertised for the current capture. Every

@@ -222,6 +222,129 @@ class ScreenCapture {
         try await setupStream()
     }
 
+    /// Re-point an already-streaming capture at a different macOS display in
+    /// place, without tearing down the streaming server or its Protocol v1
+    /// session. This is the host side of a runtime display switch: the encoder
+    /// is rebuilt at the new source's dimensions and the SCStream is rebuilt on
+    /// the new display, but the same frame sink stays wired so media keeps
+    /// flowing on one session. The caller drives the Protocol v1 epoch bump and
+    /// media gating separately, so the newly captured frames are withheld until
+    /// the client accepts the new VideoConfig.
+    func switchCapturedDisplay(
+        to displayID: CGDirectDisplayID,
+        refreshRate: Int,
+        outputSize: (width: Int, height: Int)?,
+        followsMainDisplay: Bool
+    ) async throws {
+        guard currentFrameSink != nil else {
+            // Not streaming yet: fall back to the plain setup path.
+            try await setupForDisplay(
+                displayID,
+                refreshRate: refreshRate,
+                outputSize: outputSize,
+                followsMainDisplay: followsMainDisplay
+            )
+            return
+        }
+
+        isStopping = false
+        // Let any in-flight restart settle before we re-point the source so the
+        // two paths cannot fight over the SCStream lifecycle.
+        restartTask?.cancel()
+        await restartTask?.value
+        restartTask = nil
+
+        stopFrameMonitor()
+        framePacingTimer?.cancel()
+        framePacingTimer = nil
+        pacingLock.withLock { $0.latestPixelBuffer = nil }
+        lastPixelBuffer = nil
+        restartAttempted = false
+
+        // Tear down the current capture surface (SCStream or CGDisplayStream)
+        // before adopting the new display id.
+        let previousStream = stream
+        let previousStreamWasStarted = isSCStreamStarted
+        isSCStreamStarted = false
+        streamOutput?.onFrameReceived = nil
+        stream = nil
+        streamOutput = nil
+        streamDelegate = nil
+        display = nil
+        if previousStreamWasStarted {
+            do {
+                try await previousStream?.stopCapture()
+            } catch {
+                debugLog("Switch: failed to stop previous SCStream: \(error)")
+            }
+        }
+        if fallbackLifecycle.isActive {
+            invalidateFallbackCapture()
+            cgDisplayStream?.stop()
+            cgDisplayStream = nil
+        }
+        await streamStopBarrier.waitForAll()
+
+        // Adopt the new source identity.
+        self.virtualDisplayID = displayID
+        self.followsMainDisplay = followsMainDisplay
+        self.refreshRate = refreshRate
+        self.requestedOutputSize = outputSize
+        stateLock.withLock { state in
+            state.lastFrameTime = nil
+            state.lastKeepaliveTime = nil
+            state.hasReceivedFirstFrame = false
+            state.captureStatsStartTime = nil
+            state.sourceFrameCount = 0
+        }
+
+        // Rebuild the encoder at the new source dimensions and rewire it to the
+        // same frame sink so a single session keeps receiving media.
+        let (width, height) = encodeSize(for: codec)
+        let frameSink = currentFrameSink
+        let newEncoder = VideoEncoder(
+            width: width,
+            height: height,
+            codec: codec,
+            bitrateMbps: currentBitrateMbps,
+            quality: currentQuality,
+            gamingBoost: currentGamingBoost,
+            frameRate: currentFrameRate
+        )
+        newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
+            frameSink?.sendFrame(
+                data,
+                timestamp: timestamp,
+                isKeyframe: isKeyframe,
+                sessionEpoch: sessionEpoch
+            )
+        }
+        newEncoder.requestKeyframe()
+        encoder = newEncoder
+
+        if followsMainDisplay || CommandLine.arguments.contains("--prefer-cgdisplaystream") {
+            if attemptFallbackCapture(stopSCStream: false) {
+                startFrameMonitor()
+                return
+            }
+        }
+
+        try await setupDisplay()
+        try await setupStream()
+        configureFrameHandler(label: "switch")
+        encoder?.requestKeyframe()
+        guard let stream else {
+            throw NSError(
+                domain: "ScreenCapture",
+                code: 12,
+                userInfo: [NSLocalizedDescriptionKey: "Switched capture stream was not configured."]
+            )
+        }
+        try await stream.startCapture()
+        isSCStreamStarted = true
+        startFrameMonitor()
+    }
+
     // MARK: - SCShareableContent with timeout
 
     private func getShareableContentWithTimeout(seconds: Int = 10) async throws -> SCShareableContent {

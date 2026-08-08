@@ -1490,6 +1490,19 @@ class StreamingServer: EncodedFrameSink {
                 timestamp: frame.timestamp,
                 isKeyframe: frame.isKeyframe
             )
+        } catch StreamingServerError.protocolNotReady {
+            // The Protocol v1 session is mid re-negotiation (awaitingVideoConfig
+            // after a runtime display switch). The session gate correctly
+            // withholds media until the client accepts the new VideoConfig.
+            // Silently hold this encoder frame back instead of tearing down the
+            // connection: dropping the whole stream here is exactly the flap
+            // that surfaced client-side as "Media received before VideoConfig
+            // acceptance". A keyframe is requested so the first post-switch
+            // streaming frame is decodable, and the pipeline stays alive.
+            sendInFlight = false
+            _ = pendingFrames.reset(requiresKeyframe: true)
+            onKeyframeRequested?(false, frame.clientGeneration)
+            return
         } catch {
             sendInFlight = false
             let dependentDrops = pendingFrames.reset(requiresKeyframe: true)
