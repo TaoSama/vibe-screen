@@ -265,17 +265,21 @@ The output is a maintainable product mainline rather than a disposable demo.
 ### Phase 1 — Complete local Android experience
 
 **macOS host status:** display-source selection, stable existing-display
-identity/fallback, experimental virtual extension/mirroring, HiDPI
-configuration, window migration/recovery, validated touch-derived pointer
+identity/fallback, on-device-verified virtual extension and HiDPI
+configuration, experimental mirroring, window migration/recovery, validated
+touch-derived pointer
 handling, permission onboarding, login startup, and bounded unattended
 listener recovery are implemented. Pure display/input geometry, identity, and
 startup policies are covered by host self-tests; at main commit
 `4c2e908fe31af4c187684991301e163371444eab` on 2026-08-06, the MacHost XCTest
 suite passed 202/202 in CI. System integration is not thereby proved.
-Private `CGVirtualDisplay` creation/capture, true mirroring, login-item
-approval, and headless reboot still require gated macOS integration evidence.
-Real CGEvent injection under Accessibility is now exercised on device for
-keyboard and mouse-wheel scroll (see Phase 1). The legacy compatibility session
+Private `CGVirtualDisplay` creation/capture and HiDPI are now verified on
+device: switching to the extended display creates a real virtual display that
+macOS reports as 4000x2400 physical / 2000x1200 logical (2x Retina) and streams
+at 60 FPS with zero drops (see Phase 1). True mirroring, login-item approval,
+and headless reboot still require gated macOS integration evidence. Real CGEvent
+injection under Accessibility is now exercised on device for keyboard and
+mouse-wheel scroll (see Phase 1). The legacy compatibility session
 still has no keyboard/native-mouse entry point; keyboard and native mouse are
 provided only through the Protocol v1 session, where keyboard and scroll are
 on-device verified and native pointer move/click remain pending a physical HID
@@ -451,11 +455,13 @@ network quality may increase it.
 
 The Xiaomi 12 is the primary acceptance target for decoding, protocol behavior,
 input, networking, and performance. As of 2026-08-08 the Xiaomi 12 has recorded
-verified streaming, touch, reconnect, a 30-minute soak, display-selection
-negotiation, and the physical<->virtual<->physical display-switch round-trip
-over USB; the two-hour no-growth soak and true private-API virtual-display
-creation/capture (which needs a host relaunch and manual Screen Recording
-re-grant) remain open gates. Earlier Android evidence also comes from Nubia
+verified streaming, touch, keyboard and mouse-wheel input, reconnect, a
+30-minute soak, display-selection negotiation, the
+physical<->virtual<->physical display-switch round-trip, and HiDPI private-API
+virtual-display creation/capture (4000x2400 physical / 2000x1200 logical) over
+USB; the two-hour no-growth soak remains an open gate, and stable self-signing
+now keeps the host's Screen Recording grant across rebuilds and relaunches.
+Earlier Android evidence also comes from Nubia
 P0110. Final tablet
 selection emphasizes
 an 8–9 inch high-density 90/120 Hz panel, Wi-Fi 6 or newer, stable low-latency

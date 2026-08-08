@@ -1,0 +1,7 @@
+        Telemachus:
+          Resolution: 4000 x 2400
+          UI Looks like: 2000 x 1200 @ 60.00Hz
+          Mirror: Off
+          Online: Yes
+          Rotation: Supported
+
