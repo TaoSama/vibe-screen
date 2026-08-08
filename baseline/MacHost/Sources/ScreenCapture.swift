@@ -347,12 +347,23 @@ class ScreenCapture {
                     userInfo: [NSLocalizedDescriptionKey: "Switched capture stream was not configured."]
                 )
             }
-            try await stream.startCapture()
-            isSCStreamStarted = true
+            // Track the start so a concurrent stopStreaming() can await/cancel
+            // it and we never mark the stream started or restart the frame
+            // monitor after teardown has already detached the stream.
+            let startTask = Task {
+                try await stream.startCapture()
+                self.isSCStreamStarted = true
+            }
+            streamStartTask = startTask
+            try await startTask.value
+            streamStartTask = nil
+            guard !isStopping else { throw CancellationError() }
             startFrameMonitor()
         } catch is CancellationError where isStopping {
+            streamStartTask = nil
             throw CancellationError()
         } catch {
+            streamStartTask = nil
             debugLog("Switch: SCStream setup/start failed (\(error)) — attempting CGDisplayStream fallback")
             guard attemptFallbackCapture() else {
                 reportTerminalCaptureFailure(underlying: error)
