@@ -1240,7 +1240,9 @@ class MainActivity : AppCompatActivity() {
             revealControlBar()
         }
         binding.controlDisconnectButton.setOnClickListener { disconnect() }
-        binding.controlDisplaysButton.setOnClickListener {
+        // The whole capsule row is the dropdown-selector tap target so touch
+        // users hit it reliably, not just the leading icon.
+        binding.displayCapsuleGroup.setOnClickListener {
             revealControlBar()
             showDisplaysMenu()
         }
@@ -1276,11 +1278,35 @@ class MainActivity : AppCompatActivity() {
         availableDisplays = displays
         selectedDisplayId = selectedId
         val selectable =
-            currentSessionBinding().capabilities.displaySelection && displays.size > 1
-        binding.controlDisplaysButton.isEnabled = selectable
+            DisplayCapsulePolicy.isSelectable(
+                currentSessionBinding().capabilities.displaySelection,
+                displays,
+            )
         // Collapse the whole display picker on single-display or un-negotiated
         // sessions so the resting capsule stays a minimal, low-misfire target.
         binding.displayCapsuleGroup.visibility = if (selectable) View.VISIBLE else View.GONE
+        binding.displayCapsuleGroup.isEnabled = selectable
+        if (selectable) {
+            refreshDisplayCapsuleLabel()
+        }
+    }
+
+    /**
+     * Reflect the active display on the capsule so touch users can see which
+     * Mac display they are on before opening the dropdown. The name is
+     * truncated to keep the compact, centered capsule from overflowing.
+     */
+    private fun refreshDisplayCapsuleLabel() {
+        val label =
+            DisplayCapsulePolicy.capsuleLabel(
+                availableDisplays,
+                selectedDisplayId,
+                DISPLAY_CAPSULE_MAX_NAME_LENGTH,
+            )
+        val shown = label.ifEmpty { getString(R.string.display_capsule_placeholder) }
+        binding.controlDisplaysLabel.text = shown
+        binding.displayCapsuleGroup.contentDescription =
+            getString(R.string.control_displays_current, shown)
     }
 
     /**
@@ -1291,7 +1317,10 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showDisplaysMenu() {
         val selectable =
-            currentSessionBinding().capabilities.displaySelection && availableDisplays.size > 1
+            DisplayCapsulePolicy.isSelectable(
+                currentSessionBinding().capabilities.displaySelection,
+                availableDisplays,
+            )
         if (!selectable) return
         val displays = availableDisplays
         val popup = PopupMenu(this, binding.controlDisplaysButton)
@@ -1313,9 +1342,17 @@ class MainActivity : AppCompatActivity() {
                 mainDiag("capsule selectDisplay target=" + option.id + " from=" + selectedDisplayId)
                 streamClient?.selectDisplay(option.id)
                 selectedDisplayId = option.id
-                revealControlBar()
+                refreshDisplayCapsuleLabel()
             }
             true
+        }
+        // The open popup is anchored on the control bar, so its 3s auto-hide is
+        // frozen while the menu is up; otherwise the anchor could disappear and
+        // dismiss the menu out from under a user still deciding. Restart the
+        // timer only once the menu closes.
+        controlBarHandler.removeCallbacks(controlBarHideRunnable)
+        popup.setOnDismissListener {
+            revealControlBar()
         }
         popup.show()
     }
@@ -3489,6 +3526,10 @@ class MainActivity : AppCompatActivity() {
         private const val LEGACY_RIGHT_CLICK_HOLD_MS = 650L
         private const val FOREGROUND_RECONNECT_DELAY_MS = 150L
         private const val CONTROL_BAR_AUTO_HIDE_MS = 3_000L
+        // Truncation budget for the display name shown on the capsule selector.
+        // Keeps long host display names from overflowing the compact capsule;
+        // the label view also ellipsizes as a visual backstop.
+        private const val DISPLAY_CAPSULE_MAX_NAME_LENGTH = 18
         private val DECODER_LIFECYCLE_EXECUTOR =
             Executors.newSingleThreadExecutor { runnable ->
                 Thread(runnable, "VibeDecoderLifecycle").apply { isDaemon = true }

@@ -160,6 +160,55 @@ data class StreamDisplayOption(
     val isPrimary: Boolean,
 )
 
+/**
+ * Pure, testable logic for the display-selection capsule shown in the control
+ * bar. The capsule reads as a dropdown selector: it shows the active display
+ * name and only becomes selectable when display selection was negotiated and
+ * more than one display exists. Keeping this UI-free lets the label and
+ * selectability be unit-tested without inflating any Android view.
+ */
+internal object DisplayCapsulePolicy {
+    /** Display selection is offered only when negotiated and there is a choice. */
+    fun isSelectable(
+        displaySelection: Boolean,
+        displays: List<StreamDisplayOption>,
+    ): Boolean = displaySelection && displays.size > 1
+
+    /** Resolve the option currently marked active, if any. */
+    fun activeOption(
+        displays: List<StreamDisplayOption>,
+        selectedId: String,
+    ): StreamDisplayOption? = displays.firstOrNull { it.id == selectedId }
+
+    /**
+     * Label shown on the capsule. Falls back to the primary/first display when
+     * the selected id is unknown so the capsule never reads as empty, and
+     * truncates long host names with an ellipsis so the compact, centered
+     * capsule cannot be pushed off-screen.
+     */
+    fun capsuleLabel(
+        displays: List<StreamDisplayOption>,
+        selectedId: String,
+        maxNameLength: Int,
+    ): String {
+        val active =
+            activeOption(displays, selectedId)
+                ?: displays.firstOrNull { it.isPrimary }
+                ?: displays.firstOrNull()
+                ?: return ""
+        return truncateName(active.name, maxNameLength)
+    }
+
+    private fun truncateName(
+        name: String,
+        maxNameLength: Int,
+    ): String {
+        val trimmed = name.trim()
+        if (maxNameLength <= 1 || trimmed.length <= maxNameLength) return trimmed
+        return trimmed.take(maxNameLength - 1).trimEnd() + "\u2026"
+    }
+}
+
 internal object ClientControlAvailability {
     fun isSupported(
         control: ClientControl,

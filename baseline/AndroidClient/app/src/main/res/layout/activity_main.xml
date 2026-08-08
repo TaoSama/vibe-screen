@@ -180,20 +180,55 @@
                 android:id="@+id/displayCapsuleGroup"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:minHeight="@dimen/display_capsule_min_height"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
-                android:visibility="gone">
+                android:visibility="gone"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackground"
+                android:contentDescription="@string/control_displays"
+                android:paddingStart="@dimen/display_capsule_horizontal_padding"
+                android:paddingEnd="@dimen/display_capsule_horizontal_padding">
 
-                <ImageButton
+                <!-- Reads as one dropdown selector: displays icon + active
+                     display name + chevron. The whole row is the tap target so
+                     touch users hit it reliably; the anchor id stays on this
+                     row for the popup. -->
+                <ImageView
                     android:id="@+id/controlDisplaysButton"
-                    android:layout_width="@dimen/control_bar_button_size"
-                    android:layout_height="@dimen/control_bar_button_size"
-                    android:layout_marginEnd="@dimen/control_bar_button_margin"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/control_displays"
+                    android:layout_width="@dimen/display_capsule_icon_size"
+                    android:layout_height="@dimen/display_capsule_icon_size"
+                    android:duplicateParentState="true"
                     android:src="@drawable/ic_displays"
                     android:scaleType="centerInside"
+                    android:importantForAccessibility="no"
                     app:tint="#FFFFFF" />
+
+                <TextView
+                    android:id="@+id/controlDisplaysLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/display_capsule_label_margin"
+                    android:maxWidth="@dimen/display_capsule_label_max_width"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:duplicateParentState="true"
+                    android:importantForAccessibility="no"
+                    android:text="@string/display_capsule_placeholder"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+
+                <ImageView
+                    android:id="@+id/controlDisplaysChevron"
+                    android:layout_width="@dimen/display_capsule_chevron_size"
+                    android:layout_height="@dimen/display_capsule_chevron_size"
+                    android:layout_marginStart="@dimen/display_capsule_label_margin"
+                    android:duplicateParentState="true"
+                    android:src="@drawable/ic_dropdown_chevron"
+                    android:scaleType="centerInside"
+                    android:importantForAccessibility="no"
+                    app:tint="#B8C0C6" />
             </LinearLayout>
 
             <ImageButton
