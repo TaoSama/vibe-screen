@@ -433,7 +433,10 @@ enum InternetSessionLeaseCLI {
     static func run() -> Bool {
         do {
             let input = FileHandle.standardInput.readDataToEndOfFile()
-            let output = try InternetSessionLeaseIssuer.issue(unsignedJSON: input)
+            let output = try InternetSessionLeaseIssuer.issue(
+                unsignedJSON: input,
+                stateStoreFactory: InternetSessionLeaseTestBackends.stateStoreFactory()
+            )
             FileHandle.standardOutput.write(output)
             FileHandle.standardOutput.write(Data([0x0a]))
             return true
