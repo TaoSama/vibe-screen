@@ -7,7 +7,7 @@ final class ProtocolV1SessionTests: XCTestCase {
     func testProductionHostCapabilitiesAreExact() {
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true),
-            [.touch, .multiDisplay]
+            [.touch, .keyboard, .pointer, .multiDisplay]
         )
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false),
@@ -107,12 +107,12 @@ final class ProtocolV1SessionTests: XCTestCase {
             return XCTFail("Expected HostHello")
         }
         XCTAssertEqual(hostHello.selectedProtocol, 1)
-        XCTAssertEqual(hostHello.capabilities, [.touch, .multiDisplay])
+        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .multiDisplay])
         guard case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected SessionAccepted")
         }
         XCTAssertEqual(accepted.sessionID, sessionID)
-        XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .multiDisplay])
+        XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .keyboard, .pointer, .multiDisplay])
         XCTAssertNil(try session.makeMediaFrame(payload: Data([1]), timestamp: 1, keyframe: true))
 
         let listActions = session.handleControl(try envelope(
@@ -204,7 +204,9 @@ final class ProtocolV1SessionTests: XCTestCase {
 
         let unsupported = makeSession()
         var required = clientHello()
-        required.clientHello.requiredCapabilities = [.keyboard]
+        // telemetry is advertised by neither host nor negotiation, so requiring
+        // it must be rejected. (keyboard/pointer are now supported inputs.)
+        required.clientHello.requiredCapabilities = [.telemetry]
         XCTAssertEqual(
             try protocolError(from: unsupported.handleControl(required.serializedData())).code,
             .unsupportedCapability
@@ -222,8 +224,8 @@ final class ProtocolV1SessionTests: XCTestCase {
               case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected HostHello + SessionAccepted")
         }
-        XCTAssertEqual(hostHello.capabilities, [.touch, .multiDisplay])
-        XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .multiDisplay])
+        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .multiDisplay])
+        XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .keyboard, .pointer, .multiDisplay])
     }
 
     func testInvalidDisplayAndStaleEpochFailClosed() throws {
