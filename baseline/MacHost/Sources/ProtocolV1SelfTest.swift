@@ -21,6 +21,7 @@ enum ProtocolV1SelfTest {
        testTouchTargetAndDisconnect(failures: &failures)
         testNativePointerKeyboardInput(failures: &failures)
         testNativeInputMapping(failures: &failures)
+        testClientVideoPreferences(failures: &failures)
         if failures.isEmpty {
             print("Protocol v1 self-test: PASS (framing, golden, negotiation, display/video gate, epoch, targeted input, heartbeat, graceful disconnect, error, media)")
             return true
@@ -148,8 +149,9 @@ enum ProtocolV1SelfTest {
     private static func testNegotiationAndMediaGate(failures: inout [String]) {
         do {
             guard ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true)
-                    == [.touch, .keyboard, .pointer, .multiDisplay],
-                  ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false) == [.multiDisplay] else {
+                    == [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl],
+                  ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false)
+                    == [.multiDisplay, .clientVideoControl] else {
                 failures.append("production HostHello capabilities are not exact")
                 return
             }
@@ -167,7 +169,7 @@ enum ProtocolV1SelfTest {
             guard helloResponses.count == 2,
                   case .hostHello(let hostHello)? = helloResponses[0].payload,
                   case .sessionAccepted(let accepted)? = helloResponses[1].payload,
-                  Set(hostHello.capabilities) == [.touch, .keyboard, .pointer, .multiDisplay],
+                  Set(hostHello.capabilities) == [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl],
                   accepted.sessionID == sessionID,
                   accepted.negotiatedCapabilities == [.touch, .multiDisplay] else {
                 failures.append("ClientHello did not produce HostHello + SessionAccepted")
@@ -755,6 +757,102 @@ enum ProtocolV1SelfTest {
         }
     }
 
+    private static func testClientVideoPreferences(failures: inout [String]) {
+        do {
+            // Client offers CLIENT_VIDEO_CONTROL, drives to streaming, then asks
+            // for an explicit bitrate + fps. The host must apply the clamped
+            // values, re-advertise a single VideoConfig on a bumped epoch, and
+            // return an applyVideoPreferences action that drops the quality
+            // preset (an explicit bitrate wins).
+            let session = try readySession(clientCapabilities: [.touch, .clientVideoControl])
+            var prefs = VSSetVideoPreferences()
+            prefs.bitrateKbps = 8_000
+            prefs.framesPerSecond = 30
+            prefs.qualityPreset = .sharp
+            let actions = session.handleControl(try envelope(
+                id: 4,
+                payload: .setVideoPreferences(prefs)
+            ).serializedData())
+            let apply = actions.compactMap { action -> (UInt32, UInt32, VSVideoQualityPreset)? in
+                if case .applyVideoPreferences(let b, let f, let q) = action { return (b, f, q) }
+                return nil
+            }
+            guard apply.count == 1, apply[0] == (8_000, 30, .unspecified) else {
+                failures.append("SetVideoPreferences did not apply the clamped bitrate/fps or dropped preset incorrectly")
+                return
+            }
+            let responses = try responseEnvelopes(actions)
+            let startCount = responses.filter {
+                if case .startDisplayResponse = $0.payload { return true }
+                return false
+            }.count
+            guard startCount == 1, responses.count == 2,
+                  case .videoConfig(let config)? = responses[1].payload,
+                  config.configEpoch == 2,
+                  config.bitrateKbps == 8_000,
+                  config.framesPerSecond == 30 else {
+                failures.append("SetVideoPreferences did not re-advertise exactly one VideoConfig with the applied values on a bumped epoch")
+                return
+            }
+            // Each preference change re-gates media until the client accepts the
+            // new VideoConfig, exactly like a display switch. Ack epoch 2 to
+            // return to streaming before the next request.
+            try acceptVideoConfig(session, configEpoch: 2, streamID: 1, messageID: 5)
+
+            // A follow-up request with no explicit bitrate keeps the previous
+            // values and forwards the quality preset for the host to map.
+            var presetOnly = VSSetVideoPreferences()
+            presetOnly.qualityPreset = .smooth
+            let presetActions = session.handleControl(try envelope(
+                id: 6,
+                payload: .setVideoPreferences(presetOnly)
+            ).serializedData())
+            guard presetActions.contains(where: {
+                if case .applyVideoPreferences(let b, let f, let q) = $0 {
+                    return b == 8_000 && f == 30 && q == .smooth
+                }
+                return false
+            }) else {
+                failures.append("preset-only SetVideoPreferences did not preserve values or forward the preset")
+                return
+            }
+            try acceptVideoConfig(session, configEpoch: 3, streamID: 1, messageID: 7)
+
+            // Out-of-range values are clamped to the host bounds.
+            var extreme = VSSetVideoPreferences()
+            extreme.bitrateKbps = 500
+            extreme.framesPerSecond = 240
+            let clampedActions = session.handleControl(try envelope(
+                id: 8,
+                payload: .setVideoPreferences(extreme)
+            ).serializedData())
+            guard clampedActions.contains(where: {
+                if case .applyVideoPreferences(let b, let f, _) = $0 { return b == 1_000 && f == 120 }
+                return false
+            }) else {
+                failures.append("SetVideoPreferences did not clamp out-of-range values")
+                return
+            }
+
+            // A session that never negotiated CLIENT_VIDEO_CONTROL must reject
+            // the message with an unsupported-capability protocol error.
+            let ungated = try readySession(clientCapabilities: [.touch, .multiDisplay])
+            var gatedPrefs = VSSetVideoPreferences()
+            gatedPrefs.bitrateKbps = 8_000
+            let rejected = ungated.handleControl(try envelope(
+                id: 4,
+                payload: .setVideoPreferences(gatedPrefs)
+            ).serializedData())
+            let error = try protocolError(rejected)
+            guard error.code == .unsupportedCapability else {
+                failures.append("SetVideoPreferences without the capability was not rejected as unsupported")
+                return
+            }
+        } catch {
+            failures.append("client video preferences test failed: \(error)")
+        }
+    }
+
     private static func touchEvent() -> VSTouchEvent {
         var point = VSNormalizedPoint()
         point.x = 0.25
@@ -905,6 +1003,25 @@ enum ProtocolV1SelfTest {
         request.mode = .existing
         request.sourceDisplayID = sourceDisplayID
         return request
+    }
+
+    /// Ack a pending VideoConfig so the session returns to STREAMING, mirroring
+    /// the client accepting a runtime reconfiguration.
+    @discardableResult
+    private static func acceptVideoConfig(
+        _ session: ProtocolV1SessionCoordinator,
+        configEpoch: UInt64,
+        streamID: UInt64,
+        messageID: UInt64
+    ) throws -> [ProtocolV1SessionAction] {
+        var result = VSVideoConfigResult()
+        result.configEpoch = configEpoch
+        result.streamID = streamID
+        result.accepted = true
+        return session.handleControl(try envelope(
+            id: messageID,
+            payload: .videoConfigResult(result)
+        ).serializedData())
     }
 
    private static func readySession() throws -> ProtocolV1SessionCoordinator {

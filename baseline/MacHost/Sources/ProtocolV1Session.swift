@@ -19,9 +19,11 @@ struct ProtocolV1SessionConfiguration {
         // require Accessibility to actually inject, but the capability is
         // advertised so a USB session can negotiate them. When input is
         // disabled entirely, only multi-display selection is offered.
+        // Client video control tunes the host encoder, needs no Accessibility,
+        // and is always offered so the client can adjust bitrate/fps/quality.
         touchEnabled
-            ? [.touch, .keyboard, .pointer, .multiDisplay]
-            : [.multiDisplay]
+            ? [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl]
+            : [.multiDisplay, .clientVideoControl]
    }
 
     let sessionID: Data
@@ -66,6 +68,7 @@ enum ProtocolV1SessionAction {
     case heartbeat
     case requestKeyframe(force: Bool)
     case selectDisplay(id: String)
+    case applyVideoPreferences(bitrateKbps: UInt32, framesPerSecond: UInt32, qualityPreset: VSVideoQualityPreset)
     case peerError(VSProtocolError)
     case close
 }
@@ -421,6 +424,51 @@ final class ProtocolV1SessionCoordinator {
             guard isStreaming else { return invalidState("KeyEvent arrived before media was ready.", envelope.messageID) }
             return [.key(usage: key.usbHidUsage, pressed: key.pressed, modifiers: key.modifierMask, text: key.text)]
 
+        case .setVideoPreferences(let prefs):
+            guard negotiatedCapabilities.contains(.clientVideoControl) else {
+                return unsupportedCapability("Client video control was not negotiated.", envelope.messageID)
+            }
+            guard case .streaming(let configEpoch, let streamID) = phase else {
+                return invalidState("SetVideoPreferences arrived before media was streaming.", envelope.messageID)
+            }
+            // Clamp the requested values into the host's supported range. A zero
+            // field means "leave unchanged", so it maps back to the current
+            // configuration before clamping. The client cannot drive the host
+            // outside these bounds regardless of what it requests.
+            let requestedBitrate = prefs.bitrateKbps == 0
+                ? configuration.bitrateKbps
+                : prefs.bitrateKbps
+            let requestedFps = prefs.framesPerSecond == 0
+                ? configuration.framesPerSecond
+                : prefs.framesPerSecond
+            let clampedBitrate = min(
+                max(requestedBitrate, Self.minimumClientBitrateKbps),
+                Self.maximumClientBitrateKbps
+            )
+            let clampedFps = min(
+                max(requestedFps, Self.minimumClientFramesPerSecond),
+                Self.maximumClientFramesPerSecond
+            )
+            configuration.bitrateKbps = clampedBitrate
+            configuration.framesPerSecond = clampedFps
+            // Re-advertise the applied video configuration on the same session
+            // with a bumped config epoch (reusing the runtime renegotiation
+            // path), and ask the host to reconfigure its encoder to match. The
+            // apply action carries the clamped values plus the quality intent so
+            // the host maps a preset to encoder quality when no explicit bitrate
+            // was requested.
+            let apply = ProtocolV1SessionAction.applyVideoPreferences(
+                bitrateKbps: clampedBitrate,
+                framesPerSecond: clampedFps,
+                qualityPreset: prefs.bitrateKbps == 0 ? prefs.qualityPreset : .unspecified
+            )
+            return [apply] + renegotiateSelectedDisplayLocked(
+                displayID: "",
+                configEpoch: configEpoch,
+                streamID: streamID,
+                correlationID: envelope.messageID
+            )
+
         case .protocolError(let error):
             phase = .failed
             return [.peerError(error), .close]
@@ -473,6 +521,13 @@ final class ProtocolV1SessionCoordinator {
     }
 
     private static let protocolVersion = ProtocolV1SessionConfiguration.version
+
+    // Bounds the host applies to a client SetVideoPreferences request. The
+    // client can express intent but never drive the encoder outside this range.
+    private static let minimumClientBitrateKbps: UInt32 = 1_000
+    private static let maximumClientBitrateKbps: UInt32 = 100_000
+    private static let minimumClientFramesPerSecond: UInt32 = 24
+    private static let maximumClientFramesPerSecond: UInt32 = 120
 
     private var isStreaming: Bool {
         if case .streaming = phase { return true }
