@@ -8,4 +8,16 @@
     <dimen name="control_bar_content_padding">3dp</dimen>
     <dimen name="control_bar_button_size">36dp</dimen>
     <dimen name="control_bar_button_margin">2dp</dimen>
+
+    <!-- Display-selection capsule presented as a tappable dropdown selector:
+         a leading displays icon, the active display name, and a chevron. Sized
+         so touch users read it as "tap to switch display" without inflating
+         the resting control bar. -->
+    <dimen name="display_capsule_min_height">44dp</dimen>
+    <dimen name="display_capsule_horizontal_padding">8dp</dimen>
+    <dimen name="display_capsule_icon_size">20dp</dimen>
+    <dimen name="display_capsule_chevron_size">18dp</dimen>
+    <dimen name="display_capsule_label_margin">6dp</dimen>
+    <dimen name="display_capsule_label_max_width">128dp</dimen>
+    <dimen name="display_capsule_corner_radius">12dp</dimen>
 </resources>
