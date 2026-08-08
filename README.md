@@ -4,9 +4,11 @@
 > recorded 30-minute device acceptance run, but this remains a development
 > preview rather than a stable release. The runnable application is still
 > named **Telemachus**. Matching macOS and Android builds now upgrade the main
-> USB/LAN session to Protocol v1 while retaining an explicit legacy fallback;
-> the cross-platform offline gates pass, but Protocol v1 real-device acceptance
-> is still open. Do not treat roadmap items below as shipped features.
+> USB/LAN session to Protocol v1 while retaining an explicit legacy fallback.
+> Protocol v1 is now exercised on device (display selection/switch, HiDPI
+> capture, keyboard/scroll input, auto-reconnect) and the cross-platform offline
+> gates pass; a two-hour soak and native-pointer HID confirmation remain open. Do
+> not treat roadmap items below as shipped features.
 
 Vibe Screen is building a low-latency Mac display and input terminal for
 Android, HarmonyOS, and iOS. Today this repository contains a runnable native
@@ -20,11 +22,12 @@ platform scaffolding under active development.
 | macOS host + Android client | Builds and runs from source |
 | USB transport | ADB reverse on TCP port `54321`; real-device stream verified |
 | Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264, MediaCodec decode |
+| Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified |
-| Input (keyboard/mouse/peripheral) | Touch and touch-derived pointer gestures only; keyboard, native mouse, stylus, and peripheral transport is scaffolding and not wired end to end |
+| Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation; stylus and other peripherals remain scaffolding |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; authenticated but not encrypted |
-| Protocol v1 | Baseline host/client main-session integration and cross-platform offline gates pass; real-device acceptance pending |
+| Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, in-place display switch, HiDPI capture, keyboard/scroll input, and auto-reconnect; cross-platform offline gates pass. Two-hour soak and native-pointer HID confirmation remain open |
 | iOS trusted LAN | Core client interoperates with the baseline MacHost on TCP `54321` in a real two-process loopback; Simulator UI and device acceptance remain gated |
 | HarmonyOS/Internet | In development; not part of the current runnable baseline |
 
