@@ -42,8 +42,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--sign-identity",
-        default="-",
-        help="codesign identity; '-' produces a local ad-hoc signature.",
+        default=os.environ.get("TELEMACHUS_SIGN_IDENTITY", "Telemachus Dev"),
+        help=(
+            "codesign identity; '-' produces a local ad-hoc signature. "
+            "Defaults to $TELEMACHUS_SIGN_IDENTITY or the stable 'Telemachus Dev' "
+            "self-signed identity so the signing hash (and thus macOS Screen "
+            "Recording/Accessibility grants) stays stable across rebuilds. Pass "
+            "'-' explicitly for an ad-hoc build on machines without that identity."
+        ),
     )
     return parser.parse_args()
 
