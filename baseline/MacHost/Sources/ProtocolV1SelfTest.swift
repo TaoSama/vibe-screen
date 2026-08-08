@@ -335,6 +335,12 @@ enum ProtocolV1SelfTest {
                 payload: .videoConfigResult(result)
             ).serializedData())
 
+            // Media flows on the physical source before the switch.
+            guard try session.makeMediaFrame(payload: Data([1]), timestamp: 1, keyframe: true) != nil else {
+                failures.append("streaming physical display did not encode media before the switch")
+                return
+            }
+
             // Runtime switch to the virtual display bumps the epoch.
             let switchActions = session.selectDisplayFromClient(displayID: virtualSyntheticID)
             let switchResponses = try responseEnvelopes(switchActions)
@@ -346,6 +352,50 @@ enum ProtocolV1SelfTest {
                   case .videoConfig(let config)? = switchResponses[1].payload,
                   config.configEpoch == 2 else {
                 failures.append("Runtime selection of the virtual display did not bump the configEpoch")
+                return
+            }
+
+            // While the client has not yet accepted the new VideoConfig the
+            // session must withhold every media frame. This is the host half of
+            // the fix for the "Media received before VideoConfig acceptance"
+            // client hard-disconnect: no media may escape mid-switch.
+            guard try session.makeMediaFrame(payload: Data([2]), timestamp: 2, keyframe: true) == nil else {
+                failures.append("media escaped during the virtual-display switch before VideoConfig acceptance")
+                return
+            }
+
+            // The client accepts the new VideoConfig; only then does media flow
+            // again, now on configEpoch 2 for the virtual source.
+            var switched = VSVideoConfigResult()
+            switched.configEpoch = 2
+            switched.streamID = 1
+            switched.accepted = true
+            _ = session.handleControl(try envelope(
+                id: 5,
+                payload: .videoConfigResult(switched)
+            ).serializedData())
+            guard let postSwitchMedia = try session.makeMediaFrame(payload: Data([3]), timestamp: 3, keyframe: true) else {
+                failures.append("media did not resume after accepting the switched VideoConfig")
+                return
+            }
+            let decodedSwitch = try decodeMedia(postSwitchMedia)
+            guard decodedSwitch.header.configEpoch == 2 else {
+                failures.append("post-switch media did not carry the bumped configEpoch")
+                return
+            }
+
+            // After the switch the active display the session reports (via the
+            // DisplayChanged notice that follows VideoConfig acceptance) is the
+            // virtual source, so the client tracks the virtual display as the
+            // current/selected one instead of falling back to the physical
+            // primary. The StartDisplayResponse descriptor asserted above
+            // already carries virtualSyntheticID as the adopted active id.
+            let changedActions = session.makeDisplayChanged()
+            let changedResponses = try responseEnvelopes(changedActions)
+            guard case .displayChanged(let changed)? = changedResponses.first?.payload,
+                  changed.display.displayID == virtualSyntheticID,
+                  changed.display.isVirtual else {
+                failures.append("post-switch active display did not point to the virtual source")
                 return
             }
         } catch {
