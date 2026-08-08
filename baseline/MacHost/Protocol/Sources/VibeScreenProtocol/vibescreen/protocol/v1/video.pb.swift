@@ -20,6 +20,51 @@ fileprivate struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobuf.ProtobufAP
   typealias Version = _2
 }
 
+/// Coarse client-selectable quality intent. The host maps a preset to its
+/// internal encoder quality when the client does not request an explicit
+/// bitrate, so clients can express intent without knowing host encoder units.
+public enum VSVideoQualityPreset: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case smooth // = 1
+  case balanced // = 2
+  case sharp // = 3
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .smooth
+    case 2: self = .balanced
+    case 3: self = .sharp
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .smooth: return 1
+    case .balanced: return 2
+    case .sharp: return 3
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [VSVideoQualityPreset] = [
+    .unspecified,
+    .smooth,
+    .balanced,
+    .sharp,
+  ]
+
+}
+
 public struct VSVideoConfig: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -92,6 +137,31 @@ public struct VSVideoConfigResult: Sendable {
   fileprivate var _selectedColorDescription: VSColorDescription? = nil
 }
 
+/// Client-driven video tuning request sent to the host on the active session.
+/// Every field is optional so a client can adjust one dimension at a time; an
+/// unset field leaves the corresponding host setting unchanged. The host
+/// clamps values to the negotiated capabilities and its supported range, then
+/// re-advertises the applied VideoConfig with a bumped config_epoch. Requires
+/// the CAPABILITY_CLIENT_VIDEO_CONTROL capability to be negotiated.
+public struct VSSetVideoPreferences: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Requested encoder bitrate in kbps. 0 leaves the current bitrate unchanged.
+  public var bitrateKbps: UInt32 = 0
+
+  /// Requested capture/encode frame rate. 0 leaves the current rate unchanged.
+  public var framesPerSecond: UInt32 = 0
+
+  /// Coarse quality intent applied when no explicit bitrate is requested.
+  public var qualityPreset: VSVideoQualityPreset = .unspecified
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 public struct VSRequestKeyframe: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -153,6 +223,10 @@ public struct VSMediaPacketHeader: Sendable {
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate let _protobuf_package = "vibescreen.protocol.v1"
+
+extension VSVideoQualityPreset: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0VIDEO_QUALITY_PRESET_UNSPECIFIED\0\u{1}VIDEO_QUALITY_PRESET_SMOOTH\0\u{1}VIDEO_QUALITY_PRESET_BALANCED\0\u{1}VIDEO_QUALITY_PRESET_SHARP\0")
+}
 
 extension VSVideoConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".VideoConfig"
@@ -272,6 +346,46 @@ extension VSVideoConfigResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImpl
     if lhs.rejectionReason != rhs.rejectionReason {return false}
     if lhs.streamID != rhs.streamID {return false}
     if lhs._selectedColorDescription != rhs._selectedColorDescription {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension VSSetVideoPreferences: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SetVideoPreferences"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}bitrate_kbps\0\u{3}frames_per_second\0\u{3}quality_preset\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt32Field(value: &self.bitrateKbps) }()
+      case 2: try { try decoder.decodeSingularUInt32Field(value: &self.framesPerSecond) }()
+      case 3: try { try decoder.decodeSingularEnumField(value: &self.qualityPreset) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.bitrateKbps != 0 {
+      try visitor.visitSingularUInt32Field(value: self.bitrateKbps, fieldNumber: 1)
+    }
+    if self.framesPerSecond != 0 {
+      try visitor.visitSingularUInt32Field(value: self.framesPerSecond, fieldNumber: 2)
+    }
+    if self.qualityPreset != .unspecified {
+      try visitor.visitSingularEnumField(value: self.qualityPreset, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: VSSetVideoPreferences, rhs: VSSetVideoPreferences) -> Bool {
+    if lhs.bitrateKbps != rhs.bitrateKbps {return false}
+    if lhs.framesPerSecond != rhs.framesPerSecond {return false}
+    if lhs.qualityPreset != rhs.qualityPreset {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

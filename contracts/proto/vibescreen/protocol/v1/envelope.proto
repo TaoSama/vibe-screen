@@ -79,5 +79,6 @@ message Envelope {
     WakeHostRequest wake_host_request = 113;
     WakeHostResult wake_host_result = 114;
     ManagedPolicyStatus managed_policy_status = 115;
+    SetVideoPreferences set_video_preferences = 116;
   }
 }
