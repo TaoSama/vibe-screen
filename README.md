@@ -272,12 +272,14 @@ listener recovery are implemented. Pure display/input geometry, identity, and
 startup policies are covered by host self-tests; at main commit
 `4c2e908fe31af4c187684991301e163371444eab` on 2026-08-06, the MacHost XCTest
 suite passed 202/202 in CI. System integration is not thereby proved.
-Private `CGVirtualDisplay` creation/capture, true mirroring, real CGEvent/AX
-behavior, login-item approval, and headless reboot still require gated macOS
-integration evidence. The legacy compatibility session still has no
-keyboard/native-mouse entry point; keyboard and native mouse are provided only
-through the Protocol v1 session (wired in source, on-device verification
-pending). The two-hour device soak remains owned by the coordinated Phase 0 run.
+Private `CGVirtualDisplay` creation/capture, true mirroring, login-item
+approval, and headless reboot still require gated macOS integration evidence.
+Real CGEvent injection under Accessibility is now exercised on device for
+keyboard and mouse-wheel scroll (see Phase 1). The legacy compatibility session
+still has no keyboard/native-mouse entry point; keyboard and native mouse are
+provided only through the Protocol v1 session, where keyboard and scroll are
+on-device verified and native pointer move/click remain pending a physical HID
+mouse. The two-hour device soak remains owned by the coordinated Phase 0 run.
 
 The Android client shows a compact, centered, tap-to-reveal control capsule
 that opens a display dropdown menu, opens settings, and disconnects; the
@@ -293,10 +295,15 @@ with no session teardown: two full round-trips held 60 FPS with zero dropped
 frames and no client disconnect after a host-side fix that stopped a single
 client display request from emitting two StartDisplayResponse frames (the
 second of which arrived in the STREAMING state and previously forced an
-INVALID_PEER_MESSAGE teardown on the virtual->physical leg). Keyboard, native
-mouse, and scroll input are now
-wired end to end in source (host CGEvent injection plus client capability
-negotiation and forwarding) but remain unverified on device rather than shipped.
+INVALID_PEER_MESSAGE teardown on the virtual->physical leg). Keyboard and
+mouse-wheel scroll input are now verified end to end on the Xiaomi 12: forwarded
+keys arrive as correctly mapped host CGEvent key injections (A/B/C and arrow
+keys, press/release paired) and a forwarded VSCROLL arrives as a host scroll
+injection, which also confirms the host holds Accessibility permission. Native
+mouse pointer move and click share the same forwarding path and source check as
+the verified scroll but still want one confirmation with a physical HID mouse
+attached to the phone, since synthetic adb pointer motion does not deliver as a
+hover event.
 
 - Deliver USB and LAN connectivity.
 - Support virtual extension, mirroring, display selection, HiDPI, rotation, and
