@@ -157,6 +157,12 @@ class StreamingServer: EncodedFrameSink {
     /// source and drive protocol re-negotiation.
     var onDisplaySelectionRequested: ((String) -> Void)?
 
+    /// Fired on the network queue when a Protocol v1 client requests new video
+    /// preferences. The AppDelegate hops to the main actor to apply them to the
+    /// host encoder settings. The session has already re-advertised the applied
+    /// VideoConfig with a bumped epoch; this only reconfigures the encoder.
+    var onVideoPreferencesRequested: ((UInt32, UInt32, VSVideoQualityPreset) -> Void)?
+
     private let frameQueue = DispatchQueue(label: "frameQueue", qos: .userInteractive)
     private let receiveQueue = DispatchQueue(label: "receiveQueue", qos: .userInteractive)
     private let networkQueue = DispatchQueue(label: "networkQueue", qos: .userInteractive)
@@ -1286,6 +1292,12 @@ class StreamingServer: EncodedFrameSink {
                     guard let self,
                           self.clientCallbackGeneration.isCurrent(generation) else { return }
                     self.onDisplaySelectionRequested?(displayID)
+                }
+            case .applyVideoPreferences(let bitrateKbps, let framesPerSecond, let qualityPreset):
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onVideoPreferencesRequested?(bitrateKbps, framesPerSecond, qualityPreset)
                 }
             case .peerError(let error):
                 onProtocolErrorReceived?(error, generation)

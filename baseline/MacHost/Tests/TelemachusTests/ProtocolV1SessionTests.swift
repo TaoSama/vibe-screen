@@ -7,11 +7,11 @@ final class ProtocolV1SessionTests: XCTestCase {
     func testProductionHostCapabilitiesAreExact() {
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true),
-            [.touch, .keyboard, .pointer, .multiDisplay]
+            [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl]
         )
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false),
-            [.multiDisplay]
+            [.multiDisplay, .clientVideoControl]
         )
     }
 
@@ -107,7 +107,7 @@ final class ProtocolV1SessionTests: XCTestCase {
             return XCTFail("Expected HostHello")
         }
         XCTAssertEqual(hostHello.selectedProtocol, 1)
-        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .multiDisplay])
+        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl])
         guard case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected SessionAccepted")
         }
@@ -227,7 +227,7 @@ final class ProtocolV1SessionTests: XCTestCase {
               case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected HostHello + SessionAccepted")
         }
-        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .multiDisplay])
+        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl])
         XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .multiDisplay])
     }
 
