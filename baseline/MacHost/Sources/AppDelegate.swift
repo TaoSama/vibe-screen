@@ -2116,7 +2116,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             streamingServer?.onKeyEvent = {
                 [weak self, weak configuredServer]
-                usage, pressed, modifiers, text, clientGeneration in
+                usage, pressed, modifiers, _, clientGeneration in
                 Task { @MainActor in
                     guard let self, let configuredServer else { return }
                     self.performSessionCallback(
@@ -2125,8 +2125,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                             clientGeneration: clientGeneration
                     ) {
                         self.handleClientKey(
-                            usage: usage, pressed: pressed,
-                            modifiers: modifiers, text: text
+                            usage: usage, pressed: pressed, modifiers: modifiers
                         )
                     }
                 }
@@ -3241,7 +3240,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @discardableResult
-    func handleClientKey(usage: UInt32, pressed: Bool, modifiers: UInt32, text: String) -> Bool {
+    func handleClientKey(usage: UInt32, pressed: Bool, modifiers: UInt32) -> Bool {
         guard settings.touchEnabled else { return false }
         guard nativeInputAccessibilityGranted() else { return false }
         let injected = streamInputInjector.handleKey(
