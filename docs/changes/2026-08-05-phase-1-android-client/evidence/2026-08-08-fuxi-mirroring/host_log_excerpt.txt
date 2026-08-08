@@ -1,0 +1,40 @@
+2026-08-08T12:53:42Z First frame received from SCStream
+2026-08-08T12:59:36Z Capturing virtual display: 1512x982 (ID: 1)
+2026-08-08T12:59:36Z First frame received from SCStream
+2026-08-08T13:02:24Z Runtime display switch: source=extended captureID=13 stream=2000x1200
+2026-08-08T13:02:24Z Capturing virtual display: 2000x1200 (ID: 13)
+2026-08-08T13:02:24Z First frame received from SCStream
+2026-08-08T13:02:51Z Runtime display switch: source=selectedDisplay captureID=1 stream=1512x982
+2026-08-08T13:02:51Z Capturing virtual display: 1512x982 (ID: 1)
+2026-08-08T13:02:51Z First frame received from SCStream
+2026-08-08T13:03:39Z Runtime display switch: source=extended captureID=14 stream=2000x1200
+2026-08-08T13:03:39Z Capturing virtual display: 2000x1200 (ID: 14)
+2026-08-08T13:03:39Z First frame received from SCStream
+2026-08-08T13:03:44Z Runtime display switch: source=selectedDisplay captureID=1 stream=1512x982
+2026-08-08T13:03:44Z Capturing virtual display: 1512x982 (ID: 1)
+2026-08-08T13:03:44Z First frame received from SCStream
+2026-08-08T13:38:20Z Capturing virtual display: 1512x982 (ID: 1)
+2026-08-08T13:38:20Z First frame received from SCStream
+2026-08-08T13:39:27Z Runtime display switch: source=extended captureID=15 stream=2000x1200
+2026-08-08T13:39:27Z Capturing virtual display: 2000x1200 (ID: 15)
+2026-08-08T13:39:28Z First frame received from SCStream
+2026-08-08T13:47:03Z Unattended startup failed: Mirror mode operation failed: Failed to configure mirror mode: CGError(rawValue: 1001)
+2026-08-08T13:47:05Z Unattended startup failed: Mirror mode operation failed: Failed to configure mirror mode: CGError(rawValue: 1001)
+2026-08-08T13:47:08Z Unattended startup failed: Mirror mode operation failed: Failed to configure mirror mode: CGError(rawValue: 1001)
+2026-08-08T13:47:13Z Unattended startup failed: Mirror mode operation failed: Failed to configure mirror mode: CGError(rawValue: 1001)
+2026-08-08T13:47:22Z Unattended startup failed: Mirror mode operation failed: Failed to configure mirror mode: CGError(rawValue: 1001)
+2026-08-08T13:47:39Z Unattended startup failed: Mirror mode operation failed: Failed to configure mirror mode: CGError(rawValue: 1001)
+2026-08-08T13:47:58Z Capturing virtual display: 1512x982 (ID: 1)
+2026-08-08T13:47:58Z First frame received from SCStream
+2026-08-08T13:48:36Z Capturing virtual display: 1512x982 (ID: 1)
+2026-08-08T13:48:36Z First frame received from CGDisplayStream
+
+--- After graceful-fallback fix (rebuild + install) ---
+2026-08-08T13:58:37Z Pipeline: 59.9fps, 0.8Mbps, avg frame age: 9.5ms, dropped: 0
+2026-08-08T13:58:38Z Pipeline: 60.3fps, 0.8Mbps, avg frame age: 9.2ms, dropped: 0
+2026-08-08T13:58:39Z Pipeline: 59.8fps, 0.9Mbps, avg frame age: 8.6ms, dropped: 0
+2026-08-08T13:58:40Z Pipeline: 59.9fps, 0.8Mbps, avg frame age: 8.5ms, dropped: 0
+2026-08-08T13:58:41Z Pipeline: 60.2fps, 0.8Mbps, avg frame age: 6.1ms, dropped: 0
+2026-08-08T13:58:42Z Pipeline: 60.0fps, 0.8Mbps, avg frame age: 5.6ms, dropped: 0
+2026-08-08T13:58:43Z Pipeline: 59.6fps, 0.8Mbps, avg frame age: 6.7ms, dropped: 0
+2026-08-08T13:58:44Z Pipeline: 60.4fps, 0.8Mbps, avg frame age: 8.6ms, dropped: 0
