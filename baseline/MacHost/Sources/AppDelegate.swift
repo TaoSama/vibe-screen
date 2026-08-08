@@ -2673,9 +2673,50 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     hiDPI: settings.hiDPI,
                     name: "Telemachus"
                 )
-                try manager.disableMirrorMode()
                 guard let createdID = manager.displayID else {
                     throw VirtualDisplayError.creationFailed("Display was created without a display ID")
+                }
+                // A just-created CGVirtualDisplay is not immediately known to
+                // WindowServer. Disabling mirror mode before it registers
+                // returns CGError 1001 (the on-device failure). Wait for the
+                // display to appear online, then disable mirror with a short
+                // retry, mirroring the settle the cold-start path relies on.
+                var registered = manager.verifyDisplayRegistered()
+                var settleAttempts = 0
+                while !registered && settleAttempts < 20 {
+                    try await Task.sleep(nanoseconds: 100_000_000)
+                    registered = manager.verifyDisplayRegistered()
+                    settleAttempts += 1
+                }
+                if !registered {
+                    debugLog("WARNING: Virtual display \(createdID) not online after settle; proceeding may fail")
+                }
+                var mirrorDisabled = false
+                var mirrorAttempts = 0
+                var lastMirrorError: Error?
+                while !mirrorDisabled && mirrorAttempts < 10 {
+                    do {
+                        try manager.disableMirrorMode()
+                        mirrorDisabled = true
+                    } catch {
+                        lastMirrorError = error
+                        try await Task.sleep(nanoseconds: 100_000_000)
+                        mirrorAttempts += 1
+                    }
+                }
+                if !mirrorDisabled {
+                    // A freshly created CGVirtualDisplay is not mirroring any
+                    // display (mirror mode is only ever set by the mirrorMain
+                    // path). Disabling mirror mode can still transiently fail
+                    // with CGError 1001 while WindowServer settles the new
+                    // display during active capture. If the display is not
+                    // actually in a mirror set, that failure is benign for the
+                    // extended source, so proceed instead of aborting the
+                    // switch. Only abort if it is genuinely still mirrored.
+                    if CGDisplayIsInMirrorSet(createdID) != 0 {
+                        throw lastMirrorError ?? VirtualDisplayError.mirrorModeFailed("Failed to disable mirror mode")
+                    }
+                    debugLog("disableMirrorMode did not complete but display \(createdID) is not mirrored; proceeding with extended capture")
                 }
                 manager.restoreDisplayPosition()
                 if !manager.verifyDisplayRegistered() {
