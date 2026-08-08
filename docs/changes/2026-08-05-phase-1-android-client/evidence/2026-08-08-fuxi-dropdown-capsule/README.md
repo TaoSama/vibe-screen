@@ -37,3 +37,45 @@ adb -s 8a023e3a shell dumpsys activity top（controlBar/胶囊几何）：
   往返回物理屏无 INVALID_MEDIA_HEADER、无断连。
 - 键鼠注入端到端：手机接外设 -> host CGEvent 注入 -> Mac 指针/键入可见（需辅助功能授权）。
 
+
+
+## 2026-08-08 真机切换往返验证（发现方向不对称断连 bug）
+
+真机 8a023e3a，唤出控制条后点胶囊弹 PopupMenu（窗口几何 mAttrs=(880,145)(853x252)，两项各 126px 高）。
+
+### 物理屏 -> 虚拟扩展屏：成功
+客户端 logcat：capsule selectDisplay target=telemachus-virtual-extended from=1
+host 日志：
+    Runtime display switch: source=extended captureID=10 stream=2000x1200
+    Display source changed to extended — scheduling capture reconfiguration
+    Pipeline: 60.4fps ... dropped: 0
+in-place 切到虚拟屏，无断连，瞬时 54.6fps 后恢复 60fps 零丢帧。
+
+### 虚拟扩展屏 -> 物理屏：断连（BUG）
+客户端 logcat：
+    capsule selectDisplay target=1 from=telemachus-virtual-extended
+    session ended kind=INVALID_PEER_MESSAGE detail=invalid_peer_message:
+      Protocol v1: StartDisplayResponse in state STREAMING
+    Disconnected: INVALID_PEER_MESSAGE
+host 日志：
+    Runtime display switch: source=selectedDisplay captureID=1 stream=1512x982
+    Display source changed to selectedDisplay — scheduling capture reconfiguration
+host 切回物理屏成功，但客户端因收到"第二个"StartDisplayResponse 在 STREAMING 态而硬断连。
+
+### 根因（源码定位）
+客户端点选 -> ProtocolV1Session.kt:selectDisplay 发 StartDisplayRequest（state=REDISPLAY_REQUESTED）。
+host 侧同一次选择触发两条会各发一个 StartDisplayResponse 的路径：
+1. 客户端 StartDisplayRequest -> ProtocolV1Session.swift:282 in-place ->
+   renegotiateSelectedDisplayLocked(:534/:552) 回 StartDisplayResponse+VideoConfig（第一个）。
+   客户端 onStartDisplay 接受后回到 STREAMING。
+2. 同时 onDisplaySelectionRequested -> AppDelegate.handleClientDisplaySelection ->
+   switchCaptureSourceInPlace 末尾 server.selectProtocolV1Display(:2871) ->
+   session.selectDisplayFromClient 又回一个 StartDisplayResponse（第二个）。
+第二个到达时客户端已 STREAMING -> ProtocolV1Session.kt:onStartDisplay 抛
+"StartDisplayResponse in state STREAMING" -> 断连。物理->虚拟因虚拟屏创建较慢时序侥幸未触发。
+
+### 修复方向
+区分"客户端发起"与"host(GUI)发起"的切换：客户端发起时，其 StartDisplayRequest 已由
+renegotiateSelectedDisplayLocked 回应，host 主动路径不应再发第二个 StartDisplayResponse
+（selectProtocolV1Display/selectDisplayFromClient 仅用于 GUI 端发起、无客户端请求的切换）。
+
