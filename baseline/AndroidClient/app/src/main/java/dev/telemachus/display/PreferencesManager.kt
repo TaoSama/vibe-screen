@@ -55,6 +55,18 @@ class PreferencesManager(
         get() = ClientRotation.fromName(prefs.getString("client_rotation", null))
         set(value) = prefs.edit().putString("client_rotation", value.name).apply()
 
+    var videoQuality: VideoQualityChoice
+        get() = VideoQualityChoice.fromName(prefs.getString("video_quality", null))
+        set(value) = prefs.edit().putString("video_quality", value.name).apply()
+
+    var videoBitrateMbps: Int
+        get() = prefs.getInt("video_bitrate_mbps", ClientVideoBounds.DEFAULT_BITRATE_MBPS)
+        set(value) = prefs.edit().putInt("video_bitrate_mbps", value).apply()
+
+    var videoFrameRate: Int
+        get() = prefs.getInt("video_frame_rate", ClientVideoBounds.DEFAULT_FRAME_RATE)
+        set(value) = prefs.edit().putInt("video_frame_rate", value).apply()
+
     var internetForceRelay: Boolean
         get() = prefs.getBoolean("internet_force_relay", false)
         set(value) = prefs.edit().putBoolean("internet_force_relay", value).apply()
