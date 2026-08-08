@@ -7,15 +7,18 @@ import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.InputTarget
+import dev.vibescreen.protocol.v1.KeyEvent
 import dev.vibescreen.protocol.v1.ListDisplaysRequest
 import dev.vibescreen.protocol.v1.NormalizedPoint
 import dev.vibescreen.protocol.v1.Ping
+import dev.vibescreen.protocol.v1.PointerEvent
 import dev.vibescreen.protocol.v1.Pong
 import dev.vibescreen.protocol.v1.ProtocolError
 import dev.vibescreen.protocol.v1.ProtocolErrorCode
 import dev.vibescreen.protocol.v1.ProtocolRange
 import dev.vibescreen.protocol.v1.RequestKeyframe
 import dev.vibescreen.protocol.v1.ResourceLimits
+import dev.vibescreen.protocol.v1.ScrollEvent
 import dev.vibescreen.protocol.v1.StartDisplayRequest
 import dev.vibescreen.protocol.v1.TransportKind
 import dev.vibescreen.protocol.v1.TouchEvent
@@ -129,7 +132,12 @@ internal class ProtocolV1Session(
     private var hostCodecs = emptySet<Codec>()
 
     private val advertisedCapabilities =
-        setOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY)
+        setOf(
+            Capability.CAPABILITY_TOUCH,
+            Capability.CAPABILITY_KEYBOARD,
+            Capability.CAPABILITY_POINTER,
+            Capability.CAPABILITY_MULTI_DISPLAY,
+        )
     private val requiredCapabilities = emptySet<Capability>()
 
     val activeSessionEpoch: Long
@@ -158,6 +166,14 @@ internal class ProtocolV1Session(
     val canSendTouch: Boolean
         @Synchronized
         get() = state == State.STREAMING && Capability.CAPABILITY_TOUCH in negotiatedCapabilities
+
+    val canSendPointer: Boolean
+        @Synchronized
+        get() = state == State.STREAMING && Capability.CAPABILITY_POINTER in negotiatedCapabilities
+
+    val canSendKeyboard: Boolean
+        @Synchronized
+        get() = state == State.STREAMING && Capability.CAPABILITY_KEYBOARD in negotiatedCapabilities
 
     enum class MediaDisposition {
         ACCEPT,
@@ -306,9 +322,75 @@ internal class ProtocolV1Session(
                 .setPointerId(pointerId)
                 .setPhase(phase)
                 .setPosition(NormalizedPoint.newBuilder().setX(x).setY(y))
+               .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
+               .build()
+       return envelope().setTouchEvent(event).build()
+   }
+
+    @Synchronized
+    fun pointer(
+        inputId: Long,
+        phase: InputPhase,
+        x: Double,
+        y: Double,
+        buttonMask: Int,
+    ): Envelope {
+        check(state == State.STREAMING)
+        check(Capability.CAPABILITY_POINTER in negotiatedCapabilities) { "Pointer was not negotiated" }
+        require(inputId > 0 && phase != InputPhase.INPUT_PHASE_UNSPECIFIED)
+        require(x in 0.0..1.0 && y in 0.0..1.0)
+        val event =
+            PointerEvent
+                .newBuilder()
+                .setInputId(inputId)
+                .setPhase(phase)
+                .setPosition(NormalizedPoint.newBuilder().setX(x).setY(y))
+                .setButtonMask(buttonMask)
                 .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
                 .build()
-        return envelope().setTouchEvent(event).build()
+        return envelope().setPointerEvent(event).build()
+    }
+
+    @Synchronized
+    fun scroll(
+        inputId: Long,
+        deltaX: Double,
+        deltaY: Double,
+    ): Envelope {
+        check(state == State.STREAMING)
+        check(Capability.CAPABILITY_POINTER in negotiatedCapabilities) { "Pointer scrolling was not negotiated" }
+        require(inputId > 0)
+        val event =
+            ScrollEvent
+                .newBuilder()
+                .setInputId(inputId)
+                .setDeltaX(deltaX)
+                .setDeltaY(deltaY)
+                .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
+                .build()
+        return envelope().setScrollEvent(event).build()
+    }
+
+    @Synchronized
+    fun key(
+        inputId: Long,
+        usbHidUsage: Int,
+        pressed: Boolean,
+        modifierMask: Int,
+    ): Envelope {
+        check(state == State.STREAMING)
+        check(Capability.CAPABILITY_KEYBOARD in negotiatedCapabilities) { "Keyboard was not negotiated" }
+        require(inputId > 0)
+        val event =
+            KeyEvent
+                .newBuilder()
+                .setInputId(inputId)
+                .setUsbHidUsage(usbHidUsage)
+                .setPressed(pressed)
+                .setModifierMask(modifierMask)
+                .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
+                .build()
+        return envelope().setKeyEvent(event).build()
     }
 
     @Synchronized

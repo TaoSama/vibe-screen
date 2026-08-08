@@ -48,6 +48,7 @@ import dev.telemachus.display.internet.InternetVideoDecoderLifecycle
 import dev.telemachus.display.internet.PeerRoute
 import dev.telemachus.display.internet.PendingRevocationBarrierException
 import dev.telemachus.display.internet.ProductInputPhase
+import dev.vibescreen.protocol.v1.InputPhase
 import dev.telemachus.display.internet.ProductTouchEvent
 import dev.telemachus.display.internet.ProductVideoCodec
 import dev.telemachus.display.internet.ProductVideoConfiguration
@@ -670,12 +671,20 @@ class MainActivity : AppCompatActivity() {
         val point = mapInputPoint(view, event.x, event.y)
         val nativePointerInput =
             when (event.actionMasked) {
+                MotionEvent.ACTION_HOVER_MOVE, MotionEvent.ACTION_MOVE ->
+                    ClientPointerInput(
+                        ClientPointerAction.MOVE,
+                        point.x,
+                        point.y,
+                        buttonState = event.buttonState,
+                    )
+
                 MotionEvent.ACTION_BUTTON_PRESS ->
                     ClientPointerInput(
                         ClientPointerAction.BUTTON_PRESS,
                         point.x,
                         point.y,
-                        buttonState = event.actionButton,
+                        buttonState = event.buttonState,
                     )
 
                 MotionEvent.ACTION_BUTTON_RELEASE ->
@@ -683,7 +692,7 @@ class MainActivity : AppCompatActivity() {
                         ClientPointerAction.BUTTON_RELEASE,
                         point.x,
                         point.y,
-                        buttonState = event.actionButton,
+                        buttonState = event.buttonState,
                     )
 
                 MotionEvent.ACTION_SCROLL ->
@@ -2281,18 +2290,36 @@ class MainActivity : AppCompatActivity() {
                         "negotiated=${callbackClient.negotiatedCapabilities()} " +
                         "displays=${options.joinToString { "${it.id}:${it.name}:${it.width}x${it.height}:primary=${it.isPrimary}" }}",
                 )
-                // Promote the session binding to reflect negotiated capabilities so
-                // the display capsule and other controls unlock only when agreed.
+               // Promote the session binding to reflect negotiated capabilities so
+               // the display capsule and other controls unlock only when agreed.
+                val negotiated = callbackClient.negotiatedCapabilities()
                 val displaySelection =
-                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_MULTI_DISPLAY in
-                        callbackClient.negotiatedCapabilities()
-                if (displaySelection) {
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_MULTI_DISPLAY in negotiated
+                val keyboard =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_KEYBOARD in negotiated
+                val nativePointer =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_POINTER in negotiated
+                if (displaySelection || keyboard || nativePointer) {
+                    val capabilities =
+                        ClientSessionCapabilities.LEGACY_TOUCH_ONLY.copy(
+                            displaySelection = displaySelection,
+                            keyboard = keyboard,
+                            nativePointer = nativePointer,
+                        )
+                    val sink =
+                        if (keyboard || nativePointer) {
+                            StreamClientInputSink(callbackClient, callbackGeneration)
+                        } else {
+                            null
+                        }
                     applyNegotiatedSession(
                         callbackClient,
                         callbackGeneration,
-                        ClientSessionBinding(
-                            ClientSessionCapabilities.LEGACY_TOUCH_ONLY.copy(displaySelection = true),
-                        ),
+                        ClientSessionBinding(capabilities, sink),
+                    )
+                    mainDiag(
+                        "session binding promoted: displaySelection=$displaySelection " +
+                            "keyboard=$keyboard nativePointer=$nativePointer",
                     )
                 }
                 availableDisplays = options
@@ -3231,6 +3258,60 @@ class MainActivity : AppCompatActivity() {
             legacyAction = legacyAction,
             legacyPointers = mappedPointers,
         )
+    }
+
+    /**
+     * Bridges negotiated native input into the active Protocol v1 session.
+     * Every send is gated on the owning session generation so a stale
+     * connection or decoder cannot inject into a newer session.
+     */
+    private inner class StreamClientInputSink(
+        private val client: StreamClient,
+        private val generation: Long,
+    ) : ClientSessionInputSink {
+        override fun sendKey(input: ClientKeyInput): Boolean {
+            if (!isCurrentSession(client, generation)) return false
+            return client.sendKey(
+                usbHidUsage = input.usbHidUsage,
+                pressed = input.pressed,
+                modifierMask = NativeInputWire.modifierMask(input.modifiers),
+            )
+        }
+
+        override fun sendPointer(input: ClientPointerInput): Boolean {
+            if (!isCurrentSession(client, generation)) return false
+            return when (input.action) {
+                ClientPointerAction.SCROLL ->
+                    client.sendScroll(
+                        deltaX = input.horizontalScroll.toDouble(),
+                        deltaY = input.verticalScroll.toDouble(),
+                    )
+
+                ClientPointerAction.MOVE ->
+                    client.sendPointer(
+                        phase = InputPhase.INPUT_PHASE_CHANGED,
+                        x = input.x,
+                        y = input.y,
+                        buttonMask = NativeInputWire.buttonMask(input.buttonState),
+                    )
+
+                ClientPointerAction.BUTTON_PRESS ->
+                    client.sendPointer(
+                        phase = InputPhase.INPUT_PHASE_BEGAN,
+                        x = input.x,
+                        y = input.y,
+                        buttonMask = NativeInputWire.buttonMask(input.buttonState),
+                    )
+
+                ClientPointerAction.BUTTON_RELEASE ->
+                    client.sendPointer(
+                        phase = InputPhase.INPUT_PHASE_ENDED,
+                        x = input.x,
+                        y = input.y,
+                        buttonMask = NativeInputWire.buttonMask(input.buttonState),
+                    )
+            }
+        }
     }
 
     private fun mapInputPoint(
