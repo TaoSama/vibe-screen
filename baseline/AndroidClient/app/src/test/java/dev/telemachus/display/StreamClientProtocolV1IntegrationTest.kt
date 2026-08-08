@@ -661,6 +661,7 @@ class StreamClientProtocolV1IntegrationTest {
                 Capability.CAPABILITY_KEYBOARD,
                 Capability.CAPABILITY_POINTER,
                 Capability.CAPABILITY_MULTI_DISPLAY,
+                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
             ),
             clientHello.clientHello.capabilitiesList,
         )
