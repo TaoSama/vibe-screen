@@ -287,11 +287,14 @@ host advertises its online physical displays plus, when the private
 virtual-display API is available, one selectable virtual extended display so a
 single-monitor Mac can still offer a second display to switch to; selecting it
 switches the capture source in place and renegotiates video with a bumped
-config epoch. An earlier inline-chip build verified the in-place
-physical<->virtual<->physical capture switch on the Xiaomi 12 with no session
-teardown; the current dropdown-selector capsule passes offline unit and build
-gates but its on-device round-trip re-verification is still pending a host
-Screen Recording re-grant. Keyboard, native mouse, and scroll input are now
+config epoch. The dropdown-selector capsule's in-place
+physical<->virtual<->physical capture switch is now verified on the Xiaomi 12
+with no session teardown: two full round-trips held 60 FPS with zero dropped
+frames and no client disconnect after a host-side fix that stopped a single
+client display request from emitting two StartDisplayResponse frames (the
+second of which arrived in the STREAMING state and previously forced an
+INVALID_PEER_MESSAGE teardown on the virtual->physical leg). Keyboard, native
+mouse, and scroll input are now
 wired end to end in source (host CGEvent injection plus client capability
 negotiation and forwarding) but remain unverified on device rather than shipped.
 
@@ -441,9 +444,11 @@ network quality may increase it.
 
 The Xiaomi 12 is the primary acceptance target for decoding, protocol behavior,
 input, networking, and performance. As of 2026-08-08 the Xiaomi 12 has recorded
-verified streaming, touch, reconnect, a 30-minute soak, and display-selection
-negotiation over USB; the two-hour no-growth soak and on-device virtual-display
-switching remain open gates. Earlier Android evidence also comes from Nubia
+verified streaming, touch, reconnect, a 30-minute soak, display-selection
+negotiation, and the physical<->virtual<->physical display-switch round-trip
+over USB; the two-hour no-growth soak and true private-API virtual-display
+creation/capture (which needs a host relaunch and manual Screen Recording
+re-grant) remain open gates. Earlier Android evidence also comes from Nubia
 P0110. Final tablet
 selection emphasizes
 an 8–9 inch high-density 90/120 Hz panel, Wi-Fi 6 or newer, stable low-latency
