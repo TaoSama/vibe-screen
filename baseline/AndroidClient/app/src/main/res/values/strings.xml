@@ -42,6 +42,17 @@
     <string name="rotation_180">180°</string>
     <string name="rotation_270">270°</string>
     <string name="input_capability_touch_only">Touch, long-press right click, drag, scroll, and pinch use the current host touch path. Keyboard shortcuts and native pointer buttons require a compatible negotiated host session.</string>
+    <string name="video_section_title">Video</string>
+    <string name="video_quality_label">Quality</string>
+    <string name="video_quality_auto">Auto</string>
+    <string name="video_quality_smooth">Smooth</string>
+    <string name="video_quality_balanced">Balanced</string>
+    <string name="video_quality_sharp">Sharp</string>
+    <string name="video_frame_rate_label">Frame rate</string>
+    <string name="video_frame_rate_value">%1$d fps</string>
+    <string name="video_bitrate_label">Bitrate</string>
+    <string name="video_bitrate_value">%1$d Mbps</string>
+    <string name="video_control_unavailable">Connect to a compatible Mac session to tune video quality.</string>
     <string name="keyboard_requires_compatible_host">Keyboard input is unavailable: the connected Mac session supports touch only. Update both apps to a compatible negotiated session.</string>
     <string name="stats_fps">FPS</string>
     <string name="stats_bitrate">BITRATE</string>

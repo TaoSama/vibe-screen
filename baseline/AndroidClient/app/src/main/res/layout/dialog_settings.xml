@@ -144,6 +144,185 @@
                 android:textSize="13sp" />
         </LinearLayout>
 
+        <!-- Video Section -->
+        <LinearLayout
+            android:id="@+id/videoSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/settings_item_bg"
+            android:padding="16dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/video_section_title"
+                android:textColor="@color/on_surface"
+                android:textSize="17sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/video_quality_label"
+                android:textColor="@color/on_surface_muted"
+                android:textSize="13sp"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.button.MaterialButtonToggleGroup
+                android:id="@+id/videoQualityGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:selectionRequired="true"
+                app:singleSelection="true">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/videoQualityAuto"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:checkable="true"
+                    android:paddingStart="2dp"
+                    android:paddingEnd="2dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:text="@string/video_quality_auto" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/videoQualitySmooth"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:checkable="true"
+                    android:paddingStart="2dp"
+                    android:paddingEnd="2dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:text="@string/video_quality_smooth" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/videoQualityBalanced"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:checkable="true"
+                    android:paddingStart="2dp"
+                    android:paddingEnd="2dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:text="@string/video_quality_balanced" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/videoQualitySharp"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:checkable="true"
+                    android:paddingStart="2dp"
+                    android:paddingEnd="2dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:text="@string/video_quality_sharp" />
+            </com.google.android.material.button.MaterialButtonToggleGroup>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/video_frame_rate_label"
+                android:textColor="@color/on_surface_muted"
+                android:textSize="13sp"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.button.MaterialButtonToggleGroup
+                android:id="@+id/videoFrameRateGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:selectionRequired="true"
+                app:singleSelection="true">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/videoFps30"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:checkable="true"
+                    android:text="30" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/videoFps60"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:checkable="true"
+                    android:text="60" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/videoFps120"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:checkable="true"
+                    android:text="120" />
+            </com.google.android.material.button.MaterialButtonToggleGroup>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="16dp"
+                android:baselineAligned="false">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/video_bitrate_label"
+                    android:textColor="@color/on_surface_muted"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/videoBitrateValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/accent"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/videoBitrateSlider"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/video_bitrate_label"
+                android:valueFrom="1.0"
+                android:valueTo="100.0"
+                android:value="20.0"
+                android:stepSize="1.0"
+                app:thumbColor="@color/on_surface"
+                app:trackColorActive="@color/accent"
+                app:trackColorInactive="@color/hairline"
+                app:trackHeight="4dp" />
+
+            <TextView
+                android:id="@+id/videoControlUnavailable"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/video_control_unavailable"
+                android:textColor="@color/on_surface_muted"
+                android:textSize="13sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
         <!-- Opacity Section -->
         <LinearLayout
             android:layout_width="match_parent"

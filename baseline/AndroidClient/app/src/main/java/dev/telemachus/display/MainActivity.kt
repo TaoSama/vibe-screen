@@ -30,6 +30,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
 import dev.telemachus.display.databinding.ActivityMainBinding
@@ -1480,6 +1481,98 @@ class MainActivity : AppCompatActivity() {
     }
 
     @SuppressLint("InflateParams", "SetTextI18n")
+    /**
+     * Wire the settings video controls to the client video-preference sender.
+     * When [available] is false the section is disabled and shows a short note,
+     * because the host has not negotiated client video control. Quality and
+     * frame-rate changes send immediately; the bitrate slider updates its label
+     * live and sends once the user stops dragging so a drag does not flood the
+     * host with reconfigurations.
+     */
+    private fun setupVideoControls(
+        available: Boolean,
+        unavailableNote: TextView,
+        qualityGroup: MaterialButtonToggleGroup,
+        qualityButtons: Map<VideoQualityChoice, MaterialButton>,
+        frameRateGroup: MaterialButtonToggleGroup,
+        frameRateButtons: Map<Int, MaterialButton>,
+        bitrateSlider: Slider,
+        bitrateValue: TextView,
+    ) {
+        fun renderBitrate(mbps: Int) {
+            bitrateValue.text = getString(R.string.video_bitrate_value, mbps)
+        }
+
+        // Initialize control state from the saved preferences regardless of
+        // availability so the panel reflects the last choice.
+        qualityButtons[prefs.videoQuality]?.let { qualityGroup.check(it.id) }
+        frameRateButtons[prefs.videoFrameRate]?.let { frameRateGroup.check(it.id) }
+        val initialBitrate =
+            prefs.videoBitrateMbps.coerceIn(
+                ClientVideoBounds.MIN_BITRATE_MBPS,
+                ClientVideoBounds.MAX_BITRATE_MBPS,
+            )
+        bitrateSlider.value = initialBitrate.toFloat()
+        renderBitrate(initialBitrate)
+
+        unavailableNote.visibility = if (available) View.GONE else View.VISIBLE
+        qualityGroup.isEnabled = available
+        frameRateGroup.isEnabled = available
+        qualityButtons.values.forEach { it.isEnabled = available }
+        frameRateButtons.values.forEach { it.isEnabled = available }
+        bitrateSlider.isEnabled = available
+
+        if (!available) return
+
+        qualityGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            val choice =
+                qualityButtons.entries.firstOrNull { it.value.id == checkedId }?.key
+                    ?: return@addOnButtonCheckedListener
+            prefs.videoQuality = choice
+            if (choice == VideoQualityChoice.AUTO) return@addOnButtonCheckedListener
+            // A preset carries no explicit bitrate, so the host maps the preset.
+            streamClient?.setVideoPreferences(
+                bitrateKbps = 0,
+                framesPerSecond = 0,
+                qualityPreset = choice.preset,
+            )
+        }
+
+        frameRateGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            val fps =
+                frameRateButtons.entries.firstOrNull { it.value.id == checkedId }?.key
+                    ?: return@addOnButtonCheckedListener
+            prefs.videoFrameRate = fps
+            streamClient?.setVideoPreferences(
+                bitrateKbps = 0,
+                framesPerSecond = fps,
+                qualityPreset = dev.vibescreen.protocol.v1.VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+            )
+        }
+
+        bitrateSlider.addOnChangeListener { _, value, _ ->
+            renderBitrate(value.toInt())
+        }
+        bitrateSlider.addOnSliderTouchListener(
+            object : Slider.OnSliderTouchListener {
+                override fun onStartTrackingTouch(slider: Slider) = Unit
+
+                override fun onStopTrackingTouch(slider: Slider) {
+                    val mbps = slider.value.toInt()
+                    prefs.videoBitrateMbps = mbps
+                    // An explicit bitrate wins over the preset intent.
+                    streamClient?.setVideoPreferences(
+                        bitrateKbps = mbps * KBPS_PER_MBPS,
+                        framesPerSecond = 0,
+                        qualityPreset = dev.vibescreen.protocol.v1.VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+                    )
+                }
+            },
+        )
+    }
+
     private fun showSettingsDialog() {
         val dialog = Dialog(this)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
@@ -1498,6 +1591,20 @@ class MainActivity : AppCompatActivity() {
         val scaleFillButton = view.findViewById<MaterialButton>(R.id.scaleFillButton)
         val rotationButton = view.findViewById<MaterialButton>(R.id.rotationButton)
         val displayCapability = view.findViewById<TextView>(R.id.displayCapability)
+
+        // Video tuning controls.
+        val videoControlUnavailable = view.findViewById<TextView>(R.id.videoControlUnavailable)
+        val videoQualityGroup = view.findViewById<MaterialButtonToggleGroup>(R.id.videoQualityGroup)
+        val videoQualityAuto = view.findViewById<MaterialButton>(R.id.videoQualityAuto)
+        val videoQualitySmooth = view.findViewById<MaterialButton>(R.id.videoQualitySmooth)
+        val videoQualityBalanced = view.findViewById<MaterialButton>(R.id.videoQualityBalanced)
+        val videoQualitySharp = view.findViewById<MaterialButton>(R.id.videoQualitySharp)
+        val videoFrameRateGroup = view.findViewById<MaterialButtonToggleGroup>(R.id.videoFrameRateGroup)
+        val videoFps30 = view.findViewById<MaterialButton>(R.id.videoFps30)
+        val videoFps60 = view.findViewById<MaterialButton>(R.id.videoFps60)
+        val videoFps120 = view.findViewById<MaterialButton>(R.id.videoFps120)
+        val videoBitrateSlider = view.findViewById<Slider>(R.id.videoBitrateSlider)
+        val videoBitrateValue = view.findViewById<TextView>(R.id.videoBitrateValue)
 
         // Only show Disconnect when actually streaming. Otherwise the button is
         // a no-op and confuses users into clicking it twice.
@@ -1602,6 +1709,35 @@ class MainActivity : AppCompatActivity() {
             applyRotation(displayRotation)
             updateViewportButtons()
         }
+
+        // Video tuning. The controls are only actionable when the host
+        // negotiated client video control; otherwise the section shows a short
+        // note instead of sending requests the host would reject.
+        val videoControlAvailable =
+            streamClient?.negotiatedCapabilities()?.contains(
+                dev.vibescreen.protocol.v1.Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
+            ) == true
+        setupVideoControls(
+            available = videoControlAvailable,
+            unavailableNote = videoControlUnavailable,
+            qualityGroup = videoQualityGroup,
+            qualityButtons =
+                mapOf(
+                    VideoQualityChoice.AUTO to videoQualityAuto,
+                    VideoQualityChoice.SMOOTH to videoQualitySmooth,
+                    VideoQualityChoice.BALANCED to videoQualityBalanced,
+                    VideoQualityChoice.SHARP to videoQualitySharp,
+                ),
+            frameRateGroup = videoFrameRateGroup,
+            frameRateButtons =
+                mapOf(
+                    30 to videoFps30,
+                    60 to videoFps60,
+                    120 to videoFps120,
+                ),
+            bitrateSlider = videoBitrateSlider,
+            bitrateValue = videoBitrateValue,
+        )
 
         resetButton.setOnClickListener {
             prefs.overlayX = -1f
@@ -3533,6 +3669,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val EXTRA_AUTO_CONNECT = "auto_connect"
+        private const val KBPS_PER_MBPS = 1_000
         private const val STATE_AUTOMATIC_USB_CONNECT = "automatic_usb_connect"
         private const val ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE"
         private const val EXTRA_USB_CONNECTED = "connected"
