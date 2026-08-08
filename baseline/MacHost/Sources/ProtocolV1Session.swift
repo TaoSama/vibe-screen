@@ -113,32 +113,51 @@ final class ProtocolV1SessionCoordinator {
                     || configuredDisplays().contains(where: { $0.id == displayID }) else {
                 return []
             }
-            if !displayID.isEmpty { adoptDisplay(id: displayID) }
-            let nextEpoch = configEpoch + 1
-            var response = VSStartDisplayResponse()
-            response.accepted = true
-            response.display = displayDescriptor()
-            response.streamID = streamID
+            return renegotiateSelectedDisplayLocked(
+                displayID: displayID,
+                configEpoch: configEpoch,
+                streamID: streamID,
+                correlationID: 0
+            )
+        }
+    }
 
-            var config = VSVideoConfig()
-            config.configEpoch = nextEpoch
-            config.codec = selectedCodec
-            config.encodedSize = dimensions()
-            config.framesPerSecond = configuration.framesPerSecond
-            config.bitrateKbps = configuration.bitrateKbps
-            config.streamID = streamID
-            config.rotationDegrees = UInt32(clamping: configuration.rotation)
-            advertisedVideoRotation = configuration.rotation
+    /// Shared runtime re-negotiation used by both a host-initiated switch
+    /// (selectDisplayFromClient) and a client-initiated StartDisplayRequest that
+    /// arrives while already streaming. Adopts the new display, bumps the
+    /// configEpoch, moves to awaitingVideoConfig so media is gated until the
+    /// client accepts, and returns the StartDisplayResponse + VideoConfig pair.
+    private func renegotiateSelectedDisplayLocked(
+        displayID: String,
+        configEpoch: UInt64,
+        streamID: UInt64,
+        correlationID: UInt64
+    ) -> [ProtocolV1SessionAction] {
+        if !displayID.isEmpty { adoptDisplay(id: displayID) }
+        let nextEpoch = configEpoch + 1
+        var response = VSStartDisplayResponse()
+        response.accepted = true
+        response.display = displayDescriptor()
+        response.streamID = streamID
 
-            phase = .awaitingVideoConfig(configEpoch: nextEpoch, streamID: streamID)
-            do {
-                return [
-                    .sendControl(try encode(payload: .startDisplayResponse(response), correlationID: 0)),
-                    .sendControl(try encode(payload: .videoConfig(config), correlationID: 0))
-                ]
-            } catch {
-                return serializationFailure()
-            }
+        var config = VSVideoConfig()
+        config.configEpoch = nextEpoch
+        config.codec = selectedCodec
+        config.encodedSize = dimensions()
+        config.framesPerSecond = configuration.framesPerSecond
+        config.bitrateKbps = configuration.bitrateKbps
+        config.streamID = streamID
+        config.rotationDegrees = UInt32(clamping: configuration.rotation)
+        advertisedVideoRotation = configuration.rotation
+
+        phase = .awaitingVideoConfig(configEpoch: nextEpoch, streamID: streamID)
+        do {
+            return [
+                .sendControl(try encode(payload: .startDisplayResponse(response), correlationID: correlationID)),
+                .sendControl(try encode(payload: .videoConfig(config), correlationID: correlationID))
+            ]
+        } catch {
+            return serializationFailure()
         }
     }
 
@@ -246,15 +265,49 @@ final class ProtocolV1SessionCoordinator {
             )
 
         case .startDisplayRequest(let request):
-            guard phase == .awaitingDisplayStart else {
-                return invalidState("StartDisplay is not valid in the current state.", envelope.messageID)
-            }
             guard request.mode == .existing else {
                 return fail(
                     code: .invalidState,
                     message: "The host session only supports selecting an existing display.",
                     correlationID: envelope.messageID
                 )
+            }
+            // A StartDisplayRequest arriving while already streaming is a
+            // client-initiated runtime display switch. Treat it as an in-place
+            // re-selection on the same session: ask the host to switch capture
+            // and re-run the StartDisplay/VideoConfig negotiation with a bumped
+            // epoch so media stays gated until the client accepts. This is the
+            // client half of the display-switch flow; without it the client's
+            // selectDisplay() StartDisplayRequest was rejected with invalidState
+            // and the session tore down (the on-device flap).
+            if case .streaming(let configEpoch, let streamID) = phase {
+                let requestedID = request.sourceDisplayID
+                if requestedID.isEmpty || requestedID == configuration.displayID {
+                    // Re-selecting the active display: re-negotiate in place
+                    // without a capture switch.
+                    return renegotiateSelectedDisplayLocked(
+                        displayID: "",
+                        configEpoch: configEpoch,
+                        streamID: streamID,
+                        correlationID: envelope.messageID
+                    )
+                }
+                guard configuredDisplays().contains(where: { $0.id == requestedID }) else {
+                    return fail(
+                        code: .invalidState,
+                        message: "StartDisplay referenced an unknown or offline display.",
+                        correlationID: envelope.messageID
+                    )
+                }
+                return [.selectDisplay(id: requestedID)] + renegotiateSelectedDisplayLocked(
+                    displayID: requestedID,
+                    configEpoch: configEpoch,
+                    streamID: streamID,
+                    correlationID: envelope.messageID
+                )
+            }
+            guard phase == .awaitingDisplayStart else {
+                return invalidState("StartDisplay is not valid in the current state.", envelope.messageID)
             }
             let requestedID = request.sourceDisplayID
             if requestedID.isEmpty || requestedID == configuration.displayID {
