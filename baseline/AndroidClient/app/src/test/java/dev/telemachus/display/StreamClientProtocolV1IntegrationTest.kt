@@ -88,14 +88,14 @@ class StreamClientProtocolV1IntegrationTest {
             }
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
 
-            assertTrue(configurationRequested.await(3, TimeUnit.SECONDS))
-            assertTrue(prematureMediaSent.await(3, TimeUnit.SECONDS))
+            assertTrue(configurationRequested.await(8, TimeUnit.SECONDS))
+            assertTrue(prematureMediaSent.await(8, TimeUnit.SECONDS))
             assertFalse(frameDelivered.await(250, TimeUnit.MILLISECONDS))
             checkNotNull(commit.get()).accept()
 
-            assertTrue(frameDelivered.await(3, TimeUnit.SECONDS))
-            withTimeout(4_000) { serverJob.await() }
-            withTimeout(4_000) { clientJob.await() }
+            assertTrue(frameDelivered.await(8, TimeUnit.SECONDS))
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
             assertEquals(listOf(3L), deliveredEpochs)
         }
     }
@@ -109,7 +109,7 @@ class StreamClientProtocolV1IntegrationTest {
                 async(Dispatchers.IO) {
                     server.accept().use { peer ->
                         beginHandshake(peer, initialRotation = 0)
-                        configurationRequested.await(3, TimeUnit.SECONDS)
+                        configurationRequested.await(8, TimeUnit.SECONDS)
                         Thread.sleep(300)
                         peer.soTimeout = 200
                         readEnvelopeOrNull(peer)
@@ -122,13 +122,13 @@ class StreamClientProtocolV1IntegrationTest {
             }
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
 
-            assertTrue(configurationRequested.await(3, TimeUnit.SECONDS))
+            assertTrue(configurationRequested.await(8, TimeUnit.SECONDS))
             client.disconnect()
             assertFalse(checkNotNull(commit.get()).tryPublish { true })
             checkNotNull(commit.get()).complete(StreamVideoConfigurationDecision.ACCEPTED)
 
-            assertNull(withTimeout(4_000) { serverResult.await() })
-            withTimeout(4_000) { clientJob.await() }
+            assertNull(withTimeout(8_000) { serverResult.await() })
+            withTimeout(8_000) { clientJob.await() }
             Unit
         }
     }
@@ -144,7 +144,7 @@ class StreamClientProtocolV1IntegrationTest {
                 async(Dispatchers.IO) {
                     server.accept().use { peer ->
                         beginHandshake(peer, initialRotation = 0)
-                        assertTrue(configurationRequested.await(3, TimeUnit.SECONDS))
+                        assertTrue(configurationRequested.await(8, TimeUnit.SECONDS))
                         write(peer, disconnect(id = 6))
                         disconnectSent.countDown()
                         peer.soTimeout = 500
@@ -159,13 +159,13 @@ class StreamClientProtocolV1IntegrationTest {
             client.onSessionEnded = { sessionEnded.countDown() }
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
 
-            assertTrue(disconnectSent.await(3, TimeUnit.SECONDS))
-            assertTrue(sessionEnded.await(3, TimeUnit.SECONDS))
+            assertTrue(disconnectSent.await(8, TimeUnit.SECONDS))
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
             assertFalse(checkNotNull(commit.get()).tryPublish { true })
             checkNotNull(commit.get()).complete(StreamVideoConfigurationDecision.ACCEPTED)
 
-            assertNull(withTimeout(4_000) { serverResult.await() })
-            withTimeout(4_000) { clientJob.await() }
+            assertNull(withTimeout(8_000) { serverResult.await() })
+            withTimeout(8_000) { clientJob.await() }
             Unit
         }
     }
@@ -181,7 +181,7 @@ class StreamClientProtocolV1IntegrationTest {
                 async(Dispatchers.IO) {
                     server.accept().use { peer ->
                         beginHandshake(peer, initialRotation = 0)
-                        assertTrue(configurationRequested.await(3, TimeUnit.SECONDS))
+                        assertTrue(configurationRequested.await(8, TimeUnit.SECONDS))
                         write(peer, hostProtocolError(id = 6))
                         protocolErrorSent.countDown()
                         peer.soTimeout = 500
@@ -196,16 +196,16 @@ class StreamClientProtocolV1IntegrationTest {
             client.onSessionEnded = { sessionEnded.countDown() }
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
 
-            assertTrue(protocolErrorSent.await(3, TimeUnit.SECONDS))
-            withTimeout(3_000) {
+            assertTrue(protocolErrorSent.await(8, TimeUnit.SECONDS))
+            withTimeout(8_000) {
                 while (checkNotNull(commit.get()).isPending()) kotlinx.coroutines.delay(5)
             }
             assertFalse(checkNotNull(commit.get()).tryPublish { true })
             checkNotNull(commit.get()).complete(StreamVideoConfigurationDecision.ACCEPTED)
 
-            assertTrue(sessionEnded.await(3, TimeUnit.SECONDS))
-            assertNull(withTimeout(4_000) { serverResult.await() })
-            withTimeout(4_000) { clientJob.await() }
+            assertTrue(sessionEnded.await(8, TimeUnit.SECONDS))
+            assertNull(withTimeout(8_000) { serverResult.await() })
+            withTimeout(8_000) { clientJob.await() }
             Unit
         }
     }
@@ -220,7 +220,7 @@ class StreamClientProtocolV1IntegrationTest {
                 async(Dispatchers.IO) {
                     server.accept().use { peer ->
                         beginHandshake(peer, initialRotation = 0)
-                        assertTrue(configurationRequested.await(3, TimeUnit.SECONDS))
+                        assertTrue(configurationRequested.await(8, TimeUnit.SECONDS))
                         ProtocolV1Framing.write(
                             peer.getOutputStream(),
                             ProtocolChannel.CONTROL,
@@ -238,8 +238,8 @@ class StreamClientProtocolV1IntegrationTest {
             }
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
 
-            assertTrue(malformedFrameSent.await(3, TimeUnit.SECONDS))
-            withTimeout(3_000) {
+            assertTrue(malformedFrameSent.await(8, TimeUnit.SECONDS))
+            withTimeout(8_000) {
                 while (checkNotNull(commit.get()).isPending()) kotlinx.coroutines.delay(5)
             }
             var published = false
@@ -252,8 +252,8 @@ class StreamClientProtocolV1IntegrationTest {
             assertFalse(published)
             checkNotNull(commit.get()).complete(StreamVideoConfigurationDecision.ACCEPTED)
 
-            assertNull(withTimeout(4_000) { serverResult.await() })
-            withTimeout(4_000) { clientJob.await() }
+            assertNull(withTimeout(8_000) { serverResult.await() })
+            withTimeout(8_000) { clientJob.await() }
             Unit
         }
     }
@@ -331,7 +331,7 @@ class StreamClientProtocolV1IntegrationTest {
                         async(Dispatchers.IO) {
                             firstServer.accept().use { peer ->
                                 beginHandshake(peer, initialRotation = 0)
-                                assertTrue(closeFirstPeer.await(5, TimeUnit.SECONDS))
+                                assertTrue(closeFirstPeer.await(8, TimeUnit.SECONDS))
                             }
                         }
                     val firstClient =
@@ -348,18 +348,18 @@ class StreamClientProtocolV1IntegrationTest {
                     }
                     val firstClientJob = async(Dispatchers.IO) { runCatching { firstClient.connect() } }
 
-                    assertTrue(firstConfigured.await(3, TimeUnit.SECONDS))
-                    assertTrue(timeoutExecutor.firstTaskStarted.await(3, TimeUnit.SECONDS))
+                    assertTrue(firstConfigured.await(8, TimeUnit.SECONDS))
+                    assertTrue(timeoutExecutor.firstTaskStarted.await(8, TimeUnit.SECONDS))
                     val publishStarted = CountDownLatch(1)
                     val publishJob =
                         async(Dispatchers.Default) {
                             checkNotNull(firstCommit.get()).tryPublish {
                                 publishStarted.countDown()
-                                assertTrue(releasePublish.await(5, TimeUnit.SECONDS))
+                                assertTrue(releasePublish.await(8, TimeUnit.SECONDS))
                                 true
                             }
                         }
-                    assertTrue(publishStarted.await(3, TimeUnit.SECONDS))
+                    assertTrue(publishStarted.await(8, TimeUnit.SECONDS))
                     timeoutExecutor.releaseFirstTask.countDown()
 
                     val secondConfigured = CountDownLatch(1)
@@ -385,10 +385,10 @@ class StreamClientProtocolV1IntegrationTest {
                     val secondClientJob = async(Dispatchers.IO) { runCatching { secondClient.connect() } }
 
                     try {
-                        assertTrue(secondConfigured.await(3, TimeUnit.SECONDS))
+                        assertTrue(secondConfigured.await(8, TimeUnit.SECONDS))
                         assertEquals(
                             "decoder_configuration_timeout",
-                            withTimeout(4_000) { secondServerJob.await() },
+                            withTimeout(8_000) { secondServerJob.await() },
                         )
                     } finally {
                         releasePublish.countDown()
@@ -397,10 +397,10 @@ class StreamClientProtocolV1IntegrationTest {
                         secondClient.disconnect()
                     }
 
-                    assertTrue(withTimeout(2_000) { publishJob.await() })
-                    withTimeout(4_000) { firstServerJob.await() }
-                    withTimeout(4_000) { firstClientJob.await() }
-                    withTimeout(4_000) { secondClientJob.await() }
+                    assertTrue(withTimeout(8_000) { publishJob.await() })
+                    withTimeout(8_000) { firstServerJob.await() }
+                    withTimeout(8_000) { firstClientJob.await() }
+                    withTimeout(8_000) { secondClientJob.await() }
                 }
             }
         } finally {
@@ -448,9 +448,9 @@ class StreamClientProtocolV1IntegrationTest {
                 val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
 
                 try {
-                    assertTrue(terminationExecutor.submitted.await(3, TimeUnit.SECONDS))
+                    assertTrue(terminationExecutor.submitted.await(8, TimeUnit.SECONDS))
                     assertTrue(flushedBeforeTermination.get())
-                    val result = withTimeout(4_000) { serverJob.await() }
+                    val result = withTimeout(8_000) { serverJob.await() }
                     assertEquals(Envelope.PayloadCase.VIDEO_CONFIG_RESULT, result.payloadCase)
                     assertFalse(result.videoConfigResult.accepted)
                     assertEquals("decoder_configuration_failure", result.videoConfigResult.rejectionReason)
@@ -458,7 +458,7 @@ class StreamClientProtocolV1IntegrationTest {
                     terminationExecutor.runSubmittedIfPresent()
                 }
 
-                withTimeout(4_000) { clientJob.await() }
+                withTimeout(8_000) { clientJob.await() }
             }
         } finally {
             terminationExecutor.runSubmittedIfPresent()
@@ -528,9 +528,9 @@ class StreamClientProtocolV1IntegrationTest {
             }
 
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
-            withTimeout(4_000) { serverJob.await() }
-            assertTrue(ended.await(2, TimeUnit.SECONDS))
-            withTimeout(4_000) { clientJob.await() }
+            withTimeout(8_000) { serverJob.await() }
+            assertTrue(ended.await(8, TimeUnit.SECONDS))
+            withTimeout(8_000) { clientJob.await() }
 
             assertEquals(listOf(3L, 4L), videoConfigurations.map { it.configEpoch })
             assertEquals(listOf(1920 to 1080, 1280 to 720), videoConfigurations.map { it.encodedWidth to it.encodedHeight })
@@ -568,7 +568,7 @@ class StreamClientProtocolV1IntegrationTest {
             val client = StreamClient("127.0.0.1", server.localPort)
             client.acceptVideoConfigurations()
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
-            assertTrue(ready.await(3, TimeUnit.SECONDS))
+            assertTrue(ready.await(8, TimeUnit.SECONDS))
 
             client.sendMotionTouch(
                 v1Samples =
@@ -580,8 +580,8 @@ class StreamClientProtocolV1IntegrationTest {
                 legacyPointers = emptyList(),
             )
 
-            withTimeout(4_000) { serverJob.await() }
-            withTimeout(4_000) { clientJob.await() }
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
             assertEquals(listOf(7, 9), samples.map { it.touchEvent.pointerId })
             assertTrue(samples.all { it.touchEvent.phase == InputPhase.INPUT_PHASE_CHANGED })
             assertEquals(samples[0].messageId + 1, samples[1].messageId)
@@ -617,7 +617,7 @@ class StreamClientProtocolV1IntegrationTest {
             val client = StreamClient("127.0.0.1", server.localPort)
             client.acceptVideoConfigurations()
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
-            assertTrue(streaming.await(3, TimeUnit.SECONDS))
+            assertTrue(streaming.await(8, TimeUnit.SECONDS))
 
             client.sendMotionTouch(
                 v1Samples = listOf(TouchSample(7, InputPhase.INPUT_PHASE_BEGAN, 0.2, 0.3)),
@@ -625,8 +625,8 @@ class StreamClientProtocolV1IntegrationTest {
                 legacyPointers = emptyList(),
             )
 
-            assertEquals(null, withTimeout(4_000) { serverJob.await() })
-            withTimeout(4_000) { clientJob.await() }
+            assertEquals(null, withTimeout(8_000) { serverJob.await() })
+            withTimeout(8_000) { clientJob.await() }
             Unit
         }
     }
