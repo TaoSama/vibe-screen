@@ -1258,6 +1258,29 @@ class StreamClient(
     }
 
     /**
+     * Ask the host to change video encoding preferences at runtime. No-op unless
+     * the session is streaming and client video control was negotiated. Zero /
+     * unspecified fields leave the corresponding host setting unchanged.
+     */
+    fun setVideoPreferences(
+        bitrateKbps: Int,
+        framesPerSecond: Int,
+        qualityPreset: dev.vibescreen.protocol.v1.VideoQualityPreset,
+    ) {
+        if (!isConnected || wireMode != WireMode.V1) return
+        val session = protocolSession ?: return
+        if (!session.isStreaming) return
+        submitOutbound(
+            kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+            command = OutboundCommand.ProtocolBatch { activeSession ->
+                activeSession
+                    .setVideoPreferences(bitrateKbps, framesPerSecond, qualityPreset)
+                    ?.let { listOf(it) } ?: emptyList()
+            },
+        )
+    }
+
+    /**
      * Ask the host to send an IDR/sync frame.
      *
      * Non-forced requests are rate-limited here so all callers share the same
