@@ -112,7 +112,10 @@ final class ProtocolV1SessionTests: XCTestCase {
             return XCTFail("Expected SessionAccepted")
         }
         XCTAssertEqual(accepted.sessionID, sessionID)
-        XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .keyboard, .pointer, .multiDisplay])
+        // The client hello only offers touch + multiDisplay, so negotiation
+        // (host caps intersect client caps) stays [.touch, .multiDisplay] even
+        // though the host advertises keyboard/pointer in hostHello.
+        XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .multiDisplay])
         XCTAssertNil(try session.makeMediaFrame(payload: Data([1]), timestamp: 1, keyframe: true))
 
         let listActions = session.handleControl(try envelope(
@@ -225,7 +228,7 @@ final class ProtocolV1SessionTests: XCTestCase {
             return XCTFail("Expected HostHello + SessionAccepted")
         }
         XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .multiDisplay])
-        XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .keyboard, .pointer, .multiDisplay])
+        XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .multiDisplay])
     }
 
     func testInvalidDisplayAndStaleEpochFailClosed() throws {
