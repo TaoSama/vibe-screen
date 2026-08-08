@@ -14,9 +14,15 @@ struct ProtocolV1DisplayInfo: Equatable {
 struct ProtocolV1SessionConfiguration {
     static let version: UInt32 = 1
 
-    static func productionHostCapabilities(touchEnabled: Bool) -> Set<VSCapability> {
-        touchEnabled ? [.touch, .multiDisplay] : [.multiDisplay]
-    }
+   static func productionHostCapabilities(touchEnabled: Bool) -> Set<VSCapability> {
+        // Native pointer/keyboard ride the same input toggle as touch: they
+        // require Accessibility to actually inject, but the capability is
+        // advertised so a USB session can negotiate them. When input is
+        // disabled entirely, only multi-display selection is offered.
+        touchEnabled
+            ? [.touch, .keyboard, .pointer, .multiDisplay]
+            : [.multiDisplay]
+   }
 
     let sessionID: Data
     let sessionEpoch: UInt64

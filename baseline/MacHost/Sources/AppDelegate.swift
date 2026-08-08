@@ -215,6 +215,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var settings = DisplaySettings()
     var settingsWindow: SettingsWindowController?
     var statusItem: NSStatusItem?
+    /// Injects client-driven native pointer/scroll/keyboard input as CGEvents.
+    /// Shares the touch coordinate mapping via StreamInputMapping.
+    private let streamInputInjector = StreamInputInjector()
     let pairedDeviceStore = PairedDeviceStore()
     let windowRecoveryManager = WindowRecoveryManager()
     /// Name of the wireless device currently streaming (nil when no wireless client is active).
@@ -2052,14 +2055,62 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                             token: startToken,
                             server: configuredServer,
                             clientGeneration: clientGeneration
+                   ) {
+                       self.cancelActiveInput(releaseDrag: true)
+                   }
+               }
+           }
+
+            streamingServer?.onPointerEvent = {
+                [weak self, weak configuredServer]
+                x, y, phase, buttonMask, clientGeneration in
+                Task { @MainActor in
+                    guard let self, let configuredServer else { return }
+                    self.performSessionCallback(
+                            token: startToken,
+                            server: configuredServer,
+                            clientGeneration: clientGeneration
                     ) {
-                        self.cancelActiveInput(releaseDrag: true)
+                        self.handleClientPointer(
+                            x: x, y: y, phase: phase, buttonMask: buttonMask
+                        )
+                    }
+                }
+            }
+            streamingServer?.onScrollEvent = {
+                [weak self, weak configuredServer]
+                deltaX, deltaY, clientGeneration in
+                Task { @MainActor in
+                    guard let self, let configuredServer else { return }
+                    self.performSessionCallback(
+                            token: startToken,
+                            server: configuredServer,
+                            clientGeneration: clientGeneration
+                    ) {
+                        self.handleClientScroll(deltaX: deltaX, deltaY: deltaY)
+                    }
+                }
+            }
+            streamingServer?.onKeyEvent = {
+                [weak self, weak configuredServer]
+                usage, pressed, modifiers, text, clientGeneration in
+                Task { @MainActor in
+                    guard let self, let configuredServer else { return }
+                    self.performSessionCallback(
+                            token: startToken,
+                            server: configuredServer,
+                            clientGeneration: clientGeneration
+                    ) {
+                        self.handleClientKey(
+                            usage: usage, pressed: pressed,
+                            modifiers: modifiers, text: text
+                        )
                     }
                 }
             }
 
-            streamingServer?.onStats = {
-                [weak self, weak configuredServer] fps, mbps, clientGeneration in
+           streamingServer?.onStats = {
+               [weak self, weak configuredServer] fps, mbps, clientGeneration in
                 Task { @MainActor in
                     guard let self, let configuredServer else { return }
                     self.performSessionCallback(
@@ -3105,10 +3156,73 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var momentumVelocityY: CGFloat = 0
     private var lastMomentumPosition: CGPoint = .zero
 
-    // MARK: - Touch Entry Point
+   // MARK: - Touch Entry Point
+
+    /// Shared Accessibility gate for native pointer/keyboard injection. Logs
+    /// once when denied and points the user at the correct System Settings pane.
+    private func nativeInputAccessibilityGranted() -> Bool {
+        if AXIsProcessTrusted() { return true }
+        if !accessibilityWarningShown {
+            accessibilityWarningShown = true
+            print("⚠️  Accessibility not granted - native pointer/keyboard input ignored. " +
+                  "Enable Telemachus under System Settings › Privacy & Security › Accessibility.")
+            settings.hasAccessibilityPermission = false
+        }
+        return false
+    }
+
+    /// Resolves the bounds of the currently captured display, matching the
+    /// touch path (activeDisplayID -> CGDisplayBounds).
+    private func activeDisplayBounds() -> CGRect? {
+        guard let activeDisplayID else { return nil }
+        return CGDisplayBounds(activeDisplayID)
+    }
+
+    // MARK: - Native Pointer / Scroll / Keyboard Entry Points
 
     @discardableResult
-    func handleTouch(x: Float, y: Float, action: Int, pointerCount: Int = 1, x2: Float = 0, y2: Float = 0) -> Bool {
+    func handleClientPointer(x: Float, y: Float, phase: VSInputPhase, buttonMask: UInt32) -> Bool {
+        guard settings.touchEnabled else { return false }
+        guard nativeInputAccessibilityGranted() else { return false }
+        guard let bounds = activeDisplayBounds() else { return false }
+        let injected = streamInputInjector.handlePointer(
+            normalizedX: x, normalizedY: y, phase: phase,
+            buttonMask: buttonMask, displayBounds: bounds
+        )
+        if injected {
+            debugLog("Pointer injected: phase=\(phase) buttons=\(buttonMask)")
+        }
+        return injected
+    }
+
+    @discardableResult
+    func handleClientScroll(deltaX: Double, deltaY: Double) -> Bool {
+        guard settings.touchEnabled else { return false }
+        guard nativeInputAccessibilityGranted() else { return false }
+        let injected = streamInputInjector.handleScroll(deltaX: deltaX, deltaY: deltaY)
+        if injected {
+            debugLog("Scroll injected: dx=\(deltaX) dy=\(deltaY)")
+        }
+        return injected
+    }
+
+    @discardableResult
+    func handleClientKey(usage: UInt32, pressed: Bool, modifiers: UInt32, text: String) -> Bool {
+        guard settings.touchEnabled else { return false }
+        guard nativeInputAccessibilityGranted() else { return false }
+        let injected = streamInputInjector.handleKey(
+            usbHIDUsage: usage, pressed: pressed, modifierMask: modifiers
+        )
+        if injected {
+            debugLog("Key injected: hid=\(usage) pressed=\(pressed) modifiers=\(modifiers)")
+        } else {
+            debugLog("Key unmapped (dropped): hid=\(usage)")
+        }
+        return injected
+    }
+
+   @discardableResult
+   func handleTouch(x: Float, y: Float, action: Int, pointerCount: Int = 1, x2: Float = 0, y2: Float = 0) -> Bool {
         guard settings.touchEnabled else { return false }
 
         if !AXIsProcessTrusted() {
@@ -3483,12 +3597,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         momentumVelocityY = 0
     }
 
-    private func cancelActiveInput(releaseDrag: Bool) {
-        cancelLongPressTimer()
-        stopMomentumScroll()
-        if releaseDrag, gestureState == .dragging, AXIsProcessTrusted() {
-            injectMouseUp(at: touchLastPosition)
-        }
+   private func cancelActiveInput(releaseDrag: Bool) {
+       cancelLongPressTimer()
+       stopMomentumScroll()
+       if releaseDrag, gestureState == .dragging, AXIsProcessTrusted() {
+           injectMouseUp(at: touchLastPosition)
+       }
+        streamInputInjector.reset()
         gestureState = .idle
         touchStartPosition = .zero
         touchLastPosition = .zero

@@ -17,8 +17,10 @@ enum ProtocolV1SelfTest {
         testMultiDisplaySelection(failures: &failures)
         testVirtualDisplayCatalog(failures: &failures)
         testRejections(failures: &failures)
-        testInputHeartbeatAndMedia(failures: &failures)
-        testTouchTargetAndDisconnect(failures: &failures)
+       testInputHeartbeatAndMedia(failures: &failures)
+       testTouchTargetAndDisconnect(failures: &failures)
+        testNativePointerKeyboardInput(failures: &failures)
+        testNativeInputMapping(failures: &failures)
         if failures.isEmpty {
             print("Protocol v1 self-test: PASS (framing, golden, negotiation, display/video gate, epoch, targeted input, heartbeat, graceful disconnect, error, media)")
             return true
@@ -145,7 +147,8 @@ enum ProtocolV1SelfTest {
 
     private static func testNegotiationAndMediaGate(failures: inout [String]) {
         do {
-            guard ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true) == [.touch, .multiDisplay],
+            guard ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true)
+                    == [.touch, .keyboard, .pointer, .multiDisplay],
                   ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false) == [.multiDisplay] else {
                 failures.append("production HostHello capabilities are not exact")
                 return
@@ -164,7 +167,7 @@ enum ProtocolV1SelfTest {
             guard helloResponses.count == 2,
                   case .hostHello(let hostHello)? = helloResponses[0].payload,
                   case .sessionAccepted(let accepted)? = helloResponses[1].payload,
-                  hostHello.capabilities == [.touch, .multiDisplay],
+                  Set(hostHello.capabilities) == [.touch, .keyboard, .pointer, .multiDisplay],
                   accepted.sessionID == sessionID,
                   accepted.negotiatedCapabilities == [.touch, .multiDisplay] else {
                 failures.append("ClientHello did not produce HostHello + SessionAccepted")
@@ -416,7 +419,9 @@ enum ProtocolV1SelfTest {
 
             let capabilitySession = makeSession()
             var capabilityHello = clientHello()
-            capabilityHello.clientHello.requiredCapabilities = [.keyboard]
+            // Stylus stays unadvertised by the host, so it is the reliable
+            // negative case now that keyboard/pointer are negotiated.
+            capabilityHello.clientHello.requiredCapabilities = [.stylus]
             guard try protocolError(capabilitySession.handleControl(capabilityHello.serializedData())).code == .unsupportedCapability else {
                 failures.append("unsupported required capability was not rejected")
                 return
@@ -578,6 +583,124 @@ enum ProtocolV1SelfTest {
         }
     }
 
+    /// Verifies that a client advertising keyboard + pointer negotiates them
+    /// and that PointerEvent/ScrollEvent/KeyEvent produce the matching session
+    /// actions, while a touch-only client is denied those inputs.
+    private static func testNativePointerKeyboardInput(failures: inout [String]) {
+        do {
+            let session = try readySession(
+                clientCapabilities: [.touch, .keyboard, .pointer, .multiDisplay]
+            )
+
+            var point = VSNormalizedPoint()
+            point.x = 0.4
+            point.y = 0.6
+            var pointer = VSPointerEvent()
+            pointer.inputID = 1
+            pointer.phase = .began
+            pointer.position = point
+            pointer.buttonMask = StreamInputWire.buttonPrimary
+            let pointerActions = session.handleControl(try envelope(
+                id: 10, payload: .pointerEvent(pointer)
+            ).serializedData())
+            guard pointerActions.contains(where: {
+                if case .pointer(let x, let y, let phase, let mask) = $0 {
+                    return abs(x - 0.4) < 0.0001 && abs(y - 0.6) < 0.0001 &&
+                        phase == .began && mask == StreamInputWire.buttonPrimary
+                }
+                return false
+            }) else {
+                failures.append("negotiated pointer event was not dispatched")
+                return
+            }
+
+            var scroll = VSScrollEvent()
+            scroll.inputID = 2
+            scroll.deltaX = 3
+            scroll.deltaY = -7
+            let scrollActions = session.handleControl(try envelope(
+                id: 11, payload: .scrollEvent(scroll)
+            ).serializedData())
+            guard scrollActions.contains(where: {
+                if case .scroll(let dx, let dy) = $0 { return dx == 3 && dy == -7 }
+                return false
+            }) else {
+                failures.append("negotiated scroll event was not dispatched")
+                return
+            }
+
+            var key = VSKeyEvent()
+            key.inputID = 3
+            key.usbHidUsage = 0x04
+            key.pressed = true
+            key.modifierMask = StreamInputWire.modifierCommand
+            let keyActions = session.handleControl(try envelope(
+                id: 12, payload: .keyEvent(key)
+            ).serializedData())
+            guard keyActions.contains(where: {
+                if case .key(let usage, let pressed, let mods, _) = $0 {
+                    return usage == 0x04 && pressed && mods == StreamInputWire.modifierCommand
+                }
+                return false
+            }) else {
+                failures.append("negotiated key event was not dispatched")
+                return
+            }
+
+            // A touch-only client must be refused pointer input with
+            // unsupportedCapability (fail closed).
+            let touchOnly = try readySession()
+            var deniedPointer = VSPointerEvent()
+            deniedPointer.inputID = 1
+            deniedPointer.phase = .began
+            deniedPointer.position = point
+            let deniedActions = touchOnly.handleControl(try envelope(
+                id: 10, payload: .pointerEvent(deniedPointer)
+            ).serializedData())
+            guard try protocolError(deniedActions).code == .unsupportedCapability else {
+                failures.append("touch-only client was not denied pointer input")
+                return
+            }
+        } catch {
+            failures.append("native pointer/keyboard test failed: \(error)")
+        }
+    }
+
+    /// Exercises the pure input mapping used by the CGEvent injector so button,
+    /// scroll, modifier, and HID translations stay correct without a window server.
+    private static func testNativeInputMapping(failures: inout [String]) {
+        let bounds = CGRect(x: 100, y: 200, width: 1920, height: 1080)
+        guard let mid = StreamInputMapping.pointerLocation(normalizedX: 0.5, normalizedY: 0.5, in: bounds),
+              abs(mid.x - (100 + 960)) < 0.0001,
+              abs(mid.y - (200 + 540)) < 0.0001 else {
+            failures.append("pointer location mapping is incorrect")
+            return
+        }
+        if StreamInputMapping.pointerLocation(normalizedX: 1.5, normalizedY: 0.5, in: bounds) != nil {
+            failures.append("out-of-range pointer coordinate was not rejected")
+            return
+        }
+        let wheels = StreamInputMapping.scrollWheels(deltaX: 4.4, deltaY: -9.6)
+        guard wheels.wheel1 == -10, wheels.wheel2 == 4 else {
+            failures.append("scroll wheel mapping is incorrect: \(wheels)")
+            return
+        }
+        let flags = StreamInputMapping.modifierFlags(
+            fromModifierMask: StreamInputWire.modifierShift | StreamInputWire.modifierCommand
+        )
+        guard flags.contains(.maskShift), flags.contains(.maskCommand),
+              !flags.contains(.maskControl), !flags.contains(.maskAlternate) else {
+            failures.append("modifier flag mapping is incorrect")
+            return
+        }
+        guard StreamInputMapping.macKeyCode(fromUSBHIDUsage: 0x04) == 0x00,
+              StreamInputMapping.macKeyCode(fromUSBHIDUsage: 0x28) == 0x24,
+              StreamInputMapping.macKeyCode(fromUSBHIDUsage: 0x00) == nil else {
+            failures.append("HID-to-keycode mapping is incorrect")
+            return
+        }
+    }
+
     private static func touchEvent() -> VSTouchEvent {
         var point = VSNormalizedPoint()
         point.x = 0.25
@@ -730,9 +853,31 @@ enum ProtocolV1SelfTest {
         return request
     }
 
-    private static func readySession() throws -> ProtocolV1SessionCoordinator {
+   private static func readySession() throws -> ProtocolV1SessionCoordinator {
+       let session = makeSession()
+       _ = session.handleControl(try clientHello().serializedData())
+        _ = session.completeCodecNegotiation()
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(displayRequest())
+        ).serializedData())
+        var result = VSVideoConfigResult()
+        result.configEpoch = 1
+        result.streamID = 1
+        result.accepted = true
+       _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(result)).serializedData())
+       return session
+   }
+
+    /// Drives a session to STREAMING with a client that advertises the given
+    /// capabilities, so native pointer/keyboard negotiation can be exercised.
+    private static func readySession(
+        clientCapabilities: [VSCapability]
+    ) throws -> ProtocolV1SessionCoordinator {
         let session = makeSession()
-        _ = session.handleControl(try clientHello().serializedData())
+        var hello = clientHelloEnvelope()
+        hello.clientHello.capabilities = clientCapabilities
+        _ = session.handleControl(try hello.serializedData())
         _ = session.completeCodecNegotiation()
         _ = session.handleControl(try envelope(
             id: 2,
