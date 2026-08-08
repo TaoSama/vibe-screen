@@ -1716,6 +1716,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         "Virtual-display mirror unavailable (\(error.localizedDescription)); " +
                         "falling back to direct main-display capture"
                     )
+                    // Destroy the just-created mirror display before dropping the
+                    // reference so it does not leak/stay registered with
+                    // WindowServer when we fall back to direct capture.
+                    virtualDisplayManager?.destroyDisplay()
                     virtualDisplayManager = nil
                     mirrorCaptureID = mainDisplayID
                 }
@@ -2636,7 +2640,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Serializes runtime display switches so overlapping client taps cannot
     /// interleave two capture rebuilds on the same server/session.
     private var displaySwitchInFlight = false
-    private var pendingDisplaySwitchID: String?
+    /// Latest switch target requested while a switch is already running. Only
+    /// the newest pending target is kept: intermediate taps are superseded, so
+    /// the device/host stays a single serial resource without an unbounded
+    /// backlog.
+    private var pendingDisplaySwitchTarget: DisplaySwitchTarget?
 
     /// Switch the capture source to a client-selected display in place, then
     /// drive the Protocol v1 re-negotiation on the same session so the client
@@ -2694,17 +2702,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Serialize switches: only one capture rebuild runs at a time. A tap that
-    /// arrives mid-switch is coalesced into a single pending follow-up so the
+    /// arrives mid-switch is coalesced into a single pending follow-up (only the
+    /// newest is kept) and applied once the current switch completes, so the
     /// device/host stays a single serial resource.
     private func enqueueDisplaySwitch(target: DisplaySwitchTarget, server: StreamingServer) {
         guard !displaySwitchInFlight else {
-            debugLog("Display switch already in flight; deferring latest request")
+            debugLog("Display switch already in flight; coalescing latest request")
+            pendingDisplaySwitchTarget = target
             return
         }
         displaySwitchInFlight = true
         Task { @MainActor in
-            defer { self.displaySwitchInFlight = false }
             await self.switchCaptureSourceInPlace(target: target, server: server)
+            self.displaySwitchInFlight = false
+            if let pending = self.pendingDisplaySwitchTarget {
+                self.pendingDisplaySwitchTarget = nil
+                self.enqueueDisplaySwitch(target: pending, server: server)
+            }
         }
     }
 
@@ -2734,11 +2748,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let outputSize: (width: Int, height: Int)?
         var newSelectedDisplayID = settings.selectedDisplayID
         let previousVirtualManager = virtualDisplayManager
+        // Track a virtual display created during this switch so an early throw
+        // (before it is promoted to virtualDisplayManager) still tears it down
+        // instead of leaving it registered with WindowServer.
+        var createdVirtualManager: VirtualDisplayManager?
 
         do {
             switch target {
             case .virtual:
                 let manager = VirtualDisplayManager()
+                createdVirtualManager = manager
                 try manager.createDisplay(
                     width: size.width,
                     height: size.height,
@@ -2828,10 +2847,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
         } catch {
             debugLog("Runtime display switch failed: \(error.localizedDescription)")
-            // Roll back a freshly created virtual display so we do not leak it.
-            if case .virtual = target, virtualDisplayManager !== previousVirtualManager {
-                virtualDisplayManager?.destroyDisplay()
-                virtualDisplayManager = previousVirtualManager
+            // Roll back a freshly created virtual display so we do not leak it,
+            // keyed off the local instance rather than the property (which may
+            // not have been promoted yet when the throw happened).
+            if let created = createdVirtualManager {
+                created.destroyDisplay()
+                if virtualDisplayManager === created {
+                    virtualDisplayManager = previousVirtualManager
+                }
             }
             return
         }
