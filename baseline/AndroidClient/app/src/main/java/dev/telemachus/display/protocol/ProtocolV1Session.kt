@@ -329,6 +329,23 @@ internal class ProtocolV1Session(
             }
             throw mediaFailure("Stale or cross-stream media header")
         }
+        // A runtime display switch (selectDisplay) moves the session into
+        // REDISPLAY_REQUESTED and sends a StartDisplayRequest, but the host
+        // keeps producing media on the current configEpoch until it processes
+        // that request. Frames already in flight on the still-current epoch
+        // therefore arrive before the new VideoConfig. Drop them as switch
+        // in-progress instead of hard-failing: without this the very first
+        // in-flight frame trips "Media received before VideoConfig acceptance"
+        // and tears the session down (the on-device flap).
+        if (state == State.REDISPLAY_REQUESTED) {
+            if (configEpoch > 0L && header.configEpoch == configEpoch) {
+                return MediaDisposition.DROP_PENDING_CONFIGURATION
+            }
+            if (retiredConfigEpoch > 0L && header.configEpoch == retiredConfigEpoch) {
+                return MediaDisposition.DROP_RETIRED_CONFIGURATION
+            }
+            throw mediaFailure("Stale or cross-stream media header")
+        }
         if (state != State.STREAMING) throw mediaFailure("Media received before VideoConfig acceptance")
         if (retiredConfigEpoch > 0L && header.configEpoch == retiredConfigEpoch) {
             return MediaDisposition.DROP_RETIRED_CONFIGURATION
