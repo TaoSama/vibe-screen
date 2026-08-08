@@ -1133,11 +1133,102 @@ class StreamClient(
                     OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
                 },
             command = command,
-            timeoutMillis = 0,
+           timeoutMillis = 0,
+       )
+   }
+
+    /**
+     * Forward a native pointer sample (move/drag/button) to the host. buttonMask
+     * uses the shared wire bits (bit0 = primary, bit1 = secondary). No-op unless
+     * pointer input was negotiated and media is streaming.
+     */
+    fun sendPointer(
+        phase: InputPhase,
+        x: Float,
+        y: Float,
+        buttonMask: Int,
+    ): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canSendPointer) return false
+        submitOutbound(
+            kind =
+                if (phase == InputPhase.INPUT_PHASE_CHANGED) {
+                    OutboundCommandScheduler.Kind.MOVE
+                } else {
+                    OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
+                },
+            command =
+                OutboundCommand.ProtocolBatch { activeSession ->
+                    listOf(
+                        activeSession.pointer(
+                            inputId = nextInputId.getAndIncrement(),
+                            phase = phase,
+                            x = x.toDouble(),
+                            y = y.toDouble(),
+                            buttonMask = buttonMask,
+                        ),
+                    )
+                },
         )
+        return true
     }
 
-    // Callback for latency measurement (round-trip ping/pong)
+    /** Forward a scroll delta to the host. No-op unless pointer input negotiated. */
+    fun sendScroll(
+        deltaX: Double,
+        deltaY: Double,
+    ): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canSendPointer) return false
+        submitOutbound(
+            kind = OutboundCommandScheduler.Kind.MOVE,
+            command =
+                OutboundCommand.ProtocolBatch { activeSession ->
+                    listOf(
+                        activeSession.scroll(
+                            inputId = nextInputId.getAndIncrement(),
+                            deltaX = deltaX,
+                            deltaY = deltaY,
+                        ),
+                    )
+                },
+        )
+        return true
+    }
+
+    /**
+     * Forward a key event to the host. modifierMask uses the shared wire bits
+     * (bit0 Shift, bit1 Control, bit2 Alt/Option, bit3 Meta/Command). No-op
+     * unless keyboard input was negotiated and media is streaming.
+     */
+    fun sendKey(
+        usbHidUsage: Int,
+        pressed: Boolean,
+        modifierMask: Int,
+    ): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canSendKeyboard) return false
+        submitOutbound(
+            kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+            command =
+                OutboundCommand.ProtocolBatch { activeSession ->
+                    listOf(
+                        activeSession.key(
+                            inputId = nextInputId.getAndIncrement(),
+                            usbHidUsage = usbHidUsage,
+                            pressed = pressed,
+                            modifierMask = modifierMask,
+                        ),
+                    )
+                },
+        )
+        return true
+    }
+
+   // Callback for latency measurement (round-trip ping/pong)
     var onLatencyMeasured: ((Double) -> Unit)? = null
 
     /** Capabilities negotiated for the active Protocol v1 session, empty otherwise. */

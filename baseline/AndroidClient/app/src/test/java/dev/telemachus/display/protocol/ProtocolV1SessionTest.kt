@@ -39,7 +39,12 @@ class ProtocolV1SessionTest {
         assertEquals(1, hello.clientHello.supportedProtocols.minimum)
         assertEquals(1, hello.clientHello.supportedProtocols.maximum)
         assertEquals(
-            listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY),
+            listOf(
+                Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_KEYBOARD,
+                Capability.CAPABILITY_POINTER,
+                Capability.CAPABILITY_MULTI_DISPLAY,
+            ),
             hello.clientHello.capabilitiesList,
         )
         assertEquals(emptyList<Capability>(), hello.clientHello.requiredCapabilitiesList)
@@ -317,6 +322,49 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun negotiatingKeyboardAndPointerUnlocksNativeInputSenders() {
+        val touchOnly = streamingSession()
+        assertTrue(touchOnly.canSendTouch)
+        assertFalse(touchOnly.canSendPointer)
+        assertFalse(touchOnly.canSendKeyboard)
+
+        val session = nativeInputStreamingSession()
+        assertTrue(session.canSendPointer)
+        assertTrue(session.canSendKeyboard)
+        assertEquals(
+            setOf(
+                Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_KEYBOARD,
+                Capability.CAPABILITY_POINTER,
+                Capability.CAPABILITY_MULTI_DISPLAY,
+            ),
+            session.negotiated,
+        )
+
+        val pointer = session.pointer(200, InputPhase.INPUT_PHASE_BEGAN, 0.4, 0.6, buttonMask = 1)
+        assertEquals(Envelope.PayloadCase.POINTER_EVENT, pointer.payloadCase)
+        assertEquals(InputPhase.INPUT_PHASE_BEGAN, pointer.pointerEvent.phase)
+        assertEquals(0.4, pointer.pointerEvent.position.x, 1e-9)
+        assertEquals(0.6, pointer.pointerEvent.position.y, 1e-9)
+        assertEquals(1, pointer.pointerEvent.buttonMask)
+        assertEquals("display-main", pointer.pointerEvent.target.displayId)
+        assertEquals(42L, pointer.pointerEvent.target.streamId)
+
+        val scroll = session.scroll(201, deltaX = 3.0, deltaY = -7.0)
+        assertEquals(Envelope.PayloadCase.SCROLL_EVENT, scroll.payloadCase)
+        assertEquals(3.0, scroll.scrollEvent.deltaX, 1e-9)
+        assertEquals(-7.0, scroll.scrollEvent.deltaY, 1e-9)
+        assertEquals(42L, scroll.scrollEvent.target.streamId)
+
+        val key = session.key(202, usbHidUsage = 0x04, pressed = true, modifierMask = 8)
+        assertEquals(Envelope.PayloadCase.KEY_EVENT, key.payloadCase)
+        assertEquals(0x04, key.keyEvent.usbHidUsage)
+        assertTrue(key.keyEvent.pressed)
+        assertEquals(8, key.keyEvent.modifierMask)
+        assertEquals(42L, key.keyEvent.target.streamId)
+    }
+
+    @Test
     fun sessionRejectionPreservesReasonAndRetryability() {
         val session = session().also { it.clientHello() }
         session.receive(hostHello(2))
@@ -539,6 +587,32 @@ class ProtocolV1SessionTest {
                 rejectionReason = "",
             )
         }
+
+    private fun nativeInputStreamingSession(): ProtocolV1Session {
+        val caps =
+            listOf(
+                Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_KEYBOARD,
+                Capability.CAPABILITY_POINTER,
+                Capability.CAPABILITY_MULTI_DISPLAY,
+            )
+        return session().also {
+            it.clientHello()
+            it.receive(hostHello(2, advertisedCapabilities = caps))
+            it.receive(sessionAccepted(3, negotiatedCapabilities = caps))
+            it.receive(displayList(4))
+            it.receive(startDisplay(5))
+            val requested =
+                it.receive(videoConfig(6)).single()
+                    as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        }
+    }
 
     private fun multiDisplayStreamingSession(): ProtocolV1Session =
         session().also {
