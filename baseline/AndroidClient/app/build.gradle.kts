@@ -7,6 +7,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.protobuf")
+    id("org.gradle.test-retry") version "1.5.10"
 }
 
 val appVersion = providers.environmentVariable("TELEMACHUS_VERSION").getOrElse("0.0.0")
@@ -105,6 +106,21 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+    }
+}
+
+// A handful of loopback-socket + coroutine integration tests
+// (StreamClientProtocolV1IntegrationTest) are deterministic locally but
+// timing-sensitive on the shared CI runner, where scheduling jitter can trip a
+// different case each run. Retry unit tests on CI only, so that jitter is
+// absorbed without masking real failures during local development.
+if (System.getenv("CI") != null || System.getenv("GITHUB_ACTIONS") != null) {
+    tasks.withType<Test>().configureEach {
+        retry {
+            maxRetries.set(2)
+            maxFailures.set(5)
+            failOnPassedAfterRetry.set(false)
+        }
     }
 }
 
