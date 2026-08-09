@@ -46,7 +46,7 @@ input, and two-hour-soak evidence is recorded separately under
   codec error and controlled thermal behavior. A two-hour soak has run on the
   Xiaomi 13 with a stable stream and stable client memory; the host
   resident-memory no-growth gate is still open (host RSS grew about 18.3 MB), so
-  a memory-stable two-hour run remains required before claiming no-growth.
+  a host-RSS-stable two-hour run remains required before claiming no-growth.
 
 Internal timestamps may measure encoder, decoder, queue, and reconnect
 durations only within their own clock domain. Glass-to-glass latency requires
