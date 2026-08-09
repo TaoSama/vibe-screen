@@ -18,6 +18,7 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.InetSocketAddress
 import java.net.SocketAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -189,32 +190,19 @@ class StreamClientCancellationTest {
 
     @Test
     fun readySessionEofRemainsRetryableWithSpecificReason() =
-        runWithServerDispatcher { serverDispatcher ->
-            repeat(25) { iteration ->
-                ServerSocket(0).use { server ->
+        runBlocking {
+            ServerSocket(0).use { server ->
+                server.soTimeout = FAKE_SERVER_SYNC_TIMEOUT_MILLIS
+                repeat(25) { iteration ->
                     val writerFailureObserved = CountDownLatch(1)
                     val displayReadyObserved = CountDownLatch(1)
-                    val serverReady = CountDownLatch(1)
-                    val clientSocket = FailAfterBytesSocket(allowedBytes = 1)
-                    val serverJob =
-                        async(serverDispatcher) {
-                            serverReady.countDown()
-                            server.accept().use { socket ->
-                                assertEquals(0x0d, socket.getInputStream().read())
-                                DataOutputStream(socket.getOutputStream()).apply {
-                                    writeDisplay(1920, 1080, 0)
-                                    flush()
-                                }
-                                assertTrue(
-                                    "iteration $iteration did not inject the concurrent writer failure",
-                                    writerFailureObserved.await(2, TimeUnit.SECONDS),
-                                )
-                                assertTrue(
-                                    "iteration $iteration closed before the display became ready",
-                                    displayReadyObserved.await(2, TimeUnit.SECONDS),
-                                )
-                            }
-                        }
+                    val failureInjectionArmed = CountDownLatch(1)
+                    val clientSocket =
+                        FailAfterBytesSocket(
+                            allowedBytes = 1,
+                            failureInjectionArmed = failureInjectionArmed,
+                        )
+                    clientSocket.connectForTest(InetSocketAddress("127.0.0.1", server.localPort))
                     val failures = mutableListOf<SessionFailure>()
                     val retries = mutableListOf<Long>()
                     val client =
@@ -231,12 +219,28 @@ class StreamClientCancellationTest {
                             onReconnectSuggested = { retries += it }
                         }
 
-                    assertTrue(
-                        "iteration $iteration fake server did not start",
-                        serverReady.await(1, TimeUnit.SECONDS),
-                    )
-                    val connectResult = runCatching { client.connect() }
-                    withTimeout(2_000) { serverJob.await() }
+                    val socket = server.accept()
+                    val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+                    socket.use {
+                        assertEquals(0x0d, socket.getInputStream().read())
+                        DataOutputStream(socket.getOutputStream()).apply {
+                            writeDisplay(1920, 1080, 0)
+                            flush()
+                        }
+                        failureInjectionArmed.countDown()
+                        assertTrue(
+                            "iteration $iteration did not inject the concurrent writer failure",
+                            writerFailureObserved.await(FAKE_SERVER_SYNC_TIMEOUT_SECONDS, TimeUnit.SECONDS),
+                        )
+                        assertTrue(
+                            "iteration $iteration closed before the display became ready",
+                            displayReadyObserved.await(FAKE_SERVER_SYNC_TIMEOUT_SECONDS, TimeUnit.SECONDS),
+                        )
+                    }
+                    val connectResult =
+                        withTimeout(FAKE_SERVER_SYNC_TIMEOUT_MILLIS.toLong()) {
+                            clientJob.await()
+                        }
                     connectResult.getOrThrow()
                     assertEquals(
                         "iteration $iteration",
@@ -506,9 +510,23 @@ class StreamClientCancellationTest {
 
     private class FailAfterBytesSocket(
         private val allowedBytes: Int,
+        private val failureInjectionArmed: CountDownLatch? = null,
     ) : Socket() {
+        fun connectForTest(endpoint: SocketAddress) {
+            super.connect(endpoint, FAKE_SERVER_SYNC_TIMEOUT_MILLIS)
+        }
+
+        override fun connect(
+            endpoint: SocketAddress?,
+            timeout: Int,
+        ) {
+            // This fake is single-use: preconnection removes listener-port churn
+            // while the test exercises the later writer/EOF ordering.
+            if (!isConnected) super.connect(endpoint, timeout)
+        }
+
         override fun getOutputStream(): OutputStream =
-            FailAfterBytesOutputStream(super.getOutputStream(), allowedBytes)
+            FailAfterBytesOutputStream(super.getOutputStream(), allowedBytes, failureInjectionArmed)
 
         override fun setSoTimeout(timeout: Int) {
             // This test exercises writer/EOF ordering, not the 250 ms upgrade
@@ -520,11 +538,12 @@ class StreamClientCancellationTest {
     private class FailAfterBytesOutputStream(
         private val delegate: OutputStream,
         private val allowedBytes: Int,
+        private val failureInjectionArmed: CountDownLatch? = null,
     ) : OutputStream() {
         private var written = 0
 
         override fun write(value: Int) {
-            if (written >= allowedBytes) throw IOException("injected capability failure")
+            if (written >= allowedBytes) throwInjectedFailure()
             delegate.write(value)
             written++
         }
@@ -534,9 +553,17 @@ class StreamClientCancellationTest {
             offset: Int,
             length: Int,
         ) {
-            if (written + length > allowedBytes) throw IOException("injected capability failure")
+            if (written + length > allowedBytes) throwInjectedFailure()
             delegate.write(bytes, offset, length)
             written += length
+        }
+
+        private fun throwInjectedFailure(): Nothing {
+            val armed = failureInjectionArmed
+            if (armed != null && !armed.await(FAKE_SERVER_SYNC_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                throw IOException("fake server did not arm the writer failure")
+            }
+            throw IOException("injected capability failure")
         }
 
         override fun flush() = delegate.flush()
@@ -604,5 +631,10 @@ class StreamClientCancellationTest {
         override fun setTcpNoDelay(on: Boolean) = Unit
 
         override fun setSoTimeout(timeout: Int) = Unit
+    }
+
+    private companion object {
+        const val FAKE_SERVER_SYNC_TIMEOUT_SECONDS = 5L
+        const val FAKE_SERVER_SYNC_TIMEOUT_MILLIS = 5_000
     }
 }
