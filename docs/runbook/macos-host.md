@@ -19,11 +19,12 @@ dummy display is required when macOS does not expose a usable headless display.
 ## Install a release artifact
 
 1. Download the matching `Vibe-Screen-macos-<version>-<architecture>.zip` and
-   `.sha256` file from the release.
+   the aggregate `SHA256SUMS` file from the release.
 2. Verify it before opening:
 
    ```bash
-   shasum -a 256 -c Vibe-Screen-macos-<version>-<architecture>.sha256
+   grep '  Vibe-Screen-macos-<version>-<architecture>\.zip$' SHA256SUMS \
+     | shasum -a 256 -c -
    ```
 
 3. Unzip it and move `Vibe Screen.app` to `/Applications`.
