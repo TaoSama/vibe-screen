@@ -1,6 +1,6 @@
 # 2026-08-08 fuxi 下拉胶囊真机验证（稳定签名 + Protocol v1 能力协商）
 
-设备：Xiaomi 12 (fuxi, Android 16, USB) adb=8a023e3a（电量 100% 那台，唯一使用）
+设备：小米 13 (2211133C, fuxi, Android 16, USB) adb=8a023e3a（电量 100% 那台，唯一使用）
 Host：/Applications/Telemachus.app，稳定自签 Telemachus Dev，CDHash d0679aec（重建不变）
 分支：codex/phase1-display-selection-capsule
 

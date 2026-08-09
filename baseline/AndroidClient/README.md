@@ -216,9 +216,9 @@ Internet, cross-service revoke, packet capture, latency, or soak.
 
 On 2026-08-04, the controlled remote ADB endpoint (redacted as
 `$ADB_ENDPOINT`) identified itself as a nubia P0110 (`pacific`) running
-Android 16/API 36, not a Xiaomi 12. It installed and launched the debug APK and
+Android 16/API 36, not a Xiaomi 13 (2211133C). It installed and launched the debug APK and
 decoded a real 1512×982 HEVC stream with Qualcomm's hardware decoder. This is
-useful device evidence but does not satisfy Xiaomi 12 acceptance.
+useful device evidence but does not satisfy Xiaomi 13 (2211133C) acceptance.
 
 On 2026-08-05, the same Nubia device installed the Phase 1 Android client and
 decoded a repository-generated 2000×1124 HEVC stream with Qualcomm hardware.
@@ -236,7 +236,7 @@ That post-device build has not been installed or exercised with a real Mac or
 physical peripherals.
 
 The following remain separate release gates: Protocol v1 real-device
-interoperability, Xiaomi 12 coverage, a physical
+interoperability, Xiaomi 13 (2211133C) coverage, a physical
 8–9 inch tablet matrix, unlocked-Mac Phase 1 interaction acceptance, two-hour
 and eight-hour controlled soak runs, external-camera
 glass-to-glass latency, keyboard/native-mouse/stylus protocol interoperability,

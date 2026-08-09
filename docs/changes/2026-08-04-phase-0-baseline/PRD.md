@@ -11,12 +11,12 @@ that later phases can extend without inheriting an implicit wire protocol or
 platform-specific architecture.
 
 Phase 0 is complete only when the imported code, protocol contract, module
-boundaries, reliability behavior, and Xiaomi 12 evidence all agree. A local
+boundaries, reliability behavior, and Xiaomi 13 (2211133C) evidence all agree. A local
 build alone is not completion.
 
 ## Scope
 
-The first slice supports one Mac host, one Xiaomi 12, one display stream, and
+The first slice supports one Mac host, one Xiaomi 13 (2211133C), one display stream, and
 USB as the mandatory transport. LAN may remain a buildable loopback path.
 
 It must demonstrate:
@@ -42,7 +42,7 @@ It must demonstrate:
 - `buf lint` and `buf build` pass for Protocol v1.
 - Android unit tests and debug APK build pass from a clean checkout.
 - macOS release build and unit tests pass with full Xcode selected.
-- On Xiaomi 12, USB streams 1080p30 for 30 minutes without crash, deadlock,
+- On Xiaomi 13 (2211133C), USB streams 1080p30 for 30 minutes without crash, deadlock,
   unbounded queue depth, or steadily increasing latency/memory.
 - HEVC rejection selects H.264 explicitly; it never silently changes codec.
 - A USB disconnect reconnects and no frame from the prior `session_epoch` is

@@ -1,6 +1,6 @@
 # 2026-08-08 fuxi 顶部胶囊切 display（单物理屏 → 物理屏 + 虚拟扩展屏）
 
-设备：小米 12 (fuxi)，Android 16 LineageOS，USB。下文命令用占位符 `$ADB_SERIAL`
+设备：小米 13 (2211133C, fuxi)，Android 16 LineageOS，USB。下文命令用占位符 `$ADB_SERIAL`
 代表该机的 adb 序列号，`$REPO` 代表本仓库检出根目录；执行前先各自 export 实际值。
 主机：macOS 26.4.1 (Build 25E253)，仅 1 块物理屏（Built-in Liquid Retina XDR）。
 

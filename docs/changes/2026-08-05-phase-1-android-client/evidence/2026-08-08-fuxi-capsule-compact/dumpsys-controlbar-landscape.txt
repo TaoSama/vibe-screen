@@ -1,5 +1,5 @@
 # dumpsys activity top — controlBar geometry (landscape 2400x1080, density 420 -> 2.625 px/dp)
-# captured 2026-08-08 on Xiaomi 12 fuxi (8a023e3a) while streaming
+# captured 2026-08-08 on Xiaomi 13 (2211133C) fuxi (8a023e3a) while streaming
             InsetsSource id=16cb0000 type=statusBars frame=[0,0][1080,110] visible=true flags= sideHint=TOP boundingRects=null
             InsetsSource id=16cb0000 type=statusBars frame=[0,0][2400,84] visible=false flags= sideHint=TOP boundingRects=null
                   androidx.cardview.widget.CardView{801e61d V.E...... ........ 1566,42-2358,202 #7f0801f6 app:id/statusBar}

@@ -186,7 +186,7 @@ cryptographic primitive may be introduced.
 
 ### Required device evidence
 
-The target Xiaomi 12 at `$ADB_ENDPOINT` must be connected with ADB, identified,
+The target Xiaomi 13 (2211133C) at `$ADB_ENDPOINT` must be connected with ADB, identified,
 installed, paired, streamed across a genuine Internet/TURN path, exercised for
 touch and keyboard, disconnected/reconnected, switched between networks, and
 soaked. Commands, device properties, APK/version hashes, host/client revision,

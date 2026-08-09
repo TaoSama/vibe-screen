@@ -1,4 +1,4 @@
-# 2026-08-08 fuxi Phase 1 真机验证批次汇总（Xiaomi 12/13, codename fuxi, 8a023e3a, USB）
+# 2026-08-08 fuxi Phase 1 真机验证批次汇总（小米 13 (2211133C), codename fuxi, 8a023e3a, USB）
 
 本批次在真机上关闭/确认的 README Phase 1 gate（每项单独有证据目录或已在 README 引用）：
 

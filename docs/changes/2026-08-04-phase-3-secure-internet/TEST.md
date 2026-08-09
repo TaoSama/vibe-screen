@@ -6,7 +6,7 @@ Every result records UTC time, repository revision or tree hash, host/client
 version, artifact SHA-256, toolchain versions, configuration **without secrets**,
 network topology, direct/relay route, and raw log/evidence paths. A build, fake
 engine, emulator, or loopback result may prove its own layer only; none
-substitutes for the planned Xiaomi 12 Internet end-to-end gate. The existing
+substitutes for the planned Xiaomi 13 (2211133C) Internet end-to-end gate. The existing
 Nubia P0110 record is identified separately and is never relabeled as Xiaomi
 evidence.
 
@@ -175,7 +175,7 @@ adaptation decisions. Go tests also exercise the standalone cryptographic core.
 They do not prove the production composition of WebRTC, platform/product crypto,
 signaling and TURN, Internet connectivity, or E2E security.
 
-No Xiaomi 12 Phase 3 Internet acceptance evidence is recorded here. A narrower
+No Xiaomi 13 (2211133C) Phase 3 Internet acceptance evidence is recorded here. A narrower
 Nubia P0110 local direct/forced-coturn product-session record is listed below;
 it does not close the target Xiaomi, public-Internet, real-capture, handoff,
 latency, or soak criteria.
@@ -339,7 +339,7 @@ That pass is not ScreenCaptureKit, real display content, visible Mac input,
 Android rotation, disconnect/reconnect or network-handoff evidence. It also does
 not prove negative lease cases through the UI, cross-service revocation, public
 Internet/STUN/TURN or carrier/CGNAT traversal, packet capture, latency, or soak;
-those release gates remain open. Xiaomi 12 acceptance also remains open.
+those release gates remain open. Xiaomi 13 (2211133C) acceptance also remains open.
 
 ### Main CI follow-up snapshot (2026-08-06)
 
