@@ -106,6 +106,7 @@ extension StreamViewModel {
              .touchEvent, .pointerEvent, .scrollEvent, .keyEvent, .inputAck, .streamStats,
              .transportStats, .encryptedControlPacket,
              .audioConfigResult, .clipboardOffer, .clipboardRequest, .fileTransferProgress,
+             .setVideoPreferences,
              .hostActionInvoke, .hostActionResult, .wakeHostRequest, .wakeHostResult:
             break
         }
