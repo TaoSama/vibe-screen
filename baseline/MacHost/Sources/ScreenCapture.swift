@@ -1182,19 +1182,23 @@ class ScreenCapture {
     /// is rescheduled to the new rate, and an active SCStream's source interval
     /// is updated so it can deliver the new rate. A no-op when the rate is
     /// unchanged or nothing is streaming, so an unchanged config never disturbs
-    /// the live stream.
+    /// the live stream. Must be called on the main thread (its only caller is
+    /// the @MainActor client-preferences apply), matching the other
+    /// framePacingTimer mutators.
     func updateActiveFrameRate(_ frameRate: Int) {
         let newRate = max(1, frameRate)
         guard newRate != currentFrameRate else { return }
         currentFrameRate = newRate
         refreshRate = newRate
 
-        // Reschedule the pacer on its own queue, preserving the latest source
-        // buffer so the rate change does not blank the stream.
+        // Rebuild the pacer on the main thread so framePacingTimer stays
+        // main-thread-owned (like every other mutator), avoiding a race with
+        // stopStreaming/setCodec. The timer still fires its event handler on the
+        // encode queue via the `on: queue` argument, so pacing stays off-main.
+        // The latest source buffer is preserved so the rate change does not
+        // blank the stream.
         if let queue = encodeQueue {
-            queue.async { [weak self] in
-                self?.rescheduleFramePacerForCurrentRate(on: queue)
-            }
+            rescheduleFramePacerForCurrentRate(on: queue)
         }
 
         // Widen or narrow the SCStream source interval so the capture can
