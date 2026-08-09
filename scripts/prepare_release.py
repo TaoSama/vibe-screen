@@ -25,7 +25,7 @@ ANDROID_VERSION_COMPONENT_MAX = 99
 ANDROID_VERSION_CODE_BASE = 100_000
 ANDROID_VERSION_CODE_MAX = 2_100_000_000
 EXPECTED_ARTIFACT_PATTERNS = {
-    "macOS": "Telemachus-macos-{version}-*.zip",
+    "macOS": "Vibe-Screen-macos-{version}-*.zip",
     "Android": "Telemachus-android-{version}-debug.apk",
     "iOS Simulator": "VibeScreen-ios-simulator-{version}.zip",
 }

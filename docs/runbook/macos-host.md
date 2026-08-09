@@ -1,13 +1,12 @@
 # macOS host installation and operations
 
-This runbook covers the current Telemachus host shipped from the Vibe Screen
-baseline. It describes behavior that exists today, not the complete product
-vision in the root README.
+This runbook covers the current Vibe Screen host. It describes behavior that
+exists today, not the complete product vision in the root README.
 
 ## Support and prerequisites
 
 - Apple silicon Mac running macOS 13 or newer.
-- Android device with the Telemachus client installed.
+- Android device with the Vibe Screen client installed.
 - Android Platform Tools (`adb`) for USB mode.
 - A monitor attached during first setup. A headless Mac cannot grant its own
   Screen Recording or Accessibility permissions.
@@ -19,15 +18,15 @@ dummy display is required when macOS does not expose a usable headless display.
 
 ## Install a release artifact
 
-1. Download the matching `Telemachus-macos-<version>-<architecture>.zip` and
+1. Download the matching `Vibe-Screen-macos-<version>-<architecture>.zip` and
    `.sha256` file from the release.
 2. Verify it before opening:
 
    ```bash
-   shasum -a 256 -c Telemachus-macos-<version>-<architecture>.sha256
+   shasum -a 256 -c Vibe-Screen-macos-<version>-<architecture>.sha256
    ```
 
-3. Unzip it and move `Telemachus.app` to `/Applications`.
+3. Unzip it and move `Vibe Screen.app` to `/Applications`.
 4. Open the app from Finder. Development artifacts are ad-hoc signed and are
    not notarized; only install an artifact you built or obtained from the
    project's official release channel.
@@ -38,7 +37,7 @@ grants.
 
 ## First-run permissions
 
-Telemachus requests two independent permissions:
+Vibe Screen requests two independent permissions:
 
 - **Screen & System Audio Recording** (called **Screen Recording** on older
   macOS): required for capture.
@@ -47,7 +46,7 @@ Telemachus requests two independent permissions:
   keyboard or native-mouse messages.
 
 Grant both in **System Settings → Privacy & Security**, then quit and reopen
-Telemachus. The app rechecks permission while it is running, but a relaunch is
+Vibe Screen. The app rechecks permission while it is running, but a relaunch is
 the most reliable path after a new grant. Never grant Accessibility to an
 untrusted build: it can synthesize system-wide input.
 
@@ -63,7 +62,7 @@ untrusted build: it can synthesize system-wide input.
    adb -s <serial> shell getprop ro.product.model
    ```
 
-3. Select **USB** in Telemachus, choose **Extended Display** or **Current Main
+3. Select **USB** in Vibe Screen, choose **Extended Display** or **Current Main
    Display**, then click **Start**.
 4. The host configures `adb reverse tcp:54321 tcp:54321` and brings the Android
    client to the foreground. If automatic setup fails, run:
@@ -119,18 +118,19 @@ with no usable physical/dummy/Screen Sharing display still require local or
 remote administrator intervention.
 
 If macOS reports that the login item requires approval, open **System Settings
-→ General → Login Items** and approve Telemachus. Registration alone is not
+→ General → Login Items** and approve Vibe Screen. Registration alone is not
 treated as proof that login launch is active.
 
 ## Upgrade and rollback
 
-1. Stop streaming and quit Telemachus.
+1. Stop streaming and quit Vibe Screen.
 2. Keep the previous ZIP until the new version is verified.
-3. Replace `/Applications/Telemachus.app` with the new app; do not run it from
-   a changing Downloads path.
+3. Remove the legacy `/Applications/Telemachus.app` if present, then install the
+   new `/Applications/Vibe Screen.app`; do not keep both bundles or run from a
+   changing Downloads path.
 4. Reopen it, verify the displayed version, permissions, display mode, and one
    USB connection.
-5. If capture or input stopped after replacement, remove the stale Telemachus
+5. If capture or input stopped after replacement, remove the stale Vibe Screen
    entry from the relevant Privacy & Security pane, add the new app again, and
    relaunch. Toggling the old entry off/on may preserve a stale code identity.
 

@@ -20,7 +20,9 @@ from webrtc_m150_notices import NOTICE_RELATIVE_PATH, validate_notice_bundle
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 HOST_ROOT = REPOSITORY_ROOT / "baseline" / "MacHost"
 SOURCE_INFO_PLIST = HOST_ROOT / "Info.plist"
-APP_NAME = "Telemachus"
+PRODUCT_NAME = "Vibe Screen"
+ARTIFACT_NAME = "Vibe-Screen"
+EXECUTABLE_NAME = "Telemachus"
 WEBRTC_FRAMEWORK_NAME = "WebRTC.framework"
 RESOURCE_BUNDLE_NAME = "Telemachus_Telemachus.bundle"
 REPRODUCIBLE_TIMESTAMP = 315_532_800  # 1980-01-01, the ZIP timestamp floor.
@@ -28,7 +30,7 @@ REPRODUCIBLE_TIMESTAMP = 315_532_800  # 1980-01-01, the ZIP timestamp floor.
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Create a versioned Telemachus macOS .app and ZIP archive."
+        description="Create a versioned Vibe Screen macOS .app and ZIP archive."
     )
     parser.add_argument(
         "--version",
@@ -166,8 +168,8 @@ def main() -> int:
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     architecture = platform.machine()
-    artifact_stem = f"{APP_NAME}-macos-{version}-{architecture}"
-    app_path = output_dir / f"{APP_NAME}.app"
+    artifact_stem = f"{ARTIFACT_NAME}-macos-{version}-{architecture}"
+    app_path = output_dir / f"{PRODUCT_NAME}.app"
     archive_path = output_dir / f"{artifact_stem}.zip"
     checksum_path = output_dir / f"{artifact_stem}.sha256"
     for path in (app_path, archive_path, checksum_path):
@@ -188,7 +190,7 @@ def main() -> int:
     binary_dir = Path(
         run(*build_command, "--show-bin-path", cwd=HOST_ROOT)
     )
-    executable = binary_dir / APP_NAME
+    executable = binary_dir / EXECUTABLE_NAME
     if not executable.is_file():
         raise FileNotFoundError(f"Swift build did not produce {executable}")
 
@@ -199,9 +201,9 @@ def main() -> int:
     macos_dir.mkdir(parents=True)
     resources_dir.mkdir(parents=True)
     frameworks_dir.mkdir(parents=True)
-    shutil.copy2(executable, macos_dir / APP_NAME)
-    os.chmod(macos_dir / APP_NAME, 0o755)
-    run("strip", "-S", str(macos_dir / APP_NAME))
+    shutil.copy2(executable, macos_dir / EXECUTABLE_NAME)
+    os.chmod(macos_dir / EXECUTABLE_NAME, 0o755)
+    run("strip", "-S", str(macos_dir / EXECUTABLE_NAME))
     shutil.copy2(HOST_ROOT / "Resources" / "AppIcon.icns", resources_dir)
     shutil.copy2(HOST_ROOT / "Resources" / "Credits.html", resources_dir)
     shutil.copy2(REPOSITORY_ROOT / "baseline" / "LICENSE", resources_dir / "LICENSE.txt")
@@ -223,7 +225,7 @@ def main() -> int:
         raise FileNotFoundError(f"Swift resource bundle omitted required notice: {packaged_notice}")
 
     bundled_plist = dict(source_plist)
-    bundled_plist["CFBundleExecutable"] = APP_NAME
+    bundled_plist["CFBundleExecutable"] = EXECUTABLE_NAME
     bundled_plist["CFBundleIconFile"] = "AppIcon"
     bundled_plist["CFBundleVersion"] = version
     bundled_plist["CFBundleShortVersionString"] = version

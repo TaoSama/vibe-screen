@@ -87,7 +87,7 @@ class PrepareReleaseTests(unittest.TestCase):
     def write_artifacts(self, artifacts: Path, *, archive_content: bytes = b"binary") -> None:
         artifacts.mkdir()
         for name in (
-            f"Telemachus-macos-{VERSION}-arm64.zip",
+            f"Vibe-Screen-macos-{VERSION}-arm64.zip",
             f"Telemachus-android-{VERSION}-debug.apk",
             f"VibeScreen-ios-simulator-{VERSION}.zip",
         ):
@@ -319,7 +319,9 @@ class PrepareReleaseTests(unittest.TestCase):
     def test_macos_release_build_remaps_source_paths(self) -> None:
         package_script = (REPOSITORY_ROOT / "scripts/package_macos.py").read_text(encoding="utf-8")
         self.assertIn('"-file-prefix-map"', package_script)
-        self.assertIn('run("strip", "-S", str(macos_dir / APP_NAME))', package_script)
+        self.assertIn('PRODUCT_NAME = "Vibe Screen"', package_script)
+        self.assertIn('EXECUTABLE_NAME = "Telemachus"', package_script)
+        self.assertIn('run("strip", "-S", str(macos_dir / EXECUTABLE_NAME))', package_script)
         self.assertNotIn(
             "#filePath",
             (REPOSITORY_ROOT / "baseline/MacHost/Sources/ProtocolV1SelfTest.swift").read_text(
