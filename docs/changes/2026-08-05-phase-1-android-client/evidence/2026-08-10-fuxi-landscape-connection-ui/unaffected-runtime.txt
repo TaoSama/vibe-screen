@@ -1,0 +1,2 @@
+stream-device=    topResumedActivity=ActivityRecord{167936586 u0 dev.telemachus.display/.MainActivity t281}
+27437 01-09:41:56 547328 /Applications/Telemachus.app/Contents/MacOS/Telemachus

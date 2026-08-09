@@ -1,0 +1,5 @@
+manufacturer=Xiaomi
+model=2211133C
+device=fuxi
+android_release=16
+sdk=36

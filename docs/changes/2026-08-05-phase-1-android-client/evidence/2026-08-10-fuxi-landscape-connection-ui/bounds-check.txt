@@ -1,0 +1,5 @@
+landscape-usb: panel=(297, 137, 2082, 1027) checked=['USB'] primary=Try again PASS
+landscape-wireless: panel=(297, 137, 2082, 1027) checked=['LAN'] primary=wirelessScanButton PASS
+landscape-internet: panel=(297, 137, 2082, 1027) checked=['INTERNET'] primary=internetConnectButton PASS
+portrait-usb: panel=(63, 163, 1017, 2221) safe=(0, 104, 1080, 2274) PASS
+portrait->landscape roundtrip: rotation=1 and two-column geometry restored PASS
