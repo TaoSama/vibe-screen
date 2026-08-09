@@ -146,12 +146,14 @@ final class ProtocolV1SessionCoordinator {
     }
 
     /// Confirm a client SetVideoPreferences request after the host encoder has
-    /// actually adopted the new settings. Only the newest request renegotiates:
-    /// a superseded token, a phase change, or a non-accepted result keeps the
-    /// prior advertised configuration and emits nothing. On success this adopts
-    /// the applied numeric values so the re-advertised VideoConfig matches what
-    /// the encoder runs, then bumps the config epoch exactly like a display
-    /// switch so media stays gated until the client accepts the new config.
+    /// actually adopted the new settings. A superseded token or a non-accepted
+    /// result keeps the prior advertised configuration and emits nothing. On an
+    /// accepted result the applied numeric values are adopted before the phase
+    /// is inspected, so even if the session is mid-renegotiation
+    /// (.awaitingVideoConfig) the next VideoConfig advertises the values the
+    /// encoder actually runs instead of stale numbers. Only when the session is
+    /// STREAMING does this also bump the config epoch and renegotiate, exactly
+    /// like a display switch, so media stays gated until the client accepts.
     func completeVideoPreferences(
         token: UInt64,
         accepted: Bool,
@@ -162,9 +164,12 @@ final class ProtocolV1SessionCoordinator {
             guard token == pendingVideoPreferencesToken else { return [] }
             pendingVideoPreferencesToken = 0
             guard accepted else { return [] }
-            guard case .streaming(let configEpoch, let streamID) = phase else { return [] }
+            // Adopt the applied values before the phase guard: the host already
+            // reconfigured the encoder, so the advertised configuration must
+            // track it even if a renegotiation is already in flight.
             configuration.bitrateKbps = appliedBitrateKbps
             configuration.framesPerSecond = appliedFramesPerSecond
+            guard case .streaming(let configEpoch, let streamID) = phase else { return [] }
             return renegotiateSelectedDisplayLocked(
                 displayID: "",
                 configEpoch: configEpoch,
