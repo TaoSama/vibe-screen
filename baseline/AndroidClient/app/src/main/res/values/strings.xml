@@ -49,6 +49,9 @@
     <string name="video_quality_sharp">Sharp</string>
     <string name="video_frame_rate_label">Frame rate</string>
     <string name="video_frame_rate_value">%1$d fps</string>
+    <string name="video_frame_rate_30">30 fps</string>
+    <string name="video_frame_rate_60">60 fps</string>
+    <string name="video_frame_rate_120">120 fps</string>
     <string name="video_bitrate_label">Bitrate</string>
     <string name="video_bitrate_value">%1$d Mbps</string>
     <string name="video_control_unavailable">Connect to a compatible Mac session to tune video quality.</string>

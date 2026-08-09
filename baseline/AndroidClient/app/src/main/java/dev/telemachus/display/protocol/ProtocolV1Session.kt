@@ -123,6 +123,12 @@ internal class ProtocolV1Session(
     private var retiredConfigEpoch = 0L
     private var configuredCodec = Codec.CODEC_UNSPECIFIED
     private var pendingVideoConfiguration: PendingVideoConfiguration? = null
+    // Latest client video-preferences intent that arrived while a
+    // reconfiguration was still in flight (state != STREAMING). Only the newest
+    // request is retained; it is sent once the replacement VideoConfig commits
+    // so a rapid sequence of changes still delivers the final user intent to
+    // the host instead of silently dropping the later ones.
+    private var pendingVideoPreferences: PendingVideoPreferences? = null
     private var awaitingConfigurationKeyframe = false
     private var lastFrameId = 0L
     private var displayId = ""
@@ -245,6 +251,7 @@ internal class ProtocolV1Session(
             Envelope.PayloadCase.PONG -> listOf(Action.PongReceived(envelope.pong.sequence))
             Envelope.PayloadCase.DISCONNECT_NOTICE -> {
                 pendingVideoConfiguration = null
+                pendingVideoPreferences = null
                 state = State.CLOSED
                 listOf(
                     Action.Disconnected(
@@ -308,39 +315,69 @@ internal class ProtocolV1Session(
     }
 
     /**
-     * Ask the host to change video encoding preferences at runtime. Valid only
-     * while streaming and when client video control was negotiated. Any field
-     * left at zero/unspecified tells the host to keep its current setting. The
-     * host clamps the values, applies them, and re-advertises a fresh
-     * VideoConfig with a bumped epoch, so this reuses the same reconfiguration
-     * transition as a runtime display switch (media stays gated until the new
-     * config is accepted). Returns the request to send, or null when the
-     * request is not applicable.
+     * Ask the host to change video encoding preferences at runtime. Requires
+     * client video control to be negotiated. Any numeric field left at
+     * zero/unspecified tells the host to keep its current setting;
+     * [resetQualityToAuto] restores the host default quality (the only way to
+     * express a preset -> AUTO transition). The host clamps the values, applies
+     * them, and re-advertises a fresh VideoConfig with a bumped epoch, so this
+     * reuses the same reconfiguration transition as a runtime display switch
+     * (media stays gated until the new config is accepted).
+     *
+     * When a reconfiguration is already in flight (state != STREAMING) the
+     * request cannot be sent yet, so the latest intent is retained and
+     * automatically sent once the replacement VideoConfig commits. Returns the
+     * request to send now, or null when nothing is sent (not applicable, or
+     * coalesced for later delivery).
      */
     @Synchronized
     fun setVideoPreferences(
         bitrateKbps: Int,
         framesPerSecond: Int,
         qualityPreset: VideoQualityPreset,
+        resetQualityToAuto: Boolean = false,
     ): Envelope? {
-        if (state != State.STREAMING) return null
         if (Capability.CAPABILITY_CLIENT_VIDEO_CONTROL !in negotiatedCapabilities) return null
         if (bitrateKbps <= 0 &&
             framesPerSecond <= 0 &&
-            qualityPreset == VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED
+            qualityPreset == VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED &&
+            !resetQualityToAuto
         ) {
             return null
         }
+        val prefs =
+            PendingVideoPreferences(
+                bitrateKbps = maxOf(0, bitrateKbps),
+                framesPerSecond = maxOf(0, framesPerSecond),
+                qualityPreset = qualityPreset,
+                resetQualityToAuto = resetQualityToAuto,
+            )
+        if (state != State.STREAMING) {
+            // A reconfiguration is pending; hold the newest intent and send it
+            // once the replacement VideoConfig commits so the last user change
+            // still reaches the host.
+            pendingVideoPreferences = prefs
+            return null
+        }
+        return buildAndEnterVideoPreferencesLocked(prefs)
+    }
+
+    /**
+     * Build the SetVideoPreferences envelope and enter the reconfiguration
+     * state. The host answers with StartDisplayResponse + VideoConfig on a
+     * bumped epoch exactly like a display switch, so enter the same state and
+     * let the existing reconfiguration path gate media until the client accepts.
+     * Must be called under the session lock while STREAMING.
+     */
+    private fun buildAndEnterVideoPreferencesLocked(prefs: PendingVideoPreferences): Envelope {
         val request =
             SetVideoPreferences
                 .newBuilder()
-                .setBitrateKbps(maxOf(0, bitrateKbps))
-                .setFramesPerSecond(maxOf(0, framesPerSecond))
-                .setQualityPreset(qualityPreset)
+                .setBitrateKbps(prefs.bitrateKbps)
+                .setFramesPerSecond(prefs.framesPerSecond)
+                .setQualityPreset(prefs.qualityPreset)
+                .setResetQualityToAuto(prefs.resetQualityToAuto)
                 .build()
-        // The host answers with StartDisplayResponse + VideoConfig on a bumped
-        // epoch exactly like a display switch, so enter the same state and let
-        // the existing reconfiguration path gate media until the client accepts.
         state = State.REDISPLAY_REQUESTED
         displayGeometryPublished = false
         return envelope().setSetVideoPreferences(request).build()
@@ -701,6 +738,14 @@ internal class ProtocolV1Session(
                 )
             displayGeometryPublished = true
         }
+        // The stream is back to STREAMING, so any preference change that was
+        // coalesced during the reconfiguration can now be sent. This re-enters
+        // REDISPLAY_REQUESTED, gating media again until the host commits the
+        // newest request.
+        pendingVideoPreferences?.let { prefs ->
+            pendingVideoPreferences = null
+            actions += Action.Send(buildAndEnterVideoPreferencesLocked(prefs))
+        }
         return actions
     }
 
@@ -828,6 +873,13 @@ internal class ProtocolV1Session(
         val rotation: Int,
         val codec: Codec,
         val configurationToken: Long,
+    )
+
+    private data class PendingVideoPreferences(
+        val bitrateKbps: Int,
+        val framesPerSecond: Int,
+        val qualityPreset: VideoQualityPreset,
+        val resetQualityToAuto: Boolean,
     )
 
     companion object {

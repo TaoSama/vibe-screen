@@ -301,7 +301,7 @@
                     android:layout_height="48dp"
                     android:layout_weight="1"
                     android:checkable="true"
-                    android:text="30" />
+                    android:text="@string/video_frame_rate_30" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/videoFps60"
@@ -310,7 +310,7 @@
                     android:layout_height="48dp"
                     android:layout_weight="1"
                     android:checkable="true"
-                    android:text="60" />
+                    android:text="@string/video_frame_rate_60" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/videoFps120"
@@ -319,7 +319,7 @@
                     android:layout_height="48dp"
                     android:layout_weight="1"
                     android:checkable="true"
-                    android:text="120" />
+                    android:text="@string/video_frame_rate_120" />
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
             <LinearLayout
