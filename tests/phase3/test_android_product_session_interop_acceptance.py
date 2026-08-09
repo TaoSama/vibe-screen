@@ -295,7 +295,7 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
                         repo / "baseline/AndroidClient/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
                     ]
                 elif command[:3] == ["swift", "build", "-c"]:
-                    outputs = [repo / "baseline/MacHost/.build/release/Telemachus"]
+                    outputs = [repo / "baseline/MacHost/.build/release/Vibe Screen"]
                 else:
                     outputs = [repo / "services/signaling/build/vibe-signaling"]
                 for output in outputs:

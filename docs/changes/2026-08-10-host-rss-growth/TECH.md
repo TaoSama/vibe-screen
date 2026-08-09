@@ -50,9 +50,9 @@ docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-
 若修复后的短时 heap 差分仍出现持续增长，再以分配栈日志重启主机并采样：
 
 ```bash
-# 关闭当前 Telemachus 后，带分配栈日志启动（会重置会话与 TCC 无关）
+# 关闭当前 Vibe Screen 后，带分配栈日志启动（会重置会话，与 TCC 无关）
 MallocStackLogging=1 MallocStackLoggingNoCompact=1 \
-  "/Applications/Vibe Screen.app/Contents/MacOS/Telemachus" &
+  "/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen" &
 # 建立 adb reverse + 客户端连接，稳定流 10–15 分钟后：
 /usr/bin/malloc_history <pid> -allBySize | head -60   # 按大小聚合分配栈
 /usr/bin/heap <pid> | head -60                         # 按类聚合存活对象

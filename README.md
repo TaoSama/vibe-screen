@@ -3,9 +3,9 @@
 > **Development status:** the Phase 0 macOS/Android baseline has passed its
 > recorded device acceptance run on a Xiaomi 13 (model 2211133C, codename
 > fuxi), but this remains a development preview rather than a stable release.
-> The runnable application now presents to users as **Vibe Screen** on both
-> macOS and Android, while its SwiftPM executable/product target and derived
-> source retain the historical **Telemachus** identity. Matching macOS and
+> The runnable application, macOS SwiftPM product, and packaged executable now
+> use **Vibe Screen**. Internal source-module and compatibility identifiers may
+> retain the historical **Telemachus** identity. Matching macOS and
 > Android builds now upgrade the main USB/LAN session to Protocol v1 while
 > retaining an explicit legacy fallback. Protocol v1 is now exercised on device
 > (display selection/switch, HiDPI capture, keyboard/scroll input,
@@ -386,8 +386,8 @@ Reproduce the local Mac integration checks with:
 ```bash
 cd baseline/MacHost
 swift build -c release
-.build/release/Telemachus --phase3-internet-self-test
-.build/release/Telemachus --phase3-webrtc-loopback-self-test
+".build/release/Vibe Screen" --phase3-internet-self-test
+".build/release/Vibe Screen" --phase3-webrtc-loopback-self-test
 cd ../..
 python3 scripts/phase3_webrtc/run_local_e2e.py --mode direct --slice product
 python3 scripts/phase3_webrtc/run_local_e2e.py --mode relay --slice product --skip-build

@@ -92,7 +92,7 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             pairingIdentifier: pairingIdentifier,
             pinnedHostID: hostDeviceID
         )
-        let executableURL = try telemachusExecutableURL()
+        let executableURL = try vibeScreenExecutableURL()
         let gateURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("vibe-screen-lease-gate-\(scope)")
         let readyDirectory = FileManager.default.temporaryDirectory
@@ -432,27 +432,30 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         return try JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])
     }
 
-    private func telemachusExecutableURL() throws -> URL {
+    private func vibeScreenExecutableURL() throws -> URL {
         let environment = ProcessInfo.processInfo.environment
         let testBundleDirectory = Bundle(for: Self.self).bundleURL.deletingLastPathComponent()
         var candidates = [
+            environment["VIBE_SCREEN_EXECUTABLE_PATH"].map(URL.init(fileURLWithPath:)),
             environment["TELEMACHUS_EXECUTABLE_PATH"].map(URL.init(fileURLWithPath:)),
             environment["BUILT_PRODUCTS_DIR"].map {
-                URL(fileURLWithPath: $0).appendingPathComponent("Telemachus")
+                URL(fileURLWithPath: $0).appendingPathComponent("Vibe Screen")
             },
             environment["BUILT_PRODUCTS_DIR"].map {
                 URL(fileURLWithPath: $0)
-                    .appendingPathComponent("Vibe Screen.app/Contents/MacOS/Telemachus")
+                    .appendingPathComponent("Vibe Screen.app/Contents/MacOS/Vibe Screen")
             },
+            Optional(testBundleDirectory.appendingPathComponent("Vibe Screen")),
+            Optional(
+                testBundleDirectory
+                    .appendingPathComponent("Vibe Screen.app/Contents/MacOS/Vibe Screen")
+            ),
+            // Accept old development layouts while cached Xcode products migrate.
             environment["BUILT_PRODUCTS_DIR"].map {
                 URL(fileURLWithPath: $0)
                     .appendingPathComponent("Telemachus.app/Contents/MacOS/Telemachus")
             },
             Optional(testBundleDirectory.appendingPathComponent("Telemachus")),
-            Optional(
-                testBundleDirectory
-                    .appendingPathComponent("Vibe Screen.app/Contents/MacOS/Telemachus")
-            ),
             Optional(
                 testBundleDirectory
                     .appendingPathComponent("Telemachus.app/Contents/MacOS/Telemachus")
@@ -461,7 +464,7 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
         candidates.removeAll { !FileManager.default.isExecutableFile(atPath: $0.path) }
         return try XCTUnwrap(
             candidates.first,
-            "Unable to locate the built Telemachus executable."
+            "Unable to locate the built Vibe Screen executable."
         )
     }
 

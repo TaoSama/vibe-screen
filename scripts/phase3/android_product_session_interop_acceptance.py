@@ -683,7 +683,7 @@ def controlled_build(repo: Path, expected_source: dict[str, str], timeout: float
     paths = {
         "app_apk": android_root / "app/build/outputs/apk/debug/app-debug.apk",
         "test_apk": android_root / "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
-        "mac_host": mac_root / ".build/release/Telemachus",
+        "mac_host": mac_root / ".build/release/Vibe Screen",
         "signaling_binary": signaling_root / "build/vibe-signaling",
     }
     paths["signaling_binary"].parent.mkdir(parents=True, exist_ok=True)

@@ -65,5 +65,5 @@ the private evidence JSON and diagnostics remain local.
 an ICE property. Verify its bounded latest-frame replacement separately:
 
 ```bash
-baseline/MacHost/.build/release/Telemachus --phase3-internet-self-test
+"baseline/MacHost/.build/release/Vibe Screen" --phase3-internet-self-test
 ```

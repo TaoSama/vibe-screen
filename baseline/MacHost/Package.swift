@@ -11,7 +11,7 @@ let package = Package(
     ],
     products: [
         .executable(
-            name: "Telemachus",
+            name: "Vibe Screen",
             targets: ["Telemachus"]),
         .library(
             name: "VibeScreenProtocol",
