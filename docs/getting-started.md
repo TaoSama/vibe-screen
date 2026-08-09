@@ -1,9 +1,10 @@
 # Getting started
 
-The current runnable applications are presented to users as **Vibe Screen**. Internal
-SwiftPM executable/product targets and compatibility identifiers still use the
-historical `Telemachus` name. These instructions build from source; there is no
-notarized stable release yet.
+The current runnable applications are presented to users as **Vibe Screen**. The
+macOS SwiftPM product and packaged executable use that name as well. The internal
+source-module name remains historical; compatibility identifiers also stay
+unchanged so existing permissions and settings continue to work. These instructions
+build from source; there is no notarized stable release yet.
 
 ## Prerequisites
 

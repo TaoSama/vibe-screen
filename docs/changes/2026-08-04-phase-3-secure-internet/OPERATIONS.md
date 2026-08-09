@@ -66,7 +66,7 @@ and fails if `pinned_host_id` does not name an already provisioned host key:
 cd baseline/MacHost
 umask 077
 swift build -c release
-.build/release/Telemachus --issue-phase3-internet-lease \
+".build/release/Vibe Screen" --issue-phase3-internet-lease \
   < /protected/path/unsigned-lease.json \
   > /protected/path/android-lease.json
 ```
@@ -89,7 +89,7 @@ Android Internet UI. The command writes only the signed JSON to stdout and never
 logs lease contents. Verify the cross-language canonical fixture with:
 
 ```bash
-.build/release/Telemachus --phase3-internet-lease-self-test
+".build/release/Vibe Screen" --phase3-internet-lease-self-test
 ```
 
 ## Required dashboards

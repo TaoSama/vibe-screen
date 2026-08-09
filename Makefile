@@ -60,10 +60,10 @@ baseline-macos-test:
 	cd baseline/MacHost && swift test
 
 baseline-macos-self-test: baseline-macos-build
-	baseline/MacHost/.build/release/Telemachus --host-self-test
-	baseline/MacHost/.build/release/Telemachus --transport-self-test
-	baseline/MacHost/.build/release/Telemachus --reliability-self-test
-	baseline/MacHost/.build/release/Telemachus --protocol-v1-self-test
+	"baseline/MacHost/.build/release/Vibe Screen" --host-self-test
+	"baseline/MacHost/.build/release/Vibe Screen" --transport-self-test
+	"baseline/MacHost/.build/release/Vibe Screen" --reliability-self-test
+	"baseline/MacHost/.build/release/Vibe Screen" --protocol-v1-self-test
 
 baseline-macos-app:
 	python3 scripts/package_macos.py

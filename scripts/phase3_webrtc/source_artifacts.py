@@ -1154,7 +1154,7 @@ def build_binaries(repo_root: Path, timeout: int) -> tuple[Path, Path, list[str]
     signaling_root = repo_root / "services/signaling"
     mac_root = repo_root / "baseline/MacHost"
     signaling_binary = repo_root / "scripts/phase3_webrtc/.build/signaling/vibe-signaling"
-    mac_binary = mac_root / ".build/release/Telemachus"
+    mac_binary = mac_root / ".build/release/Vibe Screen"
     signaling_binary.parent.mkdir(parents=True, exist_ok=True)
     outputs = [
         run_checked(
