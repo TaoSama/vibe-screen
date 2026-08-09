@@ -378,8 +378,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let hadScreenRecording = settings.hasScreenRecordingPermission
         let hadAccessibility = settings.hasAccessibilityPermission
         let hasScreenRecording = CGPreflightScreenCaptureAccess()
-        settings.hasScreenRecordingPermission = hasScreenRecording
-        settings.hasAccessibilityPermission = AXIsProcessTrusted()
+        // Assign the stable published fields only when the value actually
+        // changes. These run on a 2-second timer; unconditional writes emit
+        // objectWillChange every tick and re-evaluate the settings UI even when
+        // nothing changed, which adds needless SwiftUI observation churn.
+        settings.setIfChanged(hasScreenRecording, to: \.hasScreenRecordingPermission)
+        settings.setIfChanged(AXIsProcessTrusted(), to: \.hasAccessibilityPermission)
         if hadAccessibility && !settings.hasAccessibilityPermission {
             cancelActiveInput(releaseDrag: false)
         }
@@ -407,10 +411,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func refreshStatusIndicators() {
         usbStatusProbeGeneration &+= 1
         let probeGeneration = usbStatusProbeGeneration
-        settings.adbInstalled = StatusDetector.adbInstalled()
-        settings.wifiConnected = StatusDetector.wifiReachable()
-        settings.listeningAddress = LANAddressResolver.primaryIPv4()
-        settings.availableDisplays = DisplayCatalog.onlineDisplays()
+        settings.setIfChanged(StatusDetector.adbInstalled(), to: \.adbInstalled)
+        settings.setIfChanged(StatusDetector.wifiReachable(), to: \.wifiConnected)
+        settings.setIfChanged(LANAddressResolver.primaryIPv4(), to: \.listeningAddress)
+        settings.setIfChanged(DisplayCatalog.onlineDisplays(), to: \.availableDisplays)
         if let uuid = settings.selectedDisplayUUID,
            let reidentified = settings.availableDisplays.first(where: {
                $0.persistentUUID == uuid
@@ -430,9 +434,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard HostStartupPolicy.shouldProbeUSB(
             connectionMode: settings.connectionMode
         ) else {
-            settings.usbDeviceConnected = false
-            settings.availableADBDevices = []
-            settings.adbReverseConfigured = false
+            settings.setIfChanged(false, to: \.usbDeviceConnected)
+            settings.setIfChanged([], to: \.availableADBDevices)
+            settings.setIfChanged(false, to: \.adbReverseConfigured)
             return
         }
 
@@ -459,13 +463,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 
                 let isConnected = !devices.isEmpty
 
-                self.settings.usbDeviceConnected = isConnected
-                self.settings.availableADBDevices = devices
-                if let effectiveSerial,
-                   self.settings.adbDeviceSerial != effectiveSerial {
-                    self.settings.adbDeviceSerial = effectiveSerial
+                self.settings.setIfChanged(isConnected, to: \.usbDeviceConnected)
+                self.settings.setIfChanged(devices, to: \.availableADBDevices)
+                if let effectiveSerial {
+                    self.settings.setIfChanged(effectiveSerial, to: \.adbDeviceSerial)
                 }
-                self.settings.adbReverseConfigured = reverseOK
+                self.settings.setIfChanged(reverseOK, to: \.adbReverseConfigured)
 
                 // Self-healing USB bridge (level-triggered, not edge-triggered):
                 // whenever we are in USB mode with the server running and a
@@ -2159,8 +2162,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                             server: configuredServer,
                             clientGeneration: clientGeneration
                     ) {
-                        self.settings.currentFPS = fps
-                        self.settings.currentBitrate = mbps
+                        self.settings.metrics.update(fps: fps, bitrateMbps: mbps)
                     }
                 }
             }
@@ -3227,8 +3229,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self.settings.clientConnected = false
             self.settings.connectedDeviceModel = nil
             self.settings.connectedDeviceMaxRefreshRate = nil
-            self.settings.currentFPS = 0
-            self.settings.currentBitrate = 0
+            self.settings.metrics.reset()
             self.serverLifecycle.finishStop(stopToken)
             if !shouldPreserveRecoveryState,
                self.settings.connectionMode == .internet,
