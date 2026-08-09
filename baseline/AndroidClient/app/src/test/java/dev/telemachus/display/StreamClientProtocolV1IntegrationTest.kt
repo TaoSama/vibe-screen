@@ -495,6 +495,7 @@ class StreamClientProtocolV1IntegrationTest {
             val ended = CountDownLatch(1)
             var failure: SessionFailure? = null
             val reconnect = CountDownLatch(1)
+            val shutdownObserved = CountDownLatch(1)
             val shutdownCallbacks = AtomicInteger()
             val retryCancellations = AtomicInteger()
             val shutdownActions = AtomicInteger()
@@ -523,6 +524,7 @@ class StreamClientProtocolV1IntegrationTest {
                     terminationOrder += "server_shutdown"
                     shutdownCallbacks.incrementAndGet()
                     client.disconnect()
+                    shutdownObserved.countDown()
                 }
                 onReconnectSuggested = { reconnect.countDown() }
             }
@@ -541,6 +543,7 @@ class StreamClientProtocolV1IntegrationTest {
             assertFalse(checkNotNull(failure).retryable)
             assertTrue(checkNotNull(failure).intentional)
             client.disconnect()
+            assertTrue(shutdownObserved.await(8, TimeUnit.SECONDS))
             assertEquals(listOf("session_ended", "server_shutdown"), terminationOrder)
             assertEquals(1, shutdownCallbacks.get())
             assertEquals(1, retryCancellations.get())
