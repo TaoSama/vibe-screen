@@ -64,7 +64,11 @@ The APK hash is an offline artifact identity, not install or device evidence.
 The endpoint re-identified as Nubia P0110 (`pacific`), Android 16 / SDK 36,
 hardware serial `[redacted]`, fingerprint
 `nubia/pacific/pacific:16/2.5.2.0/20260804.003241:userdebug/test-keys`, and
-1264×2800 at 560 dpi. It is not Xiaomi 12.
+1264×2800 at 560 dpi. It is not the Xiaomi 13 (model 2211133C, codename fuxi)
+primary target; this record is Nubia P0110 evidence only. Later Xiaomi 13
+streaming, display-switch, and input evidence is recorded under
+`../2026-08-04-phase-0-baseline/evidence/2026-08-08-xiaomi12-fuxi-8a023e3a/` and
+the fuxi Phase 1 evidence directories.
 
 The device-run APK installed with `adb install -r -t` at
 `2026-08-05 01:46:06 +08:00`. Its Android Debug signer certificate SHA-256 is
@@ -138,5 +142,7 @@ still record:
 - Android diagnostic/logcat plus visible Mac-side outcomes.
 
 Compilation, synthetic media, ADB-injected events, and old Phase 0 tap evidence
-cannot close the remaining unlocked-Mac, physical-peripheral, Xiaomi 12, or
-two-hour stability gates.
+cannot close the remaining unlocked-Mac, physical-peripheral, or Xiaomi 13
+gates. On the Xiaomi 13, real streaming, display switch, keyboard/scroll input,
+and reconnect are now verified; a host-RSS-stable two-hour soak and physical HID
+mouse move/click confirmation remain open.

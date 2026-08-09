@@ -28,9 +28,12 @@ For every device run, record:
 - per-minute Host/Android memory, temperature, and frame samples during soak.
 
 The current Phase 0 evidence is recorded in
-`docs/changes/2026-08-04-phase-0-baseline/TEST.md`. The designated endpoint
-is redacted as `$ADB_ENDPOINT` and identified itself as Nubia P0110, not Xiaomi 12; results
-must retain that distinction.
+`docs/changes/2026-08-04-phase-0-baseline/TEST.md`. The final coordinated
+acceptance endpoint is redacted as `$ADB_ENDPOINT` and identified itself as
+Nubia P0110, not the Xiaomi 13 (model 2211133C, codename fuxi) primary target;
+results must retain that distinction. Later Xiaomi 13 streaming, display-switch,
+input, and two-hour-soak evidence is recorded separately under
+`docs/changes/2026-08-04-phase-0-baseline/evidence/`.
 
 ## Pass criteria
 
@@ -39,8 +42,11 @@ must retain that distinction.
 - Touch on two distinct device locations moves the Mac pointer accordingly.
 - Client/process or ADB TCP interruption produces a fresh connected session
   while the Host PID survives.
-- A 30-minute stream has live PIDs and rising frames throughout, no fatal codec
-  error, no unbounded memory/latency growth, and controlled thermal behavior.
+- A sustained stream keeps live PIDs and rising frames throughout, with no fatal
+  codec error and controlled thermal behavior. A two-hour soak has run on the
+  Xiaomi 13 with a stable stream and stable client memory; the host
+  resident-memory no-growth gate is still open (host RSS grew about 18.3 MB), so
+  a memory-stable two-hour run remains required before claiming no-growth.
 
 Internal timestamps may measure encoder, decoder, queue, and reconnect
 durations only within their own clock domain. Glass-to-glass latency requires

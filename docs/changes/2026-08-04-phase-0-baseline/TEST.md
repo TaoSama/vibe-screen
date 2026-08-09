@@ -29,8 +29,8 @@ result.
 | Transport | split/coalesced reads; disconnect; slow consumer; bounded backlog |
 | Host integration | fake capture through encoder and loopback transport |
 | Android integration | framing, session, and decoder lifecycle on emulator |
-| Device E2E | recorded Nubia P0110 evidence plus the still-open target Xiaomi 12 video, touch, keyboard, reconnect, and codec fallback gate |
-| Soak | 1080p30 USB for 30 minutes with queue/RSS/latency series |
+| Device E2E | recorded Nubia P0110 evidence plus the Xiaomi 13 (fuxi) video, touch, keyboard, reconnect, and codec fallback gate; Xiaomi 13 streaming/input is now on device, host RSS no-growth soak still open |
+| Soak | 1080p60 USB with queue/RSS/latency series; a two-hour Xiaomi 13 run completed with a stable stream but an open host RSS no-growth gate |
 | Latency | external-camera raw samples and measurement notes |
 
 ## Current evidence (2026-08-04)
@@ -163,6 +163,14 @@ does not prove Developer ID signing, notarization, private display integration,
 any new real-device behavior, iOS/HarmonyOS device behavior, latency, or soak
 stability.
 
+The 202/202 figure above is anchored to that dated 2026-08-06 commit. Main has
+since advanced to `c639caa`, whose 2026-08-09 Phase 0 CI
+[run 31332629511](https://github.com/TaoSama/vibe-screen/actions/runs/31332629511)
+ran the MacHost XCTest `macos` job with 312 tests executed, 1 skipped, and 0
+failures, alongside green protocol, Android, Phase 3, evidence, iOS, and
+HarmonyOS-portable jobs. The count grew as tests were added; it is not
+retroactively attributed to the earlier commit.
+
 The available device lease was released after a screen-locked macOS host
 reported zero ScreenCaptureKit displays; its attempted two-hour pre-warm never
 started a valid clock and is not evidence. No Protocol v1 APK install, app
@@ -178,8 +186,11 @@ The final device run used a controlled ADB endpoint, redacted here as
 identified itself as Nubia P0110 (`pacific`), hardware serial `[redacted]`,
 Android 16 / SDK 36, fingerprint
 `nubia/pacific/pacific:16/2.5.2.0/20260804.003241:userdebug/test-keys`.
-It is not a Xiaomi 12, so this run proves interoperability on the recorded
-Nubia device but does not close the Xiaomi-specific Phase 0 criterion.
+It is not the Xiaomi 13 (model 2211133C, codename fuxi) primary target, so this
+run proves interoperability on the recorded Nubia device but does not close the
+Xiaomi-specific Phase 0 criterion; later Xiaomi 13 evidence is recorded under
+`evidence/2026-08-08-xiaomi12-fuxi-8a023e3a/` and
+`evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/`.
 
 - The final APK was installed exactly once with `adb install -r -t`; install
   returned `Success` and `lastUpdateTime=2026-08-04 22:49:59` local time.
@@ -229,8 +240,12 @@ in addition to the Makefile target's Android-process and `stream_stats` gates.
 The Host RSS rose about 9 MiB from the first to last sample and its fitted
 second-half slope remained approximately 208 KiB/min. The stream, queue,
 latency, and process gates passed, but a 30-minute RSS series cannot rule out a
-slow leak. The planned two-hour run remains required before claiming the
-Phase 1 no-growth target.
+slow leak. A valid two-hour run has since been recorded on the Xiaomi 13 on
+2026-08-09 (240 samples, mean 59.94 FPS, stable client memory): the stream and
+process gates held, but host RSS still grew about 18.3 MB with a +96.5 KiB/min
+second-half slope, so the Phase 1 no-growth target is still not met. See
+`evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/README.md` and
+`../2026-08-10-host-rss-growth/TECH.md`.
 
 Two earlier windows are explicitly invalid. The first was interrupted by a
 concurrent APK install. A later 30-minute attempt was disturbed by a local
@@ -246,10 +261,14 @@ Detailed commands, hashes, and artifact locations are recorded in
 ## Still unproved
 
 - Developer ID signing and notarization;
-- private virtual-display behavior on macOS 26.4.1;
-- selected-display hot-plug behavior, true mirror mode, and real-window restore;
-- Xiaomi 12 install, hardware decode, input, disconnect, and soak behavior;
-- keyboard forwarding, Protocol v1 real-device application interoperability, a
-  two-hour no-growth run, and external glass-to-glass/input latency.
+- real-window restore after disconnect on device;
+- a host-RSS-stable two-hour no-growth run (the two-hour Xiaomi 13 soak ran but
+  host RSS grew about 18.3 MB), native-pointer HID move/click with a physical
+  mouse, and external glass-to-glass/input latency.
+
+Private `CGVirtualDisplay` creation/capture and HiDPI, graceful mirror-mode
+fallback, keyboard/scroll input, and Protocol v1 real-device interoperability
+that were previously listed here are now verified on the Xiaomi 13; see Phase 1
+and the Xiaomi 13 evidence directories.
 
 These remain required work. They must not be converted into assumed passes.
