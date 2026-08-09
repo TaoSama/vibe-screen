@@ -1,5 +1,6 @@
 import Cocoa
 import SwiftUI
+import Combine
 
 enum DisplaySourceMode: String, CaseIterable, Identifiable {
     case extended
@@ -965,25 +966,10 @@ struct SettingsView: View {
                         // Performance (when connected)
                         if settings.clientConnected {
                             FrostedGroupBox(title: "Performance", icon: "speedometer") {
-                                HStack {
-                                    VStack(alignment: .leading) {
-                                        Text("FPS")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary)
-                                        Text(String(format: "%.1f", settings.currentFPS))
-                                            .font(.system(size: 16, weight: .semibold))
-                                            .foregroundColor(.green)
-                                    }
-                                    Spacer()
-                                    VStack(alignment: .leading) {
-                                        Text("Bitrate")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary)
-                                        Text(String(format: "%.1f Mbps", settings.currentBitrate))
-                                            .font(.system(size: 16, weight: .semibold))
-                                            .foregroundColor(.accentColor)
-                                    }
-                                }
+                                // Live FPS/bitrate render through an AppKit bridge so the
+                                // once-per-second telemetry never re-evaluates this SwiftUI body.
+                                LiveMetricsView(metrics: settings.metrics)
+                                    .frame(height: 34)
                             }
                         }
                     }
@@ -1526,6 +1512,121 @@ private struct InternetSection: View {
     }
 }
 
+// MARK: - Live Stream Metrics
+
+/// High-frequency streaming telemetry (roughly one update per second) kept out
+/// of SwiftUI's observation graph on purpose. Publishing FPS/bitrate through a
+/// SwiftUI `ObservableObject` re-evaluated a view body every second, and each
+/// evaluation registered fresh SwiftUI Observation entries that accumulated in
+/// the host heap over long sessions. Metrics now flow through Combine subjects
+/// that an AppKit bridge (`LiveMetricsView`) renders directly into text
+/// fields, so per-second updates never invalidate a SwiftUI body.
+final class StreamMetrics {
+    let fps = CurrentValueSubject<Double, Never>(0)
+    let bitrateMbps = CurrentValueSubject<Double, Never>(0)
+
+    /// Update both values from the streaming stats callback. Skips redundant
+    /// sends so an unchanged metric does not wake the AppKit subscriber.
+    func update(fps newFPS: Double, bitrateMbps newBitrate: Double) {
+        if fps.value != newFPS { fps.send(newFPS) }
+        if bitrateMbps.value != newBitrate { bitrateMbps.send(newBitrate) }
+    }
+
+    /// Reset to zero on disconnect.
+    func reset() {
+        update(fps: 0, bitrateMbps: 0)
+    }
+}
+
+/// AppKit bridge that renders live FPS/bitrate without entering SwiftUI's
+/// observation graph. The Coordinator subscribes to `StreamMetrics` Combine
+/// subjects and mutates `NSTextField`s in place, so recurring metric updates
+/// do not trigger any SwiftUI body re-evaluation. The parent view holds only a
+/// plain reference to `StreamMetrics` (never `@ObservedObject`).
+struct LiveMetricsView: NSViewRepresentable {
+    let metrics: StreamMetrics
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(metrics: metrics)
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        context.coordinator.makeContainer()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        // Values are pushed by the Coordinator's Combine subscriptions; nothing
+        // to reconcile from SwiftUI here.
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.cancel()
+    }
+
+    final class Coordinator {
+        private let metrics: StreamMetrics
+        private var cancellables: Set<AnyCancellable> = []
+        private let fpsValueLabel = Coordinator.makeValueLabel(color: .systemGreen)
+        private let bitrateValueLabel = Coordinator.makeValueLabel(color: .controlAccentColor)
+
+        init(metrics: StreamMetrics) {
+            self.metrics = metrics
+        }
+
+        func makeContainer() -> NSView {
+            let fpsColumn = Coordinator.makeColumn(caption: "FPS", valueLabel: fpsValueLabel)
+            let bitrateColumn = Coordinator.makeColumn(caption: "Bitrate", valueLabel: bitrateValueLabel)
+
+            let spacer = NSView()
+            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+            let row = NSStackView(views: [fpsColumn, spacer, bitrateColumn])
+            row.orientation = .horizontal
+            row.alignment = .top
+            row.distribution = .fill
+            row.translatesAutoresizingMaskIntoConstraints = false
+
+            metrics.fps
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] value in
+                    self?.fpsValueLabel.stringValue = String(format: "%.1f", value)
+                }
+                .store(in: &cancellables)
+            metrics.bitrateMbps
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] value in
+                    self?.bitrateValueLabel.stringValue = String(format: "%.1f Mbps", value)
+                }
+                .store(in: &cancellables)
+
+            return row
+        }
+
+        func cancel() {
+            cancellables.removeAll()
+        }
+
+        private static func makeColumn(caption: String, valueLabel: NSTextField) -> NSView {
+            let captionLabel = NSTextField(labelWithString: caption)
+            captionLabel.font = .systemFont(ofSize: 10)
+            captionLabel.textColor = .secondaryLabelColor
+
+            let column = NSStackView(views: [captionLabel, valueLabel])
+            column.orientation = .vertical
+            column.alignment = .leading
+            column.spacing = 2
+            return column
+        }
+
+        private static func makeValueLabel(color: NSColor) -> NSTextField {
+            let label = NSTextField(labelWithString: "0.0")
+            label.font = .systemFont(ofSize: 16, weight: .semibold)
+            label.textColor = color
+            return label
+        }
+    }
+}
+
 // MARK: - Display Settings
 
 class DisplaySettings: ObservableObject {
@@ -1698,8 +1799,9 @@ class DisplaySettings: ObservableObject {
     @Published var listeningAddress: String?
     @Published var isRunning = false
     @Published var isStarting = false
-    @Published var currentFPS: Double = 0
-    @Published var currentBitrate: Double = 0
+    /// High-frequency live telemetry kept outside SwiftUI observation. Updated
+    /// by AppDelegate's stats callback and rendered by `LiveMetricsView`.
+    let metrics = StreamMetrics()
     @Published var captureMethod: String = "Initializing..."
     @Published var wirelessTokenError: String?
     @Published var internetStatus: InternetConnectionStatus = .idle
@@ -1727,6 +1829,22 @@ class DisplaySettings: ObservableObject {
     }
     var onSaveInternetCredentials: ((String, String) -> Bool)?
     var onCompleteInternetPairing: ((String) -> Void)?
+
+    /// Assign a published field only when the new value differs from the
+    /// current one, and report whether a write happened. Callers on periodic
+    /// timers use this so an unchanged value does not publish a redundant
+    /// `objectWillChange`, which would otherwise re-evaluate the settings UI
+    /// body every tick and accumulate SwiftUI observation state over time.
+    /// Returns `true` when the value changed and was written.
+    @discardableResult
+    func setIfChanged<Value: Equatable>(
+        _ newValue: Value,
+        to keyPath: ReferenceWritableKeyPath<DisplaySettings, Value>
+    ) -> Bool {
+        guard self[keyPath: keyPath] != newValue else { return false }
+        self[keyPath: keyPath] = newValue
+        return true
+    }
 
     init() {
         self.resolution = defaults.string(forKey: keyPrefix + "resolution") ?? "2000x1200"

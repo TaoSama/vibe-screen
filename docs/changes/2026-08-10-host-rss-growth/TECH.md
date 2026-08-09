@@ -23,9 +23,31 @@ docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-
 - 判断：增长来自**仍可达、随时间累积的小对象**（缓存/数组/字典/保留对象），
   而非泄漏，故 `leaks` 不报。
 
+## 2026-08-10 活体 heap 归因
+
+在不中断现有推流进程的前提下，`vmmap -summary` 与 `heap -H -s` 已将主要存活
+对象收敛到 SwiftUI Observation 图，而不是视频帧或 IOSurface：
+
+- 运行约 26 小时后，进程内约 53 万套 `ObservationRegistrar` 字典、
+  `AnyKeyPath` 集合与配套锁状态仍然存活；这些对象连同约 86 万个
+  `_SetStorage<Int>` 占据数百 MB。
+- 一次 memory graph 基线与约 6 分钟后的活体 `heap --diffFrom` 对比新增
+  1,255 套 registrar、约 12 万个 `_SetStorage<Int>` 和大量闭包上下文。
+- 引用链落在 SwiftUI `ObservationEntry` 大字典。同期新增的 Process/Pipe/XPC
+  对象数量很小，不支持「ADB 状态探测子进程是主增长源」的初始假设。
+- `DisplaySettings` 原先把每秒 FPS/码率与每两秒主机状态都放在同一个
+  `ObservableObject`；根 `SettingsView` 观察整个对象，且 hosting view 在窗口
+  关闭后仍常驻。每次发布都会让整棵大型设置视图重新建立观察依赖。
+
+当前修复把 FPS/码率移到不参与 SwiftUI observation 的 Combine subjects，由
+`NSViewRepresentable` coordinator 直接更新 AppKit 文本控件；周期状态字段也只在
+值实际变化时发布。离线测试覆盖「metrics 不触发根 settings publisher」与「同值
+不发布」契约。该证据足以定位并消除一个主要增长贡献源，但**不能替代修复后的
+两小时复测**，因此无增长门禁仍保持开放。
+
 ## 复现与下一步（需可中断当前会话）
 
-精确归因需以分配栈日志重启主机，并在短时流下采样：
+若修复后的短时 heap 差分仍出现持续增长，再以分配栈日志重启主机并采样：
 
 ```bash
 # 关闭当前 Telemachus 后，带分配栈日志启动（会重置会话与 TCC 无关）
@@ -37,11 +59,15 @@ MallocStackLogging=1 MallocStackLoggingNoCompact=1 \
 # 两次间隔采样对比 MALLOC_SMALL 中增长最快的分配栈/类。
 ```
 
-候选审查点（静态）：按帧/秒累积且未逐出的集合；每重连自增且未清理的键控字典
-（如按 generation/epoch 键控的表）；保留 CMSampleBuffer/CVPixelBuffer 或 NSData 的路径。
+复测判据：先跑 10–15 分钟短时流，确认 Observation 对象计数与 host RSS 斜率不再
+持续上升；通过后再跑完整 2h soak。只有后半程 RSS 斜率进入工具规定的无增长容差，
+且流与客户端指标继续通过，才关闭 Phase 1 门禁。若仍增长，再检查按帧/秒累积且
+未逐出的集合、按 generation/epoch 键控的表，以及保留 CMSampleBuffer、
+CVPixelBuffer 或 NSData 的路径。
 
 ## 状态
 
 - 已记录 pitfall（见 docs/pitfall/index.md）。
-- 排查因需中断用户实时会话而暂缓；待授权后在专门会话中执行上面复现步骤并定位根因。
-
+- 已完成不中断会话的 heap 类型与引用链归因，并实现针对 SwiftUI Observation
+  高频失效的候选修复。
+- 修复尚未装入当前运行进程；待授权重启后执行短时 heap 差分与完整 2h soak。
