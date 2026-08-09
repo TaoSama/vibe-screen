@@ -587,6 +587,79 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun presetToAutoSendsResetToAutoRequest() {
+        // A preset -> AUTO transition cannot be expressed by an empty preset
+        // (that means "keep current"), so the reset flag must produce a real
+        // request that the host can act on.
+        val session = videoControlStreamingSession()
+        val request =
+            session.setVideoPreferences(
+                bitrateKbps = 0,
+                framesPerSecond = 0,
+                qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+                resetQualityToAuto = true,
+            )!!
+        assertEquals(Envelope.PayloadCase.SET_VIDEO_PREFERENCES, request.payloadCase)
+        assertTrue(request.setVideoPreferences.resetQualityToAuto)
+        assertEquals(0, request.setVideoPreferences.bitrateKbps)
+        assertEquals(0, request.setVideoPreferences.framesPerSecond)
+        assertEquals(
+            VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+            request.setVideoPreferences.qualityPreset,
+        )
+    }
+
+    @Test
+    fun preferenceChangeDuringReconfigurationIsCoalescedAndSentAfterCommit() {
+        val session = videoControlStreamingSession()
+        // First change is sent immediately and gates media on a bumped epoch.
+        val first =
+            session.setVideoPreferences(
+                bitrateKbps = 8_000,
+                framesPerSecond = 30,
+                qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+            )!!
+        assertEquals(8_000, first.setVideoPreferences.bitrateKbps)
+
+        // A second change arrives before the replacement VideoConfig commits.
+        // It cannot be sent yet, so it is coalesced (no envelope now) and must
+        // be the value that reaches the host after the commit.
+        assertNull(
+            session.setVideoPreferences(
+                bitrateKbps = 20_000,
+                framesPerSecond = 60,
+                qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+            ),
+        )
+
+        // Host re-advertises the first change on epoch 4; committing it returns
+        // to streaming and must flush the coalesced newest intent.
+        val requested =
+            session.receive(videoConfig(30, configEpoch = 4)).single()
+                as ProtocolV1Session.Action.VideoConfigurationRequested
+        val committed =
+            session.completeVideoConfiguration(
+                completedConfigEpoch = 4,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        val flushed =
+            committed
+                .filterIsInstance<ProtocolV1Session.Action.Send>()
+                .map { it.envelope }
+                .single { it.payloadCase == Envelope.PayloadCase.SET_VIDEO_PREFERENCES }
+        assertEquals(20_000, flushed.setVideoPreferences.bitrateKbps)
+        assertEquals(60, flushed.setVideoPreferences.framesPerSecond)
+
+        // The flushed request re-gates media until its own VideoConfig commits.
+        assertEquals(
+            ProtocolV1Session.MediaDisposition.DROP_PENDING_CONFIGURATION,
+            session.validateMedia(mediaHeader(configEpoch = 4)),
+        )
+    }
+
+    @Test
     fun runtimeDisplaySelectionRepublishesGeometryOnNewVideoConfig() {
         val session = multiDisplayStreamingSession()
         session.selectDisplay("display-2")
