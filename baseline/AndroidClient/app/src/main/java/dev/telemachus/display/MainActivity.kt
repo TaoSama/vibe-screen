@@ -2282,7 +2282,7 @@ class MainActivity : AppCompatActivity() {
         if (!CodecCapabilities.hasHevcDecoder && streamClient?.codecNegotiated != true) {
             mainDiag("AVC-only device but Mac did not negotiate codec — Mac app too old")
             runOnUiThread {
-                updateStatus("This device has no HEVC decoder. Update the Telemachus Mac app to enable H.264 support.")
+                updateStatus("This device has no HEVC decoder. Update the Vibe Screen Mac app to enable H.264 support.")
             }
         }
     }

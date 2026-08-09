@@ -197,7 +197,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// display is actually created its real numeric id is advertised instead.
     static let virtualExtendedDisplaySyntheticID = "telemachus-virtual-extended"
     /// User-facing name for the virtual extended display chip.
-    static let virtualExtendedDisplayName = "Telemachus Virtual (扩展屏)"
+    static let virtualExtendedDisplayName = "Vibe Screen Virtual (扩展屏)"
     /// Fallback advertised size for the virtual extended chip when no explicit
     /// resolution is configured. Actual capture uses the configured resolution.
     static let virtualExtendedDefaultWidth = 1920
@@ -279,7 +279,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             singleInstanceProcessLock = try SingleInstanceProcessLock.acquireDefault()
         } catch {
             let alert = NSAlert()
-            alert.messageText = "Telemachus Is Already Running"
+            alert.messageText = "Vibe Screen Is Already Running"
             alert.informativeText = error.localizedDescription
             alert.alertStyle = .critical
             alert.runModal()
@@ -1674,7 +1674,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     height: size.height,
                     refreshRate: settings.effectiveRefreshRate,
                     hiDPI: settings.hiDPI,
-                    name: "Telemachus"
+                    name: "Vibe Screen"
                 )
 
                 try manager.disableMirrorMode()
@@ -1705,7 +1705,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         height: CGDisplayPixelsHigh(mainDisplayID),
                         refreshRate: max(30, mainRefreshRate),
                         hiDPI: false,
-                        name: "Telemachus Mirror"
+                        name: "Vibe Screen Mirror"
                     )
                     try manager.enableMirrorMode()
                     guard let createdID = manager.displayID else {
@@ -1914,7 +1914,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 framesPerSecond: settings.effectiveRefreshRate,
                 bitrateKbps: settings.effectiveBitrate * 1_000,
                 displayID: String(captureDisplayID),
-                displayName: "Telemachus Display",
+                displayName: "Vibe Screen Display",
                 // Reflect whether a virtual display actually backs this
                 // capture. Extended always is; mirrorMain is virtual only when
                 // the private-API hardware mirror succeeded (else it degraded to
@@ -2856,7 +2856,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     height: size.height,
                     refreshRate: settings.effectiveRefreshRate,
                     hiDPI: settings.hiDPI,
-                    name: "Telemachus"
+                    name: "Vibe Screen"
                 )
                 guard let createdID = manager.displayID else {
                     throw VirtualDisplayError.creationFailed("Display was created without a display ID")
@@ -2996,7 +2996,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             framesPerSecond: settings.effectiveRefreshRate,
             bitrateKbps: settings.effectiveBitrate * 1_000,
             displayID: String(captureDisplayID),
-            displayName: "Telemachus Display",
+            displayName: "Vibe Screen Display",
             isVirtual: newDisplaySource == .extended || newDisplaySource == .mirrorMain
         )
         server.setProtocolV1Displays(
@@ -3313,7 +3313,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if !accessibilityWarningShown {
             accessibilityWarningShown = true
             print("⚠️  Accessibility not granted - native pointer/keyboard input ignored. " +
-                  "Enable Telemachus under System Settings › Privacy & Security › Accessibility.")
+                  "Enable Vibe Screen under System Settings › Privacy & Security › Accessibility.")
             settings.hasAccessibilityPermission = false
         }
         return false
