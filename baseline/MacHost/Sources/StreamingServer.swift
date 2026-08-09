@@ -159,9 +159,17 @@ class StreamingServer: EncodedFrameSink {
 
     /// Fired on the network queue when a Protocol v1 client requests new video
     /// preferences. The AppDelegate hops to the main actor to apply them to the
-    /// host encoder settings. The session has already re-advertised the applied
-    /// VideoConfig with a bumped epoch; this only reconfigures the encoder.
-    var onVideoPreferencesRequested: ((UInt32, UInt32, VSVideoQualityPreset) -> Void)?
+    /// host encoder and live capture. The session defers the bumped-epoch
+    /// VideoConfig renegotiation until the host confirms the encoder actually
+    /// adopted the settings by calling completeProtocolV1VideoPreferences with
+    /// the same token, so a client can never accept a new VideoConfig while the
+    /// encoder still runs the previous configuration.
+    var onVideoPreferencesRequested:
+        ((_ token: UInt64,
+          _ bitrateKbps: UInt32,
+          _ framesPerSecond: UInt32,
+          _ qualityPreset: VSVideoQualityPreset,
+          _ resetQualityToAuto: Bool) -> Void)?
 
     private let frameQueue = DispatchQueue(label: "frameQueue", qos: .userInteractive)
     private let receiveQueue = DispatchQueue(label: "receiveQueue", qos: .userInteractive)
@@ -853,6 +861,34 @@ class StreamingServer: EncodedFrameSink {
         }
     }
 
+    /// Confirm a client video-preferences request after the host encoder and
+    /// live capture have adopted the settings. Runs on the network queue and
+    /// drives the deferred bumped-epoch VideoConfig renegotiation; a superseded
+    /// token or a non-streaming session is a safe no-op that keeps the prior
+    /// advertised configuration.
+    func completeProtocolV1VideoPreferences(
+        token: UInt64,
+        accepted: Bool,
+        appliedBitrateKbps: UInt32,
+        appliedFramesPerSecond: UInt32
+    ) {
+        networkQueue.async { [weak self] in
+            guard let self, !self.isStopped,
+                  self.connectionProtocolMode == .protocolV1,
+                  let session = self.protocolV1Session,
+                  let conn = self.connection else { return }
+            let generation = self.activeConnectionGeneration
+            let actions = session.completeVideoPreferences(
+                token: token,
+                accepted: accepted,
+                appliedBitrateKbps: appliedBitrateKbps,
+                appliedFramesPerSecond: appliedFramesPerSecond
+            )
+            guard !actions.isEmpty else { return }
+            self.applyProtocolV1Actions(actions, connection: conn, generation: generation)
+        }
+    }
+
     private func performOnNetworkQueue(_ operation: @escaping () -> Void) {
         if DispatchQueue.getSpecific(key: Self.networkQueueKey) == ObjectIdentifier(self) {
             operation()
@@ -1293,11 +1329,23 @@ class StreamingServer: EncodedFrameSink {
                           self.clientCallbackGeneration.isCurrent(generation) else { return }
                     self.onDisplaySelectionRequested?(displayID)
                 }
-            case .applyVideoPreferences(let bitrateKbps, let framesPerSecond, let qualityPreset):
+            case .applyVideoPreferences(
+                let token,
+                let bitrateKbps,
+                let framesPerSecond,
+                let qualityPreset,
+                let resetQualityToAuto
+            ):
                 DispatchQueue.main.async { [weak self] in
                     guard let self,
                           self.clientCallbackGeneration.isCurrent(generation) else { return }
-                    self.onVideoPreferencesRequested?(bitrateKbps, framesPerSecond, qualityPreset)
+                    self.onVideoPreferencesRequested?(
+                        token,
+                        bitrateKbps,
+                        framesPerSecond,
+                        qualityPreset,
+                        resetQualityToAuto
+                    )
                 }
             case .peerError(let error):
                 onProtocolErrorReceived?(error, generation)

@@ -68,7 +68,13 @@ enum ProtocolV1SessionAction {
     case heartbeat
     case requestKeyframe(force: Bool)
     case selectDisplay(id: String)
-    case applyVideoPreferences(bitrateKbps: UInt32, framesPerSecond: UInt32, qualityPreset: VSVideoQualityPreset)
+    case applyVideoPreferences(
+        token: UInt64,
+        bitrateKbps: UInt32,
+        framesPerSecond: UInt32,
+        qualityPreset: VSVideoQualityPreset,
+        resetQualityToAuto: Bool
+    )
     case peerError(VSProtocolError)
     case close
 }
@@ -84,6 +90,14 @@ final class ProtocolV1SessionCoordinator {
     private var negotiatedCapabilities: Set<VSCapability> = []
     private var advertisedVideoRotation = 0
     private let lock = NSLock()
+    /// Identifies the newest in-flight client video-preferences request. The
+    /// bumped-epoch VideoConfig renegotiation is deferred until the host
+    /// confirms the encoder actually adopted the requested settings, so a
+    /// client can never accept a new VideoConfig while the encoder still runs
+    /// the old configuration. A stale completion (superseded token or a phase
+    /// change) is ignored.
+    private var pendingVideoPreferencesToken: UInt64 = 0
+    private var nextVideoPreferencesToken: UInt64 = 1
 
     init(configuration: ProtocolV1SessionConfiguration) {
         precondition(!configuration.sessionID.isEmpty)
@@ -124,6 +138,35 @@ final class ProtocolV1SessionCoordinator {
             }
             return renegotiateSelectedDisplayLocked(
                 displayID: displayID,
+                configEpoch: configEpoch,
+                streamID: streamID,
+                correlationID: 0
+            )
+        }
+    }
+
+    /// Confirm a client SetVideoPreferences request after the host encoder has
+    /// actually adopted the new settings. Only the newest request renegotiates:
+    /// a superseded token, a phase change, or a non-accepted result keeps the
+    /// prior advertised configuration and emits nothing. On success this adopts
+    /// the applied numeric values so the re-advertised VideoConfig matches what
+    /// the encoder runs, then bumps the config epoch exactly like a display
+    /// switch so media stays gated until the client accepts the new config.
+    func completeVideoPreferences(
+        token: UInt64,
+        accepted: Bool,
+        appliedBitrateKbps: UInt32,
+        appliedFramesPerSecond: UInt32
+    ) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard token == pendingVideoPreferencesToken else { return [] }
+            pendingVideoPreferencesToken = 0
+            guard accepted else { return [] }
+            guard case .streaming(let configEpoch, let streamID) = phase else { return [] }
+            configuration.bitrateKbps = appliedBitrateKbps
+            configuration.framesPerSecond = appliedFramesPerSecond
+            return renegotiateSelectedDisplayLocked(
+                displayID: "",
                 configEpoch: configEpoch,
                 streamID: streamID,
                 correlationID: 0
@@ -428,7 +471,7 @@ final class ProtocolV1SessionCoordinator {
             guard negotiatedCapabilities.contains(.clientVideoControl) else {
                 return unsupportedCapability("Client video control was not negotiated.", envelope.messageID)
             }
-            guard case .streaming(let configEpoch, let streamID) = phase else {
+            guard case .streaming = phase else {
                 return invalidState("SetVideoPreferences arrived before media was streaming.", envelope.messageID)
             }
             // Clamp the requested values into the host's supported range. A zero
@@ -449,25 +492,30 @@ final class ProtocolV1SessionCoordinator {
                 max(requestedFps, Self.minimumClientFramesPerSecond),
                 Self.maximumClientFramesPerSecond
             )
-            configuration.bitrateKbps = clampedBitrate
-            configuration.framesPerSecond = clampedFps
-            // Re-advertise the applied video configuration on the same session
-            // with a bumped config epoch (reusing the runtime renegotiation
-            // path), and ask the host to reconfigure its encoder to match. The
-            // apply action carries the clamped values plus the quality intent so
-            // the host maps a preset to encoder quality when no explicit bitrate
-            // was requested.
-            let apply = ProtocolV1SessionAction.applyVideoPreferences(
-                bitrateKbps: clampedBitrate,
-                framesPerSecond: clampedFps,
-                qualityPreset: prefs.bitrateKbps == 0 ? prefs.qualityPreset : .unspecified
-            )
-            return [apply] + renegotiateSelectedDisplayLocked(
-                displayID: "",
-                configEpoch: configEpoch,
-                streamID: streamID,
-                correlationID: envelope.messageID
-            )
+            // Do not mutate the advertised configuration or renegotiate yet.
+            // The host applies the encoder change first and calls
+            // completeVideoPreferences on success, which is the only place the
+            // bumped-epoch VideoConfig is emitted. This keeps the advertised
+            // VideoConfig from arriving before the encoder actually adopts the
+            // settings, and keeps advertised == applied. Supersede any earlier
+            // in-flight request so only the newest intent renegotiates.
+            let token = nextVideoPreferencesToken
+            nextVideoPreferencesToken &+= 1
+            pendingVideoPreferencesToken = token
+            // An explicit bitrate wins over the preset intent. A reset request
+            // is honored only when no explicit bitrate is requested, matching
+            // the "explicit bitrate overrides quality" contract.
+            let resolvedPreset = prefs.bitrateKbps == 0 ? prefs.qualityPreset : .unspecified
+            let resolvedReset = prefs.bitrateKbps == 0 ? prefs.resetQualityToAuto : false
+            return [
+                .applyVideoPreferences(
+                    token: token,
+                    bitrateKbps: clampedBitrate,
+                    framesPerSecond: clampedFps,
+                    qualityPreset: resolvedPreset,
+                    resetQualityToAuto: resolvedReset
+                )
+            ]
 
         case .protocolError(let error):
             phase = .failed
