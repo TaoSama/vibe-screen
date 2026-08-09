@@ -1,8 +1,9 @@
 # Getting started
 
-The current runnable applications are named **Telemachus** while the Vibe
-Screen architecture is being integrated. These instructions build from source;
-there is no notarized stable release yet.
+The current runnable applications present to users as **Vibe Screen**. Internal
+SwiftPM executable/product targets and compatibility identifiers still use the
+historical `Telemachus` name. These instructions build from source; there is no
+notarized stable release yet.
 
 ## Prerequisites
 
@@ -92,7 +93,7 @@ adb -s "$ANDROID_SERIAL" reverse --list
 Start the packaged host:
 
 ```bash
-open .build/release-artifacts/Telemachus.app
+open ".build/release-artifacts/Vibe Screen.app"
 ```
 
 On first launch:
