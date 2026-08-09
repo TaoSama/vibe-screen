@@ -51,6 +51,13 @@ message SetVideoPreferences {
   uint32 frames_per_second = 2;
   // Coarse quality intent applied when no explicit bitrate is requested.
   VideoQualityPreset quality_preset = 3;
+  // Restore the host's default (automatic) encoder quality, discarding any
+  // previously requested preset. This is the only way to express a
+  // SHARP/BALANCED/SMOOTH -> AUTO transition, since an unset quality_preset
+  // means "keep current". When true, the host ignores quality_preset and
+  // reverts to its own default quality; an explicit bitrate_kbps still
+  // applies. Absent (false) requests keep the current quality.
+  bool reset_quality_to_auto = 4;
 }
 
 message RequestKeyframe {
