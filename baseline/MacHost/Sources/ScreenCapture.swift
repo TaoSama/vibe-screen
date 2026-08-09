@@ -589,27 +589,7 @@ class ScreenCapture {
             state.sourceFrameCount = 0
         }
 
-        let frameIntervalNs = max(1, 1_000_000_000 / max(currentFrameRate, 1))
-        let pacingTimer = DispatchSource.makeTimerSource(queue: queue)
-        pacingTimer.schedule(
-            deadline: .now(),
-            repeating: .nanoseconds(frameIntervalNs),
-            leeway: .microseconds(100)
-        )
-        pacingTimer.setEventHandler { [weak self] in
-            guard let self,
-                  let pixelBuffer = self.pacingLock.withLock({ $0.latestPixelBuffer })?.value else {
-                return
-            }
-            let pts = CMClockGetTime(CMClockGetHostTimeClock())
-            self.encoder?.encode(
-                pixelBuffer: pixelBuffer,
-                presentationTimeStamp: pts,
-                sessionEpoch: self.currentFrameSink?.currentSessionEpoch ?? 0
-            )
-        }
-        pacingTimer.resume()
-        framePacingTimer = pacingTimer
+        rescheduleFramePacerForCurrentRate(on: queue)
     }
 
     // MARK: - Start streaming
@@ -1195,6 +1175,77 @@ class ScreenCapture {
 
     func updateEncoderSettings(bitrateMbps: Int, quality: String, gamingBoost: Bool) {
         encoder?.updateSettings(bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost)
+    }
+
+    /// Change the live capture frame rate in place, without rebuilding the
+    /// encoder or the capture surface. The frame pacer that drives encoded FPS
+    /// is rescheduled to the new rate, and an active SCStream's source interval
+    /// is updated so it can deliver the new rate. A no-op when the rate is
+    /// unchanged or nothing is streaming, so an unchanged config never disturbs
+    /// the live stream.
+    func updateActiveFrameRate(_ frameRate: Int) {
+        let newRate = max(1, frameRate)
+        guard newRate != currentFrameRate else { return }
+        currentFrameRate = newRate
+        refreshRate = newRate
+
+        // Reschedule the pacer on its own queue, preserving the latest source
+        // buffer so the rate change does not blank the stream.
+        if let queue = encodeQueue {
+            queue.async { [weak self] in
+                self?.rescheduleFramePacerForCurrentRate(on: queue)
+            }
+        }
+
+        // Widen or narrow the SCStream source interval so the capture can
+        // actually feed the new rate. CGDisplayStream fallback is driven purely
+        // by the pacer, so no source update is required there.
+        if let stream, isSCStreamStarted {
+            let updatedConfig = SCStreamConfiguration()
+            let (width, height) = encodeSize(for: codec)
+            updatedConfig.width = width
+            updatedConfig.height = height
+            updatedConfig.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(newRate))
+            updatedConfig.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+            updatedConfig.showsCursor = true
+            updatedConfig.queueDepth = 2
+            updatedConfig.capturesAudio = false
+            updatedConfig.backgroundColor = .clear
+            updatedConfig.scalesToFit = true
+            stream.updateConfiguration(updatedConfig) { error in
+                if let error {
+                    debugLog("Live frame-rate SCStream reconfiguration failed: \(error)")
+                }
+            }
+        }
+    }
+
+    /// Rebuild only the pacing timer at the current rate, keeping the retained
+    /// latest source buffer so a rate change does not drop the visible frame.
+    private func rescheduleFramePacerForCurrentRate(on queue: DispatchQueue) {
+        framePacingTimer?.cancel()
+        framePacingTimer = nil
+        let frameIntervalNs = max(1, 1_000_000_000 / max(currentFrameRate, 1))
+        let pacingTimer = DispatchSource.makeTimerSource(queue: queue)
+        pacingTimer.schedule(
+            deadline: .now(),
+            repeating: .nanoseconds(frameIntervalNs),
+            leeway: .microseconds(100)
+        )
+        pacingTimer.setEventHandler { [weak self] in
+            guard let self,
+                  let pixelBuffer = self.pacingLock.withLock({ $0.latestPixelBuffer })?.value else {
+                return
+            }
+            let pts = CMClockGetTime(CMClockGetHostTimeClock())
+            self.encoder?.encode(
+                pixelBuffer: pixelBuffer,
+                presentationTimeStamp: pts,
+                sessionEpoch: self.currentFrameSink?.currentSessionEpoch ?? 0
+            )
+        }
+        pacingTimer.resume()
+        framePacingTimer = pacingTimer
     }
 
     /// Switch the wire codec. The pacer is stopped before replacing the

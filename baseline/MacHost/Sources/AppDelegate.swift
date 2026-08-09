@@ -1943,14 +1943,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             streamingServer?.onVideoPreferencesRequested = {
-                [weak self, weak configuredServer] bitrateKbps, framesPerSecond, qualityPreset in
+                [weak self, weak configuredServer] token, bitrateKbps, framesPerSecond, qualityPreset, resetQualityToAuto in
                 Task { @MainActor in
                     guard let self, let configuredServer,
                           self.streamingServer === configuredServer else { return }
                     self.applyClientVideoPreferences(
+                        token: token,
                         bitrateKbps: bitrateKbps,
                         framesPerSecond: framesPerSecond,
-                        qualityPreset: qualityPreset
+                        qualityPreset: qualityPreset,
+                        resetQualityToAuto: resetQualityToAuto,
+                        server: configuredServer
                     )
                 }
             }
@@ -2667,19 +2670,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// or non-numeric id is ignored, keeping the switch safe; the session gate
     /// already rejected unknown ids before streaming.
     /// Apply client-driven video preferences to the host encoder settings. The
-    /// session has already clamped the values and re-advertised the applied
-    /// VideoConfig with a bumped epoch, so this only writes the settings that
-    /// the runtime encoder observers watch. bitrate arrives in kbps and the
-    /// host stores Mbps; a quality preset is honored only when no explicit
-    /// bitrate was requested, matching the session's apply-action contract.
+    /// session clamped the values. This applies them to the live encoder and
+    /// capture pipeline FIRST, then confirms the request so the session emits
+    /// the bumped-epoch VideoConfig only after the encoder actually adopted the
+    /// settings. The confirmed numeric values are also persisted for future
+    /// sessions. bitrate arrives in kbps; the encoder is driven in whole Mbps,
+    /// so the request is quantized to Mbps and the confirmed kbps is derived
+    /// from that Mbps value, guaranteeing the advertised VideoConfig equals what
+    /// the encoder runs. A quality preset or reset-to-auto is honored only when
+    /// no explicit bitrate was requested, matching the session apply contract.
     @MainActor
     private func applyClientVideoPreferences(
+        token: UInt64,
         bitrateKbps: UInt32,
         framesPerSecond: UInt32,
-        qualityPreset: VSVideoQualityPreset
+        qualityPreset: VSVideoQualityPreset,
+        resetQualityToAuto: Bool,
+        server: StreamingServer
     ) {
+        // Quantize to whole Mbps (round to nearest, minimum 1) because the
+        // encoder only accepts Mbps. The confirmed kbps is derived from this so
+        // advertised == applied.
         let bitrateMbps = max(1, Int((bitrateKbps + 500) / 1_000))
-        if qualityPreset != .unspecified {
+        let appliedBitrateKbps = UInt32(bitrateMbps * 1_000)
+        let appliedFps = Int(framesPerSecond)
+
+        if resetQualityToAuto {
+            if settings.quality != Self.defaultEncoderQuality {
+                settings.quality = Self.defaultEncoderQuality
+            }
+        } else if qualityPreset != .unspecified {
             let mappedQuality: String
             switch qualityPreset {
             case .smooth: mappedQuality = "low"
@@ -2690,10 +2710,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if settings.quality != mappedQuality { settings.quality = mappedQuality }
         }
         if settings.bitrate != bitrateMbps { settings.bitrate = bitrateMbps }
-        if settings.refreshRate != Int(framesPerSecond) {
-            settings.refreshRate = Int(framesPerSecond)
+
+        // Push the encoder/frame-rate change into the live pipeline before the
+        // client is told to renegotiate. The @Published writes above already
+        // notify the settings observers, but reconfigure directly so the applied
+        // state is deterministic even if an observer is mid-reconfiguration.
+        if !settings.gamingBoost {
+            screenCapture?.updateEncoderSettings(
+                bitrateMbps: settings.effectiveBitrate,
+                quality: settings.effectiveQuality,
+                gamingBoost: false
+            )
         }
+        if settings.refreshRate != appliedFps {
+            settings.refreshRate = appliedFps
+            screenCapture?.updateActiveFrameRate(appliedFps)
+        }
+
+        // Only after the live pipeline has adopted the settings does the session
+        // renegotiate the bumped-epoch VideoConfig, advertising the exact values
+        // the encoder now runs.
+        // The session already resolved a zero (keep-current) request to the
+        // concrete current rate before clamping, so appliedFps is always the
+        // real target rate here.
+        server.completeProtocolV1VideoPreferences(
+            token: token,
+            accepted: true,
+            appliedBitrateKbps: appliedBitrateKbps,
+            appliedFramesPerSecond: UInt32(appliedFps)
+        )
     }
+
+    /// The host's default (automatic) encoder quality, restored when a client
+    /// asks to reset quality to auto.
+    private static let defaultEncoderQuality = "ultralow"
 
     private func handleClientDisplaySelection(
         _ requestedDisplayID: String,

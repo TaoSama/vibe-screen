@@ -760,10 +760,11 @@ enum ProtocolV1SelfTest {
     private static func testClientVideoPreferences(failures: inout [String]) {
         do {
             // Client offers CLIENT_VIDEO_CONTROL, drives to streaming, then asks
-            // for an explicit bitrate + fps. The host must apply the clamped
-            // values, re-advertise a single VideoConfig on a bumped epoch, and
-            // return an applyVideoPreferences action that drops the quality
-            // preset (an explicit bitrate wins).
+            // for an explicit bitrate + fps. The host must return exactly one
+            // applyVideoPreferences action carrying the clamped values with the
+            // quality preset dropped (an explicit bitrate wins) and must NOT
+            // renegotiate video until the host confirms the encoder adopted the
+            // settings via completeVideoPreferences.
             let session = try readySession(clientCapabilities: [.touch, .clientVideoControl])
             var prefs = VSSetVideoPreferences()
             prefs.bitrateKbps = 8_000
@@ -773,15 +774,36 @@ enum ProtocolV1SelfTest {
                 id: 4,
                 payload: .setVideoPreferences(prefs)
             ).serializedData())
-            let apply = actions.compactMap { action -> (UInt32, UInt32, VSVideoQualityPreset)? in
-                if case .applyVideoPreferences(let b, let f, let q) = action { return (b, f, q) }
+            let apply = actions.compactMap { action -> (UInt64, UInt32, UInt32, VSVideoQualityPreset, Bool)? in
+                if case .applyVideoPreferences(let t, let b, let f, let q, let r) = action {
+                    return (t, b, f, q, r)
+                }
                 return nil
             }
-            guard apply.count == 1, apply[0] == (8_000, 30, .unspecified) else {
+            guard apply.count == 1,
+                  apply[0].1 == 8_000, apply[0].2 == 30,
+                  apply[0].3 == .unspecified, apply[0].4 == false else {
                 failures.append("SetVideoPreferences did not apply the clamped bitrate/fps or dropped preset incorrectly")
                 return
             }
-            let responses = try responseEnvelopes(actions)
+            // The apply action alone must not renegotiate video: no
+            // StartDisplayResponse or VideoConfig may be emitted before the host
+            // confirms the encoder reconfiguration.
+            guard try responseEnvelopes(actions).isEmpty else {
+                failures.append("SetVideoPreferences renegotiated video before the encoder was confirmed")
+                return
+            }
+            // The host confirms the encoder adopted the settings. Only now is a
+            // single bumped-epoch VideoConfig advertised, with values that match
+            // what the host actually applied.
+            let token = apply[0].0
+            let commit = session.completeVideoPreferences(
+                token: token,
+                accepted: true,
+                appliedBitrateKbps: 8_000,
+                appliedFramesPerSecond: 30
+            )
+            let responses = try responseEnvelopes(commit)
             let startCount = responses.filter {
                 if case .startDisplayResponse = $0.payload { return true }
                 return false
@@ -791,7 +813,18 @@ enum ProtocolV1SelfTest {
                   config.configEpoch == 2,
                   config.bitrateKbps == 8_000,
                   config.framesPerSecond == 30 else {
-                failures.append("SetVideoPreferences did not re-advertise exactly one VideoConfig with the applied values on a bumped epoch")
+                failures.append("completeVideoPreferences did not re-advertise exactly one VideoConfig with the applied values on a bumped epoch")
+                return
+            }
+            // A stale/superseded completion token must be a safe no-op that
+            // keeps the prior configuration and emits nothing.
+            guard session.completeVideoPreferences(
+                token: token,
+                accepted: true,
+                appliedBitrateKbps: 8_000,
+                appliedFramesPerSecond: 30
+            ).isEmpty else {
+                failures.append("A superseded completeVideoPreferences token was not ignored")
                 return
             }
             // Each preference change re-gates media until the client accepts the
@@ -807,27 +840,62 @@ enum ProtocolV1SelfTest {
                 id: 6,
                 payload: .setVideoPreferences(presetOnly)
             ).serializedData())
-            guard presetActions.contains(where: {
-                if case .applyVideoPreferences(let b, let f, let q) = $0 {
-                    return b == 8_000 && f == 30 && q == .smooth
+            let presetApply = presetActions.compactMap { action -> (UInt64, UInt32, UInt32, VSVideoQualityPreset, Bool)? in
+                if case .applyVideoPreferences(let t, let b, let f, let q, let r) = action {
+                    return (t, b, f, q, r)
                 }
-                return false
-            }) else {
+                return nil
+            }
+            guard presetApply.count == 1,
+                  presetApply[0].1 == 8_000, presetApply[0].2 == 30,
+                  presetApply[0].3 == .smooth, presetApply[0].4 == false else {
                 failures.append("preset-only SetVideoPreferences did not preserve values or forward the preset")
                 return
             }
+            _ = session.completeVideoPreferences(
+                token: presetApply[0].0,
+                accepted: true,
+                appliedBitrateKbps: 8_000,
+                appliedFramesPerSecond: 30
+            )
             try acceptVideoConfig(session, configEpoch: 3, streamID: 1, messageID: 7)
+
+            // reset_quality_to_auto expresses a preset -> AUTO transition. With
+            // no explicit bitrate the reset flag is forwarded and the preset is
+            // dropped so the host restores its default quality.
+            var reset = VSSetVideoPreferences()
+            reset.qualityPreset = .sharp
+            reset.resetQualityToAuto = true
+            let resetActions = session.handleControl(try envelope(
+                id: 8,
+                payload: .setVideoPreferences(reset)
+            ).serializedData())
+            let resetApply = resetActions.compactMap { action -> (UInt64, VSVideoQualityPreset, Bool)? in
+                if case .applyVideoPreferences(let t, _, _, let q, let r) = action { return (t, q, r) }
+                return nil
+            }
+            guard resetApply.count == 1, resetApply[0].2 == true, resetApply[0].1 == .sharp else {
+                failures.append("reset_quality_to_auto was not forwarded to the host apply action")
+                return
+            }
+            _ = session.completeVideoPreferences(
+                token: resetApply[0].0,
+                accepted: true,
+                appliedBitrateKbps: 8_000,
+                appliedFramesPerSecond: 30
+            )
+            try acceptVideoConfig(session, configEpoch: 4, streamID: 1, messageID: 9)
 
             // Out-of-range values are clamped to the host bounds.
             var extreme = VSSetVideoPreferences()
             extreme.bitrateKbps = 500
             extreme.framesPerSecond = 240
             let clampedActions = session.handleControl(try envelope(
-                id: 8,
+                id: 10,
                 payload: .setVideoPreferences(extreme)
             ).serializedData())
             guard clampedActions.contains(where: {
-                if case .applyVideoPreferences(let b, let f, _) = $0 { return b == 1_000 && f == 120 }
+                if case .applyVideoPreferences(_, let b, let f, _, _) = $0 { return b == 1_000 && f == 120 }
                 return false
             }) else {
                 failures.append("SetVideoPreferences did not clamp out-of-range values")
