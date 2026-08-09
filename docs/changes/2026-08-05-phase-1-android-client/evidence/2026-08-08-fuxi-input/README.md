@@ -1,4 +1,4 @@
-# 2026-08-08 fuxi 键盘 / 滚轮原生输入真机验证（Xiaomi 12, 8a023e3a, USB）
+# 2026-08-08 fuxi 键盘 / 滚轮原生输入真机验证（小米 13 (2211133C), 8a023e3a, USB）
 
 ## 结论
 - 键盘注入端到端已验证：客户端 dispatchKeyEvent 捕获 → Protocol v1 转发 → host CGEvent 键盘注入成功。

@@ -1,4 +1,4 @@
-# Xiaomi 12 (fuxi) 真机验收 + 根因修复证据
+# 小米 13 (2211133C, fuxi) 真机验收 + 根因修复证据
 
 - 日期: 2026-08-08 (Asia/Shanghai)
 - 设备: Xiaomi 2211133C / 代号 fuxi / Android 16 / SDK 36 / LineageOS

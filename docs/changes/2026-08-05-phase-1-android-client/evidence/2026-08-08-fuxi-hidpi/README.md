@@ -1,4 +1,4 @@
-# 2026-08-08 fuxi HiDPI 虚拟显示器真机验证（Xiaomi 12, 8a023e3a, USB）
+# 2026-08-08 fuxi HiDPI 虚拟显示器真机验证（小米 13 (2211133C), 8a023e3a, USB）
 
 ## 结论
 - HiDPI 虚拟扩展显示器已真机验证：host 通过私有 CGVirtualDisplay API 创建了

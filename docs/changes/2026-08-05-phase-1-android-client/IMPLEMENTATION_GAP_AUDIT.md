@@ -48,7 +48,7 @@ real-device acceptance pending / open gate" 区分"写了代码"和"真机验证
 | 能力（README/Phase 1 清单） | 状态 | 支撑证据（file:line / 测试） | README 是否夸大 |
 | --- | --- | --- | --- |
 | macOS host + Android client 可构建运行 | 已实现并有测试 | 完整 Swift/Kotlin 应用源码；CI 202/202 XCTest（历史 commit）；Android 123 JVM 测试 | 否 |
-| USB 传输（adb reverse 54321） | 已实现并有测试 | StreamingServer 主会话；真机 Xiaomi 12 记录 | 否 |
+| USB 传输（adb reverse 54321） | 已实现并有测试 | StreamingServer 主会话；真机小米 13 (2211133C) 记录 | 否 |
 | Video（SCK/CGDisplayStream + VT HEVC/H.264 + MediaCodec） | 已实现并有测试 | ScreenCapture.swift、VideoEncoder.swift、Android VideoDecoder.kt；真机 60fps/6ms | 否 |
 | Touch 转发到 CGEvent | 已实现并有测试 | AppDelegate.swift:2030 onTouchEvent -> handleTouch:2903；StreamInputMapper.swift | 否 |
 | 手势派生的 scroll / 右键 / 拖拽 / 捏合 | 已实现但未验证 | AppDelegate.swift:2963-3233 手势状态机 + CGEvent 注入（本地合成，非独立 scroll 输入通道） | 轻微：这是 touch 手势合成，非真正外设输入 |

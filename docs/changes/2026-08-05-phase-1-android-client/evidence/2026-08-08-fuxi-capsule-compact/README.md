@@ -27,7 +27,7 @@ populateDisplayCapsule()：
 输入转发路径（dispatchTouch/mapInputPoint/inputViewport 全未动）。未新增字符串（复用既有
 control_displays/control_settings/control_disconnect/display_option_format）。
 
-## 量了什么（真机 Xiaomi 12 fuxi, adb 8a023e3a, Android 16 LineageOS, USB）
+## 量了什么（真机 小米 13 (2211133C) fuxi, adb 8a023e3a, Android 16 LineageOS, USB）
 屏幕 1080x2400, density 420 → 2.625 px/dp。测量时为横屏（窗口 2400x1080）。
 证据文件 dumpsys-controlbar-landscape.txt（dumpsys activity top，无需 idle，FLAG_SECURE 下仍可读几何）：
 - controlBar bounds = [1090,53]-[1311,164] → 宽 221px ≈ 84.2dp（单屏静息形态：仅 设置+断开 两枚图标）
