@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Landscape has the horizontal room to place the brand/title header
+         beside the connection actions, so the panel splits into two columns. -->
+    <bool name="connection_panel_two_column">true</bool>
+</resources>

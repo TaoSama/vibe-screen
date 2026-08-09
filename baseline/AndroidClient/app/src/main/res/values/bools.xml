@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Connection panel stays single-column (stacked) by default. Landscape
+         opts into a two-column header/actions split via values-land. -->
+    <bool name="connection_panel_two_column">false</bool>
+</resources>
