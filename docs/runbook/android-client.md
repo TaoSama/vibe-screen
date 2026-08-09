@@ -56,7 +56,7 @@ adb -s DEVICE_HOST:5555 install -r -t \
 ```
 
 The lease-controlled endpoint has previously identified as a
-Nubia P0110, not Xiaomi 12. Recheck rather than assuming its identity.
+Nubia P0110, not Xiaomi 13 (2211133C). Recheck rather than assuming its identity.
 
 ## Viewport checks
 

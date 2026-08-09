@@ -1,4 +1,4 @@
-# 30 分钟真机 soak 最终结论（Xiaomi 12 / fuxi / 8a023e3a，Android 16）
+# 30 分钟真机 soak 最终结论（小米 13 (2211133C) / fuxi / 8a023e3a，Android 16）
 
 采样窗口（UTC）：2026-08-07T17:26:05Z → 17:56:05Z，1800.06s，30 样本，间隔 60s。
 被测流:主机 Telemachus PID 89286、客户端 dev.telemachus.display PID 11143。

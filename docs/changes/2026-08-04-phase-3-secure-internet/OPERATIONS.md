@@ -207,7 +207,7 @@ processor, and user deletion behavior before public service launch.
 - direct and forced-relay canaries pass in every enabled region;
 - quotas, expiry, alerts, dashboards, and deletion jobs are verified;
 - packet capture and artifact secret scan pass;
-- Android Xiaomi 12 Internet evidence is attached;
+- Android Xiaomi 13 (2211133C) Internet evidence is attached;
 - rollback has been exercised and does not roll back revocation/key epochs;
 - feature flags can disable new sessions by version/region while preserving clear
   user errors.

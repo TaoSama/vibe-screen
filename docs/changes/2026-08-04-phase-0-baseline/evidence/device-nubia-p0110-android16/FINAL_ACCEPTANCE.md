@@ -33,7 +33,7 @@ fingerprint: nubia/pacific/pacific:16/2.5.2.0/20260804.003241:userdebug/test-key
 display: 1264x2800, density 560
 ```
 
-This device is not the Phase 0 Xiaomi 12 target.
+This device is not the Phase 0 Xiaomi 13 (2211133C) target.
 
 ## Final offline gates
 
@@ -128,6 +128,6 @@ was `59.53/60.01/61.29`; average frame age was
 `4.92/6.38/11.08 ms`.
 
 The run proves the formal 30-minute process and stream gates on this device.
-It does not prove Xiaomi 12 compatibility, external glass-to-glass latency, or
+It does not prove Xiaomi 13 (2211133C) compatibility, external glass-to-glass latency, or
 the planned two-hour no-growth target. Host RSS rose about 9 MiB across this
 window, so longer observation remains required before excluding a slow leak.
