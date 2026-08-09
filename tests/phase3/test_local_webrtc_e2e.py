@@ -76,7 +76,7 @@ class LocalWebRTCE2ETests(unittest.TestCase):
             subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
             subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
             signaling = repo / "scripts/phase3_webrtc/.build/signaling/vibe-signaling"
-            mac_host = repo / "baseline/MacHost/.build/release/Telemachus"
+            mac_host = repo / "baseline/MacHost/.build/release/Vibe Screen"
             verified_bytes = b"#!/bin/sh\nprintf 'verified:%s\\n' \"$1\"\n"
             malicious_bytes = b"#!/bin/sh\nprintf 'malicious:%s\\n' \"$1\"\n"
             for binary in (signaling, mac_host):
@@ -332,7 +332,7 @@ class LocalWebRTCE2ETests(unittest.TestCase):
             subprocess.run(["git", "add", "source.txt", ".gitignore"], cwd=repo, check=True)
             subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
             signaling = repo / "scripts/phase3_webrtc/.build/signaling/vibe-signaling"
-            mac_host = repo / "baseline/MacHost/.build/release/Telemachus"
+            mac_host = repo / "baseline/MacHost/.build/release/Vibe Screen"
             signaling.parent.mkdir(parents=True)
             mac_host.parent.mkdir(parents=True)
             signaling.write_bytes(b"signaling")
@@ -362,7 +362,7 @@ class LocalWebRTCE2ETests(unittest.TestCase):
             repo = Path(temporary).resolve()
             signaling_root = repo / "services/signaling"
             signaling_root.mkdir(parents=True)
-            mac_host = repo / "baseline/MacHost/.build/release/Telemachus"
+            mac_host = repo / "baseline/MacHost/.build/release/Vibe Screen"
             mac_host.parent.mkdir(parents=True)
             mac_host.write_bytes(b"mac-host")
             create_test_webrtc_framework(mac_host)
@@ -392,7 +392,7 @@ class LocalWebRTCE2ETests(unittest.TestCase):
             repo = Path(temporary)
             for binary in (
                 repo / "scripts/phase3_webrtc/.build/signaling/vibe-signaling",
-                repo / "scripts/phase3_webrtc/.build/swift/release/Telemachus",
+                repo / "scripts/phase3_webrtc/.build/swift/release/Vibe Screen",
             ):
                 binary.parent.mkdir(parents=True, exist_ok=True)
                 binary.write_bytes(b"binary")
@@ -422,7 +422,7 @@ class LocalWebRTCE2ETests(unittest.TestCase):
                             "sha256": "ignored",
                         },
                         "mac_host": {
-                            "path": "baseline/MacHost/.build/release/Telemachus",
+                            "path": "baseline/MacHost/.build/release/Vibe Screen",
                             "sha256": "ignored",
                         },
                     },

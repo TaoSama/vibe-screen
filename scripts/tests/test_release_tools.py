@@ -320,7 +320,7 @@ class PrepareReleaseTests(unittest.TestCase):
         package_script = (REPOSITORY_ROOT / "scripts/package_macos.py").read_text(encoding="utf-8")
         self.assertIn('"-file-prefix-map"', package_script)
         self.assertIn('PRODUCT_NAME = "Vibe Screen"', package_script)
-        self.assertIn('EXECUTABLE_NAME = "Telemachus"', package_script)
+        self.assertIn('EXECUTABLE_NAME = PRODUCT_NAME', package_script)
         self.assertIn('run("strip", "-S", str(macos_dir / EXECUTABLE_NAME))', package_script)
         self.assertNotIn(
             "#filePath",

@@ -172,7 +172,7 @@ def main() -> int:
                 "-c",
                 "release",
                 "--product",
-                "Telemachus",
+                "Vibe Screen",
             ]
         )
         run_checked(
@@ -188,7 +188,7 @@ def main() -> int:
             ]
         )
 
-    host_binary = swift_binary(MAC_HOST_PACKAGE, "Telemachus")
+    host_binary = swift_binary(MAC_HOST_PACKAGE, "Vibe Screen")
     client_binary = swift_binary(IOS_PACKAGE, "vibescreen-mac-host-loopback")
     for binary in (host_binary, client_binary):
         if not binary.is_file():
