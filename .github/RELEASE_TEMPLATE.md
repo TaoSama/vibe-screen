@@ -8,7 +8,7 @@ before running it.
 
 ## Included artifacts
 
-- `Telemachus-macos-{{VERSION}}-<arch>.zip`: macOS host with an ad-hoc signature.
+- `Vibe-Screen-macos-{{VERSION}}-<arch>.zip`: macOS host with an ad-hoc signature.
   It is **not** Developer ID signed or notarized, so macOS may block it.
 - `Telemachus-android-{{VERSION}}-debug.apk`: Android development APK signed with
   the workflow's ephemeral debug key. It is **not** a production-signed APK and

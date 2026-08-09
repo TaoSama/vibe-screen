@@ -442,9 +442,17 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             },
             environment["BUILT_PRODUCTS_DIR"].map {
                 URL(fileURLWithPath: $0)
+                    .appendingPathComponent("Vibe Screen.app/Contents/MacOS/Telemachus")
+            },
+            environment["BUILT_PRODUCTS_DIR"].map {
+                URL(fileURLWithPath: $0)
                     .appendingPathComponent("Telemachus.app/Contents/MacOS/Telemachus")
             },
             Optional(testBundleDirectory.appendingPathComponent("Telemachus")),
+            Optional(
+                testBundleDirectory
+                    .appendingPathComponent("Vibe Screen.app/Contents/MacOS/Telemachus")
+            ),
             Optional(
                 testBundleDirectory
                     .appendingPathComponent("Telemachus.app/Contents/MacOS/Telemachus")
