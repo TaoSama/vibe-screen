@@ -157,6 +157,14 @@ public struct VSSetVideoPreferences: Sendable {
   /// Coarse quality intent applied when no explicit bitrate is requested.
   public var qualityPreset: VSVideoQualityPreset = .unspecified
 
+  /// Restore the host's default (automatic) encoder quality, discarding any
+  /// previously requested preset. This is the only way to express a
+  /// SHARP/BALANCED/SMOOTH -> AUTO transition, since an unset quality_preset
+  /// means "keep current". When true, the host ignores quality_preset and
+  /// reverts to its own default quality; an explicit bitrate_kbps still
+  /// applies. Absent (false) requests keep the current quality.
+  public var resetQualityToAuto: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -353,7 +361,7 @@ extension VSVideoConfigResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImpl
 
 extension VSSetVideoPreferences: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SetVideoPreferences"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}bitrate_kbps\0\u{3}frames_per_second\0\u{3}quality_preset\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}bitrate_kbps\0\u{3}frames_per_second\0\u{3}quality_preset\0\u{3}reset_quality_to_auto\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -364,6 +372,7 @@ extension VSSetVideoPreferences: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
       case 1: try { try decoder.decodeSingularUInt32Field(value: &self.bitrateKbps) }()
       case 2: try { try decoder.decodeSingularUInt32Field(value: &self.framesPerSecond) }()
       case 3: try { try decoder.decodeSingularEnumField(value: &self.qualityPreset) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.resetQualityToAuto) }()
       default: break
       }
     }
@@ -379,6 +388,9 @@ extension VSSetVideoPreferences: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
     if self.qualityPreset != .unspecified {
       try visitor.visitSingularEnumField(value: self.qualityPreset, fieldNumber: 3)
     }
+    if self.resetQualityToAuto != false {
+      try visitor.visitSingularBoolField(value: self.resetQualityToAuto, fieldNumber: 4)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -386,6 +398,7 @@ extension VSSetVideoPreferences: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
     if lhs.bitrateKbps != rhs.bitrateKbps {return false}
     if lhs.framesPerSecond != rhs.framesPerSecond {return false}
     if lhs.qualityPreset != rhs.qualityPreset {return false}
+    if lhs.resetQualityToAuto != rhs.resetQualityToAuto {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
