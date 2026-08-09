@@ -199,7 +199,7 @@ class StreamingServer: EncodedFrameSink {
     private var protocolV1FramesPerSecond: UInt32 = 60
     private var protocolV1BitrateKbps: UInt32 = 20_000
     private var protocolV1DisplayID = "active-display"
-    private var protocolV1DisplayName = "Telemachus Display"
+    private var protocolV1DisplayName = "Vibe Screen Display"
     private var protocolV1DisplayIsVirtual = true
     private var protocolV1Displays: [ProtocolV1DisplayInfo] = []
     private var isReceiving = false

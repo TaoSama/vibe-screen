@@ -89,7 +89,7 @@ struct PermissionOnboardingView: View {
                 Divider()
 
             HStack {
-                Text("Telemachus only uses these permissions while streaming.")
+                Text("Vibe Screen only uses these permissions while streaming.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -129,7 +129,7 @@ struct PermissionOnboardingView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Set up Telemachus")
+                    Text("Set up Vibe Screen")
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                     Text("SideScreen fork · two permissions, then your tablet is ready.")
                         .font(.system(size: 11))
@@ -178,7 +178,7 @@ struct PermissionOnboardingView: View {
             VStack(spacing: 9) {
                 Text("Allow screen capture")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
-                Text("Telemachus needs \(screenPermissionName) access to send display pixels to your Android tablet.")
+                Text("Vibe Screen needs \(screenPermissionName) access to send display pixels to your Android tablet.")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -208,7 +208,7 @@ struct PermissionOnboardingView: View {
                 .controlSize(.large)
 
                 if screenRequestStarted && !settings.hasScreenRecordingPermission {
-                    Label("Enable Telemachus in the list. macOS may ask you to quit and reopen it.", systemImage: "arrow.turn.down.left")
+                    Label("Enable Vibe Screen in the list. macOS may ask you to quit and reopen it.", systemImage: "arrow.turn.down.left")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -236,7 +236,7 @@ struct PermissionOnboardingView: View {
                         .background(.thinMaterial, in: Capsule())
                 }
 
-                Text("Accessibility lets tablet gestures control the Mac and lets Telemachus move and restore windows. Streaming works without it.")
+                Text("Accessibility lets tablet gestures control the Mac and lets Vibe Screen move and restore windows. Streaming works without it.")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -286,7 +286,7 @@ struct PermissionOnboardingView: View {
             VStack(spacing: 9) {
                 Text("Ready for your tablet")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
-                Text("Telemachus will start over USB and open the connected Android client automatically.")
+                Text("Vibe Screen will start over USB and open the connected Android client automatically.")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

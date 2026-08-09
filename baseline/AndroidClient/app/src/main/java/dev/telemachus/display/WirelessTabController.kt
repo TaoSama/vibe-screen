@@ -151,7 +151,7 @@ class WirelessTabController(
                     if (cached != null) {
                         "No response from ${cached.macName} at ${cached.host}:${cached.port}.\n\n" +
                             "The Mac may have switched WiFi networks, changed its port, or is not " +
-                            "running. Open Telemachus on the Mac and scan the new QR to re-pair."
+                            "running. Open Vibe Screen on the Mac and scan the new QR to re-pair."
                     } else {
                         "No response from your Mac. Make sure both devices are on the same WiFi " +
                             "and the Mac app is running, then scan the QR again."

@@ -4,6 +4,8 @@
 <dict>
     <key>CFBundleName</key>
     <string>Telemachus</string>
+    <key>CFBundleDisplayName</key>
+    <string>Vibe Screen</string>
     <key>CFBundleIdentifier</key>
     <string>dev.telemachus.display</string>
     <key>CFBundleVersion</key>
@@ -11,9 +13,9 @@
     <key>CFBundleShortVersionString</key>
     <string>0.12.0</string>
     <key>CFBundleGetInfoString</key>
-    <string>Telemachus — a fork of SideScreen</string>
+    <string>Vibe Screen — a fork of SideScreen</string>
     <key>NSHumanReadableCopyright</key>
-    <string>Telemachus contributors, 2026. Forked from SideScreen by Tran Vuong Quoc Dat and contributors.</string>
+    <string>Vibe Screen contributors, 2026. Forked from SideScreen by Tran Vuong Quoc Dat and contributors.</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>
@@ -21,8 +23,8 @@
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSScreenCaptureUsageDescription</key>
-    <string>Telemachus needs screen recording access to stream a Mac display to your Android tablet.</string>
+    <string>Vibe Screen needs screen recording access to stream a Mac display to your Android tablet.</string>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>Telemachus uses the local network when Wireless mode is selected.</string>
+    <string>Vibe Screen uses the local network when Wireless mode is selected.</string>
 </dict>
 </plist>
