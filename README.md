@@ -31,7 +31,7 @@ platform scaffolding under active development.
 | Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation; stylus and other peripherals remain scaffolding |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; authenticated but not encrypted |
-| Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, in-place display switch, HiDPI capture, keyboard/scroll input, client-driven video preferences, and auto-reconnect; cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
+| Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, in-place display switch, HiDPI capture, keyboard/scroll input, and auto-reconnect. Client-driven video preferences (in-place renegotiation, AUTO reset) are implemented and offline-verified only. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
 | iOS trusted LAN | Core client interoperates with the baseline MacHost on TCP `54321` in a real two-process loopback; Simulator UI and device acceptance remain gated |
 | HarmonyOS/Internet | In development; not part of the current runnable baseline |
 

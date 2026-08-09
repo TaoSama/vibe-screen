@@ -143,6 +143,12 @@ still record:
 
 Compilation, synthetic media, ADB-injected events, and old Phase 0 tap evidence
 cannot close the remaining unlocked-Mac, physical-peripheral, or Xiaomi 13
-gates. On the Xiaomi 13, real streaming, display switch, keyboard/scroll input,
-and reconnect are now verified; a host-RSS-stable two-hour soak and physical HID
-mouse move/click confirmation remain open.
+gates for this legacy-protocol record.
+
+Separately, and outside this legacy touch-protocol acceptance, later Protocol
+v1 sessions on the Xiaomi 13 have verified real streaming, display switch,
+keyboard/scroll input, and reconnect; those results belong to the Protocol v1
+records and evidence directories under
+`../2026-08-04-phase-0-baseline/`, not to this Nubia-based legacy run. A
+host-RSS-stable two-hour soak and a physical HID mouse move/click confirmation
+remain open there.
