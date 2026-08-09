@@ -51,6 +51,7 @@ import dev.telemachus.display.internet.PeerRoute
 import dev.telemachus.display.internet.PendingRevocationBarrierException
 import dev.telemachus.display.internet.ProductInputPhase
 import dev.vibescreen.protocol.v1.InputPhase
+import dev.vibescreen.protocol.v1.VideoQualityPreset
 import dev.telemachus.display.internet.ProductTouchEvent
 import dev.telemachus.display.internet.ProductVideoCodec
 import dev.telemachus.display.internet.ProductVideoConfiguration
@@ -1562,14 +1563,27 @@ class MainActivity : AppCompatActivity() {
             val choice =
                 qualityButtons.entries.firstOrNull { it.value.id == checkedId }?.key
                     ?: return@addOnButtonCheckedListener
+            // Queue the host request first, then persist, so a stored preference
+            // always reflects a request that was actually handed to the client.
+            // AUTO cannot be expressed by an empty preset (that means "keep
+            // current"), so it sends an explicit reset-to-auto request instead
+            // of sending nothing.
+            if (choice == VideoQualityChoice.AUTO) {
+                streamClient?.setVideoPreferences(
+                    bitrateKbps = 0,
+                    framesPerSecond = 0,
+                    qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+                    resetQualityToAuto = true,
+                )
+            } else {
+                // A preset carries no explicit bitrate, so the host maps the preset.
+                streamClient?.setVideoPreferences(
+                    bitrateKbps = 0,
+                    framesPerSecond = 0,
+                    qualityPreset = choice.preset,
+                )
+            }
             prefs.videoQuality = choice
-            if (choice == VideoQualityChoice.AUTO) return@addOnButtonCheckedListener
-            // A preset carries no explicit bitrate, so the host maps the preset.
-            streamClient?.setVideoPreferences(
-                bitrateKbps = 0,
-                framesPerSecond = 0,
-                qualityPreset = choice.preset,
-            )
         }
 
         frameRateGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
@@ -1577,12 +1591,12 @@ class MainActivity : AppCompatActivity() {
             val fps =
                 frameRateButtons.entries.firstOrNull { it.value.id == checkedId }?.key
                     ?: return@addOnButtonCheckedListener
-            prefs.videoFrameRate = fps
             streamClient?.setVideoPreferences(
                 bitrateKbps = 0,
                 framesPerSecond = fps,
-                qualityPreset = dev.vibescreen.protocol.v1.VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+                qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
             )
+            prefs.videoFrameRate = fps
         }
 
         bitrateSlider.addOnChangeListener { _, value, _ ->
@@ -1594,13 +1608,13 @@ class MainActivity : AppCompatActivity() {
 
                 override fun onStopTrackingTouch(slider: Slider) {
                     val mbps = slider.value.toInt()
-                    prefs.videoBitrateMbps = mbps
                     // An explicit bitrate wins over the preset intent.
                     streamClient?.setVideoPreferences(
                         bitrateKbps = mbps * KBPS_PER_MBPS,
                         framesPerSecond = 0,
-                        qualityPreset = dev.vibescreen.protocol.v1.VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+                        qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
                     )
+                    prefs.videoBitrateMbps = mbps
                 }
             },
         )

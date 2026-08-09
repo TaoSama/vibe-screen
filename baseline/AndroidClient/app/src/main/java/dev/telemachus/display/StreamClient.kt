@@ -1266,15 +1266,19 @@ class StreamClient(
         bitrateKbps: Int,
         framesPerSecond: Int,
         qualityPreset: dev.vibescreen.protocol.v1.VideoQualityPreset,
+        resetQualityToAuto: Boolean = false,
     ) {
         if (!isConnected || wireMode != WireMode.V1) return
-        val session = protocolSession ?: return
-        if (!session.isStreaming) return
+        // Do not gate on isStreaming here: the session coalesces a request that
+        // arrives mid-reconfiguration and sends the newest intent once the
+        // replacement VideoConfig commits, so dropping it now would lose the
+        // last user change.
+        protocolSession ?: return
         submitOutbound(
             kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
             command = OutboundCommand.ProtocolBatch { activeSession ->
                 activeSession
-                    .setVideoPreferences(bitrateKbps, framesPerSecond, qualityPreset)
+                    .setVideoPreferences(bitrateKbps, framesPerSecond, qualityPreset, resetQualityToAuto)
                     ?.let { listOf(it) } ?: emptyList()
             },
         )
