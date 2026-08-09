@@ -18,6 +18,7 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.SurfaceHolder
 import android.view.View
+import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -29,9 +30,12 @@ import android.widget.PopupMenu
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.TooltipCompat
 import androidx.constraintlayout.widget.ConstraintSet
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
 import dev.telemachus.display.databinding.ActivityMainBinding
@@ -189,6 +193,13 @@ class MainActivity : AppCompatActivity() {
     private var isDraggingOverlay = false
     private var overlayDx = 0f
     private var overlayDy = 0f
+    private var activeSettingsDialog: Dialog? = null
+
+    // Latest non-interactive edge insets (system bars + display cutout) unioned
+    // across the whole window. Floating chrome is kept inside the safe region
+    // derived from these while the video SurfaceView stays edge-to-edge.
+    private var safeAreaInsets = SafeAreaGeometry.Insets.NONE
+    private val baseChromeMargins = mutableMapOf<Int, SafeAreaGeometry.Insets>()
 
     // Input prediction for low-latency gaming
     private val inputPredictor = InputPredictor()
@@ -270,6 +281,7 @@ class MainActivity : AppCompatActivity() {
         setupDraggableOverlay()
         setupSettingsButton()
         setupControlBar()
+        setupSafeAreaInsets()
         restoreOverlayPosition()
         restoreSettingsButtonPosition()
         startChecklistUpdates()
@@ -617,6 +629,191 @@ class MainActivity : AppCompatActivity() {
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
         }
+    }
+
+    /**
+     * Keep the video edge-to-edge but route the reported system-bar and
+     * display-cutout insets into the floating chrome. The root keeps zero
+     * padding so the SurfaceView still fills the panel; instead the insets feed
+     * [safeAreaInsets], which margins the control bar and settings panel and
+     * bounds the draggable overlay and settings button.
+     */
+    private fun setupSafeAreaInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, windowInsets ->
+            // Keep stable system-bar bounds even while immersive mode hides
+            // them; using only getInsets() would make chrome jump whenever the
+            // transient bars change visibility. Cutout bounds remain physical.
+            val bars = windowInsets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars())
+            val cutout = windowInsets.getInsets(WindowInsetsCompat.Type.displayCutout())
+            val updatedInsets =
+                SafeAreaGeometry.Insets.of(
+                    left = maxOf(bars.left, cutout.left),
+                    top = maxOf(bars.top, cutout.top),
+                    right = maxOf(bars.right, cutout.right),
+                    bottom = maxOf(bars.bottom, cutout.bottom),
+                )
+            if (updatedInsets != safeAreaInsets) {
+                safeAreaInsets = updatedInsets
+                // Apply chrome margins before cloning the root constraints in
+                // reclampFloatingControls(), so the clone preserves them.
+                applySafeAreaToChrome()
+                reclampFloatingControls()
+                activeSettingsDialog?.let(::resizeSettingsDialog)
+            }
+            // Do not consume: descendants that also observe insets still see them.
+            windowInsets
+        }
+        // Request an initial pass so the first frame is already safe-inset aware.
+        ViewCompat.requestApplyInsets(binding.root)
+    }
+
+    /**
+     * Margin the control bar and connection panel by the safe insets so their
+     * tap targets never sit under a notch or gesture bar. The settings button
+     * uses [updateSettingsButtonPosition], which folds the same insets into its
+     * constraint margins.
+     */
+    private fun applySafeAreaToChrome() {
+        setInsetMargins(binding.controlBar)
+        setInsetMargins(binding.settingsPanel)
+    }
+
+    private fun setInsetMargins(view: View) {
+        val params = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        val base =
+            baseChromeMargins.getOrPut(view.id) {
+                SafeAreaGeometry.Insets.of(
+                    left = params.marginStart,
+                    top = params.topMargin,
+                    right = params.marginEnd,
+                    bottom = params.bottomMargin,
+                )
+            }
+        val newLeft = safeAreaInsets.left + base.left
+        val newTop = safeAreaInsets.top + base.top
+        val newRight = safeAreaInsets.right + base.right
+        val newBottom = safeAreaInsets.bottom + base.bottom
+        if (params.marginStart != newLeft ||
+            params.topMargin != newTop ||
+            params.marginEnd != newRight ||
+            params.bottomMargin != newBottom
+        ) {
+            params.marginStart = newLeft
+            params.topMargin = newTop
+            params.marginEnd = newRight
+            params.bottomMargin = newBottom
+            view.layoutParams = params
+        }
+    }
+
+    /**
+     * Re-bound the draggable status overlay and the settings button into the
+     * current safe rectangle. Called after insets change and after a rotation
+     * or size change so a control saved in one orientation cannot strand
+     * off-screen or under a cutout in another.
+     */
+    private fun reclampFloatingControls() {
+        clampOverlayIntoSafeRect()
+        // Re-anchor the settings button so its inset-aware margins are rebuilt.
+        restoreSettingsButtonPosition()
+    }
+
+    /** The safe rectangle within the root using the latest insets. */
+    private fun currentSafeRect(): SafeAreaGeometry.Rect {
+        val margin = (SETTINGS_CHROME_MARGIN_DP * resources.displayMetrics.density).toInt()
+        return SafeAreaGeometry.safeRect(
+            parentWidth = binding.root.width,
+            parentHeight = binding.root.height,
+            insets = safeAreaInsets,
+            marginPx = margin,
+        )
+    }
+
+    /** Clamp the current overlay position into the safe rectangle in place. */
+    private fun clampOverlayIntoSafeRect() {
+        val overlay = binding.statusBar
+        overlay.post {
+            if (overlay.width == 0 || binding.root.width == 0) return@post
+            val (x, y) =
+                SafeAreaGeometry.clampToSafeRect(
+                    x = overlay.x,
+                    y = overlay.y,
+                    viewWidth = overlay.width,
+                    viewHeight = overlay.height,
+                    safe = currentSafeRect(),
+                )
+            if (x != overlay.x || y != overlay.y) {
+                overlay.x = x
+                overlay.y = y
+                if (prefs.overlayX >= 0 && prefs.overlayY >= 0) {
+                    prefs.overlayX = x
+                    prefs.overlayY = y
+                }
+            }
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // configChanges keeps this activity alive across rotation/size changes,
+        // so re-apply immersive mode and re-clamp floating controls once the new
+        // insets arrive rather than relying on a recreate.
+        enableFullscreenMode()
+        ViewCompat.requestApplyInsets(binding.root)
+        reclampFloatingControls()
+        activeSettingsDialog?.let { dialog ->
+            dialog.window?.decorView?.post { resizeSettingsDialog(dialog) }
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) enableFullscreenMode()
+    }
+
+    /**
+     * Show a Material dialog without dropping the activity out of immersive
+     * fullscreen. The dialog window is made non-focusable until it is shown so
+     * the activity's hidden system bars are not revealed, focus is granted
+     * immediately after, and immersive mode is re-applied when the dialog is
+     * dismissed. Returns the shown dialog for optional further wiring.
+     */
+    private fun showImmersiveDialog(builder: MaterialAlertDialogBuilder): androidx.appcompat.app.AlertDialog {
+        val dialog = builder.create()
+        return showImmersiveDialog(dialog)
+    }
+
+    private fun <T : Dialog> showImmersiveDialog(dialog: T): T {
+        dialog.window?.setFlags(
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+        )
+        dialog.setOnDismissListener {
+            // Re-hide the system bars the dialog may have surfaced.
+            enableFullscreenMode()
+            if (activeSettingsDialog === dialog) activeSettingsDialog = null
+        }
+        dialog.show()
+        dialog.window?.let { win ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                win.decorView.windowInsetsController?.let { controller ->
+                    controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                    controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                win.decorView.systemUiVisibility = window.decorView.systemUiVisibility or
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                    View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            }
+            // Now that the bars are re-hidden, let the dialog take input.
+            win.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        }
+        return dialog
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -1291,13 +1488,13 @@ class MainActivity : AppCompatActivity() {
      */
     private fun confirmDisconnect() {
         revealControlBar()
-        android.app.AlertDialog
-            .Builder(this)
-            .setTitle(R.string.disconnect_confirm_title)
-            .setMessage(R.string.disconnect_confirm_message)
-            .setPositiveButton(R.string.disconnect_confirm_action) { _, _ -> disconnect() }
-            .setNegativeButton(R.string.disconnect_confirm_cancel, null)
-            .show()
+        showImmersiveDialog(
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.disconnect_confirm_title)
+                .setMessage(R.string.disconnect_confirm_message)
+                .setPositiveButton(R.string.disconnect_confirm_action) { _, _ -> disconnect() }
+                .setNegativeButton(R.string.disconnect_confirm_cancel, null),
+        )
     }
 
     private fun revealControlBar() {
@@ -1437,14 +1634,19 @@ class MainActivity : AppCompatActivity() {
                         var newX = event.rawX + overlayDx
                         var newY = event.rawY + overlayDy
 
-                        // Get screen bounds
-                        val parent = view.parent as View
-                        val maxX = parent.width - view.width.toFloat()
-                        val maxY = parent.height - view.height.toFloat()
-
-                        // Constrain to screen bounds
-                        newX = newX.coerceIn(0f, maxX)
-                        newY = newY.coerceIn(0f, maxY)
+                        // Constrain to the safe rectangle (system bars + cutout)
+                        // so the overlay cannot be dragged under a notch or a
+                        // gesture bar on any edge.
+                        val clamped =
+                            SafeAreaGeometry.clampToSafeRect(
+                                x = newX,
+                                y = newY,
+                                viewWidth = view.width,
+                                viewHeight = view.height,
+                                safe = currentSafeRect(),
+                            )
+                        newX = clamped.first
+                        newY = clamped.second
 
                         view
                             .animate()
@@ -1478,10 +1680,7 @@ class MainActivity : AppCompatActivity() {
         val y = prefs.overlayY
 
         if (x >= 0 && y >= 0) {
-            binding.statusBar.post {
-                binding.statusBar.x = x
-                binding.statusBar.y = y
-            }
+            positionOverlayAt(x, y)
         }
 
         // Apply opacity to both overlay and settings button
@@ -1491,6 +1690,35 @@ class MainActivity : AppCompatActivity() {
 
         // Apply visibility
         updateOverlayVisibility(prefs.showStatsOverlay)
+    }
+
+    /**
+     * Place the overlay at a saved position but clamp it into the current safe
+     * rectangle first, so a position saved in one orientation cannot land under
+     * a cutout or off-screen after a rotation or size change.
+     */
+    private fun positionOverlayAt(
+        x: Float,
+        y: Float,
+    ) {
+        val overlay = binding.statusBar
+        overlay.post {
+            if (overlay.width == 0 || binding.root.width == 0) {
+                overlay.x = x
+                overlay.y = y
+                return@post
+            }
+            val (clampedX, clampedY) =
+                SafeAreaGeometry.clampToSafeRect(
+                    x = x,
+                    y = y,
+                    viewWidth = overlay.width,
+                    viewHeight = overlay.height,
+                    safe = currentSafeRect(),
+                )
+            overlay.x = clampedX
+            overlay.y = clampedY
+        }
     }
 
     private fun updateOverlayOpacity(opacity: Float) {
@@ -1504,10 +1732,7 @@ class MainActivity : AppCompatActivity() {
             val x = prefs.overlayX
             val y = prefs.overlayY
             if (x >= 0 && y >= 0) {
-                binding.statusBar.post {
-                    binding.statusBar.x = x
-                    binding.statusBar.y = y
-                }
+                positionOverlayAt(x, y)
             }
         } else {
             binding.statusBar.visibility = View.GONE
@@ -1673,6 +1898,21 @@ class MainActivity : AppCompatActivity() {
         val positionBottomCenter = view.findViewById<MaterialButton>(R.id.positionBottomCenter)
         val positionCenterLeft = view.findViewById<MaterialButton>(R.id.positionCenterLeft)
         val positionCenterRight = view.findViewById<MaterialButton>(R.id.positionCenterRight)
+        val positionButtons =
+            listOf(
+                cornerBottomRight to R.string.settings_position_bottom_right,
+                cornerBottomLeft to R.string.settings_position_bottom_left,
+                cornerTopRight to R.string.settings_position_top_right,
+                cornerTopLeft to R.string.settings_position_top_left,
+                positionTopCenter to R.string.settings_position_top,
+                positionBottomCenter to R.string.settings_position_bottom,
+                positionCenterLeft to R.string.settings_position_left,
+                positionCenterRight to R.string.settings_position_right,
+            )
+        positionButtons.forEach { (button, description) ->
+            button.contentDescription = getString(description)
+            button.isCheckable = true
+        }
 
         // Load current settings
         showStatsSwitch.isChecked = prefs.showStatsOverlay
@@ -1697,19 +1937,15 @@ class MainActivity : AppCompatActivity() {
         // 0=BottomRight, 1=BottomLeft, 2=TopRight, 3=TopLeft
         // 4=TopCenter, 5=BottomCenter, 6=CenterLeft, 7=CenterRight
         fun updatePositionSelection(selectedPosition: Int) {
-            val buttons =
-                listOf(
-                    cornerBottomRight,
-                    cornerBottomLeft,
-                    cornerTopRight,
-                    cornerTopLeft,
-                    positionTopCenter,
-                    positionBottomCenter,
-                    positionCenterLeft,
-                    positionCenterRight,
+            positionButtons.forEachIndexed { index, (button, _) ->
+                val selected = index == selectedPosition
+                button.isChecked = selected
+                button.isSelected = selected
+                ViewCompat.setStateDescription(
+                    button,
+                    getString(if (selected) R.string.selected else R.string.not_selected),
                 )
-            buttons.forEachIndexed { index, button ->
-                if (index == selectedPosition) {
+                if (selected) {
                     button.backgroundTintList =
                         android.content.res.ColorStateList
                             .valueOf(0x334CAF50)
@@ -1791,10 +2027,9 @@ class MainActivity : AppCompatActivity() {
             // the parent bounds once the view is measured.
             val overlay = binding.statusBar
             overlay.post {
-                val parent = overlay.parent as View
-                val margin = resources.displayMetrics.density * OVERLAY_RESET_MARGIN_DP
-                val targetX = margin
-                val targetY = parent.height - overlay.height - margin
+                val safe = currentSafeRect()
+                val targetX = safe.left
+                val targetY = (safe.bottom - overlay.height).coerceAtLeast(safe.top)
                 overlay
                     .animate()
                     .x(targetX)
@@ -1868,12 +2103,31 @@ class MainActivity : AppCompatActivity() {
             dialog.dismiss()
         }
 
-        dialog.show()
+        activeSettingsDialog = dialog
+        showImmersiveDialog(dialog)
+        resizeSettingsDialog(dialog)
+    }
 
-        // Cap dialog height to 85% of screen so content scrolls on smaller screens / landscape
+    /** Refit the live settings dialog after an orientation or inset change. */
+    private fun resizeSettingsDialog(dialog: Dialog) {
         dialog.window?.let { win ->
-            val maxH = (resources.displayMetrics.heightPixels * 0.85).toInt()
-            win.setLayout(WindowManager.LayoutParams.MATCH_PARENT, maxH)
+            // The activity and dialog are both immersive full-screen windows,
+            // so the activity's stable insets share this display coordinate space.
+            val density = resources.displayMetrics.density
+            val margin = (SETTINGS_CHROME_MARGIN_DP * density).toInt()
+            val availableWidth =
+                (resources.displayMetrics.widthPixels -
+                    safeAreaInsets.left - safeAreaInsets.right - margin * 2).coerceAtLeast(1)
+            val availableHeight =
+                (resources.displayMetrics.heightPixels -
+                    safeAreaInsets.top - safeAreaInsets.bottom - margin * 2).coerceAtLeast(1)
+            val dialogWidth = minOf((SETTINGS_DIALOG_MAX_WIDTH_DP * density).toInt(), availableWidth)
+            val dialogHeight =
+                minOf(
+                    (resources.displayMetrics.heightPixels * SETTINGS_DIALOG_MAX_HEIGHT_RATIO).toInt(),
+                    availableHeight,
+                )
+            win.setLayout(dialogWidth, dialogHeight)
         }
     }
 
@@ -1904,7 +2158,14 @@ class MainActivity : AppCompatActivity() {
         constraintSet.clone(constraintLayout)
 
         val buttonId = binding.settingsButton.id
-        val marginDp = (24 * resources.displayMetrics.density).toInt()
+        // Fold the safe-area insets into each edge margin so the floating
+        // settings button clears the notch/gesture bar on whichever edge it is
+        // anchored to, then re-clamp keeps it there across rotations.
+        val base = (SETTINGS_CHROME_MARGIN_DP * resources.displayMetrics.density).toInt()
+        val topM = base + safeAreaInsets.top
+        val bottomM = base + safeAreaInsets.bottom
+        val startM = base + safeAreaInsets.left
+        val endM = base + safeAreaInsets.right
 
         // Clear all constraints first
         constraintSet.clear(buttonId, ConstraintSet.TOP)
@@ -1919,9 +2180,9 @@ class MainActivity : AppCompatActivity() {
                     ConstraintSet.BOTTOM,
                     ConstraintSet.PARENT_ID,
                     ConstraintSet.BOTTOM,
-                    marginDp,
+                    bottomM,
                 )
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, marginDp)
+                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, endM)
             }
 
             1 -> { // Bottom Left
@@ -1930,35 +2191,35 @@ class MainActivity : AppCompatActivity() {
                     ConstraintSet.BOTTOM,
                     ConstraintSet.PARENT_ID,
                     ConstraintSet.BOTTOM,
-                    marginDp,
+                    bottomM,
                 )
                 constraintSet.connect(
                     buttonId,
                     ConstraintSet.START,
                     ConstraintSet.PARENT_ID,
                     ConstraintSet.START,
-                    marginDp,
+                    startM,
                 )
             }
 
             2 -> { // Top Right
-                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, marginDp)
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, marginDp)
+                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, topM)
+                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, endM)
             }
 
             3 -> { // Top Left
-                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, marginDp)
+                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, topM)
                 constraintSet.connect(
                     buttonId,
                     ConstraintSet.START,
                     ConstraintSet.PARENT_ID,
                     ConstraintSet.START,
-                    marginDp,
+                    startM,
                 )
             }
 
             4 -> { // Top Center
-                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, marginDp)
+                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, topM)
                 constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
                 constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
             }
@@ -1969,7 +2230,7 @@ class MainActivity : AppCompatActivity() {
                     ConstraintSet.BOTTOM,
                     ConstraintSet.PARENT_ID,
                     ConstraintSet.BOTTOM,
-                    marginDp,
+                    bottomM,
                 )
                 constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
                 constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
@@ -1983,14 +2244,14 @@ class MainActivity : AppCompatActivity() {
                     ConstraintSet.START,
                     ConstraintSet.PARENT_ID,
                     ConstraintSet.START,
-                    marginDp,
+                    startM,
                 )
             }
 
             7 -> { // Center Right
                 constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
                 constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, marginDp)
+                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, endM)
             }
 
             else -> { // Default to bottom right
@@ -1999,9 +2260,9 @@ class MainActivity : AppCompatActivity() {
                     ConstraintSet.BOTTOM,
                     ConstraintSet.PARENT_ID,
                     ConstraintSet.BOTTOM,
-                    marginDp,
+                    bottomM,
                 )
-                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, marginDp)
+                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, endM)
             }
         }
 
@@ -3712,6 +3973,7 @@ class MainActivity : AppCompatActivity() {
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
         stopChecklistUpdates()
+        activeSettingsDialog?.dismiss()
         runCatching(::discardPendingInternetPairing).onFailure { failure ->
             android.util.Log.e(INTERNET_LOG_TAG, "Could not delete pending pairing identity", failure)
         }
@@ -3722,7 +3984,6 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val EXTRA_AUTO_CONNECT = "auto_connect"
         private const val KBPS_PER_MBPS = 1_000
-        private const val OVERLAY_RESET_MARGIN_DP = 16f
         private const val STATE_AUTOMATIC_USB_CONNECT = "automatic_usb_connect"
         private const val ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE"
         private const val EXTRA_USB_CONNECTED = "connected"
@@ -3741,6 +4002,13 @@ class MainActivity : AppCompatActivity() {
         private const val LEGACY_RIGHT_CLICK_HOLD_MS = 650L
         private const val FOREGROUND_RECONNECT_DELAY_MS = 150L
         private const val CONTROL_BAR_AUTO_HIDE_MS = 3_000L
+
+        // Uniform breathing gap, in dp, added on top of the safe-area insets for
+        // floating chrome (control bar, settings panel, settings button) and the
+        // draggable overlay clamp. Matches the settings button's resting margin.
+        private const val SETTINGS_CHROME_MARGIN_DP = 24f
+        private const val SETTINGS_DIALOG_MAX_WIDTH_DP = 680f
+        private const val SETTINGS_DIALOG_MAX_HEIGHT_RATIO = 0.85f
         // Truncation budget for the display name shown on the capsule selector.
         // Keeps long host display names from overflowing the compact capsule;
         // the label view also ellipsizes as a visual backstop.
