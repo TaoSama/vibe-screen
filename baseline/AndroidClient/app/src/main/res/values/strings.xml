@@ -141,6 +141,16 @@
     <string name="position_bottom_left">↙</string>
     <string name="position_bottom">↓</string>
     <string name="position_bottom_right">↘</string>
+    <string name="settings_position_top_left">Place settings button at top left</string>
+    <string name="settings_position_top">Place settings button at top center</string>
+    <string name="settings_position_top_right">Place settings button at top right</string>
+    <string name="settings_position_left">Place settings button at center left</string>
+    <string name="settings_position_right">Place settings button at center right</string>
+    <string name="settings_position_bottom_left">Place settings button at bottom left</string>
+    <string name="settings_position_bottom">Place settings button at bottom center</string>
+    <string name="settings_position_bottom_right">Place settings button at bottom right</string>
+    <string name="selected">Selected</string>
+    <string name="not_selected">Not selected</string>
     <string name="reset_overlay">Reset Overlay</string>
     <string name="reset_button">Reset Button</string>
     <string name="done">Done</string>
