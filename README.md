@@ -2,8 +2,10 @@
 
 > **Development status:** the Phase 0 macOS/Android baseline has passed its
 > recorded 30-minute device acceptance run, but this remains a development
-> preview rather than a stable release. The runnable application is still
-> named **Telemachus**. Matching macOS and Android builds now upgrade the main
+> preview rather than a stable release. The runnable application now presents
+> to users as **Vibe Screen** on both macOS and Android, while its SwiftPM
+> executable/product target and derived source retain the historical
+> **Telemachus** identity. Matching macOS and Android builds now upgrade the main
 > USB/LAN session to Protocol v1 while retaining an explicit legacy fallback.
 > Protocol v1 is now exercised on device (display selection/switch, HiDPI
 > capture, keyboard/scroll input, auto-reconnect) and the cross-platform offline

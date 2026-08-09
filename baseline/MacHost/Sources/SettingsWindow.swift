@@ -140,7 +140,7 @@ struct SettingsView: View {
                     .onHover { headerHovered = $0 }
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Telemachus")
+                        Text("Vibe Screen")
                             .font(.system(size: 20, weight: .bold, design: .rounded))
                         Text("Turn your tablet into a second display")
                             .font(.system(size: 12, weight: .medium))
@@ -170,7 +170,7 @@ struct SettingsView: View {
                         Button("Cancel", role: .cancel) { }
                         Button("Reset", role: .destructive) {
                             settings.resetToDefaults()
-                            if let window = NSApp.windows.first(where: { $0.title == "Telemachus" }) {
+                            if let window = NSApp.windows.first(where: { $0.title == "Vibe Screen" }) {
                                 window.center()
                             }
                         }
@@ -557,7 +557,7 @@ struct SettingsView: View {
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text("Launch at Login")
                                                 .font(.system(size: 12, weight: .medium))
-                                            Text("Run Telemachus in the background automatically after you log in.")
+                                            Text("Run Vibe Screen in the background automatically after you log in.")
                                                 .font(.system(size: 10))
                                                 .foregroundColor(.secondary)
                                         }
@@ -793,7 +793,7 @@ struct SettingsView: View {
                                             .buttonStyle(.borderless)
                                             .font(.system(size: 11))
                                         }
-                                        Text("After a rebuild or re-sign, macOS can leave a stale Screen Recording or Accessibility entry that still looks checked but no longer works. Remove Telemachus with the − button, then add it again with + (or relaunch so macOS re-prompts). Uncheck → check alone often keeps the old grant.")
+                                        Text("After a rebuild or re-sign, macOS can leave a stale Screen Recording or Accessibility entry that still looks checked but no longer works. Remove Vibe Screen with the − button, then add it again with + (or relaunch so macOS re-prompts). Uncheck → check alone often keeps the old grant.")
                                             .font(.system(size: 11))
                                             .foregroundColor(.secondary)
                                             .fixedSize(horizontal: false, vertical: true)
@@ -1063,7 +1063,7 @@ struct SettingsView: View {
                                 }
                         }
                         .buttonStyle(.plain)
-                        .help("Quit Telemachus (⌘Q)")
+                        .help("Quit Vibe Screen (⌘Q)")
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 14)
@@ -2271,7 +2271,7 @@ class SettingsWindowController: NSWindowController, NSWindowDelegate {
             defer: false
         )
 
-        window.title = "Telemachus"
+        window.title = "Vibe Screen"
         window.titlebarAppearsTransparent = true
         window.backgroundColor = .windowBackgroundColor
         window.isMovableByWindowBackground = true
@@ -2400,7 +2400,7 @@ struct WirelessSection: View {
                             )
                             .multilineTextAlignment(.center)
                     }
-                    Text("Scan this QR from Telemachus Android (Wireless tab)")
+                    Text("Scan this QR from Vibe Screen Android (Wireless tab)")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)

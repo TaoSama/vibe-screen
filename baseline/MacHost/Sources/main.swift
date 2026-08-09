@@ -5,7 +5,7 @@ if CommandLine.arguments.contains("--issue-phase3-internet-lease") {
     exit(InternetSessionLeaseCLI.run() ? EXIT_SUCCESS : EXIT_FAILURE)
 }
 
-print("🚀 Telemachus starting...")
+print("🚀 Vibe Screen starting...")
 
 if CommandLine.arguments.contains("--transport-self-test") {
     exit(TransportSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
@@ -67,9 +67,9 @@ let mainMenu = NSMenu()
 let appMenu = NSMenu()
 let appMenuItem = NSMenuItem()
 appMenuItem.submenu = appMenu
-appMenu.addItem(NSMenuItem(title: "About Telemachus", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: ""))
+appMenu.addItem(NSMenuItem(title: "About Vibe Screen", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: ""))
 appMenu.addItem(NSMenuItem.separator())
-appMenu.addItem(NSMenuItem(title: "Quit Telemachus", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+appMenu.addItem(NSMenuItem(title: "Quit Vibe Screen", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 mainMenu.addItem(appMenuItem)
 
 // Edit menu (for standard text editing shortcuts)

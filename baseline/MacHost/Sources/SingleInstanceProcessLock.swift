@@ -7,8 +7,8 @@ enum SingleInstanceProcessLockError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .alreadyRunning: return "Another Telemachus process is already running."
-        case .fileSystem(let reason): return "Could not acquire the Telemachus process lock: \(reason)"
+        case .alreadyRunning: return "Another Vibe Screen process is already running."
+        case .fileSystem(let reason): return "Could not acquire the Vibe Screen process lock: \(reason)"
         }
     }
 }
