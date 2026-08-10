@@ -25,4 +25,16 @@
     <dimen name="display_capsule_label_margin">6dp</dimen>
     <dimen name="display_capsule_label_max_width">128dp</dimen>
     <dimen name="display_capsule_corner_radius">12dp</dimen>
+
+    <!-- Gap between the header and actions columns when the connection panel
+         splits into two columns in landscape; ignored in the stacked layout. -->
+    <dimen name="connection_panel_column_gap">28dp</dimen>
+    <dimen name="connection_panel_padding_top">32dp</dimen>
+    <dimen name="connection_panel_padding_bottom">28dp</dimen>
+    <dimen name="connection_mode_margin_bottom">16dp</dimen>
+    <dimen name="connection_section_margin">12dp</dimen>
+    <dimen name="connection_icon_size">72dp</dimen>
+    <dimen name="connection_icon_margin_bottom">20dp</dimen>
+    <dimen name="connection_wordmark_margin_bottom">10dp</dimen>
+    <dimen name="connection_title_margin_bottom">8dp</dimen>
 </resources>

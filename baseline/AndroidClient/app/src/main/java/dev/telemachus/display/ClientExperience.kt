@@ -252,3 +252,74 @@ internal object ClientControlAvailability {
             ClientControl.NATIVE_POINTER -> capabilities.nativePointer
         }
 }
+
+/**
+ * Pure layout policy for the connection panel's header/actions split. The
+ * panel stacks the brand/title header above the connection actions in a single
+ * column by default; when there is enough horizontal room (landscape) it places
+ * the header beside the actions in two weighted columns. Keeping the geometry
+ * here lets the orientation, sizing, and weight decisions be unit-tested
+ * without inflating any Android view.
+ */
+internal object ConnectionPanelLayoutPolicy {
+    /** LinearLayout.VERTICAL / LinearLayout.HORIZONTAL mirrored as data. */
+    enum class Orientation {
+        VERTICAL,
+        HORIZONTAL,
+    }
+
+    /**
+     * Resolved geometry for one child column. [widthMatchParent] maps to
+     * MATCH_PARENT when true and 0dp (weighted) when false; [weight] is the
+     * LinearLayout weight to assign.
+     */
+    data class Column(
+        val widthMatchParent: Boolean,
+        val weight: Float,
+    )
+
+    data class Layout(
+        val contentOrientation: Orientation,
+        val header: Column,
+        val actions: Column,
+        /** Gap placed between the two columns; zero in the stacked layout. */
+        val columnGapPx: Int,
+        val subtitleMaxLines: Int,
+    )
+
+    // Landscape splits roughly 40/60 so the actions column, which carries the
+    // mode switch and the tallest per-mode content, gets the extra room.
+    const val HEADER_WEIGHT = 40f
+    const val ACTIONS_WEIGHT = 60f
+    const val LANDSCAPE_SUBTITLE_MAX_LINES = 3
+
+    /**
+     * @param twoColumn whether the current configuration opts into the
+     *   side-by-side layout (typically true in landscape).
+     * @param columnGapPx spacing to insert between the columns when they sit
+     *   side by side; ignored in the stacked layout.
+     */
+    fun resolve(
+        twoColumn: Boolean,
+        columnGapPx: Int,
+    ): Layout =
+        if (twoColumn) {
+            Layout(
+                contentOrientation = Orientation.HORIZONTAL,
+                header = Column(widthMatchParent = false, weight = HEADER_WEIGHT),
+                actions = Column(widthMatchParent = false, weight = ACTIONS_WEIGHT),
+                columnGapPx = columnGapPx.coerceAtLeast(0),
+                subtitleMaxLines = LANDSCAPE_SUBTITLE_MAX_LINES,
+            )
+        } else {
+            // Stacked: both children keep their original full-width, unweighted
+            // visual so portrait renders exactly as before.
+            Layout(
+                contentOrientation = Orientation.VERTICAL,
+                header = Column(widthMatchParent = true, weight = 0f),
+                actions = Column(widthMatchParent = true, weight = 0f),
+                columnGapPx = 0,
+                subtitleMaxLines = Int.MAX_VALUE,
+            )
+        }
+}

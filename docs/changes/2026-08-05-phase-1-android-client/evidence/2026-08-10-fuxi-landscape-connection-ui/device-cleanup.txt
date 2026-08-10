@@ -1,0 +1,7 @@
+allow_capture=0
+accelerometer_rotation=1
+user_rotation=0
+free
+default
+ignoreOrientationRequest false for displayId=0
+adb_reverse=
