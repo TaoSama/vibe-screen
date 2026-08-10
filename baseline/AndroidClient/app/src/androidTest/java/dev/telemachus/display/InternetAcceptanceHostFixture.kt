@@ -102,6 +102,7 @@ internal class TestHostAuthority {
         val context = transcriptDigest(SESSION_CONTEXT_DOMAIN, *pairingParts(offer, request))
         val signalingUrl = "http://127.0.0.1:18080"
         val iceUrl = "stun:127.0.0.1:3478"
+        val expiresAt = System.currentTimeMillis() / 1_000 + 300
         val digest =
             transcriptDigest(
                 LEASE_DOMAIN,
@@ -109,10 +110,14 @@ internal class TestHostAuthority {
                 offer.pairingIdentifier.toByteArray(),
                 hostIdentity.deviceId.toByteArray(),
                 hostIdentity.keyId.toByteArray(),
+                request.deviceIdentity.deviceId.toByteArray(),
+                request.deviceIdentity.keyId.toByteArray(),
                 signalingUrl.toByteArray(),
                 sessionId.toByteArray(),
                 u64(sessionEpoch),
+                u64(hostIdentity.keyEpoch),
                 u64(request.deviceIdentity.keyEpoch),
+                u64(expiresAt),
                 context,
                 protocolSessionId,
                 token.toByteArray(),
@@ -129,10 +134,14 @@ internal class TestHostAuthority {
                 addProperty("version", 1)
                 addProperty("pairing_id", offer.pairingIdentifier)
                 addProperty("pinned_host_id", hostIdentity.deviceId)
+                addProperty("pinned_device_id", request.deviceIdentity.deviceId)
+                addProperty("lease_device_key_id", request.deviceIdentity.keyId)
                 addProperty("signaling_url", signalingUrl)
                 addProperty("signaling_session_id", sessionId)
                 addProperty("session_epoch", sessionEpoch)
-                addProperty("identity_epoch", request.deviceIdentity.keyEpoch)
+                addProperty("host_identity_epoch", hostIdentity.keyEpoch)
+                addProperty("device_identity_epoch", request.deviceIdentity.keyEpoch)
+                addProperty("expires_at", expiresAt)
                 addProperty("transcript_context", context.base64())
                 addProperty("protocol_session_id", protocolSessionId.base64())
                 addProperty("signaling_token", token)

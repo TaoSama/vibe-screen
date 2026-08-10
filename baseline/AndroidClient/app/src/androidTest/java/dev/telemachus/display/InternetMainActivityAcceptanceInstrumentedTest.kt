@@ -296,11 +296,11 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         acceptanceStage = "lease_import_input"
         onView(withHint(R.string.internet_import_hint))
-            .inRoot(FocusedRootMatcher())
+            .inRoot(DialogTextRootMatcher(R.string.internet_import_title))
             .perform(SetSensitiveTextAction(encodedLease))
         acceptanceStage = "lease_import_submit"
         onView(withHint(R.string.internet_import_hint))
-            .inRoot(FocusedRootMatcher())
+            .inRoot(DialogTextRootMatcher(R.string.internet_import_title))
             .perform(ClickDialogPositiveAction())
         acceptanceStage = "lease_import_result"
     }
@@ -421,6 +421,9 @@ private class ClickDialogPositiveAction(
         val button = checkNotNull(view.rootView.findViewById<View>(android.R.id.button1))
         check(button.performClick()) { "Protected dialog action was not handled" }
         uiController.loopMainThreadUntilIdle()
+        check((view as? EditText)?.error == null) {
+            "Protected dialog action failed: ${(view as EditText).error}"
+        }
     }
 }
 

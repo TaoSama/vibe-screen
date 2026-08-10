@@ -229,7 +229,7 @@ final class ProtocolV1SessionTests: XCTestCase {
               case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected HostHello + SessionAccepted")
         }
-        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl])
+        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .multiDisplay, .hostActions, .clientVideoControl])
         XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .multiDisplay])
     }
 
