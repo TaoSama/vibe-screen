@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A landscape window with at least 600dp of available width has room to
+         place the brand/title header beside the connection actions, so the
+         panel splits into two weighted columns. Available width tracks the
+         current window (multi-window aware), so split-screen and narrow
+         freeform windows below this threshold keep the stacked single column
+         from values-land. -->
+    <bool name="connection_panel_two_column">true</bool>
+</resources>

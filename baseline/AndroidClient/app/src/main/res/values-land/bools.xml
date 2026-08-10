@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Landscape has the horizontal room to place the brand/title header
-         beside the connection actions, so the panel splits into two columns. -->
-    <bool name="connection_panel_two_column">true</bool>
+    <!-- Landscape alone is not enough to justify the side-by-side split: a
+         split-screen or narrow freeform window can be landscape yet too narrow
+         to fit the header beside the actions without cramping. The two-column
+         layout is therefore gated on available width in values-w600dp-land, and
+         narrow landscape falls back to this stacked single column. -->
+    <bool name="connection_panel_two_column">false</bool>
 </resources>
