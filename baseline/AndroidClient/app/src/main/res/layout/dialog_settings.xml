@@ -71,7 +71,7 @@
                 android:id="@+id/showStatsSwitch"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:checked="true"
+                android:checked="false"
                 app:thumbTint="@color/switch_thumb_color"
                 app:trackTint="@color/switch_track_color" />
         </LinearLayout>

@@ -330,8 +330,23 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
             if dropped_value is not None:
                 queue_drop_values.append(dropped_value)
         if event == "stream_stats":
-            for name in ("fps", "average_frame_age_ms", "dropped_frames"):
-                value = _number(attributes.get(name))
+            stream_attribute_names = {
+                "fps": ("fps",),
+                "average_frame_age_ms": (
+                    "average_frame_age_ms",
+                    "avg_frame_age_ms",
+                ),
+                "dropped_frames": ("dropped_frames", "dropped"),
+            }
+            for name, aliases in stream_attribute_names.items():
+                value = next(
+                    (
+                        parsed
+                        for alias in aliases
+                        if (parsed := _number(attributes.get(alias))) is not None
+                    ),
+                    None,
+                )
                 if value is not None:
                     stream_values[name].append(value)
 

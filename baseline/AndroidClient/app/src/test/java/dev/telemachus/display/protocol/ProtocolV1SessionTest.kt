@@ -8,6 +8,9 @@ import dev.vibescreen.protocol.v1.DisconnectNotice
 import dev.vibescreen.protocol.v1.DisplayDescriptor
 import dev.vibescreen.protocol.v1.DisplayChanged
 import dev.vibescreen.protocol.v1.Envelope
+import dev.vibescreen.protocol.v1.HostActionCatalog
+import dev.vibescreen.protocol.v1.HostActionDescriptor
+import dev.vibescreen.protocol.v1.HostActionResult
 import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.ListDisplaysResponse
@@ -39,18 +42,107 @@ class ProtocolV1SessionTest {
         assertEquals(1_000L, hello.sentAtMonotonicNs)
         assertEquals(1, hello.clientHello.supportedProtocols.minimum)
         assertEquals(1, hello.clientHello.supportedProtocols.maximum)
-        assertEquals(
+       assertEquals(
+           listOf(
+               Capability.CAPABILITY_TOUCH,
+               Capability.CAPABILITY_KEYBOARD,
+               Capability.CAPABILITY_POINTER,
+               Capability.CAPABILITY_MULTI_DISPLAY,
+               Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
+                Capability.CAPABILITY_HOST_ACTIONS,
+           ),
+           hello.clientHello.capabilitiesList,
+       )
+       assertEquals(emptyList<Capability>(), hello.clientHello.requiredCapabilitiesList)
+       assertEquals(listOf(Codec.CODEC_HEVC, Codec.CODEC_H264), hello.clientHello.codecsList)
+   }
+
+    @Test
+    fun hostActionCatalogBeforeStreamingIsCachedAndFilteredToKnownIds() {
+        val session = hostActionSessionThroughDisplayStart()
+        // Catalog arrives after SessionAccepted, before the first VideoConfig
+        // commits, so the session is negotiated but not yet streaming.
+        val descriptors =
             listOf(
-                Capability.CAPABILITY_TOUCH,
-                Capability.CAPABILITY_KEYBOARD,
-                Capability.CAPABILITY_POINTER,
-                Capability.CAPABILITY_MULTI_DISPLAY,
-                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
-            ),
-            hello.clientHello.capabilitiesList,
-        )
-        assertEquals(emptyList<Capability>(), hello.clientHello.requiredCapabilitiesList)
-        assertEquals(listOf(Codec.CODEC_HEVC, Codec.CODEC_H264), hello.clientHello.codecsList)
+                HostActionDescriptor.newBuilder().setActionId("move-window").setLocalizedName("Move").build(),
+                HostActionDescriptor.newBuilder().setActionId("unknown-action").setLocalizedName("Nope").build(),
+                HostActionDescriptor.newBuilder().setActionId("return-windows").build(),
+            )
+        val actions =
+            session.receive(hostActionCatalog(6, descriptors)).single()
+                as ProtocolV1Session.Action.HostActionsAvailable
+        assertEquals(listOf("move-window", "return-windows"), actions.actions.map { it.id })
+        assertEquals(listOf("move-window", "return-windows"), session.hostActions.map { it.id })
+    }
+
+    @Test
+    fun hostActionCatalogDeduplicatesRepeatedActionIds() {
+        val session = hostActionStreamingSession()
+        val descriptors =
+            listOf(
+                HostActionDescriptor.newBuilder().setActionId("move-window").setLocalizedName("First").build(),
+                HostActionDescriptor.newBuilder().setActionId("move-window").setLocalizedName("Second").build(),
+            )
+        val actions =
+            session.receive(hostActionCatalog(7, descriptors)).single()
+                as ProtocolV1Session.Action.HostActionsAvailable
+        assertEquals(listOf("move-window"), actions.actions.map { it.id })
+        assertEquals("First", actions.actions.single().localizedName)
+    }
+
+    @Test
+    fun invokeHostActionSendsInvokeAndResultIsCorrelated() {
+        val session = hostActionStreamingSession()
+        session.receive(hostActionCatalog(7))
+        assertTrue(session.canInvokeHostActions)
+        val invocationId = ByteString.copyFrom(byteArrayOf(9, 8, 7, 6))
+        val envelope = session.invokeHostAction("move-window", invocationId)!!
+        assertEquals("move-window", envelope.hostActionInvoke.actionId)
+        assertEquals(invocationId, envelope.hostActionInvoke.invocationId)
+        val completed =
+            session.receive(hostActionResult(8, invocationId, accepted = true)).single()
+                as ProtocolV1Session.Action.HostActionCompleted
+        assertTrue(completed.accepted)
+        assertEquals(invocationId, completed.invocationId)
+    }
+
+    @Test
+    fun invokeHostActionRejectsUnknownIdAndNonStreaming() {
+        val streaming = hostActionStreamingSession()
+        streaming.receive(hostActionCatalog(7))
+        val id = ByteString.copyFrom(byteArrayOf(1, 1))
+        assertNull(streaming.invokeHostAction("not-advertised", id))
+        // Before streaming the session cannot invoke even a known action.
+        val negotiated = hostActionSessionThroughDisplayStart()
+        negotiated.receive(hostActionCatalog(6))
+        assertFalse(negotiated.canInvokeHostActions)
+        assertNull(negotiated.invokeHostAction("move-window", id))
+    }
+
+    @Test
+    fun hostActionResultForUnknownInvocationIsIgnored() {
+        val session = hostActionStreamingSession()
+        session.receive(hostActionCatalog(7))
+        val unsolicited = ByteString.copyFrom(byteArrayOf(4, 2))
+        // A result with no matching sent invocation is never surfaced to UI.
+        assertTrue(session.receive(hostActionResult(8, unsolicited)).isEmpty())
+    }
+
+    @Test
+    fun hostActionResultConsumesPendingSoDuplicateIsIgnored() {
+        val session = hostActionStreamingSession()
+        session.receive(hostActionCatalog(7))
+        val invocationId = ByteString.copyFrom(byteArrayOf(5, 5, 5))
+        session.invokeHostAction("return-windows", invocationId)
+        session.receive(hostActionResult(8, invocationId))
+        // The pending id was consumed; a replayed result is now an authenticated no-op.
+        assertTrue(session.receive(hostActionResult(9, invocationId)).isEmpty())
+    }
+
+    @Test
+    fun hostActionCatalogWithoutNegotiatedCapabilityFails() {
+        val session = streamingSession()
+        assertInvalidPeerMessage { session.receive(hostActionCatalog(7)) }
     }
 
     @Test
@@ -77,6 +169,8 @@ class ProtocolV1SessionTest {
         assertEquals(90, requested.rotation)
         assertEquals(3L, requested.configEpoch)
         assertEquals(7L, requested.sessionEpoch)
+        assertEquals(12_000, requested.bitrateKbps)
+        assertEquals(60, requested.framesPerSecond)
         assertFalse(session.isStreaming)
         assertEquals(
             ProtocolV1Session.MediaDisposition.DROP_PENDING_CONFIGURATION,
@@ -98,6 +192,7 @@ class ProtocolV1SessionTest {
         assertEquals(6L, result.envelope.correlationId)
         assertEquals(Envelope.PayloadCase.REQUEST_KEYFRAME, keyframe.envelope.payloadCase)
         assertEquals(3L, committed.configEpoch)
+        assertFalse(committed.appliesClientVideoPreferences)
         assertEquals(1920, geometry.width)
         assertEquals(1080, geometry.height)
         assertEquals(90, geometry.rotation)
@@ -528,6 +623,25 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun multiDisplayNegotiationSelectsHostOrderedActiveDisplayBeforePrimary() {
+        val session = session()
+        session.clientHello()
+        session.receive(
+            hostHello(2, advertisedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY)),
+        )
+        session.receive(
+            sessionAccepted(3, negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY)),
+        )
+
+        val actions = session.receive(activeSecondaryDisplayList(4))
+        val available = actions[0] as ProtocolV1Session.Action.DisplaysAvailable
+        assertEquals(listOf("display-2", "display-main"), available.displays.map { it.id })
+        assertEquals("display-2", available.selectedId)
+        val start = actions[1] as ProtocolV1Session.Action.Send
+        assertEquals("display-2", start.envelope.startDisplayRequest.sourceDisplayId)
+    }
+
+    @Test
     fun runtimeDisplaySelectionEmitsStartDisplayForKnownDisplayOnly() {
         val session = multiDisplayStreamingSession()
 
@@ -649,6 +763,12 @@ class ProtocolV1SessionTest {
                 .filterIsInstance<ProtocolV1Session.Action.Send>()
                 .map { it.envelope }
                 .single { it.payloadCase == Envelope.PayloadCase.SET_VIDEO_PREFERENCES }
+        assertTrue(
+            committed
+                .filterIsInstance<ProtocolV1Session.Action.VideoConfigurationCommitted>()
+                .single()
+                .appliesClientVideoPreferences,
+        )
         assertEquals(20_000, flushed.setVideoPreferences.bitrateKbps)
         assertEquals(60, flushed.setVideoPreferences.framesPerSecond)
 
@@ -656,6 +776,42 @@ class ProtocolV1SessionTest {
         assertEquals(
             ProtocolV1Session.MediaDisposition.DROP_PENDING_CONFIGURATION,
             session.validateMedia(mediaHeader(configEpoch = 4)),
+        )
+    }
+
+    @Test
+    fun rejectedPreferenceConfigurationDoesNotMarkLaterHostConfigurationAsClientRequested() {
+        val session = videoControlStreamingSession()
+        session.setVideoPreferences(
+            bitrateKbps = 8_000,
+            framesPerSecond = 30,
+            qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+        )
+        val rejectedRequest =
+            session.receive(videoConfig(30, configEpoch = 4)).single()
+                as ProtocolV1Session.Action.VideoConfigurationRequested
+        session.completeVideoConfiguration(
+            completedConfigEpoch = 4,
+            configurationToken = rejectedRequest.configurationToken,
+            accepted = false,
+            rejectionReason = "decoder_rejected",
+        )
+
+        val laterRequest =
+            session.receive(videoConfig(31, configEpoch = 5)).single()
+                as ProtocolV1Session.Action.VideoConfigurationRequested
+        val laterCommit =
+            session.completeVideoConfiguration(
+                completedConfigEpoch = 5,
+                configurationToken = laterRequest.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        assertFalse(
+            laterCommit
+                .filterIsInstance<ProtocolV1Session.Action.VideoConfigurationCommitted>()
+                .single()
+                .appliesClientVideoPreferences,
         )
     }
 
@@ -755,13 +911,38 @@ class ProtocolV1SessionTest {
             )
         }
 
-    private fun sessionThroughDisplayStart(): ProtocolV1Session =
+   private fun sessionThroughDisplayStart(): ProtocolV1Session =
+       session().also {
+           it.clientHello()
+           it.receive(hostHello(2))
+           it.receive(sessionAccepted(3))
+           it.receive(displayList(4))
+           it.receive(startDisplay(5))
+       }
+
+    private val hostActionCaps =
+        listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_HOST_ACTIONS)
+
+    private fun hostActionSessionThroughDisplayStart(): ProtocolV1Session =
         session().also {
             it.clientHello()
-            it.receive(hostHello(2))
-            it.receive(sessionAccepted(3))
+            it.receive(hostHello(2, advertisedCapabilities = hostActionCaps))
+            it.receive(sessionAccepted(3, negotiatedCapabilities = hostActionCaps))
             it.receive(displayList(4))
             it.receive(startDisplay(5))
+        }
+
+    private fun hostActionStreamingSession(): ProtocolV1Session =
+        hostActionSessionThroughDisplayStart().also {
+            val requested =
+                it.receive(videoConfig(6)).single()
+                    as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
         }
 
     private fun videoControlStreamingSession(): ProtocolV1Session =
@@ -900,6 +1081,27 @@ class ProtocolV1SessionTest {
                     ),
             ).build()
 
+    private fun activeSecondaryDisplayList(id: Long): Envelope =
+        base(id)
+            .setListDisplaysResponse(
+                ListDisplaysResponse
+                    .newBuilder()
+                    .addDisplays(
+                        DisplayDescriptor
+                            .newBuilder()
+                            .setDisplayId("display-2")
+                            .setName("Display 2")
+                            .setLogicalSize(Dimensions.newBuilder().setWidth(2560).setHeight(1440)),
+                    ).addDisplays(
+                        DisplayDescriptor
+                            .newBuilder()
+                            .setDisplayId("display-main")
+                            .setName("Built-in Retina")
+                            .setIsPrimary(true)
+                            .setLogicalSize(Dimensions.newBuilder().setWidth(1920).setHeight(1080)),
+                    ),
+            ).build()
+
     private fun videoConfig(
         id: Long,
         configEpoch: Long = 3,
@@ -917,13 +1119,40 @@ class ProtocolV1SessionTest {
                     .setRotationDegrees(90),
             ).build()
 
-    private fun base(id: Long): Envelope.Builder =
-        Envelope
-            .newBuilder()
-            .setProtocolVersion(1)
-            .setMessageId(id)
-            .setSessionId(SESSION_ID)
-            .setSessionEpoch(7)
+   private fun base(id: Long): Envelope.Builder =
+       Envelope
+           .newBuilder()
+           .setProtocolVersion(1)
+           .setMessageId(id)
+           .setSessionId(SESSION_ID)
+           .setSessionEpoch(7)
+
+    private fun hostActionCatalog(
+        id: Long,
+        descriptors: List<HostActionDescriptor> =
+            listOf(
+                HostActionDescriptor.newBuilder().setActionId("move-window").setLocalizedName("Move window").build(),
+                HostActionDescriptor.newBuilder().setActionId("return-windows").setLocalizedName("Return").build(),
+            ),
+    ): Envelope =
+        base(id)
+            .setHostActionCatalog(HostActionCatalog.newBuilder().addAllActions(descriptors))
+            .build()
+
+    private fun hostActionResult(
+        id: Long,
+        invocationId: ByteString,
+        accepted: Boolean = true,
+        rejectionReason: String = "",
+    ): Envelope =
+        base(id)
+            .setHostActionResult(
+                HostActionResult
+                    .newBuilder()
+                    .setInvocationId(invocationId)
+                    .setAccepted(accepted)
+                    .setRejectionReason(rejectionReason),
+            ).build()
 
     private fun mediaHeader(
         configEpoch: Long = 3,

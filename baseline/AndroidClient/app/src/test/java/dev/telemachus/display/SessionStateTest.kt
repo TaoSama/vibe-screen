@@ -58,12 +58,13 @@ class SessionStateTest {
         val negotiated =
             ClientSessionBinding(
                 capabilities =
-                    ClientSessionCapabilities(
-                        touch = true,
-                        displaySelection = true,
-                        keyboard = true,
-                        nativePointer = true,
-                    ),
+                   ClientSessionCapabilities(
+                       touch = true,
+                       displaySelection = true,
+                       keyboard = true,
+                       nativePointer = true,
+                        hostActions = false,
+                   ),
                 inputSink = AcceptingInputSink,
             )
 

@@ -60,7 +60,9 @@ MallocStackLogging=1 MallocStackLoggingNoCompact=1 \
 ```
 
 复测判据：先跑 10–15 分钟短时流，确认 Observation 对象计数与 host RSS 斜率不再
-持续上升；通过后再跑完整 2h soak。正式 Host RSS 门禁由
+持续上升。按当前验证约束，每次交互式 soak 最长 30 分钟，不再默认启动两小时
+运行；30 分钟结果只能作为回归证据，不能替代或关闭正式两小时门禁。若以后单独
+批准正式门禁运行，Host RSS 门禁由
 `vibescreen_evidence.host_rss_gate` 独立判定，要求来源 soak 完整无错误、窗口至少
 7056 秒、Host RSS 样本至少 230 个且后半程至少 115 个、首尾和内部采样间隔均不
 超过 90 秒，并同时满足：后半程 OLS 斜率 95% 上界与 Theil-Sen 稳健斜率均不高于
@@ -75,5 +77,10 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
 
 - 已记录 pitfall（见 docs/pitfall/index.md）。
 - 已完成不中断会话的 heap 类型与引用链归因，并实现针对 SwiftUI Observation
-  高频失效的候选修复。
-- 修复尚未装入当前运行进程；待授权重启后执行短时 heap 差分与完整 2h soak。
+  高频失效的修复；该修复已合入 `main` 并装入验证进程。
+- 修复后的 30 分钟前缀包含 60 个有效样本、零采集错误：Host RSS 从 121008 KiB
+  降至 111264 KiB，全窗斜率 -82.0 KiB/min、后半窗斜率 -15.9 KiB/min，平均约
+  60 FPS、零丢帧、零重连。该短测支持“未见短期增长”，但不证明两小时无增长。
+- 同一次随后被中止的较长观察不是完整门禁证据，来源 summary 为 `partial`，且
+  后半程出现 +117.0 KiB/min 的迟发上升；不得据此宣称正式 no-growth 通过。
+- 后续单次真机稳定性验证保持在 30 分钟以内；正式两小时门禁继续开放。

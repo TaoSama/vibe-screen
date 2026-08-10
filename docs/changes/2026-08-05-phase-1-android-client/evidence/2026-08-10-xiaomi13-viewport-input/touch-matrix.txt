@@ -1,0 +1,65 @@
+device=bac5b092 model=2211133C host_pid=24536 android_pid=29430
+
+[fit-270]
+TL global=(50,419) cursor=1467,45 D/VibeScreenTouchMap(29430): raw=50.0,50.0 view=1080x1662 video=1512x982 scale=FIT clientRotation=270 hostRotation=0 mapped=0.9699157476425171,0.046052783727645874
+TR global=(1030,419) cursor=1467,937 D/VibeScreenTouchMap(29430): raw=1030.0,50.0 view=1080x1662 video=1512x982 scale=FIT clientRotation=270 hostRotation=0 mapped=0.9699157476425171,0.9539471864700317
+BL global=(50,1981) cursor=42,-354 D/VibeScreenTouchMap(29430): raw=50.0,1612.0 view=1080x1662 video=1512x982 scale=FIT clientRotation=270 hostRotation=0 mapped=0.03008425235748291,0.046052783727645874
+BR global=(1030,1981) cursor=785,982 D/VibeScreenTouchMap(29430): raw=1030.0,1612.0 view=1080x1662 video=1512x982 scale=FIT clientRotation=270 hostRotation=0 mapped=0.03008425235748291,0.9539471864700317
+C global=(540,1200) cursor=851,360 D/VibeScreenTouchMap(29430): raw=540.0,831.0 view=1080x1662 video=1512x982 scale=FIT clientRotation=270 hostRotation=0 mapped=0.5,0.5
+
+[fill-270]
+TL global=(100,100) cursor=1449,214 D/VibeScreenTouchMap(29430): raw=100.0,100.0 view=1080x2400 video=1512x982 scale=FILL clientRotation=270 hostRotation=0 mapped=0.9583333134651184,0.2177189588546753
+TR global=(980,100) cursor=1449,768 D/VibeScreenTouchMap(29430): raw=980.0,100.0 view=1080x2400 video=1512x982 scale=FILL clientRotation=270 hostRotation=0 mapped=0.9583333134651184,0.7822810411453247
+BL global=(100,2300) INVALID: event intercepted before VibeScreenTouchMap
+BR global=(980,2300) cursor=102,759 D/VibeScreenTouchMap(29430): raw=980.0,2300.0 view=1080x2400 video=1512x982 scale=FILL clientRotation=270 hostRotation=0 mapped=0.04166668653488159,0.7822810411453247
+C global=(540,1200) cursor=1024,370 D/VibeScreenTouchMap(29430): raw=540.0,1200.0 view=1080x2400 video=1512x982 scale=FILL clientRotation=270 hostRotation=0 mapped=0.5,0.5
+BL-safe global=(100,2200) cursor=314,-465 
+BL-y2100 cursor=0,373 D/VibeScreenTouchMap(29430): raw=100.0,2100.0 view=1080x2400 video=1512x982 scale=FILL clientRotation=270 hostRotation=0 mapped=0.125,0.2177189588546753
+
+[host-90-rejected-effective-rotation-build]
+TL global=(50,419) cursor=45,937 D/VibeScreenTouchMap(31445): raw=50.0,50.0 view=1080x1662 video=1512x982 scale=FIT clientRotation=0 hostRotation=90 mapped=0.030084235593676567,0.9539471864700317
+
+[host-90-final-client-only-build]
+TL global=(50,900) cursor=70,70 D/VibeScreenTouchMap(31694): raw=50.0,50.0 view=1080x701 video=1512x982 scale=FIT clientRotation=0 hostRotation=90 mapped=0.046018898487091064,0.07132667303085327
+
+[fit-follow]
+TL global=(419,50) cursor=45,45 D/VibeScreenTouchMap(29430): raw=50.0,50.0 view=1662x1080 video=1512x982 scale=FIT clientRotation=0 hostRotation=0 mapped=0.030084235593676567,0.046052783727645874
+TR global=(1981,50) cursor=1467,45 D/VibeScreenTouchMap(29430): raw=1612.0,50.0 view=1662x1080 video=1512x982 scale=FIT clientRotation=0 hostRotation=0 mapped=0.9699157476425171,0.046052783727645874
+BL global=(419,1030) cursor=0,857 D/VibeScreenTouchMap(29430): raw=50.0,1030.0 view=1662x1080 video=1512x982 scale=FIT clientRotation=0 hostRotation=0 mapped=0.030084235593676567,0.9539471864700317
+BR global=(1981,1030) cursor=1212,275 D/VibeScreenTouchMap(29430): raw=1612.0,1030.0 view=1662x1080 video=1512x982 scale=FIT clientRotation=0 hostRotation=0 mapped=0.9699157476425171,0.9539471864700317
+C global=(1200,540) cursor=702,324 D/VibeScreenTouchMap(29430): raw=831.0,540.0 view=1662x1080 video=1512x982 scale=FIT clientRotation=0 hostRotation=0 mapped=0.5,0.5
+
+[fill-follow-final-debug]
+TL global=(100,100) 08-10 17:39:29.626 29430 29430 D VibeScreenTouchMap: raw=100.0,100.0 view=2400x1080 video=1512x982 scale=FILL clientRotation=0 hostRotation=0 mapped=0.0416666679084301,0.2177189588546753
+TR global=(2300,100) 08-10 17:39:38.006 29430 29430 D VibeScreenTouchMap: raw=2300.0,100.0 view=2400x1080 video=1512x982 scale=FILL clientRotation=0 hostRotation=0 mapped=0.9583333134651184,0.2177189588546753
+BL global=(100,980) 08-10 17:39:46.392 29430 29430 D VibeScreenTouchMap: raw=100.0,980.0 view=2400x1080 video=1512x982 scale=FILL clientRotation=0 hostRotation=0 mapped=0.0416666679084301,0.7822810411453247
+BR global=(2300,980) 08-10 17:39:54.756 29430 29430 D VibeScreenTouchMap: raw=2300.0,980.0 view=2400x1080 video=1512x982 scale=FILL clientRotation=0 hostRotation=0 mapped=0.9583333134651184,0.7822810411453247
+C global=(1200,540) 08-10 17:40:03.655 29430 29430 D VibeScreenTouchMap: raw=1200.0,540.0 view=2400x1080 video=1512x982 scale=FILL clientRotation=0 hostRotation=0 mapped=0.5,0.5
+
+[fit-90-final-debug]
+TL global=(50,419) 08-10 17:43:48.223 29430 29430 D VibeScreenTouchMap: raw=50.0,50.0 view=1080x1662 video=1512x982 scale=FIT clientRotation=90 hostRotation=0 mapped=0.030084235593676567,0.9539471864700317
+TR global=(1030,419) 08-10 17:43:56.638 29430 29430 D VibeScreenTouchMap: raw=1030.0,50.0 view=1080x1662 video=1512x982 scale=FIT clientRotation=90 hostRotation=0 mapped=0.030084235593676567,0.04605281352996826
+BL global=(50,1981) 08-10 17:44:05.140 29430 29430 D VibeScreenTouchMap: raw=50.0,1612.0 view=1080x1662 video=1512x982 scale=FIT clientRotation=90 hostRotation=0 mapped=0.9699157476425171,0.9539471864700317
+BR global=(1030,1981) 08-10 17:44:13.528 29430 29430 D VibeScreenTouchMap: raw=1030.0,1612.0 view=1080x1662 video=1512x982 scale=FIT clientRotation=90 hostRotation=0 mapped=0.9699157476425171,0.04605281352996826
+C global=(540,1200) 08-10 17:44:21.941 29430 29430 D VibeScreenTouchMap: raw=540.0,831.0 view=1080x1662 video=1512x982 scale=FIT clientRotation=90 hostRotation=0 mapped=0.5,0.5
+
+[fill-90-final-debug]
+TL global=(100,100) 08-10 17:47:25.005 29430 29430 D VibeScreenTouchMap: raw=100.0,100.0 view=1080x2400 video=1512x982 scale=FILL clientRotation=90 hostRotation=0 mapped=0.0416666679084301,0.7822810411453247
+TR global=(980,100) 08-10 17:47:33.383 29430 29430 D VibeScreenTouchMap: raw=980.0,100.0 view=1080x2400 video=1512x982 scale=FILL clientRotation=90 hostRotation=0 mapped=0.0416666679084301,0.2177189588546753
+BL global=(100,2300) 08-10 17:47:41.749 29430 29430 D VibeScreenTouchMap: raw=100.0,2300.0 view=1080x2400 video=1512x982 scale=FILL clientRotation=90 hostRotation=0 mapped=0.9583333134651184,0.7822810411453247
+BR global=(980,2300) 08-10 17:47:50.159 29430 29430 D VibeScreenTouchMap: raw=980.0,2300.0 view=1080x2400 video=1512x982 scale=FILL clientRotation=90 hostRotation=0 mapped=0.9583333134651184,0.2177189588546753
+C global=(540,1200) 08-10 17:47:58.622 29430 29430 D VibeScreenTouchMap: raw=540.0,1200.0 view=1080x2400 video=1512x982 scale=FILL clientRotation=90 hostRotation=0 mapped=0.5,0.5
+
+[fit-180-final-debug]
+TL global=(419,50) 08-10 17:49:10.163 29430 29430 D VibeScreenTouchMap: raw=50.0,50.0 view=1662x1080 video=1512x982 scale=FIT clientRotation=180 hostRotation=0 mapped=0.9699157476425171,0.9539471864700317
+TR global=(1981,50) 08-10 17:49:18.670 29430 29430 D VibeScreenTouchMap: raw=1612.0,50.0 view=1662x1080 video=1512x982 scale=FIT clientRotation=180 hostRotation=0 mapped=0.03008425235748291,0.9539471864700317
+BL global=(419,1030) 08-10 17:49:27.128 29430 29430 D VibeScreenTouchMap: raw=50.0,1030.0 view=1662x1080 video=1512x982 scale=FIT clientRotation=180 hostRotation=0 mapped=0.9699157476425171,0.04605281352996826
+BR global=(1981,1030) 08-10 17:49:35.578 29430 29430 D VibeScreenTouchMap: raw=1612.0,1030.0 view=1662x1080 video=1512x982 scale=FIT clientRotation=180 hostRotation=0 mapped=0.03008425235748291,0.04605281352996826
+C global=(1200,540) 08-10 17:49:43.983 29430 29430 D VibeScreenTouchMap: raw=831.0,540.0 view=1662x1080 video=1512x982 scale=FIT clientRotation=180 hostRotation=0 mapped=0.5,0.5
+
+[fill-180-final-debug]
+TL global=(100,100) 08-10 17:50:53.739 29430 29430 D VibeScreenTouchMap: raw=100.0,100.0 view=2400x1080 video=1512x982 scale=FILL clientRotation=180 hostRotation=0 mapped=0.9583333134651184,0.7822810411453247
+TR global=(2300,100) 08-10 17:51:02.136 29430 29430 D VibeScreenTouchMap: raw=2300.0,100.0 view=2400x1080 video=1512x982 scale=FILL clientRotation=180 hostRotation=0 mapped=0.04166668653488159,0.7822810411453247
+BL global=(100,980) 08-10 17:51:10.492 29430 29430 D VibeScreenTouchMap: raw=100.0,980.0 view=2400x1080 video=1512x982 scale=FILL clientRotation=180 hostRotation=0 mapped=0.9583333134651184,0.2177189588546753
+BR global=(2300,980) 08-10 17:51:18.875 29430 29430 D VibeScreenTouchMap: raw=2300.0,980.0 view=2400x1080 video=1512x982 scale=FILL clientRotation=180 hostRotation=0 mapped=0.04166668653488159,0.2177189588546753
+C global=(1200,540) 08-10 17:51:27.271 29430 29430 D VibeScreenTouchMap: raw=1200.0,540.0 view=2400x1080 video=1512x982 scale=FILL clientRotation=180 hostRotation=0 mapped=0.5,0.5

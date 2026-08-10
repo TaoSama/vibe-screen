@@ -22,6 +22,47 @@ final class StreamingServerLifecycleTests: XCTestCase {
         XCTAssertThrowsError(try second.start(timeout: 1))
     }
 
+    func testAppliedVideoRatesSeedTheNextProtocolSession() {
+        let server = StreamingServer(port: testPort(offset: 10))
+        server.setProtocolV1VideoConfiguration(
+            framesPerSecond: 60,
+            bitrateKbps: 13_000,
+            displayID: "display",
+            displayName: "Display",
+            isVirtual: false
+        )
+
+        server.setProtocolV1VideoRates(
+            framesPerSecond: 30,
+            bitrateKbps: 5_000
+        )
+
+        var snapshot = server.protocolV1VideoConfigurationForSelfTest()
+        XCTAssertEqual(snapshot.bitrateKbps, 5_000)
+        XCTAssertEqual(snapshot.framesPerSecond, 30)
+
+        server.setProtocolV1VideoRates(
+            framesPerSecond: 120,
+            bitrateKbps: 95_000
+        )
+
+        snapshot = server.protocolV1VideoConfigurationForSelfTest()
+        XCTAssertEqual(snapshot.bitrateKbps, 95_000)
+        XCTAssertEqual(snapshot.framesPerSecond, 120)
+
+        server.completeProtocolV1VideoPreferences(
+            token: 2,
+            accepted: true,
+            appliedBitrateKbps: 5_000,
+            appliedFramesPerSecond: 30
+        )
+        waitForNetworkQueue(server)
+
+        snapshot = server.protocolV1VideoConfigurationForSelfTest()
+        XCTAssertEqual(snapshot.bitrateKbps, 95_000)
+        XCTAssertEqual(snapshot.framesPerSecond, 120)
+    }
+
     func testFragmentedWirelessHandshakeIsAccepted() throws {
         let port = testPort(offset: 2)
         let token = Data(repeating: 0xA5, count: 32)
@@ -303,6 +344,14 @@ final class StreamingServerLifecycleTests: XCTestCase {
         request.append(UInt8(nameData.count))
         request.append(nameData)
         return request
+    }
+
+    private func waitForNetworkQueue(_ server: StreamingServer) {
+        let entered = DispatchSemaphore(value: 0)
+        let resume = DispatchSemaphore(value: 0)
+        server.suspendNetworkQueueForSelfTest(entered: entered, resume: resume)
+        XCTAssertEqual(entered.wait(timeout: .now() + 2), .success)
+        resume.signal()
     }
 
     private func testPort(offset: UInt16) -> UInt16 {

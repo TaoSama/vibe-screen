@@ -7,7 +7,7 @@ final class ProtocolV1SessionTests: XCTestCase {
     func testProductionHostCapabilitiesAreExact() {
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true),
-            [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl]
+            [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions]
         )
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false),
@@ -107,7 +107,9 @@ final class ProtocolV1SessionTests: XCTestCase {
             return XCTFail("Expected HostHello")
         }
         XCTAssertEqual(hostHello.selectedProtocol, 1)
-        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl])
+        // hostHello.capabilities is sorted by raw value: multiDisplay(18) <
+        // hostActions(20) < clientVideoControl(24).
+        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .multiDisplay, .hostActions, .clientVideoControl])
         guard case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected SessionAccepted")
         }
@@ -361,6 +363,234 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertTrue(rejected.containsClose)
     }
 
+    func testHostActionCatalogIsAdvertisedOnlyWhenNegotiated() throws {
+        // A HOST_ACTIONS client learns the catalog right after SessionAccepted.
+        let negotiated = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions]
+        _ = negotiated.handleControl(try hello.serializedData())
+        let responses = try controlEnvelopes(negotiated.completeCodecNegotiation())
+        XCTAssertEqual(responses.count, 3)
+        guard case .hostActionCatalog(let catalog)? = responses[2].payload else {
+            return XCTFail("Expected HostActionCatalog after SessionAccepted")
+        }
+        XCTAssertEqual(catalog.actions.map(\.actionID), ["move-window", "return-windows"])
+        XCTAssertEqual(catalog.actions.map(\.localizedName), ["Move Focused Window", "Return Moved Windows"])
+        XCTAssertTrue(catalog.actions.allSatisfy { $0.requiresConfirmation == false })
+
+        // A client that does not offer HOST_ACTIONS never receives a catalog.
+        let ungated = makeSession()
+        let ungatedResponses = try controlEnvelopes(ungated.handleControl(
+            try clientHello().serializedData()
+        )) + (try controlEnvelopes(ungated.completeCodecNegotiation()))
+        XCTAssertFalse(ungatedResponses.contains { if case .hostActionCatalog = $0.payload { true } else { false } })
+    }
+
+    func testHostActionInvokeForwardsIntentAndResultRidesSessionFIFO() throws {
+        let session = try readyHostActionSession()
+        let invocationID = Data([0xA1, 0xB2, 0xC3])
+        var invoke = VSHostActionInvoke()
+        invoke.actionID = "move-window"
+        invoke.invocationID = invocationID
+        let actions = session.handleControl(
+            try envelope(id: 4, payload: .hostActionInvoke(invoke)).serializedData()
+        )
+        let intents: [(String, Data)] = actions.compactMap {
+            if case .hostAction(let id, let invocation, _) = $0 { return (id, invocation) }
+            return nil
+        }
+        XCTAssertEqual(intents.count, 1)
+        XCTAssertEqual(intents.first?.0, "move-window")
+        XCTAssertEqual(intents.first?.1, invocationID)
+        // No result is emitted until the host confirms.
+        XCTAssertTrue(try controlEnvelopes(actions).isEmpty)
+
+        // A duplicate in-flight invocation is a safe no-op.
+        XCTAssertTrue(session.handleControl(
+            try envelope(id: 5, payload: .hostActionInvoke(invoke)).serializedData()
+        ).isEmpty)
+
+        // The host confirms; one session-scoped accepted result is emitted.
+        let accepted = session.completeHostAction(
+            invocationID: invocationID,
+            accepted: true,
+            rejectionReason: "ignored"
+        )
+        let acceptedResponses = try controlEnvelopes(accepted)
+        XCTAssertEqual(acceptedResponses.count, 1)
+        XCTAssertEqual(acceptedResponses.first?.sessionID, sessionID)
+        XCTAssertEqual(acceptedResponses.first?.sessionEpoch, sessionEpoch)
+        // The result rides the request's message_id as the Envelope
+        // correlation_id (the invoke used message_id 4).
+        XCTAssertEqual(acceptedResponses.first?.correlationID, 4)
+        guard case .hostActionResult(let result)? = acceptedResponses.first?.payload else {
+            return XCTFail("Expected HostActionResult")
+        }
+        XCTAssertEqual(result.invocationID, invocationID)
+        XCTAssertTrue(result.accepted)
+        XCTAssertTrue(result.rejectionReason.isEmpty)
+
+        // Completing the same invocation again does nothing.
+        XCTAssertTrue(session.completeHostAction(
+            invocationID: invocationID,
+            accepted: true,
+            rejectionReason: ""
+        ).isEmpty)
+    }
+
+    func testHostActionCompletionDeliversDuringVideoReconfig() throws {
+        // A completion that lands while the session is renegotiating an
+        // in-place display/video reconfiguration must still deliver the tracked
+        // result instead of dropping it.
+        let session = try readyHostActionSession()
+        let invocationID = Data([0x77, 0x77])
+        var invoke = VSHostActionInvoke()
+        invoke.actionID = "move-window"
+        invoke.invocationID = invocationID
+        _ = session.handleControl(
+            try envelope(id: 4, payload: .hostActionInvoke(invoke)).serializedData()
+        )
+        // Re-selecting the active display renegotiates in place and moves the
+        // session to AWAITING_VIDEO_CONFIG (media stays gated).
+        _ = session.handleControl(
+            try envelope(id: 5, payload: .startDisplayRequest(existingDisplayRequest())).serializedData()
+        )
+        XCTAssertNil(try session.makeMediaFrame(payload: Data([1]), timestamp: 1, keyframe: true))
+
+        let completion = session.completeHostAction(
+            invocationID: invocationID,
+            accepted: true,
+            rejectionReason: ""
+        )
+        let responses = try controlEnvelopes(completion)
+        XCTAssertEqual(responses.count, 1)
+        XCTAssertEqual(responses.first?.correlationID, 4)
+        guard case .hostActionResult(let result)? = responses.first?.payload else {
+            return XCTFail("Expected HostActionResult during reconfig")
+        }
+        XCTAssertEqual(result.invocationID, invocationID)
+        XCTAssertTrue(result.accepted)
+    }
+
+    func testHostActionRejectionKeepsSessionAliveWithReason() throws {
+        let session = try readyHostActionSession()
+        let invocationID = Data([0x07])
+        var invoke = VSHostActionInvoke()
+        invoke.actionID = "return-windows"
+        invoke.invocationID = invocationID
+        _ = session.handleControl(
+            try envelope(id: 4, payload: .hostActionInvoke(invoke)).serializedData()
+        )
+        let rejected = session.completeHostAction(
+            invocationID: invocationID,
+            accepted: false,
+            rejectionReason: "No movable focused window was found."
+        )
+        XCTAssertFalse(rejected.containsClose)
+        guard case .hostActionResult(let result)? = try controlEnvelopes(rejected).first?.payload else {
+            return XCTFail("Expected HostActionResult")
+        }
+        XCTAssertFalse(result.accepted)
+        XCTAssertEqual(result.rejectionReason, "No movable focused window was found.")
+    }
+
+    func testHostActionRejectsUnknownActionUngatedAndPreStream() throws {
+        // Unknown action id on a negotiated streaming session -> invalidState.
+        let session = try readyHostActionSession()
+        var unknown = VSHostActionInvoke()
+        unknown.actionID = "explode"
+        unknown.invocationID = Data([0x01])
+        XCTAssertEqual(
+            try protocolError(from: session.handleControl(
+                try envelope(id: 4, payload: .hostActionInvoke(unknown)).serializedData()
+            )).code,
+            .invalidState
+        )
+
+        // A client without HOST_ACTIONS is rejected as unsupported.
+        let ungated = try readySession()
+        var ungatedInvoke = VSHostActionInvoke()
+        ungatedInvoke.actionID = "move-window"
+        ungatedInvoke.invocationID = Data([0x02])
+        XCTAssertEqual(
+            try protocolError(from: ungated.handleControl(
+                try envelope(id: 4, payload: .hostActionInvoke(ungatedInvoke)).serializedData()
+            )).code,
+            .unsupportedCapability
+        )
+
+        // An invoke before streaming is rejected with invalidState.
+        let preStream = makeSession()
+        var preHello = clientHello()
+        preHello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions]
+        _ = preStream.handleControl(try preHello.serializedData())
+        _ = preStream.completeCodecNegotiation()
+        var earlyInvoke = VSHostActionInvoke()
+        earlyInvoke.actionID = "move-window"
+        earlyInvoke.invocationID = Data([0x03])
+        XCTAssertEqual(
+            try protocolError(from: preStream.handleControl(
+                try envelope(id: 2, payload: .hostActionInvoke(earlyInvoke)).serializedData()
+            )).code,
+            .invalidState
+        )
+    }
+
+    func testHostActionTargetMustMatchActiveStream() throws {
+        let session = try readyHostActionSession()
+
+        // A foreign target is rejected with invalidState so a stale target
+        // never acts on the active display.
+        var foreignTarget = VSInputTarget()
+        foreignTarget.displayID = "some-other-display"
+        foreignTarget.streamID = 99
+        var foreignInvoke = VSHostActionInvoke()
+        foreignInvoke.actionID = "move-window"
+        foreignInvoke.invocationID = Data([0x55])
+        foreignInvoke.target = foreignTarget
+        XCTAssertEqual(
+            try protocolError(from: session.handleControl(
+                try envelope(id: 4, payload: .hostActionInvoke(foreignInvoke)).serializedData()
+            )).code,
+            .invalidState
+        )
+
+        // A matching target is forwarded as an intent. Fresh session because the
+        // rejection above transitioned this one to .failed.
+        let matched = try readyHostActionSession()
+        var activeTarget = VSInputTarget()
+        activeTarget.displayID = "active-display"
+        activeTarget.streamID = 1
+        var matchedInvoke = VSHostActionInvoke()
+        matchedInvoke.actionID = "move-window"
+        matchedInvoke.invocationID = Data([0x56])
+        matchedInvoke.target = activeTarget
+        XCTAssertTrue(matched.handleControl(
+            try envelope(id: 4, payload: .hostActionInvoke(matchedInvoke)).serializedData()
+        ).contains { if case .hostAction = $0 { true } else { false } })
+    }
+
+    func testHostActionPendingSetIsBounded() throws {
+        let session = try readyHostActionSession()
+        for index in 0..<16 {
+            var invoke = VSHostActionInvoke()
+            invoke.actionID = "move-window"
+            invoke.invocationID = Data([UInt8(index)])
+            XCTAssertTrue(session.handleControl(
+                try envelope(id: UInt64(4 + index), payload: .hostActionInvoke(invoke)).serializedData()
+            ).contains { if case .hostAction = $0 { true } else { false } })
+        }
+        var overflow = VSHostActionInvoke()
+        overflow.actionID = "move-window"
+        overflow.invocationID = Data([0xFF])
+        XCTAssertEqual(
+            try protocolError(from: session.handleControl(
+                try envelope(id: 20, payload: .hostActionInvoke(overflow)).serializedData()
+            )).code,
+            .invalidState
+        )
+    }
+
     private let sessionID = Data(repeating: 0xAB, count: 16)
     private let sessionEpoch: UInt64 = 7
 
@@ -474,6 +704,26 @@ final class ProtocolV1SessionTests: XCTestCase {
     private func readySession() throws -> ProtocolV1SessionCoordinator {
         let session = makeSession()
         _ = session.handleControl(try clientHello().serializedData())
+        _ = session.completeCodecNegotiation()
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        var result = VSVideoConfigResult()
+        result.configEpoch = 1
+        result.streamID = 1
+        result.accepted = true
+        _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(result)).serializedData())
+        return session
+    }
+
+    /// Drives a session to STREAMING with a client that also negotiates
+    /// HOST_ACTIONS, so host-action invocations can be exercised.
+    private func readyHostActionSession() throws -> ProtocolV1SessionCoordinator {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions]
+        _ = session.handleControl(try hello.serializedData())
         _ = session.completeCodecNegotiation()
         _ = session.handleControl(try envelope(
             id: 2,

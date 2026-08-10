@@ -55,11 +55,12 @@ class ClientInputDispatchTest {
 
     private companion object {
         val NEGOTIATED_INPUT =
-            ClientSessionCapabilities(
-                touch = true,
-                displaySelection = false,
-                keyboard = true,
-                nativePointer = true,
-            )
+           ClientSessionCapabilities(
+               touch = true,
+               displaySelection = false,
+               keyboard = true,
+               nativePointer = true,
+                hostActions = false,
+           )
     }
 }

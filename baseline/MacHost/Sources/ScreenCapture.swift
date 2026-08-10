@@ -1173,8 +1173,20 @@ class ScreenCapture {
 
     // MARK: - Settings update
 
-    func updateEncoderSettings(bitrateMbps: Int, quality: String, gamingBoost: Bool) {
-        encoder?.updateSettings(bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost)
+    @discardableResult
+    func updateEncoderSettings(
+        bitrateMbps: Int,
+        quality: String,
+        gamingBoost: Bool,
+        frameRate: Int? = nil
+    ) -> Bool {
+        guard let encoder else { return false }
+        return encoder.updateSettings(
+            bitrateMbps: bitrateMbps,
+            quality: quality,
+            gamingBoost: gamingBoost,
+            frameRate: frameRate
+        )
     }
 
     /// Change the live capture frame rate in place, without rebuilding the

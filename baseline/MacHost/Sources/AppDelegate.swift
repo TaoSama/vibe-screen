@@ -225,6 +225,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// shows "just now" while connected and freezes at the disconnect moment afterward.
     private var currentWirelessDevice: String?
     private var cancellables = Set<AnyCancellable>()
+    private var isApplyingClientVideoPreferences = false
     private var permissionCheckTimer: Timer?
     private var statusRefreshTimer: Timer?
     private var permissionMonitoringReady = false
@@ -511,7 +512,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] gamingBoost in
                 guard let self else { return }
                 self.refreshPendingReconfigurationIntent()
-                guard self.settings.isRunning else { return }
+                guard self.settings.isRunning, !self.isApplyingClientVideoPreferences else { return }
                 print("🎮 Gaming Boost \(gamingBoost ? "ENABLED" : "DISABLED")")
                 self.screenCapture?.updateEncoderSettings(
                     bitrateMbps: self.settings.effectiveBitrate,
@@ -527,7 +528,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] bitrate, quality in
                 guard let self else { return }
                 self.refreshPendingReconfigurationIntent()
-                guard self.settings.isRunning, !self.settings.gamingBoost else { return }
+                guard self.settings.isRunning,
+                      !self.settings.gamingBoost,
+                      !self.isApplyingClientVideoPreferences else { return }
                 print("⚙️ Settings updated: \(bitrate)Mbps, \(quality)")
                 self.screenCapture?.updateEncoderSettings(
                     bitrateMbps: bitrate,
@@ -1676,11 +1679,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     hiDPI: settings.hiDPI,
                     name: "Vibe Screen"
                 )
-
-                try manager.disableMirrorMode()
-                guard let createdID = manager.displayID else {
-                    throw VirtualDisplayError.creationFailed("Display was created without a display ID")
-                }
+                let createdID = try await prepareExtendedVirtualDisplay(manager)
                 captureDisplayID = createdID
                 streamSize = size
 
@@ -1914,7 +1913,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 framesPerSecond: settings.effectiveRefreshRate,
                 bitrateKbps: settings.effectiveBitrate * 1_000,
                 displayID: String(captureDisplayID),
-                displayName: "Vibe Screen Display",
+                displayName: protocolV1DisplayName(
+                    displayID: captureDisplayID,
+                    isVirtual: configuration.displaySource == .extended
+                ),
                 // Reflect whether a virtual display actually backs this
                 // capture. Extended always is; mirrorMain is virtual only when
                 // the private-API hardware mirror succeeded (else it degraded to
@@ -1936,29 +1938,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
             streamingServer?.onDisplaySelectionRequested = {
                 [weak self, weak configuredServer] requestedDisplayID in
-                Task { @MainActor in
-                    guard let self, let configuredServer,
-                          self.streamingServer === configuredServer else { return }
-                    self.handleClientDisplaySelection(
-                        requestedDisplayID,
-                        server: configuredServer
-                    )
-                }
+                guard let self, let configuredServer,
+                      self.streamingServer === configuredServer else { return }
+                self.handleClientDisplaySelection(
+                    requestedDisplayID,
+                    server: configuredServer
+                )
             }
             streamingServer?.onVideoPreferencesRequested = {
                 [weak self, weak configuredServer] token, bitrateKbps, framesPerSecond, qualityPreset, resetQualityToAuto in
-                Task { @MainActor in
-                    guard let self, let configuredServer,
-                          self.streamingServer === configuredServer else { return }
-                    self.applyClientVideoPreferences(
-                        token: token,
-                        bitrateKbps: bitrateKbps,
-                        framesPerSecond: framesPerSecond,
-                        qualityPreset: qualityPreset,
-                        resetQualityToAuto: resetQualityToAuto,
-                        server: configuredServer
-                    )
-                }
+                guard let self, let configuredServer,
+                      self.streamingServer === configuredServer else { return }
+                self.applyClientVideoPreferences(
+                    token: token,
+                    bitrateKbps: bitrateKbps,
+                    framesPerSecond: framesPerSecond,
+                    qualityPreset: qualityPreset,
+                    resetQualityToAuto: resetQualityToAuto,
+                    server: configuredServer
+                )
+            }
+            streamingServer?.onHostActionRequested = {
+                [weak self, weak configuredServer] actionID, invocationID, _ in
+                guard let self, let configuredServer,
+                      self.streamingServer === configuredServer else { return }
+                self.handleClientHostAction(
+                    actionID,
+                    invocationID: invocationID,
+                    server: configuredServer
+                )
             }
             streamingServer?.onClientConnected = {
                 [weak self, weak configuredServer, weak configuredCapture]
@@ -2697,37 +2705,52 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let appliedBitrateKbps = UInt32(bitrateMbps * 1_000)
         let appliedFps = Int(framesPerSecond)
 
+        let appliedQuality: String
         if resetQualityToAuto {
-            if settings.quality != Self.defaultEncoderQuality {
-                settings.quality = Self.defaultEncoderQuality
+            appliedQuality = Self.defaultEncoderQuality
+        } else {
+            appliedQuality = switch qualityPreset {
+            case .smooth: "low"
+            case .balanced: "medium"
+            case .sharp: "high"
+            default: settings.quality
             }
-        } else if qualityPreset != .unspecified {
-            let mappedQuality: String
-            switch qualityPreset {
-            case .smooth: mappedQuality = "low"
-            case .balanced: mappedQuality = "medium"
-            case .sharp: mappedQuality = "high"
-            default: mappedQuality = settings.quality
-            }
-            if settings.quality != mappedQuality { settings.quality = mappedQuality }
         }
-        if settings.bitrate != bitrateMbps { settings.bitrate = bitrateMbps }
 
-        // Push the encoder/frame-rate change into the live pipeline before the
-        // client is told to renegotiate. The @Published writes above already
-        // notify the settings observers, but reconfigure directly so the applied
-        // state is deterministic even if an observer is mid-reconfiguration.
-        if !settings.gamingBoost {
-            screenCapture?.updateEncoderSettings(
-                bitrateMbps: settings.effectiveBitrate,
-                quality: settings.effectiveQuality,
-                gamingBoost: false
+        // Apply the complete request as one encoder transaction before changing
+        // published UI state or acknowledging the protocol request. A failure
+        // keeps both the old encoder configuration and the active session.
+        guard !settings.gamingBoost,
+              screenCapture?.updateEncoderSettings(
+                bitrateMbps: bitrateMbps,
+                quality: appliedQuality,
+                gamingBoost: false,
+                frameRate: appliedFps
+              ) == true else {
+            server.completeProtocolV1VideoPreferences(
+                token: token,
+                accepted: false,
+                appliedBitrateKbps: UInt32(settings.effectiveBitrate * 1_000),
+                appliedFramesPerSecond: UInt32(settings.refreshRate)
             )
+            return
         }
-        if settings.refreshRate != appliedFps {
-            settings.refreshRate = appliedFps
-            screenCapture?.updateActiveFrameRate(appliedFps)
-        }
+
+        isApplyingClientVideoPreferences = true
+        if settings.quality != appliedQuality { settings.quality = appliedQuality }
+        if settings.bitrate != bitrateMbps { settings.bitrate = bitrateMbps }
+        if settings.refreshRate != appliedFps { settings.refreshRate = appliedFps }
+        isApplyingClientVideoPreferences = false
+
+        screenCapture?.updateActiveFrameRate(appliedFps)
+
+        // Persist the encoder's real rates for future sessions at the same
+        // MainActor commit point as the UI settings. A stale protocol
+        // completion can no longer overwrite this seed.
+        server.setProtocolV1VideoRates(
+            framesPerSecond: appliedFps,
+            bitrateKbps: Int(appliedBitrateKbps)
+        )
 
         // Only after the live pipeline has adopted the settings does the session
         // renegotiate the bumped-epoch VideoConfig, advertising the exact values
@@ -2747,6 +2770,55 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// asks to reset quality to auto.
     private static let defaultEncoderQuality = "ultralow"
 
+    /// Run a client-invoked host action on the main actor by reusing the same
+    /// WindowRecoveryManager that backs the status-menu window migration, then
+    /// report the outcome back over the session FIFO. Reusing the manager keeps
+    /// a single source of truth for which windows were moved, so the client's
+    /// "return moved windows" and the automatic disconnect recovery restore the
+    /// exact same set. Errors surface the manager's localizedDescription so the
+    /// client can present an actionable message.
+    private func handleClientHostAction(
+        _ actionID: String,
+        invocationID: Data,
+        server: StreamingServer
+    ) {
+        func report(accepted: Bool, reason: String) {
+            server.completeProtocolV1HostAction(
+                invocationID: invocationID,
+                accepted: accepted,
+                rejectionReason: reason
+            )
+        }
+        switch actionID {
+        case ProtocolV1SessionCoordinator.moveWindowActionID:
+            guard let activeDisplayID else {
+                report(accepted: false, reason: "Start streaming before moving a window.")
+                return
+            }
+            do {
+                try windowRecoveryManager.moveFocusedWindow(to: activeDisplayID)
+                debugLog("Moved focused window to client display \(activeDisplayID) for client request")
+                report(accepted: true, reason: "")
+            } catch {
+                debugLog("Client move-window action failed: \(error.localizedDescription)")
+                report(accepted: false, reason: error.localizedDescription)
+            }
+        case ProtocolV1SessionCoordinator.returnWindowsActionID:
+            let recovery = windowRecoveryManager.restoreManagedWindows()
+            reportWindowRecovery(recovery)
+            if recovery.failedDescriptions.isEmpty {
+                report(accepted: true, reason: "")
+            } else {
+                report(
+                    accepted: false,
+                    reason: recovery.failedDescriptions.joined(separator: "; ")
+                )
+            }
+        default:
+            report(accepted: false, reason: "Unknown host action.")
+        }
+    }
+
     private func handleClientDisplaySelection(
         _ requestedDisplayID: String,
         server: StreamingServer
@@ -2755,9 +2827,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // synthetic id (while a physical display is captured) or with the real
         // numeric id of the live virtual display (while it is captured). Treat
         // both as a request for the extended source.
-        let activeVirtualID = (activeRuntimeConfiguration?.displaySource == .extended)
-            ? virtualDisplayManager?.displayID
-            : nil
+        // Keep one managed virtual display alive for the whole host session.
+        // Its catalog id must remain selectable after temporarily capturing a
+        // physical display; destroying it here leaves clients holding an offline
+        // id and lets protocol state diverge from the actual capture source.
+        let activeVirtualID = virtualDisplayManager?.displayID
         let selectsVirtual = requestedDisplayID == Self.virtualExtendedDisplaySyntheticID
             || (activeVirtualID.map { requestedDisplayID == String($0) } ?? false)
 
@@ -2849,59 +2923,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             switch target {
             case .virtual:
-                let manager = VirtualDisplayManager()
-                createdVirtualManager = manager
-                try manager.createDisplay(
-                    width: size.width,
-                    height: size.height,
-                    refreshRate: settings.effectiveRefreshRate,
-                    hiDPI: settings.hiDPI,
-                    name: "Vibe Screen"
-                )
-                guard let createdID = manager.displayID else {
-                    throw VirtualDisplayError.creationFailed("Display was created without a display ID")
-                }
-                // A just-created CGVirtualDisplay is not immediately known to
-                // WindowServer. Disabling mirror mode before it registers
-                // returns CGError 1001 (the on-device failure). Wait for the
-                // display to appear online, then disable mirror with a short
-                // retry, mirroring the settle the cold-start path relies on.
-                var registered = manager.verifyDisplayRegistered()
-                var settleAttempts = 0
-                while !registered && settleAttempts < 20 {
-                    try await Task.sleep(nanoseconds: 100_000_000)
-                    registered = manager.verifyDisplayRegistered()
-                    settleAttempts += 1
-                }
-                if !registered {
-                    debugLog("WARNING: Virtual display \(createdID) not online after settle; proceeding may fail")
-                }
-                var mirrorDisabled = false
-                var mirrorAttempts = 0
-                var lastMirrorError: Error?
-                while !mirrorDisabled && mirrorAttempts < 10 {
-                    do {
-                        try manager.disableMirrorMode()
-                        mirrorDisabled = true
-                    } catch {
-                        lastMirrorError = error
-                        try await Task.sleep(nanoseconds: 100_000_000)
-                        mirrorAttempts += 1
-                    }
-                }
-                if !mirrorDisabled {
-                    // A freshly created CGVirtualDisplay is not mirroring any
-                    // display (mirror mode is only ever set by the mirrorMain
-                    // path). Disabling mirror mode can still transiently fail
-                    // with CGError 1001 while WindowServer settles the new
-                    // display during active capture. If the display is not
-                    // actually in a mirror set, that failure is benign for the
-                    // extended source, so proceed instead of aborting the
-                    // switch. Only abort if it is genuinely still mirrored.
-                    if CGDisplayIsInMirrorSet(createdID) != 0 {
-                        throw lastMirrorError ?? VirtualDisplayError.mirrorModeFailed("Failed to disable mirror mode")
-                    }
-                    debugLog("disableMirrorMode did not complete but display \(createdID) is not mirrored; proceeding with extended capture")
+                let manager: VirtualDisplayManager
+                let createdID: CGDirectDisplayID
+                if let existing = previousVirtualManager,
+                   let existingID = existing.displayID,
+                   existing.verifyDisplayRegistered() {
+                    manager = existing
+                    createdID = existingID
+                    debugLog("Reusing managed virtual display \(existingID) for capture switch")
+                } else {
+                    previousVirtualManager?.destroyDisplay()
+                    let created = VirtualDisplayManager()
+                    createdVirtualManager = created
+                    try created.createDisplay(
+                        width: size.width,
+                        height: size.height,
+                        refreshRate: settings.effectiveRefreshRate,
+                        hiDPI: settings.hiDPI,
+                        name: "Vibe Screen"
+                    )
+                    manager = created
+                    createdID = try await prepareExtendedVirtualDisplay(created)
                 }
                 manager.restoreDisplayPosition()
                 if !manager.verifyDisplayRegistered() {
@@ -2952,12 +2994,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Tear down the previous virtual display only after the new capture is
-        // live, and only when switching to a physical source.
-        if case .physical = target, let stale = previousVirtualManager {
-            stale.destroyDisplay()
-            if virtualDisplayManager === stale { virtualDisplayManager = nil }
-        }
+        // Keep the managed virtual display registered while capturing a physical
+        // source. Clients retain its catalog id and can switch back in place;
+        // stopServer remains the single teardown owner.
 
         activeDisplayID = captureDisplayID
 
@@ -2996,7 +3035,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             framesPerSecond: settings.effectiveRefreshRate,
             bitrateKbps: settings.effectiveBitrate * 1_000,
             displayID: String(captureDisplayID),
-            displayName: "Vibe Screen Display",
+            displayName: protocolV1DisplayName(
+                displayID: captureDisplayID,
+                isVirtual: newDisplaySource == .extended
+            ),
             isVirtual: newDisplaySource == .extended || newDisplaySource == .mirrorMain
         )
         server.setProtocolV1Displays(
@@ -3020,6 +3062,60 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // still call server.selectProtocolV1Display to drive the client.
     }
 
+    /// Wait for a newly created virtual display to settle before forcing extend mode.
+    /// WindowServer can transiently reject mirror configuration while registering it.
+    private func prepareExtendedVirtualDisplay(
+        _ manager: VirtualDisplayManager
+    ) async throws -> CGDirectDisplayID {
+        guard let createdID = manager.displayID else {
+            throw VirtualDisplayError.creationFailed("Display was created without a display ID")
+        }
+
+        let registrationAttemptLimit = 20
+        let mirrorAttemptLimit = 10
+        let retryDelayNanoseconds: UInt64 = 100_000_000
+
+        var registered = manager.verifyDisplayRegistered()
+        var registrationAttempts = 0
+        while !registered && registrationAttempts < registrationAttemptLimit {
+            try await Task.sleep(nanoseconds: retryDelayNanoseconds)
+            registered = manager.verifyDisplayRegistered()
+            registrationAttempts += 1
+        }
+        if !registered {
+            debugLog("WARNING: Virtual display \(createdID) not online after settle; proceeding may fail")
+        }
+
+        var mirrorDisabled = false
+        var mirrorAttempts = 0
+        var lastMirrorError: Error?
+        while !mirrorDisabled && mirrorAttempts < mirrorAttemptLimit {
+            do {
+                try manager.disableMirrorMode()
+                mirrorDisabled = true
+            } catch {
+                lastMirrorError = error
+                try await Task.sleep(nanoseconds: retryDelayNanoseconds)
+                mirrorAttempts += 1
+            }
+        }
+        if !mirrorDisabled {
+            // Fresh virtual displays are not mirrored unless the mirror source
+            // explicitly configured them. A transient disable failure is safe
+            // only when WindowServer confirms this display is not in a mirror set.
+            if CGDisplayIsInMirrorSet(createdID) != 0 {
+                throw lastMirrorError ?? VirtualDisplayError.mirrorModeFailed(
+                    "Failed to disable mirror mode"
+                )
+            }
+            debugLog(
+                "disableMirrorMode did not complete but display \(createdID) is not mirrored; " +
+                "proceeding with extended capture"
+            )
+        }
+        return createdID
+    }
+
     /// Build the ListDisplays catalog advertised for the current capture. Every
     /// online physical display is included with its real numeric id. When the
     /// private virtual-display API is available, one virtual extended entry is
@@ -3032,11 +3128,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         activeDisplaySource: DisplaySourceMode,
         configuredSize: (width: Int, height: Int)
     ) -> [ProtocolV1DisplayInfo] {
+        let managedVirtualID = virtualDisplayManager?.displayID
         var catalog = DisplayCatalog.onlineDisplays().compactMap { display -> ProtocolV1DisplayInfo? in
-            // While capturing the virtual display it is already an online
-            // display; skip the physical duplicate so it is only advertised once
-            // (with the live numeric id) by the virtual entry below.
-            if activeDisplaySource == .extended && display.id == activeCaptureID {
+            // The managed virtual display is present in the online display list
+            // even while a physical source is captured. Advertise it exactly once
+            // below with its virtual semantics and stable live id.
+            if display.id == managedVirtualID ||
+                (activeDisplaySource == .extended && display.id == activeCaptureID) {
                 return nil
             }
             return ProtocolV1DisplayInfo(
@@ -3052,15 +3150,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return catalog
         }
         let capturingVirtual = activeDisplaySource == .extended
-        let virtualID = capturingVirtual
-            ? String(activeCaptureID)
-            : Self.virtualExtendedDisplaySyntheticID
-        let virtualWidth = capturingVirtual
-            ? (configuredSize.width > 0 ? configuredSize.width : Self.virtualExtendedDefaultWidth)
-            : Self.virtualExtendedDefaultWidth
-        let virtualHeight = capturingVirtual
-            ? (configuredSize.height > 0 ? configuredSize.height : Self.virtualExtendedDefaultHeight)
-            : Self.virtualExtendedDefaultHeight
+        let virtualID = managedVirtualID.map(String.init)
+            ?? (capturingVirtual ? String(activeCaptureID) : Self.virtualExtendedDisplaySyntheticID)
+        let managedVirtualBounds = managedVirtualID.map(CGDisplayBounds)
+        let virtualWidth = Int(managedVirtualBounds?.width ?? 0) > 0
+            ? Int(managedVirtualBounds?.width ?? 0)
+            : (configuredSize.width > 0 ? configuredSize.width : Self.virtualExtendedDefaultWidth)
+        let virtualHeight = Int(managedVirtualBounds?.height ?? 0) > 0
+            ? Int(managedVirtualBounds?.height ?? 0)
+            : (configuredSize.height > 0 ? configuredSize.height : Self.virtualExtendedDefaultHeight)
         catalog.append(
             ProtocolV1DisplayInfo(
                 id: virtualID,
@@ -3071,7 +3169,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 isVirtual: true
             )
         )
+        // ListDisplays has no separate active-display field. Preserve a clear
+        // wire contract by placing the display currently being captured first;
+        // clients select this entry initially while `isPrimary` keeps its macOS
+        // main-display meaning for presentation.
+        if let activeIndex = catalog.firstIndex(where: { $0.id == String(activeCaptureID) }),
+           activeIndex != catalog.startIndex {
+            catalog.insert(catalog.remove(at: activeIndex), at: catalog.startIndex)
+        }
         return catalog
+    }
+
+    private func protocolV1DisplayName(
+        displayID: CGDirectDisplayID,
+        isVirtual: Bool
+    ) -> String {
+        if isVirtual { return Self.virtualExtendedDisplayName }
+        return DisplayCatalog.onlineDisplays().first(where: { $0.id == displayID })?.name
+            ?? "Display \(displayID)"
     }
 
     private func handleServerFailure(sessionToken: UInt64) async {

@@ -64,6 +64,7 @@ baseline-macos-self-test: baseline-macos-build
 	"baseline/MacHost/.build/release/Vibe Screen" --transport-self-test
 	"baseline/MacHost/.build/release/Vibe Screen" --reliability-self-test
 	"baseline/MacHost/.build/release/Vibe Screen" --protocol-v1-self-test
+	"baseline/MacHost/.build/release/Vibe Screen" --video-encoder-self-test
 
 baseline-macos-app:
 	python3 scripts/package_macos.py

@@ -11,6 +11,9 @@ import dev.vibescreen.protocol.v1.DisconnectNotice
 import dev.vibescreen.protocol.v1.DisplayChanged
 import dev.vibescreen.protocol.v1.DisplayDescriptor
 import dev.vibescreen.protocol.v1.Envelope
+import dev.vibescreen.protocol.v1.HostActionCatalog
+import dev.vibescreen.protocol.v1.HostActionDescriptor
+import dev.vibescreen.protocol.v1.HostActionResult
 import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.ListDisplaysResponse
@@ -53,7 +56,9 @@ class StreamClientProtocolV1IntegrationTest {
             val configurationRequested = CountDownLatch(1)
             val prematureMediaSent = CountDownLatch(1)
             val frameDelivered = CountDownLatch(1)
+            val configurationApplied = CountDownLatch(1)
             val commit = AtomicReference<StreamVideoConfigurationCommit?>()
+            val appliedConfiguration = AtomicReference<StreamVideoConfiguration?>()
             val deliveredEpochs = Collections.synchronizedList(mutableListOf<Long>())
             val serverJob =
                 async(Dispatchers.IO) {
@@ -81,6 +86,10 @@ class StreamClientProtocolV1IntegrationTest {
                 commit.set(pendingCommit)
                 configurationRequested.countDown()
             }
+            client.onVideoConfigurationApplied = {
+                appliedConfiguration.set(it)
+                configurationApplied.countDown()
+            }
             client.onFrameReceived = { buffer, _, _, _, _, configEpoch ->
                 deliveredEpochs += configEpoch
                 client.releaseBuffer(buffer)
@@ -91,12 +100,18 @@ class StreamClientProtocolV1IntegrationTest {
             assertTrue(configurationRequested.await(8, TimeUnit.SECONDS))
             assertTrue(prematureMediaSent.await(8, TimeUnit.SECONDS))
             assertFalse(frameDelivered.await(250, TimeUnit.MILLISECONDS))
+            assertFalse(configurationApplied.await(250, TimeUnit.MILLISECONDS))
             checkNotNull(commit.get()).accept()
+            assertTrue(configurationApplied.await(8, TimeUnit.SECONDS))
+            assertFalse(checkNotNull(appliedConfiguration.get()).appliesClientVideoPreferences)
 
+            assertTrue(configurationApplied.await(8, TimeUnit.SECONDS))
             assertTrue(frameDelivered.await(8, TimeUnit.SECONDS))
             withTimeout(8_000) { serverJob.await() }
             withTimeout(8_000) { clientJob.await() }
             assertEquals(listOf(3L), deliveredEpochs)
+            assertEquals(12_000, checkNotNull(appliedConfiguration.get()).bitrateKbps)
+            assertEquals(60, checkNotNull(appliedConfiguration.get()).framesPerSecond)
         }
     }
 
@@ -634,6 +649,75 @@ class StreamClientProtocolV1IntegrationTest {
         }
     }
 
+    @Test
+    fun hostActionCatalogSurfacesActionsAndInvokeReceivesResult() =
+        runBlocking {
+            ServerSocket(0).use { server ->
+                val caps =
+                    listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_HOST_ACTIONS)
+                val invokeEnvelope = AtomicReference<Envelope?>(null)
+                val serverJob =
+                    async(Dispatchers.IO) {
+                        server.accept().use { peer ->
+                            completeHandshake(
+                                peer,
+                                initialRotation = 0,
+                                hostCapabilities = caps,
+                                negotiatedCapabilities = caps,
+                            )
+                            write(peer, hostActionCatalog(6))
+                            val invoke = readEnvelope(peer)
+                            invokeEnvelope.set(invoke)
+                            write(
+                                peer,
+                                hostActionResult(
+                                    id = 7,
+                                    invocationId = invoke.hostActionInvoke.invocationId,
+                                    accepted = true,
+                                ),
+                            )
+                            write(peer, disconnect(8))
+                        }
+                    }
+                val ended = CountDownLatch(1)
+                val actionsSeen = CountDownLatch(1)
+                val resultSeen = CountDownLatch(1)
+                val advertised = Collections.synchronizedList(mutableListOf<String>())
+                val acceptedResult = AtomicBoolean(false)
+                val client = StreamClient("127.0.0.1", server.localPort)
+                client.apply {
+                    acceptVideoConfigurations()
+                    onHostActionsAvailable = {
+                        advertised += it.map { option -> option.id }
+                        actionsSeen.countDown()
+                    }
+                    onHostActionResult = { accepted, _ ->
+                        acceptedResult.set(accepted)
+                        resultSeen.countDown()
+                    }
+                    onSessionEnded = { ended.countDown() }
+                }
+                val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+                try {
+                    assertTrue(actionsSeen.await(8, TimeUnit.SECONDS))
+                    assertEquals(listOf("move-window", "return-windows"), advertised)
+                    client.invokeHostAction("move-window")
+                    assertTrue(resultSeen.await(8, TimeUnit.SECONDS))
+                    assertTrue(acceptedResult.get())
+                    assertTrue(ended.await(8, TimeUnit.SECONDS))
+                    assertEquals(Unit, withTimeout(8_000) { serverJob.await() })
+                    assertEquals(
+                        "move-window",
+                        checkNotNull(invokeEnvelope.get()).hostActionInvoke.actionId,
+                    )
+                } finally {
+                    client.disconnect()
+                }
+                withTimeout(8_000) { clientJob.await() }
+                Unit
+            }
+        }
+
     private fun completeHandshake(
         peer: Socket,
         initialRotation: Int,
@@ -665,6 +749,7 @@ class StreamClientProtocolV1IntegrationTest {
                 Capability.CAPABILITY_POINTER,
                 Capability.CAPABILITY_MULTI_DISPLAY,
                 Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
+                Capability.CAPABILITY_HOST_ACTIONS,
             ),
             clientHello.clientHello.capabilitiesList,
         )
@@ -685,6 +770,7 @@ class StreamClientProtocolV1IntegrationTest {
     ) = kotlinx.coroutines.coroutineScope {
         ServerSocket(0).use { server ->
             val ended = CountDownLatch(1)
+            val configurationApplied = AtomicBoolean(false)
             var failure: SessionFailure? = null
             val serverJob =
                 async(Dispatchers.IO) {
@@ -698,6 +784,7 @@ class StreamClientProtocolV1IntegrationTest {
                 }
             val client = clientFactory(server.localPort)
             client.onVideoConfiguration = { _, commit -> configure(commit) }
+            client.onVideoConfigurationApplied = { configurationApplied.set(true) }
             client.onSessionEnded = {
                 failure = it
                 ended.countDown()
@@ -708,6 +795,7 @@ class StreamClientProtocolV1IntegrationTest {
             assertTrue(ended.await(REJECTED_CONFIG_AWAIT_MS, TimeUnit.MILLISECONDS))
             withTimeout(REJECTED_CONFIG_AWAIT_MS) { clientJob.await() }
             assertEquals(SessionFailureKind.CODEC_CONFIGURATION, checkNotNull(failure).kind)
+            assertFalse(configurationApplied.get())
         }
     }
 
@@ -907,6 +995,25 @@ class StreamClientProtocolV1IntegrationTest {
     private fun disconnect(id: Long): Envelope =
         base(id).setDisconnectNotice(
             DisconnectNotice.newBuilder().setReasonCode("host_shutdown").setMayResume(false),
+        ).build()
+
+    private fun hostActionCatalog(id: Long): Envelope =
+        base(id).setHostActionCatalog(
+            HostActionCatalog.newBuilder()
+                .addActions(
+                    HostActionDescriptor.newBuilder().setActionId("move-window").setLocalizedName("Move"),
+                ).addActions(
+                    HostActionDescriptor.newBuilder().setActionId("return-windows").setLocalizedName("Return"),
+                ),
+        ).build()
+
+    private fun hostActionResult(
+        id: Long,
+        invocationId: ByteString,
+        accepted: Boolean,
+    ): Envelope =
+        base(id).setHostActionResult(
+            HostActionResult.newBuilder().setInvocationId(invocationId).setAccepted(accepted),
         ).build()
 
     private fun hostProtocolError(id: Long): Envelope =

@@ -211,6 +211,7 @@ class MainActivity : AppCompatActivity() {
     private var checklistRunnable: Runnable? = null
     private var isConnected = false // Track connection state to prevent checklist conflicts
     private var connectionAttemptInProgress = false
+    private var hasAttemptedUsbConnection = false
     private var automaticUsbConnect = false
     private var connectionDetailsVisible = false
     private val autoConnectHandler = Handler(Looper.getMainLooper())
@@ -226,10 +227,12 @@ class MainActivity : AppCompatActivity() {
     private var pendingTerminalGuidance: ConnectionGuidance? = null
     private var isReconnecting = false
     private var hasConnectedThisRun = false
+    private var lastAppliedVideoPreferenceConfigEpoch = 0L
     private val controlBarHandler = Handler(Looper.getMainLooper())
     private val controlBarHideRunnable = Runnable { hideControlBar() }
     private var availableDisplays = emptyList<StreamDisplayOption>()
     private var selectedDisplayId = ""
+    private var availableHostActions = emptyList<HostActionOption>()
     private val autoConnectRunnable =
         Runnable {
             if (automaticUsbConnect && isInForeground && !isConnected && !connectionAttemptInProgress) {
@@ -1182,7 +1185,20 @@ class MainActivity : AppCompatActivity() {
                 )
                 binding.connectionSubtitle.setText(R.string.usb_waiting_description)
                 binding.connectionProgress.visibility = View.VISIBLE
-                binding.connectButton.setText(R.string.try_again)
+                val connectAction =
+                    UsbConnectActionPolicy.resolve(
+                        connectionAttemptInProgress = connectionAttemptInProgress,
+                        hasAttemptedConnection = hasAttemptedUsbConnection,
+                    )
+                binding.connectButton.setText(
+                    when (connectAction) {
+                        UsbConnectActionPolicy.Action.CONNECT -> R.string.connect
+                        UsbConnectActionPolicy.Action.CONNECTING -> R.string.connecting
+                        UsbConnectActionPolicy.Action.TRY_AGAIN -> R.string.try_again
+                    },
+                )
+                binding.connectButton.isEnabled =
+                    connectAction != UsbConnectActionPolicy.Action.CONNECTING
                 updateStatus(getString(R.string.looking_for_mac))
             }
             ConnectionMode.WIRELESS -> {
@@ -1537,6 +1553,10 @@ class MainActivity : AppCompatActivity() {
             revealControlBar()
         }
         binding.controlDisconnectButton.setOnClickListener { confirmDisconnect() }
+        binding.controlHostActionsButton.setOnClickListener {
+            revealControlBar()
+            showHostActionsMenu()
+        }
         // The whole capsule row is the dropdown-selector tap target so touch
         // users hit it reliably, not just the leading icon.
         binding.displayCapsuleGroup.setOnClickListener {
@@ -1548,6 +1568,7 @@ class MainActivity : AppCompatActivity() {
         TooltipCompat.setTooltipText(binding.controlSettingsButton, getText(R.string.control_settings))
         TooltipCompat.setTooltipText(binding.controlDisconnectButton, getText(R.string.control_disconnect))
         TooltipCompat.setTooltipText(binding.displayCapsuleGroup, getText(R.string.control_displays))
+        TooltipCompat.setTooltipText(binding.controlHostActionsButton, getText(R.string.control_host_actions))
     }
 
     /**
@@ -1679,6 +1700,61 @@ class MainActivity : AppCompatActivity() {
         // frozen while the menu is up; otherwise the anchor could disappear and
         // dismiss the menu out from under a user still deciding. Restart the
         // timer only once the menu closes.
+        controlBarHandler.removeCallbacks(controlBarHideRunnable)
+        popup.setOnDismissListener {
+            revealControlBar()
+        }
+        popup.show()
+    }
+
+    /**
+     * Reconcile the host-action control with the negotiated capability and the
+     * host-advertised catalog. The button collapses entirely unless host
+     * actions were negotiated and the host advertised at least one action this
+     * client understands, so unsupported sessions expose no dead tap area. The
+     * menu is built lazily in showHostActionsMenu() from the stored list.
+     */
+    private fun populateHostActions(actions: List<HostActionOption>) {
+        availableHostActions = actions
+        val available =
+            HostActionMenuPolicy.isAvailable(
+                currentSessionBinding().capabilities.hostActions,
+                actions,
+            )
+        binding.controlHostActionsButton.visibility = if (available) View.VISIBLE else View.GONE
+        binding.controlHostActionsButton.isEnabled = available
+    }
+
+    /**
+     * Present the advertised host actions as a dropdown anchored on the window
+     * icon. Selecting one drives the runtime invokeHostAction() path and closes
+     * the menu. Ignored when host actions are not currently available.
+     */
+    private fun showHostActionsMenu() {
+        val actions = availableHostActions
+        val available =
+            HostActionMenuPolicy.isAvailable(
+                currentSessionBinding().capabilities.hostActions,
+                actions,
+            )
+        if (!available) return
+        val moveDefault = getString(R.string.host_action_move_window)
+        val returnDefault = getString(R.string.host_action_return_windows)
+        val popup = PopupMenu(this, binding.controlHostActionsButton)
+        val menu = popup.menu
+        actions.forEachIndexed { index, option ->
+            menu.add(0, index, index, HostActionMenuPolicy.menuLabel(option, moveDefault, returnDefault))
+        }
+        popup.setOnMenuItemClickListener { item ->
+            val option = actions.getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
+            mainDiag("capsule invokeHostAction id=${option.id}")
+            streamClient?.invokeHostAction(option.id)
+            val label = HostActionMenuPolicy.menuLabel(option, moveDefault, returnDefault)
+            Toast.makeText(this, getString(R.string.host_action_sent, label), Toast.LENGTH_SHORT).show()
+            true
+        }
+        // Freeze the control bar's auto-hide while the menu is up so the anchor
+        // cannot disappear under a user still deciding; restart it on dismiss.
         controlBarHandler.removeCallbacks(controlBarHideRunnable)
         popup.setOnDismissListener {
             revealControlBar()
@@ -2863,6 +2939,34 @@ class MainActivity : AppCompatActivity() {
         }
 
         callbackClient.onVideoConfiguration = displayLifecycle::onVideoConfiguration
+        callbackClient.onVideoConfigurationApplied = applied@{ configuration ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@applied
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration) ||
+                    !AppliedVideoPreferenceProjector.shouldPersist(
+                        appliesClientVideoPreferences = configuration.appliesClientVideoPreferences,
+                        configEpoch = configuration.configEpoch,
+                        lastAppliedConfigEpoch = lastAppliedVideoPreferenceConfigEpoch,
+                    )
+                ) {
+                    return@runOnUiThread
+                }
+                lastAppliedVideoPreferenceConfigEpoch = configuration.configEpoch
+                val projection =
+                    AppliedVideoPreferenceProjector.project(
+                        bitrateKbps = configuration.bitrateKbps,
+                        framesPerSecond = configuration.framesPerSecond,
+                    )
+                projection.bitrateMbps?.let { prefs.videoBitrateMbps = it }
+                projection.framesPerSecond?.let { prefs.videoFrameRate = it }
+                mainDiag(
+                    "Applied authoritative video preferences " +
+                        "epoch=${configuration.configEpoch} " +
+                        "bitrate=${projection.bitrateMbps ?: "unchanged"}Mbps " +
+                        "fps=${projection.framesPerSecond ?: "unchanged"}",
+                )
+            }
+        }
         callbackClient.onDisplayGeometry = displayLifecycle::onDisplayGeometry
         callbackClient.onDisplaysAvailable = displays@{ options, selectedId ->
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@displays
@@ -2873,8 +2977,8 @@ class MainActivity : AppCompatActivity() {
                         "negotiated=${callbackClient.negotiatedCapabilities()} " +
                         "displays=${options.joinToString { "${it.id}:${it.name}:${it.width}x${it.height}:primary=${it.isPrimary}" }}",
                 )
-               // Promote the session binding to reflect negotiated capabilities so
-               // the display capsule and other controls unlock only when agreed.
+                // Promote the session binding to reflect negotiated capabilities so
+                // the display capsule and other controls unlock only when agreed.
                 val negotiated = callbackClient.negotiatedCapabilities()
                 val displaySelection =
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_MULTI_DISPLAY in negotiated
@@ -2882,12 +2986,15 @@ class MainActivity : AppCompatActivity() {
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_KEYBOARD in negotiated
                 val nativePointer =
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_POINTER in negotiated
-                if (displaySelection || keyboard || nativePointer) {
+                val hostActions =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in negotiated
+                if (displaySelection || keyboard || nativePointer || hostActions) {
                     val capabilities =
                         ClientSessionCapabilities.LEGACY_TOUCH_ONLY.copy(
                             displaySelection = displaySelection,
                             keyboard = keyboard,
                             nativePointer = nativePointer,
+                            hostActions = hostActions,
                         )
                     val sink =
                         if (keyboard || nativePointer) {
@@ -2900,12 +3007,41 @@ class MainActivity : AppCompatActivity() {
                         callbackGeneration,
                         ClientSessionBinding(capabilities, sink),
                     )
+                    // HostActionCatalog may arrive before ListDisplaysResponse.
+                    // Re-evaluate the cached catalog after capability promotion so
+                    // that arrival order cannot leave the button permanently hidden.
+                    populateHostActions(availableHostActions)
                     mainDiag(
                         "session binding promoted: displaySelection=$displaySelection " +
-                            "keyboard=$keyboard nativePointer=$nativePointer",
+                            "keyboard=$keyboard nativePointer=$nativePointer hostActions=$hostActions",
                     )
                 }
                 populateDisplayCapsule(options, selectedId)
+            }
+        }
+
+        callbackClient.onHostActionsAvailable = hostActions@{ actions ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@hostActions
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                mainDiag("onHostActionsAvailable: ${actions.joinToString { it.id }}")
+                populateHostActions(actions)
+            }
+        }
+        callbackClient.onHostActionResult = hostActionResult@{ accepted, rejectionReason ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@hostActionResult
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                mainDiag("onHostActionResult: accepted=$accepted reason=$rejectionReason")
+                val message =
+                    if (accepted) {
+                        getString(R.string.host_action_accepted)
+                    } else if (rejectionReason.isNotBlank()) {
+                        getString(R.string.host_action_rejected_with_reason, rejectionReason)
+                    } else {
+                        getString(R.string.host_action_rejected)
+                    }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -3649,6 +3785,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun cancelConnectionForModeSwitch() {
         automaticUsbConnect = false
+        hasAttemptedUsbConnection = false
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         cancelWirelessReconnect()
         stopPingTimer()
@@ -3673,6 +3810,10 @@ class MainActivity : AppCompatActivity() {
         }
         if (isConnected || connectionAttemptInProgress) return
         connectionAttemptInProgress = true
+        hasAttemptedUsbConnection = true
+        if (prefs.connectionMode == ConnectionMode.USB) {
+            updateDisconnectedHeader(ConnectionMode.USB)
+        }
         val callbackClient = StreamClient(host, port, applicationContext)
         val callbackGeneration = activateSession(callbackClient)
         val retryCoordinator =
@@ -3700,6 +3841,9 @@ class MainActivity : AppCompatActivity() {
                         automaticRetryEnabled = automaticUsbConnect,
                         disconnected = !isConnected,
                     )
+                    if (!isConnected && prefs.connectionMode == ConnectionMode.USB) {
+                        updateDisconnectedHeader(ConnectionMode.USB)
+                    }
                 }
             }
         }
@@ -3717,6 +3861,7 @@ class MainActivity : AppCompatActivity() {
         stopPingTimer()
         isReconnecting = false
         hasConnectedThisRun = false
+        hasAttemptedUsbConnection = false
         val client = streamClient
         val generation = activeSessionGeneration
         client?.disconnect()
@@ -3731,8 +3876,14 @@ class MainActivity : AppCompatActivity() {
         isConnected = false
         mainSessionDisplayLifecycle?.invalidate()
         mainSessionDisplayLifecycle = null
+        // Drop any host-action state so a stale window-actions button never
+        // lingers into the next session.
+        availableHostActions = emptyList()
+        binding.controlHostActionsButton.visibility = View.GONE
+        binding.controlHostActionsButton.isEnabled = false
         encodedVideoConfigurationState.clear()
         activeDecoderConfigEpoch = 0L
+        lastAppliedVideoPreferenceConfigEpoch = 0L
         displayWidth = 0
         displayHeight = 0
         displayRotation = 0
@@ -3800,6 +3951,15 @@ class MainActivity : AppCompatActivity() {
             MotionEvent.ACTION_DOWN -> {
                 inputPredictor.reset()
                 inputPredictor.addSample(x.toFloat(), y.toFloat())
+                if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+                    android.util.Log.d(
+                        TOUCH_MAPPING_LOG_TAG,
+                        "raw=${event.x},${event.y} view=${view.width}x${view.height} " +
+                            "video=${displayWidth}x$displayHeight scale=${prefs.videoScaleMode} " +
+                            "clientRotation=${prefs.clientRotation.degrees} hostRotation=$displayRotation " +
+                            "mapped=$x,$y",
+                    )
+                }
                 // A touch on the video reveals the control bar; it fades on its own.
                 revealControlBar()
             }
@@ -4002,9 +4162,8 @@ class MainActivity : AppCompatActivity() {
                 else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE // 0°
             }
 
-        // The host already reports upright encoded dimensions. Rotate only by
-        // the explicit client-local offset; host rotation still selects the
-        // Activity orientation above.
+        // Host rotation chooses the device orientation. The encoded frame keeps
+        // its source orientation, so only the client-local offset transforms it.
         binding.surfaceView.apply {
             this.rotation = prefs.clientRotation.degrees.toFloat()
             scaleX = 1f
@@ -4051,6 +4210,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val TOUCH_MAPPING_LOG_TAG = "VibeScreenTouchMap"
         private const val EXTRA_AUTO_CONNECT = "auto_connect"
         private const val KBPS_PER_MBPS = 1_000
         private const val STATE_AUTOMATIC_USB_CONNECT = "automatic_usb_connect"

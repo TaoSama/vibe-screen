@@ -69,10 +69,11 @@ class HostLogTelemetryCollectTests(unittest.TestCase):
             logs.append(accumulated)
         written, records = self._run(logs, ticks=3)
         self.assertEqual(written, 3)
-        self.assertEqual([r["attributes"]["dropped"] for r in records], [0, 1, 1])
+        self.assertEqual(
+            [r["attributes"]["dropped_frames"] for r in records], [0, 1, 1]
+        )
         self.assertEqual([r["attributes"]["fps"] for r in records], [60.0, 59.9, 60.1])
 
 
 if __name__ == "__main__":
     unittest.main()
-
