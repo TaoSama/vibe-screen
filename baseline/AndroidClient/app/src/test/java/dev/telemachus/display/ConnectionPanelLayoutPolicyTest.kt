@@ -46,4 +46,26 @@ class ConnectionPanelLayoutPolicyTest {
 
         assertEquals(0, layout.columnGapPx)
     }
+
+    @Test
+    fun `narrow landscape falling back to single column matches the stacked contract`() {
+        // A landscape window that is too narrow for the side-by-side split (for
+        // example a split-screen or narrow freeform window below the width
+        // qualifier threshold) resolves twoColumn=false and must render as the
+        // full-width stacked column, identical to portrait.
+        val narrowLandscape = ConnectionPanelLayoutPolicy.resolve(twoColumn = false, columnGapPx = 28)
+        val portrait = ConnectionPanelLayoutPolicy.resolve(twoColumn = false, columnGapPx = 0)
+
+        assertEquals(ConnectionPanelLayoutPolicy.Orientation.VERTICAL, narrowLandscape.contentOrientation)
+        assertTrue(narrowLandscape.header.widthMatchParent)
+        assertTrue(narrowLandscape.actions.widthMatchParent)
+        assertEquals(0f, narrowLandscape.header.weight, 0f)
+        assertEquals(0f, narrowLandscape.actions.weight, 0f)
+        // No inter-column gap is reserved even if a landscape gap dimension is
+        // supplied, so the fallback is visually identical to portrait.
+        assertEquals(0, narrowLandscape.columnGapPx)
+        assertEquals(portrait.contentOrientation, narrowLandscape.contentOrientation)
+        assertEquals(portrait.columnGapPx, narrowLandscape.columnGapPx)
+        assertEquals(Int.MAX_VALUE, narrowLandscape.subtitleMaxLines)
+    }
 }
