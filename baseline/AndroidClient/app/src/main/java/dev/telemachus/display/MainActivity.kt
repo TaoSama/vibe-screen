@@ -10,6 +10,7 @@ import android.graphics.drawable.ColorDrawable
 import android.media.MediaFormat
 import android.os.Build
 import android.os.Bundle
+import android.text.TextUtils
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -23,6 +24,7 @@ import android.view.Window
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.EditText
@@ -267,6 +269,7 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        applyConnectionPanelLayout()
 
         runCatching(::retryPendingPairingIdentityAliasCleanup).onFailure { failure ->
             android.util.Log.e(INTERNET_LOG_TAG, "Could not recover pending pairing identity alias", failure)
@@ -668,6 +671,61 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * Lay out the connection panel's header and actions columns for the current
+     * configuration. Portrait keeps the original stacked, full-width visual;
+     * landscape splits the brand/title header and the connection actions into
+     * two weighted columns with a stable gap so the wide screen is not wasted
+     * on a single narrow column. Video and safe-area handling are untouched.
+     */
+    private fun applyConnectionPanelLayout() {
+        val twoColumn = resources.getBoolean(R.bool.connection_panel_two_column)
+        val gapPx = resources.getDimensionPixelSize(R.dimen.connection_panel_column_gap)
+        val layout = ConnectionPanelLayoutPolicy.resolve(twoColumn = twoColumn, columnGapPx = gapPx)
+
+        binding.connectionContent.orientation =
+            when (layout.contentOrientation) {
+                ConnectionPanelLayoutPolicy.Orientation.HORIZONTAL -> LinearLayout.HORIZONTAL
+                ConnectionPanelLayoutPolicy.Orientation.VERTICAL -> LinearLayout.VERTICAL
+            }
+        binding.connectionSubtitle.maxLines = layout.subtitleMaxLines
+        binding.connectionSubtitle.ellipsize = if (twoColumn) TextUtils.TruncateAt.END else null
+
+        applyConnectionColumn(binding.connectionHeader, layout.header, startGapPx = 0)
+        applyConnectionColumn(
+            binding.connectionActions,
+            layout.actions,
+            startGapPx = if (layout.contentOrientation == ConnectionPanelLayoutPolicy.Orientation.HORIZONTAL) {
+                layout.columnGapPx
+            } else {
+                0
+            },
+        )
+    }
+
+    /**
+     * Apply one resolved [ConnectionPanelLayoutPolicy.Column] to a child of the
+     * connection content row/column. In the horizontal layout the gap is placed
+     * as a start margin on the second column so the two columns keep a stable
+     * separation; the stacked layout clears it.
+     */
+    private fun applyConnectionColumn(
+        view: View,
+        column: ConnectionPanelLayoutPolicy.Column,
+        startGapPx: Int,
+    ) {
+        val params = view.layoutParams as? LinearLayout.LayoutParams ?: return
+        params.width =
+            if (column.widthMatchParent) {
+                ViewGroup.LayoutParams.MATCH_PARENT
+            } else {
+                0
+            }
+        params.weight = column.weight
+        params.marginStart = startGapPx
+        view.layoutParams = params
+    }
+
+    /**
      * Margin the control bar and connection panel by the safe insets so their
      * tap targets never sit under a notch or gesture bar. The settings button
      * uses [updateSettingsButtonPosition], which folds the same insets into its
@@ -760,6 +818,10 @@ class MainActivity : AppCompatActivity() {
         // insets arrive rather than relying on a recreate.
         enableFullscreenMode()
         ViewCompat.requestApplyInsets(binding.root)
+        applyConnectionPanelLayout()
+        if (!isConnected && prefs.connectionMode == ConnectionMode.INTERNET) {
+            binding.connectionTitle.setText(internetWaitingTitleResource())
+        }
         reclampFloatingControls()
         activeSettingsDialog?.let { dialog ->
             dialog.window?.decorView?.post { resizeSettingsDialog(dialog) }
@@ -1129,13 +1191,20 @@ class MainActivity : AppCompatActivity() {
                 binding.connectionProgress.visibility = View.GONE
             }
             ConnectionMode.INTERNET -> {
-                binding.connectionTitle.setText(R.string.internet_waiting_title)
+                binding.connectionTitle.setText(internetWaitingTitleResource())
                 binding.connectionSubtitle.setText(R.string.internet_waiting_description)
                 binding.connectionProgress.visibility = View.GONE
                 refreshInternetProfileUi()
             }
         }
     }
+
+    private fun internetWaitingTitleResource(): Int =
+        if (resources.getBoolean(R.bool.connection_panel_two_column)) {
+            R.string.internet_waiting_title_compact
+        } else {
+            R.string.internet_waiting_title
+        }
 
     private fun setupInternetUi() {
         QUARANTINED_INTERNET_SESSION.get()?.let { internetSession = it }
