@@ -22,8 +22,7 @@ _POWER_SUPPLY_NODES = {
 }
 
 _POWER_NODE_UNAVAILABLE_PATTERN = re.compile(
-    r"(^|\n)cat: |permission denied|no such file or directory|not a directory|"
-    r"is a directory|i/o error|operation not permitted"
+    r"permission denied|no such file or directory|not a directory|operation not permitted"
 )
 
 

@@ -126,7 +126,7 @@ class ADBPowerCollectionTest(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertTrue(all(value is None for value in power.values()))
 
-    def test_identified_optional_node_failures_mark_unavailable_not_error(self):
+    def test_unclassified_local_failures_are_recorded_as_errors(self):
         for detail in (
             "Is a directory",
             "I/O error",
@@ -139,8 +139,9 @@ class ADBPowerCollectionTest(unittest.TestCase):
                 errors = []
                 power = self._client(run)._collect_power(errors)
 
-                self.assertEqual(errors, [])
                 self.assertTrue(all(value is None for value in power.values()))
+                self.assertEqual(len(errors), len(power))
+                self.assertTrue(all(detail in error for error in errors))
 
     def test_unclassified_empty_failure_is_recorded_as_error(self):
         def run(command, **kwargs):
