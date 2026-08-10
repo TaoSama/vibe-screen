@@ -11,6 +11,22 @@ from typing import Any, Callable, Sequence
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
 
+# Optional power_supply sysfs diagnostics. Devices may deny read permission or
+# omit these nodes entirely; that is treated as an unavailable value, not an
+# evidence-collection failure.
+_POWER_SUPPLY_NODES = {
+    "current_now_ua": "/sys/class/power_supply/battery/current_now",
+    "current_average_ua": "/sys/class/power_supply/battery/current_avg",
+    "charge_counter_uah": "/sys/class/power_supply/battery/charge_counter",
+    "voltage_now_uv": "/sys/class/power_supply/battery/voltage_now",
+}
+
+_ADB_SHELL_FAILURE_PATTERN = re.compile(
+    r"device offline|device unauthorized|device .* not found|"
+    r"no devices/emulators found|transport error|protocol fault|cannot connect"
+)
+
+
 class ADBError(RuntimeError):
     """Raised when an ADB command cannot produce trustworthy evidence."""
 
@@ -41,13 +57,22 @@ class ADBClient:
         self.timeout_seconds = timeout_seconds
         self._command_runner = command_runner
 
-    def _run(self, arguments: Sequence[str], *, device: bool = True) -> ADBResult:
+    def _invoke(
+        self, arguments: Sequence[str], *, device: bool
+    ) -> subprocess.CompletedProcess[str]:
+        """Run one ADB command, converting transport faults to ADBError.
+
+        A non-zero exit is returned to the caller rather than raised so that
+        callers reading optional device nodes can distinguish an unavailable
+        node from a broken ADB transport. Timeouts, a missing executable, and
+        other OS-level launch failures always surface as ADBError.
+        """
         command = [self.adb_path]
         if device:
             command.extend(("-s", self.serial))
         command.extend(arguments)
         try:
-            completed = self._command_runner(
+            return self._command_runner(
                 command,
                 check=False,
                 capture_output=True,
@@ -63,7 +88,14 @@ class ADBClient:
             ) from error
         except OSError as error:
             raise ADBError(f"ADB command could not start: {error}") from error
+
+    def _run(self, arguments: Sequence[str], *, device: bool = True) -> ADBResult:
+        completed = self._invoke(arguments, device=device)
         if completed.returncode != 0:
+            command = [self.adb_path]
+            if device:
+                command.extend(("-s", self.serial))
+            command.extend(arguments)
             detail = completed.stderr.strip() or completed.stdout.strip() or "no output"
             raise ADBError(
                 f"ADB command failed ({completed.returncode}): {' '.join(command)}: {detail}"
@@ -167,17 +199,38 @@ class ADBClient:
         return _parse_key_values(output or "")
 
     def _collect_power(self, errors: list[str]) -> dict[str, int | None]:
-        files = {
-            "current_now_ua": "/sys/class/power_supply/battery/current_now",
-            "current_average_ua": "/sys/class/power_supply/battery/current_avg",
-            "charge_counter_uah": "/sys/class/power_supply/battery/charge_counter",
-            "voltage_now_uv": "/sys/class/power_supply/battery/voltage_now",
-        }
         values: dict[str, int | None] = {}
-        for name, path in files.items():
-            output = self._safe_shell(f"power.{name}", errors, "cat", path)
-            values[name] = int(output) if output and re.fullmatch(r"-?\d+", output) else None
+        for name, path in _POWER_SUPPLY_NODES.items():
+            values[name] = self._read_power_node(f"power.{name}", path, errors)
         return values
+
+    def _read_power_node(
+        self, metric: str, path: str, errors: list[str]
+    ) -> int | None:
+        """Read one power_supply sysfs node.
+
+        These nodes are optional diagnostics: on some devices the ADB shell
+        user lacks permission to read them or the node does not exist. Those
+        outcomes are recorded as an unavailable value (None) without an error.
+        A broken ADB transport (timeout, offline, unauthorized, missing
+        executable) is still recorded as an error.
+        """
+        try:
+            completed = self._invoke(("shell", "cat", path), device=True)
+        except ADBError as error:
+            errors.append(f"{metric}: {error}")
+            return None
+        if completed.returncode != 0:
+            message = (completed.stderr or completed.stdout or "").lower()
+            if _ADB_SHELL_FAILURE_PATTERN.search(message):
+                detail = completed.stderr.strip() or completed.stdout.strip()
+                errors.append(
+                    f"{metric}: ADB command failed ({completed.returncode}): "
+                    f"cat {path}: {detail}"
+                )
+            return None
+        output = completed.stdout.strip()
+        return int(output) if re.fullmatch(r"-?\d+", output) else None
 
 
 def _is_tcp_endpoint(serial: str) -> bool:

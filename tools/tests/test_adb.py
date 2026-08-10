@@ -81,6 +81,102 @@ class ADBClientTest(unittest.TestCase):
         self.assertEqual(commands, [["adb", "-s", "8a023e3a", "get-state"]])
 
 
+class ADBPowerCollectionTest(unittest.TestCase):
+    @staticmethod
+    def _client(responder):
+        return ADBClient("serial", command_runner=responder)
+
+    def test_valid_power_values_are_parsed_without_errors(self):
+        def run(command, **kwargs):
+            return subprocess.CompletedProcess(command, 0, "-512000\n", "")
+
+        errors = []
+        power = self._client(run)._collect_power(errors)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            power,
+            {
+                "current_now_ua": -512000,
+                "current_average_ua": -512000,
+                "charge_counter_uah": -512000,
+                "voltage_now_uv": -512000,
+            },
+        )
+
+    def test_permission_denied_marks_unavailable_not_error(self):
+        def run(command, **kwargs):
+            stderr = f"cat: {command[-1]}: Permission denied\n"
+            return subprocess.CompletedProcess(command, 1, "", stderr)
+
+        errors = []
+        power = self._client(run)._collect_power(errors)
+
+        self.assertEqual(errors, [])
+        self.assertTrue(all(value is None for value in power.values()))
+
+    def test_missing_node_marks_unavailable_not_error(self):
+        def run(command, **kwargs):
+            stderr = f"cat: {command[-1]}: No such file or directory\n"
+            return subprocess.CompletedProcess(command, 1, "", stderr)
+
+        errors = []
+        power = self._client(run)._collect_power(errors)
+
+        self.assertEqual(errors, [])
+        self.assertTrue(all(value is None for value in power.values()))
+
+    def test_other_optional_node_failures_mark_unavailable_not_error(self):
+        for detail in (
+            "Is a directory",
+            "I/O error",
+            "",
+        ):
+            with self.subTest(detail=detail):
+                def run(command, **kwargs):
+                    stderr = f"cat: {command[-1]}: {detail}\n" if detail else ""
+                    return subprocess.CompletedProcess(command, 1, "", stderr)
+
+                errors = []
+                power = self._client(run)._collect_power(errors)
+
+                self.assertEqual(errors, [])
+                self.assertTrue(all(value is None for value in power.values()))
+
+    def test_successful_non_numeric_value_is_unavailable_not_error(self):
+        def run(command, **kwargs):
+            return subprocess.CompletedProcess(command, 0, "unknown\n", "")
+
+        errors = []
+        power = self._client(run)._collect_power(errors)
+
+        self.assertEqual(errors, [])
+        self.assertTrue(all(value is None for value in power.values()))
+
+    def test_adb_timeout_is_recorded_as_error(self):
+        def run(command, **kwargs):
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+        errors = []
+        power = self._client(run)._collect_power(errors)
+
+        self.assertTrue(all(value is None for value in power.values()))
+        self.assertEqual(len(errors), len(power))
+        self.assertTrue(all("timed out" in error for error in errors))
+        self.assertTrue(all(error.startswith("power.") for error in errors))
+
+    def test_device_offline_nonzero_exit_is_recorded_as_error(self):
+        def run(command, **kwargs):
+            return subprocess.CompletedProcess(command, 1, "", "error: device offline\n")
+
+        errors = []
+        power = self._client(run)._collect_power(errors)
+
+        self.assertTrue(all(value is None for value in power.values()))
+        self.assertEqual(len(errors), len(power))
+        self.assertTrue(all("device offline" in error for error in errors))
+
+
 class ADBParserTest(unittest.TestCase):
     def test_memory_and_total_pss_parsing(self):
         self.assertEqual(
