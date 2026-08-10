@@ -1018,7 +1018,7 @@ final class WebRTCInternetTransportTests: XCTestCase {
             beforeControlSend: {
                 guard !triggeredDisconnect else { return }
                 triggeredDisconnect = true
-                XCTAssertTrue(engine.enqueueDisconnectAndWaitForInvalidation())
+                XCTAssertTrue(engine.enqueueDisconnectAndWaitForHandling())
             }
         )
         try transport.start(configuration: validConfiguration())
@@ -1259,7 +1259,7 @@ final class WebRTCInternetTransportTests: XCTestCase {
             beforeMediaRecordSend: {
                 guard !triggeredDisconnect else { return }
                 triggeredDisconnect = true
-                XCTAssertTrue(engine.enqueueDisconnectAndWaitForInvalidation())
+                XCTAssertTrue(engine.enqueueDisconnectAndWaitForHandling())
             }
         )
         try transport.start(configuration: validConfiguration())
@@ -2343,15 +2343,16 @@ private final class QueuedTransmissionWebRTCEngine: WebRTCEnginePort, @unchecked
         }
     }
 
-    func enqueueDisconnectAndWaitForInvalidation() -> Bool {
-        let invalidated = DispatchSemaphore(value: 0)
+    func enqueueDisconnectAndWaitForHandling() -> Bool {
+        let handled = DispatchSemaphore(value: 0)
         queue.async { [weak self] in
-            guard let self else { invalidated.signal(); return }
+            guard let self else { handled.signal(); return }
             self.storedEvents.append("D")
-            self.invalidateTransmissionContext(beforeCallback: { invalidated.signal() })
+            self.invalidateTransmissionContext()
             self.callbacks?.connectionStateChanged(.disconnected)
+            handled.signal()
         }
-        return invalidated.wait(timeout: .now() + 2) == .success
+        return handled.wait(timeout: .now() + 2) == .success
     }
 
     func waitForEventCount(_ count: Int) -> Bool {
@@ -2367,14 +2368,10 @@ private final class QueuedTransmissionWebRTCEngine: WebRTCEnginePort, @unchecked
         return WebRTCEngineTransmissionContext(epoch: transmissionEpoch, path: activeTransmissionPath)
     }
 
-    private func invalidateTransmissionContext(beforeCallback: (() -> Void)? = nil) {
-        guard activeTransmissionPath != nil else {
-            beforeCallback?()
-            return
-        }
+    private func invalidateTransmissionContext() {
+        guard activeTransmissionPath != nil else { return }
         activeTransmissionPath = nil
         transmissionEpoch &+= 1
-        beforeCallback?()
         callbacks?.transmissionContextChanged(nil)
     }
 
