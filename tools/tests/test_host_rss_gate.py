@@ -1,4 +1,4 @@
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timedelta, timezone
 import io
 import json
@@ -189,6 +189,50 @@ class HostRSSGateTest(unittest.TestCase):
         self.assertEqual(report["derivation_status"], "failed")
         self.assertEqual(report["verdict"], "insufficient")
         self.assertEqual(report["sufficiency"], {})
+
+    def test_single_in_window_sample_is_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory, sample_count=1)
+            output = directory / "gate.json"
+            with redirect_stdout(io.StringIO()):
+                exit_code = main(
+                    [
+                        "--summary", str(summary),
+                        "--samples", str(samples),
+                        "--output", str(output),
+                    ]
+                )
+            report = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(report["derivation_status"], "complete")
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertFalse(
+            report["sufficiency"]["maximum_internal_gap"]["passed"]
+        )
+
+    def test_cli_returns_failure_when_output_cannot_be_written(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            summary, samples = write_inputs(directory)
+            output = directory / "existing-directory"
+            output.mkdir()
+            stderr = io.StringIO()
+            with redirect_stdout(io.StringIO()), redirect_stderr(stderr):
+                exit_code = main(
+                    [
+                        "--summary", str(summary),
+                        "--samples", str(samples),
+                        "--output", str(output),
+                    ]
+                )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(
+            stderr.getvalue(),
+            "error: host RSS gate output could not be written\n",
+        )
 
 
 if __name__ == "__main__":

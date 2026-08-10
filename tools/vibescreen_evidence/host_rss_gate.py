@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
+from itertools import pairwise
 import json
 import math
 from pathlib import Path
@@ -134,9 +135,9 @@ def _evaluate(
     finish_gap_seconds = (finished - points[-1][0]).total_seconds()
     internal_gaps = [
         (right[0] - left[0]).total_seconds()
-        for left, right in zip(points, points[1:])
+        for left, right in pairwise(points)
     ]
-    maximum_internal_gap_seconds = max(internal_gaps) if internal_gaps else math.inf
+    maximum_internal_gap_seconds = max(internal_gaps) if internal_gaps else duration_seconds
     sufficiency = {
         "duration": {
             "measured_seconds": duration_seconds,
@@ -337,9 +338,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     try:
         report = derive_gate(arguments.summary, arguments.samples)
-    except (EvidenceInputError, OSError, ValueError):
+        _write_json(arguments.output, report)
+    except (EvidenceInputError, OSError, TypeError, ValueError):
         report = _failure_report()
-    _write_json(arguments.output, report)
+        try:
+            _write_json(arguments.output, report)
+        except (OSError, TypeError, ValueError):
+            print("error: host RSS gate output could not be written", file=sys.stderr)
+            return 1
     print(json.dumps(report, sort_keys=True, allow_nan=False))
     return 0 if report.get("verdict") == "pass" else 1
 

@@ -21,9 +21,9 @@ _POWER_SUPPLY_NODES = {
     "voltage_now_uv": "/sys/class/power_supply/battery/voltage_now",
 }
 
-_ADB_SHELL_FAILURE_PATTERN = re.compile(
-    r"device offline|device unauthorized|device .* not found|"
-    r"no devices/emulators found|transport error|protocol fault|cannot connect"
+_POWER_NODE_UNAVAILABLE_PATTERN = re.compile(
+    r"(^|\n)cat: |permission denied|no such file or directory|not a directory|"
+    r"is a directory|i/o error|operation not permitted"
 )
 
 
@@ -222,12 +222,13 @@ class ADBClient:
             return None
         if completed.returncode != 0:
             message = (completed.stderr or completed.stdout or "").lower()
-            if _ADB_SHELL_FAILURE_PATTERN.search(message):
-                detail = completed.stderr.strip() or completed.stdout.strip()
-                errors.append(
-                    f"{metric}: ADB command failed ({completed.returncode}): "
-                    f"cat {path}: {detail}"
-                )
+            if _POWER_NODE_UNAVAILABLE_PATTERN.search(message):
+                return None
+            detail = completed.stderr.strip() or completed.stdout.strip() or "no output"
+            errors.append(
+                f"{metric}: ADB command failed ({completed.returncode}): "
+                f"cat {path}: {detail}"
+            )
             return None
         output = completed.stdout.strip()
         return int(output) if re.fullmatch(r"-?\d+", output) else None

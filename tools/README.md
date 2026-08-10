@@ -89,7 +89,7 @@ requires all of these steady-state limits:
 - second-half Theil-Sen slope no greater than 40 KiB/min;
 - second-half endpoint-median drift no greater than 4 MiB;
 - full-window endpoint-median drift no greater than 8 MiB; and
-- final-quarter mean step no greater than 2 MiB.
+- second-half final-quarter mean step no greater than 2 MiB.
 
 The command exits zero only for `pass`; invalid, incomplete, or undersampled
 evidence is `insufficient` and exits nonzero. A pass means the recorded window
