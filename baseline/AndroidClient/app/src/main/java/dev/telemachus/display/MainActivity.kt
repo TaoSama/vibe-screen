@@ -687,7 +687,7 @@ class MainActivity : AppCompatActivity() {
                 ConnectionPanelLayoutPolicy.Orientation.HORIZONTAL -> LinearLayout.HORIZONTAL
                 ConnectionPanelLayoutPolicy.Orientation.VERTICAL -> LinearLayout.VERTICAL
             }
-        binding.connectionSubtitle.maxLines = if (twoColumn) 1 else Int.MAX_VALUE
+        binding.connectionSubtitle.maxLines = layout.subtitleMaxLines
         binding.connectionSubtitle.ellipsize = if (twoColumn) TextUtils.TruncateAt.END else null
 
         applyConnectionColumn(binding.connectionHeader, layout.header, startGapPx = 0)
