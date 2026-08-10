@@ -79,8 +79,8 @@ def collect(
                     "attributes": {
                         "fps": float(match.group("fps")),
                         "mbps": float(match.group("mbps")),
-                        "avg_frame_age_ms": float(match.group("age_ms")),
-                        "dropped": int(match.group("dropped")),
+                        "average_frame_age_ms": float(match.group("age_ms")),
+                        "dropped_frames": int(match.group("dropped")),
                     },
                 }
                 output.write(json.dumps(record, sort_keys=True) + "\n")

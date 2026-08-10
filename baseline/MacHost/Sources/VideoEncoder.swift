@@ -4,9 +4,14 @@ import CoreMedia
 import os
 
 class VideoEncoder {
-    fileprivate struct FrameContext {
+    fileprivate final class FrameContext {
         let timestamp: UInt64
         let sessionEpoch: UInt64
+
+        init(timestamp: UInt64, sessionEpoch: UInt64) {
+            self.timestamp = timestamp
+            self.sessionEpoch = sessionEpoch
+        }
     }
     private struct EncoderState {
         var pendingForceKeyframe = false
@@ -21,7 +26,15 @@ class VideoEncoder {
     private var quality: String = "medium"
     private var gamingBoost: Bool = false
     private var frameRate: Int = 60
+    private let sessionLock = NSLock()
     private let stateLock = OSAllocatedUnfairLock(initialState: EncoderState())
+
+    var hasActiveCompressionSession: Bool {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+        return compressionSession != nil
+    }
+
     init(width: Int, height: Int, codec: StreamCodec = .hevc, bitrateMbps: Int = 20, quality: String = "ultralow", gamingBoost: Bool = false, frameRate: Int = 60) {
         self.width = width
         self.height = height
@@ -33,17 +46,93 @@ class VideoEncoder {
         setupCompressionSession()
     }
 
-    func updateSettings(bitrateMbps: Int, quality: String, gamingBoost: Bool) {
-        self.bitrateMbps = gamingBoost ? 45 : bitrateMbps
-        self.quality = gamingBoost ? "ultralow" : quality
-        self.gamingBoost = gamingBoost
+    /// Applies live encoder preferences without invalidating the compression
+    /// session. These VideoToolbox properties are explicitly read/write, so a
+    /// decoder restart is unnecessary and would race the active frame submitter.
+    @discardableResult
+    func updateSettings(
+        bitrateMbps: Int,
+        quality: String,
+        gamingBoost: Bool,
+        frameRate: Int? = nil
+    ) -> Bool {
+        let updatedBitrate = gamingBoost ? 45 : bitrateMbps
+        let updatedQuality = gamingBoost ? "ultralow" : quality
 
-        // Drain pending frames before invalidation
-        if let session = compressionSession {
-            VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
-            VTCompressionSessionInvalidate(session)
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+        let updatedFrameRate = max(1, frameRate ?? self.frameRate)
+
+        guard let session = compressionSession else {
+            debugLog("VideoToolbox encoder settings rejected: no active compression session")
+            return false
         }
-        setupCompressionSession()
+        guard updatedBitrate != self.bitrateMbps
+                || updatedQuality != self.quality
+                || gamingBoost != self.gamingBoost
+                || updatedFrameRate != self.frameRate else {
+            return true
+        }
+
+        var appliedRollbacks: [(CFString, CFTypeRef)] = []
+        func apply(_ key: CFString, value: CFTypeRef, rollbackValue: CFTypeRef) -> Bool {
+            let status = VTSessionSetProperty(session, key: key, value: value)
+            guard status == noErr else {
+                for (rollbackKey, rollbackValue) in appliedRollbacks.reversed() {
+                    let rollbackStatus = VTSessionSetProperty(
+                        session,
+                        key: rollbackKey,
+                        value: rollbackValue
+                    )
+                    if rollbackStatus != noErr {
+                        debugLog("VideoToolbox encoder settings rollback failed: \(rollbackStatus)")
+                    }
+                }
+                debugLog("VideoToolbox encoder settings rejected for \(key): \(status)")
+                return false
+            }
+            appliedRollbacks.append((key, rollbackValue))
+            return true
+        }
+
+        if updatedBitrate != self.bitrateMbps {
+            guard apply(
+                kVTCompressionPropertyKey_AverageBitRate,
+                value: (updatedBitrate * 1_000_000) as CFNumber,
+                rollbackValue: (self.bitrateMbps * 1_000_000) as CFNumber
+            ) else { return false }
+        }
+        if updatedQuality != self.quality || gamingBoost != self.gamingBoost {
+            guard apply(
+                kVTCompressionPropertyKey_Quality,
+                value: Self.qualityValue(for: updatedQuality, gamingBoost: gamingBoost) as CFNumber,
+                rollbackValue: Self.qualityValue(for: self.quality, gamingBoost: self.gamingBoost) as CFNumber
+            ) else { return false }
+        }
+        if updatedFrameRate != self.frameRate {
+            guard apply(
+                kVTCompressionPropertyKey_ExpectedFrameRate,
+                value: updatedFrameRate as CFNumber,
+                rollbackValue: self.frameRate as CFNumber
+            ), apply(
+                kVTCompressionPropertyKey_MaxKeyFrameInterval,
+                value: updatedFrameRate as CFNumber,
+                rollbackValue: self.frameRate as CFNumber
+            ) else { return false }
+        }
+
+        self.bitrateMbps = updatedBitrate
+        self.quality = updatedQuality
+        self.gamingBoost = gamingBoost
+        self.frameRate = updatedFrameRate
+        stateLock.withLock { $0.pendingForceKeyframe = true }
+
+        let mode = gamingBoost ? "GAMING BOOST" : updatedQuality.uppercased()
+        debugLog(
+            "VideoToolbox encoder updated in place "
+                + "(\(updatedBitrate)Mbps, \(updatedFrameRate)fps, \(mode))"
+        )
+        return true
     }
 
     private func setupCompressionSession() {
@@ -108,18 +197,7 @@ class VideoEncoder {
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: 0 as CFNumber)
 
         // Quality based on preset
-        let qualityValue: Float
-        if gamingBoost {
-            qualityValue = 0.3  // Ultra low quality for maximum speed
-        } else {
-            qualityValue = switch quality {
-            case "ultralow": 0.5  // Still fast but better text readability
-            case "low": 0.65
-            case "medium": 0.8   // Sharp text for productivity
-            case "high": 0.9     // Very sharp, higher bitrate
-            default: 0.5
-            }
-        }
+        let qualityValue = Self.qualityValue(for: quality, gamingBoost: gamingBoost)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: qualityValue as CFNumber)
 
         // Use VBR (variable bitrate) instead of CBR for burst capacity during fast scene changes
@@ -130,6 +208,17 @@ class VideoEncoder {
 
         let mode = gamingBoost ? "🎮 GAMING BOOST" : quality.uppercased()
         debugLog("VideoToolbox encoder configured (\(codec == .hevc ? "H.265" : "H.264"), \(bitrateMbps)Mbps, \(frameRate)fps, \(mode))")
+    }
+
+    private static func qualityValue(for quality: String, gamingBoost: Bool) -> Float {
+        if gamingBoost { return 0.3 }
+        return switch quality {
+        case "ultralow": 0.5
+        case "low": 0.65
+        case "medium": 0.8
+        case "high": 0.9
+        default: 0.5
+        }
     }
 
     /// Force the next encoded frame to be an IDR (sync) frame.
@@ -144,14 +233,19 @@ class VideoEncoder {
         presentationTimeStamp: CMTime,
         sessionEpoch: UInt64
     ) {
-        guard let session = compressionSession else { return }
+        sessionLock.lock()
+        guard let session = compressionSession else {
+            sessionLock.unlock()
+            return
+        }
 
         let duration = CMTime(value: 1, timescale: CMTimeScale(frameRate))
 
         // Use system uptime clock — MUST match DispatchTime.now().uptimeNanoseconds
         let captureNanos = DispatchTime.now().uptimeNanoseconds
-        let refconValue = UnsafeMutablePointer<FrameContext>.allocate(capacity: 1)
-        refconValue.initialize(to: FrameContext(timestamp: captureNanos, sessionEpoch: sessionEpoch))
+        let frameContext = Unmanaged.passRetained(
+            FrameContext(timestamp: captureNanos, sessionEpoch: sessionEpoch)
+        )
 
         let shouldForceKeyframe = stateLock.withLock { state -> Bool in
             guard state.pendingForceKeyframe else { return false }
@@ -168,23 +262,26 @@ class VideoEncoder {
             presentationTimeStamp: presentationTimeStamp,
             duration: duration,
             frameProperties: frameProperties,
-            sourceFrameRefcon: refconValue,
+            sourceFrameRefcon: frameContext.toOpaque(),
             infoFlagsOut: nil
         )
+        sessionLock.unlock()
         if encodeStatus != noErr {
             // VideoToolbox does not invoke the output callback when submission
-            // itself fails, so ownership of the timestamp allocation remains here.
-            refconValue.deinitialize(count: 1)
-            refconValue.deallocate()
+            // itself fails, so ownership of the retained context remains here.
+            frameContext.release()
             debugLog("VideoToolbox frame submission failed: \(encodeStatus)")
         }
     }
 
     deinit {
+        sessionLock.lock()
         if let session = compressionSession {
             VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
             VTCompressionSessionInvalidate(session)
+            compressionSession = nil
         }
+        sessionLock.unlock()
     }
 }
 
@@ -197,12 +294,11 @@ private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallb
     let timestamp: UInt64
     let sessionEpoch: UInt64
     if let refcon = sourceFrameRefCon {
-        let pointer = refcon.assumingMemoryBound(to: VideoEncoder.FrameContext.self)
-        let context = pointer.pointee
+        let context = Unmanaged<VideoEncoder.FrameContext>
+            .fromOpaque(refcon)
+            .takeRetainedValue()
         timestamp = context.timestamp
         sessionEpoch = context.sessionEpoch
-        pointer.deinitialize(count: 1)
-        pointer.deallocate()
     } else {
         timestamp = DispatchTime.now().uptimeNanoseconds
         sessionEpoch = 0

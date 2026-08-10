@@ -22,6 +22,7 @@ enum ProtocolV1SelfTest {
         testNativePointerKeyboardInput(failures: &failures)
         testNativeInputMapping(failures: &failures)
         testClientVideoPreferences(failures: &failures)
+        testHostActions(failures: &failures)
         if failures.isEmpty {
             print("Protocol v1 self-test: PASS (framing, golden, negotiation, display/video gate, epoch, targeted input, heartbeat, graceful disconnect, error, media)")
             return true
@@ -149,7 +150,7 @@ enum ProtocolV1SelfTest {
     private static func testNegotiationAndMediaGate(failures: inout [String]) {
         do {
             guard ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true)
-                    == [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl],
+                    == [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions],
                   ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false)
                     == [.multiDisplay, .clientVideoControl] else {
                 failures.append("production HostHello capabilities are not exact")
@@ -169,7 +170,7 @@ enum ProtocolV1SelfTest {
             guard helloResponses.count == 2,
                   case .hostHello(let hostHello)? = helloResponses[0].payload,
                   case .sessionAccepted(let accepted)? = helloResponses[1].payload,
-                  Set(hostHello.capabilities) == [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl],
+                  Set(hostHello.capabilities) == [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions],
                   accepted.sessionID == sessionID,
                   accepted.negotiatedCapabilities == [.touch, .multiDisplay] else {
                 failures.append("ClientHello did not produce HostHello + SessionAccepted")
@@ -541,6 +542,11 @@ enum ProtocolV1SelfTest {
                   two.pointerCount == 2,
                   two.x1 == 0.1,
                   two.x2 == 0.8,
+                  aggregator.handle(pointerID: 3, x: 0.2, y: 0.3, phase: .changed) == nil,
+                  let atomicMove = aggregator.handle(pointerID: 7, x: 0.7, y: 0.8, phase: .changed),
+                  atomicMove.action == 1,
+                  atomicMove.x1 == 0.2,
+                  atomicMove.x2 == 0.7,
                   aggregator.handle(pointerID: 3, x: 0.2, y: 0.3, phase: .ended)?.action == 2,
                   aggregator.handle(pointerID: 7, x: 0.7, y: 0.8, phase: .changed)?.pointerCount == 1 else {
                 failures.append("two-pointer touch aggregation is incorrect")
@@ -894,11 +900,27 @@ enum ProtocolV1SelfTest {
                 id: 10,
                 payload: .setVideoPreferences(extreme)
             ).serializedData())
-            guard clampedActions.contains(where: {
-                if case .applyVideoPreferences(_, let b, let f, _, _) = $0 { return b == 1_000 && f == 120 }
-                return false
-            }) else {
+            let clampedApply = clampedActions.compactMap { action -> (UInt64, UInt32, UInt32)? in
+                if case .applyVideoPreferences(let token, let bitrate, let fps, _, _) = action {
+                    return (token, bitrate, fps)
+                }
+                return nil
+            }
+            guard clampedApply.count == 1,
+                  clampedApply[0].1 == 1_000,
+                  clampedApply[0].2 == 120 else {
                 failures.append("SetVideoPreferences did not clamp out-of-range values")
+                return
+            }
+            // A host-side encoder rejection consumes the pending request while
+            // keeping the current epoch/configuration and session alive.
+            guard session.completeVideoPreferences(
+                token: clampedApply[0].0,
+                accepted: false,
+                appliedBitrateKbps: 1_000,
+                appliedFramesPerSecond: 120
+            ).isEmpty else {
+                failures.append("Rejected video preferences unexpectedly renegotiated the stream")
                 return
             }
 
@@ -922,6 +944,307 @@ enum ProtocolV1SelfTest {
     }
 
     private static func touchEvent() -> VSTouchEvent {
+        return makeTouchEvent()
+    }
+
+    private static func testHostActions(failures: inout [String]) {
+        do {
+            // A client that negotiates HOST_ACTIONS must receive the catalog
+            // immediately after HostHello + SessionAccepted, carrying exactly
+            // the two stable window-migration action ids.
+            let session = makeSession()
+            var hello = clientHelloEnvelope()
+            hello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions]
+            _ = session.handleControl(try hello.serializedData())
+            let negotiation = try responseEnvelopes(session.completeCodecNegotiation())
+            guard negotiation.count == 3,
+                  case .hostHello? = negotiation[0].payload,
+                  case .sessionAccepted? = negotiation[1].payload,
+                  case .hostActionCatalog(let catalog)? = negotiation[2].payload else {
+                failures.append("HOST_ACTIONS negotiation did not emit HostHello + SessionAccepted + catalog")
+                return
+            }
+            guard catalog.actions.map(\.actionID) == ["move-window", "return-windows"],
+                  catalog.actions.allSatisfy({ !$0.localizedName.isEmpty }),
+                  catalog.actions.allSatisfy({ $0.requiresConfirmation == false }) else {
+                failures.append("host action catalog did not carry the exact move/return action ids")
+                return
+            }
+            // Drive to streaming, then invoke move-window. The session forwards
+            // exactly one hostAction intent echoing the invocation id and emits
+            // no HostActionResult until the host confirms.
+            _ = session.handleControl(try envelope(
+                id: 2,
+                payload: .startDisplayRequest(displayRequest())
+            ).serializedData())
+            try acceptVideoConfig(session, configEpoch: 1, streamID: 1, messageID: 3)
+            let invocationID = Data([0x01, 0x02, 0x03, 0x04])
+            var invoke = VSHostActionInvoke()
+            invoke.actionID = "move-window"
+            invoke.invocationID = invocationID
+            let invokeActions = session.handleControl(try envelope(
+                id: 4,
+                payload: .hostActionInvoke(invoke)
+            ).serializedData())
+            let intents = invokeActions.compactMap { action -> (String, Data)? in
+                if case .hostAction(let id, let invocation, _) = action { return (id, invocation) }
+                return nil
+            }
+            guard intents.count == 1, intents[0].0 == "move-window", intents[0].1 == invocationID,
+                  try responseEnvelopes(invokeActions).isEmpty else {
+                failures.append("HostActionInvoke did not forward exactly one intent without an early result")
+                return
+            }
+            // A retransmit of the same invocation id while it is still in flight
+            // must be a safe no-op (no second intent, no result).
+            guard session.handleControl(try envelope(
+                id: 5,
+                payload: .hostActionInvoke(invoke)
+            ).serializedData()).isEmpty else {
+                failures.append("A duplicate in-flight HostActionInvoke was not ignored")
+                return
+            }
+            // The host confirms the action; exactly one session-scoped
+            // HostActionResult is emitted, echoing the invocation id.
+            let accepted = session.completeHostAction(
+                invocationID: invocationID,
+                accepted: true,
+                rejectionReason: "ignored on success"
+            )
+            let acceptedResponses = try responseEnvelopes(accepted)
+            guard acceptedResponses.count == 1,
+                  case .hostActionResult(let result)? = acceptedResponses[0].payload,
+                  result.invocationID == invocationID,
+                  result.accepted, result.rejectionReason.isEmpty,
+                  acceptedResponses[0].sessionID == sessionID,
+                  acceptedResponses[0].sessionEpoch == sessionEpoch,
+                  acceptedResponses[0].correlationID == 4 else {
+                failures.append("completeHostAction did not emit one session-scoped accepted HostActionResult")
+                return
+            }
+            // Completing the same invocation again is a no-op: it was cleared.
+            guard session.completeHostAction(
+                invocationID: invocationID,
+                accepted: true,
+                rejectionReason: ""
+            ).isEmpty else {
+                failures.append("A duplicate completeHostAction was not ignored")
+                return
+            }
+
+            // A completion that lands while the session is renegotiating an
+            // in-place display/video reconfiguration (AWAITING_VIDEO_CONFIG)
+            // must still deliver the tracked result rather than silently
+            // dropping it. Track a new invocation, then drive the session into
+            // AWAITING_VIDEO_CONFIG with a re-select StartDisplayRequest before
+            // completing.
+            let reconfigID = Data([0x77, 0x77])
+            var reconfigInvoke = VSHostActionInvoke()
+            reconfigInvoke.actionID = "move-window"
+            reconfigInvoke.invocationID = reconfigID
+            _ = session.handleControl(try envelope(
+                id: 8,
+                payload: .hostActionInvoke(reconfigInvoke)
+            ).serializedData())
+            // Re-selecting the active display renegotiates in place and moves
+            // the session to AWAITING_VIDEO_CONFIG (media stays gated).
+            _ = session.handleControl(try envelope(
+                id: 9,
+                payload: .startDisplayRequest(displayRequest())
+            ).serializedData())
+            guard try session.makeMediaFrame(payload: Data([1]), timestamp: 1, keyframe: true) == nil else {
+                failures.append("session did not gate media during the reconfig used for the host-action completion test")
+                return
+            }
+            let reconfigResult = session.completeHostAction(
+                invocationID: reconfigID,
+                accepted: true,
+                rejectionReason: ""
+            )
+            let reconfigResponses = try responseEnvelopes(reconfigResult)
+            guard reconfigResponses.count == 1,
+                  case .hostActionResult(let midReconfig)? = reconfigResponses[0].payload,
+                  midReconfig.invocationID == reconfigID,
+                  midReconfig.accepted,
+                  reconfigResponses[0].correlationID == 8 else {
+                failures.append("completeHostAction during AWAITING_VIDEO_CONFIG did not deliver the tracked result")
+                return
+            }
+            // Return to streaming for the remaining assertions.
+            try acceptVideoConfig(session, configEpoch: 2, streamID: 1, messageID: 10)
+            // A rejection carries the host's localized reason and keeps the
+            // session alive (no close action).
+            let rejectID = Data([0x09, 0x09])
+            var rejectInvoke = VSHostActionInvoke()
+            rejectInvoke.actionID = "return-windows"
+            rejectInvoke.invocationID = rejectID
+            _ = session.handleControl(try envelope(
+                id: 11,
+                payload: .hostActionInvoke(rejectInvoke)
+            ).serializedData())
+            let rejected = session.completeHostAction(
+                invocationID: rejectID,
+                accepted: false,
+                rejectionReason: "No movable focused window was found."
+            )
+            let rejectedResponses = try responseEnvelopes(rejected)
+            guard rejectedResponses.count == 1,
+                  case .hostActionResult(let rejectResult)? = rejectedResponses[0].payload,
+                  rejectResult.accepted == false,
+                  rejectResult.rejectionReason == "No movable focused window was found.",
+                  !rejected.contains(where: { if case .close = $0 { true } else { false } }) else {
+                failures.append("completeHostAction rejection did not emit a live-session error result")
+                return
+            }
+            // An unknown action id is rejected with invalidState.
+            var unknown = VSHostActionInvoke()
+            unknown.actionID = "explode"
+            unknown.invocationID = Data([0xEE])
+            let unknownError = try protocolError(session.handleControl(try envelope(
+                id: 12,
+                payload: .hostActionInvoke(unknown)
+            ).serializedData()))
+            guard unknownError.code == .invalidState else {
+                failures.append("An unknown host action id was not rejected with invalidState")
+                return
+            }
+
+            // A targeted invoke that names a foreign display/stream is rejected
+            // with invalidState so a stale target never acts on the active
+            // display. Uses a fresh streaming session to avoid the .failed
+            // state left by the rejection above.
+            let targeted = makeSession()
+            var targetedHello = clientHelloEnvelope()
+            targetedHello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions]
+            _ = targeted.handleControl(try targetedHello.serializedData())
+            _ = targeted.completeCodecNegotiation()
+            _ = targeted.handleControl(try envelope(
+                id: 2,
+                payload: .startDisplayRequest(displayRequest())
+            ).serializedData())
+            try acceptVideoConfig(targeted, configEpoch: 1, streamID: 1, messageID: 3)
+            var foreignTarget = VSInputTarget()
+            foreignTarget.displayID = "some-other-display"
+            foreignTarget.streamID = 99
+            var targetedInvoke = VSHostActionInvoke()
+            targetedInvoke.actionID = "move-window"
+            targetedInvoke.invocationID = Data([0x55])
+            targetedInvoke.target = foreignTarget
+            let targetError = try protocolError(targeted.handleControl(try envelope(
+                id: 4,
+                payload: .hostActionInvoke(targetedInvoke)
+            ).serializedData()))
+            guard targetError.code == .invalidState else {
+                failures.append("A foreign-target HostActionInvoke was not rejected with invalidState")
+                return
+            }
+
+            // A matching target (active display + streaming stream) is accepted.
+            let matched = makeSession()
+            var matchedHello = clientHelloEnvelope()
+            matchedHello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions]
+            _ = matched.handleControl(try matchedHello.serializedData())
+            _ = matched.completeCodecNegotiation()
+            _ = matched.handleControl(try envelope(
+                id: 2,
+                payload: .startDisplayRequest(displayRequest())
+            ).serializedData())
+            try acceptVideoConfig(matched, configEpoch: 1, streamID: 1, messageID: 3)
+            var activeTarget = VSInputTarget()
+            activeTarget.displayID = "active-display"
+            activeTarget.streamID = 1
+            var matchedInvoke = VSHostActionInvoke()
+            matchedInvoke.actionID = "move-window"
+            matchedInvoke.invocationID = Data([0x56])
+            matchedInvoke.target = activeTarget
+            let matchedIntents = matched.handleControl(try envelope(
+                id: 4,
+                payload: .hostActionInvoke(matchedInvoke)
+            ).serializedData()).contains { if case .hostAction = $0 { true } else { false } }
+            guard matchedIntents else {
+                failures.append("A matching-target HostActionInvoke was not forwarded")
+                return
+            }
+
+            // The outstanding-invocation set is bounded: after 16 uncompleted
+            // unique invocations, the next one is rejected with invalidState and
+            // the protocol session fails closed.
+            let flood = makeSession()
+            var floodHello = clientHelloEnvelope()
+            floodHello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions]
+            _ = flood.handleControl(try floodHello.serializedData())
+            _ = flood.completeCodecNegotiation()
+            _ = flood.handleControl(try envelope(
+                id: 2,
+                payload: .startDisplayRequest(displayRequest())
+            ).serializedData())
+            try acceptVideoConfig(flood, configEpoch: 1, streamID: 1, messageID: 3)
+            for index in 0..<16 {
+                var floodInvoke = VSHostActionInvoke()
+                floodInvoke.actionID = "move-window"
+                floodInvoke.invocationID = Data([UInt8(index)])
+                let forwarded = flood.handleControl(try envelope(
+                    id: UInt64(4 + index),
+                    payload: .hostActionInvoke(floodInvoke)
+                ).serializedData()).contains { if case .hostAction = $0 { true } else { false } }
+                guard forwarded else {
+                    failures.append("host action \(index) below the cap was not forwarded")
+                    return
+                }
+            }
+            var overflowInvoke = VSHostActionInvoke()
+            overflowInvoke.actionID = "move-window"
+            overflowInvoke.invocationID = Data([0xFF])
+            let overflowActions = flood.handleControl(try envelope(
+                id: 20,
+                payload: .hostActionInvoke(overflowInvoke)
+            ).serializedData())
+            let overflowError = try protocolError(overflowActions)
+            guard overflowError.code == .invalidState,
+                  overflowActions.contains(where: { if case .close = $0 { true } else { false } }),
+                  flood.phase == .failed else {
+                failures.append("An over-cap HostActionInvoke did not fail closed with invalidState")
+                return
+            }
+
+            // A client that never negotiated HOST_ACTIONS is rejected as
+            // unsupported and never learns the catalog.
+            let ungated = try readySession(clientCapabilities: [.touch, .multiDisplay])
+            var ungatedInvoke = VSHostActionInvoke()
+            ungatedInvoke.actionID = "move-window"
+            ungatedInvoke.invocationID = Data([0x01])
+            let ungatedError = try protocolError(ungated.handleControl(try envelope(
+                id: 4,
+                payload: .hostActionInvoke(ungatedInvoke)
+            ).serializedData()))
+            guard ungatedError.code == .unsupportedCapability else {
+                failures.append("HostActionInvoke without the capability was not rejected as unsupported")
+                return
+            }
+
+            // An invoke before streaming is rejected with invalidState.
+            let preStream = makeSession()
+            var preHello = clientHelloEnvelope()
+            preHello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions]
+            _ = preStream.handleControl(try preHello.serializedData())
+            _ = preStream.completeCodecNegotiation()
+            var earlyInvoke = VSHostActionInvoke()
+            earlyInvoke.actionID = "move-window"
+            earlyInvoke.invocationID = Data([0x02])
+            let earlyError = try protocolError(preStream.handleControl(try envelope(
+                id: 2,
+                payload: .hostActionInvoke(earlyInvoke)
+            ).serializedData()))
+            guard earlyError.code == .invalidState else {
+                failures.append("HostActionInvoke before streaming was not rejected with invalidState")
+                return
+            }
+        } catch {
+            failures.append("host actions test failed: \(error)")
+        }
+    }
+
+    private static func makeTouchEvent() -> VSTouchEvent {
         var point = VSNormalizedPoint()
         point.x = 0.25
         point.y = 0.75

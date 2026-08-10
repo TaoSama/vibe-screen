@@ -231,6 +231,23 @@
                     app:tint="#B8C0C6" />
             </LinearLayout>
 
+            <!-- Window actions collapse unless host actions are negotiated and the
+                 host advertises at least one action, so unsupported sessions
+                 expose no dead tap area. -->
+            <ImageButton
+                android:id="@+id/controlHostActionsButton"
+                android:layout_width="@dimen/control_bar_button_size"
+                android:layout_height="@dimen/control_bar_button_size"
+                android:layout_marginStart="@dimen/control_bar_button_margin"
+                android:layout_marginEnd="@dimen/control_bar_button_margin"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/control_host_actions"
+                android:src="@drawable/ic_window_actions"
+                android:scaleType="centerInside"
+                android:padding="12dp"
+                android:visibility="gone"
+                app:tint="#FFFFFF" />
+
             <ImageButton
                 android:id="@+id/controlSettingsButton"
                 android:layout_width="@dimen/control_bar_button_size"
@@ -580,7 +597,7 @@
                 android:id="@+id/connectButton"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
-                android:text="@string/try_again"
+                android:text="@string/connect"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 android:textColor="#07100B"
@@ -1047,7 +1064,7 @@
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/internetScanProfileButton"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                         android:layout_width="0dp"
                         android:layout_height="48dp"
                         android:layout_weight="1"
@@ -1060,7 +1077,7 @@
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/internetImportProfileButton"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                         android:layout_width="0dp"
                         android:layout_height="48dp"
                         android:layout_marginStart="8dp"
@@ -1086,7 +1103,7 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/internetDisconnectButton"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
                     android:text="@string/disconnect"
@@ -1094,7 +1111,7 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/internetRevokeButton"
-                    style="@style/Widget.Material3.Button.TextButton"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
                     android:text="@string/internet_revoke_local"
@@ -1134,7 +1151,7 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/openSourceLicensesButton"
-                style="@style/Widget.Material3.Button.TextButton"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
                 android:layout_gravity="center_horizontal"

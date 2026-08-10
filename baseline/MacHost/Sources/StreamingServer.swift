@@ -152,24 +152,30 @@ class StreamingServer: EncodedFrameSink {
     var onScrollEvent: ((Double, Double, UInt64) -> Void)?
     var onKeyEvent: ((UInt32, Bool, UInt32, String, UInt64) -> Void)?
     var onProtocolErrorReceived: ((VSProtocolError, UInt64) -> Void)?
-    /// Fired on the network queue when a Protocol v1 client selects a different
-    /// display. The AppDelegate hops to the main actor to switch the capture
-    /// source and drive protocol re-negotiation.
-    var onDisplaySelectionRequested: ((String) -> Void)?
+    /// Fired on the main actor when a Protocol v1 client selects a different
+    /// display so capture switching preserves the network queue's request order.
+    var onDisplaySelectionRequested: (@MainActor (String) -> Void)?
 
-    /// Fired on the network queue when a Protocol v1 client requests new video
-    /// preferences. The AppDelegate hops to the main actor to apply them to the
-    /// host encoder and live capture. The session defers the bumped-epoch
+    /// Fired on the main actor when a Protocol v1 client requests new video
+    /// preferences. The session defers the bumped-epoch
     /// VideoConfig renegotiation until the host confirms the encoder actually
     /// adopted the settings by calling completeProtocolV1VideoPreferences with
     /// the same token, so a client can never accept a new VideoConfig while the
     /// encoder still runs the previous configuration.
     var onVideoPreferencesRequested:
-        ((_ token: UInt64,
+        (@MainActor (_ token: UInt64,
           _ bitrateKbps: UInt32,
           _ framesPerSecond: UInt32,
           _ qualityPreset: VSVideoQualityPreset,
           _ resetQualityToAuto: Bool) -> Void)?
+
+    /// Fired on the main actor when a negotiated Protocol v1 client invokes a
+    /// host action from the advertised catalog. The host runs the
+    /// AppKit/Accessibility work and reports the outcome back with
+    /// completeProtocolV1HostAction using the same invocation id, which emits
+    /// the single HostActionResult on the session FIFO.
+    var onHostActionRequested:
+        (@MainActor (_ actionID: String, _ invocationID: Data, _ target: VSInputTarget?) -> Void)?
 
     private let frameQueue = DispatchQueue(label: "frameQueue", qos: .userInteractive)
     private let receiveQueue = DispatchQueue(label: "receiveQueue", qos: .userInteractive)
@@ -837,6 +843,19 @@ class StreamingServer: EncodedFrameSink {
         }
     }
 
+    /// Commit rates that the live encoder has already adopted. These values
+    /// seed the next Protocol v1 session, independently of whether the client
+    /// that requested them remains connected long enough for its acknowledgement.
+    func setProtocolV1VideoRates(
+        framesPerSecond: Int,
+        bitrateKbps: Int
+    ) {
+        performOnNetworkQueue {
+            self.protocolV1FramesPerSecond = UInt32(clamping: framesPerSecond)
+            self.protocolV1BitrateKbps = UInt32(clamping: bitrateKbps)
+        }
+    }
+
     /// Supply the full display catalog advertised by ListDisplays. Passing an
     /// empty list keeps the single-display behavior (session synthesizes one).
     func setProtocolV1Displays(_ displays: [ProtocolV1DisplayInfo]) {
@@ -889,6 +908,32 @@ class StreamingServer: EncodedFrameSink {
         }
     }
 
+    /// Report the outcome of a client-invoked host action after the host has
+    /// run the AppKit/Accessibility work. Runs on the network queue so the
+    /// resulting HostActionResult is serialized behind any in-flight control
+    /// frames on the active session; an unknown invocation id or a
+    /// non-streaming session is a safe no-op.
+    func completeProtocolV1HostAction(
+        invocationID: Data,
+        accepted: Bool,
+        rejectionReason: String
+    ) {
+        networkQueue.async { [weak self] in
+            guard let self, !self.isStopped,
+                  self.connectionProtocolMode == .protocolV1,
+                  let session = self.protocolV1Session,
+                  let conn = self.connection else { return }
+            let generation = self.activeConnectionGeneration
+            let actions = session.completeHostAction(
+                invocationID: invocationID,
+                accepted: accepted,
+                rejectionReason: rejectionReason
+            )
+            guard !actions.isEmpty else { return }
+            self.applyProtocolV1Actions(actions, connection: conn, generation: generation)
+        }
+    }
+
     private func performOnNetworkQueue(_ operation: @escaping () -> Void) {
         if DispatchQueue.getSpecific(key: Self.networkQueueKey) == ObjectIdentifier(self) {
             operation()
@@ -929,6 +974,21 @@ class StreamingServer: EncodedFrameSink {
             entered.signal()
             _ = resume.wait(timeout: .now() + .seconds(2))
         }
+    }
+
+    /// Snapshot used by lifecycle tests after a network-queue barrier.
+    func protocolV1VideoConfigurationForSelfTest() -> (
+        framesPerSecond: UInt32,
+        bitrateKbps: UInt32
+    ) {
+        var snapshot: (framesPerSecond: UInt32, bitrateKbps: UInt32) = (0, 0)
+        performOnNetworkQueue {
+            snapshot = (
+                self.protocolV1FramesPerSecond,
+                self.protocolV1BitrateKbps
+            )
+        }
+        return snapshot
     }
 
     func sendDisplaySize() {
@@ -1349,6 +1409,20 @@ class StreamingServer: EncodedFrameSink {
                 }
             case .peerError(let error):
                 onProtocolErrorReceived?(error, generation)
+            case .hostAction(let actionID, let invocationID, let target):
+                // Hop to the main actor to run AppKit/Accessibility work. The
+                // clientCallbackGeneration guard drops the callback if the
+                // connection generation advanced (a reconnect) before it runs,
+                // exactly like the touch/pointer/key/video-preferences paths, so
+                // a stale invocation from a previous connection can never drive
+                // the current one. The invocation_id is echoed verbatim, and the
+                // host reports the outcome through completeProtocolV1HostAction,
+                // which is a safe no-op if the session is no longer tracking it.
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onHostActionRequested?(actionID, invocationID, target)
+                }
             }
         }
         if shouldClose && controlPayloads.isEmpty { conn.cancel() }

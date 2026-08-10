@@ -865,20 +865,46 @@ struct SettingsView: View {
                                               color: settings.adbReverseConfigured ? .green : .orange,
                                               hint: "Whether `adb reverse tcp:\(settings.port) tcp:\(settings.port)` is currently configured. The Mac app sets this up automatically when you click Start. Goes green within ~2 seconds after the tablet is plugged in and authorized.")
                                     StatusRow(title: "USB device",
-                                              status: settings.usbDeviceConnected ? "Detected" : "Not detected",
-                                              color: settings.usbDeviceConnected ? .green : .red,
+                                              status: settings.usbDeviceConnected
+                                                ? "Detected"
+                                                : (settings.availableADBDevices.isEmpty
+                                                    ? "Not detected"
+                                                    : "Select a target"),
+                                              color: settings.usbDeviceConnected
+                                                ? .green
+                                                : (settings.availableADBDevices.isEmpty
+                                                    ? .red
+                                                    : .orange),
                                               hint: "An Android device authorized for ADB and visible to your Mac. Plug in via USB-C and tap Allow on the device's USB debugging prompt.")
-                                    if settings.availableADBDevices.count > 1 {
+                                    let selectedADBDeviceIsUnavailable =
+                                        !settings.adbDeviceSerial.isEmpty &&
+                                        !settings.availableADBDevices.contains(settings.adbDeviceSerial)
+                                    if settings.availableADBDevices.count > 1 ||
+                                        (selectedADBDeviceIsUnavailable &&
+                                         !settings.availableADBDevices.isEmpty) {
                                         Picker(
                                             "Target tablet",
                                             selection: $settings.adbDeviceSerial
                                         ) {
+                                            Text("Automatic (one connected device)").tag("")
                                             ForEach(settings.availableADBDevices, id: \.self) {
                                                 Text($0).tag($0)
                                             }
                                         }
                                         .font(.system(size: 11))
-                                        .help("ADB serial used for reverse forwarding and automatic launch.")
+                                        .help(
+                                            "ADB serial used for reverse forwarding and automatic launch. " +
+                                            "Automatic mode connects only when exactly one device is available."
+                                        )
+                                        if selectedADBDeviceIsUnavailable {
+                                            Text(
+                                                "The selected Android device is offline. " +
+                                                "Reconnect it or choose an available device."
+                                            )
+                                            .font(.caption)
+                                            .foregroundColor(.orange)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                        }
                                     }
                                 } else if settings.connectionMode == .wireless {
                                     StatusRow(title: "WiFi",

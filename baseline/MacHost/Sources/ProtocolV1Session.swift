@@ -22,12 +22,12 @@ struct ProtocolV1SessionConfiguration {
         // Client video control tunes the host encoder, needs no Accessibility,
         // and is always offered so the client can adjust bitrate/fps/quality.
         touchEnabled
-            ? [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl]
+            ? [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions]
             : [.multiDisplay, .clientVideoControl]
    }
 
-    let sessionID: Data
-    let sessionEpoch: UInt64
+   let sessionID: Data
+   let sessionEpoch: UInt64
     var displayWidth: Int
     var displayHeight: Int
     var rotation: Int
@@ -40,11 +40,11 @@ struct ProtocolV1SessionConfiguration {
     var hostName: String
     var displayID: String
     var displayName: String
-    var displayIsVirtual: Bool
-    /// Full catalog exposed by ListDisplays. When empty, the session
-    /// synthesizes a single entry from the currently captured identity so the
-    /// single-display path keeps ListDisplays count == 1.
-    var displays: [ProtocolV1DisplayInfo] = []
+   var displayIsVirtual: Bool
+   /// Full catalog exposed by ListDisplays. When empty, the session
+   /// synthesizes a single entry from the currently captured identity so the
+   /// single-display path keeps ListDisplays count == 1.
+   var displays: [ProtocolV1DisplayInfo] = []
 }
 
 enum ProtocolV1SessionPhase: Equatable {
@@ -68,15 +68,21 @@ enum ProtocolV1SessionAction {
     case heartbeat
     case requestKeyframe(force: Bool)
     case selectDisplay(id: String)
-    case applyVideoPreferences(
-        token: UInt64,
-        bitrateKbps: UInt32,
-        framesPerSecond: UInt32,
-        qualityPreset: VSVideoQualityPreset,
-        resetQualityToAuto: Bool
-    )
-    case peerError(VSProtocolError)
-    case close
+   case applyVideoPreferences(
+       token: UInt64,
+       bitrateKbps: UInt32,
+       framesPerSecond: UInt32,
+       qualityPreset: VSVideoQualityPreset,
+       resetQualityToAuto: Bool
+   )
+    /// A negotiated client asked the host to run one catalog action. The action
+    /// leaves the session lock as an intent so the AppDelegate can drive
+    /// AppKit/Accessibility on the main actor; the host confirms the outcome
+    /// through completeHostAction, which is the only place HostActionResult is
+    /// emitted back on the session FIFO.
+    case hostAction(actionID: String, invocationID: Data, target: VSInputTarget?)
+   case peerError(VSProtocolError)
+   case close
 }
 
 final class ProtocolV1SessionCoordinator {
@@ -98,6 +104,13 @@ final class ProtocolV1SessionCoordinator {
     /// change) is ignored.
     private var pendingVideoPreferencesToken: UInt64 = 0
     private var nextVideoPreferencesToken: UInt64 = 1
+    /// Host-action invocations the host is currently running, keyed by the
+    /// client's invocation_id and mapped to the request's Envelope message_id.
+    /// The result echoes both the invocation_id (in the payload) and the
+    /// request message_id (as the Envelope correlation_id), so a duplicate or
+    /// unknown completion is a safe no-op. Bounded by
+    /// maximumPendingHostActionInvocations.
+    private var pendingHostActionInvocations: [Data: UInt64] = [:]
 
     init(configuration: ProtocolV1SessionConfiguration) {
         precondition(!configuration.sessionID.isEmpty)
@@ -179,6 +192,44 @@ final class ProtocolV1SessionCoordinator {
         }
     }
 
+    /// Confirm a client HostActionInvoke after the host has run (or refused)
+    /// the AppKit/Accessibility work on the main actor. Emits exactly one
+    /// HostActionResult on the session FIFO for a tracked invocation and clears
+    /// it; an unknown or duplicate invocation id is a safe no-op. The result is
+    /// session-scoped so the client can match it against its outstanding
+    /// invocation even across the auto-reconnect epoch guards. A rejection
+    /// carries the host's localized error text; the session stays alive so the
+    /// client can retry or fall back.
+    func completeHostAction(
+        invocationID: Data,
+        accepted: Bool,
+        rejectionReason: String
+    ) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard let requestMessageID = pendingHostActionInvocations.removeValue(forKey: invocationID) else { return [] }
+            // The invocation was tracked, so emit its single result as long as
+            // the control channel is still live. A tracked invocation can only
+            // exist once the session reached STREAMING, but the session may have
+            // since moved to AWAITING_VIDEO_CONFIG for an in-place display/video
+            // reconfiguration when the host's MainActor completion lands. That
+            // reconfig is not a terminal state, so the result must still be
+            // delivered; only a closed/failed session drops it (and the
+            // removeValue above already consumed the entry so no stale result
+            // lingers).
+            switch phase {
+            case .streaming, .awaitingVideoConfig:
+                break
+            default:
+                return []
+            }
+            var result = VSHostActionResult()
+            result.invocationID = invocationID
+            result.accepted = accepted
+            result.rejectionReason = accepted ? "" : rejectionReason
+            return sendActions(payload: .hostActionResult(result), correlationID: requestMessageID)
+        }
+    }
+
     /// Shared runtime re-negotiation used by both a host-initiated switch
     /// (selectDisplayFromClient) and a client-initiated StartDisplayRequest that
     /// arrives while already streaming. Adopts the new display, bumps the
@@ -240,7 +291,7 @@ final class ProtocolV1SessionCoordinator {
 
             phase = .awaitingDisplayStart
             do {
-                return [
+                var actions: [ProtocolV1SessionAction] = [
                     .sendControl(try encode(
                         payload: .hostHello(hostHello),
                         correlationID: correlationID,
@@ -248,6 +299,25 @@ final class ProtocolV1SessionCoordinator {
                     )),
                     .sendControl(try encode(payload: .sessionAccepted(accepted), correlationID: correlationID))
                 ]
+                // Advertise the host action catalog immediately after the
+                // session is accepted, but only when the client negotiated
+                // HOST_ACTIONS. An ungated client never learns the catalog and
+                // its invocations are rejected as unsupported.
+                if negotiatedCapabilities.contains(.hostActions) {
+                    var catalog = VSHostActionCatalog()
+                    catalog.actions = Self.hostActionCatalog.map { entry in
+                        var descriptor = VSHostActionDescriptor()
+                        descriptor.actionID = entry.id
+                        descriptor.localizedName = entry.name
+                        descriptor.requiresConfirmation = entry.requiresConfirmation
+                        return descriptor
+                    }
+                    actions.append(.sendControl(try encode(
+                        payload: .hostActionCatalog(catalog),
+                        correlationID: correlationID
+                    )))
+                }
+                return actions
             } catch {
                 return serializationFailure()
             }
@@ -522,12 +592,53 @@ final class ProtocolV1SessionCoordinator {
                 )
             ]
 
+        case .hostActionInvoke(let invoke):
+            guard negotiatedCapabilities.contains(.hostActions) else {
+                return unsupportedCapability("Host actions were not negotiated.", envelope.messageID)
+            }
+            guard case .streaming = phase else {
+                return invalidState("HostActionInvoke arrived before media was streaming.", envelope.messageID)
+            }
+            guard Self.hostActionCatalog.contains(where: { $0.id == invoke.actionID }) else {
+                return invalidState("HostActionInvoke referenced an unknown action id.", envelope.messageID)
+            }
+            guard !invoke.invocationID.isEmpty else {
+                return invalidState("HostActionInvoke is missing an invocation id.", envelope.messageID)
+            }
+            // A targeted invoke must name the active stream. An empty
+            // display_id + stream_id 0 means "unspecified" and is accepted; any
+            // other target that does not match the currently captured display
+            // and streaming stream is a stale/foreign target that must not act
+            // on the active display.
+            guard inputTargetMatchesActiveStream(invoke.hasTarget ? invoke.target : nil) else {
+                return invalidState("HostActionInvoke target does not match the active display/stream.", envelope.messageID)
+            }
+            // An in-flight invocation with the same id is a client retransmit;
+            // do not re-forward it. The host confirms the outcome later through
+            // completeHostAction, which emits the single HostActionResult.
+            guard pendingHostActionInvocations[invoke.invocationID] == nil else { return [] }
+            // Bound the outstanding set so a client cannot grow it without limit
+            // by never letting the host complete an invocation.
+            guard pendingHostActionInvocations.count < Self.maximumPendingHostActionInvocations else {
+                return invalidState("Too many host actions are awaiting confirmation.", envelope.messageID)
+            }
+            // Remember the request message_id so the eventual HostActionResult
+            // carries it as the Envelope correlation_id.
+            pendingHostActionInvocations[invoke.invocationID] = envelope.messageID
+            return [.hostAction(
+                actionID: invoke.actionID,
+                invocationID: invoke.invocationID,
+                target: invoke.hasTarget ? invoke.target : nil
+            )]
+
         case .protocolError(let error):
             phase = .failed
+            pendingHostActionInvocations.removeAll()
             return [.peerError(error), .close]
 
         case .disconnectNotice:
             phase = .closed
+            pendingHostActionInvocations.removeAll()
             return [.close]
 
         default:
@@ -574,6 +685,23 @@ final class ProtocolV1SessionCoordinator {
     }
 
     private static let protocolVersion = ProtocolV1SessionConfiguration.version
+
+    /// Stable window-migration action IDs. The client (Android and iOS) binds
+    /// gestures/controls to these exact IDs, so they are part of the wire
+    /// contract and must not drift. The localized names are host-facing labels
+    /// the client may show verbatim.
+    static let moveWindowActionID = "move-window"
+    static let returnWindowsActionID = "return-windows"
+    private static let hostActionCatalog: [(id: String, name: String, requiresConfirmation: Bool)] = [
+        (moveWindowActionID, "Move Focused Window", false),
+        (returnWindowsActionID, "Return Moved Windows", false)
+    ]
+    /// Upper bound on host-action invocations awaiting host confirmation. A
+    /// misbehaving client that streams unique invocation_ids without waiting for
+    /// results can never grow this set without bound: past the cap the invoke is
+    /// rejected with invalidState and the protocol session fails closed. The
+    /// window actions are effectively serial in practice, so a small cap is ample.
+    private static let maximumPendingHostActionInvocations = 16
 
     // Bounds the host applies to a client SetVideoPreferences request. The
     // client can express intent but never drive the encoder outside this range.
@@ -777,6 +905,7 @@ final class ProtocolV1SessionCoordinator {
         error.component = "macos-host-session"
         let sessionScoped = phase != .awaitingClientHello
         phase = .failed
+        pendingHostActionInvocations.removeAll()
         do {
             return [
                 .sendControl(try encode(

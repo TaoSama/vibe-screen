@@ -117,6 +117,31 @@ enum HostSelfTest {
             failures.append("stopped main-display fallback missed replacement")
         }
 
+        if ADBDeviceSelectionPolicy.resolveTargetSerial(
+            configuredSerial: "target",
+            connectedSerials: ["other", "target"]
+        ) != "target" {
+            failures.append("ADB selection ignored the configured online device")
+        }
+        if ADBDeviceSelectionPolicy.resolveTargetSerial(
+            configuredSerial: "target",
+            connectedSerials: ["other"]
+        ) != nil {
+            failures.append("ADB selection fell back from an offline configured device")
+        }
+        if ADBDeviceSelectionPolicy.resolveTargetSerial(
+            configuredSerial: "",
+            connectedSerials: ["only"]
+        ) != "only" {
+            failures.append("ADB selection did not use the only unconfigured device")
+        }
+        if ADBDeviceSelectionPolicy.resolveTargetSerial(
+            configuredSerial: "",
+            connectedSerials: ["first", "second"]
+        ) != nil {
+            failures.append("ADB selection chose an arbitrary unconfigured device")
+        }
+
         let displays = DisplayCatalog.onlineDisplays()
         if displays.isEmpty {
             failures.append("online display catalog is empty")
@@ -178,7 +203,7 @@ enum HostSelfTest {
             print(
                 "Host self-test: PASS (display identity/catalog, input/window " +
                 "geometry, startup/recovery policy, callback generation, " +
-                "fallback replacement)"
+                "fallback replacement, ADB device selection)"
             )
             return true
         }

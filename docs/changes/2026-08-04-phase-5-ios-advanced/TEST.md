@@ -80,7 +80,7 @@ Run the release-build, real two-process loopback from the repository root:
 apps/ios/Scripts/run_machost_loopback.py
 ```
 
-The harness starts the production `Telemachus` executable with its bounded iOS
+The harness starts the production `Vibe Screen` executable with its bounded iOS
 loopback adapter on `127.0.0.1:54321`, then starts the iOS Core transport/session
 executable as a separate process. The client uses the production
 generation-scoped `ControlOutbox` for every outbound control envelope. It runs

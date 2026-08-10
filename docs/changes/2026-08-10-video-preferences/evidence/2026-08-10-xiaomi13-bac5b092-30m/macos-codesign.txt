@@ -1,0 +1,25 @@
+Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+Identifier=dev.telemachus.display
+Format=app bundle with Mach-O thin (arm64)
+CodeDirectory v=20400 size=22159 flags=0x0(none) hashes=682+7 location=embedded
+VersionPlatform=1
+VersionMin=851968
+VersionSDK=1704960
+Hash type=sha256 size=32
+CandidateCDHash sha256=401eefd4436110fce19091ca03384e496a996fc0
+CandidateCDHashFull sha256=401eefd4436110fce19091ca03384e496a996fc060c03f394e83770a5e1d6f66
+Hash choices=sha256
+CMSDigest=401eefd4436110fce19091ca03384e496a996fc060c03f394e83770a5e1d6f66
+CMSDigestType=2
+Executable Segment base=0
+Executable Segment limit=4308992
+Executable Segment flags=0x1
+Page size=16384
+CDHash=401eefd4436110fce19091ca03384e496a996fc0
+Signature size=1681
+Authority=Telemachus Dev
+Signed Time=Aug 10, 2026 at 15:28:05
+Info.plist entries=14
+TeamIdentifier=not set
+Sealed Resources version=2 rules=13 files=10
+Internal requirements count=1 size=100

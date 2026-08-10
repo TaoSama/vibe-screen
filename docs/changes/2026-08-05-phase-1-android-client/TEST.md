@@ -49,15 +49,16 @@ cd baseline/AndroidClient
 
 Results:
 
-- 123 JVM tests, zero failures/errors/skips;
+- 468 JVM tests, zero failures/errors/skips;
 - the final graceful overflow marker-gap regression passed three consecutive isolated
   `--rerun-tasks` executions;
 - lint reported `No issues found`;
-- all requested Gradle tasks completed with `BUILD SUCCESSFUL in 34s`;
+- all requested Gradle tasks completed with `BUILD SUCCESSFUL in 40s`;
 - final clean-rebuild APK SHA-256:
-  `23a68e912c6c9ea23ee3485e7e7a041f050a21b40bdfb1fbc0e3bd414bfdfe96`.
+  `66eaa6f7175d102dad55a94f1c983aaff3ffbcc32365c581c222e7ec46b7ed71`.
 
-The APK hash is an offline artifact identity, not install or device evidence.
+The same APK was installed on Xiaomi 13 `bac5b092` at
+`2026-08-10 22:00:21 +08:00`; the final-build device rerun is recorded below.
 
 ## Nubia P0110 device run
 
@@ -88,8 +89,9 @@ strict non-blocking saturation fail-close with asynchronous cleanup. The final
 implementation also serializes decoder teardown and reinitialization off the
 UI thread, distinguishes writer lock contention from actual outbound capacity,
 and gives wireless post-auth startup exactly-once termination ownership. The
-final clean build was not reinstalled. This complete delta is JVM/lint/build-
-verified only and retains all real-device gates below.
+    final clean build from that earlier Nubia run was not reinstalled there.
+That historical limitation is superseded only by the later Xiaomi 13
+final-build record below, not retroactively for the Nubia evidence.
 
 The Mac remained locked, so ScreenCaptureKit could not provide a real display.
 The device run therefore used the repository's existing 2000×1124@60 synthetic
@@ -134,7 +136,8 @@ Follow [`docs/runbook/android-client.md`](../../runbook/android-client.md) and
 still record:
 
 - identity before install, APK hash/signing/install time, and exact commit;
-- Fit/Fill and all four rotation modes with corner mapping;
+- host-side rotation on existing physical and virtual displays beyond the
+  client-local matrix recorded below;
 - tap, long-press right click, long-press drag, two-finger scroll and pinch;
 - physical mouse wheel/secondary button and physical keyboard compatibility UI;
 - a real unlocked Mac stream, missing reverse, host interruption, Host PID,
@@ -174,3 +177,71 @@ Evidence:
 
 - [`evidence/2026-08-10-fuxi-landscape-connection-ui/`](evidence/2026-08-10-fuxi-landscape-connection-ui/)
 - [`evidence/2026-08-10-fuxi-narrow-landscape/`](evidence/2026-08-10-fuxi-narrow-landscape/)
+
+## Xiaomi 13 viewport and input follow-up
+
+On 2026-08-10, the current Protocol v1 USB stream on the Xiaomi 13 completed
+the client-local Fit/Fill matrix for Follow Mac, 90, 180, and 270 degree
+rotation. Debug-only input records captured four corners plus center for each
+mode, except that Fill/270 uses an inset bottom-left point because the exact
+bottom edge was intercepted before it reached the video input view. The
+normalized results match the JVM inverse-transform matrices, and the center is
+`0.5,0.5` in every mode.
+
+The same pass corrected the Viewport description and made Show Stats opt-in;
+the draggable overlay consumes its covered touch region and should not create a
+default blind spot. A host=90/client=Follow Mac experiment also confirmed that
+host rotation must not be added to the client Surface/input transform: source
+pixels remain in their captured orientation, and adding that rotation sent the
+visible top-left to the Mac's bottom-left. The final client-only mapping sent it
+to the Mac's top-left. This closes client-local rotation with host rotation zero
+only; portrait behavior for rotated physical or virtual host displays remains a
+separate gate.
+
+Evidence:
+
+- [`evidence/2026-08-10-xiaomi13-viewport-input/`](evidence/2026-08-10-xiaomi13-viewport-input/)
+
+## Xiaomi 13 window-action and recovery follow-up
+
+On 2026-08-10, the Protocol v1 Host action catalog was wired to an opt-in
+Android control-bar menu for `move-window` and `return-windows`. The catalog can
+arrive before display negotiation finishes; the client caches it and now
+re-evaluates visibility after the session binding gains
+`CAPABILITY_HOST_ACTIONS`, avoiding a permanently hidden action button.
+
+The same run closed two display-lifecycle faults found during acceptance. Cold
+extended-mode startup now waits for WindowServer registration and treats a
+failed mirror-disable operation as non-fatal only when the new display is not
+actually mirrored. A managed virtual display also stays registered and keeps a
+stable live id while physical capture is selected, so the client can switch
+physical -> virtual -> physical -> virtual without retaining an offline id.
+
+With virtual display 35 online at `(1512,0) 2000x1200`, the focused TextEdit
+window moved from `(181,102) 586x488` to `(1846,179) 586x488`, returned exactly
+to `(181,102)`, and returned there again when the Android process disconnected.
+Host and Android logs recorded accepted move/return results and `Restored 1
+moved window(s)`. This closes Protocol v1 client-driven move, explicit return,
+and disconnect recovery for the recorded Xiaomi 13 USB session. It does not
+close native HID pointer confirmation, rotated-host-display acceptance, login
+item/headless reboot, or the host-RSS no-growth gate.
+
+The final clean APK
+`66eaa6f7175d102dad55a94f1c983aaff3ffbcc32365c581c222e7ec46b7ed71`
+was then installed on `bac5b092`. With the Host pinned to that serial and
+configured for `extended`, a clean Host/client launch created virtual display
+38 and advertised it first: `selected=38`, `2000x1200`, `config epoch=1`.
+The control hierarchy showed `Vibe Screen Virtu…` plus an enabled `Window
+actions` button. The final build repeated the exact TextEdit move/return
+geometry `(181,102) 586x488 -> (1846,179) 586x488 -> (181,102) 586x488`,
+and force-stopping Android again produced `Restored 1 moved window(s)` before
+the next cold launch returned directly to display 38 at about 60 FPS.
+
+Two connected fuxi devices can otherwise fight over the Host's single-client
+listener. The rerun isolated `bac5b092`, stopped the client on `8a023e3a`, and
+set `Telemachus_adbDeviceSerial=bac5b092`; without that isolation, each new
+connection correctly cancels the previous one and resembles a reconnect loop.
+
+Evidence:
+
+- [`evidence/2026-08-10-xiaomi13-window-actions/`](evidence/2026-08-10-xiaomi13-window-actions/)

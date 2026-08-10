@@ -42,6 +42,32 @@ object ClientVideoBounds {
     const val DEFAULT_FRAME_RATE = 60
 }
 
+internal data class AppliedVideoPreferenceProjection(
+    val bitrateMbps: Int?,
+    val framesPerSecond: Int?,
+)
+
+internal object AppliedVideoPreferenceProjector {
+    fun shouldPersist(
+        appliesClientVideoPreferences: Boolean,
+        configEpoch: Long,
+        lastAppliedConfigEpoch: Long,
+    ): Boolean = appliesClientVideoPreferences && configEpoch > lastAppliedConfigEpoch
+
+    fun project(
+        bitrateKbps: Int,
+        framesPerSecond: Int,
+    ): AppliedVideoPreferenceProjection {
+        val bitrateMbps =
+            bitrateKbps
+                .takeIf { it > 0 }
+                ?.let { (it + 500) / 1_000 }
+                ?.coerceIn(ClientVideoBounds.MIN_BITRATE_MBPS, ClientVideoBounds.MAX_BITRATE_MBPS)
+        val supportedFrameRate = framesPerSecond.takeIf(ClientVideoBounds.FRAME_RATE_CHOICES::contains)
+        return AppliedVideoPreferenceProjection(bitrateMbps, supportedFrameRate)
+    }
+}
+
 enum class ClientRotation(
     val degrees: Int,
 ) {
@@ -164,6 +190,7 @@ data class ClientSessionCapabilities(
     val displaySelection: Boolean,
     val keyboard: Boolean,
     val nativePointer: Boolean,
+    val hostActions: Boolean,
 ) {
     companion object {
         val LEGACY_TOUCH_ONLY =
@@ -172,6 +199,7 @@ data class ClientSessionCapabilities(
                 displaySelection = false,
                 keyboard = false,
                 nativePointer = false,
+                hostActions = false,
             )
     }
 }
@@ -180,6 +208,7 @@ internal enum class ClientControl {
     DISPLAY_SELECTION,
     KEYBOARD,
     NATIVE_POINTER,
+    HOST_ACTIONS,
 }
 
 /** A host display the client can select, surfaced to the UI without protocol imports. */
@@ -250,13 +279,69 @@ internal object ClientControlAvailability {
             ClientControl.DISPLAY_SELECTION -> capabilities.displaySelection
             ClientControl.KEYBOARD -> capabilities.keyboard
             ClientControl.NATIVE_POINTER -> capabilities.nativePointer
+            ClientControl.HOST_ACTIONS -> capabilities.hostActions
         }
 }
 
 /**
+ * A host action the client can invoke, surfaced to the UI without protocol
+ * imports.
+ */
+data class HostActionOption(
+    val id: String,
+    val name: String,
+    val requiresConfirmation: Boolean,
+)
+
+enum class HostActionSelectionMode {
+    INVOKE,
+    CONFIRM,
+}
+
+/**
+ * Pure, testable logic for the host-action control shown in the control bar.
+ * The control is a single compact icon button that opens a dropdown of window
+ * actions (move the focused window to the client, return moved windows). It is
+ * offered only when host actions were negotiated and the host advertised at
+ * least one action this client understands; otherwise the button collapses so
+ * it never adds a dead tap target to the compact capsule.
+ */
+internal object HostActionMenuPolicy {
+    fun isAvailable(
+        hostActions: Boolean,
+        actions: List<HostActionOption>,
+    ): Boolean = hostActions && actions.isNotEmpty()
+
+    fun selectionMode(option: HostActionOption): HostActionSelectionMode =
+        if (option.requiresConfirmation) HostActionSelectionMode.CONFIRM else HostActionSelectionMode.INVOKE
+
+    /**
+     * Menu label for an action. Prefers the host's localized name and falls
+     * back to a stable per-id default so the menu never renders an empty row
+     * even if the host omits a name.
+     */
+    fun menuLabel(
+        option: HostActionOption,
+        moveDefault: String,
+        returnDefault: String,
+    ): String {
+        val trimmed = option.name.trim()
+        if (trimmed.isNotEmpty()) return trimmed
+        return when (option.id) {
+            ACTION_MOVE_WINDOW -> moveDefault
+            ACTION_RETURN_WINDOWS -> returnDefault
+            else -> option.id
+        }
+    }
+
+    const val ACTION_MOVE_WINDOW = "move-window"
+    const val ACTION_RETURN_WINDOWS = "return-windows"
+}
+
+/**
  * Pure layout policy for the connection panel's header/actions split. The
- * panel stacks the brand/title header above the connection actions in a single
- * column by default; when there is enough horizontal room (landscape) it places
+* panel stacks the brand/title header above the connection actions in a single
+* column by default; when there is enough horizontal room (landscape) it places
  * the header beside the actions in two weighted columns. Keeping the geometry
  * here lets the orientation, sizing, and weight decisions be unit-tested
  * without inflating any Android view.
@@ -321,5 +406,23 @@ internal object ConnectionPanelLayoutPolicy {
                 columnGapPx = 0,
                 subtitleMaxLines = Int.MAX_VALUE,
             )
+        }
+}
+
+internal object UsbConnectActionPolicy {
+    enum class Action {
+        CONNECT,
+        CONNECTING,
+        TRY_AGAIN,
+    }
+
+    fun resolve(
+        connectionAttemptInProgress: Boolean,
+        hasAttemptedConnection: Boolean,
+    ): Action =
+        when {
+            connectionAttemptInProgress -> Action.CONNECTING
+            hasAttemptedConnection -> Action.TRY_AGAIN
+            else -> Action.CONNECT
         }
 }

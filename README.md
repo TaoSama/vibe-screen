@@ -31,7 +31,7 @@ platform scaffolding under active development.
 | Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation; stylus and other peripherals remain scaffolding |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; authenticated but not encrypted |
-| Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, in-place display switch, HiDPI capture, keyboard/scroll input, and auto-reconnect. Client-driven video preferences (in-place renegotiation, AUTO reset) are implemented and offline-verified only. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
+| Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
 | iOS trusted LAN | Core client interoperates with the baseline MacHost on TCP `54321` in a real two-process loopback; Simulator UI and device acceptance remain gated |
 | HarmonyOS/Internet | In development; not part of the current runnable baseline |
 
@@ -296,10 +296,24 @@ on-device verified and native pointer move/click remain pending a physical HID
 mouse. A two-hour device soak has run (2026-08-09) with a stable stream, but the
 host RSS no-growth gate is still open (see Phase 0).
 
+Protocol v1 now exposes the Host's fixed `move-window` and `return-windows`
+actions through an opt-in Android control-bar menu. On the Xiaomi 13, a focused
+TextEdit window moved from `(181,102)` to `(1846,179)` inside the online
+2000x1200 virtual display, returned to its exact original frame, and was also
+restored automatically after the Android process disconnected. The same pass
+fixed catalog/binding arrival order, kept one managed virtual-display identity
+stable across physical<->virtual round trips, and prevented cold extended-mode
+startup from looping on a benign WindowServer `CGError 1001`. See the
+[window-action evidence](docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-10-xiaomi13-window-actions/README.md).
+
 The Android client shows a compact, centered, tap-to-reveal control capsule
 that opens a display dropdown menu, opens settings, and disconnects; the
 dropdown lists each available display with the active one checked, and the
 picker collapses entirely on single-display sessions to avoid mis-taps. The
+Xiaomi 13 also verifies the client-local Fit/Fill and Follow Mac/90/180/270
+viewport matrix, including inverse touch mapping at the corners and center,
+with host rotation fixed at zero. Rotated physical/virtual host-display
+acceptance remains separate. The
 host advertises its online physical displays plus, when the private
 virtual-display API is available, one selectable virtual extended display so a
 single-monitor Mac can still offer a second display to switch to; selecting it
@@ -307,7 +321,13 @@ switches the capture source in place and renegotiates video with a bumped
 config epoch. Beyond in-place display renegotiation, the client can also send
 manual video preferences (bitrate/quality/frame-rate) to the host on the active
 session and reset them to AUTO, and the host applies them in place; this
-client-driven video configuration path is implemented and offline-verified. The
+client-driven video configuration path is verified on the Xiaomi 13. Smooth,
+Balanced, Sharp, and Auto map to the host's LOW, MEDIUM, HIGH, and ULTRALOW
+encoder settings. The retained device log proves in-place 2, 5, and 50 Mbps at
+60 FPS updates with no host PID change; a client-only restart also preserves
+the last applied 50 Mbps / 60 FPS configuration in the new session's first
+epoch. Other preset/FPS combinations remain covered by offline protocol and
+encoder tests rather than claimed as retained device evidence. The
 dropdown-selector capsule's in-place
 physical<->virtual<->physical capture switch is now verified on the Xiaomi 13
 with no session teardown: two full round-trips held 60 FPS with zero dropped
@@ -329,8 +349,8 @@ hover event.
   manual video configuration (bitrate/quality/frame-rate presets). Network-driven
   automatic adaptation is a later-phase goal, not part of the Phase 1 USB/LAN path.
 - Complete touch, keyboard, mouse, and peripheral input.
-- Add window migration, disconnect recovery, automatic reconnect, permission
-  onboarding, and actionable errors.
+- Harden window migration/return, disconnect recovery, automatic reconnect,
+  permission onboarding, and actionable errors across supported system states.
 - Validate sustained operation on the target Xiaomi 13.
 
 Initial targets are stable 1920×1080 or 1920×1200 at 60 FPS, sub-50 ms USB
@@ -470,13 +490,23 @@ network quality may increase it.
 
 The Xiaomi 13 (model 2211133C, codename fuxi) is the primary acceptance target
 for decoding, protocol behavior, input, networking, and performance. As of
-2026-08-09 the Xiaomi 13 has recorded verified streaming, touch, keyboard and
+2026-08-10 the Xiaomi 13 has recorded verified streaming, touch, keyboard and
 mouse-wheel input, reconnect, a 30-minute soak, display-selection negotiation,
 the physical<->virtual<->physical display-switch round-trip, and HiDPI
 private-API virtual-display creation/capture (4000x2400 physical / 2000x1200
-logical) over USB. A 2026-08-09 two-hour soak held a stable stream but left the
+logical) over USB, plus in-place quality/FPS/bitrate video preferences and
+client-invoked focused-window migration/return with disconnect recovery. A
+client-local Fit/Fill and four-direction rotation/input matrix is also verified
+with host rotation zero; rotated host-display acceptance remains open. A
+post-fix 30-minute preference run completed 60/60 connected samples with no
+reconnect or sample error; it is a short regression run, not a replacement for
+the formal gate. A 2026-08-09 two-hour soak held a stable stream but left the
 host RSS no-growth gate open (about +18.3 MB); stable self-signing now keeps the
 host's Screen Recording grant across rebuilds and relaunches.
+The viewport/input and window-action records are retained under
+[2026-08-10-xiaomi13-viewport-input](docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-10-xiaomi13-viewport-input/README.md)
+and
+[2026-08-10-xiaomi13-window-actions](docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-10-xiaomi13-window-actions/README.md).
 Earlier Android evidence also comes from Nubia
 P0110. Final tablet
 selection emphasizes

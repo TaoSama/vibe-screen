@@ -5,6 +5,7 @@ import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClientHello
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Envelope
+import dev.vibescreen.protocol.v1.HostActionInvoke
 import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.InputTarget
 import dev.vibescreen.protocol.v1.KeyEvent
@@ -67,10 +68,13 @@ internal class ProtocolV1Session(
             val configEpoch: Long,
             val sessionEpoch: Long,
             val configurationToken: Long,
+            val bitrateKbps: Int,
+            val framesPerSecond: Int,
         ) : Action()
 
         data class VideoConfigurationCommitted(
             val configEpoch: Long,
+            val appliesClientVideoPreferences: Boolean,
         ) : Action()
 
         data class VideoConfigurationRejected(
@@ -86,11 +90,34 @@ internal class ProtocolV1Session(
 
         data class PongReceived(val sequence: Long) : Action()
 
+        /**
+         * Host-advertised action catalog for the active session, filtered to
+         * the fixed action ids this client understands. Empty when the host
+         * advertises none the client can invoke.
+         */
+        data class HostActionsAvailable(
+            val actions: List<HostAction>,
+        ) : Action()
+
+        /** Result of a previously invoked host action, correlated by [invocationId]. */
+        data class HostActionCompleted(
+            val invocationId: ByteString,
+            val accepted: Boolean,
+            val rejectionReason: String,
+        ) : Action()
+
         data class Disconnected(
             val reasonCode: String,
             val mayResume: Boolean,
         ) : Action()
     }
+
+    /** A host action the client may invoke, surfaced without Android imports. */
+    data class HostAction(
+        val id: String,
+        val localizedName: String,
+        val requiresConfirmation: Boolean,
+    )
 
     /** A display advertised by the host that the client may select. */
     data class DisplayOption(
@@ -129,6 +156,7 @@ internal class ProtocolV1Session(
     // so a rapid sequence of changes still delivers the final user intent to
     // the host instead of silently dropping the later ones.
     private var pendingVideoPreferences: PendingVideoPreferences? = null
+    private var videoPreferencesRequestInFlight = false
     private var awaitingConfigurationKeyframe = false
     private var lastFrameId = 0L
     private var displayId = ""
@@ -139,6 +167,14 @@ internal class ProtocolV1Session(
     private var negotiatedCapabilities = emptySet<Capability>()
     private var hostCapabilities = emptySet<Capability>()
     private var hostCodecs = emptySet<Codec>()
+    // Host actions advertised for the active session, filtered to the fixed ids
+    // this client can invoke. Reset whenever a session ends.
+    private var availableHostActions = emptyList<HostAction>()
+    // Invocation ids sent to the host and still awaiting a result. Bounded so a
+    // client that spams actions cannot grow this without limit; the oldest id is
+    // evicted when full. A result must match a tracked id, so the host cannot
+    // forge an unsolicited success/failure that the UI would surface.
+    private val pendingHostActionInvocations = ArrayDeque<ByteString>()
 
     private val advertisedCapabilities =
         setOf(
@@ -147,6 +183,7 @@ internal class ProtocolV1Session(
             Capability.CAPABILITY_POINTER,
             Capability.CAPABILITY_MULTI_DISPLAY,
             Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
+            Capability.CAPABILITY_HOST_ACTIONS,
         )
     private val requiredCapabilities = emptySet<Capability>()
 
@@ -184,6 +221,16 @@ internal class ProtocolV1Session(
     val canSendKeyboard: Boolean
         @Synchronized
         get() = state == State.STREAMING && Capability.CAPABILITY_KEYBOARD in negotiatedCapabilities
+
+    /** Host actions the client may invoke, empty until a catalog arrives. */
+    val hostActions: List<HostAction>
+        @Synchronized
+        get() = availableHostActions
+
+    /** Whether host actions were negotiated and the session is streaming. */
+    val canInvokeHostActions: Boolean
+        @Synchronized
+        get() = state == State.STREAMING && Capability.CAPABILITY_HOST_ACTIONS in negotiatedCapabilities
 
     enum class MediaDisposition {
         ACCEPT,
@@ -249,9 +296,14 @@ internal class ProtocolV1Session(
                     ),
                 )
             Envelope.PayloadCase.PONG -> listOf(Action.PongReceived(envelope.pong.sequence))
+            Envelope.PayloadCase.HOST_ACTION_CATALOG -> onHostActionCatalog(envelope)
+            Envelope.PayloadCase.HOST_ACTION_RESULT -> onHostActionResult(envelope)
             Envelope.PayloadCase.DISCONNECT_NOTICE -> {
                 pendingVideoConfiguration = null
                 pendingVideoPreferences = null
+                videoPreferencesRequestInFlight = false
+                availableHostActions = emptyList()
+                pendingHostActionInvocations.clear()
                 state = State.CLOSED
                 listOf(
                     Action.Disconnected(
@@ -380,7 +432,41 @@ internal class ProtocolV1Session(
                 .build()
         state = State.REDISPLAY_REQUESTED
         displayGeometryPublished = false
+        videoPreferencesRequestInFlight = true
         return envelope().setSetVideoPreferences(request).build()
+    }
+
+    /**
+     * Ask the host to run a previously advertised action, such as moving the
+     * focused window onto the client display. Valid only while streaming, when
+     * host actions were negotiated, and for an advertised action id. The
+     * [invocationId] correlates the eventual HostActionResult. Returns the
+     * invoke envelope to send, or null when the request is not applicable.
+     */
+    @Synchronized
+    fun invokeHostAction(
+        actionId: String,
+        invocationId: ByteString,
+    ): Envelope? {
+        if (state != State.STREAMING) return null
+        if (Capability.CAPABILITY_HOST_ACTIONS !in negotiatedCapabilities) return null
+        if (invocationId.isEmpty) return null
+        if (availableHostActions.none { it.id == actionId }) return null
+        // Track the id so only a matching, solicited result can drive the UI.
+        // Duplicate ids (a caller reusing one) are rejected up front.
+        if (pendingHostActionInvocations.contains(invocationId)) return null
+        if (pendingHostActionInvocations.size >= MAX_PENDING_HOST_ACTIONS) {
+            pendingHostActionInvocations.removeFirst()
+        }
+        pendingHostActionInvocations.addLast(invocationId)
+        val invoke =
+            HostActionInvoke
+                .newBuilder()
+                .setActionId(actionId)
+                .setInvocationId(invocationId)
+                .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
+                .build()
+        return envelope().setHostActionInvoke(invoke).build()
     }
 
     @Synchronized
@@ -402,10 +488,10 @@ internal class ProtocolV1Session(
                 .setPointerId(pointerId)
                 .setPhase(phase)
                 .setPosition(NormalizedPoint.newBuilder().setX(x).setY(y))
-               .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
-               .build()
-       return envelope().setTouchEvent(event).build()
-   }
+                .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
+                .build()
+        return envelope().setTouchEvent(event).build()
+    }
 
     @Synchronized
     fun pointer(
@@ -583,7 +669,10 @@ internal class ProtocolV1Session(
         if (descriptors.isEmpty()) throw protocolFailure("Host reported no displays")
         val options = descriptors.map(::toDisplayOption)
         availableDisplays = options
-        val selected = options.firstOrNull { it.isPrimary } ?: options.first()
+        // The host orders the currently captured display first. `isPrimary`
+        // describes the macOS main display and must not override the active
+        // stream source (for example, a virtual extended display).
+        val selected = options.first()
         val descriptor = descriptors.first { it.displayId == selected.id }
         updateDisplayDescriptor(descriptor, expectedDisplayId = null)
         state = State.DISPLAY_REQUESTED
@@ -642,6 +731,7 @@ internal class ProtocolV1Session(
                 config.codec in codecs &&
                 config.codec in hostCodecs
         if (!accepted) {
+            videoPreferencesRequestInFlight = false
             return listOf(
                 Action.Send(
                     videoConfigResult(
@@ -666,13 +756,15 @@ internal class ProtocolV1Session(
             )
         return listOf(
             Action.VideoConfigurationRequested(
-                config.encodedSize.width,
-                config.encodedSize.height,
-                config.rotationDegrees.toInt(),
-                config.codec,
-                config.configEpoch,
-                sessionEpoch,
-                configurationToken,
+                width = config.encodedSize.width,
+                height = config.encodedSize.height,
+                rotation = config.rotationDegrees.toInt(),
+                codec = config.codec,
+                configEpoch = config.configEpoch,
+                sessionEpoch = sessionEpoch,
+                configurationToken = configurationToken,
+                bitrateKbps = config.bitrateKbps,
+                framesPerSecond = config.framesPerSecond,
             ),
         )
     }
@@ -708,6 +800,7 @@ internal class ProtocolV1Session(
                 ),
             )
         if (!accepted) {
+            videoPreferencesRequestInFlight = false
             return listOf(
                 result,
                 Action.VideoConfigurationRejected(
@@ -723,11 +816,13 @@ internal class ProtocolV1Session(
         lastFrameId = 0L
         awaitingConfigurationKeyframe = true
         state = State.STREAMING
+        val appliesClientVideoPreferences = videoPreferencesRequestInFlight
+        videoPreferencesRequestInFlight = false
         val actions =
             mutableListOf<Action>(
                 result,
                 Action.Send(requestKeyframe("decoder_configuration_committed")),
-                Action.VideoConfigurationCommitted(configEpoch),
+                Action.VideoConfigurationCommitted(configEpoch, appliesClientVideoPreferences),
             )
         if (!displayGeometryPublished) {
             actions +=
@@ -787,6 +882,53 @@ internal class ProtocolV1Session(
         displayId = display.displayId
         displayWidth = display.logicalSize.width
         displayHeight = display.logicalSize.height
+    }
+    private fun onHostActionCatalog(envelope: Envelope): List<Action> {
+        // The host advertises actions after SessionAccepted, before StartDisplay,
+        // so the catalog arrives while the session is negotiated but not yet
+        // streaming. Accept it in any post-negotiation, non-closed state and
+        // cache it; the UI only surfaces the actions once streaming. Only the
+        // negotiated capability and a live session are required.
+        if (!isNegotiated()) throw protocolFailure("HostActionCatalog in state $state")
+        if (Capability.CAPABILITY_HOST_ACTIONS !in negotiatedCapabilities) {
+            throw protocolFailure("HostActionCatalog without negotiated host actions")
+        }
+        val actions =
+            envelope.hostActionCatalog.actionsList
+                .asSequence()
+                .filter { it.actionId in KNOWN_HOST_ACTION_IDS }
+                .distinctBy { it.actionId }
+                .take(MAX_HOST_ACTIONS)
+                .map {
+                    HostAction(
+                        id = it.actionId,
+                        localizedName = it.localizedName,
+                        requiresConfirmation = it.requiresConfirmation,
+                    )
+                }.toList()
+        availableHostActions = actions
+        return listOf(Action.HostActionsAvailable(actions))
+    }
+
+    private fun onHostActionResult(envelope: Envelope): List<Action> {
+        if (!isNegotiated()) throw protocolFailure("HostActionResult in state $state")
+        if (Capability.CAPABILITY_HOST_ACTIONS !in negotiatedCapabilities) {
+            throw protocolFailure("HostActionResult without negotiated host actions")
+        }
+        val result = envelope.hostActionResult
+        if (result.invocationId.isEmpty) throw protocolFailure("HostActionResult missing invocation id")
+        // Only a matching invocation may drive UI. A duplicate or late result
+        // is an authenticated no-op and must not tear down the video session.
+        if (!pendingHostActionInvocations.remove(result.invocationId)) {
+            return emptyList()
+        }
+        return listOf(
+            Action.HostActionCompleted(
+                invocationId = result.invocationId,
+                accepted = result.accepted,
+                rejectionReason = result.rejectionReason,
+            ),
+        )
     }
 
     private fun toDisplayOption(display: dev.vibescreen.protocol.v1.DisplayDescriptor): DisplayOption {
@@ -858,6 +1000,11 @@ internal class ProtocolV1Session(
             message = "Protocol v1: $message",
         )
 
+    // A session is negotiated once SessionAccepted has advanced past the
+    // handshake and before it closes. Host actions may arrive across this whole
+    // window, not just while streaming.
+    private fun isNegotiated(): Boolean = state >= State.ACTIVE && state != State.CLOSED
+
     private fun mediaFailure(message: String): ProtocolV1Failure =
         ProtocolV1Failure(
             reason = "invalid_media_header",
@@ -885,5 +1032,20 @@ internal class ProtocolV1Session(
     companion object {
         const val VERSION = 1
         private val VALID_ROTATIONS = setOf(0, 90, 180, 270)
+
+        /** Move the focused Mac window onto the client display. Fixed with the host. */
+        const val ACTION_MOVE_WINDOW = "move-window"
+
+        /** Return windows previously moved to the client back to the Mac. Fixed with the host. */
+        const val ACTION_RETURN_WINDOWS = "return-windows"
+
+        // Only these fixed ids are surfaced; unknown catalog entries are ignored
+        // so the client never offers an action it cannot present or invoke.
+        private val KNOWN_HOST_ACTION_IDS = setOf(ACTION_MOVE_WINDOW, ACTION_RETURN_WINDOWS)
+
+        // Bound the surfaced actions and in-flight invocations so a misbehaving
+        // host or caller cannot grow either without limit.
+        private const val MAX_HOST_ACTIONS = 8
+        private const val MAX_PENDING_HOST_ACTIONS = 16
     }
 }

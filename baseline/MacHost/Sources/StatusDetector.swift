@@ -1,6 +1,18 @@
 import Foundation
 import SystemConfiguration
 
+enum ADBDeviceSelectionPolicy {
+    static func resolveTargetSerial(
+        configuredSerial: String,
+        connectedSerials: [String]
+    ) -> String? {
+        if !configuredSerial.isEmpty {
+            return connectedSerials.contains(configuredSerial) ? configuredSerial : nil
+        }
+        return connectedSerials.count == 1 ? connectedSerials[0] : nil
+    }
+}
+
 enum StatusDetector {
     static func adbInstalled() -> Bool {
         return adbExecutablePath() != nil

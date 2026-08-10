@@ -6,6 +6,7 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import android.util.Log
 import android.view.WindowManager
+import com.google.protobuf.ByteString
 import dev.telemachus.display.protocol.ProtocolChannel
 import dev.telemachus.display.protocol.ProtocolUpgrade
 import dev.telemachus.display.protocol.ProtocolV1Framing
@@ -29,6 +30,7 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.security.SecureRandom
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executor
@@ -46,6 +48,9 @@ internal data class StreamVideoConfiguration(
     val encodedHeight: Int,
     val rotation: Int,
     val configEpoch: Long,
+    val bitrateKbps: Int = 0,
+    val framesPerSecond: Int = 0,
+    val appliesClientVideoPreferences: Boolean = false,
 )
 
 internal data class StreamDisplayGeometry(
@@ -109,12 +114,16 @@ class StreamClient(
     private val nextInputId = AtomicLong(1L)
     private val nextPingSequence = AtomicLong(1L)
     private val pendingOutboundFailure = AtomicReference<SessionFailure?>(null)
+    private val pendingDecoderFailure = AtomicReference<SessionFailure?>(null)
     private val pendingVideoConfigurationCommit = AtomicReference<PendingVideoConfigurationCommit?>(null)
     @Volatile private var lastV1PingSequence = 0L
     @Volatile private var lastV1PingSentNs = 0L
 
     private val heartbeat = HeartbeatMonitor(HEARTBEAT_TIMEOUT_MS)
     private val reconnectBackoff = ReconnectBackoff()
+    // Per-invocation ids for host actions must be unpredictable so a result
+    // cannot be spoofed by replaying a guessed id.
+    private val hostActionRandom = SecureRandom()
 
     // Callback includes actual frame size (may differ from buffer.size due to pooling),
     // receive timestamp, and whether the frame can restart HEVC decoding.
@@ -122,8 +131,11 @@ class StreamClient(
     var onConnectionStatus: ((Boolean) -> Unit)? = null
     internal var onVideoConfiguration:
         ((StreamVideoConfiguration, StreamVideoConfigurationCommit) -> Unit)? = null
+    internal var onVideoConfigurationApplied: ((StreamVideoConfiguration) -> Unit)? = null
     internal var onDisplayGeometry: ((StreamDisplayGeometry) -> Unit)? = null
     internal var onDisplaysAvailable: ((List<StreamDisplayOption>, selectedId: String) -> Unit)? = null
+    internal var onHostActionsAvailable: ((List<HostActionOption>) -> Unit)? = null
+    internal var onHostActionResult: ((accepted: Boolean, rejectionReason: String) -> Unit)? = null
     var onStats: ((Double, Double) -> Unit)? = null
     var onReconnectSuggested: ((delayMs: Long) -> Unit)? = null
     var onWriteFailure: ((reason: String) -> Unit)? = null
@@ -234,6 +246,7 @@ class StreamClient(
             sessionReady = false
             stopRequested = false
             pendingOutboundFailure.set(null)
+            pendingDecoderFailure.set(null)
             try {
                 val candidate = socketFactory()
                 socket = candidate
@@ -311,6 +324,7 @@ class StreamClient(
         sessionReady = false
         stopRequested = false
         pendingOutboundFailure.set(null)
+        pendingDecoderFailure.set(null)
         val request =
             try {
                 AuthHandshake.encodeRequest(token, deviceName)
@@ -936,7 +950,9 @@ class StreamClient(
                 completeConnectionEndNow(checkNotNull(terminalFailure))
                 Log.e(TAG, "Protocol v1 failure: ${error.message}", error)
             } catch (e: IOException) {
-                terminalFailure = SessionFailure.transport(e.message ?: e.javaClass.simpleName)
+                terminalFailure =
+                    pendingDecoderFailure.get()
+                        ?: SessionFailure.transport(e.message ?: e.javaClass.simpleName)
                 pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
                 completeConnectionEndNow(checkNotNull(terminalFailure))
                 if (isConnected) {
@@ -945,6 +961,7 @@ class StreamClient(
             } finally {
                 completeConnectionEndNow(
                     terminalFailure
+                        ?: pendingDecoderFailure.get()
                         ?: pendingOutboundFailure.get()
                         ?: SessionFailure.transport("receive loop ended"),
                 )
@@ -1133,9 +1150,9 @@ class StreamClient(
                     OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
                 },
             command = command,
-           timeoutMillis = 0,
-       )
-   }
+            timeoutMillis = 0,
+        )
+    }
 
     /**
      * Forward a native pointer sample (move/drag/button) to the host. buttonMask
@@ -1233,7 +1250,7 @@ class StreamClient(
         return true
     }
 
-   // Callback for latency measurement (round-trip ping/pong)
+    // Callback for latency measurement (round-trip ping/pong)
     var onLatencyMeasured: ((Double) -> Unit)? = null
 
     /** Capabilities negotiated for the active Protocol v1 session, empty otherwise. */
@@ -1253,6 +1270,25 @@ class StreamClient(
             kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
             command = OutboundCommand.ProtocolBatch { activeSession ->
                 activeSession.selectDisplay(displayId)?.let { listOf(it) } ?: emptyList()
+            },
+        )
+    }
+
+    /**
+     * Ask the host to run an advertised action (window migration/return).
+     * No-op unless the session is streaming, host actions were negotiated, and
+     * the id names an advertised action. The invocation id is generated per
+     * request so the eventual HostActionResult can be correlated.
+     */
+    fun invokeHostAction(actionId: String) {
+        if (!isConnected || wireMode != WireMode.V1) return
+        val session = protocolSession ?: return
+        if (!session.canInvokeHostActions) return
+        val invocationId = ByteString.copyFrom(ByteArray(HOST_ACTION_INVOCATION_ID_BYTES).also(hostActionRandom::nextBytes))
+        submitOutbound(
+            kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+            command = OutboundCommand.ProtocolBatch { activeSession ->
+                activeSession.invokeHostAction(actionId, invocationId)?.let { listOf(it) } ?: emptyList()
             },
         )
     }
@@ -1465,6 +1501,8 @@ class StreamClient(
                                 encodedHeight = action.height,
                                 rotation = action.rotation,
                                 configEpoch = action.configEpoch,
+                                bitrateKbps = action.bitrateKbps,
+                                framesPerSecond = action.framesPerSecond,
                             ),
                         )
                     }
@@ -1480,12 +1518,22 @@ class StreamClient(
                             ),
                         )
                     }
-                    is ProtocolV1Session.Action.PongReceived -> {
-                        if (action.sequence == lastV1PingSequence && lastV1PingSentNs > 0L) {
-                            onLatencyMeasured?.invoke((System.nanoTime() - lastV1PingSentNs) / 1_000_000.0)
-                        }
+                   is ProtocolV1Session.Action.PongReceived -> {
+                       if (action.sequence == lastV1PingSequence && lastV1PingSentNs > 0L) {
+                           onLatencyMeasured?.invoke((System.nanoTime() - lastV1PingSentNs) / 1_000_000.0)
+                       }
+                   }
+                    is ProtocolV1Session.Action.HostActionsAvailable -> {
+                        val options =
+                            action.actions.map {
+                                HostActionOption(it.id, it.localizedName, it.requiresConfirmation)
+                            }
+                        onHostActionsAvailable?.invoke(options)
                     }
-                    is ProtocolV1Session.Action.Disconnected -> {
+                    is ProtocolV1Session.Action.HostActionCompleted -> {
+                        onHostActionResult?.invoke(action.accepted, action.rejectionReason)
+                    }
+                   is ProtocolV1Session.Action.Disconnected -> {
                         pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
                         stopRequested = !action.mayResume
                         val failure =
@@ -1608,10 +1656,19 @@ class StreamClient(
                 .filterIsInstance<ProtocolV1Session.Action.VideoConfigurationRejected>()
                 .singleOrNull()
                 ?.reason
+        val rejectedFailure = rejectedReason?.let(SessionFailure::codec)
+        // Publish the local codec reason before the rejection ACK can make the
+        // peer close its socket. If EOF races the async termination request,
+        // the receive loop must still report CODEC_CONFIGURATION.
+        rejectedFailure?.let { pendingDecoderFailure.compareAndSet(null, it) }
+        var configurationCommitted = false
+        var appliesClientVideoPreferences = false
         actions.forEach { action ->
             when (action) {
                 is ProtocolV1Session.Action.Send -> writeProtocolEnvelope(out, action.envelope)
                 is ProtocolV1Session.Action.VideoConfigurationCommitted -> {
+                    configurationCommitted = true
+                    appliesClientVideoPreferences = action.appliesClientVideoPreferences
                     if (!sessionReady) {
                         sessionReady = true
                         reconnectBackoff.reset()
@@ -1628,17 +1685,24 @@ class StreamClient(
                         ),
                     )
                 }
-                is ProtocolV1Session.Action.VideoConfigurationRequested,
-                is ProtocolV1Session.Action.PongReceived,
-                is ProtocolV1Session.Action.Disconnected,
-                is ProtocolV1Session.Action.DisplaysAvailable,
-                -> throw IllegalStateException("Unexpected action while completing decoder configuration")
+               is ProtocolV1Session.Action.VideoConfigurationRequested,
+               is ProtocolV1Session.Action.PongReceived,
+               is ProtocolV1Session.Action.Disconnected,
+               is ProtocolV1Session.Action.DisplaysAvailable,
+                is ProtocolV1Session.Action.HostActionsAvailable,
+                is ProtocolV1Session.Action.HostActionCompleted,
+               -> throw IllegalStateException("Unexpected action while completing decoder configuration")
             }
         }
         out.flush()
-        rejectedReason?.let { reason ->
-            requestConnectionEnd(SessionFailure.codec(reason))
+        if (configurationCommitted && isCurrentProtocolSession(pending.session, pending.connectionGeneration)) {
+            onVideoConfigurationApplied?.invoke(
+                pending.configuration.copy(
+                    appliesClientVideoPreferences = appliesClientVideoPreferences,
+                ),
+            )
         }
+        rejectedFailure?.let(::requestConnectionEnd)
     }
 
     private fun isCurrentProtocolSession(
@@ -2209,6 +2273,7 @@ class StreamClient(
         private const val LEGACY_CONFIG_EPOCH = 0L
         private const val AUTH_RESPONSE_BYTES = 5
         private const val MAX_FORWARDED_POINTERS = 2
+        private const val HOST_ACTION_INVOCATION_ID_BYTES = 16
         private const val HEARTBEAT_POLL_INTERVAL_MS = 1_000
         private const val HEARTBEAT_TIMEOUT_MS = 3_500L
         private const val MIN_DISPLAY_DIMENSION = 16

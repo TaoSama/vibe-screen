@@ -84,8 +84,9 @@ def write_inputs(directory: Path):
             "event": "stream_stats",
             "attributes": {
                 "fps": 59.0,
-                "average_frame_age_ms": 5.0,
-                "dropped_frames": 0,
+                # Historical host-log telemetry used these short aliases.
+                "avg_frame_age_ms": 5.0,
+                "dropped": 0,
             },
         },
         {
@@ -151,6 +152,9 @@ class SoakReportTest(unittest.TestCase):
         self.assertEqual(report["source_summary"]["errors"], ["preserved source warning"])
         self.assertEqual(report["window"]["telemetry_records_excluded"], 2)
         self.assertEqual(report["metrics"]["stream"]["fps"]["mean"], 60.0)
+        self.assertEqual(
+            report["metrics"]["stream"]["average_frame_age_ms"]["mean"], 6.0
+        )
         self.assertEqual(
             report["metrics"]["stream"]["reported_dropped_frames"]["sum"], 2.0
         )

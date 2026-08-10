@@ -19,6 +19,10 @@ if CommandLine.arguments.contains("--protocol-v1-self-test") {
     exit(ProtocolV1SelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
 }
 
+if CommandLine.arguments.contains("--video-encoder-self-test") {
+    exit(VideoEncoderSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+}
+
 if CommandLine.arguments.contains("--host-self-test") {
     exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
 }
