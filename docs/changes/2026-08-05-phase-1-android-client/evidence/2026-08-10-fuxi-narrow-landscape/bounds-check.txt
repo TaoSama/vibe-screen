@@ -1,0 +1,5 @@
+PASS wide 914dp uses horizontal columns: header.right=1002 < actions.left=1076
+PASS narrow 457dp uses stacked columns: header.bottom=923 == actions.top=923
+PASS narrow top content stays within 1200x1080 viewport: [220,169][906,1027]
+PASS narrow scrolled mode selector is visible: [220,175][906,301]
+PASS narrow scrolled primary action is visible: [220,322][906,469]

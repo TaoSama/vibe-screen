@@ -152,3 +152,25 @@ records and evidence directories under
 `../2026-08-04-phase-0-baseline/`, not to this Nubia-based legacy run. A
 host-RSS-stable two-hour soak and a physical HID mouse move/click confirmation
 remain open there.
+
+## Xiaomi 13 responsive connection-page follow-up
+
+On 2026-08-10, the disconnected Android connection page was verified on a
+Xiaomi 13 (`2211133C`, `fuxi`, Android 16) in portrait and full-screen
+landscape. USB, LAN, and Internet modes use a 40/60 header/actions split when
+the current landscape window is at least 600dp wide, while narrower landscape
+windows fall back to the scrollable stacked layout instead of compressing the
+action controls.
+
+The compiled resource table records `default=false`, `land=false`, and
+`w600dp-land=true`. On device, the 914dp full-screen landscape remained two
+columns; a temporary 457dp-wide landscape display override produced one
+stacked column, and scrolling exposed the primary action and connection
+details without horizontal clipping. The override was reset afterward. This
+proves the width-qualified resource behavior but is not presented as a real
+split-screen gesture run.
+
+Evidence:
+
+- [`evidence/2026-08-10-fuxi-landscape-connection-ui/`](evidence/2026-08-10-fuxi-landscape-connection-ui/)
+- [`evidence/2026-08-10-fuxi-narrow-landscape/`](evidence/2026-08-10-fuxi-narrow-landscape/)
