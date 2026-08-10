@@ -82,8 +82,9 @@
     <string name="usb">USB</string>
     <string name="trusted_lan">LAN</string>
     <string name="internet">Internet</string>
-    <string name="internet_waiting_title">Internet preview</string>
-    <string name="internet_waiting_description">Encrypted preview for direct and TURN routes. Public deployment and stability acceptance are still in progress.</string>
+    <string name="internet_waiting_title">Internet development preview</string>
+    <string name="internet_waiting_title_compact">Internet preview</string>
+    <string name="internet_waiting_description">Experimental Internet transport. Protocol v1 application records are encrypted on direct and TURN routes. Public Internet traversal, real display capture, cross-service revocation, and soak stability are not yet accepted.</string>
     <string name="internet_profile_missing">No Internet pairing profile. Import a fresh profile from your Mac.</string>
     <string name="internet_paired_without_lease">Verified Mac key %1$s…\nPairing is complete. Import a fresh session lease to connect.</string>
     <string name="internet_profile_format">%1$s\nSession %2$s · epoch %3$d\nVerified Mac key %4$s…</string>

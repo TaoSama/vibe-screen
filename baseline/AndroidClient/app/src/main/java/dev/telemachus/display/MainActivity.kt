@@ -819,6 +819,9 @@ class MainActivity : AppCompatActivity() {
         enableFullscreenMode()
         ViewCompat.requestApplyInsets(binding.root)
         applyConnectionPanelLayout()
+        if (!isConnected && prefs.connectionMode == ConnectionMode.INTERNET) {
+            binding.connectionTitle.setText(internetWaitingTitleResource())
+        }
         reclampFloatingControls()
         activeSettingsDialog?.let { dialog ->
             dialog.window?.decorView?.post { resizeSettingsDialog(dialog) }
@@ -1188,13 +1191,20 @@ class MainActivity : AppCompatActivity() {
                 binding.connectionProgress.visibility = View.GONE
             }
             ConnectionMode.INTERNET -> {
-                binding.connectionTitle.setText(R.string.internet_waiting_title)
+                binding.connectionTitle.setText(internetWaitingTitleResource())
                 binding.connectionSubtitle.setText(R.string.internet_waiting_description)
                 binding.connectionProgress.visibility = View.GONE
                 refreshInternetProfileUi()
             }
         }
     }
+
+    private fun internetWaitingTitleResource(): Int =
+        if (resources.getBoolean(R.bool.connection_panel_two_column)) {
+            R.string.internet_waiting_title_compact
+        } else {
+            R.string.internet_waiting_title
+        }
 
     private fun setupInternetUi() {
         QUARANTINED_INTERNET_SESSION.get()?.let { internetSession = it }
