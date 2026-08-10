@@ -699,8 +699,8 @@ final class ProtocolV1SessionCoordinator {
     /// Upper bound on host-action invocations awaiting host confirmation. A
     /// misbehaving client that streams unique invocation_ids without waiting for
     /// results can never grow this set without bound: past the cap the invoke is
-    /// rejected with invalidState and the session stays alive. The window
-    /// actions are effectively serial in practice, so a small cap is ample.
+    /// rejected with invalidState and the protocol session fails closed. The
+    /// window actions are effectively serial in practice, so a small cap is ample.
     private static let maximumPendingHostActionInvocations = 16
 
     // Bounds the host applies to a client SetVideoPreferences request. The

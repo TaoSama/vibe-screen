@@ -47,6 +47,10 @@ enum VideoEncoderSelfTest {
             quality: "medium",
             frameRate: 60
         )
+        guard encoder.hasActiveCompressionSession else {
+            FileHandle.standardError.write(Data("video encoder self-test: H.264 compression session unavailable\n".utf8))
+            return false
+        }
         let group = DispatchGroup()
         let encodeQueue = DispatchQueue(label: "dev.vibescreen.encoder-self-test.frames")
         let settingsQueue = DispatchQueue(label: "dev.vibescreen.encoder-self-test.settings")
@@ -94,9 +98,10 @@ enum VideoEncoderSelfTest {
         if passed {
             print("video encoder self-test passed (encoded callbacks: \(snapshot.encodedFrameCount))")
         } else {
+            let failure = snapshot.settingsSucceeded ? "no encoded callbacks" : "VideoToolbox property update rejected"
             FileHandle.standardError.write(Data(
-                "video encoder self-test failed "
-                    .appending("(settings=\(snapshot.settingsSucceeded), callbacks=\(snapshot.encodedFrameCount))\n")
+                "video encoder self-test failed: \(failure) "
+                    .appending("(callbacks=\(snapshot.encodedFrameCount))\n")
                     .utf8
             ))
         }

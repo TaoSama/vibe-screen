@@ -8,7 +8,7 @@ Host PID during the eight-mode matrix: `24536`
 ## Artifacts
 
 - `touch-matrix.txt` contains Debug-only `VibeScreenTouchMap` records for Fit
-  and Fill with Follow Mac, 90, 180, and 270 degree client rotations. The
+  and Fill with Follow Mac, 90, 180, and 270-degree client rotations. The
   records include viewport coordinates, video geometry, selected modes, host
   rotation, and the normalized point sent to the host.
 - `settings-final.png` and `settings-window.xml` show the corrected Viewport

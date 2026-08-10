@@ -46,18 +46,24 @@ Auto 和 30 FPS 组合有离线协议/编码器覆盖，但本目录没有足以
 30 分钟短测命令：
 
 ```text
-PYTHONPATH=tools python3 -m vibescreen_evidence.host_log_telemetry \
+REPO="$(git rev-parse --show-toplevel)"
+EVIDENCE_DIR="$REPO/docs/changes/2026-08-10-video-preferences/evidence/2026-08-10-xiaomi13-bac5b092-30m"
+: "${ADB_SERIAL:?Set ADB_SERIAL to the exact device serial}"
+: "${HOST_PID:?Set HOST_PID to the Vibe Screen host PID}"
+
+PYTHONPATH="$REPO/tools" python3 -m vibescreen_evidence.host_log_telemetry \
   --log "$HOME/Library/Logs/Telemachus/telemachus.log" \
-  --output-jsonl evidence/2026-08-10-xiaomi13-bac5b092-30m/host-telemetry.jsonl \
+  --output-jsonl "$EVIDENCE_DIR/host-telemetry.jsonl" \
   --duration-seconds 1800 --interval-seconds 1
 
-PYTHONPATH=tools python3 -m vibescreen_evidence.soak \
-  --serial bac5b092 --duration 30m --interval 30s \
-  --package dev.telemachus.display --host-pid 24536 \
-  --telemetry-jsonl evidence/2026-08-10-xiaomi13-bac5b092-30m/host-telemetry.jsonl \
+PYTHONPATH="$REPO/tools" python3 -m vibescreen_evidence.soak \
+  --adb "$ANDROID_HOME/platform-tools/adb" \
+  --serial "$ADB_SERIAL" --duration 30m --interval 30s \
+  --package dev.telemachus.display --host-pid "$HOST_PID" \
+  --telemetry-jsonl "$EVIDENCE_DIR/host-telemetry.jsonl" \
   --require-stream-telemetry \
-  --output-jsonl evidence/2026-08-10-xiaomi13-bac5b092-30m/samples.jsonl \
-  --summary-json evidence/2026-08-10-xiaomi13-bac5b092-30m/summary.json \
+  --output-jsonl "$EVIDENCE_DIR/samples.jsonl" \
+  --summary-json "$EVIDENCE_DIR/summary.json" \
   --run-id xiaomi13-bac5b092-video-preferences-30m
 ```
 

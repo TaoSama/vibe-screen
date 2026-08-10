@@ -583,12 +583,12 @@ final class ProtocolV1SessionTests: XCTestCase {
         var overflow = VSHostActionInvoke()
         overflow.actionID = "move-window"
         overflow.invocationID = Data([0xFF])
-        XCTAssertEqual(
-            try protocolError(from: session.handleControl(
-                try envelope(id: 20, payload: .hostActionInvoke(overflow)).serializedData()
-            )).code,
-            .invalidState
+        let actions = session.handleControl(
+            try envelope(id: 20, payload: .hostActionInvoke(overflow)).serializedData()
         )
+        XCTAssertEqual(try protocolError(from: actions).code, .invalidState)
+        XCTAssertTrue(actions.containsClose)
+        XCTAssertEqual(session.phase, .failed)
     }
 
     private let sessionID = Data(repeating: 0xAB, count: 16)

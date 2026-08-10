@@ -6,7 +6,7 @@
     "package": "dev.telemachus.display",
     "require_stream_telemetry": true,
     "serial": "bac5b092",
-    "telemetry_jsonl": "docs/changes/2026-08-10-video-preferences/evidence/2026-08-10-xiaomi13-bac5b092-30m/host-telemetry.jsonl"
+    "telemetry_jsonl": "docs/changes/2026-08-10-video-preferences/evidence/2026-08-10-xiaomi13-bac5b092-30m-partial-attempt/host-telemetry.jsonl"
   },
   "environment": {
     "adb_version": "Android Debug Bridge version 1.0.41\nVersion 37.0.0-14910828\nInstalled as /Users/luwentao/Library/Android/sdk/platform-tools/adb\nRunning on Darwin 25.4.0 (arm64)",

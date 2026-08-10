@@ -28,6 +28,13 @@ class VideoEncoder {
     private var frameRate: Int = 60
     private let sessionLock = NSLock()
     private let stateLock = OSAllocatedUnfairLock(initialState: EncoderState())
+
+    var hasActiveCompressionSession: Bool {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+        return compressionSession != nil
+    }
+
     init(width: Int, height: Int, codec: StreamCodec = .hevc, bitrateMbps: Int = 20, quality: String = "ultralow", gamingBoost: Bool = false, frameRate: Int = 60) {
         self.width = width
         self.height = height

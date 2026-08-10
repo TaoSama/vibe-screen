@@ -1168,7 +1168,7 @@ enum ProtocolV1SelfTest {
 
             // The outstanding-invocation set is bounded: after 16 uncompleted
             // unique invocations, the next one is rejected with invalidState and
-            // the session stays alive.
+            // the protocol session fails closed.
             let flood = makeSession()
             var floodHello = clientHelloEnvelope()
             floodHello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions]
@@ -1195,12 +1195,15 @@ enum ProtocolV1SelfTest {
             var overflowInvoke = VSHostActionInvoke()
             overflowInvoke.actionID = "move-window"
             overflowInvoke.invocationID = Data([0xFF])
-            let overflowError = try protocolError(flood.handleControl(try envelope(
+            let overflowActions = flood.handleControl(try envelope(
                 id: 20,
                 payload: .hostActionInvoke(overflowInvoke)
-            ).serializedData()))
-            guard overflowError.code == .invalidState else {
-                failures.append("An over-cap HostActionInvoke was not rejected with invalidState")
+            ).serializedData())
+            let overflowError = try protocolError(overflowActions)
+            guard overflowError.code == .invalidState,
+                  overflowActions.contains(where: { if case .close = $0 { true } else { false } }),
+                  flood.phase == .failed else {
+                failures.append("An over-cap HostActionInvoke did not fail closed with invalidState")
                 return
             }
 

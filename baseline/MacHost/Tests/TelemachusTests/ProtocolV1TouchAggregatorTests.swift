@@ -13,12 +13,14 @@ final class ProtocolV1TouchAggregatorTests: XCTestCase {
             2
         )
 
-        XCTAssertNil(aggregator.handle(
-            pointerID: 1,
-            x: 0.2,
-            y: 0.5,
-            phase: .changed
-        ))
+        for y: Float in [0.4, 0.5, 0.6] {
+            XCTAssertNil(aggregator.handle(
+                pointerID: 1,
+                x: 0.2,
+                y: y,
+                phase: .changed
+            ))
+        }
         let move = aggregator.handle(
             pointerID: 2,
             x: 0.7,
@@ -29,7 +31,7 @@ final class ProtocolV1TouchAggregatorTests: XCTestCase {
         XCTAssertEqual(move?.action, 1)
         XCTAssertEqual(move?.pointerCount, 2)
         XCTAssertEqual(move?.x1, 0.2)
-        XCTAssertEqual(move?.y1, 0.5)
+        XCTAssertEqual(move?.y1, 0.6)
         XCTAssertEqual(move?.x2, 0.7)
         XCTAssertEqual(move?.y2, 0.5)
     }
