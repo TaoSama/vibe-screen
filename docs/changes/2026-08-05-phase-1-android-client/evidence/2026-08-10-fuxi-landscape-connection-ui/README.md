@@ -2,7 +2,7 @@
 
 ## 结论
 
-在第二台 Xiaomi 13 `bac5b092` 上安装提交 `15cb8d8` 的 debug APK，验证离线连接页。
+在第二台 Xiaomi 13 `bac5b092` 上安装提交 `280b0c1` 的 debug APK，验证离线连接页。
 横屏 `2400x1080` 下 USB、LAN、Internet 三种模式均为左右两栏，主操作完整出现在首屏，
 没有文本溢出或控件重叠；竖屏恢复单列，竖屏再转回横屏后两栏几何正常恢复。
 
@@ -15,7 +15,7 @@ MacHost PID 27437。
 - 设备：Xiaomi 13，model `2211133C`，codename `fuxi`
 - 系统：Android 16 / API 36
 - 物理尺寸与密度：`1080x2400`，420 dpi
-- APK SHA-256：`0fd7b5d3658e28c6a7b4633f94f66819c5a5a2f4ddaf30654bb1dfc7c0cef332`
+- APK SHA-256：`dda03c05cdf6625427ca0bcc149ffcc05835ce4feaad902137811daa597c6272`
 - 横屏 cutout：左侧 104 px；布局还保留了隐藏系统栏的稳定 inset
 
 ## 验收结果
