@@ -40,6 +40,9 @@ an atomic JSON summary containing connection coverage, process liveness,
 reconnects, memory, thermal, battery, power, and optional host RSS series. Use
 `EVIDENCE_DIR` and `EVIDENCE_PACKAGE` to select another archive directory or
 application package. A non-`complete` summary returns a nonzero exit status.
+Power-supply sysfs nodes are optional diagnostics: when an Android device does
+not expose them to the ADB shell, their values are recorded as unavailable and
+do not make an otherwise valid soak partial. ADB transport failures still do.
 Start the host with `VIBE_SCREEN_TELEMETRY_PATH` pointing at the target's
 `host-telemetry.jsonl` before the formal Makefile soak. The preset targets
 require at least one `stream_stats` event and require the Android process to be
@@ -67,6 +70,31 @@ The report filters both sample and Host telemetry timestamps to the inclusive
 errors, reports malformed or empty inputs, and computes full-window and
 second-half RSS regression slopes. Those slopes are descriptive evidence; the
 tool deliberately does not turn them into a no-leak verdict.
+
+For the Phase 1 two-hour Host RSS gate, run the separate fail-closed evaluator:
+
+```sh
+PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate \
+  --summary .build/evidence/soak-2h/summary.json \
+  --samples .build/evidence/soak-2h/samples.jsonl \
+  --output .build/evidence/soak-2h/host-rss-gate.json
+```
+
+The evaluator requires an error-free source soak of at least 7,056 seconds,
+230 Host RSS samples, 115 second-half samples, samples within 90 seconds of
+both window boundaries, and no internal sampling gap above 90 seconds. A pass
+requires all of these steady-state limits:
+
+- second-half OLS slope 95% upper bound no greater than 40 KiB/min;
+- second-half Theil-Sen slope no greater than 40 KiB/min;
+- second-half endpoint-median drift no greater than 4 MiB;
+- full-window endpoint-median drift no greater than 8 MiB; and
+- second-half final-quarter mean step no greater than 2 MiB.
+
+The command exits zero only for `pass`; invalid, incomplete, or undersampled
+evidence is `insufficient` and exits nonzero. A pass means the recorded window
+did not show practically significant growth, not that longer or different
+workloads cannot leak.
 
 ## Latency evidence
 

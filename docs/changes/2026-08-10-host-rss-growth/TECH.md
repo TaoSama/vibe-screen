@@ -60,10 +60,16 @@ MallocStackLogging=1 MallocStackLoggingNoCompact=1 \
 ```
 
 复测判据：先跑 10–15 分钟短时流，确认 Observation 对象计数与 host RSS 斜率不再
-持续上升；通过后再跑完整 2h soak。只有后半程 RSS 斜率进入工具规定的无增长容差，
-且流与客户端指标继续通过，才关闭 Phase 1 门禁。若仍增长，再检查按帧/秒累积且
-未逐出的集合、按 generation/epoch 键控的表，以及保留 CMSampleBuffer、
-CVPixelBuffer 或 NSData 的路径。
+持续上升；通过后再跑完整 2h soak。正式 Host RSS 门禁由
+`vibescreen_evidence.host_rss_gate` 独立判定，要求来源 soak 完整无错误、窗口至少
+7056 秒、Host RSS 样本至少 230 个且后半程至少 115 个、首尾和内部采样间隔均不
+超过 90 秒，并同时满足：后半程 OLS 斜率 95% 上界与 Theil-Sen 稳健斜率均不高于
+40 KiB/min、后半程端点中位数漂移不高于 4 MiB、全窗端点中位数漂移不高于 8
+MiB、后半程最后两个四分之一窗口的均值增量不高于 2 MiB。任一输入不足均为
+`insufficient`，不得宣称通过。流与客户端指标也须
+继续通过，才关闭 Phase 1 门禁。若仍增长，再检查按帧/秒累积且未逐出的集合、按
+generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 NSData
+的路径。
 
 ## 状态
 
