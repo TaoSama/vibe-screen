@@ -445,16 +445,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let selectedSerial = settings.adbDeviceSerial
         Task.detached { [weak self] in
             let devices = StatusDetector.usbDevices()
-            let effectiveSerial: String?
-            if devices.contains(selectedSerial) {
-                effectiveSerial = selectedSerial
-            } else {
-                effectiveSerial = devices.first
-            }
-            let reverseOK = StatusDetector.adbReverseConfigured(
-                port: port,
-                serial: effectiveSerial
+            let effectiveSerial = ADBDeviceSelectionPolicy.resolveTargetSerial(
+                configuredSerial: selectedSerial,
+                connectedSerials: devices
             )
+            let reverseOK = effectiveSerial.map {
+                StatusDetector.adbReverseConfigured(port: port, serial: $0)
+            } ?? false
             await MainActor.run { [weak self] in
                 guard let self = self else { return }
                 guard self.settings.connectionMode == .usb,
@@ -462,13 +459,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
                 
-                let isConnected = !devices.isEmpty
+                let isConnected = effectiveSerial != nil
 
                 self.settings.setIfChanged(isConnected, to: \.usbDeviceConnected)
                 self.settings.setIfChanged(devices, to: \.availableADBDevices)
-                if let effectiveSerial {
-                    self.settings.setIfChanged(effectiveSerial, to: \.adbDeviceSerial)
-                }
                 self.settings.setIfChanged(reverseOK, to: \.adbReverseConfigured)
 
                 // Self-healing USB bridge (level-triggered, not edge-triggered):
@@ -1531,9 +1525,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             print("📱 Found ADB at: \(finalAdbPath)")
             let connectedSerials = StatusDetector.usbDevices()
-            let targetSerial = connectedSerials.contains(configuredSerial)
-                ? configuredSerial
-                : connectedSerials.first
+            guard let targetSerial = ADBDeviceSelectionPolicy.resolveTargetSerial(
+                configuredSerial: configuredSerial,
+                connectedSerials: connectedSerials
+            ) else {
+                if configuredSerial.isEmpty {
+                    debugLog("ADB reverse skipped: no authorized Android device is connected")
+                } else {
+                    debugLog(
+                        "ADB reverse skipped: selected device \(configuredSerial) is not connected; " +
+                        "refusing to launch a different device"
+                    )
+                }
+                return
+            }
 
             // Retry adb reverse up to 3 times — handles first-install authorization delay
             for attempt in 1...3 {
@@ -3561,6 +3566,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let timer = DispatchWorkItem { [weak self] in
             guard let self, self.gestureState == .pending else { return }
             self.gestureState = .longPressReady
+            debugLog("Touch gesture: long press ready")
         }
         longPressTimer = timer
         DispatchQueue.main.asyncAfter(
@@ -3596,6 +3602,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 gestureState = .dragging
                 injectMouseDown(at: touchStartPosition)
                 injectMouseDragged(to: point)
+                debugLog("Touch gesture: drag began")
             }
 
         case .scrolling:
@@ -3647,6 +3654,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case .longPressReady:
             // Held long but didn't drag → right click
             performRightClick(at: point)
+            debugLog("Touch gesture: right click injected")
 
         case .scrolling:
             // Check momentum
@@ -3664,6 +3672,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         case .dragging:
             injectMouseUp(at: point)
+            debugLog("Touch gesture: drag ended")
 
         default:
             break
@@ -3695,8 +3704,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if gestureState != .twoFingerScroll && gestureState != .pinching {
                 if distanceChange > GestureThresholds.pinchMinDistance {
                     gestureState = .pinching
+                    debugLog("Touch gesture: pinch began")
                 } else if midDelta > GestureThresholds.tapMaxDistance {
                     gestureState = .twoFingerScroll
+                    debugLog("Touch gesture: two-finger scroll began")
                 }
             }
 

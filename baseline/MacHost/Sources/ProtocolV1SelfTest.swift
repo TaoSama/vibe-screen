@@ -542,6 +542,11 @@ enum ProtocolV1SelfTest {
                   two.pointerCount == 2,
                   two.x1 == 0.1,
                   two.x2 == 0.8,
+                  aggregator.handle(pointerID: 3, x: 0.2, y: 0.3, phase: .changed) == nil,
+                  let atomicMove = aggregator.handle(pointerID: 7, x: 0.7, y: 0.8, phase: .changed),
+                  atomicMove.action == 1,
+                  atomicMove.x1 == 0.2,
+                  atomicMove.x2 == 0.7,
                   aggregator.handle(pointerID: 3, x: 0.2, y: 0.3, phase: .ended)?.action == 2,
                   aggregator.handle(pointerID: 7, x: 0.7, y: 0.8, phase: .changed)?.pointerCount == 1 else {
                 failures.append("two-pointer touch aggregation is incorrect")

@@ -150,9 +150,11 @@ struct ProtocolV1LegacyTouchDispatch: Equatable {
 
 struct ProtocolV1TouchAggregator {
     private var activePointers: [UInt32: (x: Float, y: Float)] = [:]
+    private var changedPointers: Set<UInt32> = []
 
     mutating func reset() {
         activePointers.removeAll(keepingCapacity: true)
+        changedPointers.removeAll(keepingCapacity: true)
     }
 
     mutating func handle(
@@ -161,18 +163,41 @@ struct ProtocolV1TouchAggregator {
         y: Float,
         phase: VSInputPhase
     ) -> ProtocolV1LegacyTouchDispatch? {
-        let action: Int
         switch phase {
-        case .began: action = 0
-        case .changed: action = 1
-        case .ended, .cancelled: action = 2
-        default: return nil
+        case .began:
+            guard activePointers[pointerID] != nil || activePointers.count < 2 else {
+                return nil
+            }
+            activePointers[pointerID] = (x, y)
+            changedPointers.removeAll(keepingCapacity: true)
+            return dispatch(action: 0)
+
+        case .changed:
+            guard activePointers[pointerID] != nil else { return nil }
+            activePointers[pointerID] = (x, y)
+            guard activePointers.count > 1 else { return dispatch(action: 1) }
+            changedPointers.insert(pointerID)
+            guard changedPointers.isSuperset(of: activePointers.keys) else { return nil }
+            changedPointers.removeAll(keepingCapacity: true)
+            return dispatch(action: 1)
+
+        case .ended, .cancelled:
+            guard activePointers[pointerID] != nil else { return nil }
+            activePointers[pointerID] = (x, y)
+            let ended = dispatch(action: 2)
+            activePointers.removeValue(forKey: pointerID)
+            changedPointers.removeAll(keepingCapacity: true)
+            return ended
+
+        default:
+            return nil
         }
-        guard activePointers[pointerID] != nil || activePointers.count < 2 else { return nil }
-        activePointers[pointerID] = (x, y)
+    }
+
+    private func dispatch(action: Int) -> ProtocolV1LegacyTouchDispatch? {
         let ordered = activePointers.sorted { $0.key < $1.key }.map(\.value)
         guard let first = ordered.first else { return nil }
-        let dispatch = ProtocolV1LegacyTouchDispatch(
+        return ProtocolV1LegacyTouchDispatch(
             x1: first.x,
             y1: first.y,
             action: action,
@@ -180,9 +205,5 @@ struct ProtocolV1TouchAggregator {
             x2: ordered.count > 1 ? ordered[1].x : 0,
             y2: ordered.count > 1 ? ordered[1].y : 0
         )
-        if phase == .ended || phase == .cancelled {
-            activePointers.removeValue(forKey: pointerID)
-        }
-        return dispatch
     }
 }
