@@ -1,0 +1,4 @@
+resource 0x7f040002 bool/connection_panel_two_column
+  () false
+  (land) false
+  (w600dp-land) true
