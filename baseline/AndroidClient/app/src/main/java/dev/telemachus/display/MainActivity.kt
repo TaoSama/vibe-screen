@@ -1747,10 +1747,8 @@ class MainActivity : AppCompatActivity() {
         }
         popup.setOnMenuItemClickListener { item ->
             val option = actions.getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
-            mainDiag("capsule invokeHostAction id=${option.id}")
-            streamClient?.invokeHostAction(option.id)
             val label = HostActionMenuPolicy.menuLabel(option, moveDefault, returnDefault)
-            Toast.makeText(this, getString(R.string.host_action_sent, label), Toast.LENGTH_SHORT).show()
+            requestHostAction(option, label)
             true
         }
         // Freeze the control bar's auto-hide while the menu is up so the anchor
@@ -1760,6 +1758,35 @@ class MainActivity : AppCompatActivity() {
             revealControlBar()
         }
         popup.show()
+    }
+
+    private fun requestHostAction(option: HostActionOption, label: String) {
+        if (HostActionMenuPolicy.selectionMode(option) == HostActionSelectionMode.INVOKE) {
+            invokeHostActionIfAvailable(option.id, label)
+            return
+        }
+        showImmersiveDialog(
+            MaterialAlertDialogBuilder(this)
+                .setTitle(label)
+                .setMessage(R.string.host_action_confirm_message)
+                .setPositiveButton(R.string.host_action_confirm_action) { _, _ ->
+                    invokeHostActionIfAvailable(option.id, label)
+                }
+                .setNegativeButton(R.string.cancel, null),
+        )
+    }
+
+    private fun invokeHostActionIfAvailable(actionId: String, label: String) {
+        val actionIsCurrent =
+            HostActionMenuPolicy.isAvailable(
+                currentSessionBinding().capabilities.hostActions,
+                availableHostActions,
+            ) && availableHostActions.any { it.id == actionId }
+        val client = streamClient
+        if (!actionIsCurrent || client == null) return
+        mainDiag("capsule invokeHostAction id=$actionId")
+        client.invokeHostAction(actionId)
+        Toast.makeText(this, getString(R.string.host_action_sent, label), Toast.LENGTH_SHORT).show()
     }
 
     @SuppressLint("ClickableViewAccessibility", "InflateParams")

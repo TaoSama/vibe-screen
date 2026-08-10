@@ -64,6 +64,18 @@ class HostActionMenuPolicyTest {
     }
 
     @Test
+    fun `selection mode follows the host confirmation requirement`() {
+        assertEquals(
+            HostActionSelectionMode.INVOKE,
+            HostActionMenuPolicy.selectionMode(option("move-window")),
+        )
+        assertEquals(
+            HostActionSelectionMode.CONFIRM,
+            HostActionMenuPolicy.selectionMode(option("move-window", requiresConfirmation = true)),
+        )
+    }
+
+    @Test
     fun `availability check gates on the negotiated host-actions capability`() {
         val capabilities =
             ClientSessionCapabilities.LEGACY_TOUCH_ONLY.copy(hostActions = true)

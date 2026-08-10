@@ -82,6 +82,8 @@
     <string name="control_host_actions">Window actions</string>
     <string name="host_action_move_window">Move window here</string>
     <string name="host_action_return_windows">Return windows to Mac</string>
+    <string name="host_action_confirm_message">This action changes windows on your Mac.</string>
+    <string name="host_action_confirm_action">Continue</string>
     <!-- Toast shown while the host runs a requested window action; %1$s is the action name. -->
     <string name="host_action_sent">%1$s\u2026</string>
     <!-- Toast shown when the host accepts the window action. -->

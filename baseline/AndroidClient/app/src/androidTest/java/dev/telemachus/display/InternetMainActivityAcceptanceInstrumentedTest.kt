@@ -261,7 +261,7 @@ class InternetMainActivityAcceptanceInstrumentedTest {
 
             val request = AtomicReference<String>()
             onView(withHint(R.string.internet_pairing_acceptance_hint))
-                .inRoot(FocusedRootMatcher())
+                .inRoot(DialogTextRootMatcher(R.string.internet_pairing_complete_title))
                 .perform(CapturePairingRequestFromDialogAction(request))
             assertEquals("The pairing scanner result was not consumed", 1, monitor.hits)
             return InternetPairingRequest.parse(checkNotNull(request.get()))
@@ -273,11 +273,11 @@ class InternetMainActivityAcceptanceInstrumentedTest {
     private fun completePairing(acceptance: InternetPairingAcceptance) {
         acceptanceStage = "pairing_acceptance_input"
         onView(withHint(R.string.internet_pairing_acceptance_hint))
-            .inRoot(FocusedRootMatcher())
+            .inRoot(DialogTextRootMatcher(R.string.internet_pairing_complete_title))
             .perform(SetSensitiveTextAction(acceptance.encode()))
         acceptanceStage = "pairing_acceptance_submit"
         onView(withHint(R.string.internet_pairing_acceptance_hint))
-            .inRoot(FocusedRootMatcher())
+            .inRoot(DialogTextRootMatcher(R.string.internet_pairing_complete_title))
             .perform(ClickDialogPositiveAction())
         acceptanceStage = "pairing_acceptance_result"
         onView(withId(R.id.internetRevokeButton)).check(matches(isEnabled()))
@@ -341,14 +341,6 @@ class InternetMainActivityAcceptanceInstrumentedTest {
         )
         assertTrue("Local revoke retained lease secrets", store.load(profileSecretSlot(offer, lease)) == null)
     }
-}
-
-private class FocusedRootMatcher : TypeSafeMatcher<Root>() {
-    override fun describeTo(description: Description) {
-        description.appendText("the focused Android window")
-    }
-
-    override fun matchesSafely(root: Root): Boolean = root.decorView.hasWindowFocus()
 }
 
 private class DialogTextRootMatcher(

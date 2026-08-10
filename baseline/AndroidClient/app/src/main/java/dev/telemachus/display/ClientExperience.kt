@@ -293,6 +293,11 @@ data class HostActionOption(
     val requiresConfirmation: Boolean,
 )
 
+enum class HostActionSelectionMode {
+    INVOKE,
+    CONFIRM,
+}
+
 /**
  * Pure, testable logic for the host-action control shown in the control bar.
  * The control is a single compact icon button that opens a dropdown of window
@@ -306,6 +311,9 @@ internal object HostActionMenuPolicy {
         hostActions: Boolean,
         actions: List<HostActionOption>,
     ): Boolean = hostActions && actions.isNotEmpty()
+
+    fun selectionMode(option: HostActionOption): HostActionSelectionMode =
+        if (option.requiresConfirmation) HostActionSelectionMode.CONFIRM else HostActionSelectionMode.INVOKE
 
     /**
      * Menu label for an action. Prefers the host's localized name and falls
