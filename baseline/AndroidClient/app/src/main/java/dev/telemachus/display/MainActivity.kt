@@ -2333,6 +2333,9 @@ class MainActivity : AppCompatActivity() {
                     availableHeight,
                 )
             win.setLayout(dialogWidth, dialogHeight)
+            dialog.findViewById<View>(R.id.settingsContent)?.let(
+                SettingsDialogLayoutApplier::applyAfterNextLayout,
+            )
         }
     }
 

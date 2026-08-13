@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- The dialog window already owns the outer safe-area margin. Keep the
+         content padding compact enough for narrow phones. -->
+    <dimen name="settings_content_padding">24dp</dimen>
+
     <!-- Tap-to-reveal control bar geometry. Compact and centered, with
          icon buttons held at the 48dp accessibility minimum so the
          settings/disconnect targets are comfortable and hard to mis-tap. -->
