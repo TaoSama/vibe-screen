@@ -101,7 +101,7 @@ private struct StreamSurface: View {
             )
             .overlay(alignment: .top) {
                 if model.displayBindings.count > 1 {
-                    Picker("显示器", selection: $model.selectedStreamID) {
+                    Picker("显示器", selection: displaySelection) {
                         ForEach(model.displayBindings, id: \.streamID) { binding in
                             Text(binding.displayID).tag(Optional(binding.streamID))
                         }
@@ -144,6 +144,15 @@ private struct StreamSurface: View {
             .accessibilityLabel("Mac 显示画面")
     }
 
+    private var displaySelection: Binding<UInt64?> {
+        Binding(
+            get: { model.selectedStreamID },
+            set: { streamID in
+                if let streamID { model.selectDisplay(streamID: streamID) }
+            }
+        )
+    }
+
     private func usbHIDUsage(for key: KeyEquivalent) -> UInt32? {
         switch key {
         case .return: 0x28
@@ -165,12 +174,12 @@ private struct StreamSurface: View {
     }
 
     private func modifierMask(for modifiers: EventModifiers) -> UInt32 {
-        var mask: UInt32 = 0
-        if modifiers.contains(.control) { mask |= 1 << 0 }
-        if modifiers.contains(.shift) { mask |= 1 << 1 }
-        if modifiers.contains(.option) { mask |= 1 << 2 }
-        if modifiers.contains(.command) { mask |= 1 << 3 }
-        return mask
+        USBHIDModifierMapper.mask(
+            shift: modifiers.contains(.shift),
+            control: modifiers.contains(.control),
+            option: modifiers.contains(.option),
+            command: modifiers.contains(.command)
+        )
     }
 }
 

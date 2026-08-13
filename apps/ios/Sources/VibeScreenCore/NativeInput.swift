@@ -58,3 +58,19 @@ public enum USBHIDKeyboardMapper {
         }
     }
 }
+
+public enum USBHIDModifierMapper {
+    public static func mask(
+        shift: Bool,
+        control: Bool,
+        option: Bool,
+        command: Bool
+    ) -> UInt32 {
+        var mask: UInt32 = 0
+        if shift { mask |= 1 << 0 }
+        if control { mask |= 1 << 1 }
+        if option { mask |= 1 << 2 }
+        if command { mask |= 1 << 3 }
+        return mask
+    }
+}

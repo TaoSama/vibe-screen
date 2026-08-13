@@ -50,7 +50,10 @@ final class StreamViewModel: ObservableObject {
         },
         onFailure: { [weak self] failure in
             guard let self, self.sessionOwner == failure.owner else { return }
-            self.terminateSession(message: failure.error.localizedDescription)
+            self.terminateSession(
+                message: failure.error.localizedDescription,
+                failure: .transientTransport
+            )
         }
     )
     let audioPlayback = AudioPlaybackController()
@@ -68,6 +71,7 @@ final class StreamViewModel: ObservableObject {
     var state = SessionState()
     var nextInputID: UInt64 = 1
     var touchActive = false
+    var lastTouchLocation = CGPoint.zero
     var pointerHoverActive = false
     var lastPointerLocation = CGPoint.zero
     var pressedKeyboardUsages: Set<UInt32> = []
@@ -164,7 +168,11 @@ final class StreamViewModel: ObservableObject {
         } catch {
             guard sessionOwner == newSessionOwner,
                   reconnectCoordinator.accepts(generation: generation) else { return }
-            scheduleReconnect(message: error.localizedDescription, generation: generation)
+            terminateSession(
+                message: error.localizedDescription,
+                failure: reconnectFailure(for: error),
+                generation: generation
+            )
         }
         if sessionOwner == newSessionOwner { isConnecting = false }
     }
@@ -236,6 +244,7 @@ final class StreamViewModel: ObservableObject {
         pixelBuffer = nil
         nextInputID = 1
         touchActive = false
+        lastTouchLocation = .zero
         pointerHoverActive = false
         lastPointerLocation = .zero
         pressedKeyboardUsages.removeAll()
@@ -243,10 +252,14 @@ final class StreamViewModel: ObservableObject {
         isConnecting = false
     }
 
-    func scheduleReconnect(message: String, generation: UInt64? = nil) {
+    func terminateSession(
+        message: String,
+        failure: ReconnectFailure,
+        generation: UInt64? = nil
+    ) {
         guard let pairing = activePairing,
               let generation = generation ?? connectionGeneration,
-              let schedule = reconnectCoordinator.schedule(generation: generation) else {
+              let schedule = reconnectCoordinator.schedule(generation: generation, failure: failure) else {
             state.fail(message)
             errorMessage = message
             endSession(disconnectTransport: true, resetState: false)
@@ -271,6 +284,11 @@ final class StreamViewModel: ObservableObject {
         }
     }
 
+    private func reconnectFailure(for error: Error) -> ReconnectFailure {
+        if error is TCPTransportError { return .transientTransport }
+        return .permanent
+    }
+
     func stopAutomaticReconnect(clearPairing: Bool) {
         reconnectCoordinator.stop()
         reconnectTask?.cancel()
@@ -279,11 +297,16 @@ final class StreamViewModel: ObservableObject {
     }
 
     func selectDisplay(streamID: UInt64) {
-        guard displayBindings.contains(where: { $0.streamID == streamID }) else { return }
-        releaseKeyboardInput()
+        guard streamID != selectedStreamID,
+              displayBindings.contains(where: { $0.streamID == streamID }) else { return }
+        terminateActiveInputBeforeDisplayChange()
         selectedStreamID = streamID
-        touchActive = false
-        pointerHoverActive = false
+    }
+
+    func terminateActiveInputBeforeDisplayChange() {
+        releaseKeyboardInput()
+        cancelTouchInput()
+        _ = sendPointerHover(location: nil, size: viewportSize)
     }
 
     var keyboardInputAvailable: Bool {
@@ -310,6 +333,7 @@ final class StreamViewModel: ObservableObject {
         let inputID = nextInputID
         nextInputID += 1
         touchActive = !ended
+        lastTouchLocation = location
         sendInBackground { factory in
             factory.touch(
                 inputID: inputID,
@@ -318,6 +342,29 @@ final class StreamViewModel: ObservableObject {
                 x: location.x / size.width,
                 y: location.y / size.height,
                 pressure: ended ? 0 : 1,
+                sessionID: self.state.sessionID,
+                sessionEpoch: self.state.sessionEpoch,
+                target: target
+            )
+        }
+    }
+
+    private func cancelTouchInput() {
+        guard touchActive, isStreaming, selectedDecoderIsReady else { return }
+        let inputID = takeNextInputID()
+        let target = selectedInputTarget()
+        let location = lastTouchLocation
+        let size = viewportSize
+        guard size.width > 0, size.height > 0 else { return }
+        touchActive = false
+        sendInBackground { factory in
+            factory.touch(
+                inputID: inputID,
+                pointerID: 0,
+                phase: .cancelled,
+                x: location.x / size.width,
+                y: location.y / size.height,
+                pressure: 0,
                 sessionID: self.state.sessionID,
                 sessionEpoch: self.state.sessionEpoch,
                 target: target
@@ -540,7 +587,7 @@ final class StreamViewModel: ObservableObject {
             case .switchDisplay:
                 guard !displayBindings.isEmpty else { return }
                 let current = displayBindings.firstIndex { $0.streamID == selectedStreamID } ?? -1
-                selectedStreamID = displayBindings[(current + 1) % displayBindings.count].streamID
+                selectDisplay(streamID: displayBindings[(current + 1) % displayBindings.count].streamID)
             case let .invokeHostAction(identifier):
                 invokeHostAction(identifier)
             case .showKeyboard:

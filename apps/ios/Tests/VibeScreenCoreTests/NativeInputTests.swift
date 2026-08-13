@@ -37,6 +37,14 @@ final class NativeInputTests: XCTestCase {
         XCTAssertNil(USBHIDKeyboardMapper.usage(for: "你"))
     }
 
+    func testModifierMapperUsesWireBitOrder() {
+        XCTAssertEqual(USBHIDModifierMapper.mask(shift: true, control: false, option: false, command: false), 1)
+        XCTAssertEqual(USBHIDModifierMapper.mask(shift: false, control: true, option: false, command: false), 2)
+        XCTAssertEqual(USBHIDModifierMapper.mask(shift: false, control: false, option: true, command: false), 4)
+        XCTAssertEqual(USBHIDModifierMapper.mask(shift: false, control: false, option: false, command: true), 8)
+        XCTAssertEqual(USBHIDModifierMapper.mask(shift: true, control: true, option: true, command: true), 15)
+    }
+
     func testNativeInputEnvelopesCarryTargetAndSession() {
         var target = VSInputTarget()
         target.displayID = "display-1"

@@ -195,16 +195,17 @@ currently no key migration step.
 
 - iPhone Simulator UI smoke and an unsigned iPhoneOS archive pass in CI;
   signing, installation, and device execution remain separate evidence gates;
-- automatic reconnect uses bounded backoff and generation checks; there is no
-  separate retry-management UI yet;
+- transient transport and heartbeat failures retry up to five times with bounded
+  backoff and generation checks; authentication, protocol, validation, and
+  display-rejection failures stop immediately, while a new manual connection
+  starts a fresh generation. There is no separate retry-management UI yet;
 - one host connection can route up to four negotiated display streams; actual
   multi-client admission and virtual-display allocation remain host work;
 - touch, hardware-keyboard, and pointer-hover product paths are capability-gated
   and target the selected stream. Physical keyboard/pointer behavior still needs
   iPhone/iPad evidence; pointer buttons continue to use the existing touch path;
-- transient transport and heartbeat failures automatically reconnect with bounded
-  backoff while retaining the pairing token only in memory; manual disconnect and
-  host notices that disallow resume invalidate pending reconnect generations;
+- reconnect retains the pairing token only in memory; manual disconnect and host
+  notices that disallow resume invalidate pending reconnect generations;
 - stylus, extended stylus, and controller are not advertised: generated protocol
   bindings alone do not constitute an iOS capture path;
 - PCM S16LE playback, explicit text clipboard, bounded file transfer, SDR
