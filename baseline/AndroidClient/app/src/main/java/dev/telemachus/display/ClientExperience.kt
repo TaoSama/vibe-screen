@@ -2,6 +2,15 @@ package dev.telemachus.display
 
 import dev.vibescreen.protocol.v1.VideoQualityPreset
 
+internal object ControlBarAccessibilityPolicy {
+    fun shouldAutoHide(touchExplorationEnabled: Boolean): Boolean = !touchExplorationEnabled
+
+    fun shouldExposeRevealAction(
+        connected: Boolean,
+        controlBarVisible: Boolean,
+    ): Boolean = connected && !controlBarVisible
+}
+
 /** Client-local viewport choices that do not require a wire-protocol change. */
 enum class VideoScaleMode {
     FIT,
