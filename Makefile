@@ -70,10 +70,10 @@ baseline-macos-app:
 	python3 scripts/package_macos.py
 
 baseline-android-test:
-	cd baseline/AndroidClient && ./gradlew testDebugUnitTest
+	cd baseline/AndroidClient && ./gradlew :transport:check testDebugUnitTest
 
 baseline-android-check:
-	cd baseline/AndroidClient && ./gradlew testDebugUnitTest lintDebug assembleDebug auditReleaseDependencies
+	cd baseline/AndroidClient && ./gradlew :transport:check testDebugUnitTest lintDebug assembleDebug auditReleaseDependencies
 
 baseline-android-apk:
 	cd baseline/AndroidClient && ./gradlew assembleDebug

@@ -64,7 +64,7 @@ revocation and soak remain gates, so this is not yet a shipped Internet feature.
 From this directory:
 
 ```bash
-./gradlew clean testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+./gradlew clean :transport:check testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
 ```
 
 The debug APK is written to
@@ -169,7 +169,7 @@ export TELEMACHUS_KEYSTORE_FILE=/absolute/path/to/release.jks
 export TELEMACHUS_KEYSTORE_PASSWORD='...'
 export TELEMACHUS_KEY_ALIAS='...'
 export TELEMACHUS_KEY_PASSWORD='...'
-./gradlew clean testDebugUnitTest lintDebug assembleRelease bundleRelease
+./gradlew clean :transport:check testDebugUnitTest lintDebug assembleRelease bundleRelease
 ```
 
 Signing secrets must remain outside the repository. Release tasks fail closed
