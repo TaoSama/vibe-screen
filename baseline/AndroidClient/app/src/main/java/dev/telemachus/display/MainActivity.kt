@@ -663,6 +663,7 @@ class MainActivity : AppCompatActivity() {
                 // Apply chrome margins before cloning the root constraints in
                 // reclampFloatingControls(), so the clone preserves them.
                 applySafeAreaToChrome()
+                applyControlBarLayout()
                 reclampFloatingControls()
                 activeSettingsDialog?.let(::resizeSettingsDialog)
             }
@@ -822,6 +823,7 @@ class MainActivity : AppCompatActivity() {
         enableFullscreenMode()
         ViewCompat.requestApplyInsets(binding.root)
         applyConnectionPanelLayout()
+        applyControlBarLayout()
         if (!isConnected && prefs.connectionMode == ConnectionMode.INTERNET) {
             binding.connectionTitle.setText(internetWaitingTitleResource())
         }
@@ -1628,19 +1630,19 @@ class MainActivity : AppCompatActivity() {
         if (selectable) {
             refreshDisplayCapsuleLabel()
         }
+        applyControlBarLayout()
     }
 
     /**
      * Reflect the active display on the capsule so touch users can see which
-     * Mac display they are on before opening the dropdown. The name is
-     * truncated to keep the compact, centered capsule from overflowing.
+     * Mac display they are on before opening the dropdown. The TextView owns
+     * visual ellipsizing while this full label remains available to TalkBack.
      */
     private fun refreshDisplayCapsuleLabel() {
         val label =
             DisplayCapsulePolicy.capsuleLabel(
                 availableDisplays,
                 selectedDisplayId,
-                DISPLAY_CAPSULE_MAX_NAME_LENGTH,
             )
         val shown = label.ifEmpty { getString(R.string.display_capsule_placeholder) }
         binding.controlDisplaysLabel.text = shown
@@ -1723,6 +1725,95 @@ class MainActivity : AppCompatActivity() {
             )
         binding.controlHostActionsButton.visibility = if (available) View.VISIBLE else View.GONE
         binding.controlHostActionsButton.isEnabled = available
+        applyControlBarLayout()
+    }
+
+    private fun applyControlBarLayout() {
+        val geometry = controlBarGeometry()
+        val availableWidthPx =
+            resources.displayMetrics.widthPixels - safeAreaInsets.left - safeAreaInsets.right
+        val mode =
+            ControlBarLayoutPolicy.mode(
+                availableWidthPx = availableWidthPx,
+                displaySelectorVisible = binding.displayCapsuleGroup.visibility == View.VISIBLE,
+                hostActionsVisible = binding.controlHostActionsButton.visibility == View.VISIBLE,
+                geometry = geometry,
+            )
+        val cardParams = binding.controlBar.layoutParams
+        val content = binding.controlBarContent
+        val selectorParams = binding.displayCapsuleGroup.layoutParams as LinearLayout.LayoutParams
+        val actionsParams = binding.controlActionsGroup.layoutParams as LinearLayout.LayoutParams
+        when (mode) {
+            ControlBarLayoutPolicy.Mode.COMPACT -> {
+                cardParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
+                content.orientation = LinearLayout.HORIZONTAL
+                selectorParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
+                selectorParams.weight = 0f
+                actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
+                binding.controlActionsGroup.orientation = LinearLayout.HORIZONTAL
+            }
+            ControlBarLayoutPolicy.Mode.INLINE -> {
+                cardParams.width = 0
+                content.orientation = LinearLayout.HORIZONTAL
+                selectorParams.width = 0
+                selectorParams.weight = 1f
+                actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
+                binding.controlActionsGroup.orientation = LinearLayout.HORIZONTAL
+            }
+            ControlBarLayoutPolicy.Mode.STACKED -> {
+                cardParams.width = 0
+                content.orientation = LinearLayout.VERTICAL
+                selectorParams.width = ViewGroup.LayoutParams.MATCH_PARENT
+                selectorParams.weight = 0f
+                actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
+                binding.controlActionsGroup.orientation = LinearLayout.HORIZONTAL
+            }
+            ControlBarLayoutPolicy.Mode.COLUMN -> {
+                cardParams.width = 0
+                content.orientation = LinearLayout.VERTICAL
+                selectorParams.width = ViewGroup.LayoutParams.MATCH_PARENT
+                selectorParams.weight = 0f
+                actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
+                binding.controlActionsGroup.orientation = LinearLayout.VERTICAL
+            }
+        }
+        binding.controlBar.layoutParams = cardParams
+        binding.displayCapsuleGroup.layoutParams = selectorParams
+        binding.controlActionsGroup.layoutParams = actionsParams
+        applyControlActionMargins(mode, geometry)
+    }
+
+    private fun controlBarGeometry(): ControlBarLayoutPolicy.Geometry =
+        ControlBarLayoutPolicy.Geometry(
+            horizontalContentPaddingPx =
+                resources.getDimensionPixelSize(R.dimen.control_bar_content_padding) * 2,
+            selectorMinimumWidthPx = resources.getDimensionPixelSize(R.dimen.display_capsule_min_width),
+            buttonSizePx = resources.getDimensionPixelSize(R.dimen.control_bar_button_size),
+            actionMarginPx = resources.getDimensionPixelSize(R.dimen.control_bar_button_margin),
+            disconnectSeparationPx =
+                resources.getDimensionPixelSize(R.dimen.control_bar_disconnect_margin_start),
+            columnActionSpacingPx =
+                resources.getDimensionPixelSize(R.dimen.control_bar_column_button_margin),
+        )
+
+    private fun applyControlActionMargins(
+        mode: ControlBarLayoutPolicy.Mode,
+        geometry: ControlBarLayoutPolicy.Geometry,
+    ) {
+        val hostActionsVisible = binding.controlHostActionsButton.visibility == View.VISIBLE
+        listOf(
+            binding.controlHostActionsButton to ControlBarLayoutPolicy.Action.HOST,
+            binding.controlSettingsButton to ControlBarLayoutPolicy.Action.SETTINGS,
+            binding.controlDisconnectButton to ControlBarLayoutPolicy.Action.DISCONNECT,
+        ).forEach { (view, action) ->
+            val margins = ControlBarLayoutPolicy.actionMargins(mode, action, hostActionsVisible, geometry)
+            val params = view.layoutParams as LinearLayout.LayoutParams
+            params.marginStart = margins.startPx
+            params.topMargin = margins.topPx
+            params.marginEnd = margins.endPx
+            params.bottomMargin = margins.bottomPx
+            view.layoutParams = params
+        }
     }
 
     /**
@@ -4265,10 +4356,6 @@ class MainActivity : AppCompatActivity() {
         private const val SETTINGS_CHROME_MARGIN_DP = 24f
         private const val SETTINGS_DIALOG_MAX_WIDTH_DP = 680f
         private const val SETTINGS_DIALOG_MAX_HEIGHT_RATIO = 0.85f
-        // Truncation budget for the display name shown on the capsule selector.
-        // Keeps long host display names from overflowing the compact capsule;
-        // the label view also ellipsizes as a visual backstop.
-        private const val DISPLAY_CAPSULE_MAX_NAME_LENGTH = 18
         private val DECODER_LIFECYCLE_EXECUTOR =
             Executors.newSingleThreadExecutor { runnable ->
                 Thread(runnable, "VibeDecoderLifecycle").apply { isDaemon = true }

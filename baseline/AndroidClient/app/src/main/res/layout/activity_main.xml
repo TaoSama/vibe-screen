@@ -155,7 +155,7 @@
     <!-- Tap-to-reveal control bar shown while streaming -->
     <androidx.cardview.widget.CardView
         android:id="@+id/controlBar"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginTop="@dimen/control_bar_margin_top"
         android:elevation="10dp"
@@ -168,18 +168,21 @@
         app:layout_constraintEnd_toEndOf="parent">
 
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:id="@+id/controlBarContent"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="center_vertical"
+            android:gravity="center"
             android:padding="@dimen/control_bar_content_padding">
 
             <!-- Display picker collapses entirely unless multi-display is
                  negotiated, so single-display sessions expose no dead tap area. -->
             <LinearLayout
                 android:id="@+id/displayCapsuleGroup"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minWidth="@dimen/display_capsule_min_width"
                 android:minHeight="@dimen/display_capsule_min_height"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
@@ -207,10 +210,10 @@
 
                 <TextView
                     android:id="@+id/controlDisplaysLabel"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_weight="1"
                     android:layout_marginStart="@dimen/display_capsule_label_margin"
-                    android:maxWidth="@dimen/display_capsule_label_max_width"
                     android:maxLines="1"
                     android:ellipsize="end"
                     android:duplicateParentState="true"
@@ -231,47 +234,55 @@
                     app:tint="#B8C0C6" />
             </LinearLayout>
 
-            <!-- Window actions collapse unless host actions are negotiated and the
-                 host advertises at least one action, so unsupported sessions
-                 expose no dead tap area. -->
-            <ImageButton
-                android:id="@+id/controlHostActionsButton"
-                android:layout_width="@dimen/control_bar_button_size"
-                android:layout_height="@dimen/control_bar_button_size"
-                android:layout_marginStart="@dimen/control_bar_button_margin"
-                android:layout_marginEnd="@dimen/control_bar_button_margin"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/control_host_actions"
-                android:src="@drawable/ic_window_actions"
-                android:scaleType="centerInside"
-                android:padding="12dp"
-                android:visibility="gone"
-                app:tint="#FFFFFF" />
+            <LinearLayout
+                android:id="@+id/controlActionsGroup"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center">
 
-            <ImageButton
-                android:id="@+id/controlSettingsButton"
-                android:layout_width="@dimen/control_bar_button_size"
-                android:layout_height="@dimen/control_bar_button_size"
-                android:layout_marginStart="@dimen/control_bar_button_margin"
-                android:layout_marginEnd="@dimen/control_bar_button_margin"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/control_settings"
-                android:src="@drawable/ic_settings"
-                android:scaleType="centerInside"
-                android:padding="12dp"
-                app:tint="#FFFFFF" />
+                <!-- Window actions collapse unless host actions are negotiated and the
+                     host advertises at least one action, so unsupported sessions
+                     expose no dead tap area. -->
+                <ImageButton
+                    android:id="@+id/controlHostActionsButton"
+                    android:layout_width="@dimen/control_bar_button_size"
+                    android:layout_height="@dimen/control_bar_button_size"
+                    android:layout_marginStart="@dimen/control_bar_button_margin"
+                    android:layout_marginEnd="@dimen/control_bar_button_margin"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/control_host_actions"
+                    android:src="@drawable/ic_window_actions"
+                    android:scaleType="centerInside"
+                    android:padding="12dp"
+                    android:visibility="gone"
+                    app:tint="#FFFFFF" />
 
-            <ImageButton
-                android:id="@+id/controlDisconnectButton"
-                android:layout_width="@dimen/control_bar_button_size"
-                android:layout_height="@dimen/control_bar_button_size"
-                android:layout_marginStart="@dimen/control_bar_disconnect_margin_start"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/control_disconnect"
-                android:src="@drawable/ic_disconnect"
-                android:scaleType="centerInside"
-                android:padding="12dp"
-                app:tint="#FF6B6B" />
+                <ImageButton
+                    android:id="@+id/controlSettingsButton"
+                    android:layout_width="@dimen/control_bar_button_size"
+                    android:layout_height="@dimen/control_bar_button_size"
+                    android:layout_marginStart="@dimen/control_bar_button_margin"
+                    android:layout_marginEnd="@dimen/control_bar_button_margin"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/control_settings"
+                    android:src="@drawable/ic_settings"
+                    android:scaleType="centerInside"
+                    android:padding="12dp"
+                    app:tint="#FFFFFF" />
+
+                <ImageButton
+                    android:id="@+id/controlDisconnectButton"
+                    android:layout_width="@dimen/control_bar_button_size"
+                    android:layout_height="@dimen/control_bar_button_size"
+                    android:layout_marginStart="@dimen/control_bar_disconnect_margin_start"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/control_disconnect"
+                    android:src="@drawable/ic_disconnect"
+                    android:scaleType="centerInside"
+                    android:padding="12dp"
+                    app:tint="#FF6B6B" />
+            </LinearLayout>
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 

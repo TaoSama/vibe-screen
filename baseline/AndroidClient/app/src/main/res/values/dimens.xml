@@ -4,12 +4,16 @@
          icon buttons held at the 48dp accessibility minimum so the
          settings/disconnect targets are comfortable and hard to mis-tap. -->
     <dimen name="control_bar_margin_top">20dp</dimen>
-    <dimen name="control_bar_max_width">320dp</dimen>
+    <!-- Leave an 8dp gutter on a 360dp-wide phone while preserving every
+         negotiated action's 48dp touch target. The optional display label is
+         the only content allowed to truncate. -->
+    <dimen name="control_bar_max_width">352dp</dimen>
     <dimen name="control_bar_corner_radius">18dp</dimen>
     <dimen name="control_bar_content_padding">6dp</dimen>
     <dimen name="control_bar_button_size">48dp</dimen>
     <dimen name="control_bar_button_icon_size">24dp</dimen>
     <dimen name="control_bar_button_margin">4dp</dimen>
+    <dimen name="control_bar_column_button_margin">8dp</dimen>
     <!-- Extra separation before the destructive Disconnect button so it is
          not adjacent to the settings/display controls. -->
     <dimen name="control_bar_disconnect_margin_start">12dp</dimen>
@@ -19,11 +23,11 @@
          so touch users read it as "tap to switch display" without inflating
          the resting control bar. -->
     <dimen name="display_capsule_min_height">48dp</dimen>
+    <dimen name="display_capsule_min_width">88dp</dimen>
     <dimen name="display_capsule_horizontal_padding">8dp</dimen>
     <dimen name="display_capsule_icon_size">20dp</dimen>
     <dimen name="display_capsule_chevron_size">18dp</dimen>
     <dimen name="display_capsule_label_margin">6dp</dimen>
-    <dimen name="display_capsule_label_max_width">128dp</dimen>
     <dimen name="display_capsule_corner_radius">12dp</dimen>
 
     <!-- Gap between the header and actions columns when the connection panel
