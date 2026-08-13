@@ -188,7 +188,7 @@ struct PermissionOnboardingView: View {
             permissionExplanation(
                 rows: [
                     ("display", "Required for mirroring and extended display"),
-                    ("speaker.slash.fill", "System audio is not captured"),
+                    ("speaker.wave.2.fill", "System audio can stream to supported clients"),
                     ("lock.shield.fill", "Video stays on your USB or local connection")
                 ]
             )
