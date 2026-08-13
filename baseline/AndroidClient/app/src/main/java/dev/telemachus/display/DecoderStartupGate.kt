@@ -6,17 +6,36 @@ internal sealed interface DecoderStartupCommitResult {
     data object NotCommitted : DecoderStartupCommitResult
 
     data class Failed(
-        val reason: String,
-    ) : DecoderStartupCommitResult
+        val failure: DecoderFailure,
+    ) : DecoderStartupCommitResult {
+        val reason: String
+            get() = failure.reason
+    }
 }
+
+enum class DecoderFailureKind {
+    STRUCTURAL_TARGET_UNSUPPORTED,
+    SESSION_RUNTIME_FAILURE,
+}
+
+internal const val STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON = "hevc_target_unsupported"
+
+data class DecoderFailure(
+    val kind: DecoderFailureKind,
+    val reason: String,
+)
+
+internal class DecoderInitializationException(
+    val failure: DecoderFailure,
+) : UnsupportedOperationException(failure.reason)
 
 internal class DecoderStartupGate(
     private val onKeyframeRequired: (force: Boolean, reason: String) -> Unit,
-    private val onCodecFallbackRequired: (reason: String) -> Unit,
+    private val onCodecFailure: (failure: DecoderFailure) -> Unit,
 ) {
     private val lock = Any()
     private var state = State.STARTING
-    private var fatalReason: String? = null
+    private var fatalFailure: DecoderFailure? = null
     private val pendingEvents = ArrayDeque<Event>()
 
     fun start(startCodec: () -> Unit) {
@@ -31,16 +50,16 @@ internal class DecoderStartupGate(
     }
 
     fun reportFatal(
-        reason: String,
+        failure: DecoderFailure,
         keyframeReason: String,
     ) {
-        val events = listOf(Event.Keyframe(force = true, reason = keyframeReason), Event.Fallback(reason))
+        val events = listOf(Event.Keyframe(force = true, reason = keyframeReason), Event.Failure(failure))
         val dispatchNow =
             synchronized(lock) {
-                if (state == State.DISCARDED || fatalReason != null) {
+                if (state == State.DISCARDED || fatalFailure != null) {
                     false
                 } else {
-                    fatalReason = reason
+                    fatalFailure = failure
                     if (state == State.STARTING) pendingEvents.addAll(events)
                     state != State.STARTING
                 }
@@ -52,7 +71,7 @@ internal class DecoderStartupGate(
         val resolution =
             synchronized(lock) {
                 check(state == State.STARTING) { "Decoder startup already resolved" }
-                val failure = fatalReason
+                val failure = fatalFailure
                 when {
                     failure != null -> {
                         state = State.FAILED
@@ -102,7 +121,7 @@ internal class DecoderStartupGate(
     private fun dispatch(event: Event) {
         when (event) {
             is Event.Keyframe -> onKeyframeRequired(event.force, event.reason)
-            is Event.Fallback -> onCodecFallbackRequired(event.reason)
+            is Event.Failure -> onCodecFailure(event.failure)
         }
     }
 
@@ -119,8 +138,8 @@ internal class DecoderStartupGate(
             val reason: String,
         ) : Event
 
-        data class Fallback(
-            val reason: String,
+        data class Failure(
+            val failure: DecoderFailure,
         ) : Event
     }
 }

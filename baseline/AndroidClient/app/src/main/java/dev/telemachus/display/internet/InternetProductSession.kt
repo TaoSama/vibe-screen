@@ -1,5 +1,6 @@
 package dev.telemachus.display.internet
 
+import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
 import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFactory
 import dev.telemachus.display.internet.security.InternetPairingIdentity
 import dev.telemachus.display.internet.security.SecurityTranscript
@@ -819,6 +820,13 @@ class InternetProductSession internal constructor(
             }
             if (sendFailed) {
                 failIfOwned(owner, IllegalStateException("Required Protocol v1 control message could not be queued"))
+            } else if (!effectiveDecision.accepted &&
+                effectiveDecision.rejectionReason == STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
+            ) {
+                failIfOwned(
+                    owner,
+                    IllegalStateException("Decoder rejected the active HEVC target"),
+                )
             }
         }
     }

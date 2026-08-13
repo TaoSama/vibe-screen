@@ -1,6 +1,7 @@
 package dev.telemachus.display.internet
 
 import com.google.protobuf.ByteString
+import dev.telemachus.display.STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
 import dev.telemachus.display.internet.security.InternetPairingIdentity
 import dev.telemachus.display.internet.security.generateEphemeral
 import dev.telemachus.display.internet.security.pairingSha256
@@ -33,6 +34,50 @@ import java.util.concurrent.atomic.AtomicReference
 import java.security.SecureRandom
 
 class InternetProductSessionTest {
+    @Test
+    fun structuralHevcRejectionIsSentBeforeOwnerFailsAndCloses() {
+        val events = mutableListOf<String>()
+        val peer =
+            ProductFakePeerEngine(
+                sendControlHook = { payload ->
+                    val envelope = Envelope.parseFrom(payload)
+                    if (envelope.payloadCase == Envelope.PayloadCase.VIDEO_CONFIG_RESULT) {
+                        events += "rejection_sent"
+                    }
+                },
+            )
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks =
+            object : InternetProductSessionCallbacks {
+                override fun onStateChanged(state: InternetProductSessionState) {
+                    if (state == InternetProductSessionState.FAILED) events += "session_failed"
+                }
+
+                override fun onVideoConfiguration(
+                    configuration: ProductVideoConfiguration,
+                    effect: ProductVideoConfigurationEffect,
+                    completion: (ProductVideoDecision) -> Unit,
+                ) {
+                    completion(ProductVideoDecision.reject(STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON))
+                }
+            }
+        val session = session(peer, monitor, callbacks)
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        peer.receive(videoConfigurationEnvelope(3))
+
+        val result = Envelope.parseFrom(peer.control.last()).videoConfigResult
+        assertFalse(result.accepted)
+        assertEquals(STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON, result.rejectionReason)
+        assertEquals(listOf("rejection_sent", "session_failed"), events)
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals(1, peer.closeCalls)
+    }
+
     @Test
     fun hostWithoutInputCapabilitiesStillNegotiatesVideo() {
         val peer = ProductFakePeerEngine()
@@ -1728,6 +1773,7 @@ private class ProductFakeNetworkMonitor(
 private class ProductFakePeerEngine(
     private val closeFailure: Throwable? = null,
     private val startHook: () -> Unit = {},
+    private val sendControlHook: (ByteArray) -> Unit = {},
 ) : WebRtcPeerEngine {
     override val controlSemantics = DataChannelSemantics.RELIABLE_CONTROL
     override val mediaSemantics = DataChannelSemantics.LATEST_MEDIA
@@ -1741,7 +1787,11 @@ private class ProductFakePeerEngine(
         this.observer = observer
         startHook()
     }
-    override fun sendControl(payload: ByteArray): Boolean = control.add(payload)
+    override fun sendControl(payload: ByteArray): Boolean {
+        val accepted = control.add(payload)
+        if (accepted) sendControlHook(payload)
+        return accepted
+    }
     override fun sendMedia(frame: OutboundMediaFrame): Boolean = true
     override fun restartIce() { restartCalls++ }
     override fun applyVideoProfile(profile: VideoProfile) = Unit

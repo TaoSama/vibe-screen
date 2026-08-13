@@ -159,13 +159,14 @@ enum class StreamCodec {
 }
 
 /**
- * Records a process-local HEVC runtime failure. The next connection then uses
- * the existing explicit AVC-only wire offer instead of silently retrying HEVC.
+ * Records a process-local structural HEVC target incompatibility. The next
+ * connection uses the explicit AVC-only wire offer instead of silently changing
+ * codec inside the failing connection.
  */
 object CodecFallbackPolicy {
     @Volatile private var hevcFailedAtRuntime = false
 
-    fun recordRuntimeFailure(codec: StreamCodec) {
+    internal fun recordStructuralUnsupported(codec: StreamCodec) {
         if (codec == StreamCodec.HEVC) hevcFailedAtRuntime = true
     }
 
@@ -181,5 +182,20 @@ object CodecFallbackPolicy {
 
     internal fun resetForTest() {
         hevcFailedAtRuntime = false
+    }
+}
+
+internal object CodecFallbackCommitGate {
+    fun recordCurrentStructuralHevcFailure(
+        codec: StreamCodec,
+        failure: DecoderFailure,
+        isCurrentConfiguration: () -> Boolean,
+    ): Boolean {
+        if (!isCurrentConfiguration()) return false
+        if (codec != StreamCodec.HEVC ||
+            failure.kind != DecoderFailureKind.STRUCTURAL_TARGET_UNSUPPORTED
+        ) return false
+        CodecFallbackPolicy.recordStructuralUnsupported(StreamCodec.HEVC)
+        return true
     }
 }

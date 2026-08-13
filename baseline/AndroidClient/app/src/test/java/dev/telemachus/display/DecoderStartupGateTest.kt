@@ -14,7 +14,7 @@ class DecoderStartupGateTest {
         val events = mutableListOf<String>()
         val accepted = AtomicBoolean()
         val gate = gate(events)
-        val codec = FakeCodec { gate.reportFatal(FATAL_REASON, KEYFRAME_REASON) }
+        val codec = FakeCodec { gate.reportFatal(failure(), KEYFRAME_REASON) }
 
         gate.start(codec::start)
         val result = gate.commit {
@@ -22,7 +22,7 @@ class DecoderStartupGateTest {
             true
         }
 
-        assertEquals(DecoderStartupCommitResult.Failed(FATAL_REASON), result)
+        assertEquals(DecoderStartupCommitResult.Failed(failure()), result)
         assertFalse(accepted.get())
         assertEquals(listOf("keyframe:true:$KEYFRAME_REASON", "fallback:$FATAL_REASON"), events)
     }
@@ -36,7 +36,7 @@ class DecoderStartupGateTest {
         val codec =
             FakeCodec {
                 Thread {
-                    gate.reportFatal(FATAL_REASON, KEYFRAME_REASON)
+                    gate.reportFatal(failure(), KEYFRAME_REASON)
                     errorDelivered.countDown()
                 }.start()
             }
@@ -48,7 +48,7 @@ class DecoderStartupGateTest {
             true
         }
 
-        assertEquals(DecoderStartupCommitResult.Failed(FATAL_REASON), result)
+        assertEquals(DecoderStartupCommitResult.Failed(failure()), result)
         assertFalse(accepted.get())
         assertEquals(listOf("keyframe:true:$KEYFRAME_REASON", "fallback:$FATAL_REASON"), events)
     }
@@ -58,12 +58,31 @@ class DecoderStartupGateTest {
         val events = mutableListOf<String>()
         val gate = gate(events)
 
-        gate.reportFatal(FATAL_REASON, KEYFRAME_REASON)
-        gate.reportFatal("second_failure", "second_keyframe")
+        gate.reportFatal(failure(), KEYFRAME_REASON)
+        gate.reportFatal(
+            DecoderFailure(DecoderFailureKind.SESSION_RUNTIME_FAILURE, "second_failure"),
+            "second_keyframe",
+        )
         val result = gate.commit { true }
 
-        assertEquals(DecoderStartupCommitResult.Failed(FATAL_REASON), result)
+        assertEquals(DecoderStartupCommitResult.Failed(failure()), result)
         assertEquals(listOf("keyframe:true:$KEYFRAME_REASON", "fallback:$FATAL_REASON"), events)
+    }
+
+    @Test
+    fun precommitStructuralFailurePreservesTypedCauseForCurrentConfigGate() {
+        val events = mutableListOf<String>()
+        val gate = gate(events)
+        val structural =
+            DecoderFailure(
+                DecoderFailureKind.STRUCTURAL_TARGET_UNSUPPORTED,
+                "hevc_target_unsupported",
+            )
+
+        gate.reportFatal(structural, KEYFRAME_REASON)
+
+        assertEquals(DecoderStartupCommitResult.Failed(structural), gate.commit { true })
+        assertEquals(listOf("keyframe:true:$KEYFRAME_REASON", "fallback:${structural.reason}"), events)
     }
 
     @Test
@@ -80,29 +99,31 @@ class DecoderStartupGateTest {
         val oldGate =
             DecoderStartupGate(
                 onKeyframeRequired = { _, _ -> oldBinding.runIfActive { activeFailures++ } },
-                onCodecFallbackRequired = { oldBinding.runIfActive { activeFailures++ } },
+                onCodecFailure = { oldBinding.runIfActive { activeFailures++ } },
             )
         val newGate =
             DecoderStartupGate(
                 onKeyframeRequired = { _, _ -> newBinding.runIfActive { activeFailures++ } },
-                onCodecFallbackRequired = { newBinding.runIfActive { activeFailures++ } },
+                onCodecFailure = { newBinding.runIfActive { activeFailures++ } },
             )
 
-        oldGate.reportFatal(FATAL_REASON, KEYFRAME_REASON)
+        oldGate.reportFatal(failure(), KEYFRAME_REASON)
         activeDecoder = newDecoder
         assertEquals(DecoderStartupCommitResult.Committed, newGate.commit { true })
-        assertEquals(DecoderStartupCommitResult.Failed(FATAL_REASON), oldGate.commit { true })
+        assertEquals(DecoderStartupCommitResult.Failed(failure()), oldGate.commit { true })
         assertEquals(0, activeFailures)
 
-        newGate.reportFatal(FATAL_REASON, KEYFRAME_REASON)
+        newGate.reportFatal(failure(), KEYFRAME_REASON)
         assertEquals(2, activeFailures)
     }
 
     private fun gate(events: MutableList<String>) =
         DecoderStartupGate(
             onKeyframeRequired = { force, reason -> events += "keyframe:$force:$reason" },
-            onCodecFallbackRequired = { reason -> events += "fallback:$reason" },
+            onCodecFailure = { failure -> events += "fallback:${failure.reason}" },
         )
+
+    private fun failure() = DecoderFailure(DecoderFailureKind.SESSION_RUNTIME_FAILURE, FATAL_REASON)
 
     private class FakeCodec(
         private val startAction: () -> Unit,
