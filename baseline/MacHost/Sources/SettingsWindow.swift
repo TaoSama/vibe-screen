@@ -2377,7 +2377,11 @@ struct WirelessSection: View {
     @State private var nowTick: Date = Date()
 
     private var pairingEndpoint: WirelessPairingEndpoint {
-        WirelessPairingEndpoint(address: settings.listeningAddress, port: settings.port)
+        WirelessPairingEndpoint(
+            isRunning: settings.isRunning,
+            address: settings.listeningAddress,
+            port: settings.port
+        )
     }
 
     var body: some View {
@@ -2538,8 +2542,9 @@ struct WirelessSection: View {
     }
 
     private func refreshQR() {
-        guard pairingEndpoint.address != nil else {
+        guard pairingEndpoint.isAvailable else {
             qrImage = nil
+            settings.setIfChanged(nil, to: \.wirelessTokenError)
             return
         }
         let token: Data
