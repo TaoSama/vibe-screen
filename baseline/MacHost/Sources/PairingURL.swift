@@ -16,3 +16,18 @@ enum PairingURL {
             .replacingOccurrences(of: "=", with: "")
     }
 }
+
+struct WirelessPairingEndpoint: Equatable {
+    let address: String?
+    let port: UInt16
+
+    var statusText: String {
+        address.map { "LAN address: \($0):\(port)" }
+            ?? "No LAN address available"
+    }
+
+    func pairingURL(token: Data, name: String) -> String? {
+        guard let address else { return nil }
+        return PairingURL.build(host: address, port: port, token: token, name: name)
+    }
+}

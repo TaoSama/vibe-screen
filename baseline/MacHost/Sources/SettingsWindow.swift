@@ -2376,6 +2376,10 @@ struct WirelessSection: View {
     /// device is disconnected and we still want "5 minutes ago" to count up).
     @State private var nowTick: Date = Date()
 
+    private var pairingEndpoint: WirelessPairingEndpoint {
+        WirelessPairingEndpoint(address: settings.listeningAddress, port: settings.port)
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             HStack(alignment: .top, spacing: 8) {
@@ -2415,22 +2419,31 @@ struct WirelessSection: View {
                             .background(Color.white)
                             .cornerRadius(8)
                     } else {
-                        Text(
-                            settings.wirelessTokenError.map {
-                                "Could not access the pairing token: \($0)"
-                            } ?? "Connect this Mac to the tablet's trusted LAN to generate a QR code."
-                        )
-                            .font(.system(size: 11))
-                            .foregroundColor(
-                                settings.wirelessTokenError == nil ? .secondary : .red
+                        VStack(spacing: 6) {
+                            Text(
+                                settings.wirelessTokenError.map {
+                                    "Could not access the pairing token: \($0)"
+                                } ?? "Connect this Mac to the tablet's trusted LAN to generate a QR code."
                             )
-                            .multilineTextAlignment(.center)
+                                .font(.system(size: 11))
+                                .foregroundColor(
+                                    settings.wirelessTokenError == nil ? .secondary : .red
+                                )
+                                .multilineTextAlignment(.center)
+                            if settings.wirelessTokenError != nil {
+                                Button(action: refreshQR) {
+                                    Image(systemName: "arrow.clockwise")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Retry pairing token access")
+                            }
+                        }
                     }
                     Text("Scan this QR from Vibe Screen Android (Wireless tab)")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
-                    Text(LANAddressResolver.primaryIPv4().map { "Listening: \($0):\(settings.port)" } ?? "WiFi disconnected — no LAN address")
+                    Text(pairingEndpoint.statusText)
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(.secondary)
                 }
@@ -2505,7 +2518,7 @@ struct WirelessSection: View {
         // One-parameter onChange(of:perform:) works on macOS 13+. The
         // two-parameter form requires macOS 14 and would block Ventura.
         // Deprecation is a compile-time warning only on Xcode 15+ SDKs.
-        .onChange(of: settings.port) { _ in refreshQR() }
+        .onChange(of: pairingEndpoint) { _ in refreshQR() }
         .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { now in
             nowTick = now
             refreshPaired()
@@ -2525,21 +2538,24 @@ struct WirelessSection: View {
     }
 
     private func refreshQR() {
-        let token: Data
-        do {
-            token = try WirelessAuth.loadOrCreate()
-            settings.wirelessTokenError = nil
-        } catch {
-            settings.wirelessTokenError = error.localizedDescription
+        guard pairingEndpoint.address != nil else {
             qrImage = nil
             return
         }
-        guard let host = LANAddressResolver.primaryIPv4() else {
+        let token: Data
+        do {
+            token = try WirelessAuth.loadOrCreate()
+            settings.setIfChanged(nil, to: \.wirelessTokenError)
+        } catch {
+            settings.setIfChanged(error.localizedDescription, to: \.wirelessTokenError)
             qrImage = nil
             return
         }
         let name = Host.current().localizedName ?? "Mac"
-        let url = PairingURL.build(host: host, port: settings.port, token: token, name: name)
+        guard let url = pairingEndpoint.pairingURL(token: token, name: name) else {
+            qrImage = nil
+            return
+        }
         qrImage = QRRenderer.render(url: url, size: 180)
     }
 
