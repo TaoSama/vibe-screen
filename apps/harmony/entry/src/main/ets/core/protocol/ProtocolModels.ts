@@ -37,6 +37,29 @@ export interface ResourceLimits { maximumClients: number; maximumDisplays: numbe
 export interface VideoDecodeCapability { codec: Codec; maximumWidth: number; maximumHeight: number; maximumFramesPerSecond: number; bitDepths: number[]; }
 export interface HostHello { selectedProtocol: number; capabilities: Capability[]; codecs: Codec[]; }
 export interface SessionAccepted { sessionId: Uint8Array; sessionEpoch: bigint; heartbeatIntervalMs: number; negotiatedCapabilities: Capability[]; }
+export interface ResumeSessionResult { accepted: boolean; sessionEpoch: bigint; rejectionReason: string; }
+export enum SignatureAlgorithm { UNSPECIFIED = 0, ECDSA_P256_SHA256 = 1 }
+export enum KeyAgreementAlgorithm { UNSPECIFIED = 0, ECDH_P256 = 1 }
+export enum AeadAlgorithm { UNSPECIFIED = 0, AES_256_GCM = 1 }
+export interface DeviceIdentity {
+  deviceId: string; keyId: string; keyEpoch: bigint; signatureAlgorithm: SignatureAlgorithm; signingPublicKey: Uint8Array;
+}
+export interface PairingProof { challenge: Uint8Array; ephemeralPublicKey: Uint8Array; signature: Uint8Array; }
+export interface PairingOffer {
+  offerId: Uint8Array; oneTimeCredential: Uint8Array; expiresAtUnixSeconds: bigint; hostPublicKey: Uint8Array;
+  hostIdentity: DeviceIdentity; challenge: Uint8Array; ephemeralPublicKey: Uint8Array;
+  signatureAlgorithms: SignatureAlgorithm[]; keyAgreementAlgorithms: KeyAgreementAlgorithm[]; aeadAlgorithms: AeadAlgorithm[];
+}
+export interface PairingRequest {
+  offerId: Uint8Array; deviceId: string; deviceName: string; devicePublicKey: Uint8Array;
+  deviceIdentity: DeviceIdentity; proof: PairingProof; bootstrapMac: Uint8Array;
+}
+export interface PairingResult {
+  accepted: boolean; deviceId: string; deviceCredential: Uint8Array; rejectionReason: string;
+  hostProof: PairingProof; encryptedDeviceCredential: Uint8Array; credentialNonce: Uint8Array;
+  sessionKeyId: string; sessionKeyEpoch: bigint;
+}
+export interface DeviceRevoked { deviceId: string; reasonCode: string; }
 export interface DisplayDescriptor { displayId: string; name: string; width: number; height: number; scaleFactor: number; primary: boolean; }
 export interface ColorDescription {
   primaries: ColorPrimaries;

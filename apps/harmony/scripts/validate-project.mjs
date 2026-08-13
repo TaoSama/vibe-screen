@@ -22,8 +22,10 @@ const REQUIRED_FILES = [
   'entry/src/main/ets/core/session/HeartbeatMonitor.ts',
   'entry/src/main/ets/core/session/ProgressWatchdog.ts',
   'entry/src/main/ets/core/session/ProductSession.ts',
+  'entry/src/main/ets/core/security/PairingSecurity.ts',
   'entry/src/main/ets/core/transport/TransportCloseOwner.ts',
   'entry/src/main/ets/platform/HarmonySessionController.ets',
+  'entry/src/main/ets/platform/PairingStore.ets',
   'entry/src/main/ets/platform/HarmonyTransport.ets',
   'entry/src/main/ets/platform/HarmonyVideoDecoder.ets',
   'entry/src/main/resources/base/element/string.json', 'entry/src/main/resources/base/profile/main_pages.json',
@@ -544,6 +546,7 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'configureVideo', 'active', 'completeVideoConfiguration');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'startHeartbeat', 'active', 'heartbeatTimedOut');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'onTransportReady', 'this', 'armSessionWatchdog');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'onTransportLost', 'this.session', 'resumableSnapshot');
   check(methodHasDirectCall(controllerPath, 'HarmonySessionController', 'cleanupResources', 'runAllCleanup'),
     `${controllerPath}: HarmonySessionController.cleanupResources() must call runAllCleanup()`);
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'cleanupResources', 'this.transport', 'close');
@@ -588,6 +591,16 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   requireImport(sessionPath, './HeartbeatMonitor', 'HeartbeatMonitor');
   requireCallInMethod(sessionPath, 'ProductSession', 'onSessionAccepted', 'this.capabilityState', 'acceptNegotiated');
   requireCallInMethod(sessionPath, 'ProductSession', 'heartbeatTimedOut', 'this.heartbeatMonitor', 'timedOut');
+  requireCallInMethod(sessionPath, 'ProductSession', 'onResumeResult', 'this.decoder', 'resumeSessionResult');
+
+  const securityPath = 'entry/src/main/ets/core/security/PairingSecurity.ts';
+  requireCallInMethod(securityPath, 'PairingClient', 'begin', 'this.crypto', 'ephemeral');
+  requireCallInMethod(securityPath, 'PendingPairing', 'complete', 'this.crypto', 'verify');
+  requireCallInMethod(securityPath, 'CredentialLifecycle', 'install', 'this.store', 'save');
+  requireCallInMethod(securityPath, 'CredentialLifecycle', 'revoke', 'this.store', 'save');
+
+  const pairingStorePath = 'entry/src/main/ets/platform/PairingStore.ets';
+  requireCallInMethod(pairingStorePath, 'PairingStore', 'save', 'this', 'upsert');
   check(hasEnumMembers(sessionPath, 'ProductSessionState', ['CONFIGURING_VIDEO']),
     `${sessionPath}: ProductSessionState.CONFIGURING_VIDEO is required`);
 

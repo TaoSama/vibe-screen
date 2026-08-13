@@ -8,8 +8,11 @@ without a device: legacy-to-v1 upgrade, channel-aware TCP framing, host/session
 negotiation, display selection, video configuration, media epoch filtering,
 XComponent/AVCodec handoff, heartbeat, bounded reconnect, and ArkUI touch,
 keyboard, pointer, and stylus-pressure entry points. This is still a development
-preview. No DevEco SDK was available for this record, so ArkTS compilation, HAP
-output, platform API behavior, and device interoperability are not claimed.
+preview. The portable core also implements fail-closed ResumeSessionResult,
+single-use PairingOffer/Request/Result processing, and durable credential,
+control-replay, and revocation state. No DevEco SDK was available for this
+record, so ArkTS compilation, HAP output, platform API behavior, and device
+interoperability are not claimed.
 
 ## Requirements
 
@@ -70,15 +73,19 @@ checksum manifest.
    the address. The one-time credential in that link is never persisted.
 3. The client offers `0x0d`, requires `0x0d 0x01`, then negotiates the display
    and H.264/HEVC configuration before accepting media.
-4. Backgrounding closes the connection and decoder. Returning to the
-   foreground establishes a fresh bounded-backoff session; the app does not
-   claim to bypass HarmonyOS background limits.
+4. Backgrounding closes the connection and decoder. If a fully streaming
+   session negotiated `SESSION_RESUME`, foregrounding makes one generation-bound
+   resume attempt with continuous message IDs; otherwise it establishes a fresh
+   bounded-backoff session. The app does not claim to bypass HarmonyOS
+   background limits.
 
 This mode is authenticated neither by the imported link nor by the current
 Harmony controller and is not encrypted. Use it only on a trusted LAN. The
-secure PairingOffer/PairingRequest proof exchange and long-term device
-credential lifecycle remain a host-and-device integration gate; the UI does
-not present address import as completed secure pairing.
+portable security core validates PairingOffer/PairingRequest/PairingResult,
+consumes every offer once even on failure, and can persist either a verified
+credential or a revocation tombstone. The production Harmony cryptography
+provider, controller/UI exchange, record layer, and compatible Mac host remain
+integration gates; the UI does not present address import as secure pairing.
 
 ## Architecture
 
@@ -130,7 +137,10 @@ close owner may detach, close, and notify.
 
 No background-running permission is declared. The stable client identifier and
 trusted-LAN host record use HarmonyOS Asset Store. The address-import credential
-is held only while parsing and is not written to disk. See [PRIVACY.md](PRIVACY.md)
+is held only while parsing and is not written to disk. A distinct versioned
+Asset Store alias can hold a verified device credential, session-key metadata,
+the durable accepted-control high-water, or a credential-free revocation
+tombstone; address import never authorizes that record. See [PRIVACY.md](PRIVACY.md)
 for data handling and [UPGRADE.md](UPGRADE.md) for install/migration policy.
 
 ## Known gates
@@ -138,9 +148,10 @@ for data handling and [UPGRADE.md](UPGRADE.md) for install/migration policy.
 - DevEco clean sync, ArkTS/API checker, debug/release HAP, and signature proof;
 - confirmation of the commercial SDK AVCodecKit declarations and buffer APIs;
 - Asset Store CRUD, XComponent surface, and H.264/HEVC hardware decode on device;
-- secure pairing proof, QR camera import, credential issue/revoke, and replay tests;
+- HUKS-backed P-256/HMAC/HKDF/AES-GCM provider, secure-pairing controller/UI,
+  authenticated record layer, QR camera import, and Mac interoperability;
 - wheel/trackpad axis delivery and a complete physical-key USB HID map;
-- Protocol v1 resume-result flow (fresh reconnect is wired today);
+- Mac Host resume registry/first-message support and resume interoperability;
 - controller-specific input, stylus tilt/azimuth, audio, and Internet transport;
 - Mac interoperability and the complete MatePad Mini acceptance/soak matrix.
 

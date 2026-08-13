@@ -31,15 +31,25 @@ export function isSupportedVideoConfig(config: VideoConfig, streamId: bigint, co
 }
 
 export enum ProductSessionState {
-  IDLE = 'idle', AWAITING_HOST = 'awaiting_host', AWAITING_SESSION = 'awaiting_session',
+  IDLE = 'idle', AWAITING_RESUME = 'awaiting_resume', AWAITING_HOST = 'awaiting_host', AWAITING_SESSION = 'awaiting_session',
   SELECTING_DISPLAY = 'selecting_display', STARTING_DISPLAY = 'starting_display',
   AWAITING_VIDEO = 'awaiting_video', CONFIGURING_VIDEO = 'configuring_video', STREAMING = 'streaming', CLOSED = 'closed'
 }
 
 export interface VideoConfigurationToken { id: bigint; config: VideoConfig; correlationId: bigint; }
+export interface SessionResumeSnapshot {
+  sessionId: Uint8Array;
+  sessionEpoch: bigint;
+  lastReceivedMessageId: bigint;
+  nextOutboundMessageId: bigint;
+  heartbeatIntervalMs: number;
+  hostCapabilities: Capability[];
+  negotiatedCapabilities: Capability[];
+  hostCodecs: Codec[];
+}
 export type SessionControlAssignment =
   | { kind: 'heartbeat'; sequence: bigint }
-  | { kind: 'request'; request: 'clientHello' | 'listDisplays' | 'startDisplay' };
+  | { kind: 'request'; request: 'resume' | 'clientHello' | 'listDisplays' | 'startDisplay' };
 export type SessionSendCompletion =
   { kind: 'videoConfiguration'; token: VideoConfigurationToken; accepted: boolean };
 
@@ -71,6 +81,8 @@ export class ProductSession {
   private pendingVideo: VideoConfigurationToken | undefined;
   private videoResultPrepared: boolean = false;
   private clientHelloMessageId: bigint = 0n;
+  private resumeMessageId: bigint = 0n;
+  private resumeSnapshot: SessionResumeSnapshot | undefined;
   private listDisplaysMessageId: bigint = 0n;
   private startDisplayMessageId: bigint = 0n;
   private decoder: ProtocolDecoder = new ProtocolDecoder();
@@ -89,10 +101,33 @@ export class ProductSession {
   canSend(capability: Capability): boolean { return this.capabilityState.has(capability); }
   negotiatedCapabilities(): Capability[] { return this.capabilityState.values(); }
 
-  start(nowNs: bigint): SessionAction[] {
+  resumableSnapshot(nextOutboundMessageId: bigint): SessionResumeSnapshot | undefined {
+    if (this.current !== ProductSessionState.STREAMING || this.pendingVideo !== undefined || nextOutboundMessageId <= 0n ||
+      this.sessionEpoch <= 0n || !this.capabilityState.has(Capability.SESSION_RESUME) || this.heartbeatIntervalMs <= 0) return undefined;
+    return { sessionId: this.sessionId.slice(), sessionEpoch: this.sessionEpoch,
+      lastReceivedMessageId: this.lastInboundMessageId, nextOutboundMessageId, heartbeatIntervalMs: this.heartbeatIntervalMs,
+      hostCapabilities: this.capabilityState.hostValues(), negotiatedCapabilities: this.capabilityState.values(),
+      hostCodecs: [...this.hostCodecs] as Codec[] };
+  }
+
+  start(nowNs: bigint, resume?: SessionResumeSnapshot): SessionAction[] {
     if (this.current !== ProductSessionState.IDLE && this.current !== ProductSessionState.CLOSED) throw new Error('Session already started');
     this.resetRuntime();
+    if (resume !== undefined) {
+      this.validateResumeSnapshot(resume);
+      this.resumeSnapshot = { ...resume, sessionId: resume.sessionId.slice(), hostCapabilities: [...resume.hostCapabilities],
+        negotiatedCapabilities: [...resume.negotiatedCapabilities], hostCodecs: [...resume.hostCodecs] };
+      this.sessionId = resume.sessionId.slice(); this.sessionEpoch = resume.sessionEpoch;
+      this.lastInboundMessageId = resume.lastReceivedMessageId;
+      this.current = ProductSessionState.AWAITING_RESUME;
+      return [{ kind: 'send', intent: { kind: 'resume', previousEpoch: resume.sessionEpoch,
+        lastMessageId: resume.lastReceivedMessageId }, onAssigned: { kind: 'request', request: 'resume' } }];
+    }
     this.current = ProductSessionState.AWAITING_HOST;
+    return this.clientHelloAction();
+  }
+
+  private clientHelloAction(): SessionAction[] {
     const hello: ClientHello = {
       minimumProtocol: PROTOCOL_VERSION, maximumProtocol: PROTOCOL_VERSION, deviceId: this.deviceId,
       deviceName: this.deviceName, capabilities: this.capabilities, codecs: this.codecs, transports: [TransportKind.LAN],
@@ -108,9 +143,13 @@ export class ProductSession {
   receive(bytes: Uint8Array, nowNs: bigint): SessionAction[] {
     const envelope: DecodedEnvelope = this.decoder.envelope(bytes);
     this.validateEnvelope(envelope);
+    if (this.current === ProductSessionState.AWAITING_RESUME && envelope.payloadField !== 27) {
+      throw new Error('Only ResumeSessionResult is valid while resuming');
+    }
     this.lastInboundMessageId = envelope.messageId;
     if (envelope.payloadField === 21) return this.onHostHello(envelope);
     if (envelope.payloadField === 22) return this.onSessionAccepted(envelope, nowNs);
+    if (envelope.payloadField === 27) return this.onResumeResult(envelope);
     if (envelope.payloadField === 23) {
       if (this.current !== ProductSessionState.AWAITING_SESSION) throw new Error('Unexpected SessionRejected');
       this.requireCorrelation(envelope, this.clientHelloMessageId, false);
@@ -194,7 +233,8 @@ export class ProductSession {
       return;
     }
     if (messageId <= 0n) throw new Error('Request message id must be positive');
-    if (assignment.request === 'clientHello') this.clientHelloMessageId = messageId;
+    if (assignment.request === 'resume') this.resumeMessageId = messageId;
+    else if (assignment.request === 'clientHello') this.clientHelloMessageId = messageId;
     else if (assignment.request === 'listDisplays') this.listDisplaysMessageId = messageId;
     else this.startDisplayMessageId = messageId;
   }
@@ -256,6 +296,35 @@ export class ProductSession {
       { kind: 'send', intent: { kind: 'listDisplays' }, onAssigned: { kind: 'request', request: 'listDisplays' } }];
   }
 
+  private onResumeResult(envelope: DecodedEnvelope): SessionAction[] {
+    if (this.current !== ProductSessionState.AWAITING_RESUME || this.resumeSnapshot === undefined) {
+      throw new Error('Unexpected ResumeSessionResult');
+    }
+    this.requireCorrelation(envelope, this.resumeMessageId, false);
+    const snapshot: SessionResumeSnapshot = this.resumeSnapshot;
+    if (!this.equalBytes(envelope.sessionId, snapshot.sessionId)) throw new Error('Resume session identity mismatch');
+    const result = this.decoder.resumeSessionResult(envelope.payload);
+    if (!result.accepted) {
+      if (result.rejectionReason.length === 0 || envelope.sessionEpoch !== snapshot.sessionEpoch) {
+        throw new Error('Invalid rejected ResumeSessionResult');
+      }
+      this.sessionId = new Uint8Array(); this.sessionEpoch = 0n; this.resumeSnapshot = undefined;
+      this.capabilityState.reset(); this.hostCodecs.clear(); this.heartbeatMonitor.reset(); this.heartbeatIntervalMs = 0;
+      this.current = ProductSessionState.CLOSED;
+      return [{ kind: 'disconnect', reason: `resume_rejected:${result.rejectionReason}`, retryable: true }];
+    }
+    if (result.sessionEpoch <= snapshot.sessionEpoch || envelope.sessionEpoch !== result.sessionEpoch) {
+      throw new Error('Resume result did not advance the session epoch');
+    }
+    this.capabilityState.restore(snapshot.hostCapabilities, snapshot.negotiatedCapabilities);
+    this.hostCodecs = new Set(snapshot.hostCodecs); this.sessionId = snapshot.sessionId.slice();
+    this.sessionEpoch = result.sessionEpoch; this.heartbeatIntervalMs = snapshot.heartbeatIntervalMs;
+    this.heartbeatMonitor.configure(snapshot.heartbeatIntervalMs); this.resumeSnapshot = undefined;
+    this.current = ProductSessionState.SELECTING_DISPLAY;
+    return [{ kind: 'heartbeat', intervalMs: snapshot.heartbeatIntervalMs },
+      { kind: 'send', intent: { kind: 'listDisplays' }, onAssigned: { kind: 'request', request: 'listDisplays' } }];
+  }
+
   private onDisplays(envelope: DecodedEnvelope, nowNs: bigint): SessionAction[] {
     if (this.current !== ProductSessionState.SELECTING_DISPLAY) throw new Error('Unexpected display list');
     this.requireCorrelation(envelope, this.listDisplaysMessageId, false);
@@ -306,6 +375,12 @@ export class ProductSession {
 
   private validateEnvelope(envelope: DecodedEnvelope): void {
     if (envelope.protocolVersion !== PROTOCOL_VERSION || envelope.messageId <= this.lastInboundMessageId) throw new Error('Invalid envelope metadata');
+    if (this.current === ProductSessionState.AWAITING_RESUME) {
+      if (!this.equalBytes(envelope.sessionId, this.sessionId) || envelope.sessionEpoch < this.sessionEpoch) {
+        throw new Error('Resume envelope belongs to another session');
+      }
+      return;
+    }
     if (this.sessionEpoch > 0n && (!this.equalBytes(envelope.sessionId, this.sessionId) || envelope.sessionEpoch !== this.sessionEpoch)) {
       throw new Error('Envelope belongs to another session epoch');
     }
@@ -338,7 +413,18 @@ export class ProductSession {
     this.streamId = 0n; this.configEpoch = 0n; this.lastFrameId = 0n; this.displayId = ''; this.configuredCodec = Codec.UNSPECIFIED;
     this.heartbeatIntervalMs = 0; this.capabilityState.reset(); this.hostCodecs.clear(); this.heartbeatMonitor.reset();
     this.nextVideoTokenId = 1n; this.pendingVideo = undefined; this.videoResultPrepared = false;
-    this.clientHelloMessageId = 0n; this.listDisplaysMessageId = 0n; this.startDisplayMessageId = 0n;
+    this.resumeMessageId = 0n; this.resumeSnapshot = undefined; this.clientHelloMessageId = 0n;
+    this.listDisplaysMessageId = 0n; this.startDisplayMessageId = 0n;
+  }
+
+  private validateResumeSnapshot(snapshot: SessionResumeSnapshot): void {
+    if (snapshot.sessionId.length === 0 || snapshot.sessionEpoch <= 0n || snapshot.lastReceivedMessageId <= 0n ||
+      snapshot.nextOutboundMessageId <= 0n ||
+      snapshot.heartbeatIntervalMs < MIN_HEARTBEAT_MS || snapshot.heartbeatIntervalMs > MAX_HEARTBEAT_MS ||
+      !snapshot.negotiatedCapabilities.includes(Capability.SESSION_RESUME) ||
+      !snapshot.negotiatedCapabilities.includes(Capability.TOUCH) || snapshot.hostCodecs.length === 0) {
+      throw new Error('Invalid resume snapshot');
+    }
   }
 
   private equalBytes(left: Uint8Array, right: Uint8Array): boolean {
