@@ -507,7 +507,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] gamingBoost in
                 guard let self else { return }
                 self.refreshPendingReconfigurationIntent()
-                guard self.settings.isRunning, !self.isApplyingClientVideoPreferences else { return }
+                guard self.settings.isRunning,
+                      self.internetProductSession == nil,
+                      !self.isApplyingClientVideoPreferences else { return }
                 print("🎮 Gaming Boost \(gamingBoost ? "ENABLED" : "DISABLED")")
                 self.screenCapture?.updateEncoderSettings(
                     bitrateMbps: self.settings.effectiveBitrate,
@@ -524,6 +526,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self else { return }
                 self.refreshPendingReconfigurationIntent()
                 guard self.settings.isRunning,
+                      self.internetProductSession == nil,
                       !self.settings.gamingBoost,
                       !self.isApplyingClientVideoPreferences else { return }
                 print("⚙️ Settings updated: \(bitrate)Mbps, \(quality)")
@@ -544,10 +547,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard self.settings.isRunning else { return }
                 print("🔄 Rotation changed to \(rotation)°")
                 self.streamingServer?.updateRotation(rotation)
-                guard self.settings.internetStatus == .direct
-                    || self.settings.internetStatus == .relay else { return }
+                guard let internetProductSession = self.internetProductSession else { return }
                 do {
-                    try self.internetProductSession?.updateRotation(rotation)
+                    try internetProductSession.updateRotation(rotation)
                 } catch {
                     self.settings.internetStatus = .failed
                     self.settings.internetErrorMessage = error.localizedDescription
@@ -2595,7 +2597,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         session.onAdaptiveProfileRequested = {
-            [weak self, weak session] requestID, profile, baselineVideo in
+            [weak self, weak session] token, profile, baselineVideo in
             Task { @MainActor in
                 guard let self, let session,
                       self.serverLifecycle.ownsSession(sessionToken),
@@ -2603,7 +2605,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let capture = self.screenCapture,
                       let displayID = self.activeDisplayID else {
                     session.failAdaptiveProfile(
-                        requestID: requestID,
+                        token: token,
                         reason: "Adaptive video requires an active capture source."
                     )
                     return
@@ -2619,7 +2621,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     frameRate: plan.framesPerSecond
                 ) else {
                     session.failAdaptiveProfile(
-                        requestID: requestID,
+                        token: token,
                         reason: "The encoder rejected the adaptive media profile."
                     )
                     return
@@ -2637,7 +2639,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                           self.screenCapture === capture,
                           self.activeDisplayID == displayID else {
                         session.failAdaptiveProfile(
-                            requestID: requestID,
+                            token: token,
                             reason: "The adaptive media request became stale."
                         )
                         return
@@ -2652,13 +2654,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         configEpoch: baselineVideo.configEpoch,
                         rotationDegrees: baselineVideo.rotationDegrees
                     )
-                    _ = try session.completeAdaptiveProfile(
-                        requestID: requestID,
+                    let completed = try session.completeAdaptiveProfile(
+                        token: token,
                         appliedVideo: appliedVideo
                     )
+                    guard completed else {
+                        debugLog("Discarded stale adaptive video completion")
+                        await self.stopServer(preserveRecoveryState: true)
+                        return
+                    }
                 } catch {
                     session.failAdaptiveProfile(
-                        requestID: requestID,
+                        token: token,
                         reason: "Adaptive video reconfiguration failed: \(error.localizedDescription)"
                     )
                 }

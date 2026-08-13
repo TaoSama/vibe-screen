@@ -104,7 +104,8 @@ struct InternetProductVideoConfiguration: Equatable {
         width: Int,
         height: Int,
         framesPerSecond: Int,
-        bitrateKbps: Int
+        bitrateKbps: Int,
+        rotationDegrees: Int
     ) throws -> Self {
         guard configEpoch < UInt64.max else {
             throw InternetProductProtocolError.rejectedVideoConfiguration(
@@ -144,6 +145,11 @@ struct InternetAdaptiveVideoPlan: Equatable {
         framesPerSecond = max(1, profile.framesPerSecond)
         bitrateMbps = max(1, Int((profile.targetBitrateBps + 500_000) / 1_000_000))
     }
+}
+
+struct InternetAdaptiveRequestToken: Equatable {
+    let generation: UInt64
+    let requestID: UInt64
 }
 
 struct InternetProductProtocolCodec {
@@ -355,6 +361,10 @@ struct InternetProductProtocolCodec {
 
     mutating func updateRotation(_ rotationDegrees: Int) throws -> [Data] {
         video = try video.replacingRotation(rotationDegrees)
+        return [try displayChanged(), try videoConfiguration()]
+    }
+
+    private mutating func displayChanged() throws -> Data {
         var size = VSDimensions()
         size.width = UInt32(video.width)
         size.height = UInt32(video.height)
@@ -368,22 +378,27 @@ struct InternetProductProtocolCodec {
         changed.rotationDegrees = UInt32(video.rotationDegrees)
         var envelope = baseEnvelope()
         envelope.displayChanged = changed
-        return [try encode(envelope), try videoConfiguration()]
+        return try encode(envelope)
     }
 
     mutating func updateMediaProfile(
         width: Int,
         height: Int,
         framesPerSecond: Int,
-        bitrateKbps: Int
-    ) throws -> Data {
+        bitrateKbps: Int,
+        rotationDegrees: Int
+    ) throws -> [Data] {
+        let rotationChanged = rotationDegrees != video.rotationDegrees
         video = try video.replacingMediaProfile(
             width: width,
             height: height,
             framesPerSecond: framesPerSecond,
-            bitrateKbps: bitrateKbps
+            bitrateKbps: bitrateKbps,
+            rotationDegrees: rotationDegrees
         )
-        return try videoConfiguration()
+        return rotationChanged
+            ? [try displayChanged(), try videoConfiguration()]
+            : [try videoConfiguration()]
     }
 
     mutating func pong(sequence: UInt64, correlationID: UInt64) throws -> Data {

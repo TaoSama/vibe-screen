@@ -27,6 +27,35 @@ private final class WeakReference<Value: AnyObject>: @unchecked Sendable {
     }
 }
 
+struct CaptureFrameRates: Equatable {
+    private(set) var encoder: Int
+    private(set) var activePipeline: Int
+
+    init(_ frameRate: Int) {
+        let rate = max(1, frameRate)
+        encoder = rate
+        activePipeline = rate
+    }
+
+    mutating func recordEncoderUpdate(_ frameRate: Int) {
+        encoder = max(1, frameRate)
+    }
+
+    mutating func activate(_ frameRate: Int) -> Bool {
+        let rate = max(1, frameRate)
+        let changed = rate != activePipeline
+        encoder = rate
+        activePipeline = rate
+        return changed
+    }
+}
+
+enum EncoderReplacementGate {
+    static func accepts(candidateHasActiveCompressionSession: Bool) -> Bool {
+        candidateHasActiveCompressionSession
+    }
+}
+
 // MARK: - ScreenCapture
 
 class ScreenCapture {
@@ -95,7 +124,7 @@ class ScreenCapture {
     private var currentBitrateMbps: Int = 20
     private var currentQuality: String = "medium"
     private var currentGamingBoost: Bool = false
-    private var currentFrameRate: Int = 60
+    private var frameRates = CaptureFrameRates(60)
 
     // Encoding pipeline state (captured by frame handler closure)
     private var encodeQueue: DispatchQueue?
@@ -254,6 +283,38 @@ class ScreenCapture {
         await restartTask?.value
         restartTask = nil
 
+        let physicalSize = outputSize ?? Self.physicalSize(for: displayID)
+        let targetSize = codec == .hevc
+            ? physicalSize
+            : CodecLimits.clampForAvc(width: physicalSize.width, height: physicalSize.height)
+        let frameSink = currentFrameSink
+        let newEncoder = VideoEncoder(
+            width: targetSize.width,
+            height: targetSize.height,
+            codec: codec,
+            bitrateMbps: currentBitrateMbps,
+            quality: currentQuality,
+            gamingBoost: currentGamingBoost,
+            frameRate: frameRates.encoder
+        )
+        guard EncoderReplacementGate.accepts(
+            candidateHasActiveCompressionSession: newEncoder.hasActiveCompressionSession
+        ) else {
+            throw NSError(
+                domain: "ScreenCapture",
+                code: 13,
+                userInfo: [NSLocalizedDescriptionKey: "Replacement encoder creation failed."]
+            )
+        }
+        newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
+            frameSink?.sendFrame(
+                data,
+                timestamp: timestamp,
+                isKeyframe: isKeyframe,
+                sessionEpoch: sessionEpoch
+            )
+        }
+
         stopFrameMonitor()
         framePacingTimer?.cancel()
         framePacingTimer = nil
@@ -300,25 +361,6 @@ class ScreenCapture {
 
         // Rebuild the encoder at the new source dimensions and rewire it to the
         // same frame sink so a single session keeps receiving media.
-        let (width, height) = encodeSize(for: codec)
-        let frameSink = currentFrameSink
-        let newEncoder = VideoEncoder(
-            width: width,
-            height: height,
-            codec: codec,
-            bitrateMbps: currentBitrateMbps,
-            quality: currentQuality,
-            gamingBoost: currentGamingBoost,
-            frameRate: currentFrameRate
-        )
-        newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
-            frameSink?.sendFrame(
-                data,
-                timestamp: timestamp,
-                isKeyframe: isKeyframe,
-                sessionEpoch: sessionEpoch
-            )
-        }
         newEncoder.requestKeyframe()
         encoder = newEncoder
 
@@ -607,7 +649,7 @@ class ScreenCapture {
         currentBitrateMbps = bitrateMbps
         currentQuality = quality
         currentGamingBoost = gamingBoost
-        currentFrameRate = frameRate
+        frameRates = CaptureFrameRates(frameRate)
 
         let (width, height) = encodeSize(for: codec)
 
@@ -1191,7 +1233,7 @@ class ScreenCapture {
             currentBitrateMbps = bitrateMbps
             currentQuality = quality
             currentGamingBoost = gamingBoost
-            if let frameRate { currentFrameRate = frameRate }
+            if let frameRate { frameRates.recordEncoderUpdate(frameRate) }
         }
         return updated
     }
@@ -1206,8 +1248,7 @@ class ScreenCapture {
     /// framePacingTimer mutators.
     func updateActiveFrameRate(_ frameRate: Int) {
         let newRate = max(1, frameRate)
-        guard newRate != currentFrameRate else { return }
-        currentFrameRate = newRate
+        guard frameRates.activate(newRate) else { return }
         refreshRate = newRate
 
         // Rebuild the pacer on the main thread so framePacingTimer stays
@@ -1248,7 +1289,7 @@ class ScreenCapture {
     private func rescheduleFramePacerForCurrentRate(on queue: DispatchQueue) {
         framePacingTimer?.cancel()
         framePacingTimer = nil
-        let frameIntervalNs = max(1, 1_000_000_000 / max(currentFrameRate, 1))
+        let frameIntervalNs = max(1, 1_000_000_000 / frameRates.activePipeline)
         let pacingTimer = DispatchSource.makeTimerSource(queue: queue)
         pacingTimer.schedule(
             deadline: .now(),
@@ -1289,7 +1330,7 @@ class ScreenCapture {
 
         let (width, height) = encodeSize(for: newCodec)
         let frameSink = currentFrameSink
-        let newEncoder = VideoEncoder(width: width, height: height, codec: newCodec, bitrateMbps: currentBitrateMbps, quality: currentQuality, gamingBoost: currentGamingBoost, frameRate: currentFrameRate)
+        let newEncoder = VideoEncoder(width: width, height: height, codec: newCodec, bitrateMbps: currentBitrateMbps, quality: currentQuality, gamingBoost: currentGamingBoost, frameRate: frameRates.encoder)
         newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
             frameSink?.sendFrame(
                 data,
