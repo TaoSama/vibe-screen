@@ -2498,7 +2498,7 @@ class MainActivity : AppCompatActivity() {
      * support — surface that instead of a silent black screen.
      */
     private fun warnIfAvcOnlyWithoutNegotiation() {
-        if (!CodecCapabilities.hasHevcDecoder && streamClient?.codecNegotiated != true) {
+        if (CodecCapabilities.shouldAdvertiseAvcOnly && streamClient?.codecNegotiated != true) {
             mainDiag("AVC-only device but Mac did not negotiate codec — Mac app too old")
             runOnUiThread {
                 updateStatus("This device has no HEVC decoder. Update the Vibe Screen Mac app to enable H.264 support.")
@@ -2609,6 +2609,7 @@ class MainActivity : AppCompatActivity() {
             val decoder =
                 try {
                     createConfiguredDecoder(
+                        holder = holder,
                         surface = surface,
                         displayObj = displayObj,
                         width = width,
@@ -2617,6 +2618,9 @@ class MainActivity : AppCompatActivity() {
                         scaleMode = scaleMode,
                         ownerClient = ownerClient,
                         ownerGeneration = ownerGeneration,
+                        expectedConfigEpoch = expectedConfigEpoch,
+                        expectedConfigurationGeneration = expectedConfigurationGeneration,
+                        expectedSurfaceGeneration = expectedSurfaceGeneration,
                     )
                 } catch (e: Exception) {
                     runOnUiThread {
@@ -2627,6 +2631,20 @@ class MainActivity : AppCompatActivity() {
                             isConfigurationCurrent() &&
                             isCurrentSession(ownerClient, ownerGeneration)
                         ) {
+                            if (e is DecoderInitializationException) {
+                                CodecFallbackCommitGate.recordCurrentStructuralHevcFailure(
+                                    codec = mime.toStreamCodec(),
+                                    failure = e.failure,
+                                    isCurrentConfiguration = {
+                                        surface.isValid &&
+                                            surfaceGeneration.get() == expectedSurfaceGeneration &&
+                                            decoderConfigurationGeneration.get() == expectedConfigurationGeneration &&
+                                            encodedVideoConfigurationState.isCurrent(videoConfiguration) &&
+                                            isConfigurationCurrent() &&
+                                            isCurrentSession(ownerClient, ownerGeneration)
+                                    },
+                                )
+                            }
                             reportDecoderInitializationFailure(
                                 error = e,
                                 ownerClient = ownerClient,
@@ -2690,6 +2708,24 @@ class MainActivity : AppCompatActivity() {
                         return@runOnUiThread
                     }
                     is DecoderStartupCommitResult.Failed -> {
+                        CodecFallbackCommitGate.recordCurrentStructuralHevcFailure(
+                            codec = mime.toStreamCodec(),
+                            failure = startupResult.failure,
+                            isCurrentConfiguration = {
+                                surface.isValid &&
+                                    surfaceGeneration.get() == expectedSurfaceGeneration &&
+                                    decoderConfigurationGeneration.get() == expectedConfigurationGeneration &&
+                                    encodedVideoConfigurationState.isCurrent(videoConfiguration) &&
+                                    isConfigurationCurrent() &&
+                                    isCurrentSession(ownerClient, ownerGeneration)
+                            },
+                        )
+                        reportDecoderInitializationFailure(
+                            error = DecoderInitializationException(startupResult.failure),
+                            ownerClient = ownerClient,
+                            ownerGeneration = ownerGeneration,
+                            failSession = configurationCompletion == null,
+                        )
                         DECODER_LIFECYCLE_EXECUTOR.execute { decoder.release() }
                         failConfiguration(startupResult.reason)
                         return@runOnUiThread
@@ -2719,6 +2755,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createConfiguredDecoder(
+        holder: SurfaceHolder,
         surface: android.view.Surface,
         displayObj: android.view.Display?,
         width: Int,
@@ -2727,7 +2764,23 @@ class MainActivity : AppCompatActivity() {
         scaleMode: VideoScaleMode,
         ownerClient: StreamClient,
         ownerGeneration: Long,
+        expectedConfigEpoch: Long,
+        expectedConfigurationGeneration: Long,
+        expectedSurfaceGeneration: Long,
     ): VideoDecoder {
+        fun isCurrentDecoderCallback(
+            identity: VideoDecoder,
+            generation: Long,
+        ): Boolean =
+            isCurrentSession(ownerClient, generation) &&
+                videoDecoder === identity &&
+                activeDecoderConfigEpoch == expectedConfigEpoch &&
+                decoderConfigurationGeneration.get() == expectedConfigurationGeneration &&
+                encodedVideoConfigurationState.snapshot()?.configEpoch == expectedConfigEpoch &&
+                currentSurfaceHolder === holder &&
+                surface.isValid &&
+                surfaceGeneration.get() == expectedSurfaceGeneration
+
         val decoder =
             VideoDecoder(
                 surface = surface,
@@ -2739,23 +2792,24 @@ class MainActivity : AppCompatActivity() {
                 onFrameDecoded = { _, buffer -> ownerClient.releaseBuffer(buffer) },
                 onKeyframeRequired = { identity, force, reason ->
                     val callbackBinding =
-                        ActiveDecoderCallbackBinding(identity, ownerGeneration) { activeIdentity, generation ->
-                            isCurrentSession(ownerClient, generation) && videoDecoder === activeIdentity
-                        }
+                        ActiveDecoderCallbackBinding(identity, ownerGeneration, ::isCurrentDecoderCallback)
                     runOnUiThread {
                         callbackBinding.runIfActive {
                             ownerClient.requestKeyframe(force = force, reason = reason)
                         }
                     }
                 },
-                onCodecFallbackRequired = { identity, reason ->
+                onCodecFailure = { identity, failure ->
                     val callbackBinding =
-                        ActiveDecoderCallbackBinding(identity, ownerGeneration) { activeIdentity, generation ->
-                            isCurrentSession(ownerClient, generation) && videoDecoder === activeIdentity
-                        }
+                        ActiveDecoderCallbackBinding(identity, ownerGeneration, ::isCurrentDecoderCallback)
                     runOnUiThread {
                         callbackBinding.runIfActive {
-                            ownerClient.failCurrentSession(reason)
+                            CodecFallbackCommitGate.recordCurrentStructuralHevcFailure(
+                                codec = mime.toStreamCodec(),
+                                failure = failure,
+                                isCurrentConfiguration = callbackBinding::isActive,
+                            )
+                            ownerClient.failCurrentSession(failure.reason)
                         }
                     }
                 },
@@ -2779,7 +2833,7 @@ class MainActivity : AppCompatActivity() {
         log("❌ Failed to initialize decoder: ${error.message}")
         if (isCurrentSession(ownerClient, ownerGeneration)) {
             updateStatus("Video decoder failed: ${error.message}")
-            if (failSession && CodecCapabilities.shouldAdvertiseAvcOnly) {
+            if (failSession) {
                 ownerClient.failCurrentSession("codec_configuration_failure")
             }
         }
@@ -3197,10 +3251,13 @@ class MainActivity : AppCompatActivity() {
                 localDeviceId = internetDeviceId,
                 deviceName = (Build.MODEL ?: "Android").take(MAX_DEVICE_NAME_LENGTH),
                 supportedCodecs =
-                    buildSet {
-                        add(ProductVideoCodec.H264)
-                        if (CodecCapabilities.hasHevcDecoder) add(ProductVideoCodec.HEVC)
-                    },
+                    CodecCapabilities.advertisedStreamCodecs
+                        .mapTo(linkedSetOf()) { codec ->
+                            when (codec) {
+                                StreamCodec.HEVC -> ProductVideoCodec.HEVC
+                                StreamCodec.H264 -> ProductVideoCodec.H264
+                            }
+                        },
             )
         val callbacks =
             object : InternetProductSessionCallbacks {
@@ -3349,7 +3406,9 @@ class MainActivity : AppCompatActivity() {
             when (configuration.codec) {
                 ProductVideoCodec.H264 -> MediaFormat.MIMETYPE_VIDEO_AVC
                 ProductVideoCodec.HEVC -> {
-                    if (!CodecCapabilities.hasHevcDecoder) return ProductVideoDecision.reject("hevc_decoder_unavailable")
+                    if (CodecCapabilities.shouldAdvertiseAvcOnly) {
+                        return ProductVideoDecision.reject("hevc_decoder_unavailable")
+                    }
                     MediaFormat.MIMETYPE_VIDEO_HEVC
                 }
                 ProductVideoCodec.AV1 -> return ProductVideoDecision.reject("av1_decoder_unavailable")
@@ -3358,6 +3417,18 @@ class MainActivity : AppCompatActivity() {
         if (holder == null || !holder.surface.isValid) return ProductVideoDecision.reject("surface_unavailable")
         val surface = holder.surface
         val expectedSurfaceGeneration = surfaceGeneration.get()
+        fun isCurrentDecoderCallback(
+            identity: VideoDecoder,
+            sessionGeneration: Long,
+        ): Boolean =
+            sessionGeneration == internetGeneration &&
+                internetSession === sessionReference.get() &&
+                videoDecoder === identity &&
+                internetVideoConfiguration?.configEpoch == configuration.configEpoch &&
+                currentSurfaceHolder === holder &&
+                surface.isValid &&
+                surfaceGeneration.get() == expectedSurfaceGeneration
+
         var candidate: VideoDecoder? = null
         return try {
             val displayObject =
@@ -3374,25 +3445,22 @@ class MainActivity : AppCompatActivity() {
                     mime = mime,
                     onKeyframeRequired = { identity, _, reason ->
                         val callbackBinding =
-                            ActiveDecoderCallbackBinding(identity, generation) { activeIdentity, sessionGeneration ->
-                                sessionGeneration == internetGeneration &&
-                                    internetSession === sessionReference.get() &&
-                                    videoDecoder === activeIdentity
-                            }
+                            ActiveDecoderCallbackBinding(identity, generation, ::isCurrentDecoderCallback)
                         runOnUiThread {
                             callbackBinding.runIfActive { sessionReference.get()?.requestKeyframe(reason) }
                         }
                     },
-                    onCodecFallbackRequired = { identity, reason ->
+                    onCodecFailure = { identity, failure ->
                         val callbackBinding =
-                            ActiveDecoderCallbackBinding(identity, generation) { activeIdentity, sessionGeneration ->
-                                sessionGeneration == internetGeneration &&
-                                    internetSession === sessionReference.get() &&
-                                    videoDecoder === activeIdentity
-                            }
+                            ActiveDecoderCallbackBinding(identity, generation, ::isCurrentDecoderCallback)
                         runOnUiThread {
                             callbackBinding.runIfActive {
-                                showInternetFailure(IllegalStateException("Decoder failed: $reason"))
+                                CodecFallbackCommitGate.recordCurrentStructuralHevcFailure(
+                                    codec = mime.toStreamCodec(),
+                                    failure = failure,
+                                    isCurrentConfiguration = callbackBinding::isActive,
+                                )
+                                showInternetFailure(IllegalStateException("Decoder failed: ${failure.reason}"))
                             }
                         }
                     },
@@ -3470,7 +3538,19 @@ class MainActivity : AppCompatActivity() {
                         DecoderStartupCommitResult.NotCommitted ->
                             ProductVideoDecision.reject("stale_decoder_configuration")
                         is DecoderStartupCommitResult.Failed ->
-                            ProductVideoDecision.reject(startupResult.reason)
+                            ProductVideoDecision.reject(startupResult.reason).also {
+                                CodecFallbackCommitGate.recordCurrentStructuralHevcFailure(
+                                    codec = mime.toStreamCodec(),
+                                    failure = startupResult.failure,
+                                    isCurrentConfiguration = {
+                                        isCurrent() &&
+                                            isConfigurationCurrent() &&
+                                            currentSurfaceHolder === holder &&
+                                            surface.isValid &&
+                                            surfaceGeneration.get() == expectedSurfaceGeneration
+                                    },
+                                )
+                            }
                     }
                 }
             candidate?.release()
@@ -3480,8 +3560,22 @@ class MainActivity : AppCompatActivity() {
                 if (videoDecoder === failedCandidate) videoDecoder = null
                 failedCandidate.release()
             }
-            if (isCurrent()) showInternetFailure(failure)
-            ProductVideoDecision.reject("decoder_configuration_failure")
+            if (isCurrent()) {
+                if (failure is DecoderInitializationException) {
+                    CodecFallbackCommitGate.recordCurrentStructuralHevcFailure(
+                        codec = mime.toStreamCodec(),
+                        failure = failure.failure,
+                        isCurrentConfiguration = {
+                            isCurrent() &&
+                                isConfigurationCurrent() &&
+                                currentSurfaceHolder === holder &&
+                                surface.isValid &&
+                                surfaceGeneration.get() == expectedSurfaceGeneration
+                        },
+                    )
+                }
+            }
+            ProductVideoDecision.reject(failure.message ?: "decoder_configuration_failure")
         }
     }
 

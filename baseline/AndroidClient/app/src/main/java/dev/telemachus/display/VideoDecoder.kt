@@ -2,7 +2,6 @@ package dev.telemachus.display
 
 import android.annotation.SuppressLint
 import android.media.MediaCodec
-import android.media.MediaCodecList
 import android.media.MediaFormat
 import android.os.Build
 import android.os.Handler
@@ -28,10 +27,10 @@ class VideoDecoder(
     private val onFrameRendered: (VideoDecoder, Long) -> Unit = { _, _ -> },
     private val onFrameStats: (VideoDecoder, fps: Double, variance: Double) -> Unit = { _, _, _ -> },
     onKeyframeRequired: (VideoDecoder, force: Boolean, reason: String) -> Unit,
-    onCodecFallbackRequired: (VideoDecoder, reason: String) -> Unit,
+    onCodecFailure: (VideoDecoder, failure: DecoderFailure) -> Unit,
 ) {
     private val keyframeCallback = onKeyframeRequired
-    private val codecFallbackCallback = onCodecFallbackRequired
+    private val codecFailureCallback = onCodecFailure
     private var decoder: MediaCodec? = null
     private var decoderThread: HandlerThread? = null
     private var decoderHandler: Handler? = null
@@ -121,10 +120,27 @@ class VideoDecoder(
         }
         // Find a decoder that supports our resolution (prefer HW, fallback to SW)
         val decoderChoice =
-            findBestDecoder(currentWidth, currentHeight)
-                ?: throw UnsupportedOperationException(
-                    "No $mime decoder supports ${currentWidth}x$currentHeight",
-                )
+            when (val selection = findBestDecoder(currentWidth, currentHeight)) {
+                is DecoderSelectionResult.Selected -> selection
+                DecoderSelectionResult.UnsupportedTarget -> {
+                    diagLog("No usable $mime decoder supports ${currentWidth}x$currentHeight")
+                    val failure =
+                        DecoderFailure(
+                            DecoderFailureKind.STRUCTURAL_TARGET_UNSUPPORTED,
+                            if (mime == MediaFormat.MIMETYPE_VIDEO_HEVC) {
+                                STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
+                            } else {
+                                "decoder_target_unsupported"
+                            },
+                        )
+                    if (mime == MediaFormat.MIMETYPE_VIDEO_HEVC) {
+                        throw DecoderInitializationException(failure)
+                    }
+                    throw UnsupportedOperationException(failure.reason)
+                }
+                DecoderSelectionResult.ProbeFailed ->
+                    throw IllegalStateException("Could not probe $mime decoders")
+            }
         diagLog("setupDecoder: ${currentWidth}x$currentHeight, decoder=${decoderChoice.name}")
 
         val codec = MediaCodec.createByCodecName(decoderChoice.name)
@@ -154,14 +170,17 @@ class VideoDecoder(
                 ) {
                     diagLog("Codec error: ${e.diagnosticInfo}")
                     Log.e(TAG, "Codec error: ${e.diagnosticInfo}", e)
-                    CodecCapabilities.reportRuntimeDecoderFailure(mime)
                     emitTelemetry(
                         "codec_runtime_failure",
                         mapOf("mime" to mime, "diagnostic_info" to e.diagnosticInfo),
                     )
                     needsKeyframe = true
                     startupGate.reportFatal(
-                        reason = "codec_runtime_failure",
+                        failure =
+                            DecoderFailure(
+                                DecoderFailureKind.SESSION_RUNTIME_FAILURE,
+                                "codec_runtime_failure",
+                            ),
                         keyframeReason = "codec error",
                     )
                 }
@@ -236,7 +255,6 @@ class VideoDecoder(
             } catch (e: Exception) {
                 diagLog("All configure attempts failed: ${e.message}")
                 Log.e(TAG, "All configure attempts failed", e)
-                CodecCapabilities.reportRuntimeDecoderFailure(mime)
                 emitTelemetry(
                     "codec_configuration_failure",
                     mapOf("mime" to mime, "error" to (e.message ?: e.javaClass.simpleName)),
@@ -264,7 +282,14 @@ class VideoDecoder(
         needsKeyframe = true
         nextRenderTimeNs = 0L
         isRunning = true
-        startupGate.start { codec.start() }
+        try {
+            startupGate.start { codec.start() }
+        } catch (failure: Exception) {
+            startupGate.reportFatal(
+                failure = DecoderFailure(DecoderFailureKind.SESSION_RUNTIME_FAILURE, "codec_start_failure"),
+                keyframeReason = "codec start failed",
+            )
+        }
         decoder = codec
         diagLog(
             "Decoder started: ${currentWidth}x$currentHeight @ ${displayRefreshRate}Hz, " +
@@ -277,7 +302,7 @@ class VideoDecoder(
     private fun createStartupGate(): DecoderStartupGate =
         DecoderStartupGate(
             onKeyframeRequired = { force, reason -> keyframeCallback(this, force, reason) },
-            onCodecFallbackRequired = { reason -> codecFallbackCallback(this, reason) },
+            onCodecFailure = { failure -> codecFailureCallback(this, failure) },
         )
 
     private fun VideoScaleMode.mediaCodecValue(): Int =
@@ -286,85 +311,14 @@ class VideoDecoder(
             VideoScaleMode.FILL -> MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
         }
 
-    /**
-     * Find the best decoder for [mime] at the given resolution.
-     * Prefers hardware decoders, falls back to software if HW can't handle the resolution.
-     * Returns codec name to use with MediaCodec.createByCodecName(), or null for default.
-     */
     private fun findBestDecoder(
         width: Int,
         height: Int,
-    ): DecoderChoice? {
-        try {
-            val codecList = MediaCodecList(MediaCodecList.ALL_CODECS)
-            val targetRate = displayRefreshRate.toDouble().coerceAtLeast(30.0)
-            var hwRateDecoder: String? = null
-            var hwSizeDecoder: String? = null
-            var swRateDecoder: String? = null
-            var swSizeDecoder: String? = null
-
-            for (info in codecList.codecInfos) {
-                if (info.isEncoder) continue
-                val caps =
-                    try {
-                        info.getCapabilitiesForType(mime)
-                    } catch (error: Exception) {
-                        diagLog("Skipping decoder '${info.name}' for $mime: ${error.message}")
-                        continue
-                    }
-
-                val videoCaps = caps.videoCapabilities ?: continue
-                val isHardware =
-                    !info.name.startsWith("c2.android.") &&
-                        !info.name.startsWith("OMX.google.")
-                val supported = videoCaps.isSizeSupported(width, height)
-                val rateSupported =
-                    supported &&
-                        try {
-                            videoCaps.areSizeAndRateSupported(width, height, targetRate)
-                        } catch (error: Exception) {
-                            diagLog("Rate query failed for '${info.name}': ${error.message}")
-                            false
-                        }
-
-                diagLog(
-                    "$mime decoder '${info.name}': " +
-                        "width=${videoCaps.supportedWidths}, " +
-                        "height=${videoCaps.supportedHeights}, " +
-                        "hw=$isHardware, supports ${width}x$height=$supported, " +
-                        "supports @${String.format(Locale.US, "%.0f", targetRate)}fps=$rateSupported",
-                )
-
-                if (supported) {
-                    if (isHardware && rateSupported && hwRateDecoder == null) {
-                        hwRateDecoder = info.name
-                    } else if (isHardware && hwSizeDecoder == null) {
-                        hwSizeDecoder = info.name
-                    } else if (!isHardware && rateSupported && swRateDecoder == null) {
-                        swRateDecoder = info.name
-                    } else if (!isHardware && swSizeDecoder == null) {
-                        swSizeDecoder = info.name
-                    }
-                }
-            }
-
-            // Prefer hardware that advertises the target refresh rate, then any
-            // hardware decoder for the size, then software as a last resort.
-            val chosen = hwRateDecoder ?: hwSizeDecoder ?: swRateDecoder ?: swSizeDecoder
-            if (chosen != null) {
-                val supportsTargetRate = chosen == hwRateDecoder || chosen == swRateDecoder
-                diagLog(
-                    "Selected decoder: $chosen " +
-                        "(rateSupported=$supportsTargetRate)",
-                )
-                return DecoderChoice(chosen, supportsTargetRate)
-            } else {
-                diagLog("No decoder supports ${width}x$height")
-            }
-        } catch (e: Exception) {
-            diagLog("Decoder search failed: ${e.message}")
-        }
-        return null
+    ): DecoderSelectionResult {
+        val targetRate = displayRefreshRate.toDouble().coerceAtLeast(30.0)
+        val snapshot = AndroidDecoderCatalog.probe(mime, width, height, targetRate)
+            ?: return DecoderSelectionResult.ProbeFailed
+        return DecoderSelector.select(mime, snapshot)
     }
 
     fun decode(
@@ -773,11 +727,6 @@ class VideoDecoder(
         private const val MAX_RENDER_LATENCY_NS = 50_000_000L
         private const val MAX_REASONABLE_LATENCY_NS = 2_000_000_000L
     }
-
-    private data class DecoderChoice(
-        val name: String,
-        val supportsTargetRate: Boolean,
-    )
 
     private data class PendingFrame(
         val data: ByteArray,

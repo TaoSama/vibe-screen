@@ -24,9 +24,6 @@ import android.media.MediaFormat
  * path for them.
  */
 object CodecCapabilities {
-    /** Decoder-name prefixes whose HEVC implementation is unusable for surface output. */
-    private val BROKEN_HEVC_HW_PREFIXES = listOf("omx.sprd.", "c2.sprd.")
-
     val hasHevcDecoder: Boolean by lazy {
         try {
             MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.any { info ->
@@ -35,11 +32,7 @@ object CodecCapabilities {
                     info.supportedTypes.any { it.equals(MediaFormat.MIMETYPE_VIDEO_HEVC, ignoreCase = true) }
                 if (!handlesHevc) return@any false
 
-                val name = info.name.lowercase()
-                // Same hardware/software split VideoDecoder.findBestDecoder uses.
-                val isSoftware = name.startsWith("c2.android.") || name.startsWith("omx.google.")
-                val isBrokenHardware = BROKEN_HEVC_HW_PREFIXES.any { name.startsWith(it) }
-                !isSoftware && !isBrokenHardware
+                DecoderNameRules.isUsableForMime(info.name, MediaFormat.MIMETYPE_VIDEO_HEVC)
             }
         } catch (_: Exception) {
             true // fail open: assume HEVC, preserving legacy behavior
@@ -50,13 +43,10 @@ object CodecCapabilities {
     val shouldAdvertiseAvcOnly: Boolean
         get() = CodecFallbackPolicy.shouldUseH264(hasHevcDecoder)
 
-    fun reportRuntimeDecoderFailure(mime: String) {
-        val codec =
-            if (mime == MediaFormat.MIMETYPE_VIDEO_HEVC) {
-                StreamCodec.HEVC
-            } else {
-                StreamCodec.H264
-            }
-        CodecFallbackPolicy.recordRuntimeFailure(codec)
-    }
+    /** Snapshot used when constructing a new connection's wire offer. */
+    val advertisedStreamCodecs: List<StreamCodec>
+        get() = CodecFallbackPolicy.candidates(hasHevcDecoder)
 }
+
+internal fun String.toStreamCodec(): StreamCodec =
+    if (this == MediaFormat.MIMETYPE_VIDEO_HEVC) StreamCodec.HEVC else StreamCodec.H264

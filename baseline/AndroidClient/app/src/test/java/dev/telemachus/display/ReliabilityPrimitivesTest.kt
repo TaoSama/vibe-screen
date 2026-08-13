@@ -78,10 +78,10 @@ class ReliabilityPrimitivesTest {
     }
 
     @Test
-    fun runtimeHevcFailureMakesH264ExplicitNextCandidate() {
+    fun structuralHevcTargetFailureMakesH264ExplicitNextCandidate() {
         assertEquals(listOf(StreamCodec.HEVC, StreamCodec.H264), CodecFallbackPolicy.candidates(true))
 
-        CodecFallbackPolicy.recordRuntimeFailure(StreamCodec.HEVC)
+        CodecFallbackPolicy.recordStructuralUnsupported(StreamCodec.HEVC)
 
         assertTrue(CodecFallbackPolicy.shouldUseH264(hasUsableHevcDecoder = true))
         assertEquals(listOf(StreamCodec.H264), CodecFallbackPolicy.candidates(true))

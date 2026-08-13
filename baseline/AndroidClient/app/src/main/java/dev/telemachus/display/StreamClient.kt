@@ -567,10 +567,11 @@ class StreamClient(
             deviceName = (Build.MODEL ?: "Android").take(MAX_DEVICE_NAME_BYTES),
             transport = transport,
             codecs =
-                if (CodecCapabilities.shouldAdvertiseAvcOnly) {
-                    listOf(Codec.CODEC_H264)
-                } else {
-                    listOf(Codec.CODEC_HEVC, Codec.CODEC_H264)
+                CodecCapabilities.advertisedStreamCodecs.map { codec ->
+                    when (codec) {
+                        StreamCodec.HEVC -> Codec.CODEC_HEVC
+                        StreamCodec.H264 -> Codec.CODEC_H264
+                    }
                 },
         )
 
