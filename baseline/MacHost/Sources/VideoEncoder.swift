@@ -97,8 +97,120 @@ final class VideoEncoderInFlightAdmission {
     }
 }
 
+final class VideoEncoderCallbackOwner {
+    private let lock = NSLock()
+    private weak var encoder: VideoEncoder?
+    private var active = false
+
+    func activate(_ encoder: VideoEncoder) {
+        lock.lock()
+        self.encoder = encoder
+        active = true
+        lock.unlock()
+    }
+
+    func deactivate() {
+        lock.lock()
+        active = false
+        encoder = nil
+        lock.unlock()
+    }
+
+    func claimEncoder() -> VideoEncoder? {
+        lock.lock()
+        defer { lock.unlock() }
+        return active ? encoder : nil
+    }
+}
+
+final class VideoEncoderFrameRegistry {
+    struct ClaimedFrame {
+        let context: VideoEncoder.FrameContext
+        let owner: VideoEncoderCallbackOwner
+    }
+
+    private struct Entry {
+        let context: Unmanaged<VideoEncoder.FrameContext>
+        let owner: VideoEncoderCallbackOwner
+    }
+
+    static let shared = VideoEncoderFrameRegistry()
+
+    private let lock = NSLock()
+    private var nextTicket: UInt = 0
+    private var entries: [UInt: Entry] = [:]
+    private var ticketsByOwner: [ObjectIdentifier: Set<UInt>] = [:]
+
+    func register(
+        _ context: VideoEncoder.FrameContext,
+        owner: VideoEncoderCallbackOwner
+    ) -> UnsafeMutableRawPointer {
+        lock.lock()
+        repeat {
+            nextTicket &+= 1
+        } while nextTicket == 0 || entries[nextTicket] != nil
+        let ticket = nextTicket
+        entries[ticket] = Entry(
+            context: Unmanaged.passRetained(context),
+            owner: owner
+        )
+        ticketsByOwner[ObjectIdentifier(owner), default: []].insert(ticket)
+        lock.unlock()
+
+        return UnsafeMutableRawPointer(bitPattern: ticket)!
+    }
+
+    func claim(_ sourceFrameRefcon: UnsafeMutableRawPointer?) -> ClaimedFrame? {
+        guard let sourceFrameRefcon else { return nil }
+        let ticket = UInt(bitPattern: sourceFrameRefcon)
+
+        lock.lock()
+        guard let entry = removeEntry(ticket: ticket) else {
+            lock.unlock()
+            return nil
+        }
+        lock.unlock()
+
+        return ClaimedFrame(
+            context: entry.context.takeRetainedValue(),
+            owner: entry.owner
+        )
+    }
+
+    @discardableResult
+    func drain(owner: VideoEncoderCallbackOwner) -> Int {
+        let ownerIdentifier = ObjectIdentifier(owner)
+        lock.lock()
+        let tickets = ticketsByOwner.removeValue(forKey: ownerIdentifier) ?? []
+        let drainedEntries = tickets.compactMap { entries.removeValue(forKey: $0) }
+        lock.unlock()
+
+        for entry in drainedEntries {
+            let context = entry.context.takeRetainedValue()
+            context.completeSubmission()
+        }
+        return drainedEntries.count
+    }
+
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return entries.count
+    }
+
+    private func removeEntry(ticket: UInt) -> Entry? {
+        guard let entry = entries.removeValue(forKey: ticket) else { return nil }
+        let ownerIdentifier = ObjectIdentifier(entry.owner)
+        ticketsByOwner[ownerIdentifier]?.remove(ticket)
+        if ticketsByOwner[ownerIdentifier]?.isEmpty == true {
+            ticketsByOwner.removeValue(forKey: ownerIdentifier)
+        }
+        return entry
+    }
+}
+
 class VideoEncoder {
-    fileprivate final class FrameContext {
+    final class FrameContext {
         let timestamp: UInt64
         let sessionEpoch: UInt64
         private let admissionLease: VideoEncoderInFlightAdmission.Lease
@@ -133,6 +245,7 @@ class VideoEncoder {
     private let sessionLock = NSLock()
     private let stateLock = OSAllocatedUnfairLock(initialState: EncoderState())
     private let inFlightAdmission = VideoEncoderInFlightAdmission(capacity: 2)
+    private let callbackOwner = VideoEncoderCallbackOwner()
 
     var hasActiveCompressionSession: Bool {
         sessionLock.lock()
@@ -148,6 +261,7 @@ class VideoEncoder {
         self.quality = gamingBoost ? "ultralow" : quality
         self.gamingBoost = gamingBoost
         self.frameRate = frameRate
+        callbackOwner.activate(self)
         setupCompressionSession()
     }
 
@@ -252,7 +366,7 @@ class VideoEncoder {
             imageBufferAttributes: nil,
             compressedDataAllocator: nil,
             outputCallback: encodingOutputCallback,
-            refcon: Unmanaged.passUnretained(self).toOpaque(),
+            refcon: Unmanaged.passUnretained(VideoEncoderFrameRegistry.shared).toOpaque(),
             compressionSessionOut: &session
         )
 
@@ -348,7 +462,7 @@ class VideoEncoder {
 
         // Use system uptime clock — MUST match DispatchTime.now().uptimeNanoseconds
         let captureNanos = DispatchTime.now().uptimeNanoseconds
-        var frameContext: Unmanaged<FrameContext>?
+        var sourceFrameRefcon: UnsafeMutableRawPointer?
         let submissionResult = inFlightAdmission.submit { admissionLease in
             let shouldForceKeyframe = stateLock.withLock { state -> Bool in
                 guard state.pendingForceKeyframe else { return false }
@@ -358,21 +472,23 @@ class VideoEncoder {
             let frameProperties: CFDictionary? = shouldForceKeyframe
                 ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary
                 : nil
-            let retainedContext = Unmanaged.passRetained(
-                FrameContext(
-                    timestamp: captureNanos,
-                    sessionEpoch: sessionEpoch,
-                    admissionLease: admissionLease
-                )
+            let context = FrameContext(
+                timestamp: captureNanos,
+                sessionEpoch: sessionEpoch,
+                admissionLease: admissionLease
             )
-            frameContext = retainedContext
+            let registeredRefcon = VideoEncoderFrameRegistry.shared.register(
+                context,
+                owner: callbackOwner
+            )
+            sourceFrameRefcon = registeredRefcon
             return VTCompressionSessionEncodeFrame(
                 session,
                 imageBuffer: pixelBuffer,
                 presentationTimeStamp: presentationTimeStamp,
                 duration: duration,
                 frameProperties: frameProperties,
-                sourceFrameRefcon: retainedContext.toOpaque(),
+                sourceFrameRefcon: registeredRefcon,
                 infoFlagsOut: nil
             )
         }
@@ -380,17 +496,29 @@ class VideoEncoder {
         if case .submitted(let encodeStatus) = submissionResult, encodeStatus != noErr {
             // VideoToolbox does not invoke the output callback when submission
             // itself fails, so ownership of the retained context remains here.
-            frameContext?.release()
+            if let claimedFrame = VideoEncoderFrameRegistry.shared.claim(sourceFrameRefcon) {
+                claimedFrame.context.completeSubmission()
+            }
             debugLog("VideoToolbox frame submission failed: \(encodeStatus)")
         }
     }
 
     deinit {
         sessionLock.lock()
+        callbackOwner.deactivate()
         if let session = compressionSession {
-            VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
+            let completeStatus = VTCompressionSessionCompleteFrames(
+                session,
+                untilPresentationTimeStamp: .invalid
+            )
+            if completeStatus != noErr {
+                debugLog("VideoToolbox frame completion failed: \(completeStatus)")
+            }
+            VideoEncoderFrameRegistry.shared.drain(owner: callbackOwner)
             VTCompressionSessionInvalidate(session)
             compressionSession = nil
+        } else {
+            VideoEncoderFrameRegistry.shared.drain(owner: callbackOwner)
         }
         inFlightAdmission.invalidate()
         sessionLock.unlock()
@@ -401,32 +529,26 @@ class VideoEncoder {
 private let nalStartCode: [UInt8] = [0, 0, 0, 1]
 
 private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallbackRefCon, sourceFrameRefCon, status, _, sampleBuffer) in
-    // The timestamp allocation belongs to exactly one successful submission.
-    // Release it even when VideoToolbox reports an asynchronous encode failure.
-    let timestamp: UInt64
-    let sessionEpoch: UInt64
-    if let refcon = sourceFrameRefCon {
-        let context = Unmanaged<VideoEncoder.FrameContext>
-            .fromOpaque(refcon)
-            .takeRetainedValue()
-        context.completeSubmission()
-        timestamp = context.timestamp
-        sessionEpoch = context.sessionEpoch
-    } else {
-        timestamp = DispatchTime.now().uptimeNanoseconds
-        sessionEpoch = 0
+    guard let outputCallbackRefCon else { return }
+    let registry = Unmanaged<VideoEncoderFrameRegistry>
+        .fromOpaque(outputCallbackRefCon)
+        .takeUnretainedValue()
+    guard let claimedFrame = registry.claim(sourceFrameRefCon) else {
+        return
     }
+    claimedFrame.context.completeSubmission()
 
     guard status == noErr,
-          let sampleBuffer = sampleBuffer,
-          let refcon = outputCallbackRefCon else {
+          let sampleBuffer = sampleBuffer else {
         if status != noErr {
             debugLog("VideoToolbox encode callback failed: \(status)")
         }
         return
     }
 
-    let encoder = Unmanaged<VideoEncoder>.fromOpaque(refcon).takeUnretainedValue()
+    guard let encoder = claimedFrame.owner.claimEncoder() else { return }
+    let timestamp = claimedFrame.context.timestamp
+    let sessionEpoch = claimedFrame.context.sessionEpoch
 
     // Extract encoded data
     guard let dataBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
