@@ -168,7 +168,7 @@ class StreamTransportOwnerTest {
 
         val failures = owner.closeAll()
 
-        assertEquals(listOf("active close"), failures.map(Exception::getMessage))
+        assertEquals(listOf("active close"), failures.map { it.message })
         assertEquals(1, active.closeCount)
         assertEquals(1, pending.closeCount)
         assertEquals(null, owner.activeConnection())
