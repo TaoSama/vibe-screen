@@ -69,6 +69,25 @@ class SettingsDialogLayoutInstrumentedTest {
     }
 
     @Test
+    fun smallTabletPortraitAndLandscapeKeepSustainedUseStatusReadable() {
+        listOf(600 to 960, 960 to 600).forEach { (widthDp, heightDp) ->
+            withLayout(screenWidthDp = widthDp, screenHeightDp = heightDp) { layout ->
+                val section = layout.root.findViewById<View>(R.id.deviceHealthSection)
+                val status = layout.root.findViewById<TextView>(R.id.deviceHealthStatus)
+                val summary = layout.root.findViewById<TextView>(R.id.deviceHealthSummary)
+
+                assertTrue(section.measuredWidth > 0 && section.measuredHeight > 0)
+                listOf(status, summary).forEach { text ->
+                    assertTrue(text.layout != null && text.layout.lineCount > 0)
+                    assertTrue(
+                        (0 until text.layout.lineCount).all { line -> text.layout.getEllipsisCount(line) == 0 },
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
     fun positionTargetsAndOpacitySliderMeetAccessibilityContract() {
         withLayout(screenWidthDp = 320) { layout ->
             val minimumTarget = layout.dp(48)
@@ -172,11 +191,19 @@ class SettingsDialogLayoutInstrumentedTest {
 
     private fun withLayout(
         screenWidthDp: Int,
+        screenHeightDp: Int = 800,
         fontScale: Float = 1f,
         assertion: (MeasuredLayout) -> Unit,
     ) {
         val configuration = Configuration(applicationContext().resources.configuration)
         configuration.screenWidthDp = screenWidthDp
+        configuration.screenHeightDp = screenHeightDp
+        configuration.orientation =
+            if (screenWidthDp > screenHeightDp) {
+                Configuration.ORIENTATION_LANDSCAPE
+            } else {
+                Configuration.ORIENTATION_PORTRAIT
+            }
         configuration.fontScale = fontScale
         val configuredContext = applicationContext().createConfigurationContext(configuration)
         val themedContext = ContextThemeWrapper(configuredContext, R.style.AppTheme)
