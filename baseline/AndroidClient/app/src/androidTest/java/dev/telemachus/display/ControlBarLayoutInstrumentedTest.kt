@@ -3,6 +3,7 @@ package dev.telemachus.display
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Rect
+import android.text.TextUtils
 import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.View
@@ -165,7 +166,7 @@ class ControlBarLayoutInstrumentedTest {
 
     @Test
     fun resourceGeometryUsesExactPixelsAtNonIntegerDensityBoundaries() {
-        val context = densityContext(DENSITY_275_DPI)
+        val context = densityContext(DENSITY_DPI_FOR_2_75)
         val geometry = ControlBarLayoutApplier.geometry(context.resources)
         assertEquals(34, geometry.horizontalContentPaddingPx)
         assertEquals(242, geometry.selectorMinimumWidthPx)
@@ -202,7 +203,7 @@ class ControlBarLayoutInstrumentedTest {
 
     @Test
     fun hiddenSelectorUsesExactCompactBoundariesAtNonIntegerDensity() {
-        val context = densityContext(DENSITY_275_DPI)
+        val context = densityContext(DENSITY_DPI_FOR_2_75)
         withLayout(context = context, widthPx = 507, selectorVisible = false) { layout ->
             assertEquals(ControlBarLayoutPolicy.Mode.COMPACT, layout.mode)
         }
@@ -273,7 +274,8 @@ class ControlBarLayoutInstrumentedTest {
 
     private fun assertAccessibleDisplayName(layout: MeasuredLayout) {
         assertEquals(FULL_DISPLAY_NAME, layout.label.text.toString())
-        assertTrue("Display label was not visually ellipsized", layout.label.layout.getEllipsisCount(0) > 0)
+        assertEquals(TextUtils.TruncateAt.END, layout.label.ellipsize)
+        assertEquals(1, layout.label.maxLines)
         val expectedDescription =
             layout.context.getString(R.string.control_displays_current, FULL_DISPLAY_NAME)
         assertEquals(expectedDescription, layout.views.displaySelector.contentDescription.toString())
@@ -454,7 +456,7 @@ class ControlBarLayoutInstrumentedTest {
 
     private companion object {
         const val LAYOUT_HEIGHT_DP = 600
-        const val DENSITY_275_DPI = 440
+        const val DENSITY_DPI_FOR_2_75 = 440
         const val FULL_DISPLAY_NAME =
             "Vibe Screen Virtual Extended Display With A Deliberately Long Name"
     }
