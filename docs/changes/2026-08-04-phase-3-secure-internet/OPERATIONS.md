@@ -19,6 +19,15 @@ device, but does not terminate an active TURN allocation or prove a signed
 device/host authorization. Credential issuance and revoke are serialized so no
 new credential is returned after a completed revoke. The binary itself remains
 separate from the coturn data-plane process in the Compose deployment.
+
+`services/authority/` now supplies the runnable shared-PostgreSQL admission and
+account/device-revocation slice needed by horizontally scaled signaling and
+relay control planes. It also exposes cumulative coturn usage ingestion and
+snapshot reconciliation. Existing signaling/relay binaries are not yet wired to
+that authority, and the repository still has no production-proven coturn
+machine exporter or active-allocation disconnect executor. Therefore this does
+not remove the public-launch prohibition below. See the service README for the
+migration procedure, API contract, and remaining infrastructure gates.
 Do not expose it to the public Internet until those boundaries and the
 container/readiness findings in [TECH.md](TECH.md#open-implementation-findings)
 are resolved.
