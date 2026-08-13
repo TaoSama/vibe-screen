@@ -48,9 +48,18 @@ struct PCMAudioPacketizer {
 }
 
 final class SystemAudioPCMConverter {
+    private let queue = DispatchQueue(label: "com.vibescreen.audio-pcm-converter")
     private var packetizer = PCMAudioPacketizer()
 
     func convert(_ sampleBuffer: CMSampleBuffer) -> [Data] {
+        queue.sync { convertLocked(sampleBuffer) }
+    }
+
+    func reset() {
+        queue.sync { packetizer.reset() }
+    }
+
+    private func convertLocked(_ sampleBuffer: CMSampleBuffer) -> [Data] {
         guard let description = CMSampleBufferGetFormatDescription(sampleBuffer),
               let asbdPointer = CMAudioFormatDescriptionGetStreamBasicDescription(description) else {
             return []
@@ -121,7 +130,6 @@ final class SystemAudioPCMConverter {
         return packetizer.append(interleavedS16LE: output)
     }
 
-    func reset() { packetizer.reset() }
 }
 
 enum ProtocolV1AudioPacketError: Error, Equatable {

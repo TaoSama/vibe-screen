@@ -218,6 +218,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Injects client-driven native pointer/scroll/keyboard input as CGEvents.
     /// Shares the touch coordinate mapping via StreamInputMapping.
     private let streamInputInjector = StreamInputInjector()
+    private let hostClipboardAdapter = HostClipboardAdapter()
     private var primaryButtonOwner = PrimaryButtonOwnerState()
     let pairedDeviceStore = PairedDeviceStore()
     let windowRecoveryManager = WindowRecoveryManager()
@@ -703,6 +704,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(
             title: "Return Moved Windows",
             action: #selector(returnMovedWindowsToMainDisplay),
+            keyEquivalent: ""
+        ))
+        menu.addItem(NSMenuItem(
+            title: "Send Clipboard to Client",
+            action: #selector(sendClipboardToClient),
             keyEquivalent: ""
         ))
         menu.addItem(NSMenuItem.separator())
@@ -1358,6 +1364,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    @MainActor
+    @objc private func sendClipboardToClient() {
+        guard let streamingServer else { return }
+        do {
+            let changeID = withUnsafeBytes(of: UUID().uuid) { Data($0) }
+            let content = try hostClipboardAdapter.content(
+                for: changeID,
+                originDeviceID: "macos-host"
+            )
+            streamingServer.offerProtocolV1Clipboard(content)
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Could Not Send Clipboard"
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .warning
+            alert.runModal()
+        }
+    }
+
     @objc private func moveFocusedWindowToClientDisplay() {
         guard let activeDisplayID else {
             presentWindowActionError("Start streaming before moving a window.")
@@ -1885,7 +1910,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
             let configuredServer = streamingServer
             streamingServer?.touchEnabled = settings.touchEnabled
-            let clipboardAdapter = HostClipboardAdapter()
             let incomingFileAdapter: HostIncomingFileAdapter? = {
                 guard let support = FileManager.default.urls(
                     for: .applicationSupportDirectory,
@@ -1901,7 +1925,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 audio: false,
                 clipboard: true,
                 fileTransfer: incomingFileAdapter != nil,
-                colorManagement: true,
+                colorManagement: false,
                 hostActions: AXIsProcessTrusted(),
                 wakeHost: false
             ))
@@ -1911,10 +1935,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     audio: available,
                     clipboard: true,
                     fileTransfer: incomingFileAdapter != nil,
-                    colorManagement: true,
+                    colorManagement: false,
                     hostActions: AXIsProcessTrusted(),
                     wakeHost: false
                 ))
+            }
+            streamingServer?.onClipboardOffer = {
+                [weak self, weak configuredServer] offer, clientGeneration in
+                guard let self, let configuredServer,
+                      self.performSessionCallback(
+                        token: startToken,
+                        server: configuredServer,
+                        clientGeneration: clientGeneration,
+                        operation: {}
+                      ) else { return }
+                let alert = NSAlert()
+                alert.messageText = "Receive Clipboard Content?"
+                alert.informativeText = "A connected device offered \(offer.mimeType) clipboard data."
+                alert.addButton(withTitle: "Request")
+                alert.addButton(withTitle: "Cancel")
+                configuredServer.completeProtocolV1ClipboardOffer(
+                    changeID: offer.changeID,
+                    accepted: alert.runModal() == .alertFirstButtonReturn,
+                    clientGeneration: clientGeneration
+                )
             }
             streamingServer?.onClipboardContent = {
                 [weak self, weak configuredServer] content, clientGeneration in
@@ -1931,7 +1975,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 alert.addButton(withTitle: "Allow")
                 alert.addButton(withTitle: "Cancel")
                 guard alert.runModal() == .alertFirstButtonReturn else { return }
-                do { try clipboardAdapter.apply(content) }
+                do { try self.hostClipboardAdapter.apply(content) }
                 catch { debugLog("Clipboard receive rejected: \(error)") }
             }
             streamingServer?.onFileOffer = {
@@ -2365,7 +2409,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 audio: configuredCapture?.isSystemAudioCaptureActive == true,
                 clipboard: true,
                 fileTransfer: incomingFileAdapter != nil,
-                colorManagement: true,
+                colorManagement: false,
                 hostActions: AXIsProcessTrusted(),
                 wakeHost: false
             ))

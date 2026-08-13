@@ -122,6 +122,7 @@ enum ProtocolV1SessionAction {
     /// through completeHostAction, which is the only place HostActionResult is
     /// emitted back on the session FIFO.
     case hostAction(actionID: String, invocationID: Data, target: VSInputTarget?)
+    case clipboardOffer(VSClipboardOffer)
    case clipboardContent(VSClipboardContent)
    case fileOffer(VSFileOffer)
    case fileCancel(transferID: Data)
@@ -157,13 +158,17 @@ final class ProtocolV1SessionCoordinator {
     /// unknown completion is a safe no-op. Bounded by
     /// maximumPendingHostActionInvocations.
     private var pendingHostActionInvocations: [Data: UInt64] = [:]
+    private var inboundClipboardOffers: [Data: VSClipboardOffer] = [:]
+    private var approvedInboundClipboardOffers: Set<Data> = []
+    private var outboundClipboardSnapshots: [Data: VSClipboardContent] = [:]
     private var pendingFileOffers: [Data: UInt64] = [:]
-    private var activeFileTransfers: Set<Data> = []
+    private var activeFileTransfers: [Data: UInt32] = [:]
     private var pendingWakeRequests: [Data: UInt64] = [:]
-    private var audioConfigEpoch: UInt64 = 1
+    private var audioConfigEpoch: UInt64 = 0
     private var audioAccepted = false
     private var nextAudioSequence: UInt64 = 0
-    private var attemptedColorFallback = false
+    private var attemptedColorFallbackEpochs: Set<UInt64> = []
+    private var generatedColorFallbackEpochs: Set<UInt64> = []
     private var negotiatedResourceLimits = VSResourceLimits()
 
     init(configuration: ProtocolV1SessionConfiguration) {
@@ -389,14 +394,48 @@ final class ProtocolV1SessionCoordinator {
             response.accepted = canAccept
             response.maximumChunkBytes = canAccept ? negotiatedMaximum : 0
             response.rejectionReason = canAccept ? "" : rejectionReason
-            if canAccept { activeFileTransfers.insert(transferID) }
+            if canAccept { activeFileTransfers[transferID] = negotiatedMaximum }
             return sendActions(payload: .fileAccept(response), correlationID: correlationID)
+        }
+    }
+
+    func offerClipboard(_ content: VSClipboardContent) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard negotiatedCapabilities.contains(.clipboard),
+                  case .streaming = phase,
+                  validClipboardContent(content),
+                  outboundClipboardSnapshots.count < 4 else { return [] }
+            outboundClipboardSnapshots[content.changeID] = content
+            var offer = VSClipboardOffer()
+            offer.changeID = content.changeID
+            offer.originDeviceID = content.originDeviceID
+            offer.mimeType = content.mimeType
+            offer.byteLength = UInt64(content.content.count)
+            offer.sha256 = content.sha256
+            return sendActions(payload: .clipboardOffer(offer), correlationID: 0)
+        }
+    }
+
+    func completeClipboardOffer(changeID: Data, accepted: Bool) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard negotiatedCapabilities.contains(.clipboard),
+                  case .streaming = phase,
+                  inboundClipboardOffers[changeID] != nil,
+                  !approvedInboundClipboardOffers.contains(changeID) else { return [] }
+            guard accepted else {
+                inboundClipboardOffers.removeValue(forKey: changeID)
+                return []
+            }
+            approvedInboundClipboardOffers.insert(changeID)
+            var request = VSClipboardRequest()
+            request.changeID = changeID
+            return sendActions(payload: .clipboardRequest(request), correlationID: 0)
         }
     }
 
     func makeFileProgress(transferID: Data, receivedBytes: UInt64) -> [ProtocolV1SessionAction] {
         withSessionLock {
-            guard case .streaming = phase, activeFileTransfers.contains(transferID) else { return [] }
+            guard case .streaming = phase, activeFileTransfers[transferID] != nil else { return [] }
             var progress = VSFileTransferProgress()
             progress.transferID = transferID
             progress.receivedBytes = receivedBytes
@@ -411,7 +450,7 @@ final class ProtocolV1SessionCoordinator {
         rejectionReason: String
     ) -> [ProtocolV1SessionAction] {
         withSessionLock {
-            guard case .streaming = phase, activeFileTransfers.remove(transferID) != nil else { return [] }
+            guard case .streaming = phase, activeFileTransfers.removeValue(forKey: transferID) != nil else { return [] }
             var result = VSFileTransferComplete()
             result.transferID = transferID
             result.accepted = accepted
@@ -421,12 +460,13 @@ final class ProtocolV1SessionCoordinator {
         }
     }
 
-    func acceptsFileChunk(transferID: Data, sessionEpoch: UInt64) -> Bool {
+    func maximumFileChunkBytes(transferID: Data, sessionEpoch: UInt64) -> Int? {
         withSessionLock {
-            sessionEpoch == configuration.sessionEpoch &&
-                negotiatedCapabilities.contains(.fileTransfer) &&
-                activeFileTransfers.contains(transferID) &&
-                isStreaming
+            guard sessionEpoch == configuration.sessionEpoch,
+                  negotiatedCapabilities.contains(.fileTransfer),
+                  isStreaming,
+                  let maximum = activeFileTransfers[transferID] else { return nil }
+            return Int(maximum)
         }
     }
 
@@ -581,13 +621,22 @@ final class ProtocolV1SessionCoordinator {
                   result.streamID == streamID else {
                 return invalidState("VideoConfigResult does not match the pending configuration.", envelope.messageID)
             }
+            let minimumRetainedEpoch = configEpoch > 1 ? configEpoch - 1 : 0
+            attemptedColorFallbackEpochs = attemptedColorFallbackEpochs.filter {
+                $0 >= minimumRetainedEpoch
+            }
+            generatedColorFallbackEpochs = generatedColorFallbackEpochs.filter {
+                $0 >= minimumRetainedEpoch
+            }
             if !result.accepted,
                negotiatedCapabilities.contains(.colorManagement),
-               !attemptedColorFallback,
+               !attemptedColorFallbackEpochs.contains(configEpoch),
+               !generatedColorFallbackEpochs.contains(configEpoch),
                validSDRColor(result.selectedColorDescription),
                configEpoch < UInt64.max {
-                attemptedColorFallback = true
+                attemptedColorFallbackEpochs.insert(configEpoch)
                 let nextEpoch = configEpoch + 1
+                generatedColorFallbackEpochs.insert(nextEpoch)
                 phase = .awaitingVideoConfig(configEpoch: nextEpoch, streamID: streamID)
                 var fallback = videoConfiguration(configEpoch: nextEpoch, streamID: streamID)
                 fallback.colorDescription = result.selectedColorDescription
@@ -618,6 +667,7 @@ final class ProtocolV1SessionCoordinator {
             if negotiatedCapabilities.contains(.audio) {
                 audioAccepted = false
                 nextAudioSequence = 0
+                audioConfigEpoch = configEpoch
                 var audio = VSAudioConfig()
                 audio.streamID = streamID
                 audio.configEpoch = audioConfigEpoch
@@ -644,6 +694,28 @@ final class ProtocolV1SessionCoordinator {
             nextAudioSequence = 0
             return []
 
+        case .clipboardOffer(let offer):
+            guard negotiatedCapabilities.contains(.clipboard) else {
+                return unsupportedCapability("Clipboard was not negotiated.", envelope.messageID)
+            }
+            guard case .streaming = phase,
+                  validClipboardOffer(offer),
+                  inboundClipboardOffers[offer.changeID] == nil,
+                  inboundClipboardOffers.count < 4 else {
+                return invalidState("ClipboardOffer exceeds negotiated boundaries.", envelope.messageID)
+            }
+            inboundClipboardOffers[offer.changeID] = offer
+            return [.clipboardOffer(offer)]
+
+        case .clipboardRequest(let request):
+            guard negotiatedCapabilities.contains(.clipboard), case .streaming = phase else {
+                return unsupportedCapability("Clipboard was not negotiated.", envelope.messageID)
+            }
+            guard let content = outboundClipboardSnapshots.removeValue(forKey: request.changeID) else {
+                return invalidState("ClipboardRequest does not match an offered snapshot.", envelope.messageID)
+            }
+            return sendActions(payload: .clipboardContent(content), correlationID: envelope.messageID)
+
         case .clipboardContent(let content):
             guard negotiatedCapabilities.contains(.clipboard) else {
                 return unsupportedCapability("Clipboard was not negotiated.", envelope.messageID)
@@ -651,12 +723,20 @@ final class ProtocolV1SessionCoordinator {
             guard case .streaming = phase else {
                 return invalidState("ClipboardContent arrived before media was streaming.", envelope.messageID)
             }
-            guard content.changeID.count == 16,
-                  !content.originDeviceID.isEmpty,
-                  content.originDeviceID.utf8.count <= 128,
-                  content.content.count <= Int(negotiatedResourceLimits.maximumClipboardBytes),
-                  content.sha256.count == 32 else {
+            guard validClipboardContent(content) else {
                 return invalidState("ClipboardContent exceeds negotiated boundaries.", envelope.messageID)
+            }
+            if let offer = inboundClipboardOffers[content.changeID] {
+                guard approvedInboundClipboardOffers.remove(content.changeID) != nil else {
+                    return invalidState("ClipboardContent arrived before its offer was approved.", envelope.messageID)
+                }
+                inboundClipboardOffers.removeValue(forKey: content.changeID)
+                guard offer.originDeviceID == content.originDeviceID,
+                      offer.mimeType == content.mimeType,
+                      offer.byteLength == UInt64(content.content.count),
+                      offer.sha256 == content.sha256 else {
+                    return invalidState("ClipboardContent does not match its offer.", envelope.messageID)
+                }
             }
             return [.clipboardContent(content)]
 
@@ -680,7 +760,7 @@ final class ProtocolV1SessionCoordinator {
                 return unsupportedCapability("File transfer was not negotiated.", envelope.messageID)
             }
             pendingFileOffers.removeValue(forKey: cancel.transferID)
-            activeFileTransfers.remove(cancel.transferID)
+            activeFileTransfers.removeValue(forKey: cancel.transferID)
             return [.fileCancel(transferID: cancel.transferID)]
 
         case .wakeHostRequest(let request):
@@ -908,6 +988,9 @@ final class ProtocolV1SessionCoordinator {
             phase = .failed
             _ = stylusSequenceState.consumeReset()
             pendingHostActionInvocations.removeAll()
+            inboundClipboardOffers.removeAll()
+            approvedInboundClipboardOffers.removeAll()
+            outboundClipboardSnapshots.removeAll()
             pendingFileOffers.removeAll()
             activeFileTransfers.removeAll()
             pendingWakeRequests.removeAll()
@@ -918,6 +1001,9 @@ final class ProtocolV1SessionCoordinator {
             phase = .closed
             _ = stylusSequenceState.consumeReset()
             pendingHostActionInvocations.removeAll()
+            inboundClipboardOffers.removeAll()
+            approvedInboundClipboardOffers.removeAll()
+            outboundClipboardSnapshots.removeAll()
             pendingFileOffers.removeAll()
             activeFileTransfers.removeAll()
             pendingWakeRequests.removeAll()
@@ -1236,6 +1322,22 @@ final class ProtocolV1SessionCoordinator {
             color.matrixCoefficients == .bt709
     }
 
+    private func validClipboardOffer(_ offer: VSClipboardOffer) -> Bool {
+        offer.changeID.count == 16 &&
+            !offer.originDeviceID.isEmpty && offer.originDeviceID.utf8.count <= 128 &&
+            ["text/plain", "image/png"].contains(offer.mimeType) &&
+            offer.byteLength <= negotiatedResourceLimits.maximumClipboardBytes &&
+            offer.sha256.count == 32
+    }
+
+    private func validClipboardContent(_ content: VSClipboardContent) -> Bool {
+        content.changeID.count == 16 &&
+            !content.originDeviceID.isEmpty && content.originDeviceID.utf8.count <= 128 &&
+            ["text/plain", "image/png"].contains(content.mimeType) &&
+            content.content.count <= Int(negotiatedResourceLimits.maximumClipboardBytes) &&
+            content.sha256.count == 32
+    }
+
     private func hostResourceLimits() -> VSResourceLimits {
         var limits = VSResourceLimits()
         limits.maximumClients = 1
@@ -1321,6 +1423,9 @@ final class ProtocolV1SessionCoordinator {
         phase = .failed
         _ = stylusSequenceState.consumeReset()
         pendingHostActionInvocations.removeAll()
+        inboundClipboardOffers.removeAll()
+        approvedInboundClipboardOffers.removeAll()
+        outboundClipboardSnapshots.removeAll()
         pendingFileOffers.removeAll()
         activeFileTransfers.removeAll()
         pendingWakeRequests.removeAll()
@@ -1358,6 +1463,13 @@ final class ProtocolV1SessionCoordinator {
     private func serializationFailure() -> [ProtocolV1SessionAction] {
         phase = .failed
         _ = stylusSequenceState.consumeReset()
+        pendingHostActionInvocations.removeAll()
+        inboundClipboardOffers.removeAll()
+        approvedInboundClipboardOffers.removeAll()
+        outboundClipboardSnapshots.removeAll()
+        pendingFileOffers.removeAll()
+        activeFileTransfers.removeAll()
+        pendingWakeRequests.removeAll()
         audioAccepted = false
         return [.close]
     }

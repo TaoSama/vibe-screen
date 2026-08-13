@@ -12,12 +12,13 @@ final class HostAdvancedAdaptersTests: XCTestCase {
                 audio: true,
                 clipboard: true,
                 fileTransfer: true,
-                colorManagement: true,
+                colorManagement: false,
                 hostActions: false,
                 wakeHost: false
             )
         )
-        XCTAssertTrue(capabilities.isSuperset(of: [.audio, .clipboard, .fileTransfer, .colorManagement]))
+        XCTAssertTrue(capabilities.isSuperset(of: [.audio, .clipboard, .fileTransfer]))
+        XCTAssertFalse(capabilities.contains(.colorManagement))
         XCTAssertFalse(capabilities.contains(.hdrVideo))
         XCTAssertFalse(capabilities.contains(.wakeHost))
         XCTAssertFalse(capabilities.contains(.hostActions))
@@ -85,6 +86,119 @@ final class HostAdvancedAdaptersTests: XCTestCase {
         XCTAssertEqual(try adapter.append(chunk, sessionEpoch: 9), UInt64(payload.count))
         let completed = try adapter.finish(transferID: transferID)
         XCTAssertEqual(try Data(contentsOf: completed.url), payload)
+    }
+
+    func testBulkAdmissionIsBoundedAndZeroNonFinalChunkIsRejected() throws {
+        let gate = BulkTransferAdmissionGate(maximumItems: 2, maximumBytes: 10)
+        XCTAssertTrue(gate.admit(bytes: 4))
+        XCTAssertTrue(gate.admit(bytes: 6))
+        XCTAssertFalse(gate.admit(bytes: 1))
+        XCTAssertEqual(gate.usage.items, 2)
+        XCTAssertEqual(gate.usage.bytes, 10)
+        gate.release(bytes: 4)
+        XCTAssertTrue(gate.admit(bytes: 1))
+
+        var header = VSFileChunkHeader()
+        header.transferID = Data(repeating: 1, count: 16)
+        header.sessionEpoch = 9
+        header.chunkSha256 = Data(SHA256.hash(data: Data()))
+        header.final = false
+        let headerBytes = try header.serializedData()
+        XCTAssertThrowsError(try HostFileChunk(
+            serializedFrame: encodeVarint(headerBytes.count) + headerBytes,
+            maximumChunkBytes: 64 * 1_024
+        )) { error in
+            XCTAssertEqual(error as? HostAdvancedAdapterError, .invalidFinalChunk)
+        }
+    }
+
+    func testClipboardOfferRequestContentWorksInBothDirections() throws {
+        let sessionID = Data(repeating: 0x42, count: 16)
+        let session = ProtocolV1SessionCoordinator(configuration: .init(
+            sessionID: sessionID,
+            sessionEpoch: 7,
+            displayWidth: 1280,
+            displayHeight: 720,
+            rotation: 0,
+            framesPerSecond: 60,
+            bitrateKbps: 10_000,
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: false,
+                advanced: .init(clipboard: true)
+            ),
+            requiredClientCapabilities: [],
+            supportedCodecs: [.h264],
+            hostID: "host",
+            hostName: "Mac",
+            displayID: "display",
+            displayName: "Display",
+            displayIsVirtual: false
+        ))
+        var hello = VSClientHello()
+        hello.supportedProtocols.minimum = 1
+        hello.supportedProtocols.maximum = 1
+        hello.capabilities = [.clipboard]
+        hello.codecs = [.h264]
+        hello.resourceLimits.maximumClipboardBytes = 1_024
+        _ = session.handleControl(try envelope(
+            id: 1, sessionID: Data(), epoch: 0, payload: .clientHello(hello)
+        ).serializedData())
+        _ = session.completeCodecNegotiation()
+        var start = VSStartDisplayRequest()
+        start.mode = .existing
+        start.sourceDisplayID = "display"
+        let startResponses = try controls(session.handleControl(try envelope(
+            id: 2, sessionID: sessionID, epoch: 7, payload: .startDisplayRequest(start)
+        ).serializedData()))
+        guard case .videoConfig(let video)? = startResponses.last?.payload else {
+            return XCTFail("expected VideoConfig")
+        }
+        var result = VSVideoConfigResult()
+        result.streamID = video.streamID
+        result.configEpoch = video.configEpoch
+        result.accepted = true
+        _ = session.handleControl(try envelope(
+            id: 3, sessionID: sessionID, epoch: 7, payload: .videoConfigResult(result)
+        ).serializedData())
+
+        let outgoing = clipboardContent(changeByte: 1, text: "host snapshot")
+        guard case .clipboardOffer(let outgoingOffer)? = try controls(
+            session.offerClipboard(outgoing)
+        ).first?.payload else { return XCTFail("expected outgoing offer") }
+        var request = VSClipboardRequest()
+        request.changeID = outgoingOffer.changeID
+        guard case .clipboardContent(let sentContent)? = try controls(session.handleControl(
+            try envelope(
+                id: 4, sessionID: sessionID, epoch: 7, payload: .clipboardRequest(request)
+            ).serializedData()
+        )).first?.payload else { return XCTFail("expected requested content") }
+        XCTAssertEqual(sentContent, outgoing)
+
+        let incoming = clipboardContent(changeByte: 2, text: "client snapshot")
+        var incomingOffer = VSClipboardOffer()
+        incomingOffer.changeID = incoming.changeID
+        incomingOffer.originDeviceID = incoming.originDeviceID
+        incomingOffer.mimeType = incoming.mimeType
+        incomingOffer.byteLength = UInt64(incoming.content.count)
+        incomingOffer.sha256 = incoming.sha256
+        let offerActions = session.handleControl(try envelope(
+            id: 5, sessionID: sessionID, epoch: 7, payload: .clipboardOffer(incomingOffer)
+        ).serializedData())
+        XCTAssertTrue(offerActions.contains {
+            if case .clipboardOffer(let offer) = $0 { return offer == incomingOffer }
+            return false
+        })
+        guard case .clipboardRequest(let approvedRequest)? = try controls(
+            session.completeClipboardOffer(changeID: incoming.changeID, accepted: true)
+        ).first?.payload else { return XCTFail("expected approved request") }
+        XCTAssertEqual(approvedRequest.changeID, incoming.changeID)
+        let contentActions = session.handleControl(try envelope(
+            id: 6, sessionID: sessionID, epoch: 7, payload: .clipboardContent(incoming)
+        ).serializedData())
+        XCTAssertTrue(contentActions.contains {
+            if case .clipboardContent(let content) = $0 { return content == incoming }
+            return false
+        })
     }
 
     func testWakeAuthenticatorBindsIdentityTargetExpiryAndReplay() throws {
@@ -202,10 +316,118 @@ final class HostAdvancedAdaptersTests: XCTestCase {
             epoch: 9,
             payload: .audioConfigResult(audioResult)
         ).serializedData())
-        XCTAssertNotNil(try session.makeAudioPacket(
+        guard let firstPacket = try session.makeAudioPacket(
+            payload: pcm,
+            frameCount: PCMAudioFormat.production.framesPerPacket
+        ) else { return XCTFail("expected first audio packet") }
+        XCTAssertEqual(try ProtocolV1AudioPacketCodec.decode(firstPacket).header.sequence, 0)
+
+        let reconfiguration = try controls(session.selectDisplayFromClient(displayID: ""))
+        guard case .videoConfig(let nextVideo)? = reconfiguration.last?.payload else {
+            return XCTFail("expected reconfigured VideoConfig")
+        }
+        XCTAssertGreaterThan(nextVideo.configEpoch, video.configEpoch)
+        var nextVideoResult = VSVideoConfigResult()
+        nextVideoResult.streamID = nextVideo.streamID
+        nextVideoResult.configEpoch = nextVideo.configEpoch
+        nextVideoResult.accepted = true
+        let nextReady = try controls(session.handleControl(try envelope(
+            id: 5,
+            sessionID: sessionID,
+            epoch: 9,
+            payload: .videoConfigResult(nextVideoResult)
+        ).serializedData()))
+        guard case .audioConfig(let nextAudio)? = nextReady.first?.payload else {
+            return XCTFail("expected second AudioConfig")
+        }
+        XCTAssertGreaterThan(nextAudio.configEpoch, audio.configEpoch)
+        XCTAssertNil(try session.makeAudioPacket(
             payload: pcm,
             frameCount: PCMAudioFormat.production.framesPerPacket
         ))
+        var nextAudioResult = VSAudioConfigResult()
+        nextAudioResult.streamID = nextAudio.streamID
+        nextAudioResult.configEpoch = nextAudio.configEpoch
+        nextAudioResult.accepted = true
+        _ = session.handleControl(try envelope(
+            id: 6,
+            sessionID: sessionID,
+            epoch: 9,
+            payload: .audioConfigResult(nextAudioResult)
+        ).serializedData())
+        guard let secondPacket = try session.makeAudioPacket(
+            payload: pcm,
+            frameCount: PCMAudioFormat.production.framesPerPacket
+        ) else { return XCTFail("expected second-domain audio packet") }
+        let secondHeader = try ProtocolV1AudioPacketCodec.decode(secondPacket).header
+        XCTAssertEqual(secondHeader.configEpoch, nextAudio.configEpoch)
+        XCTAssertEqual(secondHeader.sequence, 0)
+    }
+
+    func testColorFallbackRetriesOnlyOnceForAConfigurationGeneration() throws {
+        let sessionID = Data(repeating: 0x51, count: 16)
+        let session = ProtocolV1SessionCoordinator(configuration: .init(
+            sessionID: sessionID,
+            sessionEpoch: 11,
+            displayWidth: 1920,
+            displayHeight: 1080,
+            rotation: 0,
+            framesPerSecond: 60,
+            bitrateKbps: 20_000,
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: false,
+                advanced: .init(colorManagement: true)
+            ),
+            requiredClientCapabilities: [],
+            supportedCodecs: [.hevc],
+            hostID: "host",
+            hostName: "Mac",
+            displayID: "display",
+            displayName: "Display",
+            displayIsVirtual: false
+        ))
+        var hello = VSClientHello()
+        hello.supportedProtocols.minimum = 1
+        hello.supportedProtocols.maximum = 1
+        hello.capabilities = [.colorManagement]
+        hello.codecs = [.hevc]
+        _ = session.handleControl(try envelope(
+            id: 1, sessionID: Data(), epoch: 0, payload: .clientHello(hello)
+        ).serializedData())
+        _ = session.completeCodecNegotiation()
+        var start = VSStartDisplayRequest()
+        start.mode = .existing
+        start.sourceDisplayID = "display"
+        let startResponses = try controls(session.handleControl(try envelope(
+            id: 2, sessionID: sessionID, epoch: 11, payload: .startDisplayRequest(start)
+        ).serializedData()))
+        guard case .videoConfig(let initial)? = startResponses.last?.payload else {
+            return XCTFail("expected VideoConfig")
+        }
+        var rejection = VSVideoConfigResult()
+        rejection.streamID = initial.streamID
+        rejection.configEpoch = initial.configEpoch
+        rejection.accepted = false
+        rejection.selectedColorDescription = HostVideoColor.sdr
+        let fallbackResponses = try controls(session.handleControl(try envelope(
+            id: 3, sessionID: sessionID, epoch: 11, payload: .videoConfigResult(rejection)
+        ).serializedData()))
+        guard case .videoConfig(let fallback)? = fallbackResponses.first?.payload else {
+            return XCTFail("expected one SDR fallback")
+        }
+        XCTAssertGreaterThan(fallback.configEpoch, initial.configEpoch)
+        rejection.configEpoch = fallback.configEpoch
+        let secondRejection = try controls(session.handleControl(try envelope(
+            id: 4, sessionID: sessionID, epoch: 11, payload: .videoConfigResult(rejection)
+        ).serializedData()))
+        XCTAssertFalse(secondRejection.contains {
+            if case .videoConfig? = $0.payload { return true }
+            return false
+        })
+        XCTAssertTrue(secondRejection.contains {
+            if case .protocolError? = $0.payload { return true }
+            return false
+        })
     }
 
     private func encodeVarint(_ value: Int) -> Data {
@@ -233,6 +455,17 @@ final class HostAdvancedAdaptersTests: XCTestCase {
         envelope.sessionEpoch = epoch
         envelope.payload = payload
         return envelope
+    }
+
+    private func clipboardContent(changeByte: UInt8, text: String) -> VSClipboardContent {
+        let data = Data(text.utf8)
+        var content = VSClipboardContent()
+        content.changeID = Data(repeating: changeByte, count: 16)
+        content.originDeviceID = changeByte == 1 ? "macos-host" : "ios-client"
+        content.mimeType = "text/plain"
+        content.content = data
+        content.sha256 = Data(SHA256.hash(data: data))
+        return content
     }
 
     private func controls(_ actions: [ProtocolV1SessionAction]) throws -> [VSEnvelope] {

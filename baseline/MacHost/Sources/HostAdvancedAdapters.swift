@@ -41,6 +41,43 @@ enum HostAdvancedAdapterError: Error, Equatable {
     case unauthenticatedWakeRequest
 }
 
+final class BulkTransferAdmissionGate {
+    private let maximumItems: Int
+    private let maximumBytes: Int
+    private let lock = NSLock()
+    private var admittedItems = 0
+    private var admittedBytes = 0
+
+    init(maximumItems: Int = 4, maximumBytes: Int = 256 * 1_024) {
+        precondition(maximumItems > 0 && maximumBytes > 0)
+        self.maximumItems = maximumItems
+        self.maximumBytes = maximumBytes
+    }
+
+    func admit(bytes: Int) -> Bool {
+        guard bytes > 0, bytes <= maximumBytes else { return false }
+        return lock.withLock {
+            guard admittedItems < maximumItems,
+                  admittedBytes <= maximumBytes - bytes else { return false }
+            admittedItems += 1
+            admittedBytes += bytes
+            return true
+        }
+    }
+
+    func release(bytes: Int) {
+        lock.withLock {
+            precondition(admittedItems > 0 && admittedBytes >= bytes)
+            admittedItems -= 1
+            admittedBytes -= bytes
+        }
+    }
+
+    var usage: (items: Int, bytes: Int) {
+        lock.withLock { (admittedItems, admittedBytes) }
+    }
+}
+
 final class HostClipboardAdapter {
     private let pasteboard: NSPasteboard
     private let limits: HostAdvancedLimits
@@ -98,23 +135,41 @@ final class HostClipboardAdapter {
         guard Data(SHA256.hash(data: content.content)) == content.sha256 else {
             throw HostAdvancedAdapterError.invalidDigest
         }
-        pasteboard.clearContents()
+        let replacement = NSPasteboardItem()
         switch content.mimeType {
         case "text/plain":
             guard let text = String(data: content.content, encoding: .utf8) else {
                 throw HostAdvancedAdapterError.unsupportedMIMEType
             }
-            guard pasteboard.setString(text, forType: .string) else {
+            guard replacement.setString(text, forType: .string) else {
                 throw HostAdvancedAdapterError.ioFailure
             }
         case "image/png":
-            guard pasteboard.setData(content.content, forType: .png) else {
+            guard NSImage(data: content.content) != nil,
+                  replacement.setData(content.content, forType: .png) else {
                 throw HostAdvancedAdapterError.ioFailure
             }
         default:
             throw HostAdvancedAdapterError.unsupportedMIMEType
         }
+        let backup = pasteboard.pasteboardItems?.map(Self.copyPasteboardItem) ?? []
+        pasteboard.clearContents()
+        guard pasteboard.writeObjects([replacement]) else {
+            pasteboard.clearContents()
+            if !backup.isEmpty { _ = pasteboard.writeObjects(backup) }
+            throw HostAdvancedAdapterError.ioFailure
+        }
         remember(content.changeID)
+    }
+
+    private static func copyPasteboardItem(_ source: NSPasteboardItem) -> NSPasteboardItem {
+        let copy = NSPasteboardItem()
+        for type in source.types {
+            if let data = source.data(forType: type) {
+                _ = copy.setData(data, forType: type)
+            }
+        }
+        return copy
     }
 
     private func remember(_ changeID: Data) {
@@ -142,6 +197,9 @@ struct HostFileChunk {
         guard payload.count <= maximumChunkBytes,
               payload.count == Int(header.payloadLength) else {
             throw HostAdvancedAdapterError.contentTooLarge
+        }
+        guard !payload.isEmpty || header.final else {
+            throw HostAdvancedAdapterError.invalidFinalChunk
         }
         guard header.chunkSha256.count == SHA256.byteCount,
               Data(SHA256.hash(data: payload)) == header.chunkSha256 else {

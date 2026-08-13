@@ -180,6 +180,7 @@ class StreamingServer: EncodedFrameSink, EncodedAudioSink {
     /// the single HostActionResult on the session FIFO.
     var onHostActionRequested:
         (@MainActor (_ actionID: String, _ invocationID: Data, _ target: VSInputTarget?) -> Void)?
+    var onClipboardOffer: (@MainActor (VSClipboardOffer, UInt64) -> Void)?
     var onClipboardContent: (@MainActor (VSClipboardContent, UInt64) -> Void)?
     var onFileOffer: (@MainActor (VSFileOffer, UInt64) -> Void)?
     var onFileChunk: ((HostFileChunk, UInt64, UInt64) -> Void)?
@@ -189,6 +190,7 @@ class StreamingServer: EncodedFrameSink, EncodedAudioSink {
     private let frameQueue = DispatchQueue(label: "frameQueue", qos: .userInteractive)
     private let audioQueue = DispatchQueue(label: "audioQueue", qos: .userInitiated)
     private let transferQueue = DispatchQueue(label: "transferQueue", qos: .utility)
+    private let bulkAdmission = BulkTransferAdmissionGate()
     private let receiveQueue = DispatchQueue(label: "receiveQueue", qos: .userInteractive)
     private let networkQueue = DispatchQueue(label: "networkQueue", qos: .userInteractive)
     private struct PendingFrame {
@@ -995,6 +997,35 @@ class StreamingServer: EncodedFrameSink, EncodedAudioSink {
         }
     }
 
+    func offerProtocolV1Clipboard(_ content: VSClipboardContent) {
+        networkQueue.async { [weak self] in
+            guard let self, let session = self.protocolV1Session,
+                  let conn = self.connection, !self.isStopped else { return }
+            self.applyProtocolV1Actions(
+                session.offerClipboard(content),
+                connection: conn,
+                generation: self.activeConnectionGeneration
+            )
+        }
+    }
+
+    func completeProtocolV1ClipboardOffer(
+        changeID: Data,
+        accepted: Bool,
+        clientGeneration: UInt64
+    ) {
+        networkQueue.async { [weak self] in
+            guard let self, let session = self.protocolV1Session,
+                  let conn = self.connection, !self.isStopped,
+                  self.activeConnectionGeneration == clientGeneration else { return }
+            self.applyProtocolV1Actions(
+                session.completeClipboardOffer(changeID: changeID, accepted: accepted),
+                connection: conn,
+                generation: clientGeneration
+            )
+        }
+    }
+
     func reportProtocolV1FileProgress(
         transferID: Data,
         receivedBytes: UInt64,
@@ -1421,19 +1452,27 @@ class StreamingServer: EncodedFrameSink, EncodedAudioSink {
                         "Client-to-host media frames are not valid in this session."
                     )
                 case .bulk:
+                    let admittedBytes = frame.payload.count
+                    guard bulkAdmission.admit(bytes: admittedBytes) else {
+                        actions = session.rejectMalformedTransport(
+                            "Bulk transfer admission credit exhausted."
+                        )
+                        break
+                    }
                     actions = []
                     let epoch = sessionEpochGate.current
                     transferQueue.async { [weak self] in
                         guard let self else { return }
+                        defer { self.bulkAdmission.release(bytes: admittedBytes) }
                         do {
                             let chunk = try HostFileChunk(
                                 serializedFrame: frame.payload,
                                 maximumChunkBytes: HostAdvancedLimits.production.maximumFileChunkBytes
                             )
-                            guard session.acceptsFileChunk(
+                            guard let negotiatedMaximum = session.maximumFileChunkBytes(
                                 transferID: chunk.header.transferID,
                                 sessionEpoch: epoch
-                            ) else {
+                            ), chunk.payload.count <= negotiatedMaximum else {
                                 throw HostAdvancedAdapterError.unknownTransfer
                             }
                             guard self.clientCallbackGeneration.isCurrent(generation),
@@ -1648,6 +1687,11 @@ class StreamingServer: EncodedFrameSink, EncodedAudioSink {
                     guard let self,
                           self.clientCallbackGeneration.isCurrent(generation) else { return }
                     self.onHostActionRequested?(actionID, invocationID, target)
+                }
+            case .clipboardOffer(let offer):
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onClipboardOffer?(offer, generation)
                 }
             case .clipboardContent(let content):
                 DispatchQueue.main.async { [weak self] in
