@@ -108,6 +108,105 @@ final class ClientCallbackGenerationGate {
     }
 }
 
+final class LatestFrameMailbox<Element> {
+    struct Drain {
+        let element: Element?
+        let droppedCount: Int
+        let requiresKeyframe: Bool
+    }
+
+    private struct State {
+        var generation: UInt64 = 0
+        var sessionEpoch: UInt64 = 0
+        var accepting = false
+        var drainScheduled = false
+        var pending: Element?
+        var droppedCount = 0
+        var requiresKeyframe = true
+    }
+
+    private let lock = NSLock()
+    private let isKeyframe: (Element) -> Bool
+    private var state = State()
+
+    init(isKeyframe: @escaping (Element) -> Bool) {
+        self.isKeyframe = isKeyframe
+    }
+
+    func reset(generation: UInt64, sessionEpoch: UInt64, accepting: Bool) {
+        lock.withLock {
+            state = State(
+                generation: generation,
+                sessionEpoch: sessionEpoch,
+                accepting: accepting
+            )
+        }
+    }
+
+    /// Returns true only when the caller must schedule a drain operation.
+    func submit(
+        _ element: Element,
+        generation: UInt64,
+        sessionEpoch: UInt64
+    ) -> Bool {
+        lock.withLock {
+            guard state.accepting,
+                  state.generation == generation,
+                  state.sessionEpoch == sessionEpoch else { return false }
+
+            let incomingIsKeyframe = isKeyframe(element)
+            if state.requiresKeyframe && !incomingIsKeyframe {
+                state.droppedCount += 1
+            } else if incomingIsKeyframe {
+                if state.pending != nil {
+                    state.droppedCount += 1
+                }
+                state.pending = element
+                state.requiresKeyframe = false
+            } else if let pending = state.pending {
+                if isKeyframe(pending) {
+                    state.droppedCount += 1
+                } else {
+                    state.pending = nil
+                    state.droppedCount += 2
+                    state.requiresKeyframe = true
+                }
+            } else {
+                state.pending = element
+            }
+            guard !state.drainScheduled else { return false }
+            state.drainScheduled = true
+            return true
+        }
+    }
+
+    func take(generation: UInt64, sessionEpoch: UInt64) -> Drain? {
+        lock.withLock {
+            guard state.generation == generation,
+                  state.sessionEpoch == sessionEpoch else { return nil }
+            let drain = Drain(
+                element: state.pending,
+                droppedCount: state.droppedCount,
+                requiresKeyframe: state.requiresKeyframe
+            )
+            state.pending = nil
+            state.droppedCount = 0
+            return drain
+        }
+    }
+
+    /// Returns true when another frame arrived during the preceding drain.
+    func finishDrain(generation: UInt64, sessionEpoch: UInt64) -> Bool {
+        lock.withLock {
+            guard state.generation == generation,
+                  state.sessionEpoch == sessionEpoch else { return false }
+            guard state.pending == nil, state.droppedCount == 0 else { return true }
+            state.drainScheduled = false
+            return false
+        }
+    }
+}
+
 class StreamingServer: EncodedFrameSink {
     private static let networkQueueKey = DispatchSpecificKey<ObjectIdentifier>()
     // Wireless admission adds a full authentication round trip before the
@@ -192,11 +291,22 @@ class StreamingServer: EncodedFrameSink {
         let clientGeneration: UInt64
         let sessionEpoch: UInt64
     }
-    /// At most one frame is inside Network.framework and one newer frame is
-    /// retained. This prevents a transient USB/Wi-Fi slowdown from becoming a
+    private struct FrameSubmission {
+        let data: Data
+        let timestamp: UInt64
+        let isKeyframe: Bool
+        let connection: NWConnection
+        let clientGeneration: UInt64
+        let sessionEpoch: UInt64
+    }
+    /// Network.framework, the transmit queue, and producer admission each retain
+    /// at most one frame. This prevents a transient slowdown from becoming a
     /// seconds-long FIFO of pictures the viewer no longer wants to see.
     private var sendInFlight = false
     private var pendingFrames: LatestFrameQueue<PendingFrame>
+    private let frameMailbox = LatestFrameMailbox<FrameSubmission>(
+        isKeyframe: { $0.isKeyframe }
+    )
     private var framePipelineGeneration: UInt64 = 0
     private var bytesSent: UInt64 = 0
     private var frameCount: UInt64 = 0
@@ -455,6 +565,11 @@ class StreamingServer: EncodedFrameSink {
         inputBuffer.removeAll(keepingCapacity: true)
         isReceiving = false
         droppedFrames = 0
+        frameMailbox.reset(
+            generation: generation,
+            sessionEpoch: sessionEpoch,
+            accepting: true
+        )
 
         dispatchTakeoverInputCancellation(
             oldConnectionWasPresent: oldConnection != nil && oldConnection !== conn,
@@ -507,6 +622,11 @@ class StreamingServer: EncodedFrameSink {
         heartbeatTimer?.cancel()
         heartbeatTimer = nil
         activeConnectionGeneration &+= 1
+        frameMailbox.reset(
+            generation: activeConnectionGeneration,
+            sessionEpoch: sessionEpochGate.current,
+            accepting: false
+        )
         codecNegotiationGeneration = nil
         clientCallbackGeneration.advance(to: activeConnectionGeneration)
         inputBuffer.removeAll(keepingCapacity: true)
@@ -1592,40 +1712,88 @@ class StreamingServer: EncodedFrameSink {
             return
         }
 
+        let submission = FrameSubmission(
+            data: data,
+            timestamp: timestamp,
+            isKeyframe: isKeyframe,
+            connection: connection,
+            clientGeneration: clientGeneration,
+            sessionEpoch: frameEpoch
+        )
+        guard frameMailbox.submit(
+            submission,
+            generation: clientGeneration,
+            sessionEpoch: frameEpoch
+        ) else { return }
         frameQueue.async { [weak self] in
-            guard let self = self else { return }
-            guard self.connection === connection,
-                  !self.isStopped,
-                  self.connectionReady,
-                  self.sessionEpochGate.accepts(frameEpoch) else { return }
-
-            let frame = PendingFrame(
-                data: data,
-                timestamp: timestamp,
-                isKeyframe: isKeyframe,
-                connection: connection,
-                generation: self.framePipelineGeneration,
-                clientGeneration: clientGeneration,
+            self?.drainLatestFrameSubmission(
+                generation: clientGeneration,
                 sessionEpoch: frameEpoch
             )
+        }
+    }
 
-            guard self.sendInFlight else {
-                let admission = self.pendingFrames.enqueue(frame)
-                self.observeQueueResult(
-                    admission,
-                    epoch: frameEpoch,
-                    clientGeneration: clientGeneration
-                )
-                guard let admitted = self.pendingFrames.dequeue() else { return }
-                self.transmit(admitted)
-                return
-            }
+    private func drainLatestFrameSubmission(generation: UInt64, sessionEpoch: UInt64) {
+        guard let drain = frameMailbox.take(
+            generation: generation,
+            sessionEpoch: sessionEpoch
+        ) else {
+            finishFrameSubmissionDrain(generation: generation, sessionEpoch: sessionEpoch)
+            return
+        }
+        if drain.droppedCount > 0 {
+            observeQueueResult(
+                LatestFrameEnqueueResult(
+                    accepted: drain.element != nil,
+                    droppedCount: drain.droppedCount,
+                    requiresKeyframe: drain.requiresKeyframe
+                ),
+                epoch: sessionEpoch,
+                clientGeneration: generation
+            )
+        }
+        guard let submission = drain.element else {
+            finishFrameSubmissionDrain(generation: generation, sessionEpoch: sessionEpoch)
+            return
+        }
+        guard connection === submission.connection,
+              !isStopped,
+              connectionReady,
+              sessionEpochGate.accepts(submission.sessionEpoch) else {
+            finishFrameSubmissionDrain(generation: generation, sessionEpoch: sessionEpoch)
+            return
+        }
 
-            let result = self.pendingFrames.enqueue(frame)
-            self.observeQueueResult(
-                result,
-                epoch: frameEpoch,
-                clientGeneration: clientGeneration
+        let frame = PendingFrame(
+            data: submission.data,
+            timestamp: submission.timestamp,
+            isKeyframe: submission.isKeyframe,
+            connection: submission.connection,
+            generation: framePipelineGeneration,
+            clientGeneration: submission.clientGeneration,
+            sessionEpoch: submission.sessionEpoch
+        )
+        let result = pendingFrames.enqueue(frame)
+        observeQueueResult(
+            result,
+            epoch: submission.sessionEpoch,
+            clientGeneration: submission.clientGeneration
+        )
+        if !sendInFlight, let admitted = pendingFrames.dequeue() {
+            transmit(admitted)
+        }
+        finishFrameSubmissionDrain(generation: generation, sessionEpoch: sessionEpoch)
+    }
+
+    private func finishFrameSubmissionDrain(generation: UInt64, sessionEpoch: UInt64) {
+        guard frameMailbox.finishDrain(
+            generation: generation,
+            sessionEpoch: sessionEpoch
+        ) else { return }
+        frameQueue.async { [weak self] in
+            self?.drainLatestFrameSubmission(
+                generation: generation,
+                sessionEpoch: sessionEpoch
             )
         }
     }
@@ -1975,6 +2143,11 @@ class StreamingServer: EncodedFrameSink {
 
         // Invalidate completions from the old connection and discard its newest
         // unsent frame before cancelling.
+        frameMailbox.reset(
+            generation: activeConnectionGeneration,
+            sessionEpoch: sessionEpochGate.current,
+            accepting: false
+        )
         frameQueue.sync {
             framePipelineGeneration &+= 1
             sendInFlight = false

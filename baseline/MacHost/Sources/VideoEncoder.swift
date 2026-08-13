@@ -3,14 +3,118 @@ import VideoToolbox
 import CoreMedia
 import os
 
+final class VideoEncoderInFlightAdmission {
+    enum SubmissionResult: Equatable {
+        case submitted(OSStatus)
+        case atCapacity
+        case invalidated
+    }
+
+    final class Lease {
+        private let lock = NSLock()
+        private weak var admission: VideoEncoderInFlightAdmission?
+        private var identifier: UInt64?
+
+        fileprivate init(admission: VideoEncoderInFlightAdmission, identifier: UInt64) {
+            self.admission = admission
+            self.identifier = identifier
+        }
+
+        func release() {
+            lock.lock()
+            let identifier = self.identifier
+            self.identifier = nil
+            let admission = self.admission
+            self.admission = nil
+            lock.unlock()
+
+            if let identifier {
+                admission?.release(identifier)
+            }
+        }
+
+        deinit {
+            release()
+        }
+    }
+
+    private struct State {
+        var nextIdentifier: UInt64 = 0
+        var activeIdentifiers: Set<UInt64> = []
+        var invalidated = false
+    }
+
+    private let capacity: Int
+    private let lock = NSLock()
+    private var state = State()
+
+    init(capacity: Int) {
+        precondition(capacity > 0)
+        self.capacity = capacity
+    }
+
+    func submit(_ submission: (Lease) -> OSStatus) -> SubmissionResult {
+        let lease: Lease
+        lock.lock()
+        if state.invalidated {
+            lock.unlock()
+            return .invalidated
+        }
+        guard state.activeIdentifiers.count < capacity else {
+            lock.unlock()
+            return .atCapacity
+        }
+        state.nextIdentifier &+= 1
+        let identifier = state.nextIdentifier
+        state.activeIdentifiers.insert(identifier)
+        lease = Lease(admission: self, identifier: identifier)
+        lock.unlock()
+
+        let status = submission(lease)
+        if status != noErr {
+            lease.release()
+        }
+        return .submitted(status)
+    }
+
+    func invalidate() {
+        lock.lock()
+        state.invalidated = true
+        state.activeIdentifiers.removeAll(keepingCapacity: false)
+        lock.unlock()
+    }
+
+    var inFlightCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return state.activeIdentifiers.count
+    }
+
+    private func release(_ identifier: UInt64) {
+        lock.lock()
+        state.activeIdentifiers.remove(identifier)
+        lock.unlock()
+    }
+}
+
 class VideoEncoder {
     fileprivate final class FrameContext {
         let timestamp: UInt64
         let sessionEpoch: UInt64
+        private let admissionLease: VideoEncoderInFlightAdmission.Lease
 
-        init(timestamp: UInt64, sessionEpoch: UInt64) {
+        init(
+            timestamp: UInt64,
+            sessionEpoch: UInt64,
+            admissionLease: VideoEncoderInFlightAdmission.Lease
+        ) {
             self.timestamp = timestamp
             self.sessionEpoch = sessionEpoch
+            self.admissionLease = admissionLease
+        }
+
+        func completeSubmission() {
+            admissionLease.release()
         }
     }
     private struct EncoderState {
@@ -28,6 +132,7 @@ class VideoEncoder {
     private var frameRate: Int = 60
     private let sessionLock = NSLock()
     private let stateLock = OSAllocatedUnfairLock(initialState: EncoderState())
+    private let inFlightAdmission = VideoEncoderInFlightAdmission(capacity: 2)
 
     var hasActiveCompressionSession: Bool {
         sessionLock.lock()
@@ -243,33 +348,39 @@ class VideoEncoder {
 
         // Use system uptime clock — MUST match DispatchTime.now().uptimeNanoseconds
         let captureNanos = DispatchTime.now().uptimeNanoseconds
-        let frameContext = Unmanaged.passRetained(
-            FrameContext(timestamp: captureNanos, sessionEpoch: sessionEpoch)
-        )
-
-        let shouldForceKeyframe = stateLock.withLock { state -> Bool in
-            guard state.pendingForceKeyframe else { return false }
-            state.pendingForceKeyframe = false
-            return true
+        var frameContext: Unmanaged<FrameContext>?
+        let submissionResult = inFlightAdmission.submit { admissionLease in
+            let shouldForceKeyframe = stateLock.withLock { state -> Bool in
+                guard state.pendingForceKeyframe else { return false }
+                state.pendingForceKeyframe = false
+                return true
+            }
+            let frameProperties: CFDictionary? = shouldForceKeyframe
+                ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary
+                : nil
+            let retainedContext = Unmanaged.passRetained(
+                FrameContext(
+                    timestamp: captureNanos,
+                    sessionEpoch: sessionEpoch,
+                    admissionLease: admissionLease
+                )
+            )
+            frameContext = retainedContext
+            return VTCompressionSessionEncodeFrame(
+                session,
+                imageBuffer: pixelBuffer,
+                presentationTimeStamp: presentationTimeStamp,
+                duration: duration,
+                frameProperties: frameProperties,
+                sourceFrameRefcon: retainedContext.toOpaque(),
+                infoFlagsOut: nil
+            )
         }
-        let frameProperties: CFDictionary? = shouldForceKeyframe
-            ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary
-            : nil
-
-        let encodeStatus = VTCompressionSessionEncodeFrame(
-            session,
-            imageBuffer: pixelBuffer,
-            presentationTimeStamp: presentationTimeStamp,
-            duration: duration,
-            frameProperties: frameProperties,
-            sourceFrameRefcon: frameContext.toOpaque(),
-            infoFlagsOut: nil
-        )
         sessionLock.unlock()
-        if encodeStatus != noErr {
+        if case .submitted(let encodeStatus) = submissionResult, encodeStatus != noErr {
             // VideoToolbox does not invoke the output callback when submission
             // itself fails, so ownership of the retained context remains here.
-            frameContext.release()
+            frameContext?.release()
             debugLog("VideoToolbox frame submission failed: \(encodeStatus)")
         }
     }
@@ -281,6 +392,7 @@ class VideoEncoder {
             VTCompressionSessionInvalidate(session)
             compressionSession = nil
         }
+        inFlightAdmission.invalidate()
         sessionLock.unlock()
     }
 }
@@ -297,6 +409,7 @@ private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallb
         let context = Unmanaged<VideoEncoder.FrameContext>
             .fromOpaque(refcon)
             .takeRetainedValue()
+        context.completeSubmission()
         timestamp = context.timestamp
         sessionEpoch = context.sessionEpoch
     } else {
