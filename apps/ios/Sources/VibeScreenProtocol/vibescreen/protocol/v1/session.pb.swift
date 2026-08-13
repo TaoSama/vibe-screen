@@ -52,6 +52,7 @@ public enum VSCapability: SwiftProtobuf.Enum, Swift.CaseIterable {
   /// Requires CAPABILITY_STYLUS and enables StylusEvent tool kind, barrel
   /// buttons, and explicit contact/proximity state.
   case stylusExtended // = 25
+
   /// Enables lifecycle-scoped ControllerEvent input. Receivers must neutralize
   /// admitted controller state when its lifecycle or session ends.
   case controller // = 26
