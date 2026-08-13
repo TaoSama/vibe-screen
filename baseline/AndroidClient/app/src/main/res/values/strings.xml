@@ -67,6 +67,7 @@
     <string name="control_disconnect">Disconnect</string>
     <string name="control_settings">Settings</string>
     <string name="control_displays">Choose display</string>
+    <string name="show_stream_controls">Show stream controls</string>
     <string name="disconnect_confirm_title">Disconnect?</string>
     <string name="disconnect_confirm_message">This ends the current screen session with the Mac.</string>
     <string name="disconnect_confirm_action">Disconnect</string>

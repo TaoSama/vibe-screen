@@ -235,3 +235,37 @@ class ControlBarLayoutPolicyTest {
         )
     }
 }
+
+class ControlBarAccessibilityPolicyTest {
+    @Test
+    fun `transient controls auto hide for standard touch navigation`() {
+        assertTrue(ControlBarAccessibilityPolicy.shouldAutoHide(touchExplorationEnabled = false))
+    }
+
+    @Test
+    fun `transient controls remain available during touch exploration`() {
+        assertFalse(ControlBarAccessibilityPolicy.shouldAutoHide(touchExplorationEnabled = true))
+    }
+
+    @Test
+    fun `reveal action is exposed only for connected sessions with hidden controls`() {
+        assertTrue(
+            ControlBarAccessibilityPolicy.shouldExposeRevealAction(
+                connected = true,
+                controlBarVisible = false,
+            ),
+        )
+        assertFalse(
+            ControlBarAccessibilityPolicy.shouldExposeRevealAction(
+                connected = true,
+                controlBarVisible = true,
+            ),
+        )
+        assertFalse(
+            ControlBarAccessibilityPolicy.shouldExposeRevealAction(
+                connected = false,
+                controlBarVisible = false,
+            ),
+        )
+    }
+}

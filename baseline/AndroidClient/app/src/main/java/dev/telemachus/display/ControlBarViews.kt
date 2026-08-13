@@ -17,6 +17,22 @@ internal data class ControlBarViews(
     val disconnect: View,
 )
 
+/** Keeps the full-screen reveal action out of the accessibility tree while chrome is visible. */
+internal object ControlBarAccessibilityApplier {
+    fun applyRevealAction(
+        inputViewport: View,
+        connected: Boolean,
+        controlBarVisible: Boolean,
+    ) {
+        inputViewport.importantForAccessibility =
+            if (ControlBarAccessibilityPolicy.shouldExposeRevealAction(connected, controlBarVisible)) {
+                View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            } else {
+                View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+    }
+}
+
 /** Applies physical window insets to start/end-aware chrome margins. */
 internal object ChromeSafeAreaApplier {
     fun captureBaseMargins(view: View): SafeAreaGeometry.Insets {
