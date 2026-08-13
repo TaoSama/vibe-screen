@@ -707,6 +707,7 @@
                 android:id="@+id/showAdvanced"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:minHeight="48dp"
                 android:text="@string/connection_details"
                 android:textColor="#8FB9FF"
                 android:textSize="13sp"
