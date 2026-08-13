@@ -525,13 +525,15 @@
                         android:layout_width="10dp"
                         android:layout_height="10dp"
                         android:background="@drawable/status_indicator_red"
+                        android:importantForAccessibility="no"
                         android:layout_marginEnd="10dp" />
                     <TextView
                         android:id="@+id/textDeveloperMode"
                         android:layout_width="0dp"
                         android:layout_weight="1"
                         android:layout_height="wrap_content"
-                        android:text="@string/developer_mode_enabled"
+                        android:accessibilityLiveRegion="polite"
+                        android:text="@string/developer_mode_not_ready"
                         android:textColor="#BBBBBB"
                         android:textSize="13sp" />
                 </LinearLayout>
@@ -548,13 +550,15 @@
                         android:layout_width="10dp"
                         android:layout_height="10dp"
                         android:background="@drawable/status_indicator_red"
+                        android:importantForAccessibility="no"
                         android:layout_marginEnd="10dp" />
                     <TextView
                         android:id="@+id/textUsbDebugging"
                         android:layout_width="0dp"
                         android:layout_weight="1"
                         android:layout_height="wrap_content"
-                        android:text="@string/usb_debugging_enabled"
+                        android:accessibilityLiveRegion="polite"
+                        android:text="@string/usb_debugging_not_ready"
                         android:textColor="#BBBBBB"
                         android:textSize="13sp" />
                 </LinearLayout>
@@ -571,13 +575,15 @@
                         android:layout_width="10dp"
                         android:layout_height="10dp"
                         android:background="@drawable/status_indicator_red"
+                        android:importantForAccessibility="no"
                         android:layout_marginEnd="10dp" />
                     <TextView
                         android:id="@+id/textUsbConnected"
                         android:layout_width="0dp"
                         android:layout_weight="1"
                         android:layout_height="wrap_content"
-                        android:text="@string/usb_cable_connected"
+                        android:accessibilityLiveRegion="polite"
+                        android:text="@string/usb_data_cable_not_ready"
                         android:textColor="#BBBBBB"
                         android:textSize="13sp" />
                 </LinearLayout>
@@ -593,13 +599,15 @@
                         android:layout_width="10dp"
                         android:layout_height="10dp"
                         android:background="@drawable/status_indicator_red"
+                        android:importantForAccessibility="no"
                         android:layout_marginEnd="10dp" />
                     <TextView
                         android:id="@+id/textMacServer"
                         android:layout_width="0dp"
                         android:layout_weight="1"
                         android:layout_height="wrap_content"
-                        android:text="@string/mac_server_running"
+                        android:accessibilityLiveRegion="polite"
+                        android:text="@string/mac_server_checking"
                         android:textColor="#BBBBBB"
                         android:textSize="13sp" />
                 </LinearLayout>
@@ -614,9 +622,9 @@
                 android:text="@string/connect"
                 android:textSize="16sp"
                 android:textStyle="bold"
-                android:textColor="#07100B"
+                android:textColor="@color/primary_button_text"
                 app:cornerRadius="18dp"
-                app:backgroundTint="#65D992"
+                app:backgroundTint="@color/primary_button_background"
                 android:layout_marginBottom="14dp" />
 
             <!-- Status Section -->
@@ -1118,9 +1126,9 @@
                     android:layout_height="56dp"
                     android:layout_marginTop="12dp"
                     android:text="@string/internet_connect"
-                    android:textColor="@color/internet_primary_text"
+                    android:textColor="@color/primary_button_text"
                     android:textStyle="bold"
-                    app:backgroundTint="@color/internet_primary_background"
+                    app:backgroundTint="@color/primary_button_background"
                     app:cornerRadius="18dp" />
 
                 <com.google.android.material.button.MaterialButton
