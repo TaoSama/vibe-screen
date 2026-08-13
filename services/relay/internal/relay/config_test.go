@@ -66,3 +66,22 @@ func TestConfigRejectsReusedMetricsToken(t *testing.T) {
 		t.Fatalf("expected duplicate-token rejection, got %v", err)
 	}
 }
+
+func TestConfigRequiresStrictTerminationWebhook(t *testing.T) {
+	cfg := Config{
+		ListenAddress: "127.0.0.1:8090", TurnRealm: "relay.test", TurnURIs: []string{"turn:relay.test:3478"},
+		CredentialTTLSeconds: 60, MaxCredentialTTLSeconds: 120, CredentialRequestsPerMinute: 1,
+		MaxConcurrentSessionsPerDevice: 1, DailyBytesPerDevice: 1, MaxUsageEventBytes: 1, StateFile: filepath.Join(t.TempDir(), "state.json"),
+		TurnSecret: strings.Repeat("t", 32), ClientToken: strings.Repeat("c", 32), UsageToken: strings.Repeat("u", 32),
+		MetricsToken: strings.Repeat("m", 32), AdminToken: strings.Repeat("a", 32),
+		AllocationTerminationWebhookURL: "http://executor.example.com/revoke", AllocationTerminationTimeoutSeconds: 5,
+		TerminationToken: strings.Repeat("x", 32),
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "must use HTTPS") {
+		t.Fatalf("expected insecure webhook rejection, got %v", err)
+	}
+	cfg.AllocationTerminationWebhookURL = "https://user:password@executor.example.com/revoke"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "without credentials") {
+		t.Fatalf("expected embedded credential rejection, got %v", err)
+	}
+}

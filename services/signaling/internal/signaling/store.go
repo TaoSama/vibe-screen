@@ -49,6 +49,8 @@ type session struct {
 	invalidated    bool
 	deviceID       string
 	sessionEpoch   uint64
+	authority      PublicIdentity
+	peerIdentity   PublicIdentity
 	superseded     bool
 	revoked        bool
 	successorID    string
@@ -64,9 +66,8 @@ type Store struct {
 	maxCandidates     int
 	maxWaiters        int
 	stateFile         string
-	revokedDevices    map[string]bool
+	revocationState   revocationState
 	deviceEpochs      map[string]uint64
-	relayRevoked      map[string]bool
 }
 
 type StoreStats struct {
@@ -77,7 +78,7 @@ type StoreStats struct {
 }
 
 func NewStore(cfg Config) (*Store, error) {
-	revokedDevices, err := loadRevokedDevices(cfg.StateFile)
+	revocations, err := loadRevocationState(cfg.StateFile)
 	if err != nil {
 		return nil, err
 	}
@@ -89,8 +90,8 @@ func NewStore(cfg Config) (*Store, error) {
 		messagesPerMinute: cfg.MessagesPerMinute,
 		maxCandidates:     cfg.MaxCandidatesPerRole,
 		maxWaiters:        cfg.MaxWaitersPerRole,
-		stateFile:         cfg.StateFile, revokedDevices: revokedDevices,
-		deviceEpochs: make(map[string]uint64), relayRevoked: make(map[string]bool),
+		stateFile:         cfg.StateFile, revocationState: revocations,
+		deviceEpochs: make(map[string]uint64),
 	}, nil
 }
 
@@ -99,6 +100,10 @@ func (s *Store) Create(requestID string, ttl time.Duration) (SessionResponse, bo
 }
 
 func (s *Store) CreateBound(requestID string, ttl time.Duration, deviceID string, sessionEpoch uint64) (SessionResponse, bool, error) {
+	return s.CreateBoundIdentity(requestID, ttl, deviceID, sessionEpoch, PublicIdentity{}, PublicIdentity{})
+}
+
+func (s *Store) CreateBoundIdentity(requestID string, ttl time.Duration, deviceID string, sessionEpoch uint64, authority, peer PublicIdentity) (SessionResponse, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cleanupLocked(s.now())
@@ -108,17 +113,18 @@ func (s *Store) CreateBound(requestID string, ttl time.Duration, deviceID string
 			delete(s.requestSessions, requestID)
 		} else if existing.invalidated {
 			return SessionResponse{}, false, ErrInvalidated
-		} else if existing.ttlSeconds != int64(ttl/time.Second) || existing.deviceID != deviceID || existing.sessionEpoch != sessionEpoch {
+		} else if existing.ttlSeconds != int64(ttl/time.Second) || existing.deviceID != deviceID || existing.sessionEpoch != sessionEpoch ||
+			!sameIdentity(existing.authority, authority) || !sameIdentity(existing.peerIdentity, peer) {
 			return SessionResponse{}, false, ErrConflict
 		} else {
-			if deviceID != "" && s.revokedDevices[deviceID] {
+			if deviceID != "" && s.isRevokedLocked(deviceID) {
 				return SessionResponse{}, false, ErrDeviceRevoked
 			}
 			return existing.response, false, nil
 		}
 	}
 	if deviceID != "" {
-		if s.revokedDevices[deviceID] {
+		if s.isRevokedLocked(deviceID) {
 			return SessionResponse{}, false, ErrDeviceRevoked
 		}
 		if sessionEpoch == 0 || sessionEpoch <= s.deviceEpochs[deviceID] {
@@ -151,7 +157,7 @@ func (s *Store) CreateBound(requestID string, ttl time.Duration, deviceID string
 		ended:          map[Role]bool{RoleHost: false, RoleDevice: false},
 		candidateCount: map[Role]int{RoleHost: 0, RoleDevice: 0},
 		rates:          map[Role]rateWindow{}, waiters: map[Role]int{}, notify: make(chan struct{}),
-		deviceID: deviceID, sessionEpoch: sessionEpoch,
+		deviceID: deviceID, sessionEpoch: sessionEpoch, authority: authority, peerIdentity: peer,
 	}
 	s.requestSessions[requestID] = sessionID
 	if deviceID != "" {
@@ -176,7 +182,7 @@ func (s *Store) Refresh(sessionID, token string) (refreshResult, error) {
 	if current.deviceID == "" || current.sessionEpoch == 0 {
 		return refreshResult{}, ErrRefreshUnsupported
 	}
-	if s.revokedDevices[current.deviceID] || current.revoked {
+	if s.isRevokedLocked(current.deviceID) || current.revoked {
 		return refreshResult{}, ErrNotFound
 	}
 	if current.successorID == "" {
@@ -196,7 +202,7 @@ func (s *Store) Refresh(sessionID, token string) (refreshResult, error) {
 		current.notify = make(chan struct{})
 	}
 	successor := s.sessions[current.successorID]
-	if successor == nil || successor.revoked || s.revokedDevices[current.deviceID] {
+	if successor == nil || successor.revoked || s.isRevokedLocked(current.deviceID) {
 		return refreshResult{}, ErrNotFound
 	}
 	roleToken := successor.deviceToken
@@ -210,6 +216,9 @@ func (s *Store) Refresh(sessionID, token string) (refreshResult, error) {
 }
 
 func (s *Store) createSuccessorLocked(current *session) (*session, error) {
+	if current.sessionEpoch >= uint64(^uint64(0)>>1) {
+		return nil, ErrConflict
+	}
 	sessionID, err := randomToken(16)
 	if err != nil {
 		return nil, fmt.Errorf("generate session ID: %w", err)
@@ -227,6 +236,7 @@ func (s *Store) createSuccessorLocked(current *session) (*session, error) {
 		ExpiresAt: s.now().UTC().Add(time.Duration(current.ttlSeconds) * time.Second), DeviceID: current.deviceID, SessionEpoch: epoch}
 	successor := &session{requestID: "refresh:" + current.response.SessionID, ttlSeconds: current.ttlSeconds,
 		response: response, hostToken: hostToken, deviceToken: deviceToken, deviceID: current.deviceID, sessionEpoch: epoch,
+		authority: current.authority, peerIdentity: current.peerIdentity,
 		messages: map[Role]map[string]MessageRequest{RoleHost: {}, RoleDevice: {}}, ended: map[Role]bool{RoleHost: false, RoleDevice: false},
 		candidateCount: map[Role]int{RoleHost: 0, RoleDevice: 0}, rates: map[Role]rateWindow{}, waiters: map[Role]int{}, notify: make(chan struct{})}
 	s.sessions[sessionID] = successor
@@ -258,25 +268,46 @@ func (s *Store) Invalidate(sessionID string) (bool, error) {
 	return true, nil
 }
 
-func (s *Store) RevokeDevice(sessionID, hostToken, deviceID string) (bool, error) {
+func (s *Store) RevocationBinding(sessionID, hostToken, deviceID string) (PublicIdentity, PublicIdentity, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cleanupLocked(s.now())
 	current := s.sessions[sessionID]
 	if current == nil || current.deviceID == "" || current.deviceID != deviceID || !secureEqual(hostToken, current.hostToken) {
+		return PublicIdentity{}, PublicIdentity{}, ErrUnauthorized
+	}
+	if current.authority.DeviceID == "" || current.peerIdentity.DeviceID == "" {
+		return PublicIdentity{}, PublicIdentity{}, ErrUnauthorized
+	}
+	return current.authority, current.peerIdentity, nil
+}
+
+func (s *Store) RevokeDevice(sessionID, hostToken, deviceID string, tombstone SignedDeviceRevocation, authorityDigest, digest, nonceDigest string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cleanupLocked(s.now())
+	current := s.sessions[sessionID]
+	if current == nil || current.deviceID != deviceID || !secureEqual(hostToken, current.hostToken) {
 		return false, ErrUnauthorized
 	}
-	if !s.revokedDevices[deviceID] {
-		updated := make(map[string]bool, len(s.revokedDevices)+1)
-		for existing, revoked := range s.revokedDevices {
-			updated[existing] = revoked
+	if existing, ok := s.revocationState.revocations[deviceID]; ok {
+		if existing.Sequence != tombstone.Sequence || existing.Digest != digest {
+			return false, ErrConflict
 		}
-		updated[deviceID] = true
-		if err := persistRevokedDevices(s.stateFile, updated); err != nil {
-			return false, err
-		}
-		s.revokedDevices = updated
+		return !existing.RelayComplete, nil
 	}
+	authorityNonceDigest := authorityDigest + ":" + nonceDigest
+	if tombstone.Sequence <= s.revocationState.maximumSequences[authorityDigest] || s.revocationState.usedNonceDigests[authorityNonceDigest] {
+		return false, ErrConflict
+	}
+	next := cloneRevocationState(s.revocationState)
+	next.revocations[deviceID] = durableRevocation{AuthorityDigest: authorityDigest, Sequence: tombstone.Sequence, Digest: digest, NonceDigest: nonceDigest}
+	next.maximumSequences[authorityDigest] = tombstone.Sequence
+	next.usedNonceDigests[authorityNonceDigest] = true
+	if err := persistRevocationState(s.stateFile, next); err != nil {
+		return false, err
+	}
+	s.revocationState = next
 	for _, candidate := range s.sessions {
 		if candidate.deviceID != deviceID || candidate.revoked {
 			continue
@@ -288,20 +319,44 @@ func (s *Store) RevokeDevice(sessionID, hostToken, deviceID string) (bool, error
 		close(candidate.notify)
 		candidate.notify = make(chan struct{})
 	}
-	return !s.relayRevoked[deviceID], nil
+	return true, nil
 }
 
-func (s *Store) MarkRelayRevoked(deviceID string) {
+func (s *Store) MarkRelayRevoked(deviceID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.relayRevoked[deviceID] = true
+	record, ok := s.revocationState.revocations[deviceID]
+	if !ok || record.RelayComplete {
+		return nil
+	}
+	next := cloneRevocationState(s.revocationState)
+	record.RelayComplete = true
+	next.revocations[deviceID] = record
+	if err := persistRevocationState(s.stateFile, next); err != nil {
+		return err
+	}
+	s.revocationState = next
+	return nil
+}
+
+func (s *Store) PendingRelayRevocations() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var result []string
+	for deviceID, record := range s.revocationState.revocations {
+		if !record.RelayComplete {
+			result = append(result, deviceID)
+		}
+	}
+	sortStrings(result)
+	return result
 }
 
 func (s *Store) RefreshStillAllowed(sessionID, deviceID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current := s.sessions[sessionID]
-	return current != nil && current.deviceID == deviceID && !current.revoked && !s.revokedDevices[deviceID]
+	return current != nil && current.deviceID == deviceID && !current.revoked && !s.isRevokedLocked(deviceID)
 }
 
 func (s *Store) SessionStillAllowed(sessionID, deviceID string) bool {
@@ -309,7 +364,7 @@ func (s *Store) SessionStillAllowed(sessionID, deviceID string) bool {
 	defer s.mu.Unlock()
 	current := s.sessions[sessionID]
 	return current != nil && current.deviceID == deviceID && !current.invalidated && !current.superseded &&
-		!current.revoked && (deviceID == "" || !s.revokedDevices[deviceID])
+		!current.revoked && (deviceID == "" || !s.isRevokedLocked(deviceID))
 }
 
 func (s *Store) AddMessage(sessionID, token string, request MessageRequest) (Event, bool, error) {
@@ -487,7 +542,7 @@ func (s *Store) cleanupLocked(now time.Time) int {
 
 func (s *Store) authorizeLocked(sessionID, token string) (*session, Role, error) {
 	current := s.sessions[sessionID]
-	if current == nil || current.invalidated || current.superseded || current.revoked || (current.deviceID != "" && s.revokedDevices[current.deviceID]) {
+	if current == nil || current.invalidated || current.superseded || current.revoked || (current.deviceID != "" && s.isRevokedLocked(current.deviceID)) {
 		return nil, "", ErrNotFound
 	}
 	var role Role
@@ -502,6 +557,26 @@ func (s *Store) authorizeLocked(sessionID, token string) (*session, Role, error)
 		return nil, "", ErrExpired
 	}
 	return current, role, nil
+}
+
+func (s *Store) isRevokedLocked(deviceID string) bool {
+	_, revoked := s.revocationState.revocations[deviceID]
+	return revoked
+}
+
+func cloneRevocationState(source revocationState) revocationState {
+	copy := revocationState{revocations: make(map[string]durableRevocation, len(source.revocations)),
+		maximumSequences: make(map[string]uint64, len(source.maximumSequences)), usedNonceDigests: make(map[string]bool, len(source.usedNonceDigests))}
+	for key, value := range source.revocations {
+		copy.revocations[key] = value
+	}
+	for key, value := range source.maximumSequences {
+		copy.maximumSequences[key] = value
+	}
+	for key, value := range source.usedNonceDigests {
+		copy.usedNonceDigests[key] = value
+	}
+	return copy
 }
 
 func (s *Store) refreshAuthorizeLocked(sessionID, token string) (*session, Role, error) {

@@ -66,7 +66,26 @@ protocol SessionAuthorityClientPort {
     ) async throws
 }
 
+final class SessionAuthorityRequestDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        // Never replay the bearer credential to a redirect destination.
+        completionHandler(nil)
+    }
+}
+
 final class HTTPSessionAuthorityClient: SessionAuthorityClientPort {
+    enum TLSPolicy: Equatable {
+        /// Use URLSession's platform trust evaluation. No custom roots or
+        /// trust-challenge overrides are installed by this client.
+        case systemTrust
+    }
+
     private struct RefreshWire: Decodable {
         let sessionID: String
         let roleToken: String
@@ -96,16 +115,6 @@ final class HTTPSessionAuthorityClient: SessionAuthorityClientPort {
         }
     }
 
-    private struct RevokeWire: Encodable {
-        let deviceID: String
-        let tombstone: String?
-
-        enum CodingKeys: String, CodingKey {
-            case deviceID = "device_id"
-            case tombstone
-        }
-    }
-
     private struct RevokeResponseWire: Decodable {
         let status: String
     }
@@ -123,11 +132,30 @@ final class HTTPSessionAuthorityClient: SessionAuthorityClientPort {
     private static let maximumTURNURIs = 16
 
     private let session: URLSession
+    let tlsPolicy: TLSPolicy
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    init(session: URLSession = .shared) {
+    convenience init(tlsPolicy: TLSPolicy = .systemTrust) {
+        self.init(
+            session: URLSession(configuration: Self.makeDefaultConfiguration()),
+            tlsPolicy: tlsPolicy
+        )
+    }
+
+    static func makeDefaultConfiguration() -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        configuration.tlsMinimumSupportedProtocolVersion = .TLSv12
+        return configuration
+    }
+
+    init(session: URLSession, tlsPolicy: TLSPolicy = .systemTrust) {
         self.session = session
+        self.tlsPolicy = tlsPolicy
     }
 
     func refresh(_ current: SessionAuthorityCredential) async throws -> SessionAuthorityRefresh {
@@ -181,16 +209,25 @@ final class HTTPSessionAuthorityClient: SessionAuthorityClientPort {
     ) async throws {
         try validate(current)
         guard validAuthorityIdentifier(deviceID),
-              signedTombstone?.isEmpty != true,
-              (signedTombstone?.count ?? 0) <= Self.maximumResponseBytes else {
+              let signedTombstone,
+              !signedTombstone.isEmpty,
+              signedTombstone.count <= Self.maximumResponseBytes else {
             throw SessionAuthorityClientError.invalidRequest("The revoke target or tombstone is invalid.")
         }
         let body: Data
         do {
-            body = try encoder.encode(RevokeWire(
-                deviceID: deviceID,
-                tombstone: signedTombstone?.base64EncodedString()
-            ))
+            let tombstone = try JSONSerialization.jsonObject(with: signedTombstone)
+            guard tombstone is [String: Any] else {
+                throw SessionAuthorityClientError.invalidRequest(
+                    "The signed tombstone must contain one JSON object."
+                )
+            }
+            body = try JSONSerialization.data(withJSONObject: [
+                "device_id": deviceID,
+                "tombstone": tombstone
+            ])
+        } catch let error as SessionAuthorityClientError {
+            throw error
         } catch {
             throw SessionAuthorityClientError.invalidRequest("The revoke request could not be encoded.")
         }
@@ -229,10 +266,13 @@ final class HTTPSessionAuthorityClient: SessionAuthorityClientPort {
     }
 
     private func execute(_ request: URLRequest, acceptedStatuses: Set<Int>) async throws -> Data {
-        let data: Data
+        let bytes: URLSession.AsyncBytes
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (bytes, response) = try await session.bytes(
+                for: request,
+                delegate: SessionAuthorityRequestDelegate()
+            )
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -248,8 +288,32 @@ final class HTTPSessionAuthorityClient: SessionAuthorityClientPort {
         guard acceptedStatuses.contains(http.statusCode) else {
             throw SessionAuthorityClientError.rejected(status: http.statusCode)
         }
-        guard data.count <= Self.maximumResponseBytes else {
-            throw SessionAuthorityClientError.invalidResponse("The authority response is too large.")
+        if let contentLength = http.value(forHTTPHeaderField: "Content-Length") {
+            guard let declaredBytes = Int64(contentLength),
+                  declaredBytes >= 0,
+                  declaredBytes <= Int64(Self.maximumResponseBytes) else {
+                throw SessionAuthorityClientError.invalidResponse(
+                    "The authority response has an invalid content length."
+                )
+            }
+        }
+
+        var data = Data()
+        let declaredCapacity = max(0, Int(http.expectedContentLength))
+        data.reserveCapacity(min(declaredCapacity, Self.maximumResponseBytes))
+        do {
+            for try await byte in bytes {
+                guard data.count < Self.maximumResponseBytes else {
+                    throw SessionAuthorityClientError.invalidResponse("The authority response is too large.")
+                }
+                data.append(byte)
+            }
+        } catch let error as SessionAuthorityClientError {
+            throw error
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw SessionAuthorityClientError.transportFailure("network")
         }
         return data
     }
@@ -312,7 +376,7 @@ final class HTTPSessionAuthorityClient: SessionAuthorityClientPort {
     private func validBounded(_ value: String, maximumBytes: Int) -> Bool {
         !value.isEmpty
             && value.utf8.count <= maximumBytes
-            && value.unicodeScalars.allSatisfy { !$0.properties.isControl }
+            && value.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) }
     }
 
     private func validAuthorityIdentifier(_ value: String) -> Bool {

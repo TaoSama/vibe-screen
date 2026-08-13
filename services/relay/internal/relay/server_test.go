@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
@@ -14,6 +15,12 @@ import (
 	"testing"
 	"time"
 )
+
+type allocationTerminatorFunc func(context.Context, allocationTerminationRequest) error
+
+func (f allocationTerminatorFunc) Terminate(ctx context.Context, request allocationTerminationRequest) error {
+	return f(ctx, request)
+}
 
 const (
 	testClientToken  = "client-token-at-least-thirty-two-bytes"
@@ -161,6 +168,72 @@ func TestUsagePersistsAndMetricsRequireAuthentication(t *testing.T) {
 	}
 }
 
+func TestRevocationPersistsDenyAndRetriesTermination(t *testing.T) {
+	server, err := NewServer(testConfig(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requests []allocationTerminationRequest
+	server.terminator = allocationTerminatorFunc(func(_ context.Context, request allocationTerminationRequest) error {
+		requests = append(requests, request)
+		if len(requests) == 1 {
+			return fmt.Errorf("executor unavailable")
+		}
+		return nil
+	})
+
+	first := requestJSON(t, server.Handler(), http.MethodPost, "/v1/devices/device-retry/revoke", testAdminToken, "{}")
+	if first.Code != http.StatusServiceUnavailable || !server.store.IsRevoked("device-retry") {
+		t.Fatalf("first revoke = %d, revoked = %t", first.Code, server.store.IsRevoked("device-retry"))
+	}
+	second := requestJSON(t, server.Handler(), http.MethodPost, "/v1/devices/device-retry/revoke", testAdminToken, "{}")
+	if second.Code != http.StatusOK || len(requests) != 2 || requests[0].RevocationID != requests[1].RevocationID {
+		t.Fatalf("retry = %d, requests = %#v", second.Code, requests)
+	}
+	third := requestJSON(t, server.Handler(), http.MethodPost, "/v1/devices/device-retry/revoke", testAdminToken, "{}")
+	if third.Code != http.StatusOK || len(requests) != 2 {
+		t.Fatalf("completed retry = %d, calls = %d", third.Code, len(requests))
+	}
+}
+
+func TestServerStartupRetriesDurableTerminationOutbox(t *testing.T) {
+	cfg := testConfig(t)
+	initial, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := requestJSON(t, initial.Handler(), http.MethodPost, "/v1/devices/device-restart/revoke", testAdminToken, "{}"); got.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unconfigured termination status = %d", got.Code)
+	}
+	var received allocationTerminationRequest
+	executor := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+strings.Repeat("x", 32) {
+			t.Error("missing termination authorization")
+		}
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Error(err)
+		}
+		if r.Header.Get("Idempotency-Key") == "" || r.Header.Get("Idempotency-Key") != received.RevocationID {
+			t.Error("missing stable idempotency key")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer executor.Close()
+	cfg.AllocationTerminationWebhookURL = executor.URL
+	cfg.AllocationTerminationTimeoutSeconds = 1
+	cfg.TerminationToken = strings.Repeat("x", 32)
+	restarted, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if received.DeviceID != "device-restart" {
+		t.Fatalf("startup retry event = %#v", received)
+	}
+	if pending := restarted.store.PendingTerminations(10); len(pending) != 0 {
+		t.Fatalf("pending after acknowledged startup retry = %#v", pending)
+	}
+}
+
 func TestAuthorizationRequiresExactBearerScheme(t *testing.T) {
 	server, err := NewServer(testConfig(t))
 	if err != nil {
@@ -204,6 +277,7 @@ func TestRevokedDeviceCannotReceiveCredentialsOrReportUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	server.terminator = allocationTerminatorFunc(func(context.Context, allocationTerminationRequest) error { return nil })
 	handler := server.Handler()
 	start := `{"event_id":"event-before-revoke","device_id":"device-1","session_id":"session-1","kind":"start","ingress_bytes":10,"egress_bytes":20}`
 	if got := requestJSON(t, handler, http.MethodPost, "/v1/usage", testUsageToken, start); got.Code != http.StatusAccepted {

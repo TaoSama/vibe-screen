@@ -4,36 +4,42 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strings"
 )
 
 const (
-	turnSecretEnv   = "VIBE_RELAY_TURN_SECRET"
-	clientTokenEnv  = "VIBE_RELAY_CLIENT_TOKEN"
-	usageTokenEnv   = "VIBE_RELAY_USAGE_TOKEN"
-	metricsTokenEnv = "VIBE_RELAY_METRICS_TOKEN"
-	adminTokenEnv   = "VIBE_RELAY_ADMIN_TOKEN"
+	turnSecretEnv       = "VIBE_RELAY_TURN_SECRET"
+	clientTokenEnv      = "VIBE_RELAY_CLIENT_TOKEN"
+	usageTokenEnv       = "VIBE_RELAY_USAGE_TOKEN"
+	metricsTokenEnv     = "VIBE_RELAY_METRICS_TOKEN"
+	adminTokenEnv       = "VIBE_RELAY_ADMIN_TOKEN"
+	terminationTokenEnv = "VIBE_RELAY_TERMINATION_TOKEN"
 )
 
 type Config struct {
-	ListenAddress                  string   `json:"listen_address"`
-	TurnRealm                      string   `json:"turn_realm"`
-	TurnURIs                       []string `json:"turn_uris"`
-	CredentialTTLSeconds           int64    `json:"credential_ttl_seconds"`
-	MaxCredentialTTLSeconds        int64    `json:"max_credential_ttl_seconds"`
-	CredentialRequestsPerMinute    int      `json:"credential_requests_per_minute"`
-	MaxConcurrentSessionsPerDevice int      `json:"max_concurrent_sessions_per_device"`
-	DailyBytesPerDevice            uint64   `json:"daily_bytes_per_device"`
-	MaxUsageEventBytes             uint64   `json:"max_usage_event_bytes"`
-	EgressMicrocentsPerGibibyte    uint64   `json:"egress_microcents_per_gibibyte"`
-	StateFile                      string   `json:"state_file"`
+	ListenAddress                       string   `json:"listen_address"`
+	TurnRealm                           string   `json:"turn_realm"`
+	TurnURIs                            []string `json:"turn_uris"`
+	CredentialTTLSeconds                int64    `json:"credential_ttl_seconds"`
+	MaxCredentialTTLSeconds             int64    `json:"max_credential_ttl_seconds"`
+	CredentialRequestsPerMinute         int      `json:"credential_requests_per_minute"`
+	MaxConcurrentSessionsPerDevice      int      `json:"max_concurrent_sessions_per_device"`
+	DailyBytesPerDevice                 uint64   `json:"daily_bytes_per_device"`
+	MaxUsageEventBytes                  uint64   `json:"max_usage_event_bytes"`
+	EgressMicrocentsPerGibibyte         uint64   `json:"egress_microcents_per_gibibyte"`
+	StateFile                           string   `json:"state_file"`
+	AllocationTerminationWebhookURL     string   `json:"allocation_termination_webhook_url,omitempty"`
+	AllocationTerminationTimeoutSeconds int64    `json:"allocation_termination_timeout_seconds,omitempty"`
 
-	TurnSecret   string `json:"-"`
-	ClientToken  string `json:"-"`
-	UsageToken   string `json:"-"`
-	MetricsToken string `json:"-"`
-	AdminToken   string `json:"-"`
+	TurnSecret       string `json:"-"`
+	ClientToken      string `json:"-"`
+	UsageToken       string `json:"-"`
+	MetricsToken     string `json:"-"`
+	AdminToken       string `json:"-"`
+	TerminationToken string `json:"-"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -66,6 +72,12 @@ func LoadConfig(path string) (Config, error) {
 	cfg.AdminToken, err = loadSecret(adminTokenEnv)
 	if err != nil {
 		return Config{}, err
+	}
+	if cfg.AllocationTerminationWebhookURL != "" {
+		cfg.TerminationToken, err = loadSecret(terminationTokenEnv)
+		if err != nil {
+			return Config{}, err
+		}
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -119,17 +131,40 @@ func (c Config) Validate() error {
 	if c.AdminToken == "" {
 		missing = append(missing, adminTokenEnv)
 	}
+	if c.AllocationTerminationWebhookURL != "" && c.TerminationToken == "" {
+		missing = append(missing, terminationTokenEnv)
+	}
 	if len(missing) > 0 {
 		return fmt.Errorf("missing required configuration: %s", strings.Join(missing, ", "))
 	}
-	if len(c.TurnSecret) < 32 || len(c.ClientToken) < 32 || len(c.UsageToken) < 32 || len(c.MetricsToken) < 32 || len(c.AdminToken) < 32 {
+	if len(c.TurnSecret) < 32 || len(c.ClientToken) < 32 || len(c.UsageToken) < 32 || len(c.MetricsToken) < 32 || len(c.AdminToken) < 32 || (c.AllocationTerminationWebhookURL != "" && len(c.TerminationToken) < 32) {
 		return errors.New("TURN secret and API tokens must each contain at least 32 characters")
 	}
+	if c.AllocationTerminationWebhookURL == "" {
+		if c.AllocationTerminationTimeoutSeconds != 0 {
+			return errors.New("allocation termination timeout requires a webhook URL")
+		}
+	} else {
+		endpoint, err := url.Parse(c.AllocationTerminationWebhookURL)
+		if err != nil || endpoint.Host == "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" {
+			return errors.New("allocation termination webhook must be an absolute URL without credentials, query, or fragment")
+		}
+		host := endpoint.Hostname()
+		if endpoint.Scheme != "https" && !(endpoint.Scheme == "http" && (host == "localhost" || net.ParseIP(host).IsLoopback())) {
+			return errors.New("allocation termination webhook must use HTTPS (HTTP is allowed only for loopback)")
+		}
+		if c.AllocationTerminationTimeoutSeconds < 1 || c.AllocationTerminationTimeoutSeconds > 30 {
+			return errors.New("allocation termination timeout must be between 1 and 30 seconds")
+		}
+	}
 	tokens := []string{c.ClientToken, c.UsageToken, c.MetricsToken, c.AdminToken}
+	if c.TerminationToken != "" {
+		tokens = append(tokens, c.TerminationToken)
+	}
 	for left := range tokens {
 		for right := left + 1; right < len(tokens); right++ {
 			if tokens[left] == tokens[right] {
-				return errors.New("client, usage, metrics, and admin API tokens must be different")
+				return errors.New("client, usage, metrics, admin, and termination API tokens must be different")
 			}
 		}
 	}

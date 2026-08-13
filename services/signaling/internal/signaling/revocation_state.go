@@ -8,49 +8,80 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 )
 
-type revocationStateFile struct {
-	RevokedDeviceIDs []string `json:"revoked_device_ids"`
+type durableRevocation struct {
+	AuthorityDigest string `json:"authority_digest"`
+	Sequence        uint64 `json:"sequence"`
+	Digest          string `json:"digest"`
+	NonceDigest     string `json:"nonce_digest"`
+	RelayComplete   bool   `json:"relay_complete"`
 }
 
-func loadRevokedDevices(path string) (map[string]bool, error) {
-	revoked := make(map[string]bool)
+type revocationStateFile struct {
+	Revocations      map[string]durableRevocation `json:"revocations,omitempty"`
+	MaximumSequences map[string]uint64            `json:"maximum_sequences,omitempty"`
+	UsedNonceDigests []string                     `json:"used_nonce_digests,omitempty"`
+	RevokedDeviceIDs []string                     `json:"revoked_device_ids,omitempty"` // legacy read only
+}
+
+type revocationState struct {
+	revocations      map[string]durableRevocation
+	maximumSequences map[string]uint64
+	usedNonceDigests map[string]bool
+}
+
+func loadRevocationState(path string) (revocationState, error) {
+	state := revocationState{revocations: make(map[string]durableRevocation), maximumSequences: make(map[string]uint64), usedNonceDigests: make(map[string]bool)}
 	contents, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return revoked, nil
+		return state, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("read signaling state: %w", err)
+		return state, fmt.Errorf("read signaling state: %w", err)
 	}
-	var state revocationStateFile
+	var wire revocationStateFile
 	decoder := json.NewDecoder(bytes.NewReader(contents))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&state); err != nil {
-		return nil, fmt.Errorf("decode signaling state: %w", err)
+	if err := decoder.Decode(&wire); err != nil {
+		return state, fmt.Errorf("decode signaling state: %w", err)
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return nil, errors.New("signaling state must contain one JSON object")
+		return state, errors.New("signaling state must contain one JSON object")
 	}
-	for _, deviceID := range state.RevokedDeviceIDs {
-		if !validIdentifier(deviceID) {
-			return nil, errors.New("signaling state contains invalid device_id")
+	if len(wire.RevokedDeviceIDs) > 0 {
+		return state, errors.New("legacy unsigned revocation state must be migrated by a trusted authority")
+	}
+	for deviceID, record := range wire.Revocations {
+		if !validIdentifier(deviceID) || record.AuthorityDigest == "" || record.Sequence == 0 || record.Digest == "" || record.NonceDigest == "" ||
+			record.Sequence > uint64(^uint64(0)>>1) || record.Sequence > wire.MaximumSequences[record.AuthorityDigest] {
+			return state, errors.New("signaling state contains invalid revocation")
 		}
-		revoked[deviceID] = true
+		state.revocations[deviceID] = record
 	}
-	return revoked, nil
+	for _, digest := range wire.UsedNonceDigests {
+		if digest == "" || state.usedNonceDigests[digest] {
+			return state, errors.New("signaling state contains invalid nonce digest")
+		}
+		state.usedNonceDigests[digest] = true
+	}
+	for authority, sequence := range wire.MaximumSequences {
+		if authority == "" || sequence == 0 || sequence > uint64(^uint64(0)>>1) {
+			return state, errors.New("signaling state contains invalid authority sequence")
+		}
+		state.maximumSequences[authority] = sequence
+	}
+	return state, nil
 }
 
-func persistRevokedDevices(path string, revoked map[string]bool) error {
-	ids := make([]string, 0, len(revoked))
-	for deviceID, denied := range revoked {
-		if denied {
-			ids = append(ids, deviceID)
-		}
+func persistRevocationState(path string, state revocationState) error {
+	nonces := make([]string, 0, len(state.usedNonceDigests))
+	for digest := range state.usedNonceDigests {
+		nonces = append(nonces, digest)
 	}
-	sort.Strings(ids)
-	contents, err := json.Marshal(revocationStateFile{RevokedDeviceIDs: ids})
+	sortStrings(nonces)
+	contents, err := json.Marshal(revocationStateFile{Revocations: state.revocations,
+		MaximumSequences: state.maximumSequences, UsedNonceDigests: nonces})
 	if err != nil {
 		return fmt.Errorf("encode signaling state: %w", err)
 	}
@@ -96,4 +127,12 @@ func persistRevokedDevices(path string, revoked map[string]bool) error {
 		return fmt.Errorf("sync signaling state directory: %w", err)
 	}
 	return nil
+}
+
+func sortStrings(values []string) {
+	for i := 1; i < len(values); i++ {
+		for j := i; j > 0 && values[j] < values[j-1]; j-- {
+			values[j], values[j-1] = values[j-1], values[j]
+		}
+	}
 }

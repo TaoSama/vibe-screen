@@ -34,7 +34,7 @@ docker build --build-arg VERSION=0.1.0 -t vibe-relay:0.1.0 .
 ## Configure and run
 
 Copy `config.example.json` to `config.json`, replace the realm and TURN URIs,
-then generate five independent secrets. Never commit them.
+then generate six independent secrets. Never commit them.
 
 ```bash
 export VIBE_RELAY_TURN_SECRET="$(openssl rand -base64 48)"
@@ -42,6 +42,7 @@ export VIBE_RELAY_CLIENT_TOKEN="$(openssl rand -base64 48)"
 export VIBE_RELAY_USAGE_TOKEN="$(openssl rand -base64 48)"
 export VIBE_RELAY_METRICS_TOKEN="$(openssl rand -base64 48)"
 export VIBE_RELAY_ADMIN_TOKEN="$(openssl rand -base64 48)"
+export VIBE_RELAY_TERMINATION_TOKEN="$(openssl rand -base64 48)"
 ./bin/vibe-relay --config config.json
 ```
 
@@ -50,8 +51,9 @@ export VIBE_RELAY_ADMIN_TOKEN="$(openssl rand -base64 48)"
   requests credentials after it has authenticated a paired device.
 - `VIBE_RELAY_USAGE_TOKEN` authenticates only the trusted TURN usage collector.
 - `VIBE_RELAY_METRICS_TOKEN` authenticates only the Prometheus scraper.
-- `VIBE_RELAY_ADMIN_TOKEN` authenticates device-revocation requests. All four
-  API tokens must differ.
+- `VIBE_RELAY_ADMIN_TOKEN` authenticates device-revocation requests.
+- `VIBE_RELAY_TERMINATION_TOKEN` authenticates relay-to-executor allocation
+  termination requests. All five API tokens must differ.
 
 The service refuses to start when a secret is missing or shorter than 32
 characters. State is atomically stored at `state_file` with mode `0600`. Back
@@ -115,10 +117,22 @@ the service fails closed: it rejects new credentials and new usage lifecycle
 events for that device with `403 device revoked`, including `start`, `update`,
 and `end`. Retrying an event already accepted during the current UTC day still
 returns `200 duplicate`, so a lost success response remains safely idempotent.
-This control-plane state change does not terminate a coturn allocation that is
-already active; the operator must separately invoke the data plane's
-allocation-disconnect mechanism and reconcile any active-session ledger entry
-left behind by the rejected lifecycle events.
+Revocation first commits the deny and a durable termination outbox entry, then
+calls `allocation_termination_webhook_url`. The webhook receives
+`{"revocation_id":"...","device_id":"..."}` with the revocation ID in the
+`Idempotency-Key` header and a dedicated Bearer token. Only an HTTPS endpoint
+is accepted, except loopback HTTP for tests; redirects are rejected so the
+token cannot be replayed to another origin. A non-2xx response, timeout, or
+missing webhook returns `503` while the deny remains effective. Retrying the
+same revoke, or restarting the service, retries the same durable event. A 2xx
+response produces `allocation_termination: acknowledged` and records outbox
+completion.
+
+This is a control-plane hook, not a built-in coturn disconnect. The configured
+trusted executor must locate and terminate every active allocation for the
+stable TURN principal, and its 2xx response must mean that work has completed
+or was already completed. Operators must verify that executor against their
+coturn deployment and reconcile the usage ledger independently.
 
 Unauthenticated liveness/readiness endpoints are `/healthz` and `/readyz`;
 readiness verifies that the state directory is writable.
@@ -158,10 +172,11 @@ not coordinate quotas across replicas. Before horizontal scaling, replace the
 `UsageStore` behind its narrow interface with a transactional shared store and
 retain the same API/idempotency semantics. Rate limiting is per process and
 per device, so the edge proxy should additionally enforce source-IP and global
-limits. Relay revocation blocks new credentials, but a credential already
-issued remains valid until its short expiry. Immediate removal additionally
-requires blocking the device at signaling policy and disconnecting its TURN
-allocation; rotating the shared TURN secret affects every device.
+limits. Relay revocation always blocks new credentials, but a credential
+already issued remains valid until its short expiry unless the configured
+termination executor successfully disconnects its active TURN allocations.
+Immediate removal also requires blocking the device at signaling policy;
+rotating the shared TURN secret affects every device.
 
 The `/v1/usage` daily-byte and active-session ledger is not authoritative until
 a trusted coturn collector and reconciliation loop are deployed. It must not be

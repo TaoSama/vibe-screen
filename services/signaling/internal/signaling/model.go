@@ -66,3 +66,20 @@ type RefreshResponse struct {
 	ExpiresAt    time.Time        `json:"expires_at"`
 	Turn         *TurnCredentials `json:"turn,omitempty"`
 }
+
+type PublicIdentity struct {
+	DeviceID         string `json:"deviceID"`
+	KeyID            string `json:"keyID"`
+	KeyEpoch         uint64 `json:"keyEpoch"`
+	SigningPublicKey []byte `json:"signingPublicKey"`
+}
+
+type SignedDeviceRevocation struct {
+	PeerIdentity         PublicIdentity `json:"peerIdentity"`
+	Sequence             uint64         `json:"sequence"`
+	RevokedAtUnixSeconds int64          `json:"revokedAtUnixSeconds"`
+	Nonce                []byte         `json:"nonce"`
+	ReasonCode           string         `json:"reasonCode"`
+	Authority            PublicIdentity `json:"authority"`
+	AuthoritySignature   []byte         `json:"authoritySignature"`
+}

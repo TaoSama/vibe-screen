@@ -6,7 +6,7 @@ secret_dir=$(dirname -- "$script_dir")/secrets
 umask 077
 mkdir -p "$secret_dir"
 
-for secret_name in turn_secret client_token usage_token metrics_token admin_token; do
+for secret_name in turn_secret client_token usage_token metrics_token admin_token termination_token; do
   destination=$secret_dir/$secret_name.txt
   if [ -e "$destination" ]; then
     echo "refusing to overwrite $destination" >&2
@@ -15,4 +15,4 @@ for secret_name in turn_secret client_token usage_token metrics_token admin_toke
   openssl rand -base64 48 > "$destination"
 done
 
-echo "generated five mode-0600 secret files under $secret_dir"
+echo "generated six mode-0600 secret files under $secret_dir"

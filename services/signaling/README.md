@@ -74,10 +74,11 @@ The `201` response contains an opaque `session_id`, separate `host_token` and
 authenticated channel to that endpoint. Repeating the same `request_id` and TTL
 returns the identical response with `200`; changing the TTL returns `409`.
 
-Fresh recovery-capable sessions additionally bind `device_id` and the authority's
-positive `session_epoch` in the create request. Both fields are required together,
-and idempotent replay binds the complete request. Legacy creates without either
-field remain supported but return `409` from refresh.
+Fresh recovery-capable sessions additionally bind `device_id`, the authority's
+positive `session_epoch` (at most signed 64-bit max), and complete `authority`
+and `peer_identity` public identities in the create request. All four fields are
+required together, and idempotent replay binds the complete request. Legacy
+creates without these fields remain supported but return `409` from refresh.
 
 `POST /v1/sessions/{session_id}/refresh` uses an existing host or device role
 bearer and an empty JSON object. The first call atomically supersedes the old
@@ -91,10 +92,13 @@ itself provide the signed host/device lease exchange required for complete
 automatic end-to-end recovery, and session/epoch state is lost at restart.
 
 `POST /v1/sessions/{session_id}/revoke` requires the old host bearer and JSON
-`{"device_id":"...","tombstone":{...}}`; `tombstone` is opaque optional
-coordination evidence. Signaling durably commits the bound device deny first,
+`{"device_id":"...","tombstone":{...}}`. The tombstone is required and must
+carry the session-bound authority and peer identities, a strictly increasing
+authority-scoped sequence, a unique nonce, and a valid canonical P-256
+signature. Signaling durably commits its digest and relay outbox first,
 wakes and rejects all its sessions, then calls relay device revocation. Relay
-failure returns `502`; the same old host bearer can retry, while create, refresh,
+failure returns `502`; startup and the same old host bearer retry the durable
+outbox, while create, refresh,
 publish, and poll remain denied. The revoked-device state file is written with
 mode `0600` using fsync and atomic replacement and is loaded fail-closed at startup.
 
