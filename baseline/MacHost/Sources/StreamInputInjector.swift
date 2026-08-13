@@ -141,17 +141,163 @@ final class TouchGestureEventFactory {
     }
 }
 
-/// Posts CGEvents for client-driven native pointer, scroll, and keyboard input.
+/// Builds the CoreGraphics event for one pen-tip sample without posting it.
+/// Keeping construction side-effect free lets protocol and field mapping be
+/// verified without Accessibility permission or a live WindowServer target.
+struct StylusEventFactory {
+    static let maximumTiltDegrees = 90.0
+    private static let tabletPointMouseSubtype: Int64 = 1
+
+    private let eventSource: CGEventSource?
+
+    init(eventSource: CGEventSource? = CGEventSource(stateID: .hidSystemState)) {
+        self.eventSource = eventSource
+    }
+
+    func event(
+        normalizedX: Float,
+        normalizedY: Float,
+        phase: VSInputPhase,
+        pressure: Double,
+        tiltXDegrees: Double,
+        tiltYDegrees: Double,
+        displayBounds: CGRect
+    ) -> CGEvent? {
+        guard pressure.isFinite, (0...1).contains(pressure),
+              tiltXDegrees.isFinite, tiltYDegrees.isFinite,
+              hypot(tiltXDegrees, tiltYDegrees) <= Self.maximumTiltDegrees,
+              let location = StreamInputMapping.pointerLocation(
+                  normalizedX: normalizedX,
+                  normalizedY: normalizedY,
+                  in: displayBounds
+              ) else { return nil }
+
+        let eventType: CGEventType
+        switch phase {
+        case .began: eventType = .leftMouseDown
+        case .changed: eventType = .leftMouseDragged
+        case .ended, .cancelled:
+            guard pressure == 0 else { return nil }
+            eventType = .leftMouseUp
+        case .unspecified, .UNRECOGNIZED: return nil
+        }
+        guard let event = CGEvent(
+            mouseEventSource: eventSource,
+            mouseType: eventType,
+            mouseCursorPosition: location,
+            mouseButton: .left
+        ) else { return nil }
+        event.setIntegerValueField(
+            .mouseEventSubtype,
+            value: Self.tabletPointMouseSubtype
+        )
+        event.setDoubleValueField(.tabletEventPointPressure, value: pressure)
+        event.setDoubleValueField(
+            .tabletEventTiltX,
+            value: min(max(tiltXDegrees / Self.maximumTiltDegrees, -1), 1)
+        )
+        event.setDoubleValueField(
+            .tabletEventTiltY,
+            value: min(max(tiltYDegrees / Self.maximumTiltDegrees, -1), 1)
+        )
+        return event
+    }
+}
+
+/// Serializes the first supported pen slice: exactly one active pen tip.
+/// A stale pointer can neither continue nor release another pointer's stroke.
+struct StylusTipState {
+    private(set) var activePointerID: UInt32?
+
+    mutating func accepts(pointerID: UInt32, phase: VSInputPhase) -> Bool {
+        switch phase {
+        case .began:
+            guard activePointerID == nil else { return false }
+            activePointerID = pointerID
+            return true
+        case .changed:
+            return activePointerID == pointerID
+        case .ended, .cancelled:
+            guard activePointerID == pointerID else { return false }
+            activePointerID = nil
+            return true
+        case .unspecified, .UNRECOGNIZED:
+            return false
+        }
+    }
+
+    mutating func consumeResetPointerID() -> UInt32? {
+        defer { activePointerID = nil }
+        return activePointerID
+    }
+}
+
+/// Main-thread ownership of the synthetic primary mouse button shared by the
+/// legacy touch-drag path and Protocol v1 stylus path.
+struct PrimaryButtonOwnerState {
+    enum Owner: Equatable {
+        case touchDrag
+        case stylus(pointerID: UInt32)
+    }
+
+    private(set) var owner: Owner?
+
+    mutating func beginTouchDrag() -> Bool {
+        guard owner == nil else { return false }
+        owner = .touchDrag
+        return true
+    }
+
+    mutating func endTouchDrag() -> Bool {
+        guard owner == .touchDrag else { return false }
+        owner = nil
+        return true
+    }
+
+    func canHandleStylus(pointerID: UInt32, phase: VSInputPhase) -> Bool {
+        switch phase {
+        case .began: return owner == nil
+        case .changed, .ended, .cancelled: return owner == .stylus(pointerID: pointerID)
+        case .unspecified, .UNRECOGNIZED: return false
+        }
+    }
+
+    mutating func didHandleStylus(pointerID: UInt32, phase: VSInputPhase) {
+        switch phase {
+        case .began: owner = .stylus(pointerID: pointerID)
+        case .ended, .cancelled: owner = nil
+        case .changed, .unspecified, .UNRECOGNIZED: break
+        }
+    }
+
+    mutating func reset() -> Owner? {
+        defer { owner = nil }
+        return owner
+    }
+}
+
+/// Posts CGEvents for client-driven native pointer, stylus, scroll, and keyboard input.
 /// Coordinate mapping is shared with touch via StreamInputMapping so a single
 /// geometry path serves every input kind. All posting requires Accessibility;
 /// callers gate on AXIsProcessTrusted() before invoking these methods.
 final class StreamInputInjector {
     private let eventSource: CGEventSource?
+    private let stylusEventFactory: StylusEventFactory
+    private let stylusEventPoster: (CGEvent) -> Void
     private var pressedButtons: UInt32 = 0
     private var lastPointerLocation: CGPoint = .zero
+    private var lastStylusLocation: CGPoint = .zero
+    private var stylusTipState = StylusTipState()
 
-    init(eventSource: CGEventSource? = CGEventSource(stateID: .hidSystemState)) {
+    init(
+        eventSource: CGEventSource? = CGEventSource(stateID: .hidSystemState),
+        stylusEventPoster: @escaping (CGEvent) -> Void = {
+            $0.post(tap: .cghidEventTap)
+        }
+    ) {
         self.eventSource = eventSource
+        stylusEventFactory = StylusEventFactory(eventSource: eventSource)
+        self.stylusEventPoster = stylusEventPoster
     }
 
     /// Resets transient button state so a held button does not leak across
@@ -160,6 +306,18 @@ final class StreamInputInjector {
     /// the WindowServer with a stuck button-down.
     func reset() {
         updateButtons(target: 0, at: lastPointerLocation)
+        guard stylusTipState.consumeResetPointerID() != nil,
+              let release = stylusEventFactory.event(
+                  normalizedX: 0,
+                  normalizedY: 0,
+                  phase: .cancelled,
+                  pressure: 0,
+                  tiltXDegrees: 0,
+                  tiltYDegrees: 0,
+                  displayBounds: CGRect(origin: lastStylusLocation, size: CGSize(width: 1, height: 1))
+              ) else { return }
+        release.location = lastStylusLocation
+        postStylusEvent(release)
     }
 
     func handlePointer(
@@ -169,7 +327,9 @@ final class StreamInputInjector {
         buttonMask: UInt32,
         displayBounds: CGRect
     ) -> Bool {
-        guard let location = StreamInputMapping.pointerLocation(
+        let wantsPrimary = buttonMask & StreamInputWire.buttonPrimary != 0
+        guard !(wantsPrimary && stylusTipState.activePointerID != nil),
+              let location = StreamInputMapping.pointerLocation(
             normalizedX: normalizedX,
             normalizedY: normalizedY,
             in: displayBounds
@@ -225,6 +385,35 @@ final class StreamInputInjector {
         event.flags = StreamInputMapping.modifierFlags(fromModifierMask: modifierMask)
         event.post(tap: .cghidEventTap)
         return true
+    }
+
+    func handleStylus(
+        pointerID: UInt32,
+        normalizedX: Float,
+        normalizedY: Float,
+        phase: VSInputPhase,
+        pressure: Double,
+        tiltXDegrees: Double,
+        tiltYDegrees: Double,
+        displayBounds: CGRect
+    ) -> Bool {
+        guard pressedButtons & StreamInputWire.buttonPrimary == 0,
+              let event = stylusEventFactory.event(
+            normalizedX: normalizedX,
+            normalizedY: normalizedY,
+            phase: phase,
+            pressure: pressure,
+            tiltXDegrees: tiltXDegrees,
+            tiltYDegrees: tiltYDegrees,
+            displayBounds: displayBounds
+        ), stylusTipState.accepts(pointerID: pointerID, phase: phase) else { return false }
+        lastStylusLocation = event.location
+        postStylusEvent(event)
+        return true
+    }
+
+    private func postStylusEvent(_ event: CGEvent) {
+        stylusEventPoster(event)
     }
 
     // MARK: - Button reconciliation

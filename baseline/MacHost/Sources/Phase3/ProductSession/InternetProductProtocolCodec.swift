@@ -15,6 +15,7 @@ enum InternetProductProtocolError: Error, Equatable, LocalizedError {
     case unsupportedCodec
     case rejectedVideoConfiguration(String)
     case invalidTouch
+    case invalidStylus
 
     var errorDescription: String? {
         switch self {
@@ -36,6 +37,7 @@ enum InternetProductProtocolError: Error, Equatable, LocalizedError {
         case .rejectedVideoConfiguration(let reason):
             return "Internet peer rejected the video configuration: \(reason)"
         case .invalidTouch: return "Internet peer sent an invalid touch event."
+        case .invalidStylus: return "Internet peer sent an invalid stylus event."
         }
     }
 }
@@ -113,6 +115,7 @@ struct InternetProductProtocolCodec {
     let hostID: String
     let hostName: String
     let peerDeviceID: String
+    let inputEnabled: Bool
     private(set) var video: InternetProductVideoConfiguration
     let maximumControlBytes: Int
     let maximumMediaBytes: Int
@@ -129,6 +132,7 @@ struct InternetProductProtocolCodec {
         hostName: String,
         peerDeviceID: String,
         video: InternetProductVideoConfiguration,
+        inputEnabled: Bool = true,
         limits: InternetTransportLimits
     ) throws {
         guard !sessionIdentifier.isEmpty, sessionEpoch > 0,
@@ -141,6 +145,7 @@ struct InternetProductProtocolCodec {
         self.hostID = hostID
         self.hostName = hostName
         self.peerDeviceID = peerDeviceID
+        self.inputEnabled = inputEnabled
         self.video = video
         self.maximumControlBytes = limits.maximumControlMessageBytes
         self.maximumMediaBytes = limits.maximumMediaFrameBytes
@@ -207,7 +212,7 @@ struct InternetProductProtocolCodec {
                 "ClientHello required capabilities were not included in its offer"
             )
         }
-        let hostCapabilities = Self.requiredCapabilities.union([.touch])
+        let hostCapabilities = Self.requiredCapabilities.union(inputCapabilities)
         for capability in requiredByClient where !hostCapabilities.contains(capability) {
             throw InternetProductProtocolError.missingCapability(capability)
         }
@@ -231,7 +236,7 @@ struct InternetProductProtocolCodec {
         hello.selectedProtocol = Self.protocolVersion
         hello.hostID = hostID
         hello.hostName = hostName
-        hello.capabilities = (Array(Self.requiredCapabilities) + [.touch]).sorted {
+        hello.capabilities = Array(Self.requiredCapabilities.union(inputCapabilities)).sorted {
             $0.rawValue < $1.rawValue
         }
         hello.codecs = [video.codec]
@@ -247,14 +252,17 @@ struct InternetProductProtocolCodec {
 
     mutating func sessionAccepted(
         heartbeatIntervalMilliseconds: UInt32,
-        peerSupportsTouch: Bool
+        peerSupportsTouch: Bool,
+        peerSupportsStylus: Bool = false
     ) throws -> Data {
         var accepted = VSSessionAccepted()
         accepted.sessionID = sessionID
         accepted.sessionEpoch = sessionEpoch
         accepted.heartbeatIntervalMs = heartbeatIntervalMilliseconds
         accepted.negotiatedCapabilities = (
-            Array(Self.requiredCapabilities) + (peerSupportsTouch ? [.touch] : [])
+            Array(Self.requiredCapabilities)
+                + (inputEnabled && peerSupportsTouch ? [.touch] : [])
+                + (inputEnabled && peerSupportsStylus ? [.stylus] : [])
         ).sorted { $0.rawValue < $1.rawValue }
         guard let negotiatedMaximumEncryptedMediaRecordBytes else {
             throw InternetProductProtocolError.unexpectedMessage(
@@ -269,6 +277,10 @@ struct InternetProductProtocolCodec {
         var envelope = baseEnvelope()
         envelope.sessionAccepted = accepted
         return try encode(envelope)
+    }
+
+    private var inputCapabilities: Set<VSCapability> {
+        inputEnabled ? [.touch, .stylus] : []
     }
 
     mutating func videoConfiguration() throws -> Data {

@@ -22,6 +22,7 @@ import dev.vibescreen.protocol.v1.ResourceLimits
 import dev.vibescreen.protocol.v1.ScrollEvent
 import dev.vibescreen.protocol.v1.SetVideoPreferences
 import dev.vibescreen.protocol.v1.StartDisplayRequest
+import dev.vibescreen.protocol.v1.StylusEvent
 import dev.vibescreen.protocol.v1.TransportKind
 import dev.vibescreen.protocol.v1.TouchEvent
 import dev.vibescreen.protocol.v1.VideoConfigResult
@@ -181,6 +182,7 @@ internal class ProtocolV1Session(
             Capability.CAPABILITY_TOUCH,
             Capability.CAPABILITY_KEYBOARD,
             Capability.CAPABILITY_POINTER,
+            Capability.CAPABILITY_STYLUS,
             Capability.CAPABILITY_MULTI_DISPLAY,
             Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
             Capability.CAPABILITY_HOST_ACTIONS,
@@ -221,6 +223,10 @@ internal class ProtocolV1Session(
     val canSendKeyboard: Boolean
         @Synchronized
         get() = state == State.STREAMING && Capability.CAPABILITY_KEYBOARD in negotiatedCapabilities
+
+    val canSendStylus: Boolean
+        @Synchronized
+        get() = state == State.STREAMING && Capability.CAPABILITY_STYLUS in negotiatedCapabilities
 
     /** Host actions the client may invoke, empty until a catalog arrives. */
     val hostActions: List<HostAction>
@@ -491,6 +497,42 @@ internal class ProtocolV1Session(
                 .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
                 .build()
         return envelope().setTouchEvent(event).build()
+    }
+
+    @Synchronized
+    fun stylus(
+        inputId: Long,
+        pointerId: Int,
+        phase: InputPhase,
+        x: Double,
+        y: Double,
+        pressure: Double,
+        tiltXDegrees: Double,
+        tiltYDegrees: Double,
+    ): Envelope {
+        check(state == State.STREAMING)
+        check(Capability.CAPABILITY_STYLUS in negotiatedCapabilities) { "Stylus was not negotiated" }
+        require(inputId > 0 && pointerId >= 0 && phase != InputPhase.INPUT_PHASE_UNSPECIFIED)
+        require(x.isFinite() && y.isFinite() && x in 0.0..1.0 && y in 0.0..1.0)
+        require(pressure.isFinite() && pressure in 0.0..1.0)
+        require(
+            phase !in setOf(InputPhase.INPUT_PHASE_ENDED, InputPhase.INPUT_PHASE_CANCELLED) || pressure == 0.0,
+        ) { "Terminal stylus events must have zero pressure" }
+        require(tiltXDegrees.isFinite() && tiltXDegrees in -90.0..90.0)
+        require(tiltYDegrees.isFinite() && tiltYDegrees in -90.0..90.0)
+        require(Math.hypot(tiltXDegrees, tiltYDegrees) <= 90.0)
+        val event =
+            StylusEvent.newBuilder()
+                .setInputId(inputId)
+                .setPointerId(pointerId)
+                .setPhase(phase)
+                .setPosition(NormalizedPoint.newBuilder().setX(x).setY(y))
+                .setPressure(pressure)
+                .setTiltXDegrees(tiltXDegrees)
+                .setTiltYDegrees(tiltYDegrees)
+                .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
+                .build()
+        return envelope().setStylusEvent(event).build()
     }
 
     @Synchronized

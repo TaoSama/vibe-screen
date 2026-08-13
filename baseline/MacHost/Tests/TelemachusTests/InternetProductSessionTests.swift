@@ -142,6 +142,92 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertTrue(harness.waitForPong(sequence: 77))
     }
 
+    func testInternetNegotiatesAndRoutesValidatedStylusWithoutTouchFallback() throws {
+        let harness = try Harness()
+        let routed = expectation(description: "stylus routed")
+        harness.session.onAuthenticatedStylusEvent = {
+            epoch, inputID, pointerID, x, y, phase, pressure, tiltX, tiltY in
+            XCTAssertEqual(epoch, 1)
+            XCTAssertEqual(inputID, 8)
+            XCTAssertEqual(pointerID, 3)
+            XCTAssertEqual(x, 0.25)
+            XCTAssertEqual(y, 0.75)
+            XCTAssertEqual(phase, .began)
+            XCTAssertEqual(pressure, 0.625)
+            XCTAssertEqual(tiltX, 45)
+            XCTAssertEqual(tiltY, -45)
+            routed.fulfill()
+            return true
+        }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsStylus: true))
+        XCTAssertTrue(harness.waitForSentControlCount(3))
+        let controls = try harness.engine.sentPlaintext
+            .filter { $0.channel == .control }
+            .prefix(2)
+            .map { try VSEnvelope(serializedBytes: $0.payload) }
+        XCTAssertTrue(controls[0].hostHello.capabilities.contains(.stylus))
+        XCTAssertTrue(controls[1].sessionAccepted.negotiatedCapabilities.contains(.stylus))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        var androidTargetedStylus = harness.stylus(messageID: 3)
+        var androidTarget = VSInputTarget()
+        androidTarget.streamID = 1
+        androidTargetedStylus.stylusEvent.target = androidTarget
+        harness.receiveControl(androidTargetedStylus)
+        wait(for: [routed], timeout: 1)
+    }
+
+    func testInternetRejectsUnnegotiatedAndMalformedStylus() throws {
+        let unnegotiated = try Harness()
+        try unnegotiated.session.start(configuration: unnegotiated.configuration)
+        unnegotiated.engine.emitConnection(.connected(path: .direct))
+        unnegotiated.receiveControl(unnegotiated.clientHello(messageID: 1))
+        unnegotiated.receiveControl(unnegotiated.videoAccepted(messageID: 2))
+        unnegotiated.receiveControl(unnegotiated.stylus(messageID: 3))
+        XCTAssertTrue(unnegotiated.waitForFailure())
+
+        for mutation in ["combinedTilt", "terminalPressure", "wrongStream", "wrongDisplay"] {
+            let harness = try Harness()
+            try harness.session.start(configuration: harness.configuration)
+            harness.engine.emitConnection(.connected(path: .direct))
+            harness.receiveControl(harness.clientHello(messageID: 1, supportsStylus: true))
+            harness.receiveControl(harness.videoAccepted(messageID: 2))
+            var envelope = harness.stylus(messageID: 3)
+            switch mutation {
+            case "combinedTilt":
+                envelope.stylusEvent.tiltXDegrees = 90
+                envelope.stylusEvent.tiltYDegrees = 90
+            case "terminalPressure":
+                envelope.stylusEvent.phase = .ended
+                envelope.stylusEvent.pressure = 0.1
+            case "wrongStream":
+                var target = VSInputTarget()
+                target.streamID = 2
+                envelope.stylusEvent.target = target
+            default:
+                var target = VSInputTarget()
+                target.displayID = "wrong-display"
+                target.streamID = 1
+                envelope.stylusEvent.target = target
+            }
+            harness.receiveControl(envelope)
+            XCTAssertTrue(harness.waitForFailure())
+        }
+
+        let mismatch = try Harness()
+        try mismatch.session.start(configuration: mismatch.configuration)
+        mismatch.engine.emitConnection(.connected(path: .direct))
+        mismatch.receiveControl(mismatch.clientHello(messageID: 1, supportsStylus: true))
+        mismatch.receiveControl(mismatch.videoAccepted(messageID: 2))
+        mismatch.receiveControl(mismatch.stylus(messageID: 3))
+        var changed = mismatch.stylus(messageID: 4)
+        changed.stylusEvent.pointerID = 4
+        changed.stylusEvent.phase = .changed
+        mismatch.receiveControl(changed)
+        XCTAssertTrue(mismatch.waitForFailure())
+    }
+
     func testNetworkChangeRequestsFreshSessionInsteadOfSecondOffer() throws {
         let harness = try Harness()
         let authenticating = expectation(description: "authenticating")
@@ -674,7 +760,7 @@ private final class Harness {
         engine.receive(record, channel: .control)
     }
 
-    func clientHello(messageID: UInt64) -> VSEnvelope {
+    func clientHello(messageID: UInt64, supportsStylus: Bool = false) -> VSEnvelope {
         var range = VSProtocolRange()
         range.minimum = 1
         range.maximum = 1
@@ -685,6 +771,7 @@ private final class Harness {
         hello.capabilities = [
             .deviceIdentity, .endToEndEncryption, .mediaRecordFragmentation, .replayProtection, .touch,
         ]
+        if supportsStylus { hello.capabilities.append(.stylus) }
         hello.requiredCapabilities = [
             .deviceIdentity, .endToEndEncryption, .mediaRecordFragmentation, .replayProtection,
         ]
@@ -724,6 +811,23 @@ private final class Harness {
         return envelope
     }
 
+    func stylus(messageID: UInt64) -> VSEnvelope {
+        var point = VSNormalizedPoint()
+        point.x = 0.25
+        point.y = 0.75
+        var stylus = VSStylusEvent()
+        stylus.inputID = 8
+        stylus.pointerID = 3
+        stylus.phase = .began
+        stylus.position = point
+        stylus.pressure = 0.625
+        stylus.tiltXDegrees = 45
+        stylus.tiltYDegrees = -45
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.stylusEvent = stylus
+        return envelope
+    }
+
     func keyframeRequest(messageID: UInt64) -> VSEnvelope {
         var request = VSRequestKeyframe()
         request.streamID = 1
@@ -742,6 +846,13 @@ private final class Harness {
 
     func waitForSentControlCount(_ count: Int) -> Bool {
         waitUntil { self.engine.sentPlaintext.filter { $0.channel == .control }.count >= count }
+    }
+
+    func waitForFailure() -> Bool {
+        waitUntil {
+            if case .failed = self.session.snapshotState() { return true }
+            return false
+        }
     }
 
     func waitForSentMediaCount(_ count: Int) -> Bool {

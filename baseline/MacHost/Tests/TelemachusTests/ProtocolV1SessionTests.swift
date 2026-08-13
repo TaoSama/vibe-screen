@@ -7,7 +7,7 @@ final class ProtocolV1SessionTests: XCTestCase {
     func testProductionHostCapabilitiesAreExact() {
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true),
-            [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions]
+            [.touch, .stylus, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions]
         )
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false),
@@ -73,7 +73,7 @@ final class ProtocolV1SessionTests: XCTestCase {
             "client_hello", "host_hello", "session_accepted",
             "list_displays_request", "list_displays_response",
             "start_display_request", "start_display_response", "video_config",
-            "video_config_result", "touch", "ping", "pong", "protocol_error"
+            "video_config_result", "touch", "stylus", "ping", "pong", "protocol_error"
         ]
         for name in controls {
             let expected = try Data(contentsOf: root.appendingPathComponent("\(name).binpb"))
@@ -109,7 +109,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(hostHello.selectedProtocol, 1)
         // hostHello.capabilities is sorted by raw value: multiDisplay(18) <
         // hostActions(20) < clientVideoControl(24).
-        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .multiDisplay, .hostActions, .clientVideoControl])
+        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .stylus, .multiDisplay, .hostActions, .clientVideoControl])
         guard case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected SessionAccepted")
         }
@@ -229,7 +229,7 @@ final class ProtocolV1SessionTests: XCTestCase {
               case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected HostHello + SessionAccepted")
         }
-        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .multiDisplay, .hostActions, .clientVideoControl])
+        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .stylus, .multiDisplay, .hostActions, .clientVideoControl])
         XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .multiDisplay])
     }
 
@@ -316,6 +316,80 @@ final class ProtocolV1SessionTests: XCTestCase {
             )).code,
             .unsupportedCapability
         )
+    }
+
+    func testStylusRequiresNegotiationAndRoutesValidatedSample() throws {
+        let unnegotiated = try readySession()
+        XCTAssertEqual(
+            try protocolError(from: unnegotiated.handleControl(
+                try envelope(id: 4, payload: .stylusEvent(stylusEvent())).serializedData()
+            )).code,
+            .unsupportedCapability
+        )
+
+        let session = try readyStylusSession()
+        let actions = session.handleControl(
+            try envelope(id: 4, payload: .stylusEvent(stylusEvent())).serializedData()
+        )
+        guard case .stylus(
+            let inputID, let pointerID, let x, let y, let phase,
+            let pressure, let tiltX, let tiltY
+        ) = actions.first else { return XCTFail("Expected a stylus action") }
+        XCTAssertEqual(inputID, 8)
+        XCTAssertEqual(pointerID, 3)
+        XCTAssertEqual(x, 0.25)
+        XCTAssertEqual(y, 0.75)
+        XCTAssertEqual(phase, .began)
+        XCTAssertEqual(pressure, 0.625)
+        XCTAssertEqual(tiltX, 45)
+        XCTAssertEqual(tiltY, -45)
+    }
+
+    func testStylusRejectsMalformedPressureTiltAndTarget() throws {
+        let mutations: [(inout VSStylusEvent) -> Void] = [
+            { $0.inputID = 0 },
+            { $0.position.x = .nan },
+            { $0.pressure = .infinity },
+            { $0.pressure = 1.01 },
+            { $0.tiltXDegrees = 91 },
+            { $0.tiltXDegrees = 90; $0.tiltYDegrees = 90 },
+            { $0.phase = .ended; $0.pressure = 0.1 },
+            {
+                var target = VSInputTarget()
+                target.displayID = "wrong-display"
+                target.streamID = 1
+                $0.target = target
+            },
+        ]
+        for mutate in mutations {
+            let session = try readyStylusSession()
+            var stylus = stylusEvent()
+            mutate(&stylus)
+            XCTAssertEqual(
+                try protocolError(from: session.handleControl(
+                    try envelope(id: 4, payload: .stylusEvent(stylus)).serializedData()
+                )).code,
+                .invalidState
+            )
+        }
+    }
+
+    func testStylusRejectsOutOfOrderAndMismatchedPointerSequence() throws {
+        let missingBegin = try readyStylusSession()
+        var changed = stylusEvent()
+        changed.phase = .changed
+        XCTAssertEqual(try protocolError(from: missingBegin.handleControl(
+            try envelope(id: 4, payload: .stylusEvent(changed)).serializedData()
+        )).code, .invalidState)
+
+        let mismatch = try readyStylusSession()
+        XCTAssertTrue(mismatch.handleControl(
+            try envelope(id: 4, payload: .stylusEvent(stylusEvent())).serializedData()
+        ).contains { if case .stylus = $0 { return true }; return false })
+        changed.pointerID = 4
+        XCTAssertEqual(try protocolError(from: mismatch.handleControl(
+            try envelope(id: 5, payload: .stylusEvent(changed)).serializedData()
+        )).code, .invalidState)
     }
 
     func testClientDisconnectNoticeClosesWithoutProtocolError() throws {
@@ -701,6 +775,21 @@ final class ProtocolV1SessionTests: XCTestCase {
         return touch
     }
 
+    private func stylusEvent() -> VSStylusEvent {
+        var point = VSNormalizedPoint()
+        point.x = 0.25
+        point.y = 0.75
+        var stylus = VSStylusEvent()
+        stylus.inputID = 8
+        stylus.pointerID = 3
+        stylus.phase = .began
+        stylus.position = point
+        stylus.pressure = 0.625
+        stylus.tiltXDegrees = 45
+        stylus.tiltYDegrees = -45
+        return stylus
+    }
+
     private func readySession() throws -> ProtocolV1SessionCoordinator {
         let session = makeSession()
         _ = session.handleControl(try clientHello().serializedData())
@@ -714,6 +803,26 @@ final class ProtocolV1SessionTests: XCTestCase {
         result.streamID = 1
         result.accepted = true
         _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(result)).serializedData())
+        return session
+    }
+
+    private func readyStylusSession() throws -> ProtocolV1SessionCoordinator {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities.append(.stylus)
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        var result = VSVideoConfigResult()
+        result.configEpoch = 1
+        result.streamID = 1
+        result.accepted = true
+        _ = session.handleControl(
+            try envelope(id: 3, payload: .videoConfigResult(result)).serializedData()
+        )
         return session
     }
 

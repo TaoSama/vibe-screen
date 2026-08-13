@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 import struct
 import subprocess
@@ -162,6 +163,35 @@ class ProtocolFixtureTest(unittest.TestCase):
                 decoded[name] = json.loads(output.read_text())
             self.assertEqual(90, decoded["video_config"]["videoConfig"]["rotationDegrees"])
             self.assertEqual(270, decoded["display_changed"]["displayChanged"]["rotationDegrees"])
+
+    def test_stylus_fixture_covers_pressure_tilt_and_target(self) -> None:
+        fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}
+        stylus = fixtures["stylus"]
+        with tempfile.TemporaryDirectory(prefix="vibescreen-stylus-fixture-") as temporary:
+            decoded_path = Path(temporary) / "stylus.json"
+            convert(stylus["messageType"], FIXTURE_ROOT / stylus["binary"], "binpb", decoded_path, "json")
+            event = json.loads(decoded_path.read_text())["stylusEvent"]
+
+        self.assertEqual("101", event["inputId"])
+        self.assertEqual(7, event["pointerId"])
+        self.assertEqual("INPUT_PHASE_CHANGED", event["phase"])
+        self.assertIn(
+            event["phase"],
+            {
+                "INPUT_PHASE_BEGAN",
+                "INPUT_PHASE_CHANGED",
+                "INPUT_PHASE_ENDED",
+                "INPUT_PHASE_CANCELLED",
+            },
+        )
+        self.assertEqual({"x": 0.125, "y": 0.875}, event["position"])
+        self.assertTrue(all(math.isfinite(event["position"][axis]) for axis in ("x", "y")))
+        self.assertTrue(all(0 <= event["position"][axis] <= 1 for axis in ("x", "y")))
+        self.assertEqual(0.625, event["pressure"])
+        self.assertEqual(-12.5, event["tiltXDegrees"])
+        self.assertEqual(28.75, event["tiltYDegrees"])
+        self.assertLessEqual(math.hypot(event["tiltXDegrees"], event["tiltYDegrees"]), 90)
+        self.assertEqual({"displayId": "display-main", "streamId": "42"}, event["target"])
 
     def test_buf_json_projection_accepts_and_discards_unknown_binary_field(self) -> None:
         client_entry = MANIFEST["controlFixtures"][0]

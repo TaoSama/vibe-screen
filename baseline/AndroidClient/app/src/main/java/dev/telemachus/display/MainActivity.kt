@@ -57,6 +57,7 @@ import dev.telemachus.display.internet.InternetVideoDecoderLifecycle
 import dev.telemachus.display.internet.PeerRoute
 import dev.telemachus.display.internet.PendingRevocationBarrierException
 import dev.telemachus.display.internet.ProductInputPhase
+import dev.telemachus.display.internet.ProductStylusEvent
 import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.VideoQualityPreset
 import dev.telemachus.display.internet.ProductTouchEvent
@@ -175,6 +176,9 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var internetGeneration = 0L
     private val nextInternetInputId = AtomicLong(0)
     private val activeInternetInputIds = mutableMapOf<Int, Long>()
+    private val internetStylusInputIds = StylusInputIdTracker { nextInternetInputId.incrementAndGet() }
+    private val internetStylusGestureRouter = StylusGestureRouter()
+    private val streamStylusGestureRouter = StylusGestureRouter()
     private var streamClient: StreamClient? = null
     private var legacyGeneration = 0L
     private var currentSurfaceHolder: SurfaceHolder? = null
@@ -3548,6 +3552,8 @@ class MainActivity : AppCompatActivity() {
         binding.internetStateText.text = getString(R.string.internet_state_format, state.name.lowercase(), routeLabel)
         if (state == InternetProductSessionState.CLOSED || state == InternetProductSessionState.FAILED) {
             isConnected = false
+            internetStylusGestureRouter.reset()
+            internetStylusInputIds.clear()
             setStreamingWindowState(false)
         }
     }
@@ -3603,6 +3609,8 @@ class MainActivity : AppCompatActivity() {
         connectionAttemptInProgress = false
         internetRoute = null
         activeInternetInputIds.clear()
+        internetStylusInputIds.clear()
+        internetStylusGestureRouter.reset()
         internetVideoConfiguration = null
         displayWidth = 0
         displayHeight = 0
@@ -3641,6 +3649,8 @@ class MainActivity : AppCompatActivity() {
         connectionAttemptInProgress = false
         internetRoute = null
         activeInternetInputIds.clear()
+        internetStylusInputIds.clear()
+        internetStylusGestureRouter.reset()
         internetVideoConfiguration = null
         displayWidth = 0
         displayHeight = 0
@@ -3941,6 +3951,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyDisconnectedSessionUi() {
         isConnected = false
+        streamStylusGestureRouter.reset()
         mainSessionDisplayLifecycle?.invalidate()
         mainSessionDisplayLifecycle = null
         // Drop any host-action state so a stale window-actions button never
@@ -4016,6 +4027,14 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (!isConnected || !isInForeground) return
+        val stylusSnapshot = StylusInputMapper.snapshot(event) { x, y -> mapInputPoint(view, x, y) }
+        val client = streamClient
+        if (streamStylusGestureRouter.routesToStylus(stylusSnapshot, client?.canSendStylus() == true)) {
+            val stylusSamples = StylusInputMapper.map(stylusSnapshot)
+            if (stylusSamples.isNotEmpty()) client?.sendMotionStylus(stylusSamples)
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) revealControlBar()
+            return
+        }
         val pointerCount = event.pointerCount.coerceAtMost(MAX_FORWARDED_POINTERS)
         val mappedPointers =
             (0 until pointerCount).map { index ->
@@ -4184,6 +4203,11 @@ class MainActivity : AppCompatActivity() {
         event: MotionEvent,
     ) {
         val session = internetSession ?: return
+        if (handleInternetStylus(view, event, session)) return
+        if (!session.canSendTouch()) {
+            activeInternetInputIds.clear()
+            return
+        }
 
         fun send(index: Int, phase: ProductInputPhase) {
             val pointerId = event.getPointerId(index)
@@ -4225,6 +4249,57 @@ class MainActivity : AppCompatActivity() {
             MotionEvent.ACTION_CANCEL -> repeat(event.pointerCount) { send(it, ProductInputPhase.CANCELLED) }
         }
     }
+
+    private fun handleInternetStylus(
+        view: View,
+        event: MotionEvent,
+        session: InternetProductSession,
+    ): Boolean {
+        val snapshot =
+            StylusInputMapper.snapshot(event) { x, y ->
+                InternetTouchMapper.map(
+                    x = x,
+                    y = y,
+                    viewWidth = view.width,
+                    viewHeight = view.height,
+                    videoWidth = displayWidth,
+                    videoHeight = displayHeight,
+                    scaleMode = prefs.videoScaleMode,
+                    clientRotation = prefs.clientRotation,
+                )
+            }
+        if (!internetStylusGestureRouter.routesToStylus(snapshot, session.canSendStylus())) return false
+        val samples = StylusInputMapper.map(snapshot)
+        samples.forEach { sample ->
+            val phase = sample.phase.toProductInputPhase()
+            val inputId = internetStylusInputIds.resolve(sample) ?: return@forEach
+            session.sendStylus(
+                ProductStylusEvent(
+                    inputId = inputId,
+                    pointerId = sample.pointerId,
+                    phase = phase,
+                    normalizedX = sample.x,
+                    normalizedY = sample.y,
+                    pressure = sample.pressure,
+                    tiltXDegrees = sample.tiltXDegrees,
+                    tiltYDegrees = sample.tiltYDegrees,
+                ),
+            )
+            internetStylusInputIds.complete(sample)
+        }
+        if (event.actionMasked == MotionEvent.ACTION_CANCEL) internetStylusInputIds.clear()
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) revealControlBar()
+        return true
+    }
+
+    private fun InputPhase.toProductInputPhase(): ProductInputPhase =
+        when (this) {
+            InputPhase.INPUT_PHASE_BEGAN -> ProductInputPhase.BEGAN
+            InputPhase.INPUT_PHASE_CHANGED -> ProductInputPhase.CHANGED
+            InputPhase.INPUT_PHASE_ENDED -> ProductInputPhase.ENDED
+            InputPhase.INPUT_PHASE_CANCELLED -> ProductInputPhase.CANCELLED
+            else -> error("Unspecified stylus phase")
+        }
 
     /**
      * Apply rotation by changing the Activity's screen orientation

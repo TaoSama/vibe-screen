@@ -14,6 +14,7 @@ import dev.vibescreen.protocol.v1.ProtocolRange
 import dev.vibescreen.protocol.v1.Pong
 import dev.vibescreen.protocol.v1.RequestKeyframe
 import dev.vibescreen.protocol.v1.ResourceLimits
+import dev.vibescreen.protocol.v1.StylusEvent
 import dev.vibescreen.protocol.v1.TouchEvent
 import dev.vibescreen.protocol.v1.TransportKind
 import dev.vibescreen.protocol.v1.VideoConfigResult
@@ -62,6 +63,30 @@ data class ProductTouchEvent(
         require(inputId > 0 && pointerId >= 0) { "Input identifiers must be positive" }
         require(normalizedX in 0.0..1.0 && normalizedY in 0.0..1.0) { "Touch coordinates must be normalized" }
         require(pressure in 0.0..1.0) { "Touch pressure must be normalized" }
+    }
+}
+
+data class ProductStylusEvent(
+    val inputId: Long,
+    val pointerId: Int,
+    val phase: ProductInputPhase,
+    val normalizedX: Double,
+    val normalizedY: Double,
+    val pressure: Double,
+    val tiltXDegrees: Double,
+    val tiltYDegrees: Double,
+) {
+    init {
+        require(inputId > 0 && pointerId >= 0)
+        require(normalizedX.isFinite() && normalizedY.isFinite())
+        require(normalizedX in 0.0..1.0 && normalizedY in 0.0..1.0)
+        require(pressure.isFinite() && pressure in 0.0..1.0)
+        require(
+            phase !in setOf(ProductInputPhase.ENDED, ProductInputPhase.CANCELLED) || pressure == 0.0,
+        ) { "Terminal stylus events must have zero pressure" }
+        require(tiltXDegrees.isFinite() && tiltXDegrees in -90.0..90.0)
+        require(tiltYDegrees.isFinite() && tiltYDegrees in -90.0..90.0)
+        require(Math.hypot(tiltXDegrees, tiltYDegrees) <= 90.0)
     }
 }
 
@@ -153,6 +178,14 @@ interface ProtocolV1ProductCodec {
 
     fun encodeTouch(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, event: ProductTouchEvent): ByteArray
 
+    fun encodeStylus(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        streamId: Long,
+        event: ProductStylusEvent,
+    ): ByteArray
+
     fun encodeKeyframeRequest(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, streamId: Long, reason: String): ByteArray
 
     fun encodePing(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, sequence: Long): ByteArray
@@ -229,6 +262,28 @@ class ProtobufProtocolV1ProductCodec(
                 .setPressure(event.pressure)
                 .build()
         return envelope(messageId, sessionId, sessionEpoch).setTouchEvent(touch).build().toByteArray()
+    }
+
+    override fun encodeStylus(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        streamId: Long,
+        event: ProductStylusEvent,
+    ): ByteArray {
+        require(streamId > 0)
+        val stylus =
+            StylusEvent.newBuilder()
+                .setInputId(event.inputId)
+                .setPointerId(event.pointerId)
+                .setPhase(event.phase.toProto())
+                .setPosition(NormalizedPoint.newBuilder().setX(event.normalizedX).setY(event.normalizedY))
+                .setPressure(event.pressure)
+                .setTiltXDegrees(event.tiltXDegrees)
+                .setTiltYDegrees(event.tiltYDegrees)
+                .setTarget(dev.vibescreen.protocol.v1.InputTarget.newBuilder().setStreamId(streamId))
+                .build()
+        return envelope(messageId, sessionId, sessionEpoch).setStylusEvent(stylus).build().toByteArray()
     }
 
     override fun encodeKeyframeRequest(
@@ -458,12 +513,16 @@ class ProtobufProtocolV1ProductCodec(
         val OFFERED_CLIENT_CAPABILITIES =
             listOf(
                 Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_STYLUS,
                 Capability.CAPABILITY_DEVICE_IDENTITY,
                 Capability.CAPABILITY_END_TO_END_ENCRYPTION,
                 Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION,
                 Capability.CAPABILITY_REPLAY_PROTECTION,
             )
-        val REQUIRED_CLIENT_CAPABILITIES = OFFERED_CLIENT_CAPABILITIES
+        val REQUIRED_CLIENT_CAPABILITIES =
+            OFFERED_CLIENT_CAPABILITIES.filterNot {
+                it == Capability.CAPABILITY_TOUCH || it == Capability.CAPABILITY_STYLUS
+            }
 
         /** Test/host helper for the Protocol v1 `uint32 header length | header | payload` media-channel framing. */
         fun encodeMediaFragment(header: MediaPacketHeader, payload: ByteArray): ByteArray {

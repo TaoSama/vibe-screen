@@ -1133,6 +1133,40 @@ class StreamClient(
         )
     }
 
+    internal fun canSendStylus(): Boolean =
+        isConnected && wireMode == WireMode.V1 && protocolSession?.canSendStylus == true
+
+    internal fun sendMotionStylus(samples: List<StylusSample>): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canSendStylus) return false
+        val copied = samples.toList()
+        if (copied.isEmpty()) return false
+        submitOutbound(
+            kind =
+                if (copied.all { it.phase == InputPhase.INPUT_PHASE_CHANGED }) {
+                    OutboundCommandScheduler.Kind.MOVE
+                } else {
+                    OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
+                },
+            command = OutboundCommand.ProtocolBatch { activeSession ->
+                copied.map { sample ->
+                    activeSession.stylus(
+                        inputId = nextInputId.getAndIncrement(),
+                        pointerId = sample.pointerId,
+                        phase = sample.phase,
+                        x = sample.x,
+                        y = sample.y,
+                        pressure = sample.pressure,
+                        tiltXDegrees = sample.tiltXDegrees,
+                        tiltYDegrees = sample.tiltYDegrees,
+                    )
+                }
+            },
+        )
+        return true
+    }
+
     /**
      * Forward a native pointer sample (move/drag/button) to the host. buttonMask
      * uses the shared wire bits (bit0 = primary, bit1 = secondary). No-op unless

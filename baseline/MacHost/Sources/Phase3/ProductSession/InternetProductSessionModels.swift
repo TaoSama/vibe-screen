@@ -41,6 +41,7 @@ struct InternetProductSessionConfiguration {
     let bootstrapSecretName: String
     let transcriptContext: Data
     let video: InternetProductVideoConfiguration
+    let inputEnabled: Bool
     let heartbeatIntervalMilliseconds: UInt32
     let heartbeatTimeoutMilliseconds: UInt32
     let negotiationTimeoutMilliseconds: UInt32
@@ -58,6 +59,7 @@ struct InternetProductSessionConfiguration {
         bootstrapSecretName: String,
         transcriptContext: Data,
         video: InternetProductVideoConfiguration,
+        inputEnabled: Bool = true,
         heartbeatIntervalMilliseconds: UInt32 = 1_000,
         heartbeatTimeoutMilliseconds: UInt32 = 5_000,
         negotiationTimeoutMilliseconds: UInt32 = 10_000,
@@ -74,6 +76,7 @@ struct InternetProductSessionConfiguration {
         self.bootstrapSecretName = bootstrapSecretName
         self.transcriptContext = transcriptContext
         self.video = video
+        self.inputEnabled = inputEnabled
         self.heartbeatIntervalMilliseconds = heartbeatIntervalMilliseconds
         self.heartbeatTimeoutMilliseconds = heartbeatTimeoutMilliseconds
         self.negotiationTimeoutMilliseconds = negotiationTimeoutMilliseconds

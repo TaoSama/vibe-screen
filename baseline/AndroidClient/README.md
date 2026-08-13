@@ -33,13 +33,12 @@ Android treats a new application ID as a different app.
   gesture rather than sent as native pointer-button packets.
 
 The client captures common physical-keyboard keys and shortcuts into
-protocol-neutral USB HID usages, but the legacy session does not negotiate a
-keyboard channel. It therefore shows an actionable compatibility message and
-does not send unnegotiated bytes. Native pointer/stylus fields and client-side
-display selection remain outside the current baseline; the display settings
-identify the active stream as host-selected instead of pretending that the
-Android client can enumerate it. The legacy host accepts touch packets only;
-the client must not claim additional controls until both ends negotiate them.
+protocol-neutral USB HID usages. Protocol v1 capability-gates keyboard, native
+pointer, and pen-tip stylus input; stylus samples preserve Android historical
+motion, normalized pressure, and signed two-axis tilt over USB, LAN, and
+Internet. Legacy or unnegotiated peers receive the existing touch fallback
+instead of unknown protocol bytes. Physical-stylus drawing-app confirmation,
+eraser/barrel/hover input, and other peripherals remain release gates.
 
 Internet mode is exposed as
 a development-preview UI: it scans the one-time pairing offer, completes the
@@ -235,12 +234,11 @@ and Camera settings-return recovery are covered by JVM/lint/build gates only.
 That post-device build has not been installed or exercised with a real Mac or
 physical peripherals.
 
-The following remain separate release gates: Protocol v1 real-device
-interoperability, Xiaomi 13 (2211133C) coverage, a physical
-8–9 inch tablet matrix, unlocked-Mac Phase 1 interaction acceptance, two-hour
-and eight-hour controlled soak runs, external-camera
-glass-to-glass latency, keyboard/native-mouse/stylus protocol interoperability,
-client-side Mac display selection, and production encryption for LAN traffic.
+The following remain separate release gates: a physical 8–9 inch tablet
+matrix, unlocked-Mac Phase 1 interaction acceptance, controlled stability
+runs, external-camera glass-to-glass latency, physical keyboard/native-mouse
+and stylus interoperability, eraser/barrel/hover behavior, and production
+encryption for LAN traffic.
 
 ## Source and licenses
 

@@ -73,6 +73,32 @@ class SecurityContractTest(unittest.TestCase):
         self.assertEqual({"header": 1, "ciphertext": 2}, message_fields(source, "EncryptedControlPacket"))
         self.assertEqual({"header": 1, "ciphertext": 2}, message_fields(source, "EncryptedMediaPacket"))
 
+    def test_stylus_event_is_an_additive_input_payload(self) -> None:
+        input_source = (PROTO_ROOT / "input.proto").read_text()
+        envelope_source = (PROTO_ROOT / "envelope.proto").read_text()
+        stylus_declaration = input_source[:input_source.index("message StylusEvent")]
+        stylus_documentation = " ".join(
+            line.removeprefix("// ")
+            for line in stylus_declaration.splitlines()[-6:]
+            if line.startswith("// ")
+        )
+        self.assertIn("Phase must be BEGAN, CHANGED, ENDED, or CANCELLED.", stylus_documentation)
+        self.assertIn("Position coordinates must be finite and normalized to [0, 1].", stylus_documentation)
+        self.assertEqual(
+            {
+                "input_id": 1,
+                "pointer_id": 2,
+                "phase": 3,
+                "position": 4,
+                "pressure": 5,
+                "tilt_x_degrees": 6,
+                "tilt_y_degrees": 7,
+                "target": 8,
+            },
+            message_fields(input_source, "StylusEvent"),
+        )
+        self.assertEqual(65, message_fields(envelope_source, "Envelope")["stylus_event"])
+
     def test_envelope_security_payloads_do_not_reuse_existing_numbers(self) -> None:
         source = (PROTO_ROOT / "envelope.proto").read_text()
         fields = message_fields(source, "Envelope")

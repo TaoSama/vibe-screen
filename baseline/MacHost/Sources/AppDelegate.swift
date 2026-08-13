@@ -218,6 +218,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Injects client-driven native pointer/scroll/keyboard input as CGEvents.
     /// Shares the touch coordinate mapping via StreamInputMapping.
     private let streamInputInjector = StreamInputInjector()
+    private var primaryButtonOwner = PrimaryButtonOwnerState()
     let pairedDeviceStore = PairedDeviceStore()
     let windowRecoveryManager = WindowRecoveryManager()
     /// Name of the wireless device currently streaming (nil when no wireless client is active).
@@ -2135,6 +2136,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
             }
+            streamingServer?.onStylusEvent = {
+                [weak self, weak configuredServer]
+                inputID, pointerID, x, y, phase, pressure, tiltX, tiltY, clientGeneration in
+                Task { @MainActor in
+                    guard let self, let configuredServer else { return }
+                    self.performSessionCallback(
+                        token: startToken,
+                        server: configuredServer,
+                        clientGeneration: clientGeneration
+                    ) {
+                        self.handleClientStylus(
+                            inputID: inputID,
+                            pointerID: pointerID,
+                            x: x,
+                            y: y,
+                            phase: phase,
+                            pressure: pressure,
+                            tiltXDegrees: tiltX,
+                            tiltYDegrees: tiltY
+                        )
+                    }
+                }
+            }
             streamingServer?.onScrollEvent = {
                 [weak self, weak configuredServer]
                 deltaX, deltaY, clientGeneration in
@@ -2437,7 +2461,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 framesPerSecond: settings.effectiveRefreshRate,
                 bitrateKbps: settings.effectiveBitrate * 1_000,
                 rotationDegrees: settings.rotation
-            )
+            ),
+            inputEnabled: settings.touchEnabled
         )
     }
 
@@ -2470,6 +2495,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self, let session,
                       self.serverLifecycle.ownsSession(sessionToken),
                       self.internetProductSession === session else { return }
+                if case .streaming = state {
+                    // Keep the active pen/touch sequence while media remains live.
+                } else {
+                    self.cancelActiveInput(releaseDrag: true)
+                }
                 if state == .closed {
                     self.applyInternetSessionState(state)
                     await self.stopServer(preserveRecoveryState: true)
@@ -2510,6 +2540,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if injected {
                 debugLog(
                     "phase3_input_injected session_epoch=\(sessionEpoch) input_id=\(inputID)"
+                )
+            }
+            return injected
+        }
+        session.onAuthenticatedStylusEvent = {
+            [weak self, weak session]
+            sessionEpoch, inputID, pointerID, x, y, phase, pressure, tiltX, tiltY in
+            let inject = { () -> Bool in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return false }
+                return self.handleClientStylus(
+                    inputID: inputID,
+                    pointerID: pointerID,
+                    x: x,
+                    y: y,
+                    phase: phase,
+                    pressure: pressure,
+                    tiltXDegrees: tiltX,
+                    tiltYDegrees: tiltY
+                )
+            }
+            let injected = Thread.isMainThread
+                ? inject()
+                : DispatchQueue.main.sync(execute: inject)
+            if injected {
+                debugLog(
+                    "phase3_stylus_injected session_epoch=\(sessionEpoch) "
+                        + "input_id=\(inputID) pointer_id=\(pointerID)"
                 )
             }
             return injected
@@ -3464,6 +3523,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @discardableResult
+    func handleClientStylus(
+        inputID: UInt64,
+        pointerID: UInt32,
+        x: Float,
+        y: Float,
+        phase: VSInputPhase,
+        pressure: Double,
+        tiltXDegrees: Double,
+        tiltYDegrees: Double
+    ) -> Bool {
+        guard settings.touchEnabled else { return false }
+        guard primaryButtonOwner.canHandleStylus(pointerID: pointerID, phase: phase) else {
+            return false
+        }
+        guard nativeInputAccessibilityGranted() else { return false }
+        guard let bounds = activeDisplayBounds() else { return false }
+        let injected = streamInputInjector.handleStylus(
+            pointerID: pointerID,
+            normalizedX: x,
+            normalizedY: y,
+            phase: phase,
+            pressure: pressure,
+            tiltXDegrees: tiltXDegrees,
+            tiltYDegrees: tiltYDegrees,
+            displayBounds: bounds
+        )
+        if injected {
+            if phase == .began {
+                cancelLongPressTimer()
+                gestureState = .idle
+            }
+            primaryButtonOwner.didHandleStylus(pointerID: pointerID, phase: phase)
+            debugLog(
+                "Stylus injected: input=\(inputID) pointer=\(pointerID) "
+                    + "phase=\(phase) pressure=\(pressure)"
+            )
+        }
+        return injected
+    }
+
+    @discardableResult
     func handleClientScroll(deltaX: Double, deltaY: Double) -> Bool {
         guard settings.touchEnabled else { return false }
         guard nativeInputAccessibilityGranted() else { return false }
@@ -3492,6 +3592,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
    @discardableResult
    func handleTouch(x: Float, y: Float, action: Int, pointerCount: Int = 1, x2: Float = 0, y2: Float = 0) -> Bool {
         guard settings.touchEnabled else { return false }
+        if case .stylus = primaryButtonOwner.owner { return false }
 
         if !AXIsProcessTrusted() {
             if !accessibilityWarningShown {
@@ -3599,6 +3700,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case .longPressReady:
             if totalDistance > GestureThresholds.tapMaxDistance {
                 // Long press + drag → left mouse drag
+                guard primaryButtonOwner.beginTouchDrag() else {
+                    gestureState = .idle
+                    return
+                }
                 gestureState = .dragging
                 injectMouseDown(at: touchStartPosition)
                 injectMouseDragged(to: point)
@@ -3671,8 +3776,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
         case .dragging:
-            injectMouseUp(at: point)
-            debugLog("Touch gesture: drag ended")
+            if primaryButtonOwner.endTouchDrag() {
+                injectMouseUp(at: point)
+                debugLog("Touch gesture: drag ended")
+            }
 
         default:
             break
@@ -3860,9 +3967,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
    private func cancelActiveInput(releaseDrag: Bool) {
        cancelLongPressTimer()
        stopMomentumScroll()
-       if releaseDrag, gestureState == .dragging, AXIsProcessTrusted() {
-           injectMouseUp(at: touchLastPosition)
-       }
+        let owner = primaryButtonOwner.reset()
+        if releaseDrag, owner == .touchDrag, AXIsProcessTrusted() {
+            injectMouseUp(at: touchLastPosition)
+        }
+        // Releases a stylus tip or native pointer button when owned there; a
+        // touch drag is owned and released exclusively above.
         streamInputInjector.reset()
         gestureState = .idle
         touchStartPosition = .zero

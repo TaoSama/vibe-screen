@@ -33,6 +33,39 @@ import java.util.concurrent.atomic.AtomicReference
 import java.security.SecureRandom
 
 class InternetProductSessionTest {
+    @Test
+    fun hostWithoutInputCapabilitiesStillNegotiatesVideo() {
+        val peer = ProductFakePeerEngine()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertFalse(session.canSendStylus())
+        assertFalse(session.canSendTouch())
+        val controlCount = peer.control.size
+        assertFalse(session.sendTouch(ProductTouchEvent(1, 0, ProductInputPhase.BEGAN, 0.5, 0.5)))
+        assertEquals(controlCount, peer.control.size)
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        peer.receive(
+            controlEnvelope(3)
+                .setVideoConfig(
+                    VideoConfig.newBuilder()
+                        .setConfigEpoch(3)
+                        .setCodec(Codec.CODEC_HEVC)
+                        .setEncodedSize(Dimensions.newBuilder().setWidth(1920).setHeight(1080))
+                        .setFramesPerSecond(60)
+                        .setBitrateKbps(12_000)
+                        .setStreamId(5),
+                ).build(),
+        )
+        assertEquals(Envelope.PayloadCase.VIDEO_CONFIG_RESULT, Envelope.parseFrom(peer.control.last()).payloadCase)
+        assertEquals(1, callbacks.configurations.size)
+    }
+
     private val localIdentity =
         publicPoint(generateEphemeral(SecureRandom())).let { publicKey ->
             InternetPairingIdentity(
@@ -94,9 +127,26 @@ class InternetProductSessionTest {
         peer.observer.onConnected(PeerRoute.DIRECT)
 
         assertEquals(Envelope.PayloadCase.CLIENT_HELLO, Envelope.parseFrom(peer.control.single()).payloadCase)
-        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
-        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+        peer.receive(
+            controlEnvelope(1)
+                .setHostHello(
+                    hostHello()
+                        .addCapabilities(Capability.CAPABILITY_TOUCH)
+                        .addCapabilities(Capability.CAPABILITY_STYLUS),
+                ).build(),
+        )
+        peer.receive(
+            controlEnvelope(2)
+                .setSessionAccepted(
+                    sessionAccepted()
+                        .addNegotiatedCapabilities(Capability.CAPABILITY_TOUCH)
+                        .addNegotiatedCapabilities(Capability.CAPABILITY_STYLUS),
+                )
+                .build(),
+        )
         assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertFalse(session.canSendStylus())
+        assertTrue(session.canSendTouch())
 
         peer.receive(
             controlEnvelope(3)
@@ -120,6 +170,15 @@ class InternetProductSessionTest {
         peer.media(media(frameId = 2, keyframe = true, payload = "key".toByteArray()))
         assertEquals("key", callbacks.frames.single().payload.toString(Charsets.UTF_8))
         assertTrue(session.sendTouch(ProductTouchEvent(1, 0, ProductInputPhase.BEGAN, 0.5, 0.5)))
+        assertTrue(session.canSendStylus())
+        assertTrue(
+            session.sendStylus(
+                ProductStylusEvent(2, 7, ProductInputPhase.CHANGED, 0.25, 0.75, 0.6, 30.0, -40.0),
+            ),
+        )
+        val stylusEnvelope = Envelope.parseFrom(peer.control.last())
+        assertEquals(Envelope.PayloadCase.STYLUS_EVENT, stylusEnvelope.payloadCase)
+        assertEquals(5L, stylusEnvelope.stylusEvent.target.streamId)
         assertEquals(listOf(90), callbacks.configurations.map { it.rotationDegrees })
 
         peer.receive(
@@ -447,8 +506,12 @@ class InternetProductSessionTest {
         session.start()
         monitor.available("wifi")
         peer.observer.onConnected(PeerRoute.DIRECT)
-        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
-        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+        peer.receive(controlEnvelope(1).setHostHello(hostHello().addCapabilities(Capability.CAPABILITY_TOUCH)).build())
+        peer.receive(
+            controlEnvelope(2)
+                .setSessionAccepted(sessionAccepted().addNegotiatedCapabilities(Capability.CAPABILITY_TOUCH))
+                .build(),
+        )
         assertEquals(InternetProductSessionState.ACTIVE, session.state)
 
         peer.observer.onDisconnected()

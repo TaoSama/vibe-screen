@@ -334,9 +334,45 @@ class InternetProductSession internal constructor(
         heartbeatTick()
     }
 
-    fun sendTouch(event: ProductTouchEvent): Boolean =
-        sendApplicationControl {
+    fun sendTouch(event: ProductTouchEvent): Boolean {
+        if (!synchronized(lock) { Capability.CAPABILITY_TOUCH in expectedNegotiatedCapabilities }) return false
+        return sendApplicationControl {
             codec.encodeTouch(nextMessageId(), lease.protocolSessionId, lease.authoritativeSessionEpoch, event)
+        }
+    }
+
+    fun canSendTouch(): Boolean =
+        synchronized(lock) {
+            acceptsTransportCallbackLocked() &&
+                acceptedSession &&
+                state == InternetProductSessionState.ACTIVE &&
+                Capability.CAPABILITY_TOUCH in expectedNegotiatedCapabilities
+        }
+
+    fun sendStylus(event: ProductStylusEvent): Boolean {
+        val streamId =
+            synchronized(lock) {
+                if (Capability.CAPABILITY_STYLUS !in expectedNegotiatedCapabilities) return false
+                currentVideoConfiguration?.streamId
+            } ?: return false
+        return sendApplicationControl {
+            codec.encodeStylus(
+                nextMessageId(),
+                lease.protocolSessionId,
+                lease.authoritativeSessionEpoch,
+                streamId,
+                event,
+            )
+        }
+    }
+
+    fun canSendStylus(): Boolean =
+        synchronized(lock) {
+            acceptsTransportCallbackLocked() &&
+                acceptedSession &&
+                state == InternetProductSessionState.ACTIVE &&
+                currentVideoConfiguration != null &&
+                Capability.CAPABILITY_STYLUS in expectedNegotiatedCapabilities
         }
 
     fun requestKeyframe(reason: String): Boolean {

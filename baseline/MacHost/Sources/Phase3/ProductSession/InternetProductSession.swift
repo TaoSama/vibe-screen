@@ -63,6 +63,9 @@ final class InternetProductSession: EncodedFrameSink {
     var onError: ((InternetProductSessionError) -> Void)?
     var onTouchEvent: ((Float, Float, Int, Int, Float, Float) -> Void)?
     var onAuthenticatedTouchEvent: ((UInt64, UInt64, Float, Float, Int, Int, Float, Float) -> Bool)?
+    var onAuthenticatedStylusEvent: ((
+        UInt64, UInt64, UInt32, Float, Float, VSInputPhase, Double, Double, Double
+    ) -> Bool)?
     var onKeyframeRequired: (() -> Void)?
     var onFreshSessionRecoveryRequired: ((Int) -> Void)?
     var onRevoked: (() -> Void)?
@@ -89,6 +92,8 @@ final class InternetProductSession: EncodedFrameSink {
     private var nextHeartbeatSequence: UInt64 = 1
     private var lastPeerActivityNanoseconds: UInt64 = 0
     private var peerSupportsTouch = false
+    private var peerSupportsStylus = false
+    private var activeStylusPointerID: UInt32?
     private var frameAdmission = FrameAdmissionState()
     private var controlAdmission = ControlAdmissionState()
 
@@ -146,6 +151,9 @@ final class InternetProductSession: EncodedFrameSink {
             transport = nil
             codec = nil
             activePath = nil
+            peerSupportsTouch = false
+            peerSupportsStylus = false
+            activeStylusPointerID = nil
             configuration = nil
             let changed = state != .closed
             state = .closed
@@ -170,6 +178,8 @@ final class InternetProductSession: EncodedFrameSink {
             codec = nil
             activePath = nil
             peerSupportsTouch = false
+            peerSupportsStylus = false
+            activeStylusPointerID = nil
             let changed = state != .revoked
             state = .revoked
             let revocationGeneration = sessionGeneration
@@ -297,6 +307,7 @@ final class InternetProductSession: EncodedFrameSink {
             hostName: configuration.hostName,
             peerDeviceID: configuration.peerDeviceID,
             video: configuration.video,
+            inputEnabled: configuration.inputEnabled,
             limits: configuration.limits
         )
         let transport = WebRTCInternetTransport(
@@ -311,6 +322,8 @@ final class InternetProductSession: EncodedFrameSink {
         self.transport = transport
         activePath = nil
         peerSupportsTouch = false
+        peerSupportsStylus = false
+        activeStylusPointerID = nil
         nextHeartbeatSequence = 1
         lastPeerActivityNanoseconds = DispatchTime.now().uptimeNanoseconds
         let connectingState = InternetProductSessionState.connecting
@@ -412,11 +425,13 @@ final class InternetProductSession: EncodedFrameSink {
             switch envelope.payload {
             case .clientHello(let hello) where state == .authenticating:
                 try codec.validate(hello)
-                peerSupportsTouch = hello.capabilities.contains(.touch)
+                peerSupportsTouch = codec.inputEnabled && hello.capabilities.contains(.touch)
+                peerSupportsStylus = codec.inputEnabled && hello.capabilities.contains(.stylus)
                 try sendControl(codec.hostHello())
                 try sendControl(codec.sessionAccepted(
                     heartbeatIntervalMilliseconds: configuration?.heartbeatIntervalMilliseconds ?? 1_000,
-                    peerSupportsTouch: peerSupportsTouch
+                    peerSupportsTouch: peerSupportsTouch,
+                    peerSupportsStylus: peerSupportsStylus
                 ))
                 try sendControl(codec.videoConfiguration())
                 self.codec = codec
@@ -463,6 +478,14 @@ final class InternetProductSession: EncodedFrameSink {
                 self.codec = codec
                 try routeTouch(touch, sessionEpoch: codec.sessionEpoch)
 
+            case .stylusEvent(let stylus) where isStreaming:
+                self.codec = codec
+                try routeStylus(
+                    stylus,
+                    sessionEpoch: codec.sessionEpoch,
+                    streamID: codec.video.streamID
+                )
+
             case .disconnectNotice:
                 self.codec = codec
                 beginFreshSessionRecovery(attempt: 1, generation: generation)
@@ -476,6 +499,7 @@ final class InternetProductSession: EncodedFrameSink {
                 case .pong: payloadName = "Pong"
                 case .requestKeyframe: payloadName = "RequestKeyframe"
                 case .touchEvent: payloadName = "TouchEvent"
+                case .stylusEvent: payloadName = "StylusEvent"
                 case .disconnectNotice: payloadName = "DisconnectNotice"
                 case nil: payloadName = "empty payload"
                 default: payloadName = "unsupported payload"
@@ -518,6 +542,68 @@ final class InternetProductSession: EncodedFrameSink {
         )
         if routed == nil {
             onTouchEvent?(Float(x), Float(y), action, 1, 0, 0)
+        }
+    }
+
+    private func routeStylus(
+        _ stylus: VSStylusEvent,
+        sessionEpoch: UInt64,
+        streamID: UInt64
+    ) throws {
+        guard peerSupportsStylus else {
+            throw InternetProductProtocolError.missingCapability(.stylus)
+        }
+        let x = stylus.position.x
+        let y = stylus.position.y
+        let pressure = stylus.pressure
+        let tiltX = stylus.tiltXDegrees
+        let tiltY = stylus.tiltYDegrees
+        let terminalPhase = stylus.phase == .ended || stylus.phase == .cancelled
+        let targetMatches = !stylus.hasTarget
+            || ((stylus.target.streamID == 0 || stylus.target.streamID == streamID)
+                && (stylus.target.displayID.isEmpty
+                    || stylus.target.displayID == "internet-display"))
+        guard stylus.inputID > 0,
+              stylus.hasPosition,
+              x.isFinite, y.isFinite,
+              (0...1).contains(x), (0...1).contains(y),
+              pressure.isFinite, (0...1).contains(pressure),
+              !terminalPhase || pressure == 0,
+              tiltX.isFinite, tiltY.isFinite,
+              (-90...90).contains(tiltX), (-90...90).contains(tiltY),
+              hypot(tiltX, tiltY) <= 90,
+              targetMatches,
+              stylus.phase != .unspecified,
+              acceptsStylusSequence(pointerID: stylus.pointerID, phase: stylus.phase) else {
+            throw InternetProductProtocolError.invalidStylus
+        }
+        _ = onAuthenticatedStylusEvent?(
+            sessionEpoch,
+            stylus.inputID,
+            stylus.pointerID,
+            Float(x),
+            Float(y),
+            stylus.phase,
+            pressure,
+            tiltX,
+            tiltY
+        )
+    }
+
+    private func acceptsStylusSequence(pointerID: UInt32, phase: VSInputPhase) -> Bool {
+        switch phase {
+        case .began:
+            guard activeStylusPointerID == nil else { return false }
+            activeStylusPointerID = pointerID
+            return true
+        case .changed:
+            return activeStylusPointerID == pointerID
+        case .ended, .cancelled:
+            guard activeStylusPointerID == pointerID else { return false }
+            activeStylusPointerID = nil
+            return true
+        case .unspecified, .UNRECOGNIZED:
+            return false
         }
     }
 
@@ -590,6 +676,8 @@ final class InternetProductSession: EncodedFrameSink {
         codec = nil
         activePath = nil
         peerSupportsTouch = false
+        peerSupportsStylus = false
+        activeStylusPointerID = nil
         let recoveringState = InternetProductSessionState.recovering(attempt: sessionAttempt)
         let stateChanged = state != recoveringState
         state = recoveringState
@@ -778,6 +866,8 @@ final class InternetProductSession: EncodedFrameSink {
         codec = nil
         activePath = nil
         peerSupportsTouch = false
+        peerSupportsStylus = false
+        activeStylusPointerID = nil
         // Close the retired transport before publishing the terminal state so
         // any observer waking on .failed already sees the transport closed,
         // instead of racing the queue that would otherwise close it afterward.

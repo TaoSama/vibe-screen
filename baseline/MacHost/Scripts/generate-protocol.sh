@@ -15,12 +15,32 @@ swift build \
   --configuration release \
   --product protoc-gen-swift
 
-plugin_path="$(find "$temporary_dir/swift-protobuf/.build" -type f -name protoc-gen-swift -perm -111 | head -n 1)"
-protoc_path="$(find "$temporary_dir/swift-protobuf/.build/artifacts" -type f -path '*osx-aarch_64/bin/protoc' -perm -111 | head -n 1)"
-if [[ -z "$plugin_path" || -z "$protoc_path" ]]; then
+plugin_paths=()
+while IFS= read -r plugin_candidate; do
+  plugin_paths+=("$plugin_candidate")
+done < <(find "$temporary_dir/swift-protobuf/.build" -type f -name protoc-gen-swift -perm -u+x | sort)
+case "$(uname -s)" in
+  Darwin) protoc_platform="osx" ;;
+  Linux) protoc_platform="linux" ;;
+  *) echo "unsupported protoc host platform: $(uname -s)" >&2; exit 1 ;;
+esac
+case "$(uname -m)" in
+  arm64|aarch64) protoc_arch="aarch_64" ;;
+  x86_64) protoc_arch="x86_64" ;;
+  *) echo "unsupported protoc host architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+protoc_paths=()
+while IFS= read -r protoc_candidate; do
+  protoc_paths+=("$protoc_candidate")
+done < <(find "$temporary_dir/swift-protobuf/.build/artifacts" -type f -path "*-${protoc_platform}-${protoc_arch}/bin/protoc" -perm -111 | sort)
+if [[ ${#plugin_paths[@]} -ne 1 || ${#protoc_paths[@]} -ne 1 ]]; then
+  echo "found ${#plugin_paths[@]} protoc-gen-swift candidates; expected exactly one" >&2
+  echo "found ${#protoc_paths[@]} pinned protoc candidates; expected exactly one" >&2
   echo "unable to locate pinned protoc or protoc-gen-swift" >&2
   exit 1
 fi
+plugin_path="${plugin_paths[0]}"
+protoc_path="${protoc_paths[0]}"
 
 output_dir="$mac_host_dir/Protocol/Sources/VibeScreenProtocol"
 rm -rf "$output_dir/vibescreen"

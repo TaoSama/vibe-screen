@@ -119,6 +119,60 @@ public struct VSTouchEvent: Sendable {
   fileprivate var _target: VSInputTarget? = nil
 }
 
+/// Stylus pressure and tilt components must be finite. Pressure is normalized to
+/// [0, 1]. Each tilt component is in [-90, 90] degrees, and the two-dimensional
+/// tilt vector must satisfy hypot(tilt_x_degrees, tilt_y_degrees) <= 90 degrees.
+/// Phase must be BEGAN, CHANGED, ENDED, or CANCELLED. Position coordinates must
+/// be finite and normalized to [0, 1].
+public struct VSStylusEvent: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var inputID: UInt64 = 0
+
+  public var pointerID: UInt32 = 0
+
+  public var phase: VSInputPhase = .unspecified
+
+  public var position: VSNormalizedPoint {
+    get {return _position ?? VSNormalizedPoint()}
+    set {_position = newValue}
+  }
+  /// Returns true if `position` has been explicitly set.
+  public var hasPosition: Bool {return self._position != nil}
+  /// Clears the value of `position`. Subsequent reads from it will return its default value.
+  public mutating func clearPosition() {self._position = nil}
+
+  /// Normalized force. The value must be finite and in [0, 1] for BEGAN or
+  /// CHANGED; it must be 0.0 for ENDED or CANCELLED.
+  public var pressure: Double = 0
+
+  /// Screen-right component of the stylus shaft's deviation from the screen
+  /// normal, in degrees. The value must be finite and in [-90, 90].
+  public var tiltXDegrees: Double = 0
+
+  /// Screen-down component of the stylus shaft's deviation from the screen
+  /// normal, in degrees. The value must be finite and in [-90, 90].
+  public var tiltYDegrees: Double = 0
+
+  public var target: VSInputTarget {
+    get {return _target ?? VSInputTarget()}
+    set {_target = newValue}
+  }
+  /// Returns true if `target` has been explicitly set.
+  public var hasTarget: Bool {return self._target != nil}
+  /// Clears the value of `target`. Subsequent reads from it will return its default value.
+  public mutating func clearTarget() {self._target = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _position: VSNormalizedPoint? = nil
+  fileprivate var _target: VSInputTarget? = nil
+}
+
 public struct VSPointerEvent: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -326,6 +380,75 @@ extension VSTouchEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementat
     if lhs.phase != rhs.phase {return false}
     if lhs._position != rhs._position {return false}
     if lhs.pressure != rhs.pressure {return false}
+    if lhs._target != rhs._target {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension VSStylusEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".StylusEvent"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_id\0\u{3}pointer_id\0\u{1}phase\0\u{1}position\0\u{1}pressure\0\u{3}tilt_x_degrees\0\u{3}tilt_y_degrees\0\u{1}target\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt64Field(value: &self.inputID) }()
+      case 2: try { try decoder.decodeSingularUInt32Field(value: &self.pointerID) }()
+      case 3: try { try decoder.decodeSingularEnumField(value: &self.phase) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._position) }()
+      case 5: try { try decoder.decodeSingularDoubleField(value: &self.pressure) }()
+      case 6: try { try decoder.decodeSingularDoubleField(value: &self.tiltXDegrees) }()
+      case 7: try { try decoder.decodeSingularDoubleField(value: &self.tiltYDegrees) }()
+      case 8: try { try decoder.decodeSingularMessageField(value: &self._target) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.inputID != 0 {
+      try visitor.visitSingularUInt64Field(value: self.inputID, fieldNumber: 1)
+    }
+    if self.pointerID != 0 {
+      try visitor.visitSingularUInt32Field(value: self.pointerID, fieldNumber: 2)
+    }
+    if self.phase != .unspecified {
+      try visitor.visitSingularEnumField(value: self.phase, fieldNumber: 3)
+    }
+    try { if let v = self._position {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    if self.pressure.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.pressure, fieldNumber: 5)
+    }
+    if self.tiltXDegrees.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.tiltXDegrees, fieldNumber: 6)
+    }
+    if self.tiltYDegrees.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.tiltYDegrees, fieldNumber: 7)
+    }
+    try { if let v = self._target {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 8)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: VSStylusEvent, rhs: VSStylusEvent) -> Bool {
+    if lhs.inputID != rhs.inputID {return false}
+    if lhs.pointerID != rhs.pointerID {return false}
+    if lhs.phase != rhs.phase {return false}
+    if lhs._position != rhs._position {return false}
+    if lhs.pressure != rhs.pressure {return false}
+    if lhs.tiltXDegrees != rhs.tiltXDegrees {return false}
+    if lhs.tiltYDegrees != rhs.tiltYDegrees {return false}
     if lhs._target != rhs._target {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
