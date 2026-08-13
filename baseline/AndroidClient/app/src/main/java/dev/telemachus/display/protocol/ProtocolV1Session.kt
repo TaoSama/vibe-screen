@@ -1,9 +1,13 @@
 package dev.telemachus.display.protocol
 
 import com.google.protobuf.ByteString
+import dev.telemachus.display.ControllerEventKind
+import dev.telemachus.display.ControllerStateSample
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClientHello
 import dev.vibescreen.protocol.v1.Codec
+import dev.vibescreen.protocol.v1.ControllerEvent
+import dev.vibescreen.protocol.v1.ControllerEventKind as ProtocolControllerEventKind
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.HostActionInvoke
 import dev.vibescreen.protocol.v1.InputPhase
@@ -186,6 +190,7 @@ internal class ProtocolV1Session(
             Capability.CAPABILITY_POINTER,
             Capability.CAPABILITY_STYLUS,
             Capability.CAPABILITY_STYLUS_EXTENDED,
+            Capability.CAPABILITY_CONTROLLER,
             Capability.CAPABILITY_MULTI_DISPLAY,
             Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
             Capability.CAPABILITY_HOST_ACTIONS,
@@ -236,6 +241,10 @@ internal class ProtocolV1Session(
         get() =
             canSendStylus &&
                 Capability.CAPABILITY_STYLUS_EXTENDED in negotiatedCapabilities
+
+    val canSendController: Boolean
+        @Synchronized
+        get() = state == State.STREAMING && Capability.CAPABILITY_CONTROLLER in negotiatedCapabilities
 
     /** Host actions the client may invoke, empty until a catalog arrives. */
     val hostActions: List<HostAction>
@@ -623,6 +632,41 @@ internal class ProtocolV1Session(
                 .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
                 .build()
         return envelope().setKeyEvent(event).build()
+    }
+
+    @Synchronized
+    fun controller(
+        inputId: Long,
+        sample: ControllerStateSample,
+    ): Envelope {
+        check(state == State.STREAMING)
+        check(Capability.CAPABILITY_CONTROLLER in negotiatedCapabilities) { "Controller input was not negotiated" }
+        require(inputId > 0)
+        val kind =
+            when (sample.kind) {
+                ControllerEventKind.CONNECTED -> ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED
+                ControllerEventKind.STATE -> ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE
+                ControllerEventKind.DISCONNECTED -> ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED
+            }
+        val event =
+            ControllerEvent
+                .newBuilder()
+                .setInputId(inputId)
+                .setControllerId(sample.controllerId)
+                .setControllerEpoch(sample.controllerEpoch)
+                .setKind(kind)
+                .setButtonMask(sample.buttonMask)
+                .setLeftStickX(sample.axes.leftX)
+                .setLeftStickY(sample.axes.leftY)
+                .setRightStickX(sample.axes.rightX)
+                .setRightStickY(sample.axes.rightY)
+                .setLeftTrigger(sample.axes.leftTrigger)
+                .setRightTrigger(sample.axes.rightTrigger)
+                .setHatX(sample.axes.hatX)
+                .setHatY(sample.axes.hatY)
+                .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
+                .build()
+        return envelope().setControllerEvent(event).build()
     }
 
     @Synchronized

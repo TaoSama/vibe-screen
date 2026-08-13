@@ -1,0 +1,140 @@
+{
+  "schema": "vibescreen.protocol.v1.ControllerEvent.validation/v1",
+  "buttonMaskDefinedBits": 8191,
+  "buttonBits": {
+    "south": 0,
+    "east": 1,
+    "west": 2,
+    "north": 3,
+    "l1": 4,
+    "r1": 5,
+    "l2Digital": 6,
+    "r2Digital": 7,
+    "select": 8,
+    "start": 9,
+    "guideMode": 10,
+    "l3": 11,
+    "r3": 12
+  },
+  "neutralLifecycleKinds": [
+    "CONTROLLER_EVENT_KIND_CONNECTED",
+    "CONTROLLER_EVENT_KIND_DISCONNECTED"
+  ],
+  "lifecycleNegativeCases": [
+    {
+      "name": "duplicate_connected",
+      "sequence": [
+        {"inputId": 1, "controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 1},
+        {"inputId": 2, "controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 1}
+      ],
+      "reason": "an active lifecycle cannot be connected twice"
+    },
+    {
+      "name": "state_before_connected",
+      "sequence": [
+        {"inputId": 1, "controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 2}
+      ],
+      "reason": "STATE requires an active matching lifecycle"
+    },
+    {
+      "name": "state_after_disconnected",
+      "sequence": [
+        {"inputId": 1, "controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 1},
+        {"inputId": 2, "controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 3},
+        {"inputId": 3, "controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 2}
+      ],
+      "reason": "DISCONNECTED closes the matching lifecycle"
+    },
+    {
+      "name": "reused_controller_epoch",
+      "sequence": [
+        {"inputId": 1, "controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 1},
+        {"inputId": 2, "controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 3},
+        {"inputId": 3, "controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 1}
+      ],
+      "reason": "a new lifecycle must use a greater epoch"
+    },
+    {
+      "name": "decreasing_controller_epoch",
+      "sequence": [
+        {"inputId": 1, "controllerId": "controller-1", "controllerEpoch": 2, "kindRawValue": 1},
+        {"inputId": 2, "controllerId": "controller-1", "controllerEpoch": 2, "kindRawValue": 3},
+        {"inputId": 3, "controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 1}
+      ],
+      "reason": "a new lifecycle must not decrease the prior epoch"
+    },
+    {
+      "name": "duplicate_input_id",
+      "sequence": [
+        {"inputId": 1, "controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 1},
+        {"inputId": 1, "controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 2}
+      ],
+      "reason": "input_id must not repeat in the session ControllerEvent stream"
+    },
+    {
+      "name": "non_monotonic_input_id",
+      "sequence": [
+        {"inputId": 2, "controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 1},
+        {"inputId": 1, "controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 2}
+      ],
+      "reason": "input_id must strictly increase in the session ControllerEvent stream"
+    }
+  ],
+  "negativeCases": [
+    {
+      "name": "zero_input_id",
+      "event": {"inputId": 0, "controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 1},
+      "reason": "input_id must be non-zero"
+    },
+    {
+      "name": "empty_controller_id",
+      "event": {"controllerId": "", "controllerEpoch": 1, "kindRawValue": 1},
+      "reason": "controller_id must be non-empty"
+    },
+    {
+      "name": "overlong_controller_id",
+      "event": {"controllerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "controllerEpoch": 1, "kindRawValue": 1},
+      "reason": "controller_id must encode to at most 128 UTF-8 bytes"
+    },
+    {
+      "name": "zero_controller_epoch",
+      "event": {"controllerId": "controller-1", "controllerEpoch": 0, "kindRawValue": 1},
+      "reason": "controller_epoch must be non-zero"
+    },
+    {
+      "name": "unknown_kind",
+      "event": {"controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 99},
+      "reason": "kind must be CONNECTED, STATE, or DISCONNECTED"
+    },
+    {
+      "name": "reserved_button_bit",
+      "event": {"controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 2, "buttonMask": 8192},
+      "reason": "button bits 13-31 are reserved"
+    },
+    {
+      "name": "stick_axis_out_of_range",
+      "event": {"controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 2, "leftStickX": 1.01},
+      "reason": "stick axes must be finite and in [-1, 1]"
+    },
+    {
+      "name": "trigger_out_of_range",
+      "event": {"controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 2, "rightTrigger": -0.01},
+      "reason": "triggers must be finite and in [0, 1]"
+    },
+    {
+      "name": "invalid_hat_axis",
+      "event": {"controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 2, "hatX": 2},
+      "reason": "hat axes must each be -1, 0, or 1"
+    },
+    {
+      "name": "connected_non_neutral",
+      "event": {"controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 1, "buttonMask": 1},
+      "reason": "CONNECTED must be neutral"
+    },
+    {
+      "name": "disconnected_non_neutral",
+      "event": {"controllerId": "controller-1", "controllerEpoch": 1, "kindRawValue": 3, "leftStickX": 0.5},
+      "reason": "DISCONNECTED must be neutral"
+    }
+  ]
+}

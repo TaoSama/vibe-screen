@@ -37,6 +37,490 @@ class OutboundCommandSchedulerTest {
     }
 
     @Test
+    fun pointerAndControllerMovesUseIndependentCoalescingDomains() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val scheduler = scheduler(capacity = 4) { command ->
+            if (command == "active") {
+                writerEntered.countDown()
+                releaseWriter.await()
+            }
+            written += command
+        }
+
+        scheduler.submit(STRUCTURAL, "active")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(MOVE, "pointer-1"))
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED,
+            scheduler.submit(CONTROLLER_MOVE, "controllers:{one=0.2,two=-0.4}"),
+        )
+        assertEquals(
+            OutboundCommandScheduler.Submission.COALESCED,
+            scheduler.submit(MOVE, "pointer-2"),
+        )
+        assertEquals(
+            OutboundCommandScheduler.Submission.COALESCED,
+            scheduler.submit(CONTROLLER_MOVE, "controllers:{one=0.0,two=0.0}"),
+        )
+        releaseWriter.countDown()
+
+        assertTrue(scheduler.shutdownGracefully(1_000))
+        assertEquals(
+            listOf("active", "pointer-2", "controllers:{one=0.0,two=0.0}"),
+            written,
+        )
+    }
+
+    @Test
+    fun structuralCommandCanEvictOldestControllerMove() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val scheduler = scheduler(capacity = 1) { command ->
+            if (command == "active") {
+                writerEntered.countDown()
+                releaseWriter.await()
+            }
+            written += command
+        }
+
+        scheduler.submit(STRUCTURAL, "active")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        scheduler.submit(CONTROLLER_MOVE, "controllers:{one=0.7}")
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED_AFTER_COALESCING_MOVE,
+            scheduler.submit(STRUCTURAL, "controller-disconnected"),
+        )
+        releaseWriter.countDown()
+
+        assertTrue(scheduler.shutdownGracefully(1_000))
+        assertEquals(listOf("active", "controller-disconnected"), written)
+    }
+
+    @Test
+    fun latestControllerNeutralIsAdmittedWhenInterleavedMoveDomainsFillQueue() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val scheduler = scheduler(capacity = 2) { command ->
+            if (command == "active") {
+                writerEntered.countDown()
+                releaseWriter.await()
+            }
+            written += command
+        }
+
+        scheduler.submit(STRUCTURAL, "active")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(MOVE, "pointer-1"))
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(CONTROLLER_MOVE, "controller-1"))
+        assertEquals(OutboundCommandScheduler.Submission.COALESCED, scheduler.submit(MOVE, "pointer-2"))
+        assertEquals(OutboundCommandScheduler.Submission.COALESCED, scheduler.submit(CONTROLLER_MOVE, "controller-neutral"))
+        releaseWriter.countDown()
+
+        assertTrue(scheduler.shutdownGracefully(1_000))
+        assertEquals(listOf("active", "pointer-2", "controller-neutral"), written)
+    }
+
+    @Test
+    fun crossDomainSaturationDoesNotEvictControllerNeutral() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val scheduler = scheduler(capacity = 1) { command ->
+            if (command == "active") {
+                writerEntered.countDown()
+                releaseWriter.await()
+            }
+            written += command
+        }
+
+        scheduler.submit(STRUCTURAL, "active")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED,
+            scheduler.submit(CONTROLLER_MOVE, "controller-neutral"),
+        )
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED,
+            scheduler.submit(MOVE, "pointer-latest"),
+        )
+        releaseWriter.countDown()
+
+        assertTrue(scheduler.shutdownGracefully(1_000))
+        assertEquals(listOf("active", "controller-neutral", "pointer-latest"), written)
+    }
+
+    @Test
+    fun contendedControllerOverflowAtomicallyKeepsLatestNeutral() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val coalescerEntered = CountDownLatch(1)
+        val releaseCoalescer = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val updateResult = AtomicReference<OutboundCommandScheduler.Submission>()
+        val scheduler =
+            OutboundCommandScheduler<String>(
+                capacity = 2,
+                writer = { command ->
+                    if (command == "active") {
+                        writerEntered.countDown()
+                        releaseWriter.await()
+                    }
+                    written += command
+                },
+                onWriteFailure = { throw AssertionError("Unexpected failure", it.cause) },
+                coalesce = { kind, _, replacement ->
+                    if (kind == CONTROLLER_MOVE && replacement == "controller-update") {
+                        coalescerEntered.countDown()
+                        releaseCoalescer.await()
+                    }
+                    replacement
+                },
+            )
+
+        scheduler.submit(STRUCTURAL, "active")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        scheduler.submit(CONTROLLER_MOVE, "controller-pressed")
+        val lockHolder =
+            Thread {
+                updateResult.set(scheduler.submit(CONTROLLER_MOVE, "controller-update"))
+            }.apply { start() }
+        assertTrue(coalescerEntered.await(1, TimeUnit.SECONDS))
+
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED,
+            scheduler.submit(CONTROLLER_MOVE, "controller-drift"),
+        )
+        assertEquals(
+            OutboundCommandScheduler.Submission.COALESCED,
+            scheduler.submit(CONTROLLER_MOVE, "controller-neutral"),
+        )
+        releaseCoalescer.countDown()
+        lockHolder.join(1_000)
+        releaseWriter.countDown()
+
+        assertFalse(lockHolder.isAlive)
+        assertEquals(OutboundCommandScheduler.Submission.COALESCED, updateResult.get())
+        assertTrue(scheduler.shutdownGracefully(1_000))
+        assertEquals(listOf("active", "controller-neutral"), written)
+    }
+
+    @Test
+    fun controllerLifecycleBoundaryDiscardsOlderOverflowState() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val scheduler = scheduler(capacity = 1) { command ->
+            if (command == "active") {
+                writerEntered.countDown()
+                releaseWriter.await()
+            }
+            written += command
+        }
+
+        scheduler.submit(STRUCTURAL, "active")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        scheduler.submit(MOVE, "pointer-blocker")
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED,
+            scheduler.submit(CONTROLLER_MOVE, "controller-neutral-overflow"),
+        )
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED_AFTER_COALESCING_MOVE,
+            scheduler.submit(CONTROLLER_STRUCTURAL, "controller-disconnected"),
+        )
+        releaseWriter.countDown()
+
+        assertTrue(scheduler.shutdownGracefully(1_000))
+        assertEquals(listOf("active", "controller-disconnected"), written)
+    }
+
+    @Test
+    fun rejectedControllerLifecycleBoundaryPreservesOverflowNeutral() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val scheduler = scheduler(capacity = 1) { command ->
+            if (command == "active") {
+                writerEntered.countDown()
+                releaseWriter.await()
+            }
+            written += command
+        }
+
+        scheduler.submit(STRUCTURAL, "active")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        scheduler.submit(STRUCTURAL, "touch-boundary")
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED,
+            scheduler.submit(CONTROLLER_MOVE, "controller-neutral"),
+        )
+        assertEquals(
+            OutboundCommandScheduler.Submission.TIMED_OUT,
+            scheduler.submit(CONTROLLER_STRUCTURAL, "controller-disconnected"),
+        )
+        releaseWriter.countDown()
+
+        assertTrue(scheduler.shutdownGracefully(1_000))
+        assertEquals(listOf("active", "touch-boundary", "controller-neutral"), written)
+    }
+
+    @Test
+    fun controllerOverflowPublisherCannotCrossAcceptedLifecycleGeneration() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val coalescerEntered = CountDownLatch(1)
+        val releaseCoalescer = CountDownLatch(1)
+        val oldPublisherEntered = CountDownLatch(1)
+        val releaseOldPublisher = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val oldResult = AtomicReference<OutboundCommandScheduler.Submission>()
+        val scheduler =
+            OutboundCommandScheduler<String>(
+                capacity = 3,
+                writer = { command ->
+                    if (command == "active") {
+                        writerEntered.countDown()
+                        releaseWriter.await()
+                    }
+                    written += command
+                },
+                onWriteFailure = { throw AssertionError("Unexpected failure", it.cause) },
+                coalesce = { kind, _, replacement ->
+                    if (kind == KEYFRAME && replacement == "keyframe-update") {
+                        coalescerEntered.countDown()
+                        releaseCoalescer.await()
+                    }
+                    replacement
+                },
+                beforeOverflowPublish = {
+                    oldPublisherEntered.countDown()
+                    releaseOldPublisher.await()
+                },
+            )
+
+        scheduler.submit(STRUCTURAL, "active")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        scheduler.submit(KEYFRAME, "keyframe")
+        val lockHolder = Thread { scheduler.submit(KEYFRAME, "keyframe-update") }.apply { start() }
+        assertTrue(coalescerEntered.await(1, TimeUnit.SECONDS))
+        val oldPublisher =
+            Thread {
+                oldResult.set(scheduler.submit(CONTROLLER_MOVE, "old-controller-state"))
+            }.apply { start() }
+        assertTrue(oldPublisherEntered.await(1, TimeUnit.SECONDS))
+
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED,
+            scheduler.submit(CONTROLLER_STRUCTURAL, "controller-disconnected"),
+        )
+        releaseCoalescer.countDown()
+        lockHolder.join(1_000)
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(PING, "drain-ingress"))
+        releaseOldPublisher.countDown()
+        oldPublisher.join(1_000)
+        releaseWriter.countDown()
+
+        assertFalse(oldPublisher.isAlive)
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, oldResult.get())
+        assertTrue(scheduler.shutdownGracefully(1_000))
+        assertFalse(written.contains("old-controller-state"))
+        assertTrue(written.contains("controller-disconnected"))
+    }
+
+    @Test
+    fun contendedLifecycleAdmissionPreservesNewerControllerMove() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val coalescerEntered = CountDownLatch(1)
+        val releaseCoalescer = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val scheduler =
+            OutboundCommandScheduler<String>(
+                capacity = 3,
+                writer = { command ->
+                    if (command == "active") {
+                        writerEntered.countDown()
+                        releaseWriter.await()
+                    }
+                    written += command
+                },
+                onWriteFailure = { throw AssertionError("Unexpected failure", it.cause) },
+                coalesce = { kind, _, replacement ->
+                    if (kind == KEYFRAME && replacement == "keyframe-update") {
+                        coalescerEntered.countDown()
+                        releaseCoalescer.await()
+                    }
+                    replacement
+                },
+            )
+
+        scheduler.submit(STRUCTURAL, "active")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        scheduler.submit(KEYFRAME, "keyframe")
+        val lockHolder = Thread { scheduler.submit(KEYFRAME, "keyframe-update") }.apply { start() }
+        assertTrue(coalescerEntered.await(1, TimeUnit.SECONDS))
+
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED,
+            scheduler.submit(CONTROLLER_STRUCTURAL, "controller-connected"),
+        )
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED,
+            scheduler.submit(CONTROLLER_MOVE, "new-controller-state"),
+        )
+        releaseCoalescer.countDown()
+        lockHolder.join(1_000)
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(PING, "drain-ingress"))
+        releaseWriter.countDown()
+
+        assertTrue(scheduler.shutdownGracefully(1_000))
+        val boundaryIndex = written.indexOf("controller-connected")
+        val stateIndex = written.indexOf("new-controller-state")
+        assertTrue(boundaryIndex >= 0)
+        assertTrue(stateIndex > boundaryIndex)
+    }
+
+    @Test
+    fun lifecyclePublicationIsVisibleBeforeNewMoveCapturesGeneration() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val coalescerEntered = CountDownLatch(1)
+        val releaseCoalescer = CountDownLatch(1)
+        val boundaryGenerationAllocated = CountDownLatch(1)
+        val releaseBoundaryPublication = CountDownLatch(1)
+        val moveStarted = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val boundaryResult = AtomicReference<OutboundCommandScheduler.Submission>()
+        val moveResult = AtomicReference<OutboundCommandScheduler.Submission>()
+        val scheduler =
+            OutboundCommandScheduler<String>(
+                capacity = 3,
+                writer = { command ->
+                    if (command == "active") {
+                        writerEntered.countDown()
+                        releaseWriter.await()
+                    }
+                    written += command
+                },
+                onWriteFailure = { throw AssertionError("Unexpected failure", it.cause) },
+                coalesce = { kind, _, replacement ->
+                    if (kind == KEYFRAME && replacement == "keyframe-update") {
+                        coalescerEntered.countDown()
+                        releaseCoalescer.await()
+                    }
+                    replacement
+                },
+                afterControllerBoundaryGenerationAllocated = {
+                    boundaryGenerationAllocated.countDown()
+                    releaseBoundaryPublication.await()
+                },
+            )
+
+        scheduler.submit(STRUCTURAL, "active")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        scheduler.submit(KEYFRAME, "keyframe")
+        val lockHolder = Thread { scheduler.submit(KEYFRAME, "keyframe-update") }.apply { start() }
+        assertTrue(coalescerEntered.await(1, TimeUnit.SECONDS))
+        val boundaryPublisher =
+            Thread {
+                boundaryResult.set(scheduler.submit(CONTROLLER_STRUCTURAL, "controller-connected"))
+            }.apply { start() }
+        assertTrue(boundaryGenerationAllocated.await(1, TimeUnit.SECONDS))
+        val newMove =
+            Thread {
+                moveStarted.countDown()
+                moveResult.set(scheduler.submit(CONTROLLER_MOVE, "new-controller-state"))
+            }.apply { start() }
+        assertTrue(moveStarted.await(1, TimeUnit.SECONDS))
+
+        releaseBoundaryPublication.countDown()
+        boundaryPublisher.join(1_000)
+        newMove.join(1_000)
+        releaseCoalescer.countDown()
+        lockHolder.join(1_000)
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(PING, "drain-ingress"))
+        releaseWriter.countDown()
+
+        assertFalse(boundaryPublisher.isAlive)
+        assertFalse(newMove.isAlive)
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, boundaryResult.get())
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, moveResult.get())
+        assertTrue(scheduler.shutdownGracefully(1_000))
+        val boundaryIndex = written.indexOf("controller-connected")
+        val stateIndex = written.indexOf("new-controller-state")
+        assertTrue(boundaryIndex >= 0)
+        assertTrue(stateIndex > boundaryIndex)
+    }
+
+    @Test
+    fun gracefulShutdownWaitsForAcceptedLifecyclePublication() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val coalescerEntered = CountDownLatch(1)
+        val releaseCoalescer = CountDownLatch(1)
+        val boundaryGenerationAllocated = CountDownLatch(1)
+        val releaseBoundaryPublication = CountDownLatch(1)
+        val shutdownHasSchedulerLock = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val boundaryResult = AtomicReference<OutboundCommandScheduler.Submission>()
+        val shutdownResult = AtomicReference<Boolean>()
+        val scheduler =
+            OutboundCommandScheduler<String>(
+                capacity = 3,
+                writer = { command ->
+                    if (command == "active") {
+                        writerEntered.countDown()
+                        releaseWriter.await()
+                    }
+                    written += command
+                },
+                onWriteFailure = { throw AssertionError("Unexpected failure", it.cause) },
+                coalesce = { kind, _, replacement ->
+                    if (kind == KEYFRAME && replacement == "keyframe-update") {
+                        coalescerEntered.countDown()
+                        releaseCoalescer.await()
+                    }
+                    replacement
+                },
+                afterControllerBoundaryGenerationAllocated = {
+                    boundaryGenerationAllocated.countDown()
+                    releaseBoundaryPublication.await()
+                },
+                beforeControllerLifecycleClose = { shutdownHasSchedulerLock.countDown() },
+            )
+
+        scheduler.submit(STRUCTURAL, "active")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        scheduler.submit(KEYFRAME, "keyframe")
+        val lockHolder = Thread { scheduler.submit(KEYFRAME, "keyframe-update") }.apply { start() }
+        assertTrue(coalescerEntered.await(1, TimeUnit.SECONDS))
+        val boundaryPublisher =
+            Thread {
+                boundaryResult.set(scheduler.submit(CONTROLLER_STRUCTURAL, "controller-connected"))
+            }.apply { start() }
+        assertTrue(boundaryGenerationAllocated.await(1, TimeUnit.SECONDS))
+        val shutdown = Thread { shutdownResult.set(scheduler.shutdownGracefully(1_000)) }.apply { start() }
+
+        releaseCoalescer.countDown()
+        lockHolder.join(1_000)
+        assertTrue(shutdownHasSchedulerLock.await(1, TimeUnit.SECONDS))
+        releaseBoundaryPublication.countDown()
+        boundaryPublisher.join(1_000)
+        releaseWriter.countDown()
+        shutdown.join(1_000)
+
+        assertFalse(boundaryPublisher.isAlive)
+        assertFalse(shutdown.isAlive)
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, boundaryResult.get())
+        assertEquals(true, shutdownResult.get())
+        assertTrue(written.contains("controller-connected"))
+    }
+
+    @Test
     fun latestMoveRemainsBetweenGestureBoundaries() {
         val writerEntered = CountDownLatch(1)
         val releaseWriter = CountDownLatch(1)
@@ -522,6 +1006,8 @@ class OutboundCommandSchedulerTest {
     private companion object {
         val STRUCTURAL = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
         val MOVE = OutboundCommandScheduler.Kind.MOVE
+        val CONTROLLER_MOVE = OutboundCommandScheduler.Kind.CONTROLLER_MOVE
+        val CONTROLLER_STRUCTURAL = OutboundCommandScheduler.Kind.CONTROLLER_STRUCTURAL
         val KEYFRAME = OutboundCommandScheduler.Kind.KEYFRAME
         val PING = OutboundCommandScheduler.Kind.PING
     }

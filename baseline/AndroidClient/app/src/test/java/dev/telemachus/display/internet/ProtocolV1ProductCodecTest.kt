@@ -3,6 +3,7 @@ package dev.telemachus.display.internet
 import com.google.protobuf.ByteString
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
+import dev.vibescreen.protocol.v1.ControllerEventKind
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.MediaPacketHeader
@@ -27,6 +28,7 @@ class ProtocolV1ProductCodecTest {
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_STYLUS))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_TOUCH))
+        assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_CONTROLLER))
         assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_STYLUS))
         assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_TOUCH))
         assertTrue(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION))
@@ -61,6 +63,35 @@ class ProtocolV1ProductCodecTest {
         assertEquals(Envelope.PayloadCase.STYLUS_EVENT, stylus.payloadCase)
         assertEquals(5L, stylus.stylusEvent.target.streamId)
         assertEquals(-40.0, stylus.stylusEvent.tiltYDegrees, 0.0)
+
+        val controller =
+            Envelope.parseFrom(
+                codec.encodeController(
+                    4,
+                    sessionId,
+                    7,
+                    5,
+                    ProductControllerEvent(
+                        inputId = 5,
+                        controllerId = "android-pad",
+                        controllerEpoch = 2,
+                        kind = ControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
+                        buttonMask = 1 shl 12,
+                        leftStickX = -0.5,
+                        leftStickY = 0.25,
+                        rightStickX = 0.75,
+                        rightStickY = -1.0,
+                        leftTrigger = 0.4,
+                        rightTrigger = 1.0,
+                        hatX = -1,
+                        hatY = 1,
+                    ),
+                ),
+            )
+        assertEquals(Envelope.PayloadCase.CONTROLLER_EVENT, controller.payloadCase)
+        assertEquals("android-pad", controller.controllerEvent.controllerId)
+        assertEquals(5L, controller.controllerEvent.target.streamId)
+        assertEquals(-0.5, controller.controllerEvent.leftStickX, 0.0)
 
         val keyframe = Envelope.parseFrom(codec.encodeKeyframeRequest(3, sessionId, 7, 5, "decoder_reset"))
         assertEquals(5, keyframe.requestKeyframe.streamId)

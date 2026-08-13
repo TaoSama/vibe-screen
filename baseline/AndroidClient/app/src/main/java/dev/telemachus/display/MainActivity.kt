@@ -7,16 +7,17 @@ import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.hardware.input.InputManager
 import android.media.MediaFormat
 import android.os.Build
 import android.os.Bundle
-import android.text.TextUtils
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.view.MotionEvent
+import android.text.TextUtils
 import android.view.InputDevice
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.View
 import android.view.ViewGroup
@@ -47,6 +48,7 @@ import dev.telemachus.display.protocol.MotionSnapshot
 import dev.telemachus.display.protocol.TouchSampleMapper
 import dev.telemachus.display.internet.AndroidNetworkMonitor
 import dev.telemachus.display.internet.InternetDecoderConfigurationResult
+import dev.telemachus.display.internet.InternetControllerSendQueue
 import dev.telemachus.display.internet.InternetProductSession
 import dev.telemachus.display.internet.InternetProductSessionCallbacks
 import dev.telemachus.display.internet.InternetProductRevocationCoordinator
@@ -56,10 +58,9 @@ import dev.telemachus.display.internet.InternetSessionProfileStore
 import dev.telemachus.display.internet.InternetVideoDecoderLifecycle
 import dev.telemachus.display.internet.PeerRoute
 import dev.telemachus.display.internet.PendingRevocationBarrierException
+import dev.telemachus.display.internet.ProductControllerEvent
 import dev.telemachus.display.internet.ProductInputPhase
 import dev.telemachus.display.internet.ProductStylusEvent
-import dev.vibescreen.protocol.v1.InputPhase
-import dev.vibescreen.protocol.v1.VideoQualityPreset
 import dev.telemachus.display.internet.ProductTouchEvent
 import dev.telemachus.display.internet.ProductVideoCodec
 import dev.telemachus.display.internet.ProductVideoConfiguration
@@ -73,6 +74,9 @@ import dev.telemachus.display.internet.security.AndroidStoredInternetSessionFact
 import dev.telemachus.display.internet.security.InternetPairingAcceptance
 import dev.telemachus.display.internet.security.InternetPairingCoordinator
 import dev.telemachus.display.internet.security.PendingInternetPairing
+import dev.vibescreen.protocol.v1.ControllerEventKind as ProtocolControllerEventKind
+import dev.vibescreen.protocol.v1.InputPhase
+import dev.vibescreen.protocol.v1.VideoQualityPreset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.IOException
@@ -176,6 +180,7 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var internetGeneration = 0L
     private val nextInternetInputId = AtomicLong(0)
     private val nextStreamStylusTrackingId = AtomicLong(0)
+    private val nextInternetControllerInputId = AtomicLong(0)
     private val activeInternetInputIds = mutableMapOf<Int, Long>()
     private val internetStylusInputIds = StylusInputIdTracker { nextInternetInputId.incrementAndGet() }
     private val streamStylusInputIds = StylusInputIdTracker { nextStreamStylusTrackingId.incrementAndGet() }
@@ -184,6 +189,8 @@ class MainActivity : AppCompatActivity() {
     private val internetStylusContactRouter = StylusContactRouter()
     private val streamStylusContactRouter = StylusContactRouter()
     private val stylusReleaseCoordinator = StylusReleaseCoordinator(streamStylusInputIds, internetStylusInputIds)
+    private val controllerSessionState = ControllerSessionState()
+    private val controllerIdsByDeviceId = mutableMapOf<Int, String>()
     private var streamClient: StreamClient? = null
     private var legacyGeneration = 0L
     private var currentSurfaceHolder: SurfaceHolder? = null
@@ -201,6 +208,27 @@ class MainActivity : AppCompatActivity() {
     private var activeSessionGeneration = 0L
     private var unsupportedKeyboardNoticeShown = false
     private val inputHandler = Handler(Looper.getMainLooper())
+    private val inputManager by lazy { getSystemService(Context.INPUT_SERVICE) as InputManager }
+    private val controllerDeviceListener =
+        object : InputManager.InputDeviceListener {
+            override fun onInputDeviceAdded(deviceId: Int) = handleControllerDeviceAdded(deviceId)
+
+            override fun onInputDeviceChanged(deviceId: Int) {
+                val previous = controllerIdsByDeviceId[deviceId]
+                val current = InputDevice.getDevice(deviceId)?.takeIf { ControllerInputMapper.isControllerSource(it.sources) }
+                val currentId = current?.let(::controllerId)
+                if (previous != null && previous != currentId) {
+                    controllerIdsByDeviceId.remove(deviceId)
+                    controllerSessionState.disconnect(previous)?.let(::sendControllerDispatch)
+                }
+                if (currentId != null && previous != currentId) handleControllerDeviceAdded(deviceId)
+            }
+
+            override fun onInputDeviceRemoved(deviceId: Int) {
+                val controllerId = controllerIdsByDeviceId.remove(deviceId) ?: return
+                controllerSessionState.disconnect(controllerId)?.let(::sendControllerDispatch)
+            }
+        }
     private var pendingRightClickRelease: Runnable? = null
 
     // For dragging stats overlay
@@ -339,6 +367,8 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         isInForeground = true
+        inputManager.registerInputDeviceListener(controllerDeviceListener, inputHandler)
+        connectAvailableControllers()
         accessibilityManager.addTouchExplorationStateChangeListener(touchExplorationStateChangeListener)
         reconcileTouchExplorationState(accessibilityManager.isTouchExplorationEnabled)
         mainDiag("lifecycle foreground connected=$isConnected")
@@ -360,6 +390,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         accessibilityManager.removeTouchExplorationStateChangeListener(touchExplorationStateChangeListener)
+        inputManager.unregisterInputDeviceListener(controllerDeviceListener)
         finishPendingRightClick()
         completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)
         isInForeground = false
@@ -381,6 +412,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val isControllerKey =
+            ControllerInputMapper.isControllerSource(event.source) &&
+                (ControllerInputMapper.keyToButton(event.keyCode) != null ||
+                    ControllerInputMapper.keyToHat(event.keyCode) != null)
+        if (isControllerKey) {
+            if (handleControllerKeyEvent(event)) return true
+            return super.dispatchKeyEvent(event)
+        }
         if (!isConnected || event.isSystemKey()) return super.dispatchKeyEvent(event)
         val clientEvent =
             AndroidKeyInputMapper.map(
@@ -413,6 +452,11 @@ class MainActivity : AppCompatActivity() {
             }
             return true
         }
+    }
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (handleControllerMotionEvent(event)) return true
+        return super.dispatchGenericMotionEvent(event)
     }
 
     private fun KeyEvent.isSystemKey(): Boolean =
@@ -981,6 +1025,7 @@ class MainActivity : AppCompatActivity() {
         view: View,
         event: MotionEvent,
     ): Boolean {
+        if (ControllerInputMapper.isControllerSource(event.source)) return false
         if (!isInForeground) return false
         if (prefs.connectionMode == ConnectionMode.INTERNET) {
             val session = internetSession ?: return false
@@ -1086,6 +1131,97 @@ class MainActivity : AppCompatActivity() {
             gesture.endSecond.y,
         )
         return true
+    }
+
+    private fun handleControllerMotionEvent(event: MotionEvent): Boolean {
+        if (!isInForeground || !canSendController()) return false
+        val snapshot = ControllerInputMapper.snapshot(event) ?: return false
+        controllerIdsByDeviceId[event.deviceId] = snapshot.controllerId
+        val admitted = sendControllerDispatch(controllerSessionState.applyMotion(snapshot))
+        if (!admitted) mainDiag("negotiated controller sink rejected analog state")
+        return true
+    }
+
+    private fun handleControllerKeyEvent(event: KeyEvent): Boolean {
+        if (!isInForeground || !canSendController()) return false
+        val change = ControllerInputMapper.keyChange(event) ?: return false
+        controllerIdsByDeviceId[event.deviceId] = change.controllerId
+        val dispatch = controllerSessionState.applyKey(change)
+        if (dispatch != null && !sendControllerDispatch(dispatch)) {
+            mainDiag("negotiated controller sink rejected button/hat state")
+        }
+        return true
+    }
+
+    private fun handleControllerDeviceAdded(deviceId: Int) {
+        val device = InputDevice.getDevice(deviceId) ?: return
+        if (!ControllerInputMapper.isControllerSource(device.sources)) return
+        val controllerId = controllerId(device)
+        controllerIdsByDeviceId[deviceId] = controllerId
+        if (!isInForeground || !canSendController()) return
+        controllerSessionState.connect(controllerId)?.let { dispatch ->
+            if (!sendControllerDispatch(dispatch)) mainDiag("negotiated controller sink rejected connect")
+        }
+    }
+
+    private fun connectAvailableControllers() {
+        InputDevice.getDeviceIds().forEach(::handleControllerDeviceAdded)
+    }
+
+    private fun controllerId(device: InputDevice): String = ControllerInputMapper.controllerId(device)
+
+    private fun canSendController(): Boolean =
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            internetSession?.canSendController() == true
+        } else {
+            isConnected && streamClient?.canSendController() == true
+        }
+
+    private fun sendControllerDispatch(dispatch: ControllerDispatch): Boolean {
+        if (prefs.connectionMode != ConnectionMode.INTERNET) {
+            return streamClient?.sendController(dispatch) == true
+        }
+        val session = internetSession ?: return false
+        if (!session.canSendController()) return false
+        val samples =
+            if (dispatch.delivery == ControllerDelivery.ANALOG) {
+                controllerSessionState.activeSnapshots()
+            } else {
+                dispatch.samples
+            }
+        val events = samples.map(::toProductControllerEvent)
+        val delivery =
+            when (dispatch.delivery) {
+                ControllerDelivery.ANALOG -> InternetControllerSendQueue.Delivery.ANALOG
+                ControllerDelivery.STRUCTURAL -> InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL
+            }
+        return session.sendController(events, delivery)
+    }
+
+    private fun toProductControllerEvent(sample: ControllerStateSample): ProductControllerEvent {
+        val inputId = nextInternetControllerInputId.incrementAndGet()
+        check(inputId > 0) { "Internet controller input identifier exhausted" }
+        val kind =
+            when (sample.kind) {
+                ControllerEventKind.CONNECTED -> ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED
+                ControllerEventKind.STATE -> ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE
+                ControllerEventKind.DISCONNECTED -> ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED
+            }
+        return ProductControllerEvent(
+            inputId = inputId,
+            controllerId = sample.controllerId,
+            controllerEpoch = sample.controllerEpoch,
+            kind = kind,
+            buttonMask = sample.buttonMask,
+            leftStickX = sample.axes.leftX,
+            leftStickY = sample.axes.leftY,
+            rightStickX = sample.axes.rightX,
+            rightStickY = sample.axes.rightY,
+            leftTrigger = sample.axes.leftTrigger,
+            rightTrigger = sample.axes.rightTrigger,
+            hatX = sample.axes.hatX,
+            hatY = sample.axes.hatY,
+        )
     }
 
     private fun synthesizeLegacyRightClick(
@@ -3080,6 +3216,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 } else {
                     nativeInputSessionState.discard(callbackClient, callbackGeneration)
+                    controllerSessionState.discard()
                     applyDisconnectedSessionUi()
                 }
             }
@@ -3094,8 +3231,9 @@ class MainActivity : AppCompatActivity() {
         callbackClient.onVideoConfigurationApplied = applied@{ configuration ->
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@applied
             runOnUiThread {
-                if (!isCurrentSession(callbackClient, callbackGeneration) ||
-                    !AppliedVideoPreferenceProjector.shouldPersist(
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                if (callbackClient.canSendController()) connectAvailableControllers()
+                if (!AppliedVideoPreferenceProjector.shouldPersist(
                         appliesClientVideoPreferences = configuration.appliesClientVideoPreferences,
                         configEpoch = configuration.configEpoch,
                         lastAppliedConfigEpoch = lastAppliedVideoPreferenceConfigEpoch,
@@ -3138,6 +3276,8 @@ class MainActivity : AppCompatActivity() {
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_KEYBOARD in negotiated
                 val nativePointer =
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_POINTER in negotiated
+                val controller =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_CONTROLLER in negotiated
                 val hostActions =
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in negotiated
                 if (displaySelection || keyboard || nativePointer || hostActions) {
@@ -3169,6 +3309,7 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
                 populateDisplayCapsule(options, selectedId)
+                if (controller) connectAvailableControllers()
             }
         }
 
@@ -3558,6 +3699,11 @@ class MainActivity : AppCompatActivity() {
                     ) {
                         DecoderStartupCommitResult.Committed -> {
                             candidate = null
+                            inputHandler.post {
+                                if (isCurrent() && sessionReference.get()?.canSendController() == true) {
+                                    connectAvailableControllers()
+                                }
+                            }
                             ProductVideoDecision.ACCEPT
                         }
                         DecoderStartupCommitResult.NotCommitted ->
@@ -3669,8 +3815,12 @@ class MainActivity : AppCompatActivity() {
                 null -> getString(R.string.internet_route_pending)
             }
         binding.internetStateText.text = getString(R.string.internet_state_format, state.name.lowercase(), routeLabel)
+        if (state == InternetProductSessionState.ACTIVE && internetSession?.canSendController() == true) {
+            connectAvailableControllers()
+        }
         if (state == InternetProductSessionState.CLOSED || state == InternetProductSessionState.FAILED) {
             isConnected = false
+            controllerSessionState.discard()
             internetStylusGestureRouter.reset()
             internetStylusInputIds.clear()
             internetStylusContactRouter.reset()
@@ -3736,6 +3886,7 @@ class MainActivity : AppCompatActivity() {
         displayWidth = 0
         displayHeight = 0
         isConnected = false
+        controllerSessionState.discard()
         runBestEffort(
             { sessionCloseFailure?.let { throw it } },
             { tickJob?.cancel() },
@@ -3778,6 +3929,7 @@ class MainActivity : AppCompatActivity() {
         displayHeight = 0
         displayRotation = 0
         isConnected = false
+        controllerSessionState.discard()
         val quarantinedSession = requireNotNull(internetSession)
         check(
             QUARANTINED_INTERNET_SESSION.compareAndSet(null, quarantinedSession) ||
@@ -4079,6 +4231,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyDisconnectedSessionUi() {
         isConnected = false
+        controllerSessionState.discard()
         streamStylusGestureRouter.reset()
         streamStylusContactRouter.reset()
         streamStylusInputIds.clear()
@@ -4307,6 +4460,9 @@ class MainActivity : AppCompatActivity() {
         pointerPhase: InputPhase,
         afterRelease: () -> Unit = {},
     ) {
+        controllerSessionState.takeRelease()?.let { release ->
+            if (!sendControllerDispatch(release)) mainDiag("controller release was rejected")
+        }
         val client = streamClient
         val generation = activeSessionGeneration
         val internet = internetSession

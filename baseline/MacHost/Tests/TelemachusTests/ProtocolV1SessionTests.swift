@@ -715,10 +715,82 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(session.phase, .failed)
     }
 
+    func testControllerRequiresNegotiationAndRoutesStrictLifecycle() throws {
+        let unsupported = try readySession()
+        XCTAssertEqual(
+            try protocolError(from: unsupported.handleControl(
+                try envelope(id: 4, payload: .controllerEvent(controllerEvent(
+                    inputID: 1, epoch: 1, kind: .connected
+                ))).serializedData()
+            )).code,
+            .unsupportedCapability
+        )
+
+        let session = try readyControllerSession()
+        let connected = session.handleControl(try envelope(
+            id: 4,
+            payload: .controllerEvent(controllerEvent(inputID: 1, epoch: 1, kind: .connected))
+        ).serializedData())
+        guard case .controller(let event) = connected.first else {
+            return XCTFail("Expected controller action")
+        }
+        XCTAssertEqual(event.controllerID, "pad")
+        XCTAssertEqual(event.kind, .connected)
+
+        let state = session.handleControl(try envelope(
+            id: 5,
+            payload: .controllerEvent(controllerEvent(
+                inputID: 2, epoch: 1, kind: .state, buttonMask: 1, leftStickX: -1
+            ))
+        ).serializedData())
+        XCTAssertTrue(state.contains { if case .controller = $0 { true } else { false } })
+
+        let disconnected = session.handleControl(try envelope(
+            id: 6,
+            payload: .controllerEvent(controllerEvent(inputID: 3, epoch: 1, kind: .disconnected))
+        ).serializedData())
+        XCTAssertTrue(disconnected.contains { if case .controller = $0 { true } else { false } })
+    }
+
+    func testControllerRejectsNonNeutralMarkersAndStaleEpoch() throws {
+        let nonNeutral = try readyControllerSession()
+        XCTAssertEqual(try protocolError(from: nonNeutral.handleControl(try envelope(
+            id: 4,
+            payload: .controllerEvent(controllerEvent(
+                inputID: 1, epoch: 1, kind: .connected, buttonMask: 1
+            ))
+        ).serializedData())).code, .invalidState)
+
+        let stale = try readyControllerSession()
+        _ = stale.handleControl(try envelope(
+            id: 4,
+            payload: .controllerEvent(controllerEvent(inputID: 1, epoch: 2, kind: .connected))
+        ).serializedData())
+        _ = stale.handleControl(try envelope(
+            id: 5,
+            payload: .controllerEvent(controllerEvent(inputID: 2, epoch: 2, kind: .disconnected))
+        ).serializedData())
+        XCTAssertEqual(try protocolError(from: stale.handleControl(try envelope(
+            id: 6,
+            payload: .controllerEvent(controllerEvent(inputID: 3, epoch: 2, kind: .connected))
+        ).serializedData())).code, .invalidState)
+
+        let foreignTarget = try readyControllerSession()
+        var targeted = controllerEvent(inputID: 1, epoch: 1, kind: .connected)
+        var target = VSInputTarget()
+        target.streamID = 999
+        target.displayID = "other-display"
+        targeted.target = target
+        XCTAssertEqual(try protocolError(from: foreignTarget.handleControl(try envelope(
+            id: 4,
+            payload: .controllerEvent(targeted)
+        ).serializedData())).code, .invalidState)
+    }
+
     private let sessionID = Data(repeating: 0xAB, count: 16)
     private let sessionEpoch: UInt64 = 7
 
-    private func makeSession() -> ProtocolV1SessionCoordinator {
+    private func makeSession(controllerAvailable: Bool = false) -> ProtocolV1SessionCoordinator {
         ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
             sessionID: sessionID,
             sessionEpoch: sessionEpoch,
@@ -728,7 +800,8 @@ final class ProtocolV1SessionTests: XCTestCase {
             framesPerSecond: 60,
             bitrateKbps: 20_000,
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
-                touchEnabled: true
+                touchEnabled: true,
+                controllerAvailable: controllerAvailable
             ),
             requiredClientCapabilities: [.touch],
             supportedCodecs: [.hevc, .h264],
@@ -772,7 +845,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         ))
     }
 
-    private func clientHello() -> VSEnvelope {
+    private func clientHello(controller: Bool = false) -> VSEnvelope {
         var range = VSProtocolRange()
         range.minimum = 1
         range.maximum = 1
@@ -781,6 +854,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         hello.deviceID = "device"
         hello.deviceName = "Tablet"
         hello.capabilities = [.touch, .multiDisplay]
+        if controller { hello.capabilities.append(.controller) }
         hello.codecs = [.hevc, .h264]
         var envelope = VSEnvelope()
         envelope.protocolVersion = 1
@@ -840,6 +914,23 @@ final class ProtocolV1SessionTests: XCTestCase {
         return stylus
     }
 
+    private func controllerEvent(
+        inputID: UInt64,
+        epoch: UInt64,
+        kind: VSControllerEventKind,
+        buttonMask: UInt32 = 0,
+        leftStickX: Double = 0
+    ) -> VSControllerEvent {
+        var controller = VSControllerEvent()
+        controller.inputID = inputID
+        controller.controllerID = "pad"
+        controller.controllerEpoch = epoch
+        controller.kind = kind
+        controller.buttonMask = buttonMask
+        controller.leftStickX = leftStickX
+        return controller
+    }
+
     private func readySession() throws -> ProtocolV1SessionCoordinator {
         let session = makeSession()
         _ = session.handleControl(try clientHello().serializedData())
@@ -861,6 +952,24 @@ final class ProtocolV1SessionTests: XCTestCase {
         var hello = clientHello()
         hello.clientHello.capabilities.append(.stylus)
         _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        var result = VSVideoConfigResult()
+        result.configEpoch = 1
+        result.streamID = 1
+        result.accepted = true
+        _ = session.handleControl(
+            try envelope(id: 3, payload: .videoConfigResult(result)).serializedData()
+        )
+        return session
+    }
+
+    private func readyControllerSession() throws -> ProtocolV1SessionCoordinator {
+        let session = makeSession(controllerAvailable: true)
+        _ = session.handleControl(try clientHello(controller: true).serializedData())
         _ = session.completeCodecNegotiation()
         _ = session.handleControl(try envelope(
             id: 2,

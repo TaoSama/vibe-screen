@@ -1,0 +1,14 @@
+{
+  "protocolVersion": 1,
+  "messageId": "17",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000017",
+  "controllerEvent": {
+    "inputId": "103",
+    "controllerId": "controller-xbox-1",
+    "controllerEpoch": "1",
+    "kind": "CONTROLLER_EVENT_KIND_CONNECTED",
+    "target": {"displayId": "display-main", "streamId": "42"}
+  }
+}

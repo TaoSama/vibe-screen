@@ -52,6 +52,8 @@ let package = Package(
                 .unsafeFlags(["-Xcc", "-fmodule-map-file=Sources/module.modulemap"])
             ],
             linkerSettings: [
+                .linkedFramework("IOKit"),
+                .linkedFramework("Security"),
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
             ]),
         .testTarget(

@@ -259,6 +259,7 @@ class InternetProductSession internal constructor(
     private val lock = Any()
     private val videoEffectGate = ReentrantLock(true)
     private val callbackGate = ReentrantLock(true)
+    private val controlSendLinearizer = InternetControlSendLinearizer()
     private val nextMessageId = AtomicLong(0)
     private var currentVideoConfiguration: ProductVideoConfiguration? = null
     private var pendingVideoConfiguration: PendingVideoConfiguration? = null
@@ -278,6 +279,7 @@ class InternetProductSession internal constructor(
     private val transportOwner = TransportOwner(generation = 1)
     private var activeTransportOwner: TransportOwner? = transportOwner
     private val frameAssembler = ProductMediaFrameAssembler(clock)
+    private val controllerSendQueue = InternetControllerSendQueue<ProductControllerEvent>()
 
     init {
         check(!revocationCoordinator.isBlocked(lease.pairingIdentifier) && !revocationStore.isAdmissionBlocked(lease.pairingIdentifier)) {
@@ -330,6 +332,7 @@ class InternetProductSession internal constructor(
 
     fun tick() {
         transport.tick()
+        drainControllerSendQueue()
         expirePendingVideoConfiguration()
         expirePendingMediaFrame()
         heartbeatTick()
@@ -392,6 +395,30 @@ class InternetProductSession internal constructor(
                 Capability.CAPABILITY_STYLUS_EXTENDED in expectedNegotiatedCapabilities
         }
 
+    internal fun sendController(
+        events: List<ProductControllerEvent>,
+        delivery: InternetControllerSendQueue.Delivery,
+    ): Boolean {
+        if (events.isEmpty()) return false
+        if (!canSendController()) return false
+        val result = controllerSendQueue.enqueue(events, delivery)
+        if (result == InternetControllerSendQueue.EnqueueResult.STRUCTURAL_OVERFLOW) {
+            fail(IllegalStateException("Controller structural queue exhausted"))
+            return false
+        }
+        drainControllerSendQueue()
+        return true
+    }
+
+    fun canSendController(): Boolean =
+        synchronized(lock) {
+            acceptsTransportCallbackLocked() &&
+                acceptedSession &&
+                state == InternetProductSessionState.ACTIVE &&
+                currentVideoConfiguration != null &&
+                Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
+        }
+
     fun requestKeyframe(reason: String): Boolean {
         val streamId = synchronized(lock) { currentVideoConfiguration?.streamId } ?: return false
         return sendApplicationControl {
@@ -417,6 +444,7 @@ class InternetProductSession internal constructor(
                     if (closed) return
                     if (pendingRevocation?.durableBarrier == false) throw PendingRevocationBarrierException()
                     closed = true
+                    controllerSendQueue.clear()
                     invalidateTransportOwnerLocked()
                     true
                 }
@@ -498,14 +526,13 @@ class InternetProductSession internal constructor(
             }
         if (!shouldSend) return
         notifyStateIfOwned(owner, InternetProductSessionState.NEGOTIATING)
-        sendRequiredControlIfOwned(
-            owner,
+        sendRequiredControlIfOwned(owner) {
             codec.encodeClientHello(
                 nextMessageId(),
                 lease.protocolSessionId,
                 lease.authoritativeSessionEpoch,
-            ),
-        )
+            )
+        }
     }
 
     private fun handleControl(
@@ -553,7 +580,7 @@ class InternetProductSession internal constructor(
             is ProductControlMessage.VideoConfiguration -> handleVideoConfiguration(owner, message.value)
             is ProductControlMessage.Pong -> notifyPongIfOwned(owner, message.sequence)
             is ProductControlMessage.Ping -> {
-                val response =
+                sendRequiredControlIfOwned(owner) {
                     codec.encodePong(
                         nextMessageId(),
                         decoded.messageId,
@@ -561,7 +588,7 @@ class InternetProductSession internal constructor(
                         lease.authoritativeSessionEpoch,
                         message.sequence,
                     )
-                sendRequiredControlIfOwned(owner, response)
+                }
             }
             is ProductControlMessage.Disconnect -> requestFreshSessionIfAllowed(owner, message.reasonCode, message.mayResume)
             is ProductControlMessage.Revoked -> error("Revocation must be reserved during control admission")
@@ -814,28 +841,43 @@ class InternetProductSession internal constructor(
                 } else {
                     decision
                 }
-            val response =
-                codec.encodeVideoConfigResult(
-                    nextMessageId(),
-                    lease.protocolSessionId,
-                    lease.authoritativeSessionEpoch,
-                    configuration,
-                    effectiveDecision.accepted,
-                    effectiveDecision.rejectionReason,
-                )
             var sendFailed = false
-            synchronized(lock) {
-                if (!isVideoConfigurationReservationActiveLocked(owner, reservation, reservationEpoch)) return
-                pendingVideoConfiguration = null
-                if (!transport.sendControl(response)) {
-                    sendFailed = true
-                } else if (effectiveDecision.accepted) {
-                    currentVideoConfiguration = configuration
-                    frameAssembler.startConfiguration(configuration, lease.authoritativeSessionEpoch)
+            var sendFailure: Throwable? = null
+            var reservationCurrent = false
+            try {
+                controlSendLinearizer.withGate {
+                    synchronized(lock) {
+                        if (!isVideoConfigurationReservationActiveLocked(owner, reservation, reservationEpoch)) {
+                            return@synchronized
+                        }
+                        reservationCurrent = true
+                        val response =
+                            codec.encodeVideoConfigResult(
+                                nextMessageId(),
+                                lease.protocolSessionId,
+                                lease.authoritativeSessionEpoch,
+                                configuration,
+                                effectiveDecision.accepted,
+                                effectiveDecision.rejectionReason,
+                            )
+                        pendingVideoConfiguration = null
+                        if (!transport.sendControl(response)) {
+                            sendFailed = true
+                        } else if (effectiveDecision.accepted) {
+                            currentVideoConfiguration = configuration
+                            frameAssembler.startConfiguration(configuration, lease.authoritativeSessionEpoch)
+                        }
+                    }
                 }
+            } catch (failure: Throwable) {
+                sendFailure = failure
             }
-            if (sendFailed) {
-                failIfOwned(owner, IllegalStateException("Required Protocol v1 control message could not be queued"))
+            if (!reservationCurrent) return@withLifecycleGate
+            if (sendFailed || sendFailure != null) {
+                failIfOwned(
+                    owner,
+                    IllegalStateException("Required Protocol v1 control message could not be queued", sendFailure),
+                )
             } else if (!effectiveDecision.accepted &&
                 effectiveDecision.rejectionReason == STRUCTURAL_HEVC_TARGET_UNSUPPORTED_REASON
             ) {
@@ -1031,38 +1073,84 @@ class InternetProductSession internal constructor(
     }
 
     private fun sendApplicationControl(encode: () -> ByteArray): Boolean {
-        if (!synchronized(lock) { acceptsTransportCallbackLocked() && acceptedSession && state == InternetProductSessionState.ACTIVE }) {
-            return false
-        }
-        val encoded = encode()
+        var sendFailure: Throwable? = null
         val sent =
-            synchronized(lock) {
-                acceptsTransportCallbackLocked() &&
-                    acceptedSession &&
-                    state == InternetProductSessionState.ACTIVE &&
-                    transport.sendControl(encoded)
+            try {
+                controlSendLinearizer.withGate {
+                    synchronized(lock) {
+                        acceptsTransportCallbackLocked() &&
+                            acceptedSession &&
+                            state == InternetProductSessionState.ACTIVE &&
+                            transport.sendControl(encode())
+                    }
+                }
+            } catch (failure: Throwable) {
+                sendFailure = failure
+                false
             }
         if (!sent && synchronized(lock) { acceptsTransportCallbackLocked() }) {
-            fail(IllegalStateException("Reliable control channel backlog rejected a state-changing message"))
+            fail(
+                IllegalStateException(
+                    "Reliable control channel backlog rejected a state-changing message",
+                    sendFailure,
+                ),
+            )
         }
         return sent
     }
 
-    private fun sendRequiredControl(payload: ByteArray) {
-        if (!transport.sendControl(payload)) {
-            fail(IllegalStateException("Required Protocol v1 control message could not be queued"))
+    private fun drainControllerSendQueue() {
+        val result =
+            controllerSendQueue.drain { event ->
+                controlSendLinearizer.withGate {
+                    synchronized(lock) {
+                        if (!acceptsTransportCallbackLocked() ||
+                            !acceptedSession ||
+                            state != InternetProductSessionState.ACTIVE ||
+                            Capability.CAPABILITY_CONTROLLER !in expectedNegotiatedCapabilities
+                        ) {
+                            return@synchronized false
+                        }
+                        val streamId = currentVideoConfiguration?.streamId ?: return@synchronized false
+                        val encoded =
+                            codec.encodeController(
+                                nextMessageId(),
+                                lease.protocolSessionId,
+                                lease.authoritativeSessionEpoch,
+                                streamId,
+                                event,
+                            )
+                        transport.sendControl(encoded)
+                    }
+                }
+            }
+        result.failure?.let { failure ->
+            fail(IllegalStateException("Controller control message could not be encoded or queued", failure))
         }
     }
 
     private fun sendRequiredControlIfOwned(
         owner: TransportOwner,
-        payload: ByteArray,
+        encode: () -> ByteArray,
     ) {
-        val sendFailed =
-            synchronized(lock) {
-                acceptsTransportCallbackLocked(owner) && !transport.sendControl(payload)
+        var sendFailure: Throwable? = null
+        val sent =
+            try {
+                controlSendLinearizer.withGate {
+                    synchronized(lock) {
+                        acceptsTransportCallbackLocked(owner) && transport.sendControl(encode())
+                    }
+                }
+            } catch (failure: Throwable) {
+                sendFailure = failure
+                false
             }
-        if (sendFailed) failIfOwned(owner, IllegalStateException("Required Protocol v1 control message could not be queued"))
+        if (!sent && synchronized(lock) { acceptsTransportCallbackLocked(owner) }) {
+            failIfOwned(
+                owner,
+                IllegalStateException("Required Protocol v1 control message could not be queued", sendFailure),
+            )
+        }
     }
 
     private fun nextMessageId(): Long {

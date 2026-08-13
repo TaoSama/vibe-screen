@@ -762,6 +762,71 @@ final class InternetProductSessionTests: XCTestCase {
         }
         XCTAssertTrue(harness.failures.isEmpty)
     }
+
+    func testAuthenticatedControllerLifecycleRoutesAndInvalidStateFailsClosed() throws {
+        let harness = try Harness(controllerAvailable: true)
+        let routed = expectation(description: "controller routed")
+        let failed = expectation(description: "invalid controller failed closed")
+        harness.session.onAuthenticatedControllerEvent = { epoch, event in
+            XCTAssertEqual(epoch, 1)
+            XCTAssertEqual(event.controllerID, "pad")
+            routed.fulfill()
+            return true
+        }
+        harness.session.onError = { error in
+            if case .protocolFailure(.invalidController) = error { failed.fulfill() }
+        }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        harness.receiveControl(harness.controller(
+            messageID: 3, inputID: 1, epoch: 1, kind: .connected
+        ))
+        wait(for: [routed], timeout: 1)
+        harness.receiveControl(harness.controller(
+            messageID: 4, inputID: 2, epoch: 1, kind: .disconnected, buttonMask: 1
+        ))
+        wait(for: [failed], timeout: 1)
+        XCTAssertTrue(harness.engine.didClose)
+    }
+
+    func testControllerInjectionRejectionAndForeignTargetFailClosed() throws {
+        let rejected = try Harness(controllerAvailable: true)
+        let rejectedFailure = expectation(description: "native rejection failed closed")
+        rejected.session.onAuthenticatedControllerEvent = { _, _ in false }
+        rejected.session.onError = { error in
+            if case .protocolFailure(.invalidController) = error { rejectedFailure.fulfill() }
+        }
+        try rejected.session.start(configuration: rejected.configuration)
+        rejected.engine.emitConnection(.connected(path: .direct))
+        rejected.receiveControl(rejected.clientHello(messageID: 1, supportsController: true))
+        rejected.receiveControl(rejected.videoAccepted(messageID: 2))
+        rejected.receiveControl(rejected.controller(
+            messageID: 3, inputID: 1, epoch: 1, kind: .connected
+        ))
+        wait(for: [rejectedFailure], timeout: 1)
+
+        let foreign = try Harness(controllerAvailable: true)
+        let targetFailure = expectation(description: "foreign target failed closed")
+        foreign.session.onAuthenticatedControllerEvent = { _, _ in true }
+        foreign.session.onError = { error in
+            if case .protocolFailure(.invalidController) = error { targetFailure.fulfill() }
+        }
+        try foreign.session.start(configuration: foreign.configuration)
+        foreign.engine.emitConnection(.connected(path: .direct))
+        foreign.receiveControl(foreign.clientHello(messageID: 1, supportsController: true))
+        foreign.receiveControl(foreign.videoAccepted(messageID: 2))
+        var targeted = foreign.controller(
+            messageID: 3, inputID: 1, epoch: 1, kind: .connected
+        )
+        var target = VSInputTarget()
+        target.streamID = 99
+        target.displayID = "foreign"
+        targeted.controllerEvent.target = target
+        foreign.receiveControl(targeted)
+        wait(for: [targetFailure], timeout: 1)
+    }
 }
 
 private final class Harness {
@@ -776,7 +841,8 @@ private final class Harness {
         negotiationTimeoutMilliseconds: UInt32 = 10_000,
         limits: InternetTransportLimits = .standard,
         engineCount: Int = 1,
-        freshSessionRecoveryPolicy: NetworkRecoveryPolicy = .standard
+        freshSessionRecoveryPolicy: NetworkRecoveryPolicy = .standard,
+        controllerAvailable: Bool = false
     ) throws {
         let builtConfiguration = InternetProductSessionConfiguration(
             transport: WebRTCTransportConfiguration(
@@ -805,6 +871,7 @@ private final class Harness {
                 framesPerSecond: 60,
                 bitrateKbps: 20_000
             ),
+            controllerAvailable: controllerAvailable,
             heartbeatIntervalMilliseconds: 10_000,
             heartbeatTimeoutMilliseconds: 20_000,
             negotiationTimeoutMilliseconds: negotiationTimeoutMilliseconds,
@@ -852,7 +919,8 @@ private final class Harness {
     func clientHello(
         messageID: UInt64,
         supportsStylus: Bool = false,
-        supportsStylusExtended: Bool = false
+        supportsStylusExtended: Bool = false,
+        supportsController: Bool = false
     ) -> VSEnvelope {
         var range = VSProtocolRange()
         range.minimum = 1
@@ -866,6 +934,7 @@ private final class Harness {
         ]
         if supportsStylus { hello.capabilities.append(.stylus) }
         if supportsStylusExtended { hello.capabilities.append(.stylusExtended) }
+        if supportsController { hello.capabilities.append(.controller) }
         hello.requiredCapabilities = [
             .deviceIdentity, .endToEndEncryption, .mediaRecordFragmentation, .replayProtection,
         ]
@@ -934,6 +1003,24 @@ private final class Harness {
         envelope.stylusEvent.buttonMask = buttonMask
         envelope.stylusEvent.contactState = contactState
         envelope.stylusEvent.pressure = pressure
+        return envelope
+    }
+
+    func controller(
+        messageID: UInt64,
+        inputID: UInt64,
+        epoch: UInt64,
+        kind: VSControllerEventKind,
+        buttonMask: UInt32 = 0
+    ) -> VSEnvelope {
+        var controller = VSControllerEvent()
+        controller.inputID = inputID
+        controller.controllerID = "pad"
+        controller.controllerEpoch = epoch
+        controller.kind = kind
+        controller.buttonMask = buttonMask
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.controllerEvent = controller
         return envelope
     }
 
