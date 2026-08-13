@@ -35,6 +35,9 @@ enum Capability {
   CAPABILITY_MANAGED_CONFIGURATION = 22;
   CAPABILITY_MEDIA_RECORD_FRAGMENTATION = 23;
   CAPABILITY_CLIENT_VIDEO_CONTROL = 24;
+  // Requires CAPABILITY_STYLUS and enables StylusEvent tool kind, barrel
+  // buttons, and explicit contact/proximity state.
+  CAPABILITY_STYLUS_EXTENDED = 25;
 }
 
 message ClientHello {

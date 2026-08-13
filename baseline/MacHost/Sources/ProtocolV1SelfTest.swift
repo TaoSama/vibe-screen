@@ -150,7 +150,7 @@ enum ProtocolV1SelfTest {
     private static func testNegotiationAndMediaGate(failures: inout [String]) {
         do {
             guard ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true)
-                    == [.touch, .stylus, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions],
+                    == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions],
                   ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false)
                     == [.multiDisplay, .clientVideoControl] else {
                 failures.append("production HostHello capabilities are not exact")
@@ -170,7 +170,7 @@ enum ProtocolV1SelfTest {
             guard helloResponses.count == 2,
                   case .hostHello(let hostHello)? = helloResponses[0].payload,
                   case .sessionAccepted(let accepted)? = helloResponses[1].payload,
-                  Set(hostHello.capabilities) == [.touch, .stylus, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions],
+                  Set(hostHello.capabilities) == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions],
                   accepted.sessionID == sessionID,
                   accepted.negotiatedCapabilities == [.touch, .multiDisplay] else {
                 failures.append("ClientHello did not produce HostHello + SessionAccepted")

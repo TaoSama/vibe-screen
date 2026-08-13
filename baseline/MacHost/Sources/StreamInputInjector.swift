@@ -147,6 +147,12 @@ final class TouchGestureEventFactory {
 struct StylusEventFactory {
     static let maximumTiltDegrees = 90.0
     private static let tabletPointMouseSubtype: Int64 = 1
+    private static let tabletProximityMouseSubtype: Int64 = 2
+    private static let tabletPointerPen: Int64 = 1
+    private static let tabletPointerEraser: Int64 = 3
+    private static let tabletTipButton: UInt32 = 1 << 0
+    private static let tabletPrimaryBarrelButton: UInt32 = 1 << 1
+    private static let tabletSecondaryBarrelButton: UInt32 = 1 << 2
 
     private let eventSource: CGEventSource?
 
@@ -161,11 +167,18 @@ struct StylusEventFactory {
         pressure: Double,
         tiltXDegrees: Double,
         tiltYDegrees: Double,
+        toolKind: VSStylusToolKind = .pen,
+        buttonMask: UInt32 = 0,
+        contactState: VSStylusContactState = .contact,
         displayBounds: CGRect
     ) -> CGEvent? {
         guard pressure.isFinite, (0...1).contains(pressure),
               tiltXDegrees.isFinite, tiltYDegrees.isFinite,
               hypot(tiltXDegrees, tiltYDegrees) <= Self.maximumTiltDegrees,
+              buttonMask & ~UInt32(0b11) == 0,
+              toolKind == .pen || toolKind == .eraser,
+              contactState == .contact || contactState == .proximity,
+              contactState != .proximity || pressure == 0,
               let location = StreamInputMapping.pointerLocation(
                   normalizedX: normalizedX,
                   normalizedY: normalizedY,
@@ -173,24 +186,50 @@ struct StylusEventFactory {
               ) else { return nil }
 
         let eventType: CGEventType
-        switch phase {
-        case .began: eventType = .leftMouseDown
-        case .changed: eventType = .leftMouseDragged
-        case .ended, .cancelled:
-            guard pressure == 0 else { return nil }
-            eventType = .leftMouseUp
-        case .unspecified, .UNRECOGNIZED: return nil
+        if contactState == .proximity {
+            switch phase {
+            case .began, .ended, .cancelled: eventType = .tabletProximity
+            case .changed: eventType = .tabletPointer
+            case .unspecified, .UNRECOGNIZED: return nil
+            }
+        } else {
+            switch phase {
+            case .began: eventType = .leftMouseDown
+            case .changed: eventType = .leftMouseDragged
+            case .ended, .cancelled:
+                guard pressure == 0 else { return nil }
+                eventType = .leftMouseUp
+            case .unspecified, .UNRECOGNIZED: return nil
+            }
         }
         guard let event = CGEvent(
             mouseEventSource: eventSource,
-            mouseType: eventType,
+            mouseType: .mouseMoved,
             mouseCursorPosition: location,
             mouseButton: .left
         ) else { return nil }
+        event.type = eventType
         event.setIntegerValueField(
             .mouseEventSubtype,
-            value: Self.tabletPointMouseSubtype
+            value: eventType == .tabletProximity
+                ? Self.tabletProximityMouseSubtype
+                : Self.tabletPointMouseSubtype
         )
+        let pointerType = toolKind == .eraser
+            ? Self.tabletPointerEraser
+            : Self.tabletPointerPen
+        event.setIntegerValueField(.tabletProximityEventPointerType, value: pointerType)
+        event.setIntegerValueField(
+            .tabletProximityEventEnterProximity,
+            value: contactState == .proximity && phase == .began ? 1 : 0
+        )
+        var tabletButtons = UInt32(0)
+        if contactState == .contact && phase != .ended && phase != .cancelled {
+            tabletButtons |= Self.tabletTipButton
+        }
+        if buttonMask & 0b01 != 0 { tabletButtons |= Self.tabletPrimaryBarrelButton }
+        if buttonMask & 0b10 != 0 { tabletButtons |= Self.tabletSecondaryBarrelButton }
+        event.setIntegerValueField(.tabletEventPointButtons, value: Int64(tabletButtons))
         event.setDoubleValueField(.tabletEventPointPressure, value: pressure)
         event.setDoubleValueField(
             .tabletEventTiltX,
@@ -204,31 +243,49 @@ struct StylusEventFactory {
     }
 }
 
-/// Serializes the first supported pen slice: exactly one active pen tip.
-/// A stale pointer can neither continue nor release another pointer's stroke.
-struct StylusTipState {
-    private(set) var activePointerID: UInt32?
+/// Serializes one stylus lifecycle. Proximity and contact are distinct, so a
+/// hover cannot turn into a mouse-down without a terminal hover sample first.
+struct StylusSequenceState {
+    struct Active: Equatable {
+        let pointerID: UInt32
+        let toolKind: VSStylusToolKind
+        let contactState: VSStylusContactState
+    }
 
-    mutating func accepts(pointerID: UInt32, phase: VSInputPhase) -> Bool {
+    private(set) var active: Active?
+
+    var activePointerID: UInt32? { active?.pointerID }
+
+    mutating func accepts(
+        pointerID: UInt32,
+        phase: VSInputPhase,
+        toolKind: VSStylusToolKind,
+        contactState: VSStylusContactState
+    ) -> Bool {
+        let sample = Active(
+            pointerID: pointerID,
+            toolKind: toolKind,
+            contactState: contactState
+        )
         switch phase {
         case .began:
-            guard activePointerID == nil else { return false }
-            activePointerID = pointerID
+            guard active == nil else { return false }
+            active = sample
             return true
         case .changed:
-            return activePointerID == pointerID
+            return active == sample
         case .ended, .cancelled:
-            guard activePointerID == pointerID else { return false }
-            activePointerID = nil
+            guard active == sample else { return false }
+            active = nil
             return true
         case .unspecified, .UNRECOGNIZED:
             return false
         }
     }
 
-    mutating func consumeResetPointerID() -> UInt32? {
-        defer { activePointerID = nil }
-        return activePointerID
+    mutating func consumeReset() -> Active? {
+        defer { active = nil }
+        return active
     }
 }
 
@@ -321,7 +378,7 @@ final class StreamInputInjector {
     private var pressedKeyState = PressedKeyState()
     private var lastPointerLocation: CGPoint = .zero
     private var lastStylusLocation: CGPoint = .zero
-    private var stylusTipState = StylusTipState()
+    private var stylusSequenceState = StylusSequenceState()
 
     init(
         eventSource: CGEventSource? = CGEventSource(stateID: .hidSystemState),
@@ -343,7 +400,7 @@ final class StreamInputInjector {
     func reset() {
         updateButtons(target: 0, at: lastPointerLocation)
         releasePressedKeys()
-        guard stylusTipState.consumeResetPointerID() != nil,
+        guard let activeStylus = stylusSequenceState.consumeReset(),
               let release = stylusEventFactory.event(
                   normalizedX: 0,
                   normalizedY: 0,
@@ -351,6 +408,9 @@ final class StreamInputInjector {
                   pressure: 0,
                   tiltXDegrees: 0,
                   tiltYDegrees: 0,
+                  toolKind: activeStylus.toolKind,
+                  buttonMask: 0,
+                  contactState: activeStylus.contactState,
                   displayBounds: CGRect(origin: lastStylusLocation, size: CGSize(width: 1, height: 1))
               ) else { return }
         release.location = lastStylusLocation
@@ -365,7 +425,7 @@ final class StreamInputInjector {
         displayBounds: CGRect
     ) -> Bool {
         let wantsPrimary = buttonMask & StreamInputWire.buttonPrimary != 0
-        guard !(wantsPrimary && stylusTipState.activePointerID != nil),
+        guard !(wantsPrimary && stylusSequenceState.active?.contactState == .contact),
               let location = StreamInputMapping.pointerLocation(
             normalizedX: normalizedX,
             normalizedY: normalizedY,
@@ -437,9 +497,12 @@ final class StreamInputInjector {
         pressure: Double,
         tiltXDegrees: Double,
         tiltYDegrees: Double,
+        toolKind: VSStylusToolKind = .pen,
+        buttonMask: UInt32 = 0,
+        contactState: VSStylusContactState = .contact,
         displayBounds: CGRect
     ) -> Bool {
-        guard pressedButtons & StreamInputWire.buttonPrimary == 0,
+        guard contactState != .contact || pressedButtons & StreamInputWire.buttonPrimary == 0,
               let event = stylusEventFactory.event(
             normalizedX: normalizedX,
             normalizedY: normalizedY,
@@ -447,8 +510,16 @@ final class StreamInputInjector {
             pressure: pressure,
             tiltXDegrees: tiltXDegrees,
             tiltYDegrees: tiltYDegrees,
+            toolKind: toolKind,
+            buttonMask: buttonMask,
+            contactState: contactState,
             displayBounds: displayBounds
-        ), stylusTipState.accepts(pointerID: pointerID, phase: phase) else { return false }
+        ), stylusSequenceState.accepts(
+            pointerID: pointerID,
+            phase: phase,
+            toolKind: toolKind,
+            contactState: contactState
+        ) else { return false }
         lastStylusLocation = event.location
         postStylusEvent(event)
         return true

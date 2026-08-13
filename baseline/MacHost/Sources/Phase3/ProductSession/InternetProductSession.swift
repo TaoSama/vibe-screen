@@ -64,7 +64,8 @@ final class InternetProductSession: EncodedFrameSink {
     var onTouchEvent: ((Float, Float, Int, Int, Float, Float) -> Void)?
     var onAuthenticatedTouchEvent: ((UInt64, UInt64, Float, Float, Int, Int, Float, Float) -> Bool)?
     var onAuthenticatedStylusEvent: ((
-        UInt64, UInt64, UInt32, Float, Float, VSInputPhase, Double, Double, Double
+        UInt64, UInt64, UInt32, Float, Float, VSInputPhase, Double, Double, Double,
+        VSStylusToolKind, UInt32, VSStylusContactState
     ) -> Bool)?
     var onKeyframeRequired: (() -> Void)?
     var onFreshSessionRecoveryRequired: ((Int) -> Void)?
@@ -93,7 +94,8 @@ final class InternetProductSession: EncodedFrameSink {
     private var lastPeerActivityNanoseconds: UInt64 = 0
     private var peerSupportsTouch = false
     private var peerSupportsStylus = false
-    private var activeStylusPointerID: UInt32?
+    private var peerSupportsStylusExtended = false
+    private var stylusSequenceState = StylusSequenceState()
     private var frameAdmission = FrameAdmissionState()
     private var controlAdmission = ControlAdmissionState()
 
@@ -153,7 +155,8 @@ final class InternetProductSession: EncodedFrameSink {
             activePath = nil
             peerSupportsTouch = false
             peerSupportsStylus = false
-            activeStylusPointerID = nil
+            peerSupportsStylusExtended = false
+            _ = stylusSequenceState.consumeReset()
             configuration = nil
             let changed = state != .closed
             state = .closed
@@ -179,7 +182,8 @@ final class InternetProductSession: EncodedFrameSink {
             activePath = nil
             peerSupportsTouch = false
             peerSupportsStylus = false
-            activeStylusPointerID = nil
+            peerSupportsStylusExtended = false
+            _ = stylusSequenceState.consumeReset()
             let changed = state != .revoked
             state = .revoked
             let revocationGeneration = sessionGeneration
@@ -323,7 +327,8 @@ final class InternetProductSession: EncodedFrameSink {
         activePath = nil
         peerSupportsTouch = false
         peerSupportsStylus = false
-        activeStylusPointerID = nil
+        peerSupportsStylusExtended = false
+        _ = stylusSequenceState.consumeReset()
         nextHeartbeatSequence = 1
         lastPeerActivityNanoseconds = DispatchTime.now().uptimeNanoseconds
         let connectingState = InternetProductSessionState.connecting
@@ -427,11 +432,14 @@ final class InternetProductSession: EncodedFrameSink {
                 try codec.validate(hello)
                 peerSupportsTouch = codec.inputEnabled && hello.capabilities.contains(.touch)
                 peerSupportsStylus = codec.inputEnabled && hello.capabilities.contains(.stylus)
+                peerSupportsStylusExtended = peerSupportsStylus
+                    && hello.capabilities.contains(.stylusExtended)
                 try sendControl(codec.hostHello())
                 try sendControl(codec.sessionAccepted(
                     heartbeatIntervalMilliseconds: configuration?.heartbeatIntervalMilliseconds ?? 1_000,
                     peerSupportsTouch: peerSupportsTouch,
-                    peerSupportsStylus: peerSupportsStylus
+                    peerSupportsStylus: peerSupportsStylus,
+                    peerSupportsStylusExtended: peerSupportsStylusExtended
                 ))
                 try sendControl(codec.videoConfiguration())
                 self.codec = codec
@@ -558,6 +566,10 @@ final class InternetProductSession: EncodedFrameSink {
         let pressure = stylus.pressure
         let tiltX = stylus.tiltXDegrees
         let tiltY = stylus.tiltYDegrees
+        let toolKind: VSStylusToolKind = stylus.hasToolKind ? stylus.toolKind : .pen
+        let contactState: VSStylusContactState = stylus.hasContactState
+            ? stylus.contactState
+            : .contact
         let terminalPhase = stylus.phase == .ended || stylus.phase == .cancelled
         let targetMatches = !stylus.hasTarget
             || ((stylus.target.streamID == 0 || stylus.target.streamID == streamID)
@@ -568,13 +580,23 @@ final class InternetProductSession: EncodedFrameSink {
               x.isFinite, y.isFinite,
               (0...1).contains(x), (0...1).contains(y),
               pressure.isFinite, (0...1).contains(pressure),
-              !terminalPhase || pressure == 0,
+              (!terminalPhase && contactState == .contact) || pressure == 0,
               tiltX.isFinite, tiltY.isFinite,
               (-90...90).contains(tiltX), (-90...90).contains(tiltY),
               hypot(tiltX, tiltY) <= 90,
               targetMatches,
               stylus.phase != .unspecified,
-              acceptsStylusSequence(pointerID: stylus.pointerID, phase: stylus.phase) else {
+              validatesStylusExtension(
+                  stylus,
+                  toolKind: toolKind,
+                  contactState: contactState
+              ),
+              stylusSequenceState.accepts(
+                  pointerID: stylus.pointerID,
+                  phase: stylus.phase,
+                  toolKind: toolKind,
+                  contactState: contactState
+              ) else {
             throw InternetProductProtocolError.invalidStylus
         }
         _ = onAuthenticatedStylusEvent?(
@@ -586,25 +608,26 @@ final class InternetProductSession: EncodedFrameSink {
             stylus.phase,
             pressure,
             tiltX,
-            tiltY
+            tiltY,
+            toolKind,
+            stylus.buttonMask,
+            contactState
         )
     }
 
-    private func acceptsStylusSequence(pointerID: UInt32, phase: VSInputPhase) -> Bool {
-        switch phase {
-        case .began:
-            guard activeStylusPointerID == nil else { return false }
-            activeStylusPointerID = pointerID
-            return true
-        case .changed:
-            return activeStylusPointerID == pointerID
-        case .ended, .cancelled:
-            guard activeStylusPointerID == pointerID else { return false }
-            activeStylusPointerID = nil
-            return true
-        case .unspecified, .UNRECOGNIZED:
-            return false
+    private func validatesStylusExtension(
+        _ stylus: VSStylusEvent,
+        toolKind: VSStylusToolKind,
+        contactState: VSStylusContactState
+    ) -> Bool {
+        if !peerSupportsStylusExtended {
+            return !stylus.hasToolKind && !stylus.hasContactState && stylus.buttonMask == 0
         }
+        guard stylus.hasToolKind, stylus.hasContactState,
+              toolKind == .pen || toolKind == .eraser,
+              contactState == .contact || contactState == .proximity,
+              stylus.buttonMask & ~UInt32(0b11) == 0 else { return false }
+        return contactState != .proximity || stylus.pressure == 0
     }
 
     private func sendControl(_ payload: Data) throws {
@@ -677,7 +700,8 @@ final class InternetProductSession: EncodedFrameSink {
         activePath = nil
         peerSupportsTouch = false
         peerSupportsStylus = false
-        activeStylusPointerID = nil
+        peerSupportsStylusExtended = false
+        _ = stylusSequenceState.consumeReset()
         let recoveringState = InternetProductSessionState.recovering(attempt: sessionAttempt)
         let stateChanged = state != recoveringState
         state = recoveringState
@@ -867,7 +891,8 @@ final class InternetProductSession: EncodedFrameSink {
         activePath = nil
         peerSupportsTouch = false
         peerSupportsStylus = false
-        activeStylusPointerID = nil
+        peerSupportsStylusExtended = false
+        _ = stylusSequenceState.consumeReset()
         // Close the retired transport before publishing the terminal state so
         // any observer waking on .failed already sees the transport closed,
         // instead of racing the queue that would otherwise close it afterward.

@@ -1,0 +1,20 @@
+{
+  "protocolVersion": 1,
+  "messageId": "16",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000016",
+  "stylusEvent": {
+    "inputId": "102",
+    "pointerId": 8,
+    "phase": "INPUT_PHASE_CHANGED",
+    "position": {"x": 0.75, "y": 0.25},
+    "pressure": 0.0,
+    "tiltXDegrees": 10.0,
+    "tiltYDegrees": -20.0,
+    "target": {"displayId": "display-main", "streamId": "42"},
+    "toolKind": "STYLUS_TOOL_KIND_ERASER",
+    "buttonMask": 3,
+    "contactState": "STYLUS_CONTACT_STATE_PROXIMITY"
+  }
+}

@@ -13,6 +13,7 @@ import unittest
 CONTRACT_ROOT = Path(__file__).parents[1]
 FIXTURE_ROOT = CONTRACT_ROOT / "fixtures" / "messages" / "v1"
 MANIFEST = json.loads((FIXTURE_ROOT / "manifest.json").read_text())
+STYLUS_VALIDATION = json.loads((FIXTURE_ROOT / "stylus_validation.json").read_text())
 BUF_VERSION = MANIFEST["bufVersion"]
 BUF_COMMAND = ["go", "run", f"github.com/bufbuild/buf/cmd/buf@{BUF_VERSION}"]
 FRAME_HEADER_LENGTH = 5
@@ -192,6 +193,56 @@ class ProtocolFixtureTest(unittest.TestCase):
         self.assertEqual(28.75, event["tiltYDegrees"])
         self.assertLessEqual(math.hypot(event["tiltXDegrees"], event["tiltYDegrees"]), 90)
         self.assertEqual({"displayId": "display-main", "streamId": "42"}, event["target"])
+        self.assertNotIn("toolKind", event)
+        self.assertNotIn("buttonMask", event)
+        self.assertNotIn("contactState", event)
+        self.assertEqual(
+            {
+                "toolKind": "STYLUS_TOOL_KIND_PEN",
+                "buttonMask": 0,
+                "contactState": "STYLUS_CONTACT_STATE_CONTACT",
+            },
+            STYLUS_VALIDATION["legacyDefaults"],
+        )
+
+    def test_extended_stylus_fixture_covers_eraser_buttons_and_proximity(self) -> None:
+        fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}
+        stylus = fixtures["stylus_extended"]
+        with tempfile.TemporaryDirectory(prefix="vibescreen-stylus-extended-fixture-") as temporary:
+            decoded_path = Path(temporary) / "stylus_extended.json"
+            convert(stylus["messageType"], FIXTURE_ROOT / stylus["binary"], "binpb", decoded_path, "json")
+            event = json.loads(decoded_path.read_text())["stylusEvent"]
+
+        self.assertEqual("STYLUS_TOOL_KIND_ERASER", event["toolKind"])
+        self.assertEqual(3, event["buttonMask"])
+        self.assertEqual("STYLUS_CONTACT_STATE_PROXIMITY", event["contactState"])
+        self.assertEqual(0, event.get("pressure", 0))
+
+    def test_extended_stylus_validation_fixture_covers_invalid_values(self) -> None:
+        self.assertEqual(
+            "vibescreen.protocol.v1.StylusEvent.validation/v1",
+            STYLUS_VALIDATION["schema"],
+        )
+        cases = {case["name"]: case for case in STYLUS_VALIDATION["negativeCases"]}
+        self.assertEqual(
+            {
+                "unknown_tool_kind",
+                "reserved_button_bit",
+                "unknown_contact_state",
+                "proximity_with_pressure",
+            },
+            set(cases),
+        )
+        for case in cases.values():
+            event = case["event"]
+            valid = (
+                event["toolKindRawValue"] in {1, 2}
+                and event["buttonMask"] & ~0b11 == 0
+                and event["contactStateRawValue"] in {1, 2}
+                and not (event["contactStateRawValue"] == 2 and event["pressure"] != 0)
+            )
+            self.assertFalse(valid, case["name"])
+            self.assertTrue(case["reason"])
 
     def test_buf_json_projection_accepts_and_discards_unknown_binary_field(self) -> None:
         client_entry = MANIFEST["controlFixtures"][0]

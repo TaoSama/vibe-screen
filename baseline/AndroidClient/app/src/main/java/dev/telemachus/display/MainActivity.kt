@@ -175,10 +175,15 @@ class MainActivity : AppCompatActivity() {
     private var pendingInternetPairingIdentity: PendingPairingIdentityAlias? = null
     @Volatile private var internetGeneration = 0L
     private val nextInternetInputId = AtomicLong(0)
+    private val nextStreamStylusTrackingId = AtomicLong(0)
     private val activeInternetInputIds = mutableMapOf<Int, Long>()
     private val internetStylusInputIds = StylusInputIdTracker { nextInternetInputId.incrementAndGet() }
+    private val streamStylusInputIds = StylusInputIdTracker { nextStreamStylusTrackingId.incrementAndGet() }
     private val internetStylusGestureRouter = StylusGestureRouter()
     private val streamStylusGestureRouter = StylusGestureRouter()
+    private val internetStylusContactRouter = StylusContactRouter()
+    private val streamStylusContactRouter = StylusContactRouter()
+    private val stylusReleaseCoordinator = StylusReleaseCoordinator(streamStylusInputIds, internetStylusInputIds)
     private var streamClient: StreamClient? = null
     private var legacyGeneration = 0L
     private var currentSurfaceHolder: SurfaceHolder? = null
@@ -976,8 +981,21 @@ class MainActivity : AppCompatActivity() {
         view: View,
         event: MotionEvent,
     ): Boolean {
-        if (prefs.connectionMode == ConnectionMode.INTERNET) return false
+        if (!isInForeground) return false
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            val session = internetSession ?: return false
+            return handleInternetStylus(view, event, session, extendedOnly = true)
+        }
         if (!isConnected || !isInForeground) return false
+        val stylusSnapshot = StylusInputMapper.snapshot(event) { x, y -> mapInputPoint(view, x, y) }
+        val client = streamClient
+        if (stylusSnapshot.pointers.any { it.toolKind != null }) {
+            if (client?.canSendExtendedStylus() == true) {
+                val samples = streamStylusContactRouter.map(stylusSnapshot, extendedNegotiated = true)
+                if (samples.isNotEmpty() && client.sendMotionStylus(samples)) trackStreamStylus(samples)
+            }
+            return true
+        }
         val point = mapInputPoint(view, event.x, event.y)
         val nativePointerInput =
             when (event.actionMasked) {
@@ -1257,7 +1275,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         binding.internetConnectButton.setOnClickListener { connectInternet() }
-        binding.internetDisconnectButton.setOnClickListener { disconnectInternet(showIdle = true) }
+        binding.internetDisconnectButton.setOnClickListener { disconnect() }
         binding.internetRevokeButton.setOnClickListener {
             android.app.AlertDialog
                 .Builder(this)
@@ -3655,6 +3673,7 @@ class MainActivity : AppCompatActivity() {
             isConnected = false
             internetStylusGestureRouter.reset()
             internetStylusInputIds.clear()
+            internetStylusContactRouter.reset()
             setStreamingWindowState(false)
         }
     }
@@ -3712,6 +3731,7 @@ class MainActivity : AppCompatActivity() {
         activeInternetInputIds.clear()
         internetStylusInputIds.clear()
         internetStylusGestureRouter.reset()
+        internetStylusContactRouter.reset()
         internetVideoConfiguration = null
         displayWidth = 0
         displayHeight = 0
@@ -3752,6 +3772,7 @@ class MainActivity : AppCompatActivity() {
         activeInternetInputIds.clear()
         internetStylusInputIds.clear()
         internetStylusGestureRouter.reset()
+        internetStylusContactRouter.reset()
         internetVideoConfiguration = null
         displayWidth = 0
         displayHeight = 0
@@ -4032,7 +4053,9 @@ class MainActivity : AppCompatActivity() {
     private fun disconnect() {
         finishPendingRightClick()
         if (prefs.connectionMode == ConnectionMode.INTERNET || internetSession != null) {
-            disconnectInternet(showIdle = true)
+            completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_ENDED) {
+                disconnectInternet(showIdle = true)
+            }
             return
         }
         automaticUsbConnect = false
@@ -4057,6 +4080,8 @@ class MainActivity : AppCompatActivity() {
     private fun applyDisconnectedSessionUi() {
         isConnected = false
         streamStylusGestureRouter.reset()
+        streamStylusContactRouter.reset()
+        streamStylusInputIds.clear()
         mainSessionDisplayLifecycle?.invalidate()
         mainSessionDisplayLifecycle = null
         // Drop any host-action state so a stale window-actions button never
@@ -4135,8 +4160,14 @@ class MainActivity : AppCompatActivity() {
         val stylusSnapshot = StylusInputMapper.snapshot(event) { x, y -> mapInputPoint(view, x, y) }
         val client = streamClient
         if (streamStylusGestureRouter.routesToStylus(stylusSnapshot, client?.canSendStylus() == true)) {
-            val stylusSamples = StylusInputMapper.map(stylusSnapshot)
-            if (stylusSamples.isNotEmpty()) client?.sendMotionStylus(stylusSamples)
+            val stylusSamples =
+                streamStylusContactRouter.map(
+                    stylusSnapshot,
+                    extendedNegotiated = client?.canSendExtendedStylus() == true,
+                )
+            if (stylusSamples.isNotEmpty() && client?.sendMotionStylus(stylusSamples) == true) {
+                trackStreamStylus(stylusSamples)
+            }
             if (event.actionMasked == MotionEvent.ACTION_DOWN) revealControlBar()
             return
         }
@@ -4278,6 +4309,28 @@ class MainActivity : AppCompatActivity() {
     ) {
         val client = streamClient
         val generation = activeSessionGeneration
+        val internet = internetSession
+        val internetExtended = internet?.canSendExtendedStylus() == true
+        stylusReleaseCoordinator.completeBoundary(
+            submitStream = { cancellations -> client?.sendMotionStylus(cancellations) },
+            submitInternet = { cancellations ->
+                cancellations.forEach { cancellation ->
+                    internet?.sendStylus(cancellation.sample.toProductStylusEvent(cancellation.inputId, internetExtended))
+                }
+            },
+        ) {
+            streamStylusContactRouter.reset()
+            internetStylusContactRouter.reset()
+            completeNativeInputBoundary(client, generation, pointerPhase, afterRelease)
+        }
+    }
+
+    private fun completeNativeInputBoundary(
+        client: StreamClient?,
+        generation: Long,
+        pointerPhase: InputPhase,
+        afterRelease: () -> Unit,
+    ) {
         if (client == null) {
             afterRelease()
             return
@@ -4291,6 +4344,13 @@ class MainActivity : AppCompatActivity() {
             )
         if (submission == NativeInputReleaseSubmission.REJECTED) {
             mainDiag("native input release was rejected for generation=$generation")
+        }
+    }
+
+    private fun trackStreamStylus(samples: List<StylusSample>) {
+        samples.forEach { sample ->
+            streamStylusInputIds.resolve(sample)
+            streamStylusInputIds.complete(sample)
         }
     }
 
@@ -4397,6 +4457,7 @@ class MainActivity : AppCompatActivity() {
         view: View,
         event: MotionEvent,
         session: InternetProductSession,
+        extendedOnly: Boolean = false,
     ): Boolean {
         val snapshot =
             StylusInputMapper.snapshot(event) { x, y ->
@@ -4411,23 +4472,14 @@ class MainActivity : AppCompatActivity() {
                     clientRotation = prefs.clientRotation,
                 )
             }
-        if (!internetStylusGestureRouter.routesToStylus(snapshot, session.canSendStylus())) return false
-        val samples = StylusInputMapper.map(snapshot)
+        val extended = session.canSendExtendedStylus()
+        val directExtendedRoute = extendedOnly && extended && snapshot.pointers.any { it.toolKind != null }
+        if (!directExtendedRoute && !internetStylusGestureRouter.routesToStylus(snapshot, session.canSendStylus())) return false
+        val samples = internetStylusContactRouter.map(snapshot, extendedNegotiated = extended)
+        if (extendedOnly && samples.isEmpty()) return false
         samples.forEach { sample ->
-            val phase = sample.phase.toProductInputPhase()
             val inputId = internetStylusInputIds.resolve(sample) ?: return@forEach
-            session.sendStylus(
-                ProductStylusEvent(
-                    inputId = inputId,
-                    pointerId = sample.pointerId,
-                    phase = phase,
-                    normalizedX = sample.x,
-                    normalizedY = sample.y,
-                    pressure = sample.pressure,
-                    tiltXDegrees = sample.tiltXDegrees,
-                    tiltYDegrees = sample.tiltYDegrees,
-                ),
-            )
+            session.sendStylus(sample.toProductStylusEvent(inputId, extended))
             internetStylusInputIds.complete(sample)
         }
         if (event.actionMasked == MotionEvent.ACTION_CANCEL) internetStylusInputIds.clear()
@@ -4443,6 +4495,35 @@ class MainActivity : AppCompatActivity() {
             InputPhase.INPUT_PHASE_CANCELLED -> ProductInputPhase.CANCELLED
             else -> error("Unspecified stylus phase")
         }
+
+    private fun StylusSample.toProductStylusEvent(inputId: Long, extended: Boolean): ProductStylusEvent =
+        ProductStylusEvent(
+            inputId = inputId,
+            pointerId = pointerId,
+            phase = phase.toProductInputPhase(),
+            normalizedX = x,
+            normalizedY = y,
+            pressure = pressure,
+            tiltXDegrees = tiltXDegrees,
+            tiltYDegrees = tiltYDegrees,
+            toolKind =
+                if (extended) {
+                    when (toolKind) {
+                        StylusToolKind.PEN -> dev.vibescreen.protocol.v1.StylusToolKind.STYLUS_TOOL_KIND_PEN
+                        StylusToolKind.ERASER -> dev.vibescreen.protocol.v1.StylusToolKind.STYLUS_TOOL_KIND_ERASER
+                    }
+                } else null,
+            buttonMask = if (extended) buttonMask else 0,
+            contactState =
+                if (extended) {
+                    when (contactState) {
+                        StylusContactState.CONTACT ->
+                            dev.vibescreen.protocol.v1.StylusContactState.STYLUS_CONTACT_STATE_CONTACT
+                        StylusContactState.PROXIMITY ->
+                            dev.vibescreen.protocol.v1.StylusContactState.STYLUS_CONTACT_STATE_PROXIMITY
+                    }
+                } else null,
+        )
 
     /**
      * Apply rotation by changing the Activity's screen orientation

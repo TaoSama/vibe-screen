@@ -7,7 +7,7 @@ final class ProtocolV1SessionTests: XCTestCase {
     func testProductionHostCapabilitiesAreExact() {
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true),
-            [.touch, .stylus, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions]
+            [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions]
         )
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false),
@@ -109,7 +109,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(hostHello.selectedProtocol, 1)
         // hostHello.capabilities is sorted by raw value: multiDisplay(18) <
         // hostActions(20) < clientVideoControl(24).
-        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .stylus, .multiDisplay, .hostActions, .clientVideoControl])
+        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .stylus, .multiDisplay, .hostActions, .clientVideoControl, .stylusExtended])
         guard case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected SessionAccepted")
         }
@@ -229,7 +229,7 @@ final class ProtocolV1SessionTests: XCTestCase {
               case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected HostHello + SessionAccepted")
         }
-        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .stylus, .multiDisplay, .hostActions, .clientVideoControl])
+        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .stylus, .multiDisplay, .hostActions, .clientVideoControl, .stylusExtended])
         XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .multiDisplay])
     }
 
@@ -333,7 +333,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         )
         guard case .stylus(
             let inputID, let pointerID, let x, let y, let phase,
-            let pressure, let tiltX, let tiltY
+            let pressure, let tiltX, let tiltY, let toolKind, let buttonMask, let contactState
         ) = actions.first else { return XCTFail("Expected a stylus action") }
         XCTAssertEqual(inputID, 8)
         XCTAssertEqual(pointerID, 3)
@@ -343,6 +343,9 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(pressure, 0.625)
         XCTAssertEqual(tiltX, 45)
         XCTAssertEqual(tiltY, -45)
+        XCTAssertEqual(toolKind, .pen)
+        XCTAssertEqual(buttonMask, 0)
+        XCTAssertEqual(contactState, .contact)
     }
 
     func testStylusRejectsMalformedPressureTiltAndTarget() throws {
@@ -389,6 +392,44 @@ final class ProtocolV1SessionTests: XCTestCase {
         changed.pointerID = 4
         XCTAssertEqual(try protocolError(from: mismatch.handleControl(
             try envelope(id: 5, payload: .stylusEvent(changed)).serializedData()
+        )).code, .invalidState)
+    }
+
+    func testExtendedStylusRequiresIndependentCapabilityAndRoutesHoverEraser() throws {
+        var extended = stylusEvent()
+        extended.phase = .began
+        extended.pressure = 0
+        extended.toolKind = .eraser
+        extended.contactState = .proximity
+        extended.buttonMask = 0b10
+
+        XCTAssertEqual(try protocolError(from: try readyStylusSession().handleControl(
+            try envelope(id: 4, payload: .stylusEvent(extended)).serializedData()
+        )).code, .invalidState)
+
+        let actions = try readyExtendedStylusSession().handleControl(
+            try envelope(id: 4, payload: .stylusEvent(extended)).serializedData()
+        )
+        guard case .stylus(
+            _, _, _, _, .began, 0, _, _, .eraser, 0b10, .proximity
+        ) = actions.first else { return XCTFail("Expected extended hover eraser action") }
+    }
+
+    func testExtendedStylusRequiresTerminalHoverBeforeContact() throws {
+        let session = try readyExtendedStylusSession()
+        var hover = stylusEvent()
+        hover.pressure = 0
+        hover.toolKind = .pen
+        hover.contactState = .proximity
+        XCTAssertTrue(session.handleControl(
+            try envelope(id: 4, payload: .stylusEvent(hover)).serializedData()
+        ).contains { if case .stylus = $0 { return true }; return false })
+
+        var contact = stylusEvent()
+        contact.toolKind = .pen
+        contact.contactState = .contact
+        XCTAssertEqual(try protocolError(from: session.handleControl(
+            try envelope(id: 5, payload: .stylusEvent(contact)).serializedData()
         )).code, .invalidState)
     }
 
@@ -810,6 +851,26 @@ final class ProtocolV1SessionTests: XCTestCase {
         let session = makeSession()
         var hello = clientHello()
         hello.clientHello.capabilities.append(.stylus)
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        var result = VSVideoConfigResult()
+        result.configEpoch = 1
+        result.streamID = 1
+        result.accepted = true
+        _ = session.handleControl(
+            try envelope(id: 3, payload: .videoConfigResult(result)).serializedData()
+        )
+        return session
+    }
+
+    private func readyExtendedStylusSession() throws -> ProtocolV1SessionCoordinator {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities.append(contentsOf: [.stylus, .stylusExtended])
         _ = session.handleControl(try hello.serializedData())
         _ = session.completeCodecNegotiation()
         _ = session.handleControl(try envelope(

@@ -13,7 +13,7 @@ def message_fields(source: str, message_name: str) -> dict[str, int]:
     return {
         name: int(number)
         for name, number in re.findall(
-            r"(?:repeated\s+)?[.\w]+\s+(\w+)\s*=\s*(\d+)\s*;", match.group(1)
+            r"(?:(?:repeated|optional)\s+)?[.\w]+\s+(\w+)\s*=\s*(\d+)\s*;", match.group(1)
         )
     }
 
@@ -94,10 +94,31 @@ class SecurityContractTest(unittest.TestCase):
                 "tilt_x_degrees": 6,
                 "tilt_y_degrees": 7,
                 "target": 8,
+                "tool_kind": 9,
+                "button_mask": 10,
+                "contact_state": 11,
             },
             message_fields(input_source, "StylusEvent"),
         )
+        self.assertRegex(input_source, r"optional\s+StylusToolKind\s+tool_kind\s*=\s*9\s*;")
+        self.assertRegex(input_source, r"optional\s+StylusContactState\s+contact_state\s*=\s*11\s*;")
         self.assertEqual(65, message_fields(envelope_source, "Envelope")["stylus_event"])
+
+    def test_extended_stylus_enum_and_capability_values_are_stable(self) -> None:
+        input_source = (PROTO_ROOT / "input.proto").read_text()
+        session_source = (PROTO_ROOT / "session.proto").read_text()
+        expected_values = {
+            "STYLUS_TOOL_KIND_UNSPECIFIED": 0,
+            "STYLUS_TOOL_KIND_PEN": 1,
+            "STYLUS_TOOL_KIND_ERASER": 2,
+            "STYLUS_CONTACT_STATE_UNSPECIFIED": 0,
+            "STYLUS_CONTACT_STATE_CONTACT": 1,
+            "STYLUS_CONTACT_STATE_PROXIMITY": 2,
+        }
+        for name, raw_value in expected_values.items():
+            self.assertRegex(input_source, rf"{name}\s*=\s*{raw_value}\s*;")
+        self.assertRegex(session_source, r"CAPABILITY_STYLUS\s*=\s*6\s*;")
+        self.assertRegex(session_source, r"CAPABILITY_STYLUS_EXTENDED\s*=\s*25\s*;")
 
     def test_envelope_security_payloads_do_not_reuse_existing_numbers(self) -> None:
         source = (PROTO_ROOT / "envelope.proto").read_text()

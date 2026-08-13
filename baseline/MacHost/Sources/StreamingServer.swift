@@ -150,7 +150,8 @@ class StreamingServer: EncodedFrameSink {
     var onDeviceInfoReceived: ((String, UInt8, UInt64) -> Void)?
     var onPointerEvent: ((Float, Float, VSInputPhase, UInt32, UInt64) -> Void)?
     var onStylusEvent: ((
-        UInt64, UInt32, Float, Float, VSInputPhase, Double, Double, Double, UInt64
+        UInt64, UInt32, Float, Float, VSInputPhase, Double, Double, Double,
+        VSStylusToolKind, UInt32, VSStylusContactState, UInt64
     ) -> Void)?
     var onScrollEvent: ((Double, Double, UInt64) -> Void)?
     var onKeyEvent: ((UInt32, Bool, UInt32, String, UInt64) -> Void)?
@@ -1369,7 +1370,10 @@ class StreamingServer: EncodedFrameSink {
                 let phase,
                 let pressure,
                 let tiltXDegrees,
-                let tiltYDegrees
+                let tiltYDegrees,
+                let toolKind,
+                let buttonMask,
+                let contactState
             ):
                 DispatchQueue.main.async { [weak self] in
                     guard let self,
@@ -1383,6 +1387,9 @@ class StreamingServer: EncodedFrameSink {
                         pressure,
                         tiltXDegrees,
                         tiltYDegrees,
+                        toolKind,
+                        buttonMask,
+                        contactState,
                         generation
                     )
                 }

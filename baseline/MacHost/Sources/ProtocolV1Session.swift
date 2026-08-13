@@ -22,7 +22,7 @@ struct ProtocolV1SessionConfiguration {
         // Client video control tunes the host encoder, needs no Accessibility,
         // and is always offered so the client can adjust bitrate/fps/quality.
         touchEnabled
-            ? [.touch, .stylus, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions]
+            ? [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions]
             : [.multiDisplay, .clientVideoControl]
    }
 
@@ -70,7 +70,10 @@ enum ProtocolV1SessionAction {
         phase: VSInputPhase,
         pressure: Double,
         tiltXDegrees: Double,
-        tiltYDegrees: Double
+        tiltYDegrees: Double,
+        toolKind: VSStylusToolKind,
+        buttonMask: UInt32,
+        contactState: VSStylusContactState
     )
     case pointer(x: Float, y: Float, phase: VSInputPhase, buttonMask: UInt32)
     case scroll(deltaX: Double, deltaY: Double)
@@ -104,7 +107,7 @@ final class ProtocolV1SessionCoordinator {
     private var configuration: ProtocolV1SessionConfiguration
     private var nextMessageID: UInt64 = 1
     private var negotiatedCapabilities: Set<VSCapability> = []
-    private var activeStylusPointerID: UInt32?
+    private var stylusSequenceState = StylusSequenceState()
     private var advertisedVideoRotation = 0
     private let lock = NSLock()
     /// Identifies the newest in-flight client video-preferences request. The
@@ -529,6 +532,11 @@ final class ProtocolV1SessionCoordinator {
             let pressure = stylus.pressure
             let tiltX = stylus.tiltXDegrees
             let tiltY = stylus.tiltYDegrees
+            let extended = negotiatedCapabilities.contains(.stylusExtended)
+            let toolKind: VSStylusToolKind = stylus.hasToolKind ? stylus.toolKind : .pen
+            let contactState: VSStylusContactState = stylus.hasContactState
+                ? stylus.contactState
+                : .contact
             let terminalPhase = stylus.phase == .ended || stylus.phase == .cancelled
             guard isStreaming,
                   stylus.inputID > 0,
@@ -539,7 +547,7 @@ final class ProtocolV1SessionCoordinator {
                   (0...1).contains(stylus.position.y),
                   pressure.isFinite,
                   (0...1).contains(pressure),
-                  !terminalPhase || pressure == 0,
+                  (!terminalPhase && contactState == .contact) || pressure == 0,
                   tiltX.isFinite,
                   tiltY.isFinite,
                   (-90...90).contains(tiltX),
@@ -547,7 +555,18 @@ final class ProtocolV1SessionCoordinator {
                   hypot(tiltX, tiltY) <= 90,
                   inputTargetMatchesActiveStream(stylus.hasTarget ? stylus.target : nil),
                   stylus.phase != .unspecified,
-                  acceptsStylusSequence(pointerID: stylus.pointerID, phase: stylus.phase) else {
+                  validatesStylusExtension(
+                      stylus,
+                      extended: extended,
+                      toolKind: toolKind,
+                      contactState: contactState
+                  ),
+                  stylusSequenceState.accepts(
+                      pointerID: stylus.pointerID,
+                      phase: stylus.phase,
+                      toolKind: toolKind,
+                      contactState: contactState
+                  ) else {
                 return invalidState("StylusEvent is invalid or media is not ready.", envelope.messageID)
             }
             return [.stylus(
@@ -558,7 +577,10 @@ final class ProtocolV1SessionCoordinator {
                 phase: stylus.phase,
                 pressure: pressure,
                 tiltXDegrees: tiltX,
-                tiltYDegrees: tiltY
+                tiltYDegrees: tiltY,
+                toolKind: toolKind,
+                buttonMask: stylus.buttonMask,
+                contactState: contactState
             )]
 
         case .pointerEvent(let pointer):
@@ -683,13 +705,13 @@ final class ProtocolV1SessionCoordinator {
 
         case .protocolError(let error):
             phase = .failed
-            activeStylusPointerID = nil
+            _ = stylusSequenceState.consumeReset()
             pendingHostActionInvocations.removeAll()
             return [.peerError(error), .close]
 
         case .disconnectNotice:
             phase = .closed
-            activeStylusPointerID = nil
+            _ = stylusSequenceState.consumeReset()
             pendingHostActionInvocations.removeAll()
             return [.close]
 
@@ -767,21 +789,20 @@ final class ProtocolV1SessionCoordinator {
         return false
     }
 
-    private func acceptsStylusSequence(pointerID: UInt32, phase: VSInputPhase) -> Bool {
-        switch phase {
-        case .began:
-            guard activeStylusPointerID == nil else { return false }
-            activeStylusPointerID = pointerID
-            return true
-        case .changed:
-            return activeStylusPointerID == pointerID
-        case .ended, .cancelled:
-            guard activeStylusPointerID == pointerID else { return false }
-            activeStylusPointerID = nil
-            return true
-        case .unspecified, .UNRECOGNIZED:
-            return false
+    private func validatesStylusExtension(
+        _ stylus: VSStylusEvent,
+        extended: Bool,
+        toolKind: VSStylusToolKind,
+        contactState: VSStylusContactState
+    ) -> Bool {
+        if !extended {
+            return !stylus.hasToolKind && !stylus.hasContactState && stylus.buttonMask == 0
         }
+        guard stylus.hasToolKind, stylus.hasContactState,
+              toolKind == .pen || toolKind == .eraser,
+              contactState == .contact || contactState == .proximity,
+              stylus.buttonMask & ~UInt32(0b11) == 0 else { return false }
+        return contactState != .proximity || stylus.pressure == 0
     }
 
     private func inputTargetMatchesActiveStream(_ target: VSInputTarget?) -> Bool {
@@ -810,6 +831,14 @@ final class ProtocolV1SessionCoordinator {
                 correlationID: correlationID
             )
         }
+        guard !requiredCapabilities.contains(.stylusExtended)
+                || offeredCapabilities.contains(.stylus) else {
+            return fail(
+                code: .unsupportedCapability,
+                message: "Extended stylus requires base stylus input.",
+                correlationID: correlationID
+            )
+        }
         guard configuration.requiredClientCapabilities.isSubset(of: offeredCapabilities) else {
             return fail(
                 code: .unsupportedCapability,
@@ -825,7 +854,10 @@ final class ProtocolV1SessionCoordinator {
             )
         }
         selectedCodec = codec
-        let negotiatedCapabilities = configuration.hostCapabilities.intersection(offeredCapabilities)
+        var negotiatedCapabilities = configuration.hostCapabilities.intersection(offeredCapabilities)
+        if !negotiatedCapabilities.contains(.stylus) {
+            negotiatedCapabilities.remove(.stylusExtended)
+        }
         self.negotiatedCapabilities = negotiatedCapabilities
 
         phase = .preparingCodec(correlationID: correlationID)
@@ -974,7 +1006,7 @@ final class ProtocolV1SessionCoordinator {
         error.component = "macos-host-session"
         let sessionScoped = phase != .awaitingClientHello
         phase = .failed
-        activeStylusPointerID = nil
+        _ = stylusSequenceState.consumeReset()
         pendingHostActionInvocations.removeAll()
         do {
             return [
@@ -1008,7 +1040,7 @@ final class ProtocolV1SessionCoordinator {
 
     private func serializationFailure() -> [ProtocolV1SessionAction] {
         phase = .failed
-        activeStylusPointerID = nil
+        _ = stylusSequenceState.consumeReset()
         return [.close]
     }
 

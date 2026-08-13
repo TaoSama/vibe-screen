@@ -27,23 +27,61 @@ final class StylusEventFactoryTests: XCTestCase {
     }
 
     func testTipStateAcceptsOnlyOneMatchingPointerSequenceAndResets() {
-        var state = StylusTipState()
+        var state = StylusSequenceState()
 
-        XCTAssertFalse(state.accepts(pointerID: 7, phase: .changed))
-        XCTAssertTrue(state.accepts(pointerID: 7, phase: .began))
+        XCTAssertFalse(state.accepts(pointerID: 7, phase: .changed, toolKind: .pen, contactState: .contact))
+        XCTAssertTrue(state.accepts(pointerID: 7, phase: .began, toolKind: .pen, contactState: .contact))
         XCTAssertEqual(state.activePointerID, 7)
-        XCTAssertFalse(state.accepts(pointerID: 8, phase: .began))
-        XCTAssertFalse(state.accepts(pointerID: 8, phase: .changed))
-        XCTAssertFalse(state.accepts(pointerID: 8, phase: .ended))
+        XCTAssertFalse(state.accepts(pointerID: 8, phase: .began, toolKind: .pen, contactState: .contact))
+        XCTAssertFalse(state.accepts(pointerID: 8, phase: .changed, toolKind: .pen, contactState: .contact))
+        XCTAssertFalse(state.accepts(pointerID: 8, phase: .ended, toolKind: .pen, contactState: .contact))
         XCTAssertEqual(state.activePointerID, 7)
-        XCTAssertTrue(state.accepts(pointerID: 7, phase: .changed))
-        XCTAssertEqual(state.consumeResetPointerID(), 7)
+        XCTAssertTrue(state.accepts(pointerID: 7, phase: .changed, toolKind: .pen, contactState: .contact))
+        XCTAssertEqual(state.consumeReset()?.pointerID, 7)
         XCTAssertNil(state.activePointerID)
-        XCTAssertNil(state.consumeResetPointerID())
+        XCTAssertNil(state.consumeReset())
 
-        XCTAssertTrue(state.accepts(pointerID: 9, phase: .began))
-        XCTAssertTrue(state.accepts(pointerID: 9, phase: .cancelled))
+        XCTAssertTrue(state.accepts(pointerID: 9, phase: .began, toolKind: .pen, contactState: .contact))
+        XCTAssertTrue(state.accepts(pointerID: 9, phase: .cancelled, toolKind: .pen, contactState: .contact))
         XCTAssertNil(state.activePointerID)
+    }
+
+    func testExtendedSequenceSeparatesHoverContactToolAndPointerIdentity() {
+        var state = StylusSequenceState()
+        XCTAssertTrue(state.accepts(pointerID: 3, phase: .began, toolKind: .eraser, contactState: .proximity))
+        XCTAssertFalse(state.accepts(pointerID: 3, phase: .changed, toolKind: .eraser, contactState: .contact))
+        XCTAssertFalse(state.accepts(pointerID: 3, phase: .changed, toolKind: .pen, contactState: .proximity))
+        XCTAssertTrue(state.accepts(pointerID: 3, phase: .ended, toolKind: .eraser, contactState: .proximity))
+        XCTAssertTrue(state.accepts(pointerID: 3, phase: .began, toolKind: .eraser, contactState: .contact))
+        XCTAssertTrue(state.accepts(pointerID: 3, phase: .ended, toolKind: .eraser, contactState: .contact))
+    }
+
+    func testExtendedFactoryMapsHoverEraserAndBarrelFieldsWithoutMouseDown() throws {
+        let factory = StylusEventFactory(
+            eventSource: try XCTUnwrap(CGEventSource(stateID: .privateState))
+        )
+        let bounds = CGRect(x: 0, y: 0, width: 100, height: 100)
+        let hover = try XCTUnwrap(factory.event(
+            normalizedX: 0.5, normalizedY: 0.5, phase: .began,
+            pressure: 0, tiltXDegrees: 0, tiltYDegrees: 0,
+            toolKind: .eraser, buttonMask: 0b11, contactState: .proximity,
+            displayBounds: bounds
+        ))
+        XCTAssertEqual(hover.type, .tabletProximity)
+        XCTAssertEqual(hover.getIntegerValueField(.tabletProximityEventPointerType), 3)
+        XCTAssertEqual(hover.getIntegerValueField(.tabletProximityEventEnterProximity), 1)
+        // CoreGraphics does not retain tablet-point fields on a proximity
+        // event. Barrel state is asserted below on the tablet-point contact.
+        XCTAssertEqual(hover.getIntegerValueField(.tabletEventPointButtons), 0)
+
+        let contact = try XCTUnwrap(factory.event(
+            normalizedX: 0.5, normalizedY: 0.5, phase: .began,
+            pressure: 0.5, tiltXDegrees: 0, tiltYDegrees: 0,
+            toolKind: .pen, buttonMask: 0b01, contactState: .contact,
+            displayBounds: bounds
+        ))
+        XCTAssertEqual(contact.type, .leftMouseDown)
+        XCTAssertEqual(contact.getIntegerValueField(.tabletEventPointButtons), 0b011)
     }
 
     func testBuildsPressureAndNormalizedSignedTiltWithoutPosting() throws {
@@ -158,6 +196,57 @@ final class StylusEventFactoryTests: XCTestCase {
             0,
             accuracy: 0
         )
+
+        injector.reset()
+        XCTAssertEqual(posted.count, 2)
+    }
+
+    func testInjectorResetExitsActiveEraserProximityOnceWithoutButtons() throws {
+        var posted: [CGEvent] = []
+        let injector = StreamInputInjector(
+            eventSource: try XCTUnwrap(CGEventSource(stateID: .privateState)),
+            stylusEventPoster: { posted.append($0.copy()!) }
+        )
+        XCTAssertTrue(injector.handleStylus(
+            pointerID: 9,
+            normalizedX: 0.4,
+            normalizedY: 0.6,
+            phase: .began,
+            pressure: 0,
+            tiltXDegrees: 0,
+            tiltYDegrees: 0,
+            toolKind: .eraser,
+            buttonMask: 0b11,
+            contactState: .proximity,
+            displayBounds: CGRect(x: 10, y: 20, width: 100, height: 200)
+        ))
+        XCTAssertEqual(posted.count, 1)
+        XCTAssertEqual(posted[0].type, .tabletProximity)
+        XCTAssertEqual(posted[0].getIntegerValueField(.tabletProximityEventEnterProximity), 1)
+
+        let server = StreamingServer(port: 0)
+        let released = expectation(description: "takeover exits active eraser proximity")
+        server.onInputCancelled = { generation in
+            XCTAssertEqual(generation, 3)
+            injector.reset()
+            released.fulfill()
+        }
+        server.advanceClientGenerationForSelfTest(to: 3)
+        server.dispatchTakeoverInputCancellation(
+            oldConnectionWasPresent: true,
+            generation: 3
+        )
+        wait(for: [released], timeout: 1)
+
+        XCTAssertEqual(posted.count, 2)
+        let exit = try XCTUnwrap(posted.last)
+        XCTAssertEqual(exit.type, .tabletProximity)
+        XCTAssertEqual(exit.location.x, 50, accuracy: 0.001)
+        XCTAssertEqual(exit.location.y, 140, accuracy: 0.001)
+        XCTAssertEqual(exit.getIntegerValueField(.tabletProximityEventEnterProximity), 0)
+        XCTAssertEqual(exit.getIntegerValueField(.tabletProximityEventPointerType), 3)
+        XCTAssertEqual(exit.getIntegerValueField(.tabletEventPointButtons), 0)
+        XCTAssertEqual(exit.getDoubleValueField(.tabletEventPointPressure), 0, accuracy: 0)
 
         injector.reset()
         XCTAssertEqual(posted.count, 2)
