@@ -14,6 +14,11 @@ import dev.telemachus.display.protocol.TouchSample
 import dev.telemachus.display.protocol.UpgradeFallbackDecision
 import dev.telemachus.display.protocol.UpgradeProbeOutcome
 import dev.telemachus.display.protocol.MotionPointer
+import dev.telemachus.display.transport.SocketStreamTransportConnection
+import dev.telemachus.display.transport.StreamTransportCandidate
+import dev.telemachus.display.transport.StreamTransportCandidateRejection
+import dev.telemachus.display.transport.StreamTransportCandidateRejectedException
+import dev.telemachus.display.transport.StreamTransportOwner
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.InputPhase
@@ -37,7 +42,6 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -94,9 +98,7 @@ class StreamClient(
     private val videoConfigurationTimeoutExecutor: ScheduledExecutorService = VIDEO_CONFIGURATION_TIMEOUT_EXECUTOR,
     private val terminationExecutor: Executor = SESSION_TERMINATION_EXECUTOR,
 ) {
-    @Volatile private var socket: Socket? = null
-    private var inputStream: DataInputStream? = null
-    private var outputStream: java.io.DataOutputStream? = null
+    private val transportOwner = StreamTransportOwner<SocketStreamTransportConnection>()
 
     @Volatile private var isConnected = false
     @Volatile private var sessionReady = false
@@ -107,8 +109,6 @@ class StreamClient(
     @Volatile private var wireMode = WireMode.LEGACY
     private var pendingLegacyFirstByte: Int? = null
     @Volatile private var protocolSession: ProtocolV1Session? = null
-    private val transportOwnerLock = Any()
-    private var pendingFreshTransport: FreshTransportCandidate? = null
     private val nextInputId = AtomicLong(1L)
     private val nextPingSequence = AtomicLong(1L)
     private val pendingOutboundFailure = AtomicReference<SessionFailure?>(null)
@@ -210,9 +210,7 @@ class StreamClient(
                 Log.e(TAG, "Outbound write failed", failure.cause)
                 pendingOutboundFailure.compareAndSet(null, SessionFailure.write(detail))
                 onWriteFailure?.invoke(detail)
-                try {
-                    socket?.shutdownOutput()
-                } catch (shutdownFailure: IOException) {
+                transportOwner.shutdownActiveOutput()?.let { shutdownFailure ->
                     Log.d(TAG, "Outbound side was already closed", shutdownFailure)
                 }
             },
@@ -246,17 +244,19 @@ class StreamClient(
             pendingOutboundFailure.set(null)
             pendingDecoderFailure.set(null)
             try {
-                val candidate = socketFactory()
-                socket = candidate
+                val candidate = registerInitialTransportCandidate() ?: return@withContext
                 if (terminationDispatcher.isClaimed()) {
-                    cleanupCandidateSocket(candidate)
+                    cleanupCandidateTransport(candidate)
                     return@withContext
                 }
-                candidate.tcpNoDelay = true
-                candidate.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
-                candidate.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
-                inputStream = DataInputStream(java.io.BufferedInputStream(socket?.getInputStream(), 65536))
-                outputStream = java.io.DataOutputStream(socket?.getOutputStream())
+                candidate.connection.socket.tcpNoDelay = true
+                candidate.connection.socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+                candidate.connection.socket.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
+                candidate.connection.installStreams()
+                if (!promoteTransportCandidate(candidate) { !terminationDispatcher.isClaimed() }) {
+                    outboundScheduler.shutdownNow()
+                    return@withContext
+                }
                 streamCodecIsHevc = true
                 codecNegotiated = false
                 connectionEpoch = SESSION_EPOCHS.beginSession()
@@ -267,7 +267,8 @@ class StreamClient(
                 isConnected = true
                 if (terminationDispatcher.isClaimed()) {
                     isConnected = false
-                    cleanupCandidateSocket()
+                    closeTransport()
+                    outboundScheduler.shutdownNow()
                     return@withContext
                 }
                 heartbeat.reset(System.nanoTime())
@@ -331,10 +332,10 @@ class StreamClient(
             }
         Log.i(TAG, "connectWireless: trying $host:$port (device=$deviceName, token bytes=${token.size})")
 
-        val s = socketFactory()
-        socket = s
+        val candidate = registerInitialTransportCandidate() ?: return@withContext
+        val s = candidate.connection.socket
         if (terminationDispatcher.isClaimed()) {
-            cleanupCandidateSocket(s)
+            cleanupCandidateTransport(candidate)
             return@withContext
         }
         try {
@@ -447,16 +448,20 @@ class StreamClient(
             AuthHandshake.ResponseStatus.OK -> {
                 val startupSucceeded =
                     try {
+                        s.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
+                        candidate.connection.installStreams(rawInput, rawOutput)
+                        if (!promoteTransportCandidate(candidate) { !terminationDispatcher.isClaimed() }) {
+                            outboundScheduler.shutdownNow()
+                            return@withContext
+                        }
                         connectionEpoch = SESSION_EPOCHS.beginSession()
                         isConnected = true
                         if (terminationDispatcher.isClaimed()) {
                             isConnected = false
-                            cleanupCandidateSocket(s)
+                            closeTransport()
+                            outboundScheduler.shutdownNow()
                             return@withContext
                         }
-                        s.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
-                        inputStream = DataInputStream(java.io.BufferedInputStream(rawInput, 65536))
-                        outputStream = java.io.DataOutputStream(rawOutput)
                         streamCodecIsHevc = true
                         codecNegotiated = false
                         val upgradeDecision = negotiateProtocol(TransportKind.TRANSPORT_KIND_LAN)
@@ -513,11 +518,11 @@ class StreamClient(
     }
 
     private fun negotiateProtocol(transport: TransportKind): UpgradeFallbackDecision {
-        val socket = checkNotNull(socket)
-        val input = checkNotNull(inputStream)
-        val output = checkNotNull(outputStream)
+        val connection = checkNotNull(transportOwner.activeConnection())
+        val input = connection.input
+        val output = connection.output
         ProtocolUpgrade.writeOffer(output)
-        socket.soTimeout = PROTOCOL_UPGRADE_TIMEOUT_MS
+        connection.readTimeoutMillis = PROTOCOL_UPGRADE_TIMEOUT_MS
         val firstByte =
             try {
                 input.read()
@@ -557,7 +562,7 @@ class StreamClient(
                 diagLog("Protocol upgrade timed out; probe socket must be replaced")
             }
         }
-        socket.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
+        connection.readTimeoutMillis = HEARTBEAT_POLL_INTERVAL_MS
         return decision
     }
 
@@ -608,49 +613,63 @@ class StreamClient(
         attemptGeneration: Long,
         prepare: (Socket) -> Unit,
     ) {
-        val candidate = registerFreshTransport(attemptGeneration)
+        val candidate = registerTransportCandidate(attemptGeneration, ::ownsAttempt)
         var promoted = false
         try {
-            prepare(candidate.socket)
-            candidate.socket.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
-            val input = DataInputStream(java.io.BufferedInputStream(candidate.socket.getInputStream(), 65536))
-            val output = java.io.DataOutputStream(candidate.socket.getOutputStream())
-            synchronized(transportOwnerLock) {
-                check(pendingFreshTransport === candidate && ownsAttempt(attemptGeneration)) {
-                    "Fallback connection attempt was superseded"
-                }
-                pendingFreshTransport = null
-                socket = candidate.socket
-                inputStream = input
-                outputStream = output
-                promoted = true
-            }
+            prepare(candidate.connection.socket)
+            candidate.connection.socket.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
+            candidate.connection.installStreams()
+            promoted = promoteTransportCandidate(candidate, ::ownsAttempt)
+            check(promoted) { "Fallback connection attempt was superseded" }
             configureLegacyMode()
         } catch (failure: Exception) {
             if (promoted) closeTransport()
             throw failure
         } finally {
-            if (!promoted) releaseFreshTransport(candidate)
+            if (!promoted) logTransportCloseFailures(transportOwner.release(candidate))
         }
     }
 
-    private fun registerFreshTransport(attemptGeneration: Long): FreshTransportCandidate {
-        val candidate = FreshTransportCandidate(socketFactory(), attemptGeneration)
-        synchronized(transportOwnerLock) {
-            if (!ownsAttempt(attemptGeneration) || pendingFreshTransport != null) {
-                candidate.closeOnce()
-                throw IOException("Fallback connection attempt was superseded")
+    private fun registerTransportCandidate(
+        attemptGeneration: Long,
+        eligible: (Long) -> Boolean,
+    ): StreamTransportCandidate<SocketStreamTransportConnection> {
+        return try {
+            transportOwner.createCandidate(attemptGeneration, eligible) {
+                SocketStreamTransportConnection(socketFactory())
             }
-            pendingFreshTransport = candidate
+        } catch (rejected: StreamTransportCandidateRejectedException) {
+            logTransportCloseFailures(rejected.closeFailures)
+            throw IOException("Transport connection attempt was superseded", rejected)
         }
-        return candidate
     }
 
-    private fun releaseFreshTransport(candidate: FreshTransportCandidate) {
-        synchronized(transportOwnerLock) {
-            if (pendingFreshTransport === candidate) pendingFreshTransport = null
+    private fun registerInitialTransportCandidate(): StreamTransportCandidate<SocketStreamTransportConnection>? =
+        try {
+            transportOwner.createCandidate(
+                UNASSIGNED_ATTEMPT_GENERATION,
+                { !terminationDispatcher.isClaimed() },
+            ) {
+                SocketStreamTransportConnection(socketFactory())
+            }
+        } catch (rejected: StreamTransportCandidateRejectedException) {
+            logTransportCloseFailures(rejected.closeFailures)
+            if (rejected.reason == StreamTransportCandidateRejection.INELIGIBLE &&
+                terminationDispatcher.isClaimed()
+            ) {
+                null
+            } else {
+                throw IOException("Transport connection attempt was superseded", rejected)
+            }
         }
-        candidate.closeOnce()
+
+    private fun promoteTransportCandidate(
+        candidate: StreamTransportCandidate<SocketStreamTransportConnection>,
+        acceptsGeneration: (Long) -> Boolean,
+    ): Boolean {
+        val promotion = transportOwner.promote(candidate, acceptsGeneration)
+        logTransportCloseFailures(promotion.closeFailures)
+        return promotion.promoted
     }
 
     private fun ownsAttempt(attemptGeneration: Long): Boolean =
@@ -658,30 +677,11 @@ class StreamClient(
             connectionEpoch == attemptGeneration &&
             SESSION_EPOCHS.accepts(attemptGeneration)
 
-    private fun detachFreshTransport(): FreshTransportCandidate? =
-        synchronized(transportOwnerLock) {
-            pendingFreshTransport.also { pendingFreshTransport = null }
-        }
-
-    private fun installTransport(transportSocket: Socket) {
-        socket = transportSocket
-        inputStream = DataInputStream(java.io.BufferedInputStream(transportSocket.getInputStream(), 65536))
-        outputStream = java.io.DataOutputStream(transportSocket.getOutputStream())
+    private fun closeTransport() {
+        logTransportCloseFailures(transportOwner.closeAll())
     }
 
-    private fun closeTransport() {
-        detachFreshTransport()?.closeOnce()
-        val failures = mutableListOf<IOException>()
-        listOf(outputStream, inputStream, socket).forEach { resource ->
-            try {
-                resource?.close()
-            } catch (failure: IOException) {
-                failures += failure
-            }
-        }
-        outputStream = null
-        inputStream = null
-        socket = null
+    private fun logTransportCloseFailures(failures: List<Exception>) {
         if (failures.isNotEmpty()) {
             Log.w(TAG, "Transport close reported ${failures.size} failure(s)", failures.first())
         }
@@ -793,7 +793,7 @@ class StreamClient(
 
     private suspend fun receiveData() =
         withContext(Dispatchers.IO) {
-            val input = inputStream ?: return@withContext
+            val input = transportOwner.activeConnection()?.input ?: return@withContext
             var terminalFailure: SessionFailure? = null
 
             try {
@@ -1477,7 +1477,7 @@ class StreamClient(
             this != OutboundCommandScheduler.Submission.CLOSED
 
     private fun writeOutboundCommand(command: OutboundCommand) {
-        val out = outputStream ?: throw IOException("session output is closed")
+        val out = transportOwner.activeConnection()?.output ?: throw IOException("session output is closed")
         when (command) {
             is OutboundCommand.Touch -> {
                 val size = 6 + command.pointerCount * 8
@@ -1981,23 +1981,15 @@ class StreamClient(
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup", e)
         }
-        outputStream = null
-        inputStream = null
-        socket = null
         protocolSession = null
         pendingLegacyFirstByte = null
     }
 
-    private fun cleanupCandidateSocket(candidate: Socket? = socket) {
-        try {
-            candidate?.close()
-        } catch (error: IOException) {
-            Log.d(TAG, "Candidate socket was already closed", error)
-        }
-        if (socket === candidate) {
-            socket = null
-        }
-        detachFreshTransport()?.closeOnce()
+    private fun cleanupCandidateTransport(
+        candidate: StreamTransportCandidate<SocketStreamTransportConnection>,
+    ) {
+        logTransportCloseFailures(transportOwner.release(candidate))
+        logTransportCloseFailures(transportOwner.closeAll())
         outboundScheduler.shutdownNow()
     }
 
@@ -2288,22 +2280,6 @@ class StreamClient(
         val wasConnected: Boolean,
     )
 
-    private class FreshTransportCandidate(
-        val socket: Socket,
-        val attemptGeneration: Long,
-    ) {
-        private val closed = AtomicBoolean()
-
-        fun closeOnce() {
-            if (!closed.compareAndSet(false, true)) return
-            try {
-                socket.close()
-            } catch (_: IOException) {
-                // The ownership contract is about exactly-once close attempts.
-            }
-        }
-    }
-
     companion object {
         private enum class VideoConfigurationCommitState {
             PENDING,
@@ -2330,6 +2306,7 @@ class StreamClient(
             "decoder_configuration_publish_failed"
         private const val VIDEO_CONFIGURATION_COMMIT_TIMEOUT_MS = 2_000L
         private const val LEGACY_CONFIG_EPOCH = 0L
+        private const val UNASSIGNED_ATTEMPT_GENERATION = 0L
         private const val AUTH_RESPONSE_BYTES = 5
         private const val MAX_FORWARDED_POINTERS = 2
         private const val HOST_ACTION_INVOCATION_ID_BYTES = 16
