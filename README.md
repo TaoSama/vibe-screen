@@ -1,8 +1,9 @@
 # vibe-screen
 
-> **Development status:** the Phase 0 macOS/Android baseline has passed its
-> recorded device acceptance run on a Xiaomi 13 (model 2211133C, codename
-> fuxi), but this remains a development preview rather than a stable release.
+> **Development status:** the Phase 0 macOS/Android streaming subset has passed
+> recorded device acceptance runs on a Xiaomi 13 (model 2211133C, codename
+> fuxi), but Phase 0 remains in progress and this is a development preview rather
+> than a stable release.
 > The runnable application, macOS SwiftPM product, and packaged executable now
 > use **Vibe Screen**. Internal source-module and compatibility identifiers may
 > retain the historical **Telemachus** identity. Matching macOS and
@@ -27,7 +28,7 @@ platform scaffolding under active development.
 | USB transport | ADB reverse on TCP port `54321`; real-device stream verified |
 | Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264, MediaCodec decode |
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
-| Touch | Android touch forwarding to macOS Accessibility/CGEvent verified |
+| Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage, with fixed-binary device re-verification still gated on macOS permission for the rebuilt Host |
 | Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation; stylus and other peripherals remain scaffolding |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; authenticated but not encrypted |
@@ -221,13 +222,16 @@ HiDPI scale, letterboxing, rotation, and safe areas.
 
 **Current status: baseline acceptance passed on the recorded Nubia P0110 test
 device using the legacy compatibility path, and Protocol v1 main-session
-offline gates pass. Main is at commit `c639caa`; on 2026-08-09 that commit
-passed GitHub Actions Phase 0
-[run 31332629511](https://github.com/TaoSama/vibe-screen/actions/runs/31332629511),
-whose `macos` job ran the MacHost XCTest suite (312 tests executed, 1 skipped,
-0 failures) plus protocol, Android, Phase 3, and evidence-tool jobs. The same
-commit also passed the iOS `core`/`app-build-test-archive` and HarmonyOS
-portable jobs, which do not constitute iOS or HarmonyOS real-device evidence.
+offline gates pass. The 2026-08-13 main baseline at commit `244c5a2` passed
+GitHub Actions Phase 0
+[run 31710918927](https://github.com/TaoSama/vibe-screen/actions/runs/31710918927),
+iOS engineering
+[run 31710918942](https://github.com/TaoSama/vibe-screen/actions/runs/31710918942),
+and HarmonyOS portable
+[run 31710918961](https://github.com/TaoSama/vibe-screen/actions/runs/31710918961).
+These iOS and HarmonyOS jobs do not constitute real-device evidence. A historical
+2026-08-09 Phase 0 run at `c639caa` executed 312 MacHost tests with 1 skipped and
+0 failures.
 An earlier 2026-08-06 CI run on `4c2e908fe31af4c187684991301e163371444eab`
 recorded a 202-test MacHost suite; the count has since grown as tests were
 added. Protocol v1 real-device interoperability is now verified on a Xiaomi 13,
@@ -343,6 +347,16 @@ mouse pointer move and click share the same forwarding path and source check as
 the verified scroll but still want one confirmation with a physical HID mouse
 attached to the phone, since synthetic adb pointer motion does not deliver as a
 hover event.
+
+An opt-in Xiaomi 13 instrumentation pass also drove the production touch path
+for tap, long-press right click, long-press drag, two-finger scroll, and pinch.
+It reproduced a shared-`CGEventSource` bug where pinch's Command modifier leaked
+into later ordinary pointer events. Pinch now uses a private synthetic-modifier
+event source, preserving legitimate physical modifiers on ordinary pointer
+events, with focused isolation coverage. Because macOS did
+not preserve Screen Recording permission for the rebuilt ad-hoc Host, the
+fixed-binary device rerun remains open; see the
+[touch-gesture verification record](docs/changes/2026-08-13-xiaomi13-touch-gestures/TEST.md).
 
 - Deliver USB and LAN connectivity.
 - Support virtual extension, mirroring, display selection, HiDPI, rotation, and

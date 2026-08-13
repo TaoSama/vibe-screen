@@ -87,6 +87,60 @@ enum StreamInputMapping {
     ]
 }
 
+/// Creates touch-derived pointer events from the system state while isolating
+/// pinch's synthetic Command modifier on a private source.
+final class TouchGestureEventFactory {
+    private let pointerSource: CGEventSource?
+    private let zoomSource: CGEventSource?
+
+    init(
+        pointerSource: CGEventSource? = CGEventSource(stateID: .hidSystemState),
+        zoomSource: CGEventSource? = CGEventSource(stateID: .privateState)
+    ) {
+        self.pointerSource = pointerSource
+        self.zoomSource = zoomSource
+    }
+
+    func mouseEvent(
+        type: CGEventType,
+        position: CGPoint,
+        button: CGMouseButton,
+        clickState: Int64? = nil
+    ) -> CGEvent? {
+        let event = CGEvent(
+            mouseEventSource: pointerSource,
+            mouseType: type,
+            mouseCursorPosition: position,
+            mouseButton: button
+        )
+        if let clickState {
+            event?.setIntegerValueField(.mouseEventClickState, value: clickState)
+        }
+        return event
+    }
+
+    func scrollEvent(
+        deltaX: Int32,
+        deltaY: Int32,
+        position: CGPoint,
+        commandModified: Bool = false
+    ) -> CGEvent? {
+        let event = CGEvent(
+            scrollWheelEvent2Source: commandModified ? zoomSource : pointerSource,
+            units: .pixel,
+            wheelCount: commandModified ? 1 : 2,
+            wheel1: deltaY,
+            wheel2: deltaX,
+            wheel3: 0
+        )
+        event?.location = position
+        if commandModified {
+            event?.flags = .maskCommand
+        }
+        return event
+    }
+}
+
 /// Posts CGEvents for client-driven native pointer, scroll, and keyboard input.
 /// Coordinate mapping is shared with touch via StreamInputMapping so a single
 /// geometry path serves every input kind. All posting requires Accessibility;
