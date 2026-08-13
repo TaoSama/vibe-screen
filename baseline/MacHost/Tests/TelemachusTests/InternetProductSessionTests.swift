@@ -4,6 +4,40 @@ import XCTest
 @testable import Telemachus
 
 final class InternetProductSessionTests: XCTestCase {
+    func testCaptureStopMonotonicallyCancelsInFlightOperation() throws {
+        let coordinator = CaptureOperationCoordinator()
+        let inFlight = try XCTUnwrap(coordinator.beginOperation())
+
+        let stop = coordinator.beginStop()
+        XCTAssertGreaterThan(stop.generation, inFlight.generation)
+        XCTAssertFalse(coordinator.isCurrent(inFlight))
+        XCTAssertNil(coordinator.beginOperation())
+        coordinator.finishOperation(inFlight)
+        XCTAssertNil(coordinator.beginOperation())
+
+        coordinator.finishStop(stop)
+        let replacement = try XCTUnwrap(coordinator.beginOperation())
+        XCTAssertGreaterThan(replacement.generation, stop.generation)
+        XCTAssertTrue(coordinator.isCurrent(replacement))
+    }
+
+    func testAdaptiveMediaControlPublishesAppliedStateWithoutChangingConfiguration() {
+        let configuredBitrate = 35
+        let state = InternetAdaptiveMediaControlState.active(
+            bitrateMbps: 3,
+            framesPerSecond: 20,
+            quality: "ultralow"
+        )
+
+        XCTAssertTrue(state.isActive)
+        XCTAssertFalse(state.allowsManualChanges)
+        XCTAssertEqual(state.bitrateMbps, 3)
+        XCTAssertEqual(state.framesPerSecond, 20)
+        XCTAssertEqual(state.displayedBitrate(configuredBitrateMbps: configuredBitrate), 3)
+        XCTAssertEqual(configuredBitrate, 35)
+        XCTAssertTrue(InternetAdaptiveMediaControlState.inactive.allowsManualChanges)
+    }
+
     func testEncoderRateUpdateDoesNotConsumeActivePipelineTransition() {
         var rates = CaptureFrameRates(60)
         rates.recordEncoderUpdate(20)
@@ -176,6 +210,24 @@ final class InternetProductSessionTests: XCTestCase {
         wait(for: [replay], timeout: 1)
         XCTAssertEqual(requests.last?.1, AdaptiveMediaPolicy.highQuality)
         XCTAssertGreaterThan(requests.last?.0.requestID ?? 0, firstToken.requestID)
+    }
+
+    func testPrestreamAdaptiveProfileIsReplayedAfterInitialVideoAck() throws {
+        let harness = try Harness()
+        let replay = expectation(description: "prestream profile replayed")
+        var profile: AdaptiveMediaProfile?
+        harness.session.onAdaptiveProfileRequested = { _, requested, _ in
+            profile = requested
+            replay.fulfill()
+        }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.emitConstrainedProfile(on: harness.engine)
+        harness.receiveControl(harness.clientHello(messageID: 1))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+
+        wait(for: [replay], timeout: 1)
+        XCTAssertEqual(profile, AdaptiveMediaPolicy.constrained)
     }
 
     func testFreshSessionTokenRejectsABACompletion() throws {

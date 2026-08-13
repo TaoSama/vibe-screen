@@ -457,7 +457,15 @@ final class InternetProductSession: EncodedFrameSink {
                     self.queuedAdaptiveProfile = profile
                     return
                 }
-                guard self.isStreaming else { return }
+                guard self.isStreaming else {
+                    switch self.state {
+                    case .connecting, .authenticating, .idle, .recovering:
+                        self.queuedAdaptiveProfile = profile
+                    case .failed, .revoked, .closed, .streaming, .awaitingVideoConfiguration:
+                        break
+                    }
+                    return
+                }
                 self.beginAdaptiveProfileRequest(profile, generation: generation)
             }
         }

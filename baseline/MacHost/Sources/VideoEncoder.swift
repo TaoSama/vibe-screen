@@ -275,6 +275,10 @@ class VideoEncoder {
     }
 
     deinit {
+        invalidate()
+    }
+
+    func invalidate() {
         sessionLock.lock()
         if let session = compressionSession {
             VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)

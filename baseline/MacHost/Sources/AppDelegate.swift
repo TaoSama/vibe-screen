@@ -2348,6 +2348,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         let session = InternetProductSession()
         internetProductSession = session
+        settings.internetAdaptiveMediaControl = .active(
+            bitrateMbps: settings.effectiveBitrate,
+            framesPerSecond: settings.effectiveRefreshRate,
+            quality: settings.effectiveQuality
+        )
         installInternetSessionCallbacks(session, sessionToken: sessionToken)
         screenCapture?.setCodec(.hevc)
         try session.start(configuration: configuration)
@@ -2663,6 +2668,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         await self.stopServer(preserveRecoveryState: true)
                         return
                     }
+                    self.settings.internetAdaptiveMediaControl = .active(
+                        bitrateMbps: plan.bitrateMbps,
+                        framesPerSecond: plan.framesPerSecond,
+                        quality: self.settings.effectiveQuality
+                    )
                 } catch {
                     session.failAdaptiveProfile(
                         token: token,
@@ -2796,6 +2806,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         screenCapture = nil
         streamingServer = nil
         internetProductSession = nil
+        settings.internetAdaptiveMediaControl = .inactive
         virtualDisplayManager = nil
         activeDisplayID = nil
         let task = Task { @MainActor in
