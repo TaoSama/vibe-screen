@@ -302,6 +302,17 @@ func (s *PostgresStore) InvalidateSignaling(ctx context.Context, sessionID strin
 
 func (s *PostgresStore) AdmitRelay(ctx context.Context, request RelayAdmissionRequest, now time.Time) error {
 	return s.transaction(ctx, func(tx pgx.Tx) error {
+		var existingDeviceID, existingSessionID string
+		err := tx.QueryRow(ctx, `SELECT device_id,session_id FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2 FOR UPDATE`, request.SourceID, request.AllocationID).Scan(&existingDeviceID, &existingSessionID)
+		if err == nil {
+			if existingDeviceID == request.DeviceID && existingSessionID == request.SessionID {
+				return nil
+			}
+			return ErrConflict
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
 		if err := lockActiveDevice(ctx, tx, request.DeviceID); err != nil {
 			return err
 		}
@@ -330,11 +341,8 @@ func (s *PostgresStore) AdmitRelay(ctx context.Context, request RelayAdmissionRe
 		if active >= s.allocationLimit {
 			return ErrQuotaExceeded
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO authority_relay_allocations(allocation_id,source_id,device_id,session_id,admitted_at,last_observed_at) VALUES ($1,$2,$3,$4,$5,$5)`, request.AllocationID, request.SourceID, request.DeviceID, request.SessionID, now)
-		if err != nil {
-			return ErrConflict
-		}
-		return nil
+		_, err = tx.Exec(ctx, `INSERT INTO authority_relay_allocations(allocation_id,source_id,device_id,session_id,admitted_at,last_observed_at) VALUES ($1,$2,$3,$4,$5,$5)`, request.AllocationID, request.SourceID, request.DeviceID, request.SessionID, now)
+		return err
 	})
 }
 
@@ -367,19 +375,19 @@ func (s *PostgresStore) ApplyCoturnUsage(ctx context.Context, usage CoturnUsage)
 		var sourceID, deviceID, sessionID string
 		var sequence, ingress, egress int64
 		var closedAt *time.Time
-		if err := tx.QueryRow(ctx, `SELECT source_id,device_id,session_id,observed_sequence,ingress_bytes,egress_bytes,closed_at FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2 FOR UPDATE`, usage.SourceID, usage.AllocationID).Scan(&sourceID, &deviceID, &sessionID, &sequence, &ingress, &egress, &closedAt); err != nil {
+		var lastObservedAt time.Time
+		if err := tx.QueryRow(ctx, `SELECT source_id,device_id,session_id,observed_sequence,ingress_bytes,egress_bytes,last_observed_at,closed_at FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2 FOR UPDATE`, usage.SourceID, usage.AllocationID).Scan(&sourceID, &deviceID, &sessionID, &sequence, &ingress, &egress, &lastObservedAt, &closedAt); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return ErrNotFound
 			}
 			return err
 		}
-		if sourceID != usage.SourceID || deviceID != usage.DeviceID || sessionID != usage.SessionID || usage.Sequence <= uint64(sequence) || usage.IngressBytes < uint64(ingress) || usage.EgressBytes < uint64(egress) || closedAt != nil {
+		if sourceID != usage.SourceID || deviceID != usage.DeviceID || sessionID != usage.SessionID || usage.Sequence <= uint64(sequence) || usage.IngressBytes < uint64(ingress) || usage.EgressBytes < uint64(egress) || usage.ObservedAt.Before(lastObservedAt) || closedAt != nil {
 			return ErrStaleUsage
 		}
 		deltaIngress := usage.IngressBytes - uint64(ingress)
 		deltaEgress := usage.EgressBytes - uint64(egress)
-		day := usage.ObservedAt.UTC().Format(time.DateOnly)
-		_, err = tx.Exec(ctx, `INSERT INTO authority_relay_daily_usage(device_id,usage_day,ingress_bytes,egress_bytes) VALUES ($1,$2,$3,$4) ON CONFLICT (device_id,usage_day) DO UPDATE SET ingress_bytes=authority_relay_daily_usage.ingress_bytes+EXCLUDED.ingress_bytes,egress_bytes=authority_relay_daily_usage.egress_bytes+EXCLUDED.egress_bytes`, deviceID, day, int64(deltaIngress), int64(deltaEgress))
+		_, err = tx.Exec(ctx, `INSERT INTO authority_relay_daily_usage(device_id,usage_day,ingress_bytes,egress_bytes) VALUES ($1,(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date,$2,$3) ON CONFLICT (device_id,usage_day) DO UPDATE SET ingress_bytes=authority_relay_daily_usage.ingress_bytes+EXCLUDED.ingress_bytes,egress_bytes=authority_relay_daily_usage.egress_bytes+EXCLUDED.egress_bytes`, deviceID, int64(deltaIngress), int64(deltaEgress))
 		if err != nil {
 			return err
 		}

@@ -131,7 +131,7 @@ func TestPostgresAllocationLimitIsAtomicAcrossConcurrentConnections(t *testing.T
 
 func TestPostgresAuthorityReviewContracts(t *testing.T) {
 	store, _ := openIntegrationStore(t)
-	store.allocationLimit = 3
+	store.allocationLimit = 4
 	ctx := context.Background()
 	now := time.Now().UTC()
 	if err := store.EnsureAccount(ctx, "account"); err != nil {
@@ -172,6 +172,30 @@ func TestPostgresAuthorityReviewContracts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	exactRetry := RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "valid", SourceID: "node"}
+	if err := store.AdmitRelay(ctx, exactRetry, now.Add(time.Second)); err != nil {
+		t.Fatalf("exact relay retry failed: %v", err)
+	}
+	changedRetry := exactRetry
+	changedRetry.DeviceID = "host"
+	if err := store.AdmitRelay(ctx, changedRetry, now); !errors.Is(err, ErrConflict) {
+		t.Fatalf("changed relay retry error=%v", err)
+	}
+	concurrentRetry := RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "concurrent-retry", SourceID: "node"}
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for range 2 {
+		go func() {
+			<-start
+			results <- store.AdmitRelay(ctx, concurrentRetry, now)
+		}()
+	}
+	close(start)
+	for range 2 {
+		if err := <-results; err != nil {
+			t.Fatalf("concurrent exact relay retry failed: %v", err)
+		}
+	}
 	if _, err := store.ApplyCoturnUsage(ctx, CoturnUsage{SourceID: "node", AllocationID: "valid", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, ObservedAt: now}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("empty event id error=%v", err)
 	}
@@ -185,6 +209,25 @@ func TestPostgresAuthorityReviewContracts(t *testing.T) {
 	}
 	if result.Applied != 1 || !slices.Equal(result.ConflictAllocationIDs, []string{"conflict"}) || !slices.Equal(result.UnauthorizedAllocationIDs, []string{"unknown"}) {
 		t.Fatalf("reconcile result=%+v", result)
+	}
+	backward := CoturnUsage{SourceID: "node", EventID: "backward", AllocationID: "valid", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 2, ObservedAt: now}
+	if _, err := store.ApplyCoturnUsage(ctx, backward); !errors.Is(err, ErrStaleUsage) {
+		t.Fatalf("backward observed_at error=%v", err)
+	}
+	oldAdmission := RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "old-clock", SourceID: "node"}
+	oldObservedAt := now.Add(-48 * time.Hour)
+	if err := store.AdmitRelay(ctx, oldAdmission, oldObservedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ApplyCoturnUsage(ctx, CoturnUsage{SourceID: "node", EventID: "old-clock", AllocationID: "old-clock", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 7, ObservedAt: oldObservedAt}); err != nil {
+		t.Fatal(err)
+	}
+	var billedToday bool
+	if err := store.pool.QueryRow(ctx, `SELECT usage_day=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date FROM authority_relay_daily_usage WHERE device_id='client' AND ingress_bytes>=7 ORDER BY usage_day DESC LIMIT 1`).Scan(&billedToday); err != nil {
+		t.Fatal(err)
+	}
+	if !billedToday {
+		t.Fatal("usage was not billed to the database UTC ingestion day")
 	}
 	if err := store.InvalidateSignaling(ctx, session.SessionID, now); err != nil {
 		t.Fatal(err)

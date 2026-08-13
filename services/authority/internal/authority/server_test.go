@@ -164,6 +164,12 @@ func (s *memoryStore) InvalidateSignaling(_ context.Context, id string, _ time.T
 func (s *memoryStore) AdmitRelay(_ context.Context, request RelayAdmissionRequest, now time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if existing := s.allocations[request.AllocationID]; existing != nil {
+		if existing.request == request {
+			return nil
+		}
+		return ErrConflict
+	}
 	if s.revoked[request.DeviceID] > 0 || s.accounts[s.devices[request.DeviceID]] {
 		return ErrRevoked
 	}
@@ -188,9 +194,6 @@ func (s *memoryStore) AdmitRelay(_ context.Context, request RelayAdmissionReques
 	}
 	if active >= s.allocationLimit {
 		return ErrQuotaExceeded
-	}
-	if s.allocations[request.AllocationID] != nil {
-		return ErrConflict
 	}
 	s.allocations[request.AllocationID] = &memoryAllocation{request: request, observed: now}
 	return nil
@@ -217,7 +220,7 @@ func (s *memoryStore) ApplyCoturnUsage(_ context.Context, usage CoturnUsage) (bo
 	if allocation == nil {
 		return false, ErrNotFound
 	}
-	if allocation.request.SourceID != usage.SourceID || allocation.request.DeviceID != usage.DeviceID || allocation.request.SessionID != usage.SessionID || usage.Sequence <= allocation.sequence || usage.IngressBytes < allocation.ingress || usage.EgressBytes < allocation.egress || allocation.closed {
+	if allocation.request.SourceID != usage.SourceID || allocation.request.DeviceID != usage.DeviceID || allocation.request.SessionID != usage.SessionID || usage.Sequence <= allocation.sequence || usage.IngressBytes < allocation.ingress || usage.EgressBytes < allocation.egress || usage.ObservedAt.Before(allocation.observed) || allocation.closed {
 		return false, ErrStaleUsage
 	}
 	s.events[key] = digest
@@ -430,6 +433,24 @@ func TestRelayAdmissionRequiresActiveBoundSession(t *testing.T) {
 	}
 }
 
+func TestRelayAdmissionRetryIsExactlyIdempotent(t *testing.T) {
+	store := newMemoryStore()
+	now := time.Now().UTC()
+	session := createMemorySession(t, store, "account", "host", "client", 1, now)
+	request := RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}
+	if err := store.AdmitRelay(context.Background(), request, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(context.Background(), request, now.Add(time.Second)); err != nil {
+		t.Fatalf("exact retry failed after quota was consumed: %v", err)
+	}
+	changed := request
+	changed.DeviceID = "host"
+	if err := store.AdmitRelay(context.Background(), changed, now); !errors.Is(err, ErrConflict) {
+		t.Fatalf("changed retry error=%v", err)
+	}
+}
+
 func TestCoturnCountersAreIdempotentAndFinalUsageSurvivesRevocation(t *testing.T) {
 	store := newMemoryStore()
 	ctx := context.Background()
@@ -445,6 +466,13 @@ func TestCoturnCountersAreIdempotentAndFinalUsageSurvivesRevocation(t *testing.T
 	}
 	if duplicate, err := store.ApplyCoturnUsage(ctx, first); err != nil || !duplicate {
 		t.Fatalf("retry=%v/%v", duplicate, err)
+	}
+	backward := first
+	backward.EventID = "event-backward"
+	backward.Sequence = 2
+	backward.ObservedAt = now.Add(-time.Second)
+	if _, err := store.ApplyCoturnUsage(ctx, backward); !errors.Is(err, ErrStaleUsage) {
+		t.Fatalf("backward observed_at error=%v", err)
 	}
 	if err := store.RevokeDevice(ctx, "device", 1, now); err != nil {
 		t.Fatal(err)
@@ -524,7 +552,9 @@ func TestEmptyReconcileSnapshotStillChecksClockBound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := fmt.Sprintf(`{"source_id":"node","observed_at":%q,"allocations":[]}`, time.Now().UTC().Add(6*time.Minute).Format(time.RFC3339Nano))
+	now := time.Now().UTC()
+	server.now = func() time.Time { return now }
+	body := fmt.Sprintf(`{"source_id":"node","observed_at":%q,"allocations":[]}`, now.Add(time.Nanosecond).Format(time.RFC3339Nano))
 	request(t, server.Handler(), http.MethodPost, "/v1/coturn/reconcile", cfg.CoturnToken, body, http.StatusBadRequest)
 }
 
