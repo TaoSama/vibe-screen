@@ -58,9 +58,10 @@ type ReconcileRequest struct {
 }
 
 type ReconcileResult struct {
-	Applied                 int      `json:"applied"`
-	Duplicate               int      `json:"duplicate"`
-	AlreadyAhead            int      `json:"already_ahead"`
-	MissingAllocationIDs    []string `json:"missing_allocation_ids"`
-	SourceOnlyAllocationIDs []string `json:"source_only_allocation_ids"`
+	Applied                   int      `json:"applied"`
+	Duplicate                 int      `json:"duplicate"`
+	AlreadyAhead              int      `json:"already_ahead"`
+	MissingAllocationIDs      []string `json:"missing_allocation_ids"`
+	UnauthorizedAllocationIDs []string `json:"unauthorized_allocation_ids"`
+	ConflictAllocationIDs     []string `json:"conflict_allocation_ids"`
 }

@@ -3,8 +3,10 @@ package authority
 import (
 	"context"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -124,5 +126,98 @@ func TestPostgresAllocationLimitIsAtomicAcrossConcurrentConnections(t *testing.T
 	wait.Wait()
 	if accepted.Load() != 1 {
 		t.Fatalf("accepted %d allocations, want one", accepted.Load())
+	}
+}
+
+func TestPostgresAuthorityReviewContracts(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	store.allocationLimit = 3
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"host", "client", "other", "expired-host", "expired-client"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	session, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "high-water", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 10, TTLSeconds: 60}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "device-rollback", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "other", SessionEpoch: 9, TTLSeconds: 60}, now); !errors.Is(err, ErrConflict) {
+		t.Fatalf("per-device rollback error=%v", err)
+	}
+	if _, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "overflow", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "other", SessionEpoch: math.MaxInt64 + 1, TTLSeconds: 60}, now); !errors.Is(err, ErrConflict) {
+		t.Fatalf("epoch overflow error=%v", err)
+	}
+	for name, request := range map[string]RelayAdmissionRequest{
+		"missing": {DeviceID: "client", SessionID: "missing", AllocationID: "missing", SourceID: "node"},
+		"unbound": {DeviceID: "other", SessionID: session.SessionID, AllocationID: "unbound", SourceID: "node"},
+	} {
+		if err := store.AdmitRelay(ctx, request, now); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("%s relay error=%v", name, err)
+		}
+	}
+	expired, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "expired", AccountID: "account", HostDeviceID: "expired-host", ClientDeviceID: "expired-client", SessionEpoch: 1, TTLSeconds: 60}, now.Add(-2*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "expired-client", SessionID: expired.SessionID, AllocationID: "expired", SourceID: "node"}, now); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("expired relay session error=%v", err)
+	}
+	for _, allocationID := range []string{"conflict", "valid"} {
+		if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: allocationID, SourceID: "node"}, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.ApplyCoturnUsage(ctx, CoturnUsage{SourceID: "node", AllocationID: "valid", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, ObservedAt: now}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("empty event id error=%v", err)
+	}
+	result, err := store.Reconcile(ctx, ReconcileRequest{SourceID: "node", ObservedAt: now.Add(time.Second), Allocations: []CoturnUsage{
+		{AllocationID: "conflict", DeviceID: "other", SessionID: session.SessionID, Sequence: 1},
+		{AllocationID: "unknown", DeviceID: "client", SessionID: session.SessionID, Sequence: 1},
+		{AllocationID: "valid", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 1},
+	}}, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Applied != 1 || !slices.Equal(result.ConflictAllocationIDs, []string{"conflict"}) || !slices.Equal(result.UnauthorizedAllocationIDs, []string{"unknown"}) {
+		t.Fatalf("reconcile result=%+v", result)
+	}
+	if err := store.InvalidateSignaling(ctx, session.SessionID, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "revoked", SourceID: "node"}, now); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("revoked relay session error=%v", err)
+	}
+}
+
+func TestPostgresReadinessRejectsChecksumMismatch(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	ctx := context.Background()
+	if _, err := store.pool.Exec(ctx, `UPDATE authority_schema_migrations SET checksum_sha256='wrong' WHERE version=$1`, requiredSchemaVersion); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = store.pool.Exec(context.Background(), `UPDATE authority_schema_migrations SET checksum_sha256=$1 WHERE version=$2`, requiredSchemaChecksum, requiredSchemaVersion)
+	})
+	if err := store.Ready(ctx); !errors.Is(err, ErrStorage) {
+		t.Fatalf("readiness checksum error=%v", err)
+	}
+}
+
+func TestPostgresReadinessRejectsCriticalConstraintDrift(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	ctx := context.Background()
+	if _, err := store.pool.Exec(ctx, `ALTER TABLE authority_coturn_events DROP CONSTRAINT authority_coturn_events_pkey`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = store.pool.Exec(context.Background(), `ALTER TABLE authority_coturn_events ADD CONSTRAINT authority_coturn_events_pkey PRIMARY KEY (source_id,event_id)`)
+	})
+	if err := store.Ready(ctx); !errors.Is(err, ErrStorage) {
+		t.Fatalf("readiness constraint drift error=%v", err)
 	}
 }
