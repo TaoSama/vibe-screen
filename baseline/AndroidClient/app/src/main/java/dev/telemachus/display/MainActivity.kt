@@ -237,6 +237,8 @@ class MainActivity : AppCompatActivity() {
                 hideControlBar()
             }
         }
+    private val touchExplorationStateChangeListener =
+        AccessibilityManager.TouchExplorationStateChangeListener(::reconcileTouchExplorationState)
     private var availableDisplays = emptyList<StreamDisplayOption>()
     private var selectedDisplayId = ""
     private var availableHostActions = emptyList<HostActionOption>()
@@ -325,6 +327,8 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         isInForeground = true
+        accessibilityManager.addTouchExplorationStateChangeListener(touchExplorationStateChangeListener)
+        reconcileTouchExplorationState(accessibilityManager.isTouchExplorationEnabled)
         mainDiag("lifecycle foreground connected=$isConnected")
         val scannerLaunched =
             ::wirelessController.isInitialized &&
@@ -343,6 +347,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        accessibilityManager.removeTouchExplorationStateChangeListener(touchExplorationStateChangeListener)
         finishPendingRightClick()
         isInForeground = false
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -350,6 +355,16 @@ class MainActivity : AppCompatActivity() {
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
         mainDiag("lifecycle background connected=$isConnected; retries paused")
         super.onStop()
+    }
+
+    private fun reconcileTouchExplorationState(enabled: Boolean) {
+        controlBarHandler.removeCallbacks(controlBarHideRunnable)
+        if (!isConnected) return
+        if (enabled) {
+            revealControlBar()
+        } else if (binding.controlBar.visibility == View.VISIBLE) {
+            controlBarHandler.postDelayed(controlBarHideRunnable, CONTROL_BAR_AUTO_HIDE_MS)
+        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
