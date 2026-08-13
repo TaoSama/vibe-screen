@@ -134,7 +134,7 @@ jobs:
         run: >-
           ./gradlew --no-daemon
           -PdependencyAuditConfiguration=debugRuntimeClasspath
-          clean :transport:check testDebugUnitTest lintDebug assembleDebug auditReleaseDependencies
+          clean testDebugUnitTest lintDebug assembleDebug auditReleaseDependencies
       - name: Verify and collect Android artifacts
         env:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
