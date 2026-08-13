@@ -7,6 +7,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -25,6 +27,7 @@ func testConfig() Config {
 		MaxRequestBodyBytes: 2048, MaxSDPBytes: 1024, MaxCandidateBytes: 512,
 		MaxCandidatesPerRole: 2, MaxWaitSeconds: 1, MaxWaitersPerRole: 1,
 		CleanupIntervalSeconds: 1, IssuerToken: testIssuerToken, MetricsToken: testMetricsToken,
+		StateFile: filepath.Join(os.TempDir(), "vibe-signaling-test-"+strconv.FormatInt(time.Now().UnixNano(), 10)+".json"),
 	}
 }
 
@@ -200,7 +203,10 @@ func TestPollFailsWhenSessionExpiresWhileWaiting(t *testing.T) {
 }
 
 func TestInvalidateDestroysSessionAndRetainsRequestTombstoneUntilExpiry(t *testing.T) {
-	store := NewStore(testConfig())
+	store, err := NewStore(testConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
 	now := time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC)
 	store.now = func() time.Time { return now }
 	created, _, err := store.Create("invalidate-request", time.Minute)

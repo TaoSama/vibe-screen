@@ -25,13 +25,18 @@ type Server struct {
 	createMu   sync.Mutex
 	createRate rateWindow
 	now        func() time.Time
+	relay      relayClient
 }
 
 func NewServer(cfg Config) (*Server, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, store: NewStore(cfg), now: time.Now}, nil
+	store, err := NewStore(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &Server{cfg: cfg, store: store, now: time.Now, relay: newRelayClient(cfg)}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -41,6 +46,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /metrics", s.metricsHandler)
 	mux.HandleFunc("POST /v1/sessions", s.createSession)
 	mux.HandleFunc("DELETE /v1/sessions/{session_id}", s.invalidateSession)
+	mux.HandleFunc("POST /v1/sessions/{session_id}/refresh", s.refreshSession)
+	mux.HandleFunc("POST /v1/sessions/{session_id}/revoke", s.revokeSession)
 	mux.HandleFunc("POST /v1/sessions/{session_id}/messages", s.postMessage)
 	mux.HandleFunc("GET /v1/sessions/{session_id}/events", s.getEvents)
 	return securityHeaders(mux)
@@ -108,8 +115,10 @@ func (s *Server) metricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type createSessionRequest struct {
-	RequestID  string `json:"request_id"`
-	TTLSeconds int64  `json:"ttl_seconds,omitempty"`
+	RequestID    string `json:"request_id"`
+	TTLSeconds   int64  `json:"ttl_seconds,omitempty"`
+	DeviceID     string `json:"device_id,omitempty"`
+	SessionEpoch uint64 `json:"session_epoch,omitempty"`
 }
 
 func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
@@ -130,6 +139,10 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusBadRequest, "invalid request_id")
 		return
 	}
+	if (request.DeviceID == "") != (request.SessionEpoch == 0) || (request.DeviceID != "" && !validIdentifier(request.DeviceID)) {
+		s.reject(w, http.StatusBadRequest, "device_id and positive session_epoch must be provided together")
+		return
+	}
 	ttl := s.cfg.SessionTTL()
 	if request.TTLSeconds != 0 {
 		ttl = time.Duration(request.TTLSeconds) * time.Second
@@ -138,7 +151,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusBadRequest, "ttl_seconds outside allowed range")
 		return
 	}
-	response, created, err := s.store.Create(request.RequestID, ttl)
+	response, created, err := s.store.CreateBound(request.RequestID, ttl, request.DeviceID, request.SessionEpoch)
 	if err != nil {
 		s.writeStoreError(w, err)
 		return
@@ -150,8 +163,69 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusOK
 		s.metrics.idempotentReplays.Add(1)
 	}
+	if !s.store.SessionStillAllowed(response.SessionID, response.DeviceID) {
+		s.reject(w, http.StatusConflict, "device revoked")
+		return
+	}
 	w.Header().Set("Location", "/v1/sessions/"+url.PathEscape(response.SessionID))
 	writeJSON(w, status, response)
+}
+
+func (s *Server) refreshSession(w http.ResponseWriter, r *http.Request) {
+	if err := s.decodeJSON(w, r, &struct{}{}); err != nil {
+		s.reject(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	result, err := s.store.Refresh(r.PathValue("session_id"), bearerToken(r))
+	if err != nil {
+		s.writeStoreError(w, err)
+		return
+	}
+	ttlSeconds := int64(time.Until(result.Response.ExpiresAt) / time.Second)
+	if ttlSeconds < 1 {
+		ttlSeconds = 1
+	}
+	turn, err := s.relay.Credentials(r.Context(), result.DeviceID, result.Response.SessionID, ttlSeconds)
+	if err != nil {
+		s.reject(w, http.StatusBadGateway, "relay credential issuance failed")
+		return
+	}
+	if !s.store.RefreshStillAllowed(result.Response.SessionID, result.DeviceID) {
+		s.reject(w, http.StatusNotFound, "session not found")
+		return
+	}
+	result.Response.Turn = turn
+	writeJSON(w, http.StatusOK, result.Response)
+}
+
+type revokeSessionRequest struct {
+	DeviceID  string          `json:"device_id"`
+	Tombstone json.RawMessage `json:"tombstone,omitempty"`
+}
+
+func (s *Server) revokeSession(w http.ResponseWriter, r *http.Request) {
+	var request revokeSessionRequest
+	if err := s.decodeJSON(w, r, &request); err != nil {
+		s.reject(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !validIdentifier(request.DeviceID) {
+		s.reject(w, http.StatusBadRequest, "invalid device_id")
+		return
+	}
+	needsRelay, err := s.store.RevokeDevice(r.PathValue("session_id"), bearerToken(r), request.DeviceID)
+	if err != nil {
+		s.writeStoreError(w, err)
+		return
+	}
+	if needsRelay {
+		if err := s.relay.Revoke(r.Context(), request.DeviceID); err != nil {
+			s.reject(w, http.StatusBadGateway, "relay revocation failed")
+			return
+		}
+		s.store.MarkRelayRevoked(request.DeviceID)
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
 }
 
 func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
@@ -302,6 +376,8 @@ func (s *Server) writeStoreError(w http.ResponseWriter, err error) {
 		// Do not disclose whether a guessed session identifier exists.
 		s.reject(w, http.StatusNotFound, "session not found")
 	case errors.Is(err, ErrConflict), errors.Is(err, ErrInvalidated):
+		s.reject(w, http.StatusConflict, err.Error())
+	case errors.Is(err, ErrRefreshUnsupported), errors.Is(err, ErrDeviceRevoked):
 		s.reject(w, http.StatusConflict, err.Error())
 	case errors.Is(err, ErrRateLimited), errors.Is(err, ErrTooManyWaiters), errors.Is(err, ErrCapacity), errors.Is(err, ErrCandidateLimit):
 		s.reject(w, http.StatusTooManyRequests, err.Error())

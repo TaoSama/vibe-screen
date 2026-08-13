@@ -28,7 +28,7 @@ mandatory even when signaling authentication succeeds.
 | Arbitrary data tunneling | Closed JSON schema permits only offer/answer/candidate/end records | Edge traffic anomaly alerts |
 | Slow request/poll exhaustion | HTTP read/header/write deadlines and per-role waiter cap | Reverse-proxy global concurrency limits |
 | Stale state after restart | State is intentionally not persisted, so restart destroys all sessions | Clients establish a fresh rendezvous/session epoch |
-| Active session invalidation | Authority-only invalidation destroys role tokens/events, wakes polls, and tombstones the request ID until original expiry | Product authority persists device revocation and also terminates product/TURN access |
+| Active session invalidation | Authority invalidation destroys role tokens/events; host-role revoke first persists a device admission tombstone, denies all signaling sessions, then revokes relay issuance | Active TURN allocations still require data-plane termination; signed product revocation remains authority-owned |
 | Compromised signaling | Cannot decrypt application E2EE or authenticate peer transcript | Endpoint identity pinning; rotate role credentials |
 
 ## Explicit residual risks

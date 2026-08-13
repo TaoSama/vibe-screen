@@ -757,6 +757,24 @@ enum KeychainCrossProcessTransactionLock {
     }
 }
 
+/// Serializes authority lease issuance with peer revocation across processes.
+/// Pairing-scoped epoch stores and peer-scoped tombstones intentionally remain
+/// separate records, so this common lock is the deny-wins transaction boundary.
+enum InternetAuthorityAdmissionGate {
+    private static let service = "dev.telemachus.display.phase3-security"
+    private static let account = "internet-authority-admission-v1"
+
+    static func withExclusiveTransaction<T>(
+        _ operation: () throws -> T
+    ) throws -> T {
+        try KeychainCrossProcessTransactionLock.withLock(
+            service: service,
+            account: account,
+            operation: operation
+        )
+    }
+}
+
 private struct PairingBoundSecurityStateMarker: Codable {
     private static let currentVersion = 2
 
@@ -1362,15 +1380,17 @@ final class PlatformSessionSecurity {
         guard PairedDeviceSecurityScope.identifier(expectedPeer) == peerID else {
             throw PlatformSecurityError.invalidInput("The revocation target does not match this peer scope.")
         }
-        // Commit the signed tombstone before deleting secrets. A deletion
-        // failure remains fail-closed and can be retried safely.
-        try lifecycle.applyPeerRevocation(
-            tombstone,
-            expectedAuthority: expectedAuthority,
-            expectedPeer: expectedPeer,
-            secretNames: secretNames
-        )
-        try lifecycle.retryRevocationSecretCleanup(secretStore: secretStore)
+        try InternetAuthorityAdmissionGate.withExclusiveTransaction {
+            // Commit the signed tombstone before deleting secrets. A deletion
+            // failure remains fail-closed and can be retried safely.
+            try lifecycle.applyPeerRevocation(
+                tombstone,
+                expectedAuthority: expectedAuthority,
+                expectedPeer: expectedPeer,
+                secretNames: secretNames
+            )
+            try lifecycle.retryRevocationSecretCleanup(secretStore: secretStore)
+        }
     }
 
     func hasPendingRevocationSecretCleanup() throws -> Bool {

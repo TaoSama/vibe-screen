@@ -6,7 +6,8 @@ and end-of-candidates records between an authenticated host and device. It does
 not proxy data channels, media, input, long-lived private keys, application
 traffic keys, pairing QR secrets, or arbitrary payloads.
 
-Version `0.1.0` is a single-process, in-memory vertical slice. It is suitable for
+Version `0.1.0` is a single-process vertical slice. Sessions remain in memory,
+while revoked-device admission tombstones are persisted in `state_file`. It is suitable for
 local integration and one-instance deployments behind TLS. It is not an account
 service, durable multi-replica broker, device revocation authority, or proof that
 the product stream is end-to-end encrypted. Endpoints must still authenticate
@@ -21,6 +22,8 @@ cd services/signaling
 cp config.example.json config.json
 export VIBE_SIGNALING_ISSUER_TOKEN="$(openssl rand -base64 48)"
 export VIBE_SIGNALING_METRICS_TOKEN="$(openssl rand -base64 48)"
+export VIBE_SIGNALING_RELAY_CLIENT_TOKEN="$(openssl rand -base64 48)"
+export VIBE_SIGNALING_RELAY_ADMIN_TOKEN="$(openssl rand -base64 48)"
 go build -trimpath -o build/vibe-signaling ./cmd/vibe-signaling
 ./build/vibe-signaling --config config.json
 ```
@@ -70,6 +73,30 @@ The `201` response contains an opaque `session_id`, separate `host_token` and
 `device_token`, and `expires_at`. Deliver each role token over an already
 authenticated channel to that endpoint. Repeating the same `request_id` and TTL
 returns the identical response with `200`; changing the TTL returns `409`.
+
+Fresh recovery-capable sessions additionally bind `device_id` and the authority's
+positive `session_epoch` in the create request. Both fields are required together,
+and idempotent replay binds the complete request. Legacy creates without either
+field remain supported but return `409` from refresh.
+
+`POST /v1/sessions/{session_id}/refresh` uses an existing host or device role
+bearer and an empty JSON object. The first call atomically supersedes the old
+message/event path and creates one successor; either old role bearer can retrieve
+its distinct token for that same successor. The response is
+`session_id`, `role_token`, incremented `session_epoch`, `expires_at`, and optional
+`turn` credentials when `relay_base_url` is configured. Old bearers can only
+repeat this refresh or retry revoke; they cannot publish, poll, or select a later
+successor. This endpoint rotates scoped signaling credentials. It does not by
+itself provide the signed host/device lease exchange required for complete
+automatic end-to-end recovery, and session/epoch state is lost at restart.
+
+`POST /v1/sessions/{session_id}/revoke` requires the old host bearer and JSON
+`{"device_id":"...","tombstone":{...}}`; `tombstone` is opaque optional
+coordination evidence. Signaling durably commits the bound device deny first,
+wakes and rejects all its sessions, then calls relay device revocation. Relay
+failure returns `502`; the same old host bearer can retry, while create, refresh,
+publish, and poll remain denied. The revoked-device state file is written with
+mode `0600` using fsync and atomic replacement and is loaded fail-closed at startup.
 
 Invalidate a session through the same trusted authority when the product ends
 or revokes it:
@@ -160,6 +187,8 @@ All JSON fields are required. Unknown fields fail startup.
 | `max_wait_seconds` | Long-poll ceiling, at most 60 seconds |
 | `max_waiters_per_role` | Concurrent poll cap per endpoint |
 | `cleanup_interval_seconds` | Expired-state deletion cadence |
+| `state_file` | Durable revoked-device admission tombstones; directory must be private and writable |
+| `relay_base_url` | Optional relay control-plane base URL for TURN refresh and coordinated revoke |
 
 The process deliberately trusts neither `X-Forwarded-For` nor a caller-provided
 device ID. Add edge source-IP/global limits and DDoS controls at the TLS proxy.
@@ -193,7 +222,10 @@ docker run --rm --read-only --cap-drop=ALL \
   -p 127.0.0.1:8088:8088 \
   -e VIBE_SIGNALING_ISSUER_TOKEN \
   -e VIBE_SIGNALING_METRICS_TOKEN \
+  -e VIBE_SIGNALING_RELAY_CLIENT_TOKEN \
+  -e VIBE_SIGNALING_RELAY_ADMIN_TOKEN \
   -v "$PWD/config.container.example.json:/etc/vibe-screen/signaling.json:ro" \
+  -v vibe-signaling-state:/var/lib/vibe-signaling \
   vibe-signaling:0.1.0
 ```
 

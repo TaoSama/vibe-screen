@@ -11,8 +11,10 @@ import (
 )
 
 const (
-	issuerTokenEnv  = "VIBE_SIGNALING_ISSUER_TOKEN"
-	metricsTokenEnv = "VIBE_SIGNALING_METRICS_TOKEN"
+	issuerTokenEnv      = "VIBE_SIGNALING_ISSUER_TOKEN"
+	metricsTokenEnv     = "VIBE_SIGNALING_METRICS_TOKEN"
+	relayClientTokenEnv = "VIBE_SIGNALING_RELAY_CLIENT_TOKEN"
+	relayAdminTokenEnv  = "VIBE_SIGNALING_RELAY_ADMIN_TOKEN"
 )
 
 type Config struct {
@@ -29,8 +31,12 @@ type Config struct {
 	MaxWaitSeconds          int    `json:"max_wait_seconds"`
 	MaxWaitersPerRole       int    `json:"max_waiters_per_role"`
 	CleanupIntervalSeconds  int    `json:"cleanup_interval_seconds"`
+	StateFile               string `json:"state_file"`
+	RelayBaseURL            string `json:"relay_base_url,omitempty"`
 	IssuerToken             string `json:"-"`
 	MetricsToken            string `json:"-"`
+	RelayClientToken        string `json:"-"`
+	RelayAdminToken         string `json:"-"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -51,6 +57,8 @@ func LoadConfig(path string) (Config, error) {
 	}
 	cfg.IssuerToken = os.Getenv(issuerTokenEnv)
 	cfg.MetricsToken = os.Getenv(metricsTokenEnv)
+	cfg.RelayClientToken = os.Getenv(relayClientTokenEnv)
+	cfg.RelayAdminToken = os.Getenv(relayAdminTokenEnv)
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
@@ -68,6 +76,17 @@ func (c Config) Validate() error {
 	if c.MetricsToken == "" {
 		missing = append(missing, metricsTokenEnv)
 	}
+	if c.StateFile == "" {
+		missing = append(missing, "state_file")
+	}
+	if c.RelayBaseURL != "" {
+		if c.RelayClientToken == "" {
+			missing = append(missing, relayClientTokenEnv)
+		}
+		if c.RelayAdminToken == "" {
+			missing = append(missing, relayAdminTokenEnv)
+		}
+	}
 	if len(missing) != 0 {
 		return fmt.Errorf("missing required configuration: %s", strings.Join(missing, ", "))
 	}
@@ -76,6 +95,14 @@ func (c Config) Validate() error {
 	}
 	if c.IssuerToken == c.MetricsToken {
 		return errors.New("issuer and metrics tokens must be different")
+	}
+	if c.RelayBaseURL != "" {
+		if !strings.HasPrefix(c.RelayBaseURL, "http://") && !strings.HasPrefix(c.RelayBaseURL, "https://") {
+			return errors.New("relay_base_url must use http or https")
+		}
+		if len(c.RelayClientToken) < 32 || len(c.RelayAdminToken) < 32 || c.RelayClientToken == c.RelayAdminToken {
+			return errors.New("relay client and admin tokens must be distinct and contain at least 32 characters")
+		}
 	}
 	if c.SessionTTLSeconds <= 0 || c.MaxSessionTTLSeconds < c.SessionTTLSeconds {
 		return errors.New("session TTL must be positive and no greater than maximum TTL")

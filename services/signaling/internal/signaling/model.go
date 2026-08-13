@@ -43,8 +43,26 @@ type Event struct {
 }
 
 type SessionResponse struct {
-	SessionID   string    `json:"session_id"`
-	HostToken   string    `json:"host_token"`
-	DeviceToken string    `json:"device_token"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	SessionID    string    `json:"session_id"`
+	HostToken    string    `json:"host_token"`
+	DeviceToken  string    `json:"device_token"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	DeviceID     string    `json:"device_id,omitempty"`
+	SessionEpoch uint64    `json:"session_epoch,omitempty"`
+}
+
+type TurnCredentials struct {
+	Username   string   `json:"username"`
+	Password   string   `json:"password"`
+	TTLSeconds int64    `json:"ttl_seconds"`
+	Realm      string   `json:"realm"`
+	URIs       []string `json:"uris"`
+}
+
+type RefreshResponse struct {
+	SessionID    string           `json:"session_id"`
+	RoleToken    string           `json:"role_token"`
+	SessionEpoch uint64           `json:"session_epoch"`
+	ExpiresAt    time.Time        `json:"expires_at"`
+	Turn         *TurnCredentials `json:"turn,omitempty"`
 }

@@ -11,5 +11,7 @@
   "max_candidates_per_role": 64,
   "max_wait_seconds": 25,
   "max_waiters_per_role": 1,
-  "cleanup_interval_seconds": 30
+  "cleanup_interval_seconds": 30,
+  "state_file": "/var/lib/vibe-signaling/state.json",
+  "relay_base_url": "http://vibe-relay:8090"
 }

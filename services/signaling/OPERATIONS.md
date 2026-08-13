@@ -6,6 +6,8 @@
 - Terminate TLS 1.2+ at a maintained reverse proxy; redirect/reject plaintext.
 - Restrict session creation/invalidation routes and `/metrics` to their internal callers.
 - Inject separate 32+ character issuer and metrics tokens from a secret manager.
+- When relay coordination is enabled, inject separate signaling relay client/admin
+  tokens, keep `state_file` on durable storage, and restrict it to the service UID.
 - Run UID/GID 65532, read-only root filesystem, no Linux capabilities, no core
   dumps, and a bounded memory/CPU/process budget.
 - Configure proxy body size at or below `max_request_body_bytes`, request read
@@ -79,7 +81,8 @@ must acquire new role credentials and use a new product session epoch.
 
 ## Backup and retention
 
-There is no signaling database to back up. Back up only reviewed configuration,
+There is no signaling session database to back up. Back up the revoked-device
+tombstone `state_file` together with reviewed configuration,
 deployment manifests, redacted metrics, and immutable binary/image digests. SDP,
 ICE, bearer tokens, request bodies, and session identifiers must not enter logs,
 traces, backups, analytics, or crash reports. Expired state is physically removed

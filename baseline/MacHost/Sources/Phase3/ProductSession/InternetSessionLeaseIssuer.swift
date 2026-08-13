@@ -348,6 +348,7 @@ enum InternetSessionLeaseCodec {
 
 enum InternetSessionLeaseIssuer {
     typealias StateStoreFactory = (String) -> any SecurityStateStore
+    typealias PeerStateStoreFactory = (PlatformPublicIdentity) -> any SecurityStateStore
 
     static func issue(
         unsignedJSON: Data,
@@ -357,13 +358,19 @@ enum InternetSessionLeaseIssuer {
         secretStore: any InternetPairingSecretStore = KeychainSecretStore(),
         stateStoreFactory: StateStoreFactory = {
             KeychainSecurityStateStore(peerID: "lease-authority.\($0)")
-        }
-    ) throws -> Data {
-        guard lifetime > 0, lifetime <= 600 else {
-            throw InternetSessionLeaseIssuerError.invalidInput(
-                "Internet lease lifetime must be between 1 and 600 seconds."
+        },
+        peerStateStoreFactory: PeerStateStoreFactory = {
+            KeychainSecurityStateStore(
+                peerID: PairedDeviceSecurityScope.identifier($0)
             )
         }
+    ) throws -> Data {
+        try InternetAuthorityAdmissionGate.withExclusiveTransaction {
+            guard lifetime > 0, lifetime <= 600 else {
+                throw InternetSessionLeaseIssuerError.invalidInput(
+                    "Internet lease lifetime must be between 1 and 600 seconds."
+                )
+            }
         let requested = try InternetSessionLeaseCodec.decodeUnsigned(unsignedJSON)
         let stateStore = stateStoreFactory(requested.pairingIdentifier)
         let lifecycle = SecurityLifecycle(store: stateStore)
@@ -401,6 +408,10 @@ enum InternetSessionLeaseIssuer {
                 "The session lease device identity epoch does not match the paired device. Pair again."
             )
         }
+        let peerLifecycle = SecurityLifecycle(
+            store: peerStateStoreFactory(peerIdentityBinding.identity)
+        )
+        try peerLifecycle.requirePairingBinding(requested.pairingIdentifier)
         let identity = try identityStore.loadVerifiedExisting(binding: identityBinding)
         let epoch = try lifecycle.advanceSessionEpoch(
             pairingIdentifier: requested.pairingIdentifier
@@ -426,6 +437,7 @@ enum InternetSessionLeaseIssuer {
             leaseHostKeyID: identity.publicIdentity.keyID,
             signature: signature
         )
+        }
     }
 }
 
@@ -508,11 +520,15 @@ enum InternetSessionLeaseSelfTest {
             let leaseStateStoreFactory: InternetSessionLeaseIssuer.StateStoreFactory = { pairingIdentifier in
                 pairingIdentifier == "pair-1" ? leaseStateStore : otherPairingStateStore
             }
+            let peerStateStoreFactory: InternetSessionLeaseIssuer.PeerStateStoreFactory = { _ in
+                SelfTestLeaseStateStore()
+            }
             let signedJSON = try InternetSessionLeaseIssuer.issue(
                 unsignedJSON: Data(leaseJSON.utf8),
                 identityStore: keychainStore,
                 secretStore: bindingStore,
-                stateStoreFactory: leaseStateStoreFactory
+                stateStoreFactory: leaseStateStoreFactory,
+                peerStateStoreFactory: peerStateStoreFactory
             )
             guard let signedRoot = try JSONSerialization.jsonObject(
                 with: signedJSON
@@ -547,7 +563,8 @@ enum InternetSessionLeaseSelfTest {
                 unsignedJSON: Data(highCallerJSON.utf8),
                 identityStore: keychainStore,
                 secretStore: bindingStore,
-                stateStoreFactory: leaseStateStoreFactory
+                stateStoreFactory: leaseStateStoreFactory,
+                peerStateStoreFactory: peerStateStoreFactory
             )
             guard try signedEpoch(restarted) == 2 else { return false }
 
@@ -560,7 +577,8 @@ enum InternetSessionLeaseSelfTest {
                         unsignedJSON: Data(leaseJSON.utf8),
                         identityStore: keychainStore,
                         secretStore: bindingStore,
-                        stateStoreFactory: leaseStateStoreFactory
+                        stateStoreFactory: leaseStateStoreFactory,
+                        peerStateStoreFactory: peerStateStoreFactory
                     )
                     let epoch = try signedEpoch(issued)
                     resultLock.lock(); concurrentEpochs.append(epoch); resultLock.unlock()
@@ -578,7 +596,8 @@ enum InternetSessionLeaseSelfTest {
                     unsignedJSON: Data(leaseJSON.utf8),
                     identityStore: keychainStore,
                     secretStore: unreadCredentials,
-                    stateStoreFactory: { _ in missingDurableState }
+                    stateStoreFactory: { _ in missingDurableState },
+                    peerStateStoreFactory: peerStateStoreFactory
                 )
                 return false
             } catch {}
@@ -592,7 +611,8 @@ enum InternetSessionLeaseSelfTest {
                     unsignedJSON: Data(leaseJSON.utf8),
                     identityStore: keychainStore,
                     secretStore: SelfTestLeaseSecretStore(),
-                    stateStoreFactory: { _ in missingBindingState }
+                    stateStoreFactory: { _ in missingBindingState },
+                    peerStateStoreFactory: peerStateStoreFactory
                 )
                 return false
             } catch {}
@@ -619,7 +639,8 @@ enum InternetSessionLeaseSelfTest {
                     unsignedJSON: Data(leaseJSON.utf8),
                     identityStore: keychainStore,
                     secretStore: mismatchedBindingStore,
-                    stateStoreFactory: { _ in mismatchState }
+                    stateStoreFactory: { _ in mismatchState },
+                    peerStateStoreFactory: peerStateStoreFactory
                 )
                 return false
             } catch {}
@@ -646,7 +667,8 @@ enum InternetSessionLeaseSelfTest {
                     unsignedJSON: Data(leaseJSON.utf8),
                     identityStore: missingAliasStore,
                     secretStore: missingAliasBindingStore,
-                    stateStoreFactory: { _ in missingAliasState }
+                    stateStoreFactory: { _ in missingAliasState },
+                    peerStateStoreFactory: peerStateStoreFactory
                 )
                 return false
             } catch {}
@@ -660,7 +682,8 @@ enum InternetSessionLeaseSelfTest {
                 unsignedJSON: Data(otherPairingJSON.utf8),
                 identityStore: keychainStore,
                 secretStore: bindingStore,
-                stateStoreFactory: leaseStateStoreFactory
+                stateStoreFactory: leaseStateStoreFactory,
+                peerStateStoreFactory: peerStateStoreFactory
             )
             guard try signedEpoch(otherPairingLease) == 1 else { return false }
 
