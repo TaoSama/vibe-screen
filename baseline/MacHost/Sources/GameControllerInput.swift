@@ -224,11 +224,14 @@ struct GameControllerRuntimeAvailability {
     private static func hasNonAdHocSignature() -> Bool {
         var code: SecCode?
         guard SecCodeCopySelf(SecCSFlags(rawValue: 0), &code) == errSecSuccess, let code else { return false }
+        var staticCode: SecStaticCode?
+        guard SecCodeCopyStaticCode(code, SecCSFlags(rawValue: 0), &staticCode) == errSecSuccess,
+              let staticCode else { return false }
         var information: CFDictionary?
-        guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &information) == errSecSuccess,
+        guard SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &information) == errSecSuccess,
               let dictionary = information as? [CFString: Any],
-              let flags = dictionary[kSecCodeInfoFlags] as? NSNumber else { return false }
-        return flags.uint32Value & UInt32(kSecCodeSignatureAdhoc) == 0
+              let teamIdentifier = dictionary[kSecCodeInfoTeamIdentifier] as? String else { return false }
+        return !teamIdentifier.isEmpty
     }
 }
 
@@ -363,7 +366,7 @@ final class IOKitVirtualGamepadDevice: VirtualGamepadDevice {
     private func handle(_ report: Data) throws {
         let result = handle.submit(report: report)
         guard result == kIOReturnSuccess else {
-            throw GameControllerInputError.reportFailed(Int32(bitPattern: result))
+            throw GameControllerInputError.reportFailed(result)
         }
     }
 }
