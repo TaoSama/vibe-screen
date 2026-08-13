@@ -65,7 +65,12 @@ From this directory:
 
 ```bash
 ./gradlew clean :transport:check testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+./gradlew :transport:check --configuration-cache --configuration-cache-problems=fail
 ```
+
+The second command is the transport boundary's configuration-cache gate. Its
+live dependency-graph tasks explicitly opt out, so Gradle must run them and
+report that the cache entry was discarded instead of reusing a stale verdict.
 
 The debug APK is written to
 `app/build/outputs/apk/debug/app-debug.apk`. The Gradle wrapper pins Gradle 8.6;

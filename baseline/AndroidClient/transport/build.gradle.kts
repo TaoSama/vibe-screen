@@ -143,6 +143,7 @@ fun sourceBoundaryViolations(source: String): List<SourceBoundaryViolation> {
                 "android(?:\\.[A-Za-z_][A-Za-z0-9_]*)+|" +
                 "androidx(?:\\.[A-Za-z_][A-Za-z0-9_]*)+|" +
                 "com\\.google\\.protobuf(?:\\.[A-Za-z_][A-Za-z0-9_]*)*|" +
+                "org\\.jetbrains\\.annotations(?:\\.[A-Za-z_][A-Za-z0-9_]*)*|" +
                 "dev\\.vibescreen\\.protocol(?:\\.[A-Za-z_][A-Za-z0-9_]*)*|" +
                 "dev\\.telemachus\\.display(?:\\.[A-Za-z_][A-Za-z0-9_]*)+" +
                 ")",
@@ -190,11 +191,6 @@ fun isAllowedRuntimeModule(
     name: String,
 ): Boolean = group == "org.jetbrains.kotlin" && name in allowedKotlinRuntimeModules
 
-fun isKotlinCompilerSupportModule(identifier: ModuleComponentIdentifier): Boolean =
-    identifier.group == "org.jetbrains" &&
-        identifier.module == "annotations" &&
-        identifier.version == "13.0"
-
 fun dependencyFixtureViolation(parts: List<String>): String? =
     when (parts.getOrNull(1)) {
         "external" ->
@@ -213,9 +209,75 @@ val mainBoundarySources =
         include("**/*.kt", "**/*.kts", "**/*.java")
     }
 val boundaryFixtures = layout.projectDirectory.dir("src/boundaryTest/fixtures")
+val productionDependencyBuckets =
+    listOf("api", "implementation", "compileOnly", "runtimeOnly", "annotationProcessor")
+val ownProjectPath = project.path
+val declaredProductionDependencySnapshot =
+    providers.provider {
+        productionDependencyBuckets.flatMap { name ->
+            val configuration = configurations.getByName(name)
+            configuration.dependencies.map { dependency ->
+                when (dependency) {
+                    is ProjectDependency -> "PROJECT|$name|${dependency.dependencyProject.path}"
+                    is ExternalModuleDependency -> "EXTERNAL|$name|${dependency.group}|${dependency.name}"
+                    else -> "OTHER|$name|${dependency.javaClass.name}"
+                }
+            } +
+                configuration.dependencyConstraints.map { constraint ->
+                    "CONSTRAINT|$name|${constraint.group}|${constraint.name}"
+                }
+        }.sorted()
+    }
+val resolvedProductionComponentSnapshot =
+    providers.provider {
+        listOf("compileClasspath", "runtimeClasspath").flatMap { name ->
+            configurations.getByName(name).incoming.resolutionResult.allComponents.map { component ->
+                when (val identifier = component.id) {
+                    is ProjectComponentIdentifier ->
+                        if (identifier.projectPath == ownProjectPath) {
+                            "ROOT_PROJECT|$name|${identifier.projectPath}"
+                        } else {
+                            "PROJECT|$name|${identifier.projectPath}"
+                        }
+                    is ModuleComponentIdentifier ->
+                        "MODULE|$name|${identifier.group}|${identifier.module}|${identifier.version}"
+                    else -> "OTHER|$name|$identifier"
+                }
+            }
+        }.distinct().sorted()
+    }
+
+fun declaredSnapshotViolation(snapshot: String): String? {
+    val parts = snapshot.split('|')
+    return when (parts.firstOrNull()) {
+        "EXTERNAL", "CONSTRAINT" ->
+            if (isAllowedRuntimeModule(parts.getOrNull(2), parts.getOrNull(3).orEmpty())) {
+                null
+            } else {
+                snapshot
+            }
+        else -> snapshot
+    }
+}
+
+fun resolvedSnapshotViolation(snapshot: String): String? {
+    val parts = snapshot.split('|')
+    return when (parts.firstOrNull()) {
+        "ROOT_PROJECT" -> null
+        "MODULE" -> {
+            val group = parts.getOrNull(2).orEmpty()
+            val module = parts.getOrNull(3).orEmpty()
+            val version = parts.getOrNull(4).orEmpty()
+            val compilerSupport = group == "org.jetbrains" && module == "annotations" && version == "13.0"
+            if (isAllowedRuntimeModule(group, module) || compilerSupport) null else snapshot
+        }
+        else -> snapshot
+    }
+}
 
 val testTransportBoundaryVerifier by tasks.registering {
     inputs.dir(boundaryFixtures)
+    notCompatibleWithConfigurationCache("Uses the same build-script verifier functions as the live resolution gate")
     doLast {
         val forbidden =
             boundaryFixtures.dir("forbidden").asFileTree.matching {
@@ -252,7 +314,12 @@ val testTransportBoundaryVerifier by tasks.registering {
 }
 
 val verifyTransportModuleBoundary by tasks.registering {
-    inputs.files(mainBoundarySources)
+    inputs.files(mainBoundarySources).withPropertyName("mainBoundarySources")
+    inputs.files(configurations.named("compileClasspath")).withPropertyName("compileClasspath")
+    inputs.files(configurations.named("runtimeClasspath")).withPropertyName("runtimeClasspath")
+    inputs.property("declaredProductionDependencies", declaredProductionDependencySnapshot)
+    inputs.property("resolvedProductionComponents", resolvedProductionComponentSnapshot)
+    notCompatibleWithConfigurationCache("Validates the live Gradle resolution graph and its component identities")
     doLast {
         val sourceViolations =
             mainBoundarySources.files.flatMap { source ->
@@ -264,29 +331,8 @@ val verifyTransportModuleBoundary by tasks.registering {
             "Transport source boundary violations:\n${sourceViolations.joinToString("\n")}"
         }
 
-        val productionDependencyBuckets =
-            listOf("api", "implementation", "compileOnly", "runtimeOnly", "annotationProcessor")
         val declaredViolations =
-            productionDependencyBuckets.flatMap { name ->
-                val configuration = configurations.getByName(name)
-                configuration.dependencies.mapNotNull { dependency ->
-                    when (dependency) {
-                        is ProjectDependency -> "$name declares project dependency ${dependency.dependencyProject.path}"
-                        is ExternalModuleDependency -> {
-                            val allowed = isAllowedRuntimeModule(dependency.group, dependency.name)
-                            if (allowed) null else "$name declares external dependency ${dependency.group}:${dependency.name}"
-                        }
-                        else -> "$name declares unsupported dependency ${dependency.javaClass.name}"
-                    }
-                } +
-                    configuration.dependencyConstraints.mapNotNull { constraint ->
-                        if (isAllowedRuntimeModule(constraint.group, constraint.name)) {
-                            null
-                        } else {
-                            "$name declares dependency constraint ${constraint.group}:${constraint.name}"
-                        }
-                    }
-            }
+            declaredProductionDependencySnapshot.get().mapNotNull(::declaredSnapshotViolation)
         check(declaredViolations.isEmpty()) {
             "Transport production dependency declarations are not isolated:\n${declaredViolations.joinToString("\n")}"
         }
@@ -296,21 +342,7 @@ val verifyTransportModuleBoundary by tasks.registering {
         // Kotlin 1.9.22 needs the exact annotations:13.0 artifact while emitting nullability
         // metadata. It is allowed here only as compiler support; a direct declaration fails above.
         val resolvedViolations =
-            listOf("compileClasspath", "runtimeClasspath").flatMap { name ->
-                configurations.getByName(name).incoming.resolutionResult.allComponents.mapNotNull { component ->
-                    when (val identifier = component.id) {
-                        is ProjectComponentIdentifier ->
-                            if (identifier.projectPath == project.path) null else "$name resolves project ${identifier.projectPath}"
-                        is ModuleComponentIdentifier -> {
-                            val allowed =
-                                isAllowedRuntimeModule(identifier.group, identifier.module) ||
-                                    isKotlinCompilerSupportModule(identifier)
-                            if (allowed) null else "$name resolves external module $identifier"
-                        }
-                        else -> "$name resolves unsupported component $identifier"
-                    }
-                }
-            }
+            resolvedProductionComponentSnapshot.get().mapNotNull(::resolvedSnapshotViolation)
         check(resolvedViolations.isEmpty()) {
             "Transport production resolution graph is not isolated:\n${resolvedViolations.joinToString("\n")}"
         }
