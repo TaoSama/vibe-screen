@@ -93,9 +93,12 @@ admission.
 
 `POST /v1/coturn/reconcile` accepts one source snapshot (maximum 10,000
 allocations), applies newer counters, and returns ledger allocations missing
-from a source beyond `reconciliation_grace_seconds`. Operators must disconnect
-unauthorized/source-only allocations and close ledger-only allocations only
-after the configured consecutive-snapshot policy in their collector.
+from a source beyond `reconciliation_grace_seconds`. The response separately
+lists `unauthorized_allocation_ids` that exist only at the source and
+`conflict_allocation_ids` whose identity or counters conflict with the ledger;
+one conflict does not stop processing the rest of the snapshot. Operators must
+disconnect unauthorized allocations and close ledger-only allocations only after
+the configured consecutive-snapshot policy in their collector.
 
 The repository does **not** yet contain a production-proven coturn exporter.
 Launch remains blocked until the pinned coturn build or provider API proves it

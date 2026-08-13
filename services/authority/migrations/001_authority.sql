@@ -20,10 +20,9 @@ CREATE TABLE IF NOT EXISTS authority_devices (
 CREATE INDEX IF NOT EXISTS authority_devices_account_idx ON authority_devices(account_id);
 
 CREATE TABLE authority_session_epoch_floors (
-    host_device_id text NOT NULL REFERENCES authority_devices(device_id),
-    client_device_id text NOT NULL REFERENCES authority_devices(device_id),
+    device_id text PRIMARY KEY REFERENCES authority_devices(device_id),
     highest_epoch bigint NOT NULL CHECK (highest_epoch > 0),
-    PRIMARY KEY (host_device_id, client_device_id)
+    CONSTRAINT authority_session_epoch_floors_epoch_check CHECK (highest_epoch <= 9223372036854775807)
 );
 
 CREATE TABLE authority_signaling_sessions (
@@ -54,14 +53,16 @@ CREATE TABLE authority_relay_allocations (
     allocation_id text NOT NULL,
     source_id text NOT NULL,
     device_id text NOT NULL REFERENCES authority_devices(device_id),
-    session_id text NOT NULL REFERENCES authority_signaling_sessions(session_id),
+    session_id text NOT NULL,
     observed_sequence bigint NOT NULL DEFAULT 0 CHECK (observed_sequence >= 0),
     ingress_bytes bigint NOT NULL DEFAULT 0 CHECK (ingress_bytes >= 0),
     egress_bytes bigint NOT NULL DEFAULT 0 CHECK (egress_bytes >= 0),
     admitted_at timestamptz NOT NULL,
     last_observed_at timestamptz NOT NULL,
     closed_at timestamptz,
-    PRIMARY KEY (source_id, allocation_id)
+    PRIMARY KEY (source_id, allocation_id),
+    CONSTRAINT authority_relay_allocations_session_fk FOREIGN KEY (session_id)
+        REFERENCES authority_signaling_sessions(session_id)
 );
 CREATE INDEX IF NOT EXISTS authority_relay_active_device_idx
     ON authority_relay_allocations (device_id)
@@ -69,7 +70,7 @@ CREATE INDEX IF NOT EXISTS authority_relay_active_device_idx
 
 CREATE TABLE authority_coturn_events (
     source_id text NOT NULL,
-    event_id text NOT NULL,
+    event_id text NOT NULL CONSTRAINT authority_coturn_events_event_id_check CHECK (event_id <> ''),
     payload_sha256 bytea NOT NULL,
     received_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (source_id, event_id)

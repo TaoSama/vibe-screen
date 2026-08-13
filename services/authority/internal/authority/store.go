@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -39,7 +40,10 @@ type PostgresStore struct {
 	allocationLimit int
 }
 
-const requiredSchemaVersion int64 = 1
+const (
+	requiredSchemaVersion  int64 = 1
+	requiredSchemaChecksum       = "e470d0c2b9750ae040d97a5f51c9725191b6bf6ad8c67e09349e507336d81625"
+)
 
 func OpenPostgres(ctx context.Context, cfg Config) (*PostgresStore, error) {
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
@@ -58,18 +62,34 @@ func (s *PostgresStore) Close() { s.pool.Close() }
 
 func (s *PostgresStore) Ready(ctx context.Context) error {
 	var version int64
-	if err := s.pool.QueryRow(ctx, `SELECT max(version) FROM authority_schema_migrations`).Scan(&version); err != nil {
+	var checksum string
+	if err := s.pool.QueryRow(ctx, `SELECT version,checksum_sha256 FROM authority_schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &checksum); err != nil {
 		return fmt.Errorf("%w: schema probe: %v", ErrStorage, err)
 	}
-	if version != requiredSchemaVersion {
-		return fmt.Errorf("%w: schema version %d, require %d", ErrStorage, version, requiredSchemaVersion)
+	if version != requiredSchemaVersion || checksum != requiredSchemaChecksum {
+		return fmt.Errorf("%w: schema version/checksum mismatch", ErrStorage)
 	}
 	var complete bool
-	if err := s.pool.QueryRow(ctx, `SELECT every(to_regclass(name) IS NOT NULL) FROM unnest($1::text[]) AS name`, []string{"authority_accounts", "authority_devices", "authority_session_epoch_floors", "authority_signaling_sessions", "authority_relay_daily_usage", "authority_relay_allocations", "authority_coturn_events"}).Scan(&complete); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT every(to_regclass(name) IS NOT NULL) FROM unnest($1::text[]) AS name`, []string{"authority_schema_migrations", "authority_accounts", "authority_devices", "authority_session_epoch_floors", "authority_signaling_sessions", "authority_relay_daily_usage", "authority_relay_allocations", "authority_coturn_events", "authority_audit_events"}).Scan(&complete); err != nil {
 		return fmt.Errorf("%w: structure probe: %v", ErrStorage, err)
 	}
 	if !complete {
 		return fmt.Errorf("%w: required authority relation is missing", ErrStorage)
+	}
+	if _, err := s.pool.Exec(ctx, `SELECT m.version,m.checksum_sha256,m.applied_at,a.account_id,a.suspended_at,a.created_at,d.device_id,d.account_id,d.revocation_epoch,d.revoked_at,d.created_at,f.device_id,f.highest_epoch,s.session_id,s.request_id,s.account_id,s.host_device_id,s.client_device_id,s.session_epoch,s.expires_at,s.revoked_at,s.created_at,u.device_id,u.usage_day,u.ingress_bytes,u.egress_bytes,r.allocation_id,r.source_id,r.device_id,r.session_id,r.observed_sequence,r.ingress_bytes,r.egress_bytes,r.admitted_at,r.last_observed_at,r.closed_at,e.source_id,e.event_id,e.payload_sha256,e.received_at,x.audit_id,x.event_type,x.account_id,x.device_id,x.session_id,x.occurred_at FROM authority_schema_migrations m,authority_accounts a,authority_devices d,authority_session_epoch_floors f,authority_signaling_sessions s,authority_relay_daily_usage u,authority_relay_allocations r,authority_coturn_events e,authority_audit_events x LIMIT 0`); err != nil {
+		return fmt.Errorf("%w: required authority column is missing: %v", ErrStorage, err)
+	}
+	var constraints int
+	requiredConstraints := []string{"authority_accounts_pkey", "authority_devices_pkey", "authority_devices_account_id_fkey", "authority_session_epoch_floors_pkey", "authority_session_epoch_floors_device_id_fkey", "authority_session_epoch_floors_epoch_check", "authority_signaling_sessions_pkey", "authority_signaling_sessions_request_id_key", "authority_signaling_sessions_account_id_fkey", "authority_signaling_sessions_host_device_id_fkey", "authority_signaling_sessions_client_device_id_fkey", "authority_relay_daily_usage_pkey", "authority_relay_daily_usage_device_id_fkey", "authority_relay_allocations_pkey", "authority_relay_allocations_device_id_fkey", "authority_relay_allocations_session_fk", "authority_coturn_events_pkey", "authority_coturn_events_event_id_check", "authority_audit_events_pkey"}
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM pg_constraint WHERE connamespace=current_schema()::regnamespace AND conname=ANY($1)`, requiredConstraints).Scan(&constraints); err != nil || constraints != len(requiredConstraints) {
+		return fmt.Errorf("%w: required authority constraint is missing", ErrStorage)
+	}
+	tables := []string{"authority_schema_migrations", "authority_schema_migrations", "authority_devices", "authority_devices", "authority_session_epoch_floors", "authority_session_epoch_floors", "authority_signaling_sessions", "authority_signaling_sessions", "authority_signaling_sessions", "authority_relay_daily_usage", "authority_relay_allocations", "authority_relay_allocations", "authority_coturn_events", "authority_coturn_events"}
+	columns := []string{"version", "checksum_sha256", "device_id", "revocation_epoch", "device_id", "highest_epoch", "session_id", "session_epoch", "expires_at", "usage_day", "allocation_id", "session_id", "event_id", "payload_sha256"}
+	types := []string{"bigint", "text", "text", "bigint", "text", "bigint", "text", "bigint", "timestamp with time zone", "date", "text", "text", "text", "bytea"}
+	nullable := []string{"NO", "NO", "NO", "NO", "NO", "NO", "NO", "NO", "NO", "NO", "NO", "NO", "NO", "NO"}
+	if err := s.pool.QueryRow(ctx, `SELECT count(*)=$5 FROM unnest($1::text[],$2::text[],$3::text[],$4::text[]) AS expected(table_name,column_name,data_type,is_nullable) JOIN information_schema.columns actual ON actual.table_schema=current_schema() AND actual.table_name=expected.table_name AND actual.column_name=expected.column_name AND actual.data_type=expected.data_type AND actual.is_nullable=expected.is_nullable`, tables, columns, types, nullable, len(tables)).Scan(&complete); err != nil || !complete {
+		return fmt.Errorf("%w: required authority column signature mismatch", ErrStorage)
 	}
 	return nil
 }
@@ -114,6 +134,9 @@ func (s *PostgresStore) RegisterDevice(ctx context.Context, accountID, deviceID 
 }
 
 func (s *PostgresStore) RevokeDevice(ctx context.Context, deviceID string, epoch uint64, now time.Time) error {
+	if epoch == 0 || epoch > math.MaxInt64 {
+		return ErrConflict
+	}
 	return s.transaction(ctx, func(tx pgx.Tx) error {
 		var accountID string
 		if err := tx.QueryRow(ctx, `SELECT account_id FROM authority_devices WHERE device_id=$1`, deviceID).Scan(&accountID); err != nil {
@@ -151,6 +174,9 @@ func (s *PostgresStore) RevokeDevice(ctx context.Context, deviceID string, epoch
 }
 
 func (s *PostgresStore) CreateSignaling(ctx context.Context, request SignalingRequest, now time.Time) (SignalingAdmission, error) {
+	if request.SessionEpoch == 0 || request.SessionEpoch > math.MaxInt64 {
+		return SignalingAdmission{}, ErrConflict
+	}
 	var result SignalingAdmission
 	err := s.transaction(ctx, func(tx pgx.Tx) error {
 		var suspendedAt *time.Time
@@ -202,15 +228,29 @@ func (s *PostgresStore) CreateSignaling(ctx context.Context, request SignalingRe
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		var highestEpoch int64
-		err = tx.QueryRow(ctx, `SELECT highest_epoch FROM authority_session_epoch_floors WHERE host_device_id=$1 AND client_device_id=$2 FOR UPDATE`, request.HostDeviceID, request.ClientDeviceID).Scan(&highestEpoch)
-		if err == nil && request.SessionEpoch <= uint64(highestEpoch) {
-			return ErrConflict
-		}
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		floorDevices := uniqueStrings(devices)
+		floorRows, err := tx.Query(ctx, `SELECT device_id,highest_epoch FROM authority_session_epoch_floors WHERE device_id=ANY($1) ORDER BY device_id FOR UPDATE`, floorDevices)
+		if err != nil {
 			return err
 		}
-		if _, err = tx.Exec(ctx, `INSERT INTO authority_session_epoch_floors(host_device_id,client_device_id,highest_epoch) VALUES ($1,$2,$3) ON CONFLICT (host_device_id,client_device_id) DO UPDATE SET highest_epoch=EXCLUDED.highest_epoch WHERE authority_session_epoch_floors.highest_epoch<EXCLUDED.highest_epoch`, request.HostDeviceID, request.ClientDeviceID, int64(request.SessionEpoch)); err != nil {
+		for floorRows.Next() {
+			var deviceID string
+			var highestEpoch int64
+			if err := floorRows.Scan(&deviceID, &highestEpoch); err != nil {
+				floorRows.Close()
+				return err
+			}
+			if request.SessionEpoch <= uint64(highestEpoch) {
+				floorRows.Close()
+				return ErrConflict
+			}
+		}
+		if err := floorRows.Err(); err != nil {
+			floorRows.Close()
+			return err
+		}
+		floorRows.Close()
+		if _, err = tx.Exec(ctx, `INSERT INTO authority_session_epoch_floors(device_id,highest_epoch) SELECT unnest($1::text[]),$2 ON CONFLICT (device_id) DO UPDATE SET highest_epoch=EXCLUDED.highest_epoch WHERE authority_session_epoch_floors.highest_epoch<EXCLUDED.highest_epoch`, floorDevices, int64(request.SessionEpoch)); err != nil {
 			return err
 		}
 		sessionID, err = randomIdentifier()
@@ -299,6 +339,9 @@ func (s *PostgresStore) AdmitRelay(ctx context.Context, request RelayAdmissionRe
 }
 
 func (s *PostgresStore) ApplyCoturnUsage(ctx context.Context, usage CoturnUsage) (bool, error) {
+	if !validIdentifier(usage.EventID) {
+		return false, ErrConflict
+	}
 	duplicate := false
 	err := s.transaction(ctx, func(tx pgx.Tx) error {
 		encoded, err := json.Marshal(usage)
@@ -347,16 +390,16 @@ func (s *PostgresStore) ApplyCoturnUsage(ctx context.Context, usage CoturnUsage)
 }
 
 func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest, grace time.Duration) (ReconcileResult, error) {
-	result := ReconcileResult{}
+	result := ReconcileResult{MissingAllocationIDs: []string{}, UnauthorizedAllocationIDs: []string{}, ConflictAllocationIDs: []string{}}
 	seen := make(map[string]bool, len(request.Allocations))
 	for index, usage := range request.Allocations {
 		usage.SourceID = request.SourceID
-		usage.EventID = fmt.Sprintf("reconcile-%d-%s", request.ObservedAt.UnixNano(), usage.AllocationID)
+		usage.EventID = reconciliationEventID(request.SourceID, request.ObservedAt, usage.AllocationID)
 		usage.ObservedAt = request.ObservedAt
 		duplicate, err := s.ApplyCoturnUsage(ctx, usage)
 		if err != nil {
 			if errors.Is(err, ErrNotFound) {
-				result.SourceOnlyAllocationIDs = append(result.SourceOnlyAllocationIDs, usage.AllocationID)
+				result.UnauthorizedAllocationIDs = append(result.UnauthorizedAllocationIDs, usage.AllocationID)
 				continue
 			}
 			if errors.Is(err, ErrStaleUsage) {
@@ -368,6 +411,14 @@ func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest,
 					seen[request.Allocations[index].AllocationID] = true
 					continue
 				}
+				result.ConflictAllocationIDs = append(result.ConflictAllocationIDs, usage.AllocationID)
+				seen[request.Allocations[index].AllocationID] = true
+				continue
+			}
+			if errors.Is(err, ErrConflict) {
+				result.ConflictAllocationIDs = append(result.ConflictAllocationIDs, usage.AllocationID)
+				seen[request.Allocations[index].AllocationID] = true
+				continue
 			}
 			return result, err
 		}
@@ -378,7 +429,8 @@ func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest,
 		}
 		seen[request.Allocations[index].AllocationID] = true
 	}
-	sort.Strings(result.SourceOnlyAllocationIDs)
+	sort.Strings(result.UnauthorizedAllocationIDs)
+	sort.Strings(result.ConflictAllocationIDs)
 	rows, err := s.pool.Query(ctx, `SELECT allocation_id FROM authority_relay_allocations WHERE source_id=$1 AND closed_at IS NULL AND last_observed_at<$2 ORDER BY allocation_id`, request.SourceID, request.ObservedAt.Add(-grace))
 	if err != nil {
 		return result, storageError("reconcile allocations", err)
@@ -394,6 +446,11 @@ func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest,
 		}
 	}
 	return result, rows.Err()
+}
+
+func reconciliationEventID(sourceID string, observedAt time.Time, allocationID string) string {
+	digest := sha256.Sum256([]byte(sourceID + "\x00" + observedAt.UTC().Format(time.RFC3339Nano) + "\x00" + allocationID))
+	return fmt.Sprintf("reconcile-%x", digest)
 }
 
 func (s *PostgresStore) transaction(ctx context.Context, operation func(pgx.Tx) error) error {
