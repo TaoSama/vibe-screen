@@ -276,6 +276,38 @@ struct PrimaryButtonOwnerState {
     }
 }
 
+/// Tracks only key events accepted for posting. Reset consumes a stable
+/// HID-usage ordering so teardown produces deterministic release events.
+struct PressedKeyState {
+    struct Key: Equatable {
+        let usbHIDUsage: UInt32
+        let modifierMask: UInt32
+    }
+
+    private var modifierMaskByUsage: [UInt32: UInt32] = [:]
+
+    mutating func didPost(
+        usbHIDUsage: UInt32,
+        pressed: Bool,
+        modifierMask: UInt32
+    ) {
+        if pressed {
+            modifierMaskByUsage[usbHIDUsage] = modifierMask
+        } else {
+            modifierMaskByUsage.removeValue(forKey: usbHIDUsage)
+        }
+    }
+
+    mutating func consumeResetKeys() -> [Key] {
+        defer { modifierMaskByUsage.removeAll(keepingCapacity: true) }
+        return modifierMaskByUsage.keys.sorted().compactMap { usage in
+            modifierMaskByUsage[usage].map {
+                Key(usbHIDUsage: usage, modifierMask: $0)
+            }
+        }
+    }
+}
+
 /// Posts CGEvents for client-driven native pointer, stylus, scroll, and keyboard input.
 /// Coordinate mapping is shared with touch via StreamInputMapping so a single
 /// geometry path serves every input kind. All posting requires Accessibility;
@@ -284,7 +316,9 @@ final class StreamInputInjector {
     private let eventSource: CGEventSource?
     private let stylusEventFactory: StylusEventFactory
     private let stylusEventPoster: (CGEvent) -> Void
+    private let keyboardEventPoster: (CGEvent) -> Void
     private var pressedButtons: UInt32 = 0
+    private var pressedKeyState = PressedKeyState()
     private var lastPointerLocation: CGPoint = .zero
     private var lastStylusLocation: CGPoint = .zero
     private var stylusTipState = StylusTipState()
@@ -293,19 +327,22 @@ final class StreamInputInjector {
         eventSource: CGEventSource? = CGEventSource(stateID: .hidSystemState),
         stylusEventPoster: @escaping (CGEvent) -> Void = {
             $0.post(tap: .cghidEventTap)
+        },
+        keyboardEventPoster: @escaping (CGEvent) -> Void = {
+            $0.post(tap: .cghidEventTap)
         }
     ) {
         self.eventSource = eventSource
         stylusEventFactory = StylusEventFactory(eventSource: eventSource)
         self.stylusEventPoster = stylusEventPoster
+        self.keyboardEventPoster = keyboardEventPoster
     }
 
-    /// Resets transient button state so a held button does not leak across
-    /// sessions. Any button still pressed is released at the last known
-    /// pointer location first, so a drag interrupted by a reset does not leave
-    /// the WindowServer with a stuck button-down.
+    /// Releases held pointer, keyboard, and stylus state before clearing it so
+    /// interrupted input cannot leak across sessions.
     func reset() {
         updateButtons(target: 0, at: lastPointerLocation)
+        releasePressedKeys()
         guard stylusTipState.consumeResetPointerID() != nil,
               let release = stylusEventFactory.event(
                   normalizedX: 0,
@@ -383,7 +420,12 @@ final class StreamInputInjector {
             keyDown: pressed
         ) else { return false }
         event.flags = StreamInputMapping.modifierFlags(fromModifierMask: modifierMask)
-        event.post(tap: .cghidEventTap)
+        keyboardEventPoster(event)
+        pressedKeyState.didPost(
+            usbHIDUsage: usbHIDUsage,
+            pressed: pressed,
+            modifierMask: modifierMask
+        )
         return true
     }
 
@@ -414,6 +456,22 @@ final class StreamInputInjector {
 
     private func postStylusEvent(_ event: CGEvent) {
         stylusEventPoster(event)
+    }
+
+    private func releasePressedKeys() {
+        for key in pressedKeyState.consumeResetKeys() {
+            guard let keyCode = StreamInputMapping.macKeyCode(
+                fromUSBHIDUsage: key.usbHIDUsage
+            ), let event = CGEvent(
+                keyboardEventSource: eventSource,
+                virtualKey: keyCode,
+                keyDown: false
+            ) else { continue }
+            event.flags = StreamInputMapping.modifierFlags(
+                fromModifierMask: key.modifierMask
+            )
+            keyboardEventPoster(event)
+        }
     }
 
     // MARK: - Button reconciliation

@@ -1182,7 +1182,7 @@ class StreamClient(
         if (!isConnected || wireMode != WireMode.V1) return false
         val session = protocolSession ?: return false
         if (!session.canSendPointer) return false
-        submitOutbound(
+        val submission = submitOutbound(
             kind =
                 if (phase == InputPhase.INPUT_PHASE_CHANGED) {
                     OutboundCommandScheduler.Kind.MOVE
@@ -1202,7 +1202,7 @@ class StreamClient(
                     )
                 },
         )
-        return true
+        return submission.wasAdmitted()
     }
 
     /** Forward a scroll delta to the host. No-op unless pointer input negotiated. */
@@ -1247,7 +1247,7 @@ class StreamClient(
         if (!isConnected || wireMode != WireMode.V1) return false
         val session = protocolSession ?: return false
         if (!session.canSendKeyboard) return false
-        submitOutbound(
+        val submission = submitOutbound(
             kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
             command =
                 OutboundCommand.ProtocolBatch { activeSession ->
@@ -1261,7 +1261,48 @@ class StreamClient(
                     )
                 },
         )
-        return true
+        return submission.wasAdmitted()
+    }
+
+    /** Enqueues every native-input boundary in one FIFO batch before teardown. */
+    internal fun sendNativeInputRelease(
+        release: NativeInputReleasePlan,
+        pointerPhase: InputPhase,
+    ): Boolean {
+        require(pointerPhase == InputPhase.INPUT_PHASE_ENDED || pointerPhase == InputPhase.INPUT_PHASE_CANCELLED)
+        if (release.isEmpty) return true
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (release.pressedKeyUsages.isNotEmpty() && !session.canSendKeyboard) return false
+        if (release.pointer != null && !session.canSendPointer) return false
+        val submission =
+            submitOutbound(
+                kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                command =
+                    OutboundCommand.ProtocolBatch { activeSession ->
+                        NativeInputReleaseBatch.build(
+                            release = release,
+                            keyUp = { usage ->
+                                activeSession.key(
+                                    inputId = nextInputId.getAndIncrement(),
+                                    usbHidUsage = usage,
+                                    pressed = false,
+                                    modifierMask = 0,
+                                )
+                            },
+                            pointerTerminal = { pointer ->
+                                activeSession.pointer(
+                                    inputId = nextInputId.getAndIncrement(),
+                                    phase = pointerPhase,
+                                    x = pointer.x.toDouble(),
+                                    y = pointer.y.toDouble(),
+                                    buttonMask = 0,
+                                )
+                            },
+                        )
+                    },
+            )
+        return submission.wasAdmitted()
     }
 
     // Callback for latency measurement (round-trip ping/pong)
@@ -1430,6 +1471,10 @@ class StreamClient(
         }
         return submission
     }
+
+    private fun OutboundCommandScheduler.Submission.wasAdmitted(): Boolean =
+        this != OutboundCommandScheduler.Submission.TIMED_OUT &&
+            this != OutboundCommandScheduler.Submission.CLOSED
 
     private fun writeOutboundCommand(command: OutboundCommand) {
         val out = outputStream ?: throw IOException("session output is closed")

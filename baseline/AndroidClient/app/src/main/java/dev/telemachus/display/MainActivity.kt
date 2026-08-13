@@ -191,6 +191,8 @@ class MainActivity : AppCompatActivity() {
     private var pingJob: kotlinx.coroutines.Job? = null
     private var isInForeground = false
     private val sessionState = SessionState<StreamClient>()
+    private val nativeInputSessionState = NativeInputSessionState<StreamClient>()
+    private val nativeInputReleaseCoordinator = NativeInputReleaseCoordinator(nativeInputSessionState)
     private var activeSessionGeneration = 0L
     private var unsupportedKeyboardNoticeShown = false
     private val inputHandler = Handler(Looper.getMainLooper())
@@ -354,6 +356,7 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         accessibilityManager.removeTouchExplorationStateChangeListener(touchExplorationStateChangeListener)
         finishPendingRightClick()
+        completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)
         isInForeground = false
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
@@ -943,10 +946,12 @@ class MainActivity : AppCompatActivity() {
                 override fun surfaceDestroyed(holder: SurfaceHolder) {
                     mainDiag("surfaceDestroyed")
                     log("Surface destroyed")
-                    // Only release decoder, NOT the connection.
-                    surfaceGeneration.incrementAndGet()
-                    if (currentSurfaceHolder === holder) currentSurfaceHolder = null
-                    releaseVideoDecoderAsync()
+                    completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED) {
+                        // Only release decoder, NOT the connection.
+                        surfaceGeneration.incrementAndGet()
+                        if (currentSurfaceHolder === holder) currentSurfaceHolder = null
+                        releaseVideoDecoderAsync()
+                    }
                 }
             },
         )
@@ -3032,6 +3037,7 @@ class MainActivity : AppCompatActivity() {
                     setStreamingWindowState(connected)
                 }
                 if (connected) {
+                    nativeInputSessionState.admit(callbackClient, callbackGeneration)
                     if (prefs.connectionMode == ConnectionMode.USB) automaticUsbConnect = true
                     hasConnectedThisRun = true
                     isReconnecting = false
@@ -3055,6 +3061,7 @@ class MainActivity : AppCompatActivity() {
                         )
                     }
                 } else {
+                    nativeInputSessionState.discard(callbackClient, callbackGeneration)
                     applyDisconnectedSessionUi()
                 }
             }
@@ -3962,9 +3969,11 @@ class MainActivity : AppCompatActivity() {
         stopPingTimer()
         val client = streamClient
         val generation = activeSessionGeneration
-        client?.disconnect()
-        if (client != null) sessionState.invalidate(client, generation)
-        if (streamClient === client) streamClient = null
+        completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_ENDED) {
+            client?.disconnect()
+            if (client != null) sessionState.invalidate(client, generation)
+            if (streamClient === client) streamClient = null
+        }
         disconnectInternet(showIdle = false)
         connectionAttemptInProgress = false
         applyDisconnectedSessionUi()
@@ -4035,9 +4044,11 @@ class MainActivity : AppCompatActivity() {
         hasAttemptedUsbConnection = false
         val client = streamClient
         val generation = activeSessionGeneration
-        client?.disconnect()
-        if (client != null) sessionState.invalidate(client, generation)
-        if (streamClient === client) streamClient = null
+        completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_ENDED) {
+            client?.disconnect()
+            if (client != null) sessionState.invalidate(client, generation)
+            if (streamClient === client) streamClient = null
+        }
         connectionAttemptInProgress = false
         applyDisconnectedSessionUi()
         log("Disconnected")
@@ -4202,46 +4213,84 @@ class MainActivity : AppCompatActivity() {
     ) : ClientSessionInputSink {
         override fun sendKey(input: ClientKeyInput): Boolean {
             if (!isCurrentSession(client, generation)) return false
-            return client.sendKey(
-                usbHidUsage = input.usbHidUsage,
-                pressed = input.pressed,
-                modifierMask = NativeInputWire.modifierMask(input.modifiers),
-            )
+            val admitted =
+                client.sendKey(
+                    usbHidUsage = input.usbHidUsage,
+                    pressed = input.pressed,
+                    modifierMask = NativeInputWire.modifierMask(input.modifiers),
+                )
+            if (admitted) {
+                nativeInputSessionState.recordKey(
+                    client = client,
+                    generation = generation,
+                    usbHidUsage = input.usbHidUsage,
+                    pressed = input.pressed,
+                )
+            }
+            return admitted
         }
 
         override fun sendPointer(input: ClientPointerInput): Boolean {
             if (!isCurrentSession(client, generation)) return false
-            return when (input.action) {
-                ClientPointerAction.SCROLL ->
-                    client.sendScroll(
-                        deltaX = input.horizontalScroll.toDouble(),
-                        deltaY = input.verticalScroll.toDouble(),
-                    )
+            val buttonMask = NativeInputWire.buttonMask(input.buttonState)
+            val admitted =
+                when (input.action) {
+                    ClientPointerAction.SCROLL ->
+                        client.sendScroll(
+                            deltaX = input.horizontalScroll.toDouble(),
+                            deltaY = input.verticalScroll.toDouble(),
+                        )
 
-                ClientPointerAction.MOVE ->
-                    client.sendPointer(
-                        phase = InputPhase.INPUT_PHASE_CHANGED,
-                        x = input.x,
-                        y = input.y,
-                        buttonMask = NativeInputWire.buttonMask(input.buttonState),
-                    )
+                    ClientPointerAction.MOVE ->
+                        client.sendPointer(
+                            phase = InputPhase.INPUT_PHASE_CHANGED,
+                            x = input.x,
+                            y = input.y,
+                            buttonMask = buttonMask,
+                        )
 
-                ClientPointerAction.BUTTON_PRESS ->
-                    client.sendPointer(
-                        phase = InputPhase.INPUT_PHASE_BEGAN,
-                        x = input.x,
-                        y = input.y,
-                        buttonMask = NativeInputWire.buttonMask(input.buttonState),
-                    )
+                    ClientPointerAction.BUTTON_PRESS ->
+                        client.sendPointer(
+                            phase = InputPhase.INPUT_PHASE_BEGAN,
+                            x = input.x,
+                            y = input.y,
+                            buttonMask = buttonMask,
+                        )
 
-                ClientPointerAction.BUTTON_RELEASE ->
-                    client.sendPointer(
-                        phase = InputPhase.INPUT_PHASE_ENDED,
-                        x = input.x,
-                        y = input.y,
-                        buttonMask = NativeInputWire.buttonMask(input.buttonState),
-                    )
+                    ClientPointerAction.BUTTON_RELEASE ->
+                        client.sendPointer(
+                            phase = InputPhase.INPUT_PHASE_ENDED,
+                            x = input.x,
+                            y = input.y,
+                            buttonMask = buttonMask,
+                        )
+                }
+            if (admitted && input.action != ClientPointerAction.SCROLL) {
+                nativeInputSessionState.recordPointer(client, generation, input.x, input.y, buttonMask)
             }
+            return admitted
+        }
+    }
+
+    private fun completeCurrentNativeInputBoundary(
+        pointerPhase: InputPhase,
+        afterRelease: () -> Unit = {},
+    ) {
+        val client = streamClient
+        val generation = activeSessionGeneration
+        if (client == null) {
+            afterRelease()
+            return
+        }
+        val submission =
+            nativeInputReleaseCoordinator.completeBoundary(
+                client = client,
+                generation = generation,
+                submitRelease = { release -> client.sendNativeInputRelease(release, pointerPhase) },
+                afterRelease = afterRelease,
+            )
+        if (submission == NativeInputReleaseSubmission.REJECTED) {
+            mainDiag("native input release was rejected for generation=$generation")
         }
     }
 
