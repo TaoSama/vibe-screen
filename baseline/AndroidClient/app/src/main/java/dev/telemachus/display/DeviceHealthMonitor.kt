@@ -85,11 +85,14 @@ internal object DeviceHealthPolicy {
 /** Drops duplicate and late platform callbacks outside the visible Activity lifecycle. */
 internal class DeviceHealthLifecycle {
     private var active = false
+    private var generation = 0L
     private var current = DeviceHealthSnapshot()
 
     @Synchronized
-    fun start() {
+    fun start(): Long {
+        generation += 1
         active = true
+        return generation
     }
 
     @Synchronized
@@ -98,14 +101,20 @@ internal class DeviceHealthLifecycle {
     }
 
     @Synchronized
-    fun publish(snapshot: DeviceHealthSnapshot): DeviceHealthSnapshot? {
-        if (!active || snapshot == current) return null
+    fun publish(
+        callbackGeneration: Long,
+        snapshot: DeviceHealthSnapshot,
+    ): DeviceHealthSnapshot? {
+        if (!active || callbackGeneration != generation || snapshot == current) return null
         current = snapshot
         return snapshot
     }
 
     @Synchronized
     fun snapshot(): DeviceHealthSnapshot = current
+
+    @Synchronized
+    fun accepts(callbackGeneration: Long): Boolean = active && callbackGeneration == generation
 }
 
 /** Foreground-only battery, power-saver, and thermal observation for sustained tablet use. */
@@ -119,25 +128,24 @@ internal class AndroidDeviceHealthMonitor(
     private val lifecycle = DeviceHealthLifecycle()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var started = false
-    private var receiverRegistered = false
+    private var receiver: BroadcastReceiver? = null
     private var thermalObserver: ThermalObserver? = null
-
-    private val receiver =
-        object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                refresh(intent.takeIf { it.action == Intent.ACTION_BATTERY_CHANGED })
-            }
-        }
 
     fun start() {
         if (started) return
         started = true
-        lifecycle.start()
+        val generation = lifecycle.start()
         val batteryIntent =
             runCatching {
                 applicationContext.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             }.onFailure(onError).getOrNull()
         runCatching {
+            val generationReceiver =
+                object : BroadcastReceiver() {
+                    override fun onReceive(context: Context, intent: Intent) {
+                        refresh(generation, intent.takeIf { it.action == Intent.ACTION_BATTERY_CHANGED })
+                    }
+                }
             val filter =
                 IntentFilter().apply {
                     addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -145,19 +153,26 @@ internal class AndroidDeviceHealthMonitor(
                 }
             ContextCompat.registerReceiver(
                 applicationContext,
-                receiver,
+                generationReceiver,
                 filter,
                 ContextCompat.RECEIVER_EXPORTED,
             )
-            receiverRegistered = true
+            receiver = generationReceiver
         }.onFailure(onError)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             runCatching {
                 Api29ThermalObserver(
                     powerManager = powerManager,
-                    dispatch = { command -> mainHandler.post(command) },
+                    dispatch = { command ->
+                        mainHandler.post {
+                            if (lifecycle.accepts(generation)) command.run()
+                        }
+                    },
                     onChanged = { status ->
-                        publish(lifecycle.snapshot().copy(thermalState = DeviceHealthPolicy.thermalState(status)))
+                        publish(
+                            generation,
+                            lifecycle.snapshot().copy(thermalState = DeviceHealthPolicy.thermalState(status)),
+                        )
                     },
                 ).also {
                     it.start()
@@ -165,17 +180,17 @@ internal class AndroidDeviceHealthMonitor(
                 }
             }.onFailure(onError)
         }
-        refresh(batteryIntent)
+        refresh(generation, batteryIntent)
     }
 
     fun stop() {
         if (!started) return
         started = false
         lifecycle.stop()
-        if (receiverRegistered) {
-            runCatching { applicationContext.unregisterReceiver(receiver) }.onFailure(onError)
-            receiverRegistered = false
+        receiver?.let { registeredReceiver ->
+            runCatching { applicationContext.unregisterReceiver(registeredReceiver) }.onFailure(onError)
         }
+        receiver = null
         thermalObserver?.let { observer -> runCatching(observer::stop).onFailure(onError) }
         thermalObserver = null
     }
@@ -205,13 +220,19 @@ internal class AndroidDeviceHealthMonitor(
         )
     }
 
-    private fun publish(snapshot: DeviceHealthSnapshot) {
-        lifecycle.publish(snapshot)?.let(onChanged)
+    private fun publish(
+        generation: Long,
+        snapshot: DeviceHealthSnapshot,
+    ) {
+        lifecycle.publish(generation, snapshot)?.let(onChanged)
     }
 
-    private fun refresh(batteryIntent: Intent?) {
+    private fun refresh(
+        generation: Long,
+        batteryIntent: Intent?,
+    ) {
         runCatching { readSnapshot(batteryIntent) }
-            .onSuccess(::publish)
+            .onSuccess { snapshot -> publish(generation, snapshot) }
             .onFailure(onError)
     }
 

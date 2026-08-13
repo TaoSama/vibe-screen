@@ -11,20 +11,19 @@ cd baseline/AndroidClient
   assembleDebug
 ```
 
-When a coordinated device lease is available, run the settings layout
-instrumentation separately. The test covers 600x960dp portrait and 960x600dp
-landscape in addition to the existing narrow-window, large-text, and responsive
-toggle-group cases:
+Run the settings layout instrumentation separately when a device is available.
+The test constrains the dialog to the production 85% screen-height viewport and
+covers 600x960dp portrait and 960x600dp landscape in addition to the existing
+narrow-window, large-text, and responsive toggle-group cases:
 
 ```bash
-adb -s DEVICE_SERIAL install -r -t app/build/outputs/apk/debug/app-debug.apk
 ./gradlew --no-daemon connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.SettingsDialogLayoutInstrumentedTest
 ```
 
 ## Required device evidence
 
-No physical-device or long-duration result is recorded by this change. Before
+No target-tablet or long-duration result is recorded by this change. Before
 closing Phase 2, retain evidence for all of the following:
 
 - exact 8–9 inch tablet model, OS/build, logical window sizes, density, and both
@@ -45,16 +44,19 @@ The eight-hour run must not be replaced by this focused test or by a short soak.
 On 2026-08-14, the focused validation completed well inside the ten-minute
 budget:
 
-- `DeviceHealthMonitorTest`: 3 tests, 0 skipped, 0 failures, 0 errors;
-- final `assembleDebug`: successful in the same 13-second Gradle invocation;
-- `compileDebugAndroidTestKotlin`: successful in 6 seconds;
+- `DeviceHealthMonitorTest`: 4 tests, 0 skipped, 0 failures, 0 errors;
+- `assembleDebug` and Android test compilation: successful in the same 9-second
+  Gradle invocation;
+- `SettingsDialogLayoutInstrumentedTest`: 6 tests passed on an Android 16
+  `2211133C` device (1080x2400, 420 dpi) in 17 seconds. Its tablet cases use
+  synthetic 600x960dp and 960x600dp configurations and do not prove behavior on
+  a physical 8–9 inch tablet;
 - debug APK SHA-256:
-  `e513325bc924059a423e2a4bc12ad7adf296a22b8d73f1e6b1eb97eff7f94d84`.
+  `f1da0ce7fe726043b45f63ada90ec91e3d8a0a045cdd925a3b7366e414744fcf`.
 
-Including the earlier incremental compile used while reviewing the implementation,
-all Gradle validation invocations consumed less than one minute of wall-clock
-time in aggregate.
+This follow-up's Gradle validation invocations consumed less than one minute of
+wall-clock time in aggregate.
 
-No ADB command, instrumentation execution, physical-tablet check, thermal load,
-or soak was run. The result proves compilation and the focused pure policy/
-lifecycle behavior only.
+No physical-tablet check, thermal load, or soak was run. The result proves the
+focused policy/lifecycle behavior and settings layout under the tested Android
+runtime and synthetic configurations only.

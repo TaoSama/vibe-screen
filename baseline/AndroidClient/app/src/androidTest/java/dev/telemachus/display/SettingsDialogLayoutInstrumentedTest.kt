@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.view.ContextThemeWrapper
 import androidx.test.core.app.ApplicationProvider
@@ -83,6 +84,13 @@ class SettingsDialogLayoutInstrumentedTest {
                         (0 until text.layout.lineCount).all { line -> text.layout.getEllipsisCount(line) == 0 },
                     )
                 }
+                assertEquals(layout.dialogHeightPx, layout.viewport.measuredHeight)
+                assertEquals(layout.dialogHeightPx, layout.root.measuredHeight)
+                val scrollView = layout.root.getChildAt(0) as ScrollView
+                assertEquals(layout.dialogHeightPx, scrollView.measuredHeight)
+                assertVerticallyOrdered(layout.root.findViewById(R.id.settingsContent))
+                assertAllTextReadable(layout.root)
+                assertLastItemCanScrollIntoView(layout)
             }
         }
     }
@@ -212,11 +220,76 @@ class SettingsDialogLayoutInstrumentedTest {
             LayoutInflater.from(themedContext)
                 .inflate(R.layout.dialog_settings, parent, false) as ViewGroup
         val dialogWidth = layoutWidth(themedContext, screenWidthDp)
-        val measured = MeasuredLayout(themedContext, root, dialogWidth)
+        val dialogHeight = layoutHeight(themedContext, screenHeightDp)
+        parent.addView(root)
+        val measured = MeasuredLayout(themedContext, parent, root, dialogWidth, dialogHeight)
         measured.measureAndLayout()
         SettingsDialogLayoutApplier.apply(root)
         measured.measureAndLayout()
         assertion(measured)
+    }
+
+    private fun layoutHeight(
+        context: Context,
+        screenHeightDp: Int,
+    ): Int {
+        val ratioHeightDp = (screenHeightDp * SETTINGS_MAX_HEIGHT_RATIO).roundToInt()
+        val availableHeightDp = screenHeightDp - SETTINGS_WINDOW_MARGIN_DP * 2
+        return dp(context, minOf(ratioHeightDp, availableHeightDp))
+    }
+
+    private fun assertVerticallyOrdered(content: ViewGroup) {
+        var previousBottom = 0
+        (0 until content.childCount).forEach { index ->
+            val child = content.getChildAt(index)
+            if (child.visibility != View.GONE) {
+                assertTrue("${child.javaClass.simpleName} at $index overlaps its predecessor", child.top >= previousBottom)
+                previousBottom = child.bottom
+            }
+        }
+    }
+
+    private fun assertAllTextReadable(root: View) {
+        fun visit(view: View) {
+            if (view is TextView && view.visibility == View.VISIBLE && view.text.isNotEmpty()) {
+                val textLayout = view.layout
+                val label =
+                    if (view.id == View.NO_ID) {
+                        view.text.toString()
+                    } else {
+                        view.resources.getResourceEntryName(view.id)
+                    }
+                assertTrue("$label has text layout", textLayout != null && textLayout.lineCount > 0)
+                assertTrue(
+                    "$label is not ellipsized",
+                    (0 until textLayout.lineCount).all { line -> textLayout.getEllipsisCount(line) == 0 },
+                )
+                val contentWidth = view.width - view.compoundPaddingLeft - view.compoundPaddingRight
+                val maximumLineWidth = (0 until textLayout.lineCount).maxOf(textLayout::getLineWidth)
+                assertTrue(
+                    "$label line width $maximumLineWidth fits content width $contentWidth",
+                    maximumLineWidth <= contentWidth,
+                )
+                assertTrue(
+                    "$label fits vertically",
+                    textLayout.getLineBottom(textLayout.lineCount - 1) <= view.height - view.compoundPaddingBottom,
+                )
+            }
+            if (view is ViewGroup) {
+                (0 until view.childCount).forEach { index -> visit(view.getChildAt(index)) }
+            }
+        }
+        visit(root)
+    }
+
+    private fun assertLastItemCanScrollIntoView(layout: MeasuredLayout) {
+        val scrollView = layout.root.getChildAt(0) as ScrollView
+        val lastItem = layout.root.findViewById<View>(R.id.closeButton)
+        scrollView.scrollTo(0, lastItem.bottom)
+        val visibleTop = scrollView.scrollY
+        val visibleBottom = visibleTop + scrollView.height - scrollView.paddingBottom
+        assertTrue("last item top is above the viewport", lastItem.top >= visibleTop)
+        assertTrue("last item bottom is below the viewport", lastItem.bottom <= visibleBottom)
     }
 
     private fun layoutWidth(
@@ -236,18 +309,20 @@ class SettingsDialogLayoutInstrumentedTest {
 
     private class MeasuredLayout(
         val context: Context,
+        val viewport: FrameLayout,
         val root: ViewGroup,
         private val widthPx: Int,
+        val dialogHeightPx: Int,
     ) {
         val rootParams: ViewGroup.MarginLayoutParams
             get() = root.layoutParams as ViewGroup.MarginLayoutParams
 
         fun measureAndLayout(widthPx: Int = this.widthPx) {
-            root.measure(
+            viewport.measure(
                 View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(dp(4000), View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(dialogHeightPx, View.MeasureSpec.EXACTLY),
             )
-            root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+            viewport.layout(0, 0, viewport.measuredWidth, viewport.measuredHeight)
             root.viewTreeObserver.dispatchOnGlobalLayout()
         }
 
@@ -257,6 +332,7 @@ class SettingsDialogLayoutInstrumentedTest {
     private companion object {
         const val SETTINGS_WINDOW_MARGIN_DP = 24
         const val SETTINGS_MAX_WIDTH_DP = 680
+        const val SETTINGS_MAX_HEIGHT_RATIO = 0.85f
         val POSITION_BUTTON_IDS =
             listOf(
                 R.id.cornerTopLeft,
