@@ -108,7 +108,9 @@ class AndroidSessionPacketCipher internal constructor(
                 }
                 val sequence = ByteBuffer.wrap(decoded.nonce, Int.SIZE_BYTES, Long.SIZE_BYTES).long
                 val window = replayWindows.getOrPut(channel) {
-                    ReplayWindow(strictlyOrdered = channel == SessionChannel.CONTROL)
+                    ReplayWindow(
+                        strictlyOrdered = channel == SessionChannel.CONTROL || channel == SessionChannel.BULK,
+                    )
                 }
                 if (!window.canAccept(sequence)) return@active null
                 val plaintext =
@@ -216,7 +218,12 @@ class AndroidSessionPacketCipher internal constructor(
     }
 
     private fun SessionChannel.toSecurityChannel(): SecurityChannel =
-        if (this == SessionChannel.CONTROL) SecurityChannel.CONTROL else SecurityChannel.MEDIA
+        when (this) {
+            SessionChannel.CONTROL -> SecurityChannel.CONTROL
+            SessionChannel.MEDIA -> SecurityChannel.MEDIA
+            SessionChannel.AUDIO -> SecurityChannel.AUDIO
+            SessionChannel.BULK -> SecurityChannel.BULK
+        }
 
     private fun PeerRole.toSenderRole(): SenderRole =
         if (this == PeerRole.HOST) SenderRole.HOST else SenderRole.DEVICE

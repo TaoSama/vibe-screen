@@ -8,15 +8,22 @@ struct PlatformSessionKeys: Equatable {
     let deviceControl: Data
     let hostMedia: Data
     let deviceMedia: Data
+    let hostAudio: Data
+    let deviceAudio: Data
+    let hostBulk: Data
+    let deviceBulk: Data
 
     fileprivate var combined: Data {
         hostControl + deviceControl + hostMedia + deviceMedia
+            + hostAudio + deviceAudio + hostBulk + deviceBulk
     }
 }
 
 enum PlatformSecurityChannel: UInt32 {
     case control = 1
     case media = 2
+    case audio = 3
+    case bulk = 4
 }
 
 enum PlatformSenderRole: UInt32 {
@@ -57,12 +64,16 @@ extension PlatformSessionKeys {
         case (.control, .device): return deviceControl
         case (.media, .host): return hostMedia
         case (.media, .device): return deviceMedia
+        case (.audio, .host): return hostAudio
+        case (.audio, .device): return deviceAudio
+        case (.bulk, .host): return hostBulk
+        case (.bulk, .device): return deviceBulk
         }
     }
 }
 
 enum TrafficKeyDerivation {
-    private static let materialLength = 128
+    private static let materialLength = 256
 
     static func initial(sharedSecret: Data, bootstrapSecret: Data, context: Data) throws -> PlatformSessionKeys {
         guard !sharedSecret.isEmpty, bootstrapSecret.count == 32, context.count == 32 else {
@@ -103,7 +114,8 @@ enum TrafficKeyDerivation {
 
     private static func split(material: Data, context: Data, epoch: UInt64) -> PlatformSessionKeys {
         precondition(material.count == materialLength)
-        let firstDigest = Data(SHA256.hash(data: context + material))
+        // Preserve the Phase 3 key identifier while extending the HKDF tail.
+        let firstDigest = Data(SHA256.hash(data: context + Data(material.prefix(128))))
         let keyID = Data(SHA256.hash(data: firstDigest)).map { String(format: "%02x", $0) }.joined()
         return PlatformSessionKeys(
             keyID: keyID,
@@ -111,7 +123,11 @@ enum TrafficKeyDerivation {
             hostControl: material.subdata(in: 0..<32),
             deviceControl: material.subdata(in: 32..<64),
             hostMedia: material.subdata(in: 64..<96),
-            deviceMedia: material.subdata(in: 96..<128)
+            deviceMedia: material.subdata(in: 96..<128),
+            hostAudio: material.subdata(in: 128..<160),
+            deviceAudio: material.subdata(in: 160..<192),
+            hostBulk: material.subdata(in: 192..<224),
+            deviceBulk: material.subdata(in: 224..<256)
         )
     }
 
