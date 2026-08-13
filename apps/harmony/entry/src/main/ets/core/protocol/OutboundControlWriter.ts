@@ -29,12 +29,17 @@ export class OutboundControlWriter {
   private readonly encoder: ProtocolEncoder = new ProtocolEncoder();
   private readonly criticalQueue: PendingControl[] = [];
   private readonly inputQueue: PendingControl[] = [];
-  private nextMessageId: bigint = 1n;
+  private nextMessageId: bigint;
   private draining: boolean = false;
   private failure: Error | undefined;
   private active: PendingControl | undefined;
 
-  constructor(private sender: ControlSender, private clock: MonotonicClock) {}
+  constructor(private sender: ControlSender, private clock: MonotonicClock, firstMessageId: bigint = 1n) {
+    if (firstMessageId <= 0n) throw new Error('First control message id must be positive');
+    this.nextMessageId = firstMessageId;
+  }
+
+  nextMessageIdValue(): bigint { return this.nextMessageId; }
 
   enqueue(intent: OutboundControlIntent, scope: OutboundControlScope,
     onAssigned?: ControlAssignment): Promise<OutboundControlReceipt> {

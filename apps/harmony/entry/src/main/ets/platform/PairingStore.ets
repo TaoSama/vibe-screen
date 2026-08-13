@@ -1,8 +1,11 @@
 import { asset } from '@kit.AssetStoreKit';
 import { JSON, url, util } from '@kit.ArkTS';
+import { DeviceIdentity, SignatureAlgorithm } from '../core/protocol/ProtocolModels';
+import { CredentialStore, StoredCredential } from '../core/security/PairingSecurity';
 
 const HOST_ALIAS: Uint8Array = new util.TextEncoder().encode('vibescreen.trusted-lan-host.v1');
 const IDENTITY_ALIAS: Uint8Array = new util.TextEncoder().encode('vibescreen.client-identity.v1');
+const SECURITY_ALIAS: Uint8Array = new util.TextEncoder().encode('vibescreen.pairing-security.v1');
 const RECORD_VERSION: number = 1;
 const CLIENT_ID_PATTERN: RegExp = /^harmony-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -10,6 +13,13 @@ export interface PairingTarget { host: string; port: number; offerId: string; on
 export interface TrustedHostRecord { version: number; host: string; port: number; offerId: string; }
 interface ClientIdentityRecord { version: number; clientId: string; }
 interface DecodedClientIdentity { clientId: string; legacy: boolean; }
+interface StoredIdentityRecord {
+  deviceId: string; keyId: string; keyEpoch: string; signatureAlgorithm: number; signingPublicKeyHex: string;
+}
+interface StoredCredentialRecord {
+  version: number; pairingId: string; deviceId: string; hostIdentity: StoredIdentityRecord; credentialHex: string;
+  sessionKeyId: string; sessionKeyEpoch: string; highestControlSequence: string; revoked: boolean; revocationReason: string;
+}
 
 export class PairingLink {
   static parse(value: string): PairingTarget {
@@ -25,7 +35,7 @@ export class PairingLink {
   }
 }
 
-export class PairingStore {
+export class PairingStore implements CredentialStore {
   private static operationTail: Promise<void> = Promise.resolve();
 
   async saveTrustedHost(target: PairingTarget): Promise<void> {
@@ -83,7 +93,49 @@ export class PairingStore {
   }
 
   async forgetHost(): Promise<void> {
-    await this.serialized(async () => { await this.remove(HOST_ALIAS); });
+    await this.serialized(async () => { await this.remove(HOST_ALIAS); await this.remove(SECURITY_ALIAS); });
+  }
+
+  async load(): Promise<StoredCredential | undefined> {
+    return this.serialized(async () => {
+      const secret: Uint8Array | undefined = await this.loadSecret(SECURITY_ALIAS);
+      if (secret === undefined) return undefined;
+      try {
+        const raw = JSON.parse(new util.TextDecoder().decode(secret)) as Partial<StoredCredentialRecord>;
+        if (raw.version !== RECORD_VERSION || typeof raw.pairingId !== 'string' || typeof raw.deviceId !== 'string' ||
+          raw.hostIdentity === undefined || typeof raw.credentialHex !== 'string' || typeof raw.sessionKeyId !== 'string' ||
+          typeof raw.sessionKeyEpoch !== 'string' || typeof raw.highestControlSequence !== 'string' ||
+          typeof raw.revoked !== 'boolean' || typeof raw.revocationReason !== 'string') throw new Error('unsupported_security_record');
+        const identity: StoredIdentityRecord = raw.hostIdentity as StoredIdentityRecord;
+        if (typeof identity.deviceId !== 'string' || typeof identity.keyId !== 'string' || typeof identity.keyEpoch !== 'string' ||
+          typeof identity.signatureAlgorithm !== 'number' || typeof identity.signingPublicKeyHex !== 'string') {
+          throw new Error('unsupported_security_identity');
+        }
+        return { version: RECORD_VERSION, pairingId: raw.pairingId, deviceId: raw.deviceId,
+          hostIdentity: { deviceId: identity.deviceId, keyId: identity.keyId, keyEpoch: BigInt(identity.keyEpoch),
+            signatureAlgorithm: identity.signatureAlgorithm as SignatureAlgorithm,
+            signingPublicKey: this.decodeHex(identity.signingPublicKeyHex) },
+          credential: this.decodeHex(raw.credentialHex), sessionKeyId: raw.sessionKeyId,
+          sessionKeyEpoch: BigInt(raw.sessionKeyEpoch), highestControlSequence: BigInt(raw.highestControlSequence),
+          revoked: raw.revoked, revocationReason: raw.revocationReason };
+      } catch (_error) {
+        throw new Error('已保存的安全配对记录损坏或版本不受支持');
+      }
+    });
+  }
+
+  async save(record: StoredCredential): Promise<void> {
+    const identity: DeviceIdentity = record.hostIdentity;
+    const encoded: StoredCredentialRecord = { version: RECORD_VERSION, pairingId: record.pairingId,
+      deviceId: record.deviceId, hostIdentity: { deviceId: identity.deviceId, keyId: identity.keyId,
+        keyEpoch: identity.keyEpoch.toString(), signatureAlgorithm: identity.signatureAlgorithm,
+        signingPublicKeyHex: this.encodeHex(identity.signingPublicKey) }, credentialHex: this.encodeHex(record.credential),
+      sessionKeyId: record.sessionKeyId, sessionKeyEpoch: record.sessionKeyEpoch.toString(),
+      highestControlSequence: record.highestControlSequence.toString(), revoked: record.revoked,
+      revocationReason: record.revocationReason };
+    await this.serialized(async () => {
+      await this.upsert(SECURITY_ALIAS, new util.TextEncoder().encode(JSON.stringify(encoded)));
+    });
   }
 
   private async serialized<T>(operation: () => Promise<T>): Promise<T> {
@@ -154,5 +206,18 @@ export class PairingStore {
     } catch (_error) {
       throw new Error('已保存的客户端身份损坏或版本不受支持');
     }
+  }
+
+  private encodeHex(value: Uint8Array): string {
+    let encoded: string = '';
+    for (let index: number = 0; index < value.length; index += 1) encoded += value[index].toString(16).padStart(2, '0');
+    return encoded;
+  }
+
+  private decodeHex(value: string): Uint8Array {
+    if (!/^(?:[0-9a-f]{2})*$/i.test(value)) throw new Error('invalid_hex');
+    const decoded: Uint8Array = new Uint8Array(value.length / 2);
+    for (let index: number = 0; index < decoded.length; index += 1) decoded[index] = Number.parseInt(value.slice(index * 2, index * 2 + 2), 16);
+    return decoded;
   }
 }

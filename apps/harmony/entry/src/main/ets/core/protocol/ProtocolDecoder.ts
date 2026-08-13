@@ -1,5 +1,6 @@
-import { Codec, ColorDescription, ColorPrimaries, DisplayDescriptor, HostHello, MatrixCoefficients,
-  MediaPacketHeader, SessionAccepted, TransferFunction, VideoConfig } from './ProtocolModels';
+import { AeadAlgorithm, Codec, ColorDescription, ColorPrimaries, DeviceIdentity, DeviceRevoked, DisplayDescriptor,
+  HostHello, KeyAgreementAlgorithm, MatrixCoefficients, MediaPacketHeader, PairingOffer, PairingProof, PairingResult,
+  ResumeSessionResult, SessionAccepted, SignatureAlgorithm, TransferFunction, VideoConfig } from './ProtocolModels';
 import { ProtobufReader } from './ProtobufReader';
 
 export interface DecodedEnvelope {
@@ -74,6 +75,80 @@ export class ProtocolDecoder {
     }
     if (message.sessionId.length === 0 || message.sessionEpoch === 0n) throw new Error('Invalid SessionAccepted');
     return message;
+  }
+
+  resumeSessionResult(payload: Uint8Array): ResumeSessionResult {
+    const reader: ProtobufReader = new ProtobufReader(payload);
+    const result: ResumeSessionResult = { accepted: false, sessionEpoch: 0n, rejectionReason: '' };
+    while (!reader.done()) {
+      const tag: number = reader.tag(); const field: number = tag >>> 3; const wire: number = tag & 7;
+      if (field === 1 && wire === 0) result.accepted = reader.varint() !== 0n;
+      else if (field === 2 && wire === 0) result.sessionEpoch = reader.varint();
+      else if (field === 3 && wire === 2) result.rejectionReason = reader.string();
+      else reader.skip(wire);
+    }
+    if ((result.accepted && result.sessionEpoch === 0n) || (!result.accepted && result.sessionEpoch !== 0n)) {
+      throw new Error('Invalid ResumeSessionResult');
+    }
+    return result;
+  }
+
+  pairingOffer(payload: Uint8Array): PairingOffer {
+    const reader: ProtobufReader = new ProtobufReader(payload);
+    const offer: PairingOffer = { offerId: new Uint8Array(), oneTimeCredential: new Uint8Array(),
+      expiresAtUnixSeconds: 0n, hostPublicKey: new Uint8Array(), hostIdentity: this.emptyIdentity(),
+      challenge: new Uint8Array(), ephemeralPublicKey: new Uint8Array(), signatureAlgorithms: [],
+      keyAgreementAlgorithms: [], aeadAlgorithms: [] };
+    while (!reader.done()) {
+      const tag: number = reader.tag(); const field: number = tag >>> 3; const wire: number = tag & 7;
+      if (field === 1 && wire === 2) offer.offerId = reader.bytesField();
+      else if (field === 2 && wire === 2) offer.oneTimeCredential = reader.bytesField();
+      else if (field === 3 && wire === 0) offer.expiresAtUnixSeconds = reader.varint();
+      else if (field === 4 && wire === 2) offer.hostPublicKey = reader.bytesField();
+      else if (field === 5 && wire === 2) offer.hostIdentity = this.deviceIdentity(reader.bytesField());
+      else if (field === 6 && wire === 2) offer.challenge = reader.bytesField();
+      else if (field === 7 && wire === 2) offer.ephemeralPublicKey = reader.bytesField();
+      else if (field === 8 && wire === 0) offer.signatureAlgorithms.push(Number(reader.varint()));
+      else if (field === 9 && wire === 0) offer.keyAgreementAlgorithms.push(Number(reader.varint()));
+      else if (field === 10 && wire === 0) offer.aeadAlgorithms.push(Number(reader.varint()));
+      else if ((field === 8 || field === 9 || field === 10) && wire === 2) {
+        const values: number[] = []; this.readPackedEnums(reader.bytesField(), values);
+        if (field === 8) offer.signatureAlgorithms.push(...values as SignatureAlgorithm[]);
+        else if (field === 9) offer.keyAgreementAlgorithms.push(...values as KeyAgreementAlgorithm[]);
+        else offer.aeadAlgorithms.push(...values as AeadAlgorithm[]);
+      } else reader.skip(wire);
+    }
+    return offer;
+  }
+
+  pairingResult(payload: Uint8Array): PairingResult {
+    const reader: ProtobufReader = new ProtobufReader(payload);
+    const result: PairingResult = { accepted: false, deviceId: '', deviceCredential: new Uint8Array(), rejectionReason: '',
+      hostProof: { challenge: new Uint8Array(), ephemeralPublicKey: new Uint8Array(), signature: new Uint8Array() },
+      encryptedDeviceCredential: new Uint8Array(), credentialNonce: new Uint8Array(), sessionKeyId: '', sessionKeyEpoch: 0n };
+    while (!reader.done()) {
+      const tag: number = reader.tag(); const field: number = tag >>> 3; const wire: number = tag & 7;
+      if (field === 1 && wire === 0) result.accepted = reader.varint() !== 0n;
+      else if (field === 2 && wire === 2) result.deviceId = reader.string();
+      else if (field === 3 && wire === 2) result.deviceCredential = reader.bytesField();
+      else if (field === 4 && wire === 2) result.rejectionReason = reader.string();
+      else if (field === 5 && wire === 2) result.hostProof = this.pairingProof(reader.bytesField());
+      else if (field === 6 && wire === 2) result.encryptedDeviceCredential = reader.bytesField();
+      else if (field === 7 && wire === 2) result.credentialNonce = reader.bytesField();
+      else if (field === 8 && wire === 2) result.sessionKeyId = reader.string();
+      else if (field === 9 && wire === 0) result.sessionKeyEpoch = reader.varint();
+      else reader.skip(wire);
+    }
+    return result;
+  }
+
+  deviceRevoked(payload: Uint8Array): DeviceRevoked {
+    const reader: ProtobufReader = new ProtobufReader(payload); const revoked: DeviceRevoked = { deviceId: '', reasonCode: '' };
+    while (!reader.done()) { const tag: number = reader.tag(); const field: number = tag >>> 3; const wire: number = tag & 7;
+      if (field === 1 && wire === 2) revoked.deviceId = reader.string();
+      else if (field === 2 && wire === 2) revoked.reasonCode = reader.string(); else reader.skip(wire); }
+    if (revoked.deviceId.length === 0 || revoked.reasonCode.length === 0) throw new Error('Invalid DeviceRevoked');
+    return revoked;
   }
 
   displays(payload: Uint8Array): DisplayDescriptor[] {
@@ -219,5 +294,30 @@ export class ProtocolDecoder {
 
   private readPackedEnums(payload: Uint8Array, destination: number[]): void {
     const packed: ProtobufReader = new ProtobufReader(payload); while (!packed.done()) destination.push(Number(packed.varint()));
+  }
+
+  private emptyIdentity(): DeviceIdentity {
+    return { deviceId: '', keyId: '', keyEpoch: 0n, signatureAlgorithm: SignatureAlgorithm.UNSPECIFIED,
+      signingPublicKey: new Uint8Array() };
+  }
+
+  private deviceIdentity(payload: Uint8Array): DeviceIdentity {
+    const reader: ProtobufReader = new ProtobufReader(payload); const identity: DeviceIdentity = this.emptyIdentity();
+    while (!reader.done()) { const tag: number = reader.tag(); const field: number = tag >>> 3; const wire: number = tag & 7;
+      if (field === 1 && wire === 2) identity.deviceId = reader.string(); else if (field === 2 && wire === 2) identity.keyId = reader.string();
+      else if (field === 3 && wire === 0) identity.keyEpoch = reader.varint();
+      else if (field === 4 && wire === 0) identity.signatureAlgorithm = Number(reader.varint());
+      else if (field === 5 && wire === 2) identity.signingPublicKey = reader.bytesField(); else reader.skip(wire); }
+    return identity;
+  }
+
+  private pairingProof(payload: Uint8Array): PairingProof {
+    const reader: ProtobufReader = new ProtobufReader(payload);
+    const proof: PairingProof = { challenge: new Uint8Array(), ephemeralPublicKey: new Uint8Array(), signature: new Uint8Array() };
+    while (!reader.done()) { const tag: number = reader.tag(); const field: number = tag >>> 3; const wire: number = tag & 7;
+      if (field === 1 && wire === 2) proof.challenge = reader.bytesField();
+      else if (field === 2 && wire === 2) proof.ephemeralPublicKey = reader.bytesField();
+      else if (field === 3 && wire === 2) proof.signature = reader.bytesField(); else reader.skip(wire); }
+    return proof;
   }
 }

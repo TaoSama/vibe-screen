@@ -1,7 +1,7 @@
 import { Capability } from '../protocol/ProtocolModels';
 
 export const HARMONY_ADVERTISED_CAPABILITIES: Capability[] = [
-  Capability.TOUCH, Capability.KEYBOARD, Capability.POINTER, Capability.STYLUS
+  Capability.TOUCH, Capability.KEYBOARD, Capability.POINTER, Capability.STYLUS, Capability.SESSION_RESUME
 ];
 export const HARMONY_REQUIRED_CAPABILITIES: Capability[] = [Capability.TOUCH];
 
@@ -37,6 +37,13 @@ export class ClientCapabilities {
   has(capability: Capability): boolean { return this.negotiated.has(capability); }
 
   values(): Capability[] { return [...this.negotiated] as Capability[]; }
+
+  restore(hostCapabilities: Capability[], negotiatedCapabilities: Capability[]): void {
+    this.acceptHost(hostCapabilities);
+    this.acceptNegotiated(negotiatedCapabilities);
+  }
+
+  hostValues(): Capability[] { return [...this.host] as Capability[]; }
 
   reset(): void { this.host.clear(); this.negotiated.clear(); }
 
