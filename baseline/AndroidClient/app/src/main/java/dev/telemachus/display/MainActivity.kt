@@ -4359,7 +4359,13 @@ class MainActivity : AppCompatActivity() {
                 Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,
                 0,
             ) == 1
-        updateChecklistItem(binding.checkDeveloperMode, isDeveloperModeEnabled)
+        ChecklistStatusApplier.apply(
+            this,
+            binding.checkDeveloperMode,
+            binding.textDeveloperMode,
+            R.string.developer_mode,
+            if (isDeveloperModeEnabled) ChecklistStatus.READY else ChecklistStatus.NOT_READY,
+        )
 
         // Check USB Debugging (ADB enabled)
         val isAdbEnabled =
@@ -4368,21 +4374,46 @@ class MainActivity : AppCompatActivity() {
                 Settings.Global.ADB_ENABLED,
                 0,
             ) == 1
-        updateChecklistItem(binding.checkUsbDebugging, isAdbEnabled)
+        ChecklistStatusApplier.apply(
+            this,
+            binding.checkUsbDebugging,
+            binding.textUsbDebugging,
+            R.string.usb_debugging,
+            if (isAdbEnabled) ChecklistStatus.READY else ChecklistStatus.NOT_READY,
+        )
 
         // Charging alone also succeeds with charge-only cables. The sticky USB
         // state broadcast tells us whether Android configured a real data link
         // and exposed the ADB USB function.
         val isUsbConnected = isUsbDataConnectionActive()
-        updateChecklistItem(binding.checkUsbConnected, isUsbConnected)
+        ChecklistStatusApplier.apply(
+            this,
+            binding.checkUsbConnected,
+            binding.textUsbConnected,
+            R.string.usb_data_cable,
+            if (isUsbConnected) ChecklistStatus.READY else ChecklistStatus.NOT_READY,
+        )
 
         if (automaticUsbConnect || connectionAttemptInProgress) {
-            updateChecklistItem(binding.checkMacServer, false)
+            ChecklistStatusApplier.apply(
+                this,
+                binding.checkMacServer,
+                binding.textMacServer,
+                R.string.mac_server,
+                ChecklistStatus.CHECKING,
+            )
             updateMainStatus(false)
             return
         }
 
         // Check Mac Server (try to connect to port)
+        ChecklistStatusApplier.apply(
+            this,
+            binding.checkMacServer,
+            binding.textMacServer,
+            R.string.mac_server,
+            ChecklistStatus.CHECKING,
+        )
         lifecycleScope.launch(Dispatchers.IO) {
             // Double-check connection state before socket test
             if (isConnected) return@launch
@@ -4393,10 +4424,24 @@ class MainActivity : AppCompatActivity() {
                     .toIntOrNull() ?: 54321
             val isServerRunning = checkServerRunning("127.0.0.1", port)
             runOnUiThread {
-                // Final check before updating UI
-                if (isConnected) return@runOnUiThread
+                if (!ChecklistProbeResultPolicy.shouldApply(
+                        connectionMode = prefs.connectionMode,
+                        detailsVisible = connectionDetailsVisible,
+                        connected = isConnected,
+                        connectionAttemptInProgress = connectionAttemptInProgress,
+                        automaticUsbConnect = automaticUsbConnect,
+                    )
+                ) {
+                    return@runOnUiThread
+                }
 
-                updateChecklistItem(binding.checkMacServer, isServerRunning)
+                ChecklistStatusApplier.apply(
+                    this@MainActivity,
+                    binding.checkMacServer,
+                    binding.textMacServer,
+                    R.string.mac_server,
+                    if (isServerRunning) ChecklistStatus.READY else ChecklistStatus.NOT_READY,
+                )
 
                 // Update main status indicator based on all checklist items
                 val allReady = isDeveloperModeEnabled && isAdbEnabled && isUsbConnected && isServerRunning
@@ -4417,19 +4462,6 @@ class MainActivity : AppCompatActivity() {
             binding.statusText.text =
                 if (allReady) "Ready to connect" else "Check the connection details below"
         }
-    }
-
-    private fun updateChecklistItem(
-        indicator: View,
-        isOk: Boolean,
-    ) {
-        indicator.setBackgroundResource(
-            if (isOk) {
-                R.drawable.status_indicator_green
-            } else {
-                R.drawable.status_indicator_red
-            },
-        )
     }
 
     private fun isUsbDataConnectionActive(): Boolean {
