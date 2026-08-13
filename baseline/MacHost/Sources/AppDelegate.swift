@@ -712,8 +712,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func setupSettingsWindow() {
-        settingsWindow = SettingsWindowController(settings: settings)
-
         settings.onToggleServer = { [weak self] in
             guard let self else { return }
             if self.reconfigurationCoordinator.hasDesiredRunning
@@ -1354,6 +1352,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showSettings() {
+        if settingsWindow == nil {
+            let controller = SettingsWindowController(settings: settings)
+            controller.onWindowClosed = { [weak self, weak controller] in
+                guard let self, self.settingsWindow === controller else { return }
+                self.settingsWindow = nil
+            }
+            settingsWindow = controller
+        }
         settingsWindow?.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
