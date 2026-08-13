@@ -1,8 +1,6 @@
 package dev.telemachus.display
 
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.os.Build
 import android.util.Log
 import android.view.WindowManager
@@ -340,25 +338,12 @@ class StreamClient(
             return@withContext
         }
         try {
-            // Force the socket onto the active WiFi network. On some Android setups
-            // the default route can silently drop LAN traffic.
+            // Keep trusted-LAN traffic on WiFi even when cellular is the default route.
             s.tcpNoDelay = true
-            val wifiNetwork =
-                context?.let { ctx ->
-                    val cm = ctx.getSystemService(ConnectivityManager::class.java)
-                    cm.activeNetwork?.takeIf { net ->
-                        cm
-                            .getNetworkCapabilities(net)
-                            ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-                    }
-                }
-            if (wifiNetwork != null) {
-                Log.i(TAG, "connectWireless: binding socket to WiFi network $wifiNetwork")
-                wifiNetwork.bindSocket(s)
-            } else {
-                Log.w(TAG, "connectWireless: no WiFi network found, using default routing")
-            }
-            s.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+            val route = AndroidWirelessNetworkRoute.bindPreferredWifi(context, s, host)
+            val address = route?.address ?: java.net.InetAddress.getByName(host)
+            Log.i(TAG, "connectWireless: route=${route?.network ?: "default"}, address=${address.hostAddress}")
+            s.connect(InetSocketAddress(address, port), CONNECT_TIMEOUT_MS)
         } catch (error: SocketTimeoutException) {
             failWirelessHandshake(SessionFailure.transport("TCP connect timeout"), WirelessConnectError.NetworkUnreachable)
         } catch (error: IOException) {
@@ -703,15 +688,9 @@ class StreamClient(
 
     private fun configureWirelessSocket(fresh: Socket) {
         fresh.tcpNoDelay = true
-        val wifiNetwork =
-            context?.let { ctx ->
-                val manager = ctx.getSystemService(ConnectivityManager::class.java)
-                manager.activeNetwork?.takeIf { network ->
-                    manager.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-                }
-            }
-        wifiNetwork?.bindSocket(fresh)
-        fresh.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+        val route = AndroidWirelessNetworkRoute.bindPreferredWifi(context, fresh, host)
+        val address = route?.address ?: java.net.InetAddress.getByName(host)
+        fresh.connect(InetSocketAddress(address, port), CONNECT_TIMEOUT_MS)
     }
 
     private fun authenticateWirelessSocket(
