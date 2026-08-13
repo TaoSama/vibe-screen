@@ -243,31 +243,100 @@ internal object DisplayCapsulePolicy {
 
     /**
      * Label shown on the capsule. Falls back to the primary/first display when
-     * the selected id is unknown so the capsule never reads as empty, and
-     * truncates long host names with an ellipsis so the compact, centered
-     * capsule cannot be pushed off-screen.
+     * the selected id is unknown so the capsule never reads as empty. The view
+     * owns visual ellipsizing because its width depends on safe-area and window
+     * constraints; retaining the full name also keeps accessibility intact.
      */
     fun capsuleLabel(
         displays: List<StreamDisplayOption>,
         selectedId: String,
-        maxNameLength: Int,
     ): String {
         val active =
             activeOption(displays, selectedId)
                 ?: displays.firstOrNull { it.isPrimary }
                 ?: displays.firstOrNull()
                 ?: return ""
-        return truncateName(active.name, maxNameLength)
+        return active.name.trim()
+    }
+}
+
+internal object ControlBarLayoutPolicy {
+    enum class Mode { COMPACT, INLINE, STACKED, COLUMN }
+    enum class Action { HOST, SETTINGS, DISCONNECT }
+
+    data class Geometry(
+        val horizontalContentPaddingPx: Int,
+        val selectorMinimumWidthPx: Int,
+        val buttonSizePx: Int,
+        val actionMarginPx: Int,
+        val disconnectSeparationPx: Int,
+        val columnActionSpacingPx: Int,
+    ) {
+        init {
+            require(horizontalContentPaddingPx >= 0)
+            require(selectorMinimumWidthPx > 0)
+            require(buttonSizePx > 0)
+            require(actionMarginPx >= 0)
+            require(disconnectSeparationPx >= 0)
+            require(columnActionSpacingPx >= 0)
+        }
+
+        fun horizontalActionsWidthPx(hostActionsVisible: Boolean): Int {
+            val settingsWidth = buttonSizePx + actionMarginPx * 2
+            val disconnectWidth = buttonSizePx + disconnectSeparationPx
+            val hostWidth = if (hostActionsVisible) buttonSizePx + actionMarginPx * 2 else 0
+            return hostWidth + settingsWidth + disconnectWidth
+        }
     }
 
-    private fun truncateName(
-        name: String,
-        maxNameLength: Int,
-    ): String {
-        val trimmed = name.trim()
-        if (maxNameLength <= 1 || trimmed.length <= maxNameLength) return trimmed
-        return trimmed.take(maxNameLength - 1).trimEnd() + "\u2026"
+    data class Margins(
+        val startPx: Int,
+        val topPx: Int,
+        val endPx: Int,
+        val bottomPx: Int = 0,
+    )
+
+    fun mode(
+        availableWidthPx: Int,
+        displaySelectorVisible: Boolean,
+        hostActionsVisible: Boolean,
+        geometry: Geometry,
+    ): Mode {
+        val actionWidthPx = geometry.horizontalActionsWidthPx(hostActionsVisible)
+        if (!displaySelectorVisible) {
+            val compactMinimumPx = geometry.horizontalContentPaddingPx + actionWidthPx
+            return if (availableWidthPx >= compactMinimumPx) Mode.COMPACT else Mode.COLUMN
+        }
+        val inlineMinimumPx =
+            geometry.horizontalContentPaddingPx + geometry.selectorMinimumWidthPx + actionWidthPx
+        val stackedMinimumPx =
+            geometry.horizontalContentPaddingPx + maxOf(geometry.selectorMinimumWidthPx, actionWidthPx)
+        return when {
+            availableWidthPx >= inlineMinimumPx -> Mode.INLINE
+            availableWidthPx >= stackedMinimumPx -> Mode.STACKED
+            else -> Mode.COLUMN
+        }
     }
+
+    fun actionMargins(
+        mode: Mode,
+        action: Action,
+        hostActionsVisible: Boolean,
+        geometry: Geometry,
+    ): Margins =
+        if (mode == Mode.COLUMN) {
+            when (action) {
+                Action.HOST -> Margins(0, 0, 0)
+                Action.SETTINGS -> Margins(0, if (hostActionsVisible) geometry.columnActionSpacingPx else 0, 0)
+                Action.DISCONNECT -> Margins(0, geometry.disconnectSeparationPx, 0)
+            }
+        } else {
+            when (action) {
+                Action.HOST, Action.SETTINGS ->
+                    Margins(geometry.actionMarginPx, 0, geometry.actionMarginPx)
+                Action.DISCONNECT -> Margins(geometry.disconnectSeparationPx, 0, 0)
+            }
+        }
 }
 
 internal object ClientControlAvailability {
