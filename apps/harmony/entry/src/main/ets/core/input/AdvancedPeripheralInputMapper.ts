@@ -40,9 +40,17 @@ export const NEUTRAL_CONTROLLER_STATE: ControllerFullState = {
   buttonMask: 0, leftStickX: 0, leftStickY: 0, rightStickX: 0, rightStickY: 0,
   leftTrigger: 0, rightTrigger: 0, hatX: 0, hatY: 0
 };
+export type StylusRoute = 'touch' | 'stylus' | 'suppress';
 
 /** Converts ArkUI/native-XComponent values without allowing invalid wire state. */
 export class AdvancedPeripheralInputMapper {
+  routeStylus(sample: HarmonyStylusSample, stylus: boolean, extended: boolean): StylusRoute {
+    const baseSafe: boolean = sample.toolKind === StylusToolKind.PEN &&
+      sample.contactState === StylusContactState.CONTACT && sample.buttonMask === 0;
+    if (!stylus) return baseSafe ? 'touch' : 'suppress';
+    return extended || baseSafe ? 'stylus' : 'suppress';
+  }
+
   stylus(inputId: bigint, sample: HarmonyStylusSample, extended: boolean): StylusInput {
     const terminal: boolean = sample.phase === InputPhase.ENDED || sample.phase === InputPhase.CANCELLED;
     const pressure: number = terminal || sample.contactState === StylusContactState.PROXIMITY ? 0 : sample.pressure;
@@ -126,24 +134,21 @@ export class ControllerSessionState {
     const epoch: bigint = (this.epochs.get(controllerId) ?? 0n) + 1n;
     this.epochs.set(controllerId, epoch);
     this.active.set(controllerId, { epoch, state: { ...NEUTRAL_CONTROLLER_STATE } });
-    return [this.sample(controllerId, epoch, ControllerEventKind.CONNECTED, NEUTRAL_CONTROLLER_STATE),
-      ...this.fullStateSamples()];
+    return [this.sample(controllerId, epoch, ControllerEventKind.CONNECTED, NEUTRAL_CONTROLLER_STATE)];
   }
 
   update(controllerId: string, state: ControllerFullState): ControllerLifecycleSample[] {
     const prefix: ControllerLifecycleSample[] = this.connect(controllerId);
     const active = this.active.get(controllerId)!;
     active.state = { ...state };
-    return [...prefix, ...this.fullStateSamples()];
+    return [...prefix, this.sample(controllerId, active.epoch, ControllerEventKind.STATE, active.state)];
   }
 
   disconnect(controllerId: string): ControllerLifecycleSample[] {
     const active = this.active.get(controllerId);
     if (active === undefined) return [];
     this.active.delete(controllerId);
-    return [this.sample(controllerId, active.epoch, ControllerEventKind.STATE, NEUTRAL_CONTROLLER_STATE),
-      this.sample(controllerId, active.epoch, ControllerEventKind.DISCONNECTED, NEUTRAL_CONTROLLER_STATE),
-      ...this.fullStateSamples()];
+    return [this.sample(controllerId, active.epoch, ControllerEventKind.DISCONNECTED, NEUTRAL_CONTROLLER_STATE)];
   }
 
   releaseAll(): ControllerLifecycleSample[] {
@@ -153,11 +158,6 @@ export class ControllerSessionState {
   }
 
   resetSession(): void { this.active.clear(); this.epochs.clear(); }
-
-  private fullStateSamples(): ControllerLifecycleSample[] {
-    return [...this.active.entries()].sort(([left], [right]) => left.localeCompare(right))
-      .map(([id, active]) => this.sample(id, active.epoch, ControllerEventKind.STATE, active.state));
-  }
 
   private sample(controllerId: string, controllerEpoch: bigint, kind: ControllerEventKind,
     state: ControllerFullState): ControllerLifecycleSample {

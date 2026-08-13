@@ -15,7 +15,8 @@ import { ProtocolDecoder } from '../.test-dist/protocol/ProtocolDecoder.js';
 import { MAX_PENDING_CONTROLS, OutboundControlWriter } from '../.test-dist/protocol/OutboundControlWriter.js';
 import { ProtobufWriter } from '../.test-dist/protocol/ProtobufWriter.js';
 import { decodeUtf8, encodeUtf8 } from '../.test-dist/protocol/Utf8.js';
-import { ClientCapabilities } from '../.test-dist/session/ClientCapabilities.js';
+import { ClientCapabilities, HARMONY_ADVERTISED_CAPABILITIES
+} from '../.test-dist/session/ClientCapabilities.js';
 import { HeartbeatMonitor } from '../.test-dist/session/HeartbeatMonitor.js';
 import { ProgressWatchdog } from '../.test-dist/session/ProgressWatchdog.js';
 import { isSupportedVideoConfig, ProductSession, ProductSessionState } from '../.test-dist/session/ProductSession.js';
@@ -152,6 +153,18 @@ test('negotiated capabilities must be a legal subset and gate optional input', (
   assert.equal(capabilities.has(Capability.KEYBOARD), false);
   assert.equal(capabilities.has(Capability.POINTER), false);
   assert.throws(() => capabilities.acceptNegotiated([Capability.TOUCH, Capability.KEYBOARD]), /invalid negotiated/);
+  assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.STYLUS), true);
+  assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.STYLUS_EXTENDED), false);
+  assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.CONTROLLER), false);
+  assert.throws(() => new ClientCapabilities([Capability.TOUCH, Capability.STYLUS_EXTENDED], [Capability.TOUCH]),
+    /Invalid client capability/);
+  const invalidHost = new ClientCapabilities([Capability.TOUCH, Capability.STYLUS,
+    Capability.STYLUS_EXTENDED], [Capability.TOUCH]);
+  assert.throws(() => invalidHost.acceptHost([Capability.TOUCH, Capability.STYLUS_EXTENDED]),
+    /invalid capability dependencies/);
+  invalidHost.acceptHost([Capability.TOUCH, Capability.STYLUS, Capability.STYLUS_EXTENDED]);
+  assert.throws(() => invalidHost.acceptNegotiated([Capability.TOUCH, Capability.STYLUS_EXTENDED]),
+    /invalid negotiated/);
 
   const session = new ProductSession('touch-only', 'Touch only', [Capability.TOUCH], [Codec.HEVC]);
   confirmRequest(session, session.start(1n)[0], 1n);
@@ -199,6 +212,7 @@ test('product session gates advanced input and releases active state neutrally',
   assert.deepEqual(releases.map((intent) => intent.kind), ['stylus', 'controller', 'controller']);
   assert.equal(releases[0].event.phase, InputPhase.CANCELLED);
   assert.equal(releases[0].event.pressure, 0);
+  assert.equal(releases[0].event.contactState, StylusContactState.CONTACT);
   assert.equal(releases[1].event.kind, ControllerEventKind.STATE);
   assert.equal(releases[2].event.kind, ControllerEventKind.DISCONNECTED);
   assert.deepEqual(session.releaseAdvancedInputs(() => next++), []);
@@ -236,6 +250,35 @@ test('outbound writer fails closed at a bounded backlog', async () => {
   const overflow = writer.enqueue({ kind: 'pong', sequence: 1n, correlationId: 1n }, scope);
   await assert.rejects(overflow, /bounded capacity/);
   await Promise.all(queued.map((pending) => assert.rejects(pending, /bounded capacity/)));
+});
+
+test('advanced release reserve bypasses a full ordinary backlog and sends first', async () => {
+  const sent = [];
+  const releases = [];
+  const writer = new OutboundControlWriter((bytes) => {
+    sent.push(new ProtocolDecoder().envelope(bytes));
+    return new Promise((resolve) => releases.push(resolve));
+  }, () => 1n);
+  const scope = { sessionId, sessionEpoch: 7n };
+  const active = writer.enqueue({ kind: 'ping', sequence: 1n }, scope);
+  const queued = [];
+  for (let index = 0; index < MAX_PENDING_CONTROLS; index += 1) {
+    queued.push(writer.enqueue({ kind: 'pointer', event: { inputId: BigInt(index + 1), pointerId: 0,
+      phase: InputPhase.CHANGED, x: 0.5, y: 0.5, pressure: 0, tiltX: 0, tiltY: 0, buttonMask: 0 } }, scope));
+  }
+  const release = writer.enqueueRelease({ kind: 'stylus', event: { inputId: 999n, pointerId: 1,
+    phase: InputPhase.CANCELLED, x: 0.5, y: 0.5, pressure: 0, tiltXDegrees: 0, tiltYDegrees: 0 } }, scope);
+  const disconnect = writer.enqueueRelease({ kind: 'controller', event: { inputId: 1000n,
+    controllerId: 'pad-1', controllerEpoch: 1n, kind: ControllerEventKind.DISCONNECTED,
+    ...NEUTRAL_CONTROLLER_STATE } }, scope);
+  releases.shift()(); await active;
+  assert.equal(sent[1].payloadField, 65);
+  releases.shift()(); await release;
+  assert.equal(sent[2].payloadField, 66);
+  releases.shift()(); await disconnect;
+  assert.equal(sent[3].payloadField, 61);
+  writer.close();
+  await Promise.all(queued.map((pending) => assert.rejects(pending)));
 });
 
 test('protocol responses overtake input while gesture lifecycle stays FIFO', async () => {
@@ -423,17 +466,25 @@ test('advanced input mapper validates stylus and emits full controller snapshots
   assert.equal(mapper.stableControllerId(31), 'harmony-1f');
   assert.throws(() => mapper.stylus(2n, { ...stylus, inputId: undefined, buttonMask: 4 }, true),
     /Invalid extended stylus/);
+  const baseSample = { pointerId: 7, phase: InputPhase.CHANGED, x: 0.5, y: 0.25, pressure: 0.8,
+    tiltXDegrees: 10, tiltYDegrees: -20, toolKind: StylusToolKind.PEN, buttonMask: 0,
+    contactState: StylusContactState.CONTACT };
+  assert.equal(mapper.routeStylus(baseSample, false, false), 'touch');
+  assert.equal(mapper.routeStylus({ ...baseSample, toolKind: StylusToolKind.ERASER }, false, false), 'suppress');
+  assert.equal(mapper.routeStylus({ ...baseSample, contactState: StylusContactState.PROXIMITY }, true, false), 'suppress');
+  assert.equal(mapper.routeStylus({ ...baseSample, buttonMask: 1 }, true, false), 'suppress');
+  assert.equal(mapper.routeStylus({ ...baseSample, buttonMask: 1 }, true, true), 'stylus');
 
   const controllers = new ControllerSessionState();
   assert.deepEqual(controllers.connect('pad-b').map((event) => [event.controllerId, event.kind]),
-    [['pad-b', ControllerEventKind.CONNECTED], ['pad-b', ControllerEventKind.STATE]]);
+    [['pad-b', ControllerEventKind.CONNECTED]]);
   const update = controllers.update('pad-a', { ...NEUTRAL_CONTROLLER_STATE, leftStickX: 0.5 });
   assert.deepEqual(update.map((event) => [event.controllerId, event.kind]), [
-    ['pad-a', ControllerEventKind.CONNECTED], ['pad-a', ControllerEventKind.STATE],
-    ['pad-b', ControllerEventKind.STATE], ['pad-a', ControllerEventKind.STATE],
-    ['pad-b', ControllerEventKind.STATE]
+    ['pad-a', ControllerEventKind.CONNECTED], ['pad-a', ControllerEventKind.STATE]
   ]);
-  assert.equal(update.at(-2).leftStickX, 0.5);
+  assert.equal(update.at(-1).leftStickX, 0.5);
+  assert.deepEqual(controllers.update('pad-b', { ...NEUTRAL_CONTROLLER_STATE, rightTrigger: 0.75 })
+    .map((event) => event.controllerId), ['pad-b']);
   const released = controllers.releaseAll();
   assert.equal(released.filter((event) => event.kind === ControllerEventKind.DISCONNECTED).length, 2);
   assert.equal(controllers.connect('pad-a')[0].controllerEpoch, 2n);

@@ -101,7 +101,10 @@ mask. Ordinary touch no longer carries stylus pressure. A validated platform
 adapter maps stylus pressure, signed tilt, eraser, two barrel buttons, contact/
 proximity and controller connect/state/disconnect snapshots into their dedicated
 Protocol v1 messages. ArkUI Pen touch events supply pressure and signed tilt;
-the richer native fields use the same validated adapter entry. Capability negotiation gates both paths, controller epochs
+the richer native fields use the same validated adapter entry. Because eraser,
+barrel-button, hover, and controller sources are not connected, Harmony advertises
+base stylus but not extended stylus or controller. Capability dependency closure
+rejects `STYLUS_EXTENDED` without `STYLUS`. Capability negotiation gates both paths, controller epochs
 reject stale attachment state, and background/disconnect sends neutral releases.
 Native acquisition of eraser/barrel-button/hover and controller fields, wheel/trackpad axis delivery,
 the complete physical-key map, and physical device behavior remain gates.

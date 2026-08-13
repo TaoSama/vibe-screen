@@ -507,6 +507,9 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   requireCallInMethod(indexPath, 'Index', 'connect', 'sessionRuntime', 'connect');
   requireCallInMethod(indexPath, 'Index', 'importLink', 'sessionRuntime', 'importPairingLink');
   requireCallInMethod(indexPath, 'Index', 'handleTouch', 'sessionRuntime', 'sendTouch');
+  requireCallInMethod(indexPath, 'Index', 'handleTouch', 'sessionRuntime', 'sendStylus');
+  check(read(indexPath).includes('pressure: event.pressure') && !read(indexPath).includes('touch.pressure'),
+    `${indexPath}: API 12 stylus pressure must come from TouchEvent.pressure, not TouchObject`);
   requireCallInMethod(indexPath, 'Index', 'handleMouse', 'sessionRuntime', 'sendPointer');
   requireCallInMethod(indexPath, 'Index', 'handleKey', 'sessionRuntime', 'sendKey');
   check(read(indexPath).includes('.onLoad(() => sessionRuntime.setSurface(') &&
@@ -539,9 +542,8 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   check(methodHasDominatingCapabilityGuard(controllerPath, 'HarmonySessionController', 'sendKey', 'Capability.KEYBOARD', 'key'),
     `${controllerPath}: HarmonySessionController.sendKey() must use a dominating KEYBOARD early-return guard`);
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendKey', 'active', 'key');
-  check(methodHasDominatingCapabilityGuard(controllerPath, 'HarmonySessionController', 'sendStylus', 'Capability.STYLUS', 'stylus'),
-    `${controllerPath}: HarmonySessionController.sendStylus() must use a dominating STYLUS early-return guard`);
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendStylus', 'active', 'stylus');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendStylus', 'active', 'touch');
   check(methodHasDominatingCapabilityGuard(controllerPath, 'HarmonySessionController', 'sendControllerSamples',
     'Capability.CONTROLLER', 'controller'),
   `${controllerPath}: HarmonySessionController.sendControllerSamples() must use a dominating CONTROLLER early-return guard`);

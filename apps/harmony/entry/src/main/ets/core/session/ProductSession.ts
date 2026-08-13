@@ -4,7 +4,7 @@ import { DecodedEnvelope, ProtocolDecoder } from '../protocol/ProtocolDecoder';
 import { OutboundControlIntent } from '../protocol/ProtocolEncoder';
 import { Capability, ClientHello, Codec, ColorPrimaries, ControllerEventKind, ControllerInput, InputPhase,
   InputTarget, KeyInput, MatrixCoefficients, NormalizedInput, PROTOCOL_VERSION, ScrollInput,
-  StylusContactState, StylusInput, TransferFunction, TransportKind, VideoConfig } from '../protocol/ProtocolModels';
+  StylusInput, TransferFunction, TransportKind, VideoConfig } from '../protocol/ProtocolModels';
 import { OutboundControlScope } from '../protocol/OutboundControlWriter';
 import { ClientCapabilities, HARMONY_REQUIRED_CAPABILITIES } from './ClientCapabilities';
 import { HeartbeatMonitor } from './HeartbeatMonitor';
@@ -230,7 +230,7 @@ export class ProductSession {
     const actions: SessionAction[] = [];
     [...this.activeStylus.entries()].sort(([left], [right]) => left - right).forEach(([, event]) => {
       const release: StylusInput = { ...event, inputId: nextInputId(), phase: InputPhase.CANCELLED,
-        pressure: 0, buttonMask: 0, contactState: event.contactState === undefined ? undefined : StylusContactState.PROXIMITY,
+        pressure: 0, buttonMask: 0,
         target: this.target() };
       this.advancedInputMapper.validateStylus(release, release.toolKind !== undefined || release.contactState !== undefined);
       actions.push({ kind: 'send', intent: { kind: 'stylus', event: release } });

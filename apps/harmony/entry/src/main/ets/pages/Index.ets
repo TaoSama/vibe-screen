@@ -94,13 +94,13 @@ struct Index {
     else if (event.type === TouchType.Cancel) phase = InputPhase.CANCELLED;
     touches.forEach((touch: TouchObject) => {
       if (event.sourceTool === SourceTool.Pen) {
-        sessionRuntime.sendStylus({ pointerId: touch.id, phase, x: 0, y: 0, pressure: touch.pressure,
+        sessionRuntime.sendStylus({ pointerId: touch.id, phase, x: 0, y: 0, pressure: event.pressure,
           tiltXDegrees: event.tiltX, tiltYDegrees: event.tiltY, toolKind: StylusToolKind.PEN,
           buttonMask: 0, contactState: StylusContactState.CONTACT }, touch.x, touch.y,
         this.viewportWidth, this.viewportHeight, this.rotation);
       } else {
         sessionRuntime.sendTouch(touch.id, phase, touch.x, touch.y,
-          this.viewportWidth, this.viewportHeight, this.rotation, touch.pressure);
+          this.viewportWidth, this.viewportHeight, this.rotation, event.pressure);
       }
     });
   }

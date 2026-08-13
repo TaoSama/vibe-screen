@@ -160,10 +160,20 @@ export class HarmonySessionController {
   sendStylus(sample: HarmonyStylusSample, localX: number, localY: number, width: number, height: number,
     rotation: Rotation): void {
     const active: ProductSession | undefined = this.session;
-    if (active?.state() !== ProductSessionState.STREAMING || !active.canSend(Capability.STYLUS) ||
+    if (active?.state() !== ProductSessionState.STREAMING ||
       !this.finite(localX, localY, width, height) || width <= 0 || height <= 0) return;
     try {
       const point = this.coordinateMapper.map(localX, localY, { left: 0, top: 0, width, height, rotation });
+      const route = this.advancedInputMapper.routeStylus(sample, active.canSend(Capability.STYLUS),
+        active.canSend(Capability.STYLUS_EXTENDED));
+      if (route === 'touch') {
+        const terminal: boolean = sample.phase === InputPhase.ENDED || sample.phase === InputPhase.CANCELLED;
+        this.applyActions([active.touch({ inputId: this.nextInputId++, pointerId: sample.pointerId,
+          phase: sample.phase, x: point.x, y: point.y, pressure: terminal ? 0 : sample.pressure,
+          tiltX: 0, tiltY: 0, buttonMask: 0 })], this.operationGeneration);
+        return;
+      }
+      if (route === 'suppress') return;
       const extended: boolean = active.canSend(Capability.STYLUS_EXTENDED);
       const event = this.advancedInputMapper.stylus(this.nextInputId++, { ...sample, x: point.x, y: point.y }, extended);
       this.applyActions([active.stylus(event)], this.operationGeneration);
@@ -449,10 +459,11 @@ export class HarmonySessionController {
     this.controllerState.resetSession();
     if (active === undefined || writer === undefined || actions.length === 0) return [];
     return runAllCleanup([{ name: 'advanced-input.release', run: async () => {
-      for (const action of actions) {
+      const pending: Promise<OutboundControlReceipt>[] = actions.map((action: SessionAction) => {
         if (action.kind !== 'send') throw new Error('Unexpected advanced input release action');
-        await writer.enqueue(action.intent, active.outboundScope());
-      }
+        return writer.enqueueRelease(action.intent, active.outboundScope());
+      });
+      await Promise.all(pending);
     } }]);
   }
 

@@ -150,7 +150,9 @@ tests match the shared golden fixtures, ArkUI Pen events route pressure and sign
 tilt into the stylus path, and session shutdown emits neutral/release state before
 closing. Native eraser/barrel-button/hover and controller acquisition, DevEco
 compilation, and physical stylus/controller behavior remain device gates; encoder
-coverage alone does not prove those platform paths. Wheel-specific semantics remain open.
+coverage alone does not prove those platform paths. Harmony therefore advertises
+only base stylus today; extended stylus and controller remain dormant until their
+complete native sources are connected. Wheel-specific semantics remain open.
 
 See the [device runbook](../../docs/runbook/harmony-matepad-mini.md) and
 [Phase 4 verification record](../../docs/changes/2026-08-04-phase-4-harmony/TEST.md).
