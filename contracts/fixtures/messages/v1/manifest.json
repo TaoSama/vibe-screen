@@ -206,6 +206,23 @@
       "source": "json/stylus.json"
     },
     {
+      "binary": "bin/stylus_extended.binpb",
+      "byteLength": 93,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "16",
+        "payloadCase": "stylusEvent",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000016",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "stylus_extended",
+      "sha256": "45c3418427597f49a32fed68b840b2320252443531d6698eac92d413197c86b9",
+      "source": "json/stylus_extended.json"
+    },
+    {
       "binary": "bin/ping.binpb",
       "byteLength": 27,
       "channel": 1,

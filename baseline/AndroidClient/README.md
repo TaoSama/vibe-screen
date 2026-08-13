@@ -34,11 +34,13 @@ Android treats a new application ID as a different app.
 
 The client captures common physical-keyboard keys and shortcuts into
 protocol-neutral USB HID usages. Protocol v1 capability-gates keyboard, native
-pointer, and pen-tip stylus input; stylus samples preserve Android historical
-motion, normalized pressure, and signed two-axis tilt over USB, LAN, and
-Internet. Legacy or unnegotiated peers receive the existing touch fallback
-instead of unknown protocol bytes. Physical-stylus drawing-app confirmation,
-eraser/barrel/hover input, and other peripherals remain release gates.
+pointer, and stylus input; stylus samples preserve Android historical motion,
+normalized pressure, signed two-axis tilt, pen/eraser tool kind, two barrel
+buttons, and hover/proximity state over USB, LAN, and Internet. Extended stylus
+fields use an independent capability gate, while legacy or unnegotiated peers
+receive the existing pen-contact/touch behavior instead of unknown protocol
+bytes. Physical-stylus drawing-app confirmation and other peripherals remain
+release gates.
 
 Internet mode is exposed as
 a development-preview UI: it scans the one-time pairing offer, completes the
@@ -237,8 +239,8 @@ physical peripherals.
 The following remain separate release gates: a physical 8–9 inch tablet
 matrix, unlocked-Mac Phase 1 interaction acceptance, controlled stability
 runs, external-camera glass-to-glass latency, physical keyboard/native-mouse
-and stylus interoperability, eraser/barrel/hover behavior, and production
-encryption for LAN traffic.
+and stylus interoperability, physical eraser/barrel/hover confirmation, and
+production encryption for LAN traffic.
 
 ## Source and licenses
 

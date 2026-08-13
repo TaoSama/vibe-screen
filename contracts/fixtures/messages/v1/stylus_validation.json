@@ -1,0 +1,30 @@
+{
+  "schema": "vibescreen.protocol.v1.StylusEvent.validation/v1",
+  "legacyDefaults": {
+    "toolKind": "STYLUS_TOOL_KIND_PEN",
+    "buttonMask": 0,
+    "contactState": "STYLUS_CONTACT_STATE_CONTACT"
+  },
+  "negativeCases": [
+    {
+      "name": "unknown_tool_kind",
+      "event": {"toolKindRawValue": 3, "buttonMask": 0, "contactStateRawValue": 1, "pressure": 0.5},
+      "reason": "tool_kind must be PEN or ERASER"
+    },
+    {
+      "name": "reserved_button_bit",
+      "event": {"toolKindRawValue": 1, "buttonMask": 4, "contactStateRawValue": 1, "pressure": 0.5},
+      "reason": "button_mask may only contain bits 0 and 1"
+    },
+    {
+      "name": "unknown_contact_state",
+      "event": {"toolKindRawValue": 1, "buttonMask": 0, "contactStateRawValue": 3, "pressure": 0.0},
+      "reason": "contact_state must be CONTACT or PROXIMITY"
+    },
+    {
+      "name": "proximity_with_pressure",
+      "event": {"toolKindRawValue": 1, "buttonMask": 0, "contactStateRawValue": 2, "pressure": 0.1},
+      "reason": "PROXIMITY samples must have zero pressure"
+    }
+  ]
+}

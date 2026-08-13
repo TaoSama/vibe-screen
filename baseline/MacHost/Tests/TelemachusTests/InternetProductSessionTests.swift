@@ -146,7 +146,8 @@ final class InternetProductSessionTests: XCTestCase {
         let harness = try Harness()
         let routed = expectation(description: "stylus routed")
         harness.session.onAuthenticatedStylusEvent = {
-            epoch, inputID, pointerID, x, y, phase, pressure, tiltX, tiltY in
+            epoch, inputID, pointerID, x, y, phase, pressure, tiltX, tiltY,
+            toolKind, buttonMask, contactState in
             XCTAssertEqual(epoch, 1)
             XCTAssertEqual(inputID, 8)
             XCTAssertEqual(pointerID, 3)
@@ -156,6 +157,9 @@ final class InternetProductSessionTests: XCTestCase {
             XCTAssertEqual(pressure, 0.625)
             XCTAssertEqual(tiltX, 45)
             XCTAssertEqual(tiltY, -45)
+            XCTAssertEqual(toolKind, .pen)
+            XCTAssertEqual(buttonMask, 0)
+            XCTAssertEqual(contactState, .contact)
             routed.fulfill()
             return true
         }
@@ -226,6 +230,91 @@ final class InternetProductSessionTests: XCTestCase {
         changed.stylusEvent.phase = .changed
         mismatch.receiveControl(changed)
         XCTAssertTrue(mismatch.waitForFailure())
+    }
+
+    func testInternetNegotiatesAndRoutesExtendedHoverEraserWithButtons() throws {
+        let harness = try Harness()
+        let routed = expectation(description: "extended stylus routed")
+        harness.session.onAuthenticatedStylusEvent = {
+            epoch, inputID, pointerID, x, y, phase, pressure, tiltX, tiltY,
+            toolKind, buttonMask, contactState in
+            XCTAssertEqual(epoch, 1)
+            XCTAssertEqual(inputID, 8)
+            XCTAssertEqual(pointerID, 3)
+            XCTAssertEqual(x, 0.25)
+            XCTAssertEqual(y, 0.75)
+            XCTAssertEqual(phase, .began)
+            XCTAssertEqual(pressure, 0)
+            XCTAssertEqual(tiltX, 45)
+            XCTAssertEqual(tiltY, -45)
+            XCTAssertEqual(toolKind, .eraser)
+            XCTAssertEqual(buttonMask, 0b11)
+            XCTAssertEqual(contactState, .proximity)
+            routed.fulfill()
+            return true
+        }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(
+            messageID: 1,
+            supportsStylus: true,
+            supportsStylusExtended: true
+        ))
+        XCTAssertTrue(harness.waitForSentControlCount(3))
+        let controls = try harness.engine.sentPlaintext
+            .filter { $0.channel == .control }
+            .prefix(2)
+            .map { try VSEnvelope(serializedBytes: $0.payload) }
+        XCTAssertTrue(controls[0].hostHello.capabilities.contains(.stylusExtended))
+        XCTAssertTrue(controls[1].sessionAccepted.negotiatedCapabilities.contains(.stylusExtended))
+
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        harness.receiveControl(harness.extendedStylus(
+            messageID: 3,
+            toolKind: .eraser,
+            buttonMask: 0b11,
+            contactState: .proximity,
+            pressure: 0
+        ))
+        wait(for: [routed], timeout: 1)
+    }
+
+    func testInternetFailsClosedForInvalidExtendedStylusNegotiationAndFields() throws {
+        let cases: [(String, Bool, (inout VSStylusEvent) -> Void)] = [
+            ("unnegotiated extension", false, {
+                $0.toolKind = .eraser
+                $0.contactState = .proximity
+                $0.pressure = 0
+            }),
+            ("reserved button bit", true, {
+                $0.toolKind = .pen
+                $0.contactState = .contact
+                $0.buttonMask = 0b100
+            }),
+            ("hover pressure", true, {
+                $0.toolKind = .pen
+                $0.contactState = .proximity
+                $0.pressure = 0.25
+            }),
+        ]
+
+        for (name, supportsExtended, mutate) in cases {
+            let harness = try Harness()
+            try harness.session.start(configuration: harness.configuration)
+            harness.engine.emitConnection(.connected(path: .direct))
+            harness.receiveControl(harness.clientHello(
+                messageID: 1,
+                supportsStylus: true,
+                supportsStylusExtended: supportsExtended
+            ))
+            harness.receiveControl(harness.videoAccepted(messageID: 2))
+            var envelope = harness.stylus(messageID: 3)
+            var stylus = envelope.stylusEvent
+            mutate(&stylus)
+            envelope.stylusEvent = stylus
+            harness.receiveControl(envelope)
+            XCTAssertTrue(harness.waitForFailure(), name)
+        }
     }
 
     func testNetworkChangeRequestsFreshSessionInsteadOfSecondOffer() throws {
@@ -760,7 +849,11 @@ private final class Harness {
         engine.receive(record, channel: .control)
     }
 
-    func clientHello(messageID: UInt64, supportsStylus: Bool = false) -> VSEnvelope {
+    func clientHello(
+        messageID: UInt64,
+        supportsStylus: Bool = false,
+        supportsStylusExtended: Bool = false
+    ) -> VSEnvelope {
         var range = VSProtocolRange()
         range.minimum = 1
         range.maximum = 1
@@ -772,6 +865,7 @@ private final class Harness {
             .deviceIdentity, .endToEndEncryption, .mediaRecordFragmentation, .replayProtection, .touch,
         ]
         if supportsStylus { hello.capabilities.append(.stylus) }
+        if supportsStylusExtended { hello.capabilities.append(.stylusExtended) }
         hello.requiredCapabilities = [
             .deviceIdentity, .endToEndEncryption, .mediaRecordFragmentation, .replayProtection,
         ]
@@ -825,6 +919,21 @@ private final class Harness {
         stylus.tiltYDegrees = -45
         var envelope = baseEnvelope(messageID: messageID)
         envelope.stylusEvent = stylus
+        return envelope
+    }
+
+    func extendedStylus(
+        messageID: UInt64,
+        toolKind: VSStylusToolKind,
+        buttonMask: UInt32,
+        contactState: VSStylusContactState,
+        pressure: Double
+    ) -> VSEnvelope {
+        var envelope = stylus(messageID: messageID)
+        envelope.stylusEvent.toolKind = toolKind
+        envelope.stylusEvent.buttonMask = buttonMask
+        envelope.stylusEvent.contactState = contactState
+        envelope.stylusEvent.pressure = pressure
         return envelope
     }
 

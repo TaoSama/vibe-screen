@@ -354,6 +354,12 @@ class InternetProductSession internal constructor(
         val streamId =
             synchronized(lock) {
                 if (Capability.CAPABILITY_STYLUS !in expectedNegotiatedCapabilities) return false
+                if (
+                    (event.toolKind != null || event.contactState != null || event.buttonMask != 0) &&
+                    Capability.CAPABILITY_STYLUS_EXTENDED !in expectedNegotiatedCapabilities
+                ) {
+                    return false
+                }
                 currentVideoConfiguration?.streamId
             } ?: return false
         return sendApplicationControl {
@@ -374,6 +380,16 @@ class InternetProductSession internal constructor(
                 state == InternetProductSessionState.ACTIVE &&
                 currentVideoConfiguration != null &&
                 Capability.CAPABILITY_STYLUS in expectedNegotiatedCapabilities
+        }
+
+    fun canSendExtendedStylus(): Boolean =
+        synchronized(lock) {
+            acceptsTransportCallbackLocked() &&
+                acceptedSession &&
+                state == InternetProductSessionState.ACTIVE &&
+                currentVideoConfiguration != null &&
+                Capability.CAPABILITY_STYLUS in expectedNegotiatedCapabilities &&
+                Capability.CAPABILITY_STYLUS_EXTENDED in expectedNegotiatedCapabilities
         }
 
     fun requestKeyframe(reason: String): Boolean {

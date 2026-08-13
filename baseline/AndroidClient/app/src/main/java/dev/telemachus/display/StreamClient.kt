@@ -1137,6 +1137,9 @@ class StreamClient(
     internal fun canSendStylus(): Boolean =
         isConnected && wireMode == WireMode.V1 && protocolSession?.canSendStylus == true
 
+    internal fun canSendExtendedStylus(): Boolean =
+        isConnected && wireMode == WireMode.V1 && protocolSession?.canSendExtendedStylus == true
+
     internal fun sendMotionStylus(samples: List<StylusSample>): Boolean {
         if (!isConnected || wireMode != WireMode.V1) return false
         val session = protocolSession ?: return false
@@ -1145,7 +1148,7 @@ class StreamClient(
         if (copied.isEmpty()) return false
         submitOutbound(
             kind =
-                if (copied.all { it.phase == InputPhase.INPUT_PHASE_CHANGED }) {
+                if (copied.all { it.delivery == StylusDelivery.MOTION }) {
                     OutboundCommandScheduler.Kind.MOVE
                 } else {
                     OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
@@ -1161,12 +1164,37 @@ class StreamClient(
                         pressure = sample.pressure,
                         tiltXDegrees = sample.tiltXDegrees,
                         tiltYDegrees = sample.tiltYDegrees,
+                        toolKind =
+                            if (activeSession.canSendExtendedStylus) {
+                                sample.toolKind.toProtocol()
+                            } else {
+                                null
+                            },
+                        buttonMask = if (activeSession.canSendExtendedStylus) sample.buttonMask else 0,
+                        contactState =
+                            if (activeSession.canSendExtendedStylus) {
+                                sample.contactState.toProtocol()
+                            } else {
+                                null
+                            },
                     )
                 }
             },
         )
         return true
     }
+
+    private fun StylusToolKind.toProtocol(): dev.vibescreen.protocol.v1.StylusToolKind =
+        when (this) {
+            StylusToolKind.PEN -> dev.vibescreen.protocol.v1.StylusToolKind.STYLUS_TOOL_KIND_PEN
+            StylusToolKind.ERASER -> dev.vibescreen.protocol.v1.StylusToolKind.STYLUS_TOOL_KIND_ERASER
+        }
+
+    private fun StylusContactState.toProtocol(): dev.vibescreen.protocol.v1.StylusContactState =
+        when (this) {
+            StylusContactState.CONTACT -> dev.vibescreen.protocol.v1.StylusContactState.STYLUS_CONTACT_STATE_CONTACT
+            StylusContactState.PROXIMITY -> dev.vibescreen.protocol.v1.StylusContactState.STYLUS_CONTACT_STATE_PROXIMITY
+        }
 
     /**
      * Forward a native pointer sample (move/drag/button) to the host. buttonMask

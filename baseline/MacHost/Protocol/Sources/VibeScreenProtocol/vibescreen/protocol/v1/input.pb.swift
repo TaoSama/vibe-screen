@@ -66,6 +66,82 @@ public enum VSInputPhase: SwiftProtobuf.Enum, Swift.CaseIterable {
 
 }
 
+public enum VSStylusToolKind: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case pen // = 1
+  case eraser // = 2
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .pen
+    case 2: self = .eraser
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .pen: return 1
+    case .eraser: return 2
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [VSStylusToolKind] = [
+    .unspecified,
+    .pen,
+    .eraser,
+  ]
+
+}
+
+public enum VSStylusContactState: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case contact // = 1
+  case proximity // = 2
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .contact
+    case 2: self = .proximity
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .contact: return 1
+    case .proximity: return 2
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [VSStylusContactState] = [
+    .unspecified,
+    .contact,
+    .proximity,
+  ]
+
+}
+
 public struct VSNormalizedPoint: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -123,7 +199,10 @@ public struct VSTouchEvent: Sendable {
 /// [0, 1]. Each tilt component is in [-90, 90] degrees, and the two-dimensional
 /// tilt vector must satisfy hypot(tilt_x_degrees, tilt_y_degrees) <= 90 degrees.
 /// Phase must be BEGAN, CHANGED, ENDED, or CANCELLED. Position coordinates must
-/// be finite and normalized to [0, 1].
+/// be finite and normalized to [0, 1]. Extended fields require both peers to
+/// negotiate CAPABILITY_STYLUS and CAPABILITY_STYLUS_EXTENDED. Without the
+/// extended capability, fields 9-11 must be omitted and decode as a contacting
+/// pen with no buttons, preserving the original StylusEvent behavior.
 public struct VSStylusEvent: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -165,12 +244,43 @@ public struct VSStylusEvent: Sendable {
   /// Clears the value of `target`. Subsequent reads from it will return its default value.
   public mutating func clearTarget() {self._target = nil}
 
+  /// PEN or ERASER. Extended-capability senders must set this field and must not
+  /// send UNSPECIFIED or an unknown enum value. Absence means PEN for backward
+  /// compatibility with legacy StylusEvent messages.
+  public var toolKind: VSStylusToolKind {
+    get {return _toolKind ?? .unspecified}
+    set {_toolKind = newValue}
+  }
+  /// Returns true if `toolKind` has been explicitly set.
+  public var hasToolKind: Bool {return self._toolKind != nil}
+  /// Clears the value of `toolKind`. Subsequent reads from it will return its default value.
+  public mutating func clearToolKind() {self._toolKind = nil}
+
+  /// Bit 0 is the primary barrel button and bit 1 is the secondary barrel
+  /// button. All other bits are reserved and must be zero.
+  public var buttonMask: UInt32 = 0
+
+  /// CONTACT or PROXIMITY. Extended-capability senders must set this field and
+  /// must not send UNSPECIFIED or an unknown enum value. Absence means CONTACT
+  /// for backward compatibility. PROXIMITY samples must have pressure 0.0;
+  /// their phase describes hover enter/change/exit.
+  public var contactState: VSStylusContactState {
+    get {return _contactState ?? .unspecified}
+    set {_contactState = newValue}
+  }
+  /// Returns true if `contactState` has been explicitly set.
+  public var hasContactState: Bool {return self._contactState != nil}
+  /// Clears the value of `contactState`. Subsequent reads from it will return its default value.
+  public mutating func clearContactState() {self._contactState = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _position: VSNormalizedPoint? = nil
   fileprivate var _target: VSInputTarget? = nil
+  fileprivate var _toolKind: VSStylusToolKind? = nil
+  fileprivate var _contactState: VSStylusContactState? = nil
 }
 
 public struct VSPointerEvent: Sendable {
@@ -292,6 +402,14 @@ extension VSInputPhase: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0INPUT_PHASE_UNSPECIFIED\0\u{1}INPUT_PHASE_BEGAN\0\u{1}INPUT_PHASE_CHANGED\0\u{1}INPUT_PHASE_ENDED\0\u{1}INPUT_PHASE_CANCELLED\0")
 }
 
+extension VSStylusToolKind: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0STYLUS_TOOL_KIND_UNSPECIFIED\0\u{1}STYLUS_TOOL_KIND_PEN\0\u{1}STYLUS_TOOL_KIND_ERASER\0")
+}
+
+extension VSStylusContactState: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0STYLUS_CONTACT_STATE_UNSPECIFIED\0\u{1}STYLUS_CONTACT_STATE_CONTACT\0\u{1}STYLUS_CONTACT_STATE_PROXIMITY\0")
+}
+
 extension VSNormalizedPoint: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".NormalizedPoint"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}x\0\u{1}y\0")
@@ -388,7 +506,7 @@ extension VSTouchEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementat
 
 extension VSStylusEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".StylusEvent"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_id\0\u{3}pointer_id\0\u{1}phase\0\u{1}position\0\u{1}pressure\0\u{3}tilt_x_degrees\0\u{3}tilt_y_degrees\0\u{1}target\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_id\0\u{3}pointer_id\0\u{1}phase\0\u{1}position\0\u{1}pressure\0\u{3}tilt_x_degrees\0\u{3}tilt_y_degrees\0\u{1}target\0\u{3}tool_kind\0\u{3}button_mask\0\u{3}contact_state\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -404,6 +522,9 @@ extension VSStylusEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementa
       case 6: try { try decoder.decodeSingularDoubleField(value: &self.tiltXDegrees) }()
       case 7: try { try decoder.decodeSingularDoubleField(value: &self.tiltYDegrees) }()
       case 8: try { try decoder.decodeSingularMessageField(value: &self._target) }()
+      case 9: try { try decoder.decodeSingularEnumField(value: &self._toolKind) }()
+      case 10: try { try decoder.decodeSingularUInt32Field(value: &self.buttonMask) }()
+      case 11: try { try decoder.decodeSingularEnumField(value: &self._contactState) }()
       default: break
       }
     }
@@ -438,6 +559,15 @@ extension VSStylusEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementa
     try { if let v = self._target {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 8)
     } }()
+    try { if let v = self._toolKind {
+      try visitor.visitSingularEnumField(value: v, fieldNumber: 9)
+    } }()
+    if self.buttonMask != 0 {
+      try visitor.visitSingularUInt32Field(value: self.buttonMask, fieldNumber: 10)
+    }
+    try { if let v = self._contactState {
+      try visitor.visitSingularEnumField(value: v, fieldNumber: 11)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -450,6 +580,9 @@ extension VSStylusEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementa
     if lhs.tiltXDegrees != rhs.tiltXDegrees {return false}
     if lhs.tiltYDegrees != rhs.tiltYDegrees {return false}
     if lhs._target != rhs._target {return false}
+    if lhs._toolKind != rhs._toolKind {return false}
+    if lhs.buttonMask != rhs.buttonMask {return false}
+    if lhs._contactState != rhs._contactState {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

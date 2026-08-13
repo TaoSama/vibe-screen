@@ -2138,7 +2138,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             streamingServer?.onStylusEvent = {
                 [weak self, weak configuredServer]
-                inputID, pointerID, x, y, phase, pressure, tiltX, tiltY, clientGeneration in
+                inputID, pointerID, x, y, phase, pressure, tiltX, tiltY,
+                toolKind, buttonMask, contactState, clientGeneration in
                 Task { @MainActor in
                     guard let self, let configuredServer else { return }
                     self.performSessionCallback(
@@ -2154,7 +2155,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                             phase: phase,
                             pressure: pressure,
                             tiltXDegrees: tiltX,
-                            tiltYDegrees: tiltY
+                            tiltYDegrees: tiltY,
+                            toolKind: toolKind,
+                            buttonMask: buttonMask,
+                            contactState: contactState
                         )
                     }
                 }
@@ -2546,7 +2550,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         session.onAuthenticatedStylusEvent = {
             [weak self, weak session]
-            sessionEpoch, inputID, pointerID, x, y, phase, pressure, tiltX, tiltY in
+            sessionEpoch, inputID, pointerID, x, y, phase, pressure, tiltX, tiltY,
+            toolKind, buttonMask, contactState in
             let inject = { () -> Bool in
                 guard let self, let session,
                       self.serverLifecycle.ownsSession(sessionToken),
@@ -2559,7 +2564,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     phase: phase,
                     pressure: pressure,
                     tiltXDegrees: tiltX,
-                    tiltYDegrees: tiltY
+                    tiltYDegrees: tiltY,
+                    toolKind: toolKind,
+                    buttonMask: buttonMask,
+                    contactState: contactState
                 )
             }
             let injected = Thread.isMainThread
@@ -3531,10 +3539,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         phase: VSInputPhase,
         pressure: Double,
         tiltXDegrees: Double,
-        tiltYDegrees: Double
+        tiltYDegrees: Double,
+        toolKind: VSStylusToolKind = .pen,
+        buttonMask: UInt32 = 0,
+        contactState: VSStylusContactState = .contact
     ) -> Bool {
         guard settings.touchEnabled else { return false }
-        guard primaryButtonOwner.canHandleStylus(pointerID: pointerID, phase: phase) else {
+        guard contactState != .contact
+                || primaryButtonOwner.canHandleStylus(pointerID: pointerID, phase: phase) else {
             return false
         }
         guard nativeInputAccessibilityGranted() else { return false }
@@ -3547,17 +3559,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             pressure: pressure,
             tiltXDegrees: tiltXDegrees,
             tiltYDegrees: tiltYDegrees,
+            toolKind: toolKind,
+            buttonMask: buttonMask,
+            contactState: contactState,
             displayBounds: bounds
         )
         if injected {
-            if phase == .began {
+            if contactState == .contact && phase == .began {
                 cancelLongPressTimer()
                 gestureState = .idle
             }
-            primaryButtonOwner.didHandleStylus(pointerID: pointerID, phase: phase)
+            if contactState == .contact {
+                primaryButtonOwner.didHandleStylus(pointerID: pointerID, phase: phase)
+            }
             debugLog(
                 "Stylus injected: input=\(inputID) pointer=\(pointerID) "
-                    + "phase=\(phase) pressure=\(pressure)"
+                    + "phase=\(phase) contact=\(contactState) tool=\(toolKind) "
+                    + "buttons=\(buttonMask) pressure=\(pressure)"
             )
         }
         return injected

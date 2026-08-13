@@ -1,5 +1,6 @@
 package dev.telemachus.display
 
+import android.view.MotionEvent
 import dev.vibescreen.protocol.v1.InputPhase
 import dev.telemachus.display.protocol.MotionActions
 import org.junit.Assert.assertEquals
@@ -110,8 +111,127 @@ class StylusInputMapperTest {
         assertEquals(0, tracker.activeCount)
     }
 
-    private fun map(action: Int, pointer: StylusPointerSnapshot) =
-        StylusInputMapper.map(StylusMotionSnapshot(action, 0, listOf(pointer)))
+    @Test
+    fun `extended hover maps proximity lifecycle with zero pressure`() {
+        val pen = pointer(pressure = 0.7)
+        val phases =
+            listOf(MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE, MotionEvent.ACTION_HOVER_EXIT)
+                .map { action -> map(action, pen, extended = true).single() }
+        assertEquals(
+            listOf(InputPhase.INPUT_PHASE_BEGAN, InputPhase.INPUT_PHASE_CHANGED, InputPhase.INPUT_PHASE_ENDED),
+            phases.map { it.phase },
+        )
+        assertTrue(phases.all { it.contactState == StylusContactState.PROXIMITY && it.pressure == 0.0 })
+    }
+
+    @Test
+    fun `extended eraser and barrel buttons are preserved`() {
+        val sample =
+            map(
+                MotionActions.MOVE,
+                pointer(
+                    toolKind = StylusToolKind.ERASER,
+                    buttonMask = STYLUS_PRIMARY_BUTTON or STYLUS_SECONDARY_BUTTON,
+                ),
+                extended = true,
+            ).single()
+        assertEquals(StylusToolKind.ERASER, sample.toolKind)
+        assertEquals(STYLUS_PRIMARY_BUTTON or STYLUS_SECONDARY_BUTTON, sample.buttonMask)
+    }
+
+    @Test
+    fun `button routing uses pointer lifecycle state rather than pressure`() {
+        val router = StylusContactRouter()
+        router.map(snapshot(MotionEvent.ACTION_HOVER_ENTER, pointer(pressure = 0.8)), true)
+        val hoverButton =
+            router.map(
+                snapshot(MotionEvent.ACTION_BUTTON_PRESS, pointer(pressure = 0.8, buttonMask = STYLUS_PRIMARY_BUTTON)),
+                true,
+            ).single()
+        assertEquals(StylusContactState.PROXIMITY, hoverButton.contactState)
+        assertEquals(0.0, hoverButton.pressure, 0.0)
+        assertEquals(StylusDelivery.STRUCTURAL, hoverButton.delivery)
+
+        router.reset()
+        router.map(snapshot(MotionActions.DOWN, pointer(pressure = 0.0)), true)
+        val contactButton =
+            router.map(
+                snapshot(MotionEvent.ACTION_BUTTON_RELEASE, pointer(pressure = 0.0)),
+                true,
+            ).single()
+        assertEquals(StylusContactState.CONTACT, contactButton.contactState)
+        assertEquals(StylusDelivery.STRUCTURAL, contactButton.delivery)
+    }
+
+    @Test
+    fun `legacy peer receives only pen contact without buttons`() {
+        assertTrue(map(MotionEvent.ACTION_HOVER_MOVE, pointer()).isEmpty())
+        assertTrue(map(MotionActions.DOWN, pointer(toolKind = StylusToolKind.ERASER)).isEmpty())
+        val sample = map(MotionActions.DOWN, pointer(buttonMask = STYLUS_PRIMARY_BUTTON)).single()
+        assertEquals(StylusToolKind.PEN, sample.toolKind)
+        assertEquals(StylusContactState.CONTACT, sample.contactState)
+        assertEquals(0, sample.buttonMask)
+    }
+
+    @Test
+    fun `cancel terminates extended contact and clears tracker`() {
+        val tracker = StylusInputIdTracker { 700L }
+        val began = map(MotionActions.DOWN, pointer(), extended = true).single()
+        assertEquals(700L, tracker.resolve(began))
+        val cancelled = map(MotionActions.CANCEL, pointer(), extended = true).single()
+        assertEquals(700L, tracker.resolve(cancelled))
+        tracker.complete(cancelled)
+        assertEquals(InputPhase.INPUT_PHASE_CANCELLED, cancelled.phase)
+        assertEquals(0, tracker.activeCount)
+    }
+
+    @Test
+    fun `release boundary drains active proximity as structural cancellation`() {
+        val tracker = StylusInputIdTracker { 701L }
+        val hover = map(MotionEvent.ACTION_HOVER_ENTER, pointer(), extended = true).single()
+        tracker.resolve(hover)
+
+        val cancellation = tracker.takeCancellations().single()
+        assertEquals(701L, cancellation.inputId)
+        assertEquals(InputPhase.INPUT_PHASE_CANCELLED, cancellation.sample.phase)
+        assertEquals(StylusContactState.PROXIMITY, cancellation.sample.contactState)
+        assertEquals(StylusDelivery.STRUCTURAL, cancellation.sample.delivery)
+        assertEquals(0.0, cancellation.sample.pressure, 0.0)
+        assertEquals(0, tracker.activeCount)
+    }
+
+    @Test
+    fun `stylus release coordinator submits both routes before teardown`() {
+        val stream = StylusInputIdTracker { 1L }
+        val internet = StylusInputIdTracker { 2L }
+        stream.resolve(map(MotionActions.DOWN, pointer(), extended = true).single())
+        internet.resolve(map(MotionEvent.ACTION_HOVER_ENTER, pointer(), extended = true).single())
+        val events = mutableListOf<String>()
+
+        StylusReleaseCoordinator(stream, internet).completeBoundary(
+            submitStream = { events += "stream:${it.single().phase}" },
+            submitInternet = { events += "internet:${it.single().sample.phase}" },
+            afterRelease = { events += "teardown" },
+        )
+
+        assertEquals(
+            listOf(
+                "stream:INPUT_PHASE_CANCELLED",
+                "internet:INPUT_PHASE_CANCELLED",
+                "teardown",
+            ),
+            events,
+        )
+    }
+
+    private fun map(
+        action: Int,
+        pointer: StylusPointerSnapshot,
+        extended: Boolean = false,
+    ) = StylusInputMapper.map(StylusMotionSnapshot(action, 0, listOf(pointer)), extended)
+
+    private fun snapshot(action: Int, pointer: StylusPointerSnapshot) =
+        StylusMotionSnapshot(action, 0, listOf(pointer))
 
     private fun sample(pointer: StylusPointerSnapshot) = map(MotionActions.MOVE, pointer).single()
 
@@ -123,7 +243,19 @@ class StylusInputMapperTest {
         tilt: Double = 0.0,
         orientation: Double = 0.0,
         isStylus: Boolean = true,
-    ) = StylusPointerSnapshot(pointerId, x, y, pressure, tilt, orientation, isStylus)
+        toolKind: StylusToolKind? = if (isStylus) StylusToolKind.PEN else null,
+        buttonMask: Int = 0,
+    ) =
+        StylusPointerSnapshot(
+            pointerId,
+            x,
+            y,
+            pressure,
+            tilt,
+            orientation,
+            toolKind,
+            buttonMask,
+        )
 
     private fun assertTilt(sample: StylusSample, x: Double, y: Double) {
         assertEquals(x, sample.tiltXDegrees, 1e-9)

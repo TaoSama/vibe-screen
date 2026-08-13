@@ -29,7 +29,7 @@ platform scaffolding under active development.
 | Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264, MediaCodec decode |
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage, with fixed-binary device re-verification still gated on macOS permission for the rebuilt Host |
-| Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 pen-tip pressure and signed two-axis tilt are capability-gated across USB, LAN, and Internet, with old-peer touch fallback, mixed finger/stylus routing, and focused synthetic-MotionEvent coverage on the Xiaomi 13. Physical-stylus drawing-app confirmation, eraser/barrel/hover input, controllers, and other peripherals remain open |
+| Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. Physical-stylus drawing-app confirmation, controllers, and other peripherals remain open |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; authenticated but not encrypted |
 | Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
@@ -142,10 +142,9 @@ boundaries:
 - VideoToolbox provides hardware HEVC and H.264 encoding, with AV1 added when
   supported by host and client hardware.
 - CGEvent and Accessibility provide the macOS input adapter. Protocol v1 wires
-  touch-derived gestures, keyboard, native pointer/scroll, and pen-tip
-  pressure/tilt. Physical HID mouse and stylus behavior still require their
-  respective device confirmations; eraser, barrel buttons, and hover remain
-  outside the implemented stylus slice.
+  touch-derived gestures, keyboard, native pointer/scroll, pen and eraser
+  pressure/tilt, barrel buttons, and hover/proximity state. Physical HID mouse
+  and stylus behavior still require their respective device confirmations.
 - Window management moves the current window or application between physical
   and virtual displays and supports headless startup.
 

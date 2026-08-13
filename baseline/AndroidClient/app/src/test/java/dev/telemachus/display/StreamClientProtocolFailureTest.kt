@@ -273,6 +273,7 @@ class StreamClientProtocolFailureTest {
                Capability.CAPABILITY_KEYBOARD,
                Capability.CAPABILITY_POINTER,
                Capability.CAPABILITY_STYLUS,
+               Capability.CAPABILITY_STYLUS_EXTENDED,
                Capability.CAPABILITY_MULTI_DISPLAY,
                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,

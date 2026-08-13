@@ -16,6 +16,18 @@ enum InputPhase {
   INPUT_PHASE_CANCELLED = 4;
 }
 
+enum StylusToolKind {
+  STYLUS_TOOL_KIND_UNSPECIFIED = 0;
+  STYLUS_TOOL_KIND_PEN = 1;
+  STYLUS_TOOL_KIND_ERASER = 2;
+}
+
+enum StylusContactState {
+  STYLUS_CONTACT_STATE_UNSPECIFIED = 0;
+  STYLUS_CONTACT_STATE_CONTACT = 1;
+  STYLUS_CONTACT_STATE_PROXIMITY = 2;
+}
+
 message NormalizedPoint {
   double x = 1;
   double y = 2;
@@ -34,7 +46,10 @@ message TouchEvent {
 // [0, 1]. Each tilt component is in [-90, 90] degrees, and the two-dimensional
 // tilt vector must satisfy hypot(tilt_x_degrees, tilt_y_degrees) <= 90 degrees.
 // Phase must be BEGAN, CHANGED, ENDED, or CANCELLED. Position coordinates must
-// be finite and normalized to [0, 1].
+// be finite and normalized to [0, 1]. Extended fields require both peers to
+// negotiate CAPABILITY_STYLUS and CAPABILITY_STYLUS_EXTENDED. Without the
+// extended capability, fields 9-11 must be omitted and decode as a contacting
+// pen with no buttons, preserving the original StylusEvent behavior.
 message StylusEvent {
   uint64 input_id = 1;
   uint32 pointer_id = 2;
@@ -50,6 +65,18 @@ message StylusEvent {
   // normal, in degrees. The value must be finite and in [-90, 90].
   double tilt_y_degrees = 7;
   InputTarget target = 8;
+  // PEN or ERASER. Extended-capability senders must set this field and must not
+  // send UNSPECIFIED or an unknown enum value. Absence means PEN for backward
+  // compatibility with legacy StylusEvent messages.
+  optional StylusToolKind tool_kind = 9;
+  // Bit 0 is the primary barrel button and bit 1 is the secondary barrel
+  // button. All other bits are reserved and must be zero.
+  uint32 button_mask = 10;
+  // CONTACT or PROXIMITY. Extended-capability senders must set this field and
+  // must not send UNSPECIFIED or an unknown enum value. Absence means CONTACT
+  // for backward compatibility. PROXIMITY samples must have pressure 0.0;
+  // their phase describes hover enter/change/exit.
+  optional StylusContactState contact_state = 11;
 }
 
 message PointerEvent {

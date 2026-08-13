@@ -212,6 +212,10 @@ struct InternetProductProtocolCodec {
                 "ClientHello required capabilities were not included in its offer"
             )
         }
+        guard !requiredByClient.contains(.stylusExtended)
+                || capabilities.contains(.stylus) else {
+            throw InternetProductProtocolError.missingCapability(.stylus)
+        }
         let hostCapabilities = Self.requiredCapabilities.union(inputCapabilities)
         for capability in requiredByClient where !hostCapabilities.contains(capability) {
             throw InternetProductProtocolError.missingCapability(capability)
@@ -253,7 +257,8 @@ struct InternetProductProtocolCodec {
     mutating func sessionAccepted(
         heartbeatIntervalMilliseconds: UInt32,
         peerSupportsTouch: Bool,
-        peerSupportsStylus: Bool = false
+        peerSupportsStylus: Bool = false,
+        peerSupportsStylusExtended: Bool = false
     ) throws -> Data {
         var accepted = VSSessionAccepted()
         accepted.sessionID = sessionID
@@ -263,6 +268,9 @@ struct InternetProductProtocolCodec {
             Array(Self.requiredCapabilities)
                 + (inputEnabled && peerSupportsTouch ? [.touch] : [])
                 + (inputEnabled && peerSupportsStylus ? [.stylus] : [])
+                + (inputEnabled && peerSupportsStylus && peerSupportsStylusExtended
+                    ? [.stylusExtended]
+                    : [])
         ).sorted { $0.rawValue < $1.rawValue }
         guard let negotiatedMaximumEncryptedMediaRecordBytes else {
             throw InternetProductProtocolError.unexpectedMessage(
@@ -280,7 +288,7 @@ struct InternetProductProtocolCodec {
     }
 
     private var inputCapabilities: Set<VSCapability> {
-        inputEnabled ? [.touch, .stylus] : []
+        inputEnabled ? [.touch, .stylus, .stylusExtended] : []
     }
 
     mutating func videoConfiguration() throws -> Data {

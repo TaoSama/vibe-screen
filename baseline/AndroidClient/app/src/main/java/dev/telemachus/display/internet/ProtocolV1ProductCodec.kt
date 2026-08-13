@@ -15,6 +15,8 @@ import dev.vibescreen.protocol.v1.Pong
 import dev.vibescreen.protocol.v1.RequestKeyframe
 import dev.vibescreen.protocol.v1.ResourceLimits
 import dev.vibescreen.protocol.v1.StylusEvent
+import dev.vibescreen.protocol.v1.StylusContactState
+import dev.vibescreen.protocol.v1.StylusToolKind
 import dev.vibescreen.protocol.v1.TouchEvent
 import dev.vibescreen.protocol.v1.TransportKind
 import dev.vibescreen.protocol.v1.VideoConfigResult
@@ -75,6 +77,9 @@ data class ProductStylusEvent(
     val pressure: Double,
     val tiltXDegrees: Double,
     val tiltYDegrees: Double,
+    val toolKind: StylusToolKind? = null,
+    val buttonMask: Int = 0,
+    val contactState: StylusContactState? = null,
 ) {
     init {
         require(inputId > 0 && pointerId >= 0)
@@ -87,6 +92,9 @@ data class ProductStylusEvent(
         require(tiltXDegrees.isFinite() && tiltXDegrees in -90.0..90.0)
         require(tiltYDegrees.isFinite() && tiltYDegrees in -90.0..90.0)
         require(Math.hypot(tiltXDegrees, tiltYDegrees) <= 90.0)
+        require((toolKind == null) == (contactState == null))
+        require(buttonMask and 0b11.inv() == 0)
+        require(contactState != StylusContactState.STYLUS_CONTACT_STATE_PROXIMITY || pressure == 0.0)
     }
 }
 
@@ -272,7 +280,7 @@ class ProtobufProtocolV1ProductCodec(
         event: ProductStylusEvent,
     ): ByteArray {
         require(streamId > 0)
-        val stylus =
+        val builder =
             StylusEvent.newBuilder()
                 .setInputId(event.inputId)
                 .setPointerId(event.pointerId)
@@ -282,7 +290,12 @@ class ProtobufProtocolV1ProductCodec(
                 .setTiltXDegrees(event.tiltXDegrees)
                 .setTiltYDegrees(event.tiltYDegrees)
                 .setTarget(dev.vibescreen.protocol.v1.InputTarget.newBuilder().setStreamId(streamId))
-                .build()
+        if (event.toolKind != null && event.contactState != null) {
+            require(event.toolKind != StylusToolKind.STYLUS_TOOL_KIND_UNSPECIFIED)
+            require(event.contactState != StylusContactState.STYLUS_CONTACT_STATE_UNSPECIFIED)
+            builder.setToolKind(event.toolKind).setButtonMask(event.buttonMask).setContactState(event.contactState)
+        }
+        val stylus = builder.build()
         return envelope(messageId, sessionId, sessionEpoch).setStylusEvent(stylus).build().toByteArray()
     }
 
@@ -514,6 +527,7 @@ class ProtobufProtocolV1ProductCodec(
             listOf(
                 Capability.CAPABILITY_TOUCH,
                 Capability.CAPABILITY_STYLUS,
+                Capability.CAPABILITY_STYLUS_EXTENDED,
                 Capability.CAPABILITY_DEVICE_IDENTITY,
                 Capability.CAPABILITY_END_TO_END_ENCRYPTION,
                 Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION,
@@ -521,7 +535,9 @@ class ProtobufProtocolV1ProductCodec(
             )
         val REQUIRED_CLIENT_CAPABILITIES =
             OFFERED_CLIENT_CAPABILITIES.filterNot {
-                it == Capability.CAPABILITY_TOUCH || it == Capability.CAPABILITY_STYLUS
+                it == Capability.CAPABILITY_TOUCH ||
+                    it == Capability.CAPABILITY_STYLUS ||
+                    it == Capability.CAPABILITY_STYLUS_EXTENDED
             }
 
         /** Test/host helper for the Protocol v1 `uint32 header length | header | payload` media-channel framing. */

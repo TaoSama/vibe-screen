@@ -433,6 +433,7 @@ class StreamClientProtocolV1IntegrationTest {
         val flushCount = AtomicInteger()
         val flushCountBeforeRejection = AtomicInteger(-1)
         val flushedBeforeTermination = AtomicBoolean(false)
+        val releasePeer = CountDownLatch(1)
         val terminationExecutor =
             ManualExecutor {
                 val baseline = flushCountBeforeRejection.get()
@@ -445,7 +446,7 @@ class StreamClientProtocolV1IntegrationTest {
                     async(Dispatchers.IO) {
                         server.accept().use { peer ->
                             beginHandshake(peer, initialRotation = 0)
-                            readEnvelope(peer)
+                            readEnvelope(peer).also { releasePeer.await() }
                         }
                     }
                 val client =
@@ -465,17 +466,20 @@ class StreamClientProtocolV1IntegrationTest {
                 try {
                     assertTrue(terminationExecutor.submitted.await(8, TimeUnit.SECONDS))
                     assertTrue(flushedBeforeTermination.get())
+                    releasePeer.countDown()
                     val result = withTimeout(8_000) { serverJob.await() }
                     assertEquals(Envelope.PayloadCase.VIDEO_CONFIG_RESULT, result.payloadCase)
                     assertFalse(result.videoConfigResult.accepted)
                     assertEquals("decoder_configuration_failure", result.videoConfigResult.rejectionReason)
                 } finally {
                     terminationExecutor.runSubmittedIfPresent()
+                    releasePeer.countDown()
                 }
 
                 withTimeout(8_000) { clientJob.await() }
             }
         } finally {
+            releasePeer.countDown()
             terminationExecutor.runSubmittedIfPresent()
             timeoutExecutor.shutdownNow()
         }
@@ -748,6 +752,7 @@ class StreamClientProtocolV1IntegrationTest {
                 Capability.CAPABILITY_KEYBOARD,
                 Capability.CAPABILITY_POINTER,
                 Capability.CAPABILITY_STYLUS,
+                Capability.CAPABILITY_STYLUS_EXTENDED,
                 Capability.CAPABILITY_MULTI_DISPLAY,
                 Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,

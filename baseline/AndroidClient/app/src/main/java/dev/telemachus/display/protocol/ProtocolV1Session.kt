@@ -23,6 +23,8 @@ import dev.vibescreen.protocol.v1.ScrollEvent
 import dev.vibescreen.protocol.v1.SetVideoPreferences
 import dev.vibescreen.protocol.v1.StartDisplayRequest
 import dev.vibescreen.protocol.v1.StylusEvent
+import dev.vibescreen.protocol.v1.StylusContactState
+import dev.vibescreen.protocol.v1.StylusToolKind
 import dev.vibescreen.protocol.v1.TransportKind
 import dev.vibescreen.protocol.v1.TouchEvent
 import dev.vibescreen.protocol.v1.VideoConfigResult
@@ -183,6 +185,7 @@ internal class ProtocolV1Session(
             Capability.CAPABILITY_KEYBOARD,
             Capability.CAPABILITY_POINTER,
             Capability.CAPABILITY_STYLUS,
+            Capability.CAPABILITY_STYLUS_EXTENDED,
             Capability.CAPABILITY_MULTI_DISPLAY,
             Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
             Capability.CAPABILITY_HOST_ACTIONS,
@@ -227,6 +230,12 @@ internal class ProtocolV1Session(
     val canSendStylus: Boolean
         @Synchronized
         get() = state == State.STREAMING && Capability.CAPABILITY_STYLUS in negotiatedCapabilities
+
+    val canSendExtendedStylus: Boolean
+        @Synchronized
+        get() =
+            canSendStylus &&
+                Capability.CAPABILITY_STYLUS_EXTENDED in negotiatedCapabilities
 
     /** Host actions the client may invoke, empty until a catalog arrives. */
     val hostActions: List<HostAction>
@@ -509,6 +518,9 @@ internal class ProtocolV1Session(
         pressure: Double,
         tiltXDegrees: Double,
         tiltYDegrees: Double,
+        toolKind: StylusToolKind? = null,
+        buttonMask: Int = 0,
+        contactState: StylusContactState? = null,
     ): Envelope {
         check(state == State.STREAMING)
         check(Capability.CAPABILITY_STYLUS in negotiatedCapabilities) { "Stylus was not negotiated" }
@@ -521,7 +533,16 @@ internal class ProtocolV1Session(
         require(tiltXDegrees.isFinite() && tiltXDegrees in -90.0..90.0)
         require(tiltYDegrees.isFinite() && tiltYDegrees in -90.0..90.0)
         require(Math.hypot(tiltXDegrees, tiltYDegrees) <= 90.0)
-        val event =
+        val extended = toolKind != null || contactState != null || buttonMask != 0
+        require((toolKind == null) == (contactState == null)) { "Extended stylus fields must be supplied together" }
+        if (extended) {
+            check(Capability.CAPABILITY_STYLUS_EXTENDED in negotiatedCapabilities) { "Extended stylus was not negotiated" }
+            require(toolKind != StylusToolKind.STYLUS_TOOL_KIND_UNSPECIFIED)
+            require(contactState != StylusContactState.STYLUS_CONTACT_STATE_UNSPECIFIED)
+            require(buttonMask and STYLUS_BUTTON_MASK.inv() == 0)
+            require(contactState != StylusContactState.STYLUS_CONTACT_STATE_PROXIMITY || pressure == 0.0)
+        }
+        val builder =
             StylusEvent.newBuilder()
                 .setInputId(inputId)
                 .setPointerId(pointerId)
@@ -531,7 +552,10 @@ internal class ProtocolV1Session(
                 .setTiltXDegrees(tiltXDegrees)
                 .setTiltYDegrees(tiltYDegrees)
                 .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
-                .build()
+        if (toolKind != null && contactState != null) {
+            builder.setToolKind(toolKind).setButtonMask(buttonMask).setContactState(contactState)
+        }
+        val event = builder.build()
         return envelope().setStylusEvent(event).build()
     }
 
@@ -1072,6 +1096,7 @@ internal class ProtocolV1Session(
     )
 
     companion object {
+        private const val STYLUS_BUTTON_MASK = 0b11
         const val VERSION = 1
         private val VALID_ROTATIONS = setOf(0, 90, 180, 270)
 
