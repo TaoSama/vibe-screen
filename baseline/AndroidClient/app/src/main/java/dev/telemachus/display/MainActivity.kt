@@ -215,6 +215,7 @@ class MainActivity : AppCompatActivity() {
     private var hasAttemptedUsbConnection = false
     private var automaticUsbConnect = false
     private var connectionDetailsVisible = false
+    private val connectionStatusAnnouncements = ConnectionStatusAnnouncementCoordinator()
     private val autoConnectHandler = Handler(Looper.getMainLooper())
     private val wirelessReconnectHandler = Handler(Looper.getMainLooper())
     private val initialWirelessReconnectBackoff =
@@ -1179,7 +1180,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateStatus(status: String) {
         runOnUiThread {
-            binding.statusText.text = status
+            LiveRegionTextApplier.apply(binding.statusText, status)
         }
     }
 
@@ -1518,6 +1519,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showConnectedStreamUi() {
+        val connectedStatus = getString(R.string.connected_streaming)
         connectionDetailsVisible = false
         binding.checklistContainer.visibility = View.GONE
         binding.advancedSettings.visibility = View.GONE
@@ -1525,14 +1527,19 @@ class MainActivity : AppCompatActivity() {
         binding.videoViewport.visibility = View.VISIBLE
         binding.disconnectedBackdrop.visibility = View.GONE
         binding.settingsPanel.visibility = View.GONE
+        LiveRegionTextApplier.apply(binding.statusText, connectedStatus)
         // Route settings through the tap-to-reveal control bar instead of a
         // persistent floating button that occludes the video.
         binding.settingsButton.visibility = View.GONE
         updateOverlayVisibility(prefs.showStatsOverlay)
         revealControlBar()
+        connectionStatusAnnouncements.announceIfChanged(connectedStatus) { announcement ->
+            binding.controlBar.announceForAccessibility(announcement)
+        }
     }
 
     private fun showDisconnectedStreamUi() {
+        connectionStatusAnnouncements.reset()
         // Keep one stable layout while the USB retry loop runs. Showing system
         // bars or changing orientation here resized/recreated the Activity and
         // made the waiting state visibly flash.
@@ -2876,7 +2883,6 @@ class MainActivity : AppCompatActivity() {
                     binding.connectButton.isEnabled = false
                     binding.disconnectButton.isEnabled = true
                     binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_green)
-                    updateStatus(getString(R.string.connected_streaming))
                     showConnectedStreamUi()
                     applyRotation(geometry.rotation)
                     log("Display: ${geometry.logicalWidth}x${geometry.logicalHeight} @ ${geometry.rotation}°")
@@ -3444,7 +3450,6 @@ class MainActivity : AppCompatActivity() {
                                         binding.resolutionText.text =
                                             getString(R.string.resolution_format, configuration.width, configuration.height)
                                         binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_green)
-                                        binding.statusText.text = getString(R.string.connected_streaming)
                                         showConnectedStreamUi()
                                         previousPresentation.decoder?.let { decoder ->
                                             DECODER_LIFECYCLE_EXECUTOR.execute { decoder.release() }
@@ -3521,7 +3526,6 @@ class MainActivity : AppCompatActivity() {
             binding.resolutionText.text =
                 getString(R.string.resolution_format, previousConfiguration.width, previousConfiguration.height)
             binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_green)
-            binding.statusText.text = getString(R.string.connected_streaming)
             showConnectedStreamUi()
         } else {
             showDisconnectedStreamUi()
@@ -4462,8 +4466,7 @@ class MainActivity : AppCompatActivity() {
             },
         )
         if (!automaticUsbConnect && !connectionAttemptInProgress) {
-            binding.statusText.text =
-                if (allReady) "Ready to connect" else "Check the connection details below"
+            updateStatus(if (allReady) "Ready to connect" else "Check the connection details below")
         }
     }
 

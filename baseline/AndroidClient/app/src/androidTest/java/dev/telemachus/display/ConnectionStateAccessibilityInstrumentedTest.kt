@@ -25,6 +25,69 @@ import kotlin.math.roundToInt
 @RunWith(AndroidJUnit4::class)
 class ConnectionStateAccessibilityInstrumentedTest {
     @Test
+    fun productionConnectionStatesUsePoliteLiveRegions() {
+        withProductionLayout { root ->
+            listOf(
+                R.id.statusText,
+                R.id.wirelessConnecting,
+                R.id.wirelessFirstTime,
+                R.id.wirelessConnected,
+                R.id.wirelessPairedIdle,
+                R.id.wirelessTokenMismatch,
+                R.id.wirelessPermDenied,
+            ).forEach { id ->
+                assertEquals(
+                    root.resources.getResourceEntryName(id),
+                    View.ACCESSIBILITY_LIVE_REGION_POLITE,
+                    root.findViewById<View>(id).accessibilityLiveRegion,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun liveRegionTextOnlyChangesForNewContent() {
+        withProductionLayout { root ->
+            val label = root.findViewById<TextView>(R.id.statusText)
+            val original = label.text
+
+            assertFalse(LiveRegionTextApplier.apply(label, original.toString()))
+            assertTrue("Equivalent content should preserve the current text instance", original === label.text)
+
+            val replacement = "Connection failed with actionable guidance"
+            assertTrue(LiveRegionTextApplier.apply(label, replacement))
+            assertEquals(replacement, label.text.toString())
+            assertFalse(LiveRegionTextApplier.apply(label, replacement))
+        }
+    }
+
+    @Test
+    fun connectedStatusAnnouncementUsesVisibleStreamChromeAndDeduplicates() {
+        withProductionLayout { root ->
+            val settingsPanel = root.findViewById<View>(R.id.settingsPanel)
+            val controlBar = root.findViewById<View>(R.id.controlBar)
+            settingsPanel.visibility = View.GONE
+            controlBar.visibility = View.VISIBLE
+
+            val announcements = mutableListOf<String>()
+            val coordinator = ConnectionStatusAnnouncementCoordinator()
+            val connected = root.context.getString(R.string.connected_streaming)
+            val announce = { text: CharSequence ->
+                assertEquals(View.VISIBLE, controlBar.visibility)
+                announcements += text.toString()
+            }
+
+            assertTrue(coordinator.announceIfChanged(connected, announce))
+            assertFalse(coordinator.announceIfChanged(connected, announce))
+            assertEquals(listOf(connected), announcements)
+
+            coordinator.reset()
+            assertTrue(coordinator.announceIfChanged(connected, announce))
+            assertEquals(listOf(connected, connected), announcements)
+        }
+    }
+
+    @Test
     fun connectionDetailsMeetsTouchTargetAndKeepsItsFullLabel() {
         listOf(1f, 2f).forEach { fontScale ->
             val configuration = Configuration(applicationContext().resources.configuration)

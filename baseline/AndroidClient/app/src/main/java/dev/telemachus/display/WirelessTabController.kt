@@ -94,12 +94,16 @@ class WirelessTabController(
                 transition(State.FIRST_TIME)
                 return
             }
-        views.idleMacName.text = entry.macName
-        views.idleMacIp.text = activity.getString(R.string.host_port_format, entry.host, entry.port)
+        LiveRegionTextApplier.apply(views.idleMacName, entry.macName)
+        LiveRegionTextApplier.apply(
+            views.idleMacIp,
+            activity.getString(R.string.host_port_format, entry.host, entry.port),
+        )
         transition(State.PAIRED_IDLE)
     }
 
     private fun transition(next: State) {
+        if (state == next) return
         android.util.Log.i("WirelessTabController", "transition $state → $next")
         state = next
         views.connecting.visibility = if (next == State.CONNECTING) View.VISIBLE else View.GONE
@@ -123,8 +127,11 @@ class WirelessTabController(
         if (entry != null) {
             // Camera permission is needed only to scan a new QR. A previously
             // paired host must remain reconnectable if permission is denied.
-            views.idleMacName.text = entry.macName
-            views.idleMacIp.text = activity.getString(R.string.host_port_format, entry.host, entry.port)
+            LiveRegionTextApplier.apply(views.idleMacName, entry.macName)
+            LiveRegionTextApplier.apply(
+                views.idleMacIp,
+                activity.getString(R.string.host_port_format, entry.host, entry.port),
+            )
             transition(State.PAIRED_IDLE)
         } else if (cameraPerm.isPermanentlyDenied()) {
             transition(State.PERM_DENIED)
@@ -146,8 +153,9 @@ class WirelessTabController(
         val cached = storage.load()
         when (error) {
             is StreamClient.WirelessConnectError.NetworkUnreachable -> {
-                views.repairTitle.text = "⚠ Couldn't reach Mac"
-                views.repairMessage.text =
+                LiveRegionTextApplier.apply(views.repairTitle, "⚠ Couldn't reach Mac")
+                LiveRegionTextApplier.apply(
+                    views.repairMessage,
                     if (cached != null) {
                         "No response from ${cached.macName} at ${cached.host}:${cached.port}.\n\n" +
                             "The Mac may have switched WiFi networks, changed its port, or is not " +
@@ -155,25 +163,31 @@ class WirelessTabController(
                     } else {
                         "No response from your Mac. Make sure both devices are on the same WiFi " +
                             "and the Mac app is running, then scan the QR again."
-                    }
+                    },
+                )
                 transition(State.REPAIR_NEEDED)
             }
 
             is StreamClient.WirelessConnectError.TokenRejected -> {
-                views.repairTitle.text = "⚠ Re-pair required"
-                views.repairMessage.text =
+                LiveRegionTextApplier.apply(views.repairTitle, "⚠ Re-pair required")
+                LiveRegionTextApplier.apply(
+                    views.repairMessage,
                     if (cached != null) {
                         "${cached.macName} reset its pairing token (e.g. Reset Token clicked, or " +
                             "reinstalled). Scan the new QR to pair again."
                     } else {
                         "The Mac reset its pairing token. Scan the new QR to pair again."
-                    }
+                    },
+                )
                 transition(State.REPAIR_NEEDED)
             }
 
             is StreamClient.WirelessConnectError.ProtocolError -> {
-                views.repairTitle.text = "⚠ Connection error"
-                views.repairMessage.text = "Couldn't complete the secure handshake with the Mac. Scan the QR again."
+                LiveRegionTextApplier.apply(views.repairTitle, "⚠ Connection error")
+                LiveRegionTextApplier.apply(
+                    views.repairMessage,
+                    "Couldn't complete the secure handshake with the Mac. Scan the QR again.",
+                )
                 transition(State.REPAIR_NEEDED)
             }
         }
@@ -183,8 +197,8 @@ class WirelessTabController(
         title: String,
         subtitle: String,
     ) {
-        views.connectingLabel.text = title
-        views.connectingSubtitle.text = subtitle
+        LiveRegionTextApplier.apply(views.connectingLabel, title)
+        LiveRegionTextApplier.apply(views.connectingSubtitle, subtitle)
         transition(State.CONNECTING)
     }
 
@@ -192,8 +206,8 @@ class WirelessTabController(
         macName: String,
         ip: String,
     ) {
-        views.connectedMacName.text = macName
-        views.connectedMacIp.text = ip
+        LiveRegionTextApplier.apply(views.connectedMacName, macName)
+        LiveRegionTextApplier.apply(views.connectedMacIp, ip)
         transition(State.CONNECTED)
     }
 
