@@ -12,7 +12,10 @@ extension StreamViewModel {
         do {
             frame = try delivery.result.get()
         } catch {
-            terminateSession(message: error.localizedDescription, failure: .transientTransport)
+            terminateSession(
+                message: error.localizedDescription,
+                failure: ReconnectFailure.classify(error)
+            )
             return
         }
         do {
@@ -230,7 +233,10 @@ extension StreamViewModel {
                 )
             }
         } catch {
-            terminateSession(message: "视频配置确认失败：\(error.localizedDescription)", failure: .transientTransport)
+            terminateSession(
+                message: "视频配置确认失败：\(error.localizedDescription)",
+                failure: ReconnectFailure.classify(error)
+            )
             return
         }
         Task { [weak self] in
@@ -263,7 +269,10 @@ extension StreamViewModel {
                 isStreaming = true
             } catch {
                 guard let self, !Task.isCancelled, self.sessionOwner == owner else { return }
-                terminateSession(message: "视频配置确认失败：\(error.localizedDescription)", failure: .transientTransport)
+                terminateSession(
+                    message: "视频配置确认失败：\(error.localizedDescription)",
+                    failure: ReconnectFailure.classify(error)
+                )
             }
         }
     }

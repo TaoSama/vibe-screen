@@ -14,6 +14,21 @@ public enum ReconnectFailure: Equatable, Sendable {
     public var isRetryable: Bool {
         self != .permanent
     }
+
+    public static func classify(_ error: Error) -> ReconnectFailure {
+        if let transportError = error as? TCPTransportError {
+            switch transportError {
+            case .notConnected, .connectionFailed, .connectionClosed, .timedOut:
+                return .transientTransport
+            case .invalidPort, .authenticationRequired:
+                return .permanent
+            }
+        }
+        if let outboxError = error as? ControlOutboxError {
+            if case .sendFailed = outboxError { return .transientTransport }
+        }
+        return .permanent
+    }
 }
 
 public struct ReconnectCoordinator: Sendable {

@@ -49,4 +49,19 @@ final class ReconnectCoordinatorTests: XCTestCase {
             0
         )
     }
+
+    func testClassifierRetriesOnlyTypedTransportFailures() {
+        XCTAssertEqual(ReconnectFailure.classify(TCPTransportError.connectionClosed), .transientTransport)
+        XCTAssertEqual(ReconnectFailure.classify(TCPTransportError.connectionFailed("reset")), .transientTransport)
+        XCTAssertEqual(ReconnectFailure.classify(TCPTransportError.timedOut("send")), .transientTransport)
+        XCTAssertEqual(ReconnectFailure.classify(ControlOutboxError.sendFailed("timeout")), .transientTransport)
+    }
+
+    func testClassifierTreatsProtocolAndAuthenticationFailuresAsPermanent() {
+        XCTAssertEqual(ReconnectFailure.classify(TCPTransportError.authenticationRequired), .permanent)
+        XCTAssertEqual(ReconnectFailure.classify(TrustedLANHandshakeError.rejected(.invalidToken)), .permanent)
+        XCTAssertEqual(ReconnectFailure.classify(ProtocolV1UpgradeError.invalidAcknowledgement(Data())), .permanent)
+        XCTAssertEqual(ReconnectFailure.classify(TransportFramerError.unknownChannel(99)), .permanent)
+        XCTAssertEqual(ReconnectFailure.classify(ClientControlEnvelopeError.invalidSession), .permanent)
+    }
 }

@@ -52,7 +52,7 @@ final class StreamViewModel: ObservableObject {
             guard let self, self.sessionOwner == failure.owner else { return }
             self.terminateSession(
                 message: failure.error.localizedDescription,
-                failure: .transientTransport
+                failure: ReconnectFailure.classify(failure.error)
             )
         }
     )
@@ -170,7 +170,7 @@ final class StreamViewModel: ObservableObject {
                   reconnectCoordinator.accepts(generation: generation) else { return }
             terminateSession(
                 message: error.localizedDescription,
-                failure: reconnectFailure(for: error),
+                failure: ReconnectFailure.classify(error),
                 generation: generation
             )
         }
@@ -282,11 +282,6 @@ final class StreamViewModel: ObservableObject {
             self.reconnectTask = nil
             await self.connect(pairing: pairing, generation: schedule.generation)
         }
-    }
-
-    private func reconnectFailure(for error: Error) -> ReconnectFailure {
-        if error is TCPTransportError { return .transientTransport }
-        return .permanent
     }
 
     func stopAutomaticReconnect(clearPairing: Bool) {
