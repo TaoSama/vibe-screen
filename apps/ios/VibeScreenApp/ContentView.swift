@@ -21,6 +21,10 @@ struct ContentView: View {
             .toolbar {
                 if model.isStreaming {
                     Button("功能") { showsAdvancedControls = true }
+                    Button { model.requestKeyboardInput() } label: {
+                        Label("键盘输入", systemImage: "keyboard")
+                    }
+                    .disabled(!model.keyboardInputAvailable)
                     Button("断开") { model.disconnect() }
                 }
             }
@@ -71,12 +75,15 @@ struct ContentView: View {
 
 private struct StreamSurface: View {
     @ObservedObject var model: StreamViewModel
+    @FocusState private var acceptsHardwareKeyboard: Bool
 
     var body: some View {
         PixelBufferView(pixelBuffer: model.pixelBuffer)
             .background(.black)
             .ignoresSafeArea()
             .contentShape(Rectangle())
+            .focusable()
+            .focused($acceptsHardwareKeyboard)
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
@@ -109,7 +116,61 @@ private struct StreamSurface: View {
                         .onChange(of: geometry.size) { _, size in model.viewportSize = size }
                 }
             }
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    _ = model.sendPointerHover(location: location, size: model.viewportSize)
+                case .ended:
+                    _ = model.sendPointerHover(location: nil, size: model.viewportSize)
+                }
+            }
+            .onKeyPress(phases: [.down, .up]) { press in
+                guard let usage = usbHIDUsage(for: press.key) else { return .ignored }
+                let pressed = press.phase == .down
+                return model.sendKey(
+                    usbHIDUsage: usage,
+                    pressed: pressed,
+                    modifierMask: modifierMask(for: press.modifiers),
+                    text: pressed ? press.characters : ""
+                ) ? .handled : .ignored
+            }
+            .onAppear { acceptsHardwareKeyboard = model.keyboardInputAvailable }
+            .onChange(of: model.keyboardFocusRequest) { _, _ in
+                acceptsHardwareKeyboard = model.keyboardInputAvailable
+            }
+            .onChange(of: acceptsHardwareKeyboard) { _, focused in
+                if !focused { model.releaseKeyboardInput() }
+            }
             .accessibilityLabel("Mac 显示画面")
+    }
+
+    private func usbHIDUsage(for key: KeyEquivalent) -> UInt32? {
+        switch key {
+        case .return: 0x28
+        case .escape: 0x29
+        case .delete: 0x2A
+        case .tab: 0x2B
+        case .space: 0x2C
+        case .home: 0x4A
+        case .pageUp: 0x4B
+        case .deleteForward: 0x4C
+        case .end: 0x4D
+        case .pageDown: 0x4E
+        case .rightArrow: 0x4F
+        case .leftArrow: 0x50
+        case .downArrow: 0x51
+        case .upArrow: 0x52
+        default: USBHIDKeyboardMapper.usage(for: key.character)
+        }
+    }
+
+    private func modifierMask(for modifiers: EventModifiers) -> UInt32 {
+        var mask: UInt32 = 0
+        if modifiers.contains(.control) { mask |= 1 << 0 }
+        if modifiers.contains(.shift) { mask |= 1 << 1 }
+        if modifiers.contains(.option) { mask |= 1 << 2 }
+        if modifiers.contains(.command) { mask |= 1 << 3 }
+        return mask
     }
 }
 

@@ -11,6 +11,12 @@ import VibeScreenVideo
 @MainActor
 final class StreamViewModel: ObservableObject {
     static let maximumDisplayStreams = 4
+    static let nativeInputAvailability = NativeInputAvailability(
+        keyboard: true,
+        pointer: true,
+        stylus: false,
+        controller: false
+    )
 
     @Published private(set) var isConnecting = false
     @Published var isStreaming = false
@@ -22,6 +28,7 @@ final class StreamViewModel: ObservableObject {
     @Published var completedFileURL: URL?
     @Published var availableHostActions: [String] = []
     @Published var gestureProfile = GestureProfile.defaults
+    @Published private(set) var keyboardFocusRequest = 0
 
     let clipboard = ClipboardController()
     let managedConfiguration = ManagedConfigurationProvider()
@@ -61,6 +68,9 @@ final class StreamViewModel: ObservableObject {
     var state = SessionState()
     var nextInputID: UInt64 = 1
     var touchActive = false
+    var pointerHoverActive = false
+    var lastPointerLocation = CGPoint.zero
+    var pressedKeyboardUsages: Set<UInt32> = []
     var pendingHostHello: VSHostHello?
     var controlValidator = ClientControlEnvelopeValidator()
     var negotiatedCapabilities: Set<VSCapability> = []
@@ -69,6 +79,10 @@ final class StreamViewModel: ObservableObject {
     var heartbeatSequence: UInt64 = 0
     var heartbeatMonitor = HeartbeatMonitor(nowNanoseconds: { DispatchTime.now().uptimeNanoseconds })
     var heartbeatTask: Task<Void, Never>?
+    var reconnectCoordinator = ReconnectCoordinator()
+    var reconnectTask: Task<Void, Never>?
+    var activePairing: TrustedLANPairing?
+    var connectionGeneration: UInt64?
     var deliveryGate = OwnedDeliveryGate()
     var sessionOwner: SessionOwner?
     var pendingFileOffers: [Data: VSFileOffer] = [:]
@@ -108,11 +122,21 @@ final class StreamViewModel: ObservableObject {
             errorMessage = "此主机不在组织允许列表中"
             return
         }
+        stopAutomaticReconnect(clearPairing: true)
         endSession(disconnectTransport: true)
+        activePairing = pairing
+        let generation = reconnectCoordinator.start()
+        await connect(pairing: pairing, generation: generation)
+    }
+
+    private func connect(pairing: TrustedLANPairing, generation: UInt64) async {
+        guard reconnectCoordinator.accepts(generation: generation), activePairing == pairing else { return }
+        let policy = managedConfiguration.policy
         let newConnectionOwner = ConnectionOwner()
         let newSessionOwner = SessionOwner(connectionOwner: newConnectionOwner)
         deliveryGate.reset(to: newConnectionOwner)
         sessionOwner = newSessionOwner
+        connectionGeneration = generation
         controlOutbox.activate(owner: newSessionOwner)
         isConnecting = true
         errorMessage = nil
@@ -138,15 +162,15 @@ final class StreamViewModel: ObservableObject {
             }
             guard sessionOwner == newSessionOwner else { return }
         } catch {
-            guard sessionOwner == newSessionOwner else { return }
-            state.fail(error.localizedDescription)
-            errorMessage = error.localizedDescription
-            endSession(disconnectTransport: true, resetState: false)
+            guard sessionOwner == newSessionOwner,
+                  reconnectCoordinator.accepts(generation: generation) else { return }
+            scheduleReconnect(message: error.localizedDescription, generation: generation)
         }
         if sessionOwner == newSessionOwner { isConnecting = false }
     }
 
     func disconnect() {
+        stopAutomaticReconnect(clearPairing: true)
         heartbeatTask?.cancel()
         heartbeatTask = nil
         guard !state.sessionID.isEmpty, state.sessionEpoch > 0 else {
@@ -178,6 +202,7 @@ final class StreamViewModel: ObservableObject {
         let endingOwner = sessionOwner
         deliveryGate.reset()
         sessionOwner = nil
+        connectionGeneration = nil
         controlOutbox.deactivate()
         heartbeatMonitor.reset()
         if let endingOwner { _ = mediaGate.endSession(owner: endingOwner) }
@@ -211,14 +236,63 @@ final class StreamViewModel: ObservableObject {
         pixelBuffer = nil
         nextInputID = 1
         touchActive = false
+        pointerHoverActive = false
+        lastPointerLocation = .zero
+        pressedKeyboardUsages.removeAll()
         isStreaming = false
         isConnecting = false
     }
 
+    func scheduleReconnect(message: String, generation: UInt64? = nil) {
+        guard let pairing = activePairing,
+              let generation = generation ?? connectionGeneration,
+              let schedule = reconnectCoordinator.schedule(generation: generation) else {
+            state.fail(message)
+            errorMessage = message
+            endSession(disconnectTransport: true, resetState: false)
+            return
+        }
+        state.fail(message)
+        endSession(disconnectTransport: true, resetState: false)
+        state.disconnected(retryAttempt: schedule.attempt)
+        errorMessage = "\(message)；\(String(format: "%.2g", schedule.delaySeconds)) 秒后重试"
+        reconnectTask?.cancel()
+        reconnectTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(Int(schedule.delaySeconds * 1_000)))
+            } catch {
+                return
+            }
+            guard let self,
+                  self.reconnectCoordinator.accepts(generation: schedule.generation),
+                  self.activePairing == pairing else { return }
+            self.reconnectTask = nil
+            await self.connect(pairing: pairing, generation: schedule.generation)
+        }
+    }
+
+    func stopAutomaticReconnect(clearPairing: Bool) {
+        reconnectCoordinator.stop()
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        if clearPairing { activePairing = nil }
+    }
+
     func selectDisplay(streamID: UInt64) {
         guard displayBindings.contains(where: { $0.streamID == streamID }) else { return }
+        releaseKeyboardInput()
         selectedStreamID = streamID
         touchActive = false
+        pointerHoverActive = false
+    }
+
+    var keyboardInputAvailable: Bool {
+        isStreaming && negotiatedCapabilities.contains(.keyboard)
+    }
+
+    func requestKeyboardInput() {
+        guard keyboardInputAvailable else { return }
+        keyboardFocusRequest &+= 1
     }
 
     func sendTouch(location: CGPoint, size: CGSize, ended: Bool) {
@@ -249,6 +323,101 @@ final class StreamViewModel: ObservableObject {
                 target: target
             )
         }
+    }
+
+    @discardableResult
+    func sendPointerHover(location: CGPoint?, size: CGSize) -> Bool {
+        guard isStreaming, negotiatedCapabilities.contains(.pointer),
+              size.width > 0, size.height > 0,
+              selectedDecoderIsReady else { return false }
+
+        let phase: VSInputPhase
+        let point: CGPoint
+        if let location {
+            point = location
+            phase = pointerHoverActive ? .changed : .began
+            pointerHoverActive = true
+            lastPointerLocation = location
+        } else {
+            guard pointerHoverActive else { return false }
+            point = lastPointerLocation
+            phase = .ended
+            pointerHoverActive = false
+        }
+
+        let inputID = takeNextInputID()
+        let target = selectedInputTarget()
+        sendInBackground { factory in
+            factory.pointer(
+                inputID: inputID,
+                phase: phase,
+                x: point.x / size.width,
+                y: point.y / size.height,
+                buttonMask: 0,
+                sessionID: self.state.sessionID,
+                sessionEpoch: self.state.sessionEpoch,
+                target: target
+            )
+        }
+        return true
+    }
+
+    @discardableResult
+    func sendKey(
+        usbHIDUsage: UInt32,
+        pressed: Bool,
+        modifierMask: UInt32,
+        text: String
+    ) -> Bool {
+        guard isStreaming, negotiatedCapabilities.contains(.keyboard),
+              usbHIDUsage > 0, selectedDecoderIsReady else { return false }
+        if pressed {
+            guard pressedKeyboardUsages.insert(usbHIDUsage).inserted else { return true }
+        } else {
+            guard pressedKeyboardUsages.remove(usbHIDUsage) != nil else { return true }
+        }
+        let inputID = takeNextInputID()
+        let target = selectedInputTarget()
+        sendInBackground { factory in
+            factory.key(
+                inputID: inputID,
+                usbHIDUsage: usbHIDUsage,
+                pressed: pressed,
+                modifierMask: modifierMask,
+                text: pressed ? text : "",
+                sessionID: self.state.sessionID,
+                sessionEpoch: self.state.sessionEpoch,
+                target: target
+            )
+        }
+        return true
+    }
+
+    func releaseKeyboardInput() {
+        for usage in pressedKeyboardUsages.sorted() {
+            _ = sendKey(usbHIDUsage: usage, pressed: false, modifierMask: 0, text: "")
+        }
+    }
+
+    private var selectedDecoderIsReady: Bool {
+        guard let selectedStreamID else { return false }
+        return decoderOwners[selectedStreamID] != nil
+    }
+
+    private func selectedInputTarget() -> VSInputTarget? {
+        guard let selectedStreamID,
+              let binding = displayBindings.first(where: { $0.streamID == selectedStreamID }) else {
+            return nil
+        }
+        var target = VSInputTarget()
+        target.displayID = binding.displayID
+        target.streamID = binding.streamID
+        return target
+    }
+
+    private func takeNextInputID() -> UInt64 {
+        defer { nextInputID += 1 }
+        return nextInputID
     }
 
     func sendClipboardFromPasteboard() {
@@ -374,7 +543,9 @@ final class StreamViewModel: ObservableObject {
                 selectedStreamID = displayBindings[(current + 1) % displayBindings.count].streamID
             case let .invokeHostAction(identifier):
                 invokeHostAction(identifier)
-            case .toggleControls, .showKeyboard:
+            case .showKeyboard:
+                requestKeyboardInput()
+            case .toggleControls:
                 break
             }
         } catch { errorMessage = error.localizedDescription }

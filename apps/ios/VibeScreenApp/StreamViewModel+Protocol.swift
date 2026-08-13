@@ -17,9 +17,7 @@ extension StreamViewModel {
             case .bulkTransfer: try handleBulk(FileChunk(serializedFrame: frame.payload))
             }
         } catch {
-            errorMessage = error.localizedDescription
-            state.fail(error.localizedDescription)
-            endSession(disconnectTransport: true, resetState: false)
+            scheduleReconnect(message: error.localizedDescription)
         }
     }
 
@@ -32,6 +30,7 @@ extension StreamViewModel {
         case .sessionAccepted(let accepted):
             try acceptSession(accepted)
         case .sessionRejected(let rejected):
+            stopAutomaticReconnect(clearPairing: true)
             throw ProtocolClientError.rejected(rejected.message)
         case .ping(let ping):
             sendPong(sequence: ping.sequence, correlationID: envelope.messageID)
@@ -45,7 +44,10 @@ extension StreamViewModel {
                 )
             } catch { throw ProtocolClientError.invalidPong }
         case .disconnectNotice(let notice):
-            terminateSession(message: "Mac 已断开会话：\(notice.reasonCode)")
+            terminateSession(
+                message: "Mac 已断开会话：\(notice.reasonCode)",
+                retryable: notice.mayResume
+            )
         case .videoConfig(let config):
             handleVideoConfig(config)
         case .audioConfig(let config):
@@ -57,9 +59,9 @@ extension StreamViewModel {
         case .videoStreamEnded(let ended):
             handleVideoStreamEnded(ended)
         case .errorReport(let report):
-            terminateSession(message: "主机错误 [\(report.code)]：\(report.message)")
+            terminateSession(message: "主机错误 [\(report.code)]：\(report.message)", retryable: false)
         case .protocolError(let error):
-            terminateSession(message: "协议错误 [\(error.code)]：\(error.message)")
+            terminateSession(message: "协议错误 [\(error.code)]：\(error.message)", retryable: false)
         case .clipboardContent(let content):
             if negotiatedCapabilities.contains(.clipboard) { clipboard.stage(content) }
         case .fileOffer(let offer):
@@ -103,7 +105,8 @@ extension StreamViewModel {
              .keyRotationRequest, .keyRotationResult, .deviceRevocation, .trafficKeyUpdate,
              .trafficKeyAck, .listDisplaysRequest, .startDisplayRequest, .stopDisplay,
              .displayChanged, .videoConfigResult, .requestKeyframe,
-             .touchEvent, .stylusEvent, .pointerEvent, .scrollEvent, .keyEvent, .inputAck, .streamStats,
+             .touchEvent, .stylusEvent, .controllerEvent, .pointerEvent, .scrollEvent, .keyEvent,
+             .inputAck, .streamStats,
              .transportStats, .encryptedControlPacket,
              .audioConfigResult, .clipboardOffer, .clipboardRequest, .fileTransferProgress,
              .setVideoPreferences,
@@ -137,6 +140,9 @@ extension StreamViewModel {
         let key = ClientSessionKey(sessionID: state.sessionID, epoch: state.sessionEpoch)
         try registry.register(key)
         sessionKey = key
+        if let connectionGeneration {
+            reconnectCoordinator.markConnected(generation: connectionGeneration)
+        }
         try mediaGate.reset(owner: owner, sessionEpoch: state.sessionEpoch)
         heartbeatMonitor.reset(
             to: owner,
@@ -323,10 +329,15 @@ extension StreamViewModel {
         terminateSession(message: "视频流已结束：\(ended.reasonCode)")
     }
 
-    func terminateSession(message: String) {
-        errorMessage = message
-        state.fail(message)
-        endSession(disconnectTransport: true, resetState: false)
+    func terminateSession(message: String, retryable: Bool = true) {
+        if retryable {
+            scheduleReconnect(message: message)
+        } else {
+            stopAutomaticReconnect(clearPairing: true)
+            errorMessage = message
+            state.fail(message)
+            endSession(disconnectTransport: true, resetState: false)
+        }
     }
 
     func handleAudioConfig(_ config: VSAudioConfig) throws {
@@ -548,15 +559,16 @@ extension StreamViewModel {
     }
 
     func advertisedCapabilities(policy: ManagedPolicy) -> [VSCapability] {
-        var values: [VSCapability] = [
-            .touch, .keyboard, .pointer, .telemetry, .sessionResume,
+        var values: Set<VSCapability> = [
+            .telemetry, .sessionResume,
             .multiDisplay, .colorManagement, .hostActions, .managedConfiguration,
         ]
-        if policy.audioAllowed { values.append(.audio) }
-        if policy.clipboardAllowed { values.append(.clipboard) }
-        if policy.fileTransferAllowed { values.append(.fileTransfer) }
-        if policy.wakeAllowed { values.append(.wakeHost) }
-        return values
+        values.formUnion(Self.nativeInputAvailability.advertisedCapabilities)
+        if policy.audioAllowed { values.insert(.audio) }
+        if policy.clipboardAllowed { values.insert(.clipboard) }
+        if policy.fileTransferAllowed { values.insert(.fileTransfer) }
+        if policy.wakeAllowed { values.insert(.wakeHost) }
+        return values.sorted { $0.rawValue < $1.rawValue }
     }
 
     func clientResourceLimits(policy: ManagedPolicy) -> VSResourceLimits {
