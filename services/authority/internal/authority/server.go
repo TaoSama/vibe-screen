@@ -250,7 +250,7 @@ func (s *Server) reconcile(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, 400, err.Error())
 		return
 	}
-	if !validIdentifier(request.SourceID) || request.ObservedAt.IsZero() || request.ObservedAt.After(s.now().Add(5*time.Minute)) || len(request.Allocations) > 10000 {
+	if !validIdentifier(request.SourceID) || request.ObservedAt.IsZero() || request.ObservedAt.After(s.now()) || len(request.Allocations) > 10000 {
 		s.reject(w, 400, "invalid reconciliation snapshot")
 		return
 	}
