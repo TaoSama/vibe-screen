@@ -1,4 +1,6 @@
 import { systemDateTime } from '@kit.BasicServicesKit';
+import { AdvancedPeripheralInputMapper, ControllerFullState, ControllerLifecycleSample,
+  ControllerSessionState, HarmonyStylusSample } from '../core/input/AdvancedPeripheralInputMapper';
 import { CoordinateMapper, Rotation } from '../core/input/CoordinateMapper';
 import { MediaPacketParser } from '../core/media/MediaPacketParser';
 import { OutboundControlWriter, OutboundControlReceipt } from '../core/protocol/OutboundControlWriter';
@@ -50,6 +52,8 @@ export class HarmonySessionController {
   private progressWatchdog: ProgressWatchdog = new ProgressWatchdog();
   private pairingStore: PairingStore = new PairingStore();
   private coordinateMapper: CoordinateMapper = new CoordinateMapper();
+  private advancedInputMapper: AdvancedPeripheralInputMapper = new AdvancedPeripheralInputMapper();
+  private controllerState: ControllerSessionState = new ControllerSessionState();
   private session: ProductSession | undefined;
   private controlWriter: OutboundControlWriter | undefined;
   private ui: SessionUiListener | undefined;
@@ -86,8 +90,11 @@ export class HarmonySessionController {
   async connect(host: string, port: number): Promise<void> {
     if (host.trim().length === 0 || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Mac 地址或端口无效');
     const owner: number = ++this.operationGeneration; this.decoderGeneration += 1;
-    this.cancelReconnect(); this.cancelHeartbeat(); this.cancelSessionWatchdog(); this.session?.close(); this.closeWriter();
-    const failures: CleanupFailure[] = await this.cleanupResources();
+    this.cancelReconnect(); this.cancelHeartbeat(); this.cancelSessionWatchdog();
+    const releaseFailures: CleanupFailure[] = await this.releaseAdvancedInputs();
+    if (owner !== this.operationGeneration) return;
+    this.session?.close(); this.closeWriter();
+    const failures: CleanupFailure[] = [...releaseFailures, ...await this.cleanupResources()];
     if (owner !== this.operationGeneration) return;
     if (failures.length > 0) this.ui?.onStatus(`重新连接前清理警告：${describeCleanupFailures(failures)}`, false);
     this.host = host.trim(); this.port = port; this.userStopped = false; this.reconnectAttempt = 0;
@@ -97,8 +104,10 @@ export class HarmonySessionController {
   async disconnect(): Promise<void> {
     const owner: number = ++this.operationGeneration; this.decoderGeneration += 1;
     this.userStopped = true; this.cancelReconnect(); this.cancelHeartbeat(); this.cancelSessionWatchdog();
+    const releaseFailures: CleanupFailure[] = await this.releaseAdvancedInputs();
+    if (owner !== this.operationGeneration) return;
     this.session?.close(); this.closeWriter();
-    const failures: CleanupFailure[] = await this.cleanupResources();
+    const failures: CleanupFailure[] = [...releaseFailures, ...await this.cleanupResources()];
     if (owner === this.operationGeneration) this.ui?.onStatus(this.cleanupStatus('已断开', failures), false);
   }
 
@@ -128,8 +137,10 @@ export class HarmonySessionController {
   async onBackground(): Promise<void> {
     const owner: number = ++this.operationGeneration; this.decoderGeneration += 1;
     this.foreground = false; this.cancelReconnect(); this.cancelHeartbeat(); this.cancelSessionWatchdog();
+    const releaseFailures: CleanupFailure[] = await this.releaseAdvancedInputs();
+    if (owner !== this.operationGeneration) return;
     this.session?.close(); this.closeWriter();
-    const failures: CleanupFailure[] = await this.cleanupResources();
+    const failures: CleanupFailure[] = [...releaseFailures, ...await this.cleanupResources()];
     if (owner === this.operationGeneration) this.ui?.onStatus(this.cleanupStatus('已暂停，返回前台后重连', failures), false);
   }
 
@@ -142,9 +153,44 @@ export class HarmonySessionController {
       !this.finite(localX, localY, width, height, pressure) || width <= 0 || height <= 0) return;
     const point = this.coordinateMapper.map(localX, localY, { left: 0, top: 0, width, height, rotation });
     const event: NormalizedInput = { inputId: this.nextInputId++, pointerId, phase, x: point.x, y: point.y,
-      pressure: active.canSend(Capability.STYLUS) ? Math.min(Math.max(pressure, 0), 1) : 0,
-      tiltX: 0, tiltY: 0, buttonMask: 0 };
+      pressure: 0, tiltX: 0, tiltY: 0, buttonMask: 0 };
     this.applyActions([active.touch(event)], this.operationGeneration);
+  }
+
+  sendStylus(sample: HarmonyStylusSample, localX: number, localY: number, width: number, height: number,
+    rotation: Rotation): void {
+    const active: ProductSession | undefined = this.session;
+    if (active?.state() !== ProductSessionState.STREAMING || !active.canSend(Capability.STYLUS) ||
+      !this.finite(localX, localY, width, height) || width <= 0 || height <= 0) return;
+    try {
+      const point = this.coordinateMapper.map(localX, localY, { left: 0, top: 0, width, height, rotation });
+      const extended: boolean = active.canSend(Capability.STYLUS_EXTENDED);
+      const event = this.advancedInputMapper.stylus(this.nextInputId++, { ...sample, x: point.x, y: point.y }, extended);
+      this.applyActions([active.stylus(event)], this.operationGeneration);
+    } catch (error) {
+      this.ui?.onStatus(`手写笔输入被拒绝：${(error as Error).message}`, true);
+    }
+  }
+
+  controllerConnected(deviceId: number): void {
+    const active: ProductSession | undefined = this.session;
+    if (active?.state() !== ProductSessionState.STREAMING || !active.canSend(Capability.CONTROLLER)) return;
+    try { this.sendControllerSamples(this.controllerState.connect(this.advancedInputMapper.stableControllerId(deviceId))); }
+    catch (error) { this.ui?.onStatus(`控制器连接被拒绝：${(error as Error).message}`, true); }
+  }
+
+  sendControllerState(deviceId: number, state: ControllerFullState): void {
+    const active: ProductSession | undefined = this.session;
+    if (active?.state() !== ProductSessionState.STREAMING || !active.canSend(Capability.CONTROLLER)) return;
+    try { this.sendControllerSamples(this.controllerState.update(this.advancedInputMapper.stableControllerId(deviceId), state)); }
+    catch (error) { this.ui?.onStatus(`控制器状态被拒绝：${(error as Error).message}`, true); }
+  }
+
+  controllerDisconnected(deviceId: number): void {
+    const active: ProductSession | undefined = this.session;
+    if (active?.state() !== ProductSessionState.STREAMING || !active.canSend(Capability.CONTROLLER)) return;
+    try { this.sendControllerSamples(this.controllerState.disconnect(this.advancedInputMapper.stableControllerId(deviceId))); }
+    catch (error) { this.ui?.onStatus(`控制器断开被拒绝：${(error as Error).message}`, true); }
   }
 
   sendPointer(phase: InputPhase, x: number, y: number, width: number, height: number,
@@ -203,7 +249,8 @@ export class HarmonySessionController {
   onTransportLost(reason: string, retryable: boolean = true, owner: number = this.operationGeneration): void {
     if (owner !== this.operationGeneration) return;
     const cleanupOwner: number = ++this.operationGeneration;
-    this.decoderGeneration += 1; this.session?.close(); this.closeWriter(); this.cancelHeartbeat();
+    this.decoderGeneration += 1; this.session?.close(); this.controllerState.resetSession();
+    this.closeWriter(); this.cancelHeartbeat();
     this.cancelSessionWatchdog(); this.cancelReconnect();
     this.renderedFirstFrame = false;
     this.cleanupLoss(cleanupOwner, reason, retryable).catch((error: Error) => {
@@ -381,6 +428,32 @@ export class HarmonySessionController {
   private closeWriter(): void {
     this.controlWriter?.close('Session generation ended');
     this.controlWriter = undefined;
+  }
+
+  private sendControllerSamples(samples: ControllerLifecycleSample[]): void {
+    const active: ProductSession | undefined = this.session;
+    if (active?.state() !== ProductSessionState.STREAMING || !active.canSend(Capability.CONTROLLER)) return;
+    try {
+      samples.forEach((sample) => this.applyActions([
+        active.controller(this.advancedInputMapper.controller(this.nextInputId++, sample))
+      ], this.operationGeneration));
+    } catch (error) {
+      this.ui?.onStatus(`控制器输入被拒绝：${(error as Error).message}`, true);
+    }
+  }
+
+  private async releaseAdvancedInputs(): Promise<CleanupFailure[]> {
+    const active: ProductSession | undefined = this.session;
+    const writer: OutboundControlWriter | undefined = this.controlWriter;
+    const actions: SessionAction[] = active?.releaseAdvancedInputs(() => this.nextInputId++) ?? [];
+    this.controllerState.resetSession();
+    if (active === undefined || writer === undefined || actions.length === 0) return [];
+    return runAllCleanup([{ name: 'advanced-input.release', run: async () => {
+      for (const action of actions) {
+        if (action.kind !== 'send') throw new Error('Unexpected advanced input release action');
+        await writer.enqueue(action.intent, active.outboundScope());
+      }
+    } }]);
   }
 
   private requireSession(): ProductSession {

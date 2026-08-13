@@ -62,6 +62,16 @@ install and verify command. It parses TypeScript-compatible ArkTS and an ArkUI
 lifecycle/input shell, but cannot run the DevEco ArkTS API/type checker, parse
 the full declarative ArkUI builder grammar, or validate vendor APIs.
 
+## 2026-08-14 advanced-input portable delta
+
+The portable Harmony suite now has 80 tests. Added coverage proves exact bytes
+for the shared extended-stylus and controller connect/state/disconnect fixtures,
+strict range and UTF-8 validation, controller attachment epochs and full-state
+snapshots, negotiated capability gates, and neutral stylus/controller release.
+The local run passed static validation, TypeScript checking, and all 80 tests.
+DevEco, ArkTS API checking, HAP output, native input acquisition, and physical
+stylus/controller interoperability were not run and remain open.
+
 ## Clean cross-repository gates
 
 The following commands ran against the tested commit/tree above:

@@ -539,6 +539,13 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   check(methodHasDominatingCapabilityGuard(controllerPath, 'HarmonySessionController', 'sendKey', 'Capability.KEYBOARD', 'key'),
     `${controllerPath}: HarmonySessionController.sendKey() must use a dominating KEYBOARD early-return guard`);
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendKey', 'active', 'key');
+  check(methodHasDominatingCapabilityGuard(controllerPath, 'HarmonySessionController', 'sendStylus', 'Capability.STYLUS', 'stylus'),
+    `${controllerPath}: HarmonySessionController.sendStylus() must use a dominating STYLUS early-return guard`);
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendStylus', 'active', 'stylus');
+  check(methodHasDominatingCapabilityGuard(controllerPath, 'HarmonySessionController', 'sendControllerSamples',
+    'Capability.CONTROLLER', 'controller'),
+  `${controllerPath}: HarmonySessionController.sendControllerSamples() must use a dominating CONTROLLER early-return guard`);
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendControllerSamples', 'active', 'controller');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendAction', 'writer', 'enqueue');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'configureVideo', 'this.videoDecoder', 'configure');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'configureVideo', 'active', 'completeVideoConfiguration');

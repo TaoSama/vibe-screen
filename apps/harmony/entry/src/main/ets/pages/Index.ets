@@ -1,4 +1,4 @@
-import { Capability, InputPhase } from '../core/protocol/ProtocolModels';
+import { Capability, InputPhase, StylusContactState, StylusToolKind } from '../core/protocol/ProtocolModels';
 import { PeripheralInputMapper } from '../core/input/PeripheralInputMapper';
 import { Rotation } from '../core/input/CoordinateMapper';
 import { SessionUiListener } from '../platform/HarmonySessionController';
@@ -49,7 +49,9 @@ struct Index {
         const inputs: string[] = ['触控'];
         if (capabilities.includes(Capability.KEYBOARD)) inputs.push('硬件键盘');
         if (capabilities.includes(Capability.POINTER)) inputs.push('鼠标');
-        if (capabilities.includes(Capability.STYLUS)) inputs.push('手写笔压力');
+        if (capabilities.includes(Capability.STYLUS_EXTENDED)) inputs.push('高级手写笔');
+        else if (capabilities.includes(Capability.STYLUS)) inputs.push('手写笔');
+        if (capabilities.includes(Capability.CONTROLLER)) inputs.push('控制器');
         this.inputSummary = inputs.join(' · ');
       });
     sessionRuntime.attachUi(this.sessionListener);
@@ -90,8 +92,17 @@ struct Index {
     if (event.type === TouchType.Down) phase = InputPhase.BEGAN;
     else if (event.type === TouchType.Up) phase = InputPhase.ENDED;
     else if (event.type === TouchType.Cancel) phase = InputPhase.CANCELLED;
-    touches.forEach((touch: TouchObject) => sessionRuntime.sendTouch(touch.id, phase, touch.x, touch.y,
-      this.viewportWidth, this.viewportHeight, this.rotation, touch.pressure));
+    touches.forEach((touch: TouchObject) => {
+      if (event.sourceTool === SourceTool.Pen) {
+        sessionRuntime.sendStylus({ pointerId: touch.id, phase, x: 0, y: 0, pressure: touch.pressure,
+          tiltXDegrees: event.tiltX, tiltYDegrees: event.tiltY, toolKind: StylusToolKind.PEN,
+          buttonMask: 0, contactState: StylusContactState.CONTACT }, touch.x, touch.y,
+        this.viewportWidth, this.viewportHeight, this.rotation);
+      } else {
+        sessionRuntime.sendTouch(touch.id, phase, touch.x, touch.y,
+          this.viewportWidth, this.viewportHeight, this.rotation, touch.pressure);
+      }
+    });
   }
 
   private handleMouse(event: MouseEvent): void {

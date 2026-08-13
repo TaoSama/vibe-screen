@@ -104,6 +104,7 @@ export class OutboundControlWriter {
   private queuedCount(): number { return this.criticalQueue.length + this.inputQueue.length; }
 
   private isInput(intent: OutboundControlIntent): boolean {
-    return intent.kind === 'touch' || intent.kind === 'pointer' || intent.kind === 'scroll' || intent.kind === 'key';
+    return intent.kind === 'touch' || intent.kind === 'pointer' || intent.kind === 'scroll' || intent.kind === 'key' ||
+      intent.kind === 'stylus' || intent.kind === 'controller';
   }
 }

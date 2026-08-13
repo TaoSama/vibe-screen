@@ -30,6 +30,14 @@ export class ProtobufWriter {
     return this;
   }
 
+  sint32(fieldNumber: number, value: number): ProtobufWriter {
+    if (!Number.isInteger(value) || value < -0x80000000 || value > 0x7fffffff) {
+      throw new Error('sint32 value is outside the supported range');
+    }
+    const encoded: number = ((value << 1) ^ (value >> 31)) >>> 0;
+    return this.uint32(fieldNumber, encoded);
+  }
+
   bool(fieldNumber: number, value: boolean): ProtobufWriter {
     return this.uint32(fieldNumber, value ? 1 : 0);
   }
