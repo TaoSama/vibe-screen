@@ -986,15 +986,15 @@ class MainActivity : AppCompatActivity() {
             val session = internetSession ?: return false
             return handleInternetStylus(view, event, session, extendedOnly = true)
         }
-        if (!isConnected || !isInForeground) return false
+        if (!isConnected) return false
         val stylusSnapshot = StylusInputMapper.snapshot(event) { x, y -> mapInputPoint(view, x, y) }
         val client = streamClient
-        if (stylusSnapshot.pointers.any { it.toolKind != null }) {
-            if (client?.canSendExtendedStylus() == true) {
-                val samples = streamStylusContactRouter.map(stylusSnapshot, extendedNegotiated = true)
-                if (samples.isNotEmpty() && client.sendMotionStylus(samples)) trackStreamStylus(samples)
+        if (stylusSnapshot.pointers.any { it.toolKind != null } && client?.canSendExtendedStylus() == true) {
+            val samples = streamStylusContactRouter.map(stylusSnapshot, extendedNegotiated = true)
+            if (samples.isNotEmpty() && client.sendMotionStylus(samples)) {
+                trackStreamStylus(samples)
+                return true
             }
-            return true
         }
         val point = mapInputPoint(view, event.x, event.y)
         val nativePointerInput =

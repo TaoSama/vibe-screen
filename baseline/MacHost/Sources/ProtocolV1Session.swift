@@ -824,6 +824,13 @@ final class ProtocolV1SessionCoordinator {
         }
         let offeredCapabilities = Set(hello.capabilities)
         let requiredCapabilities = Set(hello.requiredCapabilities)
+        guard requiredCapabilities.isSubset(of: offeredCapabilities) else {
+            return fail(
+                code: .unsupportedCapability,
+                message: "ClientHello required capabilities were not included in its offer.",
+                correlationID: correlationID
+            )
+        }
         guard requiredCapabilities.isSubset(of: configuration.hostCapabilities) else {
             return fail(
                 code: .unsupportedCapability,

@@ -216,6 +216,15 @@ final class ProtocolV1SessionTests: XCTestCase {
             try protocolError(from: unsupported.handleControl(required.serializedData())).code,
             .unsupportedCapability
         )
+
+        let omittedFromOffer = makeSession()
+        var inconsistent = clientHello()
+        inconsistent.clientHello.capabilities.append(.stylus)
+        inconsistent.clientHello.requiredCapabilities = [.stylusExtended]
+        XCTAssertEqual(
+            try protocolError(from: omittedFromOffer.handleControl(inconsistent.serializedData())).code,
+            .unsupportedCapability
+        )
     }
 
     func testUnimplementedTelemetryIsNotAdvertisedOrNegotiated() throws {
