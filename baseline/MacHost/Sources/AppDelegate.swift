@@ -3394,7 +3394,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Gesture Properties
 
-    private let eventSource = CGEventSource(stateID: .hidSystemState)
+    private let gestureEvents = TouchGestureEventFactory()
     private var accessibilityWarningShown = false
     private var gestureState: GestureState = .idle
     private var lastTouchTime: UInt64 = 0
@@ -3746,86 +3746,72 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Event Injection
 
     private func moveCursor(to point: CGPoint) {
-        if let event = CGEvent(mouseEventSource: eventSource, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
+        if let event = gestureEvents.mouseEvent(type: .mouseMoved, position: point, button: .left) {
             event.post(tap: .cghidEventTap)
         }
     }
 
     private func performClick(at point: CGPoint) {
-        if let down = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left) {
-            down.setIntegerValueField(.mouseEventClickState, value: 1)
+        if let down = gestureEvents.mouseEvent(type: .leftMouseDown, position: point, button: .left, clickState: 1) {
             down.post(tap: .cghidEventTap)
         }
-        if let up = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
-            up.setIntegerValueField(.mouseEventClickState, value: 1)
+        if let up = gestureEvents.mouseEvent(type: .leftMouseUp, position: point, button: .left, clickState: 1) {
             up.post(tap: .cghidEventTap)
         }
     }
 
     private func performDoubleClick(at point: CGPoint) {
-        if let down = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left) {
-            down.setIntegerValueField(.mouseEventClickState, value: 2)
+        if let down = gestureEvents.mouseEvent(type: .leftMouseDown, position: point, button: .left, clickState: 2) {
             down.post(tap: .cghidEventTap)
         }
-        if let up = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
-            up.setIntegerValueField(.mouseEventClickState, value: 2)
+        if let up = gestureEvents.mouseEvent(type: .leftMouseUp, position: point, button: .left, clickState: 2) {
             up.post(tap: .cghidEventTap)
         }
     }
 
     private func performRightClick(at point: CGPoint) {
-        if let down = CGEvent(mouseEventSource: eventSource, mouseType: .rightMouseDown, mouseCursorPosition: point, mouseButton: .right) {
+        if let down = gestureEvents.mouseEvent(type: .rightMouseDown, position: point, button: .right) {
             down.post(tap: .cghidEventTap)
         }
-        if let up = CGEvent(mouseEventSource: eventSource, mouseType: .rightMouseUp, mouseCursorPosition: point, mouseButton: .right) {
+        if let up = gestureEvents.mouseEvent(type: .rightMouseUp, position: point, button: .right) {
             up.post(tap: .cghidEventTap)
         }
     }
 
     private func injectMouseDown(at point: CGPoint) {
-        if let event = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left) {
-            event.setIntegerValueField(.mouseEventClickState, value: 1)
+        if let event = gestureEvents.mouseEvent(type: .leftMouseDown, position: point, button: .left, clickState: 1) {
             event.post(tap: .cghidEventTap)
         }
     }
 
     private func injectMouseDragged(to point: CGPoint) {
-        if let event = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) {
+        if let event = gestureEvents.mouseEvent(type: .leftMouseDragged, position: point, button: .left) {
             event.post(tap: .cghidEventTap)
         }
     }
 
     private func injectMouseUp(at point: CGPoint) {
-        if let event = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
+        if let event = gestureEvents.mouseEvent(type: .leftMouseUp, position: point, button: .left, clickState: 1) {
             event.post(tap: .cghidEventTap)
         }
     }
 
     private func injectScrollEvent(deltaX: CGFloat, deltaY: CGFloat, at position: CGPoint) {
-        guard let scrollEvent = CGEvent(
-            scrollWheelEvent2Source: eventSource,
-            units: .pixel,
-            wheelCount: 2,
-            wheel1: Int32(deltaY),
-            wheel2: Int32(deltaX),
-            wheel3: 0
+        guard let scrollEvent = gestureEvents.scrollEvent(
+            deltaX: Int32(deltaX),
+            deltaY: Int32(deltaY),
+            position: position
         ) else { return }
-        scrollEvent.location = position
         scrollEvent.post(tap: .cghidEventTap)
     }
 
     private func injectZoomEvent(delta: Int32, at position: CGPoint) {
-        guard let scrollEvent = CGEvent(
-            scrollWheelEvent2Source: eventSource,
-            units: .pixel,
-            wheelCount: 1,
-            wheel1: delta,
-            wheel2: 0,
-            wheel3: 0
+        guard let scrollEvent = gestureEvents.scrollEvent(
+            deltaX: 0,
+            deltaY: delta,
+            position: position,
+            commandModified: true
         ) else { return }
-        scrollEvent.location = position
-        // Set Cmd flag for zoom
-        scrollEvent.flags = .maskCommand
         scrollEvent.post(tap: .cghidEventTap)
     }
 

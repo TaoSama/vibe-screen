@@ -3,6 +3,61 @@ import XCTest
 @testable import Telemachus
 
 final class Phase1HostCapabilityTests: XCTestCase {
+    func testTouchGestureFactoryIsolatesSyntheticZoomModifier() throws {
+        let pointerSource = try XCTUnwrap(CGEventSource(stateID: .privateState))
+        let zoomSource = try XCTUnwrap(CGEventSource(stateID: .privateState))
+        pointerSource.userData = 101
+        zoomSource.userData = 202
+        let factory = TouchGestureEventFactory(
+            pointerSource: pointerSource,
+            zoomSource: zoomSource
+        )
+        let zoom = try XCTUnwrap(factory.scrollEvent(
+            deltaX: 0,
+            deltaY: 10,
+            position: .zero,
+            commandModified: true
+        ))
+        XCTAssertTrue(zoom.flags.contains(.maskCommand))
+        XCTAssertEqual(zoom.getIntegerValueField(.eventSourceUserData), 202)
+
+        let down = try XCTUnwrap(factory.mouseEvent(
+            type: .leftMouseDown,
+            position: .zero,
+            button: .left,
+            clickState: 1
+        ))
+        let drag = try XCTUnwrap(factory.mouseEvent(
+            type: .leftMouseDragged,
+            position: .zero,
+            button: .left
+        ))
+        let up = try XCTUnwrap(factory.mouseEvent(
+            type: .leftMouseUp,
+            position: .zero,
+            button: .left,
+            clickState: 1
+        ))
+        let scroll = try XCTUnwrap(factory.scrollEvent(
+            deltaX: 1,
+            deltaY: 2,
+            position: .zero
+        ))
+        for event in [down, drag, up, scroll] {
+            XCTAssertEqual(event.getIntegerValueField(.eventSourceUserData), 101)
+            XCTAssertFalse(event.flags.contains(.maskCommand))
+        }
+        XCTAssertEqual(down.type, .leftMouseDown)
+        XCTAssertEqual(drag.type, .leftMouseDragged)
+        XCTAssertEqual(up.type, .leftMouseUp)
+        XCTAssertEqual(down.getIntegerValueField(.mouseEventButtonNumber), 0)
+        XCTAssertEqual(drag.getIntegerValueField(.mouseEventButtonNumber), 0)
+        XCTAssertEqual(up.getIntegerValueField(.mouseEventButtonNumber), 0)
+        XCTAssertEqual(down.getIntegerValueField(.mouseEventClickState), 1)
+        XCTAssertEqual(drag.getIntegerValueField(.mouseEventClickState), 1)
+        XCTAssertEqual(up.getIntegerValueField(.mouseEventClickState), 1)
+    }
+
     func testInputMappingSupportsNegativeDisplayOrigins() {
         let point = StreamInputMapper.point(
             normalizedX: 0.25,

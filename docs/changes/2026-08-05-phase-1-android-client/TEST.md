@@ -1,6 +1,13 @@
 # Phase 1 Android client verification
 
 Date: 2026-08-05
+
+> Historical implementation record: the matrix below describes the original
+> Android-only legacy-session slice. Later Protocol v1 display, keyboard,
+> pointer, video-control, and Host-action work supersedes its capability
+> boundary. Current status is summarized in `README.md` and the dated follow-up
+> sections in this file.
+
 Branch: `codex/phase1-android-client-experience`
 Implementation base: `6f7ffbe0be872390144899642636dbb24d89f120`
 
@@ -245,3 +252,17 @@ connection correctly cancels the previous one and resembles a reconnect loop.
 Evidence:
 
 - [`evidence/2026-08-10-xiaomi13-window-actions/`](evidence/2026-08-10-xiaomi13-window-actions/)
+
+## Xiaomi 13 touch-gesture follow-up
+
+On 2026-08-13 an explicit opt-in instrumentation test drove tap, long-press
+right click, long-press drag, two-finger scroll, and pinch through the live
+Protocol v1 USB session. Host gesture logs and a listen-only macOS event tap
+proved the production CGEvent path; the driver itself does not receive a Host
+acknowledgement. Repeating the matrix exposed that pinch's
+Command modifier could leak through the shared CGEvent source into later plain
+pointer events. Pinch now uses a private synthetic-modifier event source, with
+focused isolation coverage, while ordinary pointer events preserve legitimate
+system modifiers. The fixed binary still needs macOS Screen Recording and Accessibility
+approval before its device rerun can close; see
+[`../2026-08-13-xiaomi13-touch-gestures/TEST.md`](../2026-08-13-xiaomi13-touch-gestures/TEST.md).
