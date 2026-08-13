@@ -21,6 +21,21 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertTrue(coordinator.isCurrent(replacement))
     }
 
+    func testEncoderCandidateTransactionCleansEveryFailedPath() {
+        let beforeCommit = EncoderCandidateTransaction()
+        XCTAssertTrue(beforeCommit.shouldInvalidateCandidate)
+        XCTAssertFalse(beforeCommit.shouldClearInstalledReference)
+
+        var afterCommit = EncoderCandidateTransaction()
+        afterCommit.commit()
+        XCTAssertTrue(afterCommit.shouldInvalidateCandidate)
+        XCTAssertTrue(afterCommit.shouldClearInstalledReference)
+
+        afterCommit.succeed()
+        XCTAssertFalse(afterCommit.shouldInvalidateCandidate)
+        XCTAssertFalse(afterCommit.shouldClearInstalledReference)
+    }
+
     func testAdaptiveMediaControlPublishesAppliedStateWithoutChangingConfiguration() {
         let configuredBitrate = 35
         let state = InternetAdaptiveMediaControlState.active(
