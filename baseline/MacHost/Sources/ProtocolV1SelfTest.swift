@@ -113,7 +113,7 @@ enum ProtocolV1SelfTest {
                 "client_hello", "host_hello", "session_accepted",
                 "list_displays_request", "list_displays_response",
                 "start_display_request", "start_display_response",
-                "video_config", "display_changed", "video_config_result", "touch", "ping", "pong",
+                "video_config", "display_changed", "video_config_result", "touch", "stylus", "ping", "pong",
                 "protocol_error"
             ]
             for name in controls {
@@ -150,7 +150,7 @@ enum ProtocolV1SelfTest {
     private static func testNegotiationAndMediaGate(failures: inout [String]) {
         do {
             guard ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true)
-                    == [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions],
+                    == [.touch, .stylus, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions],
                   ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false)
                     == [.multiDisplay, .clientVideoControl] else {
                 failures.append("production HostHello capabilities are not exact")
@@ -170,7 +170,7 @@ enum ProtocolV1SelfTest {
             guard helloResponses.count == 2,
                   case .hostHello(let hostHello)? = helloResponses[0].payload,
                   case .sessionAccepted(let accepted)? = helloResponses[1].payload,
-                  Set(hostHello.capabilities) == [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions],
+                  Set(hostHello.capabilities) == [.touch, .stylus, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions],
                   accepted.sessionID == sessionID,
                   accepted.negotiatedCapabilities == [.touch, .multiDisplay] else {
                 failures.append("ClientHello did not produce HostHello + SessionAccepted")
@@ -478,7 +478,7 @@ enum ProtocolV1SelfTest {
             var capabilityHello = clientHello()
             // Stylus stays unadvertised by the host, so it is the reliable
             // negative case now that keyboard/pointer are negotiated.
-            capabilityHello.clientHello.requiredCapabilities = [.stylus]
+            capabilityHello.clientHello.requiredCapabilities = [.telemetry]
             guard try protocolError(capabilitySession.handleControl(capabilityHello.serializedData())).code == .unsupportedCapability else {
                 failures.append("unsupported required capability was not rejected")
                 return

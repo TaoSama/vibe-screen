@@ -58,6 +58,7 @@ message Envelope {
     ScrollEvent scroll_event = 62;
     KeyEvent key_event = 63;
     InputAck input_ack = 64;
+    StylusEvent stylus_event = 65;
     StreamStats stream_stats = 70;
     TransportStats transport_stats = 71;
     ErrorReport error_report = 72;

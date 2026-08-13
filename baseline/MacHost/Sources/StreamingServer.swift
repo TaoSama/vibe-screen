@@ -149,6 +149,9 @@ class StreamingServer: EncodedFrameSink {
     /// Fired when the Android client reports Build.MODEL + max panel Hz.
     var onDeviceInfoReceived: ((String, UInt8, UInt64) -> Void)?
     var onPointerEvent: ((Float, Float, VSInputPhase, UInt32, UInt64) -> Void)?
+    var onStylusEvent: ((
+        UInt64, UInt32, Float, Float, VSInputPhase, Double, Double, Double, UInt64
+    ) -> Void)?
     var onScrollEvent: ((Double, Double, UInt64) -> Void)?
     var onKeyEvent: ((UInt32, Bool, UInt32, String, UInt64) -> Void)?
     var onProtocolErrorReceived: ((VSProtocolError, UInt64) -> Void)?
@@ -452,6 +455,11 @@ class StreamingServer: EncodedFrameSink {
         inputBuffer.removeAll(keepingCapacity: true)
         isReceiving = false
         droppedFrames = 0
+
+        dispatchTakeoverInputCancellation(
+            oldConnectionWasPresent: oldConnection != nil && oldConnection !== conn,
+            generation: generation
+        )
 
         frameQueue.async { [weak self] in
             guard let self else { return }
@@ -1353,6 +1361,31 @@ class StreamingServer: EncodedFrameSink {
                         generation
                     )
                 }
+            case .stylus(
+                let inputID,
+                let pointerID,
+                let x,
+                let y,
+                let phase,
+                let pressure,
+                let tiltXDegrees,
+                let tiltYDegrees
+            ):
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onStylusEvent?(
+                        inputID,
+                        pointerID,
+                        x,
+                        y,
+                        phase,
+                        pressure,
+                        tiltXDegrees,
+                        tiltYDegrees,
+                        generation
+                    )
+                }
             case .pointer(let x, let y, let phase, let buttonMask):
                 DispatchQueue.main.async { [weak self] in
                     guard let self,
@@ -1512,12 +1545,24 @@ class StreamingServer: EncodedFrameSink {
         }
     }
 
+    func dispatchTakeoverInputCancellation(
+        oldConnectionWasPresent: Bool,
+        generation: UInt64
+    ) {
+        guard oldConnectionWasPresent else { return }
+        dispatchInputCancellation(generation: generation)
+    }
+
     private func dispatchInputCancellation(generation: UInt64) {
         DispatchQueue.main.async { [weak self] in
             guard let self,
                   self.clientCallbackGeneration.isCurrent(generation) else { return }
             self.onInputCancelled?(generation)
         }
+    }
+
+    func advanceClientGenerationForSelfTest(to generation: UInt64) {
+        clientCallbackGeneration.advance(to: generation)
     }
 
     private func inputByte(at offset: Int) -> UInt8 {

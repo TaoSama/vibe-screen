@@ -25,6 +25,10 @@ class ProtocolV1ProductCodecTest {
         assertEquals("device-1", hello.clientHello.deviceId)
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_END_TO_END_ENCRYPTION))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION))
+        assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_STYLUS))
+        assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_TOUCH))
+        assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_STYLUS))
+        assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_TOUCH))
         assertTrue(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION))
         assertEquals(
             InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
@@ -44,6 +48,20 @@ class ProtocolV1ProductCodecTest {
         assertEquals(Envelope.PayloadCase.TOUCH_EVENT, touch.payloadCase)
         assertEquals(0.25, touch.touchEvent.position.x, 0.0)
 
+        val stylus =
+            Envelope.parseFrom(
+                codec.encodeStylus(
+                    3,
+                    sessionId,
+                    7,
+                    5,
+                    ProductStylusEvent(4, 7, ProductInputPhase.CHANGED, 0.2, 0.8, 0.6, 30.0, -40.0),
+                ),
+            )
+        assertEquals(Envelope.PayloadCase.STYLUS_EVENT, stylus.payloadCase)
+        assertEquals(5L, stylus.stylusEvent.target.streamId)
+        assertEquals(-40.0, stylus.stylusEvent.tiltYDegrees, 0.0)
+
         val keyframe = Envelope.parseFrom(codec.encodeKeyframeRequest(3, sessionId, 7, 5, "decoder_reset"))
         assertEquals(5, keyframe.requestKeyframe.streamId)
         val ping = Envelope.parseFrom(codec.encodePing(4, sessionId, 7, 9))
@@ -51,6 +69,19 @@ class ProtocolV1ProductCodecTest {
         val pong = Envelope.parseFrom(codec.encodePong(5, 4, sessionId, 7, 9))
         assertEquals(4, pong.correlationId)
         assertEquals(9, pong.pong.sequence)
+    }
+
+    @Test
+    fun rejectsInvalidStylusVectorsAndTerminalPressure() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductStylusEvent(1, 0, ProductInputPhase.ENDED, 0.5, 0.5, 0.1, 0.0, 0.0)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductStylusEvent(1, 0, ProductInputPhase.CHANGED, 0.5, 0.5, 0.1, 90.0, 90.0)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductStylusEvent(1, 0, ProductInputPhase.CHANGED, 0.5, 0.5, Double.NaN, 0.0, 0.0)
+        }
     }
 
     @Test

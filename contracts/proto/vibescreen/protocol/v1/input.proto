@@ -30,6 +30,28 @@ message TouchEvent {
   InputTarget target = 6;
 }
 
+// Stylus pressure and tilt components must be finite. Pressure is normalized to
+// [0, 1]. Each tilt component is in [-90, 90] degrees, and the two-dimensional
+// tilt vector must satisfy hypot(tilt_x_degrees, tilt_y_degrees) <= 90 degrees.
+// Phase must be BEGAN, CHANGED, ENDED, or CANCELLED. Position coordinates must
+// be finite and normalized to [0, 1].
+message StylusEvent {
+  uint64 input_id = 1;
+  uint32 pointer_id = 2;
+  InputPhase phase = 3;
+  NormalizedPoint position = 4;
+  // Normalized force. The value must be finite and in [0, 1] for BEGAN or
+  // CHANGED; it must be 0.0 for ENDED or CANCELLED.
+  double pressure = 5;
+  // Screen-right component of the stylus shaft's deviation from the screen
+  // normal, in degrees. The value must be finite and in [-90, 90].
+  double tilt_x_degrees = 6;
+  // Screen-down component of the stylus shaft's deviation from the screen
+  // normal, in degrees. The value must be finite and in [-90, 90].
+  double tilt_y_degrees = 7;
+  InputTarget target = 8;
+}
+
 message PointerEvent {
   uint64 input_id = 1;
   InputPhase phase = 2;

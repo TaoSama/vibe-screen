@@ -47,6 +47,7 @@ class ProtocolV1SessionTest {
                Capability.CAPABILITY_TOUCH,
                Capability.CAPABILITY_KEYBOARD,
                Capability.CAPABILITY_POINTER,
+               Capability.CAPABILITY_STYLUS,
                Capability.CAPABILITY_MULTI_DISPLAY,
                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,
@@ -416,6 +417,23 @@ class ProtocolV1SessionTest {
         assertEquals(ProtocolV1Failure.Source.HOST_PROTOCOL_ERROR, failure.source)
         assertEquals(ProtocolErrorCode.PROTOCOL_ERROR_CODE_INVALID_STATE.name, failure.reason)
         assertFalse(failure.retryable)
+    }
+
+    @Test
+    fun stylusRequiresNegotiationAndValidTerminalPressure() {
+        assertFalse(streamingSession().canSendStylus)
+        val session = stylusStreamingSession()
+        assertTrue(session.canSendStylus)
+        val envelope = session.stylus(101, 7, InputPhase.INPUT_PHASE_CHANGED, 0.25, 0.75, 0.6, 30.0, -40.0)
+        assertEquals(Envelope.PayloadCase.STYLUS_EVENT, envelope.payloadCase)
+        assertEquals("display-main", envelope.stylusEvent.target.displayId)
+        assertEquals(42L, envelope.stylusEvent.target.streamId)
+        assertThrows(IllegalArgumentException::class.java) {
+            session.stylus(102, 7, InputPhase.INPUT_PHASE_ENDED, 0.25, 0.75, 0.1, 0.0, 0.0)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            session.stylus(103, 7, InputPhase.INPUT_PHASE_CHANGED, 0.25, 0.75, 0.1, 90.0, 90.0)
+        }
     }
 
     @Test
@@ -886,6 +904,19 @@ class ProtocolV1SessionTest {
                 accepted = true,
                 rejectionReason = "",
             )
+        }
+    }
+
+    private fun stylusStreamingSession(): ProtocolV1Session {
+        val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_STYLUS)
+        return session().also {
+            it.clientHello()
+            it.receive(hostHello(2, advertisedCapabilities = caps))
+            it.receive(sessionAccepted(3, negotiatedCapabilities = caps))
+            it.receive(displayList(4))
+            it.receive(startDisplay(5))
+            val requested = it.receive(videoConfig(6)).single() as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(3, requested.configurationToken, true, "")
         }
     }
 

@@ -189,6 +189,23 @@
       "source": "json/touch.json"
     },
     {
+      "binary": "bin/stylus.binpb",
+      "byteLength": 96,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "15",
+        "payloadCase": "stylusEvent",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000015",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "stylus",
+      "sha256": "0eb4311be9e842160ee25d3192f879be3baf5fb2e90711e192e7f5ae9a303a74",
+      "source": "json/stylus.json"
+    },
+    {
       "binary": "bin/ping.binpb",
       "byteLength": 27,
       "channel": 1,

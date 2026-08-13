@@ -116,7 +116,7 @@ func testProtocolV1GoldenFixtures() throws {
         "client_hello", "host_hello", "session_accepted",
         "list_displays_request", "list_displays_response",
         "start_display_request", "start_display_response",
-        "video_config", "display_changed", "video_config_result", "touch", "ping", "pong",
+        "video_config", "display_changed", "video_config_result", "touch", "stylus", "ping", "pong",
         "protocol_error",
     ]
     var envelopes: [String: VSEnvelope] = [:]
@@ -181,6 +181,22 @@ func testProtocolV1GoldenFixtures() throws {
     try require(touch.inputID == 100 && touch.pointerID == 1 && touch.phase == .began, "Protocol v1 touch identity")
     try require(touch.position.x == 0.25 && touch.position.y == 0.75, "Protocol v1 touch position")
     try require(touch.target.displayID == displayList.displayID && touch.target.streamID == 42, "Protocol v1 touch target")
+
+    guard let stylusPayload = envelopes["stylus"]?.payload,
+          case let .stylusEvent(stylus) = stylusPayload else {
+        throw SelfTestError.failed("Protocol v1 stylus fixture missing")
+    }
+    try require(
+        stylus.inputID == 101 && stylus.pointerID == 7 && stylus.phase == .changed,
+        "Protocol v1 stylus identity"
+    )
+    try require(stylus.position.x == 0.125 && stylus.position.y == 0.875, "Protocol v1 stylus position")
+    try require(stylus.pressure == 0.625, "Protocol v1 stylus pressure")
+    try require(stylus.tiltXDegrees == -12.5 && stylus.tiltYDegrees == 28.75, "Protocol v1 stylus tilt")
+    try require(
+        stylus.target.displayID == displayList.displayID && stylus.target.streamID == 42,
+        "Protocol v1 stylus target"
+    )
 
     let expectedHeader = try readProtocolV1Fixture("media_packet_header.binpb")
     let expectedPacket = try readProtocolV1Fixture("media_packet.bin")

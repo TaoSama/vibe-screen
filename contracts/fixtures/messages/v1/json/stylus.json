@@ -1,0 +1,17 @@
+{
+  "protocolVersion": 1,
+  "messageId": "15",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000015",
+  "stylusEvent": {
+    "inputId": "101",
+    "pointerId": 7,
+    "phase": "INPUT_PHASE_CHANGED",
+    "position": {"x": 0.125, "y": 0.875},
+    "pressure": 0.625,
+    "tiltXDegrees": -12.5,
+    "tiltYDegrees": 28.75,
+    "target": {"displayId": "display-main", "streamId": "42"}
+  }
+}

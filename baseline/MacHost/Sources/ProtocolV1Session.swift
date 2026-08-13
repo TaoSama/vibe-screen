@@ -22,7 +22,7 @@ struct ProtocolV1SessionConfiguration {
         // Client video control tunes the host encoder, needs no Accessibility,
         // and is always offered so the client can adjust bitrate/fps/quality.
         touchEnabled
-            ? [.touch, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions]
+            ? [.touch, .stylus, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions]
             : [.multiDisplay, .clientVideoControl]
    }
 
@@ -62,6 +62,16 @@ enum ProtocolV1SessionAction {
     case codecNegotiated(StreamCodec)
     case connectionReady
     case touch(pointerID: UInt32, x: Float, y: Float, phase: VSInputPhase)
+    case stylus(
+        inputID: UInt64,
+        pointerID: UInt32,
+        x: Float,
+        y: Float,
+        phase: VSInputPhase,
+        pressure: Double,
+        tiltXDegrees: Double,
+        tiltYDegrees: Double
+    )
     case pointer(x: Float, y: Float, phase: VSInputPhase, buttonMask: UInt32)
     case scroll(deltaX: Double, deltaY: Double)
     case key(usage: UInt32, pressed: Bool, modifiers: UInt32, text: String)
@@ -94,6 +104,7 @@ final class ProtocolV1SessionCoordinator {
     private var configuration: ProtocolV1SessionConfiguration
     private var nextMessageID: UInt64 = 1
     private var negotiatedCapabilities: Set<VSCapability> = []
+    private var activeStylusPointerID: UInt32?
     private var advertisedVideoRotation = 0
     private let lock = NSLock()
     /// Identifies the newest in-flight client video-preferences request. The
@@ -511,6 +522,45 @@ final class ProtocolV1SessionCoordinator {
                 phase: touch.phase
             )]
 
+        case .stylusEvent(let stylus):
+            guard negotiatedCapabilities.contains(.stylus) else {
+                return unsupportedCapability("Stylus input was not negotiated.", envelope.messageID)
+            }
+            let pressure = stylus.pressure
+            let tiltX = stylus.tiltXDegrees
+            let tiltY = stylus.tiltYDegrees
+            let terminalPhase = stylus.phase == .ended || stylus.phase == .cancelled
+            guard isStreaming,
+                  stylus.inputID > 0,
+                  stylus.hasPosition,
+                  stylus.position.x.isFinite,
+                  stylus.position.y.isFinite,
+                  (0...1).contains(stylus.position.x),
+                  (0...1).contains(stylus.position.y),
+                  pressure.isFinite,
+                  (0...1).contains(pressure),
+                  !terminalPhase || pressure == 0,
+                  tiltX.isFinite,
+                  tiltY.isFinite,
+                  (-90...90).contains(tiltX),
+                  (-90...90).contains(tiltY),
+                  hypot(tiltX, tiltY) <= 90,
+                  inputTargetMatchesActiveStream(stylus.hasTarget ? stylus.target : nil),
+                  stylus.phase != .unspecified,
+                  acceptsStylusSequence(pointerID: stylus.pointerID, phase: stylus.phase) else {
+                return invalidState("StylusEvent is invalid or media is not ready.", envelope.messageID)
+            }
+            return [.stylus(
+                inputID: stylus.inputID,
+                pointerID: stylus.pointerID,
+                x: Float(stylus.position.x),
+                y: Float(stylus.position.y),
+                phase: stylus.phase,
+                pressure: pressure,
+                tiltXDegrees: tiltX,
+                tiltYDegrees: tiltY
+            )]
+
         case .pointerEvent(let pointer):
             guard negotiatedCapabilities.contains(.pointer) else {
                 return unsupportedCapability("Pointer input was not negotiated.", envelope.messageID)
@@ -633,11 +683,13 @@ final class ProtocolV1SessionCoordinator {
 
         case .protocolError(let error):
             phase = .failed
+            activeStylusPointerID = nil
             pendingHostActionInvocations.removeAll()
             return [.peerError(error), .close]
 
         case .disconnectNotice:
             phase = .closed
+            activeStylusPointerID = nil
             pendingHostActionInvocations.removeAll()
             return [.close]
 
@@ -713,6 +765,23 @@ final class ProtocolV1SessionCoordinator {
     private var isStreaming: Bool {
         if case .streaming = phase { return true }
         return false
+    }
+
+    private func acceptsStylusSequence(pointerID: UInt32, phase: VSInputPhase) -> Bool {
+        switch phase {
+        case .began:
+            guard activeStylusPointerID == nil else { return false }
+            activeStylusPointerID = pointerID
+            return true
+        case .changed:
+            return activeStylusPointerID == pointerID
+        case .ended, .cancelled:
+            guard activeStylusPointerID == pointerID else { return false }
+            activeStylusPointerID = nil
+            return true
+        case .unspecified, .UNRECOGNIZED:
+            return false
+        }
     }
 
     private func inputTargetMatchesActiveStream(_ target: VSInputTarget?) -> Bool {
@@ -905,6 +974,7 @@ final class ProtocolV1SessionCoordinator {
         error.component = "macos-host-session"
         let sessionScoped = phase != .awaitingClientHello
         phase = .failed
+        activeStylusPointerID = nil
         pendingHostActionInvocations.removeAll()
         do {
             return [
@@ -938,6 +1008,7 @@ final class ProtocolV1SessionCoordinator {
 
     private func serializationFailure() -> [ProtocolV1SessionAction] {
         phase = .failed
+        activeStylusPointerID = nil
         return [.close]
     }
 

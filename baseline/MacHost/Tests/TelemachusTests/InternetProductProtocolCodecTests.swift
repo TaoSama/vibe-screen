@@ -36,7 +36,8 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         let hostEnvelope = try VSEnvelope(serializedBytes: codec.hostHello())
         let acceptedEnvelope = try VSEnvelope(serializedBytes: codec.sessionAccepted(
             heartbeatIntervalMilliseconds: 1_000,
-            peerSupportsTouch: true
+            peerSupportsTouch: true,
+            peerSupportsStylus: true
         ))
 
         XCTAssertEqual(codec.negotiatedMaximumEncryptedMediaRecordBytes, negotiatedMaximum)
@@ -44,11 +45,13 @@ final class InternetProductProtocolCodecTests: XCTestCase {
             InternetMediaRecordContract.maximumEncryptedRecordBytes
         ))
         XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.mediaRecordFragmentation))
+        XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.stylus))
         XCTAssertEqual(
             acceptedEnvelope.sessionAccepted.negotiatedResourceLimits.maximumEncryptedMediaRecordBytes,
             UInt32(negotiatedMaximum)
         )
         XCTAssertTrue(acceptedEnvelope.sessionAccepted.negotiatedCapabilities.contains(.mediaRecordFragmentation))
+        XCTAssertTrue(acceptedEnvelope.sessionAccepted.negotiatedCapabilities.contains(.stylus))
 
         let encoded = try codec.mediaFrame(
             payload: Data(repeating: 0x41, count: 256 * 1_024),
@@ -59,6 +62,37 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         XCTAssertTrue(encoded.records.allSatisfy {
             $0.count + InternetMediaRecordContract.applicationAEADRecordOverheadBytes <= negotiatedMaximum
         })
+    }
+
+    func testDisabledInputIsNeitherAdvertisedNorNegotiated() throws {
+        var codec = try makeCodec(negotiate: false, inputEnabled: false)
+        try codec.validate(clientHello())
+
+        let host = try VSEnvelope(serializedBytes: codec.hostHello()).hostHello
+        let accepted = try VSEnvelope(serializedBytes: codec.sessionAccepted(
+            heartbeatIntervalMilliseconds: 1_000,
+            peerSupportsTouch: true,
+            peerSupportsStylus: true
+        )).sessionAccepted
+
+        XCTAssertFalse(host.capabilities.contains(.touch))
+        XCTAssertFalse(host.capabilities.contains(.stylus))
+        XCTAssertFalse(accepted.negotiatedCapabilities.contains(.touch))
+        XCTAssertFalse(accepted.negotiatedCapabilities.contains(.stylus))
+    }
+
+    func testLegacyTouchOnlyPeerDoesNotNegotiateStylus() throws {
+        var codec = try makeCodec(negotiate: false, inputEnabled: true)
+        try codec.validate(clientHello())
+
+        let accepted = try VSEnvelope(serializedBytes: codec.sessionAccepted(
+            heartbeatIntervalMilliseconds: 1_000,
+            peerSupportsTouch: true,
+            peerSupportsStylus: false
+        )).sessionAccepted
+
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.touch))
+        XCTAssertFalse(accepted.negotiatedCapabilities.contains(.stylus))
     }
 
     func testHandshakeRejectsLegacyOrInvalidMediaRecordOffer() throws {
@@ -255,7 +289,8 @@ final class InternetProductProtocolCodecTests: XCTestCase {
     private func makeCodec(
         controlLimit: Int = 64 * 1_024,
         rotationDegrees: Int = 0,
-        negotiate: Bool = true
+        negotiate: Bool = true,
+        inputEnabled: Bool = true
     ) throws -> InternetProductProtocolCodec {
         var codec = try InternetProductProtocolCodec(
             sessionIdentifier: "product-session",
@@ -273,6 +308,7 @@ final class InternetProductProtocolCodecTests: XCTestCase {
                 configEpoch: 9,
                 rotationDegrees: rotationDegrees
             ),
+            inputEnabled: inputEnabled,
             limits: InternetTransportLimits(
                 maximumControlMessageBytes: controlLimit,
                 maximumBufferedControlBytes: 2 * 1_024 * 1_024,

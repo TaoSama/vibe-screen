@@ -38,6 +38,7 @@ CONTROL_FIXTURES = (
     "display_changed",
     "video_config_result",
     "touch",
+    "stylus",
     "ping",
     "pong",
     "protocol_error",
