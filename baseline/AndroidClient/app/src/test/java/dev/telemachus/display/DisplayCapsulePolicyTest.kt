@@ -81,31 +81,126 @@ class ControlBarLayoutPolicyTest {
     fun `single display keeps a compact capsule`() {
         assertEquals(
             ControlBarLayoutPolicy.Mode.COMPACT,
-            ControlBarLayoutPolicy.mode(360, false, true, geometry),
+            ControlBarLayoutPolicy.mode(184, false, true, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COLUMN,
-            ControlBarLayoutPolicy.mode(160, false, true, geometry),
+            ControlBarLayoutPolicy.mode(183, false, true, geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.COMPACT,
+            ControlBarLayoutPolicy.mode(128, false, false, geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.COLUMN,
+            ControlBarLayoutPolicy.mode(127, false, false, geometry),
         )
     }
 
     @Test
     fun `common phone widths keep all negotiated controls inline`() {
+        listOf(320, 360).forEach { width ->
+            assertEquals(
+                ControlBarLayoutPolicy.Mode.INLINE,
+                ControlBarLayoutPolicy.mode(width, true, true, geometry),
+            )
+        }
+    }
+
+    @Test
+    fun `selector layout changes exactly at measured pixel boundaries`() {
         assertEquals(
             ControlBarLayoutPolicy.Mode.INLINE,
-            ControlBarLayoutPolicy.mode(320, true, true, geometry),
+            ControlBarLayoutPolicy.mode(272, true, true, geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.STACKED,
+            ControlBarLayoutPolicy.mode(271, true, true, geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.STACKED,
+            ControlBarLayoutPolicy.mode(184, true, true, geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.COLUMN,
+            ControlBarLayoutPolicy.mode(183, true, true, geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.INLINE,
+            ControlBarLayoutPolicy.mode(216, true, false, geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.STACKED,
+            ControlBarLayoutPolicy.mode(215, true, false, geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.STACKED,
+            ControlBarLayoutPolicy.mode(128, true, false, geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.COLUMN,
+            ControlBarLayoutPolicy.mode(127, true, false, geometry),
         )
     }
 
     @Test
-    fun `narrow windows stack and extreme windows use a column`() {
+    fun `non integer density uses resource pixels without a one pixel overflow`() {
+        val density275Geometry =
+            ControlBarLayoutPolicy.Geometry(
+                horizontalContentPaddingPx = 34,
+                selectorMinimumWidthPx = 242,
+                buttonSizePx = 132,
+                actionMarginPx = 11,
+                disconnectSeparationPx = 33,
+                columnActionSpacingPx = 22,
+            )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.INLINE,
+            ControlBarLayoutPolicy.mode(749, true, true, density275Geometry),
+        )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
-            ControlBarLayoutPolicy.mode(240, true, true, geometry),
+            ControlBarLayoutPolicy.mode(748, true, true, density275Geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.STACKED,
+            ControlBarLayoutPolicy.mode(507, true, true, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COLUMN,
-            ControlBarLayoutPolicy.mode(160, true, true, geometry),
+            ControlBarLayoutPolicy.mode(506, true, true, density275Geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.INLINE,
+            ControlBarLayoutPolicy.mode(595, true, false, density275Geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.STACKED,
+            ControlBarLayoutPolicy.mode(594, true, false, density275Geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.STACKED,
+            ControlBarLayoutPolicy.mode(353, true, false, density275Geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.COLUMN,
+            ControlBarLayoutPolicy.mode(352, true, false, density275Geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.COMPACT,
+            ControlBarLayoutPolicy.mode(507, false, true, density275Geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.COLUMN,
+            ControlBarLayoutPolicy.mode(506, false, true, density275Geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.COMPACT,
+            ControlBarLayoutPolicy.mode(353, false, false, density275Geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.COLUMN,
+            ControlBarLayoutPolicy.mode(352, false, false, density275Geometry),
         )
     }
 

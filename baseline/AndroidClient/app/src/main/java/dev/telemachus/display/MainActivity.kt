@@ -741,31 +741,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setInsetMargins(view: View) {
-        val params = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
         val base =
             baseChromeMargins.getOrPut(view.id) {
-                SafeAreaGeometry.Insets.of(
-                    left = params.marginStart,
-                    top = params.topMargin,
-                    right = params.marginEnd,
-                    bottom = params.bottomMargin,
-                )
+                ChromeSafeAreaApplier.captureBaseMargins(view)
             }
-        val newLeft = safeAreaInsets.left + base.left
-        val newTop = safeAreaInsets.top + base.top
-        val newRight = safeAreaInsets.right + base.right
-        val newBottom = safeAreaInsets.bottom + base.bottom
-        if (params.marginStart != newLeft ||
-            params.topMargin != newTop ||
-            params.marginEnd != newRight ||
-            params.bottomMargin != newBottom
-        ) {
-            params.marginStart = newLeft
-            params.topMargin = newTop
-            params.marginEnd = newRight
-            params.bottomMargin = newBottom
-            view.layoutParams = params
-        }
+        ChromeSafeAreaApplier.applyMargins(view, base, safeAreaInsets)
     }
 
     /**
@@ -952,7 +932,10 @@ class MainActivity : AppCompatActivity() {
             handleGenericMotion(view, event)
         }
         binding.inputViewport.isFocusableInTouchMode = true
-        binding.root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+        binding.root.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            if (right - left != oldRight - oldLeft) {
+                applyControlBarLayout()
+            }
             updateSurfaceViewportLayout()
         }
     }
@@ -1618,18 +1601,9 @@ class MainActivity : AppCompatActivity() {
     ) {
         availableDisplays = displays
         selectedDisplayId = selectedId
-        val selectable =
-            DisplayCapsulePolicy.isSelectable(
-                currentSessionBinding().capabilities.displaySelection,
-                displays,
-            )
         // Collapse the whole display picker on single-display or un-negotiated
         // sessions so the resting capsule stays a minimal, low-misfire target.
-        binding.displayCapsuleGroup.visibility = if (selectable) View.VISIBLE else View.GONE
-        binding.displayCapsuleGroup.isEnabled = selectable
-        if (selectable) {
-            refreshDisplayCapsuleLabel()
-        }
+        refreshDisplayCapsuleLabel()
         applyControlBarLayout()
     }
 
@@ -1639,15 +1613,14 @@ class MainActivity : AppCompatActivity() {
      * visual ellipsizing while this full label remains available to TalkBack.
      */
     private fun refreshDisplayCapsuleLabel() {
-        val label =
-            DisplayCapsulePolicy.capsuleLabel(
-                availableDisplays,
-                selectedDisplayId,
-            )
-        val shown = label.ifEmpty { getString(R.string.display_capsule_placeholder) }
-        binding.controlDisplaysLabel.text = shown
-        binding.displayCapsuleGroup.contentDescription =
-            getString(R.string.control_displays_current, shown)
+        DisplayCapsuleViewBinder.bind(
+            resources = resources,
+            selector = binding.displayCapsuleGroup,
+            labelView = binding.controlDisplaysLabel,
+            displaySelection = currentSessionBinding().capabilities.displaySelection,
+            displays = availableDisplays,
+            selectedId = selectedDisplayId,
+        )
     }
 
     /**
@@ -1729,91 +1702,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyControlBarLayout() {
-        val geometry = controlBarGeometry()
-        val availableWidthPx =
-            resources.displayMetrics.widthPixels - safeAreaInsets.left - safeAreaInsets.right
-        val mode =
-            ControlBarLayoutPolicy.mode(
-                availableWidthPx = availableWidthPx,
-                displaySelectorVisible = binding.displayCapsuleGroup.visibility == View.VISIBLE,
-                hostActionsVisible = binding.controlHostActionsButton.visibility == View.VISIBLE,
-                geometry = geometry,
-            )
-        val cardParams = binding.controlBar.layoutParams
-        val content = binding.controlBarContent
-        val selectorParams = binding.displayCapsuleGroup.layoutParams as LinearLayout.LayoutParams
-        val actionsParams = binding.controlActionsGroup.layoutParams as LinearLayout.LayoutParams
-        when (mode) {
-            ControlBarLayoutPolicy.Mode.COMPACT -> {
-                cardParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
-                content.orientation = LinearLayout.HORIZONTAL
-                selectorParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
-                selectorParams.weight = 0f
-                actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
-                binding.controlActionsGroup.orientation = LinearLayout.HORIZONTAL
-            }
-            ControlBarLayoutPolicy.Mode.INLINE -> {
-                cardParams.width = 0
-                content.orientation = LinearLayout.HORIZONTAL
-                selectorParams.width = 0
-                selectorParams.weight = 1f
-                actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
-                binding.controlActionsGroup.orientation = LinearLayout.HORIZONTAL
-            }
-            ControlBarLayoutPolicy.Mode.STACKED -> {
-                cardParams.width = 0
-                content.orientation = LinearLayout.VERTICAL
-                selectorParams.width = ViewGroup.LayoutParams.MATCH_PARENT
-                selectorParams.weight = 0f
-                actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
-                binding.controlActionsGroup.orientation = LinearLayout.HORIZONTAL
-            }
-            ControlBarLayoutPolicy.Mode.COLUMN -> {
-                cardParams.width = 0
-                content.orientation = LinearLayout.VERTICAL
-                selectorParams.width = ViewGroup.LayoutParams.MATCH_PARENT
-                selectorParams.weight = 0f
-                actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
-                binding.controlActionsGroup.orientation = LinearLayout.VERTICAL
-            }
-        }
-        binding.controlBar.layoutParams = cardParams
-        binding.displayCapsuleGroup.layoutParams = selectorParams
-        binding.controlActionsGroup.layoutParams = actionsParams
-        applyControlActionMargins(mode, geometry)
-    }
-
-    private fun controlBarGeometry(): ControlBarLayoutPolicy.Geometry =
-        ControlBarLayoutPolicy.Geometry(
-            horizontalContentPaddingPx =
-                resources.getDimensionPixelSize(R.dimen.control_bar_content_padding) * 2,
-            selectorMinimumWidthPx = resources.getDimensionPixelSize(R.dimen.display_capsule_min_width),
-            buttonSizePx = resources.getDimensionPixelSize(R.dimen.control_bar_button_size),
-            actionMarginPx = resources.getDimensionPixelSize(R.dimen.control_bar_button_margin),
-            disconnectSeparationPx =
-                resources.getDimensionPixelSize(R.dimen.control_bar_disconnect_margin_start),
-            columnActionSpacingPx =
-                resources.getDimensionPixelSize(R.dimen.control_bar_column_button_margin),
+        val windowWidthPx = binding.root.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        ControlBarLayoutApplier.apply(
+            views =
+                ControlBarViews(
+                    card = binding.controlBar,
+                    content = binding.controlBarContent,
+                    displaySelector = binding.displayCapsuleGroup,
+                    actions = binding.controlActionsGroup,
+                    hostAction = binding.controlHostActionsButton,
+                    settings = binding.controlSettingsButton,
+                    disconnect = binding.controlDisconnectButton,
+                ),
+            resources = resources,
+            windowWidthPx = windowWidthPx,
+            safeAreaInsets = safeAreaInsets,
         )
-
-    private fun applyControlActionMargins(
-        mode: ControlBarLayoutPolicy.Mode,
-        geometry: ControlBarLayoutPolicy.Geometry,
-    ) {
-        val hostActionsVisible = binding.controlHostActionsButton.visibility == View.VISIBLE
-        listOf(
-            binding.controlHostActionsButton to ControlBarLayoutPolicy.Action.HOST,
-            binding.controlSettingsButton to ControlBarLayoutPolicy.Action.SETTINGS,
-            binding.controlDisconnectButton to ControlBarLayoutPolicy.Action.DISCONNECT,
-        ).forEach { (view, action) ->
-            val margins = ControlBarLayoutPolicy.actionMargins(mode, action, hostActionsVisible, geometry)
-            val params = view.layoutParams as LinearLayout.LayoutParams
-            params.marginStart = margins.startPx
-            params.topMargin = margins.topPx
-            params.marginEnd = margins.endPx
-            params.bottomMargin = margins.bottomPx
-            view.layoutParams = params
-        }
     }
 
     /**
@@ -3999,6 +3903,17 @@ class MainActivity : AppCompatActivity() {
         availableHostActions = emptyList()
         binding.controlHostActionsButton.visibility = View.GONE
         binding.controlHostActionsButton.isEnabled = false
+        availableDisplays = emptyList()
+        selectedDisplayId = ""
+        DisplayCapsuleViewBinder.bind(
+            resources = resources,
+            selector = binding.displayCapsuleGroup,
+            labelView = binding.controlDisplaysLabel,
+            displaySelection = false,
+            displays = emptyList(),
+            selectedId = "",
+        )
+        applyControlBarLayout()
         encodedVideoConfigurationState.clear()
         activeDecoderConfigEpoch = 0L
         lastAppliedVideoPreferenceConfigEpoch = 0L
