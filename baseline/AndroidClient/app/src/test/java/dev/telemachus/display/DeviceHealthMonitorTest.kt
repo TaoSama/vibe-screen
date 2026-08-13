@@ -43,12 +43,30 @@ class DeviceHealthMonitorTest {
         val lifecycle = DeviceHealthLifecycle()
         val changed = DeviceHealthSnapshot(72, charging = true, thermalState = DeviceThermalState.NOMINAL)
 
-        assertNull(lifecycle.publish(changed))
-        lifecycle.start()
-        assertEquals(changed, lifecycle.publish(changed))
-        assertNull(lifecycle.publish(changed))
+        assertNull(lifecycle.publish(0, changed))
+        val generation = lifecycle.start()
+        assertEquals(changed, lifecycle.publish(generation, changed))
+        assertNull(lifecycle.publish(generation, changed))
         lifecycle.stop()
-        assertNull(lifecycle.publish(changed.copy(batteryPercent = 71)))
+        assertNull(lifecycle.publish(generation, changed.copy(batteryPercent = 71)))
         assertEquals(changed, lifecycle.snapshot())
+    }
+
+    @Test
+    fun `callback queued before stop cannot publish into restarted generation`() {
+        val lifecycle = DeviceHealthLifecycle()
+        val firstGeneration = lifecycle.start()
+        val firstSnapshot = DeviceHealthSnapshot(80, charging = true)
+        assertEquals(firstSnapshot, lifecycle.publish(firstGeneration, firstSnapshot))
+
+        lifecycle.stop()
+        val secondGeneration = lifecycle.start()
+        val staleSnapshot = firstSnapshot.copy(batteryPercent = 79)
+        assertNull(lifecycle.publish(firstGeneration, staleSnapshot))
+        assertEquals(firstSnapshot, lifecycle.snapshot())
+
+        val currentSnapshot = firstSnapshot.copy(batteryPercent = 78)
+        assertEquals(currentSnapshot, lifecycle.publish(secondGeneration, currentSnapshot))
+        assertEquals(currentSnapshot, lifecycle.snapshot())
     }
 }
