@@ -197,6 +197,8 @@ class MainActivity : AppCompatActivity() {
     private var unsupportedKeyboardNoticeShown = false
     private val inputHandler = Handler(Looper.getMainLooper())
     private var pendingRightClickRelease: Runnable? = null
+    private lateinit var deviceHealthMonitor: AndroidDeviceHealthMonitor
+    private var deviceHealthSnapshot = DeviceHealthSnapshot()
 
     // For dragging stats overlay
     private var isDraggingOverlay = false
@@ -276,6 +278,14 @@ class MainActivity : AppCompatActivity() {
 
         DiagLog.init(applicationContext)
         prefs = PreferencesManager(this)
+        deviceHealthMonitor =
+            AndroidDeviceHealthMonitor(
+                context = this,
+                onChanged = ::onDeviceHealthChanged,
+                onError = { failure ->
+                    mainDiag("device health observation failed: ${failure.message ?: failure.javaClass.simpleName}")
+                },
+            )
 
         // Allow rotation based on device sensor when not connected
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
@@ -334,6 +344,7 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         isInForeground = true
+        deviceHealthMonitor.start()
         accessibilityManager.addTouchExplorationStateChangeListener(touchExplorationStateChangeListener)
         reconcileTouchExplorationState(accessibilityManager.isTouchExplorationEnabled)
         mainDiag("lifecycle foreground connected=$isConnected")
@@ -354,6 +365,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        deviceHealthMonitor.stop()
         accessibilityManager.removeTouchExplorationStateChangeListener(touchExplorationStateChangeListener)
         finishPendingRightClick()
         completeCurrentNativeInputBoundary(InputPhase.INPUT_PHASE_CANCELLED)
@@ -373,6 +385,75 @@ class MainActivity : AppCompatActivity() {
         } else if (binding.controlBar.visibility == View.VISIBLE) {
             controlBarHandler.postDelayed(controlBarHideRunnable, CONTROL_BAR_AUTO_HIDE_MS)
         }
+    }
+
+    private fun onDeviceHealthChanged(snapshot: DeviceHealthSnapshot) {
+        deviceHealthSnapshot = snapshot
+        mainDiag(
+            "device health battery=${snapshot.batteryPercent ?: "unknown"} " +
+                "charging=${snapshot.charging ?: "unknown"} saver=${snapshot.powerSaveMode} " +
+                "thermal=${snapshot.thermalState.name.lowercase(Locale.US)}",
+        )
+        activeSettingsDialog?.let(::renderDeviceHealth)
+    }
+
+    private fun renderDeviceHealth(dialog: Dialog) {
+        val snapshot = deviceHealthSnapshot
+        val status = dialog.findViewById<TextView>(R.id.deviceHealthStatus) ?: return
+        val summary = dialog.findViewById<TextView>(R.id.deviceHealthSummary) ?: return
+        val attention = DeviceHealthPolicy.attention(snapshot)
+        status.setText(
+            when (attention) {
+                DeviceHealthAttention.UNKNOWN -> R.string.device_health_checking
+                DeviceHealthAttention.NORMAL -> R.string.device_health_ready
+                DeviceHealthAttention.POWER_RECOMMENDED -> R.string.device_health_connect_power
+                DeviceHealthAttention.THERMAL_ELEVATED -> R.string.device_health_warm
+                DeviceHealthAttention.THERMAL_HIGH -> R.string.device_health_hot
+            },
+        )
+        status.setTextColor(
+            getColor(
+                when (attention) {
+                    DeviceHealthAttention.UNKNOWN -> R.color.on_surface_muted
+                    DeviceHealthAttention.NORMAL -> R.color.accent
+                    DeviceHealthAttention.POWER_RECOMMENDED,
+                    DeviceHealthAttention.THERMAL_ELEVATED,
+                    -> R.color.warning
+
+                    DeviceHealthAttention.THERMAL_HIGH -> R.color.danger
+                },
+            ),
+        )
+        val battery =
+            snapshot.batteryPercent?.let { getString(R.string.device_health_battery, it) }
+                ?: getString(R.string.device_health_battery_unknown)
+        val powerSource =
+            getString(
+                when (snapshot.charging) {
+                    true -> R.string.device_health_charging
+                    false -> R.string.device_health_discharging
+                    null -> R.string.device_health_power_unknown
+                },
+            )
+        val powerSaver =
+            getString(
+                if (snapshot.powerSaveMode) {
+                    R.string.device_health_power_saver
+                } else {
+                    R.string.device_health_power_saver_off
+                },
+            )
+        val thermal =
+            getString(
+                when (snapshot.thermalState) {
+                    DeviceThermalState.NOMINAL -> R.string.device_health_thermal_nominal
+                    DeviceThermalState.ELEVATED -> R.string.device_health_thermal_elevated
+                    DeviceThermalState.SEVERE -> R.string.device_health_thermal_severe
+                    DeviceThermalState.CRITICAL -> R.string.device_health_thermal_critical
+                    DeviceThermalState.UNKNOWN -> R.string.device_health_thermal_unknown
+                },
+            )
+        summary.text = getString(R.string.device_health_summary, battery, powerSource, powerSaver, thermal)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -2105,6 +2186,8 @@ class MainActivity : AppCompatActivity() {
         val videoFps120 = view.findViewById<MaterialButton>(R.id.videoFps120)
         val videoBitrateSlider = view.findViewById<Slider>(R.id.videoBitrateSlider)
         val videoBitrateValue = view.findViewById<TextView>(R.id.videoBitrateValue)
+
+        renderDeviceHealth(dialog)
 
         // Only show Disconnect when actually streaming. Otherwise the button is
         // a no-op and confuses users into clicking it twice.
@@ -4494,6 +4577,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (::deviceHealthMonitor.isInitialized) deviceHealthMonitor.stop()
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
         stopChecklistUpdates()
