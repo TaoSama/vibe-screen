@@ -103,7 +103,7 @@ extension StreamViewModel {
              .keyRotationRequest, .keyRotationResult, .deviceRevocation, .trafficKeyUpdate,
              .trafficKeyAck, .listDisplaysRequest, .startDisplayRequest, .stopDisplay,
              .displayChanged, .videoConfigResult, .requestKeyframe,
-             .touchEvent, .pointerEvent, .scrollEvent, .keyEvent, .inputAck, .streamStats,
+             .touchEvent, .stylusEvent, .pointerEvent, .scrollEvent, .keyEvent, .inputAck, .streamStats,
              .transportStats, .encryptedControlPacket,
              .audioConfigResult, .clipboardOffer, .clipboardRequest, .fileTransferProgress,
              .setVideoPreferences,
