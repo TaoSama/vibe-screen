@@ -4,9 +4,8 @@
          icon buttons held at the 48dp accessibility minimum so the
          settings/disconnect targets are comfortable and hard to mis-tap. -->
     <dimen name="control_bar_margin_top">20dp</dimen>
-    <!-- Leave an 8dp gutter on a 360dp-wide phone while preserving every
-         negotiated action's 48dp touch target. The optional display label is
-         the only content allowed to truncate. -->
+    <!-- Cap the bar on wide displays; match constraints let it shrink to the
+         current safe window width while preserving fixed action targets. -->
     <dimen name="control_bar_max_width">352dp</dimen>
     <dimen name="control_bar_corner_radius">18dp</dimen>
     <dimen name="control_bar_content_padding">6dp</dimen>
