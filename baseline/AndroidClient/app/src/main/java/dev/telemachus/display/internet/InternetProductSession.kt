@@ -828,6 +828,7 @@ class InternetProductSession internal constructor(
                     IllegalStateException("Decoder rejected the active HEVC target"),
                 )
             }
+            Unit
         }
     }
 
