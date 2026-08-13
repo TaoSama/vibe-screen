@@ -4,6 +4,127 @@ import XCTest
 @testable import Telemachus
 
 final class InternetProductSessionTests: XCTestCase {
+    func testAdaptiveVideoPlanUsesBaselineAndAdvertisesActualEncoderBitrate() {
+        let baseline = InternetProductVideoConfiguration(
+            codec: .hevc,
+            width: 1920,
+            height: 1080,
+            framesPerSecond: 60,
+            bitrateKbps: 20_000
+        )
+
+        XCTAssertEqual(
+            InternetAdaptiveVideoPlan(
+                baseline: baseline,
+                profile: AdaptiveMediaPolicy.constrained
+            ),
+            InternetAdaptiveVideoPlan(
+                baseline: baseline,
+                profile: AdaptiveMediaProfile(
+                    targetBitrateBps: 3_000_000,
+                    resolutionScale: 0.5,
+                    framesPerSecond: 20
+                )
+            )
+        )
+        let plan = InternetAdaptiveVideoPlan(
+            baseline: baseline,
+            profile: AdaptiveMediaPolicy.constrained
+        )
+        XCTAssertEqual(plan.width, 960)
+        XCTAssertEqual(plan.height, 540)
+        XCTAssertEqual(plan.framesPerSecond, 20)
+        XCTAssertEqual(plan.bitrateMbps, 3)
+        XCTAssertEqual(plan.bitrateKbps, 3_000)
+    }
+
+    func testAdaptiveProfilePausesMediaAndRequiresNewConfigurationAck() throws {
+        let harness = try Harness()
+        let requested = expectation(description: "adaptive profile requested")
+        var request: (UInt64, AdaptiveMediaProfile, InternetProductVideoConfiguration)?
+        harness.session.onAdaptiveProfileRequested = { id, profile, baseline in
+            request = (id, profile, baseline)
+            requested.fulfill()
+        }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        XCTAssertTrue(harness.waitUntilState(.streaming(.direct)))
+
+        let poor = InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: 500,
+            packetLossFraction: 0.15,
+            availableOutgoingBitrateBps: 2_000_000
+        )
+        harness.engine.emitNetworkQuality(poor)
+        harness.engine.emitNetworkQuality(poor)
+        wait(for: [requested], timeout: 1)
+        XCTAssertEqual(request?.1, AdaptiveMediaPolicy.constrained)
+        XCTAssertEqual(request?.2, harness.configuration.video)
+
+        harness.session.sendFrame(
+            Data([0, 0, 0, 1, 0x26]),
+            timestamp: 100,
+            isKeyframe: true,
+            sessionEpoch: 1
+        )
+        Thread.sleep(forTimeInterval: 0.03)
+        XCTAssertEqual(harness.engine.sentPlaintext.filter { $0.channel == .media }.count, 0)
+
+        let plan = InternetAdaptiveVideoPlan(
+            baseline: harness.configuration.video,
+            profile: AdaptiveMediaPolicy.constrained
+        )
+        XCTAssertTrue(try harness.session.completeAdaptiveProfile(
+            requestID: try XCTUnwrap(request?.0),
+            appliedVideo: InternetProductVideoConfiguration(
+                codec: .hevc,
+                width: plan.width,
+                height: plan.height,
+                framesPerSecond: plan.framesPerSecond,
+                bitrateKbps: plan.bitrateKbps
+            )
+        ))
+        XCTAssertTrue(harness.waitForSentControlCount(4))
+        let envelope = try XCTUnwrap(harness.engine.sentPlaintext
+            .filter { $0.channel == .control }
+            .last.map { try VSEnvelope(serializedBytes: $0.payload) })
+        guard case .videoConfig(let video) = envelope.payload else {
+            return XCTFail("Adaptive profile must publish VideoConfig")
+        }
+        XCTAssertEqual(video.encodedSize.width, 960)
+        XCTAssertEqual(video.encodedSize.height, 540)
+        XCTAssertEqual(video.framesPerSecond, 20)
+        XCTAssertEqual(video.bitrateKbps, 3_000)
+        XCTAssertEqual(video.configEpoch, 2)
+        XCTAssertEqual(harness.session.snapshotState(), .awaitingVideoConfiguration)
+
+        harness.receiveControl(harness.videoAccepted(messageID: 3, configEpoch: 2))
+        XCTAssertTrue(harness.waitUntilState(.streaming(.direct)))
+    }
+
+    func testClosedSessionDiscardsStaleAdaptiveTransportCallback() throws {
+        let harness = try Harness()
+        let unexpected = expectation(description: "no stale adaptive request")
+        unexpected.isInverted = true
+        harness.session.onAdaptiveProfileRequested = { _, _, _ in unexpected.fulfill() }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        harness.session.close()
+
+        let poor = InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: 500,
+            packetLossFraction: 0.15,
+            availableOutgoingBitrateBps: 2_000_000
+        )
+        harness.engine.emitNetworkQuality(poor)
+        harness.engine.emitNetworkQuality(poor)
+        wait(for: [unexpected], timeout: 0.05)
+    }
+
     func testFreshSessionRecoveryBudgetPersistsUntilExplicitReset() {
         var budget = FreshSessionRecoveryBudget(
             policy: NetworkRecoveryPolicy(maximumAttempts: 2)
@@ -968,6 +1089,10 @@ private final class Harness {
         waitUntil { self.engine.sentPlaintext.filter { $0.channel == .media }.count >= count }
     }
 
+    func waitUntilState(_ state: InternetProductSessionState) -> Bool {
+        waitUntil { self.session.snapshotState() == state }
+    }
+
     func waitForPong(sequence: UInt64) -> Bool {
         waitUntil {
             self.engine.sentPlaintext.contains { item in
@@ -1086,6 +1211,9 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
     }
     func receive(_ record: Data, channel: InternetTransportChannel) {
         callbacks?.messageReceived(record, channel)
+    }
+    func emitNetworkQuality(_ sample: InternetNetworkQualitySample) {
+        callbacks?.networkQualitySampled(sample)
     }
 
     private var currentTransmissionContext: WebRTCEngineTransmissionContext? {

@@ -69,6 +69,7 @@ final class InternetProductSession: EncodedFrameSink {
     ) -> Bool)?
     var onKeyframeRequired: (() -> Void)?
     var onFreshSessionRecoveryRequired: ((Int) -> Void)?
+    var onAdaptiveProfileRequested: ((UInt64, AdaptiveMediaProfile, InternetProductVideoConfiguration) -> Void)?
     var onRevoked: (() -> Void)?
     /// Composition must deliver this signed tombstone to the session authority
     /// and peer. Local persistence remains fail-closed even if propagation is delayed.
@@ -96,6 +97,8 @@ final class InternetProductSession: EncodedFrameSink {
     private var peerSupportsStylus = false
     private var peerSupportsStylusExtended = false
     private var stylusSequenceState = StylusSequenceState()
+    private var nextAdaptiveRequestID: UInt64 = 1
+    private var pendingAdaptiveRequest: (id: UInt64, generation: UInt64)?
     private var frameAdmission = FrameAdmissionState()
     private var controlAdmission = ControlAdmissionState()
 
@@ -157,6 +160,7 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsStylus = false
             peerSupportsStylusExtended = false
             _ = stylusSequenceState.consumeReset()
+            pendingAdaptiveRequest = nil
             configuration = nil
             let changed = state != .closed
             state = .closed
@@ -184,6 +188,7 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsStylus = false
             peerSupportsStylusExtended = false
             _ = stylusSequenceState.consumeReset()
+            pendingAdaptiveRequest = nil
             let changed = state != .revoked
             state = .revoked
             let revocationGeneration = sessionGeneration
@@ -270,6 +275,43 @@ final class InternetProductSession: EncodedFrameSink {
         }
     }
 
+    @discardableResult
+    func completeAdaptiveProfile(
+        requestID: UInt64,
+        appliedVideo: InternetProductVideoConfiguration
+    ) throws -> Bool {
+        try performSync {
+            guard let pending = pendingAdaptiveRequest,
+                  pending.id == requestID,
+                  pending.generation == sessionGeneration,
+                  isStreaming,
+                  var codec else { return false }
+            let control = try codec.updateMediaProfile(
+                width: appliedVideo.width,
+                height: appliedVideo.height,
+                framesPerSecond: appliedVideo.framesPerSecond,
+                bitrateKbps: appliedVideo.bitrateKbps
+            )
+            self.codec = codec
+            try sendControl(control)
+            pendingAdaptiveRequest = nil
+            setState(.awaitingVideoConfiguration)
+            return true
+        }
+    }
+
+    @discardableResult
+    func failAdaptiveProfile(requestID: UInt64, reason: String) -> Bool {
+        performSync {
+            guard let pending = pendingAdaptiveRequest,
+                  pending.id == requestID,
+                  pending.generation == sessionGeneration else { return false }
+            pendingAdaptiveRequest = nil
+            fail(.invalidConfiguration(reason))
+            return true
+        }
+    }
+
     private func startFreshSession(_ configuration: InternetProductSessionConfiguration) throws {
         stopHeartbeat()
         stopNegotiationDeadline()
@@ -329,6 +371,8 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
         _ = stylusSequenceState.consumeReset()
+        pendingAdaptiveRequest = nil
+        nextAdaptiveRequestID = 1
         nextHeartbeatSequence = 1
         lastPeerActivityNanoseconds = DispatchTime.now().uptimeNanoseconds
         let connectingState = InternetProductSessionState.connecting
@@ -382,6 +426,21 @@ final class InternetProductSession: EncodedFrameSink {
         }
         transport.onFreshSessionRecoveryRequired = { [weak self] attempt in
             self?.queue.async { self?.beginFreshSessionRecovery(attempt: attempt, generation: generation) }
+        }
+        transport.onAdaptiveProfileChanged = { [weak self] profile in
+            self?.queue.async {
+                guard let self,
+                      self.sessionGeneration == generation,
+                      self.transport === transport,
+                      self.isStreaming,
+                      self.pendingAdaptiveRequest == nil,
+                      self.nextAdaptiveRequestID < UInt64.max,
+                      let baselineVideo = self.configuration?.video else { return }
+                let requestID = self.nextAdaptiveRequestID
+                self.nextAdaptiveRequestID += 1
+                self.pendingAdaptiveRequest = (requestID, generation)
+                self.onAdaptiveProfileRequested?(requestID, profile, baselineVideo)
+            }
         }
     }
 
@@ -702,6 +761,7 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
         _ = stylusSequenceState.consumeReset()
+        pendingAdaptiveRequest = nil
         let recoveringState = InternetProductSessionState.recovering(attempt: sessionAttempt)
         let stateChanged = state != recoveringState
         state = recoveringState
@@ -746,6 +806,7 @@ final class InternetProductSession: EncodedFrameSink {
         guard let submission else { return finishFrameDrain(generation: generation) }
         guard submission.generation == sessionGeneration,
               case .streaming = state,
+              pendingAdaptiveRequest == nil,
               let transport,
               var codec,
               submission.sessionEpoch == codec.sessionEpoch else {

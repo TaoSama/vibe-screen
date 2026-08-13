@@ -1181,12 +1181,19 @@ class ScreenCapture {
         frameRate: Int? = nil
     ) -> Bool {
         guard let encoder else { return false }
-        return encoder.updateSettings(
+        let updated = encoder.updateSettings(
             bitrateMbps: bitrateMbps,
             quality: quality,
             gamingBoost: gamingBoost,
             frameRate: frameRate
         )
+        if updated {
+            currentBitrateMbps = bitrateMbps
+            currentQuality = quality
+            currentGamingBoost = gamingBoost
+            if let frameRate { currentFrameRate = frameRate }
+        }
+        return updated
     }
 
     /// Change the live capture frame rate in place, without rebuilding the

@@ -2594,6 +2594,76 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.sync(execute: request)
             }
         }
+        session.onAdaptiveProfileRequested = {
+            [weak self, weak session] requestID, profile, baselineVideo in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                guard let capture = self.screenCapture,
+                      let displayID = self.activeDisplayID else {
+                    session.failAdaptiveProfile(
+                        requestID: requestID,
+                        reason: "Adaptive video requires an active capture source."
+                    )
+                    return
+                }
+                let plan = InternetAdaptiveVideoPlan(
+                    baseline: baselineVideo,
+                    profile: profile
+                )
+                guard capture.updateEncoderSettings(
+                    bitrateMbps: plan.bitrateMbps,
+                    quality: self.settings.effectiveQuality,
+                    gamingBoost: false,
+                    frameRate: plan.framesPerSecond
+                ) else {
+                    session.failAdaptiveProfile(
+                        requestID: requestID,
+                        reason: "The encoder rejected the adaptive media profile."
+                    )
+                    return
+                }
+                capture.updateActiveFrameRate(plan.framesPerSecond)
+                do {
+                    try await capture.switchCapturedDisplay(
+                        to: displayID,
+                        refreshRate: plan.framesPerSecond,
+                        outputSize: (plan.width, plan.height),
+                        followsMainDisplay: self.activeRuntimeConfiguration?.displaySource == .currentMain
+                    )
+                    guard self.serverLifecycle.ownsSession(sessionToken),
+                          self.internetProductSession === session,
+                          self.screenCapture === capture,
+                          self.activeDisplayID == displayID else {
+                        session.failAdaptiveProfile(
+                            requestID: requestID,
+                            reason: "The adaptive media request became stale."
+                        )
+                        return
+                    }
+                    let appliedVideo = InternetProductVideoConfiguration(
+                        codec: baselineVideo.codec,
+                        width: plan.width,
+                        height: plan.height,
+                        framesPerSecond: plan.framesPerSecond,
+                        bitrateKbps: plan.bitrateKbps,
+                        streamID: baselineVideo.streamID,
+                        configEpoch: baselineVideo.configEpoch,
+                        rotationDegrees: baselineVideo.rotationDegrees
+                    )
+                    _ = try session.completeAdaptiveProfile(
+                        requestID: requestID,
+                        appliedVideo: appliedVideo
+                    )
+                } catch {
+                    session.failAdaptiveProfile(
+                        requestID: requestID,
+                        reason: "Adaptive video reconfiguration failed: \(error.localizedDescription)"
+                    )
+                }
+            }
+        }
         session.onFreshSessionRecoveryRequired = {
             [weak self, weak session] attempt in
             Task { @MainActor in
