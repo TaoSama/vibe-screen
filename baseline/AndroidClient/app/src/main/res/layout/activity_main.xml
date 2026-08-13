@@ -1055,7 +1055,11 @@
                         app:autoSizeMaxTextSize="14sp"
                         app:autoSizeMinTextSize="10sp"
                         app:autoSizeTextType="uniform"
-                        android:text="@string/internet_prefer_direct" />
+                        android:text="@string/internet_prefer_direct"
+                        android:textColor="@color/internet_route_text"
+                        app:backgroundTint="@color/mode_toggle_bg"
+                        app:strokeColor="#444444"
+                        app:strokeWidth="1dp" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/internetForceRelay"
@@ -1068,7 +1072,11 @@
                         app:autoSizeMaxTextSize="14sp"
                         app:autoSizeMinTextSize="10sp"
                         app:autoSizeTextType="uniform"
-                        android:text="@string/internet_force_turn" />
+                        android:text="@string/internet_force_turn"
+                        android:textColor="@color/internet_route_text"
+                        app:backgroundTint="@color/mode_toggle_bg"
+                        app:strokeColor="#444444"
+                        app:strokeWidth="1dp" />
                 </com.google.android.material.button.MaterialButtonToggleGroup>
 
                 <LinearLayout
@@ -1086,7 +1094,7 @@
                         android:paddingStart="4dp"
                         android:paddingEnd="4dp"
                         android:text="@string/internet_scan_profile"
-                        android:textColor="#65D992"
+                        android:textColor="@color/internet_action_text"
                         android:textSize="14sp" />
 
                     <com.google.android.material.button.MaterialButton
@@ -1100,7 +1108,7 @@
                         android:paddingStart="4dp"
                         android:paddingEnd="4dp"
                         android:text="@string/internet_import_profile"
-                        android:textColor="#65D992"
+                        android:textColor="@color/internet_action_text"
                         android:textSize="14sp" />
                 </LinearLayout>
 
@@ -1110,9 +1118,9 @@
                     android:layout_height="56dp"
                     android:layout_marginTop="12dp"
                     android:text="@string/internet_connect"
-                    android:textColor="#07100B"
+                    android:textColor="@color/internet_primary_text"
                     android:textStyle="bold"
-                    app:backgroundTint="#65D992"
+                    app:backgroundTint="@color/internet_primary_background"
                     app:cornerRadius="18dp" />
 
                 <com.google.android.material.button.MaterialButton
@@ -1129,7 +1137,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
                     android:text="@string/internet_revoke_local"
-                    android:textColor="#fca5a5" />
+                    android:textColor="@color/internet_danger_text" />
 
                 <TextView
                     android:id="@+id/internetStateText"
