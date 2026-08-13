@@ -24,6 +24,7 @@ import android.view.Window
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import android.view.accessibility.AccessibilityManager
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -229,7 +230,13 @@ class MainActivity : AppCompatActivity() {
     private var hasConnectedThisRun = false
     private var lastAppliedVideoPreferenceConfigEpoch = 0L
     private val controlBarHandler = Handler(Looper.getMainLooper())
-    private val controlBarHideRunnable = Runnable { hideControlBar() }
+    private val accessibilityManager by lazy { getSystemService(AccessibilityManager::class.java) }
+    private val controlBarHideRunnable =
+        Runnable {
+            if (ControlBarAccessibilityPolicy.shouldAutoHide(accessibilityManager.isTouchExplorationEnabled)) {
+                hideControlBar()
+            }
+        }
     private var availableDisplays = emptyList<StreamDisplayOption>()
     private var selectedDisplayId = ""
     private var availableHostActions = emptyList<HostActionOption>()
@@ -1533,6 +1540,10 @@ class MainActivity : AppCompatActivity() {
 
     /** Wires the tap-to-reveal control bar (display capsule, settings, disconnect). */
     private fun setupControlBar() {
+        // The video input plane remains reachable after the transient chrome is
+        // hidden. TalkBack users can activate it to restore every session
+        // control without relying on a raw ACTION_DOWN gesture.
+        binding.inputViewport.setOnClickListener { revealControlBar() }
         binding.controlSettingsButton.setOnClickListener {
             showSettingsDialog()
             revealControlBar()
@@ -1575,14 +1586,26 @@ class MainActivity : AppCompatActivity() {
     private fun revealControlBar() {
         if (!isConnected) return
         binding.controlBar.visibility = View.VISIBLE
+        ControlBarAccessibilityApplier.applyRevealAction(
+            binding.inputViewport,
+            connected = true,
+            controlBarVisible = true,
+        )
         binding.controlBar.animate().alpha(1f).setDuration(120).start()
         controlBarHandler.removeCallbacks(controlBarHideRunnable)
-        controlBarHandler.postDelayed(controlBarHideRunnable, CONTROL_BAR_AUTO_HIDE_MS)
+        if (ControlBarAccessibilityPolicy.shouldAutoHide(accessibilityManager.isTouchExplorationEnabled)) {
+            controlBarHandler.postDelayed(controlBarHideRunnable, CONTROL_BAR_AUTO_HIDE_MS)
+        }
     }
 
     private fun hideControlBar() {
         controlBarHandler.removeCallbacks(controlBarHideRunnable)
         binding.controlBar.visibility = View.GONE
+        ControlBarAccessibilityApplier.applyRevealAction(
+            binding.inputViewport,
+            connected = isConnected,
+            controlBarVisible = false,
+        )
     }
 
     /**

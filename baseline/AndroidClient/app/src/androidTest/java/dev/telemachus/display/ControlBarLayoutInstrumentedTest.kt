@@ -8,6 +8,7 @@ import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
@@ -21,6 +22,41 @@ import kotlin.math.roundToInt
 
 @RunWith(AndroidJUnit4::class)
 class ControlBarLayoutInstrumentedTest {
+    @Test
+    fun revealActionIsARealClickableNodeOnlyWhileConnectedChromeIsHidden() {
+        withLayout(widthDp = 320) { layout ->
+            val inputViewport = layout.root.findViewById<View>(R.id.inputViewport)
+
+            ControlBarAccessibilityApplier.applyRevealAction(
+                inputViewport,
+                connected = true,
+                controlBarVisible = false,
+            )
+            val hiddenChromeNode = inputViewport.createAccessibilityNodeInfo()
+            assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_YES, inputViewport.importantForAccessibility)
+            assertEquals(
+                layout.context.getString(R.string.show_stream_controls),
+                hiddenChromeNode.contentDescription.toString(),
+            )
+            assertTrue(hiddenChromeNode.isClickable)
+            assertTrue(hiddenChromeNode.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK })
+
+            ControlBarAccessibilityApplier.applyRevealAction(
+                inputViewport,
+                connected = true,
+                controlBarVisible = true,
+            )
+            assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, inputViewport.importantForAccessibility)
+
+            ControlBarAccessibilityApplier.applyRevealAction(
+                inputViewport,
+                connected = false,
+                controlBarVisible = false,
+            )
+            assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, inputViewport.importantForAccessibility)
+        }
+    }
+
     @Test
     fun phoneWidthsUseProductionInlineLayoutAndPreserveTouchTargets() {
         listOf(320, 360).forEach { widthDp ->
