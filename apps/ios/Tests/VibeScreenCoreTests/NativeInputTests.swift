@@ -7,22 +7,19 @@ final class NativeInputTests: XCTestCase {
         let production = NativeInputAvailability(
             keyboard: true,
             pointer: true,
-            stylus: false,
-            controller: false
+            stylus: false
         )
 
         XCTAssertEqual(production.advertisedCapabilities, [.touch, .keyboard, .pointer])
         XCTAssertFalse(production.advertisedCapabilities.contains(.stylus))
         XCTAssertFalse(production.advertisedCapabilities.contains(.stylusExtended))
-        XCTAssertFalse(production.advertisedCapabilities.contains(.controller))
     }
 
     func testStylusExtendedIsNeverAdvertisedWithoutStylusCapture() {
         let unavailable = NativeInputAvailability(
             keyboard: false,
             pointer: false,
-            stylus: false,
-            controller: false
+            stylus: false
         )
 
         XCTAssertEqual(unavailable.advertisedCapabilities, [.touch])

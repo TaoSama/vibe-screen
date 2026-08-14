@@ -14,8 +14,7 @@ final class StreamViewModel: ObservableObject {
     static let nativeInputAvailability = NativeInputAvailability(
         keyboard: true,
         pointer: true,
-        stylus: false,
-        controller: false
+        stylus: false
     )
 
     @Published private(set) var isConnecting = false

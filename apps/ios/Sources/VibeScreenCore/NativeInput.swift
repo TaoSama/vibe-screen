@@ -5,18 +5,15 @@ public struct NativeInputAvailability: Equatable, Sendable {
     public var keyboard: Bool
     public var pointer: Bool
     public var stylus: Bool
-    public var controller: Bool
 
     public init(
         keyboard: Bool,
         pointer: Bool,
-        stylus: Bool,
-        controller: Bool
+        stylus: Bool
     ) {
         self.keyboard = keyboard
         self.pointer = pointer
         self.stylus = stylus
-        self.controller = controller
     }
 
     public var advertisedCapabilities: Set<VSCapability> {
@@ -27,7 +24,6 @@ public struct NativeInputAvailability: Equatable, Sendable {
             capabilities.insert(.stylus)
             capabilities.insert(.stylusExtended)
         }
-        if controller { capabilities.insert(.controller) }
         return capabilities
     }
 }
