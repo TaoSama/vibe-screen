@@ -334,7 +334,7 @@ class StreamingServer: EncodedFrameSink, EncodedAudioSink {
     private var protocolV1DisplayName = "Vibe Screen Display"
     private var protocolV1DisplayIsVirtual = true
     private var protocolV1Displays: [ProtocolV1DisplayInfo] = []
-    private var protocolV1AdvancedAdapters = ProtocolV1SessionConfiguration.AdvancedAdapters.unavailable
+    private var protocolV1AdvancedAdapters: ProtocolV1SessionConfiguration.AdvancedAdapters?
     private var audioSendInFlight = false
     private var pendingAudioPacket: (data: Data, epoch: UInt64, generation: UInt64)?
     private var isReceiving = false
@@ -1018,7 +1018,7 @@ class StreamingServer: EncodedFrameSink, EncodedAudioSink {
 
     func setProtocolV1AdvancedAdapters(_ adapters: ProtocolV1SessionConfiguration.AdvancedAdapters) {
         performOnNetworkQueue {
-            let removedActiveAudio = self.protocolV1AdvancedAdapters.audio && !adapters.audio
+            let removedActiveAudio = (self.protocolV1AdvancedAdapters?.audio ?? false) && !adapters.audio
             self.protocolV1AdvancedAdapters = adapters
             if removedActiveAudio, self.connectionProtocolMode == .protocolV1 {
                 self.connection?.cancel()
@@ -1549,7 +1549,7 @@ class StreamingServer: EncodedFrameSink, EncodedAudioSink {
             bitrateKbps: protocolV1BitrateKbps,
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
                 touchEnabled: touchEnabled,
-                advanced: protocolV1AdvancedAdapters,
+                advanced: protocolV1AdvancedAdapters ?? ProtocolV1SessionConfiguration.AdvancedAdapters(hostActions: touchEnabled),
                 controllerAvailable: controllerAvailable
             ),
             requiredClientCapabilities: touchEnabled ? [.touch] : [],

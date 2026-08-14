@@ -125,9 +125,10 @@ def _require_terminal_fields(
         )
 
 
-def signaling_config(port: int) -> dict[str, Any]:
+def signaling_config(port: int, *, state_file: str) -> dict[str, Any]:
     return {
         "listen_address": f"127.0.0.1:{port}",
+        "state_file": state_file,
         "session_ttl_seconds": DEFAULT_SESSION_TTL_SECONDS,
         "max_session_ttl_seconds": DEFAULT_SESSION_TTL_SECONDS,
         "max_active_sessions": 8,
@@ -249,7 +250,7 @@ def _run_direct_verified(
     base_url = f"http://127.0.0.1:{port}"
     with private_temporary_directory("vibe-phase3-signaling-") as temporary_root:
         config_path = temporary_root / "signaling.json"
-        write_private_text(config_path, json.dumps(signaling_config(port)))
+        write_private_text(config_path, json.dumps(signaling_config(port, state_file=str(temporary_root / "signaling-state.json"))))
         raw_log_path = temporary_root / "signaling.log"
         write_private_text(raw_log_path, "")
         environment = os.environ.copy()

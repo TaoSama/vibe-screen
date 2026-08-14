@@ -480,9 +480,10 @@ def derive_test_material(session_id: str, epoch: int, host_id: str, device_id: s
     }
 
 
-def signaling_config(bind_address: str, port: int) -> dict[str, Any]:
+def signaling_config(bind_address: str, port: int, *, state_file: str) -> dict[str, Any]:
     return {
         "listen_address": f"{bind_address}:{port}",
+        "state_file": state_file,
         "session_ttl_seconds": 300,
         "max_session_ttl_seconds": 900,
         "max_active_sessions": 32,
@@ -816,7 +817,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="vibe-android-interop-") as temporary:
         temp = Path(temporary)
         config_path = temp / "signaling.json"
-        config = signaling_config(args.signaling_bind_address, args.signaling_port)
+        config = signaling_config(
+            args.signaling_bind_address,
+            args.signaling_port,
+            state_file=str(temp / "signaling-state.json"),
+        )
         write_private(config_path, (json.dumps(config) + "\n").encode())
         service_log_path = temp / "signaling.log"
         environment = os.environ.copy()
