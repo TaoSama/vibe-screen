@@ -74,18 +74,28 @@ final class PlatformSessionPacketCipher {
     }
 
     func seal(_ payload: Data, channel: InternetTransportChannel) throws -> Data {
+        try sealRecord(payload, securityChannel: channel.securityChannel)
+    }
+
+    func sealAdvanced(_ payload: Data, channel: PlatformSecurityChannel) throws -> Data {
+        guard channel == .audio || channel == .bulk else {
+            throw PlatformSecurityError.invalidInput("Advanced record sealing requires audio or bulk.")
+        }
+        return try sealRecord(payload, securityChannel: channel)
+    }
+
+    private func sealRecord(_ payload: Data, securityChannel channel: PlatformSecurityChannel) throws -> Data {
         try lock.withPacketCipherLock {
             guard let keys else { throw PlatformSecurityError.invalidInput("Session packet cipher is closed.") }
             guard let record = try withActiveSessionEpoch({
-                let securityChannel = channel.securityChannel
-                let nonce = try reserveNonce(securityChannel.rawValue, localRole.rawValue, keys.keyEpoch)
+                let nonce = try reserveNonce(channel.rawValue, localRole.rawValue, keys.keyEpoch)
                 guard nonce.count == Self.nonceBytes else {
                     throw PlatformSecurityError.persistenceFailure("Durable nonce allocator returned an invalid nonce.")
                 }
-                let header = makeHeader(keyEpoch: keys.keyEpoch, sender: localRole, channel: securityChannel, nonce: nonce)
+                let header = makeHeader(keyEpoch: keys.keyEpoch, sender: localRole, channel: channel, nonce: nonce)
                 return header + (try TrafficPacketCryptography.seal(
                     plaintext: payload,
-                    key: keys.key(channel: securityChannel, sender: localRole),
+                    key: keys.key(channel: channel, sender: localRole),
                     nonce: nonce,
                     authenticatedHeader: header
                 ))
@@ -97,13 +107,22 @@ final class PlatformSessionPacketCipher {
     }
 
     func open(_ record: Data, channel: InternetTransportChannel) -> Data? {
+        openRecord(record, securityChannel: channel.securityChannel)
+    }
+
+    func openAdvanced(_ record: Data, channel: PlatformSecurityChannel) -> Data? {
+        guard channel == .audio || channel == .bulk else { return nil }
+        return openRecord(record, securityChannel: channel)
+    }
+
+    private func openRecord(_ record: Data, securityChannel channel: PlatformSecurityChannel) -> Data? {
         lock.withPacketCipherLock {
             guard let keys, record.count >= Self.headerBytes + Self.tagBytes else { return nil }
             do {
                 return try withActiveSessionEpoch {
                     let header = record.prefix(Self.headerBytes)
                     guard let decoded = decodeHeader(Data(header)) else { return nil }
-                    let expectedChannel = channel.securityChannel
+                    let expectedChannel = channel
                     let expectedSender = localRole.remote
                     guard decoded.sessionHash == sessionHash,
                           decoded.sessionEpoch == sessionEpoch,
@@ -114,7 +133,9 @@ final class PlatformSessionPacketCipher {
                         return nil
                     }
                     let sequence = decodeUInt64(decoded.nonce.suffix(8))
-                    var window = replay[expectedChannel] ?? ReplayWindow(strictlyOrdered: expectedChannel == .control)
+                    var window = replay[expectedChannel] ?? ReplayWindow(
+                        strictlyOrdered: expectedChannel == .control || expectedChannel == .bulk
+                    )
                     guard window.canAccept(sequence) else { return nil }
                     guard let plaintext = try? TrafficPacketCryptography.open(
                         ciphertextAndTag: Data(record.dropFirst(Self.headerBytes)),

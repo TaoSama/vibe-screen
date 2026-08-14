@@ -79,6 +79,57 @@ class AndroidSessionPacketCipherTest {
     }
 
     @Test
+    fun advancedChannelsUseIndependentKeysSequencesAndReplayWindows() {
+        val host = cipher(PeerRole.HOST)
+        val device = cipher(PeerRole.DEVICE)
+        val otherSession = cipher(PeerRole.DEVICE, sessionId = "phase5-other-session")
+        val audioOne = host.seal(SessionChannel.AUDIO, byteArrayOf(1))
+        val audioTwo = host.seal(SessionChannel.AUDIO, byteArrayOf(2))
+        val bulkOne = host.seal(SessionChannel.BULK, byteArrayOf(3))
+        val bulkTwo = host.seal(SessionChannel.BULK, byteArrayOf(4))
+
+        assertNull(device.open(SessionChannel.BULK, audioOne))
+        assertArrayEquals(byteArrayOf(2), device.open(SessionChannel.AUDIO, audioTwo))
+        assertArrayEquals(byteArrayOf(1), device.open(SessionChannel.AUDIO, audioOne))
+        assertArrayEquals(byteArrayOf(4), device.open(SessionChannel.BULK, bulkTwo))
+        assertNull(device.open(SessionChannel.BULK, bulkOne))
+        assertNull(device.open(SessionChannel.AUDIO, audioTwo))
+        assertNull(otherSession.open(SessionChannel.BULK, bulkTwo))
+    }
+
+    @Test
+    fun advancedChannelFlowIsOwnerBoundAndIndependent() {
+        val owner = AdvancedChannelOwner("client-a", 4, 7)
+        val replacement = AdvancedChannelOwner("client-b", 5, 8)
+        val gate =
+            AdvancedChannelSecurityGate(
+                owner,
+                AdvancedChannelSecurityGate.Limits(
+                    maximumAudioRecordBytes = 8,
+                    maximumAudioBacklogBytes = 8,
+                    maximumBulkRecordBytes = 16,
+                    maximumBulkBacklogBytes = 16,
+                ),
+            )
+        val audio = gate.reserve(8, AdvancedChannelBinding.Audio("display-a", 11), owner)
+        val bulk = gate.reserve(16, AdvancedChannelBinding.Bulk(ByteArray(16) { 1 }), owner)
+
+        assertEquals(8, gate.bufferedBytes(SecurityChannel.AUDIO))
+        assertEquals(16, gate.bufferedBytes(SecurityChannel.BULK))
+        assertThrows(IllegalStateException::class.java) {
+            gate.reserve(1, AdvancedChannelBinding.Audio("display-a", 11), owner)
+        }
+        assertThrows(IllegalStateException::class.java) {
+            gate.reserve(1, AdvancedChannelBinding.Bulk(ByteArray(16) { 2 }), replacement)
+        }
+        gate.finish(audio)
+        assertEquals(0, gate.bufferedBytes(SecurityChannel.AUDIO))
+        gate.replaceOwner(replacement)
+        assertEquals(0, gate.bufferedBytes(SecurityChannel.BULK))
+        assertThrows(IllegalStateException::class.java) { gate.finish(bulk) }
+    }
+
+    @Test
     fun maximumPlaintextMediaRecordSealsWithinFourMiBAndroidBoundary() {
         val host = cipher(PeerRole.HOST)
         val plaintext = ByteArray(InternetMediaRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES)

@@ -29,7 +29,18 @@ class TrafficKeyDerivationZeroizationTest {
         assertTrue(observed.all(ByteArray::isZeroized))
 
         keys.close()
-        assertTrue(listOf(keys.hostControl, keys.deviceControl, keys.hostMedia, keys.deviceMedia).all(ByteArray::isZeroized))
+        assertTrue(
+            listOf(
+                keys.hostControl,
+                keys.deviceControl,
+                keys.hostMedia,
+                keys.deviceMedia,
+                keys.hostAudio,
+                keys.deviceAudio,
+                keys.hostBulk,
+                keys.deviceBulk,
+            ).all(ByteArray::isZeroized),
+        )
     }
 
     @Test

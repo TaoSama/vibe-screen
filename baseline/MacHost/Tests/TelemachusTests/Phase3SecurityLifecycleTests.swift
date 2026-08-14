@@ -1152,6 +1152,13 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
                 "cf62a7f3926e10308e0402d5e51397afc1c6d666dd2dc6a856bf2ebd0106307f3" +
                 "f014c1e536fdd26670c84a0737526b2fc6052ca0b08be2e5d5197fc126e4c46"
         )
+        XCTAssertEqual(
+            (keys.hostAudio + keys.deviceAudio + keys.hostBulk + keys.deviceBulk).hex,
+            "75c2d9de0303ce4867fc7c408e0c40fe3d3862659acccd7eca02b031372d08ff" +
+                "e6c04365acb8cf207f96b3e7f4ba0394070213885741eb7d0998a2312a94208f" +
+                "bc3cdce0774b08432ecaa5a9ae582fee9a9ce769a041a16fdff7595f413482ad0" +
+                "4e2beb4ac97f1f648c55b8b619cb408207c896b1efeb99a29c636a4181c2cfd"
+        )
     }
 
     func testRotationRequiresNextEpochAndSeparatesKeys() throws {
@@ -1168,7 +1175,10 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
 
         XCTAssertEqual(rotated.keyEpoch, 2)
         XCTAssertNotEqual(rotated.keyID, current.keyID)
-        XCTAssertEqual(Set([rotated.hostControl, rotated.deviceControl, rotated.hostMedia, rotated.deviceMedia]).count, 4)
+        XCTAssertEqual(Set([
+            rotated.hostControl, rotated.deviceControl, rotated.hostMedia, rotated.deviceMedia,
+            rotated.hostAudio, rotated.deviceAudio, rotated.hostBulk, rotated.deviceBulk,
+        ]).count, 8)
         XCTAssertThrowsError(try TrafficKeyDerivation.rotate(current: current, nextEpoch: 3, updateNonce: Data((64...79).map(UInt8.init))))
     }
 
@@ -1194,6 +1204,76 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
                 ciphertextAndTag: ciphertext, key: key, nonce: nonce, authenticatedHeader: Data("tampered".utf8)
             )
         )
+    }
+
+    func testAdvancedChannelsUseIndependentKeysSequencesAndReplayWindows() throws {
+        let pair = try PlatformSessionPacketCipher.selfTestPair(
+            sessionIdentifier: "phase5-channel-isolation",
+            sharedSecret: Data(repeating: 0x21, count: 32),
+            bootstrapSecret: Data(repeating: 0x22, count: 32),
+            transcriptContext: Data(repeating: 0x23, count: 32),
+            sessionEpoch: 9
+        )
+        let otherPair = try PlatformSessionPacketCipher.selfTestPair(
+            sessionIdentifier: "phase5-other-session",
+            sharedSecret: Data(repeating: 0x21, count: 32),
+            bootstrapSecret: Data(repeating: 0x22, count: 32),
+            transcriptContext: Data(repeating: 0x23, count: 32),
+            sessionEpoch: 10
+        )
+        let audioOne = try pair.host.sealAdvanced(Data([1]), channel: .audio)
+        let audioTwo = try pair.host.sealAdvanced(Data([2]), channel: .audio)
+        let bulkOne = try pair.host.sealAdvanced(Data([3]), channel: .bulk)
+        let bulkTwo = try pair.host.sealAdvanced(Data([4]), channel: .bulk)
+
+        XCTAssertNil(pair.device.openAdvanced(audioOne, channel: .bulk))
+        XCTAssertEqual(pair.device.openAdvanced(audioTwo, channel: .audio), Data([2]))
+        XCTAssertEqual(pair.device.openAdvanced(audioOne, channel: .audio), Data([1]))
+        XCTAssertEqual(pair.device.openAdvanced(bulkTwo, channel: .bulk), Data([4]))
+        XCTAssertNil(pair.device.openAdvanced(bulkOne, channel: .bulk))
+        XCTAssertNil(pair.device.openAdvanced(audioTwo, channel: .audio))
+        XCTAssertNil(otherPair.device.openAdvanced(bulkTwo, channel: .bulk))
+    }
+
+    func testAdvancedChannelFlowIsOwnerBoundAndIndependent() throws {
+        let owner = AdvancedChannelOwner(sessionIdentifier: "client-a", sessionEpoch: 4, generation: 7)
+        let replacement = AdvancedChannelOwner(sessionIdentifier: "client-b", sessionEpoch: 5, generation: 8)
+        let gate = try AdvancedChannelSecurityGate(
+            owner: owner,
+            limits: .init(
+                maximumAudioRecordBytes: 8,
+                maximumAudioBacklogBytes: 8,
+                maximumBulkRecordBytes: 16,
+                maximumBulkBacklogBytes: 16
+            )
+        )
+        let audio = try gate.reserve(
+            payloadBytes: 8,
+            binding: .audio(displayID: "display-a", streamID: 11),
+            owner: owner
+        )
+        let bulk = try gate.reserve(
+            payloadBytes: 16,
+            binding: .bulk(transferID: Data(repeating: 1, count: 16)),
+            owner: owner
+        )
+        XCTAssertEqual(gate.bufferedBytes(for: .audio), 8)
+        XCTAssertEqual(gate.bufferedBytes(for: .bulk), 16)
+        XCTAssertThrowsError(try gate.reserve(
+            payloadBytes: 1,
+            binding: .audio(displayID: "display-a", streamID: 11),
+            owner: owner
+        ))
+        XCTAssertThrowsError(try gate.reserve(
+            payloadBytes: 1,
+            binding: .bulk(transferID: Data(repeating: 2, count: 16)),
+            owner: replacement
+        ))
+        try gate.finish(audio)
+        XCTAssertEqual(gate.bufferedBytes(for: .audio), 0)
+        try gate.replaceOwner(with: replacement)
+        XCTAssertEqual(gate.bufferedBytes(for: .bulk), 0)
+        XCTAssertThrowsError(try gate.finish(bulk))
     }
 
     func testOldCipherFailsClosedForSealAndOpenAfterDurableEpochAdvance() throws {
