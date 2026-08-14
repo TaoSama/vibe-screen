@@ -156,8 +156,9 @@ The following remain unproved until their dedicated gates produce evidence:
 - signing, installation, Local Network permission, and lifecycle behavior;
 - VideoToolbox hardware H.264/HEVC decode and sustained thermal/power behavior;
 - iOS app/Simulator/device end-to-end host connection, decoded video, touch,
-  and disconnect/reconnect (the macOS Core loopback proves only the transport
-  and Protocol v1 boundary listed above);
+  physical hardware-keyboard input, pointer hover, and disconnect/reconnect (the
+  macOS Core loopback proves only the transport and Protocol v1 boundary listed
+  above);
 - cross-client golden bytes against the Android application;
 - AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
   file picker/export, UDP broadcast, and managed App Configuration injection;

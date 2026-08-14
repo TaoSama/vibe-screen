@@ -8,8 +8,17 @@ import VibeScreenVideo
 extension StreamViewModel {
     func handle(_ delivery: TransportDelivery) {
         guard deliveryGate.accepts(owner: delivery.owner) else { return }
+        let frame: TransportFrame
         do {
-            let frame = try delivery.result.get()
+            frame = try delivery.result.get()
+        } catch {
+            terminateSession(
+                message: error.localizedDescription,
+                failure: ReconnectFailure.classify(error)
+            )
+            return
+        }
+        do {
             switch frame.channel {
             case .control: try handleControl(EnvelopeCodec.deserialize(frame.payload))
             case .video: try handleVideo(MediaPacket(serializedFrame: frame.payload))
@@ -17,9 +26,7 @@ extension StreamViewModel {
             case .bulkTransfer: try handleBulk(FileChunk(serializedFrame: frame.payload))
             }
         } catch {
-            errorMessage = error.localizedDescription
-            state.fail(error.localizedDescription)
-            endSession(disconnectTransport: true, resetState: false)
+            terminateSession(message: error.localizedDescription, failure: .permanent)
         }
     }
 
@@ -45,7 +52,10 @@ extension StreamViewModel {
                 )
             } catch { throw ProtocolClientError.invalidPong }
         case .disconnectNotice(let notice):
-            terminateSession(message: "Mac 已断开会话：\(notice.reasonCode)")
+            terminateSession(
+                message: "Mac 已断开会话：\(notice.reasonCode)",
+                failure: notice.mayResume ? .transientTransport : .permanent
+            )
         case .videoConfig(let config):
             handleVideoConfig(config)
         case .audioConfig(let config):
@@ -57,9 +67,9 @@ extension StreamViewModel {
         case .videoStreamEnded(let ended):
             handleVideoStreamEnded(ended)
         case .errorReport(let report):
-            terminateSession(message: "主机错误 [\(report.code)]：\(report.message)")
+            terminateSession(message: "主机错误 [\(report.code)]：\(report.message)", failure: .permanent)
         case .protocolError(let error):
-            terminateSession(message: "协议错误 [\(error.code)]：\(error.message)")
+            terminateSession(message: "协议错误 [\(error.code)]：\(error.message)", failure: .permanent)
         case .clipboardContent(let content):
             if negotiatedCapabilities.contains(.clipboard) { clipboard.stage(content) }
         case .fileOffer(let offer):
@@ -137,6 +147,9 @@ extension StreamViewModel {
         let key = ClientSessionKey(sessionID: state.sessionID, epoch: state.sessionEpoch)
         try registry.register(key)
         sessionKey = key
+        if let connectionGeneration {
+            reconnectCoordinator.markConnected(generation: connectionGeneration)
+        }
         try mediaGate.reset(owner: owner, sessionEpoch: state.sessionEpoch)
         heartbeatMonitor.reset(
             to: owner,
@@ -219,7 +232,10 @@ extension StreamViewModel {
                 )
             }
         } catch {
-            terminateSession(message: "视频配置确认失败：\(error.localizedDescription)")
+            terminateSession(
+                message: "视频配置确认失败：\(error.localizedDescription)",
+                failure: ReconnectFailure.classify(error)
+            )
             return
         }
         Task { [weak self] in
@@ -252,7 +268,10 @@ extension StreamViewModel {
                 isStreaming = true
             } catch {
                 guard let self, !Task.isCancelled, self.sessionOwner == owner else { return }
-                terminateSession(message: "视频配置确认失败：\(error.localizedDescription)")
+                terminateSession(
+                    message: "视频配置确认失败：\(error.localizedDescription)",
+                    failure: ReconnectFailure.classify(error)
+                )
             }
         }
     }
@@ -273,7 +292,7 @@ extension StreamViewModel {
                           sessionID == state.sessionID,
                           sessionEpoch == state.sessionEpoch else { return }
                     if try heartbeatMonitor.status(owner: owner) == .timedOut {
-                        terminateSession(message: "心跳超时：连续 3 次未收到 Pong")
+                        terminateSession(message: "心跳超时：连续 3 次未收到 Pong", failure: .heartbeat)
                         return
                     }
                     heartbeatSequence += 1
@@ -290,7 +309,7 @@ extension StreamViewModel {
                 } catch {
                     guard let self else { return }
                     guard !Task.isCancelled, owner == sessionOwner else { return }
-                    terminateSession(message: "心跳发送失败：\(error.localizedDescription)")
+                    terminateSession(message: "心跳发送失败：\(error.localizedDescription)", failure: .heartbeat)
                     return
                 }
             }
@@ -310,23 +329,22 @@ extension StreamViewModel {
 
     func handleVideoStreamEnded(_ ended: VSVideoStreamEnded) {
         guard let sessionKey, let owner = sessionOwner else { return }
+        let wasSelected = selectedStreamID == ended.streamID
+        if wasSelected { terminateActiveInputBeforeDisplayChange() }
         decoders.removeValue(forKey: ended.streamID)?.invalidate()
         decoderOwners.removeValue(forKey: ended.streamID)
         _ = mediaGate.endStream(ended.streamID, owner: owner)
         _ = registry.release(streamID: ended.streamID, in: sessionKey)
         displayBindings = registry.bindings(in: sessionKey)
-        if selectedStreamID == ended.streamID {
-            selectedStreamID = displayBindings.first?.streamID
+        if wasSelected {
+            selectedStreamID = nil
+            if let replacement = displayBindings.first?.streamID {
+                selectDisplay(streamID: replacement)
+            }
             pixelBuffer = nil
         }
         guard displayBindings.isEmpty else { return }
-        terminateSession(message: "视频流已结束：\(ended.reasonCode)")
-    }
-
-    func terminateSession(message: String) {
-        errorMessage = message
-        state.fail(message)
-        endSession(disconnectTransport: true, resetState: false)
+        terminateSession(message: "视频流已结束：\(ended.reasonCode)", failure: .permanent)
     }
 
     func handleAudioConfig(_ config: VSAudioConfig) throws {
@@ -548,15 +566,16 @@ extension StreamViewModel {
     }
 
     func advertisedCapabilities(policy: ManagedPolicy) -> [VSCapability] {
-        var values: [VSCapability] = [
-            .touch, .keyboard, .pointer, .telemetry, .sessionResume,
+        var values: Set<VSCapability> = [
+            .telemetry, .sessionResume,
             .multiDisplay, .colorManagement, .hostActions, .managedConfiguration,
         ]
-        if policy.audioAllowed { values.append(.audio) }
-        if policy.clipboardAllowed { values.append(.clipboard) }
-        if policy.fileTransferAllowed { values.append(.fileTransfer) }
-        if policy.wakeAllowed { values.append(.wakeHost) }
-        return values
+        values.formUnion(Self.nativeInputAvailability.advertisedCapabilities)
+        if policy.audioAllowed { values.insert(.audio) }
+        if policy.clipboardAllowed { values.insert(.clipboard) }
+        if policy.fileTransferAllowed { values.insert(.fileTransfer) }
+        if policy.wakeAllowed { values.insert(.wakeHost) }
+        return values.sorted { $0.rawValue < $1.rawValue }
     }
 
     func clientResourceLimits(policy: ManagedPolicy) -> VSResourceLimits {

@@ -121,7 +121,9 @@ Negotiation rules:
 - `MultiDisplaySessionRegistry` isolates clients by `session_id + epoch`,
   enforces client/stream limits, rejects duplicate display/stream bindings, and
   releases old-epoch resources. The iOS model maintains a decoder per stream
-  and targets touch at the selected binding.
+  and targets touch, keyboard, and pointer hover at the selected binding. The
+  advertised input set is derived from concrete capture paths; generated stylus
+  and controller bindings are intentionally not advertised by the iOS product.
 - PCM S16LE audio validates format and exact frame bytes, rejects old session
   or config epochs, reorders a bounded packet window, and feeds a bounded
   `AVAudioPlayerNode` schedule through playback-only `AVAudioSession`.

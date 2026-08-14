@@ -15,7 +15,7 @@ older Phase 0 clients remain valid.
 - one SwiftUI application target for iPhone and iPad, minimum iOS 17;
 - generated Protocol v1 SwiftProtobuf bindings from the repository schemas;
 - capability/codec Hello, display list/start, H.264/HEVC media, current-epoch
-  filtering, and native normalized touch events;
+  filtering, native normalized touch, hardware-keyboard, and pointer-hover events;
 - authenticated trusted-LAN admission and legacy-to-v1 upgrade into the
   baseline MacHost main session on TCP `54321`;
 - replaceable TCP transport framing with independent control, video, audio,
@@ -30,7 +30,7 @@ older Phase 0 clients remain valid.
 
 | Slice | Scope | Protocol rule | Status |
 | --- | --- | --- | --- |
-| 5A | single iOS client, existing display, one video stream, touch | existing Protocol v1 only | code complete; baseline MacHost two-process loopback, iPhone Simulator UI smoke, and unsigned archive pass; device run pending |
+| 5A | single iOS client, existing display, one video stream, touch, hardware keyboard, pointer hover | existing Protocol v1 only | code complete; baseline MacHost two-process loopback, iPhone Simulator UI smoke, and unsigned archive pass; device input run pending |
 | 5B | multiple clients, multiple virtual displays/streams | additive resource limits, stream/display targets, explicit negotiated capability result | client routing/limits/UI implemented and CLI tested; host allocation pending |
 | 5C | audio, bidirectional clipboard, file transfer | capability-gated messages and separate audio/bulk channels | client core and iOS adapters implemented; platform/host E2E pending |
 | 5D | HDR/color, custom gestures, wake, managed devices | structured color metadata; host actions; local gesture/MDM policy | negotiation/fallback and controls implemented; HDR output/host helper pending |
@@ -42,7 +42,8 @@ older Phase 0 clients remain valid.
 1. `swift build` and the self-test pass from a clean package resolution.
 2. Full Xcode builds the universal iPhone/iPad target for an iOS simulator.
 3. An iPhone and iPad class device install, negotiate Protocol v1, render H.264
-   and HEVC, send touch, reject an old epoch, and recover from a disconnect.
+   and HEVC, send touch plus physical keyboard/pointer input, reject an old epoch,
+   and recover from a disconnect.
 4. The baseline MacHost accepts authenticated trusted-LAN admission, upgrades
    from its legacy entry boundary, and uses Protocol v1 for the main session,
    display list/start, video configuration/media, heartbeat, targeted touch,

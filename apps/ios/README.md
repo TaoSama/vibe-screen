@@ -109,7 +109,10 @@ device, and Run. The app supports both device families from one target.
 5. The client negotiates H.264/HEVC and additive capabilities, asks for
    available displays, and attaches to as many as the negotiated limit allows.
 6. Use the display selector to change the rendered/input target. Dragging sends
-   native normalized touch events targeted at that stream.
+   native normalized touch events targeted at that stream. A connected pointer
+   sends normalized hover movement, and the **键盘输入** toolbar action focuses
+   the stream so hardware-key down/up events use USB HID usages. Input is sent
+   only when its capability was negotiated.
 7. Tap **断开** before changing hosts.
 
 The current developer transport is plaintext trusted-LAN TCP. Do not expose it
@@ -192,11 +195,19 @@ currently no key migration step.
 
 - iPhone Simulator UI smoke and an unsigned iPhoneOS archive pass in CI;
   signing, installation, and device execution remain separate evidence gates;
-- no automatic reconnect loop in the app UI yet, although epoch filtering and
-  bounded reconnect backoff are implemented and self-tested;
+- transient transport and heartbeat failures retry up to five times with bounded
+  backoff and generation checks; authentication, protocol, validation, and
+  display-rejection failures stop immediately, while a new manual connection
+  starts a fresh generation. There is no separate retry-management UI yet;
 - one host connection can route up to four negotiated display streams; actual
   multi-client admission and virtual-display allocation remain host work;
-- touch only; keyboard/pointer UI is negotiated but not exposed yet;
+- touch, hardware-keyboard, and pointer-hover product paths are capability-gated
+  and target the selected stream. Physical keyboard/pointer behavior still needs
+  iPhone/iPad evidence; pointer buttons continue to use the existing touch path;
+- reconnect retains the pairing token only in memory; manual disconnect and host
+  notices that disallow resume invalidate pending reconnect generations;
+- stylus, extended stylus, and controller are not advertised: generated protocol
+  bindings alone do not constitute an iOS capture path;
 - PCM S16LE playback, explicit text clipboard, bounded file transfer, SDR
   fallback, gestures, WOL, and managed restrictions are implemented, but have
   no iOS-device evidence in this environment;

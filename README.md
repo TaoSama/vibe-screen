@@ -496,8 +496,10 @@ network quality may increase it.
 - A native SwiftUI + VideoToolbox iPhone/iPad foundation now lives in
   [`apps/ios`](apps/ios/README.md): generated Protocol v1 bindings, capability
   negotiation, multi-display routing, H.264/HEVC decode, PCM audio, explicit
-  clipboard, bounded verified files, epoch filtering, and native input are
-  implemented and core-self-tested.
+  clipboard, bounded verified files, epoch filtering, normalized touch,
+  hardware-keyboard, and pointer-hover input are implemented and core-self-tested.
+  The iOS client does not advertise stylus or controller input until native
+  capture paths exist.
 - The trusted-LAN iOS Core client now interoperates with the baseline MacHost
   on TCP `54321`: authenticated `SSWA`/`SSWR` admission and the `0D` upgrade
   lead into the Protocol v1 main session, with Hello/capability negotiation,
