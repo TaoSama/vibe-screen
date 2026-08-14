@@ -383,6 +383,16 @@ two-hour run.
   unattended recovery.
 - Run eight-hour stability, thermal, power, and reconnect tests.
 
+The Android settings surface now includes a responsive sustained-use status for
+battery level, charging source, power-saver mode, and platform thermal severity.
+Observation is owned by the foreground Activity lifecycle, deduplicates updates,
+and rejects callbacks after stop; 600dp portrait/landscape layout coverage keeps
+the status readable in small-tablet and resized-window configurations. This is an
+offline product slice, not thermal or power acceptance: 8–9 inch hardware,
+stand-mounted charging, background/foreground recovery, and the eight-hour run
+remain device gates. Login startup and headless Mac mini acceptance also remain
+open. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md).
+
 ### Phase 3 — Secure Internet access
 
 **Current status: runnable development-preview product slice and UI; not a
