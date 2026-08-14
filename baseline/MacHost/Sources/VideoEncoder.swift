@@ -504,6 +504,10 @@ class VideoEncoder {
     }
 
     deinit {
+        invalidate()
+    }
+
+    func invalidate() {
         sessionLock.lock()
         callbackOwner.deactivate()
         if let session = compressionSession {

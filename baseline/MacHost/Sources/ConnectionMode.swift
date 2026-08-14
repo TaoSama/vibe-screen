@@ -84,3 +84,27 @@ enum InternetConnectionStatus: Equatable {
         }
     }
 }
+
+struct InternetAdaptiveMediaControlState: Equatable {
+    var isActive = false
+    var bitrateMbps = 0
+    var framesPerSecond = 0
+    var quality = ""
+
+    static let inactive = Self()
+
+    var allowsManualChanges: Bool { !isActive }
+
+    func displayedBitrate(configuredBitrateMbps: Int) -> Int {
+        isActive ? bitrateMbps : configuredBitrateMbps
+    }
+
+    static func active(bitrateMbps: Int, framesPerSecond: Int, quality: String) -> Self {
+        Self(
+            isActive: true,
+            bitrateMbps: bitrateMbps,
+            framesPerSecond: framesPerSecond,
+            quality: quality
+        )
+    }
+}

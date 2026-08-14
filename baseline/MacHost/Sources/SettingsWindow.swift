@@ -658,6 +658,7 @@ struct SettingsView: View {
                                     Spacer()
                                     Toggle("", isOn: $settings.gamingBoost)
                                         .labelsHidden()
+                                        .disabled(!settings.internetAdaptiveMediaControl.allowsManualChanges)
                                 }
 
                                 if settings.gamingBoost {
@@ -700,25 +701,25 @@ struct SettingsView: View {
                                             .font(.system(size: 11))
                                             .foregroundColor(.secondary)
                                         Spacer()
-                                        Text("\(settings.effectiveBitrate) Mbps")
+                                        Text("\(settings.internetAdaptiveMediaControl.displayedBitrate(configuredBitrateMbps: settings.effectiveBitrate)) Mbps")
                                             .font(.system(size: 13, weight: .semibold, design: .monospaced))
                                             .foregroundColor(.accentColor)
                                     }
 
                                     HStack(spacing: 6) {
-                                        BitrateButton(label: "20", value: 20, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                                        BitrateButton(label: "20", value: 20, currentValue: settings.bitrate, disabled: settings.gamingBoost || settings.internetAdaptiveMediaControl.isActive) {
                                             settings.bitrate = 20
                                         }
-                                        BitrateButton(label: "35", value: 35, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                                        BitrateButton(label: "35", value: 35, currentValue: settings.bitrate, disabled: settings.gamingBoost || settings.internetAdaptiveMediaControl.isActive) {
                                             settings.bitrate = 35
                                         }
-                                        BitrateButton(label: "50", value: 50, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                                        BitrateButton(label: "50", value: 50, currentValue: settings.bitrate, disabled: settings.gamingBoost || settings.internetAdaptiveMediaControl.isActive) {
                                             settings.bitrate = 50
                                         }
-                                        BitrateButton(label: "80", value: 80, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                                        BitrateButton(label: "80", value: 80, currentValue: settings.bitrate, disabled: settings.gamingBoost || settings.internetAdaptiveMediaControl.isActive) {
                                             settings.bitrate = 80
                                         }
-                                        BitrateButton(label: "120", value: 120, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                                        BitrateButton(label: "120", value: 120, currentValue: settings.bitrate, disabled: settings.gamingBoost || settings.internetAdaptiveMediaControl.isActive) {
                                             settings.bitrate = 120
                                         }
                                     }
@@ -731,7 +732,7 @@ struct SettingsView: View {
                                             get: { Double(settings.bitrate) },
                                             set: { settings.bitrate = Int($0) }
                                         ), in: 10...200, step: 5)
-                                        .disabled(settings.gamingBoost)
+                                        .disabled(settings.gamingBoost || settings.internetAdaptiveMediaControl.isActive)
                                         Text("200")
                                             .font(.system(size: 9))
                                             .foregroundColor(.secondary)
@@ -761,7 +762,17 @@ struct SettingsView: View {
                                         Text("High").tag("high")
                                     }
                                     .pickerStyle(.segmented)
-                                    .disabled(settings.gamingBoost)
+                                    .disabled(settings.gamingBoost || settings.internetAdaptiveMediaControl.isActive)
+
+                                    if settings.internetAdaptiveMediaControl.isActive {
+                                        Text(
+                                            "Adaptive network control: \(settings.internetAdaptiveMediaControl.bitrateMbps) Mbps, "
+                                                + "\(settings.internetAdaptiveMediaControl.framesPerSecond) FPS, "
+                                                + settings.internetAdaptiveMediaControl.quality
+                                        )
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                    }
 
                                     if settings.gamingBoost {
                                         Text("Quality locked to Ultra Low in Gaming Boost mode")
@@ -1831,6 +1842,7 @@ class DisplaySettings: ObservableObject {
     @Published var captureMethod: String = "Initializing..."
     @Published var wirelessTokenError: String?
     @Published var internetStatus: InternetConnectionStatus = .idle
+    @Published var internetAdaptiveMediaControl = InternetAdaptiveMediaControlState.inactive
     @Published var internetErrorMessage: String?
     @Published var internetRecoverySuggestion: String?
     @Published var internetPairingCode: String?

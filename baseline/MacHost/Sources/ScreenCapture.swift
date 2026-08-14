@@ -27,6 +27,100 @@ private final class WeakReference<Value: AnyObject>: @unchecked Sendable {
     }
 }
 
+struct CaptureFrameRates: Equatable {
+    private(set) var encoder: Int
+    private(set) var activePipeline: Int
+
+    init(_ frameRate: Int) {
+        let rate = max(1, frameRate)
+        encoder = rate
+        activePipeline = rate
+    }
+
+    mutating func recordEncoderUpdate(_ frameRate: Int) {
+        encoder = max(1, frameRate)
+    }
+
+    mutating func activate(_ frameRate: Int) -> Bool {
+        let rate = max(1, frameRate)
+        let changed = rate != activePipeline
+        encoder = rate
+        activePipeline = rate
+        return changed
+    }
+}
+
+enum EncoderReplacementGate {
+    static func accepts(candidateHasActiveCompressionSession: Bool) -> Bool {
+        candidateHasActiveCompressionSession
+    }
+}
+
+struct EncoderCandidateTransaction: Equatable {
+    private(set) var committed = false
+    private(set) var succeeded = false
+
+    mutating func commit() { committed = true }
+    mutating func succeed() { succeeded = true }
+
+    var shouldInvalidateCandidate: Bool { !succeeded }
+    var shouldClearInstalledReference: Bool { committed && !succeeded }
+}
+
+struct CaptureOperationToken: Equatable {
+    let generation: UInt64
+}
+
+final class CaptureOperationCoordinator: @unchecked Sendable {
+    private struct State {
+        var generation: UInt64 = 0
+        var operationInFlight = false
+        var stopping = false
+    }
+
+    private let lock = OSAllocatedUnfairLock(initialState: State())
+
+    func beginOperation() -> CaptureOperationToken? {
+        lock.withLock { state in
+            guard !state.stopping, !state.operationInFlight,
+                  state.generation < UInt64.max - 1 else { return nil }
+            state.generation += 1
+            state.operationInFlight = true
+            return CaptureOperationToken(generation: state.generation)
+        }
+    }
+
+    func finishOperation(_ token: CaptureOperationToken) {
+        lock.withLock { state in
+            guard state.generation == token.generation, !state.stopping else { return }
+            state.operationInFlight = false
+        }
+    }
+
+    func beginStop() -> CaptureOperationToken {
+        lock.withLock { state in
+            if state.generation < UInt64.max { state.generation += 1 }
+            state.stopping = true
+            state.operationInFlight = true
+            return CaptureOperationToken(generation: state.generation)
+        }
+    }
+
+    func finishStop(_ token: CaptureOperationToken) {
+        lock.withLock { state in
+            guard state.generation == token.generation else { return }
+            state.operationInFlight = false
+            state.stopping = false
+        }
+    }
+
+    func isCurrent(_ token: CaptureOperationToken) -> Bool {
+        lock.withLock {
+            $0.generation == token.generation && $0.operationInFlight && !$0.stopping
+        }
+    }
+}
+
 // MARK: - ScreenCapture
 
 class ScreenCapture {
@@ -82,9 +176,12 @@ class ScreenCapture {
     private var isHealthCheckRunning = false
     private var isStopping = false
     private var restartTask: Task<Void, Never>?
+    private var stopTask: Task<Void, Never>?
     private let streamStopBarrier = AsyncStopBarrier()
     private var streamStartTask: Task<Void, Error>?
     private var isSCStreamStarted = false
+    private let operationCoordinator = CaptureOperationCoordinator()
+    private var captureInstallationGeneration: UInt64 = 0
 
     // CGDisplayStream fallback
     private var cgDisplayStream: CGDisplayStream?
@@ -95,7 +192,7 @@ class ScreenCapture {
     private var currentBitrateMbps: Int = 20
     private var currentQuality: String = "medium"
     private var currentGamingBoost: Bool = false
-    private var currentFrameRate: Int = 60
+    private var frameRates = CaptureFrameRates(60)
 
     // Encoding pipeline state (captured by frame handler closure)
     private var encodeQueue: DispatchQueue?
@@ -214,12 +311,20 @@ class ScreenCapture {
         outputSize: (width: Int, height: Int)? = nil,
         followsMainDisplay: Bool = false
     ) async throws {
+        let restartToCancel = restartTask
+        restartToCancel?.cancel()
+        await restartToCancel?.value
+        restartTask = nil
+        guard let operationToken = operationCoordinator.beginOperation() else {
+            throw CancellationError()
+        }
+        defer { operationCoordinator.finishOperation(operationToken) }
         self.virtualDisplayID = displayID
         self.followsMainDisplay = followsMainDisplay
         self.refreshRate = refreshRate
         self.requestedOutputSize = outputSize
-        try await setupDisplay()
-        try await setupStream()
+        try await setupDisplay(operationToken: operationToken)
+        try await setupStream(operationToken: operationToken)
     }
 
     /// Re-point an already-streaming capture at a different macOS display in
@@ -236,23 +341,68 @@ class ScreenCapture {
         outputSize: (width: Int, height: Int)?,
         followsMainDisplay: Bool
     ) async throws {
+        let restartToCancel = restartTask
+        restartToCancel?.cancel()
+        await restartToCancel?.value
+        restartTask = nil
+        guard let operationToken = operationCoordinator.beginOperation() else {
+            throw CancellationError()
+        }
+        defer { operationCoordinator.finishOperation(operationToken) }
         guard currentFrameSink != nil else {
             // Not streaming yet: fall back to the plain setup path.
-            try await setupForDisplay(
-                displayID,
-                refreshRate: refreshRate,
-                outputSize: outputSize,
-                followsMainDisplay: followsMainDisplay
-            )
+            self.virtualDisplayID = displayID
+            self.followsMainDisplay = followsMainDisplay
+            self.refreshRate = refreshRate
+            self.requestedOutputSize = outputSize
+            try await setupDisplay(operationToken: operationToken)
+            try await setupStream(operationToken: operationToken)
+            guard operationCoordinator.isCurrent(operationToken) else {
+                throw CancellationError()
+            }
             return
         }
-
-        isStopping = false
-        // Let any in-flight restart settle before we re-point the source so the
-        // two paths cannot fight over the SCStream lifecycle.
-        restartTask?.cancel()
-        await restartTask?.value
-        restartTask = nil
+        let physicalSize = outputSize ?? Self.physicalSize(for: displayID)
+        let targetSize = codec == .hevc
+            ? physicalSize
+            : CodecLimits.clampForAvc(width: physicalSize.width, height: physicalSize.height)
+        let frameSink = currentFrameSink
+        let newEncoder = VideoEncoder(
+            width: targetSize.width,
+            height: targetSize.height,
+            codec: codec,
+            bitrateMbps: currentBitrateMbps,
+            quality: currentQuality,
+            gamingBoost: currentGamingBoost,
+            frameRate: frameRates.encoder
+        )
+        guard EncoderReplacementGate.accepts(
+            candidateHasActiveCompressionSession: newEncoder.hasActiveCompressionSession
+        ) else {
+            throw NSError(
+                domain: "ScreenCapture",
+                code: 13,
+                userInfo: [NSLocalizedDescriptionKey: "Replacement encoder creation failed."]
+            )
+        }
+        var candidateTransaction = EncoderCandidateTransaction()
+        defer {
+            if candidateTransaction.shouldInvalidateCandidate {
+                newEncoder.invalidate()
+                if candidateTransaction.shouldClearInstalledReference,
+                   encoder === newEncoder {
+                    encoder = nil
+                }
+            }
+        }
+        newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
+            frameSink?.sendFrame(
+                data,
+                timestamp: timestamp,
+                isKeyframe: isKeyframe,
+                sessionEpoch: sessionEpoch
+            )
+        }
 
         stopFrameMonitor()
         framePacingTimer?.cancel()
@@ -278,12 +428,18 @@ class ScreenCapture {
                 debugLog("Switch: failed to stop previous SCStream: \(error)")
             }
         }
+        guard operationCoordinator.isCurrent(operationToken) else {
+            throw CancellationError()
+        }
         if fallbackLifecycle.isActive {
             invalidateFallbackCapture()
             cgDisplayStream?.stop()
             cgDisplayStream = nil
         }
         await streamStopBarrier.waitForAll()
+        guard operationCoordinator.isCurrent(operationToken) else {
+            throw CancellationError()
+        }
 
         // Adopt the new source identity.
         self.virtualDisplayID = displayID
@@ -300,31 +456,14 @@ class ScreenCapture {
 
         // Rebuild the encoder at the new source dimensions and rewire it to the
         // same frame sink so a single session keeps receiving media.
-        let (width, height) = encodeSize(for: codec)
-        let frameSink = currentFrameSink
-        let newEncoder = VideoEncoder(
-            width: width,
-            height: height,
-            codec: codec,
-            bitrateMbps: currentBitrateMbps,
-            quality: currentQuality,
-            gamingBoost: currentGamingBoost,
-            frameRate: currentFrameRate
-        )
-        newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
-            frameSink?.sendFrame(
-                data,
-                timestamp: timestamp,
-                isKeyframe: isKeyframe,
-                sessionEpoch: sessionEpoch
-            )
-        }
         newEncoder.requestKeyframe()
         encoder = newEncoder
+        candidateTransaction.commit()
 
         if followsMainDisplay || CommandLine.arguments.contains("--prefer-cgdisplaystream") {
             if attemptFallbackCapture(stopSCStream: false) {
                 startFrameMonitor()
+                candidateTransaction.succeed()
                 return
             }
         }
@@ -336,8 +475,14 @@ class ScreenCapture {
         // terminal failure (which drives session teardown/recovery) if that
         // also fails, instead of leaving the host silently frozen.
         do {
-            try await setupDisplay()
-            try await setupStream()
+            try await setupDisplay(operationToken: operationToken)
+            guard operationCoordinator.isCurrent(operationToken) else {
+                throw CancellationError()
+            }
+            try await setupStream(operationToken: operationToken)
+            guard operationCoordinator.isCurrent(operationToken) else {
+                throw CancellationError()
+            }
             configureFrameHandler(label: "switch")
             encoder?.requestKeyframe()
             guard let stream else {
@@ -352,24 +497,35 @@ class ScreenCapture {
             // monitor after teardown has already detached the stream.
             let startTask = Task {
                 try await stream.startCapture()
+                guard self.operationCoordinator.isCurrent(operationToken) else {
+                    try? await stream.stopCapture()
+                    throw CancellationError()
+                }
                 self.isSCStreamStarted = true
             }
             streamStartTask = startTask
             try await startTask.value
             streamStartTask = nil
-            guard !isStopping else { throw CancellationError() }
+            guard operationCoordinator.isCurrent(operationToken) else {
+                throw CancellationError()
+            }
             startFrameMonitor()
-        } catch is CancellationError where isStopping {
+            candidateTransaction.succeed()
+        } catch is CancellationError {
             streamStartTask = nil
             throw CancellationError()
         } catch {
             streamStartTask = nil
+            guard operationCoordinator.isCurrent(operationToken) else {
+                throw CancellationError()
+            }
             debugLog("Switch: SCStream setup/start failed (\(error)) — attempting CGDisplayStream fallback")
             guard attemptFallbackCapture() else {
                 reportTerminalCaptureFailure(underlying: error)
                 throw error
             }
             startFrameMonitor()
+            candidateTransaction.succeed()
         }
     }
 
@@ -394,7 +550,7 @@ class ScreenCapture {
 
     // MARK: - Display setup
 
-    private func setupDisplay() async throws {
+    private func setupDisplay(operationToken: CaptureOperationToken? = nil) async throws {
         guard let virtualDisplayID = virtualDisplayID else {
             throw NSError(domain: "ScreenCapture", code: 1,
                 userInfo: [NSLocalizedDescriptionKey: "Virtual display ID not set"])
@@ -404,10 +560,20 @@ class ScreenCapture {
             let content: SCShareableContent
             do {
                 content = try await getShareableContentWithTimeout(seconds: 10)
+                if let operationToken,
+                   !operationCoordinator.isCurrent(operationToken) {
+                    throw CancellationError()
+                }
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 debugLog("SCShareableContent attempt \(attempt) failed: \(error.localizedDescription)")
                 if attempt < 5 {
                     try await Task.sleep(nanoseconds: 1_000_000_000)
+                    if let operationToken,
+                       !operationCoordinator.isCurrent(operationToken) {
+                        throw CancellationError()
+                    }
                     continue
                 }
                 throw error
@@ -424,6 +590,10 @@ class ScreenCapture {
             if attempt < 5 {
                 debugLog("Virtual display \(virtualDisplayID) not found in attempt \(attempt), retrying...")
                 try await Task.sleep(nanoseconds: 1_000_000_000)
+                if let operationToken,
+                   !operationCoordinator.isCurrent(operationToken) {
+                    throw CancellationError()
+                }
             }
         }
 
@@ -433,7 +603,11 @@ class ScreenCapture {
 
     // MARK: - Stream setup
 
-    private func setupStream() async throws {
+    private func setupStream(operationToken: CaptureOperationToken? = nil) async throws {
+        if let operationToken,
+           !operationCoordinator.isCurrent(operationToken) {
+            throw CancellationError()
+        }
         guard let display = display, virtualDisplayID != nil else {
             throw NSError(domain: "ScreenCapture", code: 2,
                 userInfo: [NSLocalizedDescriptionKey: "Display not initialized"])
@@ -446,10 +620,30 @@ class ScreenCapture {
         streamOutput = StreamOutput()
 
         let delegate = StreamDelegate()
+        let filter = SCContentFilter(display: display, excludingWindows: [])
+
+        let config = SCStreamConfiguration()
+        config.width = width
+        config.height = height
+        config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
+        config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        config.showsCursor = true
+        config.queueDepth = 2
+        config.capturesAudio = false
+        config.backgroundColor = .clear
+        config.scalesToFit = true
+        if #available(macOS 14.0, *) {
+            config.preservesAspectRatio = true
+        }
+
+        let scStream = SCStream(filter: filter, configuration: config, delegate: delegate)
         let captureReference = WeakReference(self)
+        let streamReference = WeakReference(scStream)
         delegate.onStreamError = { streamError in
             DispatchQueue.main.async {
-                guard let self = captureReference.value else { return }
+                guard let self = captureReference.value,
+                      let scStream = streamReference.value,
+                      self.stream === scStream else { return }
                 guard !self.isRestarting, !self.isStopping else { return }
 
                 if self.followsMainDisplay {
@@ -459,52 +653,24 @@ class ScreenCapture {
                             "Main display changed \(self.virtualDisplayID.map(String.init) ?? "none") " +
                             "→ \(replacementID); rebuilding capture"
                         )
-                        self.virtualDisplayID = replacementID
-                        self.onDisplayIDChanged?(replacementID)
                     } else {
                         debugLog("Current-display SCStream stopped — rebuilding capture")
                     }
-                    self.restartStream()
+                    self.restartStream(replacementDisplayID: replacementID)
                     return
                 }
 
-                debugLog("StreamDelegate error callback — attempting fallback")
-                let alreadyActive = self.fallbackLifecycle.isActive
-                if !alreadyActive {
-                    if !self.attemptFallbackCapture() {
-                        self.reportTerminalCaptureFailure(
-                            underlying: streamError
-                        )
-                    }
-                }
+                debugLog("StreamDelegate error callback — scheduling fallback recovery")
+                self.restartStream(preferFallback: true, underlying: streamError)
             }
         }
         streamDelegate = delegate
-
-        let filter = SCContentFilter(display: display, excludingWindows: [])
-
-        let config = SCStreamConfiguration()
-        config.width = width
-        config.height = height
-        config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
-        config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-        config.showsCursor = true
-        // Keep only the current and next frame. Deeper queues improve recording
-        // resilience but directly become visible input latency for a remote display.
-        config.queueDepth = 2
-        config.capturesAudio = false
-        config.backgroundColor = .clear
-        // We choose an aspect-correct output rectangle before configuring the
-        // stream. Allow ScreenCaptureKit to scale both up and down so the pixel
-        // buffer always matches the VideoToolbox session dimensions.
-        config.scalesToFit = true
-        if #available(macOS 14.0, *) {
-            config.preservesAspectRatio = true
-        }
-
-        let scStream = SCStream(filter: filter, configuration: config, delegate: delegate)
         try scStream.addStreamOutput(streamOutput!, type: .screen, sampleHandlerQueue: .global(qos: .userInteractive))
 
+        if let operationToken,
+           !operationCoordinator.isCurrent(operationToken) {
+            throw CancellationError()
+        }
         stream = scStream
         debugLog("Stream configured: \(width)x\(height) @ \(fps)fps (with delegate)")
     }
@@ -601,13 +767,17 @@ class ScreenCapture {
         gamingBoost: Bool = false,
         frameRate: Int = 60
     ) async throws {
+        guard let operationToken = operationCoordinator.beginOperation() else {
+            throw CancellationError()
+        }
+        defer { operationCoordinator.finishOperation(operationToken) }
         isStopping = false
         // Save parameters for potential restart
         currentFrameSink = frameSink
         currentBitrateMbps = bitrateMbps
         currentQuality = quality
         currentGamingBoost = gamingBoost
-        currentFrameRate = frameRate
+        frameRates = CaptureFrameRates(frameRate)
 
         let (width, height) = encodeSize(for: codec)
 
@@ -661,12 +831,18 @@ class ScreenCapture {
             }
             let startTask = Task {
                 try await stream.startCapture()
+                guard self.operationCoordinator.isCurrent(operationToken) else {
+                    try? await stream.stopCapture()
+                    throw CancellationError()
+                }
                 self.isSCStreamStarted = true
             }
             streamStartTask = startTask
             try await startTask.value
             streamStartTask = nil
-            guard !isStopping else { throw CancellationError() }
+            guard operationCoordinator.isCurrent(operationToken) else {
+                throw CancellationError()
+            }
             debugLog("SCStream capture started — starting frame flow monitor")
             startFrameMonitor()
         } catch is CancellationError where isStopping {
@@ -686,12 +862,16 @@ class ScreenCapture {
 
     private func startFrameMonitor() {
         stopFrameMonitor()
+        guard captureInstallationGeneration < UInt64.max else { return }
+        captureInstallationGeneration += 1
+        let monitorGeneration = captureInstallationGeneration
 
         let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
         let monitorInterval = followsMainDisplay ? 1.0 : 3.0
         timer.schedule(deadline: .now() + monitorInterval, repeating: monitorInterval)
         timer.setEventHandler { [weak self] in
-            guard let self = self else { return }
+            guard let self = self,
+                  self.captureInstallationGeneration == monitorGeneration else { return }
 
             // Screen Sharing and Computer Use can replace the virtual main
             // display without stopping the old SCStream. In that case the old
@@ -708,22 +888,11 @@ class ScreenCapture {
                         "Main display changed \(self.virtualDisplayID.map(String.init) ?? "none") " +
                         "→ \(currentMainDisplayID); monitor rebuilding capture"
                     )
-                    self.virtualDisplayID = currentMainDisplayID
-                    self.onDisplayIDChanged?(currentMainDisplayID)
                     self.stopFrameMonitor()
-
-                    if wasUsingCGDisplayStream {
-                        self.invalidateFallbackCapture()
-                        self.cgDisplayStream?.stop()
-                        self.cgDisplayStream = nil
-                        if self.attemptFallbackCapture(stopSCStream: false) {
-                            self.encoder?.requestKeyframe()
-                            self.startFrameMonitor()
-                            return
-                        }
-                    }
-
-                    self.restartStream()
+                    self.restartStream(
+                        preferFallback: wasUsingCGDisplayStream,
+                        replacementDisplayID: currentMainDisplayID
+                    )
                     return
                 }
             }
@@ -773,9 +942,7 @@ class ScreenCapture {
                         self.restartStream()
                     } else {
                         debugLog("Restart already attempted — falling back to CGDisplayStream")
-                        if !self.attemptFallbackCapture() {
-                            self.reportTerminalCaptureFailure()
-                        }
+                        self.restartStream(preferFallback: true)
                     }
                 }
             }
@@ -824,6 +991,7 @@ class ScreenCapture {
         }
 
         isHealthCheckRunning = true
+        let healthGeneration = captureInstallationGeneration
         let cachedBufferBox = PixelBufferBox(cachedBuffer)
 
         let (width, height) = encodeSize(for: codec)
@@ -841,7 +1009,8 @@ class ScreenCapture {
             configuration: config
         ) { [weak self] sampleBuffer, error in
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self,
+                      self.captureInstallationGeneration == healthGeneration else { return }
                 self.isHealthCheckRunning = false
 
                 if let error {
@@ -935,23 +1104,52 @@ class ScreenCapture {
     private func stopFrameMonitor() {
         frameMonitorTimer?.cancel()
         frameMonitorTimer = nil
+        isHealthCheckRunning = false
+        if captureInstallationGeneration < UInt64.max {
+            captureInstallationGeneration += 1
+        }
     }
 
     // MARK: - Stream restart
 
-    private func restartStream() {
-        guard !isRestarting else { return }
+    private func restartStream(
+        preferFallback: Bool = false,
+        underlying: Error? = nil,
+        replacementDisplayID: CGDirectDisplayID? = nil
+    ) {
+        guard restartTask == nil,
+              let operationToken = operationCoordinator.beginOperation() else { return }
         isRestarting = true
         restartAttempted = true
         stateLock.withLock { $0.hasReceivedFirstFrame = false }
 
-        restartTask = Task { [weak self] in
+        let coordinator = operationCoordinator
+        let task = Task { [weak self] in
+            defer { coordinator.finishOperation(operationToken) }
             guard let self else { return }
             defer {
                 self.isRestarting = false
                 self.restartTask = nil
             }
             do {
+                guard self.operationCoordinator.isCurrent(operationToken) else {
+                    throw CancellationError()
+                }
+                if let replacementDisplayID,
+                   replacementDisplayID != 0,
+                   replacementDisplayID != self.virtualDisplayID {
+                    self.virtualDisplayID = replacementDisplayID
+                    self.onDisplayIDChanged?(replacementDisplayID)
+                }
+                if preferFallback, self.attemptFallbackCapture() {
+                    guard self.operationCoordinator.isCurrent(operationToken) else {
+                        throw CancellationError()
+                    }
+                    self.encoder?.requestKeyframe()
+                    self.startFrameMonitor()
+                    return
+                }
+
                 // Stop existing stream
                 let previousStream = self.stream
                 let previousStreamWasStarted = self.isSCStreamStarted
@@ -963,26 +1161,46 @@ class ScreenCapture {
                 if previousStreamWasStarted {
                     try await previousStream?.stopCapture()
                 }
+                guard self.operationCoordinator.isCurrent(operationToken) else {
+                    throw CancellationError()
+                }
                 await self.streamStopBarrier.waitForAll()
                 try Task.checkCancellation()
-                guard !self.isStopping else { return }
+                guard self.operationCoordinator.isCurrent(operationToken) else {
+                    throw CancellationError()
+                }
 
                 // Re-setup
-                try await self.setupDisplay()
+                try await self.setupDisplay(operationToken: operationToken)
                 try Task.checkCancellation()
-                guard !self.isStopping else { return }
-                try await self.setupStream()
+                guard self.operationCoordinator.isCurrent(operationToken) else {
+                    throw CancellationError()
+                }
+                try await self.setupStream(operationToken: operationToken)
                 try Task.checkCancellation()
-                guard !self.isStopping else { return }
+                guard self.operationCoordinator.isCurrent(operationToken) else {
+                    throw CancellationError()
+                }
 
                 // Re-attach encoding pipeline using shared handler
                 self.configureFrameHandler(label: "restart")
                 self.encoder?.requestKeyframe()
 
-                try await self.stream?.startCapture()
+                guard let restartedStream = self.stream else {
+                    throw NSError(
+                        domain: "ScreenCapture",
+                        code: 14,
+                        userInfo: [NSLocalizedDescriptionKey: "Restarted stream was not configured."]
+                    )
+                }
+                try await restartedStream.startCapture()
+                guard self.operationCoordinator.isCurrent(operationToken),
+                      self.stream === restartedStream else {
+                    try? await restartedStream.stopCapture()
+                    throw CancellationError()
+                }
                 self.isSCStreamStarted = true
                 try Task.checkCancellation()
-                guard !self.isStopping else { return }
                 debugLog("SCStream restarted — starting frame flow monitor")
                 self.startFrameMonitor()
             } catch is CancellationError {
@@ -990,15 +1208,16 @@ class ScreenCapture {
                     debugLog("SCStream restart superseded")
                 }
             } catch {
-                guard !self.isStopping else { return }
+                guard self.operationCoordinator.isCurrent(operationToken) else { return }
                 debugLog("SCStream restart failed: \(error) — falling back to CGDisplayStream")
                 if !self.attemptFallbackCapture() {
-                    self.reportTerminalCaptureFailure(underlying: error)
+                    self.reportTerminalCaptureFailure(underlying: underlying ?? error)
                 } else {
                     self.startFrameMonitor()
                 }
             }
         }
+        restartTask = task
     }
 
     private func reportTerminalCaptureFailure(underlying: Error? = nil) {
@@ -1108,14 +1327,10 @@ class ScreenCapture {
                                 "Fallback display stopped; following replacement " +
                                 "main display \(replacementID)"
                             )
-                            self.virtualDisplayID = replacementID
-                            self.onDisplayIDChanged?(replacementID)
-                            if self.attemptFallbackCapture(stopSCStream: false) {
-                                self.encoder?.requestKeyframe()
-                                self.startFrameMonitor()
-                            } else {
-                                self.restartStream()
-                            }
+                            self.restartStream(
+                                preferFallback: true,
+                                replacementDisplayID: replacementID
+                            )
                         case .terminalFailure:
                             self.reportTerminalCaptureFailure()
                         }
@@ -1181,12 +1396,19 @@ class ScreenCapture {
         frameRate: Int? = nil
     ) -> Bool {
         guard let encoder else { return false }
-        return encoder.updateSettings(
+        let updated = encoder.updateSettings(
             bitrateMbps: bitrateMbps,
             quality: quality,
             gamingBoost: gamingBoost,
             frameRate: frameRate
         )
+        if updated {
+            currentBitrateMbps = bitrateMbps
+            currentQuality = quality
+            currentGamingBoost = gamingBoost
+            if let frameRate { frameRates.recordEncoderUpdate(frameRate) }
+        }
+        return updated
     }
 
     /// Change the live capture frame rate in place, without rebuilding the
@@ -1199,8 +1421,7 @@ class ScreenCapture {
     /// framePacingTimer mutators.
     func updateActiveFrameRate(_ frameRate: Int) {
         let newRate = max(1, frameRate)
-        guard newRate != currentFrameRate else { return }
-        currentFrameRate = newRate
+        guard frameRates.activate(newRate) else { return }
         refreshRate = newRate
 
         // Rebuild the pacer on the main thread so framePacingTimer stays
@@ -1241,7 +1462,7 @@ class ScreenCapture {
     private func rescheduleFramePacerForCurrentRate(on queue: DispatchQueue) {
         framePacingTimer?.cancel()
         framePacingTimer = nil
-        let frameIntervalNs = max(1, 1_000_000_000 / max(currentFrameRate, 1))
+        let frameIntervalNs = max(1, 1_000_000_000 / frameRates.activePipeline)
         let pacingTimer = DispatchSource.makeTimerSource(queue: queue)
         pacingTimer.schedule(
             deadline: .now(),
@@ -1269,6 +1490,12 @@ class ScreenCapture {
     /// Whichever capture API is active is then rebuilt at the new dimensions.
     func setCodec(_ newCodec: StreamCodec) {
         guard newCodec != codec else { return }
+        guard let operationToken = operationCoordinator.beginOperation() else { return }
+        var shouldScheduleRestart = false
+        defer {
+            operationCoordinator.finishOperation(operationToken)
+            if shouldScheduleRestart { restartStream() }
+        }
         debugLog("Switching stream codec: \(codec) -> \(newCodec)")
         codec = newCodec
 
@@ -1282,7 +1509,7 @@ class ScreenCapture {
 
         let (width, height) = encodeSize(for: newCodec)
         let frameSink = currentFrameSink
-        let newEncoder = VideoEncoder(width: width, height: height, codec: newCodec, bitrateMbps: currentBitrateMbps, quality: currentQuality, gamingBoost: currentGamingBoost, frameRate: currentFrameRate)
+        let newEncoder = VideoEncoder(width: width, height: height, codec: newCodec, bitrateMbps: currentBitrateMbps, quality: currentQuality, gamingBoost: currentGamingBoost, frameRate: frameRates.encoder)
         newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
             frameSink?.sendFrame(
                 data,
@@ -1304,13 +1531,27 @@ class ScreenCapture {
                 return
             }
         }
-        restartStream()
+        shouldScheduleRestart = true
     }
 
     // MARK: - Stop streaming
 
     func stopStreaming() async {
+        if let stopTask {
+            await stopTask.value
+            return
+        }
+        let stopToken = operationCoordinator.beginStop()
         isStopping = true
+        let task = Task {
+            await self.performStopStreaming(stopToken: stopToken)
+        }
+        stopTask = task
+        await task.value
+        stopTask = nil
+    }
+
+    private func performStopStreaming(stopToken: CaptureOperationToken) async {
         onTerminalCaptureFailure = nil
         // Cancel frame flow monitor
         stopFrameMonitor()
@@ -1318,12 +1559,15 @@ class ScreenCapture {
         framePacingTimer = nil
         pacingLock.withLock { $0.latestPixelBuffer = nil }
 
-        restartTask?.cancel()
-        await restartTask?.value
+        let restartToCancel = restartTask
+        let startToCancel = streamStartTask
+        restartToCancel?.cancel()
+        startToCancel?.cancel()
+        await restartToCancel?.value
         restartTask = nil
-        if let streamStartTask {
+        if let startToCancel {
             do {
-                try await streamStartTask.value
+                try await startToCancel.value
             } catch {
                 if !Task.isCancelled {
                     debugLog("SCStream start ended during teardown: \(error)")
@@ -1372,6 +1616,9 @@ class ScreenCapture {
         isRestarting = false
         isHealthCheckRunning = false
         currentFrameSink = nil
+        encoder?.invalidate()
+        encoder = nil
+        operationCoordinator.finishStop(stopToken)
     }
 
     private func invalidateFallbackCapture() {

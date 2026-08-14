@@ -99,6 +99,57 @@ struct InternetProductVideoConfiguration: Equatable {
             rotationDegrees: rotationDegrees
         )
     }
+
+    func replacingMediaProfile(
+        width: Int,
+        height: Int,
+        framesPerSecond: Int,
+        bitrateKbps: Int,
+        rotationDegrees: Int
+    ) throws -> Self {
+        guard configEpoch < UInt64.max else {
+            throw InternetProductProtocolError.rejectedVideoConfiguration(
+                "Video configuration epoch is exhausted."
+            )
+        }
+        let replacement = Self(
+            codec: codec,
+            width: width,
+            height: height,
+            framesPerSecond: framesPerSecond,
+            bitrateKbps: bitrateKbps,
+            streamID: streamID,
+            configEpoch: configEpoch + 1,
+            rotationDegrees: rotationDegrees
+        )
+        try replacement.validate()
+        return replacement
+    }
+}
+
+struct InternetAdaptiveVideoPlan: Equatable {
+    let width: Int
+    let height: Int
+    let framesPerSecond: Int
+    let bitrateMbps: Int
+
+    var bitrateKbps: Int { bitrateMbps * 1_000 }
+
+    init(baseline: InternetProductVideoConfiguration, profile: AdaptiveMediaProfile) {
+        func scaledEvenDimension(_ value: Int) -> Int {
+            max(2, Int((Double(value) * profile.resolutionScale).rounded(.down)) / 2 * 2)
+        }
+
+        width = scaledEvenDimension(baseline.width)
+        height = scaledEvenDimension(baseline.height)
+        framesPerSecond = max(1, profile.framesPerSecond)
+        bitrateMbps = max(1, Int((profile.targetBitrateBps + 500_000) / 1_000_000))
+    }
+}
+
+struct InternetAdaptiveRequestToken: Equatable {
+    let generation: UInt64
+    let requestID: UInt64
 }
 
 struct InternetProductProtocolCodec {
@@ -310,6 +361,10 @@ struct InternetProductProtocolCodec {
 
     mutating func updateRotation(_ rotationDegrees: Int) throws -> [Data] {
         video = try video.replacingRotation(rotationDegrees)
+        return [try displayChanged(), try videoConfiguration()]
+    }
+
+    private mutating func displayChanged() throws -> Data {
         var size = VSDimensions()
         size.width = UInt32(video.width)
         size.height = UInt32(video.height)
@@ -323,7 +378,27 @@ struct InternetProductProtocolCodec {
         changed.rotationDegrees = UInt32(video.rotationDegrees)
         var envelope = baseEnvelope()
         envelope.displayChanged = changed
-        return [try encode(envelope), try videoConfiguration()]
+        return try encode(envelope)
+    }
+
+    mutating func updateMediaProfile(
+        width: Int,
+        height: Int,
+        framesPerSecond: Int,
+        bitrateKbps: Int,
+        rotationDegrees: Int
+    ) throws -> [Data] {
+        let rotationChanged = rotationDegrees != video.rotationDegrees
+        video = try video.replacingMediaProfile(
+            width: width,
+            height: height,
+            framesPerSecond: framesPerSecond,
+            bitrateKbps: bitrateKbps,
+            rotationDegrees: rotationDegrees
+        )
+        return rotationChanged
+            ? [try displayChanged(), try videoConfiguration()]
+            : [try videoConfiguration()]
     }
 
     mutating func pong(sequence: UInt64, correlationID: UInt64) throws -> Data {
