@@ -218,6 +218,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Injects client-driven native pointer/scroll/keyboard input as CGEvents.
     /// Shares the touch coordinate mapping via StreamInputMapping.
     private let streamInputInjector = StreamInputInjector()
+    private let hostClipboardAdapter = HostClipboardAdapter()
     private var primaryButtonOwner = PrimaryButtonOwnerState()
     let pairedDeviceStore = PairedDeviceStore()
     let windowRecoveryManager = WindowRecoveryManager()
@@ -705,6 +706,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(
             title: "Return Moved Windows",
             action: #selector(returnMovedWindowsToMainDisplay),
+            keyEquivalent: ""
+        ))
+        menu.addItem(NSMenuItem(
+            title: "Send Clipboard to Client",
+            action: #selector(sendClipboardToClient),
             keyEquivalent: ""
         ))
         menu.addItem(NSMenuItem.separator())
@@ -1366,6 +1372,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    @MainActor
+    @objc private func sendClipboardToClient() {
+        guard let streamingServer else { return }
+        do {
+            let changeID = withUnsafeBytes(of: UUID().uuid) { Data($0) }
+            let content = try hostClipboardAdapter.content(
+                for: changeID,
+                originDeviceID: "macos-host"
+            )
+            streamingServer.offerProtocolV1Clipboard(content)
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Could Not Send Clipboard"
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .warning
+            alert.runModal()
+        }
+    }
+
     @objc private func moveFocusedWindowToClientDisplay() {
         guard let activeDisplayID else {
             presentWindowActionError("Start streaming before moving a window.")
@@ -1810,6 +1835,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Setup capture
             let newCapture = try await ScreenCapture()
             try requireCurrentStart(startToken, intentIsCurrent: intentIsCurrent)
+            newCapture.setSystemAudioCaptureEnabled(configuration.connectionMode != .internet)
             screenCapture = newCapture
             let configuredCapture = screenCapture
             configuredCapture?.onCaptureMethodChanged = {
@@ -1892,6 +1918,157 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
             let configuredServer = streamingServer
             streamingServer?.touchEnabled = settings.touchEnabled
+            let incomingFileAdapter: HostIncomingFileAdapter? = {
+                guard let support = FileManager.default.urls(
+                    for: .applicationSupportDirectory,
+                    in: .userDomainMask
+                ).first else { return nil }
+                return try? HostIncomingFileAdapter(
+                    destinationDirectory: support
+                        .appendingPathComponent("Vibe Screen", isDirectory: true)
+                        .appendingPathComponent("Incoming", isDirectory: true)
+                )
+            }()
+            streamingServer?.setProtocolV1AdvancedAdapters(.init(
+                audio: false,
+                clipboard: true,
+                fileTransfer: incomingFileAdapter != nil,
+                colorManagement: false,
+                hostActions: AXIsProcessTrusted(),
+                wakeHost: false
+            ))
+            configuredCapture?.onSystemAudioAvailabilityChanged = {
+                [weak configuredServer] available in
+                configuredServer?.setProtocolV1AdvancedAdapters(.init(
+                    audio: available,
+                    clipboard: true,
+                    fileTransfer: incomingFileAdapter != nil,
+                    colorManagement: false,
+                    hostActions: AXIsProcessTrusted(),
+                    wakeHost: false
+                ))
+            }
+            streamingServer?.onClipboardOffer = {
+                [weak self, weak configuredServer] offer, clientGeneration in
+                guard let self, let configuredServer,
+                      self.performSessionCallback(
+                        token: startToken,
+                        server: configuredServer,
+                        clientGeneration: clientGeneration,
+                        operation: {}
+                      ) else { return }
+                let alert = NSAlert()
+                alert.messageText = "Receive Clipboard Content?"
+                alert.informativeText = "A connected device offered \(offer.mimeType) clipboard data."
+                alert.addButton(withTitle: "Request")
+                alert.addButton(withTitle: "Cancel")
+                configuredServer.completeProtocolV1ClipboardOffer(
+                    changeID: offer.changeID,
+                    accepted: alert.runModal() == .alertFirstButtonReturn,
+                    clientGeneration: clientGeneration
+                )
+            }
+            streamingServer?.onClipboardContent = {
+                [weak self, weak configuredServer] content, clientGeneration in
+                guard let self, let configuredServer,
+                      self.performSessionCallback(
+                        token: startToken,
+                        server: configuredServer,
+                        clientGeneration: clientGeneration,
+                        operation: {}
+                      ) else { return }
+                let alert = NSAlert()
+                alert.messageText = "Receive Clipboard Content?"
+                alert.informativeText = "A connected device wants to replace the Mac clipboard."
+                alert.addButton(withTitle: "Allow")
+                alert.addButton(withTitle: "Cancel")
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+                do { try self.hostClipboardAdapter.apply(content) }
+                catch { debugLog("Clipboard receive rejected: \(error)") }
+            }
+            streamingServer?.onFileOffer = {
+                [weak self, weak configuredServer] offer, clientGeneration in
+                guard let self, let configuredServer, let incomingFileAdapter,
+                      self.performSessionCallback(
+                        token: startToken,
+                        server: configuredServer,
+                        clientGeneration: clientGeneration,
+                        operation: {}
+                      ) else { return }
+                let alert = NSAlert()
+                alert.messageText = "Receive \(offer.fileName)?"
+                alert.informativeText = ByteCountFormatter.string(
+                    fromByteCount: Int64(clamping: offer.byteLength),
+                    countStyle: .file
+                )
+                alert.addButton(withTitle: "Allow")
+                alert.addButton(withTitle: "Cancel")
+                do {
+                    guard alert.runModal() == .alertFirstButtonReturn else {
+                        configuredServer.completeProtocolV1FileOffer(
+                            transferID: offer.transferID,
+                            accepted: false,
+                            maximumChunkBytes: 0,
+                            rejectionReason: "user_declined",
+                            clientGeneration: clientGeneration
+                        )
+                        return
+                    }
+                    let response = try incomingFileAdapter.accept(offer)
+                    configuredServer.completeProtocolV1FileOffer(
+                        transferID: offer.transferID,
+                        accepted: true,
+                        maximumChunkBytes: response.maximumChunkBytes,
+                        rejectionReason: "",
+                        clientGeneration: clientGeneration
+                    )
+                } catch {
+                    configuredServer.completeProtocolV1FileOffer(
+                        transferID: offer.transferID,
+                        accepted: false,
+                        maximumChunkBytes: 0,
+                        rejectionReason: "host_rejected_offer",
+                        clientGeneration: clientGeneration
+                    )
+                }
+            }
+            streamingServer?.onFileChunk = {
+                [weak configuredServer] chunk, epoch, clientGeneration in
+                guard let configuredServer, let incomingFileAdapter,
+                      configuredServer.performIfCurrentClientGeneration(clientGeneration, operation: {}) else { return }
+                do {
+                    let received = try incomingFileAdapter.append(chunk, sessionEpoch: epoch)
+                    configuredServer.reportProtocolV1FileProgress(
+                        transferID: chunk.header.transferID,
+                        receivedBytes: received,
+                        clientGeneration: clientGeneration
+                    )
+                    if chunk.header.final {
+                        let completed = try incomingFileAdapter.finish(
+                            transferID: chunk.header.transferID
+                        )
+                        configuredServer.completeProtocolV1FileTransfer(
+                            transferID: chunk.header.transferID,
+                            accepted: true,
+                            sha256: completed.digest,
+                            rejectionReason: "",
+                            clientGeneration: clientGeneration
+                        )
+                    }
+                } catch {
+                    incomingFileAdapter.cancel(transferID: chunk.header.transferID)
+                    configuredServer.completeProtocolV1FileTransfer(
+                        transferID: chunk.header.transferID,
+                        accepted: false,
+                        sha256: Data(),
+                        rejectionReason: "invalid_file_data",
+                        clientGeneration: clientGeneration
+                    )
+                }
+            }
+            streamingServer?.onFileCancel = { transferID, _ in
+                incomingFileAdapter?.cancel(transferID: transferID)
+            }
             if configuration.connectionMode == .wireless {
                 streamingServer?.onWirelessClientPaired = {
                     [weak self, weak configuredServer] deviceName, clientGeneration in
@@ -2054,6 +2231,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             streamingServer?.onClientDisconnected = {
                 [weak self, weak configuredServer] clientGeneration in
+                incomingFileAdapter?.cancelAll()
                 Task { @MainActor in
                     guard let self, let configuredServer else { return }
                     self.performSessionCallback(
@@ -2227,14 +2405,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
-            try streamingServer?.start()
             try await screenCapture?.startStreaming(
                 to: streamingServer,
+                audioSink: streamingServer,
                 bitrateMbps: settings.effectiveBitrate,
                 quality: settings.effectiveQuality,
                 gamingBoost: settings.gamingBoost,
                 frameRate: settings.effectiveRefreshRate
             )
+            streamingServer?.setProtocolV1AdvancedAdapters(.init(
+                audio: configuredCapture?.isSystemAudioCaptureActive == true,
+                clipboard: true,
+                fileTransfer: incomingFileAdapter != nil,
+                colorManagement: false,
+                hostActions: AXIsProcessTrusted(),
+                wakeHost: false
+            ))
+            try streamingServer?.start()
             try requireCurrentStart(startToken, intentIsCurrent: intentIsCurrent)
 
             guard serverLifecycle.finishStart(startToken) else {

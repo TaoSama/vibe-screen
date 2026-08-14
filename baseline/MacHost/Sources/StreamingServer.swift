@@ -207,7 +207,7 @@ final class LatestFrameMailbox<Element> {
     }
 }
 
-class StreamingServer: EncodedFrameSink {
+class StreamingServer: EncodedFrameSink, EncodedAudioSink {
     private static let networkQueueKey = DispatchSpecificKey<ObjectIdentifier>()
     // Wireless admission adds a full authentication round trip before the
     // client can offer Protocol v1. Keep the legacy fallback bounded while
@@ -279,8 +279,17 @@ class StreamingServer: EncodedFrameSink {
     /// the single HostActionResult on the session FIFO.
     var onHostActionRequested:
         (@MainActor (_ actionID: String, _ invocationID: Data, _ target: VSInputTarget?) -> Void)?
+    var onClipboardOffer: (@MainActor (VSClipboardOffer, UInt64) -> Void)?
+    var onClipboardContent: (@MainActor (VSClipboardContent, UInt64) -> Void)?
+    var onFileOffer: (@MainActor (VSFileOffer, UInt64) -> Void)?
+    var onFileChunk: ((HostFileChunk, UInt64, UInt64) -> Void)?
+    var onFileCancel: ((Data, UInt64) -> Void)?
+    var onWakeHostRequested: ((VSWakeHostRequest, UInt64) -> Void)?
 
     private let frameQueue = DispatchQueue(label: "frameQueue", qos: .userInteractive)
+    private let audioQueue = DispatchQueue(label: "audioQueue", qos: .userInitiated)
+    private let transferQueue = DispatchQueue(label: "transferQueue", qos: .utility)
+    private let bulkAdmission = BulkTransferAdmissionGate()
     private let receiveQueue = DispatchQueue(label: "receiveQueue", qos: .userInteractive)
     private let networkQueue = DispatchQueue(label: "networkQueue", qos: .userInteractive)
     private struct PendingFrame {
@@ -322,6 +331,9 @@ class StreamingServer: EncodedFrameSink {
     private var protocolV1DisplayName = "Vibe Screen Display"
     private var protocolV1DisplayIsVirtual = true
     private var protocolV1Displays: [ProtocolV1DisplayInfo] = []
+    private var protocolV1AdvancedAdapters = ProtocolV1SessionConfiguration.AdvancedAdapters.unavailable
+    private var audioSendInFlight = false
+    private var pendingAudioPacket: (data: Data, epoch: UInt64, generation: UInt64)?
     private var isReceiving = false
     private var isStopped = false
     private var connectionReady = false
@@ -583,6 +595,10 @@ class StreamingServer: EncodedFrameSink {
             self.sendInFlight = false
             _ = self.pendingFrames.reset(requiresKeyframe: true)
         }
+        audioQueue.async { [weak self] in
+            self?.audioSendInFlight = false
+            self?.pendingAudioPacket = nil
+        }
         recordTelemetry(
             "session_admitted",
             epoch: sessionEpoch,
@@ -635,6 +651,10 @@ class StreamingServer: EncodedFrameSink {
         protocolV1Framer = ProtocolV1Framer()
         protocolV1Session = nil
         protocolV1TouchAggregator.reset()
+        audioQueue.async { [weak self] in
+            self?.audioSendInFlight = false
+            self?.pendingAudioPacket = nil
+        }
         let epoch = sessionEpochGate.current
         let nowNs = DispatchTime.now().uptimeNanoseconds
         let retryDelayNs: UInt64
@@ -993,6 +1013,16 @@ class StreamingServer: EncodedFrameSink {
         }
     }
 
+    func setProtocolV1AdvancedAdapters(_ adapters: ProtocolV1SessionConfiguration.AdvancedAdapters) {
+        performOnNetworkQueue {
+            let removedActiveAudio = self.protocolV1AdvancedAdapters.audio && !adapters.audio
+            self.protocolV1AdvancedAdapters = adapters
+            if removedActiveAudio, self.connectionProtocolMode == .protocolV1 {
+                self.connection?.cancel()
+            }
+        }
+    }
+
     /// Re-run the StartDisplay negotiation against a client-selected display
     /// once the host has switched its capture source. Called on the main actor
     /// via the network queue; safe no-op when the session is not streaming.
@@ -1061,6 +1091,160 @@ class StreamingServer: EncodedFrameSink {
             guard !actions.isEmpty else { return }
             self.applyProtocolV1Actions(actions, connection: conn, generation: generation)
         }
+    }
+
+    func completeProtocolV1FileOffer(
+        transferID: Data,
+        accepted: Bool,
+        maximumChunkBytes: UInt32,
+        rejectionReason: String,
+        clientGeneration: UInt64
+    ) {
+        networkQueue.async { [weak self] in
+            guard let self, let session = self.protocolV1Session,
+                  let conn = self.connection, !self.isStopped,
+                  self.activeConnectionGeneration == clientGeneration else { return }
+            self.applyProtocolV1Actions(
+                session.completeFileOffer(
+                    transferID: transferID,
+                    accepted: accepted,
+                    maximumChunkBytes: maximumChunkBytes,
+                    rejectionReason: rejectionReason
+                ),
+                connection: conn,
+                generation: self.activeConnectionGeneration
+            )
+        }
+    }
+
+    func offerProtocolV1Clipboard(_ content: VSClipboardContent) {
+        networkQueue.async { [weak self] in
+            guard let self, let session = self.protocolV1Session,
+                  let conn = self.connection, !self.isStopped else { return }
+            self.applyProtocolV1Actions(
+                session.offerClipboard(content),
+                connection: conn,
+                generation: self.activeConnectionGeneration
+            )
+        }
+    }
+
+    func completeProtocolV1ClipboardOffer(
+        changeID: Data,
+        accepted: Bool,
+        clientGeneration: UInt64
+    ) {
+        networkQueue.async { [weak self] in
+            guard let self, let session = self.protocolV1Session,
+                  let conn = self.connection, !self.isStopped,
+                  self.activeConnectionGeneration == clientGeneration else { return }
+            self.applyProtocolV1Actions(
+                session.completeClipboardOffer(changeID: changeID, accepted: accepted),
+                connection: conn,
+                generation: clientGeneration
+            )
+        }
+    }
+
+    func reportProtocolV1FileProgress(
+        transferID: Data,
+        receivedBytes: UInt64,
+        clientGeneration: UInt64
+    ) {
+        networkQueue.async { [weak self] in
+            guard let self, let session = self.protocolV1Session,
+                  let conn = self.connection, !self.isStopped,
+                  self.activeConnectionGeneration == clientGeneration else { return }
+            self.applyProtocolV1Actions(
+                session.makeFileProgress(transferID: transferID, receivedBytes: receivedBytes),
+                connection: conn,
+                generation: self.activeConnectionGeneration
+            )
+        }
+    }
+
+    func completeProtocolV1FileTransfer(
+        transferID: Data,
+        accepted: Bool,
+        sha256: Data,
+        rejectionReason: String,
+        clientGeneration: UInt64
+    ) {
+        networkQueue.async { [weak self] in
+            guard let self, let session = self.protocolV1Session,
+                  let conn = self.connection, !self.isStopped,
+                  self.activeConnectionGeneration == clientGeneration else { return }
+            self.applyProtocolV1Actions(
+                session.completeFileTransfer(
+                    transferID: transferID,
+                    accepted: accepted,
+                    sha256: sha256,
+                    rejectionReason: rejectionReason
+                ),
+                connection: conn,
+                generation: self.activeConnectionGeneration
+            )
+        }
+    }
+
+    func completeProtocolV1WakeRequest(
+        requestID: Data,
+        accepted: Bool,
+        rejectionReason: String,
+        clientGeneration: UInt64
+    ) {
+        networkQueue.async { [weak self] in
+            guard let self, let session = self.protocolV1Session,
+                  let conn = self.connection, !self.isStopped,
+                  self.activeConnectionGeneration == clientGeneration else { return }
+            self.applyProtocolV1Actions(
+                session.completeWakeRequest(
+                    requestID: requestID,
+                    accepted: accepted,
+                    rejectionReason: rejectionReason
+                ),
+                connection: conn,
+                generation: self.activeConnectionGeneration
+            )
+        }
+    }
+
+    func sendAudioPCM(_ data: Data, frameCount: UInt32, sessionEpoch: UInt64) {
+        guard let session = protocolV1Session,
+              let payload = try? session.makeAudioPacket(payload: data, frameCount: frameCount) else { return }
+        let generation = activeConnectionGeneration
+        audioQueue.async { [weak self] in
+            guard let self, self.sessionEpochGate.accepts(sessionEpoch) else { return }
+            let item = (data: payload, epoch: sessionEpoch, generation: generation)
+            guard !self.audioSendInFlight else {
+                self.pendingAudioPacket = item
+                return
+            }
+            self.transmitAudio(item)
+        }
+    }
+
+    private func transmitAudio(_ item: (data: Data, epoch: UInt64, generation: UInt64)) {
+        guard let conn = connection,
+              activeConnectionGeneration == item.generation,
+              sessionEpochGate.accepts(item.epoch), connectionReady else { return }
+        audioSendInFlight = true
+        let bytes: Data
+        do { bytes = try ProtocolV1TransportFrame(channel: .audio, payload: item.data).encoded() }
+        catch {
+            audioSendInFlight = false
+            return
+        }
+        conn.send(content: bytes, completion: .contentProcessed { [weak self] error in
+            guard let self else { return }
+            self.audioQueue.async {
+                self.audioSendInFlight = false
+                if error != nil { self.pendingAudioPacket = nil; return }
+                guard let next = self.pendingAudioPacket else { return }
+                self.pendingAudioPacket = nil
+                self.transmitAudio(next)
+            }
+        })
     }
 
     private func performOnNetworkQueue(_ operation: @escaping () -> Void) {
@@ -1342,7 +1526,8 @@ class StreamingServer: EncodedFrameSink {
             framesPerSecond: protocolV1FramesPerSecond,
             bitrateKbps: protocolV1BitrateKbps,
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
-                touchEnabled: touchEnabled
+                touchEnabled: touchEnabled,
+                advanced: protocolV1AdvancedAdapters
             ),
             requiredClientCapabilities: touchEnabled ? [.touch] : [],
             supportedCodecs: [.hevc, .h264],
@@ -1382,10 +1567,50 @@ class StreamingServer: EncodedFrameSink {
                 switch frame.channel {
                 case .control:
                     actions = session.handleControl(frame.payload)
-                case .video:
+                case .video, .audio:
                     actions = session.rejectMalformedTransport(
-                        "Client-to-host video frames are not valid in this session."
+                        "Client-to-host media frames are not valid in this session."
                     )
+                case .bulk:
+                    let admittedBytes = frame.payload.count
+                    guard bulkAdmission.admit(bytes: admittedBytes) else {
+                        actions = session.rejectMalformedTransport(
+                            "Bulk transfer admission credit exhausted."
+                        )
+                        break
+                    }
+                    actions = []
+                    let epoch = sessionEpochGate.current
+                    transferQueue.async { [weak self] in
+                        guard let self else { return }
+                        defer { self.bulkAdmission.release(bytes: admittedBytes) }
+                        do {
+                            let chunk = try HostFileChunk(
+                                serializedFrame: frame.payload,
+                                maximumChunkBytes: HostAdvancedLimits.production.maximumFileChunkBytes
+                            )
+                            guard let negotiatedMaximum = session.maximumFileChunkBytes(
+                                transferID: chunk.header.transferID,
+                                sessionEpoch: epoch
+                            ), chunk.payload.count <= negotiatedMaximum else {
+                                throw HostAdvancedAdapterError.unknownTransfer
+                            }
+                            guard self.clientCallbackGeneration.isCurrent(generation),
+                                  self.sessionEpochGate.accepts(epoch) else { return }
+                            self.onFileChunk?(chunk, epoch, generation)
+                        } catch {
+                            self.networkQueue.async { [weak self, weak conn] in
+                                guard let self, let conn,
+                                      self.connection === conn,
+                                      self.activeConnectionGeneration == generation else { return }
+                                self.applyProtocolV1Actions(
+                                    session.rejectMalformedTransport("Invalid bulk transfer frame."),
+                                    connection: conn,
+                                    generation: generation
+                                )
+                            }
+                        }
+                    }
                 }
                 applyProtocolV1Actions(actions, connection: conn, generation: generation)
             }
@@ -1582,6 +1807,31 @@ class StreamingServer: EncodedFrameSink {
                     guard let self,
                           self.clientCallbackGeneration.isCurrent(generation) else { return }
                     self.onHostActionRequested?(actionID, invocationID, target)
+                }
+            case .clipboardOffer(let offer):
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onClipboardOffer?(offer, generation)
+                }
+            case .clipboardContent(let content):
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onClipboardContent?(content, generation)
+                }
+            case .fileOffer(let offer):
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onFileOffer?(offer, generation)
+                }
+            case .fileCancel(let transferID):
+                transferQueue.async { [weak self] in
+                    guard let self, self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onFileCancel?(transferID, generation)
+                }
+            case .wakeHost(let request):
+                transferQueue.async { [weak self] in
+                    guard let self, self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onWakeHostRequested?(request, generation)
                 }
             }
         }

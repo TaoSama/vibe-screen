@@ -14,16 +14,43 @@ struct ProtocolV1DisplayInfo: Equatable {
 struct ProtocolV1SessionConfiguration {
     static let version: UInt32 = 1
 
+    struct AdvancedAdapters: Equatable {
+        static let unavailable = AdvancedAdapters()
+
+        var audio = false
+        var clipboard = false
+        var fileTransfer = false
+        var colorManagement = false
+        var hostActions = false
+        var wakeHost = false
+    }
+
    static func productionHostCapabilities(touchEnabled: Bool) -> Set<VSCapability> {
+       productionHostCapabilities(
+           touchEnabled: touchEnabled,
+           advanced: AdvancedAdapters(hostActions: touchEnabled)
+       )
+   }
+
+   static func productionHostCapabilities(
+       touchEnabled: Bool,
+       advanced: AdvancedAdapters
+   ) -> Set<VSCapability> {
         // Native pointer/keyboard ride the same input toggle as touch: they
         // require Accessibility to actually inject, but the capability is
         // advertised so a USB session can negotiate them. When input is
         // disabled entirely, only multi-display selection is offered.
         // Client video control tunes the host encoder, needs no Accessibility,
         // and is always offered so the client can adjust bitrate/fps/quality.
-        touchEnabled
-            ? [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions]
-            : [.multiDisplay, .clientVideoControl]
+        var capabilities: Set<VSCapability> = [.multiDisplay, .clientVideoControl]
+        if touchEnabled { capabilities.formUnion([.touch, .stylus, .stylusExtended, .keyboard, .pointer]) }
+        if advanced.audio { capabilities.insert(.audio) }
+        if advanced.clipboard { capabilities.insert(.clipboard) }
+        if advanced.fileTransfer { capabilities.insert(.fileTransfer) }
+        if advanced.colorManagement { capabilities.insert(.colorManagement) }
+        if advanced.hostActions { capabilities.insert(.hostActions) }
+        if advanced.wakeHost { capabilities.insert(.wakeHost) }
+        return capabilities
    }
 
    let sessionID: Data
@@ -41,6 +68,7 @@ struct ProtocolV1SessionConfiguration {
     var displayID: String
     var displayName: String
    var displayIsVirtual: Bool
+   var resourceLimits = HostAdvancedLimits.production
    /// Full catalog exposed by ListDisplays. When empty, the session
    /// synthesizes a single entry from the currently captured identity so the
    /// single-display path keeps ListDisplays count == 1.
@@ -94,6 +122,11 @@ enum ProtocolV1SessionAction {
     /// through completeHostAction, which is the only place HostActionResult is
     /// emitted back on the session FIFO.
     case hostAction(actionID: String, invocationID: Data, target: VSInputTarget?)
+    case clipboardOffer(VSClipboardOffer)
+   case clipboardContent(VSClipboardContent)
+   case fileOffer(VSFileOffer)
+   case fileCancel(transferID: Data)
+   case wakeHost(VSWakeHostRequest)
    case peerError(VSProtocolError)
    case close
 }
@@ -125,6 +158,18 @@ final class ProtocolV1SessionCoordinator {
     /// unknown completion is a safe no-op. Bounded by
     /// maximumPendingHostActionInvocations.
     private var pendingHostActionInvocations: [Data: UInt64] = [:]
+    private var inboundClipboardOffers: [Data: VSClipboardOffer] = [:]
+    private var approvedInboundClipboardOffers: Set<Data> = []
+    private var outboundClipboardSnapshots: [Data: VSClipboardContent] = [:]
+    private var pendingFileOffers: [Data: UInt64] = [:]
+    private var activeFileTransfers: [Data: UInt32] = [:]
+    private var pendingWakeRequests: [Data: UInt64] = [:]
+    private var audioConfigEpoch: UInt64 = 0
+    private var audioAccepted = false
+    private var nextAudioSequence: UInt64 = 0
+    private var attemptedColorFallbackEpochs: Set<UInt64> = []
+    private var generatedColorFallbackEpochs: Set<UInt64> = []
+    private var negotiatedResourceLimits = VSResourceLimits()
 
     init(configuration: ProtocolV1SessionConfiguration) {
         precondition(!configuration.sessionID.isEmpty)
@@ -262,14 +307,7 @@ final class ProtocolV1SessionCoordinator {
         response.display = displayDescriptor()
         response.streamID = streamID
 
-        var config = VSVideoConfig()
-        config.configEpoch = nextEpoch
-        config.codec = selectedCodec
-        config.encodedSize = dimensions()
-        config.framesPerSecond = configuration.framesPerSecond
-        config.bitrateKbps = configuration.bitrateKbps
-        config.streamID = streamID
-        config.rotationDegrees = UInt32(clamping: configuration.rotation)
+        let config = videoConfiguration(configEpoch: nextEpoch, streamID: streamID)
         advertisedVideoRotation = configuration.rotation
 
         phase = .awaitingVideoConfig(configEpoch: nextEpoch, streamID: streamID)
@@ -296,12 +334,14 @@ final class ProtocolV1SessionCoordinator {
             hostHello.hostName = configuration.hostName
             hostHello.capabilities = configuration.hostCapabilities.sorted { $0.rawValue < $1.rawValue }
             hostHello.codecs = configuration.supportedCodecs
+            hostHello.resourceLimits = hostResourceLimits()
 
             var accepted = VSSessionAccepted()
             accepted.sessionID = configuration.sessionID
             accepted.sessionEpoch = configuration.sessionEpoch
             accepted.heartbeatIntervalMs = 1_000
             accepted.negotiatedCapabilities = negotiatedCapabilities.sorted { $0.rawValue < $1.rawValue }
+            accepted.negotiatedResourceLimits = negotiatedResourceLimits
 
             phase = .awaitingDisplayStart
             do {
@@ -335,6 +375,114 @@ final class ProtocolV1SessionCoordinator {
             } catch {
                 return serializationFailure()
             }
+        }
+    }
+
+    func completeFileOffer(
+        transferID: Data,
+        accepted: Bool,
+        maximumChunkBytes: UInt32,
+        rejectionReason: String
+    ) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard let correlationID = pendingFileOffers.removeValue(forKey: transferID),
+                  case .streaming = phase else { return [] }
+            var response = VSFileAccept()
+            response.transferID = transferID
+            let negotiatedMaximum = min(maximumChunkBytes, negotiatedResourceLimits.maximumFileChunkBytes)
+            let canAccept = accepted && negotiatedMaximum > 0
+            response.accepted = canAccept
+            response.maximumChunkBytes = canAccept ? negotiatedMaximum : 0
+            response.rejectionReason = canAccept ? "" : rejectionReason
+            if canAccept { activeFileTransfers[transferID] = negotiatedMaximum }
+            return sendActions(payload: .fileAccept(response), correlationID: correlationID)
+        }
+    }
+
+    func offerClipboard(_ content: VSClipboardContent) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard negotiatedCapabilities.contains(.clipboard),
+                  case .streaming = phase,
+                  validClipboardContent(content),
+                  outboundClipboardSnapshots.count < 4 else { return [] }
+            outboundClipboardSnapshots[content.changeID] = content
+            var offer = VSClipboardOffer()
+            offer.changeID = content.changeID
+            offer.originDeviceID = content.originDeviceID
+            offer.mimeType = content.mimeType
+            offer.byteLength = UInt64(content.content.count)
+            offer.sha256 = content.sha256
+            return sendActions(payload: .clipboardOffer(offer), correlationID: 0)
+        }
+    }
+
+    func completeClipboardOffer(changeID: Data, accepted: Bool) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard negotiatedCapabilities.contains(.clipboard),
+                  case .streaming = phase,
+                  inboundClipboardOffers[changeID] != nil,
+                  !approvedInboundClipboardOffers.contains(changeID) else { return [] }
+            guard accepted else {
+                inboundClipboardOffers.removeValue(forKey: changeID)
+                return []
+            }
+            approvedInboundClipboardOffers.insert(changeID)
+            var request = VSClipboardRequest()
+            request.changeID = changeID
+            return sendActions(payload: .clipboardRequest(request), correlationID: 0)
+        }
+    }
+
+    func makeFileProgress(transferID: Data, receivedBytes: UInt64) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard case .streaming = phase, activeFileTransfers[transferID] != nil else { return [] }
+            var progress = VSFileTransferProgress()
+            progress.transferID = transferID
+            progress.receivedBytes = receivedBytes
+            return sendActions(payload: .fileTransferProgress(progress), correlationID: 0)
+        }
+    }
+
+    func completeFileTransfer(
+        transferID: Data,
+        accepted: Bool,
+        sha256: Data,
+        rejectionReason: String
+    ) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard case .streaming = phase, activeFileTransfers.removeValue(forKey: transferID) != nil else { return [] }
+            var result = VSFileTransferComplete()
+            result.transferID = transferID
+            result.accepted = accepted
+            result.sha256 = accepted ? sha256 : Data()
+            result.rejectionReason = accepted ? "" : rejectionReason
+            return sendActions(payload: .fileTransferComplete(result), correlationID: 0)
+        }
+    }
+
+    func maximumFileChunkBytes(transferID: Data, sessionEpoch: UInt64) -> Int? {
+        withSessionLock {
+            guard sessionEpoch == configuration.sessionEpoch,
+                  negotiatedCapabilities.contains(.fileTransfer),
+                  isStreaming,
+                  let maximum = activeFileTransfers[transferID] else { return nil }
+            return Int(maximum)
+        }
+    }
+
+    func completeWakeRequest(
+        requestID: Data,
+        accepted: Bool,
+        rejectionReason: String
+    ) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard let correlationID = pendingWakeRequests.removeValue(forKey: requestID),
+                  case .streaming = phase else { return [] }
+            var result = VSWakeHostResult()
+            result.requestID = requestID
+            result.accepted = accepted
+            result.rejectionReason = accepted ? "" : rejectionReason
+            return sendActions(payload: .wakeHostResult(result), correlationID: correlationID)
         }
     }
 
@@ -473,6 +621,30 @@ final class ProtocolV1SessionCoordinator {
                   result.streamID == streamID else {
                 return invalidState("VideoConfigResult does not match the pending configuration.", envelope.messageID)
             }
+            let minimumRetainedEpoch = configEpoch > 1 ? configEpoch - 1 : 0
+            attemptedColorFallbackEpochs = attemptedColorFallbackEpochs.filter {
+                $0 >= minimumRetainedEpoch
+            }
+            generatedColorFallbackEpochs = generatedColorFallbackEpochs.filter {
+                $0 >= minimumRetainedEpoch
+            }
+            if !result.accepted,
+               negotiatedCapabilities.contains(.colorManagement),
+               !attemptedColorFallbackEpochs.contains(configEpoch),
+               !generatedColorFallbackEpochs.contains(configEpoch),
+               validSDRColor(result.selectedColorDescription),
+               configEpoch < UInt64.max {
+                attemptedColorFallbackEpochs.insert(configEpoch)
+                let nextEpoch = configEpoch + 1
+                generatedColorFallbackEpochs.insert(nextEpoch)
+                phase = .awaitingVideoConfig(configEpoch: nextEpoch, streamID: streamID)
+                var fallback = videoConfiguration(configEpoch: nextEpoch, streamID: streamID)
+                fallback.colorDescription = result.selectedColorDescription
+                return sendActions(
+                    payload: .videoConfig(fallback),
+                    correlationID: envelope.messageID
+                )
+            }
             guard result.accepted else {
                 return fail(
                     code: .invalidState,
@@ -492,7 +664,116 @@ final class ProtocolV1SessionCoordinator {
                     return serializationFailure()
                 }
             }
+            if negotiatedCapabilities.contains(.audio) {
+                audioAccepted = false
+                nextAudioSequence = 0
+                audioConfigEpoch = configEpoch
+                var audio = VSAudioConfig()
+                audio.streamID = streamID
+                audio.configEpoch = audioConfigEpoch
+                audio.codec = .pcmS16Le
+                audio.sampleRateHz = PCMAudioFormat.production.sampleRateHz
+                audio.channelCount = PCMAudioFormat.production.channelCount
+                audio.framesPerPacket = PCMAudioFormat.production.framesPerPacket
+                do {
+                    actions.append(.sendControl(try encode(payload: .audioConfig(audio), correlationID: 0)))
+                } catch {
+                    return serializationFailure()
+                }
+            }
             return actions + [.connectionReady, .requestKeyframe(force: true)]
+
+        case .audioConfigResult(let result):
+            guard negotiatedCapabilities.contains(.audio),
+                  case .streaming(_, let streamID) = phase,
+                  result.streamID == streamID,
+                  result.configEpoch == audioConfigEpoch else {
+                return invalidState("AudioConfigResult does not match the pending configuration.", envelope.messageID)
+            }
+            audioAccepted = result.accepted
+            nextAudioSequence = 0
+            return []
+
+        case .clipboardOffer(let offer):
+            guard negotiatedCapabilities.contains(.clipboard) else {
+                return unsupportedCapability("Clipboard was not negotiated.", envelope.messageID)
+            }
+            guard case .streaming = phase,
+                  validClipboardOffer(offer),
+                  inboundClipboardOffers[offer.changeID] == nil,
+                  inboundClipboardOffers.count < 4 else {
+                return invalidState("ClipboardOffer exceeds negotiated boundaries.", envelope.messageID)
+            }
+            inboundClipboardOffers[offer.changeID] = offer
+            return [.clipboardOffer(offer)]
+
+        case .clipboardRequest(let request):
+            guard negotiatedCapabilities.contains(.clipboard), case .streaming = phase else {
+                return unsupportedCapability("Clipboard was not negotiated.", envelope.messageID)
+            }
+            guard let content = outboundClipboardSnapshots.removeValue(forKey: request.changeID) else {
+                return invalidState("ClipboardRequest does not match an offered snapshot.", envelope.messageID)
+            }
+            return sendActions(payload: .clipboardContent(content), correlationID: envelope.messageID)
+
+        case .clipboardContent(let content):
+            guard negotiatedCapabilities.contains(.clipboard) else {
+                return unsupportedCapability("Clipboard was not negotiated.", envelope.messageID)
+            }
+            guard case .streaming = phase else {
+                return invalidState("ClipboardContent arrived before media was streaming.", envelope.messageID)
+            }
+            guard validClipboardContent(content) else {
+                return invalidState("ClipboardContent exceeds negotiated boundaries.", envelope.messageID)
+            }
+            if let offer = inboundClipboardOffers[content.changeID] {
+                guard approvedInboundClipboardOffers.remove(content.changeID) != nil else {
+                    return invalidState("ClipboardContent arrived before its offer was approved.", envelope.messageID)
+                }
+                inboundClipboardOffers.removeValue(forKey: content.changeID)
+                guard offer.originDeviceID == content.originDeviceID,
+                      offer.mimeType == content.mimeType,
+                      offer.byteLength == UInt64(content.content.count),
+                      offer.sha256 == content.sha256 else {
+                    return invalidState("ClipboardContent does not match its offer.", envelope.messageID)
+                }
+            }
+            return [.clipboardContent(content)]
+
+        case .fileOffer(let offer):
+            guard negotiatedCapabilities.contains(.fileTransfer) else {
+                return unsupportedCapability("File transfer was not negotiated.", envelope.messageID)
+            }
+            guard case .streaming = phase, offer.transferID.count == 16,
+                  offer.byteLength > 0,
+                  offer.byteLength <= negotiatedResourceLimits.maximumFileBytes,
+                  offer.sha256.count == 32,
+                  pendingFileOffers[offer.transferID] == nil,
+                  pendingFileOffers.count < configuration.resourceLimits.maximumConcurrentFiles else {
+                return invalidState("FileOffer is invalid or exceeds host limits.", envelope.messageID)
+            }
+            pendingFileOffers[offer.transferID] = envelope.messageID
+            return [.fileOffer(offer)]
+
+        case .fileTransferCancel(let cancel):
+            guard negotiatedCapabilities.contains(.fileTransfer), case .streaming = phase else {
+                return unsupportedCapability("File transfer was not negotiated.", envelope.messageID)
+            }
+            pendingFileOffers.removeValue(forKey: cancel.transferID)
+            activeFileTransfers.removeValue(forKey: cancel.transferID)
+            return [.fileCancel(transferID: cancel.transferID)]
+
+        case .wakeHostRequest(let request):
+            guard negotiatedCapabilities.contains(.wakeHost) else {
+                return unsupportedCapability("Wake helper was not negotiated.", envelope.messageID)
+            }
+            guard case .streaming = phase, !request.requestID.isEmpty,
+                  pendingWakeRequests[request.requestID] == nil,
+                  pendingWakeRequests.count < 16 else {
+                return invalidState("WakeHostRequest is invalid.", envelope.messageID)
+            }
+            pendingWakeRequests[request.requestID] = envelope.messageID
+            return [.wakeHost(request)]
 
         case .ping(let ping):
             var pong = VSPong()
@@ -707,12 +988,26 @@ final class ProtocolV1SessionCoordinator {
             phase = .failed
             _ = stylusSequenceState.consumeReset()
             pendingHostActionInvocations.removeAll()
+            inboundClipboardOffers.removeAll()
+            approvedInboundClipboardOffers.removeAll()
+            outboundClipboardSnapshots.removeAll()
+            pendingFileOffers.removeAll()
+            activeFileTransfers.removeAll()
+            pendingWakeRequests.removeAll()
+            audioAccepted = false
             return [.peerError(error), .close]
 
         case .disconnectNotice:
             phase = .closed
             _ = stylusSequenceState.consumeReset()
             pendingHostActionInvocations.removeAll()
+            inboundClipboardOffers.removeAll()
+            approvedInboundClipboardOffers.removeAll()
+            outboundClipboardSnapshots.removeAll()
+            pendingFileOffers.removeAll()
+            activeFileTransfers.removeAll()
+            pendingWakeRequests.removeAll()
+            audioAccepted = false
             return [.close]
 
         default:
@@ -723,6 +1018,24 @@ final class ProtocolV1SessionCoordinator {
     func makeMediaFrame(payload: Data, timestamp: UInt64, keyframe: Bool) throws -> Data? {
         try withSessionLock {
             try makeMediaFrameLocked(payload: payload, timestamp: timestamp, keyframe: keyframe)
+        }
+    }
+
+    func makeAudioPacket(payload: Data, frameCount: UInt32) throws -> Data? {
+        try withSessionLock {
+            guard audioAccepted,
+                  case .streaming(_, let streamID) = phase,
+                  nextAudioSequence < UInt64.max,
+                  frameCount == PCMAudioFormat.production.framesPerPacket,
+                  payload.count == PCMAudioFormat.production.bytesPerPacket else { return nil }
+            var header = VSAudioPacketHeader()
+            header.streamID = streamID
+            header.sessionEpoch = configuration.sessionEpoch
+            header.configEpoch = audioConfigEpoch
+            header.sequence = nextAudioSequence
+            header.frameCount = frameCount
+            nextAudioSequence += 1
+            return try ProtocolV1AudioPacketCodec.encode(header: header, payload: payload)
         }
     }
 
@@ -865,7 +1178,27 @@ final class ProtocolV1SessionCoordinator {
         if !negotiatedCapabilities.contains(.stylus) {
             negotiatedCapabilities.remove(.stylusExtended)
         }
+        if negotiatedCapabilities.contains(.audio), hello.resourceLimits.maximumAudioStreams == 0 {
+            negotiatedCapabilities.remove(.audio)
+        }
+        if negotiatedCapabilities.contains(.clipboard), hello.resourceLimits.maximumClipboardBytes == 0 {
+            negotiatedCapabilities.remove(.clipboard)
+        }
+        if negotiatedCapabilities.contains(.fileTransfer),
+           (hello.resourceLimits.maximumFileBytes == 0 || hello.resourceLimits.maximumFileChunkBytes == 0) {
+            negotiatedCapabilities.remove(.fileTransfer)
+        }
+        if requiredCapabilities.contains(.audio), !negotiatedCapabilities.contains(.audio) {
+            return fail(code: .unsupportedCapability, message: "Audio requires a nonzero stream limit.", correlationID: correlationID)
+        }
+        if requiredCapabilities.contains(.fileTransfer), !negotiatedCapabilities.contains(.fileTransfer) {
+            return fail(code: .unsupportedCapability, message: "File transfer requires nonzero limits.", correlationID: correlationID)
+        }
+        if requiredCapabilities.contains(.clipboard), !negotiatedCapabilities.contains(.clipboard) {
+            return fail(code: .unsupportedCapability, message: "Clipboard requires a nonzero byte limit.", correlationID: correlationID)
+        }
         self.negotiatedCapabilities = negotiatedCapabilities
+        negotiatedResourceLimits = negotiateResourceLimits(hello.resourceLimits, capabilities: negotiatedCapabilities)
 
         phase = .preparingCodec(correlationID: correlationID)
         let streamCodec: StreamCodec = codec == .h264 ? .h264 : .hevc
@@ -880,14 +1213,7 @@ final class ProtocolV1SessionCoordinator {
         response.display = displayDescriptor()
         response.streamID = streamID
 
-        var config = VSVideoConfig()
-        config.configEpoch = configEpoch
-        config.codec = selectedCodec
-        config.encodedSize = dimensions()
-        config.framesPerSecond = configuration.framesPerSecond
-        config.bitrateKbps = configuration.bitrateKbps
-        config.streamID = streamID
-        config.rotationDegrees = UInt32(clamping: configuration.rotation)
+        let config = videoConfiguration(configEpoch: configEpoch, streamID: streamID)
         advertisedVideoRotation = configuration.rotation
 
         phase = .awaitingVideoConfig(configEpoch: configEpoch, streamID: streamID)
@@ -974,6 +1300,88 @@ final class ProtocolV1SessionCoordinator {
         return dimensions
     }
 
+    private func videoConfiguration(configEpoch: UInt64, streamID: UInt64) -> VSVideoConfig {
+        var config = VSVideoConfig()
+        config.configEpoch = configEpoch
+        config.codec = selectedCodec
+        config.encodedSize = dimensions()
+        config.framesPerSecond = configuration.framesPerSecond
+        config.bitrateKbps = configuration.bitrateKbps
+        config.streamID = streamID
+        config.rotationDegrees = UInt32(clamping: configuration.rotation)
+        if negotiatedCapabilities.contains(.colorManagement) {
+            config.colorDescription = HostVideoColor.sdr
+        }
+        return config
+    }
+
+    private func validSDRColor(_ color: VSColorDescription) -> Bool {
+        color.bitDepth == 8 &&
+            color.primaries == .bt709 &&
+            (color.transferFunction == .bt709 || color.transferFunction == .srgb) &&
+            color.matrixCoefficients == .bt709
+    }
+
+    private func validClipboardOffer(_ offer: VSClipboardOffer) -> Bool {
+        offer.changeID.count == 16 &&
+            !offer.originDeviceID.isEmpty && offer.originDeviceID.utf8.count <= 128 &&
+            ["text/plain", "image/png"].contains(offer.mimeType) &&
+            offer.byteLength <= negotiatedResourceLimits.maximumClipboardBytes &&
+            offer.sha256.count == 32
+    }
+
+    private func validClipboardContent(_ content: VSClipboardContent) -> Bool {
+        content.changeID.count == 16 &&
+            !content.originDeviceID.isEmpty && content.originDeviceID.utf8.count <= 128 &&
+            ["text/plain", "image/png"].contains(content.mimeType) &&
+            content.content.count <= Int(negotiatedResourceLimits.maximumClipboardBytes) &&
+            content.sha256.count == 32
+    }
+
+    private func hostResourceLimits() -> VSResourceLimits {
+        var limits = VSResourceLimits()
+        limits.maximumClients = 1
+        limits.maximumDisplays = UInt32(max(1, configuredDisplays().count))
+        limits.maximumVideoStreams = 1
+        if configuration.hostCapabilities.contains(.audio) { limits.maximumAudioStreams = 1 }
+        if configuration.hostCapabilities.contains(.clipboard) {
+            limits.maximumClipboardBytes = UInt64(configuration.resourceLimits.maximumClipboardBytes)
+        }
+        if configuration.hostCapabilities.contains(.fileTransfer) {
+            limits.maximumFileBytes = configuration.resourceLimits.maximumFileBytes
+            limits.maximumFileChunkBytes = UInt32(configuration.resourceLimits.maximumFileChunkBytes)
+        }
+        return limits
+    }
+
+    private func negotiateResourceLimits(
+        _ peer: VSResourceLimits,
+        capabilities: Set<VSCapability>
+    ) -> VSResourceLimits {
+        let host = hostResourceLimits()
+        var result = VSResourceLimits()
+        result.maximumClients = 1
+        result.maximumDisplays = minNonzero(host.maximumDisplays, peer.maximumDisplays)
+        result.maximumVideoStreams = 1
+        if capabilities.contains(.audio) { result.maximumAudioStreams = 1 }
+        if capabilities.contains(.clipboard) {
+            result.maximumClipboardBytes = minNonzero(host.maximumClipboardBytes, peer.maximumClipboardBytes)
+        }
+        if capabilities.contains(.fileTransfer) {
+            result.maximumFileBytes = minNonzero(host.maximumFileBytes, peer.maximumFileBytes)
+            result.maximumFileChunkBytes = minNonzero(
+                host.maximumFileChunkBytes,
+                peer.maximumFileChunkBytes
+            )
+        }
+        return result
+    }
+
+    private func minNonzero<T: FixedWidthInteger>(_ first: T, _ second: T) -> T {
+        guard first > 0, second > 0 else { return 0 }
+        return min(first, second)
+    }
+
     private func encode(
         payload: VSEnvelope.OneOf_Payload,
         correlationID: UInt64,
@@ -1015,6 +1423,13 @@ final class ProtocolV1SessionCoordinator {
         phase = .failed
         _ = stylusSequenceState.consumeReset()
         pendingHostActionInvocations.removeAll()
+        inboundClipboardOffers.removeAll()
+        approvedInboundClipboardOffers.removeAll()
+        outboundClipboardSnapshots.removeAll()
+        pendingFileOffers.removeAll()
+        activeFileTransfers.removeAll()
+        pendingWakeRequests.removeAll()
+        audioAccepted = false
         do {
             return [
                 .sendControl(try encode(
@@ -1048,6 +1463,14 @@ final class ProtocolV1SessionCoordinator {
     private func serializationFailure() -> [ProtocolV1SessionAction] {
         phase = .failed
         _ = stylusSequenceState.consumeReset()
+        pendingHostActionInvocations.removeAll()
+        inboundClipboardOffers.removeAll()
+        approvedInboundClipboardOffers.removeAll()
+        outboundClipboardSnapshots.removeAll()
+        pendingFileOffers.removeAll()
+        activeFileTransfers.removeAll()
+        pendingWakeRequests.removeAll()
+        audioAccepted = false
         return [.close]
     }
 

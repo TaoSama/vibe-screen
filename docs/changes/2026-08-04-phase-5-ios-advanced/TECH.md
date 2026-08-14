@@ -157,6 +157,21 @@ authenticated wake helper. `SecureChannel` now allocates audio `3` and bulk
 windows for them. The client's plaintext trusted-LAN implementation is not
 evidence of that security work.
 
+The trusted-LAN Mac host advertises an advanced capability only while its
+native adapter is installed and usable. It currently enables bounded PCM,
+clipboard, and incoming-file adapters; Internet mode still advertises none of
+those channels. `COLOR_MANAGEMENT` remains disabled until capture attachments
+and VideoToolbox encoder properties drive the exact wire metadata for every
+configuration generation. `HDR_VIDEO` remains disabled without a verified
+10-bit capture/Main10 encode path.
+
+`WAKE_HOST` is also disabled in production. Enabling it requires a paired
+device identity bound to a separately derived wake key, an allowlisted host
+MAC, policy approval, and a durable replay store that records both request IDs
+and nonces through expiry across process restarts. The in-process request
+validator and its tests are not a production wake sender or evidence that
+these deployment gates are satisfied.
+
 ## Rendering and color
 
 VideoToolbox creates hardware-capable H.264 or HEVC decompression sessions from

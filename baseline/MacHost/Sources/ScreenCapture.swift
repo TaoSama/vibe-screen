@@ -189,6 +189,9 @@ class ScreenCapture {
 
     // Streaming parameters (saved for restart)
     private weak var currentFrameSink: (any EncodedFrameSink)?
+    private weak var currentAudioSink: (any EncodedAudioSink)?
+    private var audioCaptureEnabled = false
+    private let audioConverter = SystemAudioPCMConverter()
     private var currentBitrateMbps: Int = 20
     private var currentQuality: String = "medium"
     private var currentGamingBoost: Bool = false
@@ -207,6 +210,16 @@ class ScreenCapture {
     /// fallback are unavailable. Callers must stop the session or select a
     /// different online display instead of presenting a false running state.
     var onTerminalCaptureFailure: ((Error) -> Void)?
+    var onSystemAudioAvailabilityChanged: ((Bool) -> Void)?
+
+    func setSystemAudioCaptureEnabled(_ enabled: Bool) {
+        audioCaptureEnabled = enabled
+        if !enabled { audioConverter.reset() }
+    }
+
+    var isSystemAudioCaptureActive: Bool {
+        audioCaptureEnabled && isSCStreamStarted && !fallbackLifecycle.isActive
+    }
 
     /// Force the encoder to emit an IDR keyframe on the next frame.
     /// If the encoder hasn't been created yet (request arrived before
@@ -417,6 +430,7 @@ class ScreenCapture {
         let previousStreamWasStarted = isSCStreamStarted
         isSCStreamStarted = false
         streamOutput?.onFrameReceived = nil
+        streamOutput?.onAudioReceived = nil
         stream = nil
         streamOutput = nil
         streamDelegate = nil
@@ -502,6 +516,7 @@ class ScreenCapture {
                     throw CancellationError()
                 }
                 self.isSCStreamStarted = true
+                self.onSystemAudioAvailabilityChanged?(self.audioCaptureEnabled)
             }
             streamStartTask = startTask
             try await startTask.value
@@ -628,9 +643,19 @@ class ScreenCapture {
         config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
         config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
         config.showsCursor = true
+        // Keep only the current and next frame. Deeper queues improve recording
+        // resilience but directly become visible input latency for a remote display.
         config.queueDepth = 2
-        config.capturesAudio = false
+        config.capturesAudio = audioCaptureEnabled
+        if audioCaptureEnabled {
+            config.sampleRate = Int(PCMAudioFormat.production.sampleRateHz)
+            config.channelCount = Int(PCMAudioFormat.production.channelCount)
+            config.excludesCurrentProcessAudio = true
+        }
         config.backgroundColor = .clear
+        // We choose an aspect-correct output rectangle before configuring the
+        // stream. Allow ScreenCaptureKit to scale both up and down so the pixel
+        // buffer always matches the VideoToolbox session dimensions.
         config.scalesToFit = true
         if #available(macOS 14.0, *) {
             config.preservesAspectRatio = true
@@ -666,6 +691,13 @@ class ScreenCapture {
         }
         streamDelegate = delegate
         try scStream.addStreamOutput(streamOutput!, type: .screen, sampleHandlerQueue: .global(qos: .userInteractive))
+        if audioCaptureEnabled {
+            try scStream.addStreamOutput(
+                streamOutput!,
+                type: .audio,
+                sampleHandlerQueue: .global(qos: .userInitiated)
+            )
+        }
 
         if let operationToken,
            !operationCoordinator.isCurrent(operationToken) {
@@ -738,6 +770,17 @@ class ScreenCapture {
                 self.pacingLock.withLock { $0.latestPixelBuffer = boxedBuffer }
             }
         }
+        streamOutput?.onAudioReceived = { [weak self] sampleBuffer in
+            guard let self, let sink = self.currentAudioSink else { return }
+            let epoch = sink.currentSessionEpoch
+            for packet in self.audioConverter.convert(sampleBuffer) {
+                sink.sendAudioPCM(
+                    packet,
+                    frameCount: PCMAudioFormat.production.framesPerPacket,
+                    sessionEpoch: epoch
+                )
+            }
+        }
     }
 
     /// Present the newest source buffer on a fixed output clock. Both capture
@@ -762,6 +805,7 @@ class ScreenCapture {
 
     func startStreaming(
         to frameSink: (any EncodedFrameSink)?,
+        audioSink: (any EncodedAudioSink)? = nil,
         bitrateMbps: Int = 20,
         quality: String = "medium",
         gamingBoost: Bool = false,
@@ -774,6 +818,7 @@ class ScreenCapture {
         isStopping = false
         // Save parameters for potential restart
         currentFrameSink = frameSink
+        currentAudioSink = audioSink
         currentBitrateMbps = bitrateMbps
         currentQuality = quality
         currentGamingBoost = gamingBoost
@@ -836,6 +881,7 @@ class ScreenCapture {
                     throw CancellationError()
                 }
                 self.isSCStreamStarted = true
+                self.onSystemAudioAvailabilityChanged?(self.audioCaptureEnabled)
             }
             streamStartTask = startTask
             try await startTask.value
@@ -1200,6 +1246,7 @@ class ScreenCapture {
                     throw CancellationError()
                 }
                 self.isSCStreamStarted = true
+                self.onSystemAudioAvailabilityChanged?(self.audioCaptureEnabled)
                 try Task.checkCancellation()
                 debugLog("SCStream restarted — starting frame flow monitor")
                 self.startFrameMonitor()
@@ -1260,6 +1307,7 @@ class ScreenCapture {
             let streamWasStarted = isSCStreamStarted
             isSCStreamStarted = false
             streamOutput?.onFrameReceived = nil
+            streamOutput?.onAudioReceived = nil
             stream = nil
             streamOutput = nil
             streamDelegate = nil
@@ -1375,6 +1423,9 @@ class ScreenCapture {
         if startResult == .success {
             cgDisplayStream = displayStream
             debugLog("CGDisplayStream fallback started successfully")
+            DispatchQueue.main.async { [weak self] in
+                self?.onSystemAudioAvailabilityChanged?(false)
+            }
             onCaptureMethodChanged?("CGDisplayStream (fallback)")
             return true
         } else {
@@ -1446,7 +1497,12 @@ class ScreenCapture {
             updatedConfig.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
             updatedConfig.showsCursor = true
             updatedConfig.queueDepth = 2
-            updatedConfig.capturesAudio = false
+            updatedConfig.capturesAudio = audioCaptureEnabled
+            if audioCaptureEnabled {
+                updatedConfig.sampleRate = Int(PCMAudioFormat.production.sampleRateHz)
+                updatedConfig.channelCount = Int(PCMAudioFormat.production.channelCount)
+                updatedConfig.excludesCurrentProcessAudio = true
+            }
             updatedConfig.backgroundColor = .clear
             updatedConfig.scalesToFit = true
             stream.updateConfiguration(updatedConfig) { error in
@@ -1583,6 +1639,7 @@ class ScreenCapture {
         let streamWasStarted = isSCStreamStarted
         isSCStreamStarted = false
         streamOutput?.onFrameReceived = nil
+        streamOutput?.onAudioReceived = nil
         stream = nil
         streamOutput = nil
         streamDelegate = nil
@@ -1616,6 +1673,8 @@ class ScreenCapture {
         isRestarting = false
         isHealthCheckRunning = false
         currentFrameSink = nil
+        currentAudioSink = nil
+        audioConverter.reset()
         encoder?.invalidate()
         encoder = nil
         operationCoordinator.finishStop(stopToken)
@@ -1630,9 +1689,14 @@ class ScreenCapture {
 
 class StreamOutput: NSObject, SCStreamOutput {
     var onFrameReceived: ((CMSampleBuffer) -> Void)?
+    var onAudioReceived: ((CMSampleBuffer) -> Void)?
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .screen else { return }
-        onFrameReceived?(sampleBuffer)
+        switch type {
+        case .screen: onFrameReceived?(sampleBuffer)
+        case .audio: onAudioReceived?(sampleBuffer)
+        case .microphone: break
+        @unknown default: break
+        }
     }
 }
