@@ -25,8 +25,8 @@ message order, session identity, or cross-stream media fails closed.
 VideoConfig, heartbeat, and VideoConfigResult. It sends video acceptance only
 after the platform decoder configuration resolves and opens input only after
 the result is written. Negotiated capabilities must be a subset of both offers;
-touch, pointer/scroll, keyboard, and stylus pressure are locally gated before
-encoding. Old epoch and already-seen media frames are dropped; wrong
+touch, pointer/scroll, keyboard, extended stylus, and controller input are locally
+gated before encoding. Old epoch and already-seen media frames are dropped; wrong
 stream/config and unsupported fragmentation are protocol failures.
 
 Every outbound control uses one FIFO writer. It assigns and encodes the next
@@ -47,7 +47,7 @@ wait-keyframe, and AVCodec must accept the keyframe before deltas resume.
 
 The independent protobuf codec supports packed/unpacked repeated enums and
 unknown-field skipping. It exactly reproduces both the historical Harmony hello
-vector and the formal rich ClientHello/touch fixtures, and decodes the formal
+vector and the formal rich ClientHello/touch/stylus/controller fixtures, and decodes the formal
 host/session/display/video/media fixtures. Empty protobuf messages are emitted
 as zero-length oneof values rather than omitted.
 
@@ -102,9 +102,17 @@ portable environment; DevEco compilation and device behavior remain mandatory.
 ArkUI forwards all changed touch points (including Up/Cancel), normalized to
 the real component bounds and negotiated rotation. Keyboard text is mapped to
 a conservative USB HID subset with modifier bits; pointer buttons use a bit
-mask. Stylus pressure travels through TouchEvent. Wheel/trackpad axis delivery,
-the complete physical-key map, controller events, and stylus tilt/azimuth remain
-gates rather than claims.
+mask. Ordinary touch no longer carries stylus pressure. A validated platform
+adapter maps stylus pressure, signed tilt, eraser, two barrel buttons, contact/
+proximity and controller connect/state/disconnect snapshots into their dedicated
+Protocol v1 messages. ArkUI Pen touch events supply pressure and signed tilt;
+the richer native fields use the same validated adapter entry. Because eraser,
+barrel-button, hover, and controller sources are not connected, Harmony advertises
+base stylus but not extended stylus or controller. Capability dependency closure
+rejects `STYLUS_EXTENDED` without `STYLUS`. Capability negotiation gates both paths, controller epochs
+reject stale attachment state, and background/disconnect sends neutral releases.
+Native acquisition of eraser/barrel-button/hover and controller fields, wheel/trackpad axis delivery,
+the complete physical-key map, and physical device behavior remain gates.
 
 ## Pairing, privacy, and upgrades
 

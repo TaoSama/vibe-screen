@@ -1,8 +1,10 @@
 import { MediaPacket } from '../media/MediaPacketParser';
+import { AdvancedPeripheralInputMapper, NEUTRAL_CONTROLLER_STATE } from '../input/AdvancedPeripheralInputMapper';
 import { DecodedEnvelope, ProtocolDecoder } from '../protocol/ProtocolDecoder';
 import { OutboundControlIntent } from '../protocol/ProtocolEncoder';
-import { Capability, ClientHello, Codec, ColorPrimaries, InputPhase, InputTarget, KeyInput, MatrixCoefficients,
-  NormalizedInput, PROTOCOL_VERSION, ScrollInput, TransferFunction, TransportKind, VideoConfig } from '../protocol/ProtocolModels';
+import { Capability, ClientHello, Codec, ColorPrimaries, ControllerEventKind, ControllerInput, InputPhase,
+  InputTarget, KeyInput, MatrixCoefficients, NormalizedInput, PROTOCOL_VERSION, ScrollInput,
+  StylusInput, TransferFunction, TransportKind, VideoConfig } from '../protocol/ProtocolModels';
 import { OutboundControlScope } from '../protocol/OutboundControlWriter';
 import { ClientCapabilities, HARMONY_REQUIRED_CAPABILITIES } from './ClientCapabilities';
 import { HeartbeatMonitor } from './HeartbeatMonitor';
@@ -86,6 +88,11 @@ export class ProductSession {
   private listDisplaysMessageId: bigint = 0n;
   private startDisplayMessageId: bigint = 0n;
   private decoder: ProtocolDecoder = new ProtocolDecoder();
+  private advancedInputMapper: AdvancedPeripheralInputMapper = new AdvancedPeripheralInputMapper();
+  private activeStylus: Map<number, StylusInput> = new Map();
+  private controllerEpochs: Map<string, bigint> = new Map();
+  private activeControllers: Map<string, bigint> = new Map();
+  private lastControllerInputId: bigint = 0n;
 
   constructor(private deviceId: string, private deviceName: string,
     private capabilities: Capability[], private codecs: Codec[]) {
@@ -220,6 +227,70 @@ export class ProductSession {
     return { kind: 'send', intent: { kind: 'key', event: { ...event, target: this.target() } } };
   }
 
+  stylus(event: StylusInput): SessionAction {
+    this.requireInputCapability(Capability.STYLUS);
+    const extended: boolean = event.toolKind !== undefined || event.contactState !== undefined ||
+      (event.buttonMask ?? 0) !== 0;
+    if (extended) this.requireInputCapability(Capability.STYLUS_EXTENDED);
+    this.advancedInputMapper.validateStylus(event, extended);
+    const active: boolean = this.activeStylus.has(event.pointerId);
+    if ((event.phase === InputPhase.BEGAN) === active) throw new Error('Invalid stylus lifecycle');
+    if (event.phase === InputPhase.BEGAN || event.phase === InputPhase.CHANGED) {
+      this.activeStylus.set(event.pointerId, { ...event });
+    } else {
+      this.activeStylus.delete(event.pointerId);
+    }
+    return { kind: 'send', intent: { kind: 'stylus', event: { ...event, target: this.target() } } };
+  }
+
+  controller(event: ControllerInput): SessionAction {
+    this.requireInputCapability(Capability.CONTROLLER);
+    this.advancedInputMapper.validateController(event);
+    if (event.inputId <= this.lastControllerInputId) throw new Error('Controller input ids must increase');
+    const activeEpoch: bigint | undefined = this.activeControllers.get(event.controllerId);
+    const previousEpoch: bigint = this.controllerEpochs.get(event.controllerId) ?? 0n;
+    if (event.kind === ControllerEventKind.CONNECTED) {
+      if (activeEpoch !== undefined || event.controllerEpoch <= previousEpoch) throw new Error('Invalid controller attach');
+      this.controllerEpochs.set(event.controllerId, event.controllerEpoch);
+      this.activeControllers.set(event.controllerId, event.controllerEpoch);
+    } else {
+      if (activeEpoch === undefined || activeEpoch !== event.controllerEpoch) throw new Error('Invalid controller lifecycle');
+      if (event.kind === ControllerEventKind.DISCONNECTED) this.activeControllers.delete(event.controllerId);
+    }
+    this.lastControllerInputId = event.inputId;
+    return { kind: 'send', intent: { kind: 'controller', event: { ...event, target: this.target() } } };
+  }
+
+  releaseAdvancedInputs(nextInputId: () => bigint): SessionAction[] {
+    if (this.current !== ProductSessionState.STREAMING) {
+      this.clearAdvancedInputs();
+      return [];
+    }
+    const actions: SessionAction[] = [];
+    [...this.activeStylus.entries()].sort(([left], [right]) => left - right).forEach(([, event]) => {
+      const release: StylusInput = { ...event, inputId: nextInputId(), phase: InputPhase.CANCELLED,
+        pressure: 0, buttonMask: 0,
+        target: this.target() };
+      this.advancedInputMapper.validateStylus(release, release.toolKind !== undefined || release.contactState !== undefined);
+      actions.push({ kind: 'send', intent: { kind: 'stylus', event: release } });
+    });
+    [...this.activeControllers.entries()].sort(([left], [right]) => left.localeCompare(right))
+      .forEach(([controllerId, controllerEpoch]) => {
+        const state: ControllerInput = { inputId: nextInputId(), controllerId, controllerEpoch,
+          kind: ControllerEventKind.STATE, ...NEUTRAL_CONTROLLER_STATE, target: this.target() };
+        const disconnected: ControllerInput = { ...state, inputId: nextInputId(), kind: ControllerEventKind.DISCONNECTED };
+        this.advancedInputMapper.validateController(state); this.advancedInputMapper.validateController(disconnected);
+        if (state.inputId <= this.lastControllerInputId || disconnected.inputId <= state.inputId) {
+          throw new Error('Controller release input ids must increase');
+        }
+        this.lastControllerInputId = disconnected.inputId;
+        actions.push({ kind: 'send', intent: { kind: 'controller', event: state } },
+          { kind: 'send', intent: { kind: 'controller', event: disconnected } });
+      });
+    this.activeStylus.clear(); this.activeControllers.clear();
+    return actions;
+  }
+
   heartbeat(sequence: bigint): SessionAction {
     if (this.current === ProductSessionState.IDLE || this.current === ProductSessionState.CLOSED) throw new Error('Heartbeat requires an active session');
     if (!this.heartbeatMonitor.canSend()) throw new Error('A heartbeat is already pending');
@@ -265,7 +336,7 @@ export class ProductSession {
       afterSend: { kind: 'videoConfiguration', token, accepted } }];
   }
 
-  close(): void { this.current = ProductSessionState.CLOSED; }
+  close(): void { this.clearAdvancedInputs(); this.current = ProductSessionState.CLOSED; }
 
   private onHostHello(envelope: DecodedEnvelope): SessionAction[] {
     if (this.current !== ProductSessionState.AWAITING_HOST) throw new Error('Unexpected HostHello');
@@ -415,6 +486,12 @@ export class ProductSession {
     this.nextVideoTokenId = 1n; this.pendingVideo = undefined; this.videoResultPrepared = false;
     this.resumeMessageId = 0n; this.resumeSnapshot = undefined; this.clientHelloMessageId = 0n;
     this.listDisplaysMessageId = 0n; this.startDisplayMessageId = 0n;
+    this.clearAdvancedInputs();
+  }
+
+  private clearAdvancedInputs(): void {
+    this.activeStylus.clear(); this.activeControllers.clear(); this.controllerEpochs.clear();
+    this.lastControllerInputId = 0n;
   }
 
   private validateResumeSnapshot(snapshot: SessionResumeSnapshot): void {

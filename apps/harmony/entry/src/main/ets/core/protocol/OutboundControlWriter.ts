@@ -2,6 +2,7 @@ import { EnvelopeMetadata, PROTOCOL_VERSION } from './ProtocolModels';
 import { OutboundControlIntent, ProtocolEncoder } from './ProtocolEncoder';
 
 export const MAX_PENDING_CONTROLS: number = 128;
+export const MAX_RELEASE_CONTROLS: number = MAX_PENDING_CONTROLS;
 
 export interface OutboundControlScope {
   sessionId: Uint8Array;
@@ -28,6 +29,7 @@ export type ControlAssignment = (messageId: bigint, sentAtMonotonicNs: bigint) =
 export class OutboundControlWriter {
   private readonly encoder: ProtocolEncoder = new ProtocolEncoder();
   private readonly criticalQueue: PendingControl[] = [];
+  private readonly releaseQueue: PendingControl[] = [];
   private readonly inputQueue: PendingControl[] = [];
   private nextMessageId: bigint;
   private draining: boolean = false;
@@ -58,13 +60,26 @@ export class OutboundControlWriter {
     });
   }
 
+  enqueueRelease(intent: OutboundControlIntent, scope: OutboundControlScope): Promise<OutboundControlReceipt> {
+    if (this.failure !== undefined) return Promise.reject(this.failure);
+    if (this.releaseQueue.length >= MAX_RELEASE_CONTROLS) {
+      return Promise.reject(new Error('Control writer release reserve exceeded its bounded capacity'));
+    }
+    return new Promise((resolve, reject) => {
+      this.releaseQueue.push({ intent, scope: { sessionId: scope.sessionId.slice(), sessionEpoch: scope.sessionEpoch },
+        resolve, reject });
+      this.drain();
+    });
+  }
+
   close(reason: string = 'Control writer closed'): void {
     this.fail(new Error(reason));
   }
 
   private drain(): void {
     if (this.draining || this.failure !== undefined) return;
-    const pending: PendingControl | undefined = this.criticalQueue.shift() ?? this.inputQueue.shift();
+    const pending: PendingControl | undefined = this.releaseQueue.shift() ?? this.criticalQueue.shift() ??
+      this.inputQueue.shift();
     if (pending === undefined) return;
     this.draining = true; this.active = pending;
     const messageId: bigint = this.nextMessageId++;
@@ -103,12 +118,14 @@ export class OutboundControlWriter {
     this.failure = error;
     this.active?.reject(error);
     while (this.criticalQueue.length > 0) this.criticalQueue.shift()?.reject(error);
+    while (this.releaseQueue.length > 0) this.releaseQueue.shift()?.reject(error);
     while (this.inputQueue.length > 0) this.inputQueue.shift()?.reject(error);
   }
 
   private queuedCount(): number { return this.criticalQueue.length + this.inputQueue.length; }
 
   private isInput(intent: OutboundControlIntent): boolean {
-    return intent.kind === 'touch' || intent.kind === 'pointer' || intent.kind === 'scroll' || intent.kind === 'key';
+    return intent.kind === 'touch' || intent.kind === 'pointer' || intent.kind === 'scroll' || intent.kind === 'key' ||
+      intent.kind === 'stylus' || intent.kind === 'controller';
   }
 }

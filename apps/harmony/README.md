@@ -6,8 +6,8 @@ independently and has no Kotlin Multiplatform or Android runtime dependency.
 The source now contains the product-session wiring that can be completed
 without a device: legacy-to-v1 upgrade, channel-aware TCP framing, host/session
 negotiation, display selection, video configuration, media epoch filtering,
-XComponent/AVCodec handoff, heartbeat, bounded reconnect, and ArkUI touch,
-keyboard, pointer, and stylus-pressure entry points. This is still a development
+XComponent/AVCodec handoff, heartbeat, bounded reconnect, ArkUI touch/keyboard/pointer,
+and capability-gated stylus/controller adapter entry points. This is still a development
 preview. The portable core also implements fail-closed ResumeSessionResult,
 single-use PairingOffer/Request/Result processing, and durable credential,
 control-replay, and revocation state. No DevEco SDK was available for this
@@ -93,7 +93,7 @@ integration gates; the UI does not present address import as secure pairing.
 - `core/session`: product negotiation, message/epoch validation, and backoff;
 - `core/transport`: streaming upgrade parser and control/video framing;
 - `core/media`: media packet parser and capacity-one latest-frame queue;
-- `core/input`: letterbox/rotation mapping and USB HID helpers;
+- `core/input`: letterbox/rotation mapping, USB HID helpers, and validated stylus/controller snapshots;
 - `platform`: TCP, Asset Store, AVCodec, lifecycle, and session controller seams;
 - `pages`: adaptive tablet connection and streaming surface.
 
@@ -152,12 +152,19 @@ for data handling and [UPGRADE.md](UPGRADE.md) for install/migration policy.
   authenticated record layer, QR camera import, and Mac interoperability;
 - wheel/trackpad axis delivery and a complete physical-key USB HID map;
 - Mac Host resume registry/first-message support and resume interoperability;
-- controller-specific input, stylus tilt/azimuth, audio, and Internet transport;
+- ArkUI/native acquisition of stylus eraser/buttons/hover/tilt and controller
+  axes/lifecycle, plus audio and Internet transport;
 - Mac interoperability and the complete MatePad Mini acceptance/soak matrix.
 
-Controller input, stylus tilt/azimuth, and wheel-specific semantics cannot be
-claimed from encoder code alone. Protocol v1 currently has no controller event
-or stylus tilt/azimuth fields; those require an additive schema revision.
+Protocol v1 now carries capability-gated stylus pressure, signed two-axis tilt,
+eraser/buttons/proximity and controller lifecycle/full-state snapshots. Portable
+tests match the shared golden fixtures, ArkUI Pen events route pressure and signed
+tilt into the stylus path, and session shutdown emits neutral/release state before
+closing. Native eraser/barrel-button/hover and controller acquisition, DevEco
+compilation, and physical stylus/controller behavior remain device gates; encoder
+coverage alone does not prove those platform paths. Harmony therefore advertises
+only base stylus today; extended stylus and controller remain dormant until their
+complete native sources are connected. Wheel-specific semantics remain open.
 
 See the [device runbook](../../docs/runbook/harmony-matepad-mini.md) and
 [Phase 4 verification record](../../docs/changes/2026-08-04-phase-4-harmony/TEST.md).

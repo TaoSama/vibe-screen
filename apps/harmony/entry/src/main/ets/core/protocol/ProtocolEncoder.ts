@@ -1,11 +1,13 @@
-import { Capability, ClientHello, Codec, ColorDescription, DeviceIdentity, EnvelopeMetadata, InputTarget, KeyInput,
-  NormalizedInput, PairingProof, PairingRequest, PROTOCOL_VERSION, ScrollInput, TransportKind, VideoConfig } from './ProtocolModels';
+import { Capability, ClientHello, Codec, ColorDescription, ControllerInput, DeviceIdentity, EnvelopeMetadata,
+  InputTarget, KeyInput, NormalizedInput, PairingProof, PairingRequest, PROTOCOL_VERSION, ScrollInput, StylusInput,
+  TransportKind, VideoConfig } from './ProtocolModels';
 import { ProtobufWriter } from './ProtobufWriter';
 
 export enum EnvelopePayloadField {
   CLIENT_HELLO = 20, PING = 24, PONG = 25, RESUME = 26, PAIRING_REQUEST = 31,
   LIST_DISPLAYS_REQUEST = 40, START_DISPLAY_REQUEST = 42, VIDEO_CONFIG_RESULT = 51,
-  REQUEST_KEYFRAME = 52, TOUCH = 60, POINTER = 61, SCROLL = 62, KEY = 63
+  REQUEST_KEYFRAME = 52, TOUCH = 60, POINTER = 61, SCROLL = 62, KEY = 63,
+  STYLUS = 65, CONTROLLER = 66
 }
 
 export type OutboundControlIntent =
@@ -21,7 +23,9 @@ export type OutboundControlIntent =
   | { kind: 'touch'; event: NormalizedInput; target?: InputTarget }
   | { kind: 'pointer'; event: NormalizedInput; target?: InputTarget }
   | { kind: 'scroll'; event: ScrollInput }
-  | { kind: 'key'; event: KeyInput };
+  | { kind: 'key'; event: KeyInput }
+  | { kind: 'stylus'; event: StylusInput }
+  | { kind: 'controller'; event: ControllerInput };
 
 export class ProtocolEncoder {
   private envelope(metadata: EnvelopeMetadata, field: EnvelopePayloadField, payload: ProtobufWriter): Uint8Array {
@@ -66,7 +70,9 @@ export class ProtocolEncoder {
     if (intent.kind === 'touch') return this.touch(metadata, intent.event, intent.target);
     if (intent.kind === 'pointer') return this.pointer(metadata, intent.event, intent.target);
     if (intent.kind === 'scroll') return this.scroll(metadata, intent.event);
-    return this.key(metadata, intent.event);
+    if (intent.kind === 'key') return this.key(metadata, intent.event);
+    if (intent.kind === 'stylus') return this.stylus(metadata, intent.event);
+    return this.controller(metadata, intent.event);
   }
 
   ping(metadata: EnvelopeMetadata, sequence: bigint): Uint8Array {
@@ -142,6 +148,29 @@ export class ProtocolEncoder {
       .bool(3, event.pressed).uint32(4, event.modifierMask).string(5, event.text);
     if (event.target !== undefined) payload.message(6, this.inputTarget(event.target));
     return this.envelope(metadata, EnvelopePayloadField.KEY, payload);
+  }
+
+  stylus(metadata: EnvelopeMetadata, event: StylusInput): Uint8Array {
+    const point: ProtobufWriter = new ProtobufWriter().fixed64(1, event.x).fixed64(2, event.y);
+    const payload: ProtobufWriter = new ProtobufWriter().uint64(1, event.inputId).uint32(2, event.pointerId)
+      .uint32(3, event.phase).message(4, point).fixed64(5, event.pressure)
+      .fixed64(6, event.tiltXDegrees).fixed64(7, event.tiltYDegrees);
+    if (event.target !== undefined) payload.message(8, this.inputTarget(event.target));
+    if (event.toolKind !== undefined) payload.uint32(9, event.toolKind);
+    payload.uint32(10, event.buttonMask ?? 0);
+    if (event.contactState !== undefined) payload.uint32(11, event.contactState);
+    return this.envelope(metadata, EnvelopePayloadField.STYLUS, payload);
+  }
+
+  controller(metadata: EnvelopeMetadata, event: ControllerInput): Uint8Array {
+    const payload: ProtobufWriter = new ProtobufWriter().uint64(1, event.inputId)
+      .string(2, event.controllerId).uint64(3, event.controllerEpoch).uint32(4, event.kind)
+      .uint32(5, event.buttonMask).fixed64(6, event.leftStickX).fixed64(7, event.leftStickY)
+      .fixed64(8, event.rightStickX).fixed64(9, event.rightStickY)
+      .fixed64(10, event.leftTrigger).fixed64(11, event.rightTrigger)
+      .sint32(12, event.hatX).sint32(13, event.hatY);
+    if (event.target !== undefined) payload.message(14, this.inputTarget(event.target));
+    return this.envelope(metadata, EnvelopePayloadField.CONTROLLER, payload);
   }
 
   static metadata(messageId: bigint, sessionId: Uint8Array = new Uint8Array(), sessionEpoch: bigint = 0n,

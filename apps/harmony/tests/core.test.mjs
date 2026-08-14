@@ -2,17 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CoordinateMapper, Rotation } from '../.test-dist/input/CoordinateMapper.js';
+import { AdvancedPeripheralInputMapper, ControllerSessionState, NEUTRAL_CONTROLLER_STATE
+} from '../.test-dist/input/AdvancedPeripheralInputMapper.js';
 import { PeripheralInputMapper } from '../.test-dist/input/PeripheralInputMapper.js';
 import { FrameQueueState, LatestFrameQueue } from '../.test-dist/media/LatestFrameQueue.js';
 import { MediaPacketParser } from '../.test-dist/media/MediaPacketParser.js';
-import { AeadAlgorithm, Capability, Codec, ColorPrimaries, InputPhase, KeyAgreementAlgorithm, MatrixCoefficients,
-  SignatureAlgorithm, TransferFunction, TransportKind } from '../.test-dist/protocol/ProtocolModels.js';
+import { AeadAlgorithm, Capability, Codec, ColorPrimaries, ControllerEventKind, InputPhase,
+  KeyAgreementAlgorithm, MatrixCoefficients, SignatureAlgorithm, StylusContactState, StylusToolKind,
+  TransferFunction, TransportKind } from '../.test-dist/protocol/ProtocolModels.js';
 import { ProtocolEncoder } from '../.test-dist/protocol/ProtocolEncoder.js';
 import { ProtocolDecoder } from '../.test-dist/protocol/ProtocolDecoder.js';
 import { MAX_PENDING_CONTROLS, OutboundControlWriter } from '../.test-dist/protocol/OutboundControlWriter.js';
 import { ProtobufWriter } from '../.test-dist/protocol/ProtobufWriter.js';
 import { decodeUtf8, encodeUtf8 } from '../.test-dist/protocol/Utf8.js';
-import { ClientCapabilities } from '../.test-dist/session/ClientCapabilities.js';
+import { ClientCapabilities, HARMONY_ADVERTISED_CAPABILITIES
+} from '../.test-dist/session/ClientCapabilities.js';
 import { HeartbeatMonitor } from '../.test-dist/session/HeartbeatMonitor.js';
 import { ProgressWatchdog } from '../.test-dist/session/ProgressWatchdog.js';
 import { isSupportedVideoConfig, ProductSession, ProductSessionState } from '../.test-dist/session/ProductSession.js';
@@ -150,6 +154,18 @@ test('negotiated capabilities must be a legal subset and gate optional input', (
   assert.equal(capabilities.has(Capability.KEYBOARD), false);
   assert.equal(capabilities.has(Capability.POINTER), false);
   assert.throws(() => capabilities.acceptNegotiated([Capability.TOUCH, Capability.KEYBOARD]), /invalid negotiated/);
+  assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.STYLUS), true);
+  assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.STYLUS_EXTENDED), false);
+  assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.CONTROLLER), false);
+  assert.throws(() => new ClientCapabilities([Capability.TOUCH, Capability.STYLUS_EXTENDED], [Capability.TOUCH]),
+    /Invalid client capability/);
+  const invalidHost = new ClientCapabilities([Capability.TOUCH, Capability.STYLUS,
+    Capability.STYLUS_EXTENDED], [Capability.TOUCH]);
+  assert.throws(() => invalidHost.acceptHost([Capability.TOUCH, Capability.STYLUS_EXTENDED]),
+    /invalid capability dependencies/);
+  invalidHost.acceptHost([Capability.TOUCH, Capability.STYLUS, Capability.STYLUS_EXTENDED]);
+  assert.throws(() => invalidHost.acceptNegotiated([Capability.TOUCH, Capability.STYLUS_EXTENDED]),
+    /invalid negotiated/);
 
   const session = new ProductSession('touch-only', 'Touch only', [Capability.TOUCH], [Codec.HEVC]);
   confirmRequest(session, session.start(1n)[0], 1n);
@@ -179,6 +195,30 @@ test('product session rejects non-finite and out-of-range input locally', () => 
   assert.throws(() => session.scroll({ inputId: 4n, deltaX: Number.POSITIVE_INFINITY, deltaY: 0 }), /Invalid scroll/);
   assert.throws(() => session.key({ inputId: 5n, usbHidUsage: 0, pressed: true, modifierMask: 0, text: '' }),
     /Invalid keyboard/);
+});
+
+test('product session gates advanced input and releases active state neutrally', () => {
+  const unavailable = createStreamingSession();
+  const stylus = { inputId: 1n, pointerId: 7, phase: InputPhase.BEGAN, x: 0.5, y: 0.5,
+    pressure: 0.5, tiltXDegrees: 0, tiltYDegrees: 0 };
+  assert.throws(() => unavailable.stylus(stylus), /was not negotiated/);
+
+  const session = advancedStreamingSession();
+  assert.equal(session.stylus({ ...stylus, toolKind: StylusToolKind.PEN, buttonMask: 1,
+    contactState: StylusContactState.CONTACT }).intent.kind, 'stylus');
+  assert.equal(session.controller({ inputId: 2n, controllerId: 'pad-1', controllerEpoch: 1n,
+    kind: ControllerEventKind.CONNECTED, ...NEUTRAL_CONTROLLER_STATE }).intent.kind, 'controller');
+  let next = 10n;
+  const releases = session.releaseAdvancedInputs(() => next++).map((action) => action.intent);
+  assert.deepEqual(releases.map((intent) => intent.kind), ['stylus', 'controller', 'controller']);
+  assert.equal(releases[0].event.phase, InputPhase.CANCELLED);
+  assert.equal(releases[0].event.pressure, 0);
+  assert.equal(releases[0].event.contactState, StylusContactState.CONTACT);
+  assert.equal(releases[1].event.kind, ControllerEventKind.STATE);
+  assert.equal(releases[2].event.kind, ControllerEventKind.DISCONNECTED);
+  assert.deepEqual(session.releaseAdvancedInputs(() => next++), []);
+  assert.throws(() => session.controller({ inputId: 13n, controllerId: 'pad-1', controllerEpoch: 1n,
+    kind: ControllerEventKind.CONNECTED, ...NEUTRAL_CONTROLLER_STATE }), /Invalid controller attach/);
 });
 
 test('outbound writer keeps one send in flight and assigns ids at dequeue time', async () => {
@@ -211,6 +251,35 @@ test('outbound writer fails closed at a bounded backlog', async () => {
   const overflow = writer.enqueue({ kind: 'pong', sequence: 1n, correlationId: 1n }, scope);
   await assert.rejects(overflow, /bounded capacity/);
   await Promise.all(queued.map((pending) => assert.rejects(pending, /bounded capacity/)));
+});
+
+test('advanced release reserve bypasses a full ordinary backlog and sends first', async () => {
+  const sent = [];
+  const releases = [];
+  const writer = new OutboundControlWriter((bytes) => {
+    sent.push(new ProtocolDecoder().envelope(bytes));
+    return new Promise((resolve) => releases.push(resolve));
+  }, () => 1n);
+  const scope = { sessionId, sessionEpoch: 7n };
+  const active = writer.enqueue({ kind: 'ping', sequence: 1n }, scope);
+  const queued = [];
+  for (let index = 0; index < MAX_PENDING_CONTROLS; index += 1) {
+    queued.push(writer.enqueue({ kind: 'pointer', event: { inputId: BigInt(index + 1), pointerId: 0,
+      phase: InputPhase.CHANGED, x: 0.5, y: 0.5, pressure: 0, tiltX: 0, tiltY: 0, buttonMask: 0 } }, scope));
+  }
+  const release = writer.enqueueRelease({ kind: 'stylus', event: { inputId: 999n, pointerId: 1,
+    phase: InputPhase.CANCELLED, x: 0.5, y: 0.5, pressure: 0, tiltXDegrees: 0, tiltYDegrees: 0 } }, scope);
+  const disconnect = writer.enqueueRelease({ kind: 'controller', event: { inputId: 1000n,
+    controllerId: 'pad-1', controllerEpoch: 1n, kind: ControllerEventKind.DISCONNECTED,
+    ...NEUTRAL_CONTROLLER_STATE } }, scope);
+  releases.shift()(); await active;
+  assert.equal(sent[1].payloadField, 65);
+  releases.shift()(); await release;
+  assert.equal(sent[2].payloadField, 66);
+  releases.shift()(); await disconnect;
+  assert.equal(sent[3].payloadField, 61);
+  writer.close();
+  await Promise.all(queued.map((pending) => assert.rejects(pending)));
 });
 
 test('protocol responses overtake input while gesture lifecycle stays FIFO', async () => {
@@ -364,6 +433,62 @@ test('input codecs use distinct envelope fields and stable HID mapping', () => {
   assert.equal(new PeripheralInputMapper().usbHidUsage('a'), 0x04);
   assert.equal(new PeripheralInputMapper().usbHidUsage('ArrowRight'), 0x4f);
   assert.equal(new PeripheralInputMapper().buttonMask(1), 2);
+});
+
+test('advanced input codecs match shared Protocol v1 golden fixtures', () => {
+  const encoder = new ProtocolEncoder();
+  const target = { displayId: 'display-main', streamId: 42n };
+  assert.deepEqual(encoder.stylus(ProtocolEncoder.metadata(16n, sessionId, 7n, 1000000016n), {
+    inputId: 102n, pointerId: 8, phase: InputPhase.CHANGED, x: 0.75, y: 0.25, pressure: 0,
+    tiltXDegrees: 10, tiltYDegrees: -20, target, toolKind: StylusToolKind.ERASER,
+    buttonMask: 3, contactState: StylusContactState.PROXIMITY
+  }), fixture('stylus_extended.binpb'));
+  const controller = { controllerId: 'controller-xbox-1', controllerEpoch: 1n, target,
+    ...NEUTRAL_CONTROLLER_STATE };
+  assert.deepEqual(encoder.controller(ProtocolEncoder.metadata(17n, sessionId, 7n, 1000000017n), {
+    inputId: 103n, kind: ControllerEventKind.CONNECTED, ...controller
+  }), fixture('controller_connected.binpb'));
+  assert.deepEqual(encoder.controller(ProtocolEncoder.metadata(18n, sessionId, 7n, 1000000018n), {
+    inputId: 104n, kind: ControllerEventKind.STATE, ...controller, buttonMask: 4101,
+    leftStickX: -0.75, leftStickY: 0.5, rightStickX: 0.25, rightStickY: -0.125,
+    leftTrigger: 0.375, rightTrigger: 0.875, hatX: 1, hatY: -1
+  }), fixture('controller_state.binpb'));
+  assert.deepEqual(encoder.controller(ProtocolEncoder.metadata(19n, sessionId, 7n, 1000000019n), {
+    inputId: 105n, kind: ControllerEventKind.DISCONNECTED, ...controller
+  }), fixture('controller_disconnected.binpb'));
+});
+
+test('advanced input mapper validates stylus and emits full controller snapshots', () => {
+  const mapper = new AdvancedPeripheralInputMapper();
+  const stylus = mapper.stylus(1n, { pointerId: 7, phase: InputPhase.CHANGED, x: 0.5, y: 0.25,
+    pressure: 0.8, tiltXDegrees: 10, tiltYDegrees: -20, toolKind: StylusToolKind.PEN,
+    buttonMask: 1, contactState: StylusContactState.CONTACT }, true);
+  assert.equal(stylus.pressure, 0.8);
+  assert.equal(mapper.stableControllerId(31), 'harmony-1f');
+  assert.throws(() => mapper.stylus(2n, { ...stylus, inputId: undefined, buttonMask: 4 }, true),
+    /Invalid extended stylus/);
+  const baseSample = { pointerId: 7, phase: InputPhase.CHANGED, x: 0.5, y: 0.25, pressure: 0.8,
+    tiltXDegrees: 10, tiltYDegrees: -20, toolKind: StylusToolKind.PEN, buttonMask: 0,
+    contactState: StylusContactState.CONTACT };
+  assert.equal(mapper.routeStylus(baseSample, false, false), 'touch');
+  assert.equal(mapper.routeStylus({ ...baseSample, toolKind: StylusToolKind.ERASER }, false, false), 'suppress');
+  assert.equal(mapper.routeStylus({ ...baseSample, contactState: StylusContactState.PROXIMITY }, true, false), 'suppress');
+  assert.equal(mapper.routeStylus({ ...baseSample, buttonMask: 1 }, true, false), 'suppress');
+  assert.equal(mapper.routeStylus({ ...baseSample, buttonMask: 1 }, true, true), 'stylus');
+
+  const controllers = new ControllerSessionState();
+  assert.deepEqual(controllers.connect('pad-b').map((event) => [event.controllerId, event.kind]),
+    [['pad-b', ControllerEventKind.CONNECTED]]);
+  const update = controllers.update('pad-a', { ...NEUTRAL_CONTROLLER_STATE, leftStickX: 0.5 });
+  assert.deepEqual(update.map((event) => [event.controllerId, event.kind]), [
+    ['pad-a', ControllerEventKind.CONNECTED], ['pad-a', ControllerEventKind.STATE]
+  ]);
+  assert.equal(update.at(-1).leftStickX, 0.5);
+  assert.deepEqual(controllers.update('pad-b', { ...NEUTRAL_CONTROLLER_STATE, rightTrigger: 0.75 })
+    .map((event) => event.controllerId), ['pad-b']);
+  const released = controllers.releaseAll();
+  assert.equal(released.filter((event) => event.kind === ControllerEventKind.DISCONNECTED).length, 2);
+  assert.equal(controllers.connect('pad-a')[0].controllerEpoch, 2n);
 });
 
 test('queue, geometry, session epoch and reconnect policies remain bounded', () => {
@@ -532,6 +657,23 @@ function touchOnlyStreamingSession() {
   const session = sessionAwaitingVideoConfiguration([Capability.TOUCH]);
   const configure = session.receive(fixture('video_config.binpb'), 8n)[0];
   finishVideoConfiguration(session, configure);
+  return session;
+}
+
+function advancedStreamingSession() {
+  const capabilities = [Capability.TOUCH, Capability.STYLUS, Capability.STYLUS_EXTENDED, Capability.CONTROLLER];
+  const session = new ProductSession('harmony-test', 'Harmony test', capabilities, [Codec.HEVC, Codec.H264]);
+  confirmRequest(session, session.start(1n)[0], 1n);
+  const host = new ProtobufWriter().uint32(1, 1).packedVarints(4, capabilities)
+    .packedVarints(5, [Codec.HEVC, Codec.H264]);
+  session.receive(controlEnvelope(2n, 21, host, false), 2n);
+  const accepted = new ProtobufWriter().bytesField(1, sessionId).uint64(2, 7n).uint32(3, 1000)
+    .packedVarints(4, capabilities);
+  const acceptedActions = session.receive(controlEnvelope(3n, 22, accepted), 3n);
+  confirmRequest(session, acceptedActions[1], 4n);
+  confirmRequest(session, session.receive(fixture('list_displays_response.binpb'), 5n)[0], 6n);
+  session.receive(fixture('start_display_response.binpb'), 7n);
+  finishVideoConfiguration(session, session.receive(fixture('video_config.binpb'), 8n)[0]);
   return session;
 }
 

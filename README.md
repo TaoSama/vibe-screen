@@ -489,7 +489,9 @@ network quality may increase it.
   bounded media queues, input encoding, fail-closed resume results, and a
   portable pairing/credential/replay/revocation core. ArkUI now wires TCP,
   XComponent, AVCodec, Asset Store, foreground suspension, and bounded reconnect in
-  source. No DevEco SDK was available for this record, so the repository does
+  source. The portable Harmony core also matches the shared extended-stylus and
+  controller fixtures, gates them by negotiated capability, and releases active
+  state on session shutdown. No DevEco SDK was available for this record, so the repository does
   not claim ArkTS compilation, a HAP, signing, installation, hardware decode,
   HUKS-backed secure pairing, authenticated transport, resume-capable Host
   interoperability, or real-device behavior.
