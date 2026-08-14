@@ -8,6 +8,10 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
     private static let childTerminationGrace: TimeInterval = 1
     private let deviceSigningKey = P256.Signing.PrivateKey()
 
+    private var activePeerStateStoreFactory: InternetSessionLeaseIssuer.PeerStateStoreFactory {
+        { _ in LeaseMemoryStateStore() }
+    }
+
     /// This cross-process worker harness forks the built executable, gates the
     /// workers on a shared file, and has each one run a full lease issuance
     /// through the cross-process transaction lock. That combination of
@@ -229,7 +233,8 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             stateStoreFactory: { scope in
                 XCTAssertEqual(scope, "pairing-authority-test")
                 return stateStore
-            }
+            },
+            peerStateStoreFactory: activePeerStateStoreFactory
         )
         XCTAssertEqual(try issuedEpoch(first), 1)
 
@@ -237,7 +242,8 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             unsignedJSON: try unsignedLease(epoch: 1),
             identityStore: identityStore,
             secretStore: secretStore,
-            stateStoreFactory: { _ in stateStore }
+            stateStoreFactory: { _ in stateStore },
+            peerStateStoreFactory: activePeerStateStoreFactory
         )
         XCTAssertEqual(try issuedEpoch(restartedIssuerResult), 2)
 
@@ -250,7 +256,8 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
                     unsignedJSON: try unsignedLease(epoch: UInt64(index + 1)),
                     identityStore: identityStore,
                     secretStore: secretStore,
-                    stateStoreFactory: { _ in stateStore }
+                    stateStoreFactory: { _ in stateStore },
+                    peerStateStoreFactory: activePeerStateStoreFactory
                 )
                 let epoch = try issuedEpoch(signed)
                 lock.lock(); epochs.append(epoch); lock.unlock()
@@ -290,19 +297,22 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             unsignedJSON: try unsignedLease(epoch: 99, pairingIdentifier: "pairing-a"),
             identityStore: identityStore,
             secretStore: secretStore,
-            stateStoreFactory: factory
+            stateStoreFactory: factory,
+            peerStateStoreFactory: activePeerStateStoreFactory
         )
         let secondA = try InternetSessionLeaseIssuer.issue(
             unsignedJSON: try unsignedLease(epoch: 1, pairingIdentifier: "pairing-a"),
             identityStore: identityStore,
             secretStore: secretStore,
-            stateStoreFactory: factory
+            stateStoreFactory: factory,
+            peerStateStoreFactory: activePeerStateStoreFactory
         )
         let firstB = try InternetSessionLeaseIssuer.issue(
             unsignedJSON: try unsignedLease(epoch: 99, pairingIdentifier: "pairing-b"),
             identityStore: identityStore,
             secretStore: secretStore,
-            stateStoreFactory: factory
+            stateStoreFactory: factory,
+            peerStateStoreFactory: activePeerStateStoreFactory
         )
 
         XCTAssertEqual(try issuedEpoch(firstA), 1)
@@ -328,7 +338,8 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             unsignedJSON: try unsignedLease(epoch: 99),
             identityStore: identityStore,
             secretStore: secretStore,
-            stateStoreFactory: { _ in stateStore }
+            stateStoreFactory: { _ in stateStore },
+            peerStateStoreFactory: activePeerStateStoreFactory
         ))
         XCTAssertEqual(stateStore.state.sessionEpoch, 4)
 
@@ -338,7 +349,8 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             unsignedJSON: try unsignedLease(epoch: 99),
             identityStore: identityStore,
             secretStore: secretStore,
-            stateStoreFactory: { _ in stateStore }
+            stateStoreFactory: { _ in stateStore },
+            peerStateStoreFactory: activePeerStateStoreFactory
         ))
         XCTAssertEqual(stateStore.state.sessionEpoch, 4)
 
@@ -351,7 +363,8 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             unsignedJSON: try unsignedLease(epoch: 99),
             identityStore: identityStore,
             secretStore: secretStore,
-            stateStoreFactory: { _ in stateStore }
+            stateStoreFactory: { _ in stateStore },
+            peerStateStoreFactory: activePeerStateStoreFactory
         )), 5)
 
         let bindingName = try PairedHostIdentityBinding.keychainName(
@@ -362,7 +375,8 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             unsignedJSON: try unsignedLease(epoch: 99),
             identityStore: identityStore,
             secretStore: secretStore,
-            stateStoreFactory: { _ in stateStore }
+            stateStoreFactory: { _ in stateStore },
+            peerStateStoreFactory: activePeerStateStoreFactory
         ))
         XCTAssertEqual(stateStore.state.sessionEpoch, 5)
 
@@ -380,7 +394,8 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             unsignedJSON: try unsignedLease(epoch: 99),
             identityStore: identityStore,
             secretStore: secretStore,
-            stateStoreFactory: { _ in stateStore }
+            stateStoreFactory: { _ in stateStore },
+            peerStateStoreFactory: activePeerStateStoreFactory
         ))
         XCTAssertEqual(stateStore.state.sessionEpoch, 5)
 
@@ -395,12 +410,46 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             try InternetSessionLeaseIssuer.issue(
                 unsignedJSON: try unsignedLease(epoch: 99),
                 secretStore: secretStore,
-                stateStoreFactory: { _ in stateStore }
+                stateStoreFactory: { _ in stateStore },
+                peerStateStoreFactory: activePeerStateStoreFactory
             )
         )
         XCTAssertEqual(stateStore.validationCalls, 1)
         XCTAssertEqual(secretStore.loadCalls, 0)
         XCTAssertEqual(stateStore.state.sessionEpoch, 0)
+    }
+
+    func testRevokedPeerCannotReceiveFreshLeaseOrBurnAuthorityEpoch() throws {
+        let service = "dev.vibescreen.lease-revocation-tests.\(UUID().uuidString)"
+        let identityStore = KeychainDeviceIdentityStore(service: service)
+        let identity = try identityStore.createIfMissing(deviceID: "lease-host")
+        let secretStore = LeaseMemorySecretStore()
+        try persistBinding(
+            identity.publicIdentity,
+            pairingIdentifier: "pairing-authority-test",
+            store: secretStore
+        )
+        addTeardownBlock {
+            try identityStore.delete(deviceID: "lease-host", keyEpoch: 1)
+        }
+        let authorityStore = LeaseMemoryStateStore()
+        authorityStore.state.sessionEpoch = 8
+        let revokedPeerStore = LeaseMemoryStateStore()
+        revokedPeerStore.state.revoked = true
+
+        XCTAssertThrowsError(try InternetSessionLeaseIssuer.issue(
+            unsignedJSON: try unsignedLease(epoch: 99),
+            identityStore: identityStore,
+            secretStore: secretStore,
+            stateStoreFactory: { _ in authorityStore },
+            peerStateStoreFactory: { identity in
+                XCTAssertEqual(identity, self.deviceIdentity)
+                return revokedPeerStore
+            }
+        )) { error in
+            XCTAssertEqual(error as? PlatformSecurityError, .revoked)
+        }
+        XCTAssertEqual(authorityStore.state.sessionEpoch, 8)
     }
 
     private func unsignedLease(

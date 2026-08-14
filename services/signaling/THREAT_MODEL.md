@@ -28,15 +28,14 @@ mandatory even when signaling authentication succeeds.
 | Arbitrary data tunneling | Closed JSON schema permits only offer/answer/candidate/end records | Edge traffic anomaly alerts |
 | Slow request/poll exhaustion | HTTP read/header/write deadlines and per-role waiter cap | Reverse-proxy global concurrency limits |
 | Stale state after restart | State is intentionally not persisted, so restart destroys all sessions | Clients establish a fresh rendezvous/session epoch |
-| Active session invalidation | Authority-only invalidation destroys role tokens/events, wakes polls, and tombstones the request ID until original expiry | Product authority persists device revocation and also terminates product/TURN access |
+| Active session invalidation | Authority invalidation destroys role tokens/events; host-role revoke requires a session-bound signed tombstone, persists its sequence/digest and a relay outbox, denies all signaling sessions, then invokes relay revocation | A deployed relay termination executor must prove active-allocation disconnect |
 | Compromised signaling | Cannot decrypt application E2EE or authenticate peer transcript | Endpoint identity pinning; rotate role credentials |
 
 ## Explicit residual risks
 
 - A stolen valid role bearer can act until the trusted authority invalidates
-  that known session or its short TTL expires. There is no v0.1 account/device
-  revocation feed, durable tombstone, or active TURN-allocation termination;
-  the product authority must coordinate those controls during incident response.
+  it or its short TTL expires. The host bearer alone cannot create a permanent
+  device deny because revoke also requires the bound authority signature.
 - The service is single-instance and in-memory. Horizontal replicas do not share
   state, rate limits, or idempotency. Sticky routing does not make this durable.
 - The global issuer token authenticates only the trusted backend, not a human or

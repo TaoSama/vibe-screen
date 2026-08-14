@@ -2,6 +2,8 @@ package signaling
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,13 +27,18 @@ type Server struct {
 	createMu   sync.Mutex
 	createRate rateWindow
 	now        func() time.Time
+	relay      relayClient
 }
 
 func NewServer(cfg Config) (*Server, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, store: NewStore(cfg), now: time.Now}, nil
+	store, err := NewStore(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &Server{cfg: cfg, store: store, now: time.Now, relay: newRelayClient(cfg)}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -41,6 +48,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /metrics", s.metricsHandler)
 	mux.HandleFunc("POST /v1/sessions", s.createSession)
 	mux.HandleFunc("DELETE /v1/sessions/{session_id}", s.invalidateSession)
+	mux.HandleFunc("POST /v1/sessions/{session_id}/refresh", s.refreshSession)
+	mux.HandleFunc("POST /v1/sessions/{session_id}/revoke", s.revokeSession)
 	mux.HandleFunc("POST /v1/sessions/{session_id}/messages", s.postMessage)
 	mux.HandleFunc("GET /v1/sessions/{session_id}/events", s.getEvents)
 	return securityHeaders(mux)
@@ -72,6 +81,7 @@ func (s *Server) SetReady(ready bool) {
 }
 
 func (s *Server) RunCleanup(ctx context.Context) {
+	s.retryPendingRelayRevocations(ctx)
 	ticker := time.NewTicker(s.cfg.CleanupInterval())
 	defer ticker.Stop()
 	for {
@@ -80,6 +90,7 @@ func (s *Server) RunCleanup(ctx context.Context) {
 			return
 		case <-ticker.C:
 			s.metrics.expiredCleaned.Add(uint64(s.store.Cleanup()))
+			s.retryPendingRelayRevocations(ctx)
 		}
 	}
 }
@@ -108,8 +119,12 @@ func (s *Server) metricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type createSessionRequest struct {
-	RequestID  string `json:"request_id"`
-	TTLSeconds int64  `json:"ttl_seconds,omitempty"`
+	RequestID    string          `json:"request_id"`
+	TTLSeconds   int64           `json:"ttl_seconds,omitempty"`
+	DeviceID     string          `json:"device_id,omitempty"`
+	SessionEpoch uint64          `json:"session_epoch,omitempty"`
+	Authority    *PublicIdentity `json:"authority,omitempty"`
+	PeerIdentity *PublicIdentity `json:"peer_identity,omitempty"`
 }
 
 func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
@@ -130,6 +145,13 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusBadRequest, "invalid request_id")
 		return
 	}
+	bound := request.DeviceID != "" || request.SessionEpoch != 0 || request.Authority != nil || request.PeerIdentity != nil
+	if bound && (request.DeviceID == "" || request.SessionEpoch == 0 || request.SessionEpoch > uint64(^uint64(0)>>1) ||
+		request.Authority == nil || request.PeerIdentity == nil || !validIdentifier(request.DeviceID) ||
+		request.PeerIdentity.DeviceID != request.DeviceID || validateIdentity(*request.Authority) != nil || validateIdentity(*request.PeerIdentity) != nil) {
+		s.reject(w, http.StatusBadRequest, "bound sessions require valid device_id, epoch, authority, and peer_identity")
+		return
+	}
 	ttl := s.cfg.SessionTTL()
 	if request.TTLSeconds != 0 {
 		ttl = time.Duration(request.TTLSeconds) * time.Second
@@ -138,7 +160,14 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusBadRequest, "ttl_seconds outside allowed range")
 		return
 	}
-	response, created, err := s.store.Create(request.RequestID, ttl)
+	var authority, peer PublicIdentity
+	if request.Authority != nil {
+		authority = *request.Authority
+	}
+	if request.PeerIdentity != nil {
+		peer = *request.PeerIdentity
+	}
+	response, created, err := s.store.CreateBoundIdentity(request.RequestID, ttl, request.DeviceID, request.SessionEpoch, authority, peer)
 	if err != nil {
 		s.writeStoreError(w, err)
 		return
@@ -150,8 +179,94 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusOK
 		s.metrics.idempotentReplays.Add(1)
 	}
+	if !s.store.SessionStillAllowed(response.SessionID, response.DeviceID) {
+		s.reject(w, http.StatusConflict, "device revoked")
+		return
+	}
 	w.Header().Set("Location", "/v1/sessions/"+url.PathEscape(response.SessionID))
 	writeJSON(w, status, response)
+}
+
+func (s *Server) refreshSession(w http.ResponseWriter, r *http.Request) {
+	if err := s.decodeJSON(w, r, &struct{}{}); err != nil {
+		s.reject(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	result, err := s.store.Refresh(r.PathValue("session_id"), bearerToken(r))
+	if err != nil {
+		s.writeStoreError(w, err)
+		return
+	}
+	ttlSeconds := int64(time.Until(result.Response.ExpiresAt) / time.Second)
+	if ttlSeconds < 1 {
+		ttlSeconds = 1
+	}
+	turn, err := s.relay.Credentials(r.Context(), result.DeviceID, result.Response.SessionID, ttlSeconds)
+	if err != nil {
+		s.reject(w, http.StatusBadGateway, "relay credential issuance failed")
+		return
+	}
+	if !s.store.RefreshStillAllowed(result.Response.SessionID, result.DeviceID) {
+		s.reject(w, http.StatusNotFound, "session not found")
+		return
+	}
+	result.Response.Turn = turn
+	writeJSON(w, http.StatusOK, result.Response)
+}
+
+type revokeSessionRequest struct {
+	DeviceID  string                  `json:"device_id"`
+	Tombstone *SignedDeviceRevocation `json:"tombstone"`
+}
+
+func (s *Server) revokeSession(w http.ResponseWriter, r *http.Request) {
+	var request revokeSessionRequest
+	if err := s.decodeJSON(w, r, &request); err != nil {
+		s.reject(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !validIdentifier(request.DeviceID) || request.Tombstone == nil {
+		s.reject(w, http.StatusBadRequest, "invalid device_id")
+		return
+	}
+	authority, peer, err := s.store.RevocationBinding(r.PathValue("session_id"), bearerToken(r), request.DeviceID)
+	if err != nil {
+		s.writeStoreError(w, err)
+		return
+	}
+	if err := verifySignedRevocation(*request.Tombstone, authority, peer, s.now()); err != nil {
+		s.reject(w, http.StatusBadRequest, "invalid signed tombstone")
+		return
+	}
+	digestBytes := sha256.Sum256(append(request.Tombstone.signingDigest(), request.Tombstone.AuthoritySignature...))
+	nonceBytes := sha256.Sum256(request.Tombstone.Nonce)
+	authorityDigestBytes := identityDigest(request.Tombstone.Authority)
+	needsRelay, err := s.store.RevokeDevice(r.PathValue("session_id"), bearerToken(r), request.DeviceID,
+		*request.Tombstone, hex.EncodeToString(authorityDigestBytes), hex.EncodeToString(digestBytes[:]), hex.EncodeToString(nonceBytes[:]))
+	if err != nil {
+		s.writeStoreError(w, err)
+		return
+	}
+	if needsRelay {
+		if err := s.relay.Revoke(r.Context(), request.DeviceID); err != nil {
+			s.reject(w, http.StatusBadGateway, "relay revocation failed")
+			return
+		}
+		if err := s.store.MarkRelayRevoked(request.DeviceID); err != nil {
+			s.reject(w, http.StatusInternalServerError, "persist relay revocation completion failed")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
+}
+
+func (s *Server) retryPendingRelayRevocations(ctx context.Context) {
+	for _, deviceID := range s.store.PendingRelayRevocations() {
+		if err := s.relay.Revoke(ctx, deviceID); err != nil {
+			continue
+		}
+		_ = s.store.MarkRelayRevoked(deviceID)
+	}
 }
 
 func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
@@ -302,6 +417,8 @@ func (s *Server) writeStoreError(w http.ResponseWriter, err error) {
 		// Do not disclose whether a guessed session identifier exists.
 		s.reject(w, http.StatusNotFound, "session not found")
 	case errors.Is(err, ErrConflict), errors.Is(err, ErrInvalidated):
+		s.reject(w, http.StatusConflict, err.Error())
+	case errors.Is(err, ErrRefreshUnsupported), errors.Is(err, ErrDeviceRevoked):
 		s.reject(w, http.StatusConflict, err.Error())
 	case errors.Is(err, ErrRateLimited), errors.Is(err, ErrTooManyWaiters), errors.Is(err, ErrCapacity), errors.Is(err, ErrCandidateLimit):
 		s.reject(w, http.StatusTooManyRequests, err.Error())

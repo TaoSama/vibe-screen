@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/subtle"
@@ -17,9 +18,11 @@ import (
 )
 
 const (
-	maxRequestBody = 16 * 1024
-	gibibyte       = uint64(1024 * 1024 * 1024)
-	maxRateEntries = 10_000
+	maxRequestBody                     = 16 * 1024
+	gibibyte                           = uint64(1024 * 1024 * 1024)
+	maxRateEntries                     = 10_000
+	maxStartupTerminationRetries       = 100
+	maxStartupTerminationRetryDuration = 5 * time.Second
 )
 
 type rateWindow struct {
@@ -28,13 +31,14 @@ type rateWindow struct {
 }
 
 type Server struct {
-	cfg      Config
-	store    *UsageStore
-	metrics  Metrics
-	now      func() time.Time
-	rateMu   sync.Mutex
-	rates    map[string]rateWindow
-	revokeMu sync.RWMutex
+	cfg        Config
+	store      *UsageStore
+	metrics    Metrics
+	now        func() time.Time
+	rateMu     sync.Mutex
+	rates      map[string]rateWindow
+	revokeMu   sync.RWMutex
+	terminator allocationTerminator
 }
 
 func NewServer(cfg Config) (*Server, error) {
@@ -45,7 +49,26 @@ func NewServer(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, store: store, now: time.Now, rates: make(map[string]rateWindow)}, nil
+	server := &Server{cfg: cfg, store: store, now: time.Now, rates: make(map[string]rateWindow), terminator: newWebhookAllocationTerminator(cfg)}
+	server.retryPendingTerminations()
+	return server, nil
+}
+
+func (s *Server) retryPendingTerminations() {
+	if s.terminator == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), maxStartupTerminationRetryDuration)
+	defer cancel()
+	for _, pending := range s.store.PendingTerminations(maxStartupTerminationRetries) {
+		if err := s.terminator.Terminate(ctx, allocationTerminationRequest{RevocationID: pending.RevocationID, DeviceID: pending.DeviceID}); err != nil {
+			slog.Error("startup allocation termination retry failed", "device_id", pending.DeviceID, "revocation_id", pending.RevocationID, "error", err)
+			continue
+		}
+		if err := s.store.CompleteTermination(pending.DeviceID, pending.RevocationID); err != nil {
+			slog.Error("persist startup allocation termination completion failed", "device_id", pending.DeviceID, "revocation_id", pending.RevocationID, "error", err)
+		}
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -158,11 +181,29 @@ func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
 	}
 	s.revokeMu.Lock()
 	defer s.revokeMu.Unlock()
-	if err := s.store.Revoke(deviceID, s.now()); err != nil {
+	revocationID, terminationPending, err := s.store.Revoke(deviceID, s.now())
+	if err != nil {
 		s.reject(w, http.StatusInternalServerError, "persist revocation failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
+	if !terminationPending {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "revoked", "allocation_termination": "acknowledged", "revocation_id": revocationID})
+		return
+	}
+	if s.terminator == nil {
+		s.reject(w, http.StatusServiceUnavailable, "device revoked; allocation termination webhook is not configured")
+		return
+	}
+	if err := s.terminator.Terminate(r.Context(), allocationTerminationRequest{RevocationID: revocationID, DeviceID: deviceID}); err != nil {
+		slog.Error("allocation termination failed", "device_id", deviceID, "revocation_id", revocationID, "error", err)
+		s.reject(w, http.StatusServiceUnavailable, "device revoked; allocation termination pending")
+		return
+	}
+	if err := s.store.CompleteTermination(deviceID, revocationID); err != nil {
+		s.reject(w, http.StatusServiceUnavailable, "device revoked; allocation termination completion not persisted")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "revoked", "allocation_termination": "acknowledged", "revocation_id": revocationID})
 }
 
 func (s *Server) usage(w http.ResponseWriter, r *http.Request) {

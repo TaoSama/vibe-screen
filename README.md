@@ -461,6 +461,11 @@ commit and raw evidence were unavailable. The separate 2026-08-05
 reachable-source record retains raw host/device/UI, service and per-ADB
 lease-gate evidence with a privacy scan, without extending its result to current
 code.
+The source tree now includes scoped signaling credential rotation, a durable
+per-device signaling deny list with relay revocation forwarding, and a strict
+Mac authority client/coordinator. These are recovery building blocks only: they
+do not yet publish the host-signed replacement device lease or complete a
+two-party handoff.
 Automatic account/session-authority issuance, real
 encoded ScreenCaptureKit output through the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service

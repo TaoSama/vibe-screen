@@ -55,7 +55,7 @@ func TestStoreRejectsUsageAfterRevocationWithoutMutatingState(t *testing.T) {
 	if err := store.Apply(now, UsageEvent{EventID: "start-before-revoke", DeviceID: "device", SessionID: "session", Kind: "start", EgressBytes: 10}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Revoke("device", now); err != nil {
+	if _, _, err := store.Revoke("device", now); err != nil {
 		t.Fatal(err)
 	}
 	accepted := UsageEvent{EventID: "start-before-revoke", DeviceID: "device", SessionID: "session", Kind: "start", EgressBytes: 10}

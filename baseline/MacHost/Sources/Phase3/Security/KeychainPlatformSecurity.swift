@@ -647,9 +647,27 @@ enum KeychainCrossProcessTransactionLock {
         acquisitionTimeoutNanoseconds: UInt64 = defaultAcquisitionTimeoutNanoseconds,
         operation: () throws -> T
     ) throws -> T {
+        let clock = { DispatchTime.now().uptimeNanoseconds }
+        let deadline = acquisitionDeadline(
+            startedAt: clock(),
+            timeoutNanoseconds: acquisitionTimeoutNanoseconds
+        )
         let lockURL = try lockFileURL(service: service, account: account)
-        let processLock = processLock(for: lockURL)
-        return try processLock.withCriticalSection {
+        let processLock = try processLock(
+            for: lockURL,
+            deadlineNanoseconds: deadline,
+            clock: clock
+        )
+        try acquireProcessLock(
+            processLock,
+            deadlineNanoseconds: deadline,
+            clock: clock
+        )
+        defer { processLock.unlock() }
+        guard clock() < deadline else {
+            throw acquisitionTimeoutError()
+        }
+        return try {
             let depthKey = threadDepthPrefix + lockURL.lastPathComponent
             let dictionary = Thread.current.threadDictionary
             let depth = dictionary[depthKey] as? Int ?? 0
@@ -670,9 +688,13 @@ enum KeychainCrossProcessTransactionLock {
                 )
             }
             defer { close(descriptor) }
+            guard clock() < deadline else {
+                throw acquisitionTimeoutError()
+            }
             try acquireFileLock(
                 descriptor: descriptor,
-                timeoutNanoseconds: acquisitionTimeoutNanoseconds
+                deadlineNanoseconds: deadline,
+                clock: clock
             )
             dictionary[depthKey] = 1
             defer {
@@ -680,6 +702,35 @@ enum KeychainCrossProcessTransactionLock {
                 _ = flock(descriptor, LOCK_UN)
             }
             return try operation()
+        }()
+    }
+
+    static func acquireProcessLock(
+        _ lock: NSRecursiveLock,
+        deadlineNanoseconds: UInt64,
+        clock: () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
+        sleep: (useconds_t) -> Void = { usleep($0) }
+    ) throws {
+        try acquireInProcessLock(
+            deadlineNanoseconds: deadlineNanoseconds,
+            clock: clock,
+            sleep: sleep,
+            tryLock: { lock.try() }
+        )
+    }
+
+    private static func acquireInProcessLock(
+        deadlineNanoseconds: UInt64,
+        clock: () -> UInt64,
+        sleep: (useconds_t) -> Void = { usleep($0) },
+        tryLock: () -> Bool
+    ) throws {
+        while !tryLock() {
+            let now = clock()
+            guard now < deadlineNanoseconds else {
+                throw acquisitionTimeoutError()
+            }
+            sleep(boundedRetryDelay(deadlineNanoseconds: deadlineNanoseconds, now: now))
         }
     }
 
@@ -693,6 +744,28 @@ enum KeychainCrossProcessTransactionLock {
         }
     ) throws {
         let startedAt = clock()
+        let deadline = acquisitionDeadline(
+            startedAt: startedAt,
+            timeoutNanoseconds: timeoutNanoseconds
+        )
+        try acquireFileLock(
+            descriptor: descriptor,
+            deadlineNanoseconds: deadline,
+            clock: clock,
+            sleep: sleep,
+            flockOperation: flockOperation
+        )
+    }
+
+    private static func acquireFileLock(
+        descriptor: Int32,
+        deadlineNanoseconds: UInt64,
+        clock: () -> UInt64,
+        sleep: (useconds_t) -> Void = { usleep($0) },
+        flockOperation: (Int32, Int32) -> Int32 = { descriptor, operation in
+            flock(descriptor, operation)
+        }
+    ) throws {
         while flockOperation(descriptor, LOCK_EX | LOCK_NB) != 0 {
             let lockError = errno
             guard lockError == EINTR || lockError == EWOULDBLOCK || lockError == EAGAIN else {
@@ -701,16 +774,35 @@ enum KeychainCrossProcessTransactionLock {
                 )
             }
             let now = clock()
-            let elapsed = now >= startedAt ? now - startedAt : UInt64.max
-            guard elapsed < timeoutNanoseconds else {
-                throw PlatformSecurityError.persistenceFailure(
-                    "Timed out acquiring the durable security transaction lock."
-                )
+            guard now < deadlineNanoseconds else {
+                throw acquisitionTimeoutError()
             }
             if lockError != EINTR {
-                sleep(retryDelayMicroseconds)
+                sleep(boundedRetryDelay(deadlineNanoseconds: deadlineNanoseconds, now: now))
             }
         }
+    }
+
+    private static func boundedRetryDelay(
+        deadlineNanoseconds: UInt64,
+        now: UInt64
+    ) -> useconds_t {
+        let remainingNanoseconds = deadlineNanoseconds - now
+        let roundedMicroseconds = remainingNanoseconds / 1_000
+            + (remainingNanoseconds % 1_000 == 0 ? 0 : 1)
+        return useconds_t(min(UInt64(retryDelayMicroseconds), roundedMicroseconds))
+    }
+
+    private static func acquisitionDeadline(
+        startedAt: UInt64,
+        timeoutNanoseconds: UInt64
+    ) -> UInt64 {
+        let (deadline, overflow) = startedAt.addingReportingOverflow(timeoutNanoseconds)
+        return overflow ? UInt64.max : deadline
+    }
+
+    private static func acquisitionTimeoutError() -> PlatformSecurityError {
+        .persistenceFailure("Timed out acquiring the durable security transaction lock.")
     }
 
     static func lockFileURL(service: String, account: String) throws -> URL {
@@ -746,14 +838,40 @@ enum KeychainCrossProcessTransactionLock {
         return directory.appendingPathComponent("\(digest).lock", isDirectory: false)
     }
 
-    private static func processLock(for lockURL: URL) -> NSRecursiveLock {
-        registryLock.withCriticalSection {
-            let key = lockURL.path
-            if let existing = processLocks[key] { return existing }
-            let created = NSRecursiveLock()
-            processLocks[key] = created
-            return created
-        }
+    private static func processLock(
+        for lockURL: URL,
+        deadlineNanoseconds: UInt64,
+        clock: () -> UInt64
+    ) throws -> NSRecursiveLock {
+        try acquireInProcessLock(
+            deadlineNanoseconds: deadlineNanoseconds,
+            clock: clock,
+            tryLock: { registryLock.try() }
+        )
+        defer { registryLock.unlock() }
+        let key = lockURL.path
+        if let existing = processLocks[key] { return existing }
+        let created = NSRecursiveLock()
+        processLocks[key] = created
+        return created
+    }
+}
+
+/// Serializes authority lease issuance with peer revocation across processes.
+/// Pairing-scoped epoch stores and peer-scoped tombstones intentionally remain
+/// separate records, so this common lock is the deny-wins transaction boundary.
+enum InternetAuthorityAdmissionGate {
+    private static let service = "dev.telemachus.display.phase3-security"
+    private static let account = "internet-authority-admission-v1"
+
+    static func withExclusiveTransaction<T>(
+        _ operation: () throws -> T
+    ) throws -> T {
+        try KeychainCrossProcessTransactionLock.withLock(
+            service: service,
+            account: account,
+            operation: operation
+        )
     }
 }
 
@@ -1362,15 +1480,17 @@ final class PlatformSessionSecurity {
         guard PairedDeviceSecurityScope.identifier(expectedPeer) == peerID else {
             throw PlatformSecurityError.invalidInput("The revocation target does not match this peer scope.")
         }
-        // Commit the signed tombstone before deleting secrets. A deletion
-        // failure remains fail-closed and can be retried safely.
-        try lifecycle.applyPeerRevocation(
-            tombstone,
-            expectedAuthority: expectedAuthority,
-            expectedPeer: expectedPeer,
-            secretNames: secretNames
-        )
-        try lifecycle.retryRevocationSecretCleanup(secretStore: secretStore)
+        try InternetAuthorityAdmissionGate.withExclusiveTransaction {
+            // Commit the signed tombstone before deleting secrets. A deletion
+            // failure remains fail-closed and can be retried safely.
+            try lifecycle.applyPeerRevocation(
+                tombstone,
+                expectedAuthority: expectedAuthority,
+                expectedPeer: expectedPeer,
+                secretNames: secretNames
+            )
+            try lifecycle.retryRevocationSecretCleanup(secretStore: secretStore)
+        }
     }
 
     func hasPendingRevocationSecretCleanup() throws -> Bool {

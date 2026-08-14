@@ -1,6 +1,8 @@
 package relay
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,12 +31,14 @@ type UsageEvent struct {
 }
 
 type deviceUsage struct {
-	Day          string          `json:"day"`
-	IngressBytes uint64          `json:"ingress_bytes"`
-	EgressBytes  uint64          `json:"egress_bytes"`
-	Sessions     map[string]bool `json:"sessions"`
-	EventIDs     map[string]bool `json:"event_ids"`
-	Revoked      bool            `json:"revoked,omitempty"`
+	Day                string          `json:"day"`
+	IngressBytes       uint64          `json:"ingress_bytes"`
+	EgressBytes        uint64          `json:"egress_bytes"`
+	Sessions           map[string]bool `json:"sessions"`
+	EventIDs           map[string]bool `json:"event_ids"`
+	Revoked            bool            `json:"revoked,omitempty"`
+	RevocationID       string          `json:"revocation_id,omitempty"`
+	TerminationPending bool            `json:"termination_pending,omitempty"`
 }
 
 type persistedState struct {
@@ -47,6 +51,11 @@ type UsageStore struct {
 	dailyLimit   uint64
 	sessionLimit int
 	state        persistedState
+}
+
+type pendingTermination struct {
+	DeviceID     string
+	RevocationID string
 }
 
 func NewUsageStore(path string, dailyLimit uint64, sessionLimit int) (*UsageStore, error) {
@@ -168,15 +177,49 @@ func (s *UsageStore) IsRevoked(deviceID string) bool {
 	return usage != nil && usage.Revoked
 }
 
-func (s *UsageStore) Revoke(deviceID string, now time.Time) error {
+func (s *UsageStore) Revoke(deviceID string, now time.Time) (string, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	usage := cloneUsage(s.state.Devices[deviceID])
 	if usage == nil {
 		usage = &deviceUsage{Day: now.UTC().Format(time.DateOnly), Sessions: make(map[string]bool), EventIDs: make(map[string]bool)}
 	}
+	if usage.Revoked && !usage.TerminationPending && usage.RevocationID != "" {
+		return usage.RevocationID, false, nil
+	}
+	if usage.RevocationID == "" {
+		identifier := make([]byte, 16)
+		if _, err := rand.Read(identifier); err != nil {
+			return "", false, fmt.Errorf("generate revocation id: %w", err)
+		}
+		usage.RevocationID = hex.EncodeToString(identifier)
+	}
 	usage.Revoked = true
+	usage.TerminationPending = true
 	nextState := persistedState{Devices: make(map[string]*deviceUsage, len(s.state.Devices)+1)}
+	for id, existing := range s.state.Devices {
+		nextState.Devices[id] = existing
+	}
+	nextState.Devices[deviceID] = usage
+	if err := s.persistLocked(nextState); err != nil {
+		return "", false, err
+	}
+	s.state = nextState
+	return usage.RevocationID, true, nil
+}
+
+func (s *UsageStore) CompleteTermination(deviceID, revocationID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	usage := cloneUsage(s.state.Devices[deviceID])
+	if usage == nil || !usage.Revoked || usage.RevocationID != revocationID {
+		return errors.New("revocation changed before termination completed")
+	}
+	if !usage.TerminationPending {
+		return nil
+	}
+	usage.TerminationPending = false
+	nextState := persistedState{Devices: make(map[string]*deviceUsage, len(s.state.Devices))}
 	for id, existing := range s.state.Devices {
 		nextState.Devices[id] = existing
 	}
@@ -186,6 +229,21 @@ func (s *UsageStore) Revoke(deviceID string, now time.Time) error {
 	}
 	s.state = nextState
 	return nil
+}
+
+func (s *UsageStore) PendingTerminations(limit int) []pendingTermination {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pending := make([]pendingTermination, 0)
+	for deviceID, usage := range s.state.Devices {
+		if usage != nil && usage.Revoked && usage.TerminationPending && usage.RevocationID != "" {
+			pending = append(pending, pendingTermination{DeviceID: deviceID, RevocationID: usage.RevocationID})
+			if len(pending) == limit {
+				break
+			}
+		}
+	}
+	return pending
 }
 
 func (s *UsageStore) Ready() error {
@@ -229,7 +287,7 @@ func cloneUsage(source *deviceUsage) *deviceUsage {
 	if source == nil {
 		return nil
 	}
-	copy := &deviceUsage{Day: source.Day, IngressBytes: source.IngressBytes, EgressBytes: source.EgressBytes, Sessions: make(map[string]bool), EventIDs: make(map[string]bool), Revoked: source.Revoked}
+	copy := &deviceUsage{Day: source.Day, IngressBytes: source.IngressBytes, EgressBytes: source.EgressBytes, Sessions: make(map[string]bool), EventIDs: make(map[string]bool), Revoked: source.Revoked, RevocationID: source.RevocationID, TerminationPending: source.TerminationPending}
 	for id, present := range source.Sessions {
 		copy.Sessions[id] = present
 	}

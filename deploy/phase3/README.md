@@ -103,9 +103,15 @@ precedence over denies.
   secret, so the safe current procedure is to stop new credential issuance,
   wait at most the configured maximum credential TTL, drain allocations,
   replace the shared file on both services, and restart.
-- Revocation stops future credential issuance only. For urgent abuse, also
-  disable the signaling session and drain/terminate matching coturn
-  allocations; do not wait for credential expiry alone.
+- Configure `allocation_termination_webhook_url` and the independent
+  `termination_token` secret to call a trusted executor that can locate and
+  terminate every allocation for a stable TURN device principal. The relay
+  persists its deny and retry event before invoking that executor. The
+  repository does not provide a coturn-specific executor, so production must
+  verify that a webhook 2xx means matching allocations are already gone.
+- For urgent abuse, also disable the signaling session. Do not treat the relay
+  webhook acknowledgement as proof of disconnect until that executor has been
+  validated against the deployed coturn control mechanism.
 
 ## Abuse, observability, and current limitations
 

@@ -319,6 +319,50 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
         XCTAssertNil(secondResult.errorDescription)
     }
 
+    func testSecurityTransactionTimeoutIncludesProcessLockContention() throws {
+        let service = "dev.vibescreen.transaction-lock-deadline-tests.\(UUID().uuidString)"
+        let account = "shared"
+        let lockURL = try KeychainCrossProcessTransactionLock.lockFileURL(
+            service: service,
+            account: account
+        )
+        defer { try? FileManager.default.removeItem(at: lockURL) }
+        let holderEntered = DispatchSemaphore(value: 0)
+        let releaseHolder = DispatchSemaphore(value: 0)
+        let holderFinished = DispatchSemaphore(value: 0)
+        let holderResult = LockedEpochReservation()
+
+        DispatchQueue.global().async {
+            defer { holderFinished.signal() }
+            do {
+                try KeychainCrossProcessTransactionLock.withLock(
+                    service: service,
+                    account: account
+                ) {
+                    holderEntered.signal()
+                    _ = releaseHolder.wait(timeout: .now() + 2)
+                }
+                holderResult.succeed(1)
+            } catch {
+                holderResult.fail(error)
+            }
+        }
+        XCTAssertEqual(holderEntered.wait(timeout: .now() + 2), .success)
+
+        XCTAssertThrowsError(try KeychainCrossProcessTransactionLock.withLock(
+            service: service,
+            account: account,
+            acquisitionTimeoutNanoseconds: 30_000_000
+        ) {}) { error in
+            XCTAssertTrue(error.localizedDescription.contains("Timed out"))
+        }
+
+        releaseHolder.signal()
+        XCTAssertEqual(holderFinished.wait(timeout: .now() + 2), .success)
+        XCTAssertEqual(holderResult.value, 1)
+        XCTAssertNil(holderResult.errorDescription)
+    }
+
     func testSecurityTransactionFileLockTimesOutUnderPersistentContention() {
         var times: [UInt64] = [0, 5, 10]
         var sleepCalls = 0
