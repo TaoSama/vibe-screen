@@ -25,16 +25,21 @@ struct ProtocolV1SessionConfiguration {
         var wakeHost = false
     }
 
-   static func productionHostCapabilities(touchEnabled: Bool) -> Set<VSCapability> {
+   static func productionHostCapabilities(
+       touchEnabled: Bool,
+       controllerAvailable: Bool = false
+   ) -> Set<VSCapability> {
        productionHostCapabilities(
            touchEnabled: touchEnabled,
-           advanced: AdvancedAdapters(hostActions: touchEnabled)
+           advanced: AdvancedAdapters(hostActions: touchEnabled),
+           controllerAvailable: controllerAvailable
        )
    }
 
    static func productionHostCapabilities(
        touchEnabled: Bool,
-       advanced: AdvancedAdapters
+       advanced: AdvancedAdapters,
+       controllerAvailable: Bool = false
    ) -> Set<VSCapability> {
         // Native pointer/keyboard ride the same input toggle as touch: they
         // require Accessibility to actually inject, but the capability is
@@ -50,6 +55,7 @@ struct ProtocolV1SessionConfiguration {
         if advanced.colorManagement { capabilities.insert(.colorManagement) }
         if advanced.hostActions { capabilities.insert(.hostActions) }
         if advanced.wakeHost { capabilities.insert(.wakeHost) }
+        if controllerAvailable { capabilities.insert(.controller) }
         return capabilities
    }
 
@@ -106,6 +112,7 @@ enum ProtocolV1SessionAction {
     case pointer(x: Float, y: Float, phase: VSInputPhase, buttonMask: UInt32)
     case scroll(deltaX: Double, deltaY: Double)
     case key(usage: UInt32, pressed: Bool, modifiers: UInt32, text: String)
+    case controller(GameControllerInputEvent)
     case heartbeat
     case requestKeyframe(force: Bool)
     case selectDisplay(id: String)
@@ -141,6 +148,7 @@ final class ProtocolV1SessionCoordinator {
     private var nextMessageID: UInt64 = 1
     private var negotiatedCapabilities: Set<VSCapability> = []
     private var stylusSequenceState = StylusSequenceState()
+    private var controllerSequenceState = GameControllerStateMachine()
     private var advertisedVideoRotation = 0
     private let lock = NSLock()
     /// Identifies the newest in-flight client video-preferences request. The
@@ -895,6 +903,22 @@ final class ProtocolV1SessionCoordinator {
             guard isStreaming else { return invalidState("KeyEvent arrived before media was ready.", envelope.messageID) }
             return [.key(usage: key.usbHidUsage, pressed: key.pressed, modifiers: key.modifierMask, text: key.text)]
 
+        case .controllerEvent(let controller):
+            guard negotiatedCapabilities.contains(.controller) else {
+                return unsupportedCapability("Controller input was not negotiated.", envelope.messageID)
+            }
+            guard isStreaming,
+                  inputTargetMatchesActiveStream(controller.hasTarget ? controller.target : nil),
+                  let event = makeControllerInputEvent(controller) else {
+                return invalidState("ControllerEvent is invalid or media is not ready.", envelope.messageID)
+            }
+            do {
+                try controllerSequenceState.accept(event)
+                return [.controller(event)]
+            } catch {
+                return invalidState("ControllerEvent violates the controller state machine.", envelope.messageID)
+            }
+
         case .setVideoPreferences(let prefs):
             guard negotiatedCapabilities.contains(.clientVideoControl) else {
                 return unsupportedCapability("Client video control was not negotiated.", envelope.messageID)
@@ -987,6 +1011,7 @@ final class ProtocolV1SessionCoordinator {
         case .protocolError(let error):
             phase = .failed
             _ = stylusSequenceState.consumeReset()
+            controllerSequenceState.reset()
             pendingHostActionInvocations.removeAll()
             inboundClipboardOffers.removeAll()
             approvedInboundClipboardOffers.removeAll()
@@ -1000,6 +1025,7 @@ final class ProtocolV1SessionCoordinator {
         case .disconnectNotice:
             phase = .closed
             _ = stylusSequenceState.consumeReset()
+            controllerSequenceState.reset()
             pendingHostActionInvocations.removeAll()
             inboundClipboardOffers.removeAll()
             approvedInboundClipboardOffers.removeAll()
@@ -1013,6 +1039,35 @@ final class ProtocolV1SessionCoordinator {
         default:
             return invalidState("Payload is unsupported in the current host session.", envelope.messageID)
         }
+    }
+
+    private func makeControllerInputEvent(_ controller: VSControllerEvent) -> GameControllerInputEvent? {
+        let kind: GameControllerEventKind
+        switch controller.kind {
+        case .connected: kind = .connected
+        case .state: kind = .state
+        case .disconnected: kind = .disconnected
+        default: return nil
+        }
+        let state = GameControllerState(
+            buttonMask: controller.buttonMask,
+            leftX: controller.leftStickX,
+            leftY: controller.leftStickY,
+            rightX: controller.rightStickX,
+            rightY: controller.rightStickY,
+            leftTrigger: controller.leftTrigger,
+            rightTrigger: controller.rightTrigger,
+            hatX: controller.hatX,
+            hatY: controller.hatY
+        )
+        guard state.isValid else { return nil }
+        return GameControllerInputEvent(
+            inputID: controller.inputID,
+            controllerID: controller.controllerID,
+            controllerEpoch: controller.controllerEpoch,
+            kind: kind,
+            state: state
+        )
     }
 
     func makeMediaFrame(payload: Data, timestamp: UInt64, keyframe: Bool) throws -> Data? {
@@ -1422,6 +1477,7 @@ final class ProtocolV1SessionCoordinator {
         let sessionScoped = phase != .awaitingClientHello
         phase = .failed
         _ = stylusSequenceState.consumeReset()
+        controllerSequenceState.reset()
         pendingHostActionInvocations.removeAll()
         inboundClipboardOffers.removeAll()
         approvedInboundClipboardOffers.removeAll()
@@ -1471,6 +1527,7 @@ final class ProtocolV1SessionCoordinator {
         activeFileTransfers.removeAll()
         pendingWakeRequests.removeAll()
         audioAccepted = false
+        controllerSequenceState.reset()
         return [.close]
     }
 

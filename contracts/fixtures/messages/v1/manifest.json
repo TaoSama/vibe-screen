@@ -223,6 +223,57 @@
       "source": "json/stylus_extended.json"
     },
     {
+      "binary": "bin/controller_connected.binpb",
+      "byteLength": 68,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "17",
+        "payloadCase": "controllerEvent",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000017",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "controller_connected",
+      "sha256": "a38fe630cc961cc7ae6e92ecbe21753200f9994ef8c82c4b776c8a6d1f565f81",
+      "source": "json/controller_connected.json"
+    },
+    {
+      "binary": "bin/controller_state.binpb",
+      "byteLength": 129,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "18",
+        "payloadCase": "controllerEvent",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000018",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "controller_state",
+      "sha256": "6d048feff77b665b8ffd3d55b71398add4dc2c6ec44d8c42d9caaeb19ecb0fb1",
+      "source": "json/controller_state.json"
+    },
+    {
+      "binary": "bin/controller_disconnected.binpb",
+      "byteLength": 68,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "19",
+        "payloadCase": "controllerEvent",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000019",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "controller_disconnected",
+      "sha256": "a31387769782b6aae99e2f5c3e6c500ad4cee0908fc5ae7c0185c7165b3a538c",
+      "source": "json/controller_disconnected.json"
+    },
+    {
       "binary": "bin/ping.binpb",
       "byteLength": 27,
       "channel": 1,

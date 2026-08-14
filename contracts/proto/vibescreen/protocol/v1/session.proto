@@ -38,6 +38,9 @@ enum Capability {
   // Requires CAPABILITY_STYLUS and enables StylusEvent tool kind, barrel
   // buttons, and explicit contact/proximity state.
   CAPABILITY_STYLUS_EXTENDED = 25;
+  // Enables lifecycle-scoped ControllerEvent input. Receivers must neutralize
+  // admitted controller state when its lifecycle or session ends.
+  CAPABILITY_CONTROLLER = 26;
 }
 
 message ClientHello {

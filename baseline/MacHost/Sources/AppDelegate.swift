@@ -219,6 +219,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Shares the touch coordinate mapping via StreamInputMapping.
     private let streamInputInjector = StreamInputInjector()
     private let hostClipboardAdapter = HostClipboardAdapter()
+    private lazy var gameControllerRuntime = GameControllerRuntimeAvailability.probe()
+    private lazy var gameControllerInjector: GameControllerInjector? =
+        gameControllerRuntime.factory.map { GameControllerInjector(factory: $0) }
     private var primaryButtonOwner = PrimaryButtonOwnerState()
     let pairedDeviceStore = PairedDeviceStore()
     let windowRecoveryManager = WindowRecoveryManager()
@@ -294,6 +297,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // flashes the onboarding flow for an already-authorized installation.
         settings.hasScreenRecordingPermission = CGPreflightScreenCaptureAccess()
         settings.hasAccessibilityPermission = AXIsProcessTrusted()
+        settings.controllerForwardingUnavailableReason = gameControllerRuntime.unavailableReason
         settings.evaluatePostUpdatePermissionHint()
 
         // Create menu bar item
@@ -2069,6 +2073,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             streamingServer?.onFileCancel = { transferID, _ in
                 incomingFileAdapter?.cancel(transferID: transferID)
             }
+            streamingServer?.controllerAvailable = gameControllerRuntime.factory != nil
+            if let reason = gameControllerRuntime.unavailableReason {
+                debugLog("Controller forwarding unavailable: \(reason)")
+            }
             if configuration.connectionMode == .wireless {
                 streamingServer?.onWirelessClientPaired = {
                     [weak self, weak configuredServer] deviceName, clientGeneration in
@@ -2379,6 +2387,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
             }
+            streamingServer?.onControllerEvent = {
+                [weak self, weak configuredServer] event, clientGeneration in
+                guard let self, let configuredServer else { return }
+                let accepted = self.performSessionCallback(
+                    token: startToken,
+                    server: configuredServer,
+                    clientGeneration: clientGeneration
+                ) {
+                    do {
+                        guard let injector = self.gameControllerInjector else {
+                            throw GameControllerInputError.unavailable(
+                                self.gameControllerRuntime.unavailableReason ?? "runtime probe failed"
+                            )
+                        }
+                        try injector.handle(event, generation: clientGeneration)
+                    } catch {
+                        configuredServer.failProtocolV1ControllerInput(
+                            generation: clientGeneration,
+                            reason: error.localizedDescription
+                        )
+                    }
+                }
+                if !accepted {
+                    debugLog("Discarded stale controller input for generation \(clientGeneration)")
+                }
+            }
 
            streamingServer?.onStats = {
                [weak self, weak configuredServer] fps, mbps, clientGeneration in
@@ -2666,7 +2700,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 bitrateKbps: settings.effectiveBitrate * 1_000,
                 rotationDegrees: settings.rotation
             ),
-            inputEnabled: settings.touchEnabled
+            inputEnabled: settings.touchEnabled,
+            controllerAvailable: gameControllerRuntime.factory != nil
         )
     }
 
@@ -2780,6 +2815,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             }
             return injected
+        }
+        session.onAuthenticatedControllerEvent = {
+            [weak self, weak session] sessionEpoch, event in
+            let inject = { () -> Bool in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session,
+                      let injector = self.gameControllerInjector else { return false }
+                do {
+                    try injector.handle(event, generation: sessionEpoch)
+                    return true
+                } catch {
+                    debugLog("Internet controller injection failed: \(error.localizedDescription)")
+                    return false
+                }
+            }
+            return Thread.isMainThread
+                ? inject()
+                : DispatchQueue.main.sync(execute: inject)
         }
         session.onKeyframeRequired = { [weak self, weak session] in
             let request = {
@@ -4273,6 +4327,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Releases a stylus tip or native pointer button when owned there; a
         // touch drag is owned and released exclusively above.
         streamInputInjector.reset()
+        do {
+            try gameControllerInjector?.reset()
+        } catch {
+            debugLog("Virtual controller reset failed: \(error.localizedDescription)")
+        }
         gestureState = .idle
         touchStartPosition = .zero
         touchLastPosition = .zero

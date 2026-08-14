@@ -848,6 +848,17 @@ struct SettingsView: View {
                                           status: settings.hasAccessibilityPermission ? "Granted" : "Optional",
                                           color: settings.hasAccessibilityPermission ? .green : .orange,
                                           hint: "Optional permission. Required only if you want touch/tap input from the tablet to control the Mac. Streaming works without it.")
+                                StatusRow(
+                                    title: "Controller forwarding",
+                                    status: settings.controllerForwardingUnavailableReason == nil
+                                        ? "Available"
+                                        : "Unavailable",
+                                    color: settings.controllerForwardingUnavailableReason == nil
+                                        ? .green
+                                        : .orange,
+                                    hint: settings.controllerForwardingUnavailableReason
+                                        ?? "The signed host passed the virtual HID entitlement and runtime device probe."
+                                )
                                 if settings.isRunning {
                                     StatusRow(title: "Capture Method",
                                               status: settings.captureMethod,
@@ -1827,6 +1838,8 @@ class DisplaySettings: ObservableObject {
     @Published var showPostUpdatePermissionHint = false
     @Published var hasScreenRecordingPermission = false
     @Published var hasAccessibilityPermission = false
+    @Published var controllerForwardingUnavailableReason: String? =
+        "Controller availability has not been probed yet."
     @Published var adbInstalled = false
     @Published var adbReverseConfigured = false
     @Published var usbDeviceConnected = false

@@ -142,6 +142,48 @@ public enum VSStylusContactState: SwiftProtobuf.Enum, Swift.CaseIterable {
 
 }
 
+public enum VSControllerEventKind: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case connected // = 1
+  case state // = 2
+  case disconnected // = 3
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .connected
+    case 2: self = .state
+    case 3: self = .disconnected
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .connected: return 1
+    case .state: return 2
+    case .disconnected: return 3
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [VSControllerEventKind] = [
+    .unspecified,
+    .connected,
+    .state,
+    .disconnected,
+  ]
+
+}
+
 public struct VSNormalizedPoint: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -283,6 +325,75 @@ public struct VSStylusEvent: Sendable {
   fileprivate var _contactState: VSStylusContactState? = nil
 }
 
+/// Controller input requires CAPABILITY_CONTROLLER. input_id must be non-zero
+/// and strictly increase within the ControllerEvent subsequence of the current
+/// negotiated session. controller_id must encode to 1-128 UTF-8 bytes, be stable
+/// and sender-scoped within that session, and must not contain a raw serial
+/// number or other sensitive identifier. controller_epoch must be non-zero and
+/// strictly increase for the same controller_id within the negotiated session.
+/// CONNECTED starts a lifecycle for (controller_id, controller_epoch), STATE is
+/// valid only inside that lifecycle, and DISCONNECTED ends it. Reusing or
+/// decreasing an epoch for the same controller_id is invalid.
+/// Duplicate CONNECTED, STATE before CONNECTED, and STATE after DISCONNECTED
+/// are invalid. A new negotiated session resets both monotonic sequences.
+/// Kind must be CONNECTED, STATE, or DISCONNECTED; UNSPECIFIED and unknown enum
+/// values are invalid. Button bits 0-12 are defined and all higher bits are
+/// reserved and must be zero. Stick axes must be finite and in [-1, 1], trigger
+/// values must be finite and in [0, 1], and hat axes must each be -1, 0, or 1.
+/// CONNECTED and DISCONNECTED are neutral lifecycle markers: button_mask and all
+/// axes, triggers, and hat values must be zero. A receiver must synthesize this
+/// same neutral state before discarding an active controller on disconnect,
+/// session teardown, ownership takeover, or transport loss.
+public struct VSControllerEvent: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var inputID: UInt64 = 0
+
+  public var controllerID: String = String()
+
+  public var controllerEpoch: UInt64 = 0
+
+  public var kind: VSControllerEventKind = .unspecified
+
+  /// Bits 0-12 are south, east, west, north, L1, R1, L2 digital, R2 digital,
+  /// select, start, guide/mode, L3, and R3, respectively. Bits 13-31 are
+  /// reserved and must be zero.
+  public var buttonMask: UInt32 = 0
+
+  public var leftStickX: Double = 0
+
+  public var leftStickY: Double = 0
+
+  public var rightStickX: Double = 0
+
+  public var rightStickY: Double = 0
+
+  public var leftTrigger: Double = 0
+
+  public var rightTrigger: Double = 0
+
+  public var hatX: Int32 = 0
+
+  public var hatY: Int32 = 0
+
+  public var target: VSInputTarget {
+    get {return _target ?? VSInputTarget()}
+    set {_target = newValue}
+  }
+  /// Returns true if `target` has been explicitly set.
+  public var hasTarget: Bool {return self._target != nil}
+  /// Clears the value of `target`. Subsequent reads from it will return its default value.
+  public mutating func clearTarget() {self._target = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _target: VSInputTarget? = nil
+}
+
 public struct VSPointerEvent: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -408,6 +519,10 @@ extension VSStylusToolKind: SwiftProtobuf._ProtoNameProviding {
 
 extension VSStylusContactState: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0STYLUS_CONTACT_STATE_UNSPECIFIED\0\u{1}STYLUS_CONTACT_STATE_CONTACT\0\u{1}STYLUS_CONTACT_STATE_PROXIMITY\0")
+}
+
+extension VSControllerEventKind: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CONTROLLER_EVENT_KIND_UNSPECIFIED\0\u{1}CONTROLLER_EVENT_KIND_CONNECTED\0\u{1}CONTROLLER_EVENT_KIND_STATE\0\u{1}CONTROLLER_EVENT_KIND_DISCONNECTED\0")
 }
 
 extension VSNormalizedPoint: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
@@ -583,6 +698,105 @@ extension VSStylusEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementa
     if lhs._toolKind != rhs._toolKind {return false}
     if lhs.buttonMask != rhs.buttonMask {return false}
     if lhs._contactState != rhs._contactState {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension VSControllerEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ControllerEvent"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}input_id\0\u{3}controller_id\0\u{3}controller_epoch\0\u{1}kind\0\u{3}button_mask\0\u{3}left_stick_x\0\u{3}left_stick_y\0\u{3}right_stick_x\0\u{3}right_stick_y\0\u{3}left_trigger\0\u{3}right_trigger\0\u{3}hat_x\0\u{3}hat_y\0\u{1}target\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt64Field(value: &self.inputID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.controllerID) }()
+      case 3: try { try decoder.decodeSingularUInt64Field(value: &self.controllerEpoch) }()
+      case 4: try { try decoder.decodeSingularEnumField(value: &self.kind) }()
+      case 5: try { try decoder.decodeSingularUInt32Field(value: &self.buttonMask) }()
+      case 6: try { try decoder.decodeSingularDoubleField(value: &self.leftStickX) }()
+      case 7: try { try decoder.decodeSingularDoubleField(value: &self.leftStickY) }()
+      case 8: try { try decoder.decodeSingularDoubleField(value: &self.rightStickX) }()
+      case 9: try { try decoder.decodeSingularDoubleField(value: &self.rightStickY) }()
+      case 10: try { try decoder.decodeSingularDoubleField(value: &self.leftTrigger) }()
+      case 11: try { try decoder.decodeSingularDoubleField(value: &self.rightTrigger) }()
+      case 12: try { try decoder.decodeSingularSInt32Field(value: &self.hatX) }()
+      case 13: try { try decoder.decodeSingularSInt32Field(value: &self.hatY) }()
+      case 14: try { try decoder.decodeSingularMessageField(value: &self._target) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.inputID != 0 {
+      try visitor.visitSingularUInt64Field(value: self.inputID, fieldNumber: 1)
+    }
+    if !self.controllerID.isEmpty {
+      try visitor.visitSingularStringField(value: self.controllerID, fieldNumber: 2)
+    }
+    if self.controllerEpoch != 0 {
+      try visitor.visitSingularUInt64Field(value: self.controllerEpoch, fieldNumber: 3)
+    }
+    if self.kind != .unspecified {
+      try visitor.visitSingularEnumField(value: self.kind, fieldNumber: 4)
+    }
+    if self.buttonMask != 0 {
+      try visitor.visitSingularUInt32Field(value: self.buttonMask, fieldNumber: 5)
+    }
+    if self.leftStickX.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.leftStickX, fieldNumber: 6)
+    }
+    if self.leftStickY.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.leftStickY, fieldNumber: 7)
+    }
+    if self.rightStickX.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.rightStickX, fieldNumber: 8)
+    }
+    if self.rightStickY.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.rightStickY, fieldNumber: 9)
+    }
+    if self.leftTrigger.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.leftTrigger, fieldNumber: 10)
+    }
+    if self.rightTrigger.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.rightTrigger, fieldNumber: 11)
+    }
+    if self.hatX != 0 {
+      try visitor.visitSingularSInt32Field(value: self.hatX, fieldNumber: 12)
+    }
+    if self.hatY != 0 {
+      try visitor.visitSingularSInt32Field(value: self.hatY, fieldNumber: 13)
+    }
+    try { if let v = self._target {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 14)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: VSControllerEvent, rhs: VSControllerEvent) -> Bool {
+    if lhs.inputID != rhs.inputID {return false}
+    if lhs.controllerID != rhs.controllerID {return false}
+    if lhs.controllerEpoch != rhs.controllerEpoch {return false}
+    if lhs.kind != rhs.kind {return false}
+    if lhs.buttonMask != rhs.buttonMask {return false}
+    if lhs.leftStickX != rhs.leftStickX {return false}
+    if lhs.leftStickY != rhs.leftStickY {return false}
+    if lhs.rightStickX != rhs.rightStickX {return false}
+    if lhs.rightStickY != rhs.rightStickY {return false}
+    if lhs.leftTrigger != rhs.leftTrigger {return false}
+    if lhs.rightTrigger != rhs.rightTrigger {return false}
+    if lhs.hatX != rhs.hatX {return false}
+    if lhs.hatY != rhs.hatY {return false}
+    if lhs._target != rhs._target {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

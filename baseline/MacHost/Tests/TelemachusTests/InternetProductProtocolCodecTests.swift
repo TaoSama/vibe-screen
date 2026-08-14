@@ -81,6 +81,35 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         XCTAssertFalse(accepted.negotiatedCapabilities.contains(.stylus))
     }
 
+    func testControllerAdvertisingRequiresRuntimeAvailabilityAndPeerOffer() throws {
+        var unavailable = try makeCodec(negotiate: false, controllerAvailable: false)
+        var offer = clientHello(supportsController: true)
+        try unavailable.validate(offer)
+        XCTAssertFalse(try VSEnvelope(serializedBytes: unavailable.hostHello())
+            .hostHello.capabilities.contains(.controller))
+
+        var available = try makeCodec(negotiate: false, controllerAvailable: true)
+        try available.validate(offer)
+        XCTAssertTrue(try VSEnvelope(serializedBytes: available.hostHello())
+            .hostHello.capabilities.contains(.controller))
+        let accepted = try VSEnvelope(serializedBytes: available.sessionAccepted(
+            heartbeatIntervalMilliseconds: 1_000,
+            peerSupportsTouch: true,
+            peerSupportsController: true
+        )).sessionAccepted
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.controller))
+
+        offer.capabilities.removeAll { $0 == .controller }
+        var noOffer = try makeCodec(negotiate: false, controllerAvailable: true)
+        try noOffer.validate(offer)
+        let notNegotiated = try VSEnvelope(serializedBytes: noOffer.sessionAccepted(
+            heartbeatIntervalMilliseconds: 1_000,
+            peerSupportsTouch: true,
+            peerSupportsController: false
+        )).sessionAccepted
+        XCTAssertFalse(notNegotiated.negotiatedCapabilities.contains(.controller))
+    }
+
     func testLegacyTouchOnlyPeerDoesNotNegotiateStylus() throws {
         var codec = try makeCodec(negotiate: false, inputEnabled: true)
         try codec.validate(clientHello())
@@ -290,7 +319,8 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         controlLimit: Int = 64 * 1_024,
         rotationDegrees: Int = 0,
         negotiate: Bool = true,
-        inputEnabled: Bool = true
+        inputEnabled: Bool = true,
+        controllerAvailable: Bool = false
     ) throws -> InternetProductProtocolCodec {
         var codec = try InternetProductProtocolCodec(
             sessionIdentifier: "product-session",
@@ -309,6 +339,7 @@ final class InternetProductProtocolCodecTests: XCTestCase {
                 rotationDegrees: rotationDegrees
             ),
             inputEnabled: inputEnabled,
+            controllerAvailable: controllerAvailable,
             limits: InternetTransportLimits(
                 maximumControlMessageBytes: controlLimit,
                 maximumBufferedControlBytes: 2 * 1_024 * 1_024,
@@ -323,7 +354,8 @@ final class InternetProductProtocolCodecTests: XCTestCase {
     }
 
     private func clientHello(
-        maximumEncryptedMediaRecordBytes: Int = InternetMediaRecordContract.maximumEncryptedRecordBytes
+        maximumEncryptedMediaRecordBytes: Int = InternetMediaRecordContract.maximumEncryptedRecordBytes,
+        supportsController: Bool = false
     ) -> VSClientHello {
         var range = VSProtocolRange()
         range.minimum = 1
@@ -335,6 +367,7 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         hello.deviceID = "device-1"
         hello.deviceName = "Android"
         hello.capabilities = Array(InternetProductProtocolCodec.requiredCapabilities) + [.touch]
+        if supportsController { hello.capabilities.append(.controller) }
         hello.requiredCapabilities = Array(InternetProductProtocolCodec.requiredCapabilities)
         hello.codecs = [.hevc]
         hello.transports = [.internet]

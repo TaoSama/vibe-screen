@@ -16,6 +16,7 @@ enum InternetProductProtocolError: Error, Equatable, LocalizedError {
     case rejectedVideoConfiguration(String)
     case invalidTouch
     case invalidStylus
+    case invalidController
 
     var errorDescription: String? {
         switch self {
@@ -38,6 +39,7 @@ enum InternetProductProtocolError: Error, Equatable, LocalizedError {
             return "Internet peer rejected the video configuration: \(reason)"
         case .invalidTouch: return "Internet peer sent an invalid touch event."
         case .invalidStylus: return "Internet peer sent an invalid stylus event."
+        case .invalidController: return "Internet peer sent an invalid controller event."
         }
     }
 }
@@ -167,6 +169,7 @@ struct InternetProductProtocolCodec {
     let hostName: String
     let peerDeviceID: String
     let inputEnabled: Bool
+    let controllerAvailable: Bool
     private(set) var video: InternetProductVideoConfiguration
     let maximumControlBytes: Int
     let maximumMediaBytes: Int
@@ -184,6 +187,7 @@ struct InternetProductProtocolCodec {
         peerDeviceID: String,
         video: InternetProductVideoConfiguration,
         inputEnabled: Bool = true,
+        controllerAvailable: Bool = false,
         limits: InternetTransportLimits
     ) throws {
         guard !sessionIdentifier.isEmpty, sessionEpoch > 0,
@@ -197,6 +201,7 @@ struct InternetProductProtocolCodec {
         self.hostName = hostName
         self.peerDeviceID = peerDeviceID
         self.inputEnabled = inputEnabled
+        self.controllerAvailable = controllerAvailable
         self.video = video
         self.maximumControlBytes = limits.maximumControlMessageBytes
         self.maximumMediaBytes = limits.maximumMediaFrameBytes
@@ -309,7 +314,8 @@ struct InternetProductProtocolCodec {
         heartbeatIntervalMilliseconds: UInt32,
         peerSupportsTouch: Bool,
         peerSupportsStylus: Bool = false,
-        peerSupportsStylusExtended: Bool = false
+        peerSupportsStylusExtended: Bool = false,
+        peerSupportsController: Bool = false
     ) throws -> Data {
         var accepted = VSSessionAccepted()
         accepted.sessionID = sessionID
@@ -322,6 +328,7 @@ struct InternetProductProtocolCodec {
                 + (inputEnabled && peerSupportsStylus && peerSupportsStylusExtended
                     ? [.stylusExtended]
                     : [])
+                + (controllerAvailable && peerSupportsController ? [.controller] : [])
         ).sorted { $0.rawValue < $1.rawValue }
         guard let negotiatedMaximumEncryptedMediaRecordBytes else {
             throw InternetProductProtocolError.unexpectedMessage(
@@ -339,7 +346,11 @@ struct InternetProductProtocolCodec {
     }
 
     private var inputCapabilities: Set<VSCapability> {
-        inputEnabled ? [.touch, .stylus, .stylusExtended] : []
+        var capabilities: Set<VSCapability> = inputEnabled
+            ? [.touch, .stylus, .stylusExtended]
+            : []
+        if controllerAvailable { capabilities.insert(.controller) }
+        return capabilities
     }
 
     mutating func videoConfiguration() throws -> Data {

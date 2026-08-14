@@ -1,0 +1,23 @@
+{
+  "protocolVersion": 1,
+  "messageId": "18",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000018",
+  "controllerEvent": {
+    "inputId": "104",
+    "controllerId": "controller-xbox-1",
+    "controllerEpoch": "1",
+    "kind": "CONTROLLER_EVENT_KIND_STATE",
+    "buttonMask": 4101,
+    "leftStickX": -0.75,
+    "leftStickY": 0.5,
+    "rightStickX": 0.25,
+    "rightStickY": -0.125,
+    "leftTrigger": 0.375,
+    "rightTrigger": 0.875,
+    "hatX": 1,
+    "hatY": -1,
+    "target": {"displayId": "display-main", "streamId": "42"}
+  }
+}

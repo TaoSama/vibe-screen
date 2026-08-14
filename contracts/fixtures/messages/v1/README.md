@@ -30,3 +30,8 @@ for incompatible wire semantics. The contract test also verifies that Buf can
 decode a fixture extended with an unknown binary field. Its JSON projection
 intentionally drops that field, so the test does not claim unknown-field
 preservation by Swift, Kotlin, or a binary relay.
+
+The controller fixtures form one complete lifecycle for a stable controller ID
+and epoch: neutral `CONNECTED`, a full `STATE` snapshot, then neutral
+`DISCONNECTED`. `controller_validation.json` pins invalid scalar, reserved-bit,
+and non-neutral lifecycle cases without assigning wire bytes to invalid input.

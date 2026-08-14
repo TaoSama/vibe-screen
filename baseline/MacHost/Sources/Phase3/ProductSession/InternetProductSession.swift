@@ -67,6 +67,7 @@ final class InternetProductSession: EncodedFrameSink {
         UInt64, UInt64, UInt32, Float, Float, VSInputPhase, Double, Double, Double,
         VSStylusToolKind, UInt32, VSStylusContactState
     ) -> Bool)?
+    var onAuthenticatedControllerEvent: ((UInt64, GameControllerInputEvent) -> Bool)?
     var onKeyframeRequired: (() -> Void)?
     var onFreshSessionRecoveryRequired: ((Int) -> Void)?
     var onAdaptiveProfileRequested: ((InternetAdaptiveRequestToken, AdaptiveMediaProfile, InternetProductVideoConfiguration) -> Void)?
@@ -96,12 +97,14 @@ final class InternetProductSession: EncodedFrameSink {
     private var peerSupportsTouch = false
     private var peerSupportsStylus = false
     private var peerSupportsStylusExtended = false
+    private var peerSupportsController = false
     private var stylusSequenceState = StylusSequenceState()
     private var nextAdaptiveRequestID: UInt64 = 1
     private var pendingAdaptiveRequest: InternetAdaptiveRequestToken?
     private var queuedAdaptiveProfile: AdaptiveMediaProfile?
     private var adaptiveConfigurationAwaitingAcknowledgment = false
     private var deferredRotationDegrees: Int?
+    private var controllerSequenceState = GameControllerStateMachine()
     private var frameAdmission = FrameAdmissionState()
     private var controlAdmission = ControlAdmissionState()
 
@@ -162,11 +165,13 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsTouch = false
             peerSupportsStylus = false
             peerSupportsStylusExtended = false
+            peerSupportsController = false
             _ = stylusSequenceState.consumeReset()
             pendingAdaptiveRequest = nil
             queuedAdaptiveProfile = nil
             adaptiveConfigurationAwaitingAcknowledgment = false
             deferredRotationDegrees = nil
+            controllerSequenceState.reset()
             configuration = nil
             let changed = state != .closed
             state = .closed
@@ -193,11 +198,13 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsTouch = false
             peerSupportsStylus = false
             peerSupportsStylusExtended = false
+            peerSupportsController = false
             _ = stylusSequenceState.consumeReset()
             pendingAdaptiveRequest = nil
             queuedAdaptiveProfile = nil
             adaptiveConfigurationAwaitingAcknowledgment = false
             deferredRotationDegrees = nil
+            controllerSequenceState.reset()
             let changed = state != .revoked
             state = .revoked
             let revocationGeneration = sessionGeneration
@@ -370,6 +377,7 @@ final class InternetProductSession: EncodedFrameSink {
             peerDeviceID: configuration.peerDeviceID,
             video: configuration.video,
             inputEnabled: configuration.inputEnabled,
+            controllerAvailable: configuration.controllerAvailable,
             limits: configuration.limits
         )
         let transport = WebRTCInternetTransport(
@@ -386,11 +394,13 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsTouch = false
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
+        peerSupportsController = false
         _ = stylusSequenceState.consumeReset()
         pendingAdaptiveRequest = nil
         queuedAdaptiveProfile = nil
         adaptiveConfigurationAwaitingAcknowledgment = false
         deferredRotationDegrees = nil
+        controllerSequenceState.reset()
         nextHeartbeatSequence = 1
         lastPeerActivityNanoseconds = DispatchTime.now().uptimeNanoseconds
         let connectingState = InternetProductSessionState.connecting
@@ -520,12 +530,15 @@ final class InternetProductSession: EncodedFrameSink {
                 peerSupportsStylus = codec.inputEnabled && hello.capabilities.contains(.stylus)
                 peerSupportsStylusExtended = peerSupportsStylus
                     && hello.capabilities.contains(.stylusExtended)
+                peerSupportsController = codec.controllerAvailable
+                    && hello.capabilities.contains(.controller)
                 try sendControl(codec.hostHello())
                 try sendControl(codec.sessionAccepted(
                     heartbeatIntervalMilliseconds: configuration?.heartbeatIntervalMilliseconds ?? 1_000,
                     peerSupportsTouch: peerSupportsTouch,
                     peerSupportsStylus: peerSupportsStylus,
-                    peerSupportsStylusExtended: peerSupportsStylusExtended
+                    peerSupportsStylusExtended: peerSupportsStylusExtended,
+                    peerSupportsController: peerSupportsController
                 ))
                 try sendControl(codec.videoConfiguration())
                 self.codec = codec
@@ -594,6 +607,14 @@ final class InternetProductSession: EncodedFrameSink {
                     streamID: codec.video.streamID
                 )
 
+            case .controllerEvent(let controller) where isStreaming:
+                self.codec = codec
+                try routeController(
+                    controller,
+                    sessionEpoch: codec.sessionEpoch,
+                    streamID: codec.video.streamID
+                )
+
             case .disconnectNotice:
                 self.codec = codec
                 beginFreshSessionRecovery(attempt: 1, generation: generation)
@@ -608,6 +629,7 @@ final class InternetProductSession: EncodedFrameSink {
                 case .requestKeyframe: payloadName = "RequestKeyframe"
                 case .touchEvent: payloadName = "TouchEvent"
                 case .stylusEvent: payloadName = "StylusEvent"
+                case .controllerEvent: payloadName = "ControllerEvent"
                 case .disconnectNotice: payloadName = "DisconnectNotice"
                 case nil: payloadName = "empty payload"
                 default: payloadName = "unsupported payload"
@@ -732,6 +754,56 @@ final class InternetProductSession: EncodedFrameSink {
         )
     }
 
+    private func routeController(
+        _ controller: VSControllerEvent,
+        sessionEpoch: UInt64,
+        streamID: UInt64
+    ) throws {
+        guard peerSupportsController else {
+            throw InternetProductProtocolError.missingCapability(.controller)
+        }
+        let targetMatches = !controller.hasTarget
+            || ((controller.target.streamID == 0 || controller.target.streamID == streamID)
+                && (controller.target.displayID.isEmpty
+                    || controller.target.displayID == "internet-display"))
+        let kind: GameControllerEventKind
+        switch controller.kind {
+        case .connected: kind = .connected
+        case .state: kind = .state
+        case .disconnected: kind = .disconnected
+        default: throw InternetProductProtocolError.invalidController
+        }
+        let state = GameControllerState(
+            buttonMask: controller.buttonMask,
+            leftX: controller.leftStickX,
+            leftY: controller.leftStickY,
+            rightX: controller.rightStickX,
+            rightY: controller.rightStickY,
+            leftTrigger: controller.leftTrigger,
+            rightTrigger: controller.rightTrigger,
+            hatX: controller.hatX,
+            hatY: controller.hatY
+        )
+        let event = GameControllerInputEvent(
+            inputID: controller.inputID,
+            controllerID: controller.controllerID,
+            controllerEpoch: controller.controllerEpoch,
+            kind: kind,
+            state: state
+        )
+        guard targetMatches, state.isValid else {
+            throw InternetProductProtocolError.invalidController
+        }
+        do {
+            try controllerSequenceState.accept(event)
+        } catch {
+            throw InternetProductProtocolError.invalidController
+        }
+        guard onAuthenticatedControllerEvent?(sessionEpoch, event) == true else {
+            throw InternetProductProtocolError.invalidController
+        }
+    }
+
     private func validatesStylusExtension(
         _ stylus: VSStylusEvent,
         toolKind: VSStylusToolKind,
@@ -818,11 +890,13 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsTouch = false
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
+        peerSupportsController = false
         _ = stylusSequenceState.consumeReset()
         pendingAdaptiveRequest = nil
         queuedAdaptiveProfile = nil
         adaptiveConfigurationAwaitingAcknowledgment = false
         deferredRotationDegrees = nil
+        controllerSequenceState.reset()
         let recoveringState = InternetProductSessionState.recovering(attempt: sessionAttempt)
         let stateChanged = state != recoveringState
         state = recoveringState
@@ -1014,11 +1088,13 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsTouch = false
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
+        peerSupportsController = false
         _ = stylusSequenceState.consumeReset()
         pendingAdaptiveRequest = nil
         queuedAdaptiveProfile = nil
         adaptiveConfigurationAwaitingAcknowledgment = false
         deferredRotationDegrees = nil
+        controllerSequenceState.reset()
         // Close the retired transport before publishing the terminal state so
         // any observer waking on .failed already sees the transport closed,
         // instead of racing the queue that would otherwise close it afterward.

@@ -9,6 +9,7 @@ import dev.telemachus.display.internet.security.publicPoint
 import dev.telemachus.display.internet.security.toPairingHex
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
+import dev.vibescreen.protocol.v1.ControllerEventKind
 import dev.vibescreen.protocol.v1.Dimensions
 import dev.vibescreen.protocol.v1.DeviceRevoked
 import dev.vibescreen.protocol.v1.Envelope
@@ -91,8 +92,15 @@ class InternetProductSessionTest {
         assertEquals(InternetProductSessionState.ACTIVE, session.state)
         assertFalse(session.canSendStylus())
         assertFalse(session.canSendTouch())
+        assertFalse(session.canSendController())
         val controlCount = peer.control.size
         assertFalse(session.sendTouch(ProductTouchEvent(1, 0, ProductInputPhase.BEGAN, 0.5, 0.5)))
+        assertFalse(
+            session.sendController(
+                listOf(neutralControllerEvent(2, ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED)),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
         assertEquals(controlCount, peer.control.size)
         assertEquals(InternetProductSessionState.ACTIVE, session.state)
         peer.receive(
@@ -177,7 +185,8 @@ class InternetProductSessionTest {
                 .setHostHello(
                     hostHello()
                         .addCapabilities(Capability.CAPABILITY_TOUCH)
-                        .addCapabilities(Capability.CAPABILITY_STYLUS),
+                        .addCapabilities(Capability.CAPABILITY_STYLUS)
+                        .addCapabilities(Capability.CAPABILITY_CONTROLLER),
                 ).build(),
         )
         peer.receive(
@@ -185,7 +194,8 @@ class InternetProductSessionTest {
                 .setSessionAccepted(
                     sessionAccepted()
                         .addNegotiatedCapabilities(Capability.CAPABILITY_TOUCH)
-                        .addNegotiatedCapabilities(Capability.CAPABILITY_STYLUS),
+                        .addNegotiatedCapabilities(Capability.CAPABILITY_STYLUS)
+                        .addNegotiatedCapabilities(Capability.CAPABILITY_CONTROLLER),
                 )
                 .build(),
         )
@@ -224,6 +234,33 @@ class InternetProductSessionTest {
         val stylusEnvelope = Envelope.parseFrom(peer.control.last())
         assertEquals(Envelope.PayloadCase.STYLUS_EVENT, stylusEnvelope.payloadCase)
         assertEquals(5L, stylusEnvelope.stylusEvent.target.streamId)
+        assertTrue(session.canSendController())
+        assertTrue(
+            session.sendController(
+                listOf(
+                    neutralControllerEvent(3, ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED),
+                    ProductControllerEvent(
+                        inputId = 4,
+                        controllerId = "pad",
+                        controllerEpoch = 1,
+                        kind = ControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
+                        buttonMask = 1,
+                        leftStickX = -0.5,
+                        leftStickY = 0.0,
+                        rightStickX = 0.0,
+                        rightStickY = 0.0,
+                        leftTrigger = 0.0,
+                        rightTrigger = 0.75,
+                        hatX = 0,
+                        hatY = -1,
+                    ),
+                ),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+        val controllerEnvelope = Envelope.parseFrom(peer.control.last())
+        assertEquals(Envelope.PayloadCase.CONTROLLER_EVENT, controllerEnvelope.payloadCase)
+        assertEquals(-0.5, controllerEnvelope.controllerEvent.leftStickX, 0.0)
         assertEquals(listOf(90), callbacks.configurations.map { it.rotationDegrees })
 
         peer.receive(
@@ -1641,6 +1678,25 @@ class InternetProductSessionTest {
         ResourceLimits
             .newBuilder()
             .setMaximumEncryptedMediaRecordBytes(maximumEncryptedMediaRecordBytes)
+
+    private fun neutralControllerEvent(
+        inputId: Long,
+        kind: ControllerEventKind,
+    ) = ProductControllerEvent(
+        inputId = inputId,
+        controllerId = "pad",
+        controllerEpoch = 1,
+        kind = kind,
+        buttonMask = 0,
+        leftStickX = 0.0,
+        leftStickY = 0.0,
+        rightStickX = 0.0,
+        rightStickY = 0.0,
+        leftTrigger = 0.0,
+        rightTrigger = 0.0,
+        hatX = 0,
+        hatY = 0,
+    )
 
     private fun media(
         frameId: Long,
