@@ -270,7 +270,7 @@ private final class FakeVirtualGamepadIOProvider: VirtualGamepadIOProvider {
 
     func create(properties: [String: Any], queue: DispatchQueue) -> VirtualGamepadIOHandle? {
         self.properties = properties
-        handle
+        return handle
     }
 }
 
