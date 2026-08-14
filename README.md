@@ -263,6 +263,13 @@ The Xiaomi 13 baseline evidence is recorded under
 Implementation status and evidence are tracked in the
 [Phase 0 change docs](docs/changes/2026-08-04-phase-0-baseline/PRD.md).
 
+Android TCP connection ownership is now enforced by a standalone JVM transport
+module with dependency-direction and resource-lifecycle contract tests. This is
+one implemented boundary, not completion of Phase 0 module ownership:
+`StreamClient` still combines transport composition with local product-session
+behavior, and the remaining protocol, session, media, input, and UI boundaries
+are still being extracted.
+
 - Fork and build SideScreen as the initial codebase.
 - Evaluate and port the relevant Telemachus reliability improvements.
 - Build the Mac host and Android client and complete the planned Xiaomi 13
