@@ -1,15 +1,17 @@
-import { Capability, ClientHello, Codec, ColorDescription, EnvelopeMetadata, InputTarget, KeyInput, NormalizedInput,
-  PROTOCOL_VERSION, ScrollInput, TransportKind, VideoConfig } from './ProtocolModels';
+import { Capability, ClientHello, Codec, ColorDescription, DeviceIdentity, EnvelopeMetadata, InputTarget, KeyInput,
+  NormalizedInput, PairingProof, PairingRequest, PROTOCOL_VERSION, ScrollInput, TransportKind, VideoConfig } from './ProtocolModels';
 import { ProtobufWriter } from './ProtobufWriter';
 
 export enum EnvelopePayloadField {
-  CLIENT_HELLO = 20, PING = 24, PONG = 25, RESUME = 26,
+  CLIENT_HELLO = 20, PING = 24, PONG = 25, RESUME = 26, PAIRING_REQUEST = 31,
   LIST_DISPLAYS_REQUEST = 40, START_DISPLAY_REQUEST = 42, VIDEO_CONFIG_RESULT = 51,
   REQUEST_KEYFRAME = 52, TOUCH = 60, POINTER = 61, SCROLL = 62, KEY = 63
 }
 
 export type OutboundControlIntent =
   | { kind: 'clientHello'; hello: ClientHello }
+  | { kind: 'resume'; previousEpoch: bigint; lastMessageId: bigint }
+  | { kind: 'pairingRequest'; request: PairingRequest; correlationId: bigint }
   | { kind: 'ping'; sequence: bigint }
   | { kind: 'pong'; sequence: bigint; correlationId: bigint }
   | { kind: 'listDisplays' }
@@ -52,6 +54,8 @@ export class ProtocolEncoder {
 
   intent(metadata: EnvelopeMetadata, intent: OutboundControlIntent): Uint8Array {
     if (intent.kind === 'clientHello') return this.clientHello(metadata, intent.hello);
+    if (intent.kind === 'resume') return this.resume(metadata, intent.previousEpoch, intent.lastMessageId);
+    if (intent.kind === 'pairingRequest') return this.pairingRequest({ ...metadata, correlationId: intent.correlationId }, intent.request);
     if (intent.kind === 'ping') return this.ping(metadata, intent.sequence);
     if (intent.kind === 'pong') return this.pong({ ...metadata, correlationId: intent.correlationId }, intent.sequence);
     if (intent.kind === 'listDisplays') return this.listDisplays(metadata);
@@ -77,6 +81,14 @@ export class ProtocolEncoder {
     const payload: ProtobufWriter = new ProtobufWriter().bytesField(1, metadata.sessionId)
       .uint64(2, previousEpoch).uint64(3, lastMessageId);
     return this.envelope(metadata, EnvelopePayloadField.RESUME, payload);
+  }
+
+  pairingRequest(metadata: EnvelopeMetadata, request: PairingRequest): Uint8Array {
+    const payload: ProtobufWriter = new ProtobufWriter().bytesField(1, request.offerId).string(2, request.deviceId)
+      .string(3, request.deviceName).bytesField(4, request.devicePublicKey)
+      .message(5, this.deviceIdentity(request.deviceIdentity)).message(6, this.pairingProof(request.proof))
+      .bytesField(7, request.bootstrapMac);
+    return this.envelope(metadata, EnvelopePayloadField.PAIRING_REQUEST, payload);
   }
 
   listDisplays(metadata: EnvelopeMetadata): Uint8Array {
@@ -144,6 +156,16 @@ export class ProtocolEncoder {
   private colorDescription(color: ColorDescription): ProtobufWriter {
     return new ProtobufWriter().uint32(1, color.primaries).uint32(2, color.transferFunction)
       .uint32(3, color.matrixCoefficients).bool(4, color.fullRange).uint32(5, color.bitDepth);
+  }
+
+  private deviceIdentity(identity: DeviceIdentity): ProtobufWriter {
+    return new ProtobufWriter().string(1, identity.deviceId).string(2, identity.keyId).uint64(3, identity.keyEpoch)
+      .uint32(4, identity.signatureAlgorithm).bytesField(5, identity.signingPublicKey);
+  }
+
+  private pairingProof(proof: PairingProof): ProtobufWriter {
+    return new ProtobufWriter().bytesField(1, proof.challenge).bytesField(2, proof.ephemeralPublicKey)
+      .bytesField(3, proof.signature);
   }
 
   private repeatedEnums(writer: ProtobufWriter, field: number, values: number[], packed: boolean): void {

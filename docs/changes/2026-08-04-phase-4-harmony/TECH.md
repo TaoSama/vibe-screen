@@ -62,10 +62,15 @@ single active product session, heartbeat timer, decoder, reconnect timer,
 surface identity, input target, and UI status. Transport, controller, and
 decoder each use operation generations; cleanup synchronously detaches captured
 resources before awaiting them, so an old continuation cannot close or confirm
-a newer session. Backgrounding closes transport
-and decode resources; foregrounding creates a fresh v1 session with capped
-jittered backoff. Protocol resume-result handling remains open and therefore is
-not advertised.
+a newer session. A fully streaming session that negotiated `SESSION_RESUME` can
+export one immutable in-memory snapshot. The replacement writer continues after
+the assigned message-ID high-water and sends ResumeSessionRequest. A result must
+correlate, retain the exact session ID, and advance both payload and envelope
+epoch. Rejection or malformed metadata closes the connection rather than falling
+through to ClientHello on the same transport. Accepted recovery re-enters display
+selection and decoder configuration before input or media reopen. The current
+Mac Host still requires ClientHello first, so this portable state machine does
+not establish resume interoperability.
 
 Transport close plus decoder stop/release are all attempted even if a sibling
 operation fails. Aggregated cleanup errors remain visible in status diagnostics
@@ -105,9 +110,24 @@ gates rather than claims.
 
 Asset Store calls use the API 12 `Map<Tag, Value>` shape. A random stable client
 identifier and a versioned host/port/offer record are stored. Address-link
-credentials are never persisted. This is not the cryptographic PairingRequest
-proof exchange and does not authenticate plaintext trusted-LAN transport.
-Secure pairing must be completed jointly with a compatible host.
+credentials are never persisted. A separate alias stores a versioned security
+record containing pinned host identity, a verified 32-byte credential, session
+key metadata and durable control-replay high-water, or a credential-free
+revocation tombstone. Corrupt or unknown records fail closed.
+
+The portable pairing client implements protobuf PairingOffer/PairingRequest/
+PairingResult fields, fixed algorithm/size/expiry checks, length-prefixed
+domain-separated transcripts, bootstrap MAC, host-proof verification,
+ECDH/HKDF credential-key derivation, AES-GCM credential opening, and unconditional
+single-use cleanup. Credential installation checks its immutable generation
+before and after persistence. Replay high-water is persisted before admission;
+revocation advances the generation and persists its tombstone before subsequent
+authorization can succeed.
+
+This core is not reached by the trusted-LAN address importer. A HUKS-backed
+non-exportable key/cryptography provider, controller/UI exchange, authenticated
+record layer, and compatible Mac Host remain required. Existing TCP stays
+plaintext, and unauthenticated DeviceRevoked is deliberately not admitted.
 
 Alias operations are serialized. Existing records use `asset.update`; missing
 records use `asset.add`, so an update failure never deletes the prior host or

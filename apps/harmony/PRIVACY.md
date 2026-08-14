@@ -15,6 +15,10 @@ do not use it on public or untrusted networks.
 - The selected host address, port, pairing-offer identifier, and record version
   are stored in Asset Store so the address can be restored after relaunch.
 - One-time link credentials are parsed in memory and deliberately not persisted.
+- The secure-pairing lifecycle has a separate Asset Store record for a verified
+  device credential, pinned host identity, session-key metadata, and accepted
+  control-sequence high-water. Revocation replaces the credential with a
+  tombstone; it does not retain the revoked secret.
 - Video frames and input events are processed in memory and are not recorded.
 - The app contains no analytics, advertising SDK, cloud sync, or crash uploader.
 
@@ -23,8 +27,8 @@ addresses, or screen content. Release/device evidence must redact those values.
 
 ## User control and retention
 
-“Forget host” asks Asset Store to remove the stored host record. HarmonyOS is
-expected to preserve the host and client-identity records across a same-signing
+“Forget host” asks Asset Store to remove both the host profile and secure-pairing
+record. HarmonyOS is expected to preserve the host, security, and client-identity records across a same-signing
 in-place upgrade and remove application-owned records on uninstall. Those are
 platform expectations, not verified MatePad Mini results; release acceptance
 must test and record both behaviors. Until uninstall or an explicit future

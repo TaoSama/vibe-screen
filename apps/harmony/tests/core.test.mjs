@@ -5,8 +5,8 @@ import { CoordinateMapper, Rotation } from '../.test-dist/input/CoordinateMapper
 import { PeripheralInputMapper } from '../.test-dist/input/PeripheralInputMapper.js';
 import { FrameQueueState, LatestFrameQueue } from '../.test-dist/media/LatestFrameQueue.js';
 import { MediaPacketParser } from '../.test-dist/media/MediaPacketParser.js';
-import { Capability, Codec, ColorPrimaries, InputPhase, MatrixCoefficients, TransferFunction,
-  TransportKind } from '../.test-dist/protocol/ProtocolModels.js';
+import { AeadAlgorithm, Capability, Codec, ColorPrimaries, InputPhase, KeyAgreementAlgorithm, MatrixCoefficients,
+  SignatureAlgorithm, TransferFunction, TransportKind } from '../.test-dist/protocol/ProtocolModels.js';
 import { ProtocolEncoder } from '../.test-dist/protocol/ProtocolEncoder.js';
 import { ProtocolDecoder } from '../.test-dist/protocol/ProtocolDecoder.js';
 import { MAX_PENDING_CONTROLS, OutboundControlWriter } from '../.test-dist/protocol/OutboundControlWriter.js';
@@ -18,6 +18,7 @@ import { ProgressWatchdog } from '../.test-dist/session/ProgressWatchdog.js';
 import { isSupportedVideoConfig, ProductSession, ProductSessionState } from '../.test-dist/session/ProductSession.js';
 import { ReconnectPolicy } from '../.test-dist/session/ReconnectPolicy.js';
 import { SessionState, SessionStateMachine } from '../.test-dist/session/SessionStateMachine.js';
+import { CredentialLifecycle, PairingClient } from '../.test-dist/security/PairingSecurity.js';
 import { ControlFramer, ProtocolChannel } from '../.test-dist/transport/ControlFramer.js';
 import { ProtocolUpgrade } from '../.test-dist/transport/ProtocolUpgrade.js';
 
@@ -377,6 +378,150 @@ test('queue, geometry, session epoch and reconnect policies remain bounded', () 
   const policy = new ReconnectPolicy(); assert.equal(policy.delayMs(0, 0.5), 250); assert.equal(policy.delayMs(20, 0.5), 8000);
 });
 
+test('resume result advances epoch and rejected or malformed results fail closed', () => {
+  const negotiated = [Capability.TOUCH, Capability.SESSION_RESUME];
+  const original = sessionAwaitingVideoConfiguration(negotiated,
+    [Capability.TOUCH, Capability.SESSION_RESUME]);
+  const configure = original.receive(fixture('video_config.binpb'), 8n)[0]; finishVideoConfiguration(original, configure);
+  const snapshot = original.resumableSnapshot(19n);
+  assert.equal(snapshot.nextOutboundMessageId, 19n);
+
+  const resumed = new ProductSession('harmony-test', 'Harmony test',
+    [Capability.TOUCH, Capability.SESSION_RESUME], [Codec.HEVC, Codec.H264]);
+  const request = resumed.start(10n, snapshot)[0];
+  assert.equal(request.intent.kind, 'resume'); confirmRequest(resumed, request, 19n);
+  const accepted = new ProtobufWriter().bool(1, true).uint64(2, 8n);
+  const resultEnvelope = new ProtobufWriter().uint32(1, 1).uint64(2, 16n).uint64(3, 19n)
+    .bytesField(4, sessionId).uint64(5, 8n).message(27, accepted).finish();
+  const actions = resumed.receive(resultEnvelope, 11n);
+  assert.equal(resumed.epoch(), 8n); assert.equal(resumed.state(), ProductSessionState.SELECTING_DISPLAY);
+  assert.deepEqual(actions.map((action) => action.kind), ['heartbeat', 'send']);
+  assert.throws(() => resumed.receive(resultEnvelope, 12n), /metadata/);
+
+  const rejected = new ProductSession('harmony-test', 'Harmony test',
+    [Capability.TOUCH, Capability.SESSION_RESUME], [Codec.HEVC, Codec.H264]);
+  const rejectedRequest = rejected.start(10n, snapshot)[0]; confirmRequest(rejected, rejectedRequest, 19n);
+  const rejection = new ProtobufWriter().string(3, 'expired');
+  const rejectedEnvelope = new ProtobufWriter().uint32(1, 1).uint64(2, 16n).uint64(3, 19n)
+    .bytesField(4, sessionId).uint64(5, 7n).message(27, rejection).finish();
+  assert.deepEqual(rejected.receive(rejectedEnvelope, 11n),
+    [{ kind: 'disconnect', reason: 'resume_rejected:expired', retryable: true }]);
+  assert.equal(rejected.state(), ProductSessionState.CLOSED);
+
+  const wrongCorrelation = new ProductSession('harmony-test', 'Harmony test', negotiated, [Codec.HEVC, Codec.H264]);
+  const wrongRequest = wrongCorrelation.start(10n, snapshot)[0]; confirmRequest(wrongCorrelation, wrongRequest, 19n);
+  const uncorrelatedEnvelope = new ProtobufWriter().uint32(1, 1).uint64(2, 16n).uint64(3, 18n)
+    .bytesField(4, sessionId).uint64(5, 8n).message(27, accepted).finish();
+  assert.throws(() => wrongCorrelation.receive(uncorrelatedEnvelope, 11n), /correlation/);
+
+  const unexpectedPayload = new ProductSession('harmony-test', 'Harmony test', negotiated, [Codec.HEVC, Codec.H264]);
+  const unexpectedRequest = unexpectedPayload.start(10n, snapshot)[0]; confirmRequest(unexpectedPayload, unexpectedRequest, 19n);
+  const ping = new ProtobufWriter().uint64(1, 1n);
+  const pingEnvelope = new ProtobufWriter().uint32(1, 1).uint64(2, 16n).bytesField(4, sessionId)
+    .uint64(5, 7n).message(24, ping).finish();
+  assert.throws(() => unexpectedPayload.receive(pingEnvelope, 11n), /Only ResumeSessionResult/);
+});
+
+test('pairing request/result is single-use and credential replay/revoke is durable', async () => {
+  const digest = (_value) => new Uint8Array(32);
+  const devicePublic = new Uint8Array(65).fill(7); devicePublic[0] = 4;
+  const hostPublic = new Uint8Array(65).fill(9); hostPublic[0] = 4;
+  const toHex = (value) => [...value].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  let destroyed = 0;
+  const crypto = {
+    identity: () => ({ publicIdentity: { deviceId: 'device', keyId: toHex(digest(devicePublic)), keyEpoch: 1n,
+      signatureAlgorithm: SignatureAlgorithm.ECDSA_P256_SHA256, signingPublicKey: devicePublic }, sign: (value) => value }),
+    ephemeral: () => ({ publicKey: new Uint8Array(65).fill(5), derive: () => new Uint8Array(32).fill(6),
+      destroy: () => { destroyed += 1; } }),
+    sha256: digest, hmacSha256: (_key, value) => digest(value),
+    hkdfSha256: (_secret, _salt, _info, length) => new Uint8Array(length).fill(3), verify: () => true,
+    openAes256Gcm: () => new Uint8Array(32).fill(4)
+  };
+  const offer = { offerId: new Uint8Array(16).fill(1), oneTimeCredential: new Uint8Array(32).fill(2),
+    expiresAtUnixSeconds: 200n, hostPublicKey: hostPublic, hostIdentity: { deviceId: 'host',
+      keyId: toHex(digest(hostPublic)), keyEpoch: 1n, signatureAlgorithm: SignatureAlgorithm.ECDSA_P256_SHA256,
+      signingPublicKey: hostPublic }, challenge: new Uint8Array(32).fill(3), ephemeralPublicKey: new Uint8Array(65).fill(4),
+    signatureAlgorithms: [SignatureAlgorithm.ECDSA_P256_SHA256], keyAgreementAlgorithms: [KeyAgreementAlgorithm.ECDH_P256],
+    aeadAlgorithms: [AeadAlgorithm.AES_256_GCM] };
+  const pending = new PairingClient(crypto).begin(offer, 'Harmony tablet', 100n);
+  assert.equal(pending.request.bootstrapMac.length, 32);
+  const encoded = new ProtocolEncoder().pairingRequest(ProtocolEncoder.metadata(1n), pending.request);
+  assert.equal(new ProtocolDecoder().envelope(encoded).payloadField, 31);
+  const pairingResult = { accepted: true, deviceId: 'device', deviceCredential: new Uint8Array(),
+    rejectionReason: '', hostProof: { challenge: offer.challenge, ephemeralPublicKey: offer.ephemeralPublicKey,
+      signature: new Uint8Array(32) }, encryptedDeviceCredential: new Uint8Array(48), credentialNonce: new Uint8Array(12),
+    sessionKeyId: '0'.repeat(64), sessionKeyEpoch: 1n };
+  const completion = pending.complete(pairingResult, 150n);
+  assert.equal(completion.credential.length, 32); assert.equal(destroyed, 1);
+  assert.throws(() => pending.complete(pairingResult, 150n), /already consumed/);
+
+  const expiredPending = new PairingClient(crypto).begin(offer, 'Harmony tablet', 100n);
+  assert.throws(() => expiredPending.complete(pairingResult, 200n), /Invalid PairingResult/);
+
+  const writes = []; const store = { load: async () => undefined,
+    save: async (record) => { writes.push({ ...record, credential: record.credential.slice() }); } };
+  const lifecycle = new CredentialLifecycle(store); const owner = lifecycle.owner();
+  await lifecycle.install(owner, 'b'.repeat(32), completion);
+  assert.equal(lifecycle.authorize().credential.length, 32);
+  await lifecycle.acceptAuthenticatedControlSequence(2n);
+  await assert.rejects(lifecycle.acceptAuthenticatedControlSequence(2n), /Replayed/);
+  await lifecycle.revoke('device', 'user_revoked');
+  assert.throws(() => lifecycle.authorize(), /No authorized/);
+  assert.equal(writes.at(-1).credential.length, 0); assert.equal(writes.at(-1).revoked, true);
+});
+
+test('superseded or failed credential writes cannot revive or retain pairing secrets', async () => {
+  let releaseFirstSave;
+  let markSaveStarted;
+  const firstSaveStarted = new Promise((resolve) => { markSaveStarted = resolve; });
+  const firstSaveGate = new Promise((resolve) => { releaseFirstSave = resolve; });
+  const writes = [];
+  let first = true;
+  const store = { load: async () => undefined, save: async (record) => {
+    if (first) { first = false; markSaveStarted(); await firstSaveGate; }
+    writes.push({ ...record, credential: record.credential.slice() });
+  } };
+  const identity = { deviceId: 'host', keyId: 'a'.repeat(64), keyEpoch: 1n,
+    signatureAlgorithm: SignatureAlgorithm.ECDSA_P256_SHA256, signingPublicKey: new Uint8Array(65) };
+  const lifecycle = new CredentialLifecycle(store);
+  const completion = { credential: new Uint8Array(32).fill(7), deviceId: 'device', hostIdentity: identity,
+    sessionKeyId: 'b'.repeat(64), sessionKeyEpoch: 1n };
+  const install = lifecycle.install(lifecycle.owner(), 'c'.repeat(32), completion);
+  await firstSaveStarted; lifecycle.supersede(); releaseFirstSave();
+  await assert.rejects(install, /superseded/);
+  assert.equal(completion.credential.every((byte) => byte === 0), true);
+  assert.equal(writes.at(-1).revoked, true); assert.equal(writes.at(-1).credential.length, 0);
+  assert.throws(() => lifecycle.authorize(), /No authorized/);
+
+  const failedSecret = new Uint8Array(32).fill(8);
+  const failed = new CredentialLifecycle({ load: async () => undefined, save: async () => { throw new Error('disk full'); } });
+  await assert.rejects(failed.install(failed.owner(), 'd'.repeat(32), { ...completion, credential: failedSecret }), /disk full/);
+  assert.equal(failedSecret.every((byte) => byte === 0), true);
+
+  const oldRecord = { version: 1, pairingId: 'e'.repeat(32), deviceId: 'device', hostIdentity: identity,
+    credential: new Uint8Array(32).fill(9), sessionKeyId: 'f'.repeat(64), sessionKeyEpoch: 1n,
+    highestControlSequence: 0n, revoked: false, revocationReason: '' };
+  const replacing = new CredentialLifecycle({ load: async () => oldRecord,
+    save: async () => { throw new Error('uncertain write'); } }, () => true);
+  await replacing.restore(); const replacementOwner = replacing.owner();
+  const replacement = { ...completion, credential: new Uint8Array(32).fill(10) };
+  await assert.rejects(replacing.install(replacementOwner, 'a'.repeat(32), replacement), /uncertain write/);
+  assert.throws(() => replacing.authorize(), /No authorized/);
+
+  let releaseLoad;
+  let markLoadStarted;
+  const loadStarted = new Promise((resolve) => { markLoadStarted = resolve; });
+  const loadGate = new Promise((resolve) => { releaseLoad = resolve; });
+  const restoredRecord = { version: 1, pairingId: 'e'.repeat(32), deviceId: 'device', hostIdentity: identity,
+    credential: new Uint8Array(32).fill(9), sessionKeyId: 'f'.repeat(64), sessionKeyEpoch: 1n,
+    highestControlSequence: 0n, revoked: false, revocationReason: '' };
+  const restoring = new CredentialLifecycle({ load: async () => { markLoadStarted(); await loadGate; return restoredRecord; },
+    save: async () => {} }, () => true);
+  const restore = restoring.restore();
+  await loadStarted; restoring.supersede(); releaseLoad(); await restore;
+  assert.throws(() => restoring.authorize(), /No authorized/);
+});
+
 function controlEnvelope(messageId, payloadField, payload, sessionScoped = true, correlationId = 1n) {
   const envelope = new ProtobufWriter().uint32(1, 1).uint64(2, messageId).uint64(3, correlationId);
   if (sessionScoped) envelope.bytesField(4, sessionId).uint64(5, 7n);
@@ -391,11 +536,13 @@ function touchOnlyStreamingSession() {
 }
 
 function sessionAwaitingVideoConfiguration(negotiated = [Capability.TOUCH, Capability.KEYBOARD,
+  Capability.POINTER, Capability.TELEMETRY], offered = [Capability.TOUCH, Capability.KEYBOARD,
   Capability.POINTER, Capability.TELEMETRY]) {
   const session = new ProductSession('harmony-test', 'Harmony test',
-    [Capability.TOUCH, Capability.KEYBOARD, Capability.POINTER, Capability.TELEMETRY], [Codec.HEVC, Codec.H264]);
+    offered, [Codec.HEVC, Codec.H264]);
   confirmRequest(session, session.start(1n)[0], 1n);
-  session.receive(fixture('host_hello.binpb'), 2n);
+  const host = new ProtobufWriter().uint32(1, 1).packedVarints(4, offered).packedVarints(5, [Codec.HEVC, Codec.H264]);
+  session.receive(controlEnvelope(2n, 21, host, false), 2n);
   const accepted = new ProtobufWriter().bytesField(1, sessionId).uint64(2, 7n).uint32(3, 1000)
     .packedVarints(4, negotiated);
   const acceptedActions = session.receive(controlEnvelope(3n, 22, accepted), 3n);
