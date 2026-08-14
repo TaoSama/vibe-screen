@@ -1,8 +1,6 @@
 package dev.telemachus.display
 
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.os.Build
 import android.util.Log
 import android.view.WindowManager
@@ -92,6 +90,8 @@ class StreamClient(
     private val port: Int,
     private val context: Context? = null,
     private val socketFactory: () -> Socket = ::Socket,
+    private val wirelessSocketConnector: WirelessSocketConnector =
+        context?.let(::TrustedLanSocketConnector) ?: DefaultRouteSocketConnector(),
     private val videoConfigurationCommitTimeoutMs: Long = VIDEO_CONFIGURATION_COMMIT_TIMEOUT_MS,
     private val videoConfigurationTimeoutExecutor: ScheduledExecutorService = VIDEO_CONFIGURATION_TIMEOUT_EXECUTOR,
     private val terminationExecutor: Executor = SESSION_TERMINATION_EXECUTOR,
@@ -340,25 +340,8 @@ class StreamClient(
             return@withContext
         }
         try {
-            // Force the socket onto the active WiFi network. On some Android setups
-            // the default route can silently drop LAN traffic.
             s.tcpNoDelay = true
-            val wifiNetwork =
-                context?.let { ctx ->
-                    val cm = ctx.getSystemService(ConnectivityManager::class.java)
-                    cm.activeNetwork?.takeIf { net ->
-                        cm
-                            .getNetworkCapabilities(net)
-                            ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-                    }
-                }
-            if (wifiNetwork != null) {
-                Log.i(TAG, "connectWireless: binding socket to WiFi network $wifiNetwork")
-                wifiNetwork.bindSocket(s)
-            } else {
-                Log.w(TAG, "connectWireless: no WiFi network found, using default routing")
-            }
-            s.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+            wirelessSocketConnector.connect(s, host, port, CONNECT_TIMEOUT_MS)
         } catch (error: SocketTimeoutException) {
             failWirelessHandshake(SessionFailure.transport("TCP connect timeout"), WirelessConnectError.NetworkUnreachable)
         } catch (error: IOException) {
@@ -703,15 +686,7 @@ class StreamClient(
 
     private fun configureWirelessSocket(fresh: Socket) {
         fresh.tcpNoDelay = true
-        val wifiNetwork =
-            context?.let { ctx ->
-                val manager = ctx.getSystemService(ConnectivityManager::class.java)
-                manager.activeNetwork?.takeIf { network ->
-                    manager.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-                }
-            }
-        wifiNetwork?.bindSocket(fresh)
-        fresh.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+        wirelessSocketConnector.connect(fresh, host, port, CONNECT_TIMEOUT_MS)
     }
 
     private fun authenticateWirelessSocket(

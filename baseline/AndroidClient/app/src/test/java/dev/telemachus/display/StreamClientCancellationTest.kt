@@ -456,6 +456,12 @@ class StreamClientCancellationTest {
         ServerSocket(0).use { server ->
             val fresh = BlockingAuthSocket()
             val sockets = AtomicInteger()
+            val routedConnections = AtomicInteger()
+            val connector =
+                WirelessSocketConnector { socket, host, port, timeoutMs ->
+                    routedConnections.incrementAndGet()
+                    socket.connect(InetSocketAddress(host, port), timeoutMs)
+                }
             val serverJob =
                 async(Dispatchers.IO) {
                     server.accept().use { probe ->
@@ -473,6 +479,7 @@ class StreamClientCancellationTest {
                     "127.0.0.1",
                     server.localPort,
                     socketFactory = { if (sockets.getAndIncrement() == 0) Socket() else fresh },
+                    wirelessSocketConnector = connector,
                 )
             val connectJob =
                 async(Dispatchers.IO) {
@@ -485,6 +492,7 @@ class StreamClientCancellationTest {
             withTimeout(2_000) { serverJob.await() }
             assertEquals(1, fresh.closeCalls.get())
             assertEquals(2, sockets.get())
+            assertEquals(2, routedConnections.get())
         }
     }
 
