@@ -89,7 +89,7 @@ jobs:
       - name: Package ad-hoc signed, unnotarized macOS preview
         env:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
-        run: python3 scripts/package_macos.py --version "$RELEASE_VERSION"
+        run: python3 scripts/package_macos.py --version "$RELEASE_VERSION" --sign-identity -
       - name: Verify embedded macOS identity and version
         env:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build, bundle, ad-hoc sign, and archive the macOS host."""
+"""Build, bundle, sign, and archive the macOS host."""
 
 from __future__ import annotations
 
@@ -23,6 +23,8 @@ SOURCE_INFO_PLIST = HOST_ROOT / "Info.plist"
 PRODUCT_NAME = "Vibe Screen"
 ARTIFACT_NAME = "Vibe-Screen"
 EXECUTABLE_NAME = PRODUCT_NAME
+DEFAULT_SIGN_IDENTITY = "Vibe Screen Dev"
+SIGN_IDENTITY_ENV = "VIBE_SCREEN_SIGN_IDENTITY"
 WEBRTC_FRAMEWORK_NAME = "WebRTC.framework"
 RESOURCE_BUNDLE_NAME = "Telemachus_Telemachus.bundle"
 REPRODUCIBLE_TIMESTAMP = 315_532_800  # 1980-01-01, the ZIP timestamp floor.
@@ -44,13 +46,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--sign-identity",
-        default=os.environ.get("TELEMACHUS_SIGN_IDENTITY", "Telemachus Dev"),
+        default=os.environ.get(SIGN_IDENTITY_ENV, DEFAULT_SIGN_IDENTITY),
         help=(
             "codesign identity; '-' produces a local ad-hoc signature. "
-            "Defaults to $TELEMACHUS_SIGN_IDENTITY or the stable 'Telemachus Dev' "
+            f"Defaults to ${SIGN_IDENTITY_ENV} or the stable "
+            f"'{DEFAULT_SIGN_IDENTITY}' "
             "self-signed identity so the signing hash (and thus macOS Screen "
             "Recording/Accessibility grants) stays stable across rebuilds. Pass "
-            "'-' explicitly for an ad-hoc build on machines without that identity."
+            "'-' explicitly for an ad-hoc build on machines without that identity; "
+            "any other missing identity fails fast instead of silently degrading."
         ),
     )
     return parser.parse_args()
@@ -69,12 +73,14 @@ def run(*command: str, cwd: Path | None = None) -> str:
 
 
 def resolve_sign_identity(requested: str) -> str:
-    """Return a usable codesign identity, falling back to ad-hoc.
+    """Return a usable codesign identity.
 
-    The default identity ('Telemachus Dev') keeps the signing hash stable across
-    local rebuilds so macOS Screen Recording/Accessibility grants survive. CI
-    runners do not have that self-signed identity in their keychain, so fall back
-    to an ad-hoc signature there instead of failing the codesign step.
+    The default identity ('Vibe Screen Dev') keeps the signing hash stable across
+    local rebuilds so macOS Screen Recording/Accessibility grants survive. An
+    ad-hoc signature (requested with '-') is only used when the operator passes
+    it explicitly; any other missing identity fails fast so a local rebuild does
+    not silently invalidate TCC grants. CI workflows must pass '--sign-identity -'
+    explicitly to produce ad-hoc signed preview artifacts.
     """
     if requested == "-":
         return requested
@@ -85,13 +91,19 @@ def resolve_sign_identity(requested: str) -> str:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
-    if lookup.returncode == 0 and requested in lookup.stdout:
+    quoted_identity = f'"{requested}"'
+    if lookup.returncode == 0 and any(
+        line.strip().endswith(quoted_identity) for line in lookup.stdout.splitlines()
+    ):
         return requested
-    print(
-        f"codesign identity '{requested}' not found in the keychain; "
-        "falling back to an ad-hoc signature.",
+    raise SystemExit(
+        f"codesign identity '{requested}' not found in the keychain. "
+        f"Create the '{DEFAULT_SIGN_IDENTITY}' self-signed identity (or set "
+        f"${SIGN_IDENTITY_ENV} to an existing identity), or pass "
+        "'--sign-identity -' for an ad-hoc build. Ad-hoc signing changes the "
+        "code-signing hash on every rebuild and invalidates macOS Screen "
+        "Recording/Accessibility grants."
     )
-    return "-"
 
 
 def read_source_plist() -> dict[str, object]:
@@ -159,6 +171,7 @@ def create_reproducible_zip(app_path: Path, archive_path: Path) -> None:
 
 def main() -> int:
     args = parse_args()
+    sign_identity = resolve_sign_identity(args.sign_identity)
     validate_notice_bundle(REPOSITORY_ROOT)
     source_plist = read_source_plist()
     version = args.version or str(source_plist["CFBundleShortVersionString"])
@@ -232,7 +245,6 @@ def main() -> int:
     with (contents / "Info.plist").open("wb") as plist_file:
         plistlib.dump(bundled_plist, plist_file, sort_keys=True)
 
-    sign_identity = resolve_sign_identity(args.sign_identity)
     run(
         "codesign",
         "--force",

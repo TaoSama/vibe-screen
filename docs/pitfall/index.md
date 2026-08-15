@@ -21,13 +21,17 @@
   work. Ad-hoc signing changes the code-signing hash on every rebuild, so macOS
   TCC drops the Screen Recording and Accessibility grants and forces the user to
   re-authorize after each build. Sign with a stable self-signed identity
-  ('Telemachus Dev') so the hash stays constant and one grant survives rebuilds;
-  'package_macos.py' now defaults to it (override with $TELEMACHUS_SIGN_IDENTITY
-  or '--sign-identity -'). If codesign fails with 'errSecInternalComponent',
-  authorize the private key for non-interactive use once via
+  ('Vibe Screen Dev') so the hash stays constant and one grant survives rebuilds;
+  'package_macos.py' now defaults to it (override with $VIBE_SCREEN_SIGN_IDENTITY
+  or '--sign-identity'). A missing named identity fails fast. CI and intentional
+  local preview builds must request ad-hoc signing explicitly with
+  '--sign-identity -'. When creating the stable identity, import its private key
+  with '/usr/bin/codesign' in the key ACL. If codesign still fails with
+  'errSecInternalComponent', authorize the private key for non-interactive use
+  once via
   'security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD"
   "$HOME/Library/Keychains/login.keychain-db"' (supply the keychain password
   through the '$KEYCHAIN_PASSWORD' variable rather than embedding it, and
-  verify the exact 'security(1)' syntax on the target macOS version). CI runners
-  lack the self-signed identity, so 'package_macos.py' now falls back to an
-  ad-hoc signature there automatically.
+  verify the exact 'security(1)' syntax on the target macOS version). Do not
+  reset or replace a keychain whose password is unknown; import a fresh identity
+  into the current unlocked login keychain instead.

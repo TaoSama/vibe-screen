@@ -128,7 +128,7 @@ jobs:
           ' .build/phase3-local-synthetic-product-e2e/direct.json .build/phase3-local-synthetic-product-e2e/relay.json >/dev/null
       - run: make baseline-macos-self-test
       - run: make baseline-macos-test
-      - run: make baseline-macos-app
+      - run: python3 scripts/package_macos.py --sign-identity -
       - name: Validate local Phase 3 synthetic product E2E public summaries
         id: phase3_synthetic_public_summaries
         if: ${{ always() && steps.phase3_synthetic_gate.outcome == 'success' }}
@@ -157,6 +157,6 @@ jobs:
           retention-days: 7
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: telemachus-macos-ad-hoc-signed
+          name: vibe-screen-macos-ad-hoc-signed
           path: .build/release-artifacts/*
           if-no-files-found: error
