@@ -127,8 +127,8 @@ may be observable on the network. Do not use it on public or hostile networks.
 
 ## Release signing
 
-Android release builds require `TELEMACHUS_VERSION` and the four
-`TELEMACHUS_KEYSTORE_*` / `TELEMACHUS_KEY_*` signing variables defined in
+Android release builds require `VIBE_SCREEN_VERSION` and the four
+`VIBE_SCREEN_KEYSTORE_*` / `VIBE_SCREEN_KEY_*` signing variables defined in
 `baseline/AndroidClient/app/build.gradle.kts`. Never commit a keystore or its
 password. Public release signing and macOS notarization are not performed by
 the preview workflow. The workflow generates unsigned SHA-256 checksum metadata
