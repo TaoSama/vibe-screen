@@ -1299,7 +1299,7 @@ class MainActivity : AppCompatActivity() {
                 binding.connectionTitle.setText(
                     if (isReconnecting) R.string.reconnecting_short else R.string.waiting_for_mac,
                 )
-                binding.connectionSubtitle.setText(R.string.usb_waiting_description)
+                updateUsbTransportSubtitle()
                 binding.connectionProgress.visibility = View.VISIBLE
                 val connectAction =
                     UsbConnectActionPolicy.resolve(
@@ -4679,6 +4679,7 @@ class MainActivity : AppCompatActivity() {
         private const val EXTRA_USB_CONNECTED = "connected"
         private const val EXTRA_USB_CONFIGURED = "configured"
         private const val EXTRA_USB_FUNCTION_ADB = "adb"
+        private const val WIRELESS_ADB_ENABLED_SETTING = "adb_wifi_enabled"
         private const val MAX_DEVICE_NAME_LENGTH = 64
         private const val WIRELESS_INITIAL_RETRY_DELAY_MS = 500L
         private const val WIRELESS_RECONNECT_MAXIMUM_DELAY_MS = 3_000L
@@ -4739,7 +4740,11 @@ class MainActivity : AppCompatActivity() {
         // Diagnostics are deliberately lazy. The normal disconnected screen
         // should be calm, and a second socket probe used to compete with the
         // real automatic connection loop.
-        if (isConnected || !connectionDetailsVisible) return
+        if (isConnected) return
+        if (UsbTransportDisplayPolicy.shouldRefreshSubtitle(prefs.connectionMode)) {
+            updateUsbTransportSubtitle()
+        }
+        if (!connectionDetailsVisible) return
 
         // These values live in Settings.Global. Querying Settings.Secure with
         // Global keys returns false negatives on several Android versions.
@@ -4757,31 +4762,40 @@ class MainActivity : AppCompatActivity() {
             if (isDeveloperModeEnabled) ChecklistStatus.READY else ChecklistStatus.NOT_READY,
         )
 
-        // Check USB Debugging (ADB enabled)
-        val isAdbEnabled =
+        val isUsbConnected = isUsbDataConnectionActive()
+        val isUsbDebuggingEnabled =
             Settings.Global.getInt(
                 contentResolver,
                 Settings.Global.ADB_ENABLED,
                 0,
             ) == 1
+        val isWirelessAdbEnabled = isWirelessAdbEnabled()
         ChecklistStatusApplier.apply(
             this,
             binding.checkUsbDebugging,
             binding.textUsbDebugging,
-            R.string.usb_debugging,
-            if (isAdbEnabled) ChecklistStatus.READY else ChecklistStatus.NOT_READY,
+            UsbTransportDisplayPolicy.debuggingLabelResource(
+                isUsbConnected,
+                isUsbDebuggingEnabled,
+                isWirelessAdbEnabled,
+            ),
+            if (isUsbDebuggingEnabled || isWirelessAdbEnabled) {
+                ChecklistStatus.READY
+            } else {
+                ChecklistStatus.NOT_READY
+            },
         )
 
         // Charging alone also succeeds with charge-only cables. The sticky USB
         // state broadcast tells us whether Android configured a real data link
-        // and exposed the ADB USB function.
-        val isUsbConnected = isUsbDataConnectionActive()
+        // and exposed the ADB USB function. Wireless debugging is a separate
+        // setting; ADB_ENABLED alone only proves that USB debugging is allowed.
         ChecklistStatusApplier.apply(
             this,
             binding.checkUsbConnected,
             binding.textUsbConnected,
-            R.string.usb_data_cable,
-            if (isUsbConnected) ChecklistStatus.READY else ChecklistStatus.NOT_READY,
+            UsbTransportDisplayPolicy.cableLabelResource(isUsbConnected, isWirelessAdbEnabled),
+            UsbTransportDisplayPolicy.cableStatus(isUsbConnected, isWirelessAdbEnabled),
         )
 
         if (automaticUsbConnect || connectionAttemptInProgress) {
@@ -4833,8 +4847,14 @@ class MainActivity : AppCompatActivity() {
                     if (isServerRunning) ChecklistStatus.READY else ChecklistStatus.NOT_READY,
                 )
 
-                // Update main status indicator based on all checklist items
-                val allReady = isDeveloperModeEnabled && isAdbEnabled && isUsbConnected && isServerRunning
+                val allReady =
+                    UsbTransportDisplayPolicy.allReady(
+                        isDeveloperModeEnabled = isDeveloperModeEnabled,
+                        isUsbDebuggingEnabled = isUsbDebuggingEnabled,
+                        isWirelessAdbEnabled = isWirelessAdbEnabled,
+                        isUsbConnected = isUsbConnected,
+                        isServerRunning = isServerRunning,
+                    )
                 updateMainStatus(allReady)
             }
         }
@@ -4858,6 +4878,22 @@ class MainActivity : AppCompatActivity() {
         return usbState.getBooleanExtra(EXTRA_USB_CONNECTED, false) &&
             usbState.getBooleanExtra(EXTRA_USB_CONFIGURED, false) &&
             usbState.getBooleanExtra(EXTRA_USB_FUNCTION_ADB, false)
+    }
+
+    private fun isWirelessAdbEnabled(): Boolean =
+        Settings.Global.getInt(contentResolver, WIRELESS_ADB_ENABLED_SETTING, 0) == 1
+
+    private fun updateUsbTransportSubtitle() {
+        val subtitle =
+            getString(
+                UsbTransportDisplayPolicy.subtitleResource(
+                    isUsbConnected = isUsbDataConnectionActive(),
+                    isWirelessAdbEnabled = isWirelessAdbEnabled(),
+                ),
+            )
+        if (binding.connectionSubtitle.text.toString() != subtitle) {
+            binding.connectionSubtitle.text = subtitle
+        }
     }
 
     /**

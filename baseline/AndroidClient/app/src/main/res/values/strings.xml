@@ -93,6 +93,8 @@
     <string name="host_action_rejected">Couldn\u2019t complete that action</string>
     <string name="host_action_rejected_with_reason">Couldn\u2019t complete that action: %1$s</string>
     <string name="usb_waiting_description">Keep the USB cable connected and open Vibe Screen on your Mac. This device will connect automatically.</string>
+    <string name="wireless_adb_waiting_description">Keep wireless debugging enabled and the Mac\u2019s ADB connection active, then open Vibe Screen on your Mac. This device will connect automatically.</string>
+    <string name="adb_transport_waiting_description">Connect a USB data cable or enable wireless debugging, then open Vibe Screen on your Mac. This device will connect automatically.</string>
     <string name="usb">USB</string>
     <string name="trusted_lan">LAN</string>
     <string name="internet">Internet</string>
@@ -136,7 +138,11 @@
     <string name="connection_checklist">Connection Checklist</string>
     <string name="developer_mode">Developer mode</string>
     <string name="usb_debugging">USB debugging</string>
+    <string name="wireless_debugging">Wireless debugging</string>
+    <string name="usb_or_wireless_debugging">USB or wireless debugging</string>
     <string name="usb_data_cable">USB data cable</string>
+    <string name="wireless_adb">Wireless ADB transport</string>
+    <string name="usb_or_wireless_adb">USB cable or wireless ADB</string>
     <string name="mac_server">Mac server</string>
     <string name="checklist_item_status">%1$s · %2$s</string>
     <string name="checklist_ready">Ready</string>

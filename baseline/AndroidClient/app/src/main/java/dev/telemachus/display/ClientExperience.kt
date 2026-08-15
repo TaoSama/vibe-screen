@@ -504,3 +504,59 @@ internal object UsbConnectActionPolicy {
             else -> Action.CONNECT
         }
 }
+
+internal object UsbTransportDisplayPolicy {
+    fun shouldRefreshSubtitle(connectionMode: ConnectionMode): Boolean =
+        connectionMode == ConnectionMode.USB
+
+    fun subtitleResource(
+        isUsbConnected: Boolean,
+        isWirelessAdbEnabled: Boolean,
+    ): Int =
+        when {
+            isUsbConnected -> R.string.usb_waiting_description
+            isWirelessAdbEnabled -> R.string.wireless_adb_waiting_description
+            else -> R.string.adb_transport_waiting_description
+        }
+
+    fun cableLabelResource(
+        isUsbConnected: Boolean,
+        isWirelessAdbEnabled: Boolean,
+    ): Int =
+        when {
+            isUsbConnected -> R.string.usb_data_cable
+            isWirelessAdbEnabled -> R.string.wireless_adb
+            else -> R.string.usb_or_wireless_adb
+        }
+
+    fun debuggingLabelResource(
+        isUsbConnected: Boolean,
+        isUsbDebuggingEnabled: Boolean,
+        isWirelessAdbEnabled: Boolean,
+    ): Int =
+        when {
+            isUsbConnected && isUsbDebuggingEnabled -> R.string.usb_debugging
+            isWirelessAdbEnabled -> R.string.wireless_debugging
+            isUsbDebuggingEnabled -> R.string.usb_debugging
+            else -> R.string.usb_or_wireless_debugging
+        }
+
+    fun cableStatus(
+        isUsbConnected: Boolean,
+        isWirelessAdbEnabled: Boolean,
+    ): ChecklistStatus =
+        if (isUsbConnected || isWirelessAdbEnabled) ChecklistStatus.READY
+        else ChecklistStatus.NOT_READY
+
+    fun allReady(
+        isDeveloperModeEnabled: Boolean,
+        isUsbDebuggingEnabled: Boolean,
+        isWirelessAdbEnabled: Boolean,
+        isUsbConnected: Boolean,
+        isServerRunning: Boolean,
+    ): Boolean =
+        isDeveloperModeEnabled &&
+            (isUsbDebuggingEnabled || isWirelessAdbEnabled) &&
+            (isUsbConnected || isWirelessAdbEnabled) &&
+            isServerRunning
+}

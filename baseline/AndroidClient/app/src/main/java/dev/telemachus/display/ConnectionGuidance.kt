@@ -83,30 +83,36 @@ internal object ConnectionGuidanceFactory {
                 ConnectionGuidance(
                     kind = ConnectionFailureKind.HOST_NOT_RUNNING,
                     status = "Mac app unavailable",
-                    message = "Open Vibe Screen on your Mac, then try again.",
+                    message = "Open Vibe Screen on your Mac. If you use USB or wireless debugging, " +
+                        "connect ADB from the Mac (wireless: adb connect <device-ip>:<wireless-adb-port>), " +
+                        "authorize debugging, then run adb reverse tcp:$port tcp:$port.",
                 )
 
             detail.contains("Network is unreachable", ignoreCase = true) ||
                 detail.contains("ENETUNREACH", ignoreCase = true) ->
                 ConnectionGuidance(
                     kind = ConnectionFailureKind.NETWORK_UNREACHABLE,
-                    status = "USB route unavailable",
-                    message = "Reconnect the USB data cable, authorize debugging, then run " +
-                        "adb reverse tcp:$port tcp:$port on the Mac.",
+                    status = "ADB route unavailable",
+                    message = "Reconnect the USB data cable, or enable wireless debugging and run " +
+                        "adb connect <device-ip>:<wireless-adb-port> on the Mac. Authorize debugging, " +
+                        "then run adb reverse tcp:$port tcp:$port.",
                 )
 
             detail.contains("timeout", ignoreCase = true) ->
                 ConnectionGuidance(
                     kind = ConnectionFailureKind.TIMEOUT,
                     status = "Connection timed out",
-                    message = "Confirm the Mac app is listening on port $port and that its firewall allows the connection.",
+                    message = "Confirm the Mac app is listening on port $port and that its firewall allows the connection. " +
+                        "If you use USB or wireless debugging, confirm ADB is connected and run " +
+                        "adb reverse tcp:$port tcp:$port.",
                 )
 
             else ->
                 ConnectionGuidance(
                     kind = ConnectionFailureKind.UNKNOWN,
                     status = "Connection failed",
-                    message = "Check the Mac app, USB debugging, and adb reverse for port $port, then try again. " +
+                    message = "Check the Mac app, USB or wireless debugging, the Mac's adb connect session, " +
+                        "and adb reverse for port $port, then try again. " +
                         "Technical detail: ${detail.ifBlank { throwable.javaClass.simpleName }}",
                 )
         }
