@@ -241,8 +241,8 @@ class OutboundCommandScheduler<C : Any>(
                 if (state == State.OPEN) {
                     accepting.set(false)
                     closeOverflowAdmissions(preserveCommands = true)
-                    drainOverflowSlotsLocked()
                     drainIngressLocked()
+                    drainOverflowSlotsLocked()
                     if (!workerStarted.get() && pendingCount == 0) {
                         state = State.CLOSED
                         terminated.signalAll()

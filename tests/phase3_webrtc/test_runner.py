@@ -81,8 +81,10 @@ class RunnerTests(unittest.TestCase):
             self.assertNotIn('{"result":"pass"}', result.stdout + result.stderr)
 
     def test_signaling_config_is_loopback_and_bounded(self) -> None:
-        config = signaling_config(39001)
+        state_file = "/tmp/vibe-signaling-state.json"
+        config = signaling_config(39001, state_file=state_file)
         self.assertEqual(config["listen_address"], "127.0.0.1:39001")
+        self.assertEqual(config["state_file"], state_file)
         self.assertLessEqual(config["max_active_sessions"], 8)
         self.assertEqual(
             config["session_ttl_seconds"], config["max_session_ttl_seconds"]

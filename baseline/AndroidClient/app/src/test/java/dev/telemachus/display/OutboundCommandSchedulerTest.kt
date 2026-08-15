@@ -173,7 +173,7 @@ class OutboundCommandSchedulerTest {
                 },
                 onWriteFailure = { throw AssertionError("Unexpected failure", it.cause) },
                 coalesce = { kind, _, replacement ->
-                    if (kind == CONTROLLER_MOVE && replacement == "controller-update") {
+                    if (kind == KEYFRAME && replacement == "lock-holder-update") {
                         coalescerEntered.countDown()
                         releaseCoalescer.await()
                     }
@@ -184,9 +184,10 @@ class OutboundCommandSchedulerTest {
         scheduler.submit(STRUCTURAL, "active")
         assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
         scheduler.submit(CONTROLLER_MOVE, "controller-pressed")
+        scheduler.submit(KEYFRAME, "lock-holder")
         val lockHolder =
             Thread {
-                updateResult.set(scheduler.submit(CONTROLLER_MOVE, "controller-update"))
+                updateResult.set(scheduler.submit(KEYFRAME, "lock-holder-update"))
             }.apply { start() }
         assertTrue(coalescerEntered.await(1, TimeUnit.SECONDS))
 
@@ -205,7 +206,7 @@ class OutboundCommandSchedulerTest {
         assertFalse(lockHolder.isAlive)
         assertEquals(OutboundCommandScheduler.Submission.COALESCED, updateResult.get())
         assertTrue(scheduler.shutdownGracefully(1_000))
-        assertEquals(listOf("active", "controller-neutral"), written)
+        assertEquals(listOf("active", "lock-holder-update", "controller-neutral"), written)
     }
 
     @Test
@@ -374,7 +375,6 @@ class OutboundCommandSchedulerTest {
         )
         releaseCoalescer.countDown()
         lockHolder.join(1_000)
-        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(PING, "drain-ingress"))
         releaseWriter.countDown()
 
         assertTrue(scheduler.shutdownGracefully(1_000))
@@ -442,7 +442,6 @@ class OutboundCommandSchedulerTest {
         newMove.join(1_000)
         releaseCoalescer.countDown()
         lockHolder.join(1_000)
-        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(PING, "drain-ingress"))
         releaseWriter.countDown()
 
         assertFalse(boundaryPublisher.isAlive)

@@ -11,6 +11,7 @@ permissions:
 jobs:
   protocol:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -21,6 +22,7 @@ jobs:
 
   evidence-tools:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -31,6 +33,7 @@ jobs:
 
   phase3:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -52,6 +55,7 @@ jobs:
 
   android:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
@@ -93,6 +97,7 @@ jobs:
           echo "Local coturn compatibility version: $coturn_version" >> "$GITHUB_STEP_SUMMARY"
       - name: Gate local synthetic Protocol v1 harness direct and forced-relay product E2E
         id: phase3_synthetic_gate
+        timeout-minutes: 20
         run: |
           make phase3-local-synthetic-product-e2e
           jq -e -s --arg commit "$GITHUB_SHA" '
@@ -106,7 +111,9 @@ jobs:
             )
           ' .build/phase3-local-synthetic-product-e2e/direct.json .build/phase3-local-synthetic-product-e2e/relay.json >/dev/null
       - run: make baseline-macos-self-test
+        timeout-minutes: 20
       - run: make baseline-macos-test
+        timeout-minutes: 20
       - run: make baseline-macos-app
       - name: Validate local Phase 3 synthetic product E2E public summaries
         id: phase3_synthetic_public_summaries

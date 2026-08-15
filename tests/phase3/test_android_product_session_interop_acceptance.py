@@ -410,8 +410,10 @@ class AndroidProductSessionInteropAcceptanceTests(unittest.TestCase):
         self.assertNotEqual(first["key_id"], second["key_id"])
 
     def test_signaling_configuration_uses_explicit_bind_and_bounded_real_service_limits(self) -> None:
-        config = signaling_config("192.0.2.10", 18088)
+        state_file = "/tmp/vibe-signaling-state.json"
+        config = signaling_config("192.0.2.10", 18088, state_file=state_file)
         self.assertEqual(config["listen_address"], "192.0.2.10:18088")
+        self.assertEqual(config["state_file"], state_file)
         self.assertEqual(config["max_waiters_per_role"], 1)
         self.assertGreater(config["max_candidates_per_role"], 0)
 
