@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -42,7 +43,7 @@ type PostgresStore struct {
 
 const (
 	requiredSchemaVersion  int64 = 1
-	requiredSchemaChecksum       = "e470d0c2b9750ae040d97a5f51c9725191b6bf6ad8c67e09349e507336d81625"
+	requiredSchemaChecksum       = "7c7842d178498bf78513f32090b11c1384a8b54515c51b37fbe7ad245979a1b7"
 )
 
 func OpenPostgres(ctx context.Context, cfg Config) (*PostgresStore, error) {
@@ -80,14 +81,76 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 		return fmt.Errorf("%w: required authority column is missing: %v", ErrStorage, err)
 	}
 	var constraints int
-	requiredConstraints := []string{"authority_accounts_pkey", "authority_devices_pkey", "authority_devices_account_id_fkey", "authority_session_epoch_floors_pkey", "authority_session_epoch_floors_device_id_fkey", "authority_session_epoch_floors_epoch_check", "authority_signaling_sessions_pkey", "authority_signaling_sessions_request_id_key", "authority_signaling_sessions_account_id_fkey", "authority_signaling_sessions_host_device_id_fkey", "authority_signaling_sessions_client_device_id_fkey", "authority_relay_daily_usage_pkey", "authority_relay_daily_usage_device_id_fkey", "authority_relay_allocations_pkey", "authority_relay_allocations_device_id_fkey", "authority_relay_allocations_session_fk", "authority_coturn_events_pkey", "authority_coturn_events_event_id_check", "authority_audit_events_pkey"}
+	requiredConstraints := []string{
+		"authority_schema_migrations_pkey",
+		"authority_accounts_pkey",
+		"authority_devices_pkey",
+		"authority_devices_account_id_fkey",
+		"authority_devices_revocation_epoch_check",
+		"authority_session_epoch_floors_pkey",
+		"authority_session_epoch_floors_device_id_fkey",
+		"authority_session_epoch_floors_highest_epoch_check",
+		"authority_session_epoch_floors_epoch_check",
+		"authority_signaling_sessions_pkey",
+		"authority_signaling_sessions_request_id_key",
+		"authority_signaling_sessions_account_id_fkey",
+		"authority_signaling_sessions_host_device_id_fkey",
+		"authority_signaling_sessions_client_device_id_fkey",
+		"authority_signaling_sessions_session_epoch_check",
+		"authority_signaling_sessions_host_device_id_client_device_i_key",
+		"authority_relay_daily_usage_pkey",
+		"authority_relay_daily_usage_device_id_fkey",
+		"authority_relay_daily_usage_ingress_bytes_check",
+		"authority_relay_daily_usage_egress_bytes_check",
+		"authority_relay_allocations_pkey",
+		"authority_relay_allocations_device_id_fkey",
+		"authority_relay_allocations_observed_sequence_check",
+		"authority_relay_allocations_ingress_bytes_check",
+		"authority_relay_allocations_egress_bytes_check",
+		"authority_relay_allocations_session_fk",
+		"authority_coturn_events_pkey",
+		"authority_coturn_events_event_id_check",
+		"authority_audit_events_pkey",
+	}
 	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM pg_constraint WHERE connamespace=current_schema()::regnamespace AND conname=ANY($1)`, requiredConstraints).Scan(&constraints); err != nil || constraints != len(requiredConstraints) {
 		return fmt.Errorf("%w: required authority constraint is missing", ErrStorage)
 	}
-	tables := []string{"authority_schema_migrations", "authority_schema_migrations", "authority_devices", "authority_devices", "authority_session_epoch_floors", "authority_session_epoch_floors", "authority_signaling_sessions", "authority_signaling_sessions", "authority_signaling_sessions", "authority_relay_daily_usage", "authority_relay_allocations", "authority_relay_allocations", "authority_coturn_events", "authority_coturn_events"}
-	columns := []string{"version", "checksum_sha256", "device_id", "revocation_epoch", "device_id", "highest_epoch", "session_id", "session_epoch", "expires_at", "usage_day", "allocation_id", "session_id", "event_id", "payload_sha256"}
-	types := []string{"bigint", "text", "text", "bigint", "text", "bigint", "text", "bigint", "timestamp with time zone", "date", "text", "text", "text", "bytea"}
-	nullable := []string{"NO", "NO", "NO", "NO", "NO", "NO", "NO", "NO", "NO", "NO", "NO", "NO", "NO", "NO"}
+	tables := []string{
+		"authority_schema_migrations", "authority_schema_migrations",
+		"authority_devices", "authority_devices",
+		"authority_session_epoch_floors", "authority_session_epoch_floors",
+		"authority_signaling_sessions", "authority_signaling_sessions", "authority_signaling_sessions",
+		"authority_relay_daily_usage", "authority_relay_daily_usage", "authority_relay_daily_usage",
+		"authority_relay_allocations", "authority_relay_allocations", "authority_relay_allocations", "authority_relay_allocations",
+		"authority_coturn_events", "authority_coturn_events",
+	}
+	columns := []string{
+		"version", "checksum_sha256",
+		"device_id", "revocation_epoch",
+		"device_id", "highest_epoch",
+		"session_id", "session_epoch", "expires_at",
+		"usage_day", "ingress_bytes", "egress_bytes",
+		"allocation_id", "session_id", "ingress_bytes", "egress_bytes",
+		"event_id", "payload_sha256",
+	}
+	types := []string{
+		"bigint", "text",
+		"text", "bigint",
+		"text", "bigint",
+		"text", "bigint", "timestamp with time zone",
+		"date", "numeric", "numeric",
+		"text", "text", "bigint", "bigint",
+		"text", "bytea",
+	}
+	nullable := []string{
+		"NO", "NO",
+		"NO", "NO",
+		"NO", "NO",
+		"NO", "NO", "NO",
+		"NO", "NO", "NO",
+		"NO", "NO", "NO", "NO",
+		"NO", "NO",
+	}
 	if err := s.pool.QueryRow(ctx, `SELECT count(*)=$5 FROM unnest($1::text[],$2::text[],$3::text[],$4::text[]) AS expected(table_name,column_name,data_type,is_nullable) JOIN information_schema.columns actual ON actual.table_schema=current_schema() AND actual.table_name=expected.table_name AND actual.column_name=expected.column_name AND actual.data_type=expected.data_type AND actual.is_nullable=expected.is_nullable`, tables, columns, types, nullable, len(tables)).Scan(&complete); err != nil || !complete {
 		return fmt.Errorf("%w: required authority column signature mismatch", ErrStorage)
 	}
@@ -123,14 +186,23 @@ func (s *PostgresStore) SuspendAccount(ctx context.Context, accountID string, no
 }
 
 func (s *PostgresStore) RegisterDevice(ctx context.Context, accountID, deviceID string) error {
-	tag, err := s.pool.Exec(ctx, `INSERT INTO authority_devices(device_id, account_id) VALUES ($1,$2) ON CONFLICT (device_id) DO UPDATE SET account_id=EXCLUDED.account_id WHERE authority_devices.account_id=EXCLUDED.account_id`, deviceID, accountID)
-	if err != nil {
-		return storageError("register device", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrConflict
-	}
-	return nil
+	return s.transaction(ctx, func(tx pgx.Tx) error {
+		var accountMarker int
+		if err := tx.QueryRow(ctx, `SELECT 1 FROM authority_accounts WHERE account_id=$1 FOR UPDATE`, accountID).Scan(&accountMarker); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		tag, err := tx.Exec(ctx, `INSERT INTO authority_devices(device_id, account_id) VALUES ($1,$2) ON CONFLICT (device_id) DO UPDATE SET account_id=EXCLUDED.account_id WHERE authority_devices.account_id=EXCLUDED.account_id`, deviceID, accountID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrConflict
+		}
+		return nil
+	})
 }
 
 func (s *PostgresStore) RevokeDevice(ctx context.Context, deviceID string, epoch uint64, now time.Time) error {
@@ -327,11 +399,11 @@ func (s *PostgresStore) AdmitRelay(ctx context.Context, request RelayAdmissionRe
 		if sessionRevokedAt != nil || !now.Before(sessionExpiresAt) {
 			return ErrRevoked
 		}
-		var bytes uint64
-		if err := tx.QueryRow(ctx, `SELECT COALESCE(ingress_bytes+egress_bytes,0) FROM authority_relay_daily_usage WHERE device_id=$1 AND usage_day=$2`, request.DeviceID, now.UTC().Format(time.DateOnly)).Scan(&bytes); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		var quotaExceeded bool
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(ingress_bytes+egress_bytes,0)>=$1::numeric FROM authority_relay_daily_usage WHERE device_id=$2 AND usage_day=$3`, strconv.FormatUint(s.dailyLimit, 10), request.DeviceID, now.UTC().Format(time.DateOnly)).Scan(&quotaExceeded); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		if bytes >= s.dailyLimit {
+		if quotaExceeded {
 			return ErrQuotaExceeded
 		}
 		var active int
@@ -347,7 +419,7 @@ func (s *PostgresStore) AdmitRelay(ctx context.Context, request RelayAdmissionRe
 }
 
 func (s *PostgresStore) ApplyCoturnUsage(ctx context.Context, usage CoturnUsage) (bool, error) {
-	if !validIdentifier(usage.EventID) {
+	if !validIdentifier(usage.EventID) || usage.Sequence == 0 || usage.Sequence > math.MaxInt64 || usage.IngressBytes > math.MaxInt64 || usage.EgressBytes > math.MaxInt64 {
 		return false, ErrConflict
 	}
 	duplicate := false
@@ -387,11 +459,11 @@ func (s *PostgresStore) ApplyCoturnUsage(ctx context.Context, usage CoturnUsage)
 		}
 		deltaIngress := usage.IngressBytes - uint64(ingress)
 		deltaEgress := usage.EgressBytes - uint64(egress)
-		_, err = tx.Exec(ctx, `INSERT INTO authority_relay_daily_usage(device_id,usage_day,ingress_bytes,egress_bytes) VALUES ($1,(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date,$2,$3) ON CONFLICT (device_id,usage_day) DO UPDATE SET ingress_bytes=authority_relay_daily_usage.ingress_bytes+EXCLUDED.ingress_bytes,egress_bytes=authority_relay_daily_usage.egress_bytes+EXCLUDED.egress_bytes`, deviceID, int64(deltaIngress), int64(deltaEgress))
+		_, err = tx.Exec(ctx, `INSERT INTO authority_relay_daily_usage(device_id,usage_day,ingress_bytes,egress_bytes) VALUES ($1,(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date,$2::numeric,$3::numeric) ON CONFLICT (device_id,usage_day) DO UPDATE SET ingress_bytes=authority_relay_daily_usage.ingress_bytes+EXCLUDED.ingress_bytes,egress_bytes=authority_relay_daily_usage.egress_bytes+EXCLUDED.egress_bytes`, deviceID, strconv.FormatUint(deltaIngress, 10), strconv.FormatUint(deltaEgress, 10))
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, `UPDATE authority_relay_allocations SET observed_sequence=$3,ingress_bytes=$4,egress_bytes=$5,last_observed_at=$6,closed_at=CASE WHEN $7 THEN $6 ELSE NULL END WHERE source_id=$1 AND allocation_id=$2`, usage.SourceID, usage.AllocationID, int64(usage.Sequence), int64(usage.IngressBytes), int64(usage.EgressBytes), usage.ObservedAt, usage.Closed)
+		_, err = tx.Exec(ctx, `UPDATE authority_relay_allocations SET observed_sequence=$3,ingress_bytes=$4,egress_bytes=$5,last_observed_at=$6::timestamptz,closed_at=CASE WHEN $7 THEN $6::timestamptz ELSE NULL END WHERE source_id=$1 AND allocation_id=$2`, usage.SourceID, usage.AllocationID, int64(usage.Sequence), int64(usage.IngressBytes), int64(usage.EgressBytes), usage.ObservedAt, usage.Closed)
 		return err
 	})
 	return duplicate, err

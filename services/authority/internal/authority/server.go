@@ -50,6 +50,7 @@ func (s *Server) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "no-referrer")
 		mux.ServeHTTP(w, r)
 	})
 }
@@ -143,7 +144,7 @@ func (s *Server) createSignaling(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, 400, err.Error())
 		return
 	}
-	if !validIdentifier(request.RequestID) || !validIdentifier(request.AccountID) || !validIdentifier(request.HostDeviceID) || !validIdentifier(request.ClientDeviceID) || request.SessionEpoch == 0 || request.SessionEpoch > math.MaxInt64 || request.TTLSeconds <= 0 || request.TTLSeconds > s.cfg.MaximumSessionTTLSeconds {
+	if !validIdentifier(request.RequestID) || !validIdentifier(request.AccountID) || !validIdentifier(request.HostDeviceID) || !validIdentifier(request.ClientDeviceID) || request.HostDeviceID == request.ClientDeviceID || request.SessionEpoch == 0 || request.SessionEpoch > math.MaxInt64 || request.TTLSeconds <= 0 || request.TTLSeconds > s.cfg.MaximumSessionTTLSeconds {
 		s.reject(w, 400, "invalid signaling admission")
 		return
 	}
@@ -164,7 +165,12 @@ func (s *Server) invalidateSignaling(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, 401, "unauthorized")
 		return
 	}
-	if err := s.store.InvalidateSignaling(r.Context(), r.PathValue("session_id"), s.now().UTC()); err != nil {
+	sessionID := r.PathValue("session_id")
+	if !validIdentifier(sessionID) {
+		s.reject(w, 400, "invalid session_id")
+		return
+	}
+	if err := s.store.InvalidateSignaling(r.Context(), sessionID, s.now().UTC()); err != nil {
 		s.storeError(w, err)
 		return
 	}
@@ -176,6 +182,11 @@ func (s *Server) authorizeSignaling(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, 401, "unauthorized")
 		return
 	}
+	sessionID := r.PathValue("session_id")
+	if !validIdentifier(sessionID) {
+		s.reject(w, 400, "invalid session_id")
+		return
+	}
 	var request struct {
 		RoleToken string `json:"role_token"`
 	}
@@ -183,7 +194,7 @@ func (s *Server) authorizeSignaling(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, 400, "invalid role token")
 		return
 	}
-	role, err := s.store.AuthorizeSignaling(r.Context(), r.PathValue("session_id"), request.RoleToken, s.now().UTC())
+	role, err := s.store.AuthorizeSignaling(r.Context(), sessionID, request.RoleToken, s.now().UTC())
 	if err != nil {
 		s.storeError(w, err)
 		return

@@ -31,6 +31,7 @@ phase3-go-test:
 	cd packages/security && test -z "$$(gofmt -l .)" && go vet ./... && go test -race -count=1 ./...
 	$(MAKE) -C services/signaling verify
 	$(MAKE) -C services/relay verify
+	$(MAKE) -C services/authority verify
 
 phase3-local-synthetic-product-e2e:
 	@test -n "$(strip $(PHASE3_TURNSERVER))" || (echo "error: turnserver is unavailable; install coturn or set PHASE3_TURNSERVER" >&2; exit 2)

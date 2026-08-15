@@ -28,6 +28,10 @@ go run ./cmd/vibe-authority --config config.json --migrate migrations/001_author
 go run ./cmd/vibe-authority --config config.json
 ```
 
+Each environment variable above also supports an exclusive `_FILE` form, such
+as `VIBE_AUTHORITY_ADMIN_TOKEN_FILE`, for container secret mounts. Do not set
+both forms of the same value.
+
 Migration execution is an explicit one-shot operation. Application replicas
 must not receive DDL permission. Back up the database and record the migration
 checksum before applying it.

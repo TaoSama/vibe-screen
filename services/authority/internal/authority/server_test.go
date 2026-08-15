@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -94,8 +96,11 @@ func (s *memoryStore) RevokeDevice(_ context.Context, id string, epoch uint64, _
 	if _, ok := s.devices[id]; !ok {
 		return ErrNotFound
 	}
-	if epoch <= s.revoked[id] {
+	if epoch < s.revoked[id] {
 		return ErrConflict
+	}
+	if epoch == s.revoked[id] {
+		return nil
 	}
 	s.revoked[id] = epoch
 	for _, session := range s.sessions {
@@ -296,6 +301,54 @@ func TestRequiredSchemaChecksumMatchesMigration(t *testing.T) {
 	}
 }
 
+func TestLoadConfigSupportsFileBackedEnvironmentValues(t *testing.T) {
+	directory := t.TempDir()
+	configPath := filepath.Join(directory, "config.json")
+	config := `{"listen_address":"127.0.0.1:8091","maximum_session_ttl_seconds":900,"daily_bytes_per_device":100,"maximum_allocations_per_device":2,"reconciliation_grace_seconds":120}`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	expected := map[string]string{
+		databaseURLEnv:     "postgres://authority@example/vibescreen",
+		adminTokenEnv:      "admin" + testSecretSuffix,
+		signalingTokenEnv:  "signaling" + testSecretSuffix,
+		relayTokenEnv:      "relay" + testSecretSuffix,
+		coturnTokenEnv:     "coturn" + testSecretSuffix,
+		roleTokenSecretEnv: "role" + testSecretSuffix,
+	}
+	for name, value := range expected {
+		path := filepath.Join(directory, name)
+		if err := os.WriteFile(path, []byte(value+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv(name, "")
+		t.Setenv(name+"_FILE", path)
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{
+		databaseURLEnv:     cfg.DatabaseURL,
+		adminTokenEnv:      cfg.AdminToken,
+		signalingTokenEnv:  cfg.SignalingToken,
+		relayTokenEnv:      cfg.RelayToken,
+		coturnTokenEnv:     cfg.CoturnToken,
+		roleTokenSecretEnv: cfg.RoleTokenSecret,
+	}
+	if !maps.Equal(got, expected) {
+		t.Fatalf("file-backed config=%v, want %v", got, expected)
+	}
+}
+
+func TestLoadEnvironmentValueRejectsAmbiguousSources(t *testing.T) {
+	t.Setenv(adminTokenEnv, "direct-value")
+	t.Setenv(adminTokenEnv+"_FILE", filepath.Join(t.TempDir(), "secret"))
+	if _, err := loadEnvironmentValue(adminTokenEnv); err == nil || !strings.Contains(err.Error(), adminTokenEnv+"_FILE") {
+		t.Fatalf("ambiguous secret sources error=%v", err)
+	}
+}
+
 func createMemorySession(t *testing.T, store *memoryStore, accountID, hostID, clientID string, epoch uint64, now time.Time) SignalingAdmission {
 	t.Helper()
 	ctx := context.Background()
@@ -349,6 +402,26 @@ func TestDenyWinsAcrossConcurrentSignalingAdmissionAndRevocation(t *testing.T) {
 		} else if !errors.Is(createErr, ErrRevoked) {
 			t.Fatalf("iteration %d create error %v", iteration, createErr)
 		}
+	}
+}
+
+func TestDeviceRevocationIsIdempotentAtTheSameEpoch(t *testing.T) {
+	store := newMemoryStore()
+	ctx := context.Background()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RegisterDevice(ctx, "account", "device"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RevokeDevice(ctx, "device", 7, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RevokeDevice(ctx, "device", 7, time.Now()); err != nil {
+		t.Fatalf("same-epoch retry failed: %v", err)
+	}
+	if err := store.RevokeDevice(ctx, "device", 6, time.Now()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("older epoch error=%v, want ErrConflict", err)
 	}
 }
 
@@ -589,6 +662,38 @@ func TestHTTPAuthorityStrictlyScopesTokensAndIdempotentSession(t *testing.T) {
 	request(t, handler, http.MethodPost, "/v1/signaling/sessions/"+b.SessionID+"/authorize", cfg.SignalingToken, authorize, http.StatusForbidden)
 }
 
+func TestAuthorityResponsesSetSecurityHeaders(t *testing.T) {
+	server, err := NewServer(testAuthorityConfig(), newMemoryStore())
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := request(t, server.Handler(), http.MethodGet, "/healthz", "", "", http.StatusOK)
+	for name, want := range map[string]string{
+		"Cache-Control":          "no-store",
+		"X-Content-Type-Options": "nosniff",
+		"Referrer-Policy":        "no-referrer",
+	} {
+		if got := response.Header().Get(name); got != want {
+			t.Errorf("%s=%q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestPostgresStoreRejectsUsageOutsideAllocationColumnBounds(t *testing.T) {
+	store := &PostgresStore{}
+	base := CoturnUsage{EventID: "event", Sequence: 1}
+	cases := []CoturnUsage{
+		func() CoturnUsage { value := base; value.Sequence = math.MaxInt64 + 1; return value }(),
+		func() CoturnUsage { value := base; value.IngressBytes = math.MaxInt64 + 1; return value }(),
+		func() CoturnUsage { value := base; value.EgressBytes = math.MaxInt64 + 1; return value }(),
+	}
+	for _, usage := range cases {
+		if _, err := store.ApplyCoturnUsage(context.Background(), usage); !errors.Is(err, ErrConflict) {
+			t.Fatalf("out-of-range usage error=%v, want ErrConflict", err)
+		}
+	}
+}
+
 func request(t *testing.T, handler http.Handler, method, path, token, body string, want int) *httptest.ResponseRecorder {
 	t.Helper()
 	request := httptest.NewRequest(method, path, bytes.NewBufferString(body))
@@ -604,4 +709,93 @@ func request(t *testing.T, handler http.Handler, method, path, token, body strin
 		t.Fatalf("%s %s=%d want %d: %s", method, path, response.Code, want, response.Body.String())
 	}
 	return response
+}
+
+func TestConfigBoundsPreventDurationAndUint64Overflow(t *testing.T) {
+	cfg := testAuthorityConfig()
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid config rejected: %v", err)
+	}
+	overflow := cfg
+	overflow.MaximumSessionTTLSeconds = maxDurationSeconds + 1
+	if err := overflow.Validate(); err == nil {
+		t.Fatal("maximum session TTL above the safe bound was accepted")
+	}
+	overflow = cfg
+	overflow.ReconciliationGraceSeconds = maxDurationSeconds + 1
+	if err := overflow.Validate(); err == nil {
+		t.Fatal("reconciliation grace above the safe bound was accepted")
+	}
+	// The daily usage columns are Postgres numeric, so the per-device daily
+	// byte quota may exceed int64 and is passed to the quota comparison as
+	// an exact numeric value rather than a saturating int64.
+	large := cfg
+	large.DailyBytesPerDevice = math.MaxInt64 + 1
+	if err := large.Validate(); err != nil {
+		t.Fatalf("daily byte limit above int64 rejected despite numeric storage: %v", err)
+	}
+	overflow = cfg
+	overflow.MaximumAllocationsPerDevice = maxAllocationsPerDevice + 1
+	if err := overflow.Validate(); err == nil {
+		t.Fatal("allocation limit above the safe int32 bound was accepted")
+	}
+	exact := cfg
+	exact.MaximumSessionTTLSeconds = maxDurationSeconds
+	exact.ReconciliationGraceSeconds = maxDurationSeconds
+	exact.DailyBytesPerDevice = math.MaxInt64 + 1
+	exact.MaximumAllocationsPerDevice = maxAllocationsPerDevice
+	if err := exact.Validate(); err != nil {
+		t.Fatalf("exact upper-bound config rejected: %v", err)
+	}
+	if got := exact.ReconciliationGrace(); got <= 0 {
+		t.Fatalf("reconciliation grace duration must be positive, got %v", got)
+	}
+}
+
+func TestCreateSignalingRejectsHostEqualsClient(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Handler()
+	ctx := context.Background()
+	_ = store.EnsureAccount(ctx, "account")
+	_ = store.RegisterDevice(ctx, "account", "same")
+	body := `{"request_id":"request","account_id":"account","host_device_id":"same","client_device_id":"same","session_epoch":1,"ttl_seconds":60}`
+	request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, body, http.StatusBadRequest)
+}
+
+func TestSignalingSessionIDValidation(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Handler()
+	invalidSessionIDs := []string{
+		strings.Repeat("a", 129),
+		"invalid@session",
+		"invalid session",
+	}
+	for _, sessionID := range invalidSessionIDs {
+		escapedSessionID := url.PathEscape(sessionID)
+		request(t, handler, http.MethodDelete, "/v1/signaling/sessions/"+escapedSessionID, cfg.SignalingToken, "", http.StatusBadRequest)
+		request(t, handler, http.MethodPost, "/v1/signaling/sessions/"+escapedSessionID+"/authorize", cfg.SignalingToken, `{"role_token":"token"}`, http.StatusBadRequest)
+	}
+	request(t, handler, http.MethodDelete, "/v1/signaling/sessions/valid-but-missing", cfg.SignalingToken, "", http.StatusNotFound)
+	request(t, handler, http.MethodPost, "/v1/signaling/sessions/valid-but-missing/authorize", cfg.SignalingToken, `{"role_token":"token"}`, http.StatusNotFound)
+}
+
+func TestRegisterDeviceMissingAccount(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Handler()
+	request(t, handler, http.MethodPut, "/v1/accounts/missing/devices/device", cfg.AdminToken, "", http.StatusNotFound)
 }

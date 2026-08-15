@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -262,5 +263,58 @@ func TestPostgresReadinessRejectsCriticalConstraintDrift(t *testing.T) {
 	})
 	if err := store.Ready(ctx); !errors.Is(err, ErrStorage) {
 		t.Fatalf("readiness constraint drift error=%v", err)
+	}
+}
+
+func TestPostgresRegisterDeviceMissingAccountReturnsNotFound(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	ctx := context.Background()
+	if err := store.RegisterDevice(ctx, "missing-account", "device"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("register device for missing account error=%v, want ErrNotFound", err)
+	}
+}
+
+func TestPostgresDailyUsageExceedsInt64WithoutLosingPrecision(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	store.allocationLimit = 4
+	store.dailyLimit = uint64(math.MaxInt64) + 1
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"host", "client"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	session, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "request", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 1, TTLSeconds: 60}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, allocationID := range []string{"allocation-max", "allocation-one"} {
+		if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: allocationID, SourceID: "node"}, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	usage := []CoturnUsage{
+		{SourceID: "node", EventID: "event-max", AllocationID: "allocation-max", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: math.MaxInt64, ObservedAt: now},
+		{SourceID: "node", EventID: "event-one", AllocationID: "allocation-one", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 1, ObservedAt: now},
+	}
+	for _, update := range usage {
+		if _, err := store.ApplyCoturnUsage(ctx, update); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var total string
+	if err := store.pool.QueryRow(ctx, "SELECT (ingress_bytes+egress_bytes)::text FROM authority_relay_daily_usage WHERE device_id=$1 AND usage_day=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date", "client").Scan(&total); err != nil {
+		t.Fatal(err)
+	}
+	want := strconv.FormatUint(uint64(math.MaxInt64)+1, 10)
+	if total != want {
+		t.Fatalf("daily usage=%s, want exact %s", total, want)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "allocation-blocked", SourceID: "node"}, now); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("admission after exact quota error=%v, want ErrQuotaExceeded", err)
 	}
 }

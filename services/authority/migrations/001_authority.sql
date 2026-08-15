@@ -44,8 +44,8 @@ CREATE INDEX IF NOT EXISTS authority_signaling_active_idx
 CREATE TABLE authority_relay_daily_usage (
     device_id text NOT NULL REFERENCES authority_devices(device_id),
     usage_day date NOT NULL,
-    ingress_bytes bigint NOT NULL DEFAULT 0 CHECK (ingress_bytes >= 0),
-    egress_bytes bigint NOT NULL DEFAULT 0 CHECK (egress_bytes >= 0),
+    ingress_bytes numeric NOT NULL DEFAULT 0 CHECK (ingress_bytes >= 0),
+    egress_bytes numeric NOT NULL DEFAULT 0 CHECK (egress_bytes >= 0),
     PRIMARY KEY (device_id, usage_day)
 );
 
