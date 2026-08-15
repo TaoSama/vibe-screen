@@ -1,0 +1,35 @@
+Fixed Host
+----------
+Identifier: dev.telemachus.display
+Authority: Vibe Screen Dev
+Authority: Vibe Screen Dev Root
+Certificate SHA-1: 9AAE572BF6D764E3436A6109197D345B5A87998C
+CDHash: e4ac7dab68720d647550f2e031f40070ab291e8b
+Binary SHA-256: aa1cdba1d65b8a4ed7e9376fcd329b3c8dbb6e635dbf61f1c1b61af727fb592d
+Designated requirement: identifier "dev.telemachus.display" and certificate leaf = H"9aae572bf6d764e3436a6109197d345b5a87998c"
+Verification: valid on disk; satisfies its Designated Requirement
+
+Read-only TCC capture
+---------------------
+Field order: service|client|client_type|auth_value|auth_reason|last_modified
+kTCCServiceAccessibility|dev.telemachus.display|0|0|4|1786811429
+kTCCServiceScreenCapture|dev.telemachus.display|0|2|4|1786811437
+
+Interpretation: Accessibility denied/not granted (auth_value=0); Screen Recording allowed (auth_value=2).
+Host confirmation: Screen recording permission granted (CGPreflight)
+
+Restored original Host
+----------------------
+Identifier: dev.telemachus.display
+Authority: Vibe Screen Dev
+Authority: Vibe Screen Dev Root
+CDHash: 2fe65fd5cd69c80249140da3f139cfa68037c5c2
+Binary SHA-256: c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996
+Designated requirement: identifier "dev.telemachus.display" and certificate leaf = H"9aae572bf6d764e3436a6109197d345b5a87998c"
+Verification: valid on disk; satisfies its Designated Requirement
+
+Keychain handling
+-----------------
+No Keychain reset, password request, password storage, certificate import, ACL update,
+or partition-list update was performed. The existing signing identity was discovered
+read-only and used by codesign.

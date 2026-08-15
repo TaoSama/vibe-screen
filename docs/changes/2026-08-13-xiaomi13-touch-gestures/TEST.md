@@ -73,3 +73,14 @@ to that exact binary or configuring the documented stable signing identity.
 
 The formal native HID mouse confirmation and physical-finger/manual UX pass also
 remain separate gates.
+
+## Fixed stable-signed binary rerun
+
+The 2026-08-16 Xiaomi 13 rerun built the then-current `main` source with the
+stable `Vibe Screen Dev` identity and reached Protocol v1 streaming, but the
+read-only TCC check showed Screen Recording authorized and Accessibility not
+authorized for the Host. Because the production touch path rejects input when
+`AXIsProcessTrusted()` is false, the opt-in gesture driver was not run and all
+five gestures, including the post-pinch modifier-isolation check, remain
+blocked. See the
+[blocked rerun evidence](evidence/2026-08-16-xiaomi13-fuxi-fixed-binary-blocked/README.md).

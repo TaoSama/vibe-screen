@@ -1,0 +1,28 @@
+Device window source: c275838e0758f2aaaa7a7edde42306ac1420514e
+Device window start: 2026-08-15T16:29:41Z
+Device window end:   2026-08-15T16:34:43Z
+Duration: 5 minutes 2 seconds
+
+Model: 2211133C
+Codename: fuxi
+Android release: 16
+API: 36
+Fingerprint: Xiaomi/fuxi/fuxi:16/BP2A.250605.031.A3/OS3.0.2.0.WMCCNXM:user/release-keys
+Physical size: 1080x2400
+Physical density: 420
+ADB endpoint: private ADB-over-network endpoint (redacted)
+
+Debug APK SHA-256:
+b96f0d4430fe7cf18b77dde770c34103679cb8f543beed9f1b6684a86d5d5c8b
+
+Test APK SHA-256:
+c051c96e9beba94e10d713ca094dd969620094daf989ccb27315fbc822988f48
+
+Fixed Host binary SHA-256:
+aa1cdba1d65b8a4ed7e9376fcd329b3c8dbb6e635dbf61f1c1b61af727fb592d
+
+Restored original Host binary SHA-256:
+c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996
+
+Evidence carrier source: 104a4a979be278491021ac7ffd3a51bafd6b0c88
+Evidence carrier commit time: 2026-08-16T00:39:04+08:00 (after device window)

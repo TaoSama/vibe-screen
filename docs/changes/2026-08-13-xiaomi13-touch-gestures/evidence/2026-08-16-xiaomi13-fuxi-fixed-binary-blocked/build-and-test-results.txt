@@ -1,0 +1,22 @@
+Android build
+-------------
+Command: ./gradlew --no-daemon :transport:check testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+Result: BUILD SUCCESSFUL in 48s
+Tasks: 101 actionable tasks, 101 executed
+
+macOS release build and package
+-------------------------------
+Build: swift build -c release
+Result: Build complete! (130.87s)
+Package identity: Vibe Screen Dev
+codesign --verify --deep --strict: PASS
+
+Focused modifier-isolation test
+--------------------------------
+Command: swift test --filter Phase1HostCapabilityTests/testTouchGestureFactoryIsolatesSyntheticZoomModifier
+Result: NOT RUN (test target compilation failed)
+xcode-select -p: /Library/Developer/CommandLineTools
+/Applications Xcode search: no Xcode app found
+Failure: error: no such module 'XCTest'
+
+This is an environment/toolchain block, not a test failure and not a test pass.

@@ -1,0 +1,32 @@
+Android client (redacted excerpts)
+----------------------------------
+08-16 00:31:09.748 D SC : Protocol v1 upgrade accepted
+08-16 00:31:09.816 D MA : onDisplaysAvailable: count=2 selected=23 negotiated=[CAPABILITY_TOUCH, CAPABILITY_KEYBOARD, CAPABILITY_POINTER, CAPABILITY_STYLUS, CAPABILITY_MULTI_DISPLAY, CAPABILITY_HOST_ACTIONS, CAPABILITY_CLIENT_VIDEO_CONTROL, CAPABILITY_STYLUS_EXTENDED] displays=23:Vibe Screen Virtual (extended):2000x1200:primary=false, 1:Built-in Retina Display:1512x982:primary=true
+08-16 00:31:09.816 D MA : session binding promoted: displaySelection=true keyboard=true nativePointer=true hostActions=true
+08-16 00:31:09.856 D VD : setupDecoder: 2000x1200, decoder=c2.qti.hevc.decoder
+08-16 00:31:11.672 I VibeScreenTelemetry: stream_stats session_epoch=1 fps=60.15779092702169 mbps=0.6349112426035504
+08-16 00:31:11.912 D VD : Output #120: decoder latency avg=6.5ms max=10.5ms over 60 samples, input bufs avail=4, dropped=0
+
+macOS Host (redacted excerpts)
+------------------------------
+2026-08-15T16:30:42Z Screen recording permission granted (CGPreflight)
+2026-08-15T16:30:45Z Capturing virtual display: 2000x1200 (ID: 23)
+2026-08-15T16:30:45Z Stream configured: 2000x1200 @ 60fps (with delegate)
+2026-08-15T16:30:45Z Starting input receive loop... (touch=on)
+2026-08-15T16:30:45Z First frame received from SCStream
+2026-08-15T16:31:21Z Starting input receive loop... (touch=on)
+2026-08-15T16:31:21Z Protocol v1 selected for connection epoch 2
+2026-08-15T16:31:23Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 7.5ms, dropped: 0
+2026-08-15T16:31:40Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 7.7ms, dropped: 0
+2026-08-15T16:31:58Z Pipeline: 60.1fps, 0.6Mbps, avg frame age: 9.6ms, dropped: 0
+
+Gesture boundary
+----------------
+Opt-in instrumentation command: NOT RUN
+Instrumentation OK output: NONE
+Host Touch gesture lines: NONE
+Target right-click events: NONE
+Target Command-modified pinch scroll: NONE
+Post-pinch ordinary pointer event: NOT EXERCISED
+
+Result: Protocol v1/media path confirmed; every requested gesture remains BLOCKED.
