@@ -2,6 +2,7 @@ import com.google.protobuf.gradle.id
 import com.google.protobuf.gradle.proto
 import java.security.MessageDigest
 import com.google.protobuf.gradle.*
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 
 plugins {
     id("com.android.application")
@@ -188,6 +189,7 @@ val generateReleaseDependencyLicenses by tasks.registering {
                 .getByName(dependencyAuditConfiguration)
                 .resolvedConfiguration
                 .resolvedArtifacts
+                .filter { artifact -> artifact.id.componentIdentifier is ModuleComponentIdentifier }
                 .map { artifact ->
                     val id = artifact.moduleVersion.id
                     Triple(id.group, artifact.name, id.version)
@@ -250,6 +252,7 @@ val generateReleaseSbom by tasks.registering {
                 .getByName(dependencyAuditConfiguration)
                 .resolvedConfiguration
                 .resolvedArtifacts
+                .filter { artifact -> artifact.id.componentIdentifier is ModuleComponentIdentifier }
                 .map { artifact ->
                     val id = artifact.moduleVersion.id
                     Triple(id.group, artifact.name, id.version)
@@ -301,6 +304,7 @@ val auditReleaseDependencies by tasks.registering {
                 .getByName(dependencyAuditConfiguration)
                 .resolvedConfiguration
                 .resolvedArtifacts
+                .filter { artifact -> artifact.id.componentIdentifier is ModuleComponentIdentifier }
         val gsonCoordinate = "com.google.code.gson:gson:2.13.1"
         val gsonArtifacts =
             runtimeArtifacts.filter {
@@ -431,6 +435,8 @@ tasks
     }
 
 dependencies {
+    implementation(project(":transport"))
+
     //noinspection GradleDependency
     implementation("androidx.core:core-ktx:1.12.0")
     //noinspection GradleDependency

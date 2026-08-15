@@ -66,8 +66,13 @@ revocation and soak remain gates, so this is not yet a shipped Internet feature.
 From this directory:
 
 ```bash
-./gradlew clean testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+./gradlew clean :transport:check testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+./gradlew :transport:check --configuration-cache --configuration-cache-problems=fail
 ```
+
+The second command is the transport boundary's configuration-cache gate. Its
+live dependency-graph tasks explicitly opt out, so Gradle must run them and
+report that the cache entry was discarded instead of reusing a stale verdict.
 
 The debug APK is written to
 `app/build/outputs/apk/debug/app-debug.apk`. The Gradle wrapper pins Gradle 8.6;
@@ -171,7 +176,7 @@ export TELEMACHUS_KEYSTORE_FILE=/absolute/path/to/release.jks
 export TELEMACHUS_KEYSTORE_PASSWORD='...'
 export TELEMACHUS_KEY_ALIAS='...'
 export TELEMACHUS_KEY_PASSWORD='...'
-./gradlew clean testDebugUnitTest lintDebug assembleRelease bundleRelease
+./gradlew clean :transport:check testDebugUnitTest lintDebug assembleRelease bundleRelease
 ```
 
 Signing secrets must remain outside the repository. Release tasks fail closed

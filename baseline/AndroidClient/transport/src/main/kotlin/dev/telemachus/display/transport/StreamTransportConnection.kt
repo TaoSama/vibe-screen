@@ -8,7 +8,7 @@ import java.io.OutputStream
 import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
 
-internal interface StreamTransportConnection {
+interface StreamTransportConnection {
     val input: DataInputStream
 
     val output: DataOutputStream
@@ -20,7 +20,7 @@ internal interface StreamTransportConnection {
     fun closeOnce(): List<Exception>
 }
 
-internal class SocketStreamTransportConnection(
+class SocketStreamTransportConnection(
     val socket: Socket,
 ) : StreamTransportConnection {
     private val stateLock = Any()
@@ -78,27 +78,27 @@ internal class SocketStreamTransportConnection(
     }
 }
 
-internal class StreamTransportCandidate<C : StreamTransportConnection> internal constructor(
+class StreamTransportCandidate<C : StreamTransportConnection> internal constructor(
     val connection: C,
     val attemptGeneration: Long,
 )
 
-internal enum class StreamTransportCandidateRejection {
+enum class StreamTransportCandidateRejection {
     INELIGIBLE,
     PENDING_EXISTS,
 }
 
-internal class StreamTransportCandidateRejectedException(
+class StreamTransportCandidateRejectedException(
     val reason: StreamTransportCandidateRejection,
     val closeFailures: List<Exception>,
 ) : IllegalStateException("Transport candidate rejected: $reason")
 
-internal data class StreamTransportPromotion(
+data class StreamTransportPromotion(
     val promoted: Boolean,
     val closeFailures: List<Exception>,
 )
 
-internal class StreamTransportOwner<C : StreamTransportConnection> {
+class StreamTransportOwner<C : StreamTransportConnection> {
     private val lock = Any()
     private var active: C? = null
     private var pending: StreamTransportCandidate<C>? = null
