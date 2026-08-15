@@ -7,9 +7,18 @@ coturn cumulative usage reconciliation. It never receives screen/input payloads
 or application traffic keys.
 
 This service replaces process-local admission decisions. It does not replace the
-existing signaling message broker or coturn data plane: those services call this
-internal API before returning a session or TURN credential. Production callers
-must fail closed when the authority is unavailable.
+existing signaling message broker or coturn data plane. Signaling can call this
+internal API before returning a session, while relay/coturn integration remains
+open. Production callers must fail closed when the authority is unavailable.
+
+The signaling service (`vibe-signaling`) in `production_authority` mode
+delegates session creation, per-request role-token authorization, and session
+invalidation to this authority. The shared credential is configured as
+`VIBE_SIGNALING_AUTHORITY_TOKEN` in signaling and
+`VIBE_AUTHORITY_SIGNALING_TOKEN` in authority; it is distinct from issuer,
+metrics, admin, relay, and coturn tokens. Dependency, transport, or malformed
+authority responses cause signaling to return `502` and never fall back to
+locally minted tokens; normal policy rejections remain `404`, `409`, or `429`.
 
 ## Run locally
 
@@ -52,6 +61,29 @@ All JSON decoders reject unknown fields/trailing values and cap request bodies.
 Identifiers are pseudonymous ASCII tokens, not email addresses, hardware serials
 or raw account names.
 
+### Signaling admission
+
+`POST /v1/signaling/sessions` (signaling token) creates or idempotently replays
+a signaling admission. The request must contain `request_id`, `account_id`,
+`host_device_id`, `client_device_id`, `session_epoch`, and `ttl_seconds`. The
+authority checks that both devices are registered to the account and not
+revoked, that the account is not suspended, and that `session_epoch` is strictly
+greater than the per-device epoch floor. On success it returns `session_id`,
+`host_token`, `client_token`, `expires_at`, and `created`. Role tokens are
+derived from the session ID and a server secret, so an exact idempotency replay
+returns the same credentials without storing raw bearer tokens.
+
+`POST /v1/signaling/sessions/{session_id}/authorize` (signaling token) validates
+a role token against the session. It returns `{"role":"host"}` or
+`{"role":"client"}`. A revoked session, revoked device, suspended account, or
+expired admission returns `403`; signaling maps that to `404` so it does not
+disclose whether the session exists.
+
+`DELETE /v1/signaling/sessions/{session_id}` (signaling or admin token) revokes
+the admission. Subsequent role authorizations fail. The authority API returns
+`404` when the admission is absent; signaling treats that as already invalid,
+clears any stale local route, and returns its own idempotent `204`.
+
 Create a scoped signaling admission:
 
 ```json
@@ -68,7 +100,16 @@ Create a scoped signaling admission:
 The authority derives stable per-session role tokens from the secret and
 session ID, so an exact idempotency replay returns the same credentials without
 storing raw bearer tokens. A changed request with the same request ID is `409`.
-Every authorization rechecks account/device/session tombstones and expiry.
+`ttl_seconds` must not exceed `maximum_session_ttl_seconds`. Every authorization
+rechecks account/device/session tombstones and expiry.
+
+The `session_epoch` is checked against a per-device epoch floor stored in
+`authority_session_epoch_floors`. A new admission must use an epoch strictly
+greater than the floor for both the host and client devices; the floor is then
+raised to the admitted epoch. This prevents replay of an old session epoch after
+revocation. Note that this per-device floor is scoped to the authority's device
+identifiers, which is a different scope from the Mac pairing-scoped epoch; the
+two are not yet unified.
 
 Reserve relay capacity before returning a TURN credential:
 
@@ -116,18 +157,46 @@ cumulative counters, close events, boot identity and snapshot support. Parsing
 human-oriented coturn logs may run in shadow mode but is not an authoritative
 quota or billing source.
 
+## Clock synchronization and TTL consistency
+
+The authority and its callers (signaling, relay) require synchronized clocks
+(NTP). Admission expiry, device revocation timestamps, and coturn usage
+sequence/observation checks all depend on wall-clock time. Do not relax expiry
+checks or extend TTLs to compensate for clock skew; fix the clock source
+instead. The authority's `maximum_session_ttl_seconds` and the signaling
+`max_session_ttl_seconds` must be kept consistent so a TTL accepted by
+signaling is never rejected by the authority.
+
 ## Production gates
 
 - managed PostgreSQL multi-AZ deployment, TLS, PITR and restore exercise;
 - migration checksum/required-schema readiness and database credentials from a
   secret manager;
-- signaling and relay integration that fails closed on authority errors;
+- signaling and relay integration that fails closed on authority errors
+  (signaling `production_authority` mode is implemented and covered by a
+  two-process PostgreSQL test; relay/coturn integration remains open);
 - collector durable cursor/WAL, node heartbeat, gap detection and two-snapshot
   close reconciliation;
 - mapping from issued allocation IDs to complete coturn REST usernames;
 - active-allocation disconnect executor and outbox delivery;
 - edge authentication, DDoS/rate limiting, audit retention/deletion policy,
   dashboards, cost reconciliation and public-region canaries.
+
+### Remaining open items
+
+- Mac and Android automatic profile/account/session issuance is not wired to
+  the authority; local flows still require operator-supplied credentials.
+- Automatic account and device registration is not wired; accounts and devices
+  must be registered through the admin API before a signaling admission can be
+  created.
+- The relay/coturn control plane is not yet wired to the authority.
+- An active PeerConnection or TURN allocation is not actively disconnected when
+  a device is revoked or a signaling admission is invalidated.
+- The authority per-device `session_epoch` floor and the Mac pairing-scoped
+  epoch operate in different scopes and are not yet unified.
+- Signaling remains single-instance in-memory routing; per-message remote
+  authorization and the global create serialization are fail-closed correctness
+  choices, not a high-throughput design.
 
 Until these gates pass, this is a runnable backend slice, not evidence of a
 production Internet deployment.

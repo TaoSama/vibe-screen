@@ -69,7 +69,8 @@ func TestRealProcessHostDeviceExchangeAndGracefulShutdown(t *testing.T) {
   "max_candidates_per_role": 64,
   "max_wait_seconds": 2,
   "max_waiters_per_role": 1,
-  "cleanup_interval_seconds": 1
+  "cleanup_interval_seconds": 1,
+  "authority_mode": "local_development"
 }`, address)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)

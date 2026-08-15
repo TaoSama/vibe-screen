@@ -495,6 +495,7 @@ def signaling_config(bind_address: str, port: int) -> dict[str, Any]:
         "max_wait_seconds": 25,
         "max_waiters_per_role": 1,
         "cleanup_interval_seconds": 5,
+        "authority_mode": "local_development",
     }
 
 

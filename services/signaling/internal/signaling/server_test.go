@@ -24,7 +24,8 @@ func testConfig() Config {
 		MaxActiveSessions: 10, SessionCreatesPerMinute: 20, MessagesPerMinute: 20,
 		MaxRequestBodyBytes: 2048, MaxSDPBytes: 1024, MaxCandidateBytes: 512,
 		MaxCandidatesPerRole: 2, MaxWaitSeconds: 1, MaxWaitersPerRole: 1,
-		CleanupIntervalSeconds: 1, IssuerToken: testIssuerToken, MetricsToken: testMetricsToken,
+		CleanupIntervalSeconds: 1, AuthorityMode: AuthorityModeLocalDevelopment,
+		IssuerToken: testIssuerToken, MetricsToken: testMetricsToken,
 	}
 }
 
@@ -137,12 +138,19 @@ func TestValidationLimitsAndProbes(t *testing.T) {
 	}
 }
 
+func TestAuthorizedRejectsEmptyExpectedToken(t *testing.T) {
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/metrics", nil)
+	if authorized(request, "") {
+		t.Fatal("empty expected token authorized an empty request")
+	}
+}
+
 func TestPollWakesForRemoteEventAndEnforcesWaiterLimit(t *testing.T) {
 	service, err := NewServer(testConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, _, err := service.store.Create("poll-test", time.Minute)
+	created, _, err := service.store.Create(context.Background(), CreateSessionRequest{RequestID: "poll-test", TTL: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,18 +158,18 @@ func TestPollWakesForRemoteEventAndEnforcesWaiterLimit(t *testing.T) {
 	defer cancel()
 	result := make(chan []Event, 1)
 	go func() {
-		events, _, pollErr := service.store.Poll(ctx, created.SessionID, created.DeviceToken, 0)
+		events, _, pollErr := service.store.PollAuthorized(ctx, created.SessionID, RoleDevice, 0)
 		if pollErr != nil {
 			result <- nil
 			return
 		}
 		result <- events
 	}()
-	time.Sleep(20 * time.Millisecond)
-	if _, _, err := service.store.Poll(context.Background(), created.SessionID, created.DeviceToken, 0); !errors.Is(err, ErrTooManyWaiters) {
+	waitForWaiter(t, service.store, created.SessionID, RoleDevice)
+	if _, _, err := service.store.PollAuthorized(context.Background(), created.SessionID, RoleDevice, 0); !errors.Is(err, ErrTooManyWaiters) {
 		t.Fatalf("second waiter error = %v", err)
 	}
-	_, _, err = service.store.AddMessage(created.SessionID, created.HostToken, MessageRequest{MessageID: "wake", Type: MessageOffer, SDP: "v=0"})
+	_, _, err = service.store.AddMessageAuthorized(created.SessionID, RoleHost, MessageRequest{MessageID: "wake", Type: MessageOffer, SDP: "v=0"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,14 +188,14 @@ func TestPollFailsWhenSessionExpiresWhileWaiting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, _, err := service.store.Create("expiring-poll", 25*time.Millisecond)
+	created, _, err := service.store.Create(context.Background(), CreateSessionRequest{RequestID: "expiring-poll", TTL: 25 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	started := time.Now()
-	_, _, err = service.store.Poll(ctx, created.SessionID, created.HostToken, 0)
+	_, _, err = service.store.PollAuthorized(ctx, created.SessionID, RoleHost, 0)
 	if !errors.Is(err, ErrExpired) {
 		t.Fatalf("poll expiration error = %v", err)
 	}
@@ -200,14 +208,14 @@ func TestPollFailsWhenSessionExpiresWhileWaiting(t *testing.T) {
 }
 
 func TestInvalidateDestroysSessionAndRetainsRequestTombstoneUntilExpiry(t *testing.T) {
-	store := NewStore(testConfig())
+	store := NewStore(testConfig(), nil)
 	now := time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC)
 	store.now = func() time.Time { return now }
-	created, _, err := store.Create("invalidate-request", time.Minute)
+	created, _, err := store.Create(context.Background(), CreateSessionRequest{RequestID: "invalidate-request", TTL: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.AddMessage(created.SessionID, created.HostToken, MessageRequest{
+	if _, _, err := store.AddMessageAuthorized(created.SessionID, RoleHost, MessageRequest{
 		MessageID: "offer-before-invalidation", Type: MessageOffer, SDP: "v=0",
 	}); err != nil {
 		t.Fatal(err)
@@ -217,12 +225,12 @@ func TestInvalidateDestroysSessionAndRetainsRequestTombstoneUntilExpiry(t *testi
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	go func() {
-		_, _, pollErr := store.Poll(ctx, created.SessionID, created.DeviceToken, 1)
+		_, _, pollErr := store.PollAuthorized(ctx, created.SessionID, RoleDevice, 1)
 		pollResult <- pollErr
 	}()
 	waitForWaiter(t, store, created.SessionID, RoleDevice)
 
-	invalidated, err := store.Invalidate(created.SessionID)
+	invalidated, err := store.Invalidate(context.Background(), created.SessionID)
 	if err != nil || !invalidated {
 		t.Fatalf("invalidate created session: invalidated=%t err=%v", invalidated, err)
 	}
@@ -234,10 +242,10 @@ func TestInvalidateDestroysSessionAndRetainsRequestTombstoneUntilExpiry(t *testi
 	case <-time.After(250 * time.Millisecond):
 		t.Fatal("invalidation did not wake waiting poll")
 	}
-	if err := store.Authorize(created.SessionID, created.HostToken); !errors.Is(err, ErrNotFound) {
+	if _, err := store.Authorize(context.Background(), created.SessionID, created.HostToken); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("host token remained valid: %v", err)
 	}
-	if _, _, err := store.AddMessage(created.SessionID, created.DeviceToken, MessageRequest{
+	if _, _, err := store.AddMessageAuthorized(created.SessionID, RoleDevice, MessageRequest{
 		MessageID: "candidate-after-invalidation", Type: MessageICECandidate,
 		Candidate: &ICECandidate{Candidate: "candidate:invalidated"},
 	}); !errors.Is(err, ErrNotFound) {
@@ -251,15 +259,15 @@ func TestInvalidateDestroysSessionAndRetainsRequestTombstoneUntilExpiry(t *testi
 		current.response.HostToken != "" || current.response.DeviceToken != "" || current.events != nil || current.messages != nil {
 		t.Fatalf("sensitive session state was not destroyed: %#v", current)
 	}
-	if invalidated, err := store.Invalidate(created.SessionID); err != nil || invalidated {
+	if invalidated, err := store.Invalidate(context.Background(), created.SessionID); err != nil || invalidated {
 		t.Fatalf("repeated invalidation: invalidated=%t err=%v", invalidated, err)
 	}
-	if _, _, err := store.Create("invalidate-request", time.Minute); !errors.Is(err, ErrInvalidated) {
+	if _, _, err := store.Create(context.Background(), CreateSessionRequest{RequestID: "invalidate-request", TTL: time.Minute}); !errors.Is(err, ErrInvalidated) {
 		t.Fatalf("request_id was reusable before expiry: %v", err)
 	}
 
 	now = now.Add(time.Minute)
-	recreated, wasCreated, err := store.Create("invalidate-request", time.Minute)
+	recreated, wasCreated, err := store.Create(context.Background(), CreateSessionRequest{RequestID: "invalidate-request", TTL: time.Minute})
 	if err != nil || !wasCreated || recreated.SessionID == created.SessionID {
 		t.Fatalf("request_id was not reusable after expiry: created=%t session=%#v err=%v", wasCreated, recreated, err)
 	}
@@ -430,7 +438,7 @@ func pollForTest(t *testing.T, handler http.Handler, sessionID, token string, af
 
 func performRequest(t *testing.T, handler http.Handler, method, path, token, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	request := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+	request := httptest.NewRequestWithContext(context.Background(), method, path, bytes.NewBufferString(body))
 	if body != "" {
 		request.Header.Set("Content-Type", "application/json")
 	}

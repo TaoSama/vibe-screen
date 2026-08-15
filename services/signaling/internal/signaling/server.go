@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -17,21 +18,49 @@ import (
 	"unicode/utf8"
 )
 
+const (
+	authorityReadinessCacheTTL       = time.Second
+	authorityReadinessRefreshTimeout = 2 * time.Second
+)
+
+type authorityReadinessRefresh struct {
+	done      chan struct{}
+	completed bool
+}
+
 type Server struct {
-	cfg        Config
-	store      *Store
-	metrics    Metrics
-	ready      atomic.Bool
-	createMu   sync.Mutex
-	createRate rateWindow
-	now        func() time.Time
+	cfg                       Config
+	store                     *Store
+	authority                 *AuthorityClient
+	metrics                   Metrics
+	ready                     atomic.Bool
+	createMu                  sync.Mutex
+	createRate                rateWindow
+	authorityReadinessMu      sync.Mutex
+	authorityReadinessAt      time.Time
+	authorityReadinessErr     error
+	authorityReadinessPending *authorityReadinessRefresh
+	now                       func() time.Time
 }
 
 func NewServer(cfg Config) (*Server, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, store: NewStore(cfg), now: time.Now}, nil
+	var authority *AuthorityClient
+	if cfg.AuthorityMode == AuthorityModeProductionAuthority {
+		client, err := NewAuthorityClient(cfg.AuthorityURL, cfg.AuthorityToken)
+		if err != nil {
+			return nil, err
+		}
+		authority = client
+	}
+	return &Server{
+		cfg:       cfg,
+		store:     NewStore(cfg, authority),
+		authority: authority,
+		now:       time.Now,
+	}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -56,7 +85,7 @@ func (s *Server) invalidateSession(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusBadRequest, "invalid session_id")
 		return
 	}
-	invalidated, err := s.store.Invalidate(sessionID)
+	invalidated, err := s.store.Invalidate(r.Context(), sessionID)
 	if err != nil {
 		s.writeStoreError(w, err)
 		return
@@ -88,12 +117,86 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) readiness(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) readiness(w http.ResponseWriter, r *http.Request) {
 	if !s.ready.Load() {
 		s.reject(w, http.StatusServiceUnavailable, "not ready")
 		return
 	}
+	if s.authority != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), authorityReadinessRefreshTimeout)
+		defer cancel()
+		if err := s.cachedAuthorityReadiness(ctx); err != nil {
+			s.reject(w, http.StatusServiceUnavailable, "not ready")
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// cachedAuthorityReadiness prevents the unauthenticated readiness endpoint
+// from forwarding every probe to the authority and its database. One caller
+// refreshes the short-lived success or failure cache while concurrent probes
+// wait for that same result.
+func (s *Server) cachedAuthorityReadiness(ctx context.Context) error {
+	var observed *authorityReadinessRefresh
+	for {
+		s.authorityReadinessMu.Lock()
+		now := s.now()
+		if !s.authorityReadinessAt.IsZero() {
+			age := now.Sub(s.authorityReadinessAt)
+			if age >= 0 && age < authorityReadinessCacheTTL {
+				err := s.authorityReadinessErr
+				s.authorityReadinessMu.Unlock()
+				return err
+			}
+		}
+		if observed != nil && !observed.completed {
+			s.authorityReadinessMu.Unlock()
+			return ErrAuthorityUnavailable
+		}
+		pending := s.authorityReadinessPending
+		if pending == nil {
+			pending = &authorityReadinessRefresh{done: make(chan struct{})}
+			s.authorityReadinessPending = pending
+			go s.refreshAuthorityReadiness(pending)
+		}
+		s.authorityReadinessMu.Unlock()
+
+		select {
+		case <-pending.done:
+			observed = pending
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+func (s *Server) refreshAuthorityReadiness(refresh *authorityReadinessRefresh) {
+	var result error
+	completed := false
+	defer func() {
+		panicked := recover() != nil
+		s.authorityReadinessMu.Lock()
+		if completed {
+			s.authorityReadinessAt = s.now()
+			s.authorityReadinessErr = result
+		} else {
+			s.authorityReadinessAt = time.Time{}
+			s.authorityReadinessErr = ErrAuthorityUnavailable
+		}
+		refresh.completed = completed
+		s.authorityReadinessPending = nil
+		close(refresh.done)
+		s.authorityReadinessMu.Unlock()
+		if panicked {
+			slog.Error("authority readiness refresh panicked")
+		}
+	}()
+
+	refreshCtx, cancel := context.WithTimeout(context.Background(), authorityReadinessRefreshTimeout)
+	defer cancel()
+	result = s.authority.Ready(refreshCtx)
+	completed = true
 }
 
 func (s *Server) metricsHandler(w http.ResponseWriter, r *http.Request) {
@@ -108,8 +211,12 @@ func (s *Server) metricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type createSessionRequest struct {
-	RequestID  string `json:"request_id"`
-	TTLSeconds int64  `json:"ttl_seconds,omitempty"`
+	RequestID      string `json:"request_id"`
+	TTLSeconds     int64  `json:"ttl_seconds,omitempty"`
+	AccountID      string `json:"account_id,omitempty"`
+	HostDeviceID   string `json:"host_device_id,omitempty"`
+	ClientDeviceID string `json:"client_device_id,omitempty"`
+	SessionEpoch   uint64 `json:"session_epoch,omitempty"`
 }
 
 func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
@@ -132,13 +239,29 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	}
 	ttl := s.cfg.SessionTTL()
 	if request.TTLSeconds != 0 {
+		if request.TTLSeconds < 0 || request.TTLSeconds > s.cfg.MaxSessionTTLSeconds {
+			s.reject(w, http.StatusBadRequest, "ttl_seconds outside allowed range")
+			return
+		}
 		ttl = time.Duration(request.TTLSeconds) * time.Second
 	}
-	if ttl <= 0 || ttl > s.cfg.MaxSessionTTL() {
-		s.reject(w, http.StatusBadRequest, "ttl_seconds outside allowed range")
-		return
+	createReq := CreateSessionRequest{
+		RequestID: request.RequestID,
+		TTL:       ttl,
 	}
-	response, created, err := s.store.Create(request.RequestID, ttl)
+	if s.authority != nil {
+		if !validIdentifier(request.AccountID) || !validIdentifier(request.HostDeviceID) ||
+			!validIdentifier(request.ClientDeviceID) || request.HostDeviceID == request.ClientDeviceID ||
+			request.SessionEpoch == 0 || request.SessionEpoch > math.MaxInt64 {
+			s.reject(w, http.StatusBadRequest, "account_id, host_device_id, client_device_id, and session_epoch are required in production authority mode")
+			return
+		}
+		createReq.AccountID = request.AccountID
+		createReq.HostDeviceID = request.HostDeviceID
+		createReq.ClientDeviceID = request.ClientDeviceID
+		createReq.SessionEpoch = request.SessionEpoch
+	}
+	response, created, err := s.store.Create(r.Context(), createReq)
 	if err != nil {
 		s.writeStoreError(w, err)
 		return
@@ -157,7 +280,8 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("session_id")
 	token := bearerToken(r)
-	if err := s.store.Authorize(sessionID, token); err != nil {
+	role, err := s.store.Authorize(r.Context(), sessionID, token)
+	if err != nil {
 		s.writeStoreError(w, err)
 		return
 	}
@@ -170,7 +294,16 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	event, created, err := s.store.AddMessage(sessionID, token, request)
+	refreshedRole, err := s.store.Authorize(r.Context(), sessionID, token)
+	if err != nil {
+		s.writeStoreError(w, err)
+		return
+	}
+	if refreshedRole != role {
+		s.writeStoreError(w, ErrUnauthorized)
+		return
+	}
+	event, created, err := s.store.AddMessageAuthorized(sessionID, refreshedRole, request)
 	if err != nil {
 		s.writeStoreError(w, err)
 		return
@@ -200,11 +333,29 @@ func (s *Server) getEvents(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusBadRequest, "wait_seconds outside allowed range")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(waitSeconds)*time.Second)
-	defer cancel()
-	events, next, err := s.store.Poll(ctx, r.PathValue("session_id"), bearerToken(r), after)
+	sessionID := r.PathValue("session_id")
+	token := bearerToken(r)
+	role, err := s.store.Authorize(r.Context(), sessionID, token)
 	if err != nil {
 		s.writeStoreError(w, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(waitSeconds)*time.Second)
+	defer cancel()
+	events, next, err := s.store.PollAuthorized(ctx, sessionID, role, after)
+	if err != nil {
+		s.writeStoreError(w, err)
+		return
+	}
+	// Re-authorize after the wait and before releasing queued SDP/ICE so an
+	// authority revocation that happened during a long poll wins.
+	refreshedRole, err := s.store.Authorize(r.Context(), sessionID, token)
+	if err != nil {
+		s.writeStoreError(w, err)
+		return
+	}
+	if refreshedRole != role {
+		s.writeStoreError(w, ErrUnauthorized)
 		return
 	}
 	if len(events) == 0 && next == after {
@@ -305,6 +456,8 @@ func (s *Server) writeStoreError(w http.ResponseWriter, err error) {
 		s.reject(w, http.StatusConflict, err.Error())
 	case errors.Is(err, ErrRateLimited), errors.Is(err, ErrTooManyWaiters), errors.Is(err, ErrCapacity), errors.Is(err, ErrCandidateLimit):
 		s.reject(w, http.StatusTooManyRequests, err.Error())
+	case errors.Is(err, ErrAuthorityUnavailable):
+		s.reject(w, http.StatusBadGateway, "authority service unavailable")
 	default:
 		s.reject(w, http.StatusInternalServerError, "internal error")
 	}
@@ -325,6 +478,9 @@ func securityHeaders(next http.Handler) http.Handler {
 }
 
 func authorized(r *http.Request, expected string) bool {
+	if expected == "" {
+		return false
+	}
 	return secureEqual(bearerToken(r), expected)
 }
 

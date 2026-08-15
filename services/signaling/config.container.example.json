@@ -11,5 +11,7 @@
   "max_candidates_per_role": 64,
   "max_wait_seconds": 25,
   "max_waiters_per_role": 1,
-  "cleanup_interval_seconds": 30
+  "cleanup_interval_seconds": 30,
+  "authority_mode": "production_authority",
+  "authority_url": "https://authority.internal.example.com"
 }

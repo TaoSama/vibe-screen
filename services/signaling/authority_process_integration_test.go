@@ -1,0 +1,453 @@
+package signaling_test
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+)
+
+// authorityProcessTest holds the tokens, addresses, and process handles for a
+// single authority-backed signaling integration run. All secrets are generated
+// per test so a leak in one run cannot compromise another.
+type authorityProcessTest struct {
+	databaseURL string
+
+	authorityAdminToken     string
+	authoritySignalingToken string
+	authorityRelayToken     string
+	authorityCoturnToken    string
+	authorityRoleSecret     string
+
+	signalingIssuerToken  string
+	signalingMetricsToken string
+
+	authorityAddress string
+	signalingAddress string
+
+	authorityBinary string
+	signalingBinary string
+
+	authorityLog bytes.Buffer
+	signalingLog bytes.Buffer
+
+	authorityCmd *exec.Cmd
+	signalingCmd *exec.Cmd
+}
+
+func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("signal-based process test is Unix-only")
+	}
+	databaseURL := os.Getenv("VIBE_AUTHORITY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("VIBE_AUTHORITY_TEST_DATABASE_URL is not set")
+	}
+
+	run := &authorityProcessTest{
+		databaseURL: databaseURL,
+
+		authorityAdminToken:     "authority-admin-token-" + randomSuffix(t),
+		authoritySignalingToken: "authority-signaling-token-" + randomSuffix(t),
+		authorityRelayToken:     "authority-relay-token-" + randomSuffix(t),
+		authorityCoturnToken:    "authority-coturn-token-" + randomSuffix(t),
+		authorityRoleSecret:     "authority-role-secret-" + randomSuffix(t),
+
+		signalingIssuerToken:  "signaling-issuer-token-" + randomSuffix(t),
+		signalingMetricsToken: "signaling-metrics-token-" + randomSuffix(t),
+
+		authorityAddress: reserveAddress(t),
+		signalingAddress: reserveAddress(t),
+	}
+
+	tmpDir := t.TempDir()
+	run.authorityBinary = filepath.Join(tmpDir, "vibe-authority")
+	run.signalingBinary = filepath.Join(tmpDir, "vibe-signaling")
+
+	buildAuthority(t, run.authorityBinary)
+	buildSignaling(t, run.signalingBinary)
+
+	// Apply the authority schema before starting the server.
+	migrateAuthority(t, run)
+	resetAuthorityDatabase(t, run.databaseURL)
+	t.Cleanup(func() { resetAuthorityDatabase(t, run.databaseURL) })
+
+	// Start the authority service first; signaling depends on it for /readyz.
+	startAuthority(t, run)
+	t.Cleanup(func() { stopProcess(t, run.authorityCmd, &run.authorityLog, "authority") })
+
+	startSignaling(t, run)
+	t.Cleanup(func() { stopProcess(t, run.signalingCmd, &run.signalingLog, "signaling") })
+
+	authorityBase := "http://" + run.authorityAddress
+	signalingBase := "http://" + run.signalingAddress
+
+	waitUntilHealthy(t, authorityBase+"/healthz")
+	waitUntilHealthy(t, signalingBase+"/healthz")
+	waitUntilReady(t, authorityBase+"/readyz")
+	waitUntilReady(t, signalingBase+"/readyz")
+
+	accountID := "acct-" + randomSuffix(t)
+	hostDeviceID := "host-" + randomSuffix(t)
+	clientDeviceID := "client-" + randomSuffix(t)
+	requestID := "req-" + randomSuffix(t)
+	const sessionEpoch uint64 = 1
+
+	// Register the account and both devices through the authority admin API.
+	authorityRequest(t, http.MethodPut, authorityBase+"/v1/accounts/"+accountID,
+		run.authorityAdminToken, "", http.StatusNoContent)
+	authorityRequest(t, http.MethodPut,
+		authorityBase+"/v1/accounts/"+accountID+"/devices/"+hostDeviceID,
+		run.authorityAdminToken, "", http.StatusNoContent)
+	authorityRequest(t, http.MethodPut,
+		authorityBase+"/v1/accounts/"+accountID+"/devices/"+clientDeviceID,
+		run.authorityAdminToken, "", http.StatusNoContent)
+
+	// Create an authority-backed signaling session.
+	createBody := fmt.Sprintf(`{
+  "request_id": %q,
+  "account_id": %q,
+  "host_device_id": %q,
+  "client_device_id": %q,
+  "session_epoch": %d,
+  "ttl_seconds": 60
+}`, requestID, accountID, hostDeviceID, clientDeviceID, sessionEpoch)
+	createResp := postJSON(t, signalingBase+"/v1/sessions", run.signalingIssuerToken,
+		createBody, http.StatusCreated)
+	var created sessionResponse
+	if err := json.Unmarshal(createResp, &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.SessionID == "" || created.HostToken == "" || created.DeviceToken == "" {
+		t.Fatalf("incomplete session response: %#v", created)
+	}
+	if created.HostToken == created.DeviceToken {
+		t.Fatalf("host and device tokens must differ: %#v", created)
+	}
+
+	// Host posts an offer; the client polls and receives it.
+	const offerSDP = "v=0\r\na=fingerprint:sha-256 AUTHORITY-OFFER-SECRET\r\n"
+	postJSON(t, signalingBase+"/v1/sessions/"+created.SessionID+"/messages",
+		created.HostToken,
+		fmt.Sprintf(`{"message_id":"offer-1","type":"offer","sdp":%q}`, offerSDP),
+		http.StatusCreated)
+	clientPoll := poll(t, signalingBase, created.SessionID, created.DeviceToken, 0)
+	if len(clientPoll.Events) != 1 || clientPoll.Events[0].Type != "offer" ||
+		clientPoll.Events[0].SDP != offerSDP {
+		t.Fatalf("client did not receive host offer: %#v", clientPoll)
+	}
+
+	// Revoke the client device through the authority admin API. The session
+	// epoch is the revocation epoch; the authority marks every session that
+	// involves the client device as revoked.
+	authorityRequest(t, http.MethodPost,
+		authorityBase+"/v1/devices/"+clientDeviceID+"/revoke",
+		run.authorityAdminToken,
+		fmt.Sprintf(`{"epoch": %d}`, sessionEpoch),
+		http.StatusNoContent)
+
+	// After revocation, both role tokens must be rejected by signaling with
+	// 404. The authority returns 403 for revoked sessions; signaling maps that
+	// to 404 so it does not disclose whether the session exists.
+	postJSON(t, signalingBase+"/v1/sessions/"+created.SessionID+"/messages",
+		created.HostToken,
+		`{"message_id":"offer-after-revoke","type":"offer","sdp":"v=0\r\n"}`,
+		http.StatusNotFound)
+	pollExpectStatus(t, signalingBase, created.SessionID, created.DeviceToken,
+		clientPoll.NextCursor, http.StatusNotFound)
+
+	// The issuer can still invalidate the session record, but the underlying
+	// authority admission is already revoked.
+	status, _, err := requestStatus(http.MethodDelete,
+		signalingBase+"/v1/sessions/"+created.SessionID,
+		run.signalingIssuerToken, "")
+	if err != nil {
+		t.Fatalf("invalidate after revoke: %v", err)
+	}
+	if status != http.StatusNoContent {
+		t.Fatalf("invalidate after revoke status=%d, want 204", status)
+	}
+
+	// Stop both processes with SIGTERM and assert bounded shutdown.
+	stopProcess(t, run.signalingCmd, &run.signalingLog, "signaling")
+	run.signalingCmd = nil
+	stopProcess(t, run.authorityCmd, &run.authorityLog, "authority")
+	run.authorityCmd = nil
+
+	// Neither process may log any service token, role token, or SDP secret.
+	secrets := []string{
+		run.authorityAdminToken, run.authoritySignalingToken,
+		run.authorityRelayToken, run.authorityCoturnToken, run.authorityRoleSecret,
+		run.signalingIssuerToken, run.signalingMetricsToken,
+		created.HostToken, created.DeviceToken,
+		offerSDP, "AUTHORITY-OFFER-SECRET",
+	}
+	for _, secret := range secrets {
+		if secret == "" {
+			continue
+		}
+		if strings.Contains(run.authorityLog.String(), secret) {
+			t.Fatalf("authority log leaked secret %q", secret)
+		}
+		if strings.Contains(run.signalingLog.String(), secret) {
+			t.Fatalf("signaling log leaked secret %q", secret)
+		}
+	}
+}
+
+func resetAuthorityDatabase(t *testing.T, databaseURL string) {
+	t.Helper()
+	const statement = "TRUNCATE authority_coturn_events, authority_relay_allocations, authority_relay_daily_usage, authority_signaling_sessions, authority_session_epoch_floors, authority_devices, authority_accounts, authority_audit_events RESTART IDENTITY CASCADE"
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "psql", databaseURL, "--no-psqlrc", "--set=ON_ERROR_STOP=1", "--quiet", "--command", statement)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("reset authority integration database: %v\n%s", err, output)
+	}
+}
+
+func buildAuthority(t *testing.T, binaryPath string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	build := exec.CommandContext(ctx, "go", "build", "-o", binaryPath, "./cmd/vibe-authority")
+	build.Dir = "../authority"
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build authority process: %v\n%s", err, output)
+	}
+}
+
+func buildSignaling(t *testing.T, binaryPath string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	build := exec.CommandContext(ctx, "go", "build", "-o", binaryPath, "./cmd/vibe-signaling")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build signaling process: %v\n%s", err, output)
+	}
+}
+
+func migrateAuthority(t *testing.T, run *authorityProcessTest) {
+	t.Helper()
+	migrationPath, err := filepath.Abs("../authority/migrations/001_authority.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The authority binary loads its config before applying the migration, so
+	// a minimal config file is required even for the --migrate subcommand.
+	configPath := filepath.Join(t.TempDir(), "authority-migrate-config.json")
+	const config = `{
+  "listen_address": "127.0.0.1:0",
+  "maximum_session_ttl_seconds": 900,
+  "daily_bytes_per_device": 21474836480,
+  "maximum_allocations_per_device": 2,
+  "reconciliation_grace_seconds": 120
+}`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, run.authorityBinary, "--config", configPath, "--migrate", migrationPath)
+	cmd.Env = append(os.Environ(),
+		"VIBE_AUTHORITY_DATABASE_URL="+run.databaseURL,
+		"VIBE_AUTHORITY_ADMIN_TOKEN="+run.authorityAdminToken,
+		"VIBE_AUTHORITY_SIGNALING_TOKEN="+run.authoritySignalingToken,
+		"VIBE_AUTHORITY_RELAY_TOKEN="+run.authorityRelayToken,
+		"VIBE_AUTHORITY_COTURN_TOKEN="+run.authorityCoturnToken,
+		"VIBE_AUTHORITY_ROLE_TOKEN_SECRET="+run.authorityRoleSecret,
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("authority migrate: %v\n%s", err, output)
+	}
+}
+
+func startAuthority(t *testing.T, run *authorityProcessTest) {
+	t.Helper()
+	configPath := filepath.Join(t.TempDir(), "authority-config.json")
+	config := fmt.Sprintf(`{
+  "listen_address": %q,
+  "maximum_session_ttl_seconds": 900,
+  "daily_bytes_per_device": 21474836480,
+  "maximum_allocations_per_device": 2,
+  "reconciliation_grace_seconds": 120
+}`, run.authorityAddress)
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(context.Background(), run.authorityBinary, "--config", configPath)
+	cmd.Env = append(os.Environ(),
+		"VIBE_AUTHORITY_DATABASE_URL="+run.databaseURL,
+		"VIBE_AUTHORITY_ADMIN_TOKEN="+run.authorityAdminToken,
+		"VIBE_AUTHORITY_SIGNALING_TOKEN="+run.authoritySignalingToken,
+		"VIBE_AUTHORITY_RELAY_TOKEN="+run.authorityRelayToken,
+		"VIBE_AUTHORITY_COTURN_TOKEN="+run.authorityCoturnToken,
+		"VIBE_AUTHORITY_ROLE_TOKEN_SECRET="+run.authorityRoleSecret,
+	)
+	cmd.Stdout = &run.authorityLog
+	cmd.Stderr = &run.authorityLog
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	run.authorityCmd = cmd
+}
+
+func startSignaling(t *testing.T, run *authorityProcessTest) {
+	t.Helper()
+	configPath := filepath.Join(t.TempDir(), "signaling-config.json")
+	config := fmt.Sprintf(`{
+  "listen_address": %q,
+  "session_ttl_seconds": 60,
+  "max_session_ttl_seconds": 120,
+  "max_active_sessions": 100,
+  "session_creates_per_minute": 60,
+  "messages_per_minute": 120,
+  "max_request_body_bytes": 131072,
+  "max_sdp_bytes": 65536,
+  "max_candidate_bytes": 4096,
+  "max_candidates_per_role": 64,
+  "max_wait_seconds": 2,
+  "max_waiters_per_role": 1,
+  "cleanup_interval_seconds": 1,
+  "authority_mode": "production_authority",
+  "authority_url": "http://%s"
+}`, run.signalingAddress, run.authorityAddress)
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(context.Background(), run.signalingBinary, "--config", configPath)
+	cmd.Env = append(os.Environ(),
+		"VIBE_SIGNALING_ISSUER_TOKEN="+run.signalingIssuerToken,
+		"VIBE_SIGNALING_METRICS_TOKEN="+run.signalingMetricsToken,
+		"VIBE_SIGNALING_AUTHORITY_TOKEN="+run.authoritySignalingToken,
+	)
+	cmd.Stdout = &run.signalingLog
+	cmd.Stderr = &run.signalingLog
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	run.signalingCmd = cmd
+}
+
+// stopProcess sends SIGTERM and waits up to 5 seconds for the process to exit.
+// It is safe to call on a nil or already-exited command.
+func stopProcess(t *testing.T, cmd *exec.Cmd, logBuffer *bytes.Buffer, name string) {
+	t.Helper()
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatalf("signal %s: %v", name, err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("%s exited with error: %v\n%s", name, err, logBuffer.String())
+		}
+	case <-time.After(5 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatalf("%s did not stop within 5s of SIGTERM\n%s", name, logBuffer.String())
+	}
+}
+
+// authorityRequest performs an authority admin or signaling-token request and
+// asserts the expected status code.
+func authorityRequest(t *testing.T, method, url, token, body string, expectedStatus int) {
+	t.Helper()
+	status, responseBody, err := requestStatus(method, url, token, body)
+	if err != nil {
+		t.Fatalf("authority request %s %s: %v", method, url, err)
+	}
+	if status != expectedStatus {
+		t.Fatalf("authority %s %s status=%d want=%d body=%s",
+			method, url, status, expectedStatus, responseBody)
+	}
+}
+
+// pollExpectStatus polls for events and asserts the HTTP status without
+// requiring a 200 response. Used after revocation to confirm a 404.
+func pollExpectStatus(t *testing.T, baseURL, sessionID, token string, cursor uint64, expectedStatus int) {
+	t.Helper()
+	const requestTimeout = 5 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		fmt.Sprintf("%s/v1/sessions/%s/events?after=%d&wait_seconds=0", baseURL, sessionID, cursor), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	client := &http.Client{Timeout: requestTimeout}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	closeErr := response.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closeErr != nil {
+		t.Fatalf("close poll response: %v", closeErr)
+	}
+	if response.StatusCode != expectedStatus {
+		t.Fatalf("poll after revoke status=%d want=%d body=%s",
+			response.StatusCode, expectedStatus, body)
+	}
+}
+
+// waitUntilReady polls a /readyz endpoint until it returns 200 or the deadline
+// expires.
+func waitUntilReady(t *testing.T, url string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	client := &http.Client{Timeout: 2 * time.Second}
+	for ctx.Err() == nil {
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := client.Do(request)
+		if err == nil {
+			status := response.StatusCode
+			if closeErr := response.Body.Close(); closeErr != nil {
+				t.Fatalf("close readiness response: %v", closeErr)
+			}
+			if status == http.StatusOK {
+				return
+			}
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(25 * time.Millisecond):
+		}
+	}
+	t.Fatalf("process did not become ready at %s", url)
+}
+
+// randomSuffix returns a short unique string for test identifiers. It uses the
+// unix-nano timestamp plus a small random component so parallel runs do not
+// collide on the same database.
+func randomSuffix(t *testing.T) string {
+	t.Helper()
+	now := time.Now().UnixNano()
+	buf := make([]byte, 4)
+	if _, err := rand.Read(buf); err != nil {
+		t.Fatal(err)
+	}
+	return fmt.Sprintf("%d-%x", now, buf)
+}

@@ -20,24 +20,35 @@ device/host authorization. Credential issuance and revoke are serialized so no
 new credential is returned after a completed revoke. The binary itself remains
 separate from the coturn data-plane process in the Compose deployment.
 
-`services/authority/` now supplies the runnable shared-PostgreSQL admission and
+`services/authority/` supplies the runnable shared-PostgreSQL admission and
 account/device-revocation slice needed by horizontally scaled signaling and
 relay control planes. It also exposes cumulative coturn usage ingestion and
-snapshot reconciliation. Existing signaling/relay binaries are not yet wired to
-that authority, and the repository still has no production-proven coturn
-machine exporter or active-allocation disconnect executor. Therefore this does
-not remove the public-launch prohibition below. See the service README for the
+snapshot reconciliation. The signaling service now supports a
+`production_authority` mode that delegates session creation, per-request
+role-token authorization, and session invalidation to the authority. Dependency
+or malformed-response failures return `502` without falling back to locally
+minted tokens; authority policy rejections remain denials. The relay/coturn
+control plane is not yet wired to the
+authority, and the repository still has no production-proven coturn machine
+exporter or active-allocation disconnect executor. Therefore this does not
+remove the public-launch prohibition below. See the service README for the
 migration procedure, API contract, and remaining infrastructure gates.
 Do not expose it to the public Internet until those boundaries and the
 container/readiness findings in [TECH.md](TECH.md#open-implementation-findings)
 are resolved.
 
-The signaling service accepts one offer/answer per session and now exposes an
-issuer-only idempotent invalidation operation. Current product transports request
-a wholly fresh session instead of attempting a second offer. Operators must not
-enable unattended network-handoff recovery until authority issuance can deliver
-both endpoints a new session ID, role tokens, optional TURN credential,
-PeerConnection, and larger common epoch and a Mac/Android test proves it.
+The signaling service accepts one offer/answer per session and exposes an
+issuer-only idempotent invalidation operation. In `production_authority` mode
+session creation, per-request role authorization, and invalidation are
+delegated to the PostgreSQL authority; signaling holds only in-memory SDP/ICE
+routing state. After a signaling restart that in-memory state is lost, so an
+old `request_id` cannot be replayed against the authority's existing admission:
+signaling returns `409` and the owner must issue a fresh request with a larger
+`session_epoch`. Current product transports request a wholly fresh session
+instead of attempting a second offer. Operators must not enable unattended
+network-handoff recovery until authority issuance can deliver both endpoints a
+new session ID, role tokens, optional TURN credential, PeerConnection, and
+larger common epoch and a Mac/Android test proves it.
 
 ## Service inventory
 
@@ -158,13 +169,15 @@ mitigation, escalation path, and rollback/feature-disable control.
 
 ### Suspected endpoint-key compromise
 
-1. Persist and distribute a monotonic revocation.
-2. Invalidate each matching signaling session through the issuer endpoint and
-   verify both role tokens and any long poll fail immediately.
+1. Persist and distribute a monotonic revocation at the authority (device
+   revocation epoch).
+2. Invalidate each matching signaling session through the issuer endpoint,
+   which forwards the revocation to the authority in `production_authority`
+   mode, and verify both role tokens and any long poll fail immediately.
 3. Revoke relay credential issuance, then separately disconnect existing coturn
    allocations and reconcile any ledger entry whose final usage event is rejected.
 4. Terminate the endpoint transport; signaling invalidation alone does not stop a
-   direct PeerConnection.
+   direct PeerConnection or an active TURN allocation.
 5. Confirm direct and relay reconnect rejection before and after service restart.
 6. Preserve redacted audit events; do not collect screen/input content.
 7. Require explicit re-pairing with a new device identity after remediation.
@@ -239,3 +252,28 @@ remove only the ADB reverse/forward mappings created by this run; then delete th
 Internet lock. Never include its owner token in evidence. Absence of the
 coordination locks and ownership of the Internet lock authorize a run; neither is
 evidence that any device test passed.
+
+## Authority integration open items
+
+The signaling `production_authority` mode is implemented and covered by a
+two-process PostgreSQL test (account/device registration, authority-delegated
+session creation, offer/poll exchange, device revocation rejecting both role
+tokens, and log redaction). The following remain open and must not be treated as
+shipped:
+
+- Mac and Android automatic profile/account/session issuance is not wired to the
+  authority.
+- Automatic account and device registration is not wired.
+- The relay/coturn control plane is not wired to the authority.
+- Active PeerConnection and TURN allocations are not actively disconnected on
+  authority revocation; signaling invalidation only stops new rendezvous access.
+- The authority per-device `session_epoch` floor and the Mac pairing-scoped
+  epoch operate in different scopes and are not yet unified.
+- Signaling remains single-instance in-memory routing.
+- Per-message remote authority authorization and the global `authorityCreateMu`
+  create serialization are fail-closed correctness choices, not a
+  high-throughput design.
+- Signaling and authority require NTP clock synchronization; expiry checks must
+  not be relaxed for clock skew.
+- The signaling `max_session_ttl_seconds` and authority
+  `maximum_session_ttl_seconds` must be kept consistent.

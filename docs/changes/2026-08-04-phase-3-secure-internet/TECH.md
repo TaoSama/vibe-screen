@@ -130,6 +130,17 @@ can also invalidate a session explicitly with an idempotent authenticated
 `DELETE`: role tokens, queued signaling payloads, and long polls become unusable
 immediately, while a request-ID tombstone remains until the original expiry.
 
+Signaling now has an explicit `production_authority` mode. Session creation,
+each role-token authorization, and invalidation are delegated to the
+PostgreSQL-backed authority, while SDP/ICE routing remains process-local.
+Authority failure, malformed response, or a session-ID collision fails closed
+without local token fallback or state overwrite. A real two-process PostgreSQL
+test covers account/device registration, admission, offer/poll, device
+revocation rejecting both roles, bounded shutdown, and secret-log scanning. A
+signaling restart cannot rebuild lost routing from an authority replay: the old
+request returns `409`, and the owner must issue a fresh request with a larger
+epoch. This is a signaling admission boundary, not automatic product issuance.
+
 The service still rejects a second offer. The product transport therefore does
 not attempt to reuse the old rendezvous after a network handoff: it suspends
 application traffic and asks its owner for a fresh signaling session, role token,
@@ -249,7 +260,7 @@ semantic change requires a new protocol package/version.
 | Android product session | `MainActivity.kt`, `InternetSessionProfileStore.kt`, Android Internet packages, `io.github.webrtc-sdk:android:144.7559.09` | Internet UI scans the pairing offer, completes the copied request/acceptance flow, imports a strict host-signed short-lived lease, selects direct/forced TURN, drives Protocol v1 video/touch and decoder state, and exposes connect/disconnect/revoke/error/recovery. Lease verification precedes persistence/high-watermark changes; durable session/identity epochs reject stale ciphers and permit monotonic reauthorization after revoke. A fresh-session request or terminal failure invalidates the old transport owner, so late route/connected callbacks cannot restore touch or heartbeat. Credential, pairing and revocation cleanup retain restart-safe retry state. Tokens and pairing/session secrets are AndroidKeyStore-wrapped; sensitive dialogs disable screenshots/autofill, and release cleartext is disabled. The historical Nubia P0110 run is dated 2026-08-05 and bound only to commit `597518f948075e396352bc353afcec01a30303f3`; it covers local UI, direct/forced-coturn Android↔Mac product interop and application AEAD with synthetic Protocol v1 media. It is not current-worktree evidence and must not be extrapolated to later commits, real screen capture, public Internet, rotation, handoff, or soak |
 | Existing LAN security | `WirelessAuth.swift`, `AuthHandshake.kt`, `StreamingServer.swift`, `StreamClient.kt` | 32-byte bearer token over plaintext TCP; trusted LAN only, not E2EE |
 | Relay control/data plane | `services/relay/`, `deploy/phase3/` | Short-term credential control plane and pinned coturn Compose data plane exist. REST usernames map all sessions/expiries for one device to one coturn allocation-quota principal, and production peer ACLs deny private, CGNAT, link-local, ULA and other internal ranges. New credentials and usage events are rejected after a persisted revoke, and issuance/revoke are serialized. Existing coturn allocations are not terminated by this control-plane action; public deployment, authoritative byte usage, active-allocation disconnect, and multi-node state remain gates |
-| Signaling | `services/signaling/` plus Swift/Kotlin clients | Runnable single-instance service, real-process tests, and issuer-only session invalidation exist. It remains a one-offer rendezvous without durable/multi-instance identity authority or a device revocation feed |
+| Signaling | `services/signaling/` plus Swift/Kotlin clients and `services/authority/` | Runnable single-instance in-memory routing, explicit local/production-authority modes, fail-closed authority admission and per-request authorization, device-revocation rejection, issuer-only invalidation, and real two-process PostgreSQL tests exist. It remains a one-offer router; Mac/Android automatic profile issuance, shared multi-instance routing, relay/coturn authority integration, and active transport disconnect remain gates |
 | Rotation/revocation/replay | Protocol, Go core, platform security and product-session directories | Record replay and old-epoch rejection plus peer-scoped signed local revocation have unit/self-test coverage. Android and macOS retain durable retry state for local secret cleanup; macOS prevents one device's revoke history from overwriting another's epoch floor. End-to-end revocation propagation to the peer, signaling and active TURN allocation; rotation interoperability; and real reconnect injection remain gates |
 | Adaptive video | policy types and unit tests | Policy foundation only; encoder/config acknowledgment integration pending |
 | Network simulation | `scripts/phase3/network_profile.py`, `tests/phase3/` | Deterministic contract simulation only; explicitly not OS-level impairment, ICE, or TURN evidence |
@@ -282,6 +293,16 @@ These are release blockers, not accepted architecture:
   credentials and epoch. Do not claim automatic network-handoff recovery until a
   real Mac/Android run proves new signaling tokens, PeerConnection, record keys,
   epoch advance, and rejection of old records.
+- Authority-backed signaling still performs remote authorization for every
+  message publish and poll, and serializes creates through one global
+  `authorityCreateMu` to prevent orphan admissions at local capacity. These are
+  fail-closed correctness choices, not evidence of multi-instance throughput.
+  Signaling and authority require NTP clock synchronization, and their maximum
+  session TTL settings must agree; expiry validation is not relaxed for skew.
+- The authority enforces one epoch floor per device ID, while the Mac lease
+  issuer advances pairing-scoped durable epochs. Automatic product issuance
+  must reconcile these scopes before it can replace the explicit manual profile
+  flow.
 - The macOS and Android local-development flows deliberately require copied
   pairing request/acceptance and imported session-authority profiles. This is an
   operable integration surface, not a production pairing/session issuer.

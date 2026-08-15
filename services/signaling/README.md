@@ -6,11 +6,22 @@ and end-of-candidates records between an authenticated host and device. It does
 not proxy data channels, media, input, long-lived private keys, application
 traffic keys, pairing QR secrets, or arbitrary payloads.
 
-Version `0.1.0` is a single-process, in-memory vertical slice. It is suitable for
-local integration and one-instance deployments behind TLS. It is not an account
-service, durable multi-replica broker, device revocation authority, or proof that
-the product stream is end-to-end encrypted. Endpoints must still authenticate
-the signed Vibe Screen session transcript and DTLS fingerprint independently.
+Version `0.1.0` runs in one of two explicit authority modes:
+
+- `local_development`: the historical in-process session issuance and role-token
+  authorization. It is intended only for local self-tests and scripts; production
+  must not use it.
+- `production_authority`: session creation, per-request role-token authorization,
+  and session invalidation are delegated to the PostgreSQL-backed
+  `vibe-authority` service. Any authority failure is fail-closed: the signaling
+  process never falls back to locally minted tokens, and `/readyz` reports
+  unavailable while the authority is unreachable.
+
+The service is a single-process, in-memory rendezvous broker. It is not an
+account service, durable multi-replica broker, device revocation authority, or
+proof that the product stream is end-to-end encrypted. Endpoints must still
+authenticate the signed Vibe Screen session transcript and DTLS fingerprint
+independently.
 
 ## Build and run
 
@@ -21,15 +32,19 @@ cd services/signaling
 cp config.example.json config.json
 export VIBE_SIGNALING_ISSUER_TOKEN="$(openssl rand -base64 48)"
 export VIBE_SIGNALING_METRICS_TOKEN="$(openssl rand -base64 48)"
+# Only required when authority_mode is production_authority:
+export VIBE_SIGNALING_AUTHORITY_TOKEN="$(openssl rand -base64 48)"
 go build -trimpath -o build/vibe-signaling ./cmd/vibe-signaling
 ./build/vibe-signaling --config config.json
 ```
 
-Do not put either token in the JSON file, shell history, repository, mobile app,
-or diagnostic bundle. In production, inject them from a secret manager. The
-issuer token belongs only to the trusted session-authority backend; a host or
-Android binary must receive a session-scoped role token, never this global
-credential. The metrics token belongs only to the Prometheus collector.
+Do not put any token in the JSON file, shell history, repository, mobile app, or
+diagnostic bundle. In production, inject them from a secret manager. The issuer
+token belongs only to the trusted session-authority backend; a host or Android
+binary must receive a session-scoped role token, never this global credential.
+The metrics token belongs only to the Prometheus collector. The authority token
+authenticates signaling to the authority service and is independent of the
+issuer token; it must never be shipped to clients.
 
 The default config binds loopback because the process has no built-in TLS. For
 remote use, terminate TLS 1.2+ at a trusted reverse proxy, restrict the issuer
@@ -52,24 +67,47 @@ and exit with a bounded ten-second shutdown deadline.
 
 Every response has `Cache-Control: no-store`. JSON request bodies require
 `Content-Type: application/json`, reject unknown fields and trailing objects,
-and are capped before decoding. Bearer tokens are random, scoped in server state
-to exactly one session and role, and expire with the session. The request body
-never selects its own role.
+and are capped before decoding. Role bearers are scoped to exactly one session
+and role and expire with the session. Local mode stores random tokens in process;
+production mode uses authority-derived tokens and rechecks them remotely instead
+of retaining them in signaling state. The request body never selects its own role.
 
-Create a session through the trusted authority:
+Create a session through the trusted authority. In `local_development` mode only
+`request_id` and `ttl_seconds` are required. In `production_authority` mode the
+request must also carry `account_id`, `host_device_id`, `client_device_id`, and
+`session_epoch`; the requester still authenticates with the issuer token, and
+signaling forwards the admission to the authority using its own independent
+authority token:
 
 ```bash
 curl --fail-with-body \
   -H "Authorization: Bearer $VIBE_SIGNALING_ISSUER_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"request_id":"01J-AUTHORITY-RETRY-ID","ttl_seconds":300}' \
+  -d '{
+    "request_id":"01J-AUTHORITY-RETRY-ID",
+    "account_id":"acct_Ep8",
+    "host_device_id":"host_Fm2",
+    "client_device_id":"device_Qk9",
+    "session_epoch":19,
+    "ttl_seconds":300
+  }' \
   http://127.0.0.1:8088/v1/sessions
 ```
 
 The `201` response contains an opaque `session_id`, separate `host_token` and
-`device_token`, and `expires_at`. Deliver each role token over an already
-authenticated channel to that endpoint. Repeating the same `request_id` and TTL
-returns the identical response with `200`; changing the TTL returns `409`.
+`device_token`, and `expires_at`. In `production_authority` mode the session
+identity and role tokens are issued by the authority; signaling only records
+them for event routing. Deliver each role token over an already authenticated
+channel to that endpoint. Repeating the same `request_id` and body returns the
+identical response with `200`; changing any field returns `409`.
+
+After a signaling restart the in-memory SDP/ICE routing state is lost. If the
+owner replays an old `request_id`, the authority returns its existing admission
+(`created=false`); signaling then fails closed with `409` rather than
+reconstructing an empty rendezvous under the same session epoch. The owner must
+issue a fresh `request_id` with a larger `session_epoch` to obtain a new
+admission. A session ID collision with an existing local routing entry also
+fails closed with `502`; signaling never overwrites existing state.
 
 Invalidate a session through the same trusted authority when the product ends
 or revokes it:
@@ -80,15 +118,19 @@ curl --fail-with-body -X DELETE \
   "http://127.0.0.1:8088/v1/sessions/$SESSION_ID"
 ```
 
-The first and repeated invalidations return `204`. Invalidation immediately
-destroys both role tokens and all queued SDP/ICE events, wakes blocked long
-polls with `404`, and rejects further role access. The service retains an
-in-memory tombstone until the session's original expiry: replaying the original
-`request_id` returns `409` instead of minting replacement credentials. The
-authority must use a new request ID and a larger product `session_epoch` for a
-fresh reconnect. This endpoint invalidates one known rendezvous session; it is
-not a durable device-revocation database or a replacement for terminating the
-product session and blocking relay credentials.
+The first and repeated invalidations return `204`. In
+`production_authority` mode signaling first asks the authority to revoke the
+admission. A missing authority admission is already invalid and is treated as
+idempotent success; any other authority error fails closed with `502` and leaves
+local state untouched. On success the authority rejects both role tokens while
+signaling destroys queued SDP/ICE events, wakes blocked long polls with `404`,
+and rejects further role access. The service retains an in-memory tombstone until
+the session's original expiry: replaying the original `request_id` returns
+`409` instead of minting replacement credentials. The authority must use a new
+request ID and a larger product `session_epoch` for a fresh reconnect. This
+endpoint invalidates one known rendezvous session; it is not a durable
+device-revocation database or a replacement for terminating the product session
+and blocking relay credentials.
 
 Publish the host offer (the device uses its token and type `answer`):
 
@@ -126,7 +168,11 @@ curl --fail-with-body \
 The response has `events` and a monotonic `next_cursor`. Pass that cursor to the
 next poll. A cursor is scoped by the session bearer; changing it can only skip
 that caller's events, never read another session. One waiter per role is allowed
-by default. Sessions and all SDP/ICE state are deleted from memory at TTL.
+by default. In `production_authority` mode every message publish is authorized
+before parsing and again immediately before commit, while every poll is
+authorized before and after its wait. A revocation that lands during a long
+poll therefore wins. Sessions and all SDP/ICE state are deleted from memory at
+TTL.
 
 ### Status codes
 
@@ -141,6 +187,7 @@ by default. Sessions and all SDP/ICE state are deleted from memory at TTL.
 | `409` | Role/state violation or conflicting idempotency replay |
 | `410` | Session expired and the caller proved possession of its role token |
 | `429` | Rate, waiter, candidate, or reserved-session-record limit reached |
+| `502` | Authority service unavailable in `production_authority` mode (fail-closed) |
 
 ## Configuration and limits
 
@@ -149,7 +196,9 @@ All JSON fields are required. Unknown fields fail startup.
 | Field | Purpose |
 | --- | --- |
 | `listen_address` | TCP bind address; keep loopback unless a secure sidecar provides TLS |
-| `session_ttl_seconds`, `max_session_ttl_seconds` | Default and authority-selectable upper TTL |
+| `authority_mode` | `local_development` (in-process issuance, local only) or `production_authority` (delegate to the authority service) |
+| `authority_url` | Authority base URL; required only for `production_authority`. Must be `https://` or loopback `http://`, with no path/query/userinfo |
+| `session_ttl_seconds`, `max_session_ttl_seconds` | Default and authority-selectable upper TTL. In `production_authority` mode `max_session_ttl_seconds` must not exceed the authority's `maximum_session_ttl_seconds` |
 | `max_active_sessions` | Hard in-memory session/reserved-tombstone cap |
 | `session_creates_per_minute` | Global trusted-authority request cap per process |
 | `messages_per_minute` | Per-role, per-session publish cap |
@@ -167,7 +216,9 @@ device ID. Add edge source-IP/global limits and DDoS controls at the TLS proxy.
 ## Metrics and health
 
 - `GET /healthz` is unauthenticated liveness and reveals only `{"status":"ok"}`.
-- `GET /readyz` is unauthenticated readiness and reveals no dependency details.
+- `GET /readyz` is unauthenticated readiness. In `production_authority` mode it
+  also probes the authority `/readyz` and returns `503` while the authority is
+  unavailable; it reveals no dependency details.
 - `GET /metrics` requires the independent metrics bearer.
 
 Prometheus output contains low-cardinality counts for created/invalidated sessions,
@@ -193,6 +244,7 @@ docker run --rm --read-only --cap-drop=ALL \
   -p 127.0.0.1:8088:8088 \
   -e VIBE_SIGNALING_ISSUER_TOKEN \
   -e VIBE_SIGNALING_METRICS_TOKEN \
+  -e VIBE_SIGNALING_AUTHORITY_TOKEN \
   -v "$PWD/config.container.example.json:/etc/vibe-screen/signaling.json:ro" \
   vibe-signaling:0.1.0
 ```
@@ -207,14 +259,25 @@ covered by the real-process integration test.
 ```bash
 make verify
 go test -run TestRealProcessHostDeviceExchangeAndGracefulShutdown -count=1 .
+# Requires a running PostgreSQL reachable via VIBE_AUTHORITY_TEST_DATABASE_URL:
+go test -run TestAuthorityProcessSessionRevocationFailClosed -count=1 .
 ```
 
-The process test builds and starts the real binary, waits for health, creates a
-session, performs offer/answer and bidirectional ICE exchange, invalidates the
-session while a long poll is blocked, verifies role-token and request-ID replay
-rejection, scrapes metrics, sends `SIGTERM`, verifies a clean exit, and checks
-that known SDP/candidate/token secrets were absent from logs. This proves
-rendezvous behavior, not a WebRTC ICE connection or TURN allocation.
+The local process test builds and starts the real binary in `local_development`
+mode, waits for health, creates a session, performs offer/answer and
+bidirectional ICE exchange, invalidates the session while a long poll is
+blocked, verifies role-token and request-ID replay rejection, scrapes metrics,
+sends `SIGTERM`, verifies a clean exit, and checks that known
+SDP/candidate/token secrets were absent from logs.
+
+The authority-backed process test starts both `vibe-authority` (PostgreSQL) and
+`vibe-signaling` (`production_authority`), registers an account and both
+devices, creates a session through the issuer endpoint, exchanges a host offer
+to the device poll, revokes the client device at the authority, and asserts
+that both role tokens are then rejected by signaling. It also confirms that
+neither process logs any service token, role token, or SDP secret. This proves
+rendezvous behavior and fail-closed revocation propagation, not a WebRTC ICE
+connection or TURN allocation.
 
 ## Upgrade and rollback
 
@@ -231,6 +294,37 @@ rendezvous behavior, not a WebRTC ICE connection or TURN allocation.
 See [OPERATIONS.md](OPERATIONS.md) for production controls and incident actions,
 and [THREAT_MODEL.md](THREAT_MODEL.md) for the security boundary and residual
 risks.
+
+## Open items
+
+The following are explicit limitations of the current `production_authority`
+slice, not accepted production behavior:
+
+- Mac and Android automatic profile/account/session issuance is not wired to the
+  authority; the local development flows still require operator-supplied
+  credentials and epoch.
+- Automatic account and device registration is not wired; accounts and devices
+  must be registered through the authority admin API before a session can be
+  created.
+- The relay/coturn control plane is not yet wired to the authority.
+- An active PeerConnection or TURN allocation is not actively disconnected when
+  a session is revoked at the authority; signaling invalidation only stops new
+  rendezvous access.
+- The authority's per-device `session_epoch` floor and the Mac pairing-scoped
+  epoch operate in different scopes; their interaction is not yet unified.
+- Signaling remains a single-instance in-memory router; horizontal replicas do
+  not share state, rate limits, or idempotency. A restart destroys all in-memory
+  routing, so an old `request_id` cannot be replayed and the owner must obtain a
+  fresh admission with a larger `session_epoch`.
+- Per-message remote authorization against the authority and the global
+  `authorityCreateMu` serialization of creates are deliberate fail-closed
+  correctness choices, not a high-throughput design. Do not claim multi-instance
+  throughput until these are re-architected.
+- Signaling and authority require synchronized clocks (NTP); expiry checks must
+  not be relaxed to compensate for clock skew.
+- The signaling `max_session_ttl_seconds` and the authority
+  `maximum_session_ttl_seconds` must be kept consistent; signaling rejects TTLs
+  above its own cap, and the authority rejects TTLs above its own.
 
 ## Provenance and licensing
 

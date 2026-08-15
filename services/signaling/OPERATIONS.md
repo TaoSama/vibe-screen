@@ -5,7 +5,12 @@
 - Bind the process to loopback or a private sidecar network.
 - Terminate TLS 1.2+ at a maintained reverse proxy; redirect/reject plaintext.
 - Restrict session creation/invalidation routes and `/metrics` to their internal callers.
-- Inject separate 32+ character issuer and metrics tokens from a secret manager.
+- Inject separate 32+ character issuer, metrics, and (in `production_authority`
+  mode) authority tokens from a secret manager. The authority token authenticates
+  signaling to the authority service and must be distinct from the issuer token.
+- In `production_authority` mode, configure `authority_url` to the authority
+  service and ensure signaling can reach it over HTTPS (or loopback HTTP for
+  local development). Signaling fails closed when the authority is unreachable.
 - Run UID/GID 65532, read-only root filesystem, no Linux capabilities, no core
   dumps, and a bounded memory/CPU/process budget.
 - Configure proxy body size at or below `max_request_body_bytes`, request read
@@ -23,9 +28,10 @@ with a route template and apply the organization's approved retention policy.
 ## Health and alerts
 
 `/healthz` means the event loop can answer HTTP. `/readyz` means the process is
-accepting traffic. Neither proves peer connectivity, TLS, TURN, or WebRTC. An
-external synthetic should create a short session, exchange an offer/answer and
-two candidates, then let it expire.
+accepting traffic; in `production_authority` mode it also requires the authority
+`/readyz` to succeed. Neither proves peer connectivity, TLS, TURN, or WebRTC.
+An external synthetic should create a short session, exchange an offer/answer
+and two candidates, then let it expire.
 
 Alert on:
 
@@ -41,21 +47,26 @@ Metrics are process-local and reset at restart. Do not use them as an audit log.
 
 ## Incidents
 
-### Issuer token exposure
+### Issuer or authority token exposure
 
 1. Remove external reachability to `/v1/sessions`.
-2. Rotate `VIBE_SIGNALING_ISSUER_TOKEN` in the authority and signaling process.
+2. Rotate `VIBE_SIGNALING_ISSUER_TOKEN` in the trusted issuer and signaling. If
+   the authority credential was compromised, rotate the shared value under
+   `VIBE_SIGNALING_AUTHORITY_TOKEN` in signaling and
+   `VIBE_AUTHORITY_SIGNALING_TOKEN` in authority.
 3. Restart signaling; all in-memory sessions and stolen role tokens disappear.
 4. Review low-cardinality creation/rejection metrics and redacted edge telemetry.
 5. Rotate TURN service credentials separately if the authority could access them.
 
 ### Role token or SDP/ICE disclosure
 
-Invalidate the known signaling session through the authority endpoint, block
+Invalidate the known signaling session through the issuer endpoint (which
+forwards the revocation to the authority in `production_authority` mode), block
 the paired device at the authority, revoke new TURN issuance, and require a
 fresh signed session epoch. Restart the instance if the session is unknown or
 the issuer is compromised. Signaling invalidation does not revoke an already
-active TURN allocation or WebRTC connection.
+active TURN allocation or WebRTC connection; those require separate
+data-plane actions.
 
 ### Memory/capacity exhaustion
 
@@ -77,6 +88,16 @@ Rollback is binary/config rollback, not state recovery. Never copy opaque memory
 state between versions. A restart invalidates all sessions by design; clients
 must acquire new role credentials and use a new product session epoch.
 
+## Clock synchronization and expiry
+
+Signaling and the authority service require synchronized clocks (NTP). Session
+expiry, authority admission expiry, and usage observation timestamps depend on
+wall-clock time. Do not relax expiry checks or extend TTLs to compensate for
+clock skew; fix the clock source instead. The signaling
+`max_session_ttl_seconds` and the authority `maximum_session_ttl_seconds` must
+be kept consistent so a TTL accepted by signaling is never rejected by the
+authority.
+
 ## Backup and retention
 
 There is no signaling database to back up. Back up only reviewed configuration,
@@ -85,3 +106,18 @@ ICE, bearer tokens, request bodies, and session identifiers must not enter logs,
 traces, backups, analytics, or crash reports. Expired state is physically removed
 from the process maps by request-time and periodic cleanup; Go heap reclamation
 does not guarantee immediate byte-level erasure.
+
+## Production authority open items
+
+- Mac/Android automatic profile/account/session issuance is not wired to the
+  authority.
+- Automatic account/device registration is not wired.
+- The relay/coturn control plane is not wired to the authority.
+- Active PeerConnection/TURN allocations are not actively disconnected on
+  authority revocation.
+- The authority per-device `session_epoch` floor and the Mac pairing-scoped
+  epoch have different scopes and are not yet unified.
+- Signaling is still single-instance in-memory routing.
+- Per-message remote authorization and the global `authorityCreateMu` create
+  serialization are fail-closed correctness choices, not a high-throughput
+  design; do not claim multi-instance throughput.
