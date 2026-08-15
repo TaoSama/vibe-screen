@@ -72,7 +72,7 @@ internal object DeviceHealthPolicy {
             else ->
                 if (snapshot.batteryPercent == null && snapshot.charging == null) {
                     DeviceHealthAttention.UNKNOWN
-                } else if (snapshot.charging == false && (snapshot.batteryPercent ?: 100) <= LOW_BATTERY_PERCENT) {
+                } else if (snapshot.charging != true && (snapshot.batteryPercent ?: 100) <= LOW_BATTERY_PERCENT) {
                     DeviceHealthAttention.POWER_RECOMMENDED
                 } else {
                     DeviceHealthAttention.NORMAL

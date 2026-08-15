@@ -157,7 +157,7 @@
     <string name="stats_description">FPS, bitrate, resolution</string>
     <string name="device_health_title">Sustained use</string>
     <string name="device_health_checking">Checking device health…</string>
-    <string name="device_health_ready">No immediate device warning</string>
+    <string name="device_health_ready">No device warnings</string>
     <string name="device_health_connect_power">Connect power for a longer session</string>
     <string name="device_health_warm">Device is warming</string>
     <string name="device_health_hot">Device is hot — reduce load or pause</string>
@@ -165,7 +165,7 @@
     <string name="device_health_battery_unknown">Battery unknown</string>
     <string name="device_health_charging">charging</string>
     <string name="device_health_discharging">on battery</string>
-    <string name="device_health_power_unknown">power source unknown</string>
+    <string name="device_health_power_unknown">charging state unknown</string>
     <string name="device_health_power_saver">power saver on</string>
     <string name="device_health_power_saver_off">power saver off</string>
     <string name="device_health_thermal_nominal">thermal normal</string>

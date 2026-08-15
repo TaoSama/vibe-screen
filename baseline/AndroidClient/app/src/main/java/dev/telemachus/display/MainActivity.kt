@@ -432,7 +432,7 @@ class MainActivity : AppCompatActivity() {
         val battery =
             snapshot.batteryPercent?.let { getString(R.string.device_health_battery, it) }
                 ?: getString(R.string.device_health_battery_unknown)
-        val powerSource =
+        val chargingState =
             getString(
                 when (snapshot.charging) {
                     true -> R.string.device_health_charging
@@ -458,7 +458,7 @@ class MainActivity : AppCompatActivity() {
                     DeviceThermalState.UNKNOWN -> R.string.device_health_thermal_unknown
                 },
             )
-        summary.text = getString(R.string.device_health_summary, battery, powerSource, powerSaver, thermal)
+        summary.text = getString(R.string.device_health_summary, battery, chargingState, powerSaver, thermal)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

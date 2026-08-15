@@ -384,7 +384,7 @@ two-hour run.
 - Run eight-hour stability, thermal, power, and reconnect tests.
 
 The Android settings surface now includes a responsive sustained-use status for
-battery level, charging source, power-saver mode, and platform thermal severity.
+battery level, charging state, power-saver mode, and platform thermal severity.
 Observation is owned by the foreground Activity lifecycle, deduplicates updates,
 and rejects callbacks after stop; 600dp portrait/landscape layout coverage keeps
 the status readable in small-tablet and resized-window configurations. This is an
