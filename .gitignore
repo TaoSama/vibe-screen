@@ -27,6 +27,7 @@
 .DS_Store
 **/.build*/
 .gradle/
+.pnpm-store/
 **/build/
 __pycache__/
 *.py[cod]
