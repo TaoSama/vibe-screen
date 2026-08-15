@@ -358,6 +358,13 @@ public struct VSKeyEvent: Sendable {
 
   public var pressed: Bool = false
 
+  /// When CAPABILITY_USB_HID_MODIFIER_BYTE is negotiated, this is the standard
+  /// USB HID modifier byte: bit 0 Left Control, bit 1 Left Shift, bit 2 Left
+  /// Alt/Option, bit 3 Left GUI/Command, bit 4 Right Control, bit 5 Right Shift,
+  /// bit 6 Right Alt/Option, and bit 7 Right GUI/Command. Without that
+  /// capability, the legacy Protocol v1 layout remains bit 0 Shift, bit 1
+  /// Control, bit 2 Alt/Option, and bit 3 GUI/Command; bits 4-7 are undefined
+  /// and must be zero. Bits 8-31 are reserved and must be zero in either layout.
   public var modifierMask: UInt32 = 0
 
   public var text: String = String()

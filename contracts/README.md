@@ -85,3 +85,11 @@ Compatibility policy:
 - binary decoders must accept additive unknown fields, but JSON projections may
   discard them and are not a field-preserving relay format;
 - use a new versioned package for an incompatible wire change.
+
+`KeyEvent.modifier_mask` keeps its original field and uses capability-gated
+interpretation. Capability `27` selects the standard USB HID modifier byte
+(`Control=0x01`, `Shift=0x02`, `Alt=0x04`, `GUI=0x08`, right-side variants in
+`0x10...0x80`). Without it, peers retain the legacy four-bit layout
+(`Shift=0x01`, `Control=0x02`, `Alt=0x04`, `GUI=0x08`). New clients collapse
+right-side modifiers to the equivalent left-side legacy bit; new hosts reject
+legacy high-nibble bits rather than guessing their meaning.

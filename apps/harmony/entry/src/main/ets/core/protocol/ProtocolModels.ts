@@ -5,7 +5,7 @@ export enum TransportKind { UNSPECIFIED = 0, USB = 1, LAN = 2, INTERNET = 3 }
 export enum Capability {
   UNSPECIFIED = 0, DISPLAY_MIRROR = 1, VIRTUAL_DISPLAY = 2, TOUCH = 3,
   KEYBOARD = 4, POINTER = 5, STYLUS = 6, TELEMETRY = 7, SESSION_RESUME = 8,
-  STYLUS_EXTENDED = 25
+  STYLUS_EXTENDED = 25, USB_HID_MODIFIER_BYTE = 27
 }
 export enum InputPhase { UNSPECIFIED = 0, BEGAN = 1, CHANGED = 2, ENDED = 3, CANCELLED = 4 }
 export enum StylusToolKind { UNSPECIFIED = 0, PEN = 1, ERASER = 2 }

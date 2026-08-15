@@ -16,7 +16,7 @@ import { decodeUtf8, encodeUtf8 } from '../.test-dist/protocol/Utf8.js';
 import { ClientCapabilities, HARMONY_ADVERTISED_CAPABILITIES } from '../.test-dist/session/ClientCapabilities.js';
 import { HeartbeatMonitor } from '../.test-dist/session/HeartbeatMonitor.js';
 import { ProgressWatchdog } from '../.test-dist/session/ProgressWatchdog.js';
-import { isSupportedVideoConfig, ProductSession, ProductSessionState } from '../.test-dist/session/ProductSession.js';
+import { isSupportedVideoConfig, modifierWireMask, ProductSession, ProductSessionState } from '../.test-dist/session/ProductSession.js';
 import { ReconnectPolicy } from '../.test-dist/session/ReconnectPolicy.js';
 import { SessionState, SessionStateMachine } from '../.test-dist/session/SessionStateMachine.js';
 import { CredentialLifecycle, PairingClient } from '../.test-dist/security/PairingSecurity.js';
@@ -162,6 +162,34 @@ test('negotiated capabilities must be a legal subset and gate optional input', (
   session.receive(controlEnvelope(2n, 21, new ProtobufWriter().uint32(1, 1)
     .packedVarints(4, [Capability.TOUCH]).packedVarints(5, [Codec.HEVC]), false), 2n);
   assert.throws(() => session.receive(fixture('session_accepted.binpb'), 3n), /invalid negotiated/);
+});
+
+test('USB HID modifier capability 27 preserves standard and legacy layouts', () => {
+  assert.equal(Capability.USB_HID_MODIFIER_BYTE, 27);
+  assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.USB_HID_MODIFIER_BYTE), true);
+  assert.equal(modifierWireMask(0x01, true), 0x01);
+  assert.equal(modifierWireMask(0x02, true), 0x02);
+  assert.equal(modifierWireMask(0x01, false), 0x02);
+  assert.equal(modifierWireMask(0x02, false), 0x01);
+  assert.equal(modifierWireMask(0x10, false), 0x02);
+  assert.equal(modifierWireMask(0x20, false), 0x01);
+  assert.equal(modifierWireMask(0xc0, false), 0x0c);
+  assert.throws(() => modifierWireMask(0x100, false), /Invalid modifier byte/);
+  const encoder = new ProtocolEncoder();
+  const standardControl = { inputId: 102n, usbHidUsage: 4, pressed: true, modifierMask: 0x01,
+    text: 'a', target: { displayId: 'display-main', streamId: 42n } };
+  const legacyControl = { ...standardControl, inputId: 104n, modifierMask: 0x02 };
+  assert.deepEqual(encoder.key(ProtocolEncoder.metadata(17n, sessionId, 7n, 1000000017n), standardControl),
+    fixture('key_usb_hid_control.binpb'));
+  assert.deepEqual(encoder.key(ProtocolEncoder.metadata(19n, sessionId, 7n, 1000000019n), legacyControl),
+    fixture('key_legacy_control.binpb'));
+  const dependencies = new ClientCapabilities(
+    [Capability.TOUCH, Capability.KEYBOARD, Capability.USB_HID_MODIFIER_BYTE], [Capability.TOUCH]);
+  assert.throws(() => dependencies.acceptHost(
+    [Capability.TOUCH, Capability.USB_HID_MODIFIER_BYTE]), /required client capability/);
+  dependencies.acceptHost([Capability.TOUCH, Capability.KEYBOARD, Capability.USB_HID_MODIFIER_BYTE]);
+  assert.throws(() => dependencies.acceptNegotiated(
+    [Capability.TOUCH, Capability.USB_HID_MODIFIER_BYTE]), /invalid negotiated capability set/);
 });
 
 test('product session suppresses unnegotiated pointer and keyboard input', () => {

@@ -52,12 +52,34 @@ class ProtocolV1SessionTest {
                Capability.CAPABILITY_MULTI_DISPLAY,
                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,
+                Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
            ),
            hello.clientHello.capabilitiesList,
        )
        assertEquals(emptyList<Capability>(), hello.clientHello.requiredCapabilitiesList)
        assertEquals(listOf(Codec.CODEC_HEVC, Codec.CODEC_H264), hello.clientHello.codecsList)
    }
+
+    @Test
+    fun hostModifierCapabilityWithoutKeyboardFailsDependencyValidation() {
+        val session = session()
+        session.clientHello()
+        val failure =
+            assertThrows(ProtocolV1Failure::class.java) {
+                session.receive(
+                    hostHello(
+                        2,
+                        advertisedCapabilities =
+                            listOf(
+                                Capability.CAPABILITY_TOUCH,
+                                Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
+                            ),
+                    ),
+                )
+            }
+        assertEquals(ProtocolV1Failure.Source.PEER_PROTOCOL_VIOLATION, failure.source)
+        assertFalse(failure.retryable)
+    }
 
     @Test
     fun hostActionCatalogBeforeStreamingIsCachedAndFilteredToKnownIds() {
@@ -453,6 +475,7 @@ class ProtocolV1SessionTest {
                 Capability.CAPABILITY_KEYBOARD,
                 Capability.CAPABILITY_POINTER,
                 Capability.CAPABILITY_MULTI_DISPLAY,
+                Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
             ),
             session.negotiated,
         )
@@ -478,6 +501,14 @@ class ProtocolV1SessionTest {
         assertTrue(key.keyEvent.pressed)
         assertEquals(8, key.keyEvent.modifierMask)
         assertEquals(42L, key.keyEvent.target.streamId)
+
+        assertEquals(0x01, session.key(203, 0x04, true, 0x01).keyEvent.modifierMask)
+        assertEquals(0x02, session.key(204, 0x04, true, 0x02).keyEvent.modifierMask)
+
+        val oldHost = nativeInputStreamingSession(standardModifierByte = false)
+        assertEquals(0x02, oldHost.key(203, 0x04, true, 0x01).keyEvent.modifierMask)
+        assertEquals(0x01, oldHost.key(204, 0x04, true, 0x02).keyEvent.modifierMask)
+        assertEquals(0x02, oldHost.key(205, 0x04, true, 0x10).keyEvent.modifierMask)
     }
 
     @Test
@@ -882,14 +913,17 @@ class ProtocolV1SessionTest {
             )
         }
 
-    private fun nativeInputStreamingSession(): ProtocolV1Session {
+    private fun nativeInputStreamingSession(standardModifierByte: Boolean = true): ProtocolV1Session {
         val caps =
-            listOf(
+            buildList {
+                addAll(listOf(
                 Capability.CAPABILITY_TOUCH,
                 Capability.CAPABILITY_KEYBOARD,
                 Capability.CAPABILITY_POINTER,
                 Capability.CAPABILITY_MULTI_DISPLAY,
-            )
+                ))
+                if (standardModifierByte) add(Capability.CAPABILITY_USB_HID_MODIFIER_BYTE)
+            }
         return session().also {
             it.clientHello()
             it.receive(hostHello(2, advertisedCapabilities = caps))

@@ -152,6 +152,23 @@ class ProtocolFixtureTest(unittest.TestCase):
             decoded = json.loads(decoded_path.read_text())
             self.assertEqual(["CAPABILITY_TOUCH"], decoded["clientHello"]["requiredCapabilities"])
 
+    def test_modifier_fixtures_cover_standard_and_legacy_layouts(self) -> None:
+        fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}
+        expected = {
+            "key_usb_hid_control": 0x01,
+            "key_usb_hid_shift": 0x02,
+            "key_legacy_control": 0x02,
+            "key_legacy_shift": 0x01,
+        }
+        with tempfile.TemporaryDirectory(prefix="vibescreen-modifier-fixtures-") as temporary:
+            for name, mask in expected.items():
+                entry = fixtures[name]
+                output = Path(temporary) / f"{name}.json"
+                convert(entry["messageType"], FIXTURE_ROOT / entry["binary"], "binpb", output, "json")
+                event = json.loads(output.read_text())["keyEvent"]
+                self.assertEqual(mask, event["modifierMask"], name)
+
+
     def test_rotation_fixtures_cover_initial_and_runtime_values(self) -> None:
         fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}
         with tempfile.TemporaryDirectory(prefix="vibescreen-rotation-fixtures-") as temporary:

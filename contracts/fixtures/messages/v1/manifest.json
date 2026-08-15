@@ -223,6 +223,74 @@
       "source": "json/stylus_extended.json"
     },
     {
+      "binary": "bin/key_usb_hid_control.binpb",
+      "byteLength": 54,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "17",
+        "payloadCase": "keyEvent",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000017",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "key_usb_hid_control",
+      "sha256": "a5d82717d58ffd9a681fbef29148cba34deb0994841873209b8a5deea329043d",
+      "source": "json/key_usb_hid_control.json"
+    },
+    {
+      "binary": "bin/key_usb_hid_shift.binpb",
+      "byteLength": 54,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "18",
+        "payloadCase": "keyEvent",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000018",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "key_usb_hid_shift",
+      "sha256": "f93053fdac9074d194e603f16da935d79a53d827486daf4e40098d92fea228b9",
+      "source": "json/key_usb_hid_shift.json"
+    },
+    {
+      "binary": "bin/key_legacy_control.binpb",
+      "byteLength": 54,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "19",
+        "payloadCase": "keyEvent",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000019",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "key_legacy_control",
+      "sha256": "b005764e5f6a35634875f21b068e7c26fdb03fdc1700fc222b624cc2a44cea1c",
+      "source": "json/key_legacy_control.json"
+    },
+    {
+      "binary": "bin/key_legacy_shift.binpb",
+      "byteLength": 54,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "20",
+        "payloadCase": "keyEvent",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000020",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "key_legacy_shift",
+      "sha256": "4df5dfc8140259fb2124325b81da4df86afaeb101ffd9a8d36a0a91ab19c2d97",
+      "source": "json/key_legacy_shift.json"
+    },
+    {
       "binary": "bin/ping.binpb",
       "byteLength": 27,
       "channel": 1,

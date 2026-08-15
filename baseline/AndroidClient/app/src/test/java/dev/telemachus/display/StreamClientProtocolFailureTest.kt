@@ -277,6 +277,7 @@ class StreamClientProtocolFailureTest {
                Capability.CAPABILITY_MULTI_DISPLAY,
                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,
+                Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
            ),
            envelope.clientHello.capabilitiesList,
        )

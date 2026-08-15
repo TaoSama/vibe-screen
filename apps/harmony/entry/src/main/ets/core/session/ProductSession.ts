@@ -222,10 +222,15 @@ export class ProductSession {
   key(event: KeyInput): SessionAction {
     this.requireInputCapability(Capability.KEYBOARD);
     if (event.inputId <= 0n || !Number.isInteger(event.usbHidUsage) || event.usbHidUsage <= 0 ||
-      event.usbHidUsage > 0xffff || !Number.isInteger(event.modifierMask) || event.modifierMask < 0) {
+      event.usbHidUsage > 0xffff || !Number.isInteger(event.modifierMask) || event.modifierMask < 0 ||
+      event.modifierMask > 0xff) {
       throw new Error('Invalid keyboard input');
     }
-    return { kind: 'send', intent: { kind: 'key', event: { ...event, target: this.target() } } };
+    return { kind: 'send', intent: { kind: 'key', event: {
+      ...event,
+      modifierMask: modifierWireMask(event.modifierMask, this.canSend(Capability.USB_HID_MODIFIER_BYTE)),
+      target: this.target()
+    } } };
   }
 
   stylus(event: StylusInput): SessionAction {
@@ -510,4 +515,18 @@ export class ProductSession {
   private equalBytes(left: Uint8Array, right: Uint8Array): boolean {
     return left.length === right.length && left.every((value: number, index: number) => value === right[index]);
   }
+}
+
+export function modifierWireMask(standardMask: number, standardByteNegotiated: boolean): number {
+  if (!Number.isInteger(standardMask) || standardMask < 0 || standardMask > 0xff) {
+    throw new Error('Invalid modifier byte');
+  }
+  if (standardByteNegotiated) return standardMask;
+  // Legacy v1 is Shift, Control, Option, Command in bits 0..3.
+  let legacyMask: number = 0;
+  if ((standardMask & 0x22) !== 0) legacyMask |= 0x01;
+  if ((standardMask & 0x11) !== 0) legacyMask |= 0x02;
+  if ((standardMask & 0x44) !== 0) legacyMask |= 0x04;
+  if ((standardMask & 0x88) !== 0) legacyMask |= 0x08;
+  return legacyMask;
 }

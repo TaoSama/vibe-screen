@@ -30,3 +30,8 @@ for incompatible wire semantics. The contract test also verifies that Buf can
 decode a fixture extended with an unknown binary field. Its JSON projection
 intentionally drops that field, so the test does not claim unknown-field
 preservation by Swift, Kotlin, or a binary relay.
+
+The four `key_*` fixtures make the capability-gated modifier layouts explicit.
+`key_usb_hid_control` and `key_usb_hid_shift` require negotiated capability
+`27` and use `0x01`/`0x02`. `key_legacy_control` and `key_legacy_shift` model a
+mixed-version session without that capability and use `0x02`/`0x01`.

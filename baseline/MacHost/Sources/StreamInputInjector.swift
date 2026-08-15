@@ -9,11 +9,32 @@ enum StreamInputWire {
     static let buttonPrimary: UInt32 = 1 << 0
     static let buttonSecondary: UInt32 = 1 << 1
 
-    /// KeyEvent.modifier_mask bits.
-    static let modifierShift: UInt32 = 1 << 0
-    static let modifierControl: UInt32 = 1 << 1
+    /// Canonical standard USB HID modifier byte used after wire normalization.
+    static let modifierControl: UInt32 = 1 << 0
+    static let modifierShift: UInt32 = 1 << 1
     static let modifierOption: UInt32 = 1 << 2
     static let modifierCommand: UInt32 = 1 << 3
+    static let modifierRightControl: UInt32 = 1 << 4
+    static let modifierRightShift: UInt32 = 1 << 5
+    static let modifierRightOption: UInt32 = 1 << 6
+    static let modifierRightCommand: UInt32 = 1 << 7
+    static let standardModifierByteMask: UInt32 = 0xFF
+    static let legacyModifierMask: UInt32 = 0x0F
+
+    static func validatesModifierMask(_ mask: UInt32, standardByteNegotiated: Bool) -> Bool {
+        mask & ~(standardByteNegotiated ? standardModifierByteMask : legacyModifierMask) == 0
+    }
+
+    static func standardModifierMask(fromWireMask mask: UInt32, standardByteNegotiated: Bool) -> UInt32 {
+        guard !standardByteNegotiated else { return mask }
+        // Legacy v1 is Shift, Control, Option, Command in bits 0...3.
+        var standardMask: UInt32 = 0
+        if mask & 0x01 != 0 { standardMask |= modifierShift }
+        if mask & 0x02 != 0 { standardMask |= modifierControl }
+        if mask & 0x04 != 0 { standardMask |= modifierOption }
+        if mask & 0x08 != 0 { standardMask |= modifierCommand }
+        return standardMask
+    }
 }
 
 /// Pure, side-effect-free translation of client input into the values a
@@ -37,10 +58,18 @@ enum StreamInputMapping {
 
     static func modifierFlags(fromModifierMask mask: UInt32) -> CGEventFlags {
         var flags: CGEventFlags = []
-        if mask & StreamInputWire.modifierShift != 0 { flags.insert(.maskShift) }
-        if mask & StreamInputWire.modifierControl != 0 { flags.insert(.maskControl) }
-        if mask & StreamInputWire.modifierOption != 0 { flags.insert(.maskAlternate) }
-        if mask & StreamInputWire.modifierCommand != 0 { flags.insert(.maskCommand) }
+        if mask & (StreamInputWire.modifierShift | StreamInputWire.modifierRightShift) != 0 {
+            flags.insert(.maskShift)
+        }
+        if mask & (StreamInputWire.modifierControl | StreamInputWire.modifierRightControl) != 0 {
+            flags.insert(.maskControl)
+        }
+        if mask & (StreamInputWire.modifierOption | StreamInputWire.modifierRightOption) != 0 {
+            flags.insert(.maskAlternate)
+        }
+        if mask & (StreamInputWire.modifierCommand | StreamInputWire.modifierRightCommand) != 0 {
+            flags.insert(.maskCommand)
+        }
         return flags
     }
 

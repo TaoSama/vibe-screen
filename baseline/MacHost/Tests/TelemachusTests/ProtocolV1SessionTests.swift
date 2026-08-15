@@ -7,7 +7,7 @@ final class ProtocolV1SessionTests: XCTestCase {
     func testProductionHostCapabilitiesAreExact() {
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true),
-            [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions]
+            [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions, .usbHidModifierByte]
         )
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false),
@@ -109,7 +109,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(hostHello.selectedProtocol, 1)
         // hostHello.capabilities is sorted by raw value: multiDisplay(18) <
         // hostActions(20) < clientVideoControl(24).
-        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .stylus, .multiDisplay, .hostActions, .clientVideoControl, .stylusExtended])
+        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .stylus, .multiDisplay, .hostActions, .clientVideoControl, .stylusExtended, .usbHidModifierByte])
         guard case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected SessionAccepted")
         }
@@ -225,6 +225,16 @@ final class ProtocolV1SessionTests: XCTestCase {
             try protocolError(from: omittedFromOffer.handleControl(inconsistent.serializedData())).code,
             .unsupportedCapability
         )
+
+        let modifierWithoutKeyboard = makeSession()
+        var invalidModifierOffer = clientHello()
+        invalidModifierOffer.clientHello.capabilities.append(.usbHidModifierByte)
+        XCTAssertEqual(
+            try protocolError(from: modifierWithoutKeyboard.handleControl(
+                invalidModifierOffer.serializedData()
+            )).code,
+            .unsupportedCapability
+        )
     }
 
     func testUnimplementedTelemetryIsNotAdvertisedOrNegotiated() throws {
@@ -238,7 +248,7 @@ final class ProtocolV1SessionTests: XCTestCase {
               case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected HostHello + SessionAccepted")
         }
-        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .stylus, .multiDisplay, .hostActions, .clientVideoControl, .stylusExtended])
+        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .stylus, .multiDisplay, .hostActions, .clientVideoControl, .stylusExtended, .usbHidModifierByte])
         XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .multiDisplay])
     }
 
@@ -324,6 +334,40 @@ final class ProtocolV1SessionTests: XCTestCase {
                 try envelope(id: 4, payload: .pointerEvent(pointer)).serializedData()
             )).code,
             .unsupportedCapability
+        )
+    }
+
+    func testModifierCompatibilityMatrixUsesNegotiatedLayout() throws {
+        let standard = try readyKeyboardSession(standardModifierByte: true)
+        XCTAssertEqual(try keyModifiers(from: standard, id: 4, wireMask: 0x01), 0x01)
+        XCTAssertEqual(try keyModifiers(from: standard, id: 5, wireMask: 0x02), 0x02)
+        XCTAssertEqual(try keyModifiers(from: standard, id: 6, wireMask: 0xF0), 0xF0)
+        var reserved = VSKeyEvent()
+        reserved.inputID = 7
+        reserved.usbHidUsage = 0x04
+        reserved.pressed = true
+        reserved.modifierMask = 0x100
+        XCTAssertEqual(
+            try protocolError(from: standard.handleControl(
+                try envelope(id: 7, payload: .keyEvent(reserved)).serializedData()
+            )).code,
+            .invalidState
+        )
+
+        let legacy = try readyKeyboardSession(standardModifierByte: false)
+        XCTAssertEqual(try keyModifiers(from: legacy, id: 4, wireMask: 0x02), 0x01)
+        XCTAssertEqual(try keyModifiers(from: legacy, id: 5, wireMask: 0x01), 0x02)
+
+        var invalid = VSKeyEvent()
+        invalid.inputID = 3
+        invalid.usbHidUsage = 0x04
+        invalid.pressed = true
+        invalid.modifierMask = 0x10
+        XCTAssertEqual(
+            try protocolError(from: legacy.handleControl(
+                try envelope(id: 6, payload: .keyEvent(invalid)).serializedData()
+            )).code,
+            .invalidState
         )
     }
 
@@ -854,6 +898,44 @@ final class ProtocolV1SessionTests: XCTestCase {
         result.accepted = true
         _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(result)).serializedData())
         return session
+    }
+
+    private func readyKeyboardSession(standardModifierByte: Bool) throws -> ProtocolV1SessionCoordinator {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities.append(.keyboard)
+        if standardModifierByte {
+            hello.clientHello.capabilities.append(.usbHidModifierByte)
+        }
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        var result = VSVideoConfigResult()
+        result.configEpoch = 1
+        result.streamID = 1
+        result.accepted = true
+        _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(result)).serializedData())
+        return session
+    }
+
+    private func keyModifiers(
+        from session: ProtocolV1SessionCoordinator,
+        id: UInt64,
+        wireMask: UInt32
+    ) throws -> UInt32 {
+        var key = VSKeyEvent()
+        key.inputID = id
+        key.usbHidUsage = 0x04
+        key.pressed = true
+        key.modifierMask = wireMask
+        let actions = session.handleControl(try envelope(id: id, payload: .keyEvent(key)).serializedData())
+        for action in actions {
+            if case .key(_, _, let modifiers, _) = action { return modifiers }
+        }
+        throw TestError.missingProtocolError
     }
 
     private func readyStylusSession() throws -> ProtocolV1SessionCoordinator {

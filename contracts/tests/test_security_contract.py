@@ -33,6 +33,24 @@ def enum_values(source: str, enum_name: str) -> dict[str, int]:
 
 
 class SecurityContractTest(unittest.TestCase):
+    def test_usb_hid_modifier_byte_capability_is_additive_value_27(self) -> None:
+        session_source = (PROTO_ROOT / "session.proto").read_text()
+        input_source = (PROTO_ROOT / "input.proto").read_text()
+        capabilities = enum_values(session_source, "Capability")
+        self.assertEqual(27, capabilities["CAPABILITY_USB_HID_MODIFIER_BYTE"])
+        self.assertEqual(len(capabilities), len(set(capabilities.values())))
+        self.assertEqual(
+            {
+                "input_id": 1,
+                "usb_hid_usage": 2,
+                "pressed": 3,
+                "modifier_mask": 4,
+                "text": 5,
+                "target": 6,
+            },
+            message_fields(input_source, "KeyEvent"),
+        )
+
     def test_client_required_capabilities_is_additive_field_nine(self) -> None:
         source = (PROTO_ROOT / "session.proto").read_text()
         self.assertEqual(9, message_fields(source, "ClientHello")["required_capabilities"])

@@ -59,6 +59,21 @@ func testSessionAndProtobuf() throws {
     try require(decoded.protocolVersion == 1, "wrong protocol version")
     try require(decoded.clientHello.codecs == [.h264, .hevc], "codec round trip")
 
+    var missingDependencies = SessionState()
+    try missingDependencies.beginConnection()
+    try missingDependencies.transportConnected()
+    try missingDependencies.accept(
+        selectedProtocol: 1,
+        sessionID: Data([0xbb]),
+        epoch: 8,
+        localCapabilities: [.touch, .usbHidModifierByte, .stylusExtended],
+        hostCapabilities: [.touch, .usbHidModifierByte, .stylusExtended]
+    )
+    try require(
+        missingDependencies.negotiatedCapabilities == [.touch],
+        "capability dependency filtering"
+    )
+
     var header = VSMediaPacketHeader()
     header.streamID = 3
     header.sessionEpoch = 7
@@ -71,6 +86,34 @@ func testSessionAndProtobuf() throws {
     let packet = try MediaPacket(serializedFrame: mediaBytes)
     try require(packet.header.streamID == 3, "media header round trip")
     try require(packet.payload == Data([0x65, 0x01]), "media payload boundary")
+}
+
+func testUSBHIDModifierCompatibility() throws {
+    try require(VSCapability.usbHidModifierByte.rawValue == 27, "modifier capability allocation")
+    try require(
+        USBHIDModifierWire.encode(standardMask: 0x01, standardByteNegotiated: true) == 0x01,
+        "new-new Control layout"
+    )
+    try require(
+        USBHIDModifierWire.encode(standardMask: 0x02, standardByteNegotiated: true) == 0x02,
+        "new-new Shift layout"
+    )
+    try require(
+        USBHIDModifierWire.encode(standardMask: 0x01, standardByteNegotiated: false) == 0x02,
+        "new-old Control fallback"
+    )
+    try require(
+        USBHIDModifierWire.encode(standardMask: 0x02, standardByteNegotiated: false) == 0x01,
+        "new-old Shift fallback"
+    )
+    try require(
+        USBHIDModifierWire.encode(standardMask: 0xF0, standardByteNegotiated: false) == 0x0F,
+        "legacy right-side collapse"
+    )
+    try require(
+        USBHIDModifierWire.encode(standardMask: 0x100, standardByteNegotiated: true) == nil,
+        "reserved modifier bit accepted"
+    )
 }
 
 func testSharedProtocolFixture() throws {
@@ -722,6 +765,7 @@ do {
     try testFraming()
     FileHandle.standardError.write(Data("RUN: protocol/session\n".utf8))
     try testSessionAndProtobuf()
+    try testUSBHIDModifierCompatibility()
     try testSharedProtocolFixture()
     try testProtocolV1GoldenFixtures()
     FileHandle.standardError.write(Data("RUN: codec/backoff\n".utf8))

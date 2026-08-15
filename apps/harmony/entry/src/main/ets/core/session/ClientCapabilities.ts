@@ -1,7 +1,8 @@
 import { Capability } from '../protocol/ProtocolModels';
 
 export const HARMONY_ADVERTISED_CAPABILITIES: Capability[] = [
-  Capability.TOUCH, Capability.KEYBOARD, Capability.POINTER, Capability.STYLUS, Capability.SESSION_RESUME
+  Capability.TOUCH, Capability.KEYBOARD, Capability.POINTER, Capability.STYLUS, Capability.SESSION_RESUME,
+  Capability.USB_HID_MODIFIER_BYTE
 ];
 export const HARMONY_REQUIRED_CAPABILITIES: Capability[] = [Capability.TOUCH];
 
@@ -57,6 +58,7 @@ export class ClientCapabilities {
   }
 
   private hasValidDependencies(capabilities: Set<number>): boolean {
-    return !capabilities.has(Capability.STYLUS_EXTENDED) || capabilities.has(Capability.STYLUS);
+    return (!capabilities.has(Capability.STYLUS_EXTENDED) || capabilities.has(Capability.STYLUS)) &&
+      (!capabilities.has(Capability.USB_HID_MODIFIER_BYTE) || capabilities.has(Capability.KEYBOARD));
   }
 }

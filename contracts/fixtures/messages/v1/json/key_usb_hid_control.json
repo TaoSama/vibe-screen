@@ -1,0 +1,15 @@
+{
+  "protocolVersion": 1,
+  "messageId": "17",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000017",
+  "keyEvent": {
+    "inputId": "102",
+    "usbHidUsage": 4,
+    "pressed": true,
+    "modifierMask": 1,
+    "text": "a",
+    "target": {"displayId": "display-main", "streamId": "42"}
+  }
+}

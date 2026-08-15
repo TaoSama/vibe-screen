@@ -1,6 +1,7 @@
 package dev.telemachus.display.protocol
 
 import com.google.protobuf.ByteString
+import dev.telemachus.display.NativeInputWire
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClientHello
 import dev.vibescreen.protocol.v1.Codec
@@ -189,6 +190,7 @@ internal class ProtocolV1Session(
             Capability.CAPABILITY_MULTI_DISPLAY,
             Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
             Capability.CAPABILITY_HOST_ACTIONS,
+            Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
         )
     private val requiredCapabilities = emptySet<Capability>()
 
@@ -619,7 +621,13 @@ internal class ProtocolV1Session(
                 .setInputId(inputId)
                 .setUsbHidUsage(usbHidUsage)
                 .setPressed(pressed)
-                .setModifierMask(modifierMask)
+                .setModifierMask(
+                    NativeInputWire.wireModifierMask(
+                        standardMask = modifierMask,
+                        standardByteNegotiated =
+                            Capability.CAPABILITY_USB_HID_MODIFIER_BYTE in negotiatedCapabilities,
+                    ),
+                )
                 .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
                 .build()
         return envelope().setKeyEvent(event).build()
@@ -696,6 +704,11 @@ internal class ProtocolV1Session(
         if (hello.selectedProtocol != VERSION) throw protocolFailure("Unsupported selected protocol ${hello.selectedProtocol}")
         hostCapabilities = hello.capabilitiesList.toSet()
         hostCodecs = hello.codecsList.toSet()
+        if (Capability.CAPABILITY_USB_HID_MODIFIER_BYTE in hostCapabilities &&
+            Capability.CAPABILITY_KEYBOARD !in hostCapabilities
+        ) {
+            throw protocolFailure("USB HID modifier-byte capability requires keyboard")
+        }
         val missing = requiredCapabilities - hostCapabilities
         if (missing.isNotEmpty()) {
             throw protocolFailure("Host lacks required capabilities: $missing")

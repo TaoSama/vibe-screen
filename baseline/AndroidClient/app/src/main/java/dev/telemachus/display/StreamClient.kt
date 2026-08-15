@@ -1264,9 +1264,9 @@ class StreamClient(
     }
 
     /**
-     * Forward a key event to the host. modifierMask uses the shared wire bits
-     * (bit0 Shift, bit1 Control, bit2 Alt/Option, bit3 Meta/Command). No-op
-     * unless keyboard input was negotiated and media is streaming.
+     * Forward a key event to the host. modifierMask uses the canonical USB HID
+     * byte; ProtocolV1Session selects the negotiated standard or legacy wire
+     * layout. No-op unless keyboard input was negotiated and media is streaming.
      */
     fun sendKey(
         usbHidUsage: Int,

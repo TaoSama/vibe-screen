@@ -21,6 +21,7 @@ enum ProtocolV1SelfTest {
        testTouchTargetAndDisconnect(failures: &failures)
         testNativePointerKeyboardInput(failures: &failures)
         testNativeInputMapping(failures: &failures)
+        testModifierCompatibility(failures: &failures)
         testClientVideoPreferences(failures: &failures)
         testHostActions(failures: &failures)
         if failures.isEmpty {
@@ -113,7 +114,8 @@ enum ProtocolV1SelfTest {
                 "client_hello", "host_hello", "session_accepted",
                 "list_displays_request", "list_displays_response",
                 "start_display_request", "start_display_response",
-                "video_config", "display_changed", "video_config_result", "touch", "stylus", "ping", "pong",
+                "video_config", "display_changed", "video_config_result", "touch", "stylus",
+                "key_usb_hid_control", "key_usb_hid_shift", "key_legacy_control", "key_legacy_shift", "ping", "pong",
                 "protocol_error"
             ]
             for name in controls {
@@ -150,7 +152,7 @@ enum ProtocolV1SelfTest {
     private static func testNegotiationAndMediaGate(failures: inout [String]) {
         do {
             guard ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true)
-                    == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions],
+                    == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions, .usbHidModifierByte],
                   ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false)
                     == [.multiDisplay, .clientVideoControl] else {
                 failures.append("production HostHello capabilities are not exact")
@@ -170,10 +172,19 @@ enum ProtocolV1SelfTest {
             guard helloResponses.count == 2,
                   case .hostHello(let hostHello)? = helloResponses[0].payload,
                   case .sessionAccepted(let accepted)? = helloResponses[1].payload,
-                  Set(hostHello.capabilities) == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions],
+                  Set(hostHello.capabilities) == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions, .usbHidModifierByte],
                   accepted.sessionID == sessionID,
                   accepted.negotiatedCapabilities == [.touch, .multiDisplay] else {
                 failures.append("ClientHello did not produce HostHello + SessionAccepted")
+                return
+            }
+            guard VSCapability.usbHidModifierByte.rawValue == 27,
+                  StreamInputWire.standardModifierMask(fromWireMask: 0x02, standardByteNegotiated: false) == 0x01,
+                  StreamInputWire.standardModifierMask(fromWireMask: 0x01, standardByteNegotiated: false) == 0x02,
+                  StreamInputWire.standardModifierMask(fromWireMask: 0xF0, standardByteNegotiated: true) == 0xF0,
+                  !StreamInputWire.validatesModifierMask(0x10, standardByteNegotiated: false),
+                  StreamInputWire.validatesModifierMask(0x80, standardByteNegotiated: true) else {
+                failures.append("USB HID modifier compatibility matrix failed")
                 return
             }
             guard try session.makeMediaFrame(payload: Data([1]), timestamp: 1, keyframe: true) == nil else {
@@ -237,6 +248,53 @@ enum ProtocolV1SelfTest {
             }
         } catch {
             failures.append("negotiation test failed: \(error)")
+        }
+    }
+
+    private static func testModifierCompatibility(failures: inout [String]) {
+        do {
+            let standard = try readySession(clientCapabilities: [
+                .touch, .multiDisplay, .keyboard, .usbHidModifierByte,
+            ])
+            guard try keyModifiers(standard, id: 4, wireMask: 0x01) == 0x01,
+                  try keyModifiers(standard, id: 5, wireMask: 0x02) == 0x02,
+                  try keyModifiers(standard, id: 6, wireMask: 0xF0) == 0xF0 else {
+                failures.append("new client and new host did not use the standard modifier byte")
+                return
+            }
+            var reserved = VSKeyEvent()
+            reserved.inputID = 7
+            reserved.usbHidUsage = 0x04
+            reserved.pressed = true
+            reserved.modifierMask = 0x100
+            guard try protocolError(standard.handleControl(try envelope(
+                id: 7,
+                payload: .keyEvent(reserved)
+            ).serializedData())).code == .invalidState else {
+                failures.append("standard modifier path accepted reserved bits")
+                return
+            }
+
+            let legacy = try readySession(clientCapabilities: [.touch, .multiDisplay, .keyboard])
+            guard try keyModifiers(legacy, id: 4, wireMask: 0x02) == 0x01,
+                  try keyModifiers(legacy, id: 5, wireMask: 0x01) == 0x02 else {
+                failures.append("old client and new host did not preserve legacy Control/Shift")
+                return
+            }
+            var invalid = VSKeyEvent()
+            invalid.inputID = 6
+            invalid.usbHidUsage = 0x04
+            invalid.pressed = true
+            invalid.modifierMask = 0x10
+            guard try protocolError(legacy.handleControl(try envelope(
+                id: 6,
+                payload: .keyEvent(invalid)
+            ).serializedData())).code == .invalidState else {
+                failures.append("legacy host path accepted an undefined right-side modifier")
+                return
+            }
+        } catch {
+            failures.append("modifier compatibility test failed: \(error)")
         }
     }
 
@@ -481,6 +539,16 @@ enum ProtocolV1SelfTest {
             capabilityHello.clientHello.requiredCapabilities = [.telemetry]
             guard try protocolError(capabilitySession.handleControl(capabilityHello.serializedData())).code == .unsupportedCapability else {
                 failures.append("unsupported required capability was not rejected")
+                return
+            }
+
+            let invalidModifierSession = makeSession()
+            var invalidModifierHello = clientHello()
+            invalidModifierHello.clientHello.capabilities.append(.usbHidModifierByte)
+            guard try protocolError(invalidModifierSession.handleControl(
+                invalidModifierHello.serializedData()
+            )).code == .unsupportedCapability else {
+                failures.append("modifier capability without keyboard was not rejected")
                 return
             }
 
@@ -753,6 +821,21 @@ enum ProtocolV1SelfTest {
         guard flags.contains(.maskShift), flags.contains(.maskCommand),
               !flags.contains(.maskControl), !flags.contains(.maskAlternate) else {
             failures.append("modifier flag mapping is incorrect")
+            return
+        }
+        guard StreamInputMapping.modifierFlags(
+                fromModifierMask: StreamInputWire.modifierRightControl
+              ) == .maskControl,
+              StreamInputMapping.modifierFlags(
+                fromModifierMask: StreamInputWire.modifierRightShift
+              ) == .maskShift,
+              StreamInputMapping.modifierFlags(
+                fromModifierMask: StreamInputWire.modifierRightOption
+              ) == .maskAlternate,
+              StreamInputMapping.modifierFlags(
+                fromModifierMask: StreamInputWire.modifierRightCommand
+              ) == .maskCommand else {
+            failures.append("right-side modifier flag mapping is incorrect")
             return
         }
         guard StreamInputMapping.macKeyCode(fromUSBHIDUsage: 0x04) == 0x00,
@@ -1458,6 +1541,22 @@ enum ProtocolV1SelfTest {
             guard case .sendControl(let data) = action else { return nil }
             return try VSEnvelope(serializedBytes: data)
         }
+    }
+
+    private static func keyModifiers(
+        _ session: ProtocolV1SessionCoordinator,
+        id: UInt64,
+        wireMask: UInt32
+    ) throws -> UInt32 {
+        var key = VSKeyEvent()
+        key.inputID = id
+        key.usbHidUsage = 0x04
+        key.pressed = true
+        key.modifierMask = wireMask
+        for action in session.handleControl(try envelope(id: id, payload: .keyEvent(key)).serializedData()) {
+            if case .key(_, _, let modifiers, _) = action { return modifiers }
+        }
+        throw SelfTestError.missingProtocolError
     }
 
     private static func protocolError(_ actions: [ProtocolV1SessionAction]) throws -> VSProtocolError {

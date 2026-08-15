@@ -22,7 +22,7 @@ struct ProtocolV1SessionConfiguration {
         // Client video control tunes the host encoder, needs no Accessibility,
         // and is always offered so the client can adjust bitrate/fps/quality.
         touchEnabled
-            ? [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions]
+            ? [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions, .usbHidModifierByte]
             : [.multiDisplay, .clientVideoControl]
    }
 
@@ -611,8 +611,23 @@ final class ProtocolV1SessionCoordinator {
             guard negotiatedCapabilities.contains(.keyboard) else {
                 return unsupportedCapability("Keyboard input was not negotiated.", envelope.messageID)
             }
-            guard isStreaming else { return invalidState("KeyEvent arrived before media was ready.", envelope.messageID) }
-            return [.key(usage: key.usbHidUsage, pressed: key.pressed, modifiers: key.modifierMask, text: key.text)]
+            let standardByteNegotiated = negotiatedCapabilities.contains(.usbHidModifierByte)
+            guard isStreaming,
+                  StreamInputWire.validatesModifierMask(
+                    key.modifierMask,
+                    standardByteNegotiated: standardByteNegotiated
+                  ) else {
+                return invalidState("KeyEvent is invalid or media is not ready.", envelope.messageID)
+            }
+            return [.key(
+                usage: key.usbHidUsage,
+                pressed: key.pressed,
+                modifiers: StreamInputWire.standardModifierMask(
+                    fromWireMask: key.modifierMask,
+                    standardByteNegotiated: standardByteNegotiated
+                ),
+                text: key.text
+            )]
 
         case .setVideoPreferences(let prefs):
             guard negotiatedCapabilities.contains(.clientVideoControl) else {
@@ -846,6 +861,14 @@ final class ProtocolV1SessionCoordinator {
                 correlationID: correlationID
             )
         }
+        guard !offeredCapabilities.contains(.usbHidModifierByte)
+                || offeredCapabilities.contains(.keyboard) else {
+            return fail(
+                code: .unsupportedCapability,
+                message: "USB HID modifier-byte capability requires keyboard input.",
+                correlationID: correlationID
+            )
+        }
         guard configuration.requiredClientCapabilities.isSubset(of: offeredCapabilities) else {
             return fail(
                 code: .unsupportedCapability,
@@ -864,6 +887,9 @@ final class ProtocolV1SessionCoordinator {
         var negotiatedCapabilities = configuration.hostCapabilities.intersection(offeredCapabilities)
         if !negotiatedCapabilities.contains(.stylus) {
             negotiatedCapabilities.remove(.stylusExtended)
+        }
+        if !negotiatedCapabilities.contains(.keyboard) {
+            negotiatedCapabilities.remove(.usbHidModifierByte)
         }
         self.negotiatedCapabilities = negotiatedCapabilities
 

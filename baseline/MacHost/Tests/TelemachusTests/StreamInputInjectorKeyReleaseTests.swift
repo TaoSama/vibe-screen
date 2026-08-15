@@ -3,6 +3,25 @@ import XCTest
 @testable import Telemachus
 
 final class StreamInputInjectorKeyReleaseTests: XCTestCase {
+    func testRightSideUSBHIDModifiersMapToCoreGraphicsFlags() {
+        XCTAssertEqual(
+            StreamInputMapping.modifierFlags(fromModifierMask: StreamInputWire.modifierRightControl),
+            .maskControl
+        )
+        XCTAssertEqual(
+            StreamInputMapping.modifierFlags(fromModifierMask: StreamInputWire.modifierRightShift),
+            .maskShift
+        )
+        XCTAssertEqual(
+            StreamInputMapping.modifierFlags(fromModifierMask: StreamInputWire.modifierRightOption),
+            .maskAlternate
+        )
+        XCTAssertEqual(
+            StreamInputMapping.modifierFlags(fromModifierMask: StreamInputWire.modifierRightCommand),
+            .maskCommand
+        )
+    }
+
     func testPressedKeyStateConsumesKeysByHIDUsageAndIsIdempotent() {
         var state = PressedKeyState()
 

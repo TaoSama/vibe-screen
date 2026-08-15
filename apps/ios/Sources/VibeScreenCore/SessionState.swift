@@ -60,7 +60,14 @@ public struct SessionState: Sendable {
         guard epoch > 0 else { throw SessionStateError.invalidSessionEpoch(epoch) }
         self.sessionID = sessionID
         sessionEpoch = epoch
-        negotiatedCapabilities = localCapabilities.intersection(hostCapabilities)
+        var negotiated = localCapabilities.intersection(hostCapabilities)
+        if !negotiated.contains(.keyboard) {
+            negotiated.remove(.usbHidModifierByte)
+        }
+        if !negotiated.contains(.stylus) {
+            negotiated.remove(.stylusExtended)
+        }
+        negotiatedCapabilities = negotiated
         phase = .ready
     }
 

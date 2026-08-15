@@ -14,11 +14,16 @@ internal object NativeInputWire {
     const val BUTTON_PRIMARY = 1 shl 0
     const val BUTTON_SECONDARY = 1 shl 1
 
-    // KeyEvent.modifier_mask bits.
-    const val MODIFIER_SHIFT = 1 shl 0
-    const val MODIFIER_CONTROL = 1 shl 1
+    // Canonical standard USB HID modifier byte used inside the client.
+    const val MODIFIER_CONTROL = 1 shl 0
+    const val MODIFIER_SHIFT = 1 shl 1
     const val MODIFIER_OPTION = 1 shl 2
     const val MODIFIER_COMMAND = 1 shl 3
+    const val MODIFIER_RIGHT_CONTROL = 1 shl 4
+    const val MODIFIER_RIGHT_SHIFT = 1 shl 5
+    const val MODIFIER_RIGHT_OPTION = 1 shl 6
+    const val MODIFIER_RIGHT_COMMAND = 1 shl 7
+    const val MODIFIER_BYTE_MASK = 0xFF
 
     /** Translates Android MotionEvent button state into wire button bits. */
     fun buttonMask(androidButtonState: Int): Int {
@@ -36,5 +41,22 @@ internal object NativeInputWire {
         if (ClientKeyModifier.ALT in modifiers) mask = mask or MODIFIER_OPTION
         if (ClientKeyModifier.META in modifiers) mask = mask or MODIFIER_COMMAND
         return mask
+    }
+
+    /** Encodes the negotiated standard byte or the four-bit legacy fallback. */
+    fun wireModifierMask(
+        standardMask: Int,
+        standardByteNegotiated: Boolean,
+    ): Int {
+        require(standardMask and MODIFIER_BYTE_MASK.inv() == 0)
+        if (standardByteNegotiated) return standardMask
+
+        // Legacy v1 is Shift, Control, Option, Command in bits 0..3.
+        var legacyMask = 0
+        if (standardMask and (MODIFIER_SHIFT or MODIFIER_RIGHT_SHIFT) != 0) legacyMask = legacyMask or 0x01
+        if (standardMask and (MODIFIER_CONTROL or MODIFIER_RIGHT_CONTROL) != 0) legacyMask = legacyMask or 0x02
+        if (standardMask and (MODIFIER_OPTION or MODIFIER_RIGHT_OPTION) != 0) legacyMask = legacyMask or 0x04
+        if (standardMask and (MODIFIER_COMMAND or MODIFIER_RIGHT_COMMAND) != 0) legacyMask = legacyMask or 0x08
+        return legacyMask
     }
 }
