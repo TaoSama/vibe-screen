@@ -520,6 +520,33 @@ test('superseded or failed credential writes cannot revive or retain pairing sec
   const restore = restoring.restore();
   await loadStarted; restoring.supersede(); releaseLoad(); await restore;
   assert.throws(() => restoring.authorize(), /No authorized/);
+
+  const unverified = new CredentialLifecycle({ load: async () => restoredRecord, save: async () => {} });
+  await assert.rejects(unverified.restore(), /Stored host identity cannot be verified/);
+
+  let releaseSequenceSave;
+  let markSequenceSaveStarted;
+  const sequenceSaveStarted = new Promise((resolve) => { markSequenceSaveStarted = resolve; });
+  const sequenceSaveGate = new Promise((resolve) => { releaseSequenceSave = resolve; });
+  const concurrentWrites = [];
+  let blockNextSave = true;
+  const concurrent = new CredentialLifecycle({ load: async () => restoredRecord, save: async (record) => {
+    if (blockNextSave) { blockNextSave = false; markSequenceSaveStarted(); await sequenceSaveGate; }
+    concurrentWrites.push({ ...record, credential: record.credential.slice() });
+  } }, () => true);
+  await concurrent.restore();
+  const sequenceUpdate = concurrent.acceptAuthenticatedControlSequence(1n);
+  await sequenceSaveStarted;
+  const revocation = concurrent.revoke('device', 'user_revoked');
+  const replacementSecret = new Uint8Array(32).fill(10);
+  const replacementInstall = concurrent.install(concurrent.owner(), 'a'.repeat(32),
+    { ...completion, credential: replacementSecret });
+  releaseSequenceSave();
+  await assert.rejects(sequenceUpdate, /superseded/);
+  await assert.rejects(revocation, /superseded/);
+  await replacementInstall;
+  assert.equal(concurrentWrites.some((record) => record.revoked), false);
+  assert.equal(concurrent.authorize().credential.every((byte) => byte === 10), true);
 });
 
 function controlEnvelope(messageId, payloadField, payload, sessionScoped = true, correlationId = 1n) {

@@ -222,9 +222,17 @@ export class CredentialLifecycle {
   async revoke(deviceId: string, reason: string): Promise<void> {
     const current: StoredCredential = this.authorize();
     if (deviceId !== current.deviceId || reason.length === 0) throw new Error('Invalid revocation');
-    this.supersede();
-    const tombstone: StoredCredential = { ...current, credential: new Uint8Array(), revoked: true, revocationReason: reason };
-    await this.serialized(async () => { await this.store.save(tombstone); this.record = cloneRecord(tombstone); });
+    const owner: bigint = this.supersede();
+    await this.serialized(async () => {
+      if (owner !== this.generation || this.record === undefined || this.record.revoked) {
+        throw new Error('Credential lifecycle was superseded');
+      }
+      const tombstone: StoredCredential = { ...this.record, credential: new Uint8Array(), revoked: true,
+        revocationReason: reason };
+      await this.store.save(tombstone);
+      if (owner !== this.generation) throw new Error('Credential lifecycle was superseded');
+      this.record = cloneRecord(tombstone);
+    });
   }
 
   private async serialized<T>(operation: () => Promise<T>): Promise<T> {

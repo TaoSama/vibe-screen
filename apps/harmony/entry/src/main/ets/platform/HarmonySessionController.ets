@@ -3,7 +3,6 @@ import { CoordinateMapper, Rotation } from '../core/input/CoordinateMapper';
 import { MediaPacketParser } from '../core/media/MediaPacketParser';
 import { OutboundControlWriter, OutboundControlReceipt } from '../core/protocol/OutboundControlWriter';
 import { Capability, Codec, InputPhase, NormalizedInput, VideoConfig } from '../core/protocol/ProtocolModels';
-import { CredentialLifecycle } from '../core/security/PairingSecurity';
 import { ProductSession, ProductSessionState, SessionAction, SessionResumeSnapshot, SessionSendAction,
   VideoConfigurationToken } from '../core/session/ProductSession';
 import { CleanupFailure, describeCleanupFailures, runAllCleanup } from '../core/session/CleanupCoordinator';
@@ -50,7 +49,6 @@ export class HarmonySessionController {
   private reconnectPolicy: ReconnectPolicy = new ReconnectPolicy();
   private progressWatchdog: ProgressWatchdog = new ProgressWatchdog();
   private pairingStore: PairingStore = new PairingStore();
-  private credentialLifecycle: CredentialLifecycle = new CredentialLifecycle(this.pairingStore);
   private coordinateMapper: CoordinateMapper = new CoordinateMapper();
   private session: ProductSession | undefined;
   private controlWriter: OutboundControlWriter | undefined;
@@ -79,7 +77,6 @@ export class HarmonySessionController {
   detachUi(listener: SessionUiListener): void { if (this.ui === listener) this.ui = undefined; }
 
   async restoreHost(): Promise<TrustedHostRecord | undefined> {
-    await this.credentialLifecycle.restore();
     return this.pairingStore.loadTrustedHost();
   }
 
@@ -143,7 +140,6 @@ export class HarmonySessionController {
   }
 
   async forgetHost(): Promise<void> {
-    this.credentialLifecycle.supersede();
     await this.disconnect(); await this.pairingStore.forgetHost();
   }
 
@@ -221,8 +217,7 @@ export class HarmonySessionController {
     const nextMessageId: bigint | undefined = this.controlWriter?.nextMessageIdValue();
     const resumable: SessionResumeSnapshot | undefined = nextMessageId === undefined ? undefined :
       this.session?.resumableSnapshot(nextMessageId);
-    if (retryable && resumable !== undefined) this.resumeSnapshot = resumable;
-    else if (reason.startsWith('resume_') || !retryable) this.resumeSnapshot = undefined;
+    this.resumeSnapshot = retryable ? resumable : undefined;
     const cleanupOwner: number = ++this.operationGeneration;
     this.decoderGeneration += 1; this.session?.close(); this.closeWriter(); this.cancelHeartbeat();
     this.cancelSessionWatchdog(); this.cancelReconnect();
