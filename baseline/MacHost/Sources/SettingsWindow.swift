@@ -2289,6 +2289,9 @@ class DisplaySettings: ObservableObject {
 // MARK: - Window Controller
 
 class SettingsWindowController: NSWindowController, NSWindowDelegate {
+    var onWindowClosed: (() -> Void)?
+    private var didReleaseWindowContent = false
+
     convenience init(settings: DisplaySettings) {
         let window = ConstrainedWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 780),
@@ -2307,6 +2310,17 @@ class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         self.init(window: window)
         window.delegate = self
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard !didReleaseWindowContent else { return }
+        didReleaseWindowContent = true
+
+        let closeHandler = onWindowClosed
+        onWindowClosed = nil
+        window?.contentView = nil
+        window?.delegate = nil
+        closeHandler?()
     }
 
     func windowDidMove(_ notification: Notification) {
