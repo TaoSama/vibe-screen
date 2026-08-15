@@ -2991,6 +2991,8 @@ class MainActivity : AppCompatActivity() {
         callbackClient: StreamClient,
         callbackGeneration: Long,
         retryCoordinator: SessionAutomaticRetryCoordinator,
+        port: Int,
+        mode: ConnectionMode,
     ) {
         val displayLifecycle =
             MainSessionDisplayLifecycle(
@@ -3118,7 +3120,7 @@ class MainActivity : AppCompatActivity() {
                     "detail=${failure.detail}",
             )
             if (showTerminalGuidance) {
-                val guidance = ConnectionGuidanceFactory.from(failure, currentUsbPort())
+                val guidance = ConnectionGuidanceFactory.from(failure, port, mode)
                 runOnUiThread {
                     if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                     pendingTerminalGuidance = guidance
@@ -4002,7 +4004,7 @@ class MainActivity : AppCompatActivity() {
                 pendingWirelessReconnectDelayMs = null
                 scheduleWirelessReconnect(delayMs)
             }
-        setupStreamClientCallbacks(callbackClient, callbackGeneration, retryCoordinator)
+        setupStreamClientCallbacks(callbackClient, callbackGeneration, retryCoordinator, port, ConnectionMode.WIRELESS)
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 log("Connecting wirelessly to $macName at $host:$port...")
@@ -4105,14 +4107,14 @@ class MainActivity : AppCompatActivity() {
                 showDisconnectedStreamUi()
                 scheduleAutomaticUsbConnect()
             }
-        setupStreamClientCallbacks(callbackClient, callbackGeneration, retryCoordinator)
+        setupStreamClientCallbacks(callbackClient, callbackGeneration, retryCoordinator, port, ConnectionMode.USB)
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 log("Connecting to $host:$port...")
                 callbackClient.connect()
             } catch (e: Exception) {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@launch
-                val guidance = ConnectionGuidanceFactory.from(e, port)
+                val guidance = ConnectionGuidanceFactory.from(e, port, ConnectionMode.USB)
                 if (!automatic && e !is SessionProtocolException) {
                     updateStatus(guidance.status)
                     showError(guidance.message)

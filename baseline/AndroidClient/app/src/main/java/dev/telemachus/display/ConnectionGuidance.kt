@@ -21,6 +21,7 @@ internal object ConnectionGuidanceFactory {
     fun from(
         failure: SessionFailure,
         port: Int,
+        mode: ConnectionMode,
     ): ConnectionGuidance =
         when (failure.kind) {
             SessionFailureKind.INVALID_DISPLAY,
@@ -58,7 +59,7 @@ internal object ConnectionGuidanceFactory {
             SessionFailureKind.HEARTBEAT_TIMEOUT,
             SessionFailureKind.TRANSPORT_CLOSED,
             SessionFailureKind.WRITE_FAILED,
-            -> from(IOException(failure.detail), port)
+            -> from(IOException(failure.detail), port, mode)
 
             SessionFailureKind.SERVER_SHUTDOWN,
             SessionFailureKind.USER_REQUESTED,
@@ -73,13 +74,35 @@ internal object ConnectionGuidanceFactory {
     fun from(
         throwable: Throwable,
         port: Int,
+        mode: ConnectionMode,
     ): ConnectionGuidance {
-        if (throwable is SessionProtocolException) return from(throwable.failure, port)
+        if (throwable is SessionProtocolException) return from(throwable.failure, port, mode)
         val detail = throwable.message.orEmpty()
+        val fallback = throwable.javaClass.simpleName
         return when {
             detail.contains("ECONNREFUSED", ignoreCase = true) ||
                 detail.contains("Connection refused", ignoreCase = true) ||
                 detail.contains("before display configuration", ignoreCase = true) ->
+                hostNotRunning(port, mode)
+
+            detail.contains("Network is unreachable", ignoreCase = true) ||
+                detail.contains("ENETUNREACH", ignoreCase = true) ->
+                networkUnreachable(port, mode)
+
+            detail.contains("timeout", ignoreCase = true) ->
+                timeout(port, mode)
+
+            else ->
+                unknown(detail, fallback, port, mode)
+        }
+    }
+
+    private fun hostNotRunning(
+        port: Int,
+        mode: ConnectionMode,
+    ): ConnectionGuidance =
+        when (mode) {
+            ConnectionMode.USB ->
                 ConnectionGuidance(
                     kind = ConnectionFailureKind.HOST_NOT_RUNNING,
                     status = "Mac app unavailable",
@@ -88,8 +111,29 @@ internal object ConnectionGuidanceFactory {
                         "authorize debugging, then run adb reverse tcp:$port tcp:$port.",
                 )
 
-            detail.contains("Network is unreachable", ignoreCase = true) ||
-                detail.contains("ENETUNREACH", ignoreCase = true) ->
+            ConnectionMode.WIRELESS ->
+                ConnectionGuidance(
+                    kind = ConnectionFailureKind.HOST_NOT_RUNNING,
+                    status = "Mac app unavailable",
+                    message = "Open Vibe Screen on your Mac and confirm it is reachable on the same " +
+                        "network. Verify the host address and port $port, then reconnect.",
+                )
+
+            ConnectionMode.INTERNET ->
+                ConnectionGuidance(
+                    kind = ConnectionFailureKind.HOST_NOT_RUNNING,
+                    status = "Mac app unavailable",
+                    message = "Open Vibe Screen on your Mac and try again. If the session expired, " +
+                        "import a fresh session profile from the Mac.",
+                )
+        }
+
+    private fun networkUnreachable(
+        port: Int,
+        mode: ConnectionMode,
+    ): ConnectionGuidance =
+        when (mode) {
+            ConnectionMode.USB ->
                 ConnectionGuidance(
                     kind = ConnectionFailureKind.NETWORK_UNREACHABLE,
                     status = "ADB route unavailable",
@@ -98,7 +142,29 @@ internal object ConnectionGuidanceFactory {
                         "then run adb reverse tcp:$port tcp:$port.",
                 )
 
-            detail.contains("timeout", ignoreCase = true) ->
+            ConnectionMode.WIRELESS ->
+                ConnectionGuidance(
+                    kind = ConnectionFailureKind.NETWORK_UNREACHABLE,
+                    status = "Mac unreachable",
+                    message = "Check that your phone and Mac are on the same Wi-Fi network and that " +
+                        "the Mac is reachable. Verify the host address and port $port, then reconnect.",
+                )
+
+            ConnectionMode.INTERNET ->
+                ConnectionGuidance(
+                    kind = ConnectionFailureKind.NETWORK_UNREACHABLE,
+                    status = "Network unavailable",
+                    message = "Check your internet connection and try again. If the problem persists, " +
+                        "import a fresh session profile from the Mac.",
+                )
+        }
+
+    private fun timeout(
+        port: Int,
+        mode: ConnectionMode,
+    ): ConnectionGuidance =
+        when (mode) {
+            ConnectionMode.USB ->
                 ConnectionGuidance(
                     kind = ConnectionFailureKind.TIMEOUT,
                     status = "Connection timed out",
@@ -107,14 +173,56 @@ internal object ConnectionGuidanceFactory {
                         "adb reverse tcp:$port tcp:$port.",
                 )
 
-            else ->
+            ConnectionMode.WIRELESS ->
+                ConnectionGuidance(
+                    kind = ConnectionFailureKind.TIMEOUT,
+                    status = "Connection timed out",
+                    message = "Confirm the Mac app is listening on port $port and that its firewall " +
+                        "allows the connection. Check that both devices are on the same network, " +
+                        "then reconnect.",
+                )
+
+            ConnectionMode.INTERNET ->
+                ConnectionGuidance(
+                    kind = ConnectionFailureKind.TIMEOUT,
+                    status = "Connection timed out",
+                    message = "The connection to the Mac timed out. Check your internet connection " +
+                        "and try again. If the session expired, import a fresh session profile.",
+                )
+        }
+
+    private fun unknown(
+        detail: String,
+        fallback: String,
+        port: Int,
+        mode: ConnectionMode,
+    ): ConnectionGuidance =
+        when (mode) {
+            ConnectionMode.USB ->
                 ConnectionGuidance(
                     kind = ConnectionFailureKind.UNKNOWN,
                     status = "Connection failed",
                     message = "Check the Mac app, USB or wireless debugging, the Mac's adb connect session, " +
                         "and adb reverse for port $port, then try again. " +
-                        "Technical detail: ${detail.ifBlank { throwable.javaClass.simpleName }}",
+                        "Technical detail: ${detail.ifBlank { fallback }}",
+                )
+
+            ConnectionMode.WIRELESS ->
+                ConnectionGuidance(
+                    kind = ConnectionFailureKind.UNKNOWN,
+                    status = "Connection failed",
+                    message = "Check the Mac app, your network connection, and the host address and " +
+                        "port $port, then try again. " +
+                        "Technical detail: ${detail.ifBlank { fallback }}",
+                )
+
+            ConnectionMode.INTERNET ->
+                ConnectionGuidance(
+                    kind = ConnectionFailureKind.UNKNOWN,
+                    status = "Connection failed",
+                    message = "Check your internet connection and the Mac app, then try again. " +
+                        "If the problem persists, import a fresh session profile. " +
+                        "Technical detail: ${detail.ifBlank { fallback }}",
                 )
         }
-    }
 }
