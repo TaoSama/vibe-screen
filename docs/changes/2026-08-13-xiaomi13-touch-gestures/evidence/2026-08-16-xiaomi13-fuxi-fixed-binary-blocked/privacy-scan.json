@@ -1,0 +1,113 @@
+{
+  "artifacts": [
+    {
+      "bytes": 6294,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "dbb32cc22fdd6835614f98796bad1b62f2f8f016f5a45e44789795b60301a87f"
+    },
+    {
+      "bytes": 496456,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-blocked-screen.png",
+      "result": "pass",
+      "sha256": "8fc559a4d2a02a6220d165b9eac50e766cb9558ed43d567baea2cde90bc496f3"
+    },
+    {
+      "bytes": 496464,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-streaming-screen-secure.png",
+      "result": "pass",
+      "sha256": "aee82c380f03e40abf76b6ac1d891f6ae63859d3be25bb8811465e43c5aed1e4"
+    },
+    {
+      "bytes": 864,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "build-and-test-results.txt",
+      "result": "pass",
+      "sha256": "3f09e164fdf171d92fcd5023d8979f3f4659b6c9bec1159449230761dcf9bdf8"
+    },
+    {
+      "bytes": 943,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "device-and-artifact-identity.txt",
+      "result": "pass",
+      "sha256": "6771290c3bac3bde0ac26a5897bf5fa24c3f1417564b6684dbc316c49c14e8a5"
+    },
+    {
+      "bytes": 1632,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-signing-and-permissions.txt",
+      "result": "pass",
+      "sha256": "0c61641c8946bf1179fb01c4f241e9522c86e808fe5135b7752cf38607e13f8a"
+    },
+    {
+      "bytes": 2067,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "protocol-and-media.log",
+      "result": "pass",
+      "sha256": "a306bb79cf8e89e9e479b344584d42d21ac6ce835357ee45ef78d186492b72d2"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-06.4",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}
