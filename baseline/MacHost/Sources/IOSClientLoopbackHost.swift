@@ -4,10 +4,23 @@ import Foundation
 /// deliberately a thin configuration of the production StreamingServer, not
 /// a second protocol implementation.
 enum IOSClientLoopbackHost {
-    static let port: UInt16 = 54_321
+    static let defaultPort: UInt16 = 54_321
+    static let portEnvironmentVariable = "VIBE_SCREEN_IOS_LOOPBACK_PORT"
     static let token = Data((0..<32).map(UInt8.init))
     static let displayID = "loopback-display-1"
     static let mediaPayload = Data([0, 0, 0, 1, 0x65, 0x88, 0x84, 0x21])
+
+    enum ConfigurationError: Error, LocalizedError, Equatable {
+        case invalidPort(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidPort(let value):
+                return "\(IOSClientLoopbackHost.portEnvironmentVariable) must be an " +
+                    "ASCII decimal port from 0 through 65535; got '\(value)'."
+            }
+        }
+    }
 
     private final class State {
         let lock = NSLock()
@@ -22,9 +35,32 @@ enum IOSClientLoopbackHost {
         }
     }
 
-    static func run(expectsInvalidTarget: Bool = false) -> Bool {
+    static func requestedPort(environment: [String: String]) throws -> UInt16 {
+        guard let value = environment[portEnvironmentVariable] else {
+            return defaultPort
+        }
+        guard !value.isEmpty,
+              value.utf8.allSatisfy({ (48...57).contains($0) }),
+              let port = UInt16(value) else {
+            throw ConfigurationError.invalidPort(value)
+        }
+        return port
+    }
+
+    static func run(
+        expectsInvalidTarget: Bool = false,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        let requestedPort: UInt16
+        do {
+            requestedPort = try Self.requestedPort(environment: environment)
+        } catch {
+            print("iOS MacHost loopback: FAIL (configuration: \(error.localizedDescription))")
+            return false
+        }
+
         let state = State()
-        let server = StreamingServer(port: port, mode: .wireless(authToken: token))
+        let server = StreamingServer(port: requestedPort, mode: .wireless(authToken: token))
         server.setDisplaySize(width: 1_920, height: 1_080)
         server.setProtocolV1VideoConfiguration(
             framesPerSecond: 60,
@@ -67,7 +103,16 @@ enum IOSClientLoopbackHost {
             print("iOS MacHost loopback: FAIL (listener startup: \(error))")
             return false
         }
-        FileHandle.standardError.write(Data("IOS_LOOPBACK_HOST_READY port=\(port)\n".utf8))
+        guard let listeningPort = server.listeningPort,
+              listeningPort != 0,
+              requestedPort == 0 || listeningPort == requestedPort else {
+            server.stop()
+            print("iOS MacHost loopback: FAIL (listener did not report a valid bound port)")
+            return false
+        }
+        FileHandle.standardError.write(
+            Data("IOS_LOOPBACK_HOST_READY port=\(listeningPort)\n".utf8)
+        )
 
         let deadline = Date(timeIntervalSinceNow: 12)
         while Date() < deadline {
@@ -91,7 +136,8 @@ enum IOSClientLoopbackHost {
         print(
             "iOS MacHost loopback: \(passed ? "PASS" : "FAIL") " +
             "(scenario=\(expectsInvalidTarget ? "invalid-target" : "lifecycle"), " +
-            "wirelessAuth=true, protocolV1=true, media=true, touch=\(snapshot.0), " +
+            "port=\(listeningPort), wirelessAuth=true, protocolV1=true, " +
+            "media=true, touch=\(snapshot.0), " +
             "clientDisconnected=\(snapshot.1), error=\(snapshot.2 ?? "none"))"
         )
         return passed

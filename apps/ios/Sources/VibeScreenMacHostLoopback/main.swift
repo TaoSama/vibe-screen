@@ -42,14 +42,13 @@ private final class FrameInbox: @unchecked Sendable {
 }
 
 private struct MacHostLoopbackClient {
-    static let port: UInt16 = 54_321
     static let token = Data((0..<32).map(UInt8.init))
     static let expectedMedia = Data([0, 0, 0, 1, 0x65, 0x88, 0x84, 0x21])
 
     private let inbox = FrameInbox()
 
     @MainActor
-    func run(invalidTarget: Bool) async throws {
+    func run(invalidTarget: Bool, port: UInt16) async throws {
         let connectionOwner = ConnectionOwner()
         let sessionOwner = SessionOwner(connectionOwner: connectionOwner)
         let transport = TCPTransport { delivery in
@@ -70,7 +69,7 @@ private struct MacHostLoopbackClient {
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
         let pairing = try TrustedLANPairing(
-            urlString: "telemachus://127.0.0.1:\(Self.port)?t=\(encodedToken)&name=Loopback%20Mac"
+            urlString: "telemachus://127.0.0.1:\(port)?t=\(encodedToken)&name=Loopback%20Mac"
         )
 
         var session = SessionState()
@@ -213,7 +212,7 @@ private struct MacHostLoopbackClient {
             }
             print(
                 "iOS Core MacHost loopback: PASS " +
-                "(scenario=invalid-target, protocolError=invalidState)"
+                "(scenario=invalid-target, port=\(port), protocolError=invalidState)"
             )
             return
         }
@@ -225,7 +224,8 @@ private struct MacHostLoopbackClient {
         }
         print(
             "iOS Core MacHost loopback: PASS " +
-            "(auth=SSWA/SSWR, upgrade=0D/0D01, hello=true, displays=true, " +
+            "(port=\(port), auth=SSWA/SSWR, upgrade=0D/0D01, " +
+            "hello=true, displays=true, " +
             "videoAck=true, media=true, pong=true, targetedTouch=true, disconnect=true)"
         )
     }
@@ -241,12 +241,15 @@ private struct MacHostLoopbackClient {
 
 Task {
     do {
-        let scenario = ProcessInfo.processInfo.environment["VIBE_SCREEN_IOS_LOOPBACK_SCENARIO"] ?? "lifecycle"
+        let environment = ProcessInfo.processInfo.environment
+        let scenario = environment["VIBE_SCREEN_IOS_LOOPBACK_SCENARIO"] ?? "lifecycle"
         guard scenario == "lifecycle" || scenario == "invalid-target" else {
             throw LoopbackError.unexpected("unknown loopback scenario")
         }
+        let port = try MacHostLoopbackTestConfiguration.port(environment: environment)
         try await MacHostLoopbackClient().run(
-            invalidTarget: scenario == "invalid-target"
+            invalidTarget: scenario == "invalid-target",
+            port: port
         )
         exit(EXIT_SUCCESS)
     } catch {

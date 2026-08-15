@@ -51,12 +51,14 @@ Run the real release-build, two-process iOS Core to baseline MacHost loopback:
 apps/ios/Scripts/run_machost_loopback.py
 ```
 
-This starts MacHost on loopback port `54321` and checks authenticated
+This starts MacHost on an OS-assigned loopback test port and checks authenticated
 `SSWA`/`SSWR` admission, the `0D`/`0D01` upgrade exchange, Hello and negotiated
 capabilities, display list/start, video-config acknowledgement, video media
 framing, ping/pong, display/stream-targeted touch, invalid-target protocol
-error, and disconnect. Use `--skip-build` only after both release products have
-already been built.
+error, and disconnect. The gate passes the bound port through a strictly
+validated test-only environment variable; production trusted-LAN connections
+still default to `54321`. Use `--skip-build` only after both release products
+have already been built.
 
 All outbound main-session control uses one session-owner-scoped FIFO writer;
 message ID allocation, envelope encoding, and the TCP send therefore share one

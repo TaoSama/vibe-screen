@@ -416,6 +416,13 @@ class StreamingServer: EncodedFrameSink {
         networkQueue.setSpecific(key: Self.networkQueueKey, value: ObjectIdentifier(self))
     }
 
+    var listeningPort: UInt16? {
+        if DispatchQueue.getSpecific(key: Self.networkQueueKey) == ObjectIdentifier(self) {
+            return listener?.port?.rawValue
+        }
+        return networkQueue.sync { listener?.port?.rawValue }
+    }
+
     /// Starts the listener and returns only after Network.framework reports it
     /// ready. This prevents callers from presenting a false "Running" state
     /// when the port is occupied or listener creation fails.
@@ -475,7 +482,11 @@ class StreamingServer: EncodedFrameSink {
             switch state {
             case .ready:
                 listenerWasReady = true
-                debugLog("TCP server listening on port \(self.port)")
+                if let listeningPort = newListener?.port?.rawValue, listeningPort != 0 {
+                    debugLog("TCP server listening on port \(listeningPort)")
+                } else {
+                    debugLog("TCP server ready without a reported listening port")
+                }
                 completeStartup(.success(()))
             case .failed(let error):
                 debugLog("Server failed: \(error)")

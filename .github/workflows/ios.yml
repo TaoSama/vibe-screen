@@ -22,12 +22,19 @@ jobs:
       - name: Build native protocol, session, transport, and video modules
         run: swift build --package-path apps/ios --configuration release
       - name: Run deterministic Core XCTest suite in release mode
+        timeout-minutes: 20
         run: swift test --package-path apps/ios --configuration release
       - name: Run deterministic self-test and shared Protocol v1 compatibility fixture
+        timeout-minutes: 20
         run: apps/ios/.build/release/vibescreen-ios-selftest
+      - name: Run loopback process orchestration tests
+        timeout-minutes: 20
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s apps/ios/Scripts/tests -p 'test_*.py' -v
       - name: Run trusted-LAN iOS Core to production MacHost loopback
+        timeout-minutes: 20
         run: apps/ios/Scripts/run_machost_loopback.py
       - name: Run baseline MacHost self-tests
+        timeout-minutes: 20
         run: make baseline-macos-self-test
 
   app-build-test-archive:
