@@ -3118,7 +3118,7 @@ class MainActivity : AppCompatActivity() {
                     "detail=${failure.detail}",
             )
             if (showTerminalGuidance) {
-                val guidance = ConnectionGuidanceFactory.from(failure, currentUsbPort())
+                val guidance = ConnectionGuidanceFactory.from(failure, callbackClient.actualPort)
                 runOnUiThread {
                     if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                     pendingTerminalGuidance = guidance

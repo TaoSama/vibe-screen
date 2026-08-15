@@ -98,6 +98,7 @@ class StreamClient(
     private val videoConfigurationTimeoutExecutor: ScheduledExecutorService = VIDEO_CONFIGURATION_TIMEOUT_EXECUTOR,
     private val terminationExecutor: Executor = SESSION_TERMINATION_EXECUTOR,
 ) {
+    internal val actualPort: Int = port
     private val transportOwner = StreamTransportOwner<SocketStreamTransportConnection>()
 
     @Volatile private var isConnected = false
