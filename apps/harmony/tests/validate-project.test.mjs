@@ -74,6 +74,114 @@ test('semantic validator rejects package version drift', (t) => {
   assert(validateFixture(fixture).some((failure) => failure.includes('package versions must both be 0.1.0')));
 });
 
+test('semantic validator rejects removal of the ArkUI stylus route', (t) => {
+  const fixture = projectFixture(t);
+  const pagePath = resolve(fixture.fixtureHarmony, 'entry/src/main/ets/pages/Index.ets');
+  const source = readFileSync(pagePath, 'utf8');
+  const modified = source.replace('sessionRuntime.sendStylus({', 'sessionRuntime.sendTouch({');
+  assert.notEqual(modified, source);
+  writeFileSync(pagePath, modified);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('Index.handleTouch() must call sessionRuntime.sendStylus()')));
+});
+
+test('semantic validator rejects stylus pressure read from TouchObject', (t) => {
+  const fixture = projectFixture(t);
+  const pagePath = resolve(fixture.fixtureHarmony, 'entry/src/main/ets/pages/Index.ets');
+  const source = readFileSync(pagePath, 'utf8');
+  const modified = source.replace('pressure: event.pressure', 'pressure: touch.pressure');
+  assert.notEqual(modified, source);
+  writeFileSync(pagePath, modified);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('must source stylus pressure from TouchEvent event.pressure')));
+});
+
+test('semantic validator rejects dropping ordinary TouchEvent pressure', (t) => {
+  const fixture = projectFixture(t);
+  const pagePath = resolve(fixture.fixtureHarmony, 'entry/src/main/ets/pages/Index.ets');
+  const source = readFileSync(pagePath, 'utf8');
+  const modified = source.replace(
+    'this.viewportWidth, this.viewportHeight, this.rotation, event.pressure);',
+    'this.viewportWidth, this.viewportHeight, this.rotation, 0);');
+  assert.notEqual(modified, source);
+  writeFileSync(pagePath, modified);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('must preserve TouchEvent event.pressure for ordinary touch input')));
+});
+
+test('semantic validator rejects closing an explicit disconnect before stylus release', (t) => {
+  const fixture = projectFixture(t);
+  const controllerPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/platform/HarmonySessionController.ets');
+  const source = readFileSync(controllerPath, 'utf8');
+  const disconnectStart = source.indexOf('  async disconnect(): Promise<void> {');
+  const disconnectEnd = source.indexOf('\n  setSurface(', disconnectStart);
+  assert(disconnectStart >= 0 && disconnectEnd > disconnectStart);
+  const disconnect = source.slice(disconnectStart, disconnectEnd);
+  const release = '    const releaseFailures: CleanupFailure[] = await this.releaseStylusInputs();\n' +
+    '    if (owner !== this.operationGeneration) return;\n' +
+    '    this.session?.close(); this.closeWriter();';
+  const modifiedDisconnect = disconnect.replace(release,
+    '    this.session?.close(); this.closeWriter();\n' +
+    '    const releaseFailures: CleanupFailure[] = await this.releaseStylusInputs();\n' +
+    '    if (owner !== this.operationGeneration) return;');
+  assert.notEqual(modifiedDisconnect, disconnect);
+  const modified = source.slice(0, disconnectStart) + modifiedDisconnect + source.slice(disconnectEnd);
+  writeFileSync(controllerPath, modified);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('disconnect() must release stylus inputs before closing the writer')));
+});
+
+test('semantic validator rejects taking a resume snapshot before stylus release', (t) => {
+  const fixture = projectFixture(t);
+  const controllerPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/platform/HarmonySessionController.ets');
+  const source = readFileSync(controllerPath, 'utf8');
+  const release = '    const releaseFailures: CleanupFailure[] = await this.releaseStylusInputs();\n' +
+    '    if (owner !== this.operationGeneration) return;\n' +
+    '    const nextMessageId: bigint | undefined = this.controlWriter?.nextMessageIdValue();';
+  const modified = source.replace(release,
+    '    const nextMessageId: bigint | undefined = this.controlWriter?.nextMessageIdValue();\n' +
+    '    const releaseFailures: CleanupFailure[] = await this.releaseStylusInputs();\n' +
+    '    if (owner !== this.operationGeneration) return;');
+  assert.notEqual(modified, source);
+  writeFileSync(controllerPath, modified);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('onBackground() must release stylus inputs before taking the resume snapshot')));
+});
+
+for (const [receiver, methodName] of [
+  ['writer', 'beginRelease'],
+  ['writer', 'awaitReleaseDrain'],
+  ['active', 'completeStylusRelease']
+]) {
+  test(`semantic validator rejects removal of ${receiver}.${methodName}() from stylus release`, (t) => {
+    const fixture = projectFixture(t);
+    const controllerPath = resolve(fixture.fixtureHarmony,
+      'entry/src/main/ets/platform/HarmonySessionController.ets');
+    const source = readFileSync(controllerPath, 'utf8');
+    const modified = source.replace(`${receiver}.${methodName}()`, 'void 0');
+    assert.notEqual(modified, source);
+    writeFileSync(controllerPath, modified);
+    assert(validateFixture(fixture).some((failure) =>
+      failure.includes(`releaseStylusInputs() must call ${receiver}.${methodName}()`)));
+  });
+}
+
+test('semantic validator rejects unconfirmed stylus release sends', (t) => {
+  const fixture = projectFixture(t);
+  const controllerPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/platform/HarmonySessionController.ets');
+  const source = readFileSync(controllerPath, 'utf8');
+  const modified = source.replace(
+    'if (action.afterSend !== undefined) active.confirmSent(action.afterSend);',
+    'void action.afterSend;');
+  assert.notEqual(modified, source);
+  writeFileSync(controllerPath, modified);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('releaseStylusInputs() must call active.confirmSent()')));
+});
+
 test('semantic validator rejects a disconnected production capability gate', (t) => {
   const fixture = projectFixture(t);
   const controllerPath = resolve(fixture.fixtureHarmony,

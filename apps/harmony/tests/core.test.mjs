@@ -3,16 +3,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CoordinateMapper, Rotation } from '../.test-dist/input/CoordinateMapper.js';
 import { PeripheralInputMapper } from '../.test-dist/input/PeripheralInputMapper.js';
+import { StylusInputMapper } from '../.test-dist/input/StylusInputMapper.js';
 import { FrameQueueState, LatestFrameQueue } from '../.test-dist/media/LatestFrameQueue.js';
 import { MediaPacketParser } from '../.test-dist/media/MediaPacketParser.js';
 import { AeadAlgorithm, Capability, Codec, ColorPrimaries, InputPhase, KeyAgreementAlgorithm, MatrixCoefficients,
-  SignatureAlgorithm, TransferFunction, TransportKind } from '../.test-dist/protocol/ProtocolModels.js';
+  SignatureAlgorithm, StylusContactState, StylusToolKind, TransferFunction, TransportKind } from '../.test-dist/protocol/ProtocolModels.js';
 import { ProtocolEncoder } from '../.test-dist/protocol/ProtocolEncoder.js';
 import { ProtocolDecoder } from '../.test-dist/protocol/ProtocolDecoder.js';
 import { MAX_PENDING_CONTROLS, OutboundControlWriter } from '../.test-dist/protocol/OutboundControlWriter.js';
 import { ProtobufWriter } from '../.test-dist/protocol/ProtobufWriter.js';
 import { decodeUtf8, encodeUtf8 } from '../.test-dist/protocol/Utf8.js';
-import { ClientCapabilities } from '../.test-dist/session/ClientCapabilities.js';
+import { ClientCapabilities, HARMONY_ADVERTISED_CAPABILITIES } from '../.test-dist/session/ClientCapabilities.js';
 import { HeartbeatMonitor } from '../.test-dist/session/HeartbeatMonitor.js';
 import { ProgressWatchdog } from '../.test-dist/session/ProgressWatchdog.js';
 import { isSupportedVideoConfig, ProductSession, ProductSessionState } from '../.test-dist/session/ProductSession.js';
@@ -31,6 +32,11 @@ const finishVideoConfiguration = (session, configure) => {
   const response = session.completeVideoConfiguration(configure.token)[0];
   session.confirmSent(response.afterSend);
   return response;
+};
+const confirmStylus = (session, action) => {
+  assert.deepEqual(action.afterSend, { kind: 'stylus' });
+  session.confirmSent(action.afterSend);
+  return action;
 };
 const confirmRequest = (session, action, messageId) => session.confirmAssigned(action.onAssigned, messageId, 1n);
 const createStreamingSession = () => {
@@ -642,3 +648,312 @@ test('push failure and reset discard dependent work and re-arm refresh requests'
   assert.equal(queue.offer(frame(3n, 1n, true)).accepted, false);
   assert.equal(queue.offer(frame(1n, 2n)).requestKeyframe, false);
 });
+
+test('stylus encoder matches the shared base and extended formal fixtures', () => {
+  const base = new ProtocolEncoder().stylus(ProtocolEncoder.metadata(15n,
+    new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]), 7n, 1000000015n), {
+      inputId: 101n, pointerId: 7, phase: InputPhase.CHANGED, x: 0.125, y: 0.875,
+      pressure: 0.625, tiltXDegrees: -12.5, tiltYDegrees: 28.75
+    }, { displayId: 'display-main', streamId: 42n });
+  assert.deepEqual(base, fixture('stylus.binpb'));
+
+  const extended = new ProtocolEncoder().stylus(ProtocolEncoder.metadata(16n,
+    new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]), 7n, 1000000016n), {
+      inputId: 102n, pointerId: 8, phase: InputPhase.CHANGED, x: 0.75, y: 0.25,
+      pressure: 0.0, tiltXDegrees: 10.0, tiltYDegrees: -20.0,
+      toolKind: StylusToolKind.ERASER, buttonMask: 3, contactState: StylusContactState.PROXIMITY
+    }, { displayId: 'display-main', streamId: 42n });
+  assert.deepEqual(extended, fixture('stylus_extended.binpb'));
+});
+
+test('Harmony advertised capabilities omit stylus extended and its dependency fails closed', () => {
+  assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.STYLUS_EXTENDED), false);
+  assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.STYLUS), true);
+
+  assert.throws(() => new ClientCapabilities([Capability.TOUCH, Capability.STYLUS_EXTENDED], [Capability.TOUCH]),
+    /Invalid client capability declaration/);
+
+  const hostMissingBase = new ClientCapabilities([Capability.TOUCH, Capability.STYLUS], [Capability.TOUCH]);
+  assert.throws(() => hostMissingBase.acceptHost([Capability.TOUCH, Capability.STYLUS_EXTENDED]),
+    /Host lacks a required client capability/);
+
+  const negotiatedMissingBase = new ClientCapabilities(
+    [Capability.TOUCH, Capability.STYLUS, Capability.STYLUS_EXTENDED], [Capability.TOUCH]);
+  negotiatedMissingBase.acceptHost([Capability.TOUCH, Capability.STYLUS, Capability.STYLUS_EXTENDED]);
+  assert.throws(() => negotiatedMissingBase.acceptNegotiated([Capability.TOUCH, Capability.STYLUS_EXTENDED]),
+    /invalid negotiated capability set/);
+
+  const restoreMissingBase = new ClientCapabilities(
+    [Capability.TOUCH, Capability.STYLUS, Capability.STYLUS_EXTENDED], [Capability.TOUCH]);
+  assert.throws(() => restoreMissingBase.restore(
+    [Capability.TOUCH, Capability.STYLUS_EXTENDED], [Capability.TOUCH, Capability.STYLUS_EXTENDED]),
+    /Host lacks a required client capability/);
+});
+
+test('stylus mapper routes contacting pen through touch or stylus and suppresses extended-only semantics', () => {
+  const mapper = new StylusInputMapper();
+  const contactingPen = {
+    pointerId: 1, phase: InputPhase.BEGAN, x: 0.5, y: 0.5, pressure: 0.5,
+    tiltXDegrees: 0, tiltYDegrees: 0, toolKind: StylusToolKind.PEN,
+    contactState: StylusContactState.CONTACT
+  };
+
+  assert.equal(mapper.route(contactingPen, false, false), 'touch');
+  assert.equal(mapper.route(contactingPen, true, false), 'stylus');
+  assert.equal(mapper.route({ ...contactingPen, toolKind: undefined, contactState: undefined }, false, false), 'touch');
+  assert.equal(mapper.route({ ...contactingPen, toolKind: undefined, contactState: undefined }, true, false), 'stylus');
+
+  const eraser = { ...contactingPen, toolKind: StylusToolKind.ERASER };
+  assert.equal(mapper.route(eraser, true, false), 'suppress');
+  assert.equal(mapper.route(eraser, true, true), 'stylus');
+
+  const proximity = { ...contactingPen, contactState: StylusContactState.PROXIMITY };
+  assert.equal(mapper.route(proximity, true, false), 'suppress');
+  assert.equal(mapper.route(proximity, true, true), 'stylus');
+
+  const buttoned = { ...contactingPen, buttonMask: 1 };
+  assert.equal(mapper.route(buttoned, true, false), 'suppress');
+  assert.equal(mapper.route(buttoned, true, true), 'stylus');
+
+  assert.equal(mapper.route({ ...contactingPen, toolKind: StylusToolKind.UNSPECIFIED }, true, true), 'suppress');
+});
+
+test('stylus mapper rejects illegal phase, id, pointer, coordinates, pressure, tilt and hypot', () => {
+  const mapper = new StylusInputMapper();
+  const valid = {
+    pointerId: 1, phase: InputPhase.BEGAN, x: 0.5, y: 0.5, pressure: 0.5,
+    tiltXDegrees: 0, tiltYDegrees: 0
+  };
+
+  assert.throws(() => mapper.map(0n, valid, false), /inputId must be a positive uint64/);
+  assert.throws(() => mapper.map(-1n, valid, false), /inputId must be a positive uint64/);
+  assert.throws(() => mapper.map(0x10000000000000000n, valid, false), /inputId must be a positive uint64/);
+  assert.throws(() => mapper.map(1n, { ...valid, pointerId: -1 }, false), /pointerId/);
+  assert.throws(() => mapper.map(1n, { ...valid, pointerId: 1.5 }, false), /pointerId/);
+  assert.throws(() => mapper.map(1n, { ...valid, pointerId: 0x100000000 }, false), /pointerId/);
+  assert.throws(() => mapper.map(1n, { ...valid, phase: InputPhase.UNSPECIFIED }, false), /phase/);
+  assert.throws(() => mapper.map(1n, { ...valid, phase: InputPhase.CANCELLED + 1 }, false), /phase/);
+  assert.throws(() => mapper.map(1n, { ...valid, x: -0.1 }, false), /x must be/);
+  assert.throws(() => mapper.map(1n, { ...valid, x: 1.1 }, false), /x must be/);
+  assert.throws(() => mapper.map(1n, { ...valid, x: Number.NaN }, false), /x must be/);
+  assert.throws(() => mapper.map(1n, { ...valid, y: 2 }, false), /y must be/);
+  assert.throws(() => mapper.map(1n, { ...valid, pressure: 1.5 }, false), /pressure/);
+  assert.throws(() => mapper.map(1n, { ...valid, tiltXDegrees: 91 }, false), /tiltX/);
+  assert.throws(() => mapper.map(1n, { ...valid, tiltYDegrees: -91 }, false), /tiltY/);
+  assert.throws(() => mapper.map(1n, { ...valid, tiltXDegrees: 70, tiltYDegrees: 70 }, false), /tilt vector magnitude/);
+  assert.throws(() => mapper.map(1n, { ...valid, toolKind: 3 }, false), /toolKind must be PEN or ERASER/);
+  assert.throws(() => mapper.map(1n, { ...valid, contactState: 3 }, false), /contactState must be CONTACT or PROXIMITY/);
+  assert.throws(() => mapper.map(1n, { ...valid, toolKind: StylusToolKind.ERASER }, false), /require STYLUS_EXTENDED/);
+  assert.throws(() => mapper.map(1n, { ...valid, contactState: StylusContactState.PROXIMITY }, false), /require STYLUS_EXTENDED/);
+  assert.throws(() => mapper.map(1n, { ...valid, buttonMask: 1 }, false), /require STYLUS_EXTENDED/);
+  assert.throws(() => mapper.map(1n, { ...valid, buttonMask: 1.5 }, true), /buttonMask/);
+  assert.throws(() => mapper.map(1n, { ...valid, buttonMask: 0x100000000 }, true), /buttonMask/);
+
+  const terminal = mapper.map(1n, { ...valid, phase: InputPhase.ENDED, pressure: 0.5 }, false);
+  assert.equal(terminal.pressure, 0);
+  const proximitySample = mapper.map(1n, { ...valid, contactState: StylusContactState.PROXIMITY, pressure: 0.5 }, true);
+  assert.equal(proximitySample.pressure, 0);
+});
+
+test('stylus mapper validate rejects reserved extended enum, button and proximity values', () => {
+  const mapper = new StylusInputMapper();
+  const baseEvent = {
+    inputId: 1n, pointerId: 1, phase: InputPhase.CHANGED, x: 0.5, y: 0.5,
+    pressure: 0.5, tiltXDegrees: 0, tiltYDegrees: 0
+  };
+
+  assert.throws(() => mapper.validate({ ...baseEvent, toolKind: StylusToolKind.PEN }, false), /toolKind must be omitted/);
+  assert.throws(() => mapper.validate({ ...baseEvent, buttonMask: 0 }, false), /buttonMask must be omitted/);
+  assert.throws(() => mapper.validate({ ...baseEvent, contactState: StylusContactState.CONTACT }, false), /contactState must be omitted/);
+
+  assert.throws(() => mapper.validate({ ...baseEvent, toolKind: 3, buttonMask: 0,
+    contactState: StylusContactState.CONTACT }, true), /toolKind must be PEN or ERASER/);
+  assert.throws(() => mapper.validate({ ...baseEvent, toolKind: StylusToolKind.PEN, buttonMask: 4,
+    contactState: StylusContactState.CONTACT }, true), /buttonMask may only contain bits 0 and 1/);
+  assert.throws(() => mapper.validate({ ...baseEvent, toolKind: StylusToolKind.PEN, buttonMask: 0,
+    contactState: 3 }, true), /contactState must be CONTACT or PROXIMITY/);
+  assert.throws(() => mapper.validate({ ...baseEvent, toolKind: StylusToolKind.PEN, buttonMask: 0,
+    contactState: StylusContactState.PROXIMITY, pressure: 0.1 }, true), /PROXIMITY samples must have zero pressure/);
+
+  mapper.validate({ ...baseEvent, toolKind: StylusToolKind.ERASER, buttonMask: 3,
+    contactState: StylusContactState.PROXIMITY, pressure: 0 }, true);
+});
+
+test('product session gates stylus on negotiated base and extended capabilities', () => {
+  const noStylus = createStreamingSessionWithCapabilities([Capability.TOUCH], [Capability.TOUCH]);
+  assert.throws(() => noStylus.stylus({ inputId: 1n, pointerId: 1, phase: InputPhase.BEGAN,
+    x: 0.5, y: 0.5, pressure: 0.5, tiltXDegrees: 0, tiltYDegrees: 0 }), /was not negotiated/);
+
+  const baseOnly = createStreamingSessionWithCapabilities(
+    [Capability.TOUCH, Capability.STYLUS], [Capability.TOUCH, Capability.STYLUS]);
+  const baseEvent = { inputId: 1n, pointerId: 1, phase: InputPhase.BEGAN, x: 0.5, y: 0.5,
+    pressure: 0.5, tiltXDegrees: 0, tiltYDegrees: 0 };
+  assert.equal(confirmStylus(baseOnly, baseOnly.stylus(baseEvent)).intent.kind, 'stylus');
+  assert.throws(() => baseOnly.stylus({ ...baseEvent, inputId: 2n, toolKind: StylusToolKind.ERASER }),
+    /was not negotiated/);
+
+  const both = createStreamingSessionWithCapabilities(
+    [Capability.TOUCH, Capability.STYLUS, Capability.STYLUS_EXTENDED],
+    [Capability.TOUCH, Capability.STYLUS, Capability.STYLUS_EXTENDED]);
+  const extended = both.stylus({ ...baseEvent, inputId: 2n, pointerId: 2, toolKind: StylusToolKind.ERASER,
+    buttonMask: 1, contactState: StylusContactState.CONTACT });
+  assert.equal(confirmStylus(both, extended).intent.kind, 'stylus');
+});
+
+test('product session enforces stylus lifecycle and release cancels active inputs', () => {
+  const session = createStreamingSessionWithCapabilities(
+    [Capability.TOUCH, Capability.STYLUS, Capability.STYLUS_EXTENDED],
+    [Capability.TOUCH, Capability.STYLUS, Capability.STYLUS_EXTENDED]);
+  const base = { pointerId: 1, phase: InputPhase.BEGAN, x: 0.5, y: 0.5,
+    pressure: 0.5, tiltXDegrees: 0, tiltYDegrees: 0 };
+
+  assert.throws(() => session.stylus({ ...base, inputId: 1n, phase: InputPhase.CHANGED }), /Invalid stylus lifecycle/);
+  assert.throws(() => session.stylus({ ...base, inputId: 1n, phase: InputPhase.ENDED, pressure: 0 }), /Invalid stylus lifecycle/);
+
+  const began = session.stylus({ ...base, inputId: 1n });
+  assert.equal(confirmStylus(session, began).intent.kind, 'stylus');
+  assert.throws(() => session.stylus({ ...base, inputId: 2n }), /Invalid stylus lifecycle/);
+  assert.throws(() => session.stylus({ ...base, inputId: 2n, pointerId: 2 }), /Invalid stylus lifecycle/);
+  const changed = session.stylus({ ...base, inputId: 3n, phase: InputPhase.CHANGED });
+  assert.equal(confirmStylus(session, changed).intent.kind, 'stylus');
+  const ended = session.stylus({ ...base, inputId: 4n, phase: InputPhase.ENDED, pressure: 0 });
+  assert.equal(confirmStylus(session, ended).intent.kind, 'stylus');
+  assert.throws(() => session.stylus({ ...base, inputId: 5n, phase: InputPhase.CHANGED }), /Invalid stylus lifecycle/);
+
+  confirmStylus(session, session.stylus({ ...base, inputId: 10n, pointerId: 5, toolKind: StylusToolKind.ERASER,
+    buttonMask: 1, contactState: StylusContactState.PROXIMITY, pressure: 0 }));
+  assert.throws(() => session.stylus({ ...base, inputId: 11n, pointerId: 5, phase: InputPhase.CHANGED,
+    toolKind: StylusToolKind.PEN, buttonMask: 1, contactState: StylusContactState.PROXIMITY, pressure: 0 }),
+  /Invalid stylus lifecycle/);
+  assert.throws(() => session.stylus({ ...base, inputId: 12n, pointerId: 5, phase: InputPhase.CHANGED,
+    toolKind: StylusToolKind.ERASER, buttonMask: 1, contactState: StylusContactState.CONTACT }),
+  /Invalid stylus lifecycle/);
+  let nextId = 100n;
+  const releases = session.releaseStylusInputs(() => nextId++);
+  assert.equal(releases.length, 1);
+  assert.equal(releases[0].intent.event.pointerId, 5);
+  assert.equal(releases[0].intent.event.phase, InputPhase.CANCELLED);
+  assert.equal(releases[0].intent.event.pressure, 0);
+  assert.equal(releases[0].intent.event.toolKind, StylusToolKind.ERASER);
+  assert.equal(releases[0].intent.event.buttonMask, 0);
+  assert.equal(releases[0].intent.event.contactState, StylusContactState.PROXIMITY);
+  assert.throws(() => session.completeStylusRelease(), /incomplete/);
+  assert.throws(() => session.stylus({ ...base, inputId: 200n, pointerId: 5, phase: InputPhase.CHANGED }),
+    /Stylus input is closing/);
+  confirmStylus(session, releases[0]);
+  session.completeStylusRelease();
+
+  assert.throws(() => session.stylus({ ...base, inputId: 201n, pointerId: 5, phase: InputPhase.CHANGED }),
+    /Invalid stylus lifecycle/);
+});
+
+test('product session releaseStylusInputs clears state outside streaming and is idempotent', () => {
+  const session = createStreamingSessionWithCapabilities(
+    [Capability.TOUCH, Capability.STYLUS], [Capability.TOUCH, Capability.STYLUS]);
+  confirmStylus(session, session.stylus({ inputId: 1n, pointerId: 1, phase: InputPhase.BEGAN, x: 0.5, y: 0.5,
+    pressure: 0.5, tiltXDegrees: 0, tiltYDegrees: 0 }));
+  session.close();
+  assert.deepEqual(session.releaseStylusInputs(() => 9n), []);
+});
+
+test('stylus terminal send must be confirmed before resume is allowed', () => {
+  const session = createStreamingSessionWithCapabilities(
+    [Capability.TOUCH, Capability.STYLUS, Capability.SESSION_RESUME],
+    [Capability.TOUCH, Capability.STYLUS, Capability.SESSION_RESUME]);
+  const began = session.stylus({ inputId: 1n, pointerId: 1, phase: InputPhase.BEGAN, x: 0.5, y: 0.5,
+    pressure: 0.5, tiltXDegrees: 0, tiltYDegrees: 0 });
+  confirmStylus(session, began);
+  const ended = session.stylus({ inputId: 2n, pointerId: 1, phase: InputPhase.ENDED, x: 0.5, y: 0.5,
+    pressure: 0, tiltXDegrees: 0, tiltYDegrees: 0 });
+  assert.equal(session.resumableSnapshot(20n), undefined);
+  confirmStylus(session, ended);
+  assert.notEqual(session.resumableSnapshot(20n), undefined);
+});
+
+test('active stylus state disables resume until its release is written', () => {
+  const session = createStreamingSessionWithCapabilities(
+    [Capability.TOUCH, Capability.STYLUS, Capability.SESSION_RESUME],
+    [Capability.TOUCH, Capability.STYLUS, Capability.SESSION_RESUME]);
+  assert.notEqual(session.resumableSnapshot(20n), undefined);
+  const began = session.stylus({ inputId: 1n, pointerId: 1, phase: InputPhase.BEGAN, x: 0.5, y: 0.5,
+    pressure: 0.5, tiltXDegrees: 0, tiltYDegrees: 0 });
+  assert.equal(session.resumableSnapshot(20n), undefined);
+  confirmStylus(session, began);
+  const release = session.releaseStylusInputs(() => 2n);
+  assert.equal(release.length, 1);
+  assert.equal(session.resumableSnapshot(21n), undefined);
+  assert.throws(() => session.completeStylusRelease(), /incomplete/);
+  confirmStylus(session, release[0]);
+  session.completeStylusRelease();
+  assert.notEqual(session.resumableSnapshot(21n), undefined);
+});
+
+test('outbound release preserves queued stylus state and drops unrelated traffic', async () => {
+  const sent = [];
+  const releases = [];
+  const writer = new OutboundControlWriter((bytes) => {
+    sent.push(new ProtocolDecoder().envelope(bytes));
+    return new Promise((resolve) => releases.push(resolve));
+  }, () => 1n);
+  const scope = { sessionId, sessionEpoch: 7n };
+
+  const inFlight = writer.enqueue({ kind: 'pointer', event: { inputId: 1n, pointerId: 0,
+    phase: InputPhase.BEGAN, x: 0.5, y: 0.5, pressure: 0, tiltX: 0, tiltY: 0, buttonMask: 0 } }, scope);
+  const queuedStylus = writer.enqueue({ kind: 'stylus', event: { inputId: 2n, pointerId: 7,
+    phase: InputPhase.BEGAN, x: 0.5, y: 0.5, pressure: 0.5, tiltXDegrees: 0, tiltYDegrees: 0 } }, scope);
+  const critical = writer.enqueue({ kind: 'ping', sequence: 1n }, scope);
+  writer.beginRelease();
+  const release = writer.enqueueRelease({ kind: 'stylus', event: { inputId: 3n, pointerId: 7,
+    phase: InputPhase.CANCELLED, x: 0.5, y: 0.5, pressure: 0, tiltXDegrees: 0, tiltYDegrees: 0 } }, scope);
+  const trailing = writer.enqueue({ kind: 'pointer', event: { inputId: 4n, pointerId: 0,
+    phase: InputPhase.ENDED, x: 0.5, y: 0.5, pressure: 0, tiltX: 0, tiltY: 0, buttonMask: 0 } }, scope);
+  await assert.rejects(critical, /releasing/);
+  await assert.rejects(trailing, /releasing/);
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].payloadField, 61);
+
+  releases.shift()(); await inFlight;
+  assert.equal(sent[1].payloadField, 65);
+
+  releases.shift()(); await queuedStylus;
+  assert.equal(sent[2].payloadField, 65);
+
+  releases.shift()(); await release;
+  await writer.awaitReleaseDrain();
+  assert.deepEqual(sent.map((envelope) => envelope.messageId), [1n, 2n, 3n]);
+});
+
+test('outbound writer assigns consecutive message ids starting from the configured first id', async () => {
+  const sent = [];
+  const releases = [];
+  const writer = new OutboundControlWriter((bytes) => {
+    sent.push(new ProtocolDecoder().envelope(bytes));
+    return new Promise((resolve) => releases.push(resolve));
+  }, () => 1n, 7n);
+  const scope = { sessionId, sessionEpoch: 7n };
+
+  const first = writer.enqueue({ kind: 'ping', sequence: 1n }, scope);
+  releases.shift()(); await first;
+  const second = writer.enqueue({ kind: 'pong', sequence: 1n, correlationId: 7n }, scope);
+  releases.shift()(); await second;
+
+  assert.deepEqual(sent.map((envelope) => envelope.messageId), [7n, 8n]);
+  assert.equal(writer.nextMessageIdValue(), 9n);
+});
+
+function createStreamingSessionWithCapabilities(offered, negotiated) {
+  const session = new ProductSession('harmony-test', 'Harmony test', offered, [Codec.HEVC, Codec.H264]);
+  confirmRequest(session, session.start(1n)[0], 1n);
+  const host = new ProtobufWriter().uint32(1, 1).packedVarints(4, offered).packedVarints(5, [Codec.HEVC, Codec.H264]);
+  session.receive(controlEnvelope(2n, 21, host, false), 2n);
+  const accepted = new ProtobufWriter().bytesField(1, sessionId).uint64(2, 7n).uint32(3, 1000)
+    .packedVarints(4, negotiated);
+  const acceptedActions = session.receive(controlEnvelope(3n, 22, accepted), 3n);
+  confirmRequest(session, acceptedActions[1], 4n);
+  confirmRequest(session, session.receive(fixture('list_displays_response.binpb'), 5n)[0], 6n);
+  session.receive(fixture('start_display_response.binpb'), 7n);
+  const configure = session.receive(fixture('video_config.binpb'), 8n)[0];
+  finishVideoConfiguration(session, configure);
+  return session;
+}

@@ -4,9 +4,12 @@ export enum Codec { UNSPECIFIED = 0, H264 = 1, HEVC = 2, AV1 = 3 }
 export enum TransportKind { UNSPECIFIED = 0, USB = 1, LAN = 2, INTERNET = 3 }
 export enum Capability {
   UNSPECIFIED = 0, DISPLAY_MIRROR = 1, VIRTUAL_DISPLAY = 2, TOUCH = 3,
-  KEYBOARD = 4, POINTER = 5, STYLUS = 6, TELEMETRY = 7, SESSION_RESUME = 8
+  KEYBOARD = 4, POINTER = 5, STYLUS = 6, TELEMETRY = 7, SESSION_RESUME = 8,
+  STYLUS_EXTENDED = 25
 }
 export enum InputPhase { UNSPECIFIED = 0, BEGAN = 1, CHANGED = 2, ENDED = 3, CANCELLED = 4 }
+export enum StylusToolKind { UNSPECIFIED = 0, PEN = 1, ERASER = 2 }
+export enum StylusContactState { UNSPECIFIED = 0, CONTACT = 1, PROXIMITY = 2 }
 export enum ColorPrimaries { UNSPECIFIED = 0, BT709 = 1, DISPLAY_P3 = 2, BT2020 = 3 }
 export enum TransferFunction { UNSPECIFIED = 0, SRGB = 1, BT709 = 2, PQ = 3, HLG = 4 }
 export enum MatrixCoefficients { UNSPECIFIED = 0, BT709 = 1, BT2020_NON_CONSTANT = 2 }
@@ -99,6 +102,21 @@ export interface NormalizedInput {
 
 export interface ScrollInput { inputId: bigint; deltaX: number; deltaY: number; target?: InputTarget; }
 export interface KeyInput { inputId: bigint; usbHidUsage: number; pressed: boolean; modifierMask: number; text: string; target?: InputTarget; }
+
+export interface StylusInput {
+  inputId: bigint;
+  pointerId: number;
+  phase: InputPhase;
+  x: number;
+  y: number;
+  pressure: number;
+  tiltXDegrees: number;
+  tiltYDegrees: number;
+  target?: InputTarget;
+  toolKind?: StylusToolKind;
+  buttonMask?: number;
+  contactState?: StylusContactState;
+}
 
 export function defaultCapabilities(): Capability[] {
   return [Capability.DISPLAY_MIRROR, Capability.VIRTUAL_DISPLAY, Capability.TOUCH,

@@ -62,6 +62,33 @@ install and verify command. It parses TypeScript-compatible ArkTS and an ArkUI
 lifecycle/input shell, but cannot run the DevEco ArkTS API/type checker, parse
 the full declarative ArkUI builder grammar, or validate vendor APIs.
 
+## 2026-08-16 gated stylus portable replay
+
+The Harmony stylus slice was replayed onto `origin/main`
+`49645ead2115b51e61e30c0954ddc35c88cabd1d` without merging or cherry-picking
+the former feature branch. The source-only gates passed:
+
+```text
+cd apps/harmony && pnpm run verify
+  PASS: 35 semantic project files; 101/101 portable tests
+python3 contracts/fixtures/messages/v1/generate.py --check
+  PASS: checked fixtures match generation
+python3 -m unittest contracts.tests.test_protocol_fixtures -v
+  PASS: 11/11 protocol fixture tests
+cd apps/harmony && make doctor
+  BLOCKED: hvigor and ohpm are not installed
+```
+
+The portable additions cover the shared base and extended stylus fixtures,
+capability dependency closure, touch fallback and extended-only suppression,
+strict input/lifecycle validation, release-before-close ordering, bounded
+release priority, and resume suppression while stylus state is active or not
+yet released. A terminal or release control must also be confirmed written by
+the control writer before resume is allowed. The production client continues
+to advertise only base stylus.
+This record does not establish DevEco ArkTS compilation, API compatibility, a
+HAP, signing, installation, hardware decode, or MatePad behavior.
+
 ## Clean cross-repository gates
 
 The following commands ran against the tested commit/tree above:
@@ -141,7 +168,8 @@ contract gate then passed `test_upgrade_bytes_are_pinned`.
 - secure PairingOffer/Request/Result proof, credential issue/revoke, replay and expiry;
 - H.264 and HEVC hardware render with decoder identity evidence;
 - multi-touch, Up/Cancel, keyboard/HID/modifiers, pointer/buttons, wheel/trackpad,
-  stylus pressure, focus, safe area, letterbox, and both orientations;
+  stylus (base pressure/tilt and extended eraser/barrel/proximity under
+  capability gating), focus, safe area, letterbox, and both orientations;
 - background/foreground, permission denial, Wi-Fi loss/restore/roam, host restart,
   bounded reconnect, resume-result behavior, and no old-epoch render;
 - MatePad Mini eight-hour thermal/power/RSS/frame-drop soak and external-camera

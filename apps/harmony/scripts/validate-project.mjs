@@ -17,6 +17,7 @@ const REQUIRED_FILES = [
   'entry/src/main/ets/pages/Index.ets', 'entry/src/main/resources/base/element/color.json',
   'entry/src/main/ets/core/media/LatestFrameQueue.ts',
   'entry/src/main/ets/core/media/DecoderLifecycle.ts',
+  'entry/src/main/ets/core/input/StylusInputMapper.ts',
   'entry/src/main/ets/core/protocol/OutboundControlWriter.ts',
   'entry/src/main/ets/core/session/ClientCapabilities.ts',
   'entry/src/main/ets/core/session/HeartbeatMonitor.ts',
@@ -320,9 +321,12 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   const nodeHasMethodCall = (node, sourceFile, receiver, methodName) => {
     let found = false;
     const visit = (candidate) => {
-      if (ts.isCallExpression(candidate) && ts.isPropertyAccessExpression(candidate.expression) &&
-        candidate.expression.name.text === methodName && candidate.expression.expression.getText(sourceFile) === receiver &&
-        isReachableInMethod(candidate, node)) found = true;
+      if (ts.isCallExpression(candidate)) {
+        const access = candidate.expression;
+        if ((ts.isPropertyAccessExpression(access) || ts.isPropertyAccessChain(access)) &&
+          access.name.text === methodName && access.expression.getText(sourceFile) === receiver &&
+          isReachableInMethod(candidate, node)) found = true;
+      }
       ts.forEachChild(candidate, visit);
     };
     visit(node);
@@ -345,6 +349,74 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
     };
     visit(method);
     return found;
+  };
+  const methodSendStylusUsesEventPressure = (relative, className, methodName) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, methodName);
+    if (sourceFile === undefined || method === undefined) return false;
+    let valid = false;
+    const visit = (node) => {
+      if (ts.isCallExpression(node)) {
+        const access = node.expression;
+        if ((ts.isPropertyAccessExpression(access) || ts.isPropertyAccessChain(access)) &&
+          access.name.text === 'sendStylus' && access.expression.getText(sourceFile) === 'sessionRuntime') {
+          const firstArg = node.arguments[0];
+          if (firstArg !== undefined && ts.isObjectLiteralExpression(firstArg)) {
+            const pressure = firstArg.properties.find((property) =>
+              ts.isPropertyAssignment(property) && property.name.getText(sourceFile) === 'pressure');
+            if (pressure !== undefined && ts.isPropertyAssignment(pressure)) {
+              const value = pressure.initializer;
+              valid = ts.isPropertyAccessExpression(value) && value.expression.getText(sourceFile) === 'event' &&
+                value.name.text === 'pressure';
+            }
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return valid;
+  };
+  const methodSendTouchUsesEventPressure = (relative, className, methodName) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, methodName);
+    if (sourceFile === undefined || method === undefined) return false;
+    let valid = false;
+    const visit = (node) => {
+      if (ts.isCallExpression(node)) {
+        const access = node.expression;
+        if ((ts.isPropertyAccessExpression(access) || ts.isPropertyAccessChain(access)) &&
+          access.name.text === 'sendTouch' && access.expression.getText(sourceFile) === 'sessionRuntime') {
+          const pressure = node.arguments[7];
+          valid = pressure !== undefined && ts.isPropertyAccessExpression(pressure) &&
+            pressure.expression.getText(sourceFile) === 'event' && pressure.name.text === 'pressure';
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return valid;
+  };
+  const methodCallsBefore = (relative, className, methodName, firstReceiver, firstMethod, secondReceiver, secondMethod) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, methodName);
+    if (sourceFile === undefined || method === undefined) return false;
+    let firstCall;
+    let secondCall;
+    const visit = (node) => {
+      if (ts.isCallExpression(node)) {
+        const access = node.expression;
+        if ((ts.isPropertyAccessExpression(access) || ts.isPropertyAccessChain(access))) {
+          const receiver = access.expression.getText(sourceFile);
+          const name = access.name.text;
+          if (receiver === firstReceiver && name === firstMethod && isReachableInMethod(node, method)) firstCall = node;
+          if (receiver === secondReceiver && name === secondMethod && isReachableInMethod(node, method)) secondCall = node;
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return firstCall !== undefined && secondCall !== undefined && firstCall.end <= secondCall.pos;
   };
   const methodHasConstructorCall = (relative, className, containerMethod, constructedClass) => {
     const method = classMethod(relative, className, containerMethod);
@@ -509,6 +581,11 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   requireCallInMethod(indexPath, 'Index', 'connect', 'sessionRuntime', 'connect');
   requireCallInMethod(indexPath, 'Index', 'importLink', 'sessionRuntime', 'importPairingLink');
   requireCallInMethod(indexPath, 'Index', 'handleTouch', 'sessionRuntime', 'sendTouch');
+  requireCallInMethod(indexPath, 'Index', 'handleTouch', 'sessionRuntime', 'sendStylus');
+  check(methodSendStylusUsesEventPressure(indexPath, 'Index', 'handleTouch'),
+    `${indexPath}: Index.handleTouch() must source stylus pressure from TouchEvent event.pressure, not touch.pressure`);
+  check(methodSendTouchUsesEventPressure(indexPath, 'Index', 'handleTouch'),
+    indexPath + ': Index.handleTouch() must preserve TouchEvent event.pressure for ordinary touch input');
   requireCallInMethod(indexPath, 'Index', 'handleMouse', 'sessionRuntime', 'sendPointer');
   requireCallInMethod(indexPath, 'Index', 'handleKey', 'sessionRuntime', 'sendKey');
   check(read(indexPath).includes('.onLoad(() => sessionRuntime.setSurface(') &&
@@ -541,6 +618,8 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   check(methodHasDominatingCapabilityGuard(controllerPath, 'HarmonySessionController', 'sendKey', 'Capability.KEYBOARD', 'key'),
     `${controllerPath}: HarmonySessionController.sendKey() must use a dominating KEYBOARD early-return guard`);
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendKey', 'active', 'key');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendStylus', 'active', 'stylus');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendStylus', 'active', 'touch');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendAction', 'writer', 'enqueue');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'configureVideo', 'this.videoDecoder', 'configure');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'configureVideo', 'active', 'completeVideoConfiguration');
@@ -551,6 +630,20 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
     `${controllerPath}: HarmonySessionController.cleanupResources() must call runAllCleanup()`);
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'cleanupResources', 'this.transport', 'close');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'cleanupResources', 'this.videoDecoder', 'release');
+  for (const methodName of ['connect', 'disconnect', 'onBackground']) {
+    check(methodCallsBefore(controllerPath, 'HarmonySessionController', methodName,
+      'this', 'releaseStylusInputs', 'this', 'closeWriter'),
+    `${controllerPath}: HarmonySessionController.${methodName}() must release stylus inputs before closing the writer`);
+  }
+  check(methodCallsBefore(controllerPath, 'HarmonySessionController', 'onBackground',
+    'this', 'releaseStylusInputs', 'this.controlWriter', 'nextMessageIdValue'),
+  `${controllerPath}: HarmonySessionController.onBackground() must release stylus inputs before taking the resume snapshot`);
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseStylusInputs', 'active', 'releaseStylusInputs');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseStylusInputs', 'writer', 'beginRelease');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseStylusInputs', 'writer', 'enqueueRelease');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseStylusInputs', 'writer', 'awaitReleaseDrain');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseStylusInputs', 'active', 'confirmSent');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseStylusInputs', 'active', 'completeStylusRelease');
 
   const decoderPath = 'entry/src/main/ets/platform/HarmonyVideoDecoder.ets';
   requireImport(decoderPath, '../core/media/DecoderLifecycle', 'DecoderLifecycle');

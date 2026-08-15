@@ -1,4 +1,4 @@
-import { Capability, InputPhase } from '../core/protocol/ProtocolModels';
+import { Capability, InputPhase, StylusContactState, StylusToolKind } from '../core/protocol/ProtocolModels';
 import { PeripheralInputMapper } from '../core/input/PeripheralInputMapper';
 import { Rotation } from '../core/input/CoordinateMapper';
 import { SessionUiListener } from '../platform/HarmonySessionController';
@@ -90,8 +90,17 @@ struct Index {
     if (event.type === TouchType.Down) phase = InputPhase.BEGAN;
     else if (event.type === TouchType.Up) phase = InputPhase.ENDED;
     else if (event.type === TouchType.Cancel) phase = InputPhase.CANCELLED;
-    touches.forEach((touch: TouchObject) => sessionRuntime.sendTouch(touch.id, phase, touch.x, touch.y,
-      this.viewportWidth, this.viewportHeight, this.rotation, touch.pressure));
+    touches.forEach((touch: TouchObject) => {
+      if (event.sourceTool === SourceTool.Pen) {
+        sessionRuntime.sendStylus({ pointerId: touch.id, phase, x: 0, y: 0, pressure: event.pressure,
+          tiltXDegrees: event.tiltX, tiltYDegrees: event.tiltY, toolKind: StylusToolKind.PEN,
+          buttonMask: 0, contactState: StylusContactState.CONTACT }, touch.x, touch.y,
+        this.viewportWidth, this.viewportHeight, this.rotation);
+        return;
+      }
+      sessionRuntime.sendTouch(touch.id, phase, touch.x, touch.y,
+        this.viewportWidth, this.viewportHeight, this.rotation, event.pressure);
+    });
   }
 
   private handleMouse(event: MouseEvent): void {

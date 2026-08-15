@@ -1,5 +1,6 @@
 import { systemDateTime } from '@kit.BasicServicesKit';
 import { CoordinateMapper, Rotation } from '../core/input/CoordinateMapper';
+import { HarmonyStylusSample, StylusInputMapper } from '../core/input/StylusInputMapper';
 import { MediaPacketParser } from '../core/media/MediaPacketParser';
 import { OutboundControlWriter, OutboundControlReceipt } from '../core/protocol/OutboundControlWriter';
 import { Capability, Codec, InputPhase, NormalizedInput, VideoConfig } from '../core/protocol/ProtocolModels';
@@ -50,6 +51,7 @@ export class HarmonySessionController {
   private progressWatchdog: ProgressWatchdog = new ProgressWatchdog();
   private pairingStore: PairingStore = new PairingStore();
   private coordinateMapper: CoordinateMapper = new CoordinateMapper();
+  private stylusInputMapper: StylusInputMapper = new StylusInputMapper();
   private session: ProductSession | undefined;
   private controlWriter: OutboundControlWriter | undefined;
   private ui: SessionUiListener | undefined;
@@ -90,8 +92,11 @@ export class HarmonySessionController {
     if (host.trim().length === 0 || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Mac 地址或端口无效');
     const owner: number = ++this.operationGeneration; this.decoderGeneration += 1;
     this.resumeSnapshot = undefined;
-    this.cancelReconnect(); this.cancelHeartbeat(); this.cancelSessionWatchdog(); this.session?.close(); this.closeWriter();
-    const failures: CleanupFailure[] = await this.cleanupResources();
+    this.cancelReconnect(); this.cancelHeartbeat(); this.cancelSessionWatchdog();
+    const releaseFailures: CleanupFailure[] = await this.releaseStylusInputs();
+    if (owner !== this.operationGeneration) return;
+    this.session?.close(); this.closeWriter();
+    const failures: CleanupFailure[] = [...releaseFailures, ...await this.cleanupResources()];
     if (owner !== this.operationGeneration) return;
     if (failures.length > 0) this.ui?.onStatus(`重新连接前清理警告：${describeCleanupFailures(failures)}`, false);
     this.host = host.trim(); this.port = port; this.userStopped = false; this.reconnectAttempt = 0;
@@ -101,8 +106,10 @@ export class HarmonySessionController {
   async disconnect(): Promise<void> {
     const owner: number = ++this.operationGeneration; this.decoderGeneration += 1;
     this.userStopped = true; this.resumeSnapshot = undefined; this.cancelReconnect(); this.cancelHeartbeat(); this.cancelSessionWatchdog();
+    const releaseFailures: CleanupFailure[] = await this.releaseStylusInputs();
+    if (owner !== this.operationGeneration) return;
     this.session?.close(); this.closeWriter();
-    const failures: CleanupFailure[] = await this.cleanupResources();
+    const failures: CleanupFailure[] = [...releaseFailures, ...await this.cleanupResources()];
     if (owner === this.operationGeneration) this.ui?.onStatus(this.cleanupStatus('已断开', failures), false);
   }
 
@@ -131,11 +138,14 @@ export class HarmonySessionController {
 
   async onBackground(): Promise<void> {
     const owner: number = ++this.operationGeneration; this.decoderGeneration += 1;
-    const nextMessageId: bigint | undefined = this.controlWriter?.nextMessageIdValue();
-    this.resumeSnapshot = nextMessageId === undefined ? undefined : this.session?.resumableSnapshot(nextMessageId);
     this.foreground = false; this.cancelReconnect(); this.cancelHeartbeat(); this.cancelSessionWatchdog();
+    const releaseFailures: CleanupFailure[] = await this.releaseStylusInputs();
+    if (owner !== this.operationGeneration) return;
+    const nextMessageId: bigint | undefined = this.controlWriter?.nextMessageIdValue();
+    this.resumeSnapshot = releaseFailures.length > 0 || nextMessageId === undefined ? undefined :
+      this.session?.resumableSnapshot(nextMessageId);
     this.session?.close(); this.closeWriter();
-    const failures: CleanupFailure[] = await this.cleanupResources();
+    const failures: CleanupFailure[] = [...releaseFailures, ...await this.cleanupResources()];
     if (owner === this.operationGeneration) this.ui?.onStatus(this.cleanupStatus('已暂停，返回前台后重连', failures), false);
   }
 
@@ -153,6 +163,32 @@ export class HarmonySessionController {
       pressure: active.canSend(Capability.STYLUS) ? Math.min(Math.max(pressure, 0), 1) : 0,
       tiltX: 0, tiltY: 0, buttonMask: 0 };
     this.applyActions([active.touch(event)], this.operationGeneration);
+  }
+
+  sendStylus(sample: HarmonyStylusSample, localX: number, localY: number, width: number, height: number,
+    rotation: Rotation): void {
+    const active: ProductSession | undefined = this.session;
+    if (active?.state() !== ProductSessionState.STREAMING ||
+      !this.finite(localX, localY, width, height) || width <= 0 || height <= 0) return;
+    try {
+      const point = this.coordinateMapper.map(localX, localY, { left: 0, top: 0, width, height, rotation });
+      const normalized: HarmonyStylusSample = { ...sample, x: point.x, y: point.y };
+      const route = this.stylusInputMapper.route(normalized, active.canSend(Capability.STYLUS),
+        active.canSend(Capability.STYLUS_EXTENDED));
+      if (route === 'touch') {
+        const terminal: boolean = sample.phase === InputPhase.ENDED || sample.phase === InputPhase.CANCELLED;
+        this.applyActions([active.touch({ inputId: this.nextInputId++, pointerId: sample.pointerId,
+          phase: sample.phase, x: point.x, y: point.y, pressure: terminal ? 0 : sample.pressure, tiltX: 0, tiltY: 0,
+          buttonMask: 0 })], this.operationGeneration);
+        return;
+      }
+      if (route === 'suppress') return;
+      const extended: boolean = active.canSend(Capability.STYLUS_EXTENDED);
+      this.applyActions([active.stylus(this.stylusInputMapper.map(this.nextInputId++, normalized, extended))],
+        this.operationGeneration);
+    } catch (error) {
+      this.ui?.onStatus('手写笔输入被拒绝：' + (error as Error).message, true);
+    }
   }
 
   sendPointer(phase: InputPhase, x: number, y: number, width: number, height: number,
@@ -320,8 +356,9 @@ export class HarmonySessionController {
     writer.enqueue(action.intent, active.outboundScope(), action.onAssigned === undefined ? undefined :
       (messageId: bigint, nowNs: bigint) => active.confirmAssigned(action.onAssigned!, messageId, nowNs))
       .then((_receipt: OutboundControlReceipt) => {
+        if (action.afterSend?.kind === 'stylus') active.confirmSent(action.afterSend);
         if (owner !== this.operationGeneration || this.session !== active) return;
-        if (action.afterSend !== undefined) {
+        if (action.afterSend !== undefined && action.afterSend.kind !== 'stylus') {
           active.confirmSent(action.afterSend);
           if (action.afterSend.kind === 'videoConfiguration' && action.afterSend.accepted) {
             this.applyActions([{ kind: 'send', intent: { kind: 'requestKeyframe',
@@ -329,7 +366,9 @@ export class HarmonySessionController {
             this.armSessionWatchdog(owner);
           }
         }
-      }).catch((error: Error) => this.onTransportLost(error.message, true, owner));
+      }).catch((error: Error) => {
+        if (!writer.isReleasing()) this.onTransportLost(error.message, true, owner);
+      });
   }
 
   private scheduleReconnect(reason: string, owner: number): void {
@@ -398,6 +437,25 @@ export class HarmonySessionController {
   private closeWriter(): void {
     this.controlWriter?.close('Session generation ended');
     this.controlWriter = undefined;
+  }
+
+  private async releaseStylusInputs(): Promise<CleanupFailure[]> {
+    const active: ProductSession | undefined = this.session;
+    const writer: OutboundControlWriter | undefined = this.controlWriter;
+    const actions: SessionAction[] = active?.releaseStylusInputs(() => this.nextInputId++) ?? [];
+    if (active === undefined || writer === undefined) return [];
+    return runAllCleanup([{ name: 'stylus.release', run: async () => {
+      writer.beginRelease();
+      const pending: Promise<OutboundControlReceipt>[] = actions.map((action: SessionAction) => {
+        if (action.kind !== 'send') throw new Error('Unexpected stylus release action');
+        return writer.enqueueRelease(action.intent, active.outboundScope()).then((receipt: OutboundControlReceipt) => {
+          if (action.afterSend !== undefined) active.confirmSent(action.afterSend);
+          return receipt;
+        });
+      });
+      await Promise.all([...pending, writer.awaitReleaseDrain()]);
+      active.completeStylusRelease();
+    } }]);
   }
 
   private requireSession(): ProductSession {

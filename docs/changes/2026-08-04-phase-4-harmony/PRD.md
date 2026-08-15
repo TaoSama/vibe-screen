@@ -17,7 +17,8 @@ responsibilities separate.
 - H.264 and HEVC use Harmony hardware decode into an ArkUI surface;
 - old-session media is rejected and the media backlog never exceeds one frame;
 - foreground/background transitions and disconnects resume with bounded backoff;
-- touch, keyboard, pointer, scroll, and stylus pressure reach the Mac;
+- touch, keyboard, pointer, scroll, and stylus (base pressure/tilt and
+  extended eraser/barrel/proximity under capability gating) reach the Mac;
 - install, upgrade, permission, troubleshooting, and MatePad Mini runbooks exist;
 - a MatePad Mini passes the full device matrix in `TEST.md`.
 
@@ -33,10 +34,16 @@ secure pairing, or a device is complete.
 
 ## Explicit contract gaps
 
-Protocol v1 has no stylus tilt/azimuth fields and no controller/peripheral event
-message. Implementing those without a contract would create a temporary wire
-protocol, so this client does not do so. They require additive schema changes
-and cross-platform golden fixtures.
+Protocol v1 now defines the additive CAPABILITY_STYLUS_EXTENDED (tool kind,
+barrel buttons, contact/proximity state) on top of base CAPABILITY_STYLUS
+(position, pressure, tilt). The Harmony portable core encodes both under
+capability gating, but the production client advertises only
+CAPABILITY_STYLUS and not CAPABILITY_STYLUS_EXTENDED until DevEco/API-checker/
+HAP/MatePad evidence exists. A contacting pen can fall back to touch when the
+peer lacks stylus support; eraser, proximity/hover, and barrel buttons cannot
+be losslessly downgraded and are suppressed when the extended capability is not
+negotiated. Protocol v1 still has no controller/peripheral event wire contract
+on main, so this change does not add controller input.
 
 Physical keyboards and mice use the existing key/pointer messages. Wheel axis
 delivery still needs DevEco/device confirmation before it is advertised as

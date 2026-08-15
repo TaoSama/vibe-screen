@@ -478,13 +478,21 @@ network quality may increase it.
   live in [`apps/harmony`](apps/harmony/README.md). Portable gates cover the
   real DevEco project layout, legacy-to-v1 upgrade, channel framing, formal
   control/media fixtures, display/video negotiation, strict session epochs,
-  bounded media queues, input encoding, fail-closed resume results, and a
-  portable pairing/credential/replay/revocation core. ArkUI now wires TCP,
+  bounded media queues, input encoding (including shared Protocol v1 base and
+  extended stylus encoding and capability gating), fail-closed resume results,
+  and a portable pairing/credential/replay/revocation core. ArkUI now wires TCP,
   XComponent, AVCodec, Asset Store, foreground suspension, and bounded reconnect in
-  source. No DevEco SDK was available for this record, so the repository does
-  not claim ArkTS compilation, a HAP, signing, installation, hardware decode,
-  HUKS-backed secure pairing, authenticated transport, resume-capable Host
-  interoperability, or real-device behavior.
+  source. The portable core encodes both base stylus (position, pressure, tilt)
+  and the extended stylus fields (tool kind, barrel buttons, contact/proximity
+  state) under capability negotiation, but the production Harmony client
+  advertises only CAPABILITY_STYLUS and not CAPABILITY_STYLUS_EXTENDED until
+  DevEco/API-checker/HAP/MatePad evidence exists. A contacting pen can fall back
+  to touch when the peer lacks stylus support; eraser, proximity/hover, and
+  barrel buttons cannot be losslessly downgraded and are suppressed when the
+  extended capability is not negotiated. No DevEco SDK was available for this
+  record, so the repository does not claim ArkTS compilation, a HAP, signing,
+  installation, hardware decode, HUKS-backed secure pairing, authenticated
+  transport, resume-capable Host interoperability, or real-device behavior.
 - The [Phase 4 verification record](docs/changes/2026-08-04-phase-4-harmony/TEST.md)
   tracks the remaining DevEco, host-interoperability, and MatePad Mini gates.
 - HarmonyOS device acceptance must follow the

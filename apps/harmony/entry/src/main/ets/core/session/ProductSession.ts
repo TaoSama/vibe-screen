@@ -1,8 +1,10 @@
 import { MediaPacket } from '../media/MediaPacketParser';
+import { StylusInputMapper } from '../input/StylusInputMapper';
 import { DecodedEnvelope, ProtocolDecoder } from '../protocol/ProtocolDecoder';
 import { OutboundControlIntent } from '../protocol/ProtocolEncoder';
 import { Capability, ClientHello, Codec, ColorPrimaries, InputPhase, InputTarget, KeyInput, MatrixCoefficients,
-  NormalizedInput, PROTOCOL_VERSION, ScrollInput, TransferFunction, TransportKind, VideoConfig } from '../protocol/ProtocolModels';
+  NormalizedInput, PROTOCOL_VERSION, ScrollInput, StylusContactState, StylusInput, StylusToolKind,
+  TransferFunction, TransportKind, VideoConfig } from '../protocol/ProtocolModels';
 import { OutboundControlScope } from '../protocol/OutboundControlWriter';
 import { ClientCapabilities, HARMONY_REQUIRED_CAPABILITIES } from './ClientCapabilities';
 import { HeartbeatMonitor } from './HeartbeatMonitor';
@@ -51,7 +53,8 @@ export type SessionControlAssignment =
   | { kind: 'heartbeat'; sequence: bigint }
   | { kind: 'request'; request: 'resume' | 'clientHello' | 'listDisplays' | 'startDisplay' };
 export type SessionSendCompletion =
-  { kind: 'videoConfiguration'; token: VideoConfigurationToken; accepted: boolean };
+  | { kind: 'videoConfiguration'; token: VideoConfigurationToken; accepted: boolean }
+  | { kind: 'stylus' };
 
 export type SessionSendAction =
   { kind: 'send'; intent: OutboundControlIntent; onAssigned?: SessionControlAssignment; afterSend?: SessionSendCompletion };
@@ -86,6 +89,10 @@ export class ProductSession {
   private listDisplaysMessageId: bigint = 0n;
   private startDisplayMessageId: bigint = 0n;
   private decoder: ProtocolDecoder = new ProtocolDecoder();
+  private stylusInputMapper: StylusInputMapper = new StylusInputMapper();
+  private activeStylus: Map<number, StylusInput> = new Map();
+  private stylusInputClosing: boolean = false;
+  private pendingStylusSends: number = 0;
 
   constructor(private deviceId: string, private deviceName: string,
     private capabilities: Capability[], private codecs: Codec[]) {
@@ -103,7 +110,8 @@ export class ProductSession {
 
   resumableSnapshot(nextOutboundMessageId: bigint): SessionResumeSnapshot | undefined {
     if (this.current !== ProductSessionState.STREAMING || this.pendingVideo !== undefined || nextOutboundMessageId <= 0n ||
-      this.sessionEpoch <= 0n || !this.capabilityState.has(Capability.SESSION_RESUME) || this.heartbeatIntervalMs <= 0) return undefined;
+      this.sessionEpoch <= 0n || !this.capabilityState.has(Capability.SESSION_RESUME) || this.heartbeatIntervalMs <= 0 ||
+      this.activeStylus.size > 0 || this.pendingStylusSends > 0 || this.stylusInputClosing) return undefined;
     return { sessionId: this.sessionId.slice(), sessionEpoch: this.sessionEpoch,
       lastReceivedMessageId: this.lastInboundMessageId, nextOutboundMessageId, heartbeatIntervalMs: this.heartbeatIntervalMs,
       hostCapabilities: this.capabilityState.hostValues(), negotiatedCapabilities: this.capabilityState.values(),
@@ -220,6 +228,62 @@ export class ProductSession {
     return { kind: 'send', intent: { kind: 'key', event: { ...event, target: this.target() } } };
   }
 
+  stylus(event: StylusInput): SessionAction {
+    this.requireInputCapability(Capability.STYLUS);
+    if (this.stylusInputClosing) throw new Error('Stylus input is closing');
+    const extended: boolean = event.toolKind !== undefined || event.contactState !== undefined ||
+      event.buttonMask !== undefined;
+    if (extended) this.requireInputCapability(Capability.STYLUS_EXTENDED);
+    this.stylusInputMapper.validate(event, extended);
+    const active: StylusInput | undefined = this.activeStylus.get(event.pointerId);
+    if (event.phase === InputPhase.BEGAN) {
+      if (this.activeStylus.size > 0) throw new Error('Invalid stylus lifecycle');
+      this.activeStylus.set(event.pointerId, { ...event });
+    } else if (active === undefined || !this.sameStylusSequence(active, event)) {
+      throw new Error('Invalid stylus lifecycle');
+    } else if (event.phase === InputPhase.CHANGED) {
+      this.activeStylus.set(event.pointerId, { ...event });
+    } else {
+      this.activeStylus.delete(event.pointerId);
+    }
+    this.pendingStylusSends += 1;
+    return { kind: 'send', intent: { kind: 'stylus', event: { ...event, target: this.target() } },
+      afterSend: { kind: 'stylus' } };
+  }
+
+  releaseStylusInputs(nextInputId: () => bigint): SessionAction[] {
+    this.stylusInputClosing = true;
+    if (this.current !== ProductSessionState.STREAMING) {
+      this.activeStylus.clear();
+      return [];
+    }
+    const actions: SessionAction[] = [...this.activeStylus.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([, event]) => {
+        const release: StylusInput = {
+          ...event,
+          inputId: nextInputId(),
+          phase: InputPhase.CANCELLED,
+          pressure: 0,
+          buttonMask: event.buttonMask === undefined ? undefined : 0,
+          target: this.target()
+        };
+        const extended: boolean = release.toolKind !== undefined || release.contactState !== undefined ||
+          release.buttonMask !== undefined;
+        this.stylusInputMapper.validate(release, extended);
+        return { kind: 'send', intent: { kind: 'stylus', event: release },
+          afterSend: { kind: 'stylus' } } as SessionSendAction;
+      });
+    this.pendingStylusSends += actions.length;
+    this.activeStylus.clear();
+    return actions;
+  }
+
+  completeStylusRelease(): void {
+    if (this.activeStylus.size > 0 || this.pendingStylusSends > 0) throw new Error('Stylus release is incomplete');
+    this.stylusInputClosing = false;
+  }
+
   heartbeat(sequence: bigint): SessionAction {
     if (this.current === ProductSessionState.IDLE || this.current === ProductSessionState.CLOSED) throw new Error('Heartbeat requires an active session');
     if (!this.heartbeatMonitor.canSend()) throw new Error('A heartbeat is already pending');
@@ -240,6 +304,11 @@ export class ProductSession {
   }
 
   confirmSent(completion: SessionSendCompletion): void {
+    if (completion.kind === 'stylus') {
+      if (this.pendingStylusSends <= 0) throw new Error('Stale stylus send completion');
+      this.pendingStylusSends -= 1;
+      return;
+    }
     const pending: VideoConfigurationToken | undefined = this.pendingVideo;
     if (pending === undefined || pending.id !== completion.token.id) throw new Error('Stale video configuration completion');
     this.pendingVideo = undefined;
@@ -265,7 +334,10 @@ export class ProductSession {
       afterSend: { kind: 'videoConfiguration', token, accepted } }];
   }
 
-  close(): void { this.current = ProductSessionState.CLOSED; }
+  close(): void {
+    this.stylusInputClosing = true; this.activeStylus.clear(); this.pendingStylusSends = 0;
+    this.current = ProductSessionState.CLOSED;
+  }
 
   private onHostHello(envelope: DecodedEnvelope): SessionAction[] {
     if (this.current !== ProductSessionState.AWAITING_HOST) throw new Error('Unexpected HostHello');
@@ -415,6 +487,14 @@ export class ProductSession {
     this.nextVideoTokenId = 1n; this.pendingVideo = undefined; this.videoResultPrepared = false;
     this.resumeMessageId = 0n; this.resumeSnapshot = undefined; this.clientHelloMessageId = 0n;
     this.listDisplaysMessageId = 0n; this.startDisplayMessageId = 0n;
+    this.stylusInputClosing = false; this.activeStylus.clear(); this.pendingStylusSends = 0;
+  }
+
+  private sameStylusSequence(left: StylusInput, right: StylusInput): boolean {
+    return left.pointerId === right.pointerId &&
+      (left.toolKind ?? StylusToolKind.PEN) === (right.toolKind ?? StylusToolKind.PEN) &&
+      (left.contactState ?? StylusContactState.CONTACT) ===
+        (right.contactState ?? StylusContactState.CONTACT);
   }
 
   private validateResumeSnapshot(snapshot: SessionResumeSnapshot): void {

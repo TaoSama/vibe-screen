@@ -7,8 +7,11 @@ The source now contains the product-session wiring that can be completed
 without a device: legacy-to-v1 upgrade, channel-aware TCP framing, host/session
 negotiation, display selection, video configuration, media epoch filtering,
 XComponent/AVCodec handoff, heartbeat, bounded reconnect, and ArkUI touch,
-keyboard, pointer, and stylus-pressure entry points. This is still a development
-preview. The portable core also implements fail-closed ResumeSessionResult,
+keyboard, pointer, and stylus entry points. The portable core supports the shared
+Protocol v1 base stylus (position, pressure, tilt) and extended stylus
+(tool kind, barrel buttons, contact/proximity state) encoding and capability
+gating. This is still a development preview. The portable core also implements
+fail-closed ResumeSessionResult,
 single-use PairingOffer/Request/Result processing, and durable credential,
 control-replay, and revocation state. No DevEco SDK was available for this
 record, so ArkTS compilation, HAP output, platform API behavior, and device
@@ -152,12 +155,21 @@ for data handling and [UPGRADE.md](UPGRADE.md) for install/migration policy.
   authenticated record layer, QR camera import, and Mac interoperability;
 - wheel/trackpad axis delivery and a complete physical-key USB HID map;
 - Mac Host resume registry/first-message support and resume interoperability;
-- controller-specific input, stylus tilt/azimuth, audio, and Internet transport;
+- controller-specific input, extended stylus (eraser, barrel buttons,
+  proximity/hover) on-device confirmation, audio, and Internet transport;
 - Mac interoperability and the complete MatePad Mini acceptance/soak matrix.
 
-Controller input, stylus tilt/azimuth, and wheel-specific semantics cannot be
-claimed from encoder code alone. Protocol v1 currently has no controller event
-or stylus tilt/azimuth fields; those require an additive schema revision.
+Controller input and wheel-specific semantics cannot be claimed from encoder
+code alone. Protocol v1 has no controller/peripheral event wire contract on
+main, so this change does not add controller input. The shared Protocol v1
+stylus schema now defines base CAPABILITY_STYLUS and the additive
+CAPABILITY_STYLUS_EXTENDED (tool kind, barrel buttons, contact/proximity state);
+the Harmony portable core encodes both under capability gating, but the
+production client advertises only CAPABILITY_STYLUS and not
+CAPABILITY_STYLUS_EXTENDED until DevEco/API-checker/HAP/MatePad evidence
+exists. A contacting pen can fall back to touch when the peer lacks stylus
+support; eraser, proximity/hover, and barrel buttons cannot be losslessly
+downgraded and are suppressed when the extended capability is not negotiated.
 
 See the [device runbook](../../docs/runbook/harmony-matepad-mini.md) and
 [Phase 4 verification record](../../docs/changes/2026-08-04-phase-4-harmony/TEST.md).
