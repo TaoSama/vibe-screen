@@ -14,8 +14,9 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from webrtc_m150_notices import NOTICE_RELATIVE_PATH, validate_notice_bundle
-import prepare_release
 import generate_webrtc_m150_notices
+import package_macos
+import prepare_release
 from phase3_webrtc.model import SUPPORTED_COTURN_VERSIONS
 
 
@@ -66,6 +67,71 @@ class ArchiveArtifactTests(unittest.TestCase):
             with zipfile.ZipFile(first) as archive:
                 mode = archive.getinfo("Example.app/Example").external_attr >> 16
                 self.assertEqual(mode & 0o777, 0o755)
+
+
+class MacOSSigningIdentityTests(unittest.TestCase):
+    def test_explicit_ad_hoc_identity_skips_keychain_lookup(self) -> None:
+        with mock.patch.object(package_macos.subprocess, "run") as run_mock:
+            self.assertEqual(package_macos.resolve_sign_identity("-"), "-")
+        run_mock.assert_not_called()
+
+    def test_named_identity_is_returned_when_keychain_contains_it(self) -> None:
+        lookup = subprocess.CompletedProcess(
+            args=("security", "find-identity"),
+            returncode=0,
+            stdout=(
+                '  1) 0123456789ABCDEF0123456789ABCDEF01234567 '
+                '"Vibe Screen Dev"\n'
+                "     1 valid identities found\n"
+            ),
+        )
+        with mock.patch.object(package_macos.subprocess, "run", return_value=lookup):
+            self.assertEqual(
+                package_macos.resolve_sign_identity("Vibe Screen Dev"),
+                "Vibe Screen Dev",
+            )
+
+    def test_identity_lookup_requires_an_exact_name(self) -> None:
+        lookup = subprocess.CompletedProcess(
+            args=("security", "find-identity"),
+            returncode=0,
+            stdout=(
+                '  1) 0123456789ABCDEF0123456789ABCDEF01234567 '
+                '"Production Vibe Screen Dev Certificate"\n'
+                "     1 valid identities found\n"
+            ),
+        )
+        with mock.patch.object(package_macos.subprocess, "run", return_value=lookup):
+            with self.assertRaisesRegex(SystemExit, "not found in the keychain"):
+                package_macos.resolve_sign_identity("Vibe Screen Dev")
+
+    def test_missing_named_identity_fails_instead_of_using_ad_hoc(self) -> None:
+        lookup = subprocess.CompletedProcess(
+            args=("security", "find-identity"),
+            returncode=0,
+            stdout="     0 valid identities found\n",
+        )
+        with mock.patch.object(package_macos.subprocess, "run", return_value=lookup):
+            with self.assertRaisesRegex(SystemExit, "not found in the keychain"):
+                package_macos.resolve_sign_identity("Vibe Screen Dev")
+
+    def test_main_resolves_identity_before_validating_or_building(self) -> None:
+        arguments = mock.Mock(sign_identity="Vibe Screen Dev")
+        with (
+            mock.patch.object(package_macos, "parse_args", return_value=arguments),
+            mock.patch.object(
+                package_macos,
+                "resolve_sign_identity",
+                side_effect=SystemExit("missing identity"),
+            ) as resolve_mock,
+            mock.patch.object(package_macos, "validate_notice_bundle") as validate_mock,
+            mock.patch.object(package_macos, "run") as run_mock,
+        ):
+            with self.assertRaisesRegex(SystemExit, "missing identity"):
+                package_macos.main()
+        resolve_mock.assert_called_once_with("Vibe Screen Dev")
+        validate_mock.assert_not_called()
+        run_mock.assert_not_called()
 
 
 class PrepareReleaseTests(unittest.TestCase):
@@ -322,6 +388,19 @@ class PrepareReleaseTests(unittest.TestCase):
         self.assertIn('PRODUCT_NAME = "Vibe Screen"', package_script)
         self.assertIn('EXECUTABLE_NAME = PRODUCT_NAME', package_script)
         self.assertIn('run("strip", "-S", str(macos_dir / EXECUTABLE_NAME))', package_script)
+        self.assertIn('SIGN_IDENTITY_ENV = "VIBE_SCREEN_SIGN_IDENTITY"', package_script)
+        self.assertNotIn("TELEMACHUS_SIGN_IDENTITY", package_script)
+        phase0_workflow = PHASE0_WORKFLOW.read_text(encoding="utf-8")
+        release_workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn(
+            "python3 scripts/package_macos.py --sign-identity -",
+            phase0_workflow,
+        )
+        self.assertIn(
+            'python3 scripts/package_macos.py --version "$RELEASE_VERSION" --sign-identity -',
+            release_workflow,
+        )
+        self.assertIn("name: vibe-screen-macos-ad-hoc-signed", phase0_workflow)
         self.assertNotIn(
             "#filePath",
             (REPOSITORY_ROOT / "baseline/MacHost/Sources/ProtocolV1SelfTest.swift").read_text(
