@@ -14,6 +14,7 @@ CONTRACT_ROOT = Path(__file__).parents[1]
 FIXTURE_ROOT = CONTRACT_ROOT / "fixtures" / "messages" / "v1"
 MANIFEST = json.loads((FIXTURE_ROOT / "manifest.json").read_text())
 STYLUS_VALIDATION = json.loads((FIXTURE_ROOT / "stylus_validation.json").read_text())
+CONTROLLER_VALIDATION = json.loads((FIXTURE_ROOT / "controller_validation.json").read_text())
 BUF_VERSION = MANIFEST["bufVersion"]
 BUF_COMMAND = ["go", "run", f"github.com/bufbuild/buf/cmd/buf@{BUF_VERSION}"]
 FRAME_HEADER_LENGTH = 5
@@ -259,6 +260,162 @@ class ProtocolFixtureTest(unittest.TestCase):
                 and not (event["contactStateRawValue"] == 2 and event["pressure"] != 0)
             )
             self.assertFalse(valid, case["name"])
+            self.assertTrue(case["reason"])
+
+
+    def test_controller_fixtures_cover_neutral_lifecycle_and_full_state(self) -> None:
+        fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}
+        decoded_events: dict[str, dict[str, object]] = {}
+        with tempfile.TemporaryDirectory(prefix="vibescreen-controller-fixtures-") as temporary:
+            temporary_root = Path(temporary)
+            for name in ("controller_connected", "controller_state", "controller_disconnected"):
+                fixture = fixtures[name]
+                decoded_path = temporary_root / f"{name}.json"
+                convert(fixture["messageType"], FIXTURE_ROOT / fixture["binary"], "binpb", decoded_path, "json")
+                decoded_events[name] = json.loads(decoded_path.read_text())["controllerEvent"]
+
+        connected = decoded_events["controller_connected"]
+        state = decoded_events["controller_state"]
+        disconnected = decoded_events["controller_disconnected"]
+        self.assertEqual("CONTROLLER_EVENT_KIND_CONNECTED", connected["kind"])
+        self.assertEqual("CONTROLLER_EVENT_KIND_STATE", state["kind"])
+        self.assertEqual("CONTROLLER_EVENT_KIND_DISCONNECTED", disconnected["kind"])
+        self.assertEqual("controller-xbox-1", state["controllerId"])
+        self.assertEqual("1", state["controllerEpoch"])
+        self.assertEqual(4101, state["buttonMask"])
+        pressed_buttons = {
+            name
+            for name, bit in CONTROLLER_VALIDATION["buttonBits"].items()
+            if state["buttonMask"] & (1 << bit)
+        }
+        self.assertEqual({"south", "west", "r3"}, pressed_buttons)
+        self.assertEqual([-0.75, 0.5, 0.25, -0.125], [state[key] for key in ("leftStickX", "leftStickY", "rightStickX", "rightStickY")])
+        self.assertEqual([0.375, 0.875], [state[key] for key in ("leftTrigger", "rightTrigger")])
+        self.assertEqual([1, -1], [state["hatX"], state["hatY"]])
+        self.assertEqual({"displayId": "display-main", "streamId": "42"}, state["target"])
+        state_fields = {"buttonMask", "leftStickX", "leftStickY", "rightStickX", "rightStickY", "leftTrigger", "rightTrigger", "hatX", "hatY"}
+        self.assertTrue(state_fields.isdisjoint(connected))
+        self.assertTrue(state_fields.isdisjoint(disconnected))
+
+    def test_controller_validation_fixture_covers_invalid_values(self) -> None:
+        self.assertEqual(
+            "vibescreen.protocol.v1.ControllerEvent.validation/v1",
+            CONTROLLER_VALIDATION["schema"],
+        )
+        self.assertEqual(0b1_1111_1111_1111, CONTROLLER_VALIDATION["buttonMaskDefinedBits"])
+        self.assertEqual(
+            {
+                "south": 0,
+                "east": 1,
+                "west": 2,
+                "north": 3,
+                "l1": 4,
+                "r1": 5,
+                "l2Digital": 6,
+                "r2Digital": 7,
+                "select": 8,
+                "start": 9,
+                "guideMode": 10,
+                "l3": 11,
+                "r3": 12,
+            },
+            CONTROLLER_VALIDATION["buttonBits"],
+        )
+        cases = {case["name"]: case for case in CONTROLLER_VALIDATION["negativeCases"]}
+        self.assertEqual(
+            {
+                "zero_input_id",
+                "empty_controller_id",
+                "overlong_controller_id",
+                "overlong_controller_id_multibyte_utf8",
+                "zero_controller_epoch",
+                "unknown_kind",
+                "unspecified_kind",
+                "reserved_button_bit",
+                "stick_axis_out_of_range",
+                "stick_axis_non_finite",
+                "trigger_out_of_range",
+                "trigger_non_finite",
+                "invalid_hat_axis",
+                "connected_non_neutral",
+                "disconnected_non_neutral",
+            },
+            set(cases),
+        )
+        for case in cases.values():
+            event = case["event"]
+            analog = [event.get(key, 0) for key in ("leftStickX", "leftStickY", "rightStickX", "rightStickY", "leftTrigger", "rightTrigger")]
+            lifecycle_neutral = event["kindRawValue"] == 2 or (
+                event.get("buttonMask", 0) == 0
+                and all(value == 0 for value in analog)
+                and event.get("hatX", 0) == 0
+                and event.get("hatY", 0) == 0
+            )
+            valid = (
+                event["inputId"] > 0
+                and 1 <= len(event["controllerId"].encode("utf-8")) <= 128
+                and event["controllerEpoch"] > 0
+                and event["kindRawValue"] in {1, 2, 3}
+                and event.get("buttonMask", 0) & ~CONTROLLER_VALIDATION["buttonMaskDefinedBits"] == 0
+                and all(math.isfinite(value) for value in analog)
+                and all(-1 <= event.get(key, 0) <= 1 for key in ("leftStickX", "leftStickY", "rightStickX", "rightStickY"))
+                and all(0 <= event.get(key, 0) <= 1 for key in ("leftTrigger", "rightTrigger"))
+                and event.get("hatX", 0) in {-1, 0, 1}
+                and event.get("hatY", 0) in {-1, 0, 1}
+                and lifecycle_neutral
+            )
+            self.assertFalse(valid, case["name"])
+            self.assertTrue(case["reason"])
+
+        lifecycle_cases = {
+            case["name"]: case for case in CONTROLLER_VALIDATION["lifecycleNegativeCases"]
+        }
+        self.assertEqual(
+            {
+                "duplicate_connected",
+                "state_before_connected",
+                "state_after_disconnected",
+                "reused_controller_epoch",
+                "decreasing_controller_epoch",
+                "duplicate_input_id",
+                "non_monotonic_input_id",
+            },
+            set(lifecycle_cases),
+        )
+        for case in lifecycle_cases.values():
+            active_epochs: dict[str, int] = {}
+            last_epochs: dict[str, int] = {}
+            last_input_id = 0
+            valid_sequence = True
+            for event in case["sequence"]:
+                input_id = event["inputId"]
+                if input_id <= last_input_id:
+                    valid_sequence = False
+                    break
+                last_input_id = input_id
+                controller_id = event["controllerId"]
+                controller_epoch = event["controllerEpoch"]
+                kind = event["kindRawValue"]
+                active_epoch = active_epochs.get(controller_id)
+                if kind == 1:
+                    if active_epoch is not None or controller_epoch <= last_epochs.get(controller_id, 0):
+                        valid_sequence = False
+                        break
+                    active_epochs[controller_id] = controller_epoch
+                    last_epochs[controller_id] = controller_epoch
+                elif kind == 2:
+                    if active_epoch != controller_epoch:
+                        valid_sequence = False
+                        break
+                elif kind == 3:
+                    if active_epoch != controller_epoch:
+                        valid_sequence = False
+                        break
+                    del active_epochs[controller_id]
+                else:
+                    valid_sequence = False
+                    break
+            self.assertFalse(valid_sequence, case["name"])
             self.assertTrue(case["reason"])
 
     def test_buf_json_projection_accepts_and_discards_unknown_binary_field(self) -> None:

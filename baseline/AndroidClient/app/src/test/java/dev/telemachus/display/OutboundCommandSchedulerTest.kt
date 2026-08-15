@@ -360,6 +360,91 @@ class OutboundCommandSchedulerTest {
     }
 
     @Test
+    fun gracefulShutdownDrainsQueuedIngressBeforeOverflowFallback() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val coalescerEntered = CountDownLatch(1)
+        val releaseCoalescer = CountDownLatch(1)
+        val boundaryGenerationAllocated = CountDownLatch(1)
+        val overflowValuePublished = CountDownLatch(1)
+        val releaseOverflowPublisher = CountDownLatch(1)
+        val shutdownHasMainLock = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val boundaryResult = AtomicReference<OutboundCommandScheduler.Submission>()
+        val moveResult = AtomicReference<OutboundCommandScheduler.Submission>()
+        val shutdownResult = AtomicReference<Boolean>()
+        val scheduler =
+            OutboundCommandScheduler<String>(
+                capacity = 8,
+                writer = { command ->
+                    if (command == "block") {
+                        writerEntered.countDown()
+                        releaseWriter.await()
+                    }
+                    written += command
+                },
+                onWriteFailure = { throw AssertionError("Unexpected failure", it.cause) },
+                coalesce = { kind, _, replacement ->
+                    if (kind == KEYFRAME) {
+                        coalescerEntered.countDown()
+                        releaseCoalescer.await()
+                    }
+                    replacement
+                },
+                afterOverflowValuePublished = {
+                    overflowValuePublished.countDown()
+                    releaseOverflowPublisher.await()
+                },
+                afterControllerBoundaryGenerationAllocated = { boundaryGenerationAllocated.countDown() },
+                beforeControllerLifecycleClose = { shutdownHasMainLock.countDown() },
+            )
+
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(STRUCTURAL, "block"))
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(KEYFRAME, "keyframe"))
+        val lockHolder = Thread { scheduler.submit(KEYFRAME, "keyframe-latest") }.apply { start() }
+        assertTrue(coalescerEntered.await(1, TimeUnit.SECONDS))
+
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED,
+            scheduler.submit(STRUCTURAL, "ingress-before"),
+        )
+        val boundarySubmitter =
+            Thread { boundaryResult.set(scheduler.submit(CONTROLLER_STRUCTURAL, "boundary")) }.apply { start() }
+        assertTrue(boundaryGenerationAllocated.await(1, TimeUnit.SECONDS))
+        val moveSubmitter =
+            Thread { moveResult.set(scheduler.submit(CONTROLLER_MOVE, "move-after")) }.apply { start() }
+        assertTrue(overflowValuePublished.await(1, TimeUnit.SECONDS))
+        releaseOverflowPublisher.countDown()
+        boundarySubmitter.join(1_000)
+        moveSubmitter.join(1_000)
+        assertFalse(boundarySubmitter.isAlive)
+        assertFalse(moveSubmitter.isAlive)
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, boundaryResult.get())
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, moveResult.get())
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED,
+            scheduler.submit(STRUCTURAL, "ingress-after"),
+        )
+
+        releaseCoalescer.countDown()
+        lockHolder.join(1_000)
+        assertFalse(lockHolder.isAlive)
+        val shutdown =
+            Thread { shutdownResult.set(scheduler.shutdownGracefully(1_000)) }.apply { start() }
+        assertTrue(shutdownHasMainLock.await(1, TimeUnit.SECONDS))
+        releaseWriter.countDown()
+        shutdown.join(2_000)
+
+        assertFalse(shutdown.isAlive)
+        assertEquals(true, shutdownResult.get())
+        assertEquals(
+            listOf("ingress-before", "boundary", "move-after", "ingress-after"),
+            written.filter { it.startsWith("ingress-") || it == "boundary" || it == "move-after" },
+        )
+    }
+
+    @Test
     fun shutdownNowMarksPublishedOverflowAsDiscardedBeforeMarker() {
         val writerEntered = CountDownLatch(1)
         val releaseWriter = CountDownLatch(1)
@@ -519,10 +604,254 @@ class OutboundCommandSchedulerTest {
             onWriteFailure = { throw AssertionError("Unexpected failure", it.cause) },
         )
 
+    @Test
+    fun controllerStructuralBoundarySupersedesPriorControllerMoves() {
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val scheduler = scheduler(capacity = 4) { written += it }
+
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(CONTROLLER_MOVE, "move-1"))
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(CONTROLLER_STRUCTURAL, "connect"))
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(CONTROLLER_MOVE, "move-2"))
+
+        assertTrue(scheduler.shutdownGracefully(1_000))
+        // move-1 must not appear after the structural boundary
+        val connectIdx = written.indexOf("connect")
+        assertTrue(connectIdx >= 0)
+        val movesAfter = written.subList(connectIdx, written.size).filter { it.startsWith("move-") }
+        assertEquals(listOf("move-2"), movesAfter)
+    }
+
+    @Test
+    fun controllerMovesBeforeStructuralBoundaryAreNotCoalescedAcrossIt() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val scheduler = scheduler(capacity = 4) { command ->
+            if (command == "block") {
+                writerEntered.countDown()
+                releaseWriter.await()
+            }
+            written += command
+        }
+
+        scheduler.submit(STRUCTURAL, "block")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        scheduler.submit(CONTROLLER_MOVE, "move-before")
+        scheduler.submit(CONTROLLER_STRUCTURAL, "boundary")
+        scheduler.submit(CONTROLLER_MOVE, "move-after")
+        releaseWriter.countDown()
+
+        assertTrue(scheduler.shutdownGracefully(1_000))
+        val boundaryIdx = written.indexOf("boundary")
+        assertTrue(boundaryIdx >= 0)
+        assertFalse(written.subList(0, boundaryIdx).contains("move-after"))
+        assertTrue(written.subList(boundaryIdx, written.size).contains("move-after"))
+    }
+
+    @Test
+    fun controllerStructuralDoesNotBlockOnHasSpaceAndFailsClosedWhenFull() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val scheduler = scheduler(capacity = 2) { command ->
+            if (command == "block") {
+                writerEntered.countDown()
+                releaseWriter.await()
+            }
+            written += command
+        }
+
+        scheduler.submit(STRUCTURAL, "block")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(STRUCTURAL, "fill-1"))
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(STRUCTURAL, "fill-2"))
+        // No more slots; controller structural must fail closed with TIMED_OUT, not block
+        val result = scheduler.submit(CONTROLLER_STRUCTURAL, "structural-full", timeoutMillis = 50)
+        assertEquals(OutboundCommandScheduler.Submission.TIMED_OUT, result)
+        releaseWriter.countDown()
+        assertTrue(scheduler.shutdownGracefully(1_000))
+    }
+
+    @Test
+    fun acceptedControllerStructuralIsDrainedDuringGracefulShutdown() {
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val scheduler = scheduler(capacity = 4) { written += it }
+
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(CONTROLLER_STRUCTURAL, "connect"))
+        assertTrue(scheduler.shutdownGracefully(1_000))
+        assertTrue(written.contains("connect"))
+    }
+
+    @Test
+    fun controllerMoveOverflowUsesGenerationAndIsSupersededByStructural() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val coalescerEntered = CountDownLatch(1)
+        val releaseCoalescer = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val scheduler =
+            OutboundCommandScheduler<String>(
+                capacity = 5,
+                writer = { command ->
+                    if (command == "block") {
+                        writerEntered.countDown()
+                        releaseWriter.await()
+                    }
+                    written += command
+                },
+                onWriteFailure = { throw AssertionError("Unexpected failure", it.cause) },
+                coalesce = { kind, _, replacement ->
+                    if (kind == KEYFRAME) {
+                        coalescerEntered.countDown()
+                        releaseCoalescer.await()
+                    }
+                    replacement
+                },
+            )
+
+        scheduler.submit(STRUCTURAL, "block")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        scheduler.submit(STRUCTURAL, "fill")
+        scheduler.submit(KEYFRAME, "keyframe")
+        val lockHolder = Thread { scheduler.submit(KEYFRAME, "keyframe-latest") }.apply { start() }
+        assertTrue(coalescerEntered.await(1, TimeUnit.SECONDS))
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, scheduler.submit(CONTROLLER_MOVE, "move-overflow"))
+        releaseCoalescer.countDown()
+        lockHolder.join(1_000)
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED_AFTER_COALESCING_MOVE,
+            scheduler.submit(CONTROLLER_STRUCTURAL, "boundary"),
+        )
+
+        releaseWriter.countDown()
+        assertTrue(scheduler.shutdownGracefully(1_000))
+        assertFalse(written.contains("move-overflow"))
+        assertTrue(written.contains("boundary"))
+    }
+
+    @Test
+    fun controllerLifecycleLockDoesNotDeadlockAgainstShutdown() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val scheduler = scheduler(capacity = 4) { command ->
+            if (command == "block") {
+                writerEntered.countDown()
+                releaseWriter.await()
+            }
+            written += command
+        }
+
+        scheduler.submit(STRUCTURAL, "block")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+
+        val shutdownResult = AtomicReference<Boolean>()
+        val shutdownThread = Thread {
+            shutdownResult.set(scheduler.shutdownGracefully(2_000))
+        }
+        shutdownThread.start()
+        // Give shutdown time to acquire controllerLifecycleLock
+        Thread.sleep(200)
+        // Submit a controller structural while shutdown is waiting; must not deadlock
+        val submitResult = scheduler.submit(CONTROLLER_STRUCTURAL, "during-shutdown")
+        releaseWriter.countDown()
+        shutdownThread.join(3_000)
+        assertTrue(shutdownResult.get() == true)
+        // Either accepted and drained, or closed during shutdown
+        assertTrue(
+            submitResult == OutboundCommandScheduler.Submission.ACCEPTED ||
+                submitResult == OutboundCommandScheduler.Submission.CLOSED,
+        )
+    }
+
+
+    @Test
+    fun contendedIngressStructuralBoundaryKeepsSameGenerationMoveSubmittedAfterIt() {
+        val writerEntered = CountDownLatch(1)
+        val releaseWriter = CountDownLatch(1)
+        val written = Collections.synchronizedList(mutableListOf<String>())
+        val boundaryAdmitted = CountDownLatch(1)
+        val coalescerEntered = CountDownLatch(1)
+        val releaseCoalescer = CountDownLatch(1)
+        val boundarySubmission = AtomicReference<OutboundCommandScheduler.Submission>()
+        val sched =
+            OutboundCommandScheduler<String>(
+                capacity = 6,
+                writer = { command ->
+                    if (command == "block") {
+                        writerEntered.countDown()
+                        releaseWriter.await()
+                    }
+                    written += command
+                },
+                onWriteFailure = { throw AssertionError("Unexpected failure", it.cause) },
+                coalesce = { kind, _, replacement ->
+                    if (kind == OutboundCommandScheduler.Kind.KEYFRAME) {
+                        coalescerEntered.countDown()
+                        releaseCoalescer.await()
+                    }
+                    replacement
+                },
+                afterControllerBoundaryGenerationAllocated = {
+                    // Signal that the boundary generation has been allocated and
+                    // the boundary ingress command is about to be enqueued. A
+                    // move submitted after this point reads the same generation.
+                    boundaryAdmitted.countDown()
+                },
+            )
+
+        // Block the writer so the main lock stays contended and the structural
+        // boundary is forced through the lock-free ingress path.
+        sched.submit(STRUCTURAL, "block")
+        assertTrue(writerEntered.await(1, TimeUnit.SECONDS))
+        sched.submit(STRUCTURAL, "fill-1")
+        sched.submit(STRUCTURAL, "fill-2")
+        sched.submit(KEYFRAME, "keyframe")
+
+        // Hold the main lock via the keyframe coalesce callback so the next
+        // controller structural submit cannot acquire it and must use ingress.
+        val lockHolder = Thread {
+            sched.submit(KEYFRAME, "keyframe-latest")
+        }.apply { start() }
+        assertTrue(coalescerEntered.await(1, TimeUnit.SECONDS))
+
+        // Submit the structural boundary through ingress from a separate thread
+        // so we can observe the exact moment its generation is allocated.
+        val boundarySubmitter = Thread {
+            boundarySubmission.set(sched.submit(CONTROLLER_STRUCTURAL, "boundary"))
+        }.apply { start() }
+
+        // Wait until the boundary generation has been allocated. At this point
+        // the boundary ingress command is being enqueued. Submit the move now:
+        // it reads the same generation as the boundary, so it was submitted
+        // after the boundary and must be retained and written after it.
+        assertTrue(boundaryAdmitted.await(1, TimeUnit.SECONDS))
+        assertEquals(
+            OutboundCommandScheduler.Submission.ACCEPTED,
+            sched.submit(CONTROLLER_MOVE, "move-after-boundary"),
+        )
+
+        boundarySubmitter.join(1_000)
+        assertFalse(boundarySubmitter.isAlive)
+        assertEquals(OutboundCommandScheduler.Submission.ACCEPTED, boundarySubmission.get())
+        releaseCoalescer.countDown()
+        lockHolder.join(1_000)
+        releaseWriter.countDown()
+
+        assertTrue(sched.shutdownGracefully(1_000))
+        val boundaryIdx = written.indexOf("boundary")
+        assertTrue(boundaryIdx >= 0)
+        // The move submitted after the boundary (same generation) must survive
+        // and be written after the boundary, not discarded by it.
+        assertTrue(written.subList(boundaryIdx, written.size).contains("move-after-boundary"))
+    }
+
     private companion object {
         val STRUCTURAL = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
         val MOVE = OutboundCommandScheduler.Kind.MOVE
         val KEYFRAME = OutboundCommandScheduler.Kind.KEYFRAME
         val PING = OutboundCommandScheduler.Kind.PING
+        val CONTROLLER_STRUCTURAL = OutboundCommandScheduler.Kind.CONTROLLER_STRUCTURAL
+        val CONTROLLER_MOVE = OutboundCommandScheduler.Kind.CONTROLLER_MOVE
     }
 }

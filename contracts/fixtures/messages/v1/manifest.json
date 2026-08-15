@@ -291,6 +291,57 @@
       "source": "json/key_legacy_shift.json"
     },
     {
+      "binary": "bin/controller_connected.binpb",
+      "byteLength": 68,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "21",
+        "payloadCase": "controllerEvent",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000021",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "controller_connected",
+      "sha256": "5568f517e20e84d1ca18811014d85571acc132da1750346e21f0d83da7483f0c",
+      "source": "json/controller_connected.json"
+    },
+    {
+      "binary": "bin/controller_state.binpb",
+      "byteLength": 129,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "22",
+        "payloadCase": "controllerEvent",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000022",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "controller_state",
+      "sha256": "ddbdbbceb728c8ade0fc5201d53fbdd0eb6c3c67f2acc308920c101e30c1a548",
+      "source": "json/controller_state.json"
+    },
+    {
+      "binary": "bin/controller_disconnected.binpb",
+      "byteLength": 68,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "23",
+        "payloadCase": "controllerEvent",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000023",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "controller_disconnected",
+      "sha256": "97788d7226600f08d86eed4af1bf21c5467cf628acc99bd2acc763632181795d",
+      "source": "json/controller_disconnected.json"
+    },
+    {
       "binary": "bin/ping.binpb",
       "byteLength": 27,
       "channel": 1,

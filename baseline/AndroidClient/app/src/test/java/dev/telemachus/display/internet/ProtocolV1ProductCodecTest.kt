@@ -27,8 +27,10 @@ class ProtocolV1ProductCodecTest {
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_STYLUS))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_TOUCH))
+        assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_CONTROLLER))
         assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_STYLUS))
         assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_TOUCH))
+        assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_CONTROLLER))
         assertTrue(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION))
         assertEquals(
             InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
@@ -227,6 +229,221 @@ class ProtocolV1ProductCodecTest {
             ProtobufProtocolV1ProductCodec.encodeMediaFragment(
                 mediaHeader(oversizedPayload.size),
                 oversizedPayload,
+            )
+        }
+    }
+
+    @Test
+    fun encodesControllerEventWithAllFields() {
+        val event = ProductControllerEvent(
+            inputId = 42,
+            controllerId = "android-abc123",
+            controllerEpoch = 3,
+            kind = dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
+            buttonMask = 0b101,
+            leftStickX = 0.5,
+            leftStickY = -0.25,
+            rightStickX = 0.0,
+            rightStickY = 1.0,
+            leftTrigger = 0.75,
+            rightTrigger = 0.0,
+            hatX = 1,
+            hatY = -1,
+        )
+        val envelope = Envelope.parseFrom(codec.encodeController(5, sessionId, 7, 9, event))
+        assertEquals(Envelope.PayloadCase.CONTROLLER_EVENT, envelope.payloadCase)
+        val ce = envelope.controllerEvent
+        assertEquals(42L, ce.inputId)
+        assertEquals("android-abc123", ce.controllerId)
+        assertEquals(3L, ce.controllerEpoch)
+        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE, ce.kind)
+        assertEquals(0b101, ce.buttonMask)
+        assertEquals(0.5, ce.leftStickX, 0.0)
+        assertEquals(-0.25, ce.leftStickY, 0.0)
+        assertEquals(1.0, ce.rightStickY, 0.0)
+        assertEquals(0.75, ce.leftTrigger, 0.0)
+        assertEquals(1, ce.hatX)
+        assertEquals(-1, ce.hatY)
+        assertEquals(9L, ce.target.streamId)
+    }
+
+    @Test
+    fun clientHelloAdvertisesControllerCapability() {
+        val hello = Envelope.parseFrom(codec.encodeClientHello(1, sessionId, 7))
+        assertTrue(hello.clientHello.capabilitiesList.contains(dev.vibescreen.protocol.v1.Capability.CAPABILITY_CONTROLLER))
+    }
+
+
+    @Test
+    fun productControllerEventRejectsEmptyControllerId() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductControllerEvent(
+                inputId = 1,
+                controllerId = "",
+                controllerEpoch = 1,
+                kind = dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
+                buttonMask = 0,
+                leftStickX = 0.0, leftStickY = 0.0,
+                rightStickX = 0.0, rightStickY = 0.0,
+                leftTrigger = 0.0, rightTrigger = 0.0,
+                hatX = 0, hatY = 0,
+            )
+        }
+    }
+
+    @Test
+    fun productControllerEventRejectsControllerIdOver128Utf8Bytes() {
+        // 43 three-byte UTF-8 characters occupy 129 bytes.
+        val oversized = "中".repeat(43)
+        assertEquals(129, oversized.toByteArray(Charsets.UTF_8).size)
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductControllerEvent(
+                inputId = 1,
+                controllerId = oversized,
+                controllerEpoch = 1,
+                kind = dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
+                buttonMask = 0,
+                leftStickX = 0.0, leftStickY = 0.0,
+                rightStickX = 0.0, rightStickY = 0.0,
+                leftTrigger = 0.0, rightTrigger = 0.0,
+                hatX = 0, hatY = 0,
+            )
+        }
+    }
+
+    @Test
+    fun productControllerEventAcceptsExactly128Utf8Bytes() {
+        val id128 = "é".repeat(64)
+        assertEquals(128, id128.toByteArray(Charsets.UTF_8).size)
+        val event = ProductControllerEvent(
+            inputId = 1,
+            controllerId = id128,
+            controllerEpoch = 1,
+            kind = dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
+            buttonMask = 0,
+            leftStickX = 0.0, leftStickY = 0.0,
+            rightStickX = 0.0, rightStickY = 0.0,
+            leftTrigger = 0.0, rightTrigger = 0.0,
+            hatX = 0, hatY = 0,
+        )
+        assertEquals(id128, event.controllerId)
+    }
+
+    @Test
+    fun productControllerEventRejectsNonPositiveInputId() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductControllerEvent(
+                inputId = 0,
+                controllerId = "c1",
+                controllerEpoch = 1,
+                kind = dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
+                buttonMask = 0,
+                leftStickX = 0.0, leftStickY = 0.0,
+                rightStickX = 0.0, rightStickY = 0.0,
+                leftTrigger = 0.0, rightTrigger = 0.0,
+                hatX = 0, hatY = 0,
+            )
+        }
+    }
+
+    @Test
+    fun productControllerEventRejectsNonPositiveEpoch() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductControllerEvent(
+                inputId = 1,
+                controllerId = "c1",
+                controllerEpoch = 0,
+                kind = dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
+                buttonMask = 0,
+                leftStickX = 0.0, leftStickY = 0.0,
+                rightStickX = 0.0, rightStickY = 0.0,
+                leftTrigger = 0.0, rightTrigger = 0.0,
+                hatX = 0, hatY = 0,
+            )
+        }
+    }
+
+    @Test
+    fun productControllerEventRejectsButtonMaskOutOfRange() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductControllerEvent(
+                inputId = 1,
+                controllerId = "c1",
+                controllerEpoch = 1,
+                kind = dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
+                buttonMask = 0x2000,
+                leftStickX = 0.0, leftStickY = 0.0,
+                rightStickX = 0.0, rightStickY = 0.0,
+                leftTrigger = 0.0, rightTrigger = 0.0,
+                hatX = 0, hatY = 0,
+            )
+        }
+    }
+
+    @Test
+    fun productControllerEventRejectsStickValuesOutOfRange() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductControllerEvent(
+                inputId = 1,
+                controllerId = "c1",
+                controllerEpoch = 1,
+                kind = dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
+                buttonMask = 0,
+                leftStickX = 1.5, leftStickY = 0.0,
+                rightStickX = 0.0, rightStickY = 0.0,
+                leftTrigger = 0.0, rightTrigger = 0.0,
+                hatX = 0, hatY = 0,
+            )
+        }
+    }
+
+    @Test
+    fun productControllerEventRejectsTriggerValuesOutOfRange() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductControllerEvent(
+                inputId = 1,
+                controllerId = "c1",
+                controllerEpoch = 1,
+                kind = dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
+                buttonMask = 0,
+                leftStickX = 0.0, leftStickY = 0.0,
+                rightStickX = 0.0, rightStickY = 0.0,
+                leftTrigger = -0.1, rightTrigger = 0.0,
+                hatX = 0, hatY = 0,
+            )
+        }
+    }
+
+    @Test
+    fun productControllerEventRejectsHatValuesOutOfRange() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductControllerEvent(
+                inputId = 1,
+                controllerId = "c1",
+                controllerEpoch = 1,
+                kind = dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
+                buttonMask = 0,
+                leftStickX = 0.0, leftStickY = 0.0,
+                rightStickX = 0.0, rightStickY = 0.0,
+                leftTrigger = 0.0, rightTrigger = 0.0,
+                hatX = 2, hatY = 0,
+            )
+        }
+    }
+
+    @Test
+    fun productControllerEventRejectsLifecycleEventWithNonNeutralState() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductControllerEvent(
+                inputId = 1,
+                controllerId = "c1",
+                controllerEpoch = 1,
+                kind = dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+                buttonMask = 1,
+                leftStickX = 0.0, leftStickY = 0.0,
+                rightStickX = 0.0, rightStickY = 0.0,
+                leftTrigger = 0.0, rightTrigger = 0.0,
+                hatX = 0, hatY = 0,
             )
         }
     }

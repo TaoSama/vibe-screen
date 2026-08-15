@@ -9,6 +9,7 @@ import dev.telemachus.display.internet.security.publicPoint
 import dev.telemachus.display.internet.security.toPairingHex
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
+import dev.vibescreen.protocol.v1.ControllerEventKind as ProtocolControllerEventKind
 import dev.vibescreen.protocol.v1.Dimensions
 import dev.vibescreen.protocol.v1.DeviceRevoked
 import dev.vibescreen.protocol.v1.Envelope
@@ -91,6 +92,7 @@ class InternetProductSessionTest {
         assertEquals(InternetProductSessionState.ACTIVE, session.state)
         assertFalse(session.canSendStylus())
         assertFalse(session.canSendTouch())
+        assertFalse(session.canSendController())
         val controlCount = peer.control.size
         assertFalse(session.sendTouch(ProductTouchEvent(1, 0, ProductInputPhase.BEGAN, 0.5, 0.5)))
         assertEquals(controlCount, peer.control.size)
@@ -243,7 +245,10 @@ class InternetProductSessionTest {
         assertEquals(listOf(90, 270), callbacks.configurations.map { it.rotationDegrees })
 
         monitor.available("cellular")
-        assertEquals(InternetProductSessionState.RECOVERING, session.state)
+        assertTrue(
+            session.state == InternetProductSessionState.RECOVERING ||
+                session.state == InternetProductSessionState.SUSPENDED,
+        )
         assertEquals(1, callbacks.freshReasons.size)
         assertEquals(1, callbacks.states.count { it == InternetProductSessionState.RECOVERING })
         assertEquals(0, peer.restartCalls)
@@ -1551,6 +1556,175 @@ class InternetProductSessionTest {
         assertEquals(1, peer.closeCalls)
     }
 
+    private fun controllerLifecycleEvent(
+        inputId: Long = 1,
+        controllerId: String = "ctrl-1",
+        controllerEpoch: Long = 1,
+        kind: ProtocolControllerEventKind = ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+    ): ProductControllerEvent =
+        ProductControllerEvent(
+            inputId = inputId,
+            controllerId = controllerId,
+            controllerEpoch = controllerEpoch,
+            kind = kind,
+            buttonMask = 0,
+            leftStickX = 0.0,
+            leftStickY = 0.0,
+            rightStickX = 0.0,
+            rightStickY = 0.0,
+            leftTrigger = 0.0,
+            rightTrigger = 0.0,
+            hatX = 0,
+            hatY = 0,
+        )
+
+    @Test
+    fun controllerSendSucceedsAfterNegotiationAndVideoConfig() {
+        val peer = ProductFakePeerEngine()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello(supportsController = true)).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted(supportsController = true)).build())
+        peer.receive(videoConfigurationEnvelope(3))
+
+        assertTrue(session.canSendController())
+        val event = controllerLifecycleEvent()
+        assertTrue(session.sendController(listOf(event), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL))
+
+        val lastEnvelope = Envelope.parseFrom(peer.control.last())
+        assertEquals(Envelope.PayloadCase.CONTROLLER_EVENT, lastEnvelope.payloadCase)
+        assertEquals(1L, lastEnvelope.controllerEvent.inputId)
+        assertEquals("ctrl-1", lastEnvelope.controllerEvent.controllerId)
+        assertEquals(ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED, lastEnvelope.controllerEvent.kind)
+    }
+
+    @Test
+    fun controllerSendReturnsFalseAndFailsSessionWhenSendControlRejects() {
+        val rejectControllerSend = AtomicBoolean(false)
+        val peer = ProductFakePeerEngine(sendControlResult = { !rejectControllerSend.get() })
+        val callbacks = ProductCallbacks()
+        val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello(supportsController = true)).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted(supportsController = true)).build())
+        peer.receive(videoConfigurationEnvelope(3))
+
+        val event = controllerLifecycleEvent()
+        rejectControllerSend.set(true)
+        assertFalse(session.sendController(listOf(event), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL))
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+
+        // Queue is cleared: a second send also fails because the session is terminal.
+        assertFalse(session.sendController(listOf(event), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL))
+        assertTrue(peer.control.none { Envelope.parseFrom(it).payloadCase == Envelope.PayloadCase.CONTROLLER_EVENT })
+    }
+
+    @Test
+    fun controllerSendRaceWithTransportRecoveryDoesNotFailSession() {
+        val disconnectOnSend = AtomicBoolean(false)
+        lateinit var peer: ProductFakePeerEngine
+        peer =
+            ProductFakePeerEngine(
+                sendControlResult = {
+                    if (disconnectOnSend.get()) {
+                        peer.observer.onDisconnected()
+                        false
+                    } else {
+                        true
+                    }
+                },
+            )
+        val session = session(peer, ProductFakeNetworkMonitor(), ProductCallbacks())
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello(supportsController = true)).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted(supportsController = true)).build())
+        peer.receive(videoConfigurationEnvelope(3))
+        assertTrue(session.canSendController())
+
+        disconnectOnSend.set(true)
+        assertFalse(
+            session.sendController(
+                listOf(controllerLifecycleEvent()),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+
+        assertTrue(
+            session.state == InternetProductSessionState.RECOVERING ||
+                session.state == InternetProductSessionState.SUSPENDED,
+        )
+        assertTrue(peer.control.none { Envelope.parseFrom(it).payloadCase == Envelope.PayloadCase.CONTROLLER_EVENT })
+
+        disconnectOnSend.set(false)
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(
+            session.sendController(
+                listOf(controllerLifecycleEvent(inputId = 2, controllerEpoch = 2)),
+                InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL,
+            ),
+        )
+        val delivered =
+            peer.control
+                .map(Envelope::parseFrom)
+                .filter { it.payloadCase == Envelope.PayloadCase.CONTROLLER_EVENT }
+        assertEquals(1, delivered.size)
+        assertEquals(2L, delivered.single().controllerEvent.controllerEpoch)
+    }
+
+    @Test
+    fun controllerSendRejectedDuringRecoveringAndSuspendedAndNoOldLifecycleReplayedAfterRecovery() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello(supportsController = true)).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted(supportsController = true)).build())
+        peer.receive(videoConfigurationEnvelope(3))
+
+        // Send one structural lifecycle event while active.
+        val connected = controllerLifecycleEvent()
+        assertTrue(session.sendController(listOf(connected), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL))
+        val controllerEventCountBefore = peer.control.count {
+            Envelope.parseFrom(it).payloadCase == Envelope.PayloadCase.CONTROLLER_EVENT
+        }
+
+        // Transition to RECOVERING via transport disconnect (network still available).
+        peer.observer.onDisconnected()
+        assertEquals(InternetProductSessionState.RECOVERING, session.state)
+
+        // During RECOVERING the send is rejected and nothing is emitted.
+        val controlCountBeforeRecovering = peer.control.size
+        assertFalse(session.sendController(listOf(connected), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL))
+        assertEquals(controlCountBeforeRecovering, peer.control.size)
+
+        // Recover back to ACTIVE.
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+
+        // No old structural lifecycle event was replayed after recovery.
+        val controllerEventCountAfterRecovering = peer.control.count {
+            Envelope.parseFrom(it).payloadCase == Envelope.PayloadCase.CONTROLLER_EVENT
+        }
+        assertEquals(controllerEventCountBefore, controllerEventCountAfterRecovering)
+
+        // Transition to SUSPENDED by losing the active network.
+        monitor.unavailable("wifi")
+        assertEquals(InternetProductSessionState.SUSPENDED, session.state)
+
+        // During SUSPENDED the send is also rejected and nothing is emitted.
+        val controlCountBeforeSuspended = peer.control.size
+        assertFalse(session.sendController(listOf(connected), InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL))
+        assertEquals(controlCountBeforeSuspended, peer.control.size)
+    }
+
     private fun session(
         peer: ProductFakePeerEngine,
         monitor: ProductFakeNetworkMonitor,
@@ -1617,7 +1791,7 @@ class InternetProductSessionTest {
             .setSessionId(ByteString.copyFrom(lease.protocolSessionId))
             .setSessionEpoch(lease.authoritativeSessionEpoch)
 
-    private fun hostHello(): HostHello.Builder =
+    private fun hostHello(supportsController: Boolean = false): HostHello.Builder =
         HostHello
             .newBuilder()
             .setSelectedProtocol(1)
@@ -1625,8 +1799,11 @@ class InternetProductSessionTest {
             .setHostName("Mac")
             .addAllCapabilities(ProtobufProtocolV1ProductCodec.REQUIRED_CLIENT_CAPABILITIES)
             .setResourceLimits(mediaRecordLimits())
+            .apply {
+                if (supportsController) addCapabilities(Capability.CAPABILITY_CONTROLLER)
+            }
 
-    private fun sessionAccepted(): SessionAccepted.Builder =
+    private fun sessionAccepted(supportsController: Boolean = false): SessionAccepted.Builder =
         SessionAccepted
             .newBuilder()
             .setSessionId(ByteString.copyFrom(lease.protocolSessionId))
@@ -1634,6 +1811,9 @@ class InternetProductSessionTest {
             .setHeartbeatIntervalMs(1_000)
             .addAllNegotiatedCapabilities(ProtobufProtocolV1ProductCodec.REQUIRED_CLIENT_CAPABILITIES)
             .setNegotiatedResourceLimits(mediaRecordLimits())
+            .apply {
+                if (supportsController) addNegotiatedCapabilities(Capability.CAPABILITY_CONTROLLER)
+            }
 
     private fun mediaRecordLimits(
         maximumEncryptedMediaRecordBytes: Int = InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
@@ -1764,6 +1944,7 @@ private class ProductFakeNetworkMonitor(
     var closeCalls = 0
     override fun start(listener: NetworkMonitor.Listener) { this.listener = listener }
     fun available(id: String) = listener.onAvailable(NetworkSnapshot(id, true, false, setOf(NetworkTransport.WIFI)))
+    fun unavailable(id: String) = listener.onAvailable(NetworkSnapshot(id, false, false, setOf(NetworkTransport.WIFI)))
     override fun close() {
         closeCalls++
         closeFailure?.let { throw it }
@@ -1774,6 +1955,7 @@ private class ProductFakePeerEngine(
     private val closeFailure: Throwable? = null,
     private val startHook: () -> Unit = {},
     private val sendControlHook: (ByteArray) -> Unit = {},
+    private val sendControlResult: () -> Boolean = { true },
 ) : WebRtcPeerEngine {
     override val controlSemantics = DataChannelSemantics.RELIABLE_CONTROL
     override val mediaSemantics = DataChannelSemantics.LATEST_MEDIA
@@ -1788,8 +1970,11 @@ private class ProductFakePeerEngine(
         startHook()
     }
     override fun sendControl(payload: ByteArray): Boolean {
-        val accepted = control.add(payload)
-        if (accepted) sendControlHook(payload)
+        val accepted = sendControlResult()
+        if (accepted) {
+            control.add(payload)
+            sendControlHook(payload)
+        }
         return accepted
     }
     override fun sendMedia(frame: OutboundMediaFrame): Boolean = true

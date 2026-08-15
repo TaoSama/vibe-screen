@@ -1,6 +1,9 @@
 package dev.telemachus.display.protocol
 
 import com.google.protobuf.ByteString
+import dev.telemachus.display.ControllerAxes
+import dev.telemachus.display.ControllerEventKind
+import dev.telemachus.display.ControllerStateSample
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Dimensions
@@ -49,6 +52,7 @@ class ProtocolV1SessionTest {
                Capability.CAPABILITY_POINTER,
                Capability.CAPABILITY_STYLUS,
                Capability.CAPABILITY_STYLUS_EXTENDED,
+               Capability.CAPABILITY_CONTROLLER,
                Capability.CAPABILITY_MULTI_DISPLAY,
                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,
@@ -457,6 +461,53 @@ class ProtocolV1SessionTest {
         assertThrows(IllegalArgumentException::class.java) {
             session.stylus(103, 7, InputPhase.INPUT_PHASE_CHANGED, 0.25, 0.75, 0.1, 90.0, 90.0)
         }
+    }
+
+    @Test
+    fun controllerRequiresNegotiationAndEncodesCompleteTargetedState() {
+        val sample =
+            ControllerStateSample(
+                controllerId = "android-controller-1",
+                controllerEpoch = 3,
+                kind = ControllerEventKind.STATE,
+                buttonMask = 4101,
+                axes =
+                    ControllerAxes(
+                        leftX = -0.75,
+                        leftY = 0.5,
+                        rightX = 0.25,
+                        rightY = -0.125,
+                        leftTrigger = 0.375,
+                        rightTrigger = 0.875,
+                        hatX = 1,
+                        hatY = -1,
+                    ),
+            )
+
+        val touchOnly = streamingSession()
+        assertFalse(touchOnly.canSendController)
+        assertThrows(IllegalStateException::class.java) { touchOnly.controller(201, sample) }
+
+        val session = controllerStreamingSession()
+        assertTrue(session.canSendController)
+        val envelope = session.controller(201, sample)
+        val event = envelope.controllerEvent
+        assertEquals(Envelope.PayloadCase.CONTROLLER_EVENT, envelope.payloadCase)
+        assertEquals(201L, event.inputId)
+        assertEquals("android-controller-1", event.controllerId)
+        assertEquals(3L, event.controllerEpoch)
+        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE, event.kind)
+        assertEquals(4101, event.buttonMask)
+        assertEquals(-0.75, event.leftStickX, 0.0)
+        assertEquals(0.5, event.leftStickY, 0.0)
+        assertEquals(0.25, event.rightStickX, 0.0)
+        assertEquals(-0.125, event.rightStickY, 0.0)
+        assertEquals(0.375, event.leftTrigger, 0.0)
+        assertEquals(0.875, event.rightTrigger, 0.0)
+        assertEquals(1, event.hatX)
+        assertEquals(-1, event.hatY)
+        assertEquals("display-main", event.target.displayId)
+        assertEquals(42L, event.target.streamId)
     }
 
     @Test
@@ -944,6 +995,19 @@ class ProtocolV1SessionTest {
 
     private fun stylusStreamingSession(): ProtocolV1Session {
         val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_STYLUS)
+        return session().also {
+            it.clientHello()
+            it.receive(hostHello(2, advertisedCapabilities = caps))
+            it.receive(sessionAccepted(3, negotiatedCapabilities = caps))
+            it.receive(displayList(4))
+            it.receive(startDisplay(5))
+            val requested = it.receive(videoConfig(6)).single() as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(3, requested.configurationToken, true, "")
+        }
+    }
+
+    private fun controllerStreamingSession(): ProtocolV1Session {
+        val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CONTROLLER)
         return session().also {
             it.clientHello()
             it.receive(hostHello(2, advertisedCapabilities = caps))

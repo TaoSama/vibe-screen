@@ -272,6 +272,8 @@ class StreamingServer: EncodedFrameSink {
     // handled regardless. When false, incoming touch frames are dropped
     // immediately without parsing or dispatching to main queue.
     var touchEnabled: Bool = true
+    /// Enabled only after entitlement/signature checks and an IOHID runtime probe.
+    var controllerAvailable: Bool = false
 
     var onWirelessClientPaired: ((String, UInt64) -> Void)?
     var onServerFailed: ((Error) -> Void)?
@@ -284,6 +286,7 @@ class StreamingServer: EncodedFrameSink {
     ) -> Void)?
     var onScrollEvent: ((Double, Double, UInt64) -> Void)?
     var onKeyEvent: ((UInt32, Bool, UInt32, String, UInt64) -> Void)?
+    var onControllerEvent: (@MainActor (GameControllerInputEvent, UInt64) -> Void)?
     var onProtocolErrorReceived: ((VSProtocolError, UInt64) -> Void)?
     /// Fired on the main actor when a Protocol v1 client selects a different
     /// display so capture switching preserves the network queue's request order.
@@ -1105,6 +1108,25 @@ class StreamingServer: EncodedFrameSink {
         }
     }
 
+    /// A negotiated controller reached the native HID boundary but could not
+    /// be created or updated. Keep the failure scoped to the originating
+    /// generation and close the protocol session rather than pretending input
+    /// is working.
+    func failProtocolV1ControllerInput(generation: UInt64, reason: String) {
+        networkQueue.async { [weak self] in
+            guard let self, !self.isStopped,
+                  self.activeConnectionGeneration == generation,
+                  self.connectionProtocolMode == .protocolV1,
+                  let session = self.protocolV1Session,
+                  let conn = self.connection else { return }
+            self.applyProtocolV1Actions(
+                session.rejectMalformedTransport("Controller injection failed: \(reason)"),
+                connection: conn,
+                generation: generation
+            )
+        }
+    }
+
     private func performOnNetworkQueue(_ operation: @escaping () -> Void) {
         if DispatchQueue.getSpecific(key: Self.networkQueueKey) == ObjectIdentifier(self) {
             operation()
@@ -1384,7 +1406,8 @@ class StreamingServer: EncodedFrameSink {
             framesPerSecond: protocolV1FramesPerSecond,
             bitrateKbps: protocolV1BitrateKbps,
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
-                touchEnabled: touchEnabled
+                touchEnabled: touchEnabled,
+                controllerAvailable: controllerAvailable
             ),
             requiredClientCapabilities: touchEnabled ? [.touch] : [],
             supportedCodecs: [.hevc, .h264],
@@ -1572,6 +1595,12 @@ class StreamingServer: EncodedFrameSink {
                     guard let self,
                           self.clientCallbackGeneration.isCurrent(generation) else { return }
                     self.onKeyEvent?(usage, pressed, modifiers, text, generation)
+                }
+            case .controller(let event):
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onControllerEvent?(event, generation)
                 }
             case .heartbeat:
                 let accepted = recoveryController.observeHeartbeat(

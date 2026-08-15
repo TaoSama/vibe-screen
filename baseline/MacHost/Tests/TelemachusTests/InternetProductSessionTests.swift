@@ -762,6 +762,91 @@ final class InternetProductSessionTests: XCTestCase {
         }
         XCTAssertTrue(harness.failures.isEmpty)
     }
+
+    func testControllerNegotiatesAndRoutesLifecycle() throws {
+        let harness = try Harness(controllerAvailable: true)
+        let routed = expectation(description: "controller routed")
+        var receivedKinds: [GameControllerEventKind] = []
+        harness.session.onAuthenticatedControllerEvent = { epoch, event in
+            XCTAssertEqual(epoch, 1)
+            receivedKinds.append(event.kind)
+            if receivedKinds.count == 3 { routed.fulfill() }
+            return true
+        }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        XCTAssertTrue(harness.waitForSentControlCount(3))
+        let controls = try harness.engine.sentPlaintext
+            .filter { $0.channel == .control }
+            .prefix(2)
+            .map { try VSEnvelope(serializedBytes: $0.payload) }
+        XCTAssertTrue(controls[0].hostHello.capabilities.contains(.controller))
+        XCTAssertTrue(controls[1].sessionAccepted.negotiatedCapabilities.contains(.controller))
+
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        harness.receiveControl(harness.controller(messageID: 3, kind: .connected))
+        harness.receiveControl(harness.controller(
+            messageID: 4,
+            kind: .state,
+            inputID: 2,
+            buttonMask: 1
+        ))
+        harness.receiveControl(harness.controller(
+            messageID: 5,
+            kind: .disconnected,
+            inputID: 3
+        ))
+        wait(for: [routed], timeout: 1)
+        XCTAssertEqual(receivedKinds, [.connected, .state, .disconnected])
+    }
+
+    func testControllerForeignTargetFailsClosed() throws {
+        let harness = try Harness(controllerAvailable: true)
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+
+        var foreign = harness.controller(messageID: 3, kind: .connected)
+        var target = VSInputTarget()
+        target.displayID = "wrong-display"
+        target.streamID = 99
+        foreign.controllerEvent.target = target
+        harness.receiveControl(foreign)
+        XCTAssertTrue(harness.waitForFailure())
+    }
+
+    func testControllerUnnegotiatedFailsClosed() throws {
+        let harness = try Harness(controllerAvailable: true)
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+
+        harness.receiveControl(harness.controller(messageID: 3, kind: .connected))
+        XCTAssertTrue(harness.waitForFailure())
+    }
+
+    func testControllerInvalidStateFailsClosed() throws {
+        let harness = try Harness(controllerAvailable: true)
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        harness.session.onAuthenticatedControllerEvent = { _, _ in true }
+        harness.receiveControl(harness.controller(messageID: 3, kind: .connected))
+
+        // Reserved button bits above bit 12 are invalid.
+        let invalid = harness.controller(
+            messageID: 4,
+            kind: .state,
+            inputID: 2,
+            buttonMask: 1 << 13
+        )
+        harness.receiveControl(invalid)
+        XCTAssertTrue(harness.waitForFailure())
+    }
 }
 
 private final class Harness {
@@ -776,7 +861,8 @@ private final class Harness {
         negotiationTimeoutMilliseconds: UInt32 = 10_000,
         limits: InternetTransportLimits = .standard,
         engineCount: Int = 1,
-        freshSessionRecoveryPolicy: NetworkRecoveryPolicy = .standard
+        freshSessionRecoveryPolicy: NetworkRecoveryPolicy = .standard,
+        controllerAvailable: Bool = false
     ) throws {
         let builtConfiguration = InternetProductSessionConfiguration(
             transport: WebRTCTransportConfiguration(
@@ -805,6 +891,8 @@ private final class Harness {
                 framesPerSecond: 60,
                 bitrateKbps: 20_000
             ),
+            inputEnabled: true,
+            controllerAvailable: controllerAvailable,
             heartbeatIntervalMilliseconds: 10_000,
             heartbeatTimeoutMilliseconds: 20_000,
             negotiationTimeoutMilliseconds: negotiationTimeoutMilliseconds,
@@ -852,7 +940,8 @@ private final class Harness {
     func clientHello(
         messageID: UInt64,
         supportsStylus: Bool = false,
-        supportsStylusExtended: Bool = false
+        supportsStylusExtended: Bool = false,
+        supportsController: Bool = false
     ) -> VSEnvelope {
         var range = VSProtocolRange()
         range.minimum = 1
@@ -866,6 +955,7 @@ private final class Harness {
         ]
         if supportsStylus { hello.capabilities.append(.stylus) }
         if supportsStylusExtended { hello.capabilities.append(.stylusExtended) }
+        if supportsController { hello.capabilities.append(.controller) }
         hello.requiredCapabilities = [
             .deviceIdentity, .endToEndEncryption, .mediaRecordFragmentation, .replayProtection,
         ]
@@ -919,6 +1009,25 @@ private final class Harness {
         stylus.tiltYDegrees = -45
         var envelope = baseEnvelope(messageID: messageID)
         envelope.stylusEvent = stylus
+        return envelope
+    }
+
+    func controller(
+        messageID: UInt64,
+        kind: VSControllerEventKind = .connected,
+        inputID: UInt64 = 1,
+        controllerID: String = "pad-1",
+        controllerEpoch: UInt64 = 1,
+        buttonMask: UInt32 = 0
+    ) -> VSEnvelope {
+        var event = VSControllerEvent()
+        event.inputID = inputID
+        event.controllerID = controllerID
+        event.controllerEpoch = controllerEpoch
+        event.kind = kind
+        event.buttonMask = buttonMask
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.controllerEvent = event
         return envelope
     }
 

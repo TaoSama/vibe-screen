@@ -200,6 +200,7 @@ data class ClientSessionCapabilities(
     val keyboard: Boolean,
     val nativePointer: Boolean,
     val hostActions: Boolean,
+    val controller: Boolean = false,
 ) {
     companion object {
         val LEGACY_TOUCH_ONLY =
@@ -209,6 +210,7 @@ data class ClientSessionCapabilities(
                 keyboard = false,
                 nativePointer = false,
                 hostActions = false,
+                controller = false,
             )
     }
 }

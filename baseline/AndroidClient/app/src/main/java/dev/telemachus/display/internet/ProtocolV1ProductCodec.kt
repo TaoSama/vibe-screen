@@ -5,6 +5,8 @@ import com.google.protobuf.InvalidProtocolBufferException
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClientHello
 import dev.vibescreen.protocol.v1.Codec
+import dev.vibescreen.protocol.v1.ControllerEvent
+import dev.vibescreen.protocol.v1.ControllerEventKind as ProtocolControllerEventKind
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.MediaPacketHeader
@@ -95,6 +97,53 @@ data class ProductStylusEvent(
         require((toolKind == null) == (contactState == null))
         require(buttonMask and 0b11.inv() == 0)
         require(contactState != StylusContactState.STYLUS_CONTACT_STATE_PROXIMITY || pressure == 0.0)
+    }
+}
+
+data class ProductControllerEvent(
+    val inputId: Long,
+    val controllerId: String,
+    val controllerEpoch: Long,
+    val kind: ProtocolControllerEventKind,
+    val buttonMask: Int,
+    val leftStickX: Double,
+    val leftStickY: Double,
+    val rightStickX: Double,
+    val rightStickY: Double,
+    val leftTrigger: Double,
+    val rightTrigger: Double,
+    val hatX: Int,
+    val hatY: Int,
+) {
+    init {
+        require(inputId > 0) { "Controller input identifier must be positive" }
+        val controllerIdBytes = controllerId.toByteArray(Charsets.UTF_8).size
+        require(controllerIdBytes in 1..MAXIMUM_CONTROLLER_ID_BYTES) {
+            "Controller identifier must be 1..$MAXIMUM_CONTROLLER_ID_BYTES UTF-8 bytes"
+        }
+        require(controllerEpoch > 0) { "Controller epoch must be positive" }
+        require(
+            kind == ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED ||
+                kind == ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE ||
+                kind == ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
+        ) { "Controller event kind is invalid" }
+        require(buttonMask and 0x1fff.inv() == 0) { "Controller button mask out of range" }
+        require(listOf(leftStickX, leftStickY, rightStickX, rightStickY).all { it.isFinite() && it in -1.0..1.0 })
+        require(listOf(leftTrigger, rightTrigger).all { it.isFinite() && it in 0.0..1.0 })
+        require(hatX in -1..1 && hatY in -1..1)
+        if (kind != ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE) {
+            require(
+                buttonMask == 0 &&
+                    leftStickX == 0.0 && leftStickY == 0.0 &&
+                    rightStickX == 0.0 && rightStickY == 0.0 &&
+                    leftTrigger == 0.0 && rightTrigger == 0.0 &&
+                    hatX == 0 && hatY == 0,
+            ) { "Controller lifecycle events must carry neutral state" }
+        }
+    }
+
+    private companion object {
+        const val MAXIMUM_CONTROLLER_ID_BYTES = 128
     }
 }
 
@@ -192,6 +241,14 @@ interface ProtocolV1ProductCodec {
         sessionEpoch: Long,
         streamId: Long,
         event: ProductStylusEvent,
+    ): ByteArray
+
+    fun encodeController(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        streamId: Long,
+        event: ProductControllerEvent,
     ): ByteArray
 
     fun encodeKeyframeRequest(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, streamId: Long, reason: String): ByteArray
@@ -297,6 +354,35 @@ class ProtobufProtocolV1ProductCodec(
         }
         val stylus = builder.build()
         return envelope(messageId, sessionId, sessionEpoch).setStylusEvent(stylus).build().toByteArray()
+    }
+
+    override fun encodeController(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        streamId: Long,
+        event: ProductControllerEvent,
+    ): ByteArray {
+        require(streamId > 0)
+        val controller =
+            ControllerEvent
+                .newBuilder()
+                .setInputId(event.inputId)
+                .setControllerId(event.controllerId)
+                .setControllerEpoch(event.controllerEpoch)
+                .setKind(event.kind)
+                .setButtonMask(event.buttonMask)
+                .setLeftStickX(event.leftStickX)
+                .setLeftStickY(event.leftStickY)
+                .setRightStickX(event.rightStickX)
+                .setRightStickY(event.rightStickY)
+                .setLeftTrigger(event.leftTrigger)
+                .setRightTrigger(event.rightTrigger)
+                .setHatX(event.hatX)
+                .setHatY(event.hatY)
+                .setTarget(dev.vibescreen.protocol.v1.InputTarget.newBuilder().setStreamId(streamId))
+                .build()
+        return envelope(messageId, sessionId, sessionEpoch).setControllerEvent(controller).build().toByteArray()
     }
 
     override fun encodeKeyframeRequest(
@@ -528,6 +614,7 @@ class ProtobufProtocolV1ProductCodec(
                 Capability.CAPABILITY_TOUCH,
                 Capability.CAPABILITY_STYLUS,
                 Capability.CAPABILITY_STYLUS_EXTENDED,
+                Capability.CAPABILITY_CONTROLLER,
                 Capability.CAPABILITY_DEVICE_IDENTITY,
                 Capability.CAPABILITY_END_TO_END_ENCRYPTION,
                 Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION,
@@ -537,7 +624,8 @@ class ProtobufProtocolV1ProductCodec(
             OFFERED_CLIENT_CAPABILITIES.filterNot {
                 it == Capability.CAPABILITY_TOUCH ||
                     it == Capability.CAPABILITY_STYLUS ||
-                    it == Capability.CAPABILITY_STYLUS_EXTENDED
+                    it == Capability.CAPABILITY_STYLUS_EXTENDED ||
+                    it == Capability.CAPABILITY_CONTROLLER
             }
 
         /** Test/host helper for the Protocol v1 `uint32 header length | header | payload` media-channel framing. */

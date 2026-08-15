@@ -14,16 +14,21 @@ struct ProtocolV1DisplayInfo: Equatable {
 struct ProtocolV1SessionConfiguration {
     static let version: UInt32 = 1
 
-   static func productionHostCapabilities(touchEnabled: Bool) -> Set<VSCapability> {
+   static func productionHostCapabilities(
+       touchEnabled: Bool,
+       controllerAvailable: Bool = false
+   ) -> Set<VSCapability> {
         // Native pointer/keyboard ride the same input toggle as touch: they
         // require Accessibility to actually inject, but the capability is
         // advertised so a USB session can negotiate them. When input is
         // disabled entirely, only multi-display selection is offered.
         // Client video control tunes the host encoder, needs no Accessibility,
         // and is always offered so the client can adjust bitrate/fps/quality.
-        touchEnabled
+        var capabilities: Set<VSCapability> = touchEnabled
             ? [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions, .usbHidModifierByte]
             : [.multiDisplay, .clientVideoControl]
+        if controllerAvailable { capabilities.insert(.controller) }
+        return capabilities
    }
 
    let sessionID: Data
@@ -78,6 +83,7 @@ enum ProtocolV1SessionAction {
     case pointer(x: Float, y: Float, phase: VSInputPhase, buttonMask: UInt32)
     case scroll(deltaX: Double, deltaY: Double)
     case key(usage: UInt32, pressed: Bool, modifiers: UInt32, text: String)
+    case controller(GameControllerInputEvent)
     case heartbeat
     case requestKeyframe(force: Bool)
     case selectDisplay(id: String)
@@ -108,6 +114,7 @@ final class ProtocolV1SessionCoordinator {
     private var nextMessageID: UInt64 = 1
     private var negotiatedCapabilities: Set<VSCapability> = []
     private var stylusSequenceState = StylusSequenceState()
+    private var controllerSequenceState = GameControllerStateMachine()
     private var advertisedVideoRotation = 0
     private let lock = NSLock()
     /// Identifies the newest in-flight client video-preferences request. The
@@ -629,6 +636,22 @@ final class ProtocolV1SessionCoordinator {
                 text: key.text
             )]
 
+        case .controllerEvent(let controller):
+            guard negotiatedCapabilities.contains(.controller) else {
+                return unsupportedCapability("Controller input was not negotiated.", envelope.messageID)
+            }
+            guard isStreaming,
+                  inputTargetMatchesActiveStream(controller.hasTarget ? controller.target : nil),
+                  let event = makeControllerInputEvent(controller) else {
+                return invalidState("ControllerEvent is invalid or media is not ready.", envelope.messageID)
+            }
+            do {
+                try controllerSequenceState.accept(event)
+                return [.controller(event)]
+            } catch {
+                return invalidState("ControllerEvent violates the controller state machine.", envelope.messageID)
+            }
+
         case .setVideoPreferences(let prefs):
             guard negotiatedCapabilities.contains(.clientVideoControl) else {
                 return unsupportedCapability("Client video control was not negotiated.", envelope.messageID)
@@ -721,12 +744,14 @@ final class ProtocolV1SessionCoordinator {
         case .protocolError(let error):
             phase = .failed
             _ = stylusSequenceState.consumeReset()
+            controllerSequenceState.reset()
             pendingHostActionInvocations.removeAll()
             return [.peerError(error), .close]
 
         case .disconnectNotice:
             phase = .closed
             _ = stylusSequenceState.consumeReset()
+            controllerSequenceState.reset()
             pendingHostActionInvocations.removeAll()
             return [.close]
 
@@ -825,6 +850,35 @@ final class ProtocolV1SessionCoordinator {
         guard let target else { return true }
         if target.displayID.isEmpty && target.streamID == 0 { return true }
         return target.displayID == configuration.displayID && target.streamID == streamID
+    }
+
+    private func makeControllerInputEvent(_ controller: VSControllerEvent) -> GameControllerInputEvent? {
+        let kind: GameControllerEventKind
+        switch controller.kind {
+        case .connected: kind = .connected
+        case .state: kind = .state
+        case .disconnected: kind = .disconnected
+        default: return nil
+        }
+        let state = GameControllerState(
+            buttonMask: controller.buttonMask,
+            leftX: controller.leftStickX,
+            leftY: controller.leftStickY,
+            rightX: controller.rightStickX,
+            rightY: controller.rightStickY,
+            leftTrigger: controller.leftTrigger,
+            rightTrigger: controller.rightTrigger,
+            hatX: controller.hatX,
+            hatY: controller.hatY
+        )
+        guard state.isValid else { return nil }
+        return GameControllerInputEvent(
+            inputID: controller.inputID,
+            controllerID: controller.controllerID,
+            controllerEpoch: controller.controllerEpoch,
+            kind: kind,
+            state: state
+        )
     }
 
     private func acceptClientHello(_ hello: VSClientHello, correlationID: UInt64) -> [ProtocolV1SessionAction] {
@@ -1040,6 +1094,7 @@ final class ProtocolV1SessionCoordinator {
         let sessionScoped = phase != .awaitingClientHello
         phase = .failed
         _ = stylusSequenceState.consumeReset()
+        controllerSequenceState.reset()
         pendingHostActionInvocations.removeAll()
         do {
             return [
@@ -1074,6 +1129,7 @@ final class ProtocolV1SessionCoordinator {
     private func serializationFailure() -> [ProtocolV1SessionAction] {
         phase = .failed
         _ = stylusSequenceState.consumeReset()
+        controllerSequenceState.reset()
         return [.close]
     }
 

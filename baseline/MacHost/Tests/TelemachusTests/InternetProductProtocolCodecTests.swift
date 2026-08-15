@@ -286,11 +286,49 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         XCTAssertEqual(codec.video.rotationDegrees, 270)
     }
 
+    func testControllerCapabilityAdvertisedOnlyWhenHostAvailable() throws {
+        var unavailable = try makeCodec(negotiate: false, controllerAvailable: false)
+        let unavailableHost = try VSEnvelope(serializedBytes: unavailable.hostHello()).hostHello
+        XCTAssertFalse(unavailableHost.capabilities.contains(.controller))
+
+        var available = try makeCodec(negotiate: false, controllerAvailable: true)
+        let availableHost = try VSEnvelope(serializedBytes: available.hostHello()).hostHello
+        XCTAssertTrue(availableHost.capabilities.contains(.controller))
+    }
+
+    func testControllerNegotiatedWhenPeerOffersAndHostAvailable() throws {
+        var codec = try makeCodec(negotiate: false, controllerAvailable: true)
+        var hello = clientHello()
+        hello.capabilities.append(.controller)
+        try codec.validate(hello)
+
+        let accepted = try VSEnvelope(serializedBytes: codec.sessionAccepted(
+            heartbeatIntervalMilliseconds: 1_000,
+            peerSupportsTouch: true,
+            peerSupportsController: true
+        )).sessionAccepted
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.controller))
+
+        // A host without controller availability must not negotiate it even if
+        // the peer offers it.
+        var unavailable = try makeCodec(negotiate: false, controllerAvailable: false)
+        var peerOffer = clientHello()
+        peerOffer.capabilities.append(.controller)
+        try unavailable.validate(peerOffer)
+        let unavailableAccepted = try VSEnvelope(serializedBytes: unavailable.sessionAccepted(
+            heartbeatIntervalMilliseconds: 1_000,
+            peerSupportsTouch: true,
+            peerSupportsController: true
+        )).sessionAccepted
+        XCTAssertFalse(unavailableAccepted.negotiatedCapabilities.contains(.controller))
+    }
+
     private func makeCodec(
         controlLimit: Int = 64 * 1_024,
         rotationDegrees: Int = 0,
         negotiate: Bool = true,
-        inputEnabled: Bool = true
+        inputEnabled: Bool = true,
+        controllerAvailable: Bool = false
     ) throws -> InternetProductProtocolCodec {
         var codec = try InternetProductProtocolCodec(
             sessionIdentifier: "product-session",
@@ -309,6 +347,7 @@ final class InternetProductProtocolCodecTests: XCTestCase {
                 rotationDegrees: rotationDegrees
             ),
             inputEnabled: inputEnabled,
+            controllerAvailable: controllerAvailable,
             limits: InternetTransportLimits(
                 maximumControlMessageBytes: controlLimit,
                 maximumBufferedControlBytes: 2 * 1_024 * 1_024,

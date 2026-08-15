@@ -35,3 +35,8 @@ The four `key_*` fixtures make the capability-gated modifier layouts explicit.
 `key_usb_hid_control` and `key_usb_hid_shift` require negotiated capability
 `27` and use `0x01`/`0x02`. `key_legacy_control` and `key_legacy_shift` model a
 mixed-version session without that capability and use `0x02`/`0x01`.
+
+The controller fixtures form one complete lifecycle for a stable controller ID
+and epoch: neutral `CONNECTED`, a full `STATE` snapshot, then neutral
+`DISCONNECTED`. `controller_validation.json` pins invalid scalar, reserved-bit,
+and non-neutral lifecycle cases without assigning wire bytes to invalid input.

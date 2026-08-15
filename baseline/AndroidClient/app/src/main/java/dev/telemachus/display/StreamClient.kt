@@ -1141,6 +1141,36 @@ class StreamClient(
     internal fun canSendExtendedStylus(): Boolean =
         isConnected && wireMode == WireMode.V1 && protocolSession?.canSendExtendedStylus == true
 
+    internal fun canSendController(): Boolean =
+        isConnected && wireMode == WireMode.V1 && protocolSession?.canSendController == true
+
+    internal fun sendController(dispatch: ControllerDispatch): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canSendController) return false
+        val samples = dispatch.samples.toList()
+        if (samples.isEmpty()) return false
+        val submission =
+            submitOutbound(
+                kind =
+                    if (dispatch.delivery == ControllerDelivery.ANALOG) {
+                        OutboundCommandScheduler.Kind.CONTROLLER_MOVE
+                    } else {
+                        OutboundCommandScheduler.Kind.CONTROLLER_STRUCTURAL
+                    },
+                command =
+                    OutboundCommand.ProtocolBatch { activeSession ->
+                        samples.map { sample ->
+                            activeSession.controller(
+                                inputId = nextInputId.getAndIncrement(),
+                                sample = sample,
+                            )
+                        }
+                    },
+            )
+        return submission.wasAdmitted()
+    }
+
     internal fun sendMotionStylus(samples: List<StylusSample>): Boolean {
         if (!isConnected || wireMode != WireMode.V1) return false
         val session = protocolSession ?: return false
@@ -1489,6 +1519,7 @@ class StreamClient(
             }
         if (submission == OutboundCommandScheduler.Submission.TIMED_OUT &&
             kind != OutboundCommandScheduler.Kind.MOVE &&
+            kind != OutboundCommandScheduler.Kind.CONTROLLER_MOVE &&
             kind != OutboundCommandScheduler.Kind.PING
         ) {
             requestConnectionEnd(
@@ -2012,6 +2043,7 @@ class StreamClient(
         }
         protocolSession = null
         pendingLegacyFirstByte = null
+        nextInputId.set(1L)
     }
 
     private fun cleanupCandidateTransport(
