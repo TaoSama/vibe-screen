@@ -1,0 +1,8 @@
+# expectation|dependency kind|group/path|module
+forbidden|project|:session
+forbidden|external|com.google.protobuf|protobuf-javalite
+forbidden|external|androidx.core|core-ktx
+forbidden|external|org.jetbrains|annotations
+forbidden|file|libs/product-session.jar
+allowed|external|org.jetbrains.kotlin|kotlin-stdlib
+allowed|external|org.jetbrains.kotlin|kotlin-stdlib-jdk8

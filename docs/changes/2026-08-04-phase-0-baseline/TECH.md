@@ -49,6 +49,27 @@ The intended extraction destinations are `apps/macos/Packages/*` and Android
 feature modules under `apps/android/`. They are created only as code is moved;
 empty scaffolding would claim boundaries without enforcing them.
 
+The runnable Android baseline now enforces its first concrete module boundary:
+`baseline/AndroidClient/transport` is a platform-neutral JVM module that owns
+TCP connection streams, candidate promotion, output shutdown, and exactly-once
+resource closure. The application module depends on that port while retaining
+USB/LAN endpoint selection, trusted-LAN authentication, protocol upgrade,
+session epochs, retry policy, and product callbacks. A module check normalizes
+and rejects UI, Android platform, Protobuf, product-session, or protocol source
+references and rejects production dependency declarations or resolved modules
+outside Kotlin's runtime/compiler support. Source references to compiler-support
+annotations remain forbidden; only the fixed transitive artifact in the resolved
+graph is exempt. The live-resolution task declares its source, dependency, graph,
+and classpath inputs and explicitly opts out of configuration caching rather than
+reusing a stale dependency verdict. The transport module owns negative boundary
+fixtures plus the concurrency and resource-lifecycle contract tests.
+
+This is intentionally a partial extraction. `StreamClient` still composes local
+transport with legacy/Protocol v1 session behavior, and `MainActivity` still
+coordinates local and Internet product sessions. Protocol, session, decoder,
+renderer, input, and UI ownership therefore remain to be enforced by additional
+module boundaries before Phase 0 module ownership can be called complete.
+
 ## Protocol v1
 
 The schemas under `contracts/proto/vibescreen/protocol/v1/` are the source of
