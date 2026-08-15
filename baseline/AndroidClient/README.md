@@ -171,11 +171,11 @@ must keep the same application ID and signing key. Build a versioned signed APK
 or App Bundle with:
 
 ```bash
-export TELEMACHUS_VERSION=0.1.0
-export TELEMACHUS_KEYSTORE_FILE=/absolute/path/to/release.jks
-export TELEMACHUS_KEYSTORE_PASSWORD='...'
-export TELEMACHUS_KEY_ALIAS='...'
-export TELEMACHUS_KEY_PASSWORD='...'
+export VIBE_SCREEN_VERSION=0.1.0
+export VIBE_SCREEN_KEYSTORE_FILE=/absolute/path/to/release.jks
+export VIBE_SCREEN_KEYSTORE_PASSWORD='...'
+export VIBE_SCREEN_KEY_ALIAS='...'
+export VIBE_SCREEN_KEY_PASSWORD='...'
 ./gradlew clean :transport:check testDebugUnitTest lintDebug assembleRelease bundleRelease
 ```
 

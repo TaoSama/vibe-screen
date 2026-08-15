@@ -11,11 +11,13 @@ plugins {
     id("org.gradle.test-retry") version "1.5.10"
 }
 
-val appVersion = providers.environmentVariable("TELEMACHUS_VERSION").getOrElse("0.0.0")
+val appVersion = providers.environmentVariable("VIBE_SCREEN_VERSION")
+    .orElse(providers.environmentVariable("TELEMACHUS_VERSION"))
+    .getOrElse("0.0.0")
 val protobufVersion = "4.32.1"
 val versionParts = appVersion.split(".")
 require(versionParts.size == 3 && versionParts.all { part -> part.toIntOrNull() != null }) {
-    "TELEMACHUS_VERSION must be a semantic version, got '$appVersion'."
+    "VIBE_SCREEN_VERSION must be a semantic version, got '$appVersion'."
 }
 val computedVersionCode =
     100_000 +
@@ -24,10 +26,14 @@ val computedVersionCode =
                 versionParts[1].toInt() * 100 +
                 versionParts[2].toInt()
         )
-val releaseStoreFile = providers.environmentVariable("TELEMACHUS_KEYSTORE_FILE")
-val releaseStorePassword = providers.environmentVariable("TELEMACHUS_KEYSTORE_PASSWORD")
-val releaseKeyAlias = providers.environmentVariable("TELEMACHUS_KEY_ALIAS")
-val releaseKeyPassword = providers.environmentVariable("TELEMACHUS_KEY_PASSWORD")
+val releaseStoreFile = providers.environmentVariable("VIBE_SCREEN_KEYSTORE_FILE")
+    .orElse(providers.environmentVariable("TELEMACHUS_KEYSTORE_FILE"))
+val releaseStorePassword = providers.environmentVariable("VIBE_SCREEN_KEYSTORE_PASSWORD")
+    .orElse(providers.environmentVariable("TELEMACHUS_KEYSTORE_PASSWORD"))
+val releaseKeyAlias = providers.environmentVariable("VIBE_SCREEN_KEY_ALIAS")
+    .orElse(providers.environmentVariable("TELEMACHUS_KEY_ALIAS"))
+val releaseKeyPassword = providers.environmentVariable("VIBE_SCREEN_KEY_PASSWORD")
+    .orElse(providers.environmentVariable("TELEMACHUS_KEY_PASSWORD"))
 val releaseSigningConfigured =
     listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
         .all { it.isPresent && it.get().isNotBlank() }
@@ -43,9 +49,9 @@ require(dependencyAuditConfiguration in setOf("debugRuntimeClasspath", "releaseR
 
 if (releasePackagingRequested && !releaseSigningConfigured) {
     throw GradleException(
-        "Release signing is not configured. Set TELEMACHUS_KEYSTORE_FILE, " +
-            "TELEMACHUS_KEYSTORE_PASSWORD, TELEMACHUS_KEY_ALIAS, and " +
-            "TELEMACHUS_KEY_PASSWORD.",
+        "Release signing is not configured. Set VIBE_SCREEN_KEYSTORE_FILE, " +
+            "VIBE_SCREEN_KEYSTORE_PASSWORD, VIBE_SCREEN_KEY_ALIAS, and " +
+            "VIBE_SCREEN_KEY_PASSWORD.",
     )
 }
 
@@ -427,9 +433,9 @@ tasks
         dependsOn(auditReleaseDependencies)
         doFirst {
             check(releaseSigningConfigured) {
-                "Release signing is not configured. Set TELEMACHUS_KEYSTORE_FILE, " +
-                    "TELEMACHUS_KEYSTORE_PASSWORD, TELEMACHUS_KEY_ALIAS, and " +
-                    "TELEMACHUS_KEY_PASSWORD."
+                "Release signing is not configured. Set VIBE_SCREEN_KEYSTORE_FILE, " +
+                    "VIBE_SCREEN_KEYSTORE_PASSWORD, VIBE_SCREEN_KEY_ALIAS, and " +
+                    "VIBE_SCREEN_KEY_PASSWORD."
             }
         }
     }

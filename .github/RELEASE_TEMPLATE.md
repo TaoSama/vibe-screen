@@ -10,7 +10,7 @@ before running it.
 
 - `Vibe-Screen-macos-{{VERSION}}-<arch>.zip`: macOS host with an ad-hoc signature.
   It is **not** Developer ID signed or notarized, so macOS may block it.
-- `Telemachus-android-{{VERSION}}-debug.apk`: Android development APK signed with
+- `Vibe-Screen-android-{{VERSION}}-debug.apk`: Android development APK signed with
   the workflow's ephemeral debug key. It is **not** a production-signed APK and
   is not upgrade-compatible with another debug or production signing key.
 - `VibeScreen-ios-simulator-{{VERSION}}.zip`: unsigned simulator-only iOS

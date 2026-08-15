@@ -130,7 +130,7 @@ jobs:
       - name: Test, lint, audit dependencies, and build debug APK
         working-directory: baseline/AndroidClient
         env:
-          TELEMACHUS_VERSION: ${{ needs.validate.outputs.version }}
+          VIBE_SCREEN_VERSION: ${{ needs.validate.outputs.version }}
         run: >-
           ./gradlew --no-daemon
           -PdependencyAuditConfiguration=debugRuntimeClasspath
@@ -143,7 +143,7 @@ jobs:
           actual="$(apkanalyzer manifest version-name "$apk")"
           test "$actual" = "$RELEASE_VERSION"
           mkdir -p .build/android-release
-          cp "$apk" ".build/android-release/Telemachus-android-${RELEASE_VERSION}-debug.apk"
+          cp "$apk" ".build/android-release/Vibe-Screen-android-${RELEASE_VERSION}-debug.apk"
           cp baseline/AndroidClient/app/build/generated/sbom/android-runtime.spdx.json \
             .build/android-release/
           cp baseline/AndroidClient/app/build/generated/dependency-license-report/ANDROID_RUNTIME_DEPENDENCY_LICENSES.md \
@@ -246,7 +246,7 @@ jobs:
             --title "Vibe Screen $RELEASE_VERSION — development preview" \
             --notes-file .build/publish-release/RELEASE_NOTES.md \
             .build/publish-release/SHA256SUMS \
-            .build/publish-release/Telemachus-android-*.apk \
+            .build/publish-release/Vibe-Screen-android-*.apk \
             .build/publish-release/Vibe-Screen-macos-*.zip \
             .build/publish-release/VibeScreen-ios-simulator-*.zip \
             .build/publish-release/vibe-screen-*.spdx.json \

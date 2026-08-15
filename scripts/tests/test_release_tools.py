@@ -154,7 +154,7 @@ class PrepareReleaseTests(unittest.TestCase):
         artifacts.mkdir()
         for name in (
             f"Vibe-Screen-macos-{VERSION}-arm64.zip",
-            f"Telemachus-android-{VERSION}-debug.apk",
+            f"Vibe-Screen-android-{VERSION}-debug.apk",
             f"VibeScreen-ios-simulator-{VERSION}.zip",
         ):
             with zipfile.ZipFile(artifacts / name, "w") as archive:
