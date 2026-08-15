@@ -17,6 +17,23 @@ changes require a new protocol package/version rather than replacing the v1
 fixture. It also runs the deterministic business-message and transport fixture
 tests under `tests/`.
 
+## Security fixtures
+
+`fixtures/security/v1/channel-records.json` fixes the 256-byte initial and
+legacy-compatible rotated key material, both key IDs, and four AES-256-GCM
+records: host-control, device-media, host-audio, and device-bulk. The records
+cover all four channels and both sender directions. `make protocol` independently
+recomputes HKDF-SHA256, key IDs, the rotation transcript, and every record with
+a Go standard-library verifier. The Android and macOS tests also round-trip all
+eight sender/channel key selections.
+These are offline record-layer vectors, not WebRTC DataChannel or public-network
+end-to-end evidence.
+
+The Go reference implementation under `packages/security` intentionally remains
+the Phase 3 control/media implementation. The four-channel fixture describes the
+Android and macOS record layers; it does not imply Go audio/bulk support or an
+audio/bulk transport API.
+
 ## Baseline TCP framing
 
 The legacy-compatible TCP adapter starts in legacy mode. A Protocol v1 client

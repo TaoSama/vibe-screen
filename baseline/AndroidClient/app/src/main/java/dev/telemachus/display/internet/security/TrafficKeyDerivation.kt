@@ -14,6 +14,10 @@ class SessionTrafficKeys(
     val deviceControl: ByteArray,
     val hostMedia: ByteArray,
     val deviceMedia: ByteArray,
+    val hostAudio: ByteArray,
+    val deviceAudio: ByteArray,
+    val hostBulk: ByteArray,
+    val deviceBulk: ByteArray,
 ) : AutoCloseable {
     /** Clears the in-memory copies owned by this instance after disconnect/rotation. */
     override fun close() {
@@ -21,12 +25,18 @@ class SessionTrafficKeys(
         deviceControl.fill(0)
         hostMedia.fill(0)
         deviceMedia.fill(0)
+        hostAudio.fill(0)
+        deviceAudio.fill(0)
+        hostBulk.fill(0)
+        deviceBulk.fill(0)
     }
 }
 
 enum class SecurityChannel(val wireValue: Int) {
     CONTROL(1),
     MEDIA(2),
+    AUDIO(3),
+    BULK(4),
 }
 
 enum class SenderRole(val wireValue: Int) {
@@ -43,7 +53,11 @@ fun SessionTrafficKeys.key(
         SecurityChannel.CONTROL to SenderRole.DEVICE -> deviceControl
         SecurityChannel.MEDIA to SenderRole.HOST -> hostMedia
         SecurityChannel.MEDIA to SenderRole.DEVICE -> deviceMedia
-        else -> error("Unsupported traffic-key direction")
+        SecurityChannel.AUDIO to SenderRole.HOST -> hostAudio
+        SecurityChannel.AUDIO to SenderRole.DEVICE -> deviceAudio
+        SecurityChannel.BULK to SenderRole.HOST -> hostBulk
+        SecurityChannel.BULK to SenderRole.DEVICE -> deviceBulk
+        else -> error("Unsupported traffic key direction")
     }
 
 object TrafficPacketCryptography {
@@ -84,7 +98,8 @@ object TrafficPacketCryptography {
 }
 
 object TrafficKeyDerivation {
-    private const val MATERIAL_BYTES = 128
+    private const val LEGACY_MATERIAL_BYTES = 128
+    private const val MATERIAL_BYTES = 256
     private const val ROTATION_DOMAIN = "vibescreen/traffic-key-update/v1"
 
     fun initial(
@@ -133,6 +148,7 @@ object TrafficKeyDerivation {
         return try {
             split(
                 hkdf(
+                    // Preserve rotation compatibility with peers that negotiated only control/media.
                     arrayOf(current.hostControl, current.deviceControl, current.hostMedia, current.deviceMedia),
                     updateNonce,
                     context,
@@ -207,11 +223,17 @@ object TrafficKeyDerivation {
         var deviceControl: ByteArray? = null
         var hostMedia: ByteArray? = null
         var deviceMedia: ByteArray? = null
+        var hostAudio: ByteArray? = null
+        var deviceAudio: ByteArray? = null
+        var hostBulk: ByteArray? = null
+        var deviceBulk: ByteArray? = null
         var completed = false
         try {
             val computedFirstDigest = MessageDigest.getInstance("SHA-256").run {
                 update(context)
-                digest(material)
+                // Keep the v1 key ID stable for control/media-only peers.
+                update(material, 0, LEGACY_MATERIAL_BYTES)
+                digest()
             }
             firstDigest = computedFirstDigest
             observer.allocated("key-id-first-digest", computedFirstDigest)
@@ -223,6 +245,10 @@ object TrafficKeyDerivation {
             deviceControl = material.copyOfRange(32, 64)
             hostMedia = material.copyOfRange(64, 96)
             deviceMedia = material.copyOfRange(96, 128)
+            hostAudio = material.copyOfRange(128, 160)
+            deviceAudio = material.copyOfRange(160, 192)
+            hostBulk = material.copyOfRange(192, 224)
+            deviceBulk = material.copyOfRange(224, 256)
             val keys =
                 SessionTrafficKeys(
                     keyId = keyId,
@@ -231,6 +257,10 @@ object TrafficKeyDerivation {
                     deviceControl = deviceControl,
                     hostMedia = hostMedia,
                     deviceMedia = deviceMedia,
+                    hostAudio = hostAudio,
+                    deviceAudio = deviceAudio,
+                    hostBulk = hostBulk,
+                    deviceBulk = deviceBulk,
                 )
             completed = true
             return keys
@@ -243,6 +273,10 @@ object TrafficKeyDerivation {
                 deviceControl?.fill(0)
                 hostMedia?.fill(0)
                 deviceMedia?.fill(0)
+                hostAudio?.fill(0)
+                deviceAudio?.fill(0)
+                hostBulk?.fill(0)
+                deviceBulk?.fill(0)
             }
         }
     }

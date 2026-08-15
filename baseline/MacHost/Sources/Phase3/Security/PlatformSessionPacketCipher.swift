@@ -54,7 +54,7 @@ final class PlatformSessionPacketCipher {
         self.rotateKeys = platformSecurity.rotateTrafficKeys
     }
 
-    private init(
+    init(
         sessionIdentifier: String,
         sessionEpoch: UInt64,
         localRole: PlatformSenderRole,
@@ -74,18 +74,33 @@ final class PlatformSessionPacketCipher {
     }
 
     func seal(_ payload: Data, channel: InternetTransportChannel) throws -> Data {
+        try sealRecord(payload, securityChannel: channel.securityChannel)
+    }
+
+    func sealAdvanced(_ payload: Data, channel: PlatformSecurityChannel) throws -> Data {
+        guard channel == .audio || channel == .bulk else {
+            throw PlatformSecurityError.invalidInput("Advanced record sealing requires audio or bulk.")
+        }
+        return try sealRecord(payload, securityChannel: channel)
+    }
+
+    private func sealRecord(
+        _ payload: Data,
+        securityChannel channel: PlatformSecurityChannel
+    ) throws -> Data {
         try lock.withPacketCipherLock {
             guard let keys else { throw PlatformSecurityError.invalidInput("Session packet cipher is closed.") }
             guard let record = try withActiveSessionEpoch({
-                let securityChannel = channel.securityChannel
-                let nonce = try reserveNonce(securityChannel.rawValue, localRole.rawValue, keys.keyEpoch)
-                guard nonce.count == Self.nonceBytes else {
+                let nonce = try reserveNonce(channel.rawValue, localRole.rawValue, keys.keyEpoch)
+                guard nonce.count == Self.nonceBytes,
+                      decodeUInt32(nonce.prefix(4)) == channel.rawValue,
+                      decodeUInt64(nonce.suffix(8)) > 0 else {
                     throw PlatformSecurityError.persistenceFailure("Durable nonce allocator returned an invalid nonce.")
                 }
-                let header = makeHeader(keyEpoch: keys.keyEpoch, sender: localRole, channel: securityChannel, nonce: nonce)
+                let header = makeHeader(keyEpoch: keys.keyEpoch, sender: localRole, channel: channel, nonce: nonce)
                 return header + (try TrafficPacketCryptography.seal(
                     plaintext: payload,
-                    key: keys.key(channel: securityChannel, sender: localRole),
+                    key: keys.key(channel: channel, sender: localRole),
                     nonce: nonce,
                     authenticatedHeader: header
                 ))
@@ -97,13 +112,25 @@ final class PlatformSessionPacketCipher {
     }
 
     func open(_ record: Data, channel: InternetTransportChannel) -> Data? {
+        openRecord(record, securityChannel: channel.securityChannel)
+    }
+
+    func openAdvanced(_ record: Data, channel: PlatformSecurityChannel) -> Data? {
+        guard channel == .audio || channel == .bulk else { return nil }
+        return openRecord(record, securityChannel: channel)
+    }
+
+    private func openRecord(
+        _ record: Data,
+        securityChannel channel: PlatformSecurityChannel
+    ) -> Data? {
         lock.withPacketCipherLock {
             guard let keys, record.count >= Self.headerBytes + Self.tagBytes else { return nil }
             do {
                 return try withActiveSessionEpoch {
                     let header = record.prefix(Self.headerBytes)
                     guard let decoded = decodeHeader(Data(header)) else { return nil }
-                    let expectedChannel = channel.securityChannel
+                    let expectedChannel = channel
                     let expectedSender = localRole.remote
                     guard decoded.sessionHash == sessionHash,
                           decoded.sessionEpoch == sessionEpoch,
@@ -114,7 +141,9 @@ final class PlatformSessionPacketCipher {
                         return nil
                     }
                     let sequence = decodeUInt64(decoded.nonce.suffix(8))
-                    var window = replay[expectedChannel] ?? ReplayWindow(strictlyOrdered: expectedChannel == .control)
+                    var window = replay[expectedChannel] ?? ReplayWindow(
+                        strictlyOrdered: expectedChannel == .control || expectedChannel == .bulk
+                    )
                     guard window.canAccept(sequence) else { return nil }
                     guard let plaintext = try? TrafficPacketCryptography.open(
                         ciphertextAndTag: Data(record.dropFirst(Self.headerBytes)),
@@ -137,18 +166,23 @@ final class PlatformSessionPacketCipher {
             guard let current = keys else {
                 throw PlatformSecurityError.invalidInput("Session packet cipher is closed.")
             }
-            keys = try rotateKeys(current, updateNonce)
+            let replacement = try rotateKeys(current, updateNonce)
+            keys = replacement
             replay.removeAll()
+            current.close()
         }
     }
 
     func close() {
         lock.withPacketCipherLock {
+            keys?.close()
             keys = nil
             replay.removeAll()
             sessionHash.resetBytes(in: 0..<sessionHash.count)
         }
     }
+
+    deinit { close() }
 
     static func selfTestPair(
         sessionIdentifier: String,
@@ -157,15 +191,16 @@ final class PlatformSessionPacketCipher {
         transcriptContext: Data,
         sessionEpoch: UInt64 = 1,
         requireActiveEpoch: @escaping (UInt64) throws -> Void = { _ in },
-        withActiveEpoch: ((_ epoch: UInt64, _ operation: () throws -> Data?) throws -> Data?)? = nil
+        withActiveEpoch: ((_ epoch: UInt64, _ operation: () throws -> Data?) throws -> Data?)? = nil,
+        reserveNonce nonceAllocator: ((UInt32, UInt32, UInt64) throws -> Data)? = nil
     ) throws -> (host: PlatformSessionPacketCipher, device: PlatformSessionPacketCipher) {
-        let keys = try TrafficKeyDerivation.initial(
+        let hostKeys = try TrafficKeyDerivation.initial(
             sharedSecret: sharedSecret,
             bootstrapSecret: bootstrapSecret,
             context: transcriptContext
         )
         let counters = SelfTestNonceCounters()
-        let reserve: (UInt32, UInt32, UInt64) throws -> Data = { channel, sender, keyEpoch in
+        let reserve = nonceAllocator ?? { channel, sender, keyEpoch in
             try counters.reserve(channel: channel, sender: sender, keyEpoch: keyEpoch)
         }
         let rotate: (PlatformSessionKeys, Data) throws -> PlatformSessionKeys = { current, nonce in
@@ -180,7 +215,7 @@ final class PlatformSessionPacketCipher {
                 sessionIdentifier: sessionIdentifier,
                 sessionEpoch: sessionEpoch,
                 localRole: .host,
-                initialKeys: keys,
+                initialKeys: hostKeys,
                 withActiveSessionEpoch: { try activeOperation(sessionEpoch, $0) },
                 reserveNonce: reserve,
                 rotateKeys: rotate
@@ -189,7 +224,7 @@ final class PlatformSessionPacketCipher {
                 sessionIdentifier: sessionIdentifier,
                 sessionEpoch: sessionEpoch,
                 localRole: .device,
-                initialKeys: keys,
+                initialKeys: hostKeys.copy(),
                 withActiveSessionEpoch: { try activeOperation(sessionEpoch, $0) },
                 reserveNonce: reserve,
                 rotateKeys: rotate

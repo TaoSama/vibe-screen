@@ -1,22 +1,98 @@
 import CryptoKit
 import Foundation
 
-struct PlatformSessionKeys: Equatable {
+final class PlatformSessionKeys: Equatable {
     let keyID: String
     let keyEpoch: UInt64
-    let hostControl: Data
-    let deviceControl: Data
-    let hostMedia: Data
-    let deviceMedia: Data
+    private(set) var hostControl: Data
+    private(set) var deviceControl: Data
+    private(set) var hostMedia: Data
+    private(set) var deviceMedia: Data
+    private(set) var hostAudio: Data
+    private(set) var deviceAudio: Data
+    private(set) var hostBulk: Data
+    private(set) var deviceBulk: Data
+    private var closed = false
 
-    fileprivate var combined: Data {
+    fileprivate var legacyCombined: Data {
         hostControl + deviceControl + hostMedia + deviceMedia
     }
+
+    init(
+        keyID: String,
+        keyEpoch: UInt64,
+        hostControl: Data,
+        deviceControl: Data,
+        hostMedia: Data,
+        deviceMedia: Data,
+        hostAudio: Data,
+        deviceAudio: Data,
+        hostBulk: Data,
+        deviceBulk: Data
+    ) {
+        self.keyID = keyID
+        self.keyEpoch = keyEpoch
+        self.hostControl = hostControl
+        self.deviceControl = deviceControl
+        self.hostMedia = hostMedia
+        self.deviceMedia = deviceMedia
+        self.hostAudio = hostAudio
+        self.deviceAudio = deviceAudio
+        self.hostBulk = hostBulk
+        self.deviceBulk = deviceBulk
+    }
+
+    static func == (lhs: PlatformSessionKeys, rhs: PlatformSessionKeys) -> Bool {
+        lhs.keyID == rhs.keyID && lhs.keyEpoch == rhs.keyEpoch &&
+            lhs.hostControl == rhs.hostControl && lhs.deviceControl == rhs.deviceControl &&
+            lhs.hostMedia == rhs.hostMedia && lhs.deviceMedia == rhs.deviceMedia &&
+            lhs.hostAudio == rhs.hostAudio && lhs.deviceAudio == rhs.deviceAudio &&
+            lhs.hostBulk == rhs.hostBulk && lhs.deviceBulk == rhs.deviceBulk
+    }
+
+    func copy() -> PlatformSessionKeys {
+        PlatformSessionKeys(
+            keyID: keyID,
+            keyEpoch: keyEpoch,
+            hostControl: hostControl.ownedCopy,
+            deviceControl: deviceControl.ownedCopy,
+            hostMedia: hostMedia.ownedCopy,
+            deviceMedia: deviceMedia.ownedCopy,
+            hostAudio: hostAudio.ownedCopy,
+            deviceAudio: deviceAudio.ownedCopy,
+            hostBulk: hostBulk.ownedCopy,
+            deviceBulk: deviceBulk.ownedCopy
+        )
+    }
+
+    func close() {
+        guard !closed else { return }
+        hostControl.resetBytes(in: hostControl.indices)
+        deviceControl.resetBytes(in: deviceControl.indices)
+        hostMedia.resetBytes(in: hostMedia.indices)
+        deviceMedia.resetBytes(in: deviceMedia.indices)
+        hostAudio.resetBytes(in: hostAudio.indices)
+        deviceAudio.resetBytes(in: deviceAudio.indices)
+        hostBulk.resetBytes(in: hostBulk.indices)
+        deviceBulk.resetBytes(in: deviceBulk.indices)
+        closed = true
+    }
+
+    var isClearedForTest: Bool {
+        closed && [
+            hostControl, deviceControl, hostMedia, deviceMedia,
+            hostAudio, deviceAudio, hostBulk, deviceBulk,
+        ].allSatisfy { $0.allSatisfy { $0 == 0 } }
+    }
+
+    deinit { close() }
 }
 
 enum PlatformSecurityChannel: UInt32 {
     case control = 1
     case media = 2
+    case audio = 3
+    case bulk = 4
 }
 
 enum PlatformSenderRole: UInt32 {
@@ -57,18 +133,24 @@ extension PlatformSessionKeys {
         case (.control, .device): return deviceControl
         case (.media, .host): return hostMedia
         case (.media, .device): return deviceMedia
+        case (.audio, .host): return hostAudio
+        case (.audio, .device): return deviceAudio
+        case (.bulk, .host): return hostBulk
+        case (.bulk, .device): return deviceBulk
         }
     }
 }
 
 enum TrafficKeyDerivation {
-    private static let materialLength = 128
+    private static let legacyMaterialLength = 128
+    private static let materialLength = 256
 
     static func initial(sharedSecret: Data, bootstrapSecret: Data, context: Data) throws -> PlatformSessionKeys {
         guard !sharedSecret.isEmpty, bootstrapSecret.count == 32, context.count == 32 else {
             throw PlatformSecurityError.invalidInput("Initial key derivation requires a shared secret, 32-byte bootstrap secret, and 32-byte transcript context.")
         }
-        let material = hkdf(input: sharedSecret, salt: bootstrapSecret, info: context)
+        var material = hkdf(input: sharedSecret, salt: bootstrapSecret, info: context)
+        defer { material.resetBytes(in: material.indices) }
         return split(material: material, context: context, epoch: 1)
     }
 
@@ -78,7 +160,7 @@ enum TrafficKeyDerivation {
               updateNonce.count >= 16 else {
             throw PlatformSecurityError.invalidInput("Traffic-key rotation must advance exactly one epoch and use at least 16 nonce bytes.")
         }
-        let context = SecurityTranscript.digest(
+        var context = SecurityTranscript.digest(
             domain: "vibescreen/traffic-key-update/v1",
             parts: [
                 Data(current.keyID.utf8),
@@ -87,7 +169,12 @@ enum TrafficKeyDerivation {
                 updateNonce
             ]
         )
-        let material = hkdf(input: current.combined, salt: updateNonce, info: context)
+        defer { context.resetBytes(in: context.indices) }
+        // Preserve rotation compatibility with peers that negotiated only control/media.
+        var legacyInput = current.legacyCombined
+        defer { legacyInput.resetBytes(in: legacyInput.indices) }
+        var material = hkdf(input: legacyInput, salt: updateNonce, info: context)
+        defer { material.resetBytes(in: material.indices) }
         return split(material: material, context: context, epoch: nextEpoch)
     }
 
@@ -103,18 +190,33 @@ enum TrafficKeyDerivation {
 
     private static func split(material: Data, context: Data, epoch: UInt64) -> PlatformSessionKeys {
         precondition(material.count == materialLength)
-        let firstDigest = Data(SHA256.hash(data: context + material))
-        let keyID = Data(SHA256.hash(data: firstDigest)).map { String(format: "%02x", $0) }.joined()
+        var keyIDHasher = SHA256()
+        keyIDHasher.update(data: context)
+        // Keep the v1 key ID stable for control/media-only peers.
+        keyIDHasher.update(data: material.prefix(legacyMaterialLength))
+        var firstDigest = Data(keyIDHasher.finalize())
+        defer { firstDigest.resetBytes(in: firstDigest.indices) }
+        var keyIDDigest = Data(SHA256.hash(data: firstDigest))
+        defer { keyIDDigest.resetBytes(in: keyIDDigest.indices) }
+        let keyID = keyIDDigest.map { String(format: "%02x", $0) }.joined()
         return PlatformSessionKeys(
             keyID: keyID,
             keyEpoch: epoch,
             hostControl: material.subdata(in: 0..<32),
             deviceControl: material.subdata(in: 32..<64),
             hostMedia: material.subdata(in: 64..<96),
-            deviceMedia: material.subdata(in: 96..<128)
+            deviceMedia: material.subdata(in: 96..<128),
+            hostAudio: material.subdata(in: 128..<160),
+            deviceAudio: material.subdata(in: 160..<192),
+            hostBulk: material.subdata(in: 192..<224),
+            deviceBulk: material.subdata(in: 224..<256)
         )
     }
 
+}
+
+private extension Data {
+    var ownedCopy: Data { withUnsafeBytes { Data($0) } }
 }
 
 enum SecurityTranscript {

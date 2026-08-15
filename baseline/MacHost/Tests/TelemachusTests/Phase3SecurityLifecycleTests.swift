@@ -684,6 +684,37 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
         XCTAssertEqual(second.hex, "000000010000000000000002")
     }
 
+    func testRecordChannelsUseIndependentDurableNonceDomains() throws {
+        let lifecycle = SecurityLifecycle(store: MemorySecurityStateStore())
+        var firstHostNonceByChannel: [String] = []
+        for channel in UInt32(1)...UInt32(4) {
+            firstHostNonceByChannel.append(try lifecycle.reserveNonce(
+                channel: channel,
+                senderRole: 1,
+                keyEpoch: 1
+            ).hex)
+        }
+
+        XCTAssertEqual(firstHostNonceByChannel, [
+            "000000010000000000000001",
+            "000000020000000000000001",
+            "000000030000000000000001",
+            "000000040000000000000001",
+        ])
+        XCTAssertEqual(
+            try lifecycle.reserveNonce(channel: 3, senderRole: 1, keyEpoch: 1).hex,
+            "000000030000000000000002"
+        )
+        XCTAssertEqual(
+            try lifecycle.reserveNonce(channel: 3, senderRole: 2, keyEpoch: 1).hex,
+            "000000030000000000000001"
+        )
+        XCTAssertEqual(
+            try lifecycle.reserveNonce(channel: 3, senderRole: 1, keyEpoch: 2).hex,
+            "000000030000000000000001"
+        )
+    }
+
     func testRevocationFailsClosedAfterRestart() throws {
         let store = MemorySecurityStateStore()
         let lifecycle = SecurityLifecycle(store: store)

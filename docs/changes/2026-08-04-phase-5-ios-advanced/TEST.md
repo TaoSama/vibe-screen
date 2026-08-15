@@ -162,7 +162,10 @@ The following remain unproved until their dedicated gates produce evidence:
 - AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
   file picker/export, UDP broadcast, and managed App Configuration injection;
 - host-side multi-client/display, audio capture, clipboard/file handlers,
-  color retry, actions, wake helper, and audio/bulk E2EE replay isolation;
+  color retry, actions, and wake helper;
+- audio/bulk WebRTC DataChannel integration, admission/backlog limits, and
+  real-network E2E behavior. The Android/macOS record-layer key, nonce, replay,
+  and fixed-vector checks are offline evidence only;
 - HDR/EDR output (the current client deliberately advertises SDR only).
 
 ## Required iOS acceptance run

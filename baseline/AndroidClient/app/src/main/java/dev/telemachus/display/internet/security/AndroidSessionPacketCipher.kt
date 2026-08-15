@@ -79,6 +79,13 @@ class AndroidSessionPacketCipher internal constructor(
             val securityChannel = channel.toSecurityChannel()
             val sender = localRole.toSenderRole()
             sealWithActiveEpoch(sessionEpoch, securityChannel.wireValue, sender.wireValue, keys.keyEpoch) { nonce ->
+                check(nonce.size == NONCE_BYTES) { "Durable nonce allocator returned an invalid nonce" }
+                check(ByteBuffer.wrap(nonce).int == securityChannel.wireValue) {
+                    "Durable nonce allocator returned a nonce for another channel"
+                }
+                check(ByteBuffer.wrap(nonce, Int.SIZE_BYTES, Long.SIZE_BYTES).long > 0) {
+                    "Durable nonce allocator returned a non-positive sequence"
+                }
                 val header = header(keys.keyEpoch, sender, securityChannel, nonce)
                 header + TrafficPacketCryptography.seal(payload, keys.key(securityChannel, sender), nonce, header)
             }
@@ -108,7 +115,9 @@ class AndroidSessionPacketCipher internal constructor(
                 }
                 val sequence = ByteBuffer.wrap(decoded.nonce, Int.SIZE_BYTES, Long.SIZE_BYTES).long
                 val window = replayWindows.getOrPut(channel) {
-                    ReplayWindow(strictlyOrdered = channel == SessionChannel.CONTROL)
+                    ReplayWindow(
+                        strictlyOrdered = channel == SessionChannel.CONTROL || channel == SessionChannel.BULK,
+                    )
                 }
                 if (!window.canAccept(sequence)) return@active null
                 val plaintext =
@@ -216,7 +225,12 @@ class AndroidSessionPacketCipher internal constructor(
     }
 
     private fun SessionChannel.toSecurityChannel(): SecurityChannel =
-        if (this == SessionChannel.CONTROL) SecurityChannel.CONTROL else SecurityChannel.MEDIA
+        when (this) {
+            SessionChannel.CONTROL -> SecurityChannel.CONTROL
+            SessionChannel.MEDIA -> SecurityChannel.MEDIA
+            SessionChannel.AUDIO -> SecurityChannel.AUDIO
+            SessionChannel.BULK -> SecurityChannel.BULK
+        }
 
     private fun PeerRole.toSenderRole(): SenderRole =
         if (this == PeerRole.HOST) SenderRole.HOST else SenderRole.DEVICE

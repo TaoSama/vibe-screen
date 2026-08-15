@@ -3,6 +3,7 @@ package dev.telemachus.display.internet.security
 import dev.telemachus.display.internet.PeerRole
 import dev.telemachus.display.internet.SessionChannel
 import dev.telemachus.display.internet.InternetMediaRecordContract
+import java.nio.ByteBuffer
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -49,18 +50,45 @@ class AndroidSessionPacketCipherTest {
     }
 
     @Test
-    fun rotationDestroysOldEpochAndAcceptsNewRecords() {
+    fun rotationDestroysOldEpochAndAcceptsNewRecordsForEveryChannelClass() {
         val host = cipher(PeerRole.HOST)
         val device = cipher(PeerRole.DEVICE)
         val oldRecord = host.seal(SessionChannel.MEDIA, byteArrayOf(5))
+        val oldAudio = host.seal(SessionChannel.AUDIO, byteArrayOf(7))
+        val oldBulk = device.seal(SessionChannel.BULK, byteArrayOf(8))
         val updateNonce = ByteArray(16) { it.toByte() }
 
         host.rotateTrafficKeys(updateNonce)
         device.rotateTrafficKeys(updateNonce)
         val newRecord = host.seal(SessionChannel.MEDIA, byteArrayOf(6))
+        val newAudio = host.seal(SessionChannel.AUDIO, byteArrayOf(9))
+        val newBulk = device.seal(SessionChannel.BULK, byteArrayOf(10))
 
         assertNull(device.open(SessionChannel.MEDIA, oldRecord))
+        assertNull(device.open(SessionChannel.AUDIO, oldAudio))
+        assertNull(host.open(SessionChannel.BULK, oldBulk))
         assertArrayEquals(byteArrayOf(6), device.open(SessionChannel.MEDIA, newRecord))
+        assertArrayEquals(byteArrayOf(9), device.open(SessionChannel.AUDIO, newAudio))
+        assertArrayEquals(byteArrayOf(10), host.open(SessionChannel.BULK, newBulk))
+    }
+
+    @Test
+    fun failedSealConsumesDurableNonceBeforeNextRecord() {
+        val invalidKeys = keysWithInvalidHostAudioKey()
+        val invalidCipher = cipher(PeerRole.HOST, initialKeys = invalidKeys)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            invalidCipher.seal(SessionChannel.AUDIO, byteArrayOf(1))
+        }
+
+        val nextCipher = cipher(PeerRole.HOST)
+        val nextRecord = nextCipher.seal(SessionChannel.AUDIO, byteArrayOf(2))
+        assertArrayEquals(
+            ByteBuffer.allocate(12).putInt(3).putLong(2).array(),
+            nextRecord.copyOfRange(39, 51),
+        )
+        invalidCipher.close()
+        nextCipher.close()
     }
 
     @Test
@@ -106,12 +134,13 @@ class AndroidSessionPacketCipherTest {
     private fun cipher(
         role: PeerRole,
         sessionId: String = "session-1",
+        initialKeys: SessionTrafficKeys = keys(),
     ) =
         AndroidSessionPacketCipher(
             sessionId = sessionId,
             sessionEpoch = 7,
             localRole = role,
-            initialKeys = keys(),
+            initialKeys = initialKeys,
             sealWithActiveEpoch = { epoch, channel, sender, keyEpoch, operation ->
                 securityLifecycle.withReservedSessionNonce(
                     pairingScope,
@@ -137,6 +166,22 @@ class AndroidSessionPacketCipherTest {
             bootstrapSecret = ByteArray(32) { 2 },
             context = ByteArray(32) { 3 },
         )
+
+    private fun keysWithInvalidHostAudioKey(): SessionTrafficKeys {
+        val source = keys()
+        return SessionTrafficKeys(
+            keyId = source.keyId,
+            keyEpoch = source.keyEpoch,
+            hostControl = source.hostControl.copyOf(),
+            deviceControl = source.deviceControl.copyOf(),
+            hostMedia = source.hostMedia.copyOf(),
+            deviceMedia = source.deviceMedia.copyOf(),
+            hostAudio = source.hostAudio.copyOf(31),
+            deviceAudio = source.deviceAudio.copyOf(),
+            hostBulk = source.hostBulk.copyOf(),
+            deviceBulk = source.deviceBulk.copyOf(),
+        ).also { source.close() }
+    }
 }
 
 private class CipherSecurityStore(

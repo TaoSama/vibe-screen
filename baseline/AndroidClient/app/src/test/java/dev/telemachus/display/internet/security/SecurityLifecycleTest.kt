@@ -96,6 +96,37 @@ class SecurityLifecycleTest {
     }
 
     @Test
+    fun recordChannelsUseIndependentDurableNonceDomains() {
+        val lifecycle = SecurityLifecycle(MemoryStore(authorizedState()))
+        val firstHostNonceByChannel =
+            (1..4).map { channel ->
+                lifecycle.reserveNonce(pairingScopeA, 1, channel, senderRole = 1, keyEpoch = 1)
+            }
+
+        assertEquals(
+            listOf(
+                "000000010000000000000001",
+                "000000020000000000000001",
+                "000000030000000000000001",
+                "000000040000000000000001",
+            ),
+            firstHostNonceByChannel.map(ByteArray::toHex),
+        )
+        assertArrayEquals(
+            "000000030000000000000002".hex(),
+            lifecycle.reserveNonce(pairingScopeA, 1, channel = 3, senderRole = 1, keyEpoch = 1),
+        )
+        assertArrayEquals(
+            "000000030000000000000001".hex(),
+            lifecycle.reserveNonce(pairingScopeA, 1, channel = 3, senderRole = 2, keyEpoch = 1),
+        )
+        assertArrayEquals(
+            "000000030000000000000001".hex(),
+            lifecycle.reserveNonce(pairingScopeA, 1, channel = 3, senderRole = 1, keyEpoch = 2),
+        )
+    }
+
+    @Test
     fun revocationFailsClosedAcrossRestart() {
         val store = MemoryStore(authorizedState())
         SecurityLifecycle(store).applyRevocation(pairingScopeA, 1, 8)

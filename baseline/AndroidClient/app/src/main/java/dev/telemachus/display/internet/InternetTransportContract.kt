@@ -123,6 +123,8 @@ enum class IceTransportPolicy {
 enum class SessionChannel {
     CONTROL,
     MEDIA,
+    AUDIO,
+    BULK,
 }
 
 /** End-to-end record protection above WebRTC; TURN only observes DTLS ciphertext. */

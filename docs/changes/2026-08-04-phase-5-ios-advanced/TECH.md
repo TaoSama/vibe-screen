@@ -151,9 +151,12 @@ host behavior. A compatible advanced host still must provide per-client
 resource allocation, multi-display stream IDs, PCM capture, advanced control
 handlers, bulk streaming, color retry, a finite host-action catalog, and an
 authenticated wake helper. `SecureChannel` now allocates audio `3` and bulk
-`4`; Internet mode must derive independent keys, sequence counters, and replay
-windows for them. The client's plaintext trusted-LAN implementation is not
-evidence of that security work.
+`4`; the Android and macOS Internet record layers now derive independent
+directional keys, durable nonce counters, and replay windows for all four
+channels. Shared fixed vectors prove offline record interoperability only.
+Audio/bulk WebRTC DataChannels, admission/backlog limits, and public-network
+E2E remain open, and the client's plaintext trusted-LAN implementation is not
+evidence of this security work.
 
 ## Rendering and color
 

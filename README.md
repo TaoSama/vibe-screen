@@ -509,6 +509,12 @@ network quality may increase it.
   each stream on its sent video-config acknowledgement and exact media epochs,
   fragments, and frame sequence, and closes half-open sessions after a bounded
   Pong miss budget.
+- The Android and macOS Internet record layers now derive separate directional
+  keys, durable nonce counters, and replay domains for control, media, audio,
+  and bulk. A shared fixed-vector fixture covers all four AES-256-GCM record
+  channels and legacy-compatible key rotation. Audio/bulk WebRTC DataChannels,
+  admission/backlog limits, and public-network end-to-end behavior remain
+  unproved.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
@@ -517,8 +523,8 @@ network quality may increase it.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
   interoperability commit. Signing, iPhone/iPad installation, hardware
   VideoToolbox behavior, host-side advanced adapters, AVAudioEngine playback,
-  HDR output, Internet transport, and all advanced real-device behavior remain
-  separate gates; see the
+  HDR output, audio/bulk Internet transport, and all advanced real-device
+  behavior remain separate gates; see the
   [evidence record](docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md).
 
 ## Device Strategy

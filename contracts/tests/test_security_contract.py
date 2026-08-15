@@ -1,9 +1,13 @@
 from pathlib import Path
+import json
 import re
+import subprocess
 import unittest
 
 
 PROTO_ROOT = Path(__file__).parents[1] / "proto" / "vibescreen" / "protocol" / "v1"
+CHANNEL_RECORD_FIXTURE = Path(__file__).parents[1] / "fixtures" / "security" / "v1" / "channel-records.json"
+CHANNEL_RECORD_VERIFIER = Path(__file__).with_name("channel_security_fixture_verifier.go")
 
 
 def message_fields(source: str, message_name: str) -> dict[str, int]:
@@ -15,6 +19,16 @@ def message_fields(source: str, message_name: str) -> dict[str, int]:
         for name, number in re.findall(
             r"(?:(?:repeated|optional)\s+)?[.\w]+\s+(\w+)\s*=\s*(\d+)\s*;", match.group(1)
         )
+    }
+
+
+def enum_values(source: str, enum_name: str) -> dict[str, int]:
+    match = re.search(rf"enum\s+{enum_name}\s*\{{(.*?)\n\}}", source, re.DOTALL)
+    if not match:
+        raise AssertionError(f"enum {enum_name} not found")
+    return {
+        name: int(number)
+        for name, number in re.findall(r"(\w+)\s*=\s*(\d+)\s*;", match.group(1))
     }
 
 
@@ -67,6 +81,56 @@ class SecurityContractTest(unittest.TestCase):
             },
             fields,
         )
+
+    def test_secure_channels_and_shared_record_fixtures_are_stable(self) -> None:
+        source = (PROTO_ROOT / "security.proto").read_text()
+        self.assertEqual(
+            {
+                "SECURE_CHANNEL_UNSPECIFIED": 0,
+                "SECURE_CHANNEL_CONTROL": 1,
+                "SECURE_CHANNEL_MEDIA": 2,
+                "SECURE_CHANNEL_AUDIO": 3,
+                "SECURE_CHANNEL_BULK": 4,
+            },
+            enum_values(source, "SecureChannel"),
+        )
+
+        fixture = json.loads(CHANNEL_RECORD_FIXTURE.read_text())
+        expected_records = {
+            "host_control": (1, 1),
+            "device_media": (2, 2),
+            "host_audio": (1, 3),
+            "device_bulk": (2, 4),
+        }
+        self.assertEqual(set(expected_records), set(fixture["records"]))
+        for name, (sender, channel) in expected_records.items():
+            payload = bytes.fromhex(fixture["records"][name]["payload"])
+            record = bytes.fromhex(fixture["records"][name]["record"])
+            self.assertEqual(b"VSCR", record[:4])
+            self.assertEqual(1, record[4])
+            self.assertEqual(fixture["session"]["epoch"], int.from_bytes(record[21:29], "big"))
+            self.assertEqual(1, int.from_bytes(record[29:37], "big"))
+            self.assertEqual(sender, record[37])
+            self.assertEqual(channel, record[38])
+            self.assertEqual(channel, int.from_bytes(record[39:43], "big"))
+            self.assertEqual(1, int.from_bytes(record[43:51], "big"))
+            self.assertEqual(51 + len(payload) + 16, len(record))
+
+    def test_channel_security_fixture_cryptography_is_independently_reproducible(self) -> None:
+        result = subprocess.run(
+            [
+                "go",
+                "run",
+                str(CHANNEL_RECORD_VERIFIER),
+                "--fixture",
+                str(CHANNEL_RECORD_FIXTURE),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
     def test_control_and_media_ciphertexts_are_distinct_messages(self) -> None:
         source = (PROTO_ROOT / "security.proto").read_text()
