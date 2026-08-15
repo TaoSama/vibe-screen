@@ -136,6 +136,7 @@ modified, or added to this evidence.
 - `build-and-test-results.txt`: build results and the XCTest toolchain block.
 - `android-blocked-screen.png`: client screenshot captured near the block.
 - `android-streaming-screen-secure.png`: active fixed-binary stream screenshot.
+- `privacy-scan.json`: generated privacy manifest for the evidence directory.
 
 Raw logs and application packages remain outside Git because they contain
 private paths/endpoints or redundant binary artifacts.
