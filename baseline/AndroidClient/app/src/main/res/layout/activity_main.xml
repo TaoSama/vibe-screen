@@ -391,11 +391,12 @@
                 android:id="@+id/connectionSubtitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/usb_waiting_description"
+                android:text="@string/adb_transport_waiting_description"
                 android:textColor="#A8B0B6"
                 android:textSize="14sp"
                 android:lineSpacingExtra="3dp"
                 android:gravity="center"
+                android:accessibilityLiveRegion="polite"
                 android:layout_marginBottom="20dp" />
 
             <ProgressBar
