@@ -195,6 +195,36 @@ final class LatestFrameMailbox<Element> {
         }
     }
 
+    /// Reconciles a frame removed by take but rejected before enqueueing.
+    /// A newer keyframe can restart the chain; dependent pending frames cannot.
+    func discardTaken(
+        generation: UInt64,
+        sessionEpoch: UInt64
+    ) -> LatestFrameEnqueueResult? {
+        lock.withLock {
+            guard state.accepting,
+                  state.generation == generation,
+                  state.sessionEpoch == sessionEpoch else { return nil }
+
+            var droppedCount = 1
+            if let pending = state.pending, isKeyframe(pending) {
+                state.requiresKeyframe = false
+            } else {
+                if state.pending != nil {
+                    state.pending = nil
+                    droppedCount += 1
+                }
+                state.requiresKeyframe = true
+            }
+
+            return LatestFrameEnqueueResult(
+                accepted: false,
+                droppedCount: droppedCount,
+                requiresKeyframe: state.requiresKeyframe
+            )
+        }
+    }
+
     /// Returns true when another frame arrived during the preceding drain.
     func finishDrain(generation: UInt64, sessionEpoch: UInt64) -> Bool {
         lock.withLock {
@@ -1768,6 +1798,16 @@ class StreamingServer: EncodedFrameSink {
               !isStopped,
               connectionReady,
               sessionEpochGate.accepts(submission.sessionEpoch) else {
+            if let result = frameMailbox.discardTaken(
+                generation: generation,
+                sessionEpoch: sessionEpoch
+            ) {
+                observeQueueResult(
+                    result,
+                    epoch: submission.sessionEpoch,
+                    clientGeneration: submission.clientGeneration
+                )
+            }
             finishFrameSubmissionDrain(generation: generation, sessionEpoch: sessionEpoch)
             return
         }

@@ -77,6 +77,49 @@ final class LatestFrameMailboxTests: XCTestCase {
         XCTAssertEqual(drain?.requiresKeyframe, true)
     }
 
+    func testDiscardedTakenKeyframeRejectsDependentFramesUntilNextKeyframe() {
+        let mailbox = LatestFrameMailbox<String>(isKeyframe: { $0.hasPrefix("I") })
+        mailbox.reset(generation: 1, sessionEpoch: 10, accepting: true)
+        XCTAssertTrue(mailbox.submit("I-1", generation: 1, sessionEpoch: 10))
+
+        let takenKeyframe = mailbox.take(generation: 1, sessionEpoch: 10)
+        XCTAssertEqual(takenKeyframe?.element, "I-1")
+        XCTAssertEqual(takenKeyframe?.requiresKeyframe, false)
+        XCTAssertFalse(mailbox.submit("P-2", generation: 1, sessionEpoch: 10))
+        XCTAssertEqual(
+            mailbox.discardTaken(generation: 1, sessionEpoch: 10),
+            LatestFrameEnqueueResult(
+                accepted: false,
+                droppedCount: 2,
+                requiresKeyframe: true
+            )
+        )
+
+        XCTAssertFalse(mailbox.submit("P-3", generation: 1, sessionEpoch: 10))
+        XCTAssertTrue(mailbox.finishDrain(generation: 1, sessionEpoch: 10))
+        let rejectedDependentFrame = mailbox.take(generation: 1, sessionEpoch: 10)
+        XCTAssertNil(rejectedDependentFrame?.element)
+        XCTAssertEqual(rejectedDependentFrame?.droppedCount, 1)
+        XCTAssertEqual(rejectedDependentFrame?.requiresKeyframe, true)
+        XCTAssertFalse(mailbox.finishDrain(generation: 1, sessionEpoch: 10))
+
+        XCTAssertTrue(mailbox.submit("I-4", generation: 1, sessionEpoch: 10))
+        let replacementKeyframe = mailbox.take(generation: 1, sessionEpoch: 10)
+        XCTAssertEqual(replacementKeyframe?.element, "I-4")
+        XCTAssertEqual(replacementKeyframe?.requiresKeyframe, false)
+    }
+
+    func testDiscardTakenIgnoresClosedOrStaleMailbox() {
+        let mailbox = LatestFrameMailbox<String>(isKeyframe: { $0.hasPrefix("I") })
+        mailbox.reset(generation: 2, sessionEpoch: 20, accepting: true)
+
+        XCTAssertNil(mailbox.discardTaken(generation: 1, sessionEpoch: 20))
+        XCTAssertNil(mailbox.discardTaken(generation: 2, sessionEpoch: 19))
+
+        mailbox.reset(generation: 2, sessionEpoch: 20, accepting: false)
+        XCTAssertNil(mailbox.discardTaken(generation: 2, sessionEpoch: 20))
+    }
+
     func testResetClearsPendingFrameAndDropAccounting() {
         let mailbox = LatestFrameMailbox<String>(isKeyframe: { _ in true })
         mailbox.reset(generation: 1, sessionEpoch: 10, accepting: true)
