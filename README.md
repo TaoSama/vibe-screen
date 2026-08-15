@@ -471,11 +471,13 @@ network quality may increase it.
   live in [`apps/harmony`](apps/harmony/README.md). Portable gates cover the
   real DevEco project layout, legacy-to-v1 upgrade, channel framing, formal
   control/media fixtures, display/video negotiation, strict session epochs,
-  bounded media queues, and input encoding. ArkUI now wires TCP, XComponent,
-  AVCodec, Asset Store, foreground suspension, and bounded fresh reconnect in
+  bounded media queues, input encoding, fail-closed resume results, and a
+  portable pairing/credential/replay/revocation core. ArkUI now wires TCP,
+  XComponent, AVCodec, Asset Store, foreground suspension, and bounded reconnect in
   source. No DevEco SDK was available for this record, so the repository does
   not claim ArkTS compilation, a HAP, signing, installation, hardware decode,
-  secure pairing, host interoperability, or real-device behavior.
+  HUKS-backed secure pairing, authenticated transport, resume-capable Host
+  interoperability, or real-device behavior.
 - The [Phase 4 verification record](docs/changes/2026-08-04-phase-4-harmony/TEST.md)
   tracks the remaining DevEco, host-interoperability, and MatePad Mini gates.
 - HarmonyOS device acceptance must follow the

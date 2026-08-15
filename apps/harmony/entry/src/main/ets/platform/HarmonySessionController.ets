@@ -3,7 +3,7 @@ import { CoordinateMapper, Rotation } from '../core/input/CoordinateMapper';
 import { MediaPacketParser } from '../core/media/MediaPacketParser';
 import { OutboundControlWriter, OutboundControlReceipt } from '../core/protocol/OutboundControlWriter';
 import { Capability, Codec, InputPhase, NormalizedInput, VideoConfig } from '../core/protocol/ProtocolModels';
-import { ProductSession, ProductSessionState, SessionAction, SessionSendAction,
+import { ProductSession, ProductSessionState, SessionAction, SessionResumeSnapshot, SessionSendAction,
   VideoConfigurationToken } from '../core/session/ProductSession';
 import { CleanupFailure, describeCleanupFailures, runAllCleanup } from '../core/session/CleanupCoordinator';
 import { HARMONY_ADVERTISED_CAPABILITIES } from '../core/session/ClientCapabilities';
@@ -71,11 +71,14 @@ export class HarmonySessionController {
   private operationGeneration: number = 0;
   private decoderGeneration: number = 0;
   private capabilitiesReported: boolean = false;
+  private resumeSnapshot: SessionResumeSnapshot | undefined;
 
   attachUi(listener: SessionUiListener): void { this.ui = listener; }
   detachUi(listener: SessionUiListener): void { if (this.ui === listener) this.ui = undefined; }
 
-  async restoreHost(): Promise<TrustedHostRecord | undefined> { return this.pairingStore.loadTrustedHost(); }
+  async restoreHost(): Promise<TrustedHostRecord | undefined> {
+    return this.pairingStore.loadTrustedHost();
+  }
 
   async importPairingLink(value: string): Promise<TrustedHostRecord> {
     const target: PairingTarget = PairingLink.parse(value);
@@ -86,6 +89,7 @@ export class HarmonySessionController {
   async connect(host: string, port: number): Promise<void> {
     if (host.trim().length === 0 || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Mac 地址或端口无效');
     const owner: number = ++this.operationGeneration; this.decoderGeneration += 1;
+    this.resumeSnapshot = undefined;
     this.cancelReconnect(); this.cancelHeartbeat(); this.cancelSessionWatchdog(); this.session?.close(); this.closeWriter();
     const failures: CleanupFailure[] = await this.cleanupResources();
     if (owner !== this.operationGeneration) return;
@@ -96,7 +100,7 @@ export class HarmonySessionController {
 
   async disconnect(): Promise<void> {
     const owner: number = ++this.operationGeneration; this.decoderGeneration += 1;
-    this.userStopped = true; this.cancelReconnect(); this.cancelHeartbeat(); this.cancelSessionWatchdog();
+    this.userStopped = true; this.resumeSnapshot = undefined; this.cancelReconnect(); this.cancelHeartbeat(); this.cancelSessionWatchdog();
     this.session?.close(); this.closeWriter();
     const failures: CleanupFailure[] = await this.cleanupResources();
     if (owner === this.operationGeneration) this.ui?.onStatus(this.cleanupStatus('已断开', failures), false);
@@ -127,13 +131,17 @@ export class HarmonySessionController {
 
   async onBackground(): Promise<void> {
     const owner: number = ++this.operationGeneration; this.decoderGeneration += 1;
+    const nextMessageId: bigint | undefined = this.controlWriter?.nextMessageIdValue();
+    this.resumeSnapshot = nextMessageId === undefined ? undefined : this.session?.resumableSnapshot(nextMessageId);
     this.foreground = false; this.cancelReconnect(); this.cancelHeartbeat(); this.cancelSessionWatchdog();
     this.session?.close(); this.closeWriter();
     const failures: CleanupFailure[] = await this.cleanupResources();
     if (owner === this.operationGeneration) this.ui?.onStatus(this.cleanupStatus('已暂停，返回前台后重连', failures), false);
   }
 
-  async forgetHost(): Promise<void> { await this.disconnect(); await this.pairingStore.forgetHost(); }
+  async forgetHost(): Promise<void> {
+    await this.disconnect(); await this.pairingStore.forgetHost();
+  }
 
   sendTouch(pointerId: number, phase: InputPhase, localX: number, localY: number, width: number, height: number,
     rotation: Rotation, pressure: number): void {
@@ -176,7 +184,11 @@ export class HarmonySessionController {
   onTransportReady(owner: number): void {
     if (owner !== this.operationGeneration) return;
     this.ui?.onStatus('正在协商 Protocol v1…', false);
-    try { this.applyActions(this.requireSession().start(this.nowNs()), owner); this.armSessionWatchdog(owner); }
+    try {
+      const resume: SessionResumeSnapshot | undefined = this.resumeSnapshot;
+      this.resumeSnapshot = undefined;
+      this.applyActions(this.requireSession().start(this.nowNs(), resume), owner); this.armSessionWatchdog(owner);
+    }
     catch (error) { this.onTransportLost((error as Error).message, false, owner); }
   }
 
@@ -202,6 +214,10 @@ export class HarmonySessionController {
 
   onTransportLost(reason: string, retryable: boolean = true, owner: number = this.operationGeneration): void {
     if (owner !== this.operationGeneration) return;
+    const nextMessageId: bigint | undefined = this.controlWriter?.nextMessageIdValue();
+    const resumable: SessionResumeSnapshot | undefined = nextMessageId === undefined ? undefined :
+      this.session?.resumableSnapshot(nextMessageId);
+    this.resumeSnapshot = retryable ? resumable : undefined;
     const cleanupOwner: number = ++this.operationGeneration;
     this.decoderGeneration += 1; this.session?.close(); this.closeWriter(); this.cancelHeartbeat();
     this.cancelSessionWatchdog(); this.cancelReconnect();
@@ -247,8 +263,9 @@ export class HarmonySessionController {
       if (!this.isActive(owner)) return;
       this.session = new ProductSession(deviceId, 'HarmonyOS NEXT tablet',
         HARMONY_ADVERTISED_CAPABILITIES, [Codec.HEVC, Codec.H264]);
+      const firstMessageId: bigint = this.resumeSnapshot?.nextOutboundMessageId ?? 1n;
       this.controlWriter = new OutboundControlWriter((bytes: Uint8Array) => this.transport.sendControl(bytes),
-        () => this.nowNs());
+        () => this.nowNs(), firstMessageId);
       this.ui?.onStatus('正在连接 Mac…', false);
       await this.transport.connect(this.host, this.port, new ControllerTransportListener(this, owner));
     } catch (error) {
