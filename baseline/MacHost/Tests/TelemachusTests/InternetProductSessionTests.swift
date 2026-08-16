@@ -1009,9 +1009,19 @@ final class InternetProductSessionTests: XCTestCase {
     func testAdaptiveAckTimeoutFailsClosedBecausePeerCommitIsUnknown() throws {
         let harness = try Harness(negotiationTimeoutMilliseconds: 30)
         let requested = expectation(description: "adaptive profile requested")
-        var capturedToken: InternetAdaptiveRequestToken?
+        let didCompleteHostApply = TestLockedValue<Bool>()
+        let stateAfterHostApply = TestLockedValue<InternetProductSessionState>()
+        let hostApplyError = TestLockedValue<Error>()
         harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
-            capturedToken = token
+            do {
+                didCompleteHostApply.store(try harness.session.completeAdaptiveProfile(
+                    token: token,
+                    appliedVideo: self.appliedVideo()
+                ))
+                stateAfterHostApply.store(harness.session.snapshotState())
+            } catch {
+                hostApplyError.store(error)
+            }
             requested.fulfill()
         }
 
@@ -1020,15 +1030,23 @@ final class InternetProductSessionTests: XCTestCase {
         harness.engine.emitNetworkQuality(constrainedSample())
         harness.engine.emitNetworkQuality(constrainedSample())
         wait(for: [requested], timeout: 1)
-        let token = try XCTUnwrap(capturedToken)
-
-        try harness.session.completeAdaptiveProfile(token: token, appliedVideo: appliedVideo())
-        XCTAssertEqual(harness.session.snapshotState(), .awaitingVideoConfiguration)
+        if let hostApplyError = hostApplyError.load() {
+            return XCTFail("Adaptive host apply failed: " + String(describing: hostApplyError))
+        }
+        XCTAssertEqual(didCompleteHostApply.load(), true)
+        XCTAssertEqual(stateAfterHostApply.load(), .awaitingVideoConfiguration)
 
         // The peer may have committed the new decoder epoch before its ACK was
         // delayed. Continuing on the old epoch would split host/client state,
         // so an ambiguous timeout must close the session.
         XCTAssertTrue(harness.waitForFailure())
+        guard case .failed(let reason) = harness.session.snapshotState() else {
+            return XCTFail("Expected the adaptive ACK deadline to fail the session.")
+        }
+        XCTAssertTrue(
+            reason.contains("peer did not acknowledge"),
+            "Expected peer-ACK timeout, got: " + reason
+        )
         XCTAssertTrue(harness.engine.didClose)
     }
 
@@ -1052,9 +1070,9 @@ final class InternetProductSessionTests: XCTestCase {
     }
 
     func testAdaptiveAckDeadlineStartsAfterHostApplyCompletes() throws {
-        let testTimeoutMilliseconds: UInt32 = 600
-        let hostApplyDelay: TimeInterval = 0.40
-        let acknowledgmentDelay: TimeInterval = 0.30
+        let testTimeoutMilliseconds: UInt32 = 200
+        let hostApplyDelay: TimeInterval = 0.14
+        let acknowledgmentDelay: TimeInterval = 0.10
         let harness = try Harness(
             negotiationTimeoutMilliseconds: testTimeoutMilliseconds
         )
@@ -1062,8 +1080,11 @@ final class InternetProductSessionTests: XCTestCase {
         let requested = expectation(description: "adaptive profile requested")
         let workerFinished = expectation(description: "adaptive deadline worker finished")
         let adaptiveStreaming = expectation(description: "adaptive video configuration accepted")
-        let beginScenario = DispatchSemaphore(value: 0)
-        let worker = DispatchQueue(label: "dev.vibescreen.tests.adaptive-deadline")
+        let beginHostApply = DispatchSemaphore(value: 0)
+        let worker = DispatchQueue(
+            label: "dev.vibescreen.tests.adaptive-deadline",
+            qos: .userInteractive
+        )
         let capturedToken = TestLockedValue<InternetAdaptiveRequestToken>()
         let didCompleteHostApply = TestLockedValue<Bool>()
         let workerError = TestLockedValue<Error>()
@@ -1074,31 +1095,36 @@ final class InternetProductSessionTests: XCTestCase {
         harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
             capturedToken.store(token)
             requested.fulfill()
+            beginHostApply.signal()
         }
         worker.async {
             workerReady.fulfill()
-            beginScenario.wait()
-            harness.engine.emitNetworkQuality(self.constrainedSample())
-            harness.engine.emitNetworkQuality(self.constrainedSample())
-
-            // The sample callback queues the adaptive request on the session
-            // worker. This FIFO read proves that callback has completed without
-            // introducing another wake-up inside the measured deadline window.
-            _ = harness.session.snapshotState()
-            // Host apply remains inside the first deadline. The peer delay is
-            // measured from the rearmed awaiting-state callback below, while
-            // their combined duration still exceeds the original deadline.
-            Thread.sleep(forTimeInterval: hostApplyDelay)
+            beginHostApply.wait()
+            // Each phase stays within the injected deadline, while their
+            // combined duration exceeds it. A prewarmed high-priority worker
+            // and monotonic waits avoid scheduler-dependent sleep overshoot.
+            waitForMonotonicDuration(hostApplyDelay)
             do {
                 guard let token = capturedToken.load() else {
                     throw InternetProductSessionError.invalidConfiguration(
                         "The adaptive request token was not published to the deadline worker."
                     )
                 }
-                didCompleteHostApply.store(try harness.session.completeAdaptiveProfile(
+                let completed = try harness.session.completeAdaptiveProfile(
                     token: token,
                     appliedVideo: self.appliedVideo()
-                ))
+                )
+                didCompleteHostApply.store(completed)
+                guard completed else {
+                    throw InternetProductSessionError.invalidConfiguration(
+                        "The adaptive host apply did not complete on the deadline worker."
+                    )
+                }
+                waitForMonotonicDuration(acknowledgmentDelay)
+                stateBeforeAcknowledgment.store(harness.session.snapshotState())
+                harness.receiveControl(
+                    harness.videoAccepted(messageID: 3, configEpoch: 2)
+                )
             } catch {
                 workerError.store(error)
             }
@@ -1107,22 +1133,15 @@ final class InternetProductSessionTests: XCTestCase {
 
         wait(for: [workerReady], timeout: 1)
         try reachStreaming(harness)
-        harness.session.onStateChanged = { state in
-            guard state == .awaitingVideoConfiguration else { return }
-            Thread.sleep(forTimeInterval: acknowledgmentDelay)
-            stateBeforeAcknowledgment.store(harness.session.snapshotState())
-            harness.receiveControl(
-                harness.videoAccepted(messageID: 3, configEpoch: 2)
-            )
-        }
-        beginScenario.signal()
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
         wait(for: [requested, workerFinished], timeout: 5)
         if let workerError = workerError.load() {
             return XCTFail("Adaptive deadline worker failed: " + String(describing: workerError))
         }
         XCTAssertEqual(didCompleteHostApply.load(), true)
-        XCTAssertEqual(stateBeforeAcknowledgment.load(), .awaitingVideoConfiguration)
         wait(for: [adaptiveStreaming], timeout: 1)
+        XCTAssertEqual(stateBeforeAcknowledgment.load(), .awaitingVideoConfiguration)
         XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
     }
 
@@ -1254,9 +1273,11 @@ final class InternetProductSessionTests: XCTestCase {
     func testAdaptiveLocalRejectStopsHostApplyDeadline() throws {
         let harness = try Harness(negotiationTimeoutMilliseconds: 30)
         let requested = expectation(description: "adaptive profile requested")
-        var capturedToken: InternetAdaptiveRequestToken?
+        let didRejectHostApply = TestLockedValue<Bool>()
+        let stateAfterReject = TestLockedValue<InternetProductSessionState>()
         harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
-            capturedToken = token
+            didRejectHostApply.store(harness.session.rejectAdaptiveProfile(token: token))
+            stateAfterReject.store(harness.session.snapshotState())
             requested.fulfill()
         }
 
@@ -1265,7 +1286,8 @@ final class InternetProductSessionTests: XCTestCase {
         harness.engine.emitNetworkQuality(constrainedSample())
         wait(for: [requested], timeout: 1)
 
-        XCTAssertTrue(harness.session.rejectAdaptiveProfile(token: try XCTUnwrap(capturedToken)))
+        XCTAssertEqual(didRejectHostApply.load(), true)
+        XCTAssertEqual(stateAfterReject.load(), .streaming(.direct))
         Thread.sleep(forTimeInterval: 0.08)
         XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
         XCTAssertFalse(harness.engine.didClose)
@@ -1305,9 +1327,17 @@ final class InternetProductSessionTests: XCTestCase {
         let harness = try Harness(negotiationTimeoutMilliseconds: 30)
         let requested = expectation(description: "adaptive profile requested")
         let rollback = expectation(description: "adaptive rollback requested")
-        var capturedToken: InternetAdaptiveRequestToken?
+        let didCompleteHostApply = TestLockedValue<Bool>()
+        let hostApplyError = TestLockedValue<Error>()
         harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
-            capturedToken = token
+            do {
+                didCompleteHostApply.store(try harness.session.completeAdaptiveProfile(
+                    token: token,
+                    appliedVideo: self.appliedVideo()
+                ))
+            } catch {
+                hostApplyError.store(error)
+            }
             requested.fulfill()
         }
         harness.session.onAdaptiveProfileRollbackRequested = { _, _, _ in
@@ -1315,15 +1345,27 @@ final class InternetProductSessionTests: XCTestCase {
         }
 
         try reachStreaming(harness)
+        harness.session.onStateChanged = { state in
+            guard state == .awaitingVideoConfiguration else { return }
+            harness.receiveControl(harness.videoRejected(messageID: 3, configEpoch: 2))
+        }
         harness.engine.emitNetworkQuality(constrainedSample())
         harness.engine.emitNetworkQuality(constrainedSample())
         wait(for: [requested], timeout: 1)
-        let token = try XCTUnwrap(capturedToken)
-        try harness.session.completeAdaptiveProfile(token: token, appliedVideo: appliedVideo())
-        harness.receiveControl(harness.videoRejected(messageID: 3, configEpoch: 2))
+        if let hostApplyError = hostApplyError.load() {
+            return XCTFail("Adaptive host apply failed: " + String(describing: hostApplyError))
+        }
+        XCTAssertEqual(didCompleteHostApply.load(), true)
         wait(for: [rollback], timeout: 1)
 
         XCTAssertTrue(harness.waitForFailure())
+        guard case .failed(let reason) = harness.session.snapshotState() else {
+            return XCTFail("Expected the adaptive rollback deadline to fail the session.")
+        }
+        XCTAssertTrue(
+            reason.contains("host did not finish adaptive video rollback"),
+            "Expected host-rollback timeout, got: " + reason
+        )
         XCTAssertTrue(harness.engine.didClose)
     }
 
@@ -1952,6 +1994,12 @@ private final class TestLockedValue<Value>: @unchecked Sendable {
         defer { lock.unlock() }
         return value
     }
+}
+
+private func waitForMonotonicDuration(_ duration: TimeInterval) {
+    let durationNanoseconds = UInt64(duration * 1_000_000_000)
+    let deadline = DispatchTime.now().uptimeNanoseconds + durationNanoseconds
+    while DispatchTime.now().uptimeNanoseconds < deadline {}
 }
 
 private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
