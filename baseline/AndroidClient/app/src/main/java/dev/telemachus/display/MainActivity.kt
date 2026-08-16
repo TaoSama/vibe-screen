@@ -2991,6 +2991,7 @@ class MainActivity : AppCompatActivity() {
         callbackClient: StreamClient,
         callbackGeneration: Long,
         retryCoordinator: SessionAutomaticRetryCoordinator,
+        guidanceContext: ConnectionGuidanceContext,
     ) {
         val displayLifecycle =
             MainSessionDisplayLifecycle(
@@ -3114,11 +3115,14 @@ class MainActivity : AppCompatActivity() {
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@sessionEnded
             val showTerminalGuidance = retryCoordinator.onSessionEnded(failure)
             mainDiag(
-                "session ended kind=${failure.kind} retryable=${failure.retryable} " +
-                    "detail=${failure.detail}",
+                "session ended kind=${failure.kind} retryable=${failure.retryable}",
             )
             if (showTerminalGuidance) {
-                val guidance = ConnectionGuidanceFactory.from(failure, callbackClient.actualPort)
+                val guidance =
+                    ConnectionGuidanceFactory.from(
+                        failure,
+                        guidanceContext.withPort(callbackClient.actualPort),
+                    )
                 runOnUiThread {
                     if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                     pendingTerminalGuidance = guidance
@@ -3767,7 +3771,8 @@ class MainActivity : AppCompatActivity() {
             requiredFreshInternetEpoch = maxOf(requiredFreshInternetEpoch, internetSessionEpoch)
             disconnectInternet(showIdle = false)
         }
-        binding.internetErrorText.text = failure.message ?: failure.javaClass.simpleName
+        val guidance = ConnectionGuidanceFactory.from(failure, ConnectionGuidanceContext.internet())
+        binding.internetErrorText.text = "${guidance.status}. ${guidance.message}"
         binding.internetErrorText.visibility = View.VISIBLE
         binding.internetStateText.text = getString(
             R.string.internet_state_format,
@@ -4002,7 +4007,12 @@ class MainActivity : AppCompatActivity() {
                 pendingWirelessReconnectDelayMs = null
                 scheduleWirelessReconnect(delayMs)
             }
-        setupStreamClientCallbacks(callbackClient, callbackGeneration, retryCoordinator)
+        setupStreamClientCallbacks(
+            callbackClient,
+            callbackGeneration,
+            retryCoordinator,
+            ConnectionGuidanceContext.trustedLan(port),
+        )
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 log("Connecting wirelessly to $macName at $host:$port...")
@@ -4099,20 +4109,21 @@ class MainActivity : AppCompatActivity() {
             updateDisconnectedHeader(ConnectionMode.USB)
         }
         val callbackClient = StreamClient(host, port, applicationContext)
+        val guidanceContext = ConnectionGuidanceContext.adb(port, currentAdbTransportKind())
         val callbackGeneration = activateSession(callbackClient)
         val retryCoordinator =
             createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration) {
                 showDisconnectedStreamUi()
                 scheduleAutomaticUsbConnect()
             }
-        setupStreamClientCallbacks(callbackClient, callbackGeneration, retryCoordinator)
+        setupStreamClientCallbacks(callbackClient, callbackGeneration, retryCoordinator, guidanceContext)
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 log("Connecting to $host:$port...")
                 callbackClient.connect()
             } catch (e: Exception) {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@launch
-                val guidance = ConnectionGuidanceFactory.from(e, port)
+                val guidance = ConnectionGuidanceFactory.from(e, guidanceContext)
                 if (!automatic && e !is SessionProtocolException) {
                     updateStatus(guidance.status)
                     showError(guidance.message)
@@ -4882,6 +4893,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun isWirelessAdbEnabled(): Boolean =
         Settings.Global.getInt(contentResolver, WIRELESS_ADB_ENABLED_SETTING, 0) == 1
+
+    private fun currentAdbTransportKind(): AdbTransportKind =
+        when {
+            isUsbDataConnectionActive() -> AdbTransportKind.USB
+            isWirelessAdbEnabled() -> AdbTransportKind.WIRELESS
+            else -> AdbTransportKind.UNAVAILABLE
+        }
 
     private fun updateUsbTransportSubtitle() {
         val subtitle =

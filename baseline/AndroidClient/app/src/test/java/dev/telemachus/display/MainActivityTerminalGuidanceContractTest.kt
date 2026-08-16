@@ -12,10 +12,8 @@ class MainActivityTerminalGuidanceContractTest {
         val compactCallback = callback.replace(Regex("\\s+"), " ")
 
         assertTrue(
-            "onSessionEnded must build guidance from the callback client's retained port",
-            compactCallback.contains(
-                "ConnectionGuidanceFactory.from(failure, callbackClient.actualPort)",
-            ),
+            "onSessionEnded must build guidance from the immutable session context",
+            compactCallback.contains("guidanceContext.withPort(callbackClient.actualPort)"),
         )
         assertFalse(
             "onSessionEnded must not read the current UI port",
@@ -24,6 +22,28 @@ class MainActivityTerminalGuidanceContractTest {
         assertFalse(
             "onSessionEnded must not read view binding on the termination thread",
             callback.contains("binding."),
+        )
+        assertFalse(
+            "onSessionEnded diagnostics must not persist raw failure details",
+            callback.contains("failure.detail"),
+        )
+    }
+
+    @Test
+    fun setupCallersCaptureUsbAndLanOwnershipBeforeCallbacks() {
+        val source = mainActivitySource().replace(Regex("\\s+"), " ")
+
+        assertTrue(
+            "USB connections must capture their ADB transport before callback delivery",
+            source.contains("ConnectionGuidanceContext.adb(port, currentAdbTransportKind())"),
+        )
+        assertTrue(
+            "LAN connections must capture trusted-LAN ownership",
+            source.contains("ConnectionGuidanceContext.trustedLan(port)"),
+        )
+        assertTrue(
+            "Internet failures must use Internet-owned guidance",
+            source.contains("ConnectionGuidanceContext.internet()"),
         )
     }
 
