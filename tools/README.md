@@ -96,6 +96,79 @@ evidence is `insufficient` and exits nonzero. A pass means the recorded window
 did not show practically significant growth, not that longer or different
 workloads cannot leak.
 
+### Short Host memory regression gate
+
+Use the bounded short diagnostic as a 10-17 minute regression gate before
+spending another two hours on the formal gate run. It separates live retained
+growth from allocator high-water and reports a top-level `verdict` in addition
+to the memory `attribution`. Start the Host with `VIBE_SCREEN_TELEMETRY_PATH`
+set, establish the normal stream, find that exact Host process ID, then run:
+
+```sh
+mkdir -p .build/evidence/memory-short
+# Start the Host with:
+# VIBE_SCREEN_TELEMETRY_PATH=.build/evidence/memory-short/host-telemetry.jsonl
+PYTHONPATH=tools python3 -m vibescreen_evidence.host_memory_diagnostic \
+  --host-pid "$HOST_PID" \
+  --duration-seconds 900 \
+  --interval-seconds 30 \
+  --telemetry-jsonl .build/evidence/memory-short/host-telemetry.jsonl \
+  --samples .build/evidence/memory-short/samples.jsonl \
+  --output .build/evidence/memory-short/diagnostic.json
+```
+
+The command samples RSS, `footprint` physical footprint and VM categories, and
+`vmmap` malloc-zone dirty/live/fragmentation bytes every interval. It takes
+`heap -q -H -s` snapshots only at the start, midpoint, and end to reduce stream
+disturbance. Host `stream_stats` must cover the same wall-clock window, remain
+on one session epoch, and include continuous bounded network-queue depth even
+when no frame is dropped. If VideoToolbox in-flight depth is present, the
+diagnostic also validates it against its advertised capacity.
+
+The report carries a top-level `verdict` with exactly three values:
+
+- `pass`: the complete 10-17 minute window has sufficient samples, all required
+  memory signals stay within the short-window stability thresholds, and stream
+  telemetry plus bounded network queues stay healthy. Optional VideoToolbox
+  in-flight telemetry, when present, must also stay within capacity. This is a
+  short-window regression result only and cannot replace or close the formal
+  two-hour `host_rss_gate`.
+- `fail`: the window attributes `retained_growth` or `allocator_high_water`, or
+  the production stream reports a queue over capacity, an invalid or changing
+  queue capacity, optional VideoToolbox in-flight over capacity, or
+  non-positive FPS.
+- `insufficient`: sampling, tooling, parsing, or stream telemetry coverage is
+  incomplete, or the memory signals conflict and do not support a stable or
+  growth attribution.
+
+`attribution` still has exactly three values for root-cause orientation:
+
+- `retained_growth`: footprint, live malloc bytes, and heap objects grow together;
+- `allocator_high_water`: resident allocator pages and fragmentation grow while
+  live malloc bytes and heap objects stay flat;
+- `inconclusive`: the short window is stable, incomplete, conflicting, or shows
+  a pipeline-capacity anomaly.
+
+Durations are restricted to 10-17 minutes so the final heap snapshot and report
+remain within a 20-minute command budget. The diagnostic never invokes
+`memory_pressure`, changes TCC, or accesses Keychain. Any tool error, missing
+metric, missing stream telemetry coverage, session-epoch change, queue depth
+above its advertised capacity, or present encoder in-flight depth above capacity
+fails closed: the `verdict` becomes `insufficient` or `fail` and the
+`attribution` stays `inconclusive`. The existing deterministic VideoEncoder and
+mailbox tests remain the authoritative checks for the two-frame VideoToolbox
+admission bound and the single-latest-frame mailbox bound.
+
+Exit status follows the `verdict`: `0` for `pass`, `2` for `fail`, and `1` for
+`insufficient`. None of these statuses is a formal two-hour gate result; a
+short-window `pass` does not close the release gate. Automation must use
+`host_rss_gate` for the formal two-hour no-growth decision.
+
+There is currently no Xiaomi 13 short-window diagnostic evidence built against
+this source tree, and this change introduces no new production memory fix. The
+formal two-hour Host RSS no-growth gate remains open until a matching
+`host_rss_gate` run reports `pass`.
+
 ## Latency evidence
 
 Prepare a CSV with either `latency_ms`, or `start_frame,end_frame,camera_fps`

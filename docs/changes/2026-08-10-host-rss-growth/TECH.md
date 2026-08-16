@@ -45,6 +45,37 @@ docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-
 不发布」契约。该证据足以定位并消除一个主要增长贡献源，但**不能替代修复后的
 两小时复测**，因此无增长门禁仍保持开放。
 
+最新主线也已把帧生命周期限制为常数：VideoToolbox 在途准入固定为 2，callback
+registry 在回调或 teardown 时逐项 claim/drain；网络侧只保留一个 latest mailbox
+帧、一个 pending 帧和一个在发帧。独立并发生命周期审查未发现新的稳态无界
+retained 路径。`ScreenCapture` 的 `lastPixelBuffer`、`encoder` 和
+`currentFrameSink` 仍存在跨线程正确性风险，但这些引用数量有界，当前证据没有把
+它们与历史持续 RSS 斜率建立因果关系，因此不把猜测性并发重构混入内存候选。
+
+为避免再次只凭 RSS 猜测，现提供 10-17 分钟的
+`vibescreen_evidence.host_memory_diagnostic` 作为独立短窗回归门禁。它联合
+RSS、physical footprint、`MALLOC_SMALL`、malloc zone
+dirty/live/fragmentation、三次 heap 类型快照及连续网络队列深度，输出顶层
+`verdict`（`pass`/`fail`/`insufficient`）与归因
+`attribution`（`retained_growth`/`allocator_high_water`/`inconclusive`）。
+
+`verdict` 语义如下：
+
+- `pass`：10-17 分钟窗口样本完整、所有必需内存信号落在短窗稳定阈值内、流遥测
+  与有界网络队列健康；若存在 VideoToolbox in-flight 遥测，也必须在容量内。
+  仅表示短窗回归通过，**不能替代或关闭正式两小时 `host_rss_gate`**。
+- `fail`：窗口归因到 `retained_growth` 或 `allocator_high_water`，或生产流
+  出现队列越界、队列容量非法/变化、可选 VideoToolbox in-flight 越界、非正 FPS
+  异常。
+- `insufficient`：采样/工具/解析/流遥测覆盖不完整，或内存信号矛盾、无法支持
+  稳定或增长归因。
+
+任何工具/解析/遥测覆盖错误、session epoch 变化、队列越界或存在的编码器在途越界
+都 fail closed：`verdict` 为 `insufficient` 或 `fail`，`attribution` 保持
+`inconclusive`。退出码按 `verdict` 映射：`pass`→0、`fail`→2、`insufficient`→1。
+该工具不会执行内存压力、修改 TCC 或访问 Keychain。具体命令与阈值见
+[`tools/README.md`](../../../tools/README.md)。
+
 ## 复现与下一步（需可中断当前会话）
 
 若修复后的短时 heap 差分仍出现持续增长，再以分配栈日志重启主机并采样：
@@ -84,3 +115,30 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
 - 同一次随后被中止的较长观察不是完整门禁证据，来源 summary 为 `partial`，且
   后半程出现 +117.0 KiB/min 的迟发上升；不得据此宣称正式 no-growth 通过。
 - 后续单次真机稳定性验证保持在 30 分钟以内；正式两小时门禁继续开放。
+- 当前短窗回归门禁仅完成离线工具与阈值验证，尚无基于本分支源码的 Xiaomi 13
+  10-17 分钟短窗实测证据；本次变更未引入新的生产内存修复，正式两小时 Host RSS
+  no-growth 门禁仍需 `host_rss_gate` 独立输出 `pass` 方可关闭。
+
+正式复测仍必须由具备 Screen Recording/Accessibility 权限的主任务执行：
+
+```bash
+export EVIDENCE_SERIAL='<lease-controlled-endpoint>'
+export EVIDENCE_DIR='.build/evidence'
+export VIBE_SCREEN_TELEMETRY_PATH="$EVIDENCE_DIR/soak-2h/host-telemetry.jsonl"
+mkdir -p "$EVIDENCE_DIR/soak-2h"
+# 用以上环境启动与当前源码匹配的 Host，建立稳定推流后：
+make soak-2h EVIDENCE_SERIAL="$EVIDENCE_SERIAL" EVIDENCE_DIR="$EVIDENCE_DIR"
+PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report \
+  --summary "$EVIDENCE_DIR/soak-2h/summary.json" \
+  --samples "$EVIDENCE_DIR/soak-2h/samples.jsonl" \
+  --host-telemetry "$EVIDENCE_DIR/soak-2h/host-telemetry.jsonl" \
+  --output "$EVIDENCE_DIR/soak-2h/exact-window-report.json"
+PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate \
+  --summary "$EVIDENCE_DIR/soak-2h/summary.json" \
+  --samples "$EVIDENCE_DIR/soak-2h/samples.jsonl" \
+  --output "$EVIDENCE_DIR/soak-2h/host-rss-gate.json"
+```
+
+只有来源 summary 为 `complete` 且无错误、流/客户端指标有效，并且
+`host_rss_gate` 独立输出 `pass` 时才能关闭门禁。短诊断、30 分钟前缀或 partial
+summary 都不得替代该结论。
