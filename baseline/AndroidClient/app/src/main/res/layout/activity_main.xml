@@ -331,6 +331,7 @@
         app:layout_constraintEnd_toEndOf="parent">
 
         <androidx.core.widget.NestedScrollView
+            android:id="@+id/connectionScroll"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:overScrollMode="never"
@@ -357,6 +358,7 @@
                 android:orientation="vertical">
 
             <ImageView
+                android:id="@+id/connectionIcon"
                 android:layout_width="@dimen/connection_icon_size"
                 android:layout_height="@dimen/connection_icon_size"
                 android:layout_gravity="center"
@@ -365,6 +367,7 @@
                 android:layout_marginBottom="@dimen/connection_icon_margin_bottom" />
 
             <TextView
+                android:id="@+id/connectionWordmark"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/wordmark"
@@ -379,25 +382,26 @@
                 android:id="@+id/connectionTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/waiting_for_mac"
+                android:text=""
                 android:textColor="#FFFFFF"
                 android:textSize="28sp"
                 android:textStyle="bold"
                 android:letterSpacing="0"
                 android:gravity="center"
+                android:accessibilityLiveRegion="polite"
                 android:layout_marginBottom="@dimen/connection_title_margin_bottom" />
 
             <TextView
                 android:id="@+id/connectionSubtitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/adb_transport_waiting_description"
+                android:text=""
                 android:textColor="#A8B0B6"
                 android:textSize="14sp"
                 android:lineSpacingExtra="3dp"
                 android:gravity="center"
                 android:accessibilityLiveRegion="polite"
-                android:layout_marginBottom="20dp" />
+                android:layout_marginBottom="@dimen/connection_subtitle_margin_bottom" />
 
             <ProgressBar
                 android:id="@+id/connectionProgress"
@@ -405,7 +409,7 @@
                 android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:layout_gravity="center"
-                android:layout_marginBottom="20dp"
+                android:layout_marginBottom="@dimen/connection_progress_margin_bottom"
                 android:indeterminateTint="#65D992" />
 
             </LinearLayout>
@@ -1045,6 +1049,7 @@
                     android:textSize="13sp" />
 
                 <TextView
+                    android:id="@+id/internetRouteLabel"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="@dimen/connection_section_margin"
@@ -1133,7 +1138,7 @@
                     android:id="@+id/internetConnectButton"
                     android:layout_width="match_parent"
                     android:layout_height="56dp"
-                    android:layout_marginTop="12dp"
+                    android:layout_marginTop="@dimen/connection_primary_action_margin_top"
                     android:text="@string/internet_connect"
                     android:textColor="@color/primary_button_text"
                     android:textStyle="bold"
@@ -1163,7 +1168,8 @@
                     android:layout_marginTop="8dp"
                     android:text="@string/internet_state_idle"
                     android:textColor="#C4CBD0"
-                    android:textSize="13sp" />
+                    android:textSize="13sp"
+                    android:accessibilityLiveRegion="polite" />
 
                 <TextView
                     android:id="@+id/internetErrorText"
@@ -1172,6 +1178,7 @@
                     android:layout_marginTop="8dp"
                     android:textColor="#fca5a5"
                     android:textSize="13sp"
+                    android:accessibilityLiveRegion="assertive"
                     android:visibility="gone" />
             </LinearLayout>
             <!-- ============= /INTERNET MODE CONTENT ============= -->

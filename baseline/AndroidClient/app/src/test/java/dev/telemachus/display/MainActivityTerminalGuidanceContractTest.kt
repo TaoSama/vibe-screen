@@ -47,6 +47,161 @@ class MainActivityTerminalGuidanceContractTest {
         )
     }
 
+    @Test
+    fun onConfigurationChangedConnectionTitleUsesLiveRegionApplier() {
+        val source = mainActivitySource()
+        val onConfigurationChanged = extractMethod(source, "override fun onConfigurationChanged")
+
+        assertFalse(
+            "onConfigurationChanged must not set connectionTitle via setText (bypasses live-region deduplication)",
+            onConfigurationChanged.contains("connectionTitle.setText"),
+        )
+        assertUsesLiveRegion(onConfigurationChanged, "connectionTitle", "onConfigurationChanged")
+    }
+
+    @Test
+    fun updateDisconnectedHeaderUsesLiveRegionApplierForTitleAndSubtitle() {
+        val source = mainActivitySource()
+        val updateHeader = extractMethod(source, "private fun updateDisconnectedHeader")
+
+        assertFalse(
+            "updateDisconnectedHeader must not set connectionTitle via setText",
+            updateHeader.contains("connectionTitle.setText"),
+        )
+        assertFalse(
+            "updateDisconnectedHeader must not set connectionSubtitle via setText",
+            updateHeader.contains("connectionSubtitle.setText"),
+        )
+        assertUsesLiveRegion(updateHeader, "connectionTitle", "updateDisconnectedHeader")
+        assertUsesLiveRegion(updateHeader, "connectionSubtitle", "updateDisconnectedHeader")
+    }
+
+    @Test
+    fun updateUsbTransportSubtitleUsesLiveRegionApplier() {
+        val source = mainActivitySource()
+        val updateSubtitle = extractMethod(source, "private fun updateUsbTransportSubtitle")
+
+        assertFalse(
+            "updateUsbTransportSubtitle must not set connectionSubtitle via direct .text assignment",
+            updateSubtitle.contains("connectionSubtitle.text ="),
+        )
+        assertUsesLiveRegion(updateSubtitle, "connectionSubtitle", "updateUsbTransportSubtitle")
+    }
+
+    @Test
+    fun revocationQuarantineInternetErrorTextUsesLiveRegionApplier() {
+        val source = mainActivitySource()
+        val allowMutation = extractMethod(source, "private fun allowInternetCredentialMutation")
+
+        assertNoDirectInternetErrorTextAssignment(allowMutation, "revocation quarantine")
+        assertUsesLiveRegionShow(allowMutation, "internetErrorText", "revocation quarantine")
+    }
+
+    @Test
+    fun revokeInternetPairingInternetErrorTextUsesLiveRegionApplier() {
+        val source = mainActivitySource()
+        val revoke = extractMethod(source, "private fun revokeInternetPairing")
+
+        assertNoDirectInternetErrorTextAssignment(revoke, "revokeInternetPairing")
+        assertUsesLiveRegionShow(revoke, "internetErrorText", "revokeInternetPairing")
+    }
+
+    @Test
+    fun setupInternetUiPendingRevocationCleanupInternetErrorTextUsesLiveRegionApplier() {
+        val source = mainActivitySource()
+        val setup = extractMethod(source, "private fun setupInternetUi")
+
+        assertNoDirectInternetErrorTextAssignment(setup, "setupInternetUi")
+        assertUsesLiveRegionShow(setup, "internetErrorText", "setupInternetUi")
+    }
+
+    @Test
+    fun onFreshSessionRequiredInternetErrorTextUsesLiveRegionApplier() {
+        val source = mainActivitySource()
+        val callback = extractMethod(source, "override fun onFreshSessionRequired")
+
+        assertNoDirectInternetErrorTextAssignment(callback, "onFreshSessionRequired")
+        assertUsesLiveRegionShow(callback, "internetErrorText", "onFreshSessionRequired")
+    }
+
+    @Test
+    fun internetStateTextAlwaysUsesLiveRegionApplier() {
+        val source = mainActivitySource()
+
+        assertFalse(source.contains("internetStateText.setText"))
+        assertFalse(source.contains("internetStateText.text ="))
+        assertUsesLiveRegion(source, "internetStateText", "MainActivity", minimumCalls = 6)
+    }
+
+    @Test
+    fun internetErrorVisibilityUsesAnnouncementAwareHelpers() {
+        val compactSource = mainActivitySource().replace(Regex("\\s+"), "")
+
+        assertFalse(compactSource.contains("internetErrorText.visibility=View.VISIBLE"))
+        assertFalse(compactSource.contains("internetErrorText.visibility=View.GONE"))
+        assertTrue(compactSource.windowed("LiveRegionTextApplier.show(binding.internetErrorText,".length)
+            .count { it == "LiveRegionTextApplier.show(binding.internetErrorText," } >= 5)
+        assertTrue(compactSource.windowed("LiveRegionTextApplier.hide(binding.internetErrorText)".length)
+            .count { it == "LiveRegionTextApplier.hide(binding.internetErrorText)" } >= 3)
+    }
+
+    private fun assertNoDirectInternetErrorTextAssignment(block: String, owner: String) {
+        assertFalse(
+            "$owner must not set internetErrorText via setText (bypasses live-region deduplication)",
+            block.contains("internetErrorText.setText"),
+        )
+        assertFalse(
+            "$owner must not set internetErrorText via direct .text assignment (bypasses live-region deduplication)",
+            block.contains("internetErrorText.text ="),
+        )
+    }
+
+    private fun assertUsesLiveRegion(
+        block: String,
+        viewName: String,
+        owner: String,
+        minimumCalls: Int = 1,
+    ) {
+        val compactBlock = block.replace(Regex("\\s+"), "")
+        val invocation = "LiveRegionTextApplier.apply(binding.$viewName,"
+        val callCount = compactBlock.windowed(invocation.length).count { it == invocation }
+        assertTrue(
+            "$owner must route $viewName through LiveRegionTextApplier at least $minimumCalls time(s); found $callCount",
+            callCount >= minimumCalls,
+        )
+    }
+
+    private fun assertUsesLiveRegionShow(
+        block: String,
+        viewName: String,
+        owner: String,
+    ) {
+        val compactBlock = block.replace(Regex("\\s+"), "")
+        assertTrue(
+            "$owner must make $viewName visible before changing its live-region text",
+            compactBlock.contains("LiveRegionTextApplier.show(binding.$viewName,"),
+        )
+    }
+
+    private fun extractMethod(source: String, signature: String): String {
+        val start = source.indexOf(signature)
+        require(start >= 0) { "Method not found: $signature" }
+        var braceDepth = 0
+        var i = source.indexOf('{', start)
+        require(i >= 0) { "Opening brace not found for $signature" }
+        while (i < source.length) {
+            when (source[i]) {
+                '{' -> braceDepth++
+                '}' -> {
+                    braceDepth--
+                    if (braceDepth == 0) return source.substring(start, i + 1)
+                }
+            }
+            i++
+        }
+        error("Closing brace not found for $signature")
+    }
+
     private fun onSessionEndedCallback(source: String): String {
         val startMarker = "callbackClient.onSessionEnded = sessionEnded@{ failure ->"
         val endMarker = "callbackClient.onConnectionStatus = connectionStatus@{ connected ->"

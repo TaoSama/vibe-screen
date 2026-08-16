@@ -10,7 +10,6 @@ import android.graphics.drawable.ColorDrawable
 import android.media.MediaFormat
 import android.os.Build
 import android.os.Bundle
-import android.text.TextUtils
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -19,7 +18,6 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.SurfaceHolder
 import android.view.View
-import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -798,51 +796,15 @@ class MainActivity : AppCompatActivity() {
      * on a single narrow column. Video and safe-area handling are untouched.
      */
     private fun applyConnectionPanelLayout() {
-        val twoColumn = resources.getBoolean(R.bool.connection_panel_two_column)
-        val gapPx = resources.getDimensionPixelSize(R.dimen.connection_panel_column_gap)
-        val layout = ConnectionPanelLayoutPolicy.resolve(twoColumn = twoColumn, columnGapPx = gapPx)
-
-        binding.connectionContent.orientation =
-            when (layout.contentOrientation) {
-                ConnectionPanelLayoutPolicy.Orientation.HORIZONTAL -> LinearLayout.HORIZONTAL
-                ConnectionPanelLayoutPolicy.Orientation.VERTICAL -> LinearLayout.VERTICAL
-            }
-        binding.connectionSubtitle.maxLines = layout.subtitleMaxLines
-        binding.connectionSubtitle.ellipsize = if (twoColumn) TextUtils.TruncateAt.END else null
-
-        applyConnectionColumn(binding.connectionHeader, layout.header, startGapPx = 0)
-        applyConnectionColumn(
-            binding.connectionActions,
-            layout.actions,
-            startGapPx = if (layout.contentOrientation == ConnectionPanelLayoutPolicy.Orientation.HORIZONTAL) {
-                layout.columnGapPx
-            } else {
-                0
-            },
+        ConnectionPanelLayoutApplier.apply(
+            resources,
+            ConnectionPanelLayoutApplier.Views(
+                content = binding.connectionContent,
+                header = binding.connectionHeader,
+                actions = binding.connectionActions,
+                subtitle = binding.connectionSubtitle,
+            ),
         )
-    }
-
-    /**
-     * Apply one resolved [ConnectionPanelLayoutPolicy.Column] to a child of the
-     * connection content row/column. In the horizontal layout the gap is placed
-     * as a start margin on the second column so the two columns keep a stable
-     * separation; the stacked layout clears it.
-     */
-    private fun applyConnectionColumn(
-        view: View,
-        column: ConnectionPanelLayoutPolicy.Column,
-        startGapPx: Int,
-    ) {
-        val params = view.layoutParams as? LinearLayout.LayoutParams ?: return
-        params.width =
-            if (column.widthMatchParent) {
-                ViewGroup.LayoutParams.MATCH_PARENT
-            } else {
-                0
-            }
-        params.weight = column.weight
-        params.marginStart = startGapPx
-        view.layoutParams = params
     }
 
     /**
@@ -921,7 +883,7 @@ class MainActivity : AppCompatActivity() {
         applyConnectionPanelLayout()
         applyControlBarLayout()
         if (!isConnected && prefs.connectionMode == ConnectionMode.INTERNET) {
-            binding.connectionTitle.setText(internetWaitingTitleResource())
+            LiveRegionTextApplier.apply(binding.connectionTitle, getString(internetWaitingTitleResource()))
         }
         reclampFloatingControls()
         activeSettingsDialog?.let { dialog ->
@@ -1296,8 +1258,9 @@ class MainActivity : AppCompatActivity() {
         if (!::binding.isInitialized || isConnected) return
         when (mode) {
             ConnectionMode.USB -> {
-                binding.connectionTitle.setText(
-                    if (isReconnecting) R.string.reconnecting_short else R.string.waiting_for_mac,
+                LiveRegionTextApplier.apply(
+                    binding.connectionTitle,
+                    getString(if (isReconnecting) R.string.reconnecting_short else R.string.waiting_for_mac),
                 )
                 updateUsbTransportSubtitle()
                 binding.connectionProgress.visibility = View.VISIBLE
@@ -1318,13 +1281,13 @@ class MainActivity : AppCompatActivity() {
                 updateStatus(getString(R.string.looking_for_mac))
             }
             ConnectionMode.WIRELESS -> {
-                binding.connectionTitle.setText(R.string.connect_wirelessly)
-                binding.connectionSubtitle.setText(R.string.wireless_pair_once)
+                LiveRegionTextApplier.apply(binding.connectionTitle, getString(R.string.connect_wirelessly))
+                LiveRegionTextApplier.apply(binding.connectionSubtitle, getString(R.string.wireless_pair_once))
                 binding.connectionProgress.visibility = View.GONE
             }
             ConnectionMode.INTERNET -> {
-                binding.connectionTitle.setText(internetWaitingTitleResource())
-                binding.connectionSubtitle.setText(R.string.internet_waiting_description)
+                LiveRegionTextApplier.apply(binding.connectionTitle, getString(internetWaitingTitleResource()))
+                LiveRegionTextApplier.apply(binding.connectionSubtitle, getString(R.string.internet_waiting_description))
                 binding.connectionProgress.visibility = View.GONE
                 refreshInternetProfileUi()
             }
@@ -1369,8 +1332,10 @@ class MainActivity : AppCompatActivity() {
         }
         val pendingCleanup = retryPendingInternetRevocationCleanup()
         if (pendingCleanup.isNotEmpty()) {
-            binding.internetErrorText.text = getString(R.string.internet_revoke_partial_failure, pendingCleanup.joinToString())
-            binding.internetErrorText.visibility = View.VISIBLE
+            LiveRegionTextApplier.show(
+                binding.internetErrorText,
+                getString(R.string.internet_revoke_partial_failure, pendingCleanup.joinToString()),
+            )
         }
         try {
             retryPendingPairingPersistenceCleanup()
@@ -1418,8 +1383,8 @@ class MainActivity : AppCompatActivity() {
                     )
                     input.text?.clear()
                     requiredFreshInternetEpoch = 0L
-                    binding.internetErrorText.visibility = View.GONE
-                    binding.internetStateText.setText(R.string.internet_profile_imported)
+                    LiveRegionTextApplier.hide(binding.internetErrorText)
+                    LiveRegionTextApplier.apply(binding.internetStateText, getString(R.string.internet_profile_imported))
                     refreshInternetProfileUi()
                     dialog.dismiss()
                 } catch (failure: Throwable) {
@@ -1565,7 +1530,7 @@ class MainActivity : AppCompatActivity() {
                         return@setOnClickListener
                     }
                     acceptance.text?.clear()
-                    binding.internetStateText.setText(R.string.internet_pairing_complete)
+                    LiveRegionTextApplier.apply(binding.internetStateText, getString(R.string.internet_pairing_complete))
                     dialog.dismiss()
                 } catch (failure: Throwable) {
                     acceptance.error = failure.message ?: getString(R.string.internet_error_title)
@@ -3418,8 +3383,10 @@ class MainActivity : AppCompatActivity() {
                         if (!isCurrentInternetSession()) return@runOnUiThread
                         requiredFreshInternetEpoch = internetSessionEpoch
                         disconnectInternet(showIdle = false)
-                        binding.internetErrorText.text = getString(R.string.internet_fresh_session_required, reason)
-                        binding.internetErrorText.visibility = View.VISIBLE
+                        LiveRegionTextApplier.show(
+                            binding.internetErrorText,
+                            getString(R.string.internet_fresh_session_required, reason),
+                        )
                         showDisconnectedStreamUi()
                     }
                 }
@@ -3471,7 +3438,7 @@ class MainActivity : AppCompatActivity() {
             internetSession = created
             binding.internetConnectButton.isEnabled = false
             binding.internetDisconnectButton.visibility = View.VISIBLE
-            binding.internetErrorText.visibility = View.GONE
+            LiveRegionTextApplier.hide(binding.internetErrorText)
             internetTickJob =
                 lifecycleScope.launch(Dispatchers.Default) {
                     while (internetSession === created) {
@@ -3755,7 +3722,10 @@ class MainActivity : AppCompatActivity() {
                 PeerRoute.RELAY -> getString(R.string.internet_route_relay)
                 null -> getString(R.string.internet_route_pending)
             }
-        binding.internetStateText.text = getString(R.string.internet_state_format, state.name.lowercase(), routeLabel)
+        LiveRegionTextApplier.apply(
+            binding.internetStateText,
+            getString(R.string.internet_state_format, state.name.lowercase(), routeLabel),
+        )
         if (state == InternetProductSessionState.CLOSED || state == InternetProductSessionState.FAILED) {
             isConnected = false
             internetStylusGestureRouter.reset()
@@ -3772,12 +3742,17 @@ class MainActivity : AppCompatActivity() {
             disconnectInternet(showIdle = false)
         }
         val guidance = ConnectionGuidanceFactory.from(failure, ConnectionGuidanceContext.internet())
-        binding.internetErrorText.text = "${guidance.status}. ${guidance.message}"
-        binding.internetErrorText.visibility = View.VISIBLE
-        binding.internetStateText.text = getString(
-            R.string.internet_state_format,
-            InternetProductSessionState.FAILED.name.lowercase(),
-            getString(R.string.internet_route_pending),
+        LiveRegionTextApplier.show(
+            binding.internetErrorText,
+            guidance.status + ". " + guidance.message,
+        )
+        LiveRegionTextApplier.apply(
+            binding.internetStateText,
+            getString(
+                R.string.internet_state_format,
+                InternetProductSessionState.FAILED.name.lowercase(),
+                getString(R.string.internet_route_pending),
+            ),
         )
         if (prefs.connectionMode == ConnectionMode.INTERNET) showDisconnectedStreamUi()
     }
@@ -3836,8 +3811,8 @@ class MainActivity : AppCompatActivity() {
                 binding.internetConnectButton.isEnabled =
                     profile != null && profile.authoritativeSessionEpoch > requiredFreshInternetEpoch
                 if (showIdle) {
-                    binding.internetStateText.setText(R.string.internet_state_idle)
-                    binding.internetErrorText.visibility = View.GONE
+                    LiveRegionTextApplier.apply(binding.internetStateText, getString(R.string.internet_state_idle))
+                    LiveRegionTextApplier.hide(binding.internetErrorText)
                     showDisconnectedStreamUi()
                 }
             },
@@ -3903,8 +3878,10 @@ class MainActivity : AppCompatActivity() {
             binding.internetConnectButton.isEnabled = false
             binding.internetImportProfileButton.isEnabled = false
             binding.internetScanProfileButton.isEnabled = false
-            binding.internetErrorText.setText(R.string.internet_revocation_quarantine)
-            binding.internetErrorText.visibility = View.VISIBLE
+            LiveRegionTextApplier.show(
+                binding.internetErrorText,
+                getString(R.string.internet_revocation_quarantine),
+            )
         }
         return !quarantined
     }
@@ -3932,12 +3909,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
         requiredFreshInternetEpoch = Long.MAX_VALUE
-        binding.internetErrorText.text = getString(R.string.internet_revoked, reason)
-        binding.internetErrorText.visibility = View.VISIBLE
-        binding.internetStateText.setText(R.string.internet_profile_revoked)
-        if (cleanupFailures.isNotEmpty()) {
-            binding.internetErrorText.text = getString(R.string.internet_revoke_partial_failure, cleanupFailures.joinToString())
-        }
+        val revocationMessage =
+            if (cleanupFailures.isEmpty()) {
+                getString(R.string.internet_revoked, reason)
+            } else {
+                getString(R.string.internet_revoke_partial_failure, cleanupFailures.joinToString())
+            }
+        LiveRegionTextApplier.show(binding.internetErrorText, revocationMessage)
+        LiveRegionTextApplier.apply(binding.internetStateText, getString(R.string.internet_profile_revoked))
         refreshInternetProfileUi()
         showDisconnectedStreamUi()
     }
@@ -4897,10 +4876,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateUsbTransportSubtitle() {
-        val subtitle = getString(UsbTransportDisplayPolicy.project(currentUsbTransportSnapshot()).subtitleResource)
-        if (binding.connectionSubtitle.text.toString() != subtitle) {
-            binding.connectionSubtitle.text = subtitle
-        }
+        val subtitleResource = UsbTransportDisplayPolicy.project(currentUsbTransportSnapshot()).subtitleResource
+        LiveRegionTextApplier.apply(binding.connectionSubtitle, getString(subtitleResource))
     }
 
     /**

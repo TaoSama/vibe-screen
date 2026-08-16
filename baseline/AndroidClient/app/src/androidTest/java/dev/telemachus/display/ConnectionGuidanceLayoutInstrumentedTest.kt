@@ -1,0 +1,297 @@
+package dev.telemachus.display
+
+import android.content.Context
+import android.content.res.Configuration
+import android.graphics.Rect
+import android.view.ContextThemeWrapper
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.core.widget.NestedScrollView
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import kotlin.math.roundToInt
+
+@RunWith(AndroidJUnit4::class)
+class ConnectionGuidanceLayoutInstrumentedTest {
+    @Test
+    fun xiaomi13RotationReappliesLandscapeDimensionsWithoutReinflatingTheViewTree() {
+        val portraitContext = configuredContext(widthDp = 393, heightDp = 873)
+        val landscapeContext = configuredContext(widthDp = 873, heightDp = 393)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val root = inflateLayout(portraitContext)
+            val layout = MeasuredLayout(landscapeContext, root, widthDp = 873, heightDp = 393)
+            layout.showModeContent(R.id.internetModeContent)
+            layout.subtitle.setText(R.string.internet_waiting_description)
+
+            layout.assertPortraitDimensionsInflated()
+            ConnectionPanelLayoutApplier.apply(landscapeContext.resources, layout.views())
+            layout.measureAndLayout()
+
+            layout.assertConfigurationUsesTwoColumns(expected = true)
+            layout.assertLandscapeDimensionsApplied()
+            layout.assertHeaderAndActionsSeparated()
+            layout.assertPrimaryInternetActionVisible()
+        }
+    }
+
+    @Test
+    fun xiaomi13PortraitAndLandscapeKeepModeGuidanceReadableAndSeparated() {
+        listOf(393 to 873, 873 to 393, 500 to 300).forEach { (widthDp, heightDp) ->
+            withLayout(widthDp, heightDp) { layout ->
+                val expectedTwoColumn = widthDp >= 600 && widthDp > heightDp
+                layout.assertConfigurationUsesTwoColumns(expectedTwoColumn)
+                val guidance =
+                    listOf(
+                        R.string.adb_transport_waiting_description to R.id.usbModeContent,
+                        R.string.wireless_pair_once to R.id.wirelessModeContent,
+                        R.string.internet_waiting_description to R.id.internetModeContent,
+                    )
+                guidance.forEach { (subtitleResource, modeContentId) ->
+                    layout.showModeContent(modeContentId)
+                    layout.subtitle.setText(subtitleResource)
+                    layout.measureAndLayout()
+                    layout.assertTextRenderedWithoutEllipsis(layout.subtitle)
+                    layout.assertFullyVisibleAfterScroll(layout.subtitle)
+                    layout.assertHeaderAndActionsSeparated()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun xiaomi13LandscapeKeepsLongestUsbLanAndInternetErrorsReadable() {
+        withLayout(widthDp = 873, heightDp = 393) { layout ->
+            val messages =
+                listOf(
+                    ConnectionGuidanceFactory.from(
+                        java.io.IOException("unexpected USB transport failure"),
+                        ConnectionGuidanceContext.adb(54321, AdbTransportKind.UNAVAILABLE),
+                    ).message,
+                    ConnectionGuidanceFactory.from(
+                        java.net.ConnectException("Connection refused"),
+                        ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB),
+                    ).message,
+                    ConnectionGuidanceFactory.from(
+                        java.io.IOException("unexpected LAN transport failure"),
+                        ConnectionGuidanceContext.trustedLan(54321),
+                    ).message,
+                    ConnectionGuidanceFactory.from(
+                        java.net.SocketTimeoutException("timeout"),
+                        ConnectionGuidanceContext.internet(),
+                    ).message,
+                )
+            layout.showModeContent(R.id.internetModeContent)
+            layout.internetError.visibility = View.VISIBLE
+            messages.forEach { message ->
+                layout.internetError.text = message
+                layout.measureAndLayout()
+                layout.assertTextRenderedWithoutEllipsis(layout.internetError)
+                layout.assertFullyVisibleAfterScroll(layout.internetError)
+                layout.assertHeaderAndActionsSeparated()
+            }
+        }
+    }
+
+    private fun withLayout(
+        widthDp: Int,
+        heightDp: Int,
+        assertion: (MeasuredLayout) -> Unit,
+    ) {
+        val context = configuredContext(widthDp, heightDp)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val root = inflateLayout(context)
+            val layout = MeasuredLayout(context, root, widthDp, heightDp)
+            ConnectionPanelLayoutApplier.apply(context.resources, layout.views())
+            assertion(layout)
+        }
+    }
+
+    private fun configuredContext(
+        widthDp: Int,
+        heightDp: Int,
+    ): Context {
+        val configuration = Configuration(applicationContext().resources.configuration)
+        configuration.screenWidthDp = widthDp
+        configuration.screenHeightDp = heightDp
+        configuration.smallestScreenWidthDp = minOf(widthDp, heightDp)
+        configuration.orientation =
+            if (widthDp > heightDp) {
+                Configuration.ORIENTATION_LANDSCAPE
+            } else {
+                Configuration.ORIENTATION_PORTRAIT
+            }
+        return applicationContext().createConfigurationContext(configuration)
+    }
+
+    private fun inflateLayout(context: Context): ViewGroup {
+        val themedContext = ContextThemeWrapper(context, R.style.AppTheme)
+        return LayoutInflater.from(themedContext).inflate(R.layout.activity_main, null, false) as ViewGroup
+    }
+
+    private fun applicationContext(): Context = ApplicationProvider.getApplicationContext()
+
+    private class MeasuredLayout(
+        val context: Context,
+        val root: ViewGroup,
+        widthDp: Int,
+        heightDp: Int,
+    ) {
+        val header = root.findViewById<LinearLayout>(R.id.connectionHeader)
+        val actions = root.findViewById<LinearLayout>(R.id.connectionActions)
+        val content = root.findViewById<LinearLayout>(R.id.connectionContent)
+        val subtitle = root.findViewById<TextView>(R.id.connectionSubtitle)
+        val internetError = root.findViewById<TextView>(R.id.internetErrorText)
+        private val scrollView = root.findViewById<NestedScrollView>(R.id.connectionScroll)
+        private val icon = root.findViewById<View>(R.id.connectionIcon)
+        private val wordmark = root.findViewById<View>(R.id.connectionWordmark)
+        private val title = root.findViewById<View>(R.id.connectionTitle)
+        private val progress = root.findViewById<View>(R.id.connectionProgress)
+        private val modeToggle = root.findViewById<View>(R.id.modeToggleGroup)
+        private val internetRouteLabel = root.findViewById<View>(R.id.internetRouteLabel)
+        private val internetRouteToggle = root.findViewById<View>(R.id.internetRouteToggleGroup)
+        private val internetConnect = root.findViewById<View>(R.id.internetConnectButton)
+        private val widthPx = dp(widthDp)
+        private val heightPx = dp(heightDp)
+
+        private val usbModeContent = root.findViewById<View>(R.id.usbModeContent)
+        private val wirelessModeContent = root.findViewById<View>(R.id.wirelessModeContent)
+        private val internetModeContent = root.findViewById<View>(R.id.internetModeContent)
+
+        init {
+            usbModeContent.visibility = View.GONE
+            wirelessModeContent.visibility = View.GONE
+            internetModeContent.visibility = View.GONE
+        }
+
+        fun views() =
+            ConnectionPanelLayoutApplier.Views(
+                content = content,
+                header = header,
+                actions = actions,
+                subtitle = subtitle,
+            )
+
+        fun showModeContent(modeContentId: Int) {
+            usbModeContent.visibility = if (modeContentId == R.id.usbModeContent) View.VISIBLE else View.GONE
+            wirelessModeContent.visibility = if (modeContentId == R.id.wirelessModeContent) View.VISIBLE else View.GONE
+            internetModeContent.visibility = if (modeContentId == R.id.internetModeContent) View.VISIBLE else View.GONE
+        }
+
+        fun measureAndLayout() {
+            root.measure(
+                View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY),
+            )
+            root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+        }
+
+        fun assertTextRenderedWithoutEllipsis(text: TextView) {
+            val textLayout = checkNotNull(text.layout)
+            assertTrue(text.measuredWidth > 0 && text.measuredHeight > 0)
+            assertTrue((0 until textLayout.lineCount).all { line -> textLayout.getEllipsisCount(line) == 0 })
+            assertEquals(text.text.length, textLayout.getLineEnd(textLayout.lineCount - 1))
+        }
+
+        fun assertFullyVisibleAfterScroll(view: View) {
+            val viewBounds = boundsInContent(view)
+            assertTrue(viewBounds.top >= 0)
+            assertTrue(
+                "View " + view.resources.getResourceEntryName(view.id) + " " + viewBounds +
+                " escaped scroll content height " + content.height,
+                viewBounds.bottom <= content.height,
+            )
+            val maximumScroll = (content.height - scrollView.height).coerceAtLeast(0)
+            val requestedScroll = (viewBounds.bottom - scrollView.height).coerceAtLeast(0)
+            val expectedScroll = requestedScroll.coerceAtMost(maximumScroll)
+            scrollView.scrollTo(0, requestedScroll)
+            assertEquals(expectedScroll, scrollView.scrollY)
+            assertTrue(viewBounds.top >= scrollView.scrollY)
+            assertTrue(viewBounds.bottom <= scrollView.scrollY + scrollView.height)
+        }
+
+        fun assertConfigurationUsesTwoColumns(expected: Boolean) {
+            assertEquals(expected, context.resources.getBoolean(R.bool.connection_panel_two_column))
+            assertEquals(
+                if (expected) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL,
+                content.orientation,
+            )
+        }
+
+        fun assertHeaderAndActionsSeparated() {
+            if (context.resources.getBoolean(R.bool.connection_panel_two_column)) {
+                assertFalse(Rect.intersects(bounds(header), bounds(actions)))
+                assertTrue(header.right <= actions.left)
+            } else {
+                assertTrue(header.bottom <= actions.top)
+            }
+        }
+
+        fun assertLandscapeDimensionsApplied() {
+            assertEquals(dp(12), content.paddingTop)
+            assertEquals(dp(12), content.paddingBottom)
+            assertEquals(dp(56), icon.width)
+            assertEquals(dp(56), icon.height)
+            assertEquals(dp(12), margins(icon).bottomMargin)
+            assertEquals(dp(6), margins(wordmark).bottomMargin)
+            assertEquals(dp(4), margins(title).bottomMargin)
+            assertEquals(dp(8), margins(subtitle).bottomMargin)
+            assertEquals(dp(8), margins(progress).bottomMargin)
+            assertEquals(dp(8), margins(modeToggle).bottomMargin)
+            assertEquals(dp(8), margins(internetRouteLabel).topMargin)
+            assertEquals(dp(8), margins(internetRouteToggle).bottomMargin)
+            assertEquals(dp(4), margins(internetConnect).topMargin)
+        }
+
+        fun assertPortraitDimensionsInflated() {
+            assertEquals(dp(32), content.paddingTop)
+            assertEquals(dp(28), content.paddingBottom)
+            assertEquals(dp(72), icon.layoutParams.width)
+            assertEquals(dp(72), icon.layoutParams.height)
+            assertEquals(dp(20), margins(icon).bottomMargin)
+            assertEquals(dp(10), margins(wordmark).bottomMargin)
+            assertEquals(dp(8), margins(title).bottomMargin)
+            assertEquals(dp(20), margins(subtitle).bottomMargin)
+            assertEquals(dp(20), margins(progress).bottomMargin)
+            assertEquals(dp(16), margins(modeToggle).bottomMargin)
+            assertEquals(dp(12), margins(internetRouteLabel).topMargin)
+            assertEquals(dp(12), margins(internetRouteToggle).bottomMargin)
+            assertEquals(dp(12), margins(internetConnect).topMargin)
+        }
+
+        fun assertPrimaryInternetActionVisible() {
+            scrollView.scrollTo(0, 0)
+            val actionBounds = boundsInContent(internetConnect)
+            assertTrue(
+                "Internet action height was " + internetConnect.height + "px",
+                internetConnect.height >= dp(48),
+            )
+            assertTrue(
+                "Internet action " + actionBounds + " starts below the " +
+                    scrollView.height + "px first-screen viewport",
+                actionBounds.top >= 0 && actionBounds.bottom <= scrollView.height,
+            )
+        }
+
+        private fun bounds(view: View): Rect = Rect(view.left, view.top, view.right, view.bottom)
+
+        private fun boundsInContent(view: View): Rect =
+            Rect(0, 0, view.width, view.height).also { rect ->
+                content.offsetDescendantRectToMyCoords(view, rect)
+            }
+
+        private fun margins(view: View): ViewGroup.MarginLayoutParams =
+            view.layoutParams as ViewGroup.MarginLayoutParams
+
+        private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()
+    }
+}

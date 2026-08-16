@@ -28,7 +28,10 @@ class ConnectionStateAccessibilityInstrumentedTest {
     fun productionConnectionStatesUsePoliteLiveRegions() {
         withProductionLayout { root ->
             listOf(
+                R.id.connectionTitle,
+                R.id.connectionSubtitle,
                 R.id.statusText,
+                R.id.internetStateText,
                 R.id.wirelessConnecting,
                 R.id.wirelessFirstTime,
                 R.id.wirelessConnected,
@@ -42,6 +45,23 @@ class ConnectionStateAccessibilityInstrumentedTest {
                     root.findViewById<View>(id).accessibilityLiveRegion,
                 )
             }
+            assertEquals(
+                View.ACCESSIBILITY_LIVE_REGION_ASSERTIVE,
+                root.findViewById<View>(R.id.internetErrorText).accessibilityLiveRegion,
+            )
+        }
+    }
+
+    @Test
+    fun productionLayoutDoesNotPreRenderModeSpecificGuidance() {
+        withProductionLayout { root ->
+            val title = root.findViewById<TextView>(R.id.connectionTitle)
+            val subtitle = root.findViewById<TextView>(R.id.connectionSubtitle)
+            val status = root.findViewById<TextView>(R.id.statusText)
+
+            assertEquals("", title.text.toString())
+            assertEquals("", subtitle.text.toString())
+            assertEquals(root.context.getString(R.string.looking_for_mac), status.text.toString())
         }
     }
 
@@ -58,6 +78,26 @@ class ConnectionStateAccessibilityInstrumentedTest {
             assertTrue(LiveRegionTextApplier.apply(label, replacement))
             assertEquals(replacement, label.text.toString())
             assertFalse(LiveRegionTextApplier.apply(label, replacement))
+        }
+    }
+
+    @Test
+    fun hiddenLiveRegionMessageReannouncesTheSameErrorWhenShownAgain() {
+        withProductionLayout { root ->
+            val error = root.findViewById<TextView>(R.id.internetErrorText)
+            val message = "Pairing expired. Import a fresh profile."
+
+            assertTrue(LiveRegionTextApplier.show(error, message))
+            assertEquals(View.VISIBLE, error.visibility)
+            assertEquals(message, error.text.toString())
+
+            assertTrue(LiveRegionTextApplier.hide(error))
+            assertEquals(View.GONE, error.visibility)
+            assertEquals("", error.text.toString())
+
+            assertTrue(LiveRegionTextApplier.show(error, message))
+            assertEquals(View.VISIBLE, error.visibility)
+            assertEquals(message, error.text.toString())
         }
     }
 

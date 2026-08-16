@@ -30,7 +30,7 @@ class ConnectionPanelLayoutPolicyTest {
         assertEquals(ConnectionPanelLayoutPolicy.HEADER_WEIGHT, layout.header.weight, 0f)
         assertEquals(ConnectionPanelLayoutPolicy.ACTIONS_WEIGHT, layout.actions.weight, 0f)
         assertEquals(28, layout.columnGapPx)
-        assertEquals(ConnectionPanelLayoutPolicy.LANDSCAPE_SUBTITLE_MAX_LINES, layout.subtitleMaxLines)
+        assertEquals(Int.MAX_VALUE, layout.subtitleMaxLines)
     }
 
     @Test
