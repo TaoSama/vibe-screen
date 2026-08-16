@@ -94,6 +94,15 @@ final class ClientCallbackGenerationGate {
         lock.withLock { currentGeneration == generation }
     }
 
+    @discardableResult
+    func invalidateIfCurrent(_ generation: UInt64) -> Bool {
+        lock.withLock {
+            guard currentGeneration == generation else { return false }
+            currentGeneration &+= 1
+            return true
+        }
+    }
+
     func performIfCurrent(
         _ generation: UInt64,
         operation: () -> Void
@@ -272,6 +281,8 @@ class StreamingServer: EncodedFrameSink {
     // handled regardless. When false, incoming touch frames are dropped
     // immediately without parsing or dispatching to main queue.
     var touchEnabled: Bool = true
+    /// Enabled only after signature, entitlement, and IOHID runtime checks.
+    var controllerAvailable: Bool = false
 
     var onWirelessClientPaired: ((String, UInt64) -> Void)?
     var onServerFailed: ((Error) -> Void)?
@@ -284,6 +295,7 @@ class StreamingServer: EncodedFrameSink {
     ) -> Void)?
     var onScrollEvent: ((Double, Double, UInt64) -> Void)?
     var onKeyEvent: ((UInt32, Bool, UInt32, String, UInt64) -> Void)?
+    var onControllerEvent: GameControllerEventHandler?
     var onProtocolErrorReceived: ((VSProtocolError, UInt64) -> Void)?
     /// Fired on the main actor when a Protocol v1 client selects a different
     /// display so capture switching preserves the network queue's request order.
@@ -1105,6 +1117,26 @@ class StreamingServer: EncodedFrameSink {
         }
     }
 
+    /// The Protocol v1 state machine accepted this controller event, but the
+    /// native HID boundary could not apply it. Fail closed on the originating
+    /// connection so the peer never assumes input is still being delivered.
+    func failProtocolV1ControllerInput(generation: UInt64, reason: String) {
+        networkQueue.async { [weak self] in
+            guard let self, !self.isStopped,
+                  self.activeConnectionGeneration == generation,
+                  self.connectionProtocolMode == .protocolV1,
+                  let session = self.protocolV1Session,
+                  let conn = self.connection else { return }
+            self.applyProtocolV1Actions(
+                session.rejectControllerInjection(
+                    "Controller injection failed: \(reason)"
+                ),
+                connection: conn,
+                generation: generation
+            )
+        }
+    }
+
     private func performOnNetworkQueue(_ operation: @escaping () -> Void) {
         if DispatchQueue.getSpecific(key: Self.networkQueueKey) == ObjectIdentifier(self) {
             operation()
@@ -1384,7 +1416,8 @@ class StreamingServer: EncodedFrameSink {
             framesPerSecond: protocolV1FramesPerSecond,
             bitrateKbps: protocolV1BitrateKbps,
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
-                touchEnabled: touchEnabled
+                touchEnabled: touchEnabled,
+                controllerAvailable: controllerAvailable
             ),
             requiredClientCapabilities: touchEnabled ? [.touch] : [],
             supportedCodecs: [.hevc, .h264],
@@ -1572,6 +1605,26 @@ class StreamingServer: EncodedFrameSink {
                     guard let self,
                           self.clientCallbackGeneration.isCurrent(generation) else { return }
                     self.onKeyEvent?(usage, pressed, modifiers, text, generation)
+                }
+            case .controller(let event):
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    guard GameControllerEventDelivery.deliver(
+                        event,
+                        generation: generation,
+                        using: self.onControllerEvent
+                    ) else {
+                        // Stop later input actions already queued on the main
+                        // actor before the network queue closes the failed
+                        // session.
+                        self.clientCallbackGeneration.invalidateIfCurrent(generation)
+                        self.failProtocolV1ControllerInput(
+                            generation: generation,
+                            reason: "native controller handler was unavailable or rejected the event"
+                        )
+                        return
+                    }
                 }
             case .heartbeat:
                 let accepted = recoveryController.observeHeartbeat(

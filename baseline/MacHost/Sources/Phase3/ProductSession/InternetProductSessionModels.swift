@@ -12,6 +12,41 @@ enum InternetProductSessionState: Equatable {
     case closed
 }
 
+enum InternetSessionInputCleanupScope: Equatable {
+    case preserve
+    case transientOnly
+    case fullSessionReset
+
+    func apply(
+        transientReset: () -> Void,
+        fullSessionReset: () -> Void
+    ) {
+        switch self {
+        case .preserve:
+            break
+        case .transientOnly:
+            transientReset()
+        case .fullSessionReset:
+            fullSessionReset()
+        }
+    }
+}
+
+extension InternetProductSessionState {
+    var inputCleanupScope: InternetSessionInputCleanupScope {
+        switch self {
+        case .streaming:
+            return .preserve
+        case .awaitingVideoConfiguration:
+            return .transientOnly
+        case .idle, .connecting, .authenticating, .recovering,
+             .failed, .revoked, .closed:
+            return .fullSessionReset
+        }
+    }
+
+}
+
 enum InternetProductSessionError: Error, Equatable, LocalizedError {
     case invalidConfiguration(String)
     case protocolFailure(InternetProductProtocolError)
@@ -42,6 +77,7 @@ struct InternetProductSessionConfiguration {
     let transcriptContext: Data
     let video: InternetProductVideoConfiguration
     let inputEnabled: Bool
+    let controllerAvailable: Bool
     let heartbeatIntervalMilliseconds: UInt32
     let heartbeatTimeoutMilliseconds: UInt32
     let negotiationTimeoutMilliseconds: UInt32
@@ -60,6 +96,7 @@ struct InternetProductSessionConfiguration {
         transcriptContext: Data,
         video: InternetProductVideoConfiguration,
         inputEnabled: Bool = true,
+        controllerAvailable: Bool = false,
         heartbeatIntervalMilliseconds: UInt32 = 1_000,
         heartbeatTimeoutMilliseconds: UInt32 = 5_000,
         negotiationTimeoutMilliseconds: UInt32 = 10_000,
@@ -77,6 +114,7 @@ struct InternetProductSessionConfiguration {
         self.transcriptContext = transcriptContext
         self.video = video
         self.inputEnabled = inputEnabled
+        self.controllerAvailable = controllerAvailable
         self.heartbeatIntervalMilliseconds = heartbeatIntervalMilliseconds
         self.heartbeatTimeoutMilliseconds = heartbeatTimeoutMilliseconds
         self.negotiationTimeoutMilliseconds = negotiationTimeoutMilliseconds

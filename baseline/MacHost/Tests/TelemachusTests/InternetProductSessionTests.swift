@@ -4,6 +4,34 @@ import XCTest
 @testable import Telemachus
 
 final class InternetProductSessionTests: XCTestCase {
+    func testInputCleanupScopeMapsAndAppliesEverySessionState() {
+        let cases: [(InternetProductSessionState, InternetSessionInputCleanupScope)] = [
+            (.idle, .fullSessionReset),
+            (.connecting, .fullSessionReset),
+            (.authenticating, .fullSessionReset),
+            (.awaitingVideoConfiguration, .transientOnly),
+            (.streaming(.direct), .preserve),
+            (.streaming(.relay), .preserve),
+            (.streaming(.unknown), .preserve),
+            (.recovering(attempt: 1), .fullSessionReset),
+            (.failed("reason"), .fullSessionReset),
+            (.revoked, .fullSessionReset),
+            (.closed, .fullSessionReset),
+        ]
+
+        for (state, expected) in cases {
+            XCTAssertEqual(state.inputCleanupScope, expected, "state: \(state)")
+            var transientResetCount = 0
+            var fullResetCount = 0
+            state.inputCleanupScope.apply(
+                transientReset: { transientResetCount += 1 },
+                fullSessionReset: { fullResetCount += 1 }
+            )
+            XCTAssertEqual(transientResetCount, expected == .transientOnly ? 1 : 0)
+            XCTAssertEqual(fullResetCount, expected == .fullSessionReset ? 1 : 0)
+        }
+    }
+
     func testFreshSessionRecoveryBudgetPersistsUntilExplicitReset() {
         var budget = FreshSessionRecoveryBudget(
             policy: NetworkRecoveryPolicy(maximumAttempts: 2)
@@ -315,6 +343,206 @@ final class InternetProductSessionTests: XCTestCase {
             harness.receiveControl(envelope)
             XCTAssertTrue(harness.waitForFailure(), name)
         }
+    }
+
+    func testInternetNegotiatesRoutesAndSoftRejectsControllers() throws {
+        let harness = try Harness(controllerAvailable: true)
+        let routed = expectation(description: "controllers routed")
+        routed.expectedFulfillmentCount = 7
+        let routedEvents = TestLockedArray<GameControllerInputEvent>()
+        harness.session.onAuthenticatedControllerEvent = { epoch, event in
+            XCTAssertEqual(epoch, 1)
+            routedEvents.append(event)
+            routed.fulfill()
+            return true
+        }
+
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        XCTAssertTrue(harness.waitForSentControlCount(3))
+        let negotiation = try harness.engine.sentPlaintext
+            .filter { $0.channel == .control }
+            .prefix(2)
+            .map { try VSEnvelope(serializedBytes: $0.payload) }
+        XCTAssertTrue(negotiation[0].hostHello.capabilities.contains(.controller))
+        XCTAssertTrue(negotiation[1].sessionAccepted.negotiatedCapabilities.contains(.controller))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+
+        for index in 0..<4 {
+            harness.receiveControl(harness.controller(
+                messageID: UInt64(index + 3),
+                inputID: UInt64(index + 1),
+                controllerID: "pad-\(index + 1)",
+                kind: .connected
+            ))
+        }
+        harness.receiveControl(harness.controller(
+            messageID: 7,
+            inputID: 5,
+            controllerID: "pad-5",
+            kind: .connected
+        ))
+        XCTAssertTrue(harness.waitForInputAck(inputID: 5))
+        let acknowledgement = try XCTUnwrap(harness.sentInputAck(inputID: 5))
+        XCTAssertFalse(acknowledgement.accepted)
+        XCTAssertEqual(
+            acknowledgement.rejectionReason,
+            "maximum_active_controllers_exceeded"
+        )
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+
+        harness.receiveControl(harness.controller(
+            messageID: 8,
+            inputID: 6,
+            controllerID: "pad-1",
+            kind: .state,
+            buttonMask: 1
+        ))
+        harness.receiveControl(harness.controller(
+            messageID: 9,
+            inputID: 7,
+            controllerID: "pad-2",
+            kind: .disconnected
+        ))
+        harness.receiveControl(harness.controller(
+            messageID: 10,
+            inputID: 8,
+            controllerID: "pad-5",
+            controllerEpoch: 2,
+            kind: .connected
+        ))
+        wait(for: [routed], timeout: 1)
+
+        let events = routedEvents.snapshot()
+        XCTAssertEqual(events.count, 7)
+        XCTAssertEqual(events[4].state.buttonMask, 1)
+        XCTAssertEqual(events[5].kind, .disconnected)
+        XCTAssertEqual(events[6].controllerID, "pad-5")
+        XCTAssertEqual(events[6].controllerEpoch, 2)
+    }
+
+    func testInternetControllerInjectionFailureClosesSession() throws {
+        let harness = try Harness(controllerAvailable: true)
+        harness.session.onAuthenticatedControllerEvent = { _, _ in false }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        harness.receiveControl(harness.controller(
+            messageID: 3,
+            inputID: 1,
+            controllerID: "pad-1",
+            kind: .connected
+        ))
+
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
+    }
+
+    func testInternetMissingControllerHandlerClosesSession() throws {
+        let harness = try Harness(controllerAvailable: true)
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        harness.receiveControl(harness.controller(
+            messageID: 3,
+            inputID: 1,
+            controllerID: "pad-1",
+            kind: .connected
+        ))
+
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
+    }
+
+    func testInternetControllerForeignTargetClosesSession() throws {
+        let harness = try Harness(controllerAvailable: true)
+        harness.session.onAuthenticatedControllerEvent = { _, _ in true }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        var envelope = harness.controller(
+            messageID: 3,
+            inputID: 1,
+            controllerID: "pad-1",
+            kind: .connected
+        )
+        var target = VSInputTarget()
+        target.displayID = "wrong-display"
+        target.streamID = 1
+        envelope.controllerEvent.target = target
+
+        harness.receiveControl(envelope)
+
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
+    }
+
+    func testInternetControllerSurvivesCompletedVideoReconfiguration() throws {
+        let harness = try Harness(controllerAvailable: true)
+        let stateRouted = expectation(description: "controller state routed after reconfiguration")
+        harness.session.onAuthenticatedControllerEvent = { _, event in
+            if event.kind == .state { stateRouted.fulfill() }
+            return true
+        }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        harness.receiveControl(harness.controller(
+            messageID: 3,
+            inputID: 1,
+            controllerID: "pad-1",
+            kind: .connected
+        ))
+
+        try harness.session.updateRotation(90)
+        harness.receiveControl(harness.videoAccepted(messageID: 4, configEpoch: 2))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        harness.receiveControl(harness.controller(
+            messageID: 5,
+            inputID: 2,
+            controllerID: "pad-1",
+            kind: .state,
+            buttonMask: 1
+        ))
+
+        wait(for: [stateRouted], timeout: 1)
+        XCTAssertFalse(harness.engine.didClose)
+    }
+
+    func testInternetAllowsControllerDisconnectDuringVideoReconfiguration() throws {
+        let harness = try Harness(controllerAvailable: true)
+        let disconnected = expectation(description: "controller disconnected during reconfiguration")
+        harness.session.onAuthenticatedControllerEvent = { _, event in
+            if event.kind == .disconnected { disconnected.fulfill() }
+            return true
+        }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        harness.receiveControl(harness.controller(
+            messageID: 3,
+            inputID: 1,
+            controllerID: "pad-1",
+            kind: .connected
+        ))
+        try harness.session.updateRotation(90)
+        XCTAssertEqual(harness.session.snapshotState(), .awaitingVideoConfiguration)
+
+        harness.receiveControl(harness.controller(
+            messageID: 4,
+            inputID: 2,
+            controllerID: "pad-1",
+            kind: .disconnected
+        ))
+        wait(for: [disconnected], timeout: 1)
+        XCTAssertEqual(harness.session.snapshotState(), .awaitingVideoConfiguration)
+        XCTAssertFalse(harness.engine.didClose)
     }
 
     func testNetworkChangeRequestsFreshSessionInsteadOfSecondOffer() throws {
@@ -1710,7 +1938,8 @@ private final class Harness {
         engineCount: Int = 1,
         freshSessionRecoveryPolicy: NetworkRecoveryPolicy = .standard,
         videoConfigEpoch: UInt64 = 1,
-        replacementSessionEpoch: UInt64? = nil
+        replacementSessionEpoch: UInt64? = nil,
+        controllerAvailable: Bool = false
     ) throws {
         let configurationCount = max(1, engineCount)
         let configurations = (0..<configurationCount).map { index in
@@ -1718,7 +1947,8 @@ private final class Harness {
                 sessionEpoch: index == 0 ? 1 : replacementSessionEpoch ?? 1,
                 videoConfigEpoch: videoConfigEpoch,
                 negotiationTimeoutMilliseconds: negotiationTimeoutMilliseconds,
-                limits: limits
+                limits: limits,
+                controllerAvailable: controllerAvailable
             )
         }
         let pairs = try configurations.map { configuration in
@@ -1763,7 +1993,8 @@ private final class Harness {
         sessionEpoch: UInt64,
         videoConfigEpoch: UInt64,
         negotiationTimeoutMilliseconds: UInt32,
-        limits: InternetTransportLimits
+        limits: InternetTransportLimits,
+        controllerAvailable: Bool
     ) -> InternetProductSessionConfiguration {
         InternetProductSessionConfiguration(
             transport: WebRTCTransportConfiguration(
@@ -1793,6 +2024,7 @@ private final class Harness {
                 bitrateKbps: 20_000,
                 configEpoch: videoConfigEpoch
             ),
+            controllerAvailable: controllerAvailable,
             heartbeatIntervalMilliseconds: 10_000,
             heartbeatTimeoutMilliseconds: 20_000,
             negotiationTimeoutMilliseconds: negotiationTimeoutMilliseconds,
@@ -1810,6 +2042,7 @@ private final class Harness {
         messageID: UInt64,
         supportsStylus: Bool = false,
         supportsStylusExtended: Bool = false,
+        supportsController: Bool = false,
         sessionEpoch: UInt64 = 1
     ) -> VSEnvelope {
         var range = VSProtocolRange()
@@ -1824,6 +2057,7 @@ private final class Harness {
         ]
         if supportsStylus { hello.capabilities.append(.stylus) }
         if supportsStylusExtended { hello.capabilities.append(.stylusExtended) }
+        if supportsController { hello.capabilities.append(.controller) }
         hello.requiredCapabilities = [
             .deviceIdentity, .endToEndEncryption, .mediaRecordFragmentation, .replayProtection,
         ]
@@ -1836,6 +2070,25 @@ private final class Harness {
         hello.resourceLimits = limits
         var envelope = baseEnvelope(messageID: messageID, sessionEpoch: sessionEpoch)
         envelope.clientHello = hello
+        return envelope
+    }
+
+    func controller(
+        messageID: UInt64,
+        inputID: UInt64,
+        controllerID: String,
+        controllerEpoch: UInt64 = 1,
+        kind: VSControllerEventKind,
+        buttonMask: UInt32 = 0
+    ) -> VSEnvelope {
+        var event = VSControllerEvent()
+        event.inputID = inputID
+        event.controllerID = controllerID
+        event.controllerEpoch = controllerEpoch
+        event.kind = kind
+        event.buttonMask = buttonMask
+        var envelope = baseEnvelope(messageID: messageID)
+        envelope.controllerEvent = event
         return envelope
     }
 
@@ -1955,6 +2208,20 @@ private final class Harness {
         }
     }
 
+    func waitForInputAck(inputID: UInt64) -> Bool {
+        waitUntil { self.sentInputAck(inputID: inputID) != nil }
+    }
+
+    func sentInputAck(inputID: UInt64) -> VSInputAck? {
+        engine.sentPlaintext.lazy.compactMap { item -> VSInputAck? in
+            guard item.channel == .control,
+                  let envelope = try? VSEnvelope(serializedBytes: item.payload),
+                  case .inputAck(let acknowledgement) = envelope.payload,
+                  acknowledgement.inputID == inputID else { return nil }
+            return acknowledgement
+        }.first
+    }
+
     private func baseEnvelope(messageID: UInt64, sessionEpoch: UInt64 = 1) -> VSEnvelope {
         var envelope = VSEnvelope()
         envelope.protocolVersion = 1
@@ -1993,6 +2260,23 @@ private final class TestLockedValue<Value>: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return value
+    }
+}
+
+private final class TestLockedArray<Element>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var elements: [Element] = []
+
+    func append(_ element: Element) {
+        lock.lock()
+        elements.append(element)
+        lock.unlock()
+    }
+
+    func snapshot() -> [Element] {
+        lock.lock()
+        defer { lock.unlock() }
+        return elements
     }
 }
 

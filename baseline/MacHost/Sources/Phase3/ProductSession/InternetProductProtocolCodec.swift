@@ -16,6 +16,7 @@ enum InternetProductProtocolError: Error, Equatable, LocalizedError {
     case rejectedVideoConfiguration(String)
     case invalidTouch
     case invalidStylus
+    case invalidController
 
     var errorDescription: String? {
         switch self {
@@ -38,6 +39,7 @@ enum InternetProductProtocolError: Error, Equatable, LocalizedError {
             return "Internet peer rejected the video configuration: \(reason)"
         case .invalidTouch: return "Internet peer sent an invalid touch event."
         case .invalidStylus: return "Internet peer sent an invalid stylus event."
+        case .invalidController: return "Internet peer sent an invalid controller event."
         }
     }
 }
@@ -159,6 +161,16 @@ struct InternetAdaptiveRequestSequence {
     }
 }
 
+
+/// Outcome of admitting a controller event through the shared
+/// `GameControllerStateMachine`. The soft-rejected case keeps the session
+/// alive so the host can send an `InputAck` with the exact reason and let
+/// the client retry once a controller slot frees up.
+enum InternetControllerAdmission {
+    case accepted(GameControllerInputEvent)
+    case rejected(inputID: UInt64, reason: String)
+}
+
 struct InternetProductProtocolCodec {
     static let protocolVersion: UInt32 = 1
     static let requiredCapabilities: Set<VSCapability> = [
@@ -174,6 +186,7 @@ struct InternetProductProtocolCodec {
     let hostName: String
     let peerDeviceID: String
     let inputEnabled: Bool
+    let controllerAvailable: Bool
     private(set) var video: InternetProductVideoConfiguration
     let maximumControlBytes: Int
     let maximumMediaBytes: Int
@@ -183,6 +196,7 @@ struct InternetProductProtocolCodec {
     private(set) var nextFrameID: UInt64 = 1
     private(set) var lastReceivedMessageID: UInt64 = 0
     private(set) var nextConfigEpoch: UInt64?
+    private(set) var controllerStateMachine = GameControllerStateMachine()
 
     init(
         sessionIdentifier: String,
@@ -192,6 +206,7 @@ struct InternetProductProtocolCodec {
         peerDeviceID: String,
         video: InternetProductVideoConfiguration,
         inputEnabled: Bool = true,
+        controllerAvailable: Bool = false,
         limits: InternetTransportLimits
     ) throws {
         guard !sessionIdentifier.isEmpty, sessionEpoch > 0,
@@ -205,6 +220,7 @@ struct InternetProductProtocolCodec {
         self.hostName = hostName
         self.peerDeviceID = peerDeviceID
         self.inputEnabled = inputEnabled
+        self.controllerAvailable = controllerAvailable
         self.video = video
         self.nextConfigEpoch = video.configEpoch < UInt64.max
             ? video.configEpoch + 1
@@ -320,7 +336,8 @@ struct InternetProductProtocolCodec {
         heartbeatIntervalMilliseconds: UInt32,
         peerSupportsTouch: Bool,
         peerSupportsStylus: Bool = false,
-        peerSupportsStylusExtended: Bool = false
+        peerSupportsStylusExtended: Bool = false,
+        peerSupportsController: Bool = false
     ) throws -> Data {
         var accepted = VSSessionAccepted()
         accepted.sessionID = sessionID
@@ -333,6 +350,7 @@ struct InternetProductProtocolCodec {
                 + (inputEnabled && peerSupportsStylus && peerSupportsStylusExtended
                     ? [.stylusExtended]
                     : [])
+                + (controllerAvailable && peerSupportsController ? [.controller] : [])
         ).sorted { $0.rawValue < $1.rawValue }
         guard let negotiatedMaximumEncryptedMediaRecordBytes else {
             throw InternetProductProtocolError.unexpectedMessage(
@@ -350,7 +368,14 @@ struct InternetProductProtocolCodec {
     }
 
     private var inputCapabilities: Set<VSCapability> {
-        inputEnabled ? [.touch, .stylus, .stylusExtended] : []
+        var capabilities: Set<VSCapability> = []
+        if inputEnabled {
+            capabilities.formUnion([.touch, .stylus, .stylusExtended])
+        }
+        if controllerAvailable {
+            capabilities.insert(.controller)
+        }
+        return capabilities
     }
 
     mutating func videoConfiguration() throws -> Data {
@@ -440,6 +465,49 @@ struct InternetProductProtocolCodec {
         var envelope = baseEnvelope()
         envelope.ping = ping
         return try encode(envelope)
+    }
+
+    mutating func inputAck(
+        inputID: UInt64,
+        accepted: Bool,
+        rejectionReason: String = ""
+    ) throws -> Data {
+        var ack = VSInputAck()
+        ack.inputID = inputID
+        ack.accepted = accepted
+        ack.rejectionReason = rejectionReason
+        var envelope = baseEnvelope()
+        envelope.inputAck = ack
+        return try encode(envelope)
+    }
+
+    /// Authorizes a controller event through the shared
+    /// `GameControllerStateMachine`. Hard violations throw
+    /// `InternetProductProtocolError.invalidController` so the session fails
+    /// closed. Only the bounded "too many active controllers" case returns a
+    /// soft rejection so the host can send an `InputAck` with the exact
+    /// reason and keep the session running.
+    mutating func authorizeController(
+        _ event: VSControllerEvent
+    ) throws -> InternetControllerAdmission {
+        guard let controllerEvent = GameControllerInputEvent(wireEvent: event) else {
+            throw InternetProductProtocolError.invalidController
+        }
+        let admission: GameControllerAdmissionResult
+        do {
+            admission = try controllerStateMachine.accept(controllerEvent)
+        } catch {
+            throw InternetProductProtocolError.invalidController
+        }
+        switch admission {
+        case .accepted:
+            return .accepted(controllerEvent)
+        case .rejectedMaximumActiveControllers:
+            return .rejected(
+                inputID: controllerEvent.inputID,
+                reason: GameControllerContract.maximumActiveControllersRejectionReason
+            )
+        }
     }
 
     mutating func mediaFrame(

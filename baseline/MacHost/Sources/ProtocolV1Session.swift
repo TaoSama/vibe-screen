@@ -14,16 +14,21 @@ struct ProtocolV1DisplayInfo: Equatable {
 struct ProtocolV1SessionConfiguration {
     static let version: UInt32 = 1
 
-   static func productionHostCapabilities(touchEnabled: Bool) -> Set<VSCapability> {
+   static func productionHostCapabilities(
+       touchEnabled: Bool,
+       controllerAvailable: Bool = false
+   ) -> Set<VSCapability> {
         // Native pointer/keyboard ride the same input toggle as touch: they
         // require Accessibility to actually inject, but the capability is
         // advertised so a USB session can negotiate them. When input is
         // disabled entirely, only multi-display selection is offered.
         // Client video control tunes the host encoder, needs no Accessibility,
         // and is always offered so the client can adjust bitrate/fps/quality.
-        touchEnabled
+        var capabilities: Set<VSCapability> = touchEnabled
             ? [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions, .usbHidModifierByte]
             : [.multiDisplay, .clientVideoControl]
+        if controllerAvailable { capabilities.insert(.controller) }
+        return capabilities
    }
 
    let sessionID: Data
@@ -78,6 +83,7 @@ enum ProtocolV1SessionAction {
     case pointer(x: Float, y: Float, phase: VSInputPhase, buttonMask: UInt32)
     case scroll(deltaX: Double, deltaY: Double)
     case key(usage: UInt32, pressed: Bool, modifiers: UInt32, text: String)
+    case controller(GameControllerInputEvent)
     case heartbeat
     case requestKeyframe(force: Bool)
     case selectDisplay(id: String)
@@ -108,6 +114,7 @@ final class ProtocolV1SessionCoordinator {
     private var nextMessageID: UInt64 = 1
     private var negotiatedCapabilities: Set<VSCapability> = []
     private var stylusSequenceState = StylusSequenceState()
+    private var controllerSequenceState = GameControllerStateMachine()
     private var advertisedVideoRotation = 0
     private let lock = NSLock()
     /// Identifies the newest in-flight client video-preferences request. The
@@ -629,6 +636,40 @@ final class ProtocolV1SessionCoordinator {
                 text: key.text
             )]
 
+        case .controllerEvent(let controller):
+            guard negotiatedCapabilities.contains(.controller) else {
+                return unsupportedCapability("Controller input was not negotiated.", envelope.messageID)
+            }
+            // During a video reconfiguration the stream is not yet accepted,
+            // so only the neutral DISCONNECTED lifecycle marker is allowed.
+            // This mirrors touch ended/cancelled and key release, which are
+            // the terminal input events permitted while media is gated.
+            guard acceptsControllerKind(controller.kind),
+                  inputTargetMatchesActiveStream(controller.hasTarget ? controller.target : nil),
+                  let event = GameControllerInputEvent(wireEvent: controller) else {
+                return invalidState("ControllerEvent is invalid or media is not ready.", envelope.messageID)
+            }
+            // The state machine owns lifecycle admission and the monotonic
+            // controller input_id. A fifth concurrent CONNECTED is the only
+            // soft rejection; it consumes input_id while preserving all four
+            // admitted controller lifecycles.
+            let admission: GameControllerAdmissionResult
+            do {
+                admission = try controllerSequenceState.accept(event)
+            } catch {
+                return invalidState("ControllerEvent violates the controller state machine.", envelope.messageID)
+            }
+            switch admission {
+            case .accepted:
+                return [.controller(event)]
+            case .rejectedMaximumActiveControllers:
+                var ack = VSInputAck()
+                ack.inputID = event.inputID
+                ack.accepted = false
+                ack.rejectionReason = GameControllerContract.maximumActiveControllersRejectionReason
+                return sendActions(payload: .inputAck(ack), correlationID: envelope.messageID)
+            }
+
         case .setVideoPreferences(let prefs):
             guard negotiatedCapabilities.contains(.clientVideoControl) else {
                 return unsupportedCapability("Client video control was not negotiated.", envelope.messageID)
@@ -721,12 +762,14 @@ final class ProtocolV1SessionCoordinator {
         case .protocolError(let error):
             phase = .failed
             _ = stylusSequenceState.consumeReset()
+            controllerSequenceState.reset()
             pendingHostActionInvocations.removeAll()
             return [.peerError(error), .close]
 
         case .disconnectNotice:
             phase = .closed
             _ = stylusSequenceState.consumeReset()
+            controllerSequenceState.reset()
             pendingHostActionInvocations.removeAll()
             return [.close]
 
@@ -761,6 +804,12 @@ final class ProtocolV1SessionCoordinator {
     func rejectMalformedTransport(_ message: String) -> [ProtocolV1SessionAction] {
         withSessionLock {
             fail(code: .malformedMessage, message: message, correlationID: 0)
+        }
+    }
+
+    func rejectControllerInjection(_ message: String) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            fail(code: .invalidState, message: message, correlationID: 0)
         }
     }
 
@@ -821,6 +870,22 @@ final class ProtocolV1SessionCoordinator {
             return true
         case .awaitingVideoConfig:
             return !pressed
+        default:
+            return false
+        }
+    }
+
+    /// Controller lifecycle events are gated by the streaming phase. During a
+    /// video reconfiguration only the neutral DISCONNECTED marker is allowed,
+    /// matching the touch ended/cancelled and key-release termination
+    /// semantics so a client can cleanly tear down a controller while the
+    /// host renegotiates the video stream.
+    private func acceptsControllerKind(_ kind: VSControllerEventKind) -> Bool {
+        switch phase {
+        case .streaming:
+            return true
+        case .awaitingVideoConfig:
+            return kind == .disconnected
         default:
             return false
         }
@@ -1068,6 +1133,7 @@ final class ProtocolV1SessionCoordinator {
         let sessionScoped = phase != .awaitingClientHello
         phase = .failed
         _ = stylusSequenceState.consumeReset()
+        controllerSequenceState.reset()
         pendingHostActionInvocations.removeAll()
         do {
             return [
@@ -1102,6 +1168,7 @@ final class ProtocolV1SessionCoordinator {
     private func serializationFailure() -> [ProtocolV1SessionAction] {
         phase = .failed
         _ = stylusSequenceState.consumeReset()
+        controllerSequenceState.reset()
         return [.close]
     }
 

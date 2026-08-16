@@ -142,6 +142,118 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         XCTAssertFalse(accepted.negotiatedCapabilities.contains(.stylus))
     }
 
+    func testControllerCapabilityIsIndependentOfTouchInputToggle() throws {
+        var codec = try makeCodec(
+            negotiate: false,
+            inputEnabled: false,
+            controllerAvailable: true
+        )
+        try codec.validate(clientHello(supportsController: true))
+
+        let host = try VSEnvelope(serializedBytes: codec.hostHello()).hostHello
+        let accepted = try VSEnvelope(serializedBytes: codec.sessionAccepted(
+            heartbeatIntervalMilliseconds: 1_000,
+            peerSupportsTouch: false,
+            peerSupportsController: true
+        )).sessionAccepted
+
+        XCTAssertFalse(host.capabilities.contains(.touch))
+        XCTAssertTrue(host.capabilities.contains(.controller))
+        XCTAssertFalse(accepted.negotiatedCapabilities.contains(.touch))
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.controller))
+    }
+
+    func testRequiredControllerCapabilityIsRejectedWhenHostCannotCreateControllers() throws {
+        var codec = try makeCodec(negotiate: false, controllerAvailable: false)
+        var hello = clientHello(supportsController: true)
+        hello.requiredCapabilities.append(.controller)
+
+        XCTAssertThrowsError(try codec.validate(hello)) { error in
+            XCTAssertEqual(
+                error as? InternetProductProtocolError,
+                .missingCapability(.controller)
+            )
+        }
+    }
+
+    func testControllerFifthSoftRejectConsumesInputIDAndPreservesSlots() throws {
+        var codec = try makeCodec(controllerAvailable: true)
+
+        for index in 0..<4 {
+            let admission = try codec.authorizeController(controllerEvent(
+                inputID: UInt64(index + 1),
+                controllerID: "pad-\(index + 1)",
+                kind: .connected
+            ))
+            guard case .accepted = admission else {
+                return XCTFail("Controller \(index + 1) should be admitted")
+            }
+        }
+
+        let fifth = try codec.authorizeController(controllerEvent(
+            inputID: 5,
+            controllerID: "pad-5",
+            kind: .connected
+        ))
+        guard case .rejected(let inputID, let reason) = fifth else {
+            return XCTFail("The fifth controller should be soft-rejected")
+        }
+        XCTAssertEqual(inputID, 5)
+        XCTAssertEqual(reason, "maximum_active_controllers_exceeded")
+        XCTAssertEqual(codec.controllerStateMachine.attachments.count, 4)
+
+        XCTAssertThrowsError(try codec.authorizeController(controllerEvent(
+            inputID: 5,
+            controllerID: "pad-1",
+            kind: .state,
+            buttonMask: 1
+        ))) { error in
+            XCTAssertEqual(error as? InternetProductProtocolError, .invalidController)
+        }
+
+        guard case .accepted = try codec.authorizeController(controllerEvent(
+            inputID: 6,
+            controllerID: "pad-1",
+            kind: .state,
+            buttonMask: 1
+        )) else {
+            return XCTFail("An admitted controller should remain active")
+        }
+        guard case .accepted = try codec.authorizeController(controllerEvent(
+            inputID: 7,
+            controllerID: "pad-2",
+            kind: .disconnected
+        )) else {
+            return XCTFail("Disconnect should release a controller slot")
+        }
+        guard case .accepted(let replacement) = try codec.authorizeController(controllerEvent(
+            inputID: 8,
+            controllerID: "pad-5",
+            controllerEpoch: 2,
+            kind: .connected
+        )) else {
+            return XCTFail("A higher-epoch controller should enter the released slot")
+        }
+        XCTAssertEqual(replacement.controllerID, "pad-5")
+        XCTAssertEqual(codec.controllerStateMachine.attachments.count, 4)
+    }
+
+    func testControllerAuthorizationPreservesCodecValueSemantics() throws {
+        let original = try makeCodec(controllerAvailable: true)
+        var copy = original
+
+        guard case .accepted = try copy.authorizeController(controllerEvent(
+            inputID: 1,
+            controllerID: "pad-1",
+            kind: .connected
+        )) else {
+            return XCTFail("Copied codec should accept the controller")
+        }
+
+        XCTAssertTrue(original.controllerStateMachine.attachments.isEmpty)
+        XCTAssertEqual(copy.controllerStateMachine.attachments["pad-1"], 1)
+    }
+
     func testHandshakeRejectsLegacyOrInvalidMediaRecordOffer() throws {
         for maximum in [0, InternetMediaRecordContract.minimumNegotiatedEncryptedRecordBytes - 1] {
             var codec = try makeCodec(negotiate: false)
@@ -546,7 +658,8 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         controlLimit: Int = 64 * 1_024,
         rotationDegrees: Int = 0,
         negotiate: Bool = true,
-        inputEnabled: Bool = true
+        inputEnabled: Bool = true,
+        controllerAvailable: Bool = false
     ) throws -> InternetProductProtocolCodec {
         var codec = try InternetProductProtocolCodec(
             sessionIdentifier: "product-session",
@@ -565,6 +678,7 @@ final class InternetProductProtocolCodecTests: XCTestCase {
                 rotationDegrees: rotationDegrees
             ),
             inputEnabled: inputEnabled,
+            controllerAvailable: controllerAvailable,
             limits: InternetTransportLimits(
                 maximumControlMessageBytes: controlLimit,
                 maximumBufferedControlBytes: 2 * 1_024 * 1_024,
@@ -579,7 +693,8 @@ final class InternetProductProtocolCodecTests: XCTestCase {
     }
 
     private func clientHello(
-        maximumEncryptedMediaRecordBytes: Int = InternetMediaRecordContract.maximumEncryptedRecordBytes
+        maximumEncryptedMediaRecordBytes: Int = InternetMediaRecordContract.maximumEncryptedRecordBytes,
+        supportsController: Bool = false
     ) -> VSClientHello {
         var range = VSProtocolRange()
         range.minimum = 1
@@ -591,11 +706,28 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         hello.deviceID = "device-1"
         hello.deviceName = "Android"
         hello.capabilities = Array(InternetProductProtocolCodec.requiredCapabilities) + [.touch]
+        if supportsController { hello.capabilities.append(.controller) }
         hello.requiredCapabilities = Array(InternetProductProtocolCodec.requiredCapabilities)
         hello.codecs = [.hevc]
         hello.transports = [.internet]
         hello.resourceLimits = limits
         return hello
+    }
+
+    private func controllerEvent(
+        inputID: UInt64,
+        controllerID: String,
+        controllerEpoch: UInt64 = 1,
+        kind: VSControllerEventKind,
+        buttonMask: UInt32 = 0
+    ) -> VSControllerEvent {
+        var event = VSControllerEvent()
+        event.inputID = inputID
+        event.controllerID = controllerID
+        event.controllerEpoch = controllerEpoch
+        event.kind = kind
+        event.buttonMask = buttonMask
+        return event
     }
 
     private func envelope(messageID: UInt64, epoch: UInt64) -> VSEnvelope {

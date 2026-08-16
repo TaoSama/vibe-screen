@@ -75,6 +75,7 @@ final class InternetProductSession: EncodedFrameSink {
         UInt64, UInt64, UInt32, Float, Float, VSInputPhase, Double, Double, Double,
         VSStylusToolKind, UInt32, VSStylusContactState
     ) -> Bool)?
+    var onAuthenticatedControllerEvent: ((UInt64, GameControllerInputEvent) -> Bool)?
     var onKeyframeRequired: (() -> Void)?
     var onFreshSessionRecoveryRequired: ((Int) -> Void)?
     var onAdaptiveProfileRequested: ((
@@ -118,6 +119,7 @@ final class InternetProductSession: EncodedFrameSink {
     private var peerSupportsTouch = false
     private var peerSupportsStylus = false
     private var peerSupportsStylusExtended = false
+    private var peerSupportsController = false
     private var stylusSequenceState = StylusSequenceState()
     private var adaptiveRequestSequence = InternetAdaptiveRequestSequence()
     private var pendingAdaptiveRequest: InternetAdaptiveRequestToken?
@@ -186,6 +188,7 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsTouch = false
             peerSupportsStylus = false
             peerSupportsStylusExtended = false
+            peerSupportsController = false
             _ = stylusSequenceState.consumeReset()
             resetAdaptiveVideoState()
             configuration = nil
@@ -214,6 +217,7 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsTouch = false
             peerSupportsStylus = false
             peerSupportsStylusExtended = false
+            peerSupportsController = false
             _ = stylusSequenceState.consumeReset()
             resetAdaptiveVideoState()
             let changed = state != .revoked
@@ -508,6 +512,7 @@ final class InternetProductSession: EncodedFrameSink {
             peerDeviceID: configuration.peerDeviceID,
             video: configuration.video,
             inputEnabled: configuration.inputEnabled,
+            controllerAvailable: configuration.controllerAvailable,
             limits: configuration.limits
         )
         let transport = WebRTCInternetTransport(
@@ -524,6 +529,7 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsTouch = false
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
+        peerSupportsController = false
         _ = stylusSequenceState.consumeReset()
         resetAdaptiveVideoState()
         nextHeartbeatSequence = 1
@@ -654,12 +660,15 @@ final class InternetProductSession: EncodedFrameSink {
                 peerSupportsStylus = codec.inputEnabled && hello.capabilities.contains(.stylus)
                 peerSupportsStylusExtended = peerSupportsStylus
                     && hello.capabilities.contains(.stylusExtended)
+                peerSupportsController = codec.controllerAvailable
+                    && hello.capabilities.contains(.controller)
                 try sendControl(codec.hostHello())
                 try sendControl(codec.sessionAccepted(
                     heartbeatIntervalMilliseconds: configuration?.heartbeatIntervalMilliseconds ?? 1_000,
                     peerSupportsTouch: peerSupportsTouch,
                     peerSupportsStylus: peerSupportsStylus,
-                    peerSupportsStylusExtended: peerSupportsStylusExtended
+                    peerSupportsStylusExtended: peerSupportsStylusExtended,
+                    peerSupportsController: peerSupportsController
                 ))
                 try sendControl(codec.videoConfiguration())
                 self.codec = codec
@@ -749,6 +758,10 @@ final class InternetProductSession: EncodedFrameSink {
                     streamID: codec.video.streamID
                 )
 
+            case .controllerEvent(let controller) where isStreaming
+                || (state == .awaitingVideoConfiguration && controller.kind == .disconnected):
+                try routeController(controller, sessionEpoch: codec.sessionEpoch, codec: &codec)
+
             case .disconnectNotice:
                 self.codec = codec
                 beginFreshSessionRecovery(attempt: 1, generation: generation)
@@ -763,6 +776,7 @@ final class InternetProductSession: EncodedFrameSink {
                 case .requestKeyframe: payloadName = "RequestKeyframe"
                 case .touchEvent: payloadName = "TouchEvent"
                 case .stylusEvent: payloadName = "StylusEvent"
+                case .controllerEvent: payloadName = "ControllerEvent"
                 case .disconnectNotice: payloadName = "DisconnectNotice"
                 case nil: payloadName = "empty payload"
                 default: payloadName = "unsupported payload"
@@ -883,6 +897,44 @@ final class InternetProductSession: EncodedFrameSink {
               contactState == .contact || contactState == .proximity,
               stylus.buttonMask & ~UInt32(0b11) == 0 else { return false }
         return contactState != .proximity || stylus.pressure == 0
+    }
+
+    private func routeController(
+        _ controller: VSControllerEvent,
+        sessionEpoch: UInt64,
+        codec: inout InternetProductProtocolCodec
+    ) throws {
+        guard peerSupportsController else {
+            throw InternetProductProtocolError.missingCapability(.controller)
+        }
+        let targetMatches = !controller.hasTarget
+            || ((controller.target.streamID == 0
+                    || controller.target.streamID == codec.video.streamID)
+                && (controller.target.displayID.isEmpty
+                    || controller.target.displayID == "internet-display"))
+        guard targetMatches else {
+            throw InternetProductProtocolError.invalidController
+        }
+
+        switch try codec.authorizeController(controller) {
+        case .accepted(let event):
+            // Commit admission before entering composition code. A callback may
+            // synchronously close the session; handleControl must never restore
+            // this retired codec after that reentrant close.
+            self.codec = codec
+            guard onAuthenticatedControllerEvent?(sessionEpoch, event) == true else {
+                throw InternetProductProtocolError.invalidController
+            }
+
+        case .rejected(let inputID, let reason):
+            let acknowledgement = try codec.inputAck(
+                inputID: inputID,
+                accepted: false,
+                rejectionReason: reason
+            )
+            self.codec = codec
+            try sendControl(acknowledgement)
+        }
     }
 
     private func beginAdaptiveProfileRequest(
@@ -1069,6 +1121,7 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsTouch = false
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
+        peerSupportsController = false
         _ = stylusSequenceState.consumeReset()
         resetAdaptiveVideoState()
         let recoveringState = InternetProductSessionState.recovering(attempt: sessionAttempt)
@@ -1274,6 +1327,7 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsTouch = false
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
+        peerSupportsController = false
         _ = stylusSequenceState.consumeReset()
         resetAdaptiveVideoState()
         // Close the retired transport before publishing the terminal state so

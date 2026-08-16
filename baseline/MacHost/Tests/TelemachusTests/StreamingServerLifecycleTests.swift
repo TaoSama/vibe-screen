@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
 import Network
+import VibeScreenProtocol
 @testable import Telemachus
 
 final class StreamingServerLifecycleTests: XCTestCase {
@@ -312,6 +313,146 @@ final class StreamingServerLifecycleTests: XCTestCase {
         wait(for: [upgraded], timeout: 2)
     }
 
+    func testProtocolV1ControllerFailureDropsLaterQueuedDelivery() throws {
+        let port = testPort(offset: 11)
+        let server = StreamingServer(port: port)
+        server.controllerAvailable = true
+        let streamingReady = expectation(description: "controller session streaming")
+        let initialKeyframeRequested = expectation(description: "initial keyframe requested")
+        let controllerCallbacksDrained = expectation(description: "queued controller callbacks drained")
+        let networkBarrierCompleted = expectation(description: "network barrier completed")
+        let controllerBatchParsed = DispatchSemaphore(value: 0)
+        let resumeNetworkQueue = DispatchSemaphore(value: 0)
+        let callbackState = StreamingServerLifecycleCallbackState()
+        server.onControllerEvent = { _, _ in
+            if callbackState.recordControllerDelivery() == 1 {
+                XCTAssertEqual(
+                    controllerBatchParsed.wait(timeout: .now() + 2),
+                    .success
+                )
+            }
+            return false
+        }
+        server.onClientConnected = { _ in streamingReady.fulfill() }
+        server.onKeyframeRequested = { _, _ in
+            if callbackState.recordKeyframeRequest() == 1 {
+                initialKeyframeRequested.fulfill()
+            } else {
+                controllerBatchParsed.signal()
+                DispatchQueue.main.async {
+                    controllerCallbacksDrained.fulfill()
+                    resumeNetworkQueue.signal()
+                }
+                let result = resumeNetworkQueue.wait(timeout: .now() + 2)
+                callbackState.storeNetworkBarrierResult(result)
+                networkBarrierCompleted.fulfill()
+            }
+        }
+        server.onCodecNegotiated = { _, _, completion in
+            completion(NegotiatedDisplayConfiguration(
+                width: 1_920,
+                height: 1_080,
+                rotation: 0
+            ))
+        }
+        defer { server.stop() }
+        try server.start()
+
+        let client = try readyClient(port: port)
+        defer { client.cancel() }
+        try send(Data([ProtocolV1Upgrade.offer]), on: client)
+        XCTAssertEqual(try receiveExactly(2, from: client), ProtocolV1Upgrade.acknowledgement)
+
+        var range = VSProtocolRange()
+        range.minimum = 1
+        range.maximum = 1
+        var hello = VSClientHello()
+        hello.supportedProtocols = range
+        hello.deviceID = "controller-fail-closed"
+        hello.deviceName = "Controller fail-closed"
+        hello.capabilities = [.touch, .multiDisplay, .controller]
+        hello.requiredCapabilities = [.touch]
+        hello.codecs = [.hevc]
+        hello.transports = [.usb]
+        try sendEnvelope(
+            envelope(id: 1, payload: .clientHello(hello), scoped: false),
+            on: client
+        )
+        _ = try receiveEnvelope(from: client)
+        let acceptedEnvelope = try receiveEnvelope(from: client)
+        let accepted = try XCTUnwrap(acceptedEnvelope.sessionAccepted)
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.controller))
+
+        try sendEnvelope(envelope(
+            id: 2,
+            payload: .listDisplaysRequest(VSListDisplaysRequest()),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ), on: client)
+        _ = try receiveEnvelope(from: client)
+        var start = VSStartDisplayRequest()
+        start.mode = .existing
+        try sendEnvelope(envelope(
+            id: 3,
+            payload: .startDisplayRequest(start),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ), on: client)
+        _ = try receiveEnvelope(from: client)
+        let videoEnvelope = try receiveEnvelope(from: client)
+        let video = try XCTUnwrap(videoEnvelope.videoConfig)
+        var result = VSVideoConfigResult()
+        result.configEpoch = video.configEpoch
+        result.streamID = video.streamID
+        result.accepted = true
+        try sendEnvelope(envelope(
+            id: 4,
+            payload: .videoConfigResult(result),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ), on: client)
+        wait(for: [streamingReady, initialKeyframeRequested], timeout: 2)
+
+        var connected = VSControllerEvent()
+        connected.inputID = 1
+        connected.controllerID = "pad-1"
+        connected.controllerEpoch = 1
+        connected.kind = .connected
+        let connectedFrame = try encodedEnvelope(envelope(
+            id: 5,
+            payload: .controllerEvent(connected),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ))
+        var state = connected
+        state.inputID = 2
+        state.kind = .state
+        state.leftStickX = 0.5
+        let stateFrame = try encodedEnvelope(envelope(
+            id: 6,
+            payload: .controllerEvent(state),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ))
+        var requestKeyframe = VSRequestKeyframe()
+        requestKeyframe.streamID = video.streamID
+        requestKeyframe.reasonCode = "controller-test-barrier"
+        let barrierFrame = try encodedEnvelope(envelope(
+            id: 7,
+            payload: .requestKeyframe(requestKeyframe),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ))
+        try send(connectedFrame + stateFrame + barrierFrame, on: client)
+
+        let errorEnvelope = try receiveEnvelope(from: client)
+        XCTAssertEqual(errorEnvelope.protocolError.code, .invalidState)
+        XCTAssertTrue(errorEnvelope.protocolError.message.contains("Controller injection failed"))
+        wait(for: [controllerCallbacksDrained, networkBarrierCompleted], timeout: 2)
+        XCTAssertEqual(callbackState.networkBarrierResult(), .success)
+        XCTAssertEqual(callbackState.controllerDeliveryCount(), 1)
+    }
+
     private func readyClient(port: UInt16) throws -> NWConnection {
         let ready = expectation(description: "client ready")
         var failure: Error?
@@ -337,6 +478,78 @@ final class StreamingServerLifecycleTests: XCTestCase {
         return client
     }
 
+    private func envelope(
+        id: UInt64,
+        payload: VSEnvelope.OneOf_Payload,
+        sessionID: Data = Data(),
+        sessionEpoch: UInt64 = 0,
+        scoped: Bool = true
+    ) -> VSEnvelope {
+        var envelope = VSEnvelope()
+        envelope.protocolVersion = 1
+        envelope.messageID = id
+        if scoped {
+            envelope.sessionID = sessionID
+            envelope.sessionEpoch = sessionEpoch
+        }
+        envelope.sentAtMonotonicNs = id
+        envelope.payload = payload
+        return envelope
+    }
+
+    private func sendEnvelope(_ envelope: VSEnvelope, on client: NWConnection) throws {
+        try send(try encodedEnvelope(envelope), on: client)
+    }
+
+    private func encodedEnvelope(_ envelope: VSEnvelope) throws -> Data {
+        try ProtocolV1TransportFrame(
+            channel: .control,
+            payload: try envelope.serializedData()
+        ).encoded()
+    }
+
+    private func send(_ data: Data, on client: NWConnection) throws {
+        let sent = expectation(description: "client send")
+        var failure: Error?
+        client.send(content: data, completion: .contentProcessed { error in
+            failure = error
+            sent.fulfill()
+        })
+        wait(for: [sent], timeout: 2)
+        if let failure { throw failure }
+    }
+
+    private func receiveEnvelope(from client: NWConnection) throws -> VSEnvelope {
+        let header = try receiveExactly(5, from: client)
+        XCTAssertEqual(header.first, ProtocolV1LogicalChannel.control.rawValue)
+        let length = header.dropFirst().reduce(UInt32.zero) { ($0 << 8) | UInt32($1) }
+        return try VSEnvelope(serializedBytes: receiveExactly(Int(length), from: client))
+    }
+
+    private func receiveExactly(_ count: Int, from client: NWConnection) throws -> Data {
+        var result = Data()
+        while result.count < count {
+            let received = expectation(description: "client receive")
+            var chunk: Data?
+            var failure: Error?
+            var complete = false
+            client.receive(
+                minimumIncompleteLength: 1,
+                maximumLength: count - result.count
+            ) { data, _, isComplete, error in
+                chunk = data
+                failure = error
+                complete = isComplete
+                received.fulfill()
+            }
+            wait(for: [received], timeout: 2)
+            if let failure { throw failure }
+            if let chunk { result.append(chunk) }
+            if complete && result.count < count { throw TestError.connectionClosed }
+        }
+        return result
+    }
+
     private func handshakeRequest(token: Data, name: String) -> Data {
         let nameData = Data(name.utf8)
         var request = Data(HandshakeCodec.requestMagic)
@@ -356,5 +569,42 @@ final class StreamingServerLifecycleTests: XCTestCase {
 
     private func testPort(offset: UInt16) -> UInt16 {
         56_000 + UInt16(ProcessInfo.processInfo.processIdentifier % 500) + offset
+    }
+
+    private enum TestError: Error {
+        case connectionClosed
+    }
+}
+
+private final class StreamingServerLifecycleCallbackState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var controllerDeliveries = 0
+    private var keyframeRequests = 0
+    private var barrierResult: DispatchTimeoutResult?
+
+    func recordControllerDelivery() -> Int {
+        lock.withLock {
+            controllerDeliveries += 1
+            return controllerDeliveries
+        }
+    }
+
+    func controllerDeliveryCount() -> Int {
+        lock.withLock { controllerDeliveries }
+    }
+
+    func recordKeyframeRequest() -> Int {
+        lock.withLock {
+            keyframeRequests += 1
+            return keyframeRequests
+        }
+    }
+
+    func storeNetworkBarrierResult(_ result: DispatchTimeoutResult) {
+        lock.withLock { barrierResult = result }
+    }
+
+    func networkBarrierResult() -> DispatchTimeoutResult? {
+        lock.withLock { barrierResult }
     }
 }

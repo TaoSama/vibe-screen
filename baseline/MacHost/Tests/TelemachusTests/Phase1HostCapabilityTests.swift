@@ -278,6 +278,19 @@ final class Phase1HostCapabilityTests: XCTestCase {
         XCTAssertTrue(gate.isCurrent(2))
     }
 
+    func testInvalidatedGenerationRejectsLaterQueuedControllerDelivery() {
+        let gate = ClientCallbackGenerationGate()
+        gate.advance(to: 7)
+        var delivered = 0
+
+        XCTAssertTrue(gate.performIfCurrent(7) { delivered += 1 })
+        XCTAssertTrue(gate.invalidateIfCurrent(7))
+        XCTAssertFalse(gate.performIfCurrent(7) { delivered += 1 })
+        XCTAssertFalse(gate.invalidateIfCurrent(7))
+        XCTAssertEqual(delivered, 1)
+        XCTAssertTrue(gate.isCurrent(8))
+    }
+
     @MainActor
     func testAutomaticLaunchIntentIsConsumedOnlyOnce() {
         let launch = AutomaticLaunchCoordinator(enabled: true)

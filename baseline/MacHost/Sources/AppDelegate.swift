@@ -218,6 +218,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Injects client-driven native pointer/scroll/keyboard input as CGEvents.
     /// Shares the touch coordinate mapping via StreamInputMapping.
     private let streamInputInjector = StreamInputInjector()
+    private lazy var gameControllerRuntime = GameControllerRuntimeAvailability.probe()
+    private lazy var sessionGameControllerInput: SessionGameControllerInput? =
+        gameControllerRuntime.factory.map {
+            SessionGameControllerInput(injector: GameControllerInjector(factory: $0))
+        }
+    private var internetControllerInputRoute: SessionGameControllerInputRoute?
     private var primaryButtonOwner = PrimaryButtonOwnerState()
     let pairedDeviceStore = PairedDeviceStore()
     let windowRecoveryManager = WindowRecoveryManager()
@@ -293,6 +299,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // flashes the onboarding flow for an already-authorized installation.
         settings.hasScreenRecordingPermission = CGPreflightScreenCaptureAccess()
         settings.hasAccessibilityPermission = AXIsProcessTrusted()
+        settings.controllerForwardingAvailable = gameControllerRuntime.factory != nil
         settings.evaluatePostUpdatePermissionHint()
 
         // Create menu bar item
@@ -1901,6 +1908,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
             let configuredServer = streamingServer
             streamingServer?.touchEnabled = settings.touchEnabled
+            streamingServer?.controllerAvailable = gameControllerRuntime.factory != nil
+            if let reason = gameControllerRuntime.unavailableReason {
+                debugLog("Controller forwarding unavailable: \(reason)")
+            }
             if configuration.connectionMode == .wireless {
                 streamingServer?.onWirelessClientPaired = {
                     [weak self, weak configuredServer] deviceName, clientGeneration in
@@ -2070,7 +2081,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                             server: configuredServer,
                             clientGeneration: clientGeneration
                     ) {
-                        self.cancelActiveInput(releaseDrag: true)
+                        self.cancelSessionInput(releaseDrag: true)
                         self.reportWindowRecovery(
                             self.windowRecoveryManager.restoreManagedWindows()
                         )
@@ -2132,7 +2143,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                             server: configuredServer,
                             clientGeneration: clientGeneration
                    ) {
-                       self.cancelActiveInput(releaseDrag: true)
+                       self.cancelSessionInput(releaseDrag: true)
                    }
                }
            }
@@ -2209,6 +2220,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         )
                     }
                 }
+            }
+            streamingServer?.onControllerEvent = {
+                [weak self, weak configuredServer] event, clientGeneration in
+                guard let self, let configuredServer else { return false }
+                var injected = false
+                let accepted = self.performSessionCallback(
+                    token: startToken,
+                    server: configuredServer,
+                    clientGeneration: clientGeneration
+                ) {
+                    do {
+                        guard let controllerInput = self.sessionGameControllerInput else {
+                            throw GameControllerInputError.unavailable(
+                                self.gameControllerRuntime.unavailableReason
+                                    ?? "runtime availability check failed"
+                            )
+                        }
+                        try controllerInput.handle(event, generation: clientGeneration)
+                        injected = true
+                    } catch {
+                        debugLog("Controller injection failed: \(error.localizedDescription)")
+                    }
+                }
+                if !accepted {
+                    debugLog("Discarded stale controller input for generation \(clientGeneration)")
+                }
+                return accepted && injected
             }
 
            streamingServer?.onStats = {
@@ -2488,7 +2526,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 bitrateKbps: settings.effectiveBitrate * 1_000,
                 rotationDegrees: settings.rotation
             ),
-            inputEnabled: settings.touchEnabled
+            inputEnabled: settings.touchEnabled,
+            controllerAvailable: gameControllerRuntime.factory != nil
         )
     }
 
@@ -2516,16 +2555,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         _ session: InternetProductSession,
         sessionToken: UInt64
     ) {
+        let controllerRoute = sessionGameControllerInput.map {
+            SessionGameControllerInputRoute(input: $0)
+        }
+        internetControllerInputRoute?.invalidate()
+        internetControllerInputRoute = controllerRoute
         session.onStateChanged = { [weak self, weak session] state in
             Task { @MainActor in
                 guard let self, let session,
                       self.serverLifecycle.ownsSession(sessionToken),
                       self.internetProductSession === session else { return }
-                if case .streaming = state {
-                    // Keep the active pen/touch sequence while media remains live.
-                } else {
-                    self.cancelActiveInput(releaseDrag: true)
-                }
+                state.inputCleanupScope.apply(
+                    transientReset: {
+                        // Runtime video renegotiation is still the same product
+                        // session. Release transient pointer/stylus state without
+                        // tearing down attached virtual controllers.
+                        self.cancelActiveInput(releaseDrag: true)
+                    },
+                    fullSessionReset: {
+                        self.cancelSessionInput(releaseDrag: true)
+                    }
+                )
                 if state == .closed {
                     self.applyInternetSessionState(state)
                     await self.stopServer(preserveRecoveryState: true)
@@ -2602,6 +2652,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             }
             return injected
+        }
+        session.onAuthenticatedControllerEvent = {
+            sessionEpoch, event in
+            guard let controllerRoute else { return false }
+            do {
+                try controllerRoute.handle(event, generation: sessionEpoch)
+                return true
+            } catch {
+                debugLog("Internet controller injection failed: \(error.localizedDescription)")
+                return false
+            }
         }
         session.onKeyframeRequired = { [weak self, weak session] in
             let request = {
@@ -3250,7 +3311,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        cancelActiveInput(releaseDrag: true)
+        internetControllerInputRoute?.invalidate()
+        internetControllerInputRoute = nil
+        cancelSessionInput(releaseDrag: true)
         reportWindowRecovery(windowRecoveryManager.restoreManagedWindows())
         let captureToStop = screenCapture
         captureToStop?.onTerminalCaptureFailure = nil
@@ -4522,6 +4585,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         momentumTimer = nil
         momentumVelocityX = 0
         momentumVelocityY = 0
+    }
+
+    private func cancelSessionInput(releaseDrag: Bool) {
+        cancelActiveInput(releaseDrag: releaseDrag)
+        do {
+            try sessionGameControllerInput?.reset()
+        } catch {
+            debugLog("Virtual controller reset failed: \(error.localizedDescription)")
+        }
     }
 
    private func cancelActiveInput(releaseDrag: Bool) {

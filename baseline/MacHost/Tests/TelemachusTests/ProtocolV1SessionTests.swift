@@ -73,12 +73,42 @@ final class ProtocolV1SessionTests: XCTestCase {
             "client_hello", "host_hello", "session_accepted",
             "list_displays_request", "list_displays_response",
             "start_display_request", "start_display_response", "video_config",
-            "video_config_result", "touch", "stylus", "ping", "pong", "protocol_error"
+            "video_config_result", "touch", "stylus", "ping", "pong", "protocol_error",
+            "controller_connected", "controller_state", "controller_disconnected"
         ]
         for name in controls {
             let expected = try Data(contentsOf: root.appendingPathComponent("\(name).binpb"))
             XCTAssertEqual(try VSEnvelope(serializedBytes: expected).serializedData(), expected, name)
         }
+        // The three controller fixtures form one controller lifecycle on the
+        // same negotiated stream: they share controller_id, controller_epoch,
+        // and target, while input_id strictly increases across the
+        // CONNECTED -> STATE -> DISCONNECTED sequence.
+        let controllerNames = ["controller_connected", "controller_state", "controller_disconnected"]
+        let controllerEvents = try controllerNames.map { name -> VSControllerEvent in
+            let bytes = try Data(contentsOf: root.appendingPathComponent("\(name).binpb"))
+            let envelope = try VSEnvelope(serializedBytes: bytes)
+            guard case .controllerEvent(let event)? = envelope.payload else {
+                throw TestError.missingProtocolError
+            }
+            return event
+        }
+        let connected = controllerEvents[0]
+        let state = controllerEvents[1]
+        let disconnected = controllerEvents[2]
+        XCTAssertEqual(connected.controllerID, state.controllerID)
+        XCTAssertEqual(state.controllerID, disconnected.controllerID)
+        XCTAssertEqual(connected.controllerEpoch, state.controllerEpoch)
+        XCTAssertEqual(state.controllerEpoch, disconnected.controllerEpoch)
+        XCTAssertTrue(connected.hasTarget && state.hasTarget && disconnected.hasTarget)
+        XCTAssertEqual(connected.target.displayID, state.target.displayID)
+        XCTAssertEqual(state.target.displayID, disconnected.target.displayID)
+        XCTAssertEqual(connected.target.streamID, state.target.streamID)
+        XCTAssertEqual(state.target.streamID, disconnected.target.streamID)
+        XCTAssertTrue(connected.inputID < state.inputID)
+        XCTAssertTrue(state.inputID < disconnected.inputID)
+        XCTAssertEqual(controllerState(connected), .neutral)
+        XCTAssertEqual(controllerState(disconnected), .neutral)
         let headerBytes = try Data(contentsOf: root.appendingPathComponent("media_packet_header.binpb"))
         let header = try VSMediaPacketHeader(serializedBytes: headerBytes)
         XCTAssertEqual(try header.serializedData(), headerBytes)
@@ -832,6 +862,370 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(session.phase, .failed)
     }
 
+    func testProductionHostCapabilitiesIncludeControllerOnlyWhenAvailable() {
+        let withoutController = ProtocolV1SessionConfiguration.productionHostCapabilities(
+            touchEnabled: true,
+            controllerAvailable: false
+        )
+        XCTAssertFalse(withoutController.contains(.controller))
+
+        let withController = ProtocolV1SessionConfiguration.productionHostCapabilities(
+            touchEnabled: true,
+            controllerAvailable: true
+        )
+        XCTAssertTrue(withController.contains(.controller))
+
+        // Controller is independent of the touch input toggle: even when
+        // touch/keyboard/pointer are disabled, an available controller is
+        // still advertised so the client can negotiate it.
+        let inputDisabled = ProtocolV1SessionConfiguration.productionHostCapabilities(
+            touchEnabled: false,
+            controllerAvailable: true
+        )
+        XCTAssertTrue(inputDisabled.contains(.controller))
+    }
+
+    func testControllerEventRequiresNegotiatedCapability() throws {
+        let session = try readySession()
+        let actions = session.handleControl(
+            try envelope(id: 4, payload: .controllerEvent(controllerEvent(kind: .connected))).serializedData()
+        )
+        XCTAssertEqual(try protocolError(from: actions).code, .unsupportedCapability)
+    }
+
+    func testControllerLifecycleRoutesConnectedStateDisconnected() throws {
+        let session = try readyControllerSession()
+
+        let connected = session.handleControl(
+            try envelope(id: 4, payload: .controllerEvent(controllerEvent(kind: .connected))).serializedData()
+        )
+        guard case .controller(let connectedEvent)? = connected.first else {
+            return XCTFail("Expected a connected controller action")
+        }
+        XCTAssertEqual(connectedEvent.kind, .connected)
+        XCTAssertEqual(connectedEvent.controllerID, "pad-1")
+        XCTAssertEqual(connectedEvent.controllerEpoch, 1)
+
+        var stateEvent = controllerEvent(kind: .state)
+        stateEvent.inputID = 2
+        stateEvent.buttonMask = 1
+        stateEvent.leftStickX = 0.5
+        let stateActions = session.handleControl(
+            try envelope(id: 5, payload: .controllerEvent(stateEvent)).serializedData()
+        )
+        guard case .controller(let routedState)? = stateActions.first else {
+            return XCTFail("Expected a state controller action")
+        }
+        XCTAssertEqual(routedState.kind, .state)
+        XCTAssertEqual(routedState.state.buttonMask, 1)
+        XCTAssertEqual(routedState.state.leftX, 0.5)
+
+        var disconnected = controllerEvent(kind: .disconnected)
+        disconnected.inputID = 3
+        let disconnectActions = session.handleControl(
+            try envelope(id: 6, payload: .controllerEvent(disconnected)).serializedData()
+        )
+        guard case .controller(let disconnectedEvent)? = disconnectActions.first else {
+            return XCTFail("Expected a disconnected controller action")
+        }
+        XCTAssertEqual(disconnectedEvent.kind, .disconnected)
+    }
+
+    func testControllerForeignTargetIsRejected() throws {
+        let session = try readyControllerSession()
+
+        var foreign = controllerEvent(kind: .connected)
+        var target = VSInputTarget()
+        target.displayID = "some-other-display"
+        target.streamID = 99
+        foreign.target = target
+        let actions = session.handleControl(
+            try envelope(id: 4, payload: .controllerEvent(foreign)).serializedData()
+        )
+        XCTAssertEqual(try protocolError(from: actions).code, .invalidState)
+
+        // A target that names the active display/stream is accepted.
+        let matched = try readyControllerSession()
+        var activeTarget = VSInputTarget()
+        activeTarget.displayID = "active-display"
+        activeTarget.streamID = 1
+        var matchedEvent = controllerEvent(kind: .connected)
+        matchedEvent.target = activeTarget
+        XCTAssertTrue(matched.handleControl(
+            try envelope(id: 4, payload: .controllerEvent(matchedEvent)).serializedData()
+        ).contains { if case .controller = $0 { true } else { false } })
+    }
+
+    func testControllerFailClosedForInvalidStateAndTransitions() throws {
+        // Reserved button bits (bit 13 and above) are invalid.
+        let reservedBits = try readyControllerSession()
+        _ = reservedBits.handleControl(
+            try envelope(id: 4, payload: .controllerEvent(controllerEvent(kind: .connected))).serializedData()
+        )
+        var reserved = controllerEvent(kind: .state)
+        reserved.inputID = 2
+        reserved.buttonMask = 1 << 13
+        XCTAssertEqual(
+            try protocolError(from: reservedBits.handleControl(
+                try envelope(id: 5, payload: .controllerEvent(reserved)).serializedData()
+            )).code,
+            .invalidState
+        )
+
+        // STATE before CONNECTED is an invalid lifecycle transition.
+        let stateBeforeConnected = try readyControllerSession()
+        var earlyState = controllerEvent(kind: .state)
+        earlyState.buttonMask = 1
+        XCTAssertEqual(
+            try protocolError(from: stateBeforeConnected.handleControl(
+                try envelope(id: 4, payload: .controllerEvent(earlyState)).serializedData()
+            )).code,
+            .invalidState
+        )
+
+        // CONNECTED must carry a neutral state.
+        let nonNeutralConnected = try readyControllerSession()
+        var nonNeutral = controllerEvent(kind: .connected)
+        nonNeutral.buttonMask = 1
+        XCTAssertEqual(
+            try protocolError(from: nonNeutralConnected.handleControl(
+                try envelope(id: 4, payload: .controllerEvent(nonNeutral)).serializedData()
+            )).code,
+            .invalidState
+        )
+
+        // Reusing the same epoch for a second CONNECTED on the same controller
+        // is invalid: epochs must strictly increase per controller_id.
+        let reusedEpoch = try readyControllerSession()
+        _ = reusedEpoch.handleControl(
+            try envelope(id: 4, payload: .controllerEvent(controllerEvent(kind: .connected))).serializedData()
+        )
+        var secondConnected = controllerEvent(kind: .connected)
+        secondConnected.inputID = 2
+        XCTAssertEqual(
+            try protocolError(from: reusedEpoch.handleControl(
+                try envelope(id: 5, payload: .controllerEvent(secondConnected)).serializedData()
+            )).code,
+            .invalidState
+        )
+    }
+
+    func testControllerFailClosedForOutOfRangeScalars() throws {
+        let cases: [(String, (inout VSControllerEvent) -> Void)] = [
+            ("stick", { $0.leftStickX = 1.01 }),
+            ("trigger", { $0.rightTrigger = -0.01 }),
+            ("hat", { $0.hatX = 2 }),
+        ]
+
+        for (name, mutate) in cases {
+            let session = try readyControllerSession()
+            _ = session.handleControl(
+                try envelope(
+                    id: 4,
+                    payload: .controllerEvent(controllerEvent(kind: .connected))
+                ).serializedData()
+            )
+            var invalid = controllerEvent(kind: .state)
+            invalid.inputID = 2
+            mutate(&invalid)
+            let error = try protocolError(from: session.handleControl(
+                try envelope(id: 5, payload: .controllerEvent(invalid)).serializedData()
+            ))
+            XCTAssertEqual(error.code, .invalidState, name)
+        }
+    }
+
+    func testControllerFifthConnectedRejectedWithInputAckWithoutClosingSession() throws {
+        let session = try readyControllerSession()
+
+        // Connect four controllers. Each uses a distinct controller_id and a
+        // strictly increasing input_id.
+        for index in 0..<4 {
+            var event = controllerEvent(kind: .connected)
+            event.inputID = UInt64(index + 1)
+            event.controllerID = "pad-\(index + 1)"
+            let actions = session.handleControl(
+                try envelope(id: UInt64(4 + index), payload: .controllerEvent(event)).serializedData()
+            )
+            guard case .controller = actions.first else {
+                return XCTFail("Expected controller \(index + 1) to connect")
+            }
+        }
+
+        // The fifth CONNECTED must be rejected with a session-scoped InputAck
+        // whose accepted is false and rejection_reason is the exact protocol
+        // string. The session must stay open and the four admitted controllers
+        // must remain active.
+        var fifth = controllerEvent(kind: .connected)
+        fifth.inputID = 5
+        fifth.controllerID = "pad-5"
+        let rejectionActions = session.handleControl(
+            try envelope(id: 8, payload: .controllerEvent(fifth)).serializedData()
+        )
+        let envelopes = try controlEnvelopes(rejectionActions)
+        guard case .inputAck(let ack)? = envelopes.first?.payload else {
+            return XCTFail("Expected an InputAck for the fifth controller")
+        }
+        XCTAssertEqual(ack.inputID, 5)
+        XCTAssertFalse(ack.accepted)
+        XCTAssertEqual(ack.rejectionReason, "maximum_active_controllers_exceeded")
+        XCTAssertFalse(rejectionActions.containsClose)
+        XCTAssertEqual(session.phase, .streaming(configEpoch: 1, streamID: 1))
+
+        // The rejected input_id was consumed: a subsequent STATE for an
+        // existing controller must use a strictly greater input_id, and the
+        // existing controller's lifecycle is untouched.
+        var existingState = controllerEvent(kind: .state)
+        existingState.inputID = 6
+        existingState.controllerID = "pad-1"
+        existingState.buttonMask = 1
+        let stateActions = session.handleControl(
+            try envelope(id: 9, payload: .controllerEvent(existingState)).serializedData()
+        )
+        guard case .controller(let stateEvent)? = stateActions.first else {
+            return XCTFail("Expected the existing controller to keep receiving STATE")
+        }
+        XCTAssertEqual(stateEvent.controllerID, "pad-1")
+        XCTAssertEqual(stateEvent.state.buttonMask, 1)
+
+        // Reusing the rejected input_id (5) is now a monotonic violation.
+        var reusedRejected = controllerEvent(kind: .state)
+        reusedRejected.inputID = 5
+        reusedRejected.controllerID = "pad-1"
+        reusedRejected.buttonMask = 1
+        XCTAssertEqual(
+            try protocolError(from: session.handleControl(
+                try envelope(id: 10, payload: .controllerEvent(reusedRejected)).serializedData()
+            )).code,
+            .invalidState
+        )
+    }
+
+    func testControllerFifthCanEnterAfterSlotFreed() throws {
+        let session = try readyControllerSession()
+
+        for index in 0..<4 {
+            var event = controllerEvent(kind: .connected)
+            event.inputID = UInt64(index + 1)
+            event.controllerID = "pad-\(index + 1)"
+            _ = session.handleControl(
+                try envelope(id: UInt64(4 + index), payload: .controllerEvent(event)).serializedData()
+            )
+        }
+
+        // Fifth is rejected while all four slots are occupied.
+        var fifth = controllerEvent(kind: .connected)
+        fifth.inputID = 5
+        fifth.controllerID = "pad-5"
+        let rejection = session.handleControl(
+            try envelope(id: 8, payload: .controllerEvent(fifth)).serializedData()
+        )
+        let ackEnvelopes = try controlEnvelopes(rejection)
+        guard case .inputAck(let ack)? = ackEnvelopes.first?.payload else {
+            return XCTFail("Expected InputAck")
+        }
+        XCTAssertFalse(ack.accepted)
+
+        // Disconnect pad-1 to free a slot.
+        var disconnect = controllerEvent(kind: .disconnected)
+        disconnect.inputID = 6
+        disconnect.controllerID = "pad-1"
+        let disconnectActions = session.handleControl(
+            try envelope(id: 9, payload: .controllerEvent(disconnect)).serializedData()
+        )
+        guard case .controller(let disconnected)? = disconnectActions.first else {
+            return XCTFail("Expected pad-1 to disconnect")
+        }
+        XCTAssertEqual(disconnected.kind, .disconnected)
+
+        // Now the fifth controller can connect.
+        var retry = controllerEvent(kind: .connected)
+        retry.inputID = 7
+        retry.controllerID = "pad-5"
+        let retryActions = session.handleControl(
+            try envelope(id: 10, payload: .controllerEvent(retry)).serializedData()
+        )
+        guard case .controller(let connected)? = retryActions.first else {
+            return XCTFail("Expected pad-5 to connect after a slot freed up")
+        }
+        XCTAssertEqual(connected.controllerID, "pad-5")
+    }
+
+    func testControllerNonTerminalEventsFailClosedDuringVideoReconfiguration() throws {
+        let connectedSession = try controllerSessionAwaitingVideoReconfiguration()
+        var secondConnected = controllerEvent(kind: .connected)
+        secondConnected.inputID = 2
+        secondConnected.controllerID = "pad-2"
+        let connectedActions = connectedSession.handleControl(
+            try envelope(id: 5, payload: .controllerEvent(secondConnected)).serializedData()
+        )
+        XCTAssertEqual(try protocolError(from: connectedActions).code, .invalidState)
+        XCTAssertTrue(connectedActions.containsClose)
+        XCTAssertEqual(connectedSession.phase, .failed)
+
+        // A hard protocol rejection closes its session, so STATE needs an
+        // independent session to prove the second non-terminal case.
+        let stateSession = try controllerSessionAwaitingVideoReconfiguration()
+        var state = controllerEvent(kind: .state)
+        state.inputID = 2
+        state.controllerID = "pad-1"
+        state.buttonMask = 1
+        let stateActions = stateSession.handleControl(
+            try envelope(id: 5, payload: .controllerEvent(state)).serializedData()
+        )
+        XCTAssertEqual(try protocolError(from: stateActions).code, .invalidState)
+        XCTAssertTrue(stateActions.containsClose)
+        XCTAssertEqual(stateSession.phase, .failed)
+    }
+
+    func testControllerDisconnectedAllowedDuringVideoReconfiguration() throws {
+        let session = try controllerSessionAwaitingVideoReconfiguration()
+        var disconnected = controllerEvent(kind: .disconnected)
+        disconnected.inputID = 2
+        disconnected.controllerID = "pad-1"
+        let disconnectActions = session.handleControl(
+            try envelope(id: 5, payload: .controllerEvent(disconnected)).serializedData()
+        )
+        guard case .controller(let disconnectedEvent)? = disconnectActions.first else {
+            return XCTFail("Expected DISCONNECTED to be accepted during video reconfiguration")
+        }
+        XCTAssertEqual(disconnectedEvent.kind, .disconnected)
+    }
+
+    func testControllerInputIdMustStrictlyIncrease() throws {
+        let duplicateSession = try readyControllerSession()
+        _ = duplicateSession.handleControl(
+            try envelope(id: 4, payload: .controllerEvent(controllerEvent(kind: .connected))).serializedData()
+        )
+        var duplicate = controllerEvent(kind: .state)
+        duplicate.inputID = 1
+        duplicate.buttonMask = 1
+        let duplicateActions = duplicateSession.handleControl(
+            try envelope(id: 5, payload: .controllerEvent(duplicate)).serializedData()
+        )
+        XCTAssertEqual(try protocolError(from: duplicateActions).code, .invalidState)
+        XCTAssertTrue(duplicateActions.containsClose)
+        XCTAssertEqual(duplicateSession.phase, .failed)
+
+        // A hard protocol rejection closes its session, so use a fresh one to
+        // prove a decreasing non-zero input_id independently.
+        let decreasingSession = try readyControllerSession()
+        var connected = controllerEvent(kind: .connected)
+        connected.inputID = 5
+        _ = decreasingSession.handleControl(
+            try envelope(id: 4, payload: .controllerEvent(connected)).serializedData()
+        )
+        var decreasing = controllerEvent(kind: .state)
+        decreasing.inputID = 4
+        decreasing.buttonMask = 1
+        let decreasingActions = decreasingSession.handleControl(
+            try envelope(id: 5, payload: .controllerEvent(decreasing)).serializedData()
+        )
+        XCTAssertEqual(try protocolError(from: decreasingActions).code, .invalidState)
+        XCTAssertTrue(decreasingActions.containsClose)
+        XCTAssertEqual(decreasingSession.phase, .failed)
+    }
+
     private let sessionID = Data(repeating: 0xAB, count: 16)
     private let sessionEpoch: UInt64 = 7
 
@@ -846,6 +1240,29 @@ final class ProtocolV1SessionTests: XCTestCase {
             bitrateKbps: 20_000,
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
                 touchEnabled: true
+            ),
+            requiredClientCapabilities: [.touch],
+            supportedCodecs: [.hevc, .h264],
+            hostID: "host",
+            hostName: "Mac",
+            displayID: "active-display",
+            displayName: "Display",
+            displayIsVirtual: true
+        ))
+    }
+
+    private func makeControllerSession() -> ProtocolV1SessionCoordinator {
+        ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
+            sessionID: sessionID,
+            sessionEpoch: sessionEpoch,
+            displayWidth: 1920,
+            displayHeight: 1080,
+            rotation: 90,
+            framesPerSecond: 60,
+            bitrateKbps: 20_000,
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                controllerAvailable: true
             ),
             requiredClientCapabilities: [.touch],
             supportedCodecs: [.hevc, .h264],
@@ -955,6 +1372,29 @@ final class ProtocolV1SessionTests: XCTestCase {
         stylus.tiltXDegrees = 45
         stylus.tiltYDegrees = -45
         return stylus
+    }
+
+    private func controllerEvent(kind: VSControllerEventKind) -> VSControllerEvent {
+        var event = VSControllerEvent()
+        event.inputID = 1
+        event.controllerID = "pad-1"
+        event.controllerEpoch = 1
+        event.kind = kind
+        return event
+    }
+
+    private func controllerState(_ event: VSControllerEvent) -> GameControllerState {
+        GameControllerState(
+            buttonMask: event.buttonMask,
+            leftX: event.leftStickX,
+            leftY: event.leftStickY,
+            rightX: event.rightStickX,
+            rightY: event.rightStickY,
+            leftTrigger: event.leftTrigger,
+            rightTrigger: event.rightTrigger,
+            hatX: event.hatX,
+            hatY: event.hatY
+        )
     }
 
     private func readySession() throws -> ProtocolV1SessionCoordinator {
@@ -1071,6 +1511,44 @@ final class ProtocolV1SessionTests: XCTestCase {
         return session
     }
 
+    private func readyControllerSession() throws -> ProtocolV1SessionCoordinator {
+        let session = makeControllerSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .controller]
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        var result = VSVideoConfigResult()
+        result.configEpoch = 1
+        result.streamID = 1
+        result.accepted = true
+        _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(result)).serializedData())
+        return session
+    }
+
+    private func controllerSessionAwaitingVideoReconfiguration() throws
+        -> ProtocolV1SessionCoordinator {
+        let session = try readyControllerSession()
+        var connected = controllerEvent(kind: .connected)
+        connected.inputID = 1
+        connected.controllerID = "pad-1"
+        _ = session.handleControl(
+            try envelope(id: 4, payload: .controllerEvent(connected)).serializedData()
+        )
+        let switchActions = session.selectDisplayFromClient(displayID: "active-display")
+        XCTAssertTrue(switchActions.contains {
+            if case .sendControl = $0 { return true }
+            return false
+        })
+        guard case .awaitingVideoConfig = session.phase else {
+            throw TestError.missingVideoReconfiguration
+        }
+        return session
+    }
+
     private func controlEnvelopes(_ actions: [ProtocolV1SessionAction]) throws -> [VSEnvelope] {
         try actions.compactMap { action in
             guard case .sendControl(let data) = action else { return nil }
@@ -1104,7 +1582,10 @@ final class ProtocolV1SessionTests: XCTestCase {
         )
     }
 
-    private enum TestError: Error { case missingProtocolError }
+    private enum TestError: Error {
+        case missingProtocolError
+        case missingVideoReconfiguration
+    }
 }
 
 private extension Array where Element == ProtocolV1SessionAction {

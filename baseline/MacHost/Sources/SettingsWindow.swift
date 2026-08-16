@@ -843,6 +843,18 @@ struct SettingsView: View {
                                           status: settings.hasAccessibilityPermission ? "Granted" : "Optional",
                                           color: settings.hasAccessibilityPermission ? .green : .orange,
                                           hint: "Optional permission. Required only if you want touch/tap input from the tablet to control the Mac. Streaming works without it.")
+                                StatusRow(
+                                    title: "Controller Forwarding",
+                                    status: settings.controllerForwardingAvailable
+                                        ? "Available"
+                                        : "Unavailable",
+                                    color: settings.controllerForwardingAvailable
+                                        ? .green
+                                        : .orange,
+                                    hint: settings.controllerForwardingAvailable
+                                        ? "Physical controllers connected to the client can control compatible Mac apps."
+                                        : "Controller forwarding requires a supported signed build. Install a compatible release build to enable it; streaming and other input methods still work."
+                                )
                                 if settings.isRunning {
                                     StatusRow(title: "Capture Method",
                                               status: settings.captureMethod,
@@ -1164,6 +1176,7 @@ struct StatusRow: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("More information about \(title)")
                 .onHover { hovering = $0 }
                 .help(hint)
                 .popover(isPresented: $showHint, arrowEdge: .top) {
@@ -1180,6 +1193,7 @@ struct StatusRow: View {
                 Circle()
                     .fill(color)
                     .frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
                 Text(status)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(color)
@@ -1822,6 +1836,7 @@ class DisplaySettings: ObservableObject {
     @Published var showPostUpdatePermissionHint = false
     @Published var hasScreenRecordingPermission = false
     @Published var hasAccessibilityPermission = false
+    @Published var controllerForwardingAvailable = false
     @Published var adbInstalled = false
     @Published var adbReverseConfigured = false
     @Published var usbDeviceConnected = false
