@@ -1924,7 +1924,7 @@ class StreamingServer: EncodedFrameSink {
             attributes: [
                 "dropped": .integer(Int64(result.droppedCount)),
                 "depth": .integer(Int64(pendingFrames.count + (sendInFlight ? 1 : 0))),
-                "capacity": .integer(2),
+                "capacity": .integer(Int64(pendingFrames.capacity + 1)),
                 "keyframe_required": .boolean(result.requiresKeyframe)
             ]
         )
@@ -2096,7 +2096,12 @@ class StreamingServer: EncodedFrameSink {
                         "mbps": .double(mbps),
                         "average_frame_age_ms": .double(avgAgeMs),
                         "dropped_frames": .unsigned(droppedFrames),
-                        "queue_capacity": .integer(2)
+                        "queue_depth": .integer(
+                            Int64(pendingFrames.count + (sendInFlight ? 1 : 0))
+                        ),
+                        "queue_capacity": .integer(
+                            Int64(pendingFrames.capacity + 1)
+                        )
                     ]
                 )
             }
