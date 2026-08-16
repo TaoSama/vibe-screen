@@ -369,10 +369,15 @@ func testClipboardAndManagedPolicy() throws {
         "AudioAllowed": true,
         "WakeAllowed": false,
         "CustomGesturesAllowed": true,
+        "HostActionsAllowed": false,
         "MaximumFileBytes": 1_024,
         "AllowedHosts": ["mac.local"],
     ])
     try require(managed.isManaged && !managed.fileTransferAllowed, "managed deny")
+    try require(
+        managed.customGesturesAllowed && !managed.hostActionsAllowed,
+        "managed host actions deny must not disable custom gestures"
+    )
     try require(managed.allowedHosts == ["mac.local"], "managed host list")
     let denyWins = managed.applying(remote: ManagedPolicy(
         isManaged: true,
@@ -380,11 +385,31 @@ func testClipboardAndManagedPolicy() throws {
         fileTransferAllowed: true,
         audioAllowed: true,
         wakeAllowed: true,
-        customGesturesAllowed: true,
+        customGesturesAllowed: false,
+        hostActionsAllowed: true,
         maximumFileBytes: 4_096,
         allowedHosts: ["mac.local", "other"]
     ))
     try require(!denyWins.clipboardAllowed && !denyWins.fileTransferAllowed, "managed deny-wins")
+    try require(
+        !denyWins.customGesturesAllowed && !denyWins.hostActionsAllowed,
+        "custom gestures and host actions must apply deny-wins independently"
+    )
+
+    let customGesturesDenied = try ManagedPolicy(managedConfiguration: [
+        "ClipboardAllowed": true,
+        "FileTransferAllowed": true,
+        "AudioAllowed": true,
+        "WakeAllowed": true,
+        "CustomGesturesAllowed": false,
+        "HostActionsAllowed": true,
+        "MaximumFileBytes": 1_024,
+        "AllowedHosts": [String](),
+    ])
+    try require(
+        !customGesturesDenied.customGesturesAllowed && customGesturesDenied.hostActionsAllowed,
+        "managed custom gestures deny must not disable host actions"
+    )
 
     var clipboard = ClipboardTransferCoordinator(maximumBytes: 32)
     let outgoing = try clipboard.prepareOutgoing(

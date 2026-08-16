@@ -90,7 +90,8 @@ extension StreamViewModel {
         case .fileTransferComplete(let completion):
             outgoingFiles.removeValue(forKey: completion.transferID)?.cancel()
         case .hostActionCatalog(let catalog):
-            if negotiatedCapabilities.contains(.hostActions) {
+            if negotiatedCapabilities.contains(.hostActions),
+               managedConfiguration.policy.hostActionsAllowed {
                 availableHostActions = catalog.actions.map(\.actionID)
             }
         case .managedPolicyStatus(let status):
@@ -472,6 +473,7 @@ extension StreamViewModel {
 
     func invokeHostAction(_ identifier: String) {
         guard negotiatedCapabilities.contains(.hostActions),
+              managedConfiguration.policy.hostActionsAllowed,
               availableHostActions.contains(identifier) else { return }
         var invocation = VSHostActionInvoke()
         invocation.actionID = identifier
@@ -493,18 +495,9 @@ extension StreamViewModel {
     func sendManagedPolicyStatus() {
         guard negotiatedCapabilities.contains(.managedConfiguration) else { return }
         let policy = managedConfiguration.policy
-        var status = VSManagedPolicyStatus()
-        status.managed = policy.isManaged
-        status.clipboardAllowed = policy.clipboardAllowed
-        status.fileTransferAllowed = policy.fileTransferAllowed
-        status.audioAllowed = policy.audioAllowed
-        status.wakeAllowed = policy.wakeAllowed
-        status.maximumFileBytes = policy.maximumFileBytes
-        status.customGesturesAllowed = policy.customGesturesAllowed
-        status.hostActionsAllowed = policy.customGesturesAllowed
         sendInBackground { factory in
             factory.managedPolicyStatus(
-                status,
+                policy.protocolStatus,
                 sessionID: self.state.sessionID,
                 sessionEpoch: self.state.sessionEpoch
             )
@@ -523,7 +516,7 @@ extension StreamViewModel {
             let identifiers = Set(pendingFileOffers.keys).union(outgoingFiles.keys)
             for identifier in identifiers { cancelLocalFileTransfer(transferID: identifier) }
         }
-        if !policy.customGesturesAllowed { availableHostActions = [] }
+        if !policy.hostActionsAllowed { availableHostActions = [] }
     }
 
     func sendInBackground(
@@ -550,8 +543,9 @@ extension StreamViewModel {
     func advertisedCapabilities(policy: ManagedPolicy) -> [VSCapability] {
         var values: [VSCapability] = [
             .touch, .keyboard, .pointer, .telemetry, .sessionResume,
-            .multiDisplay, .colorManagement, .hostActions, .managedConfiguration,
+            .multiDisplay, .colorManagement, .managedConfiguration,
         ]
+        if policy.hostActionsAllowed { values.append(.hostActions) }
         if policy.audioAllowed { values.append(.audio) }
         if policy.clipboardAllowed { values.append(.clipboard) }
         if policy.fileTransferAllowed { values.append(.fileTransfer) }

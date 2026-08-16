@@ -1,4 +1,5 @@
 import Foundation
+import VibeScreenProtocol
 
 public struct ManagedPolicy: Equatable, Sendable {
     public static let defaultMaximumFileBytes: UInt64 = 512 * 1_024 * 1_024
@@ -9,6 +10,7 @@ public struct ManagedPolicy: Equatable, Sendable {
     public let audioAllowed: Bool
     public let wakeAllowed: Bool
     public let customGesturesAllowed: Bool
+    public let hostActionsAllowed: Bool
     public let maximumFileBytes: UInt64
     public let allowedHosts: Set<String>
 
@@ -19,6 +21,7 @@ public struct ManagedPolicy: Equatable, Sendable {
         audioAllowed: true,
         wakeAllowed: true,
         customGesturesAllowed: true,
+        hostActionsAllowed: true,
         maximumFileBytes: defaultMaximumFileBytes,
         allowedHosts: []
     )
@@ -30,6 +33,7 @@ public struct ManagedPolicy: Equatable, Sendable {
         audioAllowed: Bool,
         wakeAllowed: Bool,
         customGesturesAllowed: Bool,
+        hostActionsAllowed: Bool,
         maximumFileBytes: UInt64,
         allowedHosts: Set<String>
     ) {
@@ -39,6 +43,7 @@ public struct ManagedPolicy: Equatable, Sendable {
         self.audioAllowed = audioAllowed
         self.wakeAllowed = wakeAllowed
         self.customGesturesAllowed = customGesturesAllowed
+        self.hostActionsAllowed = hostActionsAllowed
         self.maximumFileBytes = maximumFileBytes
         self.allowedHosts = allowedHosts
     }
@@ -78,9 +83,37 @@ public struct ManagedPolicy: Equatable, Sendable {
             audioAllowed: try requiredBool(Keys.audioAllowed),
             wakeAllowed: try requiredBool(Keys.wakeAllowed),
             customGesturesAllowed: try requiredBool(Keys.customGesturesAllowed),
+            hostActionsAllowed: try requiredBool(Keys.hostActionsAllowed),
             maximumFileBytes: maximum,
             allowedHosts: hosts
         )
+    }
+
+    public init(remoteStatus: VSManagedPolicyStatus) {
+        self.init(
+            isManaged: remoteStatus.managed,
+            clipboardAllowed: remoteStatus.clipboardAllowed,
+            fileTransferAllowed: remoteStatus.fileTransferAllowed,
+            audioAllowed: remoteStatus.audioAllowed,
+            wakeAllowed: remoteStatus.wakeAllowed,
+            customGesturesAllowed: remoteStatus.customGesturesAllowed,
+            hostActionsAllowed: remoteStatus.hostActionsAllowed,
+            maximumFileBytes: remoteStatus.maximumFileBytes,
+            allowedHosts: []
+        )
+    }
+
+    public var protocolStatus: VSManagedPolicyStatus {
+        var status = VSManagedPolicyStatus()
+        status.managed = isManaged
+        status.clipboardAllowed = clipboardAllowed
+        status.fileTransferAllowed = fileTransferAllowed
+        status.audioAllowed = audioAllowed
+        status.wakeAllowed = wakeAllowed
+        status.customGesturesAllowed = customGesturesAllowed
+        status.hostActionsAllowed = hostActionsAllowed
+        status.maximumFileBytes = maximumFileBytes
+        return status
     }
 
     public func applying(remote: ManagedPolicy) -> ManagedPolicy {
@@ -91,6 +124,7 @@ public struct ManagedPolicy: Equatable, Sendable {
             audioAllowed: audioAllowed && remote.audioAllowed,
             wakeAllowed: wakeAllowed && remote.wakeAllowed,
             customGesturesAllowed: customGesturesAllowed && remote.customGesturesAllowed,
+            hostActionsAllowed: hostActionsAllowed && remote.hostActionsAllowed,
             maximumFileBytes: min(maximumFileBytes, remote.maximumFileBytes),
             allowedHosts: allowedHosts.isEmpty ? remote.allowedHosts :
                 (remote.allowedHosts.isEmpty ? allowedHosts : allowedHosts.intersection(remote.allowedHosts))
@@ -103,6 +137,7 @@ public struct ManagedPolicy: Equatable, Sendable {
         static let audioAllowed = "AudioAllowed"
         static let wakeAllowed = "WakeAllowed"
         static let customGesturesAllowed = "CustomGesturesAllowed"
+        static let hostActionsAllowed = "HostActionsAllowed"
         static let maximumFileBytes = "MaximumFileBytes"
         static let allowedHosts = "AllowedHosts"
     }

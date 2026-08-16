@@ -38,6 +38,7 @@ final class ManagedConfigurationProvider: ObservableObject {
                 audioAllowed: false,
                 wakeAllowed: false,
                 customGesturesAllowed: false,
+                hostActionsAllowed: false,
                 maximumFileBytes: 0,
                 allowedHosts: []
             )
@@ -46,16 +47,7 @@ final class ManagedConfigurationProvider: ObservableObject {
     }
 
     func applyRemote(_ status: VSManagedPolicyStatus) {
-        let remote = ManagedPolicy(
-            isManaged: status.managed,
-            clipboardAllowed: status.clipboardAllowed,
-            fileTransferAllowed: status.fileTransferAllowed,
-            audioAllowed: status.audioAllowed,
-            wakeAllowed: status.wakeAllowed,
-            customGesturesAllowed: status.customGesturesAllowed,
-            maximumFileBytes: status.maximumFileBytes,
-            allowedHosts: []
-        )
+        let remote = ManagedPolicy(remoteStatus: status)
         remotePolicy = remote
         policy = policy.applying(remote: remote)
     }

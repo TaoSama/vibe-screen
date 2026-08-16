@@ -150,8 +150,8 @@ currently no key migration step.
 - Managed App Configuration is read from
   `com.apple.configuration.managed`. Supported deny-wins keys are
   `ClipboardAllowed`, `FileTransferAllowed`, `AudioAllowed`, `WakeAllowed`,
-  `CustomGesturesAllowed`, `MaximumFileBytes`, and `AllowedHosts`. Invalid
-  types fail closed.
+  `CustomGesturesAllowed`, `HostActionsAllowed`, `MaximumFileBytes`, and
+  `AllowedHosts`. Invalid types fail closed.
 
 ## Advanced feature use
 
