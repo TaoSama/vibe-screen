@@ -140,9 +140,9 @@
     <string name="usb_debugging">USB debugging</string>
     <string name="wireless_debugging">Wireless debugging</string>
     <string name="usb_or_wireless_debugging">USB or wireless debugging</string>
-    <string name="usb_data_cable">USB data cable</string>
-    <string name="wireless_adb">Wireless ADB transport</string>
-    <string name="usb_or_wireless_adb">USB cable or wireless ADB</string>
+    <string name="usb_data_link">USB data link</string>
+    <string name="wireless_debugging_connection">Wireless debugging connection</string>
+    <string name="usb_data_link_or_wireless_debugging">USB data link or wireless debugging</string>
     <string name="mac_server">Mac server</string>
     <string name="checklist_item_status">%1$s · %2$s</string>
     <string name="checklist_ready">Ready</string>
@@ -150,7 +150,7 @@
     <string name="checklist_checking">Checking</string>
     <string name="developer_mode_not_ready">Developer mode · Not ready</string>
     <string name="usb_debugging_not_ready">USB debugging · Not ready</string>
-    <string name="usb_data_cable_not_ready">USB data cable · Not ready</string>
+    <string name="usb_data_link_not_ready">USB data link · Not ready</string>
     <string name="mac_server_checking">Mac server · Checking</string>
     <string name="connect">Connect</string>
     <string name="try_again">Try again</string>

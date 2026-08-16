@@ -147,71 +147,61 @@ class ConnectionStateAccessibilityInstrumentedTest {
     }
 
     @Test
-    fun productionChecklistReportsReadyAndNotReadyWithoutColor() {
+    fun productionChecklistReportsEveryTransportLabelAndStatusWithoutColor() {
         withProductionLayout { root ->
             val indicator = root.findViewById<View>(R.id.checkDeveloperMode)
             val label = root.findViewById<TextView>(R.id.textDeveloperMode)
             val context = root.context
+            val labels =
+                listOf(
+                    R.string.developer_mode,
+                    R.string.usb_debugging,
+                    R.string.wireless_debugging,
+                    R.string.usb_or_wireless_debugging,
+                    R.string.usb_data_link,
+                    R.string.wireless_debugging_connection,
+                    R.string.usb_data_link_or_wireless_debugging,
+                    R.string.mac_server,
+                )
+
+            labels.forEach { labelResource ->
+                ChecklistStatus.entries.forEach { status ->
+                    ChecklistStatusApplier.apply(context, indicator, label, labelResource, status)
+                    assertEquals(
+                        context.getString(
+                            R.string.checklist_item_status,
+                            context.getString(labelResource),
+                            context.getString(
+                                when (status) {
+                                    ChecklistStatus.READY -> R.string.checklist_ready
+                                    ChecklistStatus.NOT_READY -> R.string.checklist_not_ready
+                                    ChecklistStatus.CHECKING -> R.string.checklist_checking
+                                },
+                            ),
+                        ),
+                        label.text.toString(),
+                    )
+                }
+            }
+            assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, label.accessibilityLiveRegion)
+            assertFalse(indicator.isImportantForAccessibility)
 
             ChecklistStatusApplier.apply(
                 context,
                 indicator,
                 label,
-                R.string.developer_mode,
-                ChecklistStatus.NOT_READY,
+                R.string.mac_server,
+                ChecklistStatus.CHECKING,
             )
-            assertEquals(
-                context.getString(
-                    R.string.checklist_item_status,
-                    context.getString(R.string.developer_mode),
-                    context.getString(R.string.checklist_not_ready),
-                ),
-                label.text.toString(),
-            )
-            assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, label.accessibilityLiveRegion)
-            assertFalse(indicator.isImportantForAccessibility)
-
             val unchangedText = label.text
             ChecklistStatusApplier.apply(
                 context,
                 indicator,
                 label,
-                R.string.developer_mode,
-                ChecklistStatus.NOT_READY,
-            )
-            assertTrue("Unchanged status should not replace the live-region text", unchangedText === label.text)
-
-            ChecklistStatusApplier.apply(
-                context,
-                indicator,
-                label,
-                R.string.developer_mode,
-                ChecklistStatus.READY,
-            )
-            assertEquals(
-                context.getString(
-                    R.string.checklist_item_status,
-                    context.getString(R.string.developer_mode),
-                    context.getString(R.string.checklist_ready),
-                ),
-                label.text.toString(),
-            )
-
-            ChecklistStatusApplier.apply(
-                context,
-                indicator,
-                label,
-                R.string.developer_mode,
+                R.string.mac_server,
                 ChecklistStatus.CHECKING,
             )
-            assertEquals(
-                context.getString(
-                    R.string.checklist_item_status,
-                    context.getString(R.string.developer_mode),
-                    context.getString(R.string.checklist_checking),
-                ),
-                label.text.toString(),
-            )
+            assertTrue("Unchanged status should not replace the live-region text", unchangedText === label.text)
         }
     }
 

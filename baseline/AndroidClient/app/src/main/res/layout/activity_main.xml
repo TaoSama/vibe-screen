@@ -584,7 +584,7 @@
                         android:layout_weight="1"
                         android:layout_height="wrap_content"
                         android:accessibilityLiveRegion="polite"
-                        android:text="@string/usb_data_cable_not_ready"
+                        android:text="@string/usb_data_link_not_ready"
                         android:textColor="#BBBBBB"
                         android:textSize="13sp" />
                 </LinearLayout>

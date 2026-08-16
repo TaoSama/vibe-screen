@@ -35,7 +35,7 @@ class MainActivityTerminalGuidanceContractTest {
 
         assertTrue(
             "USB connections must capture their ADB transport before callback delivery",
-            source.contains("ConnectionGuidanceContext.adb(port, currentAdbTransportKind())"),
+            source.contains("ConnectionGuidanceContext.adb(port, currentUsbTransportSnapshot().adbTransport)"),
         )
         assertTrue(
             "LAN connections must capture trusted-LAN ownership",

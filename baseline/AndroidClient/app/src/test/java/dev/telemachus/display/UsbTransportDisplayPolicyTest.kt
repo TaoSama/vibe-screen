@@ -5,327 +5,187 @@ import org.junit.Test
 
 class UsbTransportDisplayPolicyTest {
     @Test
-    fun `subtitle refresh is limited to USB mode`() {
-        assertEquals(
-            true,
-            UsbTransportDisplayPolicy.shouldRefreshSubtitle(ConnectionMode.USB),
-        )
-        assertEquals(
-            false,
-            UsbTransportDisplayPolicy.shouldRefreshSubtitle(ConnectionMode.WIRELESS),
-        )
-        assertEquals(
-            false,
-            UsbTransportDisplayPolicy.shouldRefreshSubtitle(ConnectionMode.INTERNET),
-        )
+    fun subtitleRefreshOwnershipRemainsUsbOnly() {
+        assertEquals(true, UsbTransportDisplayPolicy.shouldRefreshSubtitle(ConnectionMode.USB))
+        assertEquals(false, UsbTransportDisplayPolicy.shouldRefreshSubtitle(ConnectionMode.WIRELESS))
+        assertEquals(false, UsbTransportDisplayPolicy.shouldRefreshSubtitle(ConnectionMode.INTERNET))
     }
 
     @Test
-    fun `subtitle asks to keep the USB cable connected when the cable is present`() {
-        assertEquals(
-            R.string.usb_waiting_description,
-            UsbTransportDisplayPolicy.subtitleResource(
-                isUsbConnected = true,
-                isWirelessAdbEnabled = false,
-            ),
-        )
+    fun adbStateMatrixProjectsHonestLabelsAndReadiness() {
+        val cases =
+            listOf(
+                Case(
+                    name = "USB only",
+                    snapshot = snapshot(usbDebug = true, usbData = true, usbAdbFunction = true, server = true),
+                    transport = AdbTransportKind.USB,
+                    subtitle = R.string.usb_waiting_description,
+                    debuggingLabel = R.string.usb_debugging,
+                    transportLabel = R.string.usb_data_link,
+                    ready = true,
+                ),
+                Case(
+                    name = "wireless only with ADB_ENABLED zero",
+                    snapshot = snapshot(wireless = true, server = true),
+                    transport = AdbTransportKind.WIRELESS,
+                    subtitle = R.string.wireless_adb_waiting_description,
+                    debuggingLabel = R.string.wireless_debugging,
+                    transportLabel = R.string.wireless_debugging_connection,
+                    ready = true,
+                ),
+                Case(
+                    name = "USB and wireless prefers active USB debugging",
+                    snapshot =
+                        snapshot(
+                            usbDebug = true,
+                            wireless = true,
+                            usbData = true,
+                            usbAdbFunction = true,
+                            server = true,
+                        ),
+                    transport = AdbTransportKind.USB,
+                    subtitle = R.string.usb_waiting_description,
+                    debuggingLabel = R.string.usb_debugging,
+                    transportLabel = R.string.usb_data_link,
+                    ready = true,
+                ),
+                Case(
+                    name = "USB data with only wireless debugging uses wireless ADB",
+                    snapshot = snapshot(wireless = true, usbData = true, server = true),
+                    transport = AdbTransportKind.WIRELESS,
+                    subtitle = R.string.wireless_adb_waiting_description,
+                    debuggingLabel = R.string.wireless_debugging,
+                    transportLabel = R.string.wireless_debugging_connection,
+                    ready = true,
+                ),
+                Case(
+                    name = "debugging enabled without a data route",
+                    snapshot = snapshot(usbDebug = true, server = true),
+                    transport = AdbTransportKind.UNAVAILABLE,
+                    subtitle = R.string.adb_transport_waiting_description,
+                    debuggingLabel = R.string.usb_debugging,
+                    transportLabel = R.string.usb_data_link_or_wireless_debugging,
+                    ready = false,
+                ),
+                Case(
+                    name = "USB setting and data without an active ADB function",
+                    snapshot = snapshot(usbDebug = true, usbData = true, server = true),
+                    transport = AdbTransportKind.UNAVAILABLE,
+                    subtitle = R.string.adb_transport_waiting_description,
+                    debuggingLabel = R.string.usb_debugging,
+                    transportLabel = R.string.usb_data_link,
+                    ready = false,
+                    debuggingStatus = ChecklistStatus.NOT_READY,
+                ),
+                Case(
+                    name = "USB data without any debugging channel",
+                    snapshot = snapshot(usbData = true, server = true),
+                    transport = AdbTransportKind.UNAVAILABLE,
+                    subtitle = R.string.adb_transport_waiting_description,
+                    debuggingLabel = R.string.usb_or_wireless_debugging,
+                    transportLabel = R.string.usb_data_link,
+                    ready = false,
+                ),
+                Case(
+                    name = "server missing",
+                    snapshot = snapshot(usbDebug = true, usbData = true, usbAdbFunction = true),
+                    transport = AdbTransportKind.USB,
+                    subtitle = R.string.usb_waiting_description,
+                    debuggingLabel = R.string.usb_debugging,
+                    transportLabel = R.string.usb_data_link,
+                    ready = false,
+                ),
+                Case(
+                    name = "developer mode off",
+                    snapshot = snapshot(developer = false, wireless = true, server = true),
+                    transport = AdbTransportKind.WIRELESS,
+                    subtitle = R.string.wireless_adb_waiting_description,
+                    debuggingLabel = R.string.wireless_debugging,
+                    transportLabel = R.string.wireless_debugging_connection,
+                    ready = false,
+                ),
+                Case(
+                    name = "USB setting without a cable falls back to wireless",
+                    snapshot = snapshot(usbDebug = true, wireless = true, server = true),
+                    transport = AdbTransportKind.WIRELESS,
+                    subtitle = R.string.wireless_adb_waiting_description,
+                    debuggingLabel = R.string.wireless_debugging,
+                    transportLabel = R.string.wireless_debugging_connection,
+                    ready = true,
+                ),
+                Case(
+                    name = "no transport signals",
+                    snapshot = snapshot(server = true),
+                    transport = AdbTransportKind.UNAVAILABLE,
+                    subtitle = R.string.adb_transport_waiting_description,
+                    debuggingLabel = R.string.usb_or_wireless_debugging,
+                    transportLabel = R.string.usb_data_link_or_wireless_debugging,
+                    ready = false,
+                ),
+            )
+
+        cases.forEach { case ->
+            val projection = UsbTransportDisplayPolicy.project(case.snapshot)
+            assertEquals(case.name, case.transport, case.snapshot.adbTransport)
+            assertEquals(case.name, case.subtitle, projection.subtitleResource)
+            assertEquals(case.name, case.debuggingLabel, projection.debuggingLabelResource)
+            assertEquals(case.name, case.transportLabel, projection.transportLabelResource)
+            assertEquals(case.name, case.ready, projection.allReady)
+            assertEquals(
+                case.name,
+                case.debuggingStatus
+                    ?: if (
+                        case.snapshot.adbTransport != AdbTransportKind.UNAVAILABLE ||
+                        (case.snapshot.usbDebuggingSettingEnabled && !case.snapshot.usbDataConnected)
+                    ) ChecklistStatus.READY else ChecklistStatus.NOT_READY,
+                projection.debuggingStatus,
+            )
+            assertEquals(
+                case.name,
+                if (case.snapshot.usbDataConnected || case.snapshot.wirelessDebuggingEnabled) {
+                    ChecklistStatus.READY
+                } else {
+                    ChecklistStatus.NOT_READY
+                },
+                projection.transportStatus,
+            )
+        }
     }
 
     @Test
-    fun `subtitle prefers the USB cable when both transports are available`() {
-        assertEquals(
-            R.string.usb_waiting_description,
-            UsbTransportDisplayPolicy.subtitleResource(
-                isUsbConnected = true,
-                isWirelessAdbEnabled = true,
-            ),
-        )
+    fun wirelessConnectionStillRequiresServerProbe() {
+        val withoutServer = UsbTransportDisplayPolicy.project(snapshot(wireless = true))
+        val withServer = UsbTransportDisplayPolicy.project(snapshot(wireless = true, server = true))
+
+        assertEquals(R.string.wireless_debugging_connection, withoutServer.transportLabelResource)
+        assertEquals(false, withoutServer.allReady)
+        assertEquals(true, withServer.allReady)
     }
 
-    @Test
-    fun `subtitle refers to wireless ADB when the USB cable is absent`() {
-        assertEquals(
-            R.string.wireless_adb_waiting_description,
-            UsbTransportDisplayPolicy.subtitleResource(
-                isUsbConnected = false,
-                isWirelessAdbEnabled = true,
-            ),
-        )
-    }
+    private fun snapshot(
+        developer: Boolean = true,
+        usbDebug: Boolean = false,
+        wireless: Boolean = false,
+        usbData: Boolean = false,
+        usbAdbFunction: Boolean = false,
+        server: Boolean = false,
+    ) = UsbTransportDisplayPolicy.Snapshot(
+        developerModeEnabled = developer,
+        usbDebuggingSettingEnabled = usbDebug,
+        wirelessDebuggingEnabled = wireless,
+        usbDataConnected = usbData,
+        usbAdbFunctionEnabled = usbAdbFunction,
+        serverRunning = server,
+    )
 
-    @Test
-    fun subtitleExplainsBothOptionsWhenNoAdbTransportIsReady() {
-        assertEquals(
-            R.string.adb_transport_waiting_description,
-            UsbTransportDisplayPolicy.subtitleResource(
-                isUsbConnected = false,
-                isWirelessAdbEnabled = false,
-            ),
-        )
-    }
-
-    @Test
-    fun `cable row labels the USB data cable when the cable is connected`() {
-        assertEquals(
-            R.string.usb_data_cable,
-            UsbTransportDisplayPolicy.cableLabelResource(
-                isUsbConnected = true,
-                isWirelessAdbEnabled = true,
-            ),
-        )
-    }
-
-    @Test
-    fun `cable row labels USB when only the USB data link is available`() {
-        assertEquals(
-            R.string.usb_data_cable,
-            UsbTransportDisplayPolicy.cableLabelResource(
-                isUsbConnected = true,
-                isWirelessAdbEnabled = false,
-            ),
-        )
-    }
-
-    @Test
-    fun `cable row labels wireless ADB when the cable is absent but ADB is enabled`() {
-        assertEquals(
-            R.string.wireless_adb,
-            UsbTransportDisplayPolicy.cableLabelResource(
-                isUsbConnected = false,
-                isWirelessAdbEnabled = true,
-            ),
-        )
-    }
-
-    @Test
-    fun `cable row keeps the USB data cable label when neither transport is available`() {
-        assertEquals(
-            R.string.usb_or_wireless_adb,
-            UsbTransportDisplayPolicy.cableLabelResource(
-                isUsbConnected = false,
-                isWirelessAdbEnabled = false,
-            ),
-        )
-    }
-
-    @Test
-    fun `cable row is ready when the USB cable is connected`() {
-        assertEquals(
-            ChecklistStatus.READY,
-            UsbTransportDisplayPolicy.cableStatus(
-                isUsbConnected = true,
-                isWirelessAdbEnabled = false,
-            ),
-        )
-    }
-
-    @Test
-    fun `cable row is ready when ADB is enabled over wireless`() {
-        assertEquals(
-            ChecklistStatus.READY,
-            UsbTransportDisplayPolicy.cableStatus(
-                isUsbConnected = false,
-                isWirelessAdbEnabled = true,
-            ),
-        )
-    }
-
-    @Test
-    fun `cable row is not ready when neither the cable nor ADB is available`() {
-        assertEquals(
-            ChecklistStatus.NOT_READY,
-            UsbTransportDisplayPolicy.cableStatus(
-                isUsbConnected = false,
-                isWirelessAdbEnabled = false,
-            ),
-        )
-    }
-
-    @Test
-    fun wirelessDebuggingIsReadyWithoutUsbDebugging() {
-        assertEquals(
-            R.string.wireless_debugging,
-            UsbTransportDisplayPolicy.debuggingLabelResource(
-                isUsbConnected = false,
-                isUsbDebuggingEnabled = false,
-                isWirelessAdbEnabled = true,
-            ),
-        )
-        assertEquals(
-            true,
-            UsbTransportDisplayPolicy.allReady(
-                isDeveloperModeEnabled = true,
-                isUsbDebuggingEnabled = false,
-                isWirelessAdbEnabled = true,
-                isUsbConnected = false,
-                isServerRunning = true,
-            ),
-        )
-    }
-
-    @Test
-    fun usbDebuggingIsReadyWithAnActiveUsbDataLink() {
-        assertEquals(
-            true,
-            UsbTransportDisplayPolicy.allReady(
-                isDeveloperModeEnabled = true,
-                isUsbDebuggingEnabled = true,
-                isWirelessAdbEnabled = false,
-                isUsbConnected = true,
-                isServerRunning = true,
-            ),
-        )
-    }
-
-    @Test
-    fun allReadyWhenUsbAndWirelessDebuggingAreBothAvailable() {
-        assertEquals(
-            true,
-            UsbTransportDisplayPolicy.allReady(
-                isDeveloperModeEnabled = true,
-                isUsbDebuggingEnabled = true,
-                isWirelessAdbEnabled = true,
-                isUsbConnected = true,
-                isServerRunning = true,
-            ),
-        )
-    }
-
-    @Test
-    fun usbDebuggingAloneIsNotReadyWithoutADataLink() {
-        assertEquals(
-            false,
-            UsbTransportDisplayPolicy.allReady(
-                isDeveloperModeEnabled = true,
-                isUsbDebuggingEnabled = true,
-                isWirelessAdbEnabled = false,
-                isUsbConnected = false,
-                isServerRunning = true,
-            ),
-        )
-    }
-
-    @Test
-    fun usbDataLinkIsNotReadyWithoutAnyDebuggingTransport() {
-        assertEquals(
-            false,
-            UsbTransportDisplayPolicy.allReady(
-                isDeveloperModeEnabled = true,
-                isUsbDebuggingEnabled = false,
-                isWirelessAdbEnabled = false,
-                isUsbConnected = true,
-                isServerRunning = true,
-            ),
-        )
-    }
-
-    @Test
-    fun wirelessDebuggingLabelWinsWhenUsbDebuggingIsEnabledWithoutAUsbLink() {
-        assertEquals(
-            R.string.wireless_debugging,
-            UsbTransportDisplayPolicy.debuggingLabelResource(
-                isUsbConnected = false,
-                isUsbDebuggingEnabled = true,
-                isWirelessAdbEnabled = true,
-            ),
-        )
-    }
-
-    @Test
-    fun usbDebuggingLabelWinsWhenTheUsbDataLinkIsActive() {
-        assertEquals(
-            R.string.usb_debugging,
-            UsbTransportDisplayPolicy.debuggingLabelResource(
-                isUsbConnected = true,
-                isUsbDebuggingEnabled = true,
-                isWirelessAdbEnabled = true,
-            ),
-        )
-    }
-
-    @Test
-    fun wirelessDebuggingLabelShowsWhenUsbIsConnectedWithoutUsbDebugging() {
-        assertEquals(
-            R.string.wireless_debugging,
-            UsbTransportDisplayPolicy.debuggingLabelResource(
-                isUsbConnected = true,
-                isUsbDebuggingEnabled = false,
-                isWirelessAdbEnabled = true,
-            ),
-        )
-    }
-
-    @Test
-    fun usbDebuggingLabelShowsWhenUsbDebuggingEnabledWithoutCableOrWireless() {
-        assertEquals(
-            R.string.usb_debugging,
-            UsbTransportDisplayPolicy.debuggingLabelResource(
-                isUsbConnected = false,
-                isUsbDebuggingEnabled = true,
-                isWirelessAdbEnabled = false,
-            ),
-        )
-    }
-
-    @Test
-    fun noDebuggingLabelShowsWhenUsbIsConnectedWithoutAnyDebuggingTransport() {
-        assertEquals(
-            R.string.usb_or_wireless_debugging,
-            UsbTransportDisplayPolicy.debuggingLabelResource(
-                isUsbConnected = true,
-                isUsbDebuggingEnabled = false,
-                isWirelessAdbEnabled = false,
-            ),
-        )
-    }
-
-    @Test
-    fun noDebuggingTransportIsNotReady() {
-        assertEquals(
-            R.string.usb_or_wireless_debugging,
-            UsbTransportDisplayPolicy.debuggingLabelResource(
-                isUsbConnected = false,
-                isUsbDebuggingEnabled = false,
-                isWirelessAdbEnabled = false,
-            ),
-        )
-        assertEquals(
-            false,
-            UsbTransportDisplayPolicy.allReady(
-                isDeveloperModeEnabled = true,
-                isUsbDebuggingEnabled = false,
-                isWirelessAdbEnabled = false,
-                isUsbConnected = false,
-                isServerRunning = true,
-            ),
-        )
-    }
-
-    @Test
-    fun missingMacServerIsNotReady() {
-        assertEquals(
-            false,
-            UsbTransportDisplayPolicy.allReady(
-                isDeveloperModeEnabled = true,
-                isUsbDebuggingEnabled = false,
-                isWirelessAdbEnabled = true,
-                isUsbConnected = false,
-                isServerRunning = false,
-            ),
-        )
-    }
-
-    @Test
-    fun disabledDeveloperModeIsNotReady() {
-        assertEquals(
-            false,
-            UsbTransportDisplayPolicy.allReady(
-                isDeveloperModeEnabled = false,
-                isUsbDebuggingEnabled = false,
-                isWirelessAdbEnabled = true,
-                isUsbConnected = false,
-                isServerRunning = true,
-            ),
-        )
-    }
+    private data class Case(
+        val name: String,
+        val snapshot: UsbTransportDisplayPolicy.Snapshot,
+        val transport: AdbTransportKind,
+        val subtitle: Int,
+        val debuggingLabel: Int,
+        val transportLabel: Int,
+        val ready: Boolean,
+        val debuggingStatus: ChecklistStatus? = null,
+    )
 }

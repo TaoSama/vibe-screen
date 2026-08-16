@@ -506,57 +506,68 @@ internal object UsbConnectActionPolicy {
 }
 
 internal object UsbTransportDisplayPolicy {
+    data class Snapshot(
+        val developerModeEnabled: Boolean,
+        val usbDebuggingSettingEnabled: Boolean,
+        val wirelessDebuggingEnabled: Boolean,
+        val usbDataConnected: Boolean,
+        val usbAdbFunctionEnabled: Boolean,
+        val serverRunning: Boolean,
+    ) {
+        val adbTransport: AdbTransportKind
+            get() =
+                when {
+                    usbDataConnected && usbAdbFunctionEnabled -> AdbTransportKind.USB
+                    wirelessDebuggingEnabled -> AdbTransportKind.WIRELESS
+                    else -> AdbTransportKind.UNAVAILABLE
+                }
+    }
+
+    data class Projection(
+        val subtitleResource: Int,
+        val debuggingLabelResource: Int,
+        val debuggingStatus: ChecklistStatus,
+        val transportLabelResource: Int,
+        val transportStatus: ChecklistStatus,
+        val allReady: Boolean,
+    )
+
     fun shouldRefreshSubtitle(connectionMode: ConnectionMode): Boolean =
         connectionMode == ConnectionMode.USB
 
-    fun subtitleResource(
-        isUsbConnected: Boolean,
-        isWirelessAdbEnabled: Boolean,
-    ): Int =
-        when {
-            isUsbConnected -> R.string.usb_waiting_description
-            isWirelessAdbEnabled -> R.string.wireless_adb_waiting_description
-            else -> R.string.adb_transport_waiting_description
-        }
-
-    fun cableLabelResource(
-        isUsbConnected: Boolean,
-        isWirelessAdbEnabled: Boolean,
-    ): Int =
-        when {
-            isUsbConnected -> R.string.usb_data_cable
-            isWirelessAdbEnabled -> R.string.wireless_adb
-            else -> R.string.usb_or_wireless_adb
-        }
-
-    fun debuggingLabelResource(
-        isUsbConnected: Boolean,
-        isUsbDebuggingEnabled: Boolean,
-        isWirelessAdbEnabled: Boolean,
-    ): Int =
-        when {
-            isUsbConnected && isUsbDebuggingEnabled -> R.string.usb_debugging
-            isWirelessAdbEnabled -> R.string.wireless_debugging
-            isUsbDebuggingEnabled -> R.string.usb_debugging
-            else -> R.string.usb_or_wireless_debugging
-        }
-
-    fun cableStatus(
-        isUsbConnected: Boolean,
-        isWirelessAdbEnabled: Boolean,
-    ): ChecklistStatus =
-        if (isUsbConnected || isWirelessAdbEnabled) ChecklistStatus.READY
-        else ChecklistStatus.NOT_READY
-
-    fun allReady(
-        isDeveloperModeEnabled: Boolean,
-        isUsbDebuggingEnabled: Boolean,
-        isWirelessAdbEnabled: Boolean,
-        isUsbConnected: Boolean,
-        isServerRunning: Boolean,
-    ): Boolean =
-        isDeveloperModeEnabled &&
-            (isUsbDebuggingEnabled || isWirelessAdbEnabled) &&
-            (isUsbConnected || isWirelessAdbEnabled) &&
-            isServerRunning
+    fun project(snapshot: Snapshot): Projection {
+        val debuggingReady =
+            snapshot.adbTransport != AdbTransportKind.UNAVAILABLE ||
+                (snapshot.usbDebuggingSettingEnabled && !snapshot.usbDataConnected)
+        val transportReady =
+            snapshot.usbDataConnected || snapshot.adbTransport == AdbTransportKind.WIRELESS
+        return Projection(
+            subtitleResource =
+                when (snapshot.adbTransport) {
+                    AdbTransportKind.USB -> R.string.usb_waiting_description
+                    AdbTransportKind.WIRELESS -> R.string.wireless_adb_waiting_description
+                    AdbTransportKind.UNAVAILABLE -> R.string.adb_transport_waiting_description
+                },
+            debuggingLabelResource =
+                when {
+                    snapshot.adbTransport == AdbTransportKind.USB -> R.string.usb_debugging
+                    snapshot.adbTransport == AdbTransportKind.WIRELESS -> R.string.wireless_debugging
+                    snapshot.usbDebuggingSettingEnabled -> R.string.usb_debugging
+                    else -> R.string.usb_or_wireless_debugging
+                },
+            debuggingStatus = if (debuggingReady) ChecklistStatus.READY else ChecklistStatus.NOT_READY,
+            transportLabelResource =
+                when {
+                    snapshot.adbTransport == AdbTransportKind.USB -> R.string.usb_data_link
+                    snapshot.adbTransport == AdbTransportKind.WIRELESS -> R.string.wireless_debugging_connection
+                    snapshot.usbDataConnected -> R.string.usb_data_link
+                    else -> R.string.usb_data_link_or_wireless_debugging
+                },
+            transportStatus = if (transportReady) ChecklistStatus.READY else ChecklistStatus.NOT_READY,
+            allReady =
+                snapshot.developerModeEnabled &&
+                    snapshot.adbTransport != AdbTransportKind.UNAVAILABLE &&
+                    snapshot.serverRunning,
+        )
+    }
 }
