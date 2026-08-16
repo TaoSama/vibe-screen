@@ -12,17 +12,18 @@ import (
 )
 
 type Config struct {
-	ListenAddress               string `json:"listen_address"`
-	DatabaseURL                 string `json:"-"`
-	AdminToken                  string `json:"-"`
-	SignalingToken              string `json:"-"`
-	RelayToken                  string `json:"-"`
-	CoturnToken                 string `json:"-"`
-	RoleTokenSecret             string `json:"-"`
-	MaximumSessionTTLSeconds    int64  `json:"maximum_session_ttl_seconds"`
-	DailyBytesPerDevice         uint64 `json:"daily_bytes_per_device"`
-	MaximumAllocationsPerDevice int    `json:"maximum_allocations_per_device"`
-	ReconciliationGraceSeconds  int64  `json:"reconciliation_grace_seconds"`
+	ListenAddress                   string `json:"listen_address"`
+	DatabaseURL                     string `json:"-"`
+	AdminToken                      string `json:"-"`
+	SignalingToken                  string `json:"-"`
+	RelayToken                      string `json:"-"`
+	CoturnToken                     string `json:"-"`
+	RoleTokenSecret                 string `json:"-"`
+	MaximumSessionTTLSeconds        int64  `json:"maximum_session_ttl_seconds"`
+	MaximumDatabaseClockSkewSeconds int64  `json:"maximum_database_clock_skew_seconds"`
+	DailyBytesPerDevice             uint64 `json:"daily_bytes_per_device"`
+	MaximumAllocationsPerDevice     int    `json:"maximum_allocations_per_device"`
+	ReconciliationGraceSeconds      int64  `json:"reconciliation_grace_seconds"`
 }
 
 const (
@@ -42,6 +43,13 @@ const (
 	// 32-bit and 64-bit hosts and prevents a misconfigured huge value from
 	// effectively disabling the per-device allocation limit.
 	maxAllocationsPerDevice = math.MaxInt32
+	// A missing clock-skew limit uses a conservative default so existing
+	// configuration files gain the readiness check on upgrade. An explicit zero
+	// overwrites this initializer and is rejected by validation.
+	defaultMaximumDatabaseClockSkewSeconds int64 = 5
+	// The default is also the hard maximum: configuration may tighten this
+	// bound, but cannot conceal broken time synchronization by relaxing it.
+	maximumDatabaseClockSkewSeconds = defaultMaximumDatabaseClockSkewSeconds
 )
 
 func LoadConfig(path string) (Config, error) {
@@ -49,7 +57,7 @@ func LoadConfig(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("read config: %w", err)
 	}
-	var cfg Config
+	cfg := Config{MaximumDatabaseClockSkewSeconds: defaultMaximumDatabaseClockSkewSeconds}
 	decoder := json.NewDecoder(strings.NewReader(string(contents)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&cfg); err != nil {
@@ -119,7 +127,7 @@ func (c Config) Validate() error {
 			}
 		}
 	}
-	if c.MaximumSessionTTLSeconds <= 0 || c.DailyBytesPerDevice == 0 || c.MaximumAllocationsPerDevice <= 0 || c.ReconciliationGraceSeconds <= 0 {
+	if c.MaximumSessionTTLSeconds <= 0 || c.MaximumDatabaseClockSkewSeconds <= 0 || c.DailyBytesPerDevice == 0 || c.MaximumAllocationsPerDevice <= 0 || c.ReconciliationGraceSeconds <= 0 {
 		return errors.New("authority limits must be positive")
 	}
 	if c.MaximumSessionTTLSeconds > maxDurationSeconds || c.ReconciliationGraceSeconds > maxDurationSeconds {
@@ -128,9 +136,16 @@ func (c Config) Validate() error {
 	if c.MaximumAllocationsPerDevice > maxAllocationsPerDevice {
 		return errors.New("authority allocation limit exceeds the safe int32 bound")
 	}
+	if c.MaximumDatabaseClockSkewSeconds > maximumDatabaseClockSkewSeconds {
+		return fmt.Errorf("maximum_database_clock_skew_seconds must not exceed %d", maximumDatabaseClockSkewSeconds)
+	}
 	return nil
 }
 
 func (c Config) ReconciliationGrace() time.Duration {
 	return time.Duration(c.ReconciliationGraceSeconds) * time.Second
+}
+
+func (c Config) MaximumDatabaseClockSkew() time.Duration {
+	return time.Duration(c.MaximumDatabaseClockSkewSeconds) * time.Second
 }

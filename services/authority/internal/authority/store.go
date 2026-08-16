@@ -35,10 +35,12 @@ type Store interface {
 }
 
 type PostgresStore struct {
-	pool            *pgxpool.Pool
-	roleSecret      []byte
-	dailyLimit      uint64
-	allocationLimit int
+	pool                     *pgxpool.Pool
+	roleSecret               []byte
+	dailyLimit               uint64
+	allocationLimit          int
+	maximumDatabaseClockSkew time.Duration
+	now                      func() time.Time
 }
 
 const (
@@ -51,7 +53,14 @@ func OpenPostgres(ctx context.Context, cfg Config) (*PostgresStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open authority database: %w", err)
 	}
-	store := &PostgresStore{pool: pool, roleSecret: []byte(cfg.RoleTokenSecret), dailyLimit: cfg.DailyBytesPerDevice, allocationLimit: cfg.MaximumAllocationsPerDevice}
+	store := &PostgresStore{
+		pool:                     pool,
+		roleSecret:               []byte(cfg.RoleTokenSecret),
+		dailyLimit:               cfg.DailyBytesPerDevice,
+		allocationLimit:          cfg.MaximumAllocationsPerDevice,
+		maximumDatabaseClockSkew: cfg.MaximumDatabaseClockSkew(),
+		now:                      time.Now,
+	}
 	if err := store.Ready(ctx); err != nil {
 		pool.Close()
 		return nil, err
@@ -62,6 +71,16 @@ func OpenPostgres(ctx context.Context, cfg Config) (*PostgresStore, error) {
 func (s *PostgresStore) Close() { s.pool.Close() }
 
 func (s *PostgresStore) Ready(ctx context.Context) error {
+	hostBefore := s.now().UTC()
+	var databaseNow time.Time
+	if err := s.pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&databaseNow); err != nil {
+		return fmt.Errorf("%w: database clock probe: %v", ErrStorage, err)
+	}
+	hostAfter := s.now().UTC()
+	if err := validateDatabaseClock(databaseNow.UTC(), hostBefore, hostAfter, s.maximumDatabaseClockSkew); err != nil {
+		return fmt.Errorf("%w: database clock probe: %v", ErrStorage, err)
+	}
+
 	var version int64
 	var checksum string
 	if err := s.pool.QueryRow(ctx, `SELECT version,checksum_sha256 FROM authority_schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &checksum); err != nil {
@@ -153,6 +172,22 @@ func (s *PostgresStore) Ready(ctx context.Context) error {
 	}
 	if err := s.pool.QueryRow(ctx, `SELECT count(*)=$5 FROM unnest($1::text[],$2::text[],$3::text[],$4::text[]) AS expected(table_name,column_name,data_type,is_nullable) JOIN information_schema.columns actual ON actual.table_schema=current_schema() AND actual.table_name=expected.table_name AND actual.column_name=expected.column_name AND actual.data_type=expected.data_type AND actual.is_nullable=expected.is_nullable`, tables, columns, types, nullable, len(tables)).Scan(&complete); err != nil || !complete {
 		return fmt.Errorf("%w: required authority column signature mismatch", ErrStorage)
+	}
+	return nil
+}
+
+func validateDatabaseClock(databaseNow, hostBefore, hostAfter time.Time, maximumSkew time.Duration) error {
+	if databaseNow.IsZero() || hostBefore.IsZero() || hostAfter.IsZero() || maximumSkew <= 0 {
+		return errors.New("invalid clock sample")
+	}
+	if hostAfter.Before(hostBefore) {
+		return errors.New("host clock moved backwards during probe")
+	}
+	// The database timestamp was sampled at an unknown point between the two
+	// host samples. Require every possible sample position to stay within the
+	// configured bound; excessive query delay is therefore also fail-closed.
+	if databaseNow.Before(hostAfter.Add(-maximumSkew)) || databaseNow.After(hostBefore.Add(maximumSkew)) {
+		return errors.New("database clock exceeds the configured skew limit")
 	}
 	return nil
 }

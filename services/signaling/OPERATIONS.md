@@ -98,6 +98,14 @@ clock skew; fix the clock source instead. The signaling
 be kept consistent so a TTL accepted by signaling is never rejected by the
 authority.
 
+The authority `/readyz` also fail-closes when PostgreSQL `clock_timestamp()`
+cannot be proven within its configured application-clock skew bound. In
+`production_authority` mode, signaling propagates that state through its own
+readiness endpoint after the bounded readiness cache expires. Repair the
+host/database time source or excessive database-probe latency; do not extend
+session TTLs or raise the skew limit to suppress the failure. This comparison
+checks relative consistency only and does not replace external NTP monitoring.
+
 ## Backup and retention
 
 There is no signaling database to back up. Back up only reviewed configuration,

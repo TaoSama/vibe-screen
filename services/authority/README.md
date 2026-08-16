@@ -167,11 +167,32 @@ instead. The authority's `maximum_session_ttl_seconds` and the signaling
 `max_session_ttl_seconds` must be kept consistent so a TTL accepted by
 signaling is never rejected by the authority.
 
+`maximum_database_clock_skew_seconds` defaults to 5 when omitted and accepts
+only stricter values from 1 through 5. At startup and on every `GET /readyz`
+probe, the authority samples PostgreSQL `clock_timestamp()` between two
+application-clock samples. Readiness fails closed when the query fails, the
+application clock moves backwards, the round-trip is too wide to prove the
+configured bound, or the database clock could be outside that bound. The public
+failure remains the generic `503 {"error":"authority storage unavailable"}`
+response; `/healthz` continues to report process liveness. Signaling in
+`production_authority` mode therefore also becomes unready after its bounded
+readiness cache expires.
+
+On a clock-readiness failure, compare the host's UTC time with
+`SELECT clock_timestamp()` from the configured PostgreSQL endpoint, then repair
+the host/database time synchronization or the path causing excessive probe
+latency. Do not increase the skew limit or extend session TTLs to hide the
+failure. An already-running authority becomes ready again after the clocks are
+within bounds; an instance that failed its startup probe must be restarted by
+the process supervisor. This relative comparison does not prove that either
+clock agrees with an external trusted time source, so NTP monitoring remains a
+separate production requirement.
+
 ## Production gates
 
 - managed PostgreSQL multi-AZ deployment, TLS, PITR and restore exercise;
-- migration checksum/required-schema readiness and database credentials from a
-  secret manager;
+- migration checksum/required-schema/database-clock readiness and database
+  credentials from a secret manager;
 - signaling and relay integration that fails closed on authority errors
   (signaling `production_authority` mode is implemented and covered by a
   two-process PostgreSQL test; relay/coturn integration remains open);

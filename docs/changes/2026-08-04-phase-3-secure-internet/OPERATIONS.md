@@ -273,7 +273,11 @@ shipped:
 - Per-message remote authority authorization and the global `authorityCreateMu`
   create serialization are fail-closed correctness choices, not a
   high-throughput design.
-- Signaling and authority require NTP clock synchronization; expiry checks must
-  not be relaxed for clock skew.
+- Signaling and authority require NTP clock synchronization. Authority startup
+  and `/readyz` compare PostgreSQL `clock_timestamp()` with the application
+  clock and fail closed when the configured conservative skew bound cannot be
+  proven. This relative check does not prove external time correctness; expiry
+  checks, session TTLs, and the skew limit must not be relaxed to hide a clock
+  failure.
 - The signaling `max_session_ttl_seconds` and authority
   `maximum_session_ttl_seconds` must be kept consistent.

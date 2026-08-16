@@ -38,6 +38,7 @@ type memoryAllocation struct {
 }
 type memoryStore struct {
 	mu              sync.Mutex
+	readyError      error
 	accounts        map[string]bool
 	devices         map[string]string
 	revoked         map[string]uint64
@@ -55,7 +56,7 @@ func newMemoryStore() *memoryStore {
 	return &memoryStore{accounts: map[string]bool{}, devices: map[string]string{}, revoked: map[string]uint64{}, sessions: map[string]*memorySession{}, requests: map[string]string{}, allocations: map[string]*memoryAllocation{}, events: map[string][sha256.Size]byte{}, daily: map[string]uint64{}, epochFloors: map[string]uint64{}, allocationLimit: 1, dailyLimit: 100}
 }
 func (s *memoryStore) Close()                      {}
-func (s *memoryStore) Ready(context.Context) error { return nil }
+func (s *memoryStore) Ready(context.Context) error { return s.readyError }
 func (s *memoryStore) EnsureAccount(_ context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -288,7 +289,7 @@ func (s *memoryStore) Reconcile(ctx context.Context, request ReconcileRequest, g
 }
 
 func testAuthorityConfig() Config {
-	return Config{ListenAddress: "127.0.0.1:0", DatabaseURL: "postgres://unused", AdminToken: "admin" + testSecretSuffix, SignalingToken: "signaling" + testSecretSuffix, RelayToken: "relay" + testSecretSuffix, CoturnToken: "coturn" + testSecretSuffix, RoleTokenSecret: "role" + testSecretSuffix, MaximumSessionTTLSeconds: 900, DailyBytesPerDevice: 100, MaximumAllocationsPerDevice: 1, ReconciliationGraceSeconds: 10}
+	return Config{ListenAddress: "127.0.0.1:0", DatabaseURL: "postgres://unused", AdminToken: "admin" + testSecretSuffix, SignalingToken: "signaling" + testSecretSuffix, RelayToken: "relay" + testSecretSuffix, CoturnToken: "coturn" + testSecretSuffix, RoleTokenSecret: "role" + testSecretSuffix, MaximumSessionTTLSeconds: 900, MaximumDatabaseClockSkewSeconds: defaultMaximumDatabaseClockSkewSeconds, DailyBytesPerDevice: 100, MaximumAllocationsPerDevice: 1, ReconciliationGraceSeconds: 10}
 }
 
 func TestRequiredSchemaChecksumMatchesMigration(t *testing.T) {
@@ -339,6 +340,9 @@ func TestLoadConfigSupportsFileBackedEnvironmentValues(t *testing.T) {
 	if !maps.Equal(got, expected) {
 		t.Fatalf("file-backed config=%v, want %v", got, expected)
 	}
+	if cfg.MaximumDatabaseClockSkewSeconds != defaultMaximumDatabaseClockSkewSeconds {
+		t.Fatalf("default database clock skew=%d, want %d", cfg.MaximumDatabaseClockSkewSeconds, defaultMaximumDatabaseClockSkewSeconds)
+	}
 }
 
 func TestLoadEnvironmentValueRejectsAmbiguousSources(t *testing.T) {
@@ -346,6 +350,29 @@ func TestLoadEnvironmentValueRejectsAmbiguousSources(t *testing.T) {
 	t.Setenv(adminTokenEnv+"_FILE", filepath.Join(t.TempDir(), "secret"))
 	if _, err := loadEnvironmentValue(adminTokenEnv); err == nil || !strings.Contains(err.Error(), adminTokenEnv+"_FILE") {
 		t.Fatalf("ambiguous secret sources error=%v", err)
+	}
+}
+
+func TestLoadConfigRejectsExplicitZeroDatabaseClockSkew(t *testing.T) {
+	directory := t.TempDir()
+	configPath := filepath.Join(directory, "config.json")
+	config := `{"listen_address":"127.0.0.1:8091","maximum_session_ttl_seconds":900,"maximum_database_clock_skew_seconds":0,"daily_bytes_per_device":100,"maximum_allocations_per_device":2,"reconciliation_grace_seconds":120}`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range map[string]string{
+		databaseURLEnv:     "postgres://authority@example/vibescreen",
+		adminTokenEnv:      "admin" + testSecretSuffix,
+		signalingTokenEnv:  "signaling" + testSecretSuffix,
+		relayTokenEnv:      "relay" + testSecretSuffix,
+		coturnTokenEnv:     "coturn" + testSecretSuffix,
+		roleTokenSecretEnv: "role" + testSecretSuffix,
+	} {
+		t.Setenv(name, value)
+		t.Setenv(name+"_FILE", "")
+	}
+	if _, err := LoadConfig(configPath); err == nil {
+		t.Fatal("explicit zero database clock skew was accepted")
 	}
 }
 
@@ -679,6 +706,19 @@ func TestAuthorityResponsesSetSecurityHeaders(t *testing.T) {
 	}
 }
 
+func TestAuthorityReadinessFailsClosedWithoutExposingClockDetails(t *testing.T) {
+	store := newMemoryStore()
+	store.readyError = fmt.Errorf("%w: database clock probe failed", ErrStorage)
+	server, err := NewServer(testAuthorityConfig(), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := request(t, server.Handler(), http.MethodGet, "/readyz", "", "", http.StatusServiceUnavailable)
+	if got, want := response.Body.String(), "{\"error\":\"authority storage unavailable\"}\n"; got != want {
+		t.Fatalf("readiness body=%q, want %q", got, want)
+	}
+}
+
 func TestPostgresStoreRejectsUsageOutsideAllocationColumnBounds(t *testing.T) {
 	store := &PostgresStore{}
 	base := CoturnUsage{EventID: "event", Sequence: 1}
@@ -739,16 +779,27 @@ func TestConfigBoundsPreventDurationAndUint64Overflow(t *testing.T) {
 	if err := overflow.Validate(); err == nil {
 		t.Fatal("allocation limit above the safe int32 bound was accepted")
 	}
+	for _, invalidClockSkew := range []int64{-1, 0, maximumDatabaseClockSkewSeconds + 1} {
+		invalid := cfg
+		invalid.MaximumDatabaseClockSkewSeconds = invalidClockSkew
+		if err := invalid.Validate(); err == nil {
+			t.Fatalf("invalid database clock skew %d was accepted", invalidClockSkew)
+		}
+	}
 	exact := cfg
 	exact.MaximumSessionTTLSeconds = maxDurationSeconds
 	exact.ReconciliationGraceSeconds = maxDurationSeconds
 	exact.DailyBytesPerDevice = math.MaxInt64 + 1
 	exact.MaximumAllocationsPerDevice = maxAllocationsPerDevice
+	exact.MaximumDatabaseClockSkewSeconds = maximumDatabaseClockSkewSeconds
 	if err := exact.Validate(); err != nil {
 		t.Fatalf("exact upper-bound config rejected: %v", err)
 	}
 	if got := exact.ReconciliationGrace(); got <= 0 {
 		t.Fatalf("reconciliation grace duration must be positive, got %v", got)
+	}
+	if got := exact.MaximumDatabaseClockSkew(); got != time.Duration(maximumDatabaseClockSkewSeconds)*time.Second {
+		t.Fatalf("maximum database clock skew=%v", got)
 	}
 }
 

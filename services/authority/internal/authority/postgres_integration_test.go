@@ -266,6 +266,42 @@ func TestPostgresReadinessRejectsCriticalConstraintDrift(t *testing.T) {
 	}
 }
 
+func TestPostgresReadinessRejectsDatabaseClockSkewInEitherDirection(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	originalNow := store.now
+	t.Cleanup(func() { store.now = originalNow })
+	offset := 2 * store.maximumDatabaseClockSkew
+
+	for _, test := range []struct {
+		name   string
+		offset time.Duration
+	}{
+		{name: "database ahead", offset: -offset},
+		{name: "database behind", offset: offset},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store.now = func() time.Time { return originalNow().Add(test.offset) }
+			if err := store.Ready(context.Background()); !errors.Is(err, ErrStorage) {
+				t.Fatalf("readiness clock skew error=%v, want ErrStorage", err)
+			}
+		})
+	}
+
+	store.now = originalNow
+	if err := store.Ready(context.Background()); err != nil {
+		t.Fatalf("readiness did not recover after restoring host clock: %v", err)
+	}
+}
+
+func TestPostgresReadinessFailsClosedWhenClockProbeIsCanceled(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := store.Ready(ctx); !errors.Is(err, ErrStorage) {
+		t.Fatalf("canceled readiness clock probe error=%v, want ErrStorage", err)
+	}
+}
+
 func TestPostgresRegisterDeviceMissingAccountReturnsNotFound(t *testing.T) {
 	store, _ := openIntegrationStore(t)
 	ctx := context.Background()
