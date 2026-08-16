@@ -59,6 +59,14 @@ final class InternetProductSession: EncodedFrameSink {
         var overloadFailureScheduled = false
     }
 
+    private struct PendingRuntimeVideoConfiguration {
+        let committed: InternetProductVideoConfiguration
+        let proposed: InternetProductVideoConfiguration
+        let adaptiveToken: InternetAdaptiveRequestToken?
+        let adaptiveProfile: AdaptiveMediaProfile?
+        var awaitingHostRollback = false
+    }
+
     var onStateChanged: ((InternetProductSessionState) -> Void)?
     var onError: ((InternetProductSessionError) -> Void)?
     var onTouchEvent: ((Float, Float, Int, Int, Float, Float) -> Void)?
@@ -69,6 +77,21 @@ final class InternetProductSession: EncodedFrameSink {
     ) -> Bool)?
     var onKeyframeRequired: (() -> Void)?
     var onFreshSessionRecoveryRequired: ((Int) -> Void)?
+    var onAdaptiveProfileRequested: ((
+        InternetAdaptiveRequestToken,
+        AdaptiveMediaProfile,
+        InternetProductVideoConfiguration,
+        InternetProductVideoConfiguration
+    ) -> Void)?
+    var onAdaptiveProfileRollbackRequested: ((
+        InternetAdaptiveRequestToken,
+        InternetProductVideoConfiguration,
+        InternetProductVideoConfiguration
+    ) -> Void)?
+    var onAdaptiveProfileCommitted: ((
+        InternetAdaptiveRequestToken,
+        InternetProductVideoConfiguration
+    ) -> Void)?
     var onRevoked: (() -> Void)?
     /// Composition must deliver this signed tombstone to the session authority
     /// and peer. Local persistence remains fail-closed even if propagation is delayed.
@@ -96,6 +119,13 @@ final class InternetProductSession: EncodedFrameSink {
     private var peerSupportsStylus = false
     private var peerSupportsStylusExtended = false
     private var stylusSequenceState = StylusSequenceState()
+    private var adaptiveRequestSequence = InternetAdaptiveRequestSequence()
+    private var pendingAdaptiveRequest: InternetAdaptiveRequestToken?
+    private var pendingAdaptiveProfile: AdaptiveMediaProfile?
+    private var queuedAdaptiveProfile: AdaptiveMediaProfile?
+    private var committedVideoConfiguration: InternetProductVideoConfiguration?
+    private var pendingRuntimeVideoConfiguration: PendingRuntimeVideoConfiguration?
+    private var deferredRotationDegrees: Int?
     private var frameAdmission = FrameAdmissionState()
     private var controlAdmission = ControlAdmissionState()
 
@@ -157,6 +187,7 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsStylus = false
             peerSupportsStylusExtended = false
             _ = stylusSequenceState.consumeReset()
+            resetAdaptiveVideoState()
             configuration = nil
             let changed = state != .closed
             state = .closed
@@ -184,6 +215,7 @@ final class InternetProductSession: EncodedFrameSink {
             peerSupportsStylus = false
             peerSupportsStylusExtended = false
             _ = stylusSequenceState.consumeReset()
+            resetAdaptiveVideoState()
             let changed = state != .revoked
             state = .revoked
             let revocationGeneration = sessionGeneration
@@ -258,15 +290,179 @@ final class InternetProductSession: EncodedFrameSink {
 
     func updateRotation(_ rotationDegrees: Int) throws {
         try performSync {
-            guard isStreaming, var codec else {
+            guard [0, 90, 180, 270].contains(rotationDegrees) else {
+                throw InternetProductSessionError.invalidConfiguration(
+                    "Internet rotation must be 0, 90, 180, or 270 degrees."
+                )
+            }
+            if pendingAdaptiveRequest != nil
+                || pendingRuntimeVideoConfiguration != nil
+                || state == .awaitingVideoConfiguration {
+                deferredRotationDegrees = rotationDegrees
+                return
+            }
+            guard isStreaming, var codec,
+                  let committed = committedVideoConfiguration else {
                 throw InternetProductSessionError.invalidConfiguration(
                     "Internet rotation requires an active product session."
                 )
             }
             let controls = try codec.updateRotation(rotationDegrees)
+            let proposed = codec.video
+            do {
+                for control in controls { try sendControl(control) }
+            } catch {
+                codec.restoreVideoConfiguration(committed)
+                self.codec = codec
+                let sessionError = (error as? InternetProductSessionError)
+                    ?? .securityFailure(error.localizedDescription)
+                fail(sessionError)
+                throw sessionError
+            }
             self.codec = codec
-            for control in controls { try sendControl(control) }
+            pendingRuntimeVideoConfiguration = PendingRuntimeVideoConfiguration(
+                committed: committed,
+                proposed: proposed,
+                adaptiveToken: nil,
+                adaptiveProfile: nil
+            )
             setState(.awaitingVideoConfiguration)
+        }
+    }
+
+    @discardableResult
+    func completeAdaptiveProfile(
+        token: InternetAdaptiveRequestToken,
+        appliedVideo: InternetProductVideoConfiguration
+    ) throws -> Bool {
+        try performSync {
+            guard pendingAdaptiveRequest == token,
+                  let adaptiveProfile = pendingAdaptiveProfile,
+                  token.generation == sessionGeneration,
+                  pendingRuntimeVideoConfiguration == nil,
+                  isStreaming,
+                  let committed = committedVideoConfiguration,
+                  let baseline = configuration?.video,
+                  var codec else { return false }
+            guard appliedVideo.codec == committed.codec,
+                  appliedVideo.streamID == committed.streamID,
+                  appliedVideo.width >= 2, appliedVideo.width <= baseline.width,
+                  appliedVideo.height >= 2, appliedVideo.height <= baseline.height,
+                  appliedVideo.width.isMultiple(of: 2),
+                  appliedVideo.height.isMultiple(of: 2),
+                  appliedVideo.framesPerSecond > 0,
+                  appliedVideo.framesPerSecond <= baseline.framesPerSecond,
+                  appliedVideo.bitrateKbps >= 1_000,
+                  appliedVideo.bitrateKbps <= baseline.bitrateKbps else {
+                // Keep ownership until the caller restores the committed host
+                // configuration, then let rejectAdaptiveProfile resume queued
+                // work from the acknowledged state.
+                throw InternetProductSessionError.invalidConfiguration(
+                    "Adaptive video exceeded the user baseline or encoder limits."
+                )
+            }
+
+            let controls: [Data]
+            let proposed: InternetProductVideoConfiguration
+            do {
+                controls = try codec.updateVideoConfiguration(
+                    width: appliedVideo.width,
+                    height: appliedVideo.height,
+                    framesPerSecond: appliedVideo.framesPerSecond,
+                    bitrateKbps: appliedVideo.bitrateKbps,
+                    rotationDegrees: committed.rotationDegrees
+                )
+                proposed = codec.video
+                for control in controls { try sendControl(control) }
+            } catch {
+                codec.restoreVideoConfiguration(committed)
+                self.codec = codec
+                pendingAdaptiveRequest = nil
+                pendingAdaptiveProfile = nil
+                transport?.rejectAdaptiveProfile(adaptiveProfile)
+                stopNegotiationDeadline()
+                let sessionError = (error as? InternetProductSessionError)
+                    ?? .securityFailure(error.localizedDescription)
+                fail(sessionError)
+                throw sessionError
+            }
+            self.codec = codec
+            pendingAdaptiveRequest = nil
+            pendingAdaptiveProfile = nil
+            pendingRuntimeVideoConfiguration = PendingRuntimeVideoConfiguration(
+                committed: committed,
+                proposed: proposed,
+                adaptiveToken: token,
+                adaptiveProfile: adaptiveProfile
+            )
+            setState(.awaitingVideoConfiguration)
+            return true
+        }
+    }
+
+    @discardableResult
+    func rejectAdaptiveProfile(token: InternetAdaptiveRequestToken) -> Bool {
+        performSync {
+            guard pendingAdaptiveRequest == token,
+                  let adaptiveProfile = pendingAdaptiveProfile,
+                  token.generation == sessionGeneration,
+                  pendingRuntimeVideoConfiguration == nil,
+                  isStreaming else { return false }
+            pendingAdaptiveRequest = nil
+            pendingAdaptiveProfile = nil
+            transport?.rejectAdaptiveProfile(adaptiveProfile)
+            stopNegotiationDeadline()
+            resumeQueuedAdaptiveWork(generation: sessionGeneration)
+            return true
+        }
+    }
+
+    @discardableResult
+    func completeAdaptiveRollback(
+        token: InternetAdaptiveRequestToken,
+        succeeded: Bool
+    ) -> Bool {
+        performSync {
+            guard let pending = pendingRuntimeVideoConfiguration,
+                  pending.adaptiveToken == token,
+                  pending.awaitingHostRollback,
+                  token.generation == sessionGeneration else { return false }
+            guard succeeded else {
+                if let profile = pending.adaptiveProfile {
+                    transport?.rejectAdaptiveProfile(profile)
+                }
+                pendingRuntimeVideoConfiguration = nil
+                fail(.invalidConfiguration(
+                    "The host could not restore the last acknowledged adaptive video configuration."
+                ))
+                return true
+            }
+            if let profile = pending.adaptiveProfile {
+                transport?.rejectAdaptiveProfile(profile)
+            }
+            pendingRuntimeVideoConfiguration = nil
+            finishRuntimeVideoTransaction(generation: sessionGeneration)
+            return true
+        }
+    }
+
+    @discardableResult
+    func failAdaptiveProfile(token: InternetAdaptiveRequestToken, reason: String) -> Bool {
+        performSync {
+            let ownsPendingApply = pendingAdaptiveRequest == token
+            let ownsPendingRollback = pendingRuntimeVideoConfiguration?.adaptiveToken == token
+            guard token.generation == sessionGeneration,
+                  ownsPendingApply || ownsPendingRollback else { return false }
+            let profile = pendingAdaptiveProfile
+                ?? pendingRuntimeVideoConfiguration?.adaptiveProfile
+            pendingAdaptiveRequest = nil
+            pendingAdaptiveProfile = nil
+            pendingRuntimeVideoConfiguration = nil
+            if let profile {
+                transport?.rejectAdaptiveProfile(profile)
+            }
+            fail(.invalidConfiguration(reason))
+            return true
         }
     }
 
@@ -329,6 +525,7 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
         _ = stylusSequenceState.consumeReset()
+        resetAdaptiveVideoState()
         nextHeartbeatSequence = 1
         lastPeerActivityNanoseconds = DispatchTime.now().uptimeNanoseconds
         let connectingState = InternetProductSessionState.connecting
@@ -382,6 +579,29 @@ final class InternetProductSession: EncodedFrameSink {
         }
         transport.onFreshSessionRecoveryRequired = { [weak self] attempt in
             self?.queue.async { self?.beginFreshSessionRecovery(attempt: attempt, generation: generation) }
+        }
+        transport.onAdaptiveProfileChanged = { [weak self, weak transport] profile in
+            self?.queue.async {
+                guard let self, let transport,
+                      self.sessionGeneration == generation,
+                      self.transport === transport else { return }
+                if self.pendingAdaptiveRequest != nil
+                    || self.pendingRuntimeVideoConfiguration != nil
+                    || self.state == .awaitingVideoConfiguration {
+                    self.queuedAdaptiveProfile = profile
+                    return
+                }
+                guard self.isStreaming else {
+                    switch self.state {
+                    case .connecting, .authenticating:
+                        self.queuedAdaptiveProfile = profile
+                    default:
+                        break
+                    }
+                    return
+                }
+                self.beginAdaptiveProfileRequest(profile, generation: generation)
+            }
         }
     }
 
@@ -446,11 +666,32 @@ final class InternetProductSession: EncodedFrameSink {
                 setState(.awaitingVideoConfiguration)
 
             case .videoConfigResult(let result) where state == .awaitingVideoConfiguration:
+                if let pending = pendingRuntimeVideoConfiguration,
+                   pending.awaitingHostRollback {
+                    self.codec = codec
+                    return
+                }
+                if pendingRuntimeVideoConfiguration != nil,
+                   (result.configEpoch != codec.video.configEpoch
+                    || result.streamID != codec.video.streamID) {
+                    self.codec = codec
+                    return
+                }
                 guard result.configEpoch == codec.video.configEpoch,
                       result.streamID == codec.video.streamID else {
                     throw InternetProductProtocolError.unexpectedMessage(
                         "waiting for the active video configuration acknowledgment"
                     )
+                }
+                if !result.accepted, let pending = pendingRuntimeVideoConfiguration {
+                    guard let token = pending.adaptiveToken else {
+                        throw InternetProductProtocolError.rejectedVideoConfiguration(
+                            result.rejectionReason
+                        )
+                    }
+                    self.codec = codec
+                    beginAdaptiveRollback(token: token)
+                    return
                 }
                 guard result.accepted else {
                     throw InternetProductProtocolError.rejectedVideoConfiguration(
@@ -467,6 +708,20 @@ final class InternetProductSession: EncodedFrameSink {
                 stopNegotiationDeadline()
                 startHeartbeat()
                 onKeyframeRequired?()
+                let completedRuntimeTransaction = pendingRuntimeVideoConfiguration
+                committedVideoConfiguration = codec.video
+                pendingRuntimeVideoConfiguration = nil
+                if let token = completedRuntimeTransaction?.adaptiveToken {
+                    if let profile = completedRuntimeTransaction?.adaptiveProfile {
+                        transport?.commitAdaptiveProfile(profile)
+                    }
+                    onAdaptiveProfileCommitted?(token, codec.video)
+                }
+                if completedRuntimeTransaction != nil
+                    || deferredRotationDegrees != nil
+                    || queuedAdaptiveProfile != nil {
+                    resumeQueuedAdaptiveWork(generation: generation)
+                }
 
             case .ping(let ping):
                 try sendControl(codec.pong(
@@ -630,6 +885,119 @@ final class InternetProductSession: EncodedFrameSink {
         return contactState != .proximity || stylus.pressure == 0
     }
 
+    private func beginAdaptiveProfileRequest(
+        _ profile: AdaptiveMediaProfile,
+        generation: UInt64
+    ) {
+        guard generation == sessionGeneration,
+              pendingAdaptiveRequest == nil,
+              pendingRuntimeVideoConfiguration == nil,
+              isStreaming,
+              let committed = committedVideoConfiguration,
+              let baseline = configuration?.video,
+              let requestID = adaptiveRequestSequence.take(),
+              let plan = InternetAdaptiveVideoPlan(baseline: baseline, profile: profile) else {
+            return
+        }
+        let proposed = InternetProductVideoConfiguration(
+            codec: committed.codec,
+            width: plan.width,
+            height: plan.height,
+            framesPerSecond: plan.framesPerSecond,
+            bitrateKbps: plan.bitrateKbps,
+            streamID: committed.streamID,
+            configEpoch: committed.configEpoch,
+            rotationDegrees: committed.rotationDegrees
+        )
+        if proposed.width == committed.width,
+           proposed.height == committed.height,
+           proposed.framesPerSecond == committed.framesPerSecond,
+           proposed.bitrateKbps == committed.bitrateKbps,
+           proposed.rotationDegrees == committed.rotationDegrees {
+            transport?.commitAdaptiveProfile(profile)
+            return
+        }
+        let token = InternetAdaptiveRequestToken(
+            generation: generation,
+            requestID: requestID
+        )
+        pendingAdaptiveRequest = token
+        pendingAdaptiveProfile = profile
+        guard let onAdaptiveProfileRequested else {
+            pendingAdaptiveRequest = nil
+            pendingAdaptiveProfile = nil
+            transport?.rejectAdaptiveProfile(profile)
+            return
+        }
+        scheduleNegotiationDeadline()
+        onAdaptiveProfileRequested(token, profile, committed, baseline)
+    }
+
+    private func resumeQueuedAdaptiveWork(generation: UInt64) {
+        guard generation == sessionGeneration else { return }
+        if let rotationDegrees = deferredRotationDegrees {
+            deferredRotationDegrees = nil
+            do {
+                try updateRotation(rotationDegrees)
+            } catch let error as InternetProductSessionError {
+                fail(error)
+            } catch let error as InternetProductProtocolError {
+                fail(.protocolFailure(error))
+            } catch {
+                fail(.securityFailure(error.localizedDescription))
+            }
+            return
+        }
+        if let queuedAdaptiveProfile {
+            self.queuedAdaptiveProfile = nil
+            beginAdaptiveProfileRequest(queuedAdaptiveProfile, generation: generation)
+        }
+    }
+
+    private func finishRuntimeVideoTransaction(generation: UInt64) {
+        guard generation == sessionGeneration,
+              let path = activePath, path != .unknown else {
+            fail(.securityFailure(
+                "The selected ICE candidate path became unavailable during adaptive rollback."
+            ))
+            return
+        }
+        stopNegotiationDeadline()
+        setState(.streaming(path))
+        startHeartbeat()
+        onKeyframeRequired?()
+        resumeQueuedAdaptiveWork(generation: generation)
+    }
+
+    private func beginAdaptiveRollback(token: InternetAdaptiveRequestToken) {
+        guard var pending = pendingRuntimeVideoConfiguration,
+              pending.adaptiveToken == token,
+              !pending.awaitingHostRollback,
+              var codec else { return }
+        codec.restoreVideoConfiguration(pending.committed)
+        self.codec = codec
+        pending.awaitingHostRollback = true
+        pendingRuntimeVideoConfiguration = pending
+        scheduleNegotiationDeadline()
+        guard let onAdaptiveProfileRollbackRequested else {
+            pendingRuntimeVideoConfiguration = nil
+            fail(.invalidConfiguration(
+                "The host has no adaptive video rollback handler."
+            ))
+            return
+        }
+        onAdaptiveProfileRollbackRequested(token, pending.committed, pending.proposed)
+    }
+
+    private func resetAdaptiveVideoState() {
+        pendingAdaptiveRequest = nil
+        pendingAdaptiveProfile = nil
+        queuedAdaptiveProfile = nil
+        committedVideoConfiguration = nil
+        pendingRuntimeVideoConfiguration = nil
+        deferredRotationDegrees = nil
+    }
+
     private func sendControl(_ payload: Data) throws {
         guard let transport else {
             throw InternetProductSessionError.invalidConfiguration(
@@ -702,6 +1070,7 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
         _ = stylusSequenceState.consumeReset()
+        resetAdaptiveVideoState()
         let recoveringState = InternetProductSessionState.recovering(attempt: sessionAttempt)
         let stateChanged = state != recoveringState
         state = recoveringState
@@ -746,6 +1115,8 @@ final class InternetProductSession: EncodedFrameSink {
         guard let submission else { return finishFrameDrain(generation: generation) }
         guard submission.generation == sessionGeneration,
               case .streaming = state,
+              pendingAdaptiveRequest == nil,
+              pendingRuntimeVideoConfiguration == nil,
               let transport,
               var codec,
               submission.sessionEpoch == codec.sessionEpoch else {
@@ -862,7 +1233,18 @@ final class InternetProductSession: EncodedFrameSink {
         timer.setEventHandler { [weak self] in
             guard let self, self.sessionGeneration == generation else { return }
             switch self.state {
-            case .authenticating, .awaitingVideoConfiguration:
+            case .awaitingVideoConfiguration:
+                let detail = self.pendingRuntimeVideoConfiguration?.awaitingHostRollback == true
+                    ? "the host did not finish adaptive video rollback before the deadline"
+                    : "the peer did not acknowledge the active video configuration before the deadline"
+                self.fail(.protocolFailure(.unexpectedMessage(
+                    detail
+                )))
+            case .streaming where self.pendingAdaptiveRequest != nil:
+                self.fail(.invalidConfiguration(
+                    "The host did not apply the requested adaptive video profile before the deadline."
+                ))
+            case .authenticating:
                 self.fail(.protocolFailure(.unexpectedMessage(
                     "the peer did not finish Protocol v1 negotiation before the deadline"
                 )))
@@ -893,6 +1275,7 @@ final class InternetProductSession: EncodedFrameSink {
         peerSupportsStylus = false
         peerSupportsStylusExtended = false
         _ = stylusSequenceState.consumeReset()
+        resetAdaptiveVideoState()
         // Close the retired transport before publishing the terminal state so
         // any observer waking on .failed already sees the transport closed,
         // instead of racing the queue that would otherwise close it afterward.

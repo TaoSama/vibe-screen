@@ -207,15 +207,50 @@ unproved.
 
 ## Adaptive media
 
-The WebRTC adapter reports monotonic samples for available outgoing bitrate,
-loss, RTT, jitter, route, encode/decode queue, and frame drops. Policy chooses a
-bounded profile and uses hysteresis: downgrade quickly, upgrade slowly. The host
-proposes a `VideoConfig` with a new `config_epoch`; the client acknowledges before
-the host changes codec geometry. A rejection selects a lower compatible profile.
+Adaptive video profiles apply only to the WebRTC Internet transport. The USB
+and trusted-LAN transports continue to use manual client-driven presets
+(bitrate/quality/frame-rate) and do not run the adaptive policy.
 
-Transport policy may request a profile but does not mutate VideoToolbox or
-MediaCodec directly. User caps, decoder capabilities, thermal signals, and
-relay-cost caps constrain the policy.
+The WebRTC adapter reports monotonic samples for available outgoing bitrate,
+loss, and RTT. Route changes use a separate transport callback; jitter,
+encode/decode queue depth, and frame drops are not yet inputs to the adaptive
+policy. The host `AdaptiveMediaPolicy` selects a bounded profile and uses
+hysteresis: downgrade quickly (two consecutive poor samples) and upgrade slowly
+(four consecutive good samples on macOS; five on Android), with neutral samples
+resetting the counters so boundary jitter does not oscillate. On the host,
+non-finite loss/RTT, a zero
+bitrate estimate, and a missing RTT signal are treated as conservative
+(constrained or good) rather than promoting quality. The Android
+`AdaptiveVideoPolicy` mirrors the same fast-drop/slow-rise shape on the client
+transport side, but it treats a missing zero RTT as healthy and does not apply
+the host's non-finite or out-of-range loss guards, so those host edge-case
+guarantees do not extend to Android.
+
+The host applies an adaptive profile through the Protocol v1 video
+configuration transaction rather than mutating VideoToolbox directly:
+
+1. `InternetProductSession.beginAdaptiveProfileRequest` builds an
+   `InternetAdaptiveVideoPlan` from the user baseline and the selected profile,
+   clamping width, height, frame rate, and bitrate to the user-configured
+   baseline upper bound.
+2. The host applies the proposed configuration to the live encoder/capture
+   first, then the session sends a `VideoConfig` with a bumped `config_epoch`.
+   All outbound media stays gated until the client acknowledges.
+3. The client validates that `config_epoch` strictly increases, rejects
+   concurrent video-configuration transactions, and either accepts (updating
+   its decoder configuration and frame assembler) or rejects with a reason.
+4. On `VideoConfigResult` acceptance the host commits the new configuration,
+   requests a keyframe, and resumes streaming. On rejection the host attempts
+   to roll back to the last acknowledged configuration; a host-apply, ACK, or
+   host-rollback timeout fails the session closed, and a failed rollback
+   application also fails the session closed.
+
+The user-configured baseline constrains the current policy. Decoder capability,
+thermal, and relay-cost caps remain planned inputs and are not wired yet. The
+production host composition wires the
+`onAdaptiveProfileRequested` callback that applies the selected profile to the
+live encoder/capture, but this path is verified only through offline build and
+unit/self-tests, not against real capture output.
 
 ## Telemetry and privacy
 
@@ -262,7 +297,7 @@ semantic change requires a new protocol package/version.
 | Relay control/data plane | `services/relay/`, `deploy/phase3/` | Short-term credential control plane and pinned coturn Compose data plane exist. REST usernames map all sessions/expiries for one device to one coturn allocation-quota principal, and production peer ACLs deny private, CGNAT, link-local, ULA and other internal ranges. New credentials and usage events are rejected after a persisted revoke, and issuance/revoke are serialized. Existing coturn allocations are not terminated by this control-plane action; public deployment, authoritative byte usage, active-allocation disconnect, and multi-node state remain gates |
 | Signaling | `services/signaling/` plus Swift/Kotlin clients and `services/authority/` | Runnable single-instance in-memory routing, explicit local/production-authority modes, fail-closed authority admission and per-request authorization, device-revocation rejection, issuer-only invalidation, and real two-process PostgreSQL tests exist. It remains a one-offer router; Mac/Android automatic profile issuance, shared multi-instance routing, relay/coturn authority integration, and active transport disconnect remain gates |
 | Rotation/revocation/replay | Protocol, Go core, platform security and product-session directories | Record replay and old-epoch rejection plus peer-scoped signed local revocation have unit/self-test coverage. Android and macOS retain durable retry state for local secret cleanup; macOS prevents one device's revoke history from overwriting another's epoch floor. End-to-end revocation propagation to the peer, signaling and active TURN allocation; rotation interoperability; and real reconnect injection remain gates |
-| Adaptive video | policy types and unit tests | Policy foundation only; encoder/config acknowledgment integration pending |
+| Adaptive video | `AdaptiveMediaPolicy` (macOS) / `AdaptiveVideoPolicy` (Android), `InternetProductSession` video-config transaction, `InternetAdaptiveVideoPlan` baseline clamp | Fast-drop/slow-rise hysteresis with jitter reset, even dimensions without upscaling, user-baseline upper bounds, latest-proposal-wins queuing, rotation serialization, stale owner/generation rejection, retry after local or peer rejection, host apply encoder/capture + media gate → `VideoConfig` ACK → keyframe/resume, reject rollback, and host-apply/ACK/rollback-timeout fail-closed are implemented and unit/self-tested. The production encoder/capture-application callback (`onAdaptiveProfileRequested`) is wired, but verified only through offline build and unit/self-tests, not real capture output. Real ScreenCaptureKit→Android decoder continuity, public Internet, real remote TURN, real network fluctuation, handoff, and soak remain unproved |
 | Network simulation | `scripts/phase3/network_profile.py`, `tests/phase3/` | Deterministic contract simulation only; explicitly not OS-level impairment, ICE, or TURN evidence |
 | Android Internet evidence | [TEST.md](TEST.md), `evidence/android-product-interop.json`, `evidence/2026-08-05-nubia-p0110-internet/` | Prior record remains withdrawn. The reachable-source record is a historical 2026-08-05 result for commit `597518f948075e396352bc353afcec01a30303f3` only. It covers local Android UI plus direct/forced-coturn synthetic product-session interoperability on Nubia P0110, is not evidence for the current worktree, and cannot be extrapolated beyond that dated source/device combination |
 
@@ -339,6 +374,18 @@ These are release blockers, not accepted architecture:
   Authoritative coturn accounting, cryptographic signaling binding, multi-instance
   storage, container-engine execution of the pinned image, and public reachability
   remain pending.
+- The adaptive video policy and the Protocol v1 `VideoConfig`
+  acknowledge/rollback transaction are implemented and unit-tested on both host
+  and client, including even dimensions without upscaling, the user-baseline
+  upper bound, fast-drop/slow-rise hysteresis, latest-proposal-wins queuing,
+  rotation serialization, stale owner/generation rejection, retry after local
+  or peer rejection, host encoder/capture application before `VideoConfig`,
+  media gating until the client ACK, rejection rollback, and
+  host-apply/ACK/rollback-timeout fail-closed. The production host composition wires the
+  `onAdaptiveProfileRequested` callback that applies the selected profile to the
+  live encoder/capture, but this path is verified only through offline build and
+  unit/self-tests, not real capture output. USB and LAN transports are
+  intentionally excluded and keep manual client-driven presets.
 - Android release now bundles the fixed wrapper/WebRTC licenses, PATENTS,
   metadata, and publisher-supplied combined third-party notice bundle. Dependency
   audit is a release prerequisite; signed release/AAB alignment still requires

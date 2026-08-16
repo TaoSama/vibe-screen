@@ -507,7 +507,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] gamingBoost in
                 guard let self else { return }
                 self.refreshPendingReconfigurationIntent()
-                guard self.settings.isRunning, !self.isApplyingClientVideoPreferences else { return }
+                guard self.settings.isRunning,
+                      !self.isApplyingClientVideoPreferences,
+                      !self.settings.internetAdaptiveMediaControl.isActive else { return }
                 print("🎮 Gaming Boost \(gamingBoost ? "ENABLED" : "DISABLED")")
                 self.screenCapture?.updateEncoderSettings(
                     bitrateMbps: self.settings.effectiveBitrate,
@@ -525,7 +527,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.refreshPendingReconfigurationIntent()
                 guard self.settings.isRunning,
                       !self.settings.gamingBoost,
-                      !self.isApplyingClientVideoPreferences else { return }
+                      !self.isApplyingClientVideoPreferences,
+                      !self.settings.internetAdaptiveMediaControl.isActive else { return }
                 print("⚙️ Settings updated: \(bitrate)Mbps, \(quality)")
                 self.screenCapture?.updateEncoderSettings(
                     bitrateMbps: bitrate,
@@ -570,8 +573,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
+        settings.$refreshRate
+            .dropFirst()
+            .sink { [weak self] _ in
+                guard let self,
+                      !self.settings.internetAdaptiveMediaControl.isActive else { return }
+                self.refreshPendingReconfigurationIntent()
+            }
+            .store(in: &cancellables)
+
         for publisher in [
-            settings.$refreshRate.map { _ in () }.eraseToAnyPublisher(),
             settings.$hiDPI.map { _ in () }.eraseToAnyPublisher(),
             settings.$port.map { _ in () }.eraseToAnyPublisher(),
             settings.$adbDeviceSerial.map { _ in () }.eraseToAnyPublisher()
@@ -2352,6 +2363,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         let session = InternetProductSession()
         internetProductSession = session
+        settings.internetAdaptiveMediaControl = .active(
+            bitrateMbps: configuration.video.bitrateKbps / 1_000,
+            framesPerSecond: configuration.video.framesPerSecond,
+            quality: settings.effectiveQuality
+        )
         installInternetSessionCallbacks(session, sessionToken: sessionToken)
         screenCapture?.setCodec(.hevc)
         try session.start(configuration: configuration)
@@ -2645,6 +2661,525 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 await self.stopServer(preserveRecoveryState: true)
             }
         }
+
+        // Internet-only adaptive video. The adaptive controller owns encoder
+        // bitrate/quality/fps and capture resolution while an Internet product
+        // session is streaming. Manual user changes are gated out for the
+        // duration of an active adaptive profile so the controller's decisions
+        // are not overwritten; USB/LAN sessions are never affected because
+        // internetAdaptiveMediaControl stays inactive outside Internet mode.
+        session.onAdaptiveProfileRequested = {
+            [weak self, weak session] token, profile, committed, baseline in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                await self.applyInternetAdaptiveProfile(
+                    token: token,
+                    profile: profile,
+                    committed: committed,
+                    baseline: baseline,
+                    session: session,
+                    sessionToken: sessionToken
+                )
+            }
+        }
+
+        session.onAdaptiveProfileRollbackRequested = {
+            [weak self, weak session] token, committed, _ in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session,
+                      let capture = self.screenCapture,
+                      let displayID = self.activeDisplayID else {
+                    session?.completeAdaptiveRollback(token: token, succeeded: false)
+                    return
+                }
+                let succeeded = await self.restoreInternetAdaptiveCommitted(
+                    committed: committed,
+                    capture: capture,
+                    displayID: displayID,
+                    session: session,
+                    sessionToken: sessionToken
+                )
+                guard self.ownsInternetAdaptiveOperation(
+                    session: session,
+                    sessionToken: sessionToken,
+                    capture: capture,
+                    displayID: displayID
+                ) else {
+                    session.completeAdaptiveRollback(token: token, succeeded: false)
+                    return
+                }
+                session.completeAdaptiveRollback(token: token, succeeded: succeeded)
+            }
+        }
+
+        session.onAdaptiveProfileCommitted = {
+            [weak self, weak session] _, appliedVideo in
+            Task { @MainActor in
+                guard let self, let session,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session else { return }
+                // The peer acknowledged the adaptive configuration. Publish the
+                // live adaptive values to the UI without touching the user's
+                // persisted bitrate/quality/fps settings.
+                let bitrateMbps = max(1, appliedVideo.bitrateKbps / 1_000)
+                self.settings.internetAdaptiveMediaControl = .active(
+                    bitrateMbps: bitrateMbps,
+                    framesPerSecond: appliedVideo.framesPerSecond,
+                    quality: self.settings.internetAdaptiveMediaControl.quality
+                )
+            }
+        }
+    }
+
+    // MARK: - Internet adaptive video
+
+    /// Applies an Internet adaptive profile to the live encoder/capture and
+    /// reports the outcome back to the product session. On any failure the
+    /// previously committed configuration is restored so the stream keeps
+    /// running; the session is then told to reject (soft) or fail (hard) the
+    /// adaptive request. The user's persisted bitrate/quality/fps/gaming-boost
+    /// settings are never modified.
+    @MainActor
+    private func applyInternetAdaptiveProfile(
+        token: InternetAdaptiveRequestToken,
+        profile: AdaptiveMediaProfile,
+        committed: InternetProductVideoConfiguration,
+        baseline: InternetProductVideoConfiguration,
+        session: InternetProductSession,
+        sessionToken: UInt64
+    ) async {
+        guard let capture = screenCapture,
+              let displayID = activeDisplayID else {
+            session.failAdaptiveProfile(
+                token: token,
+                reason: "Adaptive video requires an active capture source and display."
+            )
+            return
+        }
+        guard let plan = InternetAdaptiveVideoPlan(
+            baseline: baseline,
+            profile: profile
+        ) else {
+            session.rejectAdaptiveProfile(token: token)
+            return
+        }
+
+        let bitrateMbps = plan.bitrateMbps
+        let quality = settings.internetAdaptiveMediaControl.quality
+        let fps = plan.framesPerSecond
+        let currentSize = capture.encodeSize(for: capture.codec)
+        let captureAction = CaptureReconfigurationPolicy.action(
+            currentWidth: currentSize.width,
+            currentHeight: currentSize.height,
+            currentFrameRate: capture.activeCaptureFrameRate,
+            targetWidth: plan.width,
+            targetHeight: plan.height,
+            targetFrameRate: fps
+        )
+        let needsCaptureRebuild = captureAction == .rebuild
+
+        // Apply encoder bitrate/quality/fps first. The VideoToolbox update is
+        // synchronous and reversible, so a failure here is a soft reject. A
+        // required capture rebuild below is the authoritative source-rate apply.
+        guard capture.updateEncoderSettings(
+            bitrateMbps: bitrateMbps,
+            quality: quality,
+            gamingBoost: false,
+            frameRate: fps,
+            reconfigureCaptureSource: false
+        ) == true else {
+            session.rejectAdaptiveProfile(token: token)
+            return
+        }
+
+        // Geometry changes rebuild the capture surface. FPS-only changes use
+        // ScreenCaptureKit's live configuration API and await its completion.
+        // Both paths finish before the product session advertises the new
+        // configuration and starts the peer-ACK deadline.
+        let sourceFrameRateChanged = captureAction == .updateFrameRate
+        do {
+            if needsCaptureRebuild {
+                let followsMain = settings.displaySource == .currentMain
+                try await capture.switchCapturedDisplay(
+                    to: displayID,
+                    refreshRate: fps,
+                    outputSize: (plan.width, plan.height),
+                    followsMainDisplay: followsMain,
+                    reportsTerminalFailure: false
+                )
+            } else if captureAction == .updateFrameRate {
+                try await capture.updateInternetAdaptiveFrameRate(fps)
+            }
+            guard ownsInternetAdaptiveOperation(
+                session: session,
+                sessionToken: sessionToken,
+                capture: capture,
+                displayID: displayID
+            ) else {
+                handleLostInternetAdaptiveOwnership(
+                    token: token,
+                    session: session,
+                    sessionToken: sessionToken
+                )
+                return
+            }
+        } catch {
+            guard ownsInternetAdaptiveOperation(
+                session: session,
+                sessionToken: sessionToken,
+                capture: capture,
+                displayID: displayID
+            ) else {
+                handleLostInternetAdaptiveOwnership(
+                    token: token,
+                    session: session,
+                    sessionToken: sessionToken
+                )
+                return
+            }
+            if sourceFrameRateChanged && !needsCaptureRebuild {
+                await failClosedInternetAdaptiveProfile(
+                    token: token,
+                    reason: "The host could not confirm the adaptive capture frame rate: \(error.localizedDescription)",
+                    session: session,
+                    sessionToken: sessionToken,
+                    capture: capture,
+                    displayID: displayID
+                )
+                return
+            }
+            let restored = await restoreInternetAdaptiveCommitted(
+                committed: committed,
+                capture: capture,
+                displayID: displayID,
+                session: session,
+                sessionToken: sessionToken
+            )
+            guard ownsInternetAdaptiveOperation(
+                session: session,
+                sessionToken: sessionToken,
+                capture: capture,
+                displayID: displayID
+            ) else {
+                handleLostInternetAdaptiveOwnership(
+                    token: token,
+                    session: session,
+                    sessionToken: sessionToken
+                )
+                return
+            }
+            if restored {
+                session.rejectAdaptiveProfile(token: token)
+            } else {
+                await failClosedInternetAdaptiveProfile(
+                    token: token,
+                    reason: "The host could not restore the acknowledged Internet video configuration.",
+                    session: session,
+                    sessionToken: sessionToken,
+                    capture: capture,
+                    displayID: displayID
+                )
+            }
+            return
+        }
+
+        let appliedVideo = InternetProductVideoConfiguration(
+            codec: committed.codec,
+            width: plan.width,
+            height: plan.height,
+            framesPerSecond: fps,
+            bitrateKbps: plan.bitrateKbps,
+            streamID: committed.streamID,
+            configEpoch: committed.configEpoch,
+            rotationDegrees: committed.rotationDegrees
+        )
+
+        do {
+            let completed = try session.completeAdaptiveProfile(
+                token: token,
+                appliedVideo: appliedVideo
+            )
+            if !completed {
+                guard ownsInternetAdaptiveOperation(
+                    session: session,
+                    sessionToken: sessionToken,
+                    capture: capture,
+                    displayID: displayID
+                ) else {
+                    handleLostInternetAdaptiveOwnership(
+                        token: token,
+                        session: session,
+                        sessionToken: sessionToken
+                    )
+                    return
+                }
+                let restored = await restoreInternetAdaptiveCommitted(
+                    committed: committed,
+                    capture: capture,
+                    displayID: displayID,
+                    session: session,
+                    sessionToken: sessionToken
+                )
+                guard ownsInternetAdaptiveOperation(
+                    session: session,
+                    sessionToken: sessionToken,
+                    capture: capture,
+                    displayID: displayID
+                ) else {
+                    handleLostInternetAdaptiveOwnership(
+                        token: token,
+                        session: session,
+                        sessionToken: sessionToken
+                    )
+                    return
+                }
+                if restored {
+                    if !session.rejectAdaptiveProfile(token: token) {
+                        await failClosedInternetAdaptiveProfile(
+                            token: token,
+                            reason: "The session rejected completion of an uncommitted adaptive video profile.",
+                            session: session,
+                            sessionToken: sessionToken,
+                            capture: capture,
+                            displayID: displayID
+                        )
+                    }
+                } else {
+                    await failClosedInternetAdaptiveProfile(
+                        token: token,
+                        reason: "The host could not restore an uncommitted adaptive video profile.",
+                        session: session,
+                        sessionToken: sessionToken,
+                        capture: capture,
+                        displayID: displayID
+                    )
+                }
+                return
+            }
+        } catch {
+            guard ownsInternetAdaptiveOperation(
+                session: session,
+                sessionToken: sessionToken,
+                capture: capture,
+                displayID: displayID
+            ) else {
+                handleLostInternetAdaptiveOwnership(
+                    token: token,
+                    session: session,
+                    sessionToken: sessionToken
+                )
+                return
+            }
+            if case .failed = session.snapshotState() { return }
+            let restored = await restoreInternetAdaptiveCommitted(
+                committed: committed,
+                capture: capture,
+                displayID: displayID,
+                session: session,
+                sessionToken: sessionToken
+            )
+            guard ownsInternetAdaptiveOperation(
+                session: session,
+                sessionToken: sessionToken,
+                capture: capture,
+                displayID: displayID
+            ) else {
+                handleLostInternetAdaptiveOwnership(
+                    token: token,
+                    session: session,
+                    sessionToken: sessionToken
+                )
+                return
+            }
+            if restored {
+                if !session.rejectAdaptiveProfile(token: token) {
+                    await failClosedInternetAdaptiveProfile(
+                        token: token,
+                        reason: "The session could not reject an uncommitted adaptive video profile.",
+                        session: session,
+                        sessionToken: sessionToken,
+                        capture: capture,
+                        displayID: displayID
+                    )
+                }
+            } else {
+                await failClosedInternetAdaptiveProfile(
+                    token: token,
+                    reason: error.localizedDescription,
+                    session: session,
+                    sessionToken: sessionToken,
+                    capture: capture,
+                    displayID: displayID
+                )
+            }
+        }
+    }
+
+    /// Restores the encoder/capture to the last committed Internet video
+    /// configuration. Used both when an adaptive profile application fails and
+    /// when the peer rejects a committed profile. Returns true when the
+    /// committed configuration was successfully re-applied.
+    @MainActor
+    @discardableResult
+    private func restoreInternetAdaptiveCommitted(
+        committed: InternetProductVideoConfiguration,
+        capture: ScreenCapture,
+        displayID: CGDirectDisplayID,
+        session: InternetProductSession,
+        sessionToken: UInt64
+    ) async -> Bool {
+        let currentSize = capture.encodeSize(for: capture.codec)
+        let currentFrameRate = capture.activeCaptureFrameRate
+        let captureAction = CaptureReconfigurationPolicy.action(
+            currentWidth: currentSize.width,
+            currentHeight: currentSize.height,
+            currentFrameRate: currentFrameRate,
+            targetWidth: committed.width,
+            targetHeight: committed.height,
+            targetFrameRate: committed.framesPerSecond
+        )
+        guard ownsInternetAdaptiveOperation(
+            session: session,
+            sessionToken: sessionToken,
+            capture: capture,
+            displayID: displayID
+        ), restoreInternetEncoderSettings(
+            committed: committed,
+            capture: capture,
+            reconfigureCaptureSource: false
+        ) else {
+            return false
+        }
+
+        if captureAction == .rebuild {
+            let followsMain = settings.displaySource == .currentMain
+            do {
+                try await capture.switchCapturedDisplay(
+                    to: displayID,
+                    refreshRate: committed.framesPerSecond,
+                    outputSize: (committed.width, committed.height),
+                    followsMainDisplay: followsMain,
+                    reportsTerminalFailure: false
+                )
+            } catch {
+                return false
+            }
+            guard ownsInternetAdaptiveOperation(
+                session: session,
+                sessionToken: sessionToken,
+                capture: capture,
+                displayID: displayID
+            ) else { return false }
+        } else if captureAction == .updateFrameRate {
+            do {
+                try await capture.updateInternetAdaptiveFrameRate(committed.framesPerSecond)
+            } catch {
+                return false
+            }
+            guard ownsInternetAdaptiveOperation(
+                session: session,
+                sessionToken: sessionToken,
+                capture: capture,
+                displayID: displayID
+            ) else { return false }
+        }
+        return ownsInternetAdaptiveOperation(
+            session: session,
+            sessionToken: sessionToken,
+            capture: capture,
+            displayID: displayID
+        )
+    }
+
+    /// Re-applies the committed bitrate/fps to the live encoder, using the
+    /// user's persisted quality and gaming-boost settings. Resolution is left
+    /// to the caller (restoreInternetAdaptiveCommitted) because it requires an
+    /// async capture rebuild. Returns false when the encoder update fails.
+    @MainActor
+    @discardableResult
+    private func restoreInternetEncoderSettings(
+        committed: InternetProductVideoConfiguration,
+        capture: ScreenCapture,
+        reconfigureCaptureSource: Bool
+    ) -> Bool {
+        let bitrateMbps = max(1, committed.bitrateKbps / 1_000)
+        // Quality is not part of the adaptive profile; preserve the user's
+        // baseline quality while applying network-driven rate and geometry.
+        let quality = settings.internetAdaptiveMediaControl.quality
+        let isUserBaseline = bitrateMbps == settings.effectiveBitrate
+            && committed.framesPerSecond == settings.effectiveRefreshRate
+        return capture.updateEncoderSettings(
+            bitrateMbps: bitrateMbps,
+            quality: quality,
+            gamingBoost: isUserBaseline && settings.gamingBoost,
+            frameRate: committed.framesPerSecond,
+            reconfigureCaptureSource: reconfigureCaptureSource
+        )
+    }
+
+    @MainActor
+    private func ownsInternetAdaptiveOperation(
+        session: InternetProductSession,
+        sessionToken: UInt64,
+        capture: ScreenCapture,
+        displayID: CGDirectDisplayID
+    ) -> Bool {
+        serverLifecycle.ownsSession(sessionToken)
+            && internetProductSession === session
+            && screenCapture === capture
+            && activeDisplayID == displayID
+    }
+
+    @MainActor
+    private func handleLostInternetAdaptiveOwnership(
+        token: InternetAdaptiveRequestToken,
+        session: InternetProductSession,
+        sessionToken: UInt64
+    ) {
+        guard serverLifecycle.ownsSession(sessionToken),
+              internetProductSession === session else {
+            _ = session.rejectAdaptiveProfile(token: token)
+            return
+        }
+        _ = session.failAdaptiveProfile(
+            token: token,
+            reason: "The active capture source changed during adaptive video reconfiguration."
+        )
+    }
+
+    @MainActor
+    private func failClosedInternetAdaptiveProfile(
+        token: InternetAdaptiveRequestToken,
+        reason: String,
+        session: InternetProductSession,
+        sessionToken: UInt64,
+        capture: ScreenCapture,
+        displayID: CGDirectDisplayID
+    ) async {
+        guard ownsInternetAdaptiveOperation(
+            session: session,
+            sessionToken: sessionToken,
+            capture: capture,
+            displayID: displayID
+        ) else {
+            _ = session.failAdaptiveProfile(token: token, reason: reason)
+            return
+        }
+        if session.failAdaptiveProfile(token: token, reason: reason) { return }
+        switch session.snapshotState() {
+        case .failed, .closed:
+            return
+        default:
+            settings.internetStatus = .failed
+            settings.internetErrorMessage = reason
+            settings.internetRecoverySuggestion =
+                "Reconnect with a fresh short-lived Internet session profile."
+            await stopServer(preserveRecoveryState: true)
+        }
     }
 
     @MainActor
@@ -2727,6 +3262,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         internetProductSession = nil
         virtualDisplayManager = nil
         activeDisplayID = nil
+        settings.internetAdaptiveMediaControl = .inactive
         let task = Task { @MainActor in
             internetSessionToStop?.close()
             await HostTeardownOrdering.perform(

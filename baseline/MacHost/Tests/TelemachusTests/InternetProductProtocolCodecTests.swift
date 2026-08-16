@@ -1,9 +1,56 @@
 import Foundation
+import CoreMedia
 import VibeScreenProtocol
 import XCTest
 @testable import Telemachus
 
 final class InternetProductProtocolCodecTests: XCTestCase {
+    func testCaptureReconfigurationSkipsRateOnlyAdaptiveChange() {
+        XCTAssertEqual(CaptureReconfigurationPolicy.action(
+            currentWidth: 1920,
+            currentHeight: 1080,
+            currentFrameRate: 30,
+            targetWidth: 1920,
+            targetHeight: 1080,
+            targetFrameRate: 60
+        ), .updateFrameRate)
+    }
+
+    func testCaptureReconfigurationSkipsUnchangedAdaptiveConfiguration() {
+        XCTAssertEqual(CaptureReconfigurationPolicy.action(
+            currentWidth: 1920,
+            currentHeight: 1080,
+            currentFrameRate: 60,
+            targetWidth: 1920,
+            targetHeight: 1080,
+            targetFrameRate: 60
+        ), .none)
+    }
+
+    func testCaptureReconfigurationRebuildsForDimensionChange() {
+        XCTAssertEqual(CaptureReconfigurationPolicy.action(
+            currentWidth: 1920,
+            currentHeight: 1080,
+            currentFrameRate: 60,
+            targetWidth: 1280,
+            targetHeight: 720,
+            targetFrameRate: 30
+        ), .rebuild)
+    }
+
+    func testCaptureStreamConfigurationUsesTargetAdaptiveFrameRate() {
+        let configuration = CaptureStreamConfigurationFactory.make(
+            width: 1920,
+            height: 1080,
+            frameRate: 30,
+            preservesAspectRatio: true
+        )
+
+        XCTAssertEqual(configuration.width, 1920)
+        XCTAssertEqual(configuration.height, 1080)
+        XCTAssertEqual(configuration.minimumFrameInterval, CMTime(value: 1, timescale: 30))
+    }
+
     func testMediaFrameCarriesAuthenticatedProtocolHeaderBeforeAnnexBPayload() throws {
         var codec = try makeCodec()
         let annexB = Data([0, 0, 0, 1, 0x26, 0x01])
@@ -284,6 +331,215 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         XCTAssertEqual(video.rotationDegrees, 270)
         XCTAssertEqual(video.configEpoch, 10)
         XCTAssertEqual(codec.video.rotationDegrees, 270)
+    }
+
+    func testAdaptivePlanNeverUpsamplesAndEnforcesEvenMinimumDimensions() {
+        let baseline = InternetProductVideoConfiguration(
+            codec: .hevc, width: 1920, height: 1080,
+            framesPerSecond: 60, bitrateKbps: 20_000,
+            streamID: 7, configEpoch: 9, rotationDegrees: 0
+        )
+
+        // resolutionScale above 1 must not grow the frame beyond the baseline.
+        let upscale = InternetAdaptiveVideoPlan(
+            baseline: baseline,
+            profile: AdaptiveMediaProfile(
+                targetBitrateBps: 20_000_000, resolutionScale: 1.5, framesPerSecond: 60
+            )
+        )
+        XCTAssertEqual(upscale?.width, 1920)
+        XCTAssertEqual(upscale?.height, 1080)
+
+        // Odd baselines scale down to even dimensions (low bit cleared).
+        let oddBaseline = InternetProductVideoConfiguration(
+            codec: .hevc, width: 1921, height: 1081,
+            framesPerSecond: 60, bitrateKbps: 20_000,
+            streamID: 7, configEpoch: 9, rotationDegrees: 0
+        )
+        let halfScale = InternetAdaptiveVideoPlan(
+            baseline: oddBaseline,
+            profile: AdaptiveMediaProfile(
+                targetBitrateBps: 20_000_000, resolutionScale: 0.5, framesPerSecond: 30
+            )
+        )
+        XCTAssertEqual(halfScale?.width, 960)
+        XCTAssertEqual(halfScale?.height, 540)
+        XCTAssertEqual(halfScale?.width.isMultiple(of: 2), true)
+        XCTAssertEqual(halfScale?.height.isMultiple(of: 2), true)
+
+        // Dimensions floor out at 2 so the encoder always receives a valid frame.
+        let tinyBaseline = InternetProductVideoConfiguration(
+            codec: .hevc, width: 3, height: 3,
+            framesPerSecond: 60, bitrateKbps: 20_000,
+            streamID: 7, configEpoch: 9, rotationDegrees: 0
+        )
+        let tiny = InternetAdaptiveVideoPlan(
+            baseline: tinyBaseline,
+            profile: AdaptiveMediaProfile(
+                targetBitrateBps: 20_000_000, resolutionScale: 0.1, framesPerSecond: 30
+            )
+        )
+        XCTAssertEqual(tiny?.width, 2)
+        XCTAssertEqual(tiny?.height, 2)
+    }
+
+    func testAdaptivePlanCapsFpsAndBitrateAtUserBaseline() {
+        let baseline = InternetProductVideoConfiguration(
+            codec: .hevc, width: 1920, height: 1080,
+            framesPerSecond: 30, bitrateKbps: 5_000,
+            streamID: 7, configEpoch: 9, rotationDegrees: 0
+        )
+        let greedy = AdaptiveMediaProfile(
+            targetBitrateBps: 20_000_000, resolutionScale: 1, framesPerSecond: 120
+        )
+
+        let plan = InternetAdaptiveVideoPlan(baseline: baseline, profile: greedy)
+
+        XCTAssertEqual(plan?.framesPerSecond, 30)
+        XCTAssertEqual(plan?.bitrateMbps, 5)
+    }
+
+    func testAdaptivePlanQuantizesBitrateToWholeMbpsRoundingHalfUp() {
+        let baseline = InternetProductVideoConfiguration(
+            codec: .hevc, width: 1920, height: 1080,
+            framesPerSecond: 60, bitrateKbps: 100_000,
+            streamID: 7, configEpoch: 9, rotationDegrees: 0
+        )
+
+        func mbps(_ bps: UInt64) -> Int? {
+            InternetAdaptiveVideoPlan(
+                baseline: baseline,
+                profile: AdaptiveMediaProfile(
+                    targetBitrateBps: bps, resolutionScale: 1, framesPerSecond: 30
+                )
+            )?.bitrateMbps
+        }
+
+        XCTAssertEqual(mbps(2_000_000), 2)
+        XCTAssertEqual(mbps(2_499_999), 2)
+        XCTAssertEqual(mbps(2_500_000), 3)
+        XCTAssertEqual(mbps(2_999_999), 3)
+    }
+
+    func testConfigEpochExhaustionRejectsVideoConfigurationUpdate() throws {
+        let exhausted = InternetProductVideoConfiguration(
+            codec: .hevc, width: 1920, height: 1080,
+            framesPerSecond: 60, bitrateKbps: 20_000,
+            streamID: 7, configEpoch: UInt64.max, rotationDegrees: 0
+        )
+        var codec = try InternetProductProtocolCodec(
+            sessionIdentifier: "product-session",
+            sessionEpoch: 3,
+            hostID: "host-1",
+            hostName: "Mac",
+            peerDeviceID: "device-1",
+            video: exhausted,
+            inputEnabled: true,
+            limits: InternetTransportLimits(
+                maximumControlMessageBytes: 64 * 1_024,
+                maximumBufferedControlBytes: 2 * 1_024 * 1_024,
+                maximumMediaFrameBytes: 16 * 1_024 * 1_024,
+                maximumRelayBytesPerSession: 1_024 * 1_024
+            )
+        )
+        try codec.validate(clientHello())
+
+        XCTAssertThrowsError(try codec.updateVideoConfiguration(bitrateKbps: 30_000)) { error in
+            XCTAssertEqual(
+                error as? InternetProductProtocolError,
+                .rejectedVideoConfiguration("Video configuration epoch is exhausted.")
+            )
+        }
+    }
+
+    func testRestoreDoesNotReusePreviouslyIssuedConfigEpoch() throws {
+        var codec = try makeCodec() // configEpoch 9, nextConfigEpoch 10
+
+        let first = try codec.updateVideoConfiguration(bitrateKbps: 30_000)
+        let firstEnvelope = try VSEnvelope(serializedBytes: first[0])
+        guard case .videoConfig(let firstVideo) = firstEnvelope.payload else {
+            return XCTFail("Expected VideoConfig")
+        }
+        XCTAssertEqual(firstVideo.configEpoch, 10)
+
+        // Roll back to the original configuration. The issued epoch 10 must not
+        // be handed out again even though the restored video carries epoch 9.
+        codec.restoreVideoConfiguration(InternetProductVideoConfiguration(
+            codec: .hevc, width: 1920, height: 1080,
+            framesPerSecond: 60, bitrateKbps: 20_000,
+            streamID: 7, configEpoch: 9, rotationDegrees: 0
+        ))
+        XCTAssertEqual(codec.video.configEpoch, 9)
+
+        let second = try codec.updateVideoConfiguration(bitrateKbps: 40_000)
+        let secondEnvelope = try VSEnvelope(serializedBytes: second[0])
+        guard case .videoConfig(let secondVideo) = secondEnvelope.payload else {
+            return XCTFail("Expected VideoConfig")
+        }
+        XCTAssertEqual(secondVideo.configEpoch, 11)
+    }
+
+    func testInvalidUpdateDoesNotConsumeConfigEpoch() throws {
+        var codec = try makeCodec() // configEpoch 9, nextConfigEpoch 10
+
+        XCTAssertThrowsError(try codec.updateVideoConfiguration(rotationDegrees: 45))
+        XCTAssertEqual(codec.video.configEpoch, 9)
+        XCTAssertEqual(codec.video.rotationDegrees, 0)
+
+        let controls = try codec.updateVideoConfiguration(rotationDegrees: 90)
+        let envelope = try VSEnvelope(serializedBytes: try XCTUnwrap(controls.last))
+        guard case .videoConfig(let video) = envelope.payload else {
+            return XCTFail("Expected VideoConfig")
+        }
+        XCTAssertEqual(video.configEpoch, 10)
+        XCTAssertEqual(video.rotationDegrees, 90)
+    }
+
+    func testBitrateOrFpsChangeEmitsOnlyVideoConfig() throws {
+        var codec = try makeCodec()
+
+        let bitrate = try codec.updateVideoConfiguration(bitrateKbps: 30_000)
+        XCTAssertEqual(bitrate.count, 1)
+        let bitrateEnvelope = try VSEnvelope(serializedBytes: bitrate[0])
+        guard case .videoConfig = bitrateEnvelope.payload else {
+            return XCTFail("Expected only VideoConfig for bitrate change")
+        }
+
+        let fps = try codec.updateVideoConfiguration(framesPerSecond: 30)
+        XCTAssertEqual(fps.count, 1)
+        let fpsEnvelope = try VSEnvelope(serializedBytes: fps[0])
+        guard case .videoConfig = fpsEnvelope.payload else {
+            return XCTFail("Expected only VideoConfig for fps change")
+        }
+    }
+
+    func testGeometryOrRotationChangeEmitsDisplayChangedThenVideoConfig() throws {
+        var codec = try makeCodec()
+
+        let resize = try codec.updateVideoConfiguration(width: 1280, height: 720)
+        XCTAssertEqual(resize.count, 2)
+        let resizeDisplay = try VSEnvelope(serializedBytes: resize[0])
+        let resizeVideo = try VSEnvelope(serializedBytes: resize[1])
+        guard case .displayChanged = resizeDisplay.payload,
+              case .videoConfig = resizeVideo.payload else {
+            return XCTFail("Expected DisplayChanged then VideoConfig for resize")
+        }
+
+        let rotate = try codec.updateVideoConfiguration(rotationDegrees: 90)
+        XCTAssertEqual(rotate.count, 2)
+        let rotateDisplay = try VSEnvelope(serializedBytes: rotate[0])
+        let rotateVideo = try VSEnvelope(serializedBytes: rotate[1])
+        guard case .displayChanged = rotateDisplay.payload,
+              case .videoConfig = rotateVideo.payload else {
+            return XCTFail("Expected DisplayChanged then VideoConfig for rotation")
+        }
+    }
+
+    func testAdaptiveRequestSequenceExhaustsAfterUInt64Max() {
+        var sequence = InternetAdaptiveRequestSequence(nextRequestID: UInt64.max)
+
+        XCTAssertEqual(sequence.take(), UInt64.max)
+        XCTAssertNil(sequence.take())
     }
 
     private func makeCodec(

@@ -82,22 +82,80 @@ struct InternetProductVideoConfiguration: Equatable {
         }
     }
 
-    func replacingRotation(_ rotationDegrees: Int) throws -> Self {
-        guard configEpoch < UInt64.max else {
-            throw InternetProductProtocolError.rejectedVideoConfiguration(
-                "Video configuration epoch is exhausted."
-            )
-        }
-        return Self(
+    func replacing(
+        width: Int? = nil,
+        height: Int? = nil,
+        framesPerSecond: Int? = nil,
+        bitrateKbps: Int? = nil,
+        configEpoch: UInt64,
+        rotationDegrees: Int? = nil
+    ) throws -> Self {
+        let replacement = Self(
             codec: codec,
-            width: width,
-            height: height,
-            framesPerSecond: framesPerSecond,
-            bitrateKbps: bitrateKbps,
+            width: width ?? self.width,
+            height: height ?? self.height,
+            framesPerSecond: framesPerSecond ?? self.framesPerSecond,
+            bitrateKbps: bitrateKbps ?? self.bitrateKbps,
             streamID: streamID,
-            configEpoch: configEpoch + 1,
-            rotationDegrees: rotationDegrees
+            configEpoch: configEpoch,
+            rotationDegrees: rotationDegrees ?? self.rotationDegrees
         )
+        try replacement.validate()
+        return replacement
+    }
+}
+
+struct InternetAdaptiveVideoPlan: Equatable {
+    let width: Int
+    let height: Int
+    let framesPerSecond: Int
+    let bitrateMbps: Int
+
+    var bitrateKbps: Int { bitrateMbps * 1_000 }
+
+    init?(baseline: InternetProductVideoConfiguration, profile: AdaptiveMediaProfile) {
+        guard baseline.width >= 2, baseline.height >= 2,
+              baseline.framesPerSecond > 0, baseline.bitrateKbps >= 1_000,
+              profile.resolutionScale.isFinite, profile.resolutionScale > 0,
+              profile.framesPerSecond > 0 else { return nil }
+
+        let scale = min(1, profile.resolutionScale)
+        func scaledEvenDimension(_ value: Int) -> Int {
+            let scaled = Int((Double(value) * scale).rounded(.down))
+            return max(2, min(value, scaled) & ~1)
+        }
+
+        let targetWholeMbps = profile.targetBitrateBps / 1_000_000
+            + (profile.targetBitrateBps % 1_000_000 >= 500_000 ? 1 : 0)
+        guard targetWholeMbps <= UInt64(Int.max) else { return nil }
+
+        width = scaledEvenDimension(baseline.width)
+        height = scaledEvenDimension(baseline.height)
+        framesPerSecond = max(1, min(baseline.framesPerSecond, profile.framesPerSecond))
+        bitrateMbps = max(
+            1,
+            min(baseline.bitrateKbps / 1_000, Int(targetWholeMbps))
+        )
+    }
+}
+
+struct InternetAdaptiveRequestToken: Equatable {
+    let generation: UInt64
+    let requestID: UInt64
+}
+
+struct InternetAdaptiveRequestSequence {
+    private(set) var nextRequestID: UInt64
+
+    init(nextRequestID: UInt64 = 1) {
+        self.nextRequestID = nextRequestID
+    }
+
+    mutating func take() -> UInt64? {
+        guard nextRequestID > 0 else { return nil }
+        let requestID = nextRequestID
+        nextRequestID = requestID == UInt64.max ? 0 : requestID + 1
+        return requestID
     }
 }
 
@@ -124,6 +182,7 @@ struct InternetProductProtocolCodec {
     private(set) var nextMessageID: UInt64 = 1
     private(set) var nextFrameID: UInt64 = 1
     private(set) var lastReceivedMessageID: UInt64 = 0
+    private(set) var nextConfigEpoch: UInt64?
 
     init(
         sessionIdentifier: String,
@@ -147,6 +206,9 @@ struct InternetProductProtocolCodec {
         self.peerDeviceID = peerDeviceID
         self.inputEnabled = inputEnabled
         self.video = video
+        self.nextConfigEpoch = video.configEpoch < UInt64.max
+            ? video.configEpoch + 1
+            : nil
         self.maximumControlBytes = limits.maximumControlMessageBytes
         self.maximumMediaBytes = limits.maximumMediaFrameBytes
         self.negotiatedMaximumEncryptedMediaRecordBytes = nil
@@ -309,7 +371,45 @@ struct InternetProductProtocolCodec {
     }
 
     mutating func updateRotation(_ rotationDegrees: Int) throws -> [Data] {
-        video = try video.replacingRotation(rotationDegrees)
+        try updateVideoConfiguration(rotationDegrees: rotationDegrees)
+    }
+
+    mutating func updateVideoConfiguration(
+        width: Int? = nil,
+        height: Int? = nil,
+        framesPerSecond: Int? = nil,
+        bitrateKbps: Int? = nil,
+        rotationDegrees: Int? = nil
+    ) throws -> [Data] {
+        guard let configEpoch = nextConfigEpoch else {
+            throw InternetProductProtocolError.rejectedVideoConfiguration(
+                "Video configuration epoch is exhausted."
+            )
+        }
+        let previous = video
+        let replacement = try video.replacing(
+            width: width,
+            height: height,
+            framesPerSecond: framesPerSecond,
+            bitrateKbps: bitrateKbps,
+            configEpoch: configEpoch,
+            rotationDegrees: rotationDegrees
+        )
+        nextConfigEpoch = configEpoch == UInt64.max ? nil : configEpoch + 1
+        video = replacement
+        let displayChanged = video.width != previous.width
+            || video.height != previous.height
+            || video.rotationDegrees != previous.rotationDegrees
+        return displayChanged
+            ? [try displayChangedControl(), try videoConfiguration()]
+            : [try videoConfiguration()]
+    }
+
+    mutating func restoreVideoConfiguration(_ configuration: InternetProductVideoConfiguration) {
+        video = configuration
+    }
+
+    private mutating func displayChangedControl() throws -> Data {
         var size = VSDimensions()
         size.width = UInt32(video.width)
         size.height = UInt32(video.height)
@@ -323,7 +423,7 @@ struct InternetProductProtocolCodec {
         changed.rotationDegrees = UInt32(video.rotationDegrees)
         var envelope = baseEnvelope()
         envelope.displayChanged = changed
-        return [try encode(envelope), try videoConfiguration()]
+        return try encode(envelope)
     }
 
     mutating func pong(sequence: UInt64, correlationID: UInt64) throws -> Data {

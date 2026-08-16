@@ -14,6 +14,7 @@ struct AdaptiveMediaProfile: Equatable {
 
 final class AdaptiveMediaPolicy {
     private(set) var currentProfile: AdaptiveMediaProfile
+    private(set) var acknowledgedProfile: AdaptiveMediaProfile
     private var pendingProfile: AdaptiveMediaProfile?
     private var pendingObservationCount = 0
     private let observationsBeforeDowngrade: Int
@@ -25,6 +26,7 @@ final class AdaptiveMediaPolicy {
         observationsBeforeUpgrade: Int = 4
     ) {
         self.currentProfile = initialProfile
+        self.acknowledgedProfile = initialProfile
         self.observationsBeforeDowngrade = observationsBeforeDowngrade
         self.observationsBeforeUpgrade = observationsBeforeUpgrade
     }
@@ -54,20 +56,55 @@ final class AdaptiveMediaPolicy {
         return candidate
     }
 
-    private static func profile(for sample: InternetNetworkQualitySample) -> AdaptiveMediaProfile {
-        let loss = max(0, min(sample.packetLossFraction, 1))
-        let rtt = max(0, sample.roundTripTimeMilliseconds)
+    func commit(_ profile: AdaptiveMediaProfile) {
+        acknowledgedProfile = profile
+    }
+
+    func reject(_ profile: AdaptiveMediaProfile) {
+        guard currentProfile == profile else { return }
+        currentProfile = acknowledgedProfile
+        pendingProfile = nil
+        pendingObservationCount = 0
+    }
+
+    static func profile(for sample: InternetNetworkQualitySample) -> AdaptiveMediaProfile {
+        let loss = sample.packetLossFraction
+        let rtt = sample.roundTripTimeMilliseconds
         let bitrate = sample.availableOutgoingBitrateBps
 
-        if loss >= 0.12 || rtt >= 450 || bitrate < 3_000_000 {
+        // Non-finite loss or RTT means the telemetry sample is unusable. Fall
+        // back to the most conservative profile instead of letting NaN
+        // comparisons silently skip every threshold and land on highQuality.
+        guard loss.isFinite, loss >= 0,
+              rtt.isFinite, rtt >= 0 else {
             return constrained
         }
-        if loss >= 0.05 || rtt >= 250 || bitrate < 7_000_000 {
+
+        let clampedLoss = max(0, min(loss, 1))
+        let clampedRTT = max(0, rtt)
+
+        // A zero bitrate estimate carries no usable bandwidth signal; stay
+        // constrained rather than treating it as an abundant link.
+        if bitrate == 0 {
+            return constrained
+        }
+
+        if clampedLoss >= 0.12 || clampedRTT >= 450 || bitrate < 3_000_000 {
+            return constrained
+        }
+        if clampedLoss >= 0.05 || clampedRTT >= 250 || bitrate < 7_000_000 {
             return balanced
         }
-        if loss >= 0.02 || rtt >= 150 || bitrate < 14_000_000 {
+        if clampedLoss >= 0.02 || clampedRTT >= 150 || bitrate < 14_000_000 {
             return good
         }
+
+        // A zero RTT is treated as a missing measurement. Without a real
+        // latency signal we must not promote to highQuality.
+        if clampedRTT == 0 {
+            return good
+        }
+
         return highQuality
     }
 

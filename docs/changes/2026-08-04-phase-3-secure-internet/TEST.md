@@ -51,7 +51,7 @@ steps.
 | Replay | duplicate, too old, reordered media, reordered control, cross-channel/session/epoch/key, crash/restart counter safety |
 | Transport | direct ICE, forced TURN, IPv4/IPv6, UDP-blocked/TCP-TLS relay, two channel semantics, payload/backlog/frame caps |
 | Recovery | Wi-Fi/cellular/VPN changes, route changes, ICE restart backoff, signaling loss, TURN loss, process restart, old-epoch injection |
-| Adaptation | trace-driven RTT/loss/jitter/bandwidth, downgrade/upgrade hysteresis, config acknowledgment/rejection, keyframe recovery |
+| Adaptation | WebRTC Internet transport only (USB/LAN keep manual client-driven presets). Offline: fast-drop/slow-rise hysteresis with jitter reset, host-only non-finite/zero-bitrate/missing-RTT conservative handling, even dimensions without upscaling, user-baseline upper-bound clamp, latest-proposal-wins queuing, rotation serialization, stale owner/generation rejection, retry after local or peer rejection, host apply encoder/capture + media gate → `VideoConfig` ACK → keyframe/resume, rejection rollback and host-apply/ACK/rollback-timeout fail-closed. Android policy tests cover hysteresis and neutral reset, not those host telemetry edge cases. Not proved: real ScreenCaptureKit→Android decoder continuity, public Internet, real remote TURN, real network fluctuation, handoff, soak |
 | Relay operations | short credential expiry, allocation/peer/bandwidth/byte/concurrency quotas, rate limits, alerts, spend reconciliation |
 | Privacy | packet capture, logs/crash/evidence/telemetry scan, retention and deletion drill |
 | Android device E2E | install, pair, direct stream, relay stream, touch/keyboard, network handoff, revoke, reconnect, two-hour soak |
@@ -171,9 +171,27 @@ claim a network handoff based only on toggling UI.
 
 At document creation, repository policy/unit tests may prove schema validation,
 channel separation, ICE-restart policy, bounded queues, relay accounting, and
-adaptation decisions. Go tests also exercise the standalone cryptographic core.
-They do not prove the production composition of WebRTC, platform/product crypto,
-signaling and TURN, Internet connectivity, or E2E security.
+adaptation decisions. The macOS `AdaptiveMediaPolicy` unit tests cover
+fast-drop/slow-rise hysteresis, boundary jitter without oscillation, non-finite
+loss/RTT and zero-bitrate conservative fallback, and missing-RTT handling.
+Android `AdaptiveVideoPolicy` tests cover its fast-drop/slow-rise thresholds and
+neutral-sample reset. The host `InternetProductSession` covers the
+host-apply and `VideoConfig` ACK gates, `config_epoch` enforcement, bounded
+host-apply/ACK/rollback deadlines, even non-upscaled dimensions,
+latest-proposal-wins queuing, rotation serialization (including resuming a
+deferred rotation after local rejection), stale owner/generation isolation, and
+retry after local or peer rejection. These map to focused codec, session, and
+transport-policy unit tests rather than device evidence. The client
+`InternetProductSession` covers strict `config_epoch` increase, concurrent
+transaction rejection, decoder-effect commit before ACK, and 5-second
+video-configuration timeout fail-closed. These are offline, layer-local results.
+Go tests also exercise the standalone cryptographic core. They do not prove the
+production composition of WebRTC, platform/product crypto, signaling and TURN,
+Internet connectivity, or E2E security. The production host composition wires
+the adaptive encoder/capture-application callback, but this path is verified
+only through offline build and unit/self-tests, so no real
+ScreenCaptureKit→Android decoder continuity, public-Internet, real
+remote-TURN, real network-fluctuation, handoff, or soak evidence exists.
 
 No Xiaomi 13 (2211133C) Phase 3 Internet acceptance evidence is recorded here. A narrower
 Nubia P0110 local direct/forced-coturn product-session record is listed below;

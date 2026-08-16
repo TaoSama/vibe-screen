@@ -762,71 +762,945 @@ final class InternetProductSessionTests: XCTestCase {
         }
         XCTAssertTrue(harness.failures.isEmpty)
     }
+
+    // MARK: - Adaptive video state machine
+
+    private func constrainedSample() -> InternetNetworkQualitySample {
+        InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: 500,
+            packetLossFraction: 0.2,
+            availableOutgoingBitrateBps: 1_000_000
+        )
+    }
+
+    private func balancedSample() -> InternetNetworkQualitySample {
+        InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: 300,
+            packetLossFraction: 0.06,
+            availableOutgoingBitrateBps: 5_000_000
+        )
+    }
+    private func goodSample() -> InternetNetworkQualitySample {
+        InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: 100,
+            packetLossFraction: 0.01,
+            availableOutgoingBitrateBps: 10_000_000
+        )
+    }
+
+    private func appliedVideo(
+        width: Int = 960,
+        height: Int = 540,
+        framesPerSecond: Int = 20,
+        bitrateKbps: Int = 3_000
+    ) -> InternetProductVideoConfiguration {
+        InternetProductVideoConfiguration(
+            codec: .hevc,
+            width: width,
+            height: height,
+            framesPerSecond: framesPerSecond,
+            bitrateKbps: bitrateKbps
+        )
+    }
+
+    private func reachStreaming(_ harness: Harness) throws {
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1))
+        harness.receiveControl(harness.videoAccepted(
+            messageID: 2,
+            configEpoch: harness.configuration.video.configEpoch
+        ))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+    }
+
+    func testInitialVideoAckWithWrongEpochFailsClosed() throws {
+        let harness = try Harness()
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1))
+        XCTAssertTrue(harness.waitForSentControlCount(3))
+
+        harness.receiveControl(harness.videoAccepted(messageID: 2, configEpoch: 2))
+
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
+    }
+
+    func testRuntimeRotationPartialControlSendFailsClosed() throws {
+        let harness = try Harness()
+        try reachStreaming(harness)
+        harness.engine.invalidateTransmissionContextOnNextControlSend()
+
+        XCTAssertThrowsError(try harness.session.updateRotation(90))
+
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
+        let runtimeControls = try harness.engine.sentPlaintext
+            .filter { $0.channel == .control }
+            .suffix(1)
+            .map { try VSEnvelope(serializedBytes: $0.payload) }
+        guard case .displayChanged = runtimeControls.first?.payload else {
+            return XCTFail("The first rotation control should be sent before the second is rejected")
+        }
+    }
+
+    func testAdaptivePendingAndAwaitingGateMediaFrames() throws {
+        let harness = try Harness()
+        let requested = expectation(description: "adaptive profile requested")
+        var capturedToken: InternetAdaptiveRequestToken?
+        harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
+            capturedToken = token
+            requested.fulfill()
+        }
+
+        try reachStreaming(harness)
+
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [requested], timeout: 1)
+        let token = try XCTUnwrap(capturedToken)
+
+        // Pending adaptive request must gate outbound media.
+        let beforePending = harness.engine.sentPlaintext.filter { $0.channel == .media }.count
+        harness.session.sendFrame(Data([0xAA]), timestamp: 1, isKeyframe: true, sessionEpoch: 1)
+        Thread.sleep(forTimeInterval: 0.05)
+        XCTAssertEqual(
+            harness.engine.sentPlaintext.filter { $0.channel == .media }.count,
+            beforePending,
+            "Frames must be dropped while an adaptive request is pending"
+        )
+
+        // Completing the profile moves the session into awaitingVideoConfiguration,
+        // which must keep gating media until the peer acknowledges the new config.
+        try harness.session.completeAdaptiveProfile(token: token, appliedVideo: appliedVideo())
+        let beforeAwaiting = harness.engine.sentPlaintext.filter { $0.channel == .media }.count
+        harness.session.sendFrame(Data([0xBB]), timestamp: 2, isKeyframe: true, sessionEpoch: 1)
+        Thread.sleep(forTimeInterval: 0.05)
+        XCTAssertEqual(
+            harness.engine.sentPlaintext.filter { $0.channel == .media }.count,
+            beforeAwaiting,
+            "Frames must be dropped while awaiting the peer video configuration ACK"
+        )
+
+        harness.receiveControl(harness.videoAccepted(messageID: 3, configEpoch: 2))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+
+        // After the ACK commits the configuration, media flows again.
+        harness.session.sendFrame(Data([0xCC]), timestamp: 3, isKeyframe: true, sessionEpoch: 1)
+        XCTAssertTrue(harness.waitForSentMediaCount(beforeAwaiting + 1))
+    }
+
+    func testAdaptiveAckCommitsConfigurationAndRequestsKeyframe() throws {
+        let harness = try Harness()
+        let requested = expectation(description: "adaptive profile requested")
+        let committed = expectation(description: "adaptive profile committed")
+        var capturedToken: InternetAdaptiveRequestToken?
+        var keyframeCount = 0
+        harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
+            capturedToken = token
+            requested.fulfill()
+        }
+        harness.session.onAdaptiveProfileCommitted = { token, video in
+            XCTAssertEqual(token, capturedToken)
+            XCTAssertEqual(video.width, 960)
+            XCTAssertEqual(video.height, 540)
+            committed.fulfill()
+        }
+        harness.session.onKeyframeRequired = { keyframeCount += 1 }
+
+        try reachStreaming(harness)
+        let keyframesBeforeAdaptive = keyframeCount
+
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [requested], timeout: 1)
+        let token = try XCTUnwrap(capturedToken)
+
+        try harness.session.completeAdaptiveProfile(token: token, appliedVideo: appliedVideo())
+        harness.receiveControl(harness.videoAccepted(messageID: 3, configEpoch: 2))
+
+        wait(for: [committed], timeout: 1)
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertGreaterThan(keyframeCount, keyframesBeforeAdaptive)
+    }
+
+    func testClientRejectionTriggersHostRollbackThatRestoresPreviousStream() throws {
+        let harness = try Harness()
+        let requested = expectation(description: "adaptive profile requested")
+        let rollback = expectation(description: "adaptive rollback requested")
+        let retried = expectation(description: "peer-rejected profile retried")
+        var capturedToken: InternetAdaptiveRequestToken?
+        var rollbackToken: InternetAdaptiveRequestToken?
+        var requestCount = 0
+        harness.session.onAdaptiveProfileRequested = { token, profile, _, _ in
+            XCTAssertEqual(profile, AdaptiveMediaPolicy.constrained)
+            requestCount += 1
+            if requestCount == 1 {
+                capturedToken = token
+                requested.fulfill()
+            } else if requestCount == 2 {
+                retried.fulfill()
+            }
+        }
+        harness.session.onAdaptiveProfileRollbackRequested = { token, committed, proposed in
+            rollbackToken = token
+            XCTAssertEqual(committed.width, 1920)
+            XCTAssertEqual(proposed.width, 960)
+            rollback.fulfill()
+        }
+
+        try reachStreaming(harness)
+
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [requested], timeout: 1)
+        let token = try XCTUnwrap(capturedToken)
+
+        try harness.session.completeAdaptiveProfile(token: token, appliedVideo: appliedVideo())
+        harness.receiveControl(harness.videoRejected(messageID: 3, configEpoch: 2))
+
+        wait(for: [rollback], timeout: 1)
+        XCTAssertEqual(rollbackToken, token)
+
+        let succeeded = harness.session.completeAdaptiveRollback(token: token, succeeded: true)
+        XCTAssertTrue(succeeded)
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+
+        // The previous (committed) stream must continue to flow after rollback.
+        let before = harness.engine.sentPlaintext.filter { $0.channel == .media }.count
+        harness.session.sendFrame(Data([0xDD]), timestamp: 4, isKeyframe: true, sessionEpoch: 1)
+        XCTAssertTrue(harness.waitForSentMediaCount(before + 1))
+
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [retried], timeout: 1)
+        XCTAssertEqual(requestCount, 2)
+    }
+
+    func testAdaptiveRollbackFailureFailsClosed() throws {
+        let harness = try Harness()
+        let requested = expectation(description: "adaptive profile requested")
+        let rollback = expectation(description: "adaptive rollback requested")
+        var capturedToken: InternetAdaptiveRequestToken?
+        harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
+            capturedToken = token
+            requested.fulfill()
+        }
+        harness.session.onAdaptiveProfileRollbackRequested = { _, _, _ in rollback.fulfill() }
+
+        try reachStreaming(harness)
+
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [requested], timeout: 1)
+        let token = try XCTUnwrap(capturedToken)
+
+        try harness.session.completeAdaptiveProfile(token: token, appliedVideo: appliedVideo())
+        harness.receiveControl(harness.videoRejected(messageID: 3, configEpoch: 2))
+        wait(for: [rollback], timeout: 1)
+
+        let succeeded = harness.session.completeAdaptiveRollback(token: token, succeeded: false)
+        XCTAssertTrue(succeeded)
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
+    }
+
+    func testAdaptiveAckTimeoutFailsClosedBecausePeerCommitIsUnknown() throws {
+        let harness = try Harness(negotiationTimeoutMilliseconds: 30)
+        let requested = expectation(description: "adaptive profile requested")
+        var capturedToken: InternetAdaptiveRequestToken?
+        harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
+            capturedToken = token
+            requested.fulfill()
+        }
+
+        try reachStreaming(harness)
+
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [requested], timeout: 1)
+        let token = try XCTUnwrap(capturedToken)
+
+        try harness.session.completeAdaptiveProfile(token: token, appliedVideo: appliedVideo())
+        XCTAssertEqual(harness.session.snapshotState(), .awaitingVideoConfiguration)
+
+        // The peer may have committed the new decoder epoch before its ACK was
+        // delayed. Continuing on the old epoch would split host/client state,
+        // so an ambiguous timeout must close the session.
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
+    }
+
+    func testAdaptiveHostApplyTimeoutFailsClosed() throws {
+        let harness = try Harness(negotiationTimeoutMilliseconds: 30)
+        let requested = expectation(description: "adaptive profile requested")
+        harness.session.onAdaptiveProfileRequested = { _, _, _, _ in
+            requested.fulfill()
+        }
+
+        try reachStreaming(harness)
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [requested], timeout: 1)
+
+        // The composition callback intentionally never completes or rejects the
+        // request. The pending host apply gates media, so it must have the same
+        // bounded fail-closed behavior as peer ACK and rollback waits.
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
+    }
+
+    func testAdaptiveAckDeadlineStartsAfterHostApplyCompletes() throws {
+        let testTimeoutMilliseconds: UInt32 = 600
+        let hostApplyDelay: TimeInterval = 0.40
+        let acknowledgmentDelay: TimeInterval = 0.30
+        let harness = try Harness(
+            negotiationTimeoutMilliseconds: testTimeoutMilliseconds
+        )
+        let workerReady = expectation(description: "adaptive deadline worker ready")
+        let requested = expectation(description: "adaptive profile requested")
+        let workerFinished = expectation(description: "adaptive deadline worker finished")
+        let adaptiveStreaming = expectation(description: "adaptive video configuration accepted")
+        let beginScenario = DispatchSemaphore(value: 0)
+        let worker = DispatchQueue(label: "dev.vibescreen.tests.adaptive-deadline")
+        let capturedToken = TestLockedValue<InternetAdaptiveRequestToken>()
+        let didCompleteHostApply = TestLockedValue<Bool>()
+        let workerError = TestLockedValue<Error>()
+        let stateBeforeAcknowledgment = TestLockedValue<InternetProductSessionState>()
+        harness.session.onAdaptiveProfileCommitted = { _, _ in
+            adaptiveStreaming.fulfill()
+        }
+        harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
+            capturedToken.store(token)
+            requested.fulfill()
+        }
+        worker.async {
+            workerReady.fulfill()
+            beginScenario.wait()
+            harness.engine.emitNetworkQuality(self.constrainedSample())
+            harness.engine.emitNetworkQuality(self.constrainedSample())
+
+            // The sample callback queues the adaptive request on the session
+            // worker. This FIFO read proves that callback has completed without
+            // introducing another wake-up inside the measured deadline window.
+            _ = harness.session.snapshotState()
+            // Host apply remains inside the first deadline. The peer delay is
+            // measured from the rearmed awaiting-state callback below, while
+            // their combined duration still exceeds the original deadline.
+            Thread.sleep(forTimeInterval: hostApplyDelay)
+            do {
+                guard let token = capturedToken.load() else {
+                    throw InternetProductSessionError.invalidConfiguration(
+                        "The adaptive request token was not published to the deadline worker."
+                    )
+                }
+                didCompleteHostApply.store(try harness.session.completeAdaptiveProfile(
+                    token: token,
+                    appliedVideo: self.appliedVideo()
+                ))
+            } catch {
+                workerError.store(error)
+            }
+            workerFinished.fulfill()
+        }
+
+        wait(for: [workerReady], timeout: 1)
+        try reachStreaming(harness)
+        harness.session.onStateChanged = { state in
+            guard state == .awaitingVideoConfiguration else { return }
+            Thread.sleep(forTimeInterval: acknowledgmentDelay)
+            stateBeforeAcknowledgment.store(harness.session.snapshotState())
+            harness.receiveControl(
+                harness.videoAccepted(messageID: 3, configEpoch: 2)
+            )
+        }
+        beginScenario.signal()
+        wait(for: [requested, workerFinished], timeout: 5)
+        if let workerError = workerError.load() {
+            return XCTFail("Adaptive deadline worker failed: " + String(describing: workerError))
+        }
+        XCTAssertEqual(didCompleteHostApply.load(), true)
+        XCTAssertEqual(stateBeforeAcknowledgment.load(), .awaitingVideoConfiguration)
+        wait(for: [adaptiveStreaming], timeout: 1)
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+    }
+
+    func testAdaptiveCodecFailureClearsPendingApplyAndFailsClosed() throws {
+        let harness = try Harness(videoConfigEpoch: UInt64.max)
+        let requested = expectation(description: "adaptive profile requested")
+        var capturedToken: InternetAdaptiveRequestToken?
+        harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
+            capturedToken = token
+            requested.fulfill()
+        }
+
+        try reachStreaming(harness)
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [requested], timeout: 1)
+        let token = try XCTUnwrap(capturedToken)
+
+        XCTAssertThrowsError(try harness.session.completeAdaptiveProfile(
+            token: token,
+            appliedVideo: appliedVideo()
+        ))
+        XCTAssertFalse(harness.session.rejectAdaptiveProfile(token: token))
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
+    }
+
+    func testInvalidAdaptiveApplyResumesDeferredRotationAfterLocalReject() throws {
+        let harness = try Harness()
+        let first = expectation(description: "first adaptive profile requested")
+        let retried = expectation(description: "invalid apply retried")
+        var requestCount = 0
+        var firstToken: InternetAdaptiveRequestToken?
+        harness.session.onAdaptiveProfileRequested = { token, profile, _, _ in
+            XCTAssertEqual(profile, AdaptiveMediaPolicy.constrained)
+            requestCount += 1
+            if requestCount == 1 {
+                firstToken = token
+                first.fulfill()
+            } else if requestCount == 2 {
+                retried.fulfill()
+            }
+        }
+
+        try reachStreaming(harness)
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [first], timeout: 1)
+        let controlCountBeforeRotation = harness.engine.sentPlaintext
+            .filter { $0.channel == .control }.count
+        try harness.session.updateRotation(90)
+        XCTAssertEqual(
+            harness.engine.sentPlaintext.filter { $0.channel == .control }.count,
+            controlCountBeforeRotation,
+            "Rotation must remain deferred while host apply is pending"
+        )
+
+        XCTAssertThrowsError(try harness.session.completeAdaptiveProfile(
+            token: try XCTUnwrap(firstToken),
+            appliedVideo: appliedVideo(width: 1_922)
+        ))
+        XCTAssertEqual(
+            harness.engine.sentPlaintext.filter { $0.channel == .control }.count,
+            controlCountBeforeRotation,
+            "Rotation must remain deferred until the host restores committed state"
+        )
+        XCTAssertTrue(harness.session.rejectAdaptiveProfile(token: try XCTUnwrap(firstToken)))
+        XCTAssertTrue(harness.waitForSentControlCount(controlCountBeforeRotation + 2))
+        let rotationControls = try harness.engine.sentPlaintext
+            .filter { $0.channel == .control }
+            .suffix(2)
+            .map { try VSEnvelope(serializedBytes: $0.payload) }
+        guard case .displayChanged(let rotatedDisplay) = rotationControls[0].payload,
+              case .videoConfig(let rotatedVideo) = rotationControls[1].payload else {
+            return XCTFail("Invalid apply must resume the deferred rotation transaction")
+        }
+        XCTAssertEqual(rotatedDisplay.rotationDegrees, 90)
+        XCTAssertEqual(rotatedVideo.rotationDegrees, 90)
+        XCTAssertEqual(rotatedVideo.configEpoch, 2)
+        XCTAssertEqual(harness.session.snapshotState(), .awaitingVideoConfiguration)
+        harness.receiveControl(harness.videoAccepted(messageID: 3, configEpoch: 2))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [retried], timeout: 1)
+        XCTAssertEqual(requestCount, 2)
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertFalse(harness.engine.didClose)
+    }
+
+    func testInvalidAdaptiveApplyResumesLatestQueuedProfile() throws {
+        let harness = try Harness()
+        let firstRequested = expectation(description: "first adaptive profile requested")
+        let queuedRequested = expectation(description: "latest queued profile requested")
+        var firstToken: InternetAdaptiveRequestToken?
+        var queuedProfile: AdaptiveMediaProfile?
+        harness.session.onAdaptiveProfileRequested = { token, profile, _, _ in
+            if firstToken == nil {
+                XCTAssertEqual(profile, AdaptiveMediaPolicy.constrained)
+                firstToken = token
+                firstRequested.fulfill()
+            } else {
+                queuedProfile = profile
+                queuedRequested.fulfill()
+            }
+        }
+
+        try reachStreaming(harness)
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [firstRequested], timeout: 1)
+
+        for _ in 0..<4 { harness.engine.emitNetworkQuality(goodSample()) }
+        Thread.sleep(forTimeInterval: 0.05)
+        XCTAssertNil(queuedProfile, "Queued profile must wait for the pending host apply")
+
+        XCTAssertThrowsError(try harness.session.completeAdaptiveProfile(
+            token: try XCTUnwrap(firstToken),
+            appliedVideo: appliedVideo(width: 1_922)
+        ))
+        XCTAssertTrue(harness.session.rejectAdaptiveProfile(token: try XCTUnwrap(firstToken)))
+        wait(for: [queuedRequested], timeout: 1)
+        XCTAssertEqual(queuedProfile, AdaptiveMediaPolicy.good)
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertFalse(harness.engine.didClose)
+    }
+
+    func testAdaptiveLocalRejectStopsHostApplyDeadline() throws {
+        let harness = try Harness(negotiationTimeoutMilliseconds: 30)
+        let requested = expectation(description: "adaptive profile requested")
+        var capturedToken: InternetAdaptiveRequestToken?
+        harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
+            capturedToken = token
+            requested.fulfill()
+        }
+
+        try reachStreaming(harness)
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [requested], timeout: 1)
+
+        XCTAssertTrue(harness.session.rejectAdaptiveProfile(token: try XCTUnwrap(capturedToken)))
+        Thread.sleep(forTimeInterval: 0.08)
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertFalse(harness.engine.didClose)
+    }
+
+    func testAdaptiveLocalRejectAllowsSameProfileToRetry() throws {
+        let harness = try Harness()
+        let first = expectation(description: "first adaptive profile requested")
+        let retried = expectation(description: "rejected profile requested again")
+        var requestCount = 0
+        var firstToken: InternetAdaptiveRequestToken?
+        harness.session.onAdaptiveProfileRequested = { token, profile, _, _ in
+            XCTAssertEqual(profile, AdaptiveMediaPolicy.constrained)
+            requestCount += 1
+            if requestCount == 1 {
+                firstToken = token
+                first.fulfill()
+            } else if requestCount == 2 {
+                retried.fulfill()
+            }
+        }
+
+        try reachStreaming(harness)
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [first], timeout: 1)
+        XCTAssertTrue(harness.session.rejectAdaptiveProfile(token: try XCTUnwrap(firstToken)))
+
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [retried], timeout: 1)
+        XCTAssertEqual(requestCount, 2)
+        XCTAssertFalse(harness.engine.didClose)
+    }
+
+    func testAdaptiveHostRollbackTimeoutFailsClosed() throws {
+        let harness = try Harness(negotiationTimeoutMilliseconds: 30)
+        let requested = expectation(description: "adaptive profile requested")
+        let rollback = expectation(description: "adaptive rollback requested")
+        var capturedToken: InternetAdaptiveRequestToken?
+        harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
+            capturedToken = token
+            requested.fulfill()
+        }
+        harness.session.onAdaptiveProfileRollbackRequested = { _, _, _ in
+            rollback.fulfill()
+        }
+
+        try reachStreaming(harness)
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [requested], timeout: 1)
+        let token = try XCTUnwrap(capturedToken)
+        try harness.session.completeAdaptiveProfile(token: token, appliedVideo: appliedVideo())
+        harness.receiveControl(harness.videoRejected(messageID: 3, configEpoch: 2))
+        wait(for: [rollback], timeout: 1)
+
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
+    }
+
+    func testAdaptiveQueuedLatestProfileReplacesPendingQueue() throws {
+        let harness = try Harness()
+        let firstRequested = expectation(description: "first adaptive profile requested")
+        let secondRequested = expectation(description: "second adaptive profile requested")
+        var firstToken: InternetAdaptiveRequestToken?
+        var secondProfile: AdaptiveMediaProfile?
+        harness.session.onAdaptiveProfileRequested = { token, profile, _, _ in
+            if firstToken == nil {
+                firstToken = token
+                firstRequested.fulfill()
+            } else {
+                secondProfile = profile
+                secondRequested.fulfill()
+            }
+        }
+
+        try reachStreaming(harness)
+
+        // First profile downgrade (constrained). Downgrade threshold is 2.
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [firstRequested], timeout: 1)
+        let token = try XCTUnwrap(firstToken)
+
+        // While the first request is pending, queue a balanced upgrade. The
+        // upgrade threshold is 4 consecutive observations.
+        for _ in 0..<4 { harness.engine.emitNetworkQuality(balancedSample()) }
+        Thread.sleep(forTimeInterval: 0.05)
+        XCTAssertNil(secondProfile, "A second profile must not start while one is pending")
+
+        // A later good upgrade overwrites the queued balanced profile. Only the
+        // latest queued profile is retained.
+        for _ in 0..<4 { harness.engine.emitNetworkQuality(goodSample()) }
+        Thread.sleep(forTimeInterval: 0.05)
+        XCTAssertNil(secondProfile, "Queued profiles must not start while a transaction is pending")
+
+        try harness.session.completeAdaptiveProfile(token: token, appliedVideo: appliedVideo())
+        harness.receiveControl(harness.videoAccepted(messageID: 3, configEpoch: 2))
+
+        // After the first transaction commits, the latest queued profile (good)
+        // runs, not the earlier balanced one.
+        wait(for: [secondRequested], timeout: 1)
+        XCTAssertEqual(secondProfile, AdaptiveMediaPolicy.good)
+    }
+
+    func testAdaptiveStaleTokenAndCloseDoNotAffectActiveState() throws {
+        let harness = try Harness()
+        let requested = expectation(description: "adaptive profile requested")
+        var capturedToken: InternetAdaptiveRequestToken?
+        harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
+            capturedToken = token
+            requested.fulfill()
+        }
+
+        try reachStreaming(harness)
+
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [requested], timeout: 1)
+        let token = try XCTUnwrap(capturedToken)
+
+        harness.session.close()
+        XCTAssertEqual(harness.session.snapshotState(), .closed)
+
+        // Tokens from a prior session generation must be rejected without
+        // mutating the closed session.
+        let completed = try? harness.session.completeAdaptiveProfile(
+            token: token,
+            appliedVideo: appliedVideo()
+        )
+        XCTAssertEqual(completed, false)
+        XCTAssertFalse(harness.session.rejectAdaptiveProfile(token: token))
+        XCTAssertEqual(harness.session.snapshotState(), .closed)
+    }
+
+    func testRotationIsDeferredUntilAdaptiveTransactionCompletes() throws {
+        let harness = try Harness()
+        let requested = expectation(description: "adaptive profile requested")
+        var capturedToken: InternetAdaptiveRequestToken?
+        harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
+            capturedToken = token
+            requested.fulfill()
+        }
+
+        try reachStreaming(harness)
+
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [requested], timeout: 1)
+        let token = try XCTUnwrap(capturedToken)
+
+        // Rotation must be deferred while an adaptive request is in flight.
+        let controlCountBeforeRotation = harness.engine.sentPlaintext
+            .filter { $0.channel == .control }.count
+        try harness.session.updateRotation(90)
+        XCTAssertEqual(
+            harness.engine.sentPlaintext.filter { $0.channel == .control }.count,
+            controlCountBeforeRotation,
+            "Rotation must not emit controls while an adaptive transaction is pending"
+        )
+
+        try harness.session.completeAdaptiveProfile(token: token, appliedVideo: appliedVideo())
+
+        let adaptiveControls = try harness.engine.sentPlaintext
+            .filter { $0.channel == .control }
+            .suffix(2)
+            .map { try VSEnvelope(serializedBytes: $0.payload) }
+        guard case .displayChanged(let displayChanged) = adaptiveControls[0].payload,
+              case .videoConfig(let videoConfig) = adaptiveControls[1].payload else {
+            return XCTFail("Adaptive apply must send DisplayChanged then VideoConfig")
+        }
+        XCTAssertEqual(displayChanged.rotationDegrees, 0)
+        XCTAssertEqual(videoConfig.rotationDegrees, 0)
+        XCTAssertEqual(videoConfig.configEpoch, 2)
+
+        let controlCountAfterAdaptive = harness.engine.sentPlaintext
+            .filter { $0.channel == .control }.count
+        harness.receiveControl(harness.videoAccepted(messageID: 3, configEpoch: 2))
+        XCTAssertTrue(harness.waitForSentControlCount(controlCountAfterAdaptive + 2))
+
+        let rotationControls = try harness.engine.sentPlaintext
+            .filter { $0.channel == .control }
+            .suffix(2)
+            .map { try VSEnvelope(serializedBytes: $0.payload) }
+        guard case .displayChanged(let rotatedDisplay) = rotationControls[0].payload,
+              case .videoConfig(let rotatedVideo) = rotationControls[1].payload else {
+            return XCTFail("Deferred rotation must start after the adaptive ACK")
+        }
+        XCTAssertEqual(rotatedDisplay.rotationDegrees, 90)
+        XCTAssertEqual(rotatedVideo.rotationDegrees, 90)
+        XCTAssertEqual(rotatedVideo.configEpoch, 3)
+        harness.receiveControl(harness.videoAccepted(messageID: 4, configEpoch: 3))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+    }
+
+    func testInvalidRotationIsRejectedBeforeAdaptiveDeferral() throws {
+        let harness = try Harness()
+        let requested = expectation(description: "adaptive profile requested")
+        var capturedToken: InternetAdaptiveRequestToken?
+        harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
+            capturedToken = token
+            requested.fulfill()
+        }
+
+        try reachStreaming(harness)
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [requested], timeout: 1)
+        let token = try XCTUnwrap(capturedToken)
+        let controlCount = harness.engine.sentPlaintext.filter { $0.channel == .control }.count
+
+        XCTAssertThrowsError(try harness.session.updateRotation(45)) { error in
+            guard let sessionError = error as? InternetProductSessionError,
+                  case .invalidConfiguration = sessionError else {
+                return XCTFail("Expected invalidConfiguration, got \(error)")
+            }
+        }
+        XCTAssertEqual(
+            harness.engine.sentPlaintext.filter { $0.channel == .control }.count,
+            controlCount
+        )
+
+        try harness.session.completeAdaptiveProfile(token: token, appliedVideo: appliedVideo())
+        harness.receiveControl(harness.videoAccepted(messageID: 3, configEpoch: 2))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertFalse(harness.engine.didClose)
+    }
+
+    func testInitialVideoAckDrainsOnlyLatestValidRotationOnce() throws {
+        let harness = try Harness()
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1))
+        XCTAssertTrue(harness.waitForSentControlCount(3))
+        XCTAssertEqual(harness.session.snapshotState(), .awaitingVideoConfiguration)
+
+        try harness.session.updateRotation(90)
+        try harness.session.updateRotation(180)
+        XCTAssertThrowsError(try harness.session.updateRotation(45)) { error in
+            guard let sessionError = error as? InternetProductSessionError,
+                  case .invalidConfiguration = sessionError else {
+                return XCTFail("Expected invalidConfiguration, got \(error)")
+            }
+        }
+        XCTAssertEqual(
+            harness.engine.sentPlaintext.filter { $0.channel == .control }.count,
+            3,
+            "Rotations must remain queued until the initial video config is accepted"
+        )
+
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        XCTAssertTrue(harness.waitForSentControlCount(5))
+        XCTAssertEqual(
+            harness.engine.sentPlaintext.filter { $0.channel == .control }.count,
+            5,
+            "The initial ACK must drain exactly one rotation transaction"
+        )
+        let controls = try harness.engine.sentPlaintext
+            .filter { $0.channel == .control }
+            .suffix(2)
+            .map { try VSEnvelope(serializedBytes: $0.payload) }
+        guard case .displayChanged(let changed) = controls[0].payload,
+              case .videoConfig(let video) = controls[1].payload else {
+            return XCTFail("Queued rotation must start as its own transaction")
+        }
+        XCTAssertEqual(changed.rotationDegrees, 180)
+        XCTAssertEqual(video.rotationDegrees, 180)
+        XCTAssertEqual(video.configEpoch, 2)
+        harness.receiveControl(harness.videoAccepted(messageID: 3, configEpoch: 2))
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertEqual(
+            harness.engine.sentPlaintext.filter { $0.channel == .control }.count,
+            5
+        )
+    }
+
+    func testFreshSessionOwnerAndEpochDiscardStaleInitialRotationAndAck() throws {
+        let harness = try Harness(
+            engineCount: 2,
+            freshSessionRecoveryPolicy: NetworkRecoveryPolicy(maximumAttempts: 2),
+            replacementSessionEpoch: 2
+        )
+        let replacement = try XCTUnwrap(harness.replacementEngine)
+        let replacementConfiguration = try XCTUnwrap(harness.replacementConfiguration)
+        let replacementInstalled = expectation(description: "replacement session installed")
+        let replacementAuthenticating = expectation(description: "replacement authenticating")
+        harness.session.onStateChanged = { state in
+            if state == .recovering(attempt: 1) {
+                do {
+                    try harness.session.provideFreshSession(
+                        configuration: replacementConfiguration
+                    )
+                    replacementInstalled.fulfill()
+                } catch {
+                    XCTFail("Installing the replacement session failed: \(error)")
+                }
+            } else if state == .authenticating, replacement.didStart {
+                replacementAuthenticating.fulfill()
+            }
+        }
+
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1))
+        XCTAssertTrue(harness.waitForSentControlCount(3))
+        try harness.session.updateRotation(270)
+        XCTAssertEqual(
+            harness.engine.sentPlaintext.filter { $0.channel == .control }.count,
+            3
+        )
+
+        harness.engine.emitPath(.init(
+            interface: .wifi,
+            isSatisfied: true,
+            fingerprint: "wifi-before-owner-change"
+        ))
+        harness.engine.emitPath(.init(
+            interface: .wiredEthernet,
+            isSatisfied: true,
+            fingerprint: "ethernet-after-owner-change"
+        ))
+        wait(for: [replacementInstalled], timeout: 1)
+        XCTAssertEqual(harness.session.snapshotState(), .connecting)
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertEqual(harness.session.currentSessionEpoch, 2)
+
+        // The retired owner may still deliver its epoch-1 ACK callback. It must
+        // not mutate the replacement session or drain the retired rotation.
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        XCTAssertEqual(harness.session.snapshotState(), .connecting)
+        XCTAssertEqual(harness.session.currentSessionEpoch, 2)
+        XCTAssertEqual(
+            harness.engine.sentPlaintext.filter { $0.channel == .control }.count,
+            3
+        )
+        XCTAssertTrue(replacement.sentPlaintext.isEmpty)
+
+        replacement.emitConnection(.connected(path: .direct))
+        wait(for: [replacementAuthenticating], timeout: 1)
+        harness.receiveControl(
+            harness.clientHello(messageID: 1, sessionEpoch: 2),
+            engineIndex: 1
+        )
+        XCTAssertTrue(harness.waitForSentControlCount(3, engineIndex: 1))
+        XCTAssertEqual(harness.session.snapshotState(), .awaitingVideoConfiguration)
+        harness.receiveControl(
+            harness.videoAccepted(messageID: 2, sessionEpoch: 2),
+            engineIndex: 1
+        )
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+        XCTAssertEqual(harness.session.currentSessionEpoch, 2)
+        XCTAssertEqual(
+            replacement.sentPlaintext.filter { $0.channel == .control }.count,
+            3,
+            "A new owner and session epoch must not inherit a retired rotation"
+        )
+    }
+
+    func testLocalRejectKeepsPreviousStream() throws {
+        let harness = try Harness()
+        let requested = expectation(description: "adaptive profile requested")
+        var capturedToken: InternetAdaptiveRequestToken?
+        harness.session.onAdaptiveProfileRequested = { token, _, _, _ in
+            capturedToken = token
+            requested.fulfill()
+        }
+
+        try reachStreaming(harness)
+
+        harness.engine.emitNetworkQuality(constrainedSample())
+        harness.engine.emitNetworkQuality(constrainedSample())
+        wait(for: [requested], timeout: 1)
+        let token = try XCTUnwrap(capturedToken)
+
+        let rejected = harness.session.rejectAdaptiveProfile(token: token)
+        XCTAssertTrue(rejected)
+        XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
+
+        // The previous configuration remains committed and media keeps flowing.
+        let before = harness.engine.sentPlaintext.filter { $0.channel == .media }.count
+        harness.session.sendFrame(Data([0xEE]), timestamp: 5, isKeyframe: true, sessionEpoch: 1)
+        XCTAssertTrue(harness.waitForSentMediaCount(before + 1))
+    }
+
 }
 
 private final class Harness {
     let engine: ProductFakeWebRTCEngine
     let replacementEngine: ProductFakeWebRTCEngine?
+    let replacementConfiguration: InternetProductSessionConfiguration?
     let session: InternetProductSession
     let configuration: InternetProductSessionConfiguration
     let securitySession: InternetProductSecuritySession
-    private let deviceCipher: PlatformSessionPacketCipher
+    private let deviceCiphers: [PlatformSessionPacketCipher]
 
     init(
         negotiationTimeoutMilliseconds: UInt32 = 10_000,
         limits: InternetTransportLimits = .standard,
         engineCount: Int = 1,
-        freshSessionRecoveryPolicy: NetworkRecoveryPolicy = .standard
+        freshSessionRecoveryPolicy: NetworkRecoveryPolicy = .standard,
+        videoConfigEpoch: UInt64 = 1,
+        replacementSessionEpoch: UInt64? = nil
     ) throws {
-        let builtConfiguration = InternetProductSessionConfiguration(
-            transport: WebRTCTransportConfiguration(
-                iceServers: [WebRTCICEServer(urls: [URL(string: "stun:127.0.0.1:9")!])],
-                peerIdentity: String(repeating: "a", count: 64),
-                sessionIdentifier: "product-session",
-                forceRelay: false
-            ),
-            hostDeviceID: "host-1",
-            hostName: "Mac",
-            peerDeviceID: "device-1",
-            peerIdentity: PlatformPublicIdentity(
-                deviceID: "device-1",
-                keyID: String(repeating: "a", count: 64),
-                keyEpoch: 1,
-                signingPublicKey: Data([UInt8(0x04)] + Array(repeating: UInt8(0x11), count: 64))
-            ),
-            authoritativeSessionEpoch: 1,
-            sharedSecretName: "shared-device-1",
-            bootstrapSecretName: "bootstrap-device-1",
-            transcriptContext: Data(repeating: 0x53, count: 32),
-            video: InternetProductVideoConfiguration(
-                codec: .hevc,
-                width: 1920,
-                height: 1080,
-                framesPerSecond: 60,
-                bitrateKbps: 20_000
-            ),
-            heartbeatIntervalMilliseconds: 10_000,
-            heartbeatTimeoutMilliseconds: 20_000,
-            negotiationTimeoutMilliseconds: negotiationTimeoutMilliseconds,
-            limits: limits
-        )
-        let pairs = try (0..<max(1, engineCount)).map { _ in
+        let configurationCount = max(1, engineCount)
+        let configurations = (0..<configurationCount).map { index in
+            Self.makeConfiguration(
+                sessionEpoch: index == 0 ? 1 : replacementSessionEpoch ?? 1,
+                videoConfigEpoch: videoConfigEpoch,
+                negotiationTimeoutMilliseconds: negotiationTimeoutMilliseconds,
+                limits: limits
+            )
+        }
+        let pairs = try configurations.map { configuration in
             try PlatformSessionPacketCipher.selfTestPair(
                 sessionIdentifier: "product-session",
                 sharedSecret: Data(repeating: 0x51, count: 32),
                 bootstrapSecret: Data(repeating: 0x52, count: 32),
-                transcriptContext: builtConfiguration.boundTranscriptContext
+                transcriptContext: configuration.boundTranscriptContext,
+                sessionEpoch: configuration.authoritativeSessionEpoch
             )
         }
-        let securitySessions = pairs.map {
-            InternetProductSecuritySession(sessionEpoch: 1, packetCipher: $0.host)
+        let securitySessions = zip(configurations, pairs).map { configuration, pair in
+            InternetProductSecuritySession(
+                sessionEpoch: configuration.authoritativeSessionEpoch,
+                packetCipher: pair.host
+            )
         }
         let engines = pairs.map { ProductFakeWebRTCEngine(remoteCipher: $0.device) }
-        deviceCipher = pairs[0].device
+        deviceCiphers = pairs.map(\.device)
         securitySession = securitySessions[0]
         engine = engines[0]
         replacementEngine = engines.count > 1 ? engines[1] : nil
-        configuration = builtConfiguration
+        configuration = configurations[0]
+        replacementConfiguration = configurations.count > 1 ? configurations[1] : nil
         var factoryIndex = 0
         var securityIndex = 0
         session = InternetProductSession(
@@ -843,16 +1717,58 @@ private final class Harness {
         )
     }
 
-    func receiveControl(_ envelope: VSEnvelope) {
+    private static func makeConfiguration(
+        sessionEpoch: UInt64,
+        videoConfigEpoch: UInt64,
+        negotiationTimeoutMilliseconds: UInt32,
+        limits: InternetTransportLimits
+    ) -> InternetProductSessionConfiguration {
+        InternetProductSessionConfiguration(
+            transport: WebRTCTransportConfiguration(
+                iceServers: [WebRTCICEServer(urls: [URL(string: "stun:127.0.0.1:9")!])],
+                peerIdentity: String(repeating: "a", count: 64),
+                sessionIdentifier: "product-session",
+                forceRelay: false
+            ),
+            hostDeviceID: "host-1",
+            hostName: "Mac",
+            peerDeviceID: "device-1",
+            peerIdentity: PlatformPublicIdentity(
+                deviceID: "device-1",
+                keyID: String(repeating: "a", count: 64),
+                keyEpoch: 1,
+                signingPublicKey: Data([UInt8(0x04)] + Array(repeating: UInt8(0x11), count: 64))
+            ),
+            authoritativeSessionEpoch: sessionEpoch,
+            sharedSecretName: "shared-device-1",
+            bootstrapSecretName: "bootstrap-device-1",
+            transcriptContext: Data(repeating: 0x53, count: 32),
+            video: InternetProductVideoConfiguration(
+                codec: .hevc,
+                width: 1920,
+                height: 1080,
+                framesPerSecond: 60,
+                bitrateKbps: 20_000,
+                configEpoch: videoConfigEpoch
+            ),
+            heartbeatIntervalMilliseconds: 10_000,
+            heartbeatTimeoutMilliseconds: 20_000,
+            negotiationTimeoutMilliseconds: negotiationTimeoutMilliseconds,
+            limits: limits
+        )
+    }
+
+    func receiveControl(_ envelope: VSEnvelope, engineIndex: Int = 0) {
         let plaintext = try! envelope.serializedData()
-        let record = try! deviceCipher.seal(plaintext, channel: .control)
-        engine.receive(record, channel: .control)
+        let record = try! deviceCiphers[engineIndex].seal(plaintext, channel: .control)
+        selectedEngine(engineIndex).receive(record, channel: .control)
     }
 
     func clientHello(
         messageID: UInt64,
         supportsStylus: Bool = false,
-        supportsStylusExtended: Bool = false
+        supportsStylusExtended: Bool = false,
+        sessionEpoch: UInt64 = 1
     ) -> VSEnvelope {
         var range = VSProtocolRange()
         range.minimum = 1
@@ -876,16 +1792,31 @@ private final class Harness {
             InternetMediaRecordContract.maximumEncryptedRecordBytes
         )
         hello.resourceLimits = limits
-        var envelope = baseEnvelope(messageID: messageID)
+        var envelope = baseEnvelope(messageID: messageID, sessionEpoch: sessionEpoch)
         envelope.clientHello = hello
         return envelope
     }
 
-    func videoAccepted(messageID: UInt64, configEpoch: UInt64 = 1) -> VSEnvelope {
+    func videoAccepted(
+        messageID: UInt64,
+        configEpoch: UInt64 = 1,
+        sessionEpoch: UInt64 = 1
+    ) -> VSEnvelope {
         var result = VSVideoConfigResult()
         result.configEpoch = configEpoch
         result.streamID = 1
         result.accepted = true
+        var envelope = baseEnvelope(messageID: messageID, sessionEpoch: sessionEpoch)
+        envelope.videoConfigResult = result
+        return envelope
+    }
+
+    func videoRejected(messageID: UInt64, configEpoch: UInt64 = 1, reason: String = "test rejection") -> VSEnvelope {
+        var result = VSVideoConfigResult()
+        result.configEpoch = configEpoch
+        result.streamID = 1
+        result.accepted = false
+        result.rejectionReason = reason
         var envelope = baseEnvelope(messageID: messageID)
         envelope.videoConfigResult = result
         return envelope
@@ -953,8 +1884,11 @@ private final class Harness {
         return envelope
     }
 
-    func waitForSentControlCount(_ count: Int) -> Bool {
-        waitUntil { self.engine.sentPlaintext.filter { $0.channel == .control }.count >= count }
+    func waitForSentControlCount(_ count: Int, engineIndex: Int = 0) -> Bool {
+        waitUntil {
+            self.selectedEngine(engineIndex).sentPlaintext
+                .filter { $0.channel == .control }.count >= count
+        }
     }
 
     func waitForFailure() -> Bool {
@@ -979,13 +1913,18 @@ private final class Harness {
         }
     }
 
-    private func baseEnvelope(messageID: UInt64) -> VSEnvelope {
+    private func baseEnvelope(messageID: UInt64, sessionEpoch: UInt64 = 1) -> VSEnvelope {
         var envelope = VSEnvelope()
         envelope.protocolVersion = 1
         envelope.messageID = messageID
         envelope.sessionID = Data("product-session".utf8)
-        envelope.sessionEpoch = 1
+        envelope.sessionEpoch = sessionEpoch
         return envelope
+    }
+
+    private func selectedEngine(_ index: Int) -> ProductFakeWebRTCEngine {
+        if index == 0 { return engine }
+        return replacementEngine!
     }
 
     private func waitUntil(_ predicate: () -> Bool) -> Bool {
@@ -995,6 +1934,23 @@ private final class Harness {
             Thread.sleep(forTimeInterval: 0.005)
         }
         return predicate()
+    }
+}
+
+private final class TestLockedValue<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Value?
+
+    func store(_ value: Value) {
+        lock.lock()
+        self.value = value
+        lock.unlock()
+    }
+
+    func load() -> Value? {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
     }
 }
 
@@ -1016,6 +1972,7 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
     private(set) var didStart = false
     private(set) var startedAfterClose = false
     private var storage: [PlaintextItem] = []
+    private var shouldInvalidateTransmissionContextOnNextControlSend = false
 
     var sentPlaintext: [PlaintextItem] {
         lock.lock()
@@ -1025,6 +1982,12 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
 
     init(remoteCipher: PlatformSessionPacketCipher) {
         self.remoteCipher = remoteCipher
+    }
+
+    func invalidateTransmissionContextOnNextControlSend() {
+        lock.lock()
+        shouldInvalidateTransmissionContextOnNextControlSend = true
+        lock.unlock()
     }
 
     func install(callbacks: WebRTCEngineCallbacks) { self.callbacks = callbacks }
@@ -1047,9 +2010,17 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
             completion(.failure(PlatformSecurityError.invalidInput("test decrypt failed")))
             return
         }
+        var shouldInvalidateTransmissionContext = false
         lock.lock()
         storage.append(PlaintextItem(payload: plaintext, channel: channel))
+        if channel == .control, shouldInvalidateTransmissionContextOnNextControlSend {
+            shouldInvalidateTransmissionContextOnNextControlSend = false
+            shouldInvalidateTransmissionContext = true
+        }
         lock.unlock()
+        if shouldInvalidateTransmissionContext {
+            callbacks?.transmissionContextChanged(nil)
+        }
         completion(.success(()))
     }
 
@@ -1083,6 +2054,9 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
         lastNetworkPathFingerprint = path.fingerprint
         if changed { invalidateTransmissionContext() }
         callbacks?.networkPathChanged(path)
+    }
+    func emitNetworkQuality(_ sample: InternetNetworkQualitySample) {
+        callbacks?.networkQualitySampled(sample)
     }
     func receive(_ record: Data, channel: InternetTransportChannel) {
         callbacks?.messageReceived(record, channel)

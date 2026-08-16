@@ -730,6 +730,26 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun nonIncreasingVideoConfigurationEpochFailsClosedBeforeDecoderInstall() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+
+        activateWithVideo(session, peer, monitor)
+        assertEquals(1, callbacks.configurations.size)
+
+        // Epoch 3 is already committed by activateWithVideo. A repeated epoch
+        // must fail before a second decoder configuration is installed.
+        peer.receive(videoConfigurationEnvelope(4))
+
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals(1, callbacks.configurations.size)
+        assertEquals(1, callbacks.failures.size)
+        assertEquals(1, peer.closeCalls)
+    }
+
+    @Test
     fun freshCancelsPendingVideoEffectBeforeDecoderOrUiSideEffects() {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()

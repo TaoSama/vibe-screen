@@ -27,9 +27,108 @@ private final class WeakReference<Value: AnyObject>: @unchecked Sendable {
     }
 }
 
+enum CaptureReconfigurationAction: Equatable {
+    case none
+    case updateFrameRate
+    case rebuild
+}
+
+enum CaptureReconfigurationPolicy {
+    static func action(
+        currentWidth: Int,
+        currentHeight: Int,
+        currentFrameRate: Int,
+        targetWidth: Int,
+        targetHeight: Int,
+        targetFrameRate: Int
+    ) -> CaptureReconfigurationAction {
+        if currentWidth != targetWidth || currentHeight != targetHeight {
+            return .rebuild
+        }
+        if currentFrameRate != targetFrameRate {
+            return .updateFrameRate
+        }
+        return .none
+    }
+}
+
+private final class CaptureConfigurationUpdateWaiter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var completion: Result<Void, Error>?
+    private var timeout: DispatchWorkItem?
+
+    func install(_ continuation: CheckedContinuation<Void, Error>) {
+        let completed: Result<Void, Error>?
+        lock.lock()
+        completed = completion
+        if completed == nil {
+            self.continuation = continuation
+        }
+        lock.unlock()
+        if let completed {
+            continuation.resume(with: completed)
+        }
+    }
+
+    func installTimeout(_ timeout: DispatchWorkItem) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard completion == nil else { return false }
+        self.timeout = timeout
+        return true
+    }
+
+    func finish(_ result: Result<Void, Error>) {
+        let continuation: CheckedContinuation<Void, Error>?
+        let timeout: DispatchWorkItem?
+        lock.lock()
+        guard completion == nil else {
+            lock.unlock()
+            return
+        }
+        completion = result
+        continuation = self.continuation
+        self.continuation = nil
+        timeout = self.timeout
+        self.timeout = nil
+        lock.unlock()
+        timeout?.cancel()
+        continuation?.resume(with: result)
+    }
+}
+
+enum CaptureStreamConfigurationFactory {
+    static func make(
+        width: Int,
+        height: Int,
+        frameRate: Int,
+        preservesAspectRatio: Bool
+    ) -> SCStreamConfiguration {
+        let configuration = SCStreamConfiguration()
+        configuration.width = width
+        configuration.height = height
+        configuration.minimumFrameInterval = CMTime(
+            value: 1,
+            timescale: CMTimeScale(max(1, frameRate))
+        )
+        configuration.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        configuration.showsCursor = true
+        configuration.queueDepth = 2
+        configuration.capturesAudio = false
+        configuration.backgroundColor = .clear
+        configuration.scalesToFit = true
+        if preservesAspectRatio, #available(macOS 14.0, *) {
+            configuration.preservesAspectRatio = true
+        }
+        return configuration
+    }
+}
+
 // MARK: - ScreenCapture
 
 class ScreenCapture {
+    private static let liveConfigurationUpdateTimeoutSeconds: TimeInterval = 3
     private var stream: SCStream?
     private var streamOutput: StreamOutput?
     private var streamDelegate: StreamDelegate?
@@ -182,6 +281,8 @@ class ScreenCapture {
         }
     }
 
+    var activeCaptureFrameRate: Int { refreshRate }
+
     /// Returns physical pixel dimensions for a display ID.
     /// CGDisplayPixelsWide/High return logical pixels on HiDPI displays — use
     /// CGDisplayModeGetPixelWidth/Height to always get the true physical size.
@@ -217,6 +318,7 @@ class ScreenCapture {
         self.virtualDisplayID = displayID
         self.followsMainDisplay = followsMainDisplay
         self.refreshRate = refreshRate
+        self.currentFrameRate = refreshRate
         self.requestedOutputSize = outputSize
         try await setupDisplay()
         try await setupStream()
@@ -234,18 +336,27 @@ class ScreenCapture {
         to displayID: CGDirectDisplayID,
         refreshRate: Int,
         outputSize: (width: Int, height: Int)?,
-        followsMainDisplay: Bool
+        followsMainDisplay: Bool,
+        reportsTerminalFailure: Bool = true
     ) async throws {
+        let targetFrameRate = max(1, refreshRate)
         guard currentFrameSink != nil else {
             // Not streaming yet: fall back to the plain setup path.
             try await setupForDisplay(
                 displayID,
-                refreshRate: refreshRate,
+                refreshRate: targetFrameRate,
                 outputSize: outputSize,
                 followsMainDisplay: followsMainDisplay
             )
             return
         }
+
+        // Internet adaptation rebuilds the stream geometry for the same live
+        // display. Reuse the already validated SCDisplay in that case instead
+        // of spending up to five 10-second discovery attempts inside the
+        // product session's bounded host-apply window. A real display switch
+        // still performs fresh discovery below.
+        let reusableDisplay = virtualDisplayID == displayID ? display : nil
 
         isStopping = false
         // Let any in-flight restart settle before we re-point the source so the
@@ -253,6 +364,47 @@ class ScreenCapture {
         restartTask?.cancel()
         await restartTask?.value
         restartTask = nil
+
+        // Validate the replacement encoder before tearing down the active
+        // capture surface. A rejected VideoToolbox session must leave the old
+        // stream intact so Internet adaptation can soft-reject the proposal.
+        let requestedSize = outputSize ?? ScreenCapture.physicalSize(for: displayID)
+        let replacementSize: (width: Int, height: Int) = switch codec {
+        case .hevc: requestedSize
+        case .h264: CodecLimits.clampForAvc(
+            width: requestedSize.width,
+            height: requestedSize.height
+        )
+        }
+        let frameSink = currentFrameSink
+        let newEncoder = VideoEncoder(
+            width: replacementSize.width,
+            height: replacementSize.height,
+            codec: codec,
+            bitrateMbps: currentBitrateMbps,
+            quality: currentQuality,
+            gamingBoost: currentGamingBoost,
+            frameRate: targetFrameRate
+        )
+        guard newEncoder.hasActiveCompressionSession else {
+            throw NSError(
+                domain: "ScreenCapture",
+                code: 13,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "VideoToolbox could not create an encoder for the requested capture profile."
+                ]
+            )
+        }
+        newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
+            frameSink?.sendFrame(
+                data,
+                timestamp: timestamp,
+                isKeyframe: isKeyframe,
+                sessionEpoch: sessionEpoch
+            )
+        }
+        newEncoder.requestKeyframe()
 
         stopFrameMonitor()
         framePacingTimer?.cancel()
@@ -288,8 +440,10 @@ class ScreenCapture {
         // Adopt the new source identity.
         self.virtualDisplayID = displayID
         self.followsMainDisplay = followsMainDisplay
-        self.refreshRate = refreshRate
+        self.refreshRate = targetFrameRate
+        self.currentFrameRate = targetFrameRate
         self.requestedOutputSize = outputSize
+        display = reusableDisplay
         stateLock.withLock { state in
             state.lastFrameTime = nil
             state.lastKeepaliveTime = nil
@@ -300,26 +454,6 @@ class ScreenCapture {
 
         // Rebuild the encoder at the new source dimensions and rewire it to the
         // same frame sink so a single session keeps receiving media.
-        let (width, height) = encodeSize(for: codec)
-        let frameSink = currentFrameSink
-        let newEncoder = VideoEncoder(
-            width: width,
-            height: height,
-            codec: codec,
-            bitrateMbps: currentBitrateMbps,
-            quality: currentQuality,
-            gamingBoost: currentGamingBoost,
-            frameRate: currentFrameRate
-        )
-        newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
-            frameSink?.sendFrame(
-                data,
-                timestamp: timestamp,
-                isKeyframe: isKeyframe,
-                sessionEpoch: sessionEpoch
-            )
-        }
-        newEncoder.requestKeyframe()
         encoder = newEncoder
 
         if followsMainDisplay || CommandLine.arguments.contains("--prefer-cgdisplaystream") {
@@ -336,7 +470,9 @@ class ScreenCapture {
         // terminal failure (which drives session teardown/recovery) if that
         // also fails, instead of leaving the host silently frozen.
         do {
-            try await setupDisplay()
+            if display == nil {
+                try await setupDisplay()
+            }
             try await setupStream()
             configureFrameHandler(label: "switch")
             encoder?.requestKeyframe()
@@ -366,7 +502,9 @@ class ScreenCapture {
             streamStartTask = nil
             debugLog("Switch: SCStream setup/start failed (\(error)) — attempting CGDisplayStream fallback")
             guard attemptFallbackCapture() else {
-                reportTerminalCaptureFailure(underlying: error)
+                if reportsTerminalFailure {
+                    reportTerminalCaptureFailure(underlying: error)
+                }
                 throw error
             }
             startFrameMonitor()
@@ -483,24 +621,16 @@ class ScreenCapture {
 
         let filter = SCContentFilter(display: display, excludingWindows: [])
 
-        let config = SCStreamConfiguration()
-        config.width = width
-        config.height = height
-        config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
-        config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-        config.showsCursor = true
         // Keep only the current and next frame. Deeper queues improve recording
         // resilience but directly become visible input latency for a remote display.
-        config.queueDepth = 2
-        config.capturesAudio = false
-        config.backgroundColor = .clear
-        // We choose an aspect-correct output rectangle before configuring the
-        // stream. Allow ScreenCaptureKit to scale both up and down so the pixel
-        // buffer always matches the VideoToolbox session dimensions.
-        config.scalesToFit = true
-        if #available(macOS 14.0, *) {
-            config.preservesAspectRatio = true
-        }
+        // The factory is also used for live rate updates so both paths carry the
+        // exact encoder/source dimensions and frame interval.
+        let config = CaptureStreamConfigurationFactory.make(
+            width: width,
+            height: height,
+            frameRate: fps,
+            preservesAspectRatio: true
+        )
 
         let scStream = SCStream(filter: filter, configuration: config, delegate: delegate)
         try scStream.addStreamOutput(streamOutput!, type: .screen, sampleHandlerQueue: .global(qos: .userInteractive))
@@ -1178,30 +1308,48 @@ class ScreenCapture {
         bitrateMbps: Int,
         quality: String,
         gamingBoost: Bool,
-        frameRate: Int? = nil
+        frameRate: Int? = nil,
+        reconfigureCaptureSource: Bool = true
     ) -> Bool {
         guard let encoder else { return false }
-        return encoder.updateSettings(
+        guard encoder.updateSettings(
             bitrateMbps: bitrateMbps,
             quality: quality,
             gamingBoost: gamingBoost,
             frameRate: frameRate
-        )
+        ) else { return false }
+
+        currentBitrateMbps = gamingBoost ? 45 : bitrateMbps
+        currentQuality = gamingBoost ? "ultralow" : quality
+        currentGamingBoost = gamingBoost
+        if let frameRate {
+            updateActiveFrameRate(
+                frameRate,
+                reconfigureCaptureSource: reconfigureCaptureSource
+            )
+        }
+        return true
     }
 
     /// Change the live capture frame rate in place, without rebuilding the
     /// encoder or the capture surface. The frame pacer that drives encoded FPS
     /// is rescheduled to the new rate, and an active SCStream's source interval
     /// is updated so it can deliver the new rate. A no-op when the rate is
-    /// unchanged or nothing is streaming, so an unchanged config never disturbs
-    /// the live stream. Must be called on the main thread (its only caller is
-    /// the @MainActor client-preferences apply), matching the other
-    /// framePacingTimer mutators.
-    func updateActiveFrameRate(_ frameRate: Int) {
+    /// unchanged; when nothing is streaming it records the rate for the next
+    /// capture without disturbing the live stream. Must be called on the main
+    /// thread, including through updateEncoderSettings(frameRate:), matching the
+    /// other framePacingTimer mutators.
+    func updateActiveFrameRate(
+        _ frameRate: Int,
+        reconfigureCaptureSource: Bool = true
+    ) {
         let newRate = max(1, frameRate)
-        guard newRate != currentFrameRate else { return }
+        guard newRate != currentFrameRate
+                || (reconfigureCaptureSource && newRate != refreshRate) else { return }
         currentFrameRate = newRate
-        refreshRate = newRate
+        if reconfigureCaptureSource {
+            refreshRate = newRate
+        }
 
         // Rebuild the pacer on the main thread so framePacingTimer stays
         // main-thread-owned (like every other mutator), avoiding a race with
@@ -1209,30 +1357,115 @@ class ScreenCapture {
         // encode queue via the `on: queue` argument, so pacing stays off-main.
         // The latest source buffer is preserved so the rate change does not
         // blank the stream.
-        if let queue = encodeQueue {
+        if reconfigureCaptureSource, let queue = encodeQueue {
             rescheduleFramePacerForCurrentRate(on: queue)
         }
 
         // Widen or narrow the SCStream source interval so the capture can
         // actually feed the new rate. CGDisplayStream fallback is driven purely
         // by the pacer, so no source update is required there.
-        if let stream, isSCStreamStarted {
-            let updatedConfig = SCStreamConfiguration()
+        if reconfigureCaptureSource, let stream, isSCStreamStarted {
             let (width, height) = encodeSize(for: codec)
-            updatedConfig.width = width
-            updatedConfig.height = height
-            updatedConfig.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(newRate))
-            updatedConfig.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-            updatedConfig.showsCursor = true
-            updatedConfig.queueDepth = 2
-            updatedConfig.capturesAudio = false
-            updatedConfig.backgroundColor = .clear
-            updatedConfig.scalesToFit = true
+            let updatedConfig = CaptureStreamConfigurationFactory.make(
+                width: width,
+                height: height,
+                frameRate: newRate,
+                preservesAspectRatio: true
+            )
             stream.updateConfiguration(updatedConfig) { error in
                 if let error {
                     debugLog("Live frame-rate SCStream reconfiguration failed: \(error)")
                 }
             }
+        }
+    }
+
+    /// Applies an Internet adaptive source-rate change and waits until
+    /// ScreenCaptureKit reports completion. The product session must not
+    /// advertise the new FPS or start its peer-ACK deadline before this method
+    /// succeeds. A short local timeout leaves enough of the session's host
+    /// apply budget to restore the acknowledged rate before failing closed.
+    @MainActor
+    func updateInternetAdaptiveFrameRate(_ frameRate: Int) async throws {
+        let newRate = max(1, frameRate)
+        guard currentFrameSink != nil else {
+            throw NSError(
+                domain: "ScreenCapture",
+                code: 14,
+                userInfo: [NSLocalizedDescriptionKey: "No active capture stream is available for an adaptive frame-rate update."]
+            )
+        }
+
+        if newRate == refreshRate {
+            currentFrameRate = newRate
+            if let queue = encodeQueue {
+                rescheduleFramePacerForCurrentRate(on: queue)
+            }
+            return
+        }
+
+        if fallbackLifecycle.isActive {
+            currentFrameRate = newRate
+            refreshRate = newRate
+            if let queue = encodeQueue {
+                rescheduleFramePacerForCurrentRate(on: queue)
+            }
+            return
+        }
+
+        guard let stream, isSCStreamStarted else {
+            throw NSError(
+                domain: "ScreenCapture",
+                code: 15,
+                userInfo: [NSLocalizedDescriptionKey: "The active ScreenCaptureKit stream is not running."]
+            )
+        }
+
+        let (width, height) = encodeSize(for: codec)
+        let updatedConfig = CaptureStreamConfigurationFactory.make(
+            width: width,
+            height: height,
+            frameRate: newRate,
+            preservesAspectRatio: true
+        )
+        let waiter = CaptureConfigurationUpdateWaiter()
+        try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { continuation in
+                waiter.install(continuation)
+                let timeout = DispatchWorkItem { [weak waiter] in
+                    waiter?.finish(.failure(NSError(
+                        domain: "ScreenCapture",
+                        code: 16,
+                        userInfo: [
+                            NSLocalizedDescriptionKey:
+                                "ScreenCaptureKit did not apply the adaptive frame rate within "
+                                + "\(Self.liveConfigurationUpdateTimeoutSeconds) seconds."
+                        ]
+                    )))
+                }
+                if waiter.installTimeout(timeout) {
+                    DispatchQueue.global(qos: .userInitiated).asyncAfter(
+                        deadline: .now() + Self.liveConfigurationUpdateTimeoutSeconds,
+                        execute: timeout
+                    )
+                    stream.updateConfiguration(updatedConfig) { [weak waiter] error in
+                        if let error {
+                            waiter?.finish(.failure(error))
+                        } else {
+                            waiter?.finish(.success(()))
+                        }
+                    }
+                }
+            }
+            try Task.checkCancellation()
+        }, onCancel: {
+            waiter.finish(.failure(CancellationError()))
+        })
+
+        currentFrameRate = newRate
+        refreshRate = newRate
+        if let queue = encodeQueue {
+            rescheduleFramePacerForCurrentRate(on: queue)
         }
     }
 

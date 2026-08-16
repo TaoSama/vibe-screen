@@ -84,3 +84,33 @@ enum InternetConnectionStatus: Equatable {
         }
     }
 }
+
+struct InternetAdaptiveMediaControlState: Equatable {
+    var isActive = false
+    var bitrateMbps = 0
+    var framesPerSecond = 0
+    var quality = ""
+
+    static let inactive = Self()
+
+    var allowsManualChanges: Bool { !isActive }
+
+    /// Single-line real-time summary shown while an Internet adaptive session
+    /// owns the live encoder settings.
+    var summary: String {
+        "Internet adaptive · \(bitrateMbps) Mbps · \(framesPerSecond) FPS"
+    }
+
+    static func active(
+        bitrateMbps: Int,
+        framesPerSecond: Int,
+        quality: String
+    ) -> Self {
+        Self(
+            isActive: true,
+            bitrateMbps: bitrateMbps,
+            framesPerSecond: framesPerSecond,
+            quality: quality
+        )
+    }
+}

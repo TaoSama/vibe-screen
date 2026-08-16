@@ -1704,7 +1704,7 @@ final class WebRTCInternetTransportTests: XCTestCase {
     func testAdaptivePolicyDowngradesQuicklyAndUpgradesConservatively() {
         let policy = AdaptiveMediaPolicy(
             observationsBeforeDowngrade: 2,
-            observationsBeforeUpgrade: 3
+            observationsBeforeUpgrade: 4
         )
         let poor = InternetNetworkQualitySample(
             roundTripTimeMilliseconds: 500,
@@ -1721,7 +1721,270 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertEqual(policy.observe(poor), AdaptiveMediaPolicy.constrained)
         XCTAssertNil(policy.observe(healthy))
         XCTAssertNil(policy.observe(healthy))
+        XCTAssertNil(policy.observe(healthy))
         XCTAssertEqual(policy.observe(healthy), AdaptiveMediaPolicy.highQuality)
+    }
+
+    func testAdaptivePolicyResetsObservationCountWhenCandidateChanges() {
+        let policy = AdaptiveMediaPolicy(
+            observationsBeforeDowngrade: 2,
+            observationsBeforeUpgrade: 4
+        )
+        let constrainedSample = InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: 500,
+            packetLossFraction: 0.2,
+            availableOutgoingBitrateBps: 2_000_000
+        )
+        let balancedSample = InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: 300,
+            packetLossFraction: 0.06,
+            availableOutgoingBitrateBps: 5_000_000
+        )
+
+        // First constrained observation starts the downgrade count.
+        XCTAssertNil(policy.observe(constrainedSample))
+        // Switching to a different candidate resets the count.
+        XCTAssertNil(policy.observe(balancedSample))
+        // Returning to constrained restarts the count at 1, not 2.
+        XCTAssertNil(policy.observe(constrainedSample))
+        // The second consecutive constrained observation finally downgrades.
+        XCTAssertEqual(policy.observe(constrainedSample), AdaptiveMediaPolicy.constrained)
+    }
+
+    func testAdaptivePolicyRetriesRejectedProfileAgainstAcknowledgedState() {
+        let policy = AdaptiveMediaPolicy(
+            observationsBeforeDowngrade: 2,
+            observationsBeforeUpgrade: 4
+        )
+        let poor = InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: 500,
+            packetLossFraction: 0.2,
+            availableOutgoingBitrateBps: 2_000_000
+        )
+
+        XCTAssertNil(policy.observe(poor))
+        XCTAssertEqual(policy.observe(poor), AdaptiveMediaPolicy.constrained)
+        XCTAssertEqual(policy.currentProfile, AdaptiveMediaPolicy.constrained)
+        XCTAssertEqual(policy.acknowledgedProfile, AdaptiveMediaPolicy.highQuality)
+
+        policy.reject(AdaptiveMediaPolicy.constrained)
+        XCTAssertEqual(policy.currentProfile, AdaptiveMediaPolicy.highQuality)
+        XCTAssertNil(policy.observe(poor))
+        XCTAssertEqual(policy.observe(poor), AdaptiveMediaPolicy.constrained)
+
+        policy.commit(AdaptiveMediaPolicy.constrained)
+        XCTAssertEqual(policy.acknowledgedProfile, AdaptiveMediaPolicy.constrained)
+        XCTAssertNil(policy.observe(poor))
+    }
+
+    func testRejectingOlderProfilePreservesNewerQueuedDecision() {
+        let policy = AdaptiveMediaPolicy(
+            observationsBeforeDowngrade: 2,
+            observationsBeforeUpgrade: 4
+        )
+        let constrained = InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: 500,
+            packetLossFraction: 0.2,
+            availableOutgoingBitrateBps: 2_000_000
+        )
+        let balanced = InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: 300,
+            packetLossFraction: 0.06,
+            availableOutgoingBitrateBps: 5_000_000
+        )
+
+        XCTAssertNil(policy.observe(constrained))
+        XCTAssertEqual(policy.observe(constrained), AdaptiveMediaPolicy.constrained)
+        for _ in 0..<3 { XCTAssertNil(policy.observe(balanced)) }
+        XCTAssertEqual(policy.observe(balanced), AdaptiveMediaPolicy.balanced)
+
+        policy.reject(AdaptiveMediaPolicy.constrained)
+        XCTAssertEqual(policy.currentProfile, AdaptiveMediaPolicy.balanced)
+        XCTAssertEqual(policy.acknowledgedProfile, AdaptiveMediaPolicy.highQuality)
+    }
+
+    func testAdaptivePolicyTreatsNonFiniteTelemetryAsConstrained() {
+        let nanLoss = InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: 50,
+            packetLossFraction: .nan,
+            availableOutgoingBitrateBps: 30_000_000
+        )
+        let nanRTT = InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: .nan,
+            packetLossFraction: 0,
+            availableOutgoingBitrateBps: 30_000_000
+        )
+        let infiniteLoss = InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: 50,
+            packetLossFraction: .infinity,
+            availableOutgoingBitrateBps: 30_000_000
+        )
+        let negativeRTT = InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: -1,
+            packetLossFraction: 0,
+            availableOutgoingBitrateBps: 30_000_000
+        )
+        let negativeLoss = InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: 50,
+            packetLossFraction: -0.01,
+            availableOutgoingBitrateBps: 30_000_000
+        )
+
+        // Non-finite telemetry must never map to highQuality.
+        XCTAssertEqual(AdaptiveMediaPolicy.profile(for: nanLoss), AdaptiveMediaPolicy.constrained)
+        XCTAssertEqual(AdaptiveMediaPolicy.profile(for: nanRTT), AdaptiveMediaPolicy.constrained)
+        XCTAssertEqual(AdaptiveMediaPolicy.profile(for: infiniteLoss), AdaptiveMediaPolicy.constrained)
+        XCTAssertEqual(AdaptiveMediaPolicy.profile(for: negativeRTT), AdaptiveMediaPolicy.constrained)
+        XCTAssertEqual(AdaptiveMediaPolicy.profile(for: negativeLoss), AdaptiveMediaPolicy.constrained)
+
+        // A single NaN observation must be able to downgrade from highQuality.
+        let policy = AdaptiveMediaPolicy(
+            observationsBeforeDowngrade: 1,
+            observationsBeforeUpgrade: 1
+        )
+        XCTAssertEqual(policy.observe(nanLoss), AdaptiveMediaPolicy.constrained)
+        XCTAssertEqual(policy.currentProfile, AdaptiveMediaPolicy.constrained)
+    }
+
+    func testAdaptivePolicyDoesNotReachHighQualityWithMissingRTT() {
+        let missingRTT = InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: 0,
+            packetLossFraction: 0,
+            availableOutgoingBitrateBps: 30_000_000
+        )
+
+        // rtt == 0 is treated as a missing measurement; the candidate is
+        // capped at good and must never be highQuality.
+        XCTAssertEqual(AdaptiveMediaPolicy.profile(for: missingRTT), AdaptiveMediaPolicy.good)
+
+        let policy = AdaptiveMediaPolicy(
+            observationsBeforeDowngrade: 1,
+            observationsBeforeUpgrade: 1
+        )
+        XCTAssertEqual(policy.observe(missingRTT), AdaptiveMediaPolicy.good)
+        XCTAssertEqual(policy.currentProfile, AdaptiveMediaPolicy.good)
+
+        // A subsequent real RTT sample can still promote to highQuality.
+        let realRTT = InternetNetworkQualitySample(
+            roundTripTimeMilliseconds: 50,
+            packetLossFraction: 0,
+            availableOutgoingBitrateBps: 30_000_000
+        )
+        XCTAssertEqual(policy.observe(realRTT), AdaptiveMediaPolicy.highQuality)
+    }
+
+    func testAdaptivePolicyProfileThresholdBoundaries() {
+        // loss boundaries
+        XCTAssertEqual(
+            AdaptiveMediaPolicy.profile(for: InternetNetworkQualitySample(
+                roundTripTimeMilliseconds: 50,
+                packetLossFraction: 0.12,
+                availableOutgoingBitrateBps: 30_000_000
+            )),
+            AdaptiveMediaPolicy.constrained
+        )
+        XCTAssertEqual(
+            AdaptiveMediaPolicy.profile(for: InternetNetworkQualitySample(
+                roundTripTimeMilliseconds: 50,
+                packetLossFraction: 0.05,
+                availableOutgoingBitrateBps: 30_000_000
+            )),
+            AdaptiveMediaPolicy.balanced
+        )
+        XCTAssertEqual(
+            AdaptiveMediaPolicy.profile(for: InternetNetworkQualitySample(
+                roundTripTimeMilliseconds: 50,
+                packetLossFraction: 0.02,
+                availableOutgoingBitrateBps: 30_000_000
+            )),
+            AdaptiveMediaPolicy.good
+        )
+        XCTAssertEqual(
+            AdaptiveMediaPolicy.profile(for: InternetNetworkQualitySample(
+                roundTripTimeMilliseconds: 50,
+                packetLossFraction: 0.019,
+                availableOutgoingBitrateBps: 30_000_000
+            )),
+            AdaptiveMediaPolicy.highQuality
+        )
+
+        // rtt boundaries
+        XCTAssertEqual(
+            AdaptiveMediaPolicy.profile(for: InternetNetworkQualitySample(
+                roundTripTimeMilliseconds: 450,
+                packetLossFraction: 0,
+                availableOutgoingBitrateBps: 30_000_000
+            )),
+            AdaptiveMediaPolicy.constrained
+        )
+        XCTAssertEqual(
+            AdaptiveMediaPolicy.profile(for: InternetNetworkQualitySample(
+                roundTripTimeMilliseconds: 250,
+                packetLossFraction: 0,
+                availableOutgoingBitrateBps: 30_000_000
+            )),
+            AdaptiveMediaPolicy.balanced
+        )
+        XCTAssertEqual(
+            AdaptiveMediaPolicy.profile(for: InternetNetworkQualitySample(
+                roundTripTimeMilliseconds: 150,
+                packetLossFraction: 0,
+                availableOutgoingBitrateBps: 30_000_000
+            )),
+            AdaptiveMediaPolicy.good
+        )
+        XCTAssertEqual(
+            AdaptiveMediaPolicy.profile(for: InternetNetworkQualitySample(
+                roundTripTimeMilliseconds: 149,
+                packetLossFraction: 0,
+                availableOutgoingBitrateBps: 30_000_000
+            )),
+            AdaptiveMediaPolicy.highQuality
+        )
+
+        // bitrate boundaries
+        XCTAssertEqual(
+            AdaptiveMediaPolicy.profile(for: InternetNetworkQualitySample(
+                roundTripTimeMilliseconds: 50,
+                packetLossFraction: 0,
+                availableOutgoingBitrateBps: 2_999_999
+            )),
+            AdaptiveMediaPolicy.constrained
+        )
+        XCTAssertEqual(
+            AdaptiveMediaPolicy.profile(for: InternetNetworkQualitySample(
+                roundTripTimeMilliseconds: 50,
+                packetLossFraction: 0,
+                availableOutgoingBitrateBps: 6_999_999
+            )),
+            AdaptiveMediaPolicy.balanced
+        )
+        XCTAssertEqual(
+            AdaptiveMediaPolicy.profile(for: InternetNetworkQualitySample(
+                roundTripTimeMilliseconds: 50,
+                packetLossFraction: 0,
+                availableOutgoingBitrateBps: 13_999_999
+            )),
+            AdaptiveMediaPolicy.good
+        )
+        XCTAssertEqual(
+            AdaptiveMediaPolicy.profile(for: InternetNetworkQualitySample(
+                roundTripTimeMilliseconds: 50,
+                packetLossFraction: 0,
+                availableOutgoingBitrateBps: 14_000_000
+            )),
+            AdaptiveMediaPolicy.highQuality
+        )
+
+        // bitrate == 0 stays constrained even with otherwise-perfect metrics.
+        XCTAssertEqual(
+            AdaptiveMediaPolicy.profile(for: InternetNetworkQualitySample(
+                roundTripTimeMilliseconds: 50,
+                packetLossFraction: 0,
+                availableOutgoingBitrateBps: 0
+            )),
+            AdaptiveMediaPolicy.constrained
+        )
     }
 
     func testRelayBudgetStopsMediaAndSnapshotSeparatesRelayBytes() {

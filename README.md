@@ -434,6 +434,28 @@ display-capture evidence.
 The existing trusted-LAN path is still a separate plaintext mode and must not be
 presented as Internet E2EE.
 
+Adaptive video profiles are scoped to the WebRTC Internet transport only; USB and
+trusted-LAN sessions keep manual client-driven bitrate/quality/frame-rate presets
+and do not run the adaptive policy. The host `AdaptiveMediaPolicy` and Android
+`AdaptiveVideoPolicy` use fast-drop/slow-rise hysteresis (downgrade after two
+poor samples, upgrade after four or five good samples) with neutral samples
+resetting the counters so boundary jitter does not oscillate. The host clamps
+every adaptive proposal to the user-configured baseline upper bound, applies it
+to the live encoder/capture first, then sends a Protocol v1 `VideoConfig` with a
+bumped `config_epoch`; all outbound media stays gated until the client
+acknowledges. A client rejection triggers a host rollback to
+the last acknowledged configuration; a host-apply, ACK, or host-rollback timeout
+fails the session closed. Offline tests also cover even dimensions without
+upscaling, latest-proposal-wins queuing, rotation serialization, stale
+owner/generation rejection, and retry after local or peer rejection. The
+production host composition wires the
+encoder/capture application callback, but this path is verified only through
+offline build and unit/self-tests, not against real capture output. Not proved:
+public Internet, real remote TURN (local loopback and forced local coturn are
+not public-Internet or real-deployment evidence), real
+ScreenCaptureKit-to-Android/Xiaomi 13 decoder continuity, real network
+fluctuation, network handoff, and soak.
+
 Reproduce the local Mac integration checks with:
 
 ```bash

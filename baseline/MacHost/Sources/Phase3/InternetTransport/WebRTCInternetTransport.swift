@@ -1012,6 +1012,14 @@ final class WebRTCInternetTransport {
         }
     }
 
+    func commitAdaptiveProfile(_ profile: AdaptiveMediaProfile) {
+        withLock { _ in adaptivePolicy.commit(profile) }
+    }
+
+    func rejectAdaptiveProfile(_ profile: AdaptiveMediaProfile) {
+        withLock { _ in adaptivePolicy.reject(profile) }
+    }
+
     private func setState(_ state: InternetTransportState) {
         let changed = withSendGate {
             withLock { mutable -> Bool in
