@@ -61,7 +61,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                     layout.subtitle.setText(subtitleResource)
                     layout.measureAndLayout()
                     layout.assertTextRenderedWithoutEllipsis(layout.subtitle)
-                    layout.assertFullyVisibleAfterScroll(layout.subtitle)
+                    layout.assertFullyReachableByScroll(layout.subtitle)
                     layout.assertHeaderAndActionsSeparated()
                 }
             }
@@ -96,7 +96,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 layout.internetError.text = message
                 layout.measureAndLayout()
                 layout.assertTextRenderedWithoutEllipsis(layout.internetError)
-                layout.assertFullyVisibleAfterScroll(layout.internetError)
+                layout.assertFullyReachableByScroll(layout.internetError)
                 layout.assertHeaderAndActionsSeparated()
             }
         }
@@ -202,7 +202,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             assertEquals(text.text.length, textLayout.getLineEnd(textLayout.lineCount - 1))
         }
 
-        fun assertFullyVisibleAfterScroll(view: View) {
+        fun assertFullyReachableByScroll(view: View) {
             val viewBounds = boundsInContent(view)
             assertTrue(viewBounds.top >= 0)
             assertTrue(
@@ -211,12 +211,21 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 viewBounds.bottom <= content.height,
             )
             val maximumScroll = (content.height - scrollView.height).coerceAtLeast(0)
-            val requestedScroll = (viewBounds.bottom - scrollView.height).coerceAtLeast(0)
-            val expectedScroll = requestedScroll.coerceAtMost(maximumScroll)
-            scrollView.scrollTo(0, requestedScroll)
-            assertEquals(expectedScroll, scrollView.scrollY)
+
+            val topScroll = viewBounds.top.coerceAtMost(maximumScroll)
+            scrollView.scrollTo(0, topScroll)
+            assertEquals(topScroll, scrollView.scrollY)
             assertTrue(viewBounds.top >= scrollView.scrollY)
+            assertTrue(viewBounds.top < scrollView.scrollY + scrollView.height)
+
+            val bottomScroll = (viewBounds.bottom - scrollView.height).coerceIn(0, maximumScroll)
+            scrollView.scrollTo(0, bottomScroll)
+            assertEquals(bottomScroll, scrollView.scrollY)
+            assertTrue(viewBounds.bottom > scrollView.scrollY)
             assertTrue(viewBounds.bottom <= scrollView.scrollY + scrollView.height)
+            if (view.height <= scrollView.height) {
+                assertTrue(viewBounds.top >= scrollView.scrollY)
+            }
         }
 
         fun assertConfigurationUsesTwoColumns(expected: Boolean) {

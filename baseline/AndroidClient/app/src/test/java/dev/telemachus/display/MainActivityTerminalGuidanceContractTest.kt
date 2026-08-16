@@ -130,19 +130,49 @@ class MainActivityTerminalGuidanceContractTest {
 
         assertFalse(source.contains("internetStateText.setText"))
         assertFalse(source.contains("internetStateText.text ="))
+        // Imported, pairing, session, failure, idle, and revoked states all announce through the helper.
         assertUsesLiveRegion(source, "internetStateText", "MainActivity", minimumCalls = 6)
     }
 
     @Test
     fun internetErrorVisibilityUsesAnnouncementAwareHelpers() {
         val compactSource = mainActivitySource().replace(Regex("\\s+"), "")
+        val showInvocation = "LiveRegionTextApplier.show(binding.internetErrorText,"
+        val hideInvocation = "LiveRegionTextApplier.hide(binding.internetErrorText)"
+        val showCount = countOccurrences(compactSource, showInvocation)
+        val hideCount = countOccurrences(compactSource, hideInvocation)
 
         assertFalse(compactSource.contains("internetErrorText.visibility=View.VISIBLE"))
         assertFalse(compactSource.contains("internetErrorText.visibility=View.GONE"))
-        assertTrue(compactSource.windowed("LiveRegionTextApplier.show(binding.internetErrorText,".length)
-            .count { it == "LiveRegionTextApplier.show(binding.internetErrorText," } >= 5)
-        assertTrue(compactSource.windowed("LiveRegionTextApplier.hide(binding.internetErrorText)".length)
-            .count { it == "LiveRegionTextApplier.hide(binding.internetErrorText)" } >= 3)
+        // Cleanup, fresh-session, session failure, quarantine, and revocation paths show errors.
+        assertTrue("Expected at least 5 error show calls; found $showCount", showCount >= 5)
+        // Import success, session creation, and idle disconnect hide stale errors.
+        assertTrue("Expected at least 3 error hide calls; found $hideCount", hideCount >= 3)
+    }
+
+    @Test
+    fun methodExtractionIgnoresBracesOutsideTheMethodStructure() {
+        val source =
+            """
+            // private fun target() { declaration decoy }
+            private fun target() {
+                val ordinary = "{ string brace }"
+                val raw = """ + "\"\"\"{ raw brace }\"\"\"" + """
+                val character = '}'
+                // { line-comment brace }
+                /* outer { /* nested } */ block } */
+                LiveRegionTextApplier.apply(binding.connectionTitle, ordinary + raw + character)
+            }
+            private fun next() {
+                error("must not be included")
+            }
+            """.trimIndent()
+
+        val extracted = extractMethod(source, "private fun target")
+
+        assertTrue(extracted.contains("LiveRegionTextApplier.apply"))
+        assertFalse(extracted.contains("private fun next"))
+        assertFalse(extracted.contains("declaration decoy"))
     }
 
     private fun assertNoDirectInternetErrorTextAssignment(block: String, owner: String) {
@@ -164,7 +194,7 @@ class MainActivityTerminalGuidanceContractTest {
     ) {
         val compactBlock = block.replace(Regex("\\s+"), "")
         val invocation = "LiveRegionTextApplier.apply(binding.$viewName,"
-        val callCount = compactBlock.windowed(invocation.length).count { it == invocation }
+        val callCount = countOccurrences(compactBlock, invocation)
         assertTrue(
             "$owner must route $viewName through LiveRegionTextApplier at least $minimumCalls time(s); found $callCount",
             callCount >= minimumCalls,
@@ -184,22 +214,107 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     private fun extractMethod(source: String, signature: String): String {
-        val start = source.indexOf(signature)
-        require(start >= 0) { "Method not found: $signature" }
+        val declaration =
+            Regex("(?m)^[\\t ]*" + Regex.escape(signature) + "(?=\\s|\\()")
+                .find(source)
+                ?: error("Method not found: $signature")
+        val start = declaration.range.first
         var braceDepth = 0
-        var i = source.indexOf('{', start)
-        require(i >= 0) { "Opening brace not found for $signature" }
+        var methodStarted = false
+        var lineComment = false
+        var blockCommentDepth = 0
+        var quotedCharacter: Char? = null
+        var tripleQuotedString = false
+        var escaped = false
+        var i = start
         while (i < source.length) {
-            when (source[i]) {
-                '{' -> braceDepth++
-                '}' -> {
-                    braceDepth--
-                    if (braceDepth == 0) return source.substring(start, i + 1)
-                }
+            val current = source[i]
+            val next = source.getOrNull(i + 1)
+            if (lineComment) {
+                lineComment = current != '\n'
+                i++
+                continue
             }
-            i++
+            if (blockCommentDepth > 0) {
+                when {
+                    current == '/' && next == '*' -> {
+                        blockCommentDepth++
+                        i += 2
+                    }
+                    current == '*' && next == '/' -> {
+                        blockCommentDepth--
+                        i += 2
+                    }
+                    else -> i++
+                }
+                continue
+            }
+            if (tripleQuotedString) {
+                if (source.startsWith("\"\"\"", i)) {
+                    tripleQuotedString = false
+                    i += 3
+                } else {
+                    i++
+                }
+                continue
+            }
+            val quote = quotedCharacter
+            if (quote != null) {
+                when {
+                    escaped -> escaped = false
+                    current == '\\' -> escaped = true
+                    current == quote -> quotedCharacter = null
+                }
+                i++
+                continue
+            }
+            when {
+                current == '/' && next == '/' -> {
+                    lineComment = true
+                    i += 2
+                }
+                current == '/' && next == '*' -> {
+                    blockCommentDepth = 1
+                    i += 2
+                }
+                source.startsWith("\"\"\"", i) -> {
+                    tripleQuotedString = true
+                    i += 3
+                }
+                current == '"' || current == '\'' -> {
+                    quotedCharacter = current
+                    escaped = false
+                    i++
+                }
+                current == '{' -> {
+                    methodStarted = true
+                    braceDepth++
+                    i++
+                }
+                current == '}' -> {
+                    braceDepth--
+                    if (methodStarted && braceDepth == 0) return source.substring(start, i + 1)
+                    i++
+                }
+                else -> i++
+            }
         }
         error("Closing brace not found for $signature")
+    }
+
+    private fun countOccurrences(
+        source: String,
+        target: String,
+    ): Int {
+        require(target.isNotEmpty())
+        var count = 0
+        var offset = 0
+        while (true) {
+            val match = source.indexOf(target, offset)
+            if (match < 0) return count
+            count++
+            offset = match + target.length
+        }
     }
 
     private fun onSessionEndedCallback(source: String): String {
