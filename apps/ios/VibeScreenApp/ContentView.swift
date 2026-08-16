@@ -1,9 +1,11 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 import VibeScreenCore
 
 struct ContentView: View {
     @ObservedObject var model: StreamViewModel
+    @Environment(\.scenePhase) private var scenePhase
     @State private var pairingURL = ""
     @AppStorage("wakeMAC") private var wakeMAC = ""
     @State private var showsAdvancedControls = false
@@ -20,12 +22,22 @@ struct ContentView: View {
             .navigationTitle("Vibe Screen")
             .toolbar {
                 if model.isStreaming {
-                    Button("功能") { showsAdvancedControls = true }
+                    Button("功能") {
+                        _ = model.releaseActiveInput()
+                        showsAdvancedControls = true
+                    }
+                    Button { model.requestKeyboardInput() } label: {
+                        Label("键盘输入", systemImage: "keyboard")
+                    }
+                    .disabled(!model.keyboardInputAvailable)
                     Button("断开") { model.disconnect() }
                 }
             }
             .sheet(isPresented: $showsAdvancedControls) {
                 NavigationStack { AdvancedControlsView(model: model) }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active { _ = model.releaseActiveInput() }
             }
         }
     }
@@ -71,18 +83,29 @@ struct ContentView: View {
 
 private struct StreamSurface: View {
     @ObservedObject var model: StreamViewModel
+    @FocusState private var acceptsHardwareKeyboard: Bool
+    @GestureState private var touchGestureActive = false
+    @State private var touchActivityRevision: UInt64 = 0
+    @State private var touchEndedNormally = false
 
     var body: some View {
         PixelBufferView(pixelBuffer: model.pixelBuffer)
             .background(.black)
             .ignoresSafeArea()
             .contentShape(Rectangle())
+            .focusable()
+            .focused($acceptsHardwareKeyboard)
             .gesture(
                 DragGesture(minimumDistance: 0)
+                    .updating($touchGestureActive) { _, active, _ in active = true }
                     .onChanged { value in
+                        touchActivityRevision &+= 1
+                        touchEndedNormally = false
                         model.sendTouch(location: value.location, size: model.viewportSize, ended: false)
                     }
                     .onEnded { value in
+                        touchActivityRevision &+= 1
+                        touchEndedNormally = true
                         model.sendTouch(location: value.location, size: model.viewportSize, ended: true)
                     }
             )
@@ -94,7 +117,7 @@ private struct StreamSurface: View {
             )
             .overlay(alignment: .top) {
                 if model.displayBindings.count > 1 {
-                    Picker("显示器", selection: $model.selectedStreamID) {
+                    Picker("显示器", selection: displaySelection) {
                         ForEach(model.displayBindings, id: \.streamID) { binding in
                             Text(binding.displayID).tag(Optional(binding.streamID))
                         }
@@ -109,7 +132,91 @@ private struct StreamSurface: View {
                         .onChange(of: geometry.size) { _, size in model.viewportSize = size }
                 }
             }
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    _ = model.sendPointerHover(location: location, size: model.viewportSize)
+                case .ended:
+                    _ = model.releaseActiveInput()
+                }
+            }
+            .onKeyPress(phases: [.down, .up]) { press in
+                let standardModifierMask = modifierMask(for: press.modifiers)
+                guard let usage = usbHIDUsage(for: press.key) else { return .ignored }
+                let pressed = press.phase == .down
+                guard !NativeKeyCapturePolicy.shouldIgnoreEvent(
+                    standardModifierMask: standardModifierMask,
+                    voiceOverRunning: UIAccessibility.isVoiceOverRunning,
+                    pressed: pressed,
+                    keyWasCaptured: model.hasCapturedKey(usbHIDUsage: usage)
+                ) else { return .ignored }
+                return model.sendKey(
+                    usbHIDUsage: usage,
+                    pressed: pressed,
+                    standardModifierMask: standardModifierMask,
+                    text: pressed ? press.characters : ""
+                ) ? .handled : .ignored
+            }
+            .onAppear { acceptsHardwareKeyboard = model.keyboardInputAvailable }
+            .onChange(of: model.keyboardFocusRequest) { _, _ in
+                acceptsHardwareKeyboard = model.keyboardInputAvailable
+            }
+            .onChange(of: acceptsHardwareKeyboard) { _, focused in
+                if !focused { _ = model.releaseActiveInput() }
+            }
+            .onChange(of: touchGestureActive) { wasActive, isActive in
+                guard wasActive && !isActive else { return }
+                let endingRevision = touchActivityRevision
+                Task { @MainActor in
+                    await Task.yield()
+                    guard touchActivityRevision == endingRevision else { return }
+                    if touchEndedNormally {
+                        touchEndedNormally = false
+                    } else {
+                        _ = model.releaseActiveInput()
+                    }
+                }
+            }
+            .onDisappear { _ = model.releaseActiveInput() }
             .accessibilityLabel("Mac 显示画面")
+    }
+
+    private var displaySelection: Binding<UInt64?> {
+        Binding(
+            get: { model.selectedStreamID },
+            set: { streamID in
+                if let streamID { model.selectDisplay(streamID: streamID) }
+            }
+        )
+    }
+
+    private func usbHIDUsage(for key: KeyEquivalent) -> UInt32? {
+        switch key {
+        case .return: 0x28
+        case .escape: 0x29
+        case .delete: 0x2A
+        case .tab: 0x2B
+        case .space: 0x2C
+        case .home: 0x4A
+        case .pageUp: 0x4B
+        case .deleteForward: 0x4C
+        case .end: 0x4D
+        case .pageDown: 0x4E
+        case .rightArrow: 0x4F
+        case .leftArrow: 0x50
+        case .downArrow: 0x51
+        case .upArrow: 0x52
+        default: USBHIDKeyboardMapper.usage(for: key.character)
+        }
+    }
+
+    private func modifierMask(for modifiers: EventModifiers) -> UInt32 {
+        var mask: UInt32 = 0
+        if modifiers.contains(.control) { mask |= USBHIDModifierWire.leftControl }
+        if modifiers.contains(.shift) { mask |= USBHIDModifierWire.leftShift }
+        if modifiers.contains(.option) { mask |= USBHIDModifierWire.leftOption }
+        if modifiers.contains(.command) { mask |= USBHIDModifierWire.leftCommand }
+        return mask
     }
 }
 

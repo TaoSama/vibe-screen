@@ -64,6 +64,55 @@ public struct EnvelopeFactory: Sendable {
         return envelope
     }
 
+    public mutating func pointer(
+        inputID: UInt64,
+        phase: VSInputPhase,
+        x: Double,
+        y: Double,
+        buttonMask: UInt32,
+        sessionID: Data,
+        sessionEpoch: UInt64,
+        target: VSInputTarget? = nil
+    ) -> VSEnvelope {
+        var point = VSNormalizedPoint()
+        point.x = min(max(x, 0), 1)
+        point.y = min(max(y, 0), 1)
+
+        var event = VSPointerEvent()
+        event.inputID = inputID
+        event.phase = phase
+        event.position = point
+        event.buttonMask = buttonMask
+        if let target { event.target = target }
+
+        var envelope = baseEnvelope(sessionID: sessionID, sessionEpoch: sessionEpoch)
+        envelope.pointerEvent = event
+        return envelope
+    }
+
+    public mutating func key(
+        inputID: UInt64,
+        usbHIDUsage: UInt32,
+        pressed: Bool,
+        modifierMask: UInt32,
+        text: String,
+        sessionID: Data,
+        sessionEpoch: UInt64,
+        target: VSInputTarget? = nil
+    ) -> VSEnvelope {
+        var event = VSKeyEvent()
+        event.inputID = inputID
+        event.usbHidUsage = usbHIDUsage
+        event.pressed = pressed
+        event.modifierMask = modifierMask
+        event.text = text
+        if let target { event.target = target }
+
+        var envelope = baseEnvelope(sessionID: sessionID, sessionEpoch: sessionEpoch)
+        envelope.keyEvent = event
+        return envelope
+    }
+
     public mutating func listDisplays(sessionID: Data, sessionEpoch: UInt64) -> VSEnvelope {
         var envelope = baseEnvelope(sessionID: sessionID, sessionEpoch: sessionEpoch)
         envelope.listDisplaysRequest = VSListDisplaysRequest()

@@ -511,7 +511,7 @@ final class ProtocolV1SessionCoordinator {
             guard negotiatedCapabilities.contains(.touch) else {
                 return unsupportedCapability("Touch was not negotiated.", envelope.messageID)
             }
-            guard isStreaming, touch.hasPosition,
+            guard acceptsInputPhase(touch.phase), touch.hasPosition,
                   (0...1).contains(touch.position.x),
                   (0...1).contains(touch.position.y),
                   inputTargetMatchesActiveStream(touch.hasTarget ? touch.target : nil),
@@ -538,7 +538,7 @@ final class ProtocolV1SessionCoordinator {
                 ? stylus.contactState
                 : .contact
             let terminalPhase = stylus.phase == .ended || stylus.phase == .cancelled
-            guard isStreaming,
+            guard acceptsInputPhase(stylus.phase),
                   stylus.inputID > 0,
                   stylus.hasPosition,
                   stylus.position.x.isFinite,
@@ -587,7 +587,7 @@ final class ProtocolV1SessionCoordinator {
             guard negotiatedCapabilities.contains(.pointer) else {
                 return unsupportedCapability("Pointer input was not negotiated.", envelope.messageID)
             }
-            guard isStreaming, pointer.hasPosition,
+            guard acceptsInputPhase(pointer.phase), pointer.hasPosition,
                   (0...1).contains(pointer.position.x),
                   (0...1).contains(pointer.position.y),
                   pointer.phase != .unspecified else {
@@ -612,7 +612,7 @@ final class ProtocolV1SessionCoordinator {
                 return unsupportedCapability("Keyboard input was not negotiated.", envelope.messageID)
             }
             let standardByteNegotiated = negotiatedCapabilities.contains(.usbHidModifierByte)
-            guard isStreaming,
+            guard acceptsKeyEvent(pressed: key.pressed),
                   StreamInputWire.validatesModifierMask(
                     key.modifierMask,
                     standardByteNegotiated: standardByteNegotiated
@@ -804,6 +804,28 @@ final class ProtocolV1SessionCoordinator {
         return false
     }
 
+    private func acceptsInputPhase(_ inputPhase: VSInputPhase) -> Bool {
+        switch phase {
+        case .streaming:
+            return true
+        case .awaitingVideoConfig:
+            return inputPhase == .ended || inputPhase == .cancelled
+        default:
+            return false
+        }
+    }
+
+    private func acceptsKeyEvent(pressed: Bool) -> Bool {
+        switch phase {
+        case .streaming:
+            return true
+        case .awaitingVideoConfig:
+            return !pressed
+        default:
+            return false
+        }
+    }
+
     private func validatesStylusExtension(
         _ stylus: VSStylusEvent,
         extended: Bool,
@@ -821,7 +843,13 @@ final class ProtocolV1SessionCoordinator {
     }
 
     private func inputTargetMatchesActiveStream(_ target: VSInputTarget?) -> Bool {
-        guard case .streaming(_, let streamID) = phase else { return false }
+        let streamID: UInt64
+        switch phase {
+        case .streaming(_, let activeStreamID), .awaitingVideoConfig(_, let activeStreamID):
+            streamID = activeStreamID
+        default:
+            return false
+        }
         guard let target else { return true }
         if target.displayID.isEmpty && target.streamID == 0 { return true }
         return target.displayID == configuration.displayID && target.streamID == streamID

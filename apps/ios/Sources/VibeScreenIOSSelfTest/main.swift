@@ -15,6 +15,23 @@ enum SelfTestError: Error, CustomStringConvertible {
     }
 }
 
+private enum RejectedControlEnvelope: Error {
+    case release
+}
+
+private final class LockedControlRecords: @unchecked Sendable {
+    private let lock = NSLock()
+    private var records: [(messageID: UInt64, payload: String)] = []
+
+    func append(_ record: (messageID: UInt64, payload: String)) {
+        lock.withLock { records.append(record) }
+    }
+
+    var snapshot: [(messageID: UInt64, payload: String)] {
+        lock.withLock { records }
+    }
+}
+
 @discardableResult
 func require(_ condition: @autoclosure () throws -> Bool, _ message: String) throws -> Bool {
     guard try condition() else { throw SelfTestError.failed(message) }
@@ -114,6 +131,252 @@ func testUSBHIDModifierCompatibility() throws {
         USBHIDModifierWire.encode(standardMask: 0x100, standardByteNegotiated: true) == nil,
         "reserved modifier bit accepted"
     )
+}
+
+func testNativeInputAndBoundedReconnect() throws {
+    try require(
+        !SessionClosureContext.manualDisconnect.reportsEnqueueErrors
+            && SessionClosureContext.manualDisconnect.clearsErrorOnCompletion
+            && SessionClosureContext.manualDisconnect.shouldEnqueueDisconnectNotice(
+                hasSession: true,
+                allReleasesAdmitted: false
+            ),
+        "manual disconnect error policy"
+    )
+    try require(
+        SessionClosureContext.sessionFailure.reportsEnqueueErrors
+            && !SessionClosureContext.sessionFailure.clearsErrorOnCompletion,
+        "failure-session error policy"
+    )
+    try require(
+        SessionClosureContext.manualDisconnect.errorOnCompletion(
+            currentError: "release enqueue failed"
+        ) == nil,
+        "manual disconnect retained an enqueue error"
+    )
+    try require(
+        SessionClosureContext.sessionFailure.errorOnCompletion(
+            currentError: "transport failed"
+        ) == "transport failed",
+        "non-manual closure suppressed its error"
+    )
+    try require(
+        SessionClosureContext.sessionFailure.errorAfterEnqueueFailure(
+            currentError: "video stream ended",
+            enqueueError: "queue inactive"
+        ) == "video stream ended",
+        "disconnect enqueue failure replaced the primary session error"
+    )
+    try require(
+        SessionClosureContext.sessionFailure.errorAfterEnqueueFailure(
+            currentError: nil,
+            enqueueError: "queue inactive"
+        ) == "queue inactive",
+        "disconnect enqueue failure was not reported without a primary error"
+    )
+    try require(
+        NativeInputAvailability(keyboard: true, pointer: true).advertisedCapabilities
+            == [.touch, .keyboard, .pointer, .usbHidModifierByte],
+        "native input capability declaration"
+    )
+
+    let voiceOverMask = USBHIDModifierWire.leftControl | USBHIDModifierWire.leftOption
+    try require(
+        NativeKeyCapturePolicy.ignoresVoiceOverChord(
+            standardModifierMask: voiceOverMask,
+            voiceOverRunning: true
+        ),
+        "VoiceOver Control+Option chord captured"
+    )
+    try require(
+        !NativeKeyCapturePolicy.ignoresVoiceOverChord(
+            standardModifierMask: voiceOverMask,
+            voiceOverRunning: false
+        ),
+        "Control+Option ignored while VoiceOver is off"
+    )
+    try require(
+        NativeKeyCapturePolicy.shouldIgnoreEvent(
+            standardModifierMask: voiceOverMask,
+            voiceOverRunning: true,
+            pressed: true,
+            keyWasCaptured: false
+        ),
+        "uncaptured VoiceOver key-down was forwarded"
+    )
+    try require(
+        NativeKeyCapturePolicy.shouldIgnoreEvent(
+            standardModifierMask: voiceOverMask,
+            voiceOverRunning: true,
+            pressed: false,
+            keyWasCaptured: false
+        ),
+        "uncaptured VoiceOver key-up was forwarded"
+    )
+
+    var keyboardState = PressedKeyboardInputState()
+    try require(
+        !keyboardState.enqueuePress(
+            usbHIDUsage: 0x04,
+            wireModifierMask: USBHIDModifierWire.leftShift
+        ) { false },
+        "failed key press enqueue changed state"
+    )
+    try require(keyboardState.pressedKeys.isEmpty, "failed key press became active")
+    try require(
+        keyboardState.enqueuePress(
+            usbHIDUsage: 0x04,
+            wireModifierMask: USBHIDModifierWire.leftShift
+        ) { true },
+        "successful key press enqueue rejected"
+    )
+    try require(keyboardState.contains(usbHIDUsage: 0x04), "captured key lookup failed")
+    try require(
+        !NativeKeyCapturePolicy.shouldIgnoreEvent(
+            standardModifierMask: voiceOverMask,
+            voiceOverRunning: true,
+            pressed: false,
+            keyWasCaptured: keyboardState.contains(usbHIDUsage: 0x04)
+        ),
+        "VoiceOver chord swallowed an already captured key-up"
+    )
+    try require(
+        !keyboardState.enqueueRelease(usbHIDUsage: 0x04) { key in
+            key.wireModifierMask == USBHIDModifierWire.leftShift && false
+        },
+        "failed key release enqueue changed state"
+    )
+    try require(keyboardState.pressedKeys.count == 1, "failed key release cleared active state")
+    try require(
+        keyboardState.enqueueRelease(usbHIDUsage: 0x04) { key in
+            key.wireModifierMask == USBHIDModifierWire.leftShift
+        },
+        "successful key release lost press-time modifier"
+    )
+    try require(keyboardState.pressedKeys.isEmpty, "successful key release stayed active")
+    try require(!keyboardState.contains(usbHIDUsage: 0x04), "released key remained captured")
+
+    try require(
+        try NativeInputTargetResolver.target(selectedStreamID: nil, bindings: []) == nil,
+        "unselected input unexpectedly required a target"
+    )
+    let routedTarget = try NativeInputTargetResolver.target(
+        selectedStreamID: 7,
+        bindings: [DisplayStreamBinding(displayID: "display-1", streamID: 7)]
+    )
+    try require(
+        routedTarget?.displayID == "display-1" && routedTarget?.streamID == 7,
+        "selected input target was not resolved"
+    )
+    do {
+        _ = try NativeInputTargetResolver.target(
+            selectedStreamID: 8,
+            bindings: [DisplayStreamBinding(displayID: "display-1", streamID: 7)]
+        )
+        throw SelfTestError.failed("selected stream without a binding routed untargeted input")
+    } catch NativeInputTargetError.selectedStreamBindingMissing(8) { }
+
+    let position = NormalizedInputPosition(x: 0.25, y: 0.75)
+    var continuousState = ContinuousInputState()
+    try require(
+        continuousState.enqueueUpdate(position: position) { phase, _ in phase == .began },
+        "continuous input press enqueue failed"
+    )
+    try require(
+        !continuousState.enqueueTerminal { _ in false } && continuousState.isActive,
+        "failed continuous release cleared active state"
+    )
+    try require(
+        continuousState.enqueueTerminal { _ in true } && !continuousState.isActive,
+        "successful continuous release stayed active"
+    )
+
+    var coordinator = ReconnectCoordinator()
+    let generation = coordinator.start()
+    let delays = (0..<5).compactMap { _ in
+        coordinator.schedule(generation: generation, failure: .transientTransport)?.delaySeconds
+    }
+    try require(delays == [0.25, 0.5, 1, 2, 3], "bounded reconnect schedule")
+    try require(
+        coordinator.schedule(generation: generation, failure: .heartbeat) == nil,
+        "reconnect exceeded attempt bound"
+    )
+
+    var permanentCoordinator = ReconnectCoordinator()
+    let permanentGeneration = permanentCoordinator.start()
+    try require(
+        permanentCoordinator.schedule(generation: permanentGeneration, failure: .permanent) == nil,
+        "permanent failure scheduled reconnect"
+    )
+    try require(
+        !permanentCoordinator.accepts(generation: permanentGeneration),
+        "permanent failure left reconnect enabled"
+    )
+    try require(
+        ReconnectFailure.classify(TCPTransportError.connectionClosed) == .transientTransport,
+        "transport failure was not retryable"
+    )
+    try require(
+        ReconnectFailure.classify(TCPTransportError.authenticationRequired) == .permanent,
+        "authentication failure was retryable"
+    )
+}
+
+@MainActor
+func testPartialReleaseFailureStillFlushesDisconnectNotice() async throws {
+    let records = LockedControlRecords()
+    let owner = SessionOwner(connectionOwner: ConnectionOwner())
+    let sessionID = Data([0x52])
+    let outbox = ControlOutbox { _, frame, _ in
+        let envelope = try EnvelopeCodec.deserialize(frame.payload)
+        let payload: String
+        switch envelope.payload {
+        case .keyEvent(let event) where !event.pressed:
+            payload = "key-up"
+        case .disconnectNotice:
+            payload = "disconnect"
+        default:
+            payload = "unexpected"
+        }
+        records.append((envelope.messageID, payload))
+    }
+    outbox.activate(owner: owner)
+
+    let admittedRelease = try outbox.enqueue(owner: owner) { factory in
+        factory.key(
+            inputID: 1,
+            usbHIDUsage: 0x04,
+            pressed: false,
+            modifierMask: USBHIDModifierWire.leftShift,
+            text: "",
+            sessionID: sessionID,
+            sessionEpoch: 8
+        )
+    }
+    do {
+        _ = try outbox.enqueue(owner: owner) { _ in
+            throw RejectedControlEnvelope.release
+        }
+        throw SelfTestError.failed("rejected release was admitted")
+    } catch RejectedControlEnvelope.release { }
+
+    let notice = try outbox.enqueue(owner: owner) { factory in
+        factory.disconnectNotice(
+            reasonCode: "client_disconnect",
+            mayResume: false,
+            sessionID: sessionID,
+            sessionEpoch: 8
+        )
+    }
+    try require(admittedRelease.messageID == 1 && notice.messageID == 2,
+                "rejected release consumed FIFO ordering")
+    _ = try await notice.wait()
+    _ = try await admittedRelease.wait()
+    let snapshot = records.snapshot
+    try require(snapshot.map(\.messageID) == [1, 2],
+                "admitted release was superseded by partial failure")
+    try require(snapshot.map(\.payload) == ["key-up", "disconnect"],
+                "disconnect notice did not follow admitted release")
 }
 
 func testSharedProtocolFixture() throws {
@@ -851,6 +1114,8 @@ do {
     FileHandle.standardError.write(Data("RUN: protocol/session\n".utf8))
     try testSessionAndProtobuf()
     try testUSBHIDModifierCompatibility()
+    try testNativeInputAndBoundedReconnect()
+    try await testPartialReleaseFailureStillFlushesDisconnectNotice()
     try testSharedProtocolFixture()
     try testProtocolV1GoldenFixtures()
     FileHandle.standardError.write(Data("RUN: codec/backoff\n".utf8))

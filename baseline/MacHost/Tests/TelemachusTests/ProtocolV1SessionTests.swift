@@ -371,6 +371,79 @@ final class ProtocolV1SessionTests: XCTestCase {
         )
     }
 
+    func testTerminalInputSurvivesVideoReconfigurationButNewInputDoesNot() throws {
+        let session = try readyKeyboardSession(standardModifierByte: true)
+        _ = session.handleControl(try envelope(
+            id: 4,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        guard case .awaitingVideoConfig = session.phase else {
+            return XCTFail("expected video reconfiguration")
+        }
+
+        var release = VSKeyEvent()
+        release.inputID = 5
+        release.usbHidUsage = 0x04
+        release.pressed = false
+        release.modifierMask = StreamInputWire.modifierShift
+        XCTAssertTrue(session.handleControl(try envelope(
+            id: 5,
+            payload: .keyEvent(release)
+        ).serializedData()).contains {
+            if case .key(let usage, let pressed, let modifiers, _) = $0 {
+                return usage == 0x04 && !pressed && modifiers == StreamInputWire.modifierShift
+            }
+            return false
+        })
+
+        var touch = touchEvent()
+        touch.inputID = 7
+        touch.phase = .cancelled
+        XCTAssertTrue(session.handleControl(try envelope(
+            id: 7,
+            payload: .touchEvent(touch)
+        ).serializedData()).contains {
+            if case .touch(_, _, _, let phase) = $0 { return phase == .cancelled }
+            return false
+        })
+
+        let stylusSession = try readyStylusSession()
+        XCTAssertTrue(stylusSession.handleControl(try envelope(
+            id: 4,
+            payload: .stylusEvent(stylusEvent())
+        ).serializedData()).contains {
+            if case .stylus(_, _, _, _, let phase, _, _, _, _, _, _) = $0 {
+                return phase == .began
+            }
+            return false
+        })
+        _ = stylusSession.handleControl(try envelope(
+            id: 5,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        var stylusEnd = stylusEvent()
+        stylusEnd.phase = .ended
+        stylusEnd.pressure = 0
+        XCTAssertTrue(stylusSession.handleControl(try envelope(
+            id: 6,
+            payload: .stylusEvent(stylusEnd)
+        ).serializedData()).contains {
+            if case .stylus(_, _, _, _, let phase, _, _, _, _, _, _) = $0 {
+                return phase == .ended
+            }
+            return false
+        })
+
+        release.pressed = true
+        XCTAssertEqual(
+            try protocolError(from: session.handleControl(try envelope(
+                id: 8,
+                payload: .keyEvent(release)
+            ).serializedData())).code,
+            .invalidState
+        )
+    }
+
     func testStylusRequiresNegotiationAndRoutesValidatedSample() throws {
         let unnegotiated = try readySession()
         XCTAssertEqual(

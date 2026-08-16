@@ -11,6 +11,10 @@ import VibeScreenVideo
 @MainActor
 final class StreamViewModel: ObservableObject {
     static let maximumDisplayStreams = 4
+    static let nativeInputAvailability = NativeInputAvailability(
+        keyboard: true,
+        pointer: true
+    )
 
     @Published private(set) var isConnecting = false
     @Published var isStreaming = false
@@ -22,6 +26,7 @@ final class StreamViewModel: ObservableObject {
     @Published var completedFileURL: URL?
     @Published var availableHostActions: [String] = []
     @Published var gestureProfile = GestureProfile.defaults
+    @Published private(set) var keyboardFocusRequest = 0
 
     let clipboard = ClipboardController()
     let managedConfiguration = ManagedConfigurationProvider()
@@ -43,7 +48,11 @@ final class StreamViewModel: ObservableObject {
         },
         onFailure: { [weak self] failure in
             guard let self, self.sessionOwner == failure.owner else { return }
-            self.terminateSession(message: failure.error.localizedDescription)
+            guard self.closingSessionOwner != failure.owner else { return }
+            self.terminateSession(
+                message: failure.error.localizedDescription,
+                failure: ReconnectFailure.classify(failure.error)
+            )
         }
     )
     let audioPlayback = AudioPlaybackController()
@@ -60,7 +69,9 @@ final class StreamViewModel: ObservableObject {
     var sessionKey: ClientSessionKey?
     var state = SessionState()
     var nextInputID: UInt64 = 1
-    var touchActive = false
+    var touchInputState = ContinuousInputState()
+    var pointerHoverInputState = ContinuousInputState()
+    var keyboardInputState = PressedKeyboardInputState()
     var pendingHostHello: VSHostHello?
     var controlValidator = ClientControlEnvelopeValidator()
     var negotiatedCapabilities: Set<VSCapability> = []
@@ -69,8 +80,13 @@ final class StreamViewModel: ObservableObject {
     var heartbeatSequence: UInt64 = 0
     var heartbeatMonitor = HeartbeatMonitor(nowNanoseconds: { DispatchTime.now().uptimeNanoseconds })
     var heartbeatTask: Task<Void, Never>?
+    var reconnectCoordinator = ReconnectCoordinator()
+    var reconnectTask: Task<Void, Never>?
+    var activePairing: TrustedLANPairing?
+    var connectionGeneration: UInt64?
     var deliveryGate = OwnedDeliveryGate()
     var sessionOwner: SessionOwner?
+    var closingSessionOwner: SessionOwner?
     var pendingFileOffers: [Data: VSFileOffer] = [:]
     var outgoingFiles: [Data: SecurityScopedOutgoingFile] = [:]
     let incomingFiles: IncomingFileTransferManager?
@@ -93,7 +109,19 @@ final class StreamViewModel: ObservableObject {
         }
     }
 
+    func setConnecting(_ value: Bool) {
+        isConnecting = value
+    }
+
+    func requestKeyboardFocus() {
+        keyboardFocusRequest &+= 1
+    }
+
     func connect(pairingURL: String) async {
+        guard closingSessionOwner == nil else {
+            errorMessage = "当前会话仍在有序断开，请稍后重试"
+            return
+        }
         let pairing: TrustedLANPairing
         do {
             pairing = try TrustedLANPairing(
@@ -108,69 +136,78 @@ final class StreamViewModel: ObservableObject {
             errorMessage = "此主机不在组织允许列表中"
             return
         }
+        stopAutomaticReconnect(clearPairing: true)
         endSession(disconnectTransport: true)
-        let policy = managedConfiguration.policy
-        let newConnectionOwner = ConnectionOwner()
-        let newSessionOwner = SessionOwner(connectionOwner: newConnectionOwner)
-        deliveryGate.reset(to: newConnectionOwner)
-        sessionOwner = newSessionOwner
-        controlOutbox.activate(owner: newSessionOwner)
-        isConnecting = true
-        errorMessage = nil
-        do {
-            try state.beginConnection()
-            try await transport.connect(
-                pairing: pairing,
-                deviceName: UIDevice.current.name,
-                owner: newConnectionOwner
-            )
-            guard sessionOwner == newSessionOwner else { return }
-            try state.transportConnected()
-            controlValidator.reset()
-            try await controlOutbox.sendAndWait(owner: newSessionOwner) { factory in
-                factory.clientHello(
-                    deviceID: self.deviceID,
-                    deviceName: UIDevice.current.name,
-                    capabilities: self.advertisedCapabilities(policy: policy),
-                    codecs: [.hevc, .h264],
-                    resourceLimits: self.clientResourceLimits(policy: policy),
-                    videoDecodeCapabilities: Self.sdrDecodeCapabilities
-                )
-            }
-            guard sessionOwner == newSessionOwner else { return }
-        } catch {
-            guard sessionOwner == newSessionOwner else { return }
-            state.fail(error.localizedDescription)
-            errorMessage = error.localizedDescription
-            endSession(disconnectTransport: true, resetState: false)
-        }
-        if sessionOwner == newSessionOwner { isConnecting = false }
+        activePairing = pairing
+        let generation = reconnectCoordinator.start()
+        await connect(pairing: pairing, generation: generation)
     }
 
     func disconnect() {
+        let closureContext = SessionClosureContext.manualDisconnect
+        errorMessage = nil
+        stopAutomaticReconnect(clearPairing: true)
+        finishSessionAfterInputRelease(
+            releaseBatch: releaseActiveInput(
+                reportErrors: closureContext.reportsEnqueueErrors
+            ),
+            reasonCode: "client_disconnect",
+            resetState: true,
+            closureContext: closureContext
+        )
+    }
+
+    func finishSessionAfterInputRelease(
+        releaseBatch: InputReleaseBatch,
+        reasonCode: String,
+        resetState: Bool,
+        expectedOwner: SessionOwner? = nil,
+        closureContext: SessionClosureContext = .sessionFailure
+    ) {
+        if let expectedOwner, expectedOwner != sessionOwner { return }
+        guard closingSessionOwner == nil else { return }
         heartbeatTask?.cancel()
         heartbeatTask = nil
-        guard !state.sessionID.isEmpty, state.sessionEpoch > 0 else {
-            endSession(disconnectTransport: true)
-            return
-        }
+
         guard let owner = sessionOwner else {
-            endSession(disconnectTransport: true)
+            endSession(disconnectTransport: true, resetState: resetState)
+            errorMessage = closureContext.errorOnCompletion(currentError: errorMessage)
             return
         }
+        closingSessionOwner = owner
         isStreaming = false
-        let ticket = try? controlOutbox.enqueue(owner: owner, timeout: 0.25) { factory in
-            factory.disconnectNotice(
-                reasonCode: "client_disconnect",
-                mayResume: false,
-                sessionID: self.state.sessionID,
-                sessionEpoch: self.state.sessionEpoch
-            )
+
+        var disconnectTicket: ControlSendTicket?
+        if closureContext.shouldEnqueueDisconnectNotice(
+            hasSession: !state.sessionID.isEmpty && state.sessionEpoch > 0,
+            allReleasesAdmitted: releaseBatch.allAdmitted
+        ) {
+            do {
+                disconnectTicket = try controlOutbox.enqueue(owner: owner, timeout: 0.25) { factory in
+                    factory.disconnectNotice(
+                        reasonCode: reasonCode,
+                        mayResume: false,
+                        sessionID: self.state.sessionID,
+                        sessionEpoch: self.state.sessionEpoch
+                    )
+                }
+            } catch {
+                errorMessage = closureContext.errorAfterEnqueueFailure(
+                    currentError: errorMessage,
+                    enqueueError: error.localizedDescription
+                )
+            }
         }
+
         Task { [weak self] in
-            _ = try? await ticket?.wait()
+            if let disconnectTicket {
+                _ = try? await disconnectTicket.wait()
+            } else {
+                await releaseBatch.waitForAdmittedReleases()
+            }
             guard let self, self.sessionOwner == owner else { return }
-            endSession(disconnectTransport: true)
+            self.endSession(disconnectTransport: true, resetState: resetState)
+            self.errorMessage = closureContext.errorOnCompletion(currentError: self.errorMessage)
         }
     }
 
@@ -179,6 +216,8 @@ final class StreamViewModel: ObservableObject {
         let endingOwner = sessionOwner
         deliveryGate.reset()
         sessionOwner = nil
+        closingSessionOwner = nil
+        connectionGeneration = nil
         controlOutbox.deactivate()
         heartbeatMonitor.reset()
         if let endingOwner { _ = mediaGate.endSession(owner: endingOwner) }
@@ -212,45 +251,47 @@ final class StreamViewModel: ObservableObject {
         availableHostActions = []
         pixelBuffer = nil
         nextInputID = 1
-        touchActive = false
+        touchInputState.reset()
+        pointerHoverInputState.reset()
+        keyboardInputState.reset()
         isStreaming = false
         isConnecting = false
     }
 
     func selectDisplay(streamID: UInt64) {
-        guard displayBindings.contains(where: { $0.streamID == streamID }) else { return }
+        guard streamID != selectedStreamID,
+              displayBindings.contains(where: { $0.streamID == streamID }) else { return }
+        guard releaseActiveInput().allAdmitted else { return }
         selectedStreamID = streamID
-        touchActive = false
     }
 
-    func sendTouch(location: CGPoint, size: CGSize, ended: Bool) {
+    @discardableResult
+    func sendTouch(location: CGPoint, size: CGSize, ended: Bool) -> Bool {
+        if ended {
+            let terminalPosition = size.width > 0 && size.height > 0
+                ? NormalizedInputPosition(x: location.x / size.width, y: location.y / size.height)
+                : nil
+            var nextState = touchInputState
+            let accepted = nextState.enqueueTerminal(position: terminalPosition) { position in
+                enqueueTouch(phase: .ended, position: position, pressure: 0) != nil
+            }
+            touchInputState = nextState
+            return accepted
+        }
+
         guard isStreaming, size.width > 0, size.height > 0,
               let selectedStreamID,
-              decoderOwners[selectedStreamID] != nil else { return }
-        let phase: VSInputPhase = ended ? .ended : (touchActive ? .changed : .began)
-        var target: VSInputTarget?
-        if let binding = displayBindings.first(where: { $0.streamID == selectedStreamID }) {
-            var value = VSInputTarget()
-            value.displayID = binding.displayID
-            value.streamID = binding.streamID
-            target = value
+              decoderOwners[selectedStreamID] != nil else { return false }
+        let position = NormalizedInputPosition(
+            x: location.x / size.width,
+            y: location.y / size.height
+        )
+        var nextState = touchInputState
+        let accepted = nextState.enqueueUpdate(position: position) { phase, admittedPosition in
+            enqueueTouch(phase: phase, position: admittedPosition, pressure: 1) != nil
         }
-        let inputID = nextInputID
-        nextInputID += 1
-        touchActive = !ended
-        sendInBackground { factory in
-            factory.touch(
-                inputID: inputID,
-                pointerID: 0,
-                phase: phase,
-                x: location.x / size.width,
-                y: location.y / size.height,
-                pressure: ended ? 0 : 1,
-                sessionID: self.state.sessionID,
-                sessionEpoch: self.state.sessionEpoch,
-                target: target
-            )
-        }
+        touchInputState = nextState
+        return accepted
     }
 
     func sendClipboardFromPasteboard() {
@@ -373,10 +414,12 @@ final class StreamViewModel: ObservableObject {
             case .switchDisplay:
                 guard !displayBindings.isEmpty else { return }
                 let current = displayBindings.firstIndex { $0.streamID == selectedStreamID } ?? -1
-                selectedStreamID = displayBindings[(current + 1) % displayBindings.count].streamID
+                selectDisplay(streamID: displayBindings[(current + 1) % displayBindings.count].streamID)
             case let .invokeHostAction(identifier):
                 invokeHostAction(identifier)
-            case .toggleControls, .showKeyboard:
+            case .showKeyboard:
+                requestKeyboardInput()
+            case .toggleControls:
                 break
             }
         } catch { errorMessage = error.localizedDescription }

@@ -8,6 +8,10 @@ private enum ControlledSenderError: Error {
     case timedOutWaitingForCallCount(Int)
 }
 
+private enum ControlEnvelopeBuildError: Error {
+    case rejected
+}
+
 private struct WireControlRecord: Sendable {
     let owner: ConnectionOwner
     let messageID: UInt64
@@ -90,6 +94,10 @@ private actor ControlledControlSender {
         switch envelope.payload {
         case .listDisplaysRequest: "list-displays"
         case .startDisplayRequest: "start-display"
+        case .touchEvent(let event): event.phase == .cancelled ? "touch-cancelled" : "touch-other"
+        case .pointerEvent(let event): event.phase == .ended ? "pointer-ended" : "pointer-other"
+        case .keyEvent(let event): event.pressed ? "key-down" : "key-up"
+        case .disconnectNotice: "disconnect"
         case .ping: "ping"
         case .pong: "pong"
         case .videoConfigResult: "video-config-result"
@@ -99,6 +107,131 @@ private actor ControlledControlSender {
 }
 
 final class ControlOutboxTests: XCTestCase {
+    @MainActor
+    func testInputReleasesPrecedeDisconnectNoticeInOneFIFO() async throws {
+        let controlledSender = ControlledControlSender()
+        let connectionOwner = ConnectionOwner()
+        let sessionOwner = SessionOwner(connectionOwner: connectionOwner)
+        let sessionID = Data([0x51])
+        let outbox = ControlOutbox { owner, frame, _ in
+            try await controlledSender.send(owner: owner, frame: frame)
+        }
+        outbox.activate(owner: sessionOwner)
+
+        let tickets = try [
+            outbox.enqueue(owner: sessionOwner) { factory in
+                factory.key(
+                    inputID: 1,
+                    usbHIDUsage: 0x04,
+                    pressed: false,
+                    modifierMask: USBHIDModifierWire.leftShift,
+                    text: "",
+                    sessionID: sessionID,
+                    sessionEpoch: 7
+                )
+            },
+            outbox.enqueue(owner: sessionOwner) { factory in
+                factory.touch(
+                    inputID: 2,
+                    pointerID: 0,
+                    phase: .cancelled,
+                    x: 0.25,
+                    y: 0.5,
+                    pressure: 0,
+                    sessionID: sessionID,
+                    sessionEpoch: 7
+                )
+            },
+            outbox.enqueue(owner: sessionOwner) { factory in
+                factory.pointer(
+                    inputID: 3,
+                    phase: .ended,
+                    x: 0.75,
+                    y: 0.5,
+                    buttonMask: 0,
+                    sessionID: sessionID,
+                    sessionEpoch: 7
+                )
+            },
+            outbox.enqueue(owner: sessionOwner) { factory in
+                factory.disconnectNotice(
+                    reasonCode: "client_disconnect",
+                    mayResume: false,
+                    sessionID: sessionID,
+                    sessionEpoch: 7
+                )
+            },
+        ]
+
+        XCTAssertEqual(tickets.map(\.messageID), [1, 2, 3, 4])
+        for callCount in 1...tickets.count {
+            try await controlledSender.waitUntilCallCount(callCount)
+            try await controlledSender.release(call: callCount - 1)
+        }
+        for ticket in tickets {
+            let completedMessageID = try await ticket.wait()
+            XCTAssertEqual(completedMessageID, ticket.messageID)
+        }
+
+        let snapshot = await controlledSender.snapshot()
+        XCTAssertEqual(snapshot.maximumActiveSendCount, 1)
+        XCTAssertEqual(snapshot.records.map(\.payloadName), [
+            "key-up",
+            "touch-cancelled",
+            "pointer-ended",
+            "disconnect",
+        ])
+    }
+
+    @MainActor
+    func testRejectedReleaseStillEnqueuesDisconnectAfterAdmittedRelease() async throws {
+        let controlledSender = ControlledControlSender()
+        let connectionOwner = ConnectionOwner()
+        let sessionOwner = SessionOwner(connectionOwner: connectionOwner)
+        let sessionID = Data([0x52])
+        let outbox = ControlOutbox { owner, frame, _ in
+            try await controlledSender.send(owner: owner, frame: frame)
+        }
+        outbox.activate(owner: sessionOwner)
+
+        let admittedRelease = try outbox.enqueue(owner: sessionOwner) { factory in
+            factory.key(
+                inputID: 1,
+                usbHIDUsage: 0x04,
+                pressed: false,
+                modifierMask: USBHIDModifierWire.leftShift,
+                text: "",
+                sessionID: sessionID,
+                sessionEpoch: 8
+            )
+        }
+        XCTAssertThrowsError(try outbox.enqueue(owner: sessionOwner) { _ in
+            throw ControlEnvelopeBuildError.rejected
+        })
+
+        let disconnectNotice = try outbox.enqueue(owner: sessionOwner) { factory in
+            factory.disconnectNotice(
+                reasonCode: "client_disconnect",
+                mayResume: false,
+                sessionID: sessionID,
+                sessionEpoch: 8
+            )
+        }
+        XCTAssertEqual([admittedRelease.messageID, disconnectNotice.messageID], [1, 2])
+
+        try await controlledSender.waitUntilCallCount(1)
+        try await controlledSender.release(call: 0)
+        let admittedMessageID = try await admittedRelease.wait()
+        XCTAssertEqual(admittedMessageID, 1)
+        try await controlledSender.waitUntilCallCount(2)
+        try await controlledSender.release(call: 1)
+        let disconnectMessageID = try await disconnectNotice.wait()
+        XCTAssertEqual(disconnectMessageID, 2)
+
+        let snapshot = await controlledSender.snapshot()
+        XCTAssertEqual(snapshot.records.map(\.payloadName), ["key-up", "disconnect"])
+    }
+
     @MainActor
     func testMixedProducersUseOneFIFOInWireOrder() async throws {
         let controlledSender = ControlledControlSender()

@@ -20,6 +20,7 @@ enum ProtocolV1SelfTest {
        testInputHeartbeatAndMedia(failures: &failures)
        testTouchTargetAndDisconnect(failures: &failures)
         testNativePointerKeyboardInput(failures: &failures)
+        testTerminalInputDuringVideoReconfiguration(failures: &failures)
         testNativeInputMapping(failures: &failures)
         testModifierCompatibility(failures: &failures)
         testClientVideoPreferences(failures: &failures)
@@ -793,6 +794,142 @@ enum ProtocolV1SelfTest {
             }
         } catch {
             failures.append("native pointer/keyboard test failed: \(error)")
+        }
+    }
+
+    private static func testTerminalInputDuringVideoReconfiguration(
+        failures: inout [String]
+    ) {
+        do {
+            let session = try readySession(clientCapabilities: [
+                .touch, .keyboard, .pointer, .multiDisplay, .usbHidModifierByte,
+            ])
+            _ = session.handleControl(try envelope(
+                id: 4,
+                payload: .startDisplayRequest(displayRequest())
+            ).serializedData())
+            guard case .awaitingVideoConfig = session.phase else {
+                failures.append("native input test did not enter video reconfiguration")
+                return
+            }
+
+            var target = VSInputTarget()
+            target.displayID = "active-display"
+            target.streamID = 1
+
+            var keyRelease = VSKeyEvent()
+            keyRelease.inputID = 5
+            keyRelease.usbHidUsage = 0x04
+            keyRelease.pressed = false
+            keyRelease.modifierMask = StreamInputWire.modifierShift
+            keyRelease.target = target
+            guard session.handleControl(try envelope(
+                id: 5,
+                payload: .keyEvent(keyRelease)
+            ).serializedData()).contains(where: {
+                if case .key(let usage, let pressed, let modifiers, _) = $0 {
+                    return usage == 0x04 && !pressed
+                        && modifiers == StreamInputWire.modifierShift
+                }
+                return false
+            }) else {
+                failures.append("key release was rejected during video reconfiguration")
+                return
+            }
+
+            var touchCancel = touchEvent()
+            touchCancel.inputID = 6
+            touchCancel.phase = .cancelled
+            touchCancel.target = target
+            guard session.handleControl(try envelope(
+                id: 6,
+                payload: .touchEvent(touchCancel)
+            ).serializedData()).contains(where: {
+                if case .touch(_, _, _, let phase) = $0 { return phase == .cancelled }
+                return false
+            }) else {
+                failures.append("touch cancellation was rejected during video reconfiguration")
+                return
+            }
+
+            var point = VSNormalizedPoint()
+            point.x = 0.5
+            point.y = 0.5
+            var pointerEnd = VSPointerEvent()
+            pointerEnd.inputID = 7
+            pointerEnd.phase = .ended
+            pointerEnd.position = point
+            pointerEnd.target = target
+            guard session.handleControl(try envelope(
+                id: 7,
+                payload: .pointerEvent(pointerEnd)
+            ).serializedData()).contains(where: {
+                if case .pointer(_, _, let phase, _) = $0 { return phase == .ended }
+                return false
+            }) else {
+                failures.append("pointer end was rejected during video reconfiguration")
+                return
+            }
+
+            let stylusSession = try readySession(clientCapabilities: [
+                .touch, .stylus, .multiDisplay,
+            ])
+            var stylusBegin = VSStylusEvent()
+            stylusBegin.inputID = 8
+            stylusBegin.pointerID = 3
+            stylusBegin.phase = .began
+            stylusBegin.position = point
+            stylusBegin.pressure = 0.5
+            guard stylusSession.handleControl(try envelope(
+                id: 4,
+                payload: .stylusEvent(stylusBegin)
+            ).serializedData()).contains(where: {
+                if case .stylus(_, _, _, _, let phase, _, _, _, _, _, _) = $0 {
+                    return phase == .began
+                }
+                return false
+            }) else {
+                failures.append("stylus begin did not establish active input")
+                return
+            }
+            _ = stylusSession.handleControl(try envelope(
+                id: 5,
+                payload: .startDisplayRequest(displayRequest())
+            ).serializedData())
+            var stylusEnd = stylusBegin
+            stylusEnd.phase = .ended
+            stylusEnd.pressure = 0
+            guard stylusSession.handleControl(try envelope(
+                id: 6,
+                payload: .stylusEvent(stylusEnd)
+            ).serializedData()).contains(where: {
+                if case .stylus(_, _, _, _, let phase, _, _, _, _, _, _) = $0 {
+                    return phase == .ended
+                }
+                return false
+            }) else {
+                failures.append("stylus end was rejected during video reconfiguration")
+                return
+            }
+
+            let newInputSession = try readySession(clientCapabilities: [
+                .touch, .keyboard, .multiDisplay, .usbHidModifierByte,
+            ])
+            _ = newInputSession.handleControl(try envelope(
+                id: 4,
+                payload: .startDisplayRequest(displayRequest())
+            ).serializedData())
+            var keyPress = keyRelease
+            keyPress.pressed = true
+            guard try protocolError(newInputSession.handleControl(try envelope(
+                id: 5,
+                payload: .keyEvent(keyPress)
+            ).serializedData())).code == .invalidState else {
+                failures.append("new key press was accepted during video reconfiguration")
+                return
+            }
+        } catch {
+            failures.append("video reconfiguration input-release test failed: \(error)")
         }
     }
 

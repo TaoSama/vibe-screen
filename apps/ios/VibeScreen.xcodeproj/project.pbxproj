@@ -16,6 +16,8 @@
 		A10000000000000000000008 /* WakeOnLANClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* WakeOnLANClient.swift */; };
 		A10000000000000000000009 /* StreamViewModel+Protocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* StreamViewModel+Protocol.swift */; };
 		A1000000000000000000000A /* SecurityScopedOutgoingFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* SecurityScopedOutgoingFile.swift */; };
+		A1000000000000000000000B /* StreamViewModel+NativeInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* StreamViewModel+NativeInput.swift */; };
+		A1000000000000000000000C /* StreamViewModel+Reconnect.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* StreamViewModel+Reconnect.swift */; };
 		A10000000000000000000011 /* VibeScreenCore in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000001 /* VibeScreenCore */; };
 		A10000000000000000000012 /* VibeScreenProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* VibeScreenProtocol */; };
 		A10000000000000000000013 /* VibeScreenVideo in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000003 /* VibeScreenVideo */; };
@@ -44,6 +46,8 @@
 		A20000000000000000000008 /* WakeOnLANClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeOnLANClient.swift; sourceTree = "<group>"; };
 		A20000000000000000000009 /* StreamViewModel+Protocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StreamViewModel+Protocol.swift"; sourceTree = "<group>"; };
 		A2000000000000000000000A /* SecurityScopedOutgoingFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedOutgoingFile.swift; sourceTree = "<group>"; };
+		A2000000000000000000000B /* StreamViewModel+NativeInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StreamViewModel+NativeInput.swift"; sourceTree = "<group>"; };
+		A2000000000000000000000C /* StreamViewModel+Reconnect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StreamViewModel+Reconnect.swift"; sourceTree = "<group>"; };
 		A20000000000000000000010 /* VibeScreen.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VibeScreen.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000021 /* SwiftProtobuf-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "SwiftProtobuf-LICENSE.txt"; sourceTree = "<group>"; };
 		B20000000000000000000001 /* StreamViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamViewModelTests.swift; sourceTree = "<group>"; };
@@ -93,6 +97,8 @@
 				A20000000000000000000008 /* WakeOnLANClient.swift */,
 				A20000000000000000000009 /* StreamViewModel+Protocol.swift */,
 				A2000000000000000000000A /* SecurityScopedOutgoingFile.swift */,
+				A2000000000000000000000B /* StreamViewModel+NativeInput.swift */,
+				A2000000000000000000000C /* StreamViewModel+Reconnect.swift */,
 			);
 			path = VibeScreenApp;
 			sourceTree = "<group>";
@@ -217,6 +223,8 @@
 				A10000000000000000000008 /* WakeOnLANClient.swift in Sources */,
 				A10000000000000000000009 /* StreamViewModel+Protocol.swift in Sources */,
 				A1000000000000000000000A /* SecurityScopedOutgoingFile.swift in Sources */,
+				A1000000000000000000000B /* StreamViewModel+NativeInput.swift in Sources */,
+				A1000000000000000000000C /* StreamViewModel+Reconnect.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

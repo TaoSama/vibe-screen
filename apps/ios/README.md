@@ -72,6 +72,10 @@ capability. Each accepted config epoch starts a fresh frame-ID sequence; media
 must then match session, stream, config epoch, codec, one-of-one fragment shape,
 and a strictly increasing nonzero frame ID. Three expired Ping
 deadlines without a matching Pong terminate the session.
+Only transient transport send/connect failures and heartbeat timeouts enter the
+automatic reconnect loop. The loop is generation-scoped, stops after five
+attempts with delays capped at three seconds, and does not retry protocol,
+authentication, or validation failures.
 
 After editing Protocol v1 schemas, regenerate the checked Swift bindings:
 
@@ -111,7 +115,9 @@ device, and Run. The app supports both device families from one target.
 5. The client negotiates H.264/HEVC and additive capabilities, asks for
    available displays, and attaches to as many as the negotiated limit allows.
 6. Use the display selector to change the rendered/input target. Dragging sends
-   native normalized touch events targeted at that stream.
+   native normalized touch events targeted at that stream. The keyboard button
+   focuses hardware-key capture, and supported pointing devices send hover
+   movement while they remain over the stream.
 7. Tap **断开** before changing hosts.
 
 The current developer transport is plaintext trusted-LAN TCP. Do not expose it
@@ -194,11 +200,13 @@ currently no key migration step.
 
 - iPhone Simulator UI smoke and an unsigned iPhoneOS archive pass in CI;
   signing, installation, and device execution remain separate evidence gates;
-- no automatic reconnect loop in the app UI yet, although epoch filtering and
-  bounded reconnect backoff are implemented and self-tested;
+- automatic reconnect is limited to transient transport/heartbeat failures and
+  stops after five attempts; protocol, authentication, and validation failures
+  remain terminal;
 - one host connection can route up to four negotiated display streams; actual
   multi-client admission and virtual-display allocation remain host work;
-- touch only; keyboard/pointer UI is negotiated but not exposed yet;
+- touch, hardware-keyboard capture, and hover-pointer input are exposed in the
+  app, but have no signed iPhone/iPad or physical-accessory evidence yet;
 - PCM S16LE playback, explicit text clipboard, bounded file transfer, SDR
   fallback, gestures, WOL, and managed restrictions are implemented, but have
   no iOS-device evidence in this environment;

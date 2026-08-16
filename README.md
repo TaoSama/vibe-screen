@@ -504,7 +504,8 @@ network quality may increase it.
 - A native SwiftUI + VideoToolbox iPhone/iPad foundation now lives in
   [`apps/ios`](apps/ios/README.md): generated Protocol v1 bindings, capability
   negotiation, multi-display routing, H.264/HEVC decode, PCM audio, explicit
-  clipboard, bounded verified files, epoch filtering, and native input are
+  clipboard, bounded verified files, epoch filtering, native touch plus
+  hardware-keyboard/hover-pointer UI, and bounded trusted-LAN reconnect are
   implemented and core-self-tested.
 - The trusted-LAN iOS Core client now interoperates with the baseline MacHost
   on TCP `54321`: authenticated `SSWA`/`SSWR` admission and the `0D` upgrade
@@ -531,8 +532,9 @@ network quality may increase it.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
   interoperability commit. Signing, iPhone/iPad installation, hardware
   VideoToolbox behavior, host-side advanced adapters, AVAudioEngine playback,
-  HDR output, audio/bulk Internet transport, and all advanced real-device
-  behavior remain separate gates; see the
+  HDR output, audio/bulk Internet transport, native input behavior, reconnect
+  behavior, and all advanced real-device behavior remain separate device
+  gates; see the
   [evidence record](docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md).
 
 ## Device Strategy
