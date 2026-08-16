@@ -28,6 +28,13 @@ enum StylusContactState {
   STYLUS_CONTACT_STATE_PROXIMITY = 2;
 }
 
+enum ControllerEventKind {
+  CONTROLLER_EVENT_KIND_UNSPECIFIED = 0;
+  CONTROLLER_EVENT_KIND_CONNECTED = 1;
+  CONTROLLER_EVENT_KIND_STATE = 2;
+  CONTROLLER_EVENT_KIND_DISCONNECTED = 3;
+}
+
 message NormalizedPoint {
   double x = 1;
   double y = 2;
@@ -77,6 +84,50 @@ message StylusEvent {
   // for backward compatibility. PROXIMITY samples must have pressure 0.0;
   // their phase describes hover enter/change/exit.
   optional StylusContactState contact_state = 11;
+}
+
+// Controller input requires CAPABILITY_CONTROLLER. input_id must be non-zero
+// and strictly increase within the ControllerEvent subsequence of the current
+// negotiated session. controller_id must encode to 1-128 UTF-8 bytes, be stable
+// and sender-scoped within that session, and must not contain a raw serial
+// number or other sensitive identifier. controller_epoch must be non-zero and
+// strictly increase for the same controller_id within the negotiated session.
+// CONNECTED starts a lifecycle for (controller_id, controller_epoch), STATE is
+// valid only inside that lifecycle, and DISCONNECTED ends it. Reusing or
+// decreasing an epoch for the same controller_id is invalid.
+// Duplicate CONNECTED, STATE before CONNECTED, and STATE after DISCONNECTED
+// are invalid. At most four controller lifecycles may be active concurrently
+// in one negotiated session. A receiver must reject a CONNECTED event that
+// would exceed this limit with an InputAck whose accepted field is false and
+// rejection_reason is "maximum_active_controllers_exceeded", without closing
+// the session or changing any admitted controller lifecycle.
+// A new negotiated session resets both monotonic sequences.
+// Kind must be CONNECTED, STATE, or DISCONNECTED; UNSPECIFIED and unknown enum
+// values are invalid. Button bits 0-12 are defined and all higher bits are
+// reserved and must be zero. Stick axes must be finite and in [-1, 1], trigger
+// values must be finite and in [0, 1], and hat axes must each be -1, 0, or 1.
+// CONNECTED and DISCONNECTED are neutral lifecycle markers: button_mask and all
+// axes, triggers, and hat values must be zero. A receiver must synthesize this
+// same neutral state before discarding an active controller on disconnect,
+// session teardown, ownership takeover, or transport loss.
+message ControllerEvent {
+  uint64 input_id = 1;
+  string controller_id = 2;
+  uint64 controller_epoch = 3;
+  ControllerEventKind kind = 4;
+  // Bits 0-12 are south, east, west, north, L1, R1, L2 digital, R2 digital,
+  // select, start, guide/mode, L3, and R3, respectively. Bits 13-31 are
+  // reserved and must be zero.
+  uint32 button_mask = 5;
+  double left_stick_x = 6;
+  double left_stick_y = 7;
+  double right_stick_x = 8;
+  double right_stick_y = 9;
+  double left_trigger = 10;
+  double right_trigger = 11;
+  sint32 hat_x = 12;
+  sint32 hat_y = 13;
+  InputTarget target = 14;
 }
 
 message PointerEvent {

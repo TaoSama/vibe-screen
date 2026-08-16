@@ -202,6 +202,60 @@ class SecurityContractTest(unittest.TestCase):
         self.assertRegex(session_source, r"CAPABILITY_STYLUS\s*=\s*6\s*;")
         self.assertRegex(session_source, r"CAPABILITY_STYLUS_EXTENDED\s*=\s*25\s*;")
 
+
+    def test_controller_event_is_additive_and_lifecycle_scoped(self) -> None:
+        input_source = (PROTO_ROOT / "input.proto").read_text()
+        envelope_source = (PROTO_ROOT / "envelope.proto").read_text()
+        session_source = (PROTO_ROOT / "session.proto").read_text()
+        self.assertEqual(
+            {
+                "input_id": 1,
+                "controller_id": 2,
+                "controller_epoch": 3,
+                "kind": 4,
+                "button_mask": 5,
+                "left_stick_x": 6,
+                "left_stick_y": 7,
+                "right_stick_x": 8,
+                "right_stick_y": 9,
+                "left_trigger": 10,
+                "right_trigger": 11,
+                "hat_x": 12,
+                "hat_y": 13,
+                "target": 14,
+            },
+            message_fields(input_source, "ControllerEvent"),
+        )
+        for name, raw_value in {
+            "CONTROLLER_EVENT_KIND_UNSPECIFIED": 0,
+            "CONTROLLER_EVENT_KIND_CONNECTED": 1,
+            "CONTROLLER_EVENT_KIND_STATE": 2,
+            "CONTROLLER_EVENT_KIND_DISCONNECTED": 3,
+        }.items():
+            self.assertRegex(input_source, rf"{name}\s*=\s*{raw_value}\s*;")
+        declaration = input_source[input_source.index("// Controller input"):input_source.index("message ControllerEvent")]
+        self.assertIn("strictly increase within the ControllerEvent subsequence", declaration)
+        self.assertIn("controller_id must encode to 1-128 UTF-8 bytes", declaration)
+        self.assertIn("must not contain a raw serial", declaration)
+        self.assertIn("controller_epoch must be non-zero and", declaration)
+        self.assertIn("strictly increase for the same controller_id", declaration)
+        self.assertIn("A new negotiated session resets both monotonic sequences.", declaration)
+        self.assertIn("CONNECTED starts a lifecycle", declaration)
+        self.assertIn("At most four controller lifecycles may be active concurrently", declaration)
+        self.assertIn("maximum_active_controllers_exceeded", declaration)
+        self.assertIn("without closing", declaration)
+        self.assertIn("or changing any admitted controller lifecycle", declaration)
+        self.assertIn("CONNECTED and DISCONNECTED are neutral lifecycle markers", declaration)
+        self.assertIn("transport loss", declaration)
+        controller_message = input_source[input_source.index("message ControllerEvent"):input_source.index("message PointerEvent")]
+        self.assertIn(
+            "Bits 0-12 are south, east, west, north, L1, R1, L2 digital, R2 digital,",
+            controller_message,
+        )
+        self.assertIn("select, start, guide/mode, L3, and R3", controller_message)
+        self.assertEqual(66, message_fields(envelope_source, "Envelope")["controller_event"])
+        self.assertRegex(session_source, r"CAPABILITY_CONTROLLER\s*=\s*26\s*;")
+
     def test_envelope_security_payloads_do_not_reuse_existing_numbers(self) -> None:
         source = (PROTO_ROOT / "envelope.proto").read_text()
         fields = message_fields(source, "Envelope")

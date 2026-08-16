@@ -39,6 +39,9 @@ enum Capability {
   // buttons, and explicit contact/proximity state.
   CAPABILITY_STYLUS_EXTENDED = 25;
   // Value 26 is allocated separately to controller input.
+  // Enables lifecycle-scoped ControllerEvent input. Receivers must neutralize
+  // admitted controller state when its lifecycle or session ends.
+  CAPABILITY_CONTROLLER = 26;
   // Requires CAPABILITY_KEYBOARD and negotiates the standard USB HID modifier
   // byte for KeyEvent.
   CAPABILITY_USB_HID_MODIFIER_BYTE = 27;
