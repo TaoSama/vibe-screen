@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -26,11 +28,28 @@ func main() {
 func run() error {
 	configPath := flag.String("config", "config.json", "path to authority JSON configuration")
 	migrationPath := flag.String("migrate", "", "apply one SQL migration file and exit")
+	healthcheckURL := flag.String("healthcheck", "", "probe one authority health or readiness URL and exit")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if *showVersion {
 		_, err := fmt.Fprintln(os.Stdout, version)
 		return err
+	}
+	if *healthcheckURL != "" {
+		return probeHealth(*healthcheckURL)
+	}
+	if *migrationPath != "" {
+		databaseURL, err := authority.LoadDatabaseURL()
+		if err != nil {
+			return err
+		}
+		contents, err := os.ReadFile(*migrationPath)
+		if err != nil {
+			return fmt.Errorf("read migration: %w", err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return authority.ApplyMigration(ctx, databaseURL, string(contents))
 	}
 	cfg, err := authority.LoadConfig(*configPath)
 	if err != nil {
@@ -38,13 +57,6 @@ func run() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if *migrationPath != "" {
-		contents, err := os.ReadFile(*migrationPath)
-		if err != nil {
-			return fmt.Errorf("read migration: %w", err)
-		}
-		return authority.ApplyMigration(ctx, cfg.DatabaseURL, string(contents))
-	}
 	store, err := authority.OpenPostgres(ctx, cfg)
 	if err != nil {
 		return err
@@ -66,6 +78,35 @@ func run() error {
 	slog.Info("authority listening", "address", cfg.ListenAddress)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("serve authority: %w", err)
+	}
+	return nil
+}
+
+func probeHealth(endpoint string) error {
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return errors.New("healthcheck redirects are not permitted")
+		},
+	}
+	response, err := client.Get(endpoint)
+	if err != nil {
+		return fmt.Errorf("healthcheck request: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthcheck status: %s", response.Status)
+	}
+	var status struct {
+		Status string `json:"status"`
+	}
+	decoder := json.NewDecoder(io.LimitReader(response.Body, 1024))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&status); err != nil || status.Status != "ok" {
+		return errors.New("healthcheck returned an invalid response")
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("healthcheck returned trailing data")
 	}
 	return nil
 }

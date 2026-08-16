@@ -1,0 +1,7 @@
+{
+  "listen_address": "0.0.0.0:8091",
+  "maximum_session_ttl_seconds": 900,
+  "daily_bytes_per_device": 21474836480,
+  "maximum_allocations_per_device": 2,
+  "reconciliation_grace_seconds": 120
+}

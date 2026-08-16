@@ -3,12 +3,16 @@
 This runbook describes the required production shape. `services/signaling/` and
 `services/relay/` are runnable experimental control-plane binaries with local
 tests and container definitions. The pinned coturn data plane is bundled through
-Compose. The recorded local REST-credential, Allocation, ChannelBind and forced
+Compose. Authority now has a pinned non-root container, a persistent local
+PostgreSQL profile, an external-database production-shaped profile, ordered
+migration, readiness checks, and a bounded restart-persistence gate. The recorded
+local REST-credential, Allocation, ChannelBind and forced
 WebRTC relay integration used the host-installed coturn 4.16.0 binary; it does
 not prove execution of the pinned container image. This is still not a
 deployable production stack: signaling is single-instance/in-memory, no
-authoritative usage exporter is bundled, and neither implementation has run on
-a public host in this environment.
+authoritative usage exporter is bundled, Authority is not wired to relay/coturn
+or automatic issuance, and no integrated implementation has run on a public host
+in this environment.
 
 The current `services/relay/` binary is an experimental credential/usage control
 service, not the production shape below. A trusted control-plane bearer requests
@@ -21,8 +25,8 @@ new credential is returned after a completed revoke. The binary itself remains
 separate from the coturn data-plane process in the Compose deployment.
 
 `services/authority/` supplies the runnable shared-PostgreSQL admission and
-account/device-revocation slice needed by horizontally scaled signaling and
-relay control planes. It also exposes cumulative coturn usage ingestion and
+account/device-revocation slice intended to replace process-local authority
+state. It also exposes cumulative coturn usage ingestion and
 snapshot reconciliation. The signaling service now supports a
 `production_authority` mode that delegates session creation, per-request
 role-token authorization, and session invalidation to the authority. Dependency
@@ -34,8 +38,46 @@ exporter or active-allocation disconnect executor. Therefore this does not
 remove the public-launch prohibition below. See the service README for the
 migration procedure, API contract, and remaining infrastructure gates.
 Do not expose it to the public Internet until those boundaries and the
-container/readiness findings in [TECH.md](TECH.md#open-implementation-findings)
-are resolved.
+remaining production gates below are resolved.
+
+## Authority deployment gates
+
+Use `deploy/phase3/docker-compose.authority.yml` only for a reproducible local or
+CI stack. It owns a named PostgreSQL volume, uses a private-network
+`sslmode=disable` URL and one database role, then orders PostgreSQL health, a
+one-shot migration, and Authority startup. Those choices are deliberately not a
+production database design.
+
+The production-shaped `docker-compose.authority.production.yml` contains no
+PostgreSQL service. It requires a digest-only Authority image, externally managed
+secret files, an ignored reviewed config, and separate migration/runtime database
+URLs. Before routing a production caller, operators must verify all of the
+following outside Compose:
+
+- PostgreSQL certificate and hostname verification (`sslmode=verify-full`),
+  enforced by the production profile before migration/runtime startup, plus
+  encrypted storage, HA, PITR, documented RPO/RTO, and a recent restore exercise;
+- a short-lived DDL migration role and a least-privilege runtime DML role, with a
+  backup and checksum review before each migration;
+- monitored host/database NTP offset. Time uncertainty never permits wider TTLs,
+  acceptance of expired credentials, or a local session-epoch fallback;
+- private authenticated TLS 1.2+ transport to Authority, network policy,
+  loopback-only host publishing, log redaction/rotation, resource limits, and a
+  shutdown grace period longer than the application deadline;
+- `/readyz` and a synthetic admission/authorization canary. `/healthz` is only
+  process liveness and remains healthy during a database outage while readiness
+  and storage-backed requests fail closed.
+
+Authority's PostgreSQL floor is the durable decision point for accepted device
+session epochs. Do not introduce a process-local fallback when it is unavailable.
+An application rollback may roll back image/config but must not roll back the
+logical revocation or epoch ledger. A database recovery remains fail-closed until
+the recovery point and ledger invariants are verified.
+
+The supplied production profile runs one Authority process. It does not prove
+multi-process Authority operation, public ingress, NTP monitoring, database
+backup automation, automatic account/session issuance, relay/coturn wiring, or
+active disconnection after revocation.
 
 The signaling service accepts one offer/answer per session and exposes an
 issuer-only idempotent invalidation operation. In `production_authority` mode

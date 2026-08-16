@@ -375,6 +375,41 @@ func TestLoadConfigRejectsExplicitZeroDatabaseClockSkew(t *testing.T) {
 		t.Fatal("explicit zero database clock skew was accepted")
 	}
 }
+func TestLoadDatabaseURLDoesNotRequireServiceTokens(t *testing.T) {
+	t.Setenv(databaseURLEnv, "postgres://authority@example/vibescreen")
+	t.Setenv(databaseTLSModeEnv, "")
+	for _, name := range []string{adminTokenEnv, signalingTokenEnv, relayTokenEnv, coturnTokenEnv, roleTokenSecretEnv} {
+		t.Setenv(name, "")
+		t.Setenv(name+"_FILE", "")
+	}
+	value, err := LoadDatabaseURL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value != "postgres://authority@example/vibescreen" {
+		t.Fatalf("database URL = %q", value)
+	}
+}
+
+func TestLoadDatabaseURLRequiresVerifyFullWhenConfigured(t *testing.T) {
+	t.Setenv(databaseTLSModeEnv, "verify-full")
+	t.Setenv(databaseURLEnv, "postgres://authority@example/vibescreen?sslmode=disable")
+	if _, err := LoadDatabaseURL(); err == nil {
+		t.Fatal("production database URL accepted sslmode=disable")
+	}
+	t.Setenv(databaseURLEnv, "postgresql://authority@example/vibescreen?sslmode=verify-full")
+	if _, err := LoadDatabaseURL(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoadDatabaseURLRejectsUnknownTLSMode(t *testing.T) {
+	t.Setenv(databaseTLSModeEnv, "prefer")
+	t.Setenv(databaseURLEnv, "postgres://authority@example/vibescreen?sslmode=verify-full")
+	if _, err := LoadDatabaseURL(); err == nil {
+		t.Fatal("unknown database TLS mode was accepted")
+	}
+}
 
 func createMemorySession(t *testing.T, store *memoryStore, accountID, hostID, clientID string, epoch uint64, now time.Time) SignalingAdmission {
 	t.Helper()

@@ -29,11 +29,25 @@ Run current repository checks first:
 ```bash
 make protocol
 make phase3-test
+make phase3-authority-container-test
 make baseline-macos-build
 make baseline-macos-test
 make baseline-android-test
 make baseline-android-apk
 ```
+
+`phase3-authority-container-test` has a 15-minute CI timeout. It builds the
+non-root scratch image, validates the local and production-shaped Compose models,
+starts a real PostgreSQL, verifies ordered migration and readiness, creates and
+authorizes a session, restarts Authority without losing that admission, then
+proves database-outage liveness/readiness separation and storage failure before
+recovery. It also checks the runtime user, read-only root filesystem, dropped
+capabilities, and generated-secret absence from container logs.
+
+This local container gate does not prove production PostgreSQL TLS, managed
+secret delivery, NTP offset monitoring, PITR/restore, public ingress, automatic
+issuance, relay/coturn integration, active revocation, or multi-node behavior.
+Those remain explicit production or end-to-end gates.
 
 Record failures as failures. In particular, an unavailable XCTest/full-Xcode or
 device environment is not a waiver. When production WebRTC/crypto/signaling code

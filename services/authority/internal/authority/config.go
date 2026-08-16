@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ type Config struct {
 
 const (
 	databaseURLEnv     = "VIBE_AUTHORITY_DATABASE_URL"
+	databaseTLSModeEnv = "VIBE_AUTHORITY_DATABASE_TLS_MODE"
 	adminTokenEnv      = "VIBE_AUTHORITY_ADMIN_TOKEN"
 	signalingTokenEnv  = "VIBE_AUTHORITY_SIGNALING_TOKEN"
 	relayTokenEnv      = "VIBE_AUTHORITY_RELAY_TOKEN"
@@ -69,11 +71,15 @@ func LoadConfig(path string) (Config, error) {
 		}
 		return Config{}, fmt.Errorf("decode config: trailing content: %w", err)
 	}
+	databaseURL, err := LoadDatabaseURL()
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.DatabaseURL = databaseURL
 	values := []struct {
 		name        string
 		destination *string
 	}{
-		{databaseURLEnv, &cfg.DatabaseURL},
 		{adminTokenEnv, &cfg.AdminToken},
 		{signalingTokenEnv, &cfg.SignalingToken},
 		{relayTokenEnv, &cfg.RelayToken},
@@ -91,6 +97,40 @@ func LoadConfig(path string) (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+// LoadDatabaseURL loads only the database credential needed by the one-shot
+// migration command. It keeps service bearer tokens out of the migration job.
+func LoadDatabaseURL() (string, error) {
+	value, err := loadEnvironmentValue(databaseURLEnv)
+	if err != nil {
+		return "", err
+	}
+	if value == "" {
+		return "", fmt.Errorf("%s is required", databaseURLEnv)
+	}
+	if err := validateDatabaseTLS(value, strings.TrimSpace(os.Getenv(databaseTLSModeEnv))); err != nil {
+		return "", err
+	}
+	return value, nil
+}
+
+func validateDatabaseTLS(databaseURL, requiredMode string) error {
+	if requiredMode == "" {
+		return nil
+	}
+	if requiredMode != "verify-full" {
+		return fmt.Errorf("%s must be empty or verify-full", databaseTLSModeEnv)
+	}
+	parsed, err := url.Parse(databaseURL)
+	if err != nil || (parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") || parsed.Host == "" {
+		return errors.New("production authority requires a PostgreSQL URL with sslmode=verify-full")
+	}
+	sslModes := parsed.Query()["sslmode"]
+	if len(sslModes) != 1 || sslModes[0] != requiredMode {
+		return errors.New("production authority requires sslmode=verify-full")
+	}
+	return nil
 }
 
 func loadEnvironmentValue(name string) (string, error) {

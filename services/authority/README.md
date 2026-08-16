@@ -45,6 +45,75 @@ Migration execution is an explicit one-shot operation. Application replicas
 must not receive DDL permission. Back up the database and record the migration
 checksum before applying it.
 
+## Container and Compose
+
+`Dockerfile` uses the pinned Go 1.24.13 Alpine build image, verifies
+the locked modules, and copies only the static binary, CA bundle, container
+config, and versioned migration into a `scratch` runtime. The runtime
+uses UID/GID 65532. Its health check calls the binary's strict
+`--healthcheck` probe against `/readyz`, so schema or
+database failure makes the container unready while `/healthz` remains
+a process-liveness signal.
+
+The reproducible local profile includes PostgreSQL and persists its data in a
+named volume:
+
+```bash
+cd deploy/phase3
+./scripts/generate-authority-secrets.sh
+docker compose -f docker-compose.authority.yml config --quiet
+docker compose -f docker-compose.authority.yml up -d --build --wait
+curl --fail http://127.0.0.1:8091/healthz
+curl --fail http://127.0.0.1:8091/readyz
+```
+
+PostgreSQL must become healthy before the one-shot
+`authority-migrate` service runs, and Authority starts only after
+migration exits successfully. Runtime tokens are not mounted into the migration
+service. The local profile uses one database role and
+`sslmode=disable` on its private Compose network; it is for
+development and CI only, not a production PostgreSQL or TLS example. Stop it
+without deleting state using `docker compose -f
+docker-compose.authority.yml down`. Add `--volumes` only when
+intentionally destroying the local authority ledger.
+
+The production profile is `docker-compose.authority.production.yml`.
+It does not create PostgreSQL and requires an Authority image repository plus an
+exact SHA-256 digest, a reviewed `config/authority.production.json`, and
+external secret files supplied by the deployment secret manager. Use separate
+database roles: the migration URL may execute reviewed DDL, while the runtime URL
+has only the table/sequence privileges needed by Authority. Both URLs must use
+PostgreSQL TLS with certificate and hostname verification, normally
+`sslmode=verify-full`; the production profile sets
+`VIBE_AUTHORITY_DATABASE_TLS_MODE=verify-full`, so both jobs reject any other
+mode before connecting. The published HTTP port is loopback-only because
+Authority has no built-in TLS; an authenticated private proxy or service mesh
+must provide TLS 1.2+ and network policy for callers.
+File-backed Compose secrets must be readable as UID 65532 inside the container.
+Have the secret manager materialize that ownership/mode, or keep read-only source
+files beneath an operator-only parent directory. Do not run Authority as root to
+work around a secret-mount permission error.
+
+Before a production rollout, require all of the following:
+
+- synchronized host and database clocks with monitored NTP offset; expiry and
+  epoch decisions fail closed rather than widening TTLs for skew;
+- independent admin, signaling, relay, coturn, role-token, migration-database,
+  and runtime-database secrets from the secret manager;
+- managed PostgreSQL high availability, encrypted storage, PITR, defined
+  RPO/RTO, a recent restore exercise, and a backup taken before migration;
+- migration checksum review, successful one-shot migration, `/readyz`,
+  a synthetic admission/authorization canary, and retained redacted audit data;
+- read-only root filesystem, no Linux capabilities, bounded CPU/memory/PIDs,
+  log rotation, and a stop grace period longer than the server's ten-second
+  shutdown deadline.
+
+Authority remains the durable source of truth for accepted per-device session
+epoch floors in production. Callers must never mint a local fallback epoch or
+credential when Authority is unavailable. This Compose profile does not add
+automatic account/session issuance, relay/coturn integration, active transport
+revocation, public ingress, or horizontally shared signaling state.
+
 ## Internal API
 
 Tokens are independent and route-scoped:
@@ -124,7 +193,9 @@ Reserve relay capacity before returning a TURN credential:
 
 The reservation and quota checks are one serializable transaction. Every path
 locks account before device, so account suspension/device revocation and new
-admission have one deny-wins ordering across replicas.
+admission share one deny-wins database ordering. The supplied deployment profile
+runs one Authority process; multi-process behavior is not claimed by the container
+gate.
 
 ## Coturn ingestion contract
 
@@ -221,3 +292,19 @@ separate production requirement.
 
 Until these gates pass, this is a runnable backend slice, not evidence of a
 production Internet deployment.
+
+## Container verification
+
+The bounded Linux gate builds the image, validates both Compose files, starts a
+real PostgreSQL container, runs migration, creates and authorizes one session,
+restarts Authority, stops PostgreSQL to prove liveness/readiness separation and
+write failure, restores PostgreSQL, re-authorizes the persisted session, checks
+the non-root/read-only/capability settings, and scans container logs for the
+generated secrets:
+
+```bash
+make phase3-authority-container-test
+```
+
+The CI step has a 15-minute timeout. The test uses disposable secrets and removes
+its containers and named volume on exit.

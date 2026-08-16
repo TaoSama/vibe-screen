@@ -1,0 +1,80 @@
+name: vibe-screen-authority-production
+
+x-authority-container: &authority-container
+  image: ${VIBE_AUTHORITY_IMAGE_REPOSITORY:?set the vibe-authority image repository}@sha256:${VIBE_AUTHORITY_IMAGE_SHA256:?set the 64-character vibe-authority image digest}
+  user: "65532:65532"
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 128
+  mem_limit: 256m
+  cpus: 1.0
+  stop_grace_period: 30s
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  authority-migrate:
+    <<: *authority-container
+    restart: "no"
+    command:
+      - --migrate
+      - /usr/share/vibe-screen/migrations/001_authority.sql
+    environment:
+      VIBE_AUTHORITY_DATABASE_URL_FILE: /run/secrets/migration_database_url
+      VIBE_AUTHORITY_DATABASE_TLS_MODE: verify-full
+    secrets:
+      - migration_database_url
+
+  authority:
+    <<: *authority-container
+    restart: unless-stopped
+    depends_on:
+      authority-migrate:
+        condition: service_completed_successfully
+    environment:
+      VIBE_AUTHORITY_DATABASE_URL_FILE: /run/secrets/database_url
+      VIBE_AUTHORITY_DATABASE_TLS_MODE: verify-full
+      VIBE_AUTHORITY_ADMIN_TOKEN_FILE: /run/secrets/admin_token
+      VIBE_AUTHORITY_SIGNALING_TOKEN_FILE: /run/secrets/signaling_token
+      VIBE_AUTHORITY_RELAY_TOKEN_FILE: /run/secrets/relay_token
+      VIBE_AUTHORITY_COTURN_TOKEN_FILE: /run/secrets/coturn_token
+      VIBE_AUTHORITY_ROLE_TOKEN_SECRET_FILE: /run/secrets/role_token_secret
+    secrets:
+      - database_url
+      - admin_token
+      - signaling_token
+      - relay_token
+      - coturn_token
+      - role_token_secret
+    volumes:
+      - ${VIBE_AUTHORITY_CONFIG_FILE:-./config/authority.production.json}:/etc/vibe-screen/authority.json:ro
+    ports:
+      - "127.0.0.1:8091:8091/tcp"
+    healthcheck:
+      test: ["CMD", "/vibe-authority", "--healthcheck", "http://127.0.0.1:8091/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+secrets:
+  migration_database_url:
+    file: ${VIBE_AUTHORITY_MIGRATION_DATABASE_URL_FILE:?set the migration database URL secret file}
+  database_url:
+    file: ${VIBE_AUTHORITY_DATABASE_URL_FILE:?set the runtime database URL secret file}
+  admin_token:
+    file: ${VIBE_AUTHORITY_ADMIN_TOKEN_FILE:?set the admin token secret file}
+  signaling_token:
+    file: ${VIBE_AUTHORITY_SIGNALING_TOKEN_FILE:?set the signaling token secret file}
+  relay_token:
+    file: ${VIBE_AUTHORITY_RELAY_TOKEN_FILE:?set the relay token secret file}
+  coturn_token:
+    file: ${VIBE_AUTHORITY_COTURN_TOKEN_FILE:?set the coturn token secret file}
+  role_token_secret:
+    file: ${VIBE_AUTHORITY_ROLE_TOKEN_SECRET_FILE:?set the role-token secret file}

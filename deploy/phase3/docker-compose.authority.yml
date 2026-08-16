@@ -1,0 +1,120 @@
+name: vibe-screen-authority-local
+
+x-authority-container: &authority-container
+  build:
+    context: ../../services/authority
+    dockerfile: Dockerfile
+    args:
+      VERSION: 0.1.0
+  image: vibe-screen-authority:0.1.0
+  user: "65532:65532"
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 128
+  mem_limit: 256m
+  cpus: 1.0
+  stop_grace_period: 30s
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16.10-alpine3.22@sha256:029660641a0cfc575b14f336ba448fb8a75fd595d42e1fa316b9fb4378742297
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vibe_authority
+      POSTGRES_USER: authority
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - authority-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U authority -d vibe_authority"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 1.0
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  authority-migrate:
+    <<: *authority-container
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - --migrate
+      - /usr/share/vibe-screen/migrations/001_authority.sql
+    environment:
+      VIBE_AUTHORITY_DATABASE_URL_FILE: /run/secrets/migration_database_url
+    secrets:
+      - migration_database_url
+
+  authority:
+    <<: *authority-container
+    restart: unless-stopped
+    depends_on:
+      authority-migrate:
+        condition: service_completed_successfully
+    environment:
+      VIBE_AUTHORITY_DATABASE_URL_FILE: /run/secrets/database_url
+      VIBE_AUTHORITY_ADMIN_TOKEN_FILE: /run/secrets/admin_token
+      VIBE_AUTHORITY_SIGNALING_TOKEN_FILE: /run/secrets/signaling_token
+      VIBE_AUTHORITY_RELAY_TOKEN_FILE: /run/secrets/relay_token
+      VIBE_AUTHORITY_COTURN_TOKEN_FILE: /run/secrets/coturn_token
+      VIBE_AUTHORITY_ROLE_TOKEN_SECRET_FILE: /run/secrets/role_token_secret
+    secrets:
+      - database_url
+      - admin_token
+      - signaling_token
+      - relay_token
+      - coturn_token
+      - role_token_secret
+    volumes:
+      - ./config/authority.local.json:/etc/vibe-screen/authority.json:ro
+    ports:
+      - "127.0.0.1:${VIBE_AUTHORITY_PORT:-8091}:8091/tcp"
+    healthcheck:
+      test: ["CMD", "/vibe-authority", "--healthcheck", "http://127.0.0.1:8091/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+secrets:
+  postgres_password:
+    file: ${VIBE_AUTHORITY_SECRETS_DIR:-./secrets/authority}/postgres_password.txt
+  migration_database_url:
+    file: ${VIBE_AUTHORITY_SECRETS_DIR:-./secrets/authority}/migration_database_url.txt
+  database_url:
+    file: ${VIBE_AUTHORITY_SECRETS_DIR:-./secrets/authority}/database_url.txt
+  admin_token:
+    file: ${VIBE_AUTHORITY_SECRETS_DIR:-./secrets/authority}/admin_token.txt
+  signaling_token:
+    file: ${VIBE_AUTHORITY_SECRETS_DIR:-./secrets/authority}/signaling_token.txt
+  relay_token:
+    file: ${VIBE_AUTHORITY_SECRETS_DIR:-./secrets/authority}/relay_token.txt
+  coturn_token:
+    file: ${VIBE_AUTHORITY_SECRETS_DIR:-./secrets/authority}/coturn_token.txt
+  role_token_secret:
+    file: ${VIBE_AUTHORITY_SECRETS_DIR:-./secrets/authority}/role_token_secret.txt
+
+volumes:
+  authority-postgres:

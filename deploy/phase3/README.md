@@ -1,4 +1,113 @@
-# Phase 3 relay data plane
+# Phase 3 deployment profiles
+
+This directory contains two deliberately separate deployment slices:
+
+- `docker-compose.authority.yml` runs Authority with a persistent local
+  PostgreSQL for development and CI.
+- `docker-compose.authority.production.yml` is a production-shaped Authority
+  profile that requires an external PostgreSQL, immutable image digest, and
+  runtime secret files.
+- `docker-compose.yml` and `docker-compose.production.yml` run the experimental
+  relay credential service beside coturn.
+
+They are not an integrated public Internet stack. In particular, the Authority
+profiles do not wire signaling, relay, automatic account/session issuance, or
+active revocation of an established PeerConnection/TURN allocation.
+
+## Authority local profile
+
+Requirements are Docker Engine with Compose v2 and OpenSSL. Generate disposable
+local secrets, validate the effective model, and start the stack:
+
+```bash
+cd deploy/phase3
+./scripts/generate-authority-secrets.sh
+docker compose -f docker-compose.authority.yml config --quiet
+docker compose -f docker-compose.authority.yml up -d --build --wait
+curl --fail http://127.0.0.1:8091/healthz
+curl --fail http://127.0.0.1:8091/readyz
+```
+
+PostgreSQL data is retained in the `authority-postgres` named volume. PostgreSQL
+must be healthy before the one-shot migration runs, and Authority starts only
+after that job exits successfully. The migration job receives only its database
+URL; runtime API and role-token secrets are mounted only into Authority.
+
+This profile uses one PostgreSQL role and `sslmode=disable` inside its private
+Compose network. It binds Authority HTTP to host loopback and is only for local
+development and CI. It is not a TLS, secret-management, backup, high-availability,
+multi-instance, or public-network example. Stop it while preserving data with:
+
+```bash
+docker compose -f docker-compose.authority.yml down
+```
+
+Use `down --volumes` only when deliberately discarding the local admission,
+revocation, and session-epoch ledger. The local secret generator refuses to
+overwrite files, protects their parent directory with mode `0700`, and makes the
+files read-only so Compose can mount them for the fixed container UID 65532.
+
+## Authority production-shaped profile
+
+Copy `config/authority.production.example.json` to the ignored
+`config/authority.production.json`, review every limit, then provide:
+
+- `VIBE_AUTHORITY_IMAGE_REPOSITORY` and the exact 64-character
+  `VIBE_AUTHORITY_IMAGE_SHA256`; Compose constructs a digest-only image reference;
+- independent migration/runtime PostgreSQL URL files and independent admin,
+  signaling, relay, coturn, and role-token secret files from the deployment
+  secret manager;
+- an external managed PostgreSQL endpoint. The profile intentionally contains no
+  database service or database volume.
+
+Set `VIBE_AUTHORITY_CONFIG_FILE` only when the reviewed configuration lives at a
+different host path; the default is the ignored production file above.
+File-backed Compose secrets must be readable by UID 65532 inside the container.
+Materialize them as UID/GID 65532 with restrictive mode, or place read-only files
+under an operator-only parent directory; never solve a permission failure by
+running Authority as root.
+
+The migration URL should use a short-lived DDL role. The runtime URL should use a
+least-privilege DML role. Both must use certificate and hostname verification,
+normally `sslmode=verify-full`; the production profile enforces that exact mode
+before either migration or runtime startup. `sslmode=disable` is local-only.
+Authority has no built-in HTTP TLS, so keep its loopback listener behind an
+authenticated private TLS 1.2+ proxy or service mesh and deny public ingress.
+
+Before deployment, require a monitored NTP source for the host and database, an
+alerted clock-offset budget, managed PostgreSQL HA/encryption, PITR with defined
+RPO/RTO, and a recent restore exercise. Authority expiry and session-epoch checks
+must fail closed during dependency or time uncertainty; never widen TTLs or mint
+local fallback epochs/credentials to mask clock or database failures. The profile
+does not itself monitor NTP offset, configure PostgreSQL backups, or prove a
+multi-process Authority rollout, so those remain external production gates.
+
+Back up before migration, review the migration checksum, validate Compose, run the
+one-shot migration, and require `/readyz` plus an admission/authorization canary
+before routing callers. `/healthz` only proves the process is alive; `/readyz` also
+requires the database and exact schema. A database outage therefore leaves
+`/healthz` at 200 while `/readyz` and storage-backed writes fail with 503.
+
+Roll back image and configuration together, but never restore an older logical
+revocation or session-epoch state as an application rollback. Database recovery
+must use the approved PITR procedure, reconcile its recovery point, and keep
+callers fail-closed until the recovered ledger is verified. The current profile
+runs one Authority process; shared-database multi-instance correctness and rollout
+behavior are not claimed.
+
+Run the bounded local container gate with:
+
+```bash
+make phase3-authority-container-test
+```
+
+It builds the image, validates both Authority Compose files, exercises a real
+PostgreSQL migration, readiness, admission/authorization, Authority restart
+persistence, database-outage failure, runtime hardening, and secret-log scan. It
+does not prove production TLS, NTP, backup/restore, public ingress, or multi-node
+behavior.
+
+## Relay data plane
 
 This directory runs the Vibe Screen relay credential service beside a real
 coturn TURN/STUN data plane. Both processes read the same runtime-only TURN REST
@@ -6,7 +115,7 @@ secret. The control plane issues a short-lived username/password; coturn checks
 that HMAC before creating an allocation. TURN forwards WebRTC ciphertext and
 does not receive Vibe Screen content keys or plaintext screen/input data.
 
-## Local start and health check
+## Relay local start and health check
 
 Requirements are Docker Engine with Compose v2 and OpenSSL. Docker Desktop can
 run this local profile, but the production host-network profile is Linux-only.
@@ -47,7 +156,7 @@ Delete the named `relay-data` volume only when deliberately discarding local
 quota/revocation state. Secret files under `secrets/` and TLS files under
 `tls/` are ignored by Git; `generate-secrets.sh` refuses to overwrite them.
 
-## Production configuration
+## Relay production configuration
 
 Production uses host networking so coturn can bind the full relay port range
 without Docker userland-proxy mappings. Perform these steps on a dedicated
