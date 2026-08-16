@@ -8,7 +8,7 @@ final class ManagedConfigurationProvider: ObservableObject {
 
     @Published private(set) var policy: ManagedPolicy = .unmanaged
     @Published private(set) var errorMessage: String?
-    private var remotePolicy: ManagedPolicy?
+    private var resolver = ManagedPolicyResolver()
 
     init() {
         reload()
@@ -28,10 +28,11 @@ final class ManagedConfigurationProvider: ObservableObject {
                     forKey: Self.managedConfigurationKey
                 )
             )
-            policy = remotePolicy.map { local.applying(remote: $0) } ?? local
+            resolver.setLocal(local)
+            policy = resolver.effectivePolicy
             errorMessage = nil
         } catch {
-            policy = ManagedPolicy(
+            resolver.setLocal(ManagedPolicy(
                 isManaged: true,
                 clipboardAllowed: false,
                 fileTransferAllowed: false,
@@ -41,14 +42,22 @@ final class ManagedConfigurationProvider: ObservableObject {
                 hostActionsAllowed: false,
                 maximumFileBytes: 0,
                 allowedHosts: []
-            )
+            ))
+            policy = resolver.effectivePolicy
             errorMessage = error.localizedDescription
         }
     }
 
     func applyRemote(_ status: VSManagedPolicyStatus) {
-        let remote = ManagedPolicy(remoteStatus: status)
-        remotePolicy = remote
-        policy = policy.applying(remote: remote)
+        resolver.setRemote(ManagedPolicy(remoteStatus: status))
+        policy = resolver.effectivePolicy
+    }
+
+    /// Drops the remote policy so the effective policy reverts to the local
+    /// (MDM) policy only. Must be called when a session ends so a stale remote
+    /// policy from a previous peer is never applied to the next session.
+    func clearRemotePolicy() {
+        resolver.clearRemote()
+        policy = resolver.effectivePolicy
     }
 }

@@ -89,9 +89,21 @@ public struct ManagedPolicy: Equatable, Sendable {
         )
     }
 
+    /// Creates a policy from a peer's ``VSManagedPolicyStatus``.
+    ///
+    /// When the peer does not advertise managed policy support (`managed == false`,
+    /// including legacy peers that never set the field), the remote policy is
+    /// treated as fully permissive so it cannot accidentally deny local features.
+    /// When `managed == true`, every field is taken verbatim from the status;
+    /// because protobuf defaults booleans to `false`, any unset capability is
+    /// denied (fail-closed).
     public init(remoteStatus: VSManagedPolicyStatus) {
+        guard remoteStatus.managed else {
+            self = .unmanaged
+            return
+        }
         self.init(
-            isManaged: remoteStatus.managed,
+            isManaged: true,
             clipboardAllowed: remoteStatus.clipboardAllowed,
             fileTransferAllowed: remoteStatus.fileTransferAllowed,
             audioAllowed: remoteStatus.audioAllowed,
@@ -117,7 +129,11 @@ public struct ManagedPolicy: Equatable, Sendable {
     }
 
     public func applying(remote: ManagedPolicy) -> ManagedPolicy {
-        ManagedPolicy(
+        // An unmanaged remote (including legacy peers that never set the
+        // managed flag) imposes no restrictions, so it must not tighten any
+        // local policy field (e.g. it must not lower maximumFileBytes).
+        guard remote.isManaged else { return self }
+        return ManagedPolicy(
             isManaged: isManaged || remote.isManaged,
             clipboardAllowed: clipboardAllowed && remote.clipboardAllowed,
             fileTransferAllowed: fileTransferAllowed && remote.fileTransferAllowed,
@@ -140,6 +156,41 @@ public struct ManagedPolicy: Equatable, Sendable {
         static let hostActionsAllowed = "HostActionsAllowed"
         static let maximumFileBytes = "MaximumFileBytes"
         static let allowedHosts = "AllowedHosts"
+    }
+}
+
+/// Holds the local (MDM) and remote (peer) managed policies and derives the
+/// effective policy by applying the remote on top of the local one.
+///
+/// The effective policy is always recomputed from the stored local and remote
+/// policies, so updating the remote policy never accumulates denials on top of
+/// a previously computed effective policy.
+public struct ManagedPolicyResolver: Equatable, Sendable {
+    public private(set) var localPolicy: ManagedPolicy
+    public private(set) var remotePolicy: ManagedPolicy?
+
+    public var effectivePolicy: ManagedPolicy {
+        remotePolicy.map { localPolicy.applying(remote: $0) } ?? localPolicy
+    }
+
+    public init(localPolicy: ManagedPolicy = .unmanaged, remotePolicy: ManagedPolicy? = nil) {
+        self.localPolicy = localPolicy
+        self.remotePolicy = remotePolicy
+    }
+
+    public mutating func setLocal(_ policy: ManagedPolicy) {
+        localPolicy = policy
+    }
+
+    public mutating func setRemote(_ policy: ManagedPolicy?) {
+        remotePolicy = policy
+    }
+
+    /// Clears the remote policy so the effective policy falls back to the local
+    /// policy only. Call this when a session ends to avoid applying a stale
+    /// remote policy from a previous peer to the next session.
+    public mutating func clearRemote() {
+        remotePolicy = nil
     }
 }
 

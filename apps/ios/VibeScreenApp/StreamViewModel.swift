@@ -103,12 +103,13 @@ final class StreamViewModel: ObservableObject {
             errorMessage = "配对链接无效：\(error.localizedDescription)"
             return
         }
-        let policy = managedConfiguration.policy
-        guard policy.allowedHosts.isEmpty || policy.allowedHosts.contains(pairing.host) else {
+        let allowedHosts = managedConfiguration.policy.allowedHosts
+        guard allowedHosts.isEmpty || allowedHosts.contains(pairing.host) else {
             errorMessage = "此主机不在组织允许列表中"
             return
         }
         endSession(disconnectTransport: true)
+        let policy = managedConfiguration.policy
         let newConnectionOwner = ConnectionOwner()
         let newSessionOwner = SessionOwner(connectionOwner: newConnectionOwner)
         deliveryGate.reset(to: newConnectionOwner)
@@ -192,6 +193,7 @@ final class StreamViewModel: ObservableObject {
         if let sessionKey { registry.disconnect(sessionKey) }
         if resetState { state.reset() }
         sessionKey = nil
+        managedConfiguration.clearRemotePolicy()
         negotiatedCapabilities = []
         negotiatedLimits = VSResourceLimits()
         heartbeatIntervalMilliseconds = 0

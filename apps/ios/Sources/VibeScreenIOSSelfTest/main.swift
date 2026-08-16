@@ -411,6 +411,66 @@ func testClipboardAndManagedPolicy() throws {
         "managed custom gestures deny must not disable host actions"
     )
 
+    var remoteDeniedStatus = ManagedPolicy.unmanaged.protocolStatus
+    remoteDeniedStatus.managed = true
+    remoteDeniedStatus.clipboardAllowed = false
+    remoteDeniedStatus.hostActionsAllowed = false
+    remoteDeniedStatus.maximumFileBytes = 128
+    var resolver = ManagedPolicyResolver(localPolicy: managed)
+    resolver.setRemote(ManagedPolicy(remoteStatus: remoteDeniedStatus))
+    try require(
+        !resolver.effectivePolicy.clipboardAllowed
+            && !resolver.effectivePolicy.hostActionsAllowed
+            && resolver.effectivePolicy.maximumFileBytes == 128,
+        "managed remote deny was not applied"
+    )
+
+    var remoteAllowedStatus = ManagedPolicy.unmanaged.protocolStatus
+    remoteAllowedStatus.managed = true
+    remoteAllowedStatus.maximumFileBytes = 4_096
+    resolver.setRemote(ManagedPolicy(remoteStatus: remoteAllowedStatus))
+    try require(
+        resolver.effectivePolicy.clipboardAllowed
+            && !resolver.effectivePolicy.hostActionsAllowed
+            && resolver.effectivePolicy.maximumFileBytes == 1_024,
+        "updated remote allow did not recompute from the local policy"
+    )
+
+    resolver.clearRemote()
+    try require(
+        resolver.effectivePolicy == managed,
+        "clearing the remote policy did not restore the local policy"
+    )
+
+    let largeLocalLimit = ManagedPolicy(
+        isManaged: true,
+        clipboardAllowed: true,
+        fileTransferAllowed: true,
+        audioAllowed: true,
+        wakeAllowed: true,
+        customGesturesAllowed: true,
+        hostActionsAllowed: true,
+        maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes + 1,
+        allowedHosts: []
+    )
+    var unmanagedRemoteStatus = VSManagedPolicyStatus()
+    unmanagedRemoteStatus.managed = false
+    try require(
+        largeLocalLimit.applying(remote: ManagedPolicy(remoteStatus: unmanagedRemoteStatus))
+            == largeLocalLimit,
+        "unmanaged remote policy tightened local limits"
+    )
+
+    var managedUnsetStatus = VSManagedPolicyStatus()
+    managedUnsetStatus.managed = true
+    let managedUnset = ManagedPolicy(remoteStatus: managedUnsetStatus)
+    try require(
+        !managedUnset.clipboardAllowed
+            && !managedUnset.hostActionsAllowed
+            && managedUnset.maximumFileBytes == 0,
+        "managed remote defaults did not fail closed"
+    )
+
     var clipboard = ClipboardTransferCoordinator(maximumBytes: 32)
     let outgoing = try clipboard.prepareOutgoing(
         content: Data("hello".utf8),
