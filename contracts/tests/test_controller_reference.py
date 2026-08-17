@@ -53,6 +53,37 @@ class ControllerEventValidatorTest(unittest.TestCase):
         self.assertTrue(validator.accept(event(4, "controller-1", 2, CONNECTED)).accepted)
         self.assertEqual((("controller-1", 2),), validator.active_snapshot())
 
+    def test_state_and_disconnected_require_the_active_lifecycle_epoch(self) -> None:
+        for kind, reason in (
+            (STATE, "STATE requires an active matching lifecycle"),
+            (DISCONNECTED, "DISCONNECTED requires an active matching lifecycle"),
+        ):
+            for mismatched_epoch in (1, 3):
+                with self.subTest(kind=kind, mismatched_epoch=mismatched_epoch):
+                    validator = ControllerEventValidator()
+                    self.assertTrue(
+                        validator.accept(event(1, "controller-1", 2, CONNECTED)).accepted
+                    )
+
+                    with self.assertRaisesRegex(ControllerEventValidationError, reason):
+                        validator.accept(event(2, "controller-1", mismatched_epoch, kind))
+
+                    self.assertEqual((("controller-1", 2),), validator.active_snapshot())
+
+    def test_input_id_strictly_increases_across_interleaved_controllers(self) -> None:
+        validator = ControllerEventValidator()
+        self.assertTrue(validator.accept(event(1, "controller-1", 1, CONNECTED)).accepted)
+        self.assertTrue(validator.accept(event(2, "controller-2", 1, CONNECTED)).accepted)
+        self.assertTrue(validator.accept(event(4, "controller-1", 1, STATE)).accepted)
+
+        with self.assertRaisesRegex(ControllerEventValidationError, "strictly increase"):
+            validator.accept(event(3, "controller-2", 1, STATE))
+
+        with self.assertRaisesRegex(ControllerEventValidationError, "must not repeat"):
+            validator.accept(event(4, "controller-2", 1, STATE))
+
+        self.assertTrue(validator.accept(event(5, "controller-2", 1, STATE)).accepted)
+
     def test_rejected_fifth_controller_consumes_input_id_and_can_retry_after_slot_opens(self) -> None:
         validator = ControllerEventValidator()
         for index in range(1, 5):
