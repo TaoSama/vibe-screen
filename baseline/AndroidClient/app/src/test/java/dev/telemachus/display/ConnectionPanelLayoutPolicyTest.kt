@@ -17,7 +17,6 @@ class ConnectionPanelLayoutPolicyTest {
         assertEquals(0f, layout.actions.weight, 0f)
         // The stacked layout must not reserve any inter-column gap.
         assertEquals(0, layout.columnGapPx)
-        assertEquals(Int.MAX_VALUE, layout.subtitleMaxLines)
     }
 
     @Test
@@ -30,7 +29,6 @@ class ConnectionPanelLayoutPolicyTest {
         assertEquals(ConnectionPanelLayoutPolicy.HEADER_WEIGHT, layout.header.weight, 0f)
         assertEquals(ConnectionPanelLayoutPolicy.ACTIONS_WEIGHT, layout.actions.weight, 0f)
         assertEquals(28, layout.columnGapPx)
-        assertEquals(Int.MAX_VALUE, layout.subtitleMaxLines)
     }
 
     @Test
@@ -66,6 +64,5 @@ class ConnectionPanelLayoutPolicyTest {
         assertEquals(0, narrowLandscape.columnGapPx)
         assertEquals(portrait.contentOrientation, narrowLandscape.contentOrientation)
         assertEquals(portrait.columnGapPx, narrowLandscape.columnGapPx)
-        assertEquals(Int.MAX_VALUE, narrowLandscape.subtitleMaxLines)
     }
 }

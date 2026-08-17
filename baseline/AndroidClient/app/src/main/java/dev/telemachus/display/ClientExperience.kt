@@ -447,15 +447,12 @@ internal object ConnectionPanelLayoutPolicy {
         val actions: Column,
         /** Gap placed between the two columns; zero in the stacked layout. */
         val columnGapPx: Int,
-        val subtitleMaxLines: Int,
     )
 
     // Landscape splits roughly 40/60 so the actions column, which carries the
     // mode switch and the tallest per-mode content, gets the extra room.
     const val HEADER_WEIGHT = 40f
     const val ACTIONS_WEIGHT = 60f
-    const val SUBTITLE_MAX_LINES_UNLIMITED = Int.MAX_VALUE
-
     /**
      * @param twoColumn whether the current configuration opts into the
      *   side-by-side layout (typically true in landscape).
@@ -472,7 +469,6 @@ internal object ConnectionPanelLayoutPolicy {
                 header = Column(widthMatchParent = false, weight = HEADER_WEIGHT),
                 actions = Column(widthMatchParent = false, weight = ACTIONS_WEIGHT),
                 columnGapPx = columnGapPx.coerceAtLeast(0),
-                subtitleMaxLines = SUBTITLE_MAX_LINES_UNLIMITED,
             )
         } else {
             // Stacked: both children keep their original full-width, unweighted
@@ -482,7 +478,6 @@ internal object ConnectionPanelLayoutPolicy {
                 header = Column(widthMatchParent = true, weight = 0f),
                 actions = Column(widthMatchParent = true, weight = 0f),
                 columnGapPx = 0,
-                subtitleMaxLines = SUBTITLE_MAX_LINES_UNLIMITED,
             )
         }
 }

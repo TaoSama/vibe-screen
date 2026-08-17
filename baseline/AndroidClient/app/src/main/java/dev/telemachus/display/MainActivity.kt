@@ -226,6 +226,7 @@ class MainActivity : AppCompatActivity() {
     private var hasAttemptedUsbConnection = false
     private var automaticUsbConnect = false
     private var connectionDetailsVisible = false
+    private val connectionSubtitleDisclosure = ConnectionSubtitleDisclosureState()
     private val connectionStatusAnnouncements = ConnectionStatusAnnouncementCoordinator()
     private val autoConnectHandler = Handler(Looper.getMainLooper())
     private val wirelessReconnectHandler = Handler(Looper.getMainLooper())
@@ -576,6 +577,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyModeVisibility(mode: ConnectionMode) {
+        connectionSubtitleDisclosure.reset()
         binding.usbModeContent.visibility = if (mode == ConnectionMode.USB) View.VISIBLE else View.GONE
         binding.wirelessModeContent.visibility = if (mode == ConnectionMode.WIRELESS) View.VISIBLE else View.GONE
         binding.internetModeContent.visibility = if (mode == ConnectionMode.INTERNET) View.VISIBLE else View.GONE
@@ -589,6 +591,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             startChecklistUpdates()
         }
+        applyConnectionPanelLayout(mode)
         updateDisconnectedHeader(mode)
     }
 
@@ -795,7 +798,7 @@ class MainActivity : AppCompatActivity() {
      * two weighted columns with a stable gap so the wide screen is not wasted
      * on a single narrow column. Video and safe-area handling are untouched.
      */
-    private fun applyConnectionPanelLayout() {
+    private fun applyConnectionPanelLayout(connectionMode: ConnectionMode = prefs.connectionMode) {
         ConnectionPanelLayoutApplier.apply(
             resources,
             ConnectionPanelLayoutApplier.Views(
@@ -804,6 +807,8 @@ class MainActivity : AppCompatActivity() {
                 actions = binding.connectionActions,
                 subtitle = binding.connectionSubtitle,
             ),
+            connectionMode = connectionMode,
+            subtitleExpanded = connectionSubtitleDisclosure.expanded,
         )
     }
 
@@ -880,6 +885,7 @@ class MainActivity : AppCompatActivity() {
         // insets arrive rather than relying on a recreate.
         enableFullscreenMode()
         ViewCompat.requestApplyInsets(binding.root)
+        connectionSubtitleDisclosure.reset()
         applyConnectionPanelLayout()
         applyControlBarLayout()
         if (!isConnected && prefs.connectionMode == ConnectionMode.INTERNET) {
@@ -1195,6 +1201,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         setupInternetUi()
+        binding.connectionSubtitle.setOnClickListener {
+            if (!binding.connectionSubtitle.isClickable) return@setOnClickListener
+            connectionSubtitleDisclosure.toggle()
+            applyConnectionPanelLayout()
+        }
 
         // Advanced settings toggle
         binding.showAdvanced.setOnClickListener {

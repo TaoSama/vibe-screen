@@ -60,6 +60,28 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun modeVisibilityAppliesSubtitleLayoutFromItsExplicitMode() {
+        val source = mainActivitySource()
+        val applyModeVisibility = extractMethod(source, "private fun applyModeVisibility")
+        val applyConnectionPanelLayout = extractMethod(source, "private fun applyConnectionPanelLayout")
+        val compactModeVisibility = applyModeVisibility.replace(Regex("\\s+"), "")
+        val compactLayout = applyConnectionPanelLayout.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Mode visibility must render disclosure state from the requested mode",
+            compactModeVisibility.contains("applyConnectionPanelLayout(mode)"),
+        )
+        assertTrue(
+            "Configuration-driven callers may still use the current persisted mode by default",
+            compactLayout.contains("connectionMode:ConnectionMode=prefs.connectionMode"),
+        )
+        assertTrue(
+            "The explicit layout mode must reach the disclosure applier",
+            compactLayout.contains("connectionMode=connectionMode"),
+        )
+    }
+
+    @Test
     fun updateDisconnectedHeaderUsesLiveRegionApplierForTitleAndSubtitle() {
         val source = mainActivitySource()
         val updateHeader = extractMethod(source, "private fun updateDisconnectedHeader")

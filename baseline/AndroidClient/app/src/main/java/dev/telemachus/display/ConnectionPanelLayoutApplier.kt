@@ -1,11 +1,15 @@
 package dev.telemachus.display
 
 import android.content.res.Resources
+import android.content.res.Configuration
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 
 internal object ConnectionPanelLayoutApplier {
     data class Views(
@@ -18,6 +22,8 @@ internal object ConnectionPanelLayoutApplier {
     fun apply(
         resources: Resources,
         views: Views,
+        connectionMode: ConnectionMode,
+        subtitleExpanded: Boolean,
     ): ConnectionPanelLayoutPolicy.Layout {
         applyConfigurationDimensions(resources, views)
         val layout =
@@ -38,11 +44,88 @@ internal object ConnectionPanelLayoutApplier {
                 ConnectionPanelLayoutPolicy.Orientation.HORIZONTAL -> Gravity.TOP
                 ConnectionPanelLayoutPolicy.Orientation.VERTICAL -> Gravity.CENTER_VERTICAL
             }
-        views.subtitle.maxLines = layout.subtitleMaxLines
-        views.subtitle.ellipsize = null
+        applySubtitleDisclosure(
+            resources = resources,
+            subtitle = views.subtitle,
+            presentation =
+                ConnectionSubtitleDisclosurePolicy.resolve(
+                    connectionMode = connectionMode,
+                    stackedPortrait =
+                        layout.contentOrientation == ConnectionPanelLayoutPolicy.Orientation.VERTICAL &&
+                            resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT,
+                    requestedExpanded = subtitleExpanded,
+                ),
+        )
         applyColumn(views.header, layout.header, startGapPx = 0)
         applyColumn(views.actions, layout.actions, startGapPx = layout.columnGapPx)
         return layout
+    }
+
+    private fun applySubtitleDisclosure(
+        resources: Resources,
+        subtitle: TextView,
+        presentation: ConnectionSubtitleDisclosurePolicy.Presentation,
+    ) {
+        subtitle.maxLines = presentation.maxLines
+        subtitle.ellipsize = if (presentation.ellipsizeEnd) TextUtils.TruncateAt.END else null
+        subtitle.isClickable = presentation.expandable
+        subtitle.isFocusable = presentation.expandable
+        subtitle.minimumHeight =
+            if (presentation.expandable) {
+                resources.getDimensionPixelSize(R.dimen.connection_subtitle_touch_target_min_height)
+            } else {
+                0
+            }
+        subtitle.compoundDrawablePadding =
+            if (presentation.expandable) {
+                resources.getDimensionPixelSize(R.dimen.connection_subtitle_disclosure_icon_padding)
+            } else {
+                0
+            }
+        subtitle.setCompoundDrawablesRelativeWithIntrinsicBounds(
+            0,
+            0,
+            when {
+                !presentation.expandable -> 0
+                presentation.expanded -> R.drawable.ic_collapse_chevron
+                else -> R.drawable.ic_dropdown_chevron
+            },
+            0,
+        )
+        ViewCompat.setStateDescription(
+            subtitle,
+            if (presentation.expandable) {
+                resources.getString(
+                    if (presentation.expanded) {
+                        R.string.internet_security_details_expanded
+                    } else {
+                        R.string.internet_security_details_collapsed
+                    },
+                )
+            } else {
+                null
+            },
+        )
+        if (presentation.expandable) {
+            ViewCompat.replaceAccessibilityAction(
+                subtitle,
+                AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK,
+                resources.getString(
+                    if (presentation.expanded) {
+                        R.string.internet_security_details_collapse_action
+                    } else {
+                        R.string.internet_security_details_expand_action
+                    },
+                ),
+            ) { view, _ ->
+                view.performClick()
+            }
+        } else {
+            ViewCompat.removeAccessibilityAction(
+                subtitle,
+                AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK.id,
+            )
+        }
     }
 
     private fun applyConfigurationDimensions(

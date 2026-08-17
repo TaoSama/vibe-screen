@@ -45,6 +45,8 @@
     <dimen name="connection_wordmark_margin_bottom">10dp</dimen>
     <dimen name="connection_title_margin_bottom">8dp</dimen>
     <dimen name="connection_subtitle_margin_bottom">20dp</dimen>
+    <dimen name="connection_subtitle_touch_target_min_height">48dp</dimen>
+    <dimen name="connection_subtitle_disclosure_icon_padding">4dp</dimen>
     <dimen name="connection_progress_margin_bottom">20dp</dimen>
     <dimen name="connection_primary_action_margin_top">12dp</dimen>
 </resources>

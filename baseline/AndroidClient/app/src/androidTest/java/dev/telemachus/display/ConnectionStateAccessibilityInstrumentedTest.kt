@@ -3,6 +3,7 @@ package dev.telemachus.display
 import android.R.attr.state_checked
 import android.R.attr.state_enabled
 import android.content.Context
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
@@ -10,10 +11,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.core.graphics.ColorUtils
+import androidx.core.view.ViewCompat
+import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -155,6 +159,121 @@ class ConnectionStateAccessibilityInstrumentedTest {
     }
 
     @Test
+    fun internetSecurityDescriptionExposesExpandAndCollapseActions() {
+        val context = configuredContext(widthDp = 361, heightDp = 800)
+        withProductionLayout(context) { root ->
+            val subtitle = root.findViewById<TextView>(R.id.connectionSubtitle)
+            val views = connectionPanelViews(root)
+            subtitle.setText(R.string.internet_waiting_description)
+            var expanded = false
+            fun applyDisclosure() {
+                ConnectionPanelLayoutApplier.apply(
+                    resources = context.resources,
+                    views = views,
+                    connectionMode = ConnectionMode.INTERNET,
+                    subtitleExpanded = expanded,
+                )
+            }
+            subtitle.setOnClickListener {
+                expanded = !expanded
+                applyDisclosure()
+            }
+
+            applyDisclosure()
+            measureAndLayout(root, context, widthDp = 361, heightDp = 800)
+            assertTrue(subtitle.measuredHeight >= dp(context, 48))
+            assertTrue(subtitle.isClickable)
+            assertTrue(subtitle.isFocusable)
+            val collapsedChevron = subtitle.compoundDrawablesRelative[2]
+            assertTrue(collapsedChevron != null)
+            assertEquals(
+                context.getString(R.string.internet_security_details_collapsed),
+                ViewCompat.getStateDescription(subtitle),
+            )
+            assertAccessibilityAction(
+                subtitle,
+                context.getString(R.string.internet_security_details_expand_action),
+            )
+
+            assertTrue(subtitle.performClick())
+            measureAndLayout(root, context, widthDp = 361, heightDp = 800)
+            val expandedChevron = subtitle.compoundDrawablesRelative[2]
+            assertTrue(expandedChevron != null)
+            assertFalse(collapsedChevron === expandedChevron)
+            assertEquals(
+                context.getString(R.string.internet_security_details_expanded),
+                ViewCompat.getStateDescription(subtitle),
+            )
+            assertAccessibilityAction(
+                subtitle,
+                context.getString(R.string.internet_security_details_collapse_action),
+            )
+            assertEquals(
+                context.getString(R.string.internet_waiting_description),
+                subtitle.text.toString(),
+            )
+
+            ConnectionPanelLayoutApplier.apply(
+                resources = context.resources,
+                views = views,
+                connectionMode = ConnectionMode.USB,
+                subtitleExpanded = false,
+            )
+            assertEquals(0, subtitle.minimumHeight)
+            assertFalse(subtitle.isClickable)
+            assertFalse(subtitle.isFocusable)
+            assertTrue(subtitle.compoundDrawablesRelative[2] == null)
+            assertEquals(Int.MAX_VALUE, subtitle.maxLines)
+        }
+    }
+
+    @Test
+    fun internetSecurityDescriptionResetsAfterModeAndConfigurationChanges() {
+        val context = applicationContext()
+        val preferences = PreferencesManager(context)
+        val originalMode = preferences.connectionMode
+        preferences.connectionMode = ConnectionMode.INTERNET
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                }
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                scenario.onActivity { activity ->
+                    assertEquals(
+                        Configuration.ORIENTATION_PORTRAIT,
+                        activity.resources.configuration.orientation,
+                    )
+                    val subtitle = activity.findViewById<TextView>(R.id.connectionSubtitle)
+                    assertEquals(
+                        ConnectionSubtitleDisclosurePolicy.COLLAPSED_MAX_LINES,
+                        subtitle.maxLines,
+                    )
+                    assertTrue(subtitle.performClick())
+                    assertEquals(Int.MAX_VALUE, subtitle.maxLines)
+
+                    val modeToggle = activity.findViewById<MaterialButtonToggleGroup>(R.id.modeToggleGroup)
+                    modeToggle.check(R.id.modeWireless)
+                    modeToggle.check(R.id.modeInternet)
+                    assertEquals(
+                        ConnectionSubtitleDisclosurePolicy.COLLAPSED_MAX_LINES,
+                        subtitle.maxLines,
+                    )
+
+                    assertTrue(subtitle.performClick())
+                    activity.onConfigurationChanged(Configuration(activity.resources.configuration))
+                    assertEquals(
+                        ConnectionSubtitleDisclosurePolicy.COLLAPSED_MAX_LINES,
+                        subtitle.maxLines,
+                    )
+                }
+            }
+        } finally {
+            preferences.connectionMode = originalMode
+        }
+    }
+
+    @Test
     fun productionModeToggleHasReadableCheckedAndDistinctDisabledStates() {
         withProductionLayout { root ->
             listOf(R.id.modeUSB, R.id.modeWireless, R.id.modeInternet).forEach { id ->
@@ -268,6 +387,34 @@ class ConnectionStateAccessibilityInstrumentedTest {
             View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY),
         )
         root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+    }
+
+    private fun configuredContext(
+        widthDp: Int,
+        heightDp: Int,
+    ): Context {
+        val configuration = Configuration(applicationContext().resources.configuration)
+        configuration.screenWidthDp = widthDp
+        configuration.screenHeightDp = heightDp
+        configuration.smallestScreenWidthDp = minOf(widthDp, heightDp)
+        configuration.orientation = Configuration.ORIENTATION_PORTRAIT
+        return applicationContext().createConfigurationContext(configuration)
+    }
+
+    private fun connectionPanelViews(root: ViewGroup): ConnectionPanelLayoutApplier.Views =
+        ConnectionPanelLayoutApplier.Views(
+            content = root.findViewById(R.id.connectionContent),
+            header = root.findViewById(R.id.connectionHeader),
+            actions = root.findViewById(R.id.connectionActions),
+            subtitle = root.findViewById(R.id.connectionSubtitle),
+        )
+
+    private fun assertAccessibilityAction(
+        view: View,
+        expectedLabel: String,
+    ) {
+        val actionLabels = view.createAccessibilityNodeInfo().actionList.mapNotNull { it.label?.toString() }
+        assertTrue("Expected accessibility action '$expectedLabel' in $actionLabels", expectedLabel in actionLabels)
     }
 
     private fun applicationContext(): Context = ApplicationProvider.getApplicationContext()

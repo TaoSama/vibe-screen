@@ -34,11 +34,16 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             layout.subtitle.setText(R.string.internet_waiting_description)
 
             layout.assertPortraitDimensionsInflated()
-            ConnectionPanelLayoutApplier.apply(landscapeContext.resources, layout.views())
+            layout.applyPanel(
+                resources = landscapeContext.resources,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = true,
+            )
             layout.measureAndLayout()
 
             layout.assertConfigurationUsesTwoColumns(expected = true)
             layout.assertLandscapeDimensionsApplied()
+            layout.assertTextRenderedWithoutEllipsis(layout.subtitle)
             layout.assertHeaderAndActionsSeparated()
             layout.assertPrimaryInternetActionVisible()
         }
@@ -59,11 +64,56 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 guidance.forEach { (subtitleResource, modeContentId) ->
                     layout.showModeContent(modeContentId)
                     layout.subtitle.setText(subtitleResource)
+                    val mode =
+                        when (modeContentId) {
+                            R.id.wirelessModeContent -> ConnectionMode.WIRELESS
+                            R.id.internetModeContent -> ConnectionMode.INTERNET
+                            else -> ConnectionMode.USB
+                        }
+                    layout.applyPanel(
+                        resources = layout.context.resources,
+                        connectionMode = mode,
+                        subtitleExpanded = false,
+                    )
                     layout.measureAndLayout()
-                    layout.assertTextRenderedWithoutEllipsis(layout.subtitle)
+                    if (mode == ConnectionMode.INTERNET && widthDp <= heightDp) {
+                        layout.assertTextRenderedWithEndEllipsis(layout.subtitle)
+                    } else {
+                        layout.assertTextRenderedWithoutEllipsis(layout.subtitle)
+                    }
                     layout.assertFullyReachableByScroll(layout.subtitle)
                     layout.assertHeaderAndActionsSeparated()
                 }
+            }
+        }
+    }
+
+    @Test
+    fun nubiaP0110AndXiaomi13PortraitKeepConnectPreviewOnTheFirstScreen() {
+        listOf(361 to 800, 393 to 873).forEach { (widthDp, heightDp) ->
+            withLayout(widthDp, heightDp) { layout ->
+                layout.showModeContent(R.id.internetModeContent)
+                layout.subtitle.setText(R.string.internet_waiting_description)
+                val completeDescription = layout.context.getString(R.string.internet_waiting_description)
+
+                layout.applyPanel(
+                    resources = layout.context.resources,
+                    connectionMode = ConnectionMode.INTERNET,
+                    subtitleExpanded = false,
+                )
+                layout.measureAndLayout()
+                assertEquals(completeDescription, layout.subtitle.text.toString())
+                layout.assertTextRenderedWithEndEllipsis(layout.subtitle)
+                layout.assertPrimaryInternetActionVisible()
+
+                layout.applyPanel(
+                    resources = layout.context.resources,
+                    connectionMode = ConnectionMode.INTERNET,
+                    subtitleExpanded = true,
+                )
+                layout.measureAndLayout()
+                assertEquals(completeDescription, layout.subtitle.text.toString())
+                layout.assertTextRenderedWithoutEllipsis(layout.subtitle)
             }
         }
     }
@@ -111,7 +161,11 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val root = inflateLayout(context)
             val layout = MeasuredLayout(context, root, widthDp, heightDp)
-            ConnectionPanelLayoutApplier.apply(context.resources, layout.views())
+            layout.applyPanel(
+                resources = context.resources,
+                connectionMode = ConnectionMode.USB,
+                subtitleExpanded = false,
+            )
             assertion(layout)
         }
     }
@@ -173,13 +227,26 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             internetModeContent.visibility = View.GONE
         }
 
-        fun views() =
+        private fun views() =
             ConnectionPanelLayoutApplier.Views(
                 content = content,
                 header = header,
                 actions = actions,
                 subtitle = subtitle,
             )
+
+        fun applyPanel(
+            resources: android.content.res.Resources,
+            connectionMode: ConnectionMode,
+            subtitleExpanded: Boolean,
+        ) {
+            ConnectionPanelLayoutApplier.apply(
+                resources = resources,
+                views = views(),
+                connectionMode = connectionMode,
+                subtitleExpanded = subtitleExpanded,
+            )
+        }
 
         fun showModeContent(modeContentId: Int) {
             usbModeContent.visibility = if (modeContentId == R.id.usbModeContent) View.VISIBLE else View.GONE
@@ -200,6 +267,13 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             assertTrue(text.measuredWidth > 0 && text.measuredHeight > 0)
             assertTrue((0 until textLayout.lineCount).all { line -> textLayout.getEllipsisCount(line) == 0 })
             assertEquals(text.text.length, textLayout.getLineEnd(textLayout.lineCount - 1))
+        }
+
+        fun assertTextRenderedWithEndEllipsis(text: TextView) {
+            val textLayout = checkNotNull(text.layout)
+            assertEquals(ConnectionSubtitleDisclosurePolicy.COLLAPSED_MAX_LINES, text.maxLines)
+            assertEquals(ConnectionSubtitleDisclosurePolicy.COLLAPSED_MAX_LINES, textLayout.lineCount)
+            assertTrue(textLayout.getEllipsisCount(textLayout.lineCount - 1) > 0)
         }
 
         fun assertFullyReachableByScroll(view: View) {

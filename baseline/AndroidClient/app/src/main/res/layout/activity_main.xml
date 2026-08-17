@@ -400,6 +400,7 @@
                 android:textSize="14sp"
                 android:lineSpacingExtra="3dp"
                 android:gravity="center"
+                android:foreground="?attr/selectableItemBackgroundBorderless"
                 android:accessibilityLiveRegion="polite"
                 android:layout_marginBottom="@dimen/connection_subtitle_margin_bottom" />
 

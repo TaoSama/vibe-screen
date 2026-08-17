@@ -101,6 +101,10 @@
     <string name="internet_waiting_title">Internet development preview</string>
     <string name="internet_waiting_title_compact">Internet preview</string>
     <string name="internet_waiting_description">Experimental Internet transport. Protocol v1 application records are encrypted on direct and TURN routes. Public Internet traversal, real display capture, cross-service revocation, and soak stability are not yet accepted.</string>
+    <string name="internet_security_details_collapsed">Internet security details collapsed</string>
+    <string name="internet_security_details_expanded">Internet security details expanded</string>
+    <string name="internet_security_details_expand_action">Expand Internet security details</string>
+    <string name="internet_security_details_collapse_action">Collapse Internet security details</string>
     <string name="internet_profile_missing">No Internet pairing profile. Import a fresh profile from your Mac.</string>
     <string name="internet_paired_without_lease">Verified Mac key %1$s…\nPairing is complete. Import a fresh session lease to connect.</string>
     <string name="internet_profile_format">%1$s\nSession %2$s · epoch %3$d\nVerified Mac key %4$s…</string>
