@@ -899,12 +899,29 @@ final class ProtocolV1SessionTests: XCTestCase {
         let connected = session.handleControl(
             try envelope(id: 4, payload: .controllerEvent(controllerEvent(kind: .connected))).serializedData()
         )
-        guard case .controller(let connectedEvent)? = connected.first else {
+        guard case .controller(let connectedEvent, let connectedCorrelationID)? = connected.first else {
             return XCTFail("Expected a connected controller action")
         }
         XCTAssertEqual(connectedEvent.kind, .connected)
         XCTAssertEqual(connectedEvent.controllerID, "pad-1")
         XCTAssertEqual(connectedEvent.controllerEpoch, 1)
+        XCTAssertEqual(connectedCorrelationID, 4)
+        XCTAssertTrue(try controlEnvelopes(connected).isEmpty)
+
+        let acknowledgementActions = session.completeControllerConnection(connectedEvent)
+        let acknowledgementEnvelope = try XCTUnwrap(
+            controlEnvelopes(acknowledgementActions).first
+        )
+        guard case .inputAck(let acknowledgement)? = acknowledgementEnvelope.payload else {
+            return XCTFail("Expected CONNECTED InputAck")
+        }
+        XCTAssertEqual(acknowledgement.inputID, connectedEvent.inputID)
+        XCTAssertTrue(acknowledgement.accepted)
+        XCTAssertTrue(acknowledgement.rejectionReason.isEmpty)
+        XCTAssertEqual(acknowledgementEnvelope.correlationID, 4)
+        XCTAssertEqual(acknowledgementEnvelope.sessionID, sessionID)
+        XCTAssertEqual(acknowledgementEnvelope.sessionEpoch, sessionEpoch)
+        XCTAssertTrue(session.completeControllerConnection(connectedEvent).isEmpty)
 
         var stateEvent = controllerEvent(kind: .state)
         stateEvent.inputID = 2
@@ -913,22 +930,117 @@ final class ProtocolV1SessionTests: XCTestCase {
         let stateActions = session.handleControl(
             try envelope(id: 5, payload: .controllerEvent(stateEvent)).serializedData()
         )
-        guard case .controller(let routedState)? = stateActions.first else {
+        guard case .controller(let routedState, let stateCorrelationID)? = stateActions.first else {
             return XCTFail("Expected a state controller action")
         }
         XCTAssertEqual(routedState.kind, .state)
         XCTAssertEqual(routedState.state.buttonMask, 1)
         XCTAssertEqual(routedState.state.leftX, 0.5)
+        XCTAssertEqual(stateCorrelationID, 5)
+        XCTAssertTrue(try controlEnvelopes(stateActions).isEmpty)
 
         var disconnected = controllerEvent(kind: .disconnected)
         disconnected.inputID = 3
         let disconnectActions = session.handleControl(
             try envelope(id: 6, payload: .controllerEvent(disconnected)).serializedData()
         )
-        guard case .controller(let disconnectedEvent)? = disconnectActions.first else {
+        guard case .controller(let disconnectedEvent, let disconnectCorrelationID)? = disconnectActions.first else {
             return XCTFail("Expected a disconnected controller action")
         }
         XCTAssertEqual(disconnectedEvent.kind, .disconnected)
+        XCTAssertEqual(disconnectCorrelationID, 6)
+        XCTAssertTrue(try controlEnvelopes(disconnectActions).isEmpty)
+    }
+
+    func testControllerStateBeforeConnectedAcknowledgementFailsClosed() throws {
+        let session = try readyControllerSession()
+        _ = session.handleControl(
+            try envelope(
+                id: 4,
+                payload: .controllerEvent(controllerEvent(kind: .connected))
+            ).serializedData()
+        )
+        var state = controllerEvent(kind: .state)
+        state.inputID = 2
+        state.buttonMask = 1
+
+        let actions = session.handleControl(
+            try envelope(id: 5, payload: .controllerEvent(state)).serializedData()
+        )
+
+        let error = try protocolError(from: actions)
+        XCTAssertEqual(error.code, .invalidState)
+        XCTAssertTrue(error.message.contains("before CONNECTED was acknowledged"))
+        XCTAssertTrue(actions.containsClose)
+    }
+
+    func testControllerDisconnectedBeforeConnectedAcknowledgementFailsClosed() throws {
+        let session = try readyControllerSession()
+        _ = session.handleControl(
+            try envelope(
+                id: 4,
+                payload: .controllerEvent(controllerEvent(kind: .connected))
+            ).serializedData()
+        )
+        var disconnected = controllerEvent(kind: .disconnected)
+        disconnected.inputID = 2
+
+        let actions = session.handleControl(
+            try envelope(id: 5, payload: .controllerEvent(disconnected)).serializedData()
+        )
+
+        let error = try protocolError(from: actions)
+        XCTAssertEqual(error.code, .invalidState)
+        XCTAssertTrue(error.message.contains("before CONNECTED was acknowledged"))
+        XCTAssertTrue(actions.containsClose)
+    }
+
+    func testControllerCompletionAfterSessionClosedDoesNotSendAck() throws {
+        let session = try readyControllerSession()
+        let connectedActions = session.handleControl(
+            try envelope(
+                id: 4,
+                payload: .controllerEvent(controllerEvent(kind: .connected))
+            ).serializedData()
+        )
+        guard case .controller(let connected, _)? = connectedActions.first else {
+            return XCTFail("Expected CONNECTED delivery")
+        }
+        var notice = VSDisconnectNotice()
+        notice.reasonCode = "test"
+        _ = session.handleControl(
+            try envelope(id: 5, payload: .disconnectNotice(notice)).serializedData()
+        )
+
+        XCTAssertTrue(session.completeControllerConnection(connected).isEmpty)
+    }
+
+    func testControllerCompletionAfterSessionFailedDoesNotSendAck() throws {
+        let session = try readyControllerSession()
+        let connectedActions = session.handleControl(
+            try envelope(
+                id: 4,
+                payload: .controllerEvent(controllerEvent(kind: .connected))
+            ).serializedData()
+        )
+        guard case .controller(let connected, let correlationID)? = connectedActions.first else {
+            return XCTFail("Expected CONNECTED delivery")
+        }
+        let failureActions = session.rejectControllerInjection(
+            "test failure",
+            correlationID: correlationID
+        )
+
+        let failureEnvelope = try XCTUnwrap(controlEnvelopes(failureActions).first)
+        XCTAssertEqual(failureEnvelope.protocolError.code, .invalidState)
+        XCTAssertEqual(failureEnvelope.protocolError.message, "test failure")
+        XCTAssertFalse(failureEnvelope.protocolError.retryable)
+        XCTAssertEqual(failureEnvelope.protocolError.component, "macos-host-session")
+        XCTAssertEqual(failureEnvelope.correlationID, 4)
+        XCTAssertEqual(failureEnvelope.sessionID, sessionID)
+        XCTAssertEqual(failureEnvelope.sessionEpoch, sessionEpoch)
+        XCTAssertTrue(failureActions.containsClose)
+        XCTAssertTrue(session.completeControllerConnection(connected).isEmpty)
     }
 
     func testControllerForeignTargetIsRejected() throws {
@@ -959,9 +1071,13 @@ final class ProtocolV1SessionTests: XCTestCase {
     func testControllerFailClosedForInvalidStateAndTransitions() throws {
         // Reserved button bits (bit 13 and above) are invalid.
         let reservedBits = try readyControllerSession()
-        _ = reservedBits.handleControl(
+        let reservedConnectedActions = reservedBits.handleControl(
             try envelope(id: 4, payload: .controllerEvent(controllerEvent(kind: .connected))).serializedData()
         )
+        guard case .controller(let reservedConnected, _)? = reservedConnectedActions.first else {
+            return XCTFail("Expected CONNECTED delivery")
+        }
+        _ = reservedBits.completeControllerConnection(reservedConnected)
         var reserved = controllerEvent(kind: .state)
         reserved.inputID = 2
         reserved.buttonMask = 1 << 13
@@ -1019,12 +1135,16 @@ final class ProtocolV1SessionTests: XCTestCase {
 
         for (name, mutate) in cases {
             let session = try readyControllerSession()
-            _ = session.handleControl(
+            let connectedActions = session.handleControl(
                 try envelope(
                     id: 4,
                     payload: .controllerEvent(controllerEvent(kind: .connected))
                 ).serializedData()
             )
+            guard case .controller(let connected, _)? = connectedActions.first else {
+                return XCTFail("Expected CONNECTED delivery for \(name)")
+            }
+            _ = session.completeControllerConnection(connected)
             var invalid = controllerEvent(kind: .state)
             invalid.inputID = 2
             mutate(&invalid)
@@ -1047,9 +1167,10 @@ final class ProtocolV1SessionTests: XCTestCase {
             let actions = session.handleControl(
                 try envelope(id: UInt64(4 + index), payload: .controllerEvent(event)).serializedData()
             )
-            guard case .controller = actions.first else {
+            guard case .controller(let connected, _) = actions.first else {
                 return XCTFail("Expected controller \(index + 1) to connect")
             }
+            _ = session.completeControllerConnection(connected)
         }
 
         // The fifth CONNECTED must be rejected with a session-scoped InputAck
@@ -1069,6 +1190,9 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(ack.inputID, 5)
         XCTAssertFalse(ack.accepted)
         XCTAssertEqual(ack.rejectionReason, "maximum_active_controllers_exceeded")
+        XCTAssertEqual(envelopes.first?.correlationID, 8)
+        XCTAssertEqual(envelopes.first?.sessionID, sessionID)
+        XCTAssertEqual(envelopes.first?.sessionEpoch, sessionEpoch)
         XCTAssertFalse(rejectionActions.containsClose)
         XCTAssertEqual(session.phase, .streaming(configEpoch: 1, streamID: 1))
 
@@ -1082,7 +1206,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         let stateActions = session.handleControl(
             try envelope(id: 9, payload: .controllerEvent(existingState)).serializedData()
         )
-        guard case .controller(let stateEvent)? = stateActions.first else {
+        guard case .controller(let stateEvent, _)? = stateActions.first else {
             return XCTFail("Expected the existing controller to keep receiving STATE")
         }
         XCTAssertEqual(stateEvent.controllerID, "pad-1")
@@ -1108,9 +1232,13 @@ final class ProtocolV1SessionTests: XCTestCase {
             var event = controllerEvent(kind: .connected)
             event.inputID = UInt64(index + 1)
             event.controllerID = "pad-\(index + 1)"
-            _ = session.handleControl(
+            let actions = session.handleControl(
                 try envelope(id: UInt64(4 + index), payload: .controllerEvent(event)).serializedData()
             )
+            guard case .controller(let connected, _)? = actions.first else {
+                return XCTFail("Expected controller \(index + 1) to connect")
+            }
+            _ = session.completeControllerConnection(connected)
         }
 
         // Fifth is rejected while all four slots are occupied.
@@ -1133,7 +1261,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         let disconnectActions = session.handleControl(
             try envelope(id: 9, payload: .controllerEvent(disconnect)).serializedData()
         )
-        guard case .controller(let disconnected)? = disconnectActions.first else {
+        guard case .controller(let disconnected, _)? = disconnectActions.first else {
             return XCTFail("Expected pad-1 to disconnect")
         }
         XCTAssertEqual(disconnected.kind, .disconnected)
@@ -1145,7 +1273,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         let retryActions = session.handleControl(
             try envelope(id: 10, payload: .controllerEvent(retry)).serializedData()
         )
-        guard case .controller(let connected)? = retryActions.first else {
+        guard case .controller(let connected, _)? = retryActions.first else {
             return XCTFail("Expected pad-5 to connect after a slot freed up")
         }
         XCTAssertEqual(connected.controllerID, "pad-5")
@@ -1186,7 +1314,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         let disconnectActions = session.handleControl(
             try envelope(id: 5, payload: .controllerEvent(disconnected)).serializedData()
         )
-        guard case .controller(let disconnectedEvent)? = disconnectActions.first else {
+        guard case .controller(let disconnectedEvent, _)? = disconnectActions.first else {
             return XCTFail("Expected DISCONNECTED to be accepted during video reconfiguration")
         }
         XCTAssertEqual(disconnectedEvent.kind, .disconnected)
@@ -1194,9 +1322,13 @@ final class ProtocolV1SessionTests: XCTestCase {
 
     func testControllerInputIdMustStrictlyIncrease() throws {
         let duplicateSession = try readyControllerSession()
-        _ = duplicateSession.handleControl(
+        let duplicateConnectedActions = duplicateSession.handleControl(
             try envelope(id: 4, payload: .controllerEvent(controllerEvent(kind: .connected))).serializedData()
         )
+        guard case .controller(let duplicateConnected, _)? = duplicateConnectedActions.first else {
+            return XCTFail("Expected CONNECTED delivery")
+        }
+        _ = duplicateSession.completeControllerConnection(duplicateConnected)
         var duplicate = controllerEvent(kind: .state)
         duplicate.inputID = 1
         duplicate.buttonMask = 1
@@ -1212,9 +1344,13 @@ final class ProtocolV1SessionTests: XCTestCase {
         let decreasingSession = try readyControllerSession()
         var connected = controllerEvent(kind: .connected)
         connected.inputID = 5
-        _ = decreasingSession.handleControl(
+        let decreasingConnectedActions = decreasingSession.handleControl(
             try envelope(id: 4, payload: .controllerEvent(connected)).serializedData()
         )
+        guard case .controller(let decreasingConnected, _)? = decreasingConnectedActions.first else {
+            return XCTFail("Expected CONNECTED delivery")
+        }
+        _ = decreasingSession.completeControllerConnection(decreasingConnected)
         var decreasing = controllerEvent(kind: .state)
         decreasing.inputID = 4
         decreasing.buttonMask = 1
@@ -1537,6 +1673,9 @@ final class ProtocolV1SessionTests: XCTestCase {
         connected.controllerID = "pad-1"
         _ = session.handleControl(
             try envelope(id: 4, payload: .controllerEvent(connected)).serializedData()
+        )
+        _ = session.completeControllerConnection(
+            GameControllerInputEvent(wireEvent: connected)!
         )
         let switchActions = session.selectDisplayFromClient(displayID: "active-display")
         XCTAssertTrue(switchActions.contains {

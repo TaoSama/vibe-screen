@@ -324,14 +324,15 @@ final class StreamingServerLifecycleTests: XCTestCase {
         let controllerBatchParsed = DispatchSemaphore(value: 0)
         let resumeNetworkQueue = DispatchSemaphore(value: 0)
         let callbackState = StreamingServerLifecycleCallbackState()
-        server.onControllerEvent = { _, _ in
-            if callbackState.recordControllerDelivery() == 1 {
+        server.onControllerEvent = { event, _ in
+            let deliveryCount = callbackState.recordControllerDelivery()
+            if deliveryCount == 2 {
                 XCTAssertEqual(
                     controllerBatchParsed.wait(timeout: .now() + 2),
                     .success
                 )
             }
-            return false
+            return event.kind == .connected && deliveryCount == 1
         }
         server.onClientConnected = { _ in streamingReady.fulfill() }
         server.onKeyframeRequested = { _, _ in
@@ -418,12 +419,17 @@ final class StreamingServerLifecycleTests: XCTestCase {
         connected.controllerID = "pad-1"
         connected.controllerEpoch = 1
         connected.kind = .connected
-        let connectedFrame = try encodedEnvelope(envelope(
+        try sendEnvelope(envelope(
             id: 5,
             payload: .controllerEvent(connected),
             sessionID: accepted.sessionID,
             sessionEpoch: accepted.sessionEpoch
-        ))
+        ), on: client)
+        let acceptedControllerEnvelope = try receiveEnvelope(from: client)
+        XCTAssertTrue(acceptedControllerEnvelope.inputAck.accepted)
+        XCTAssertEqual(acceptedControllerEnvelope.inputAck.inputID, 1)
+        XCTAssertEqual(acceptedControllerEnvelope.correlationID, 5)
+
         var state = connected
         state.inputID = 2
         state.kind = .state
@@ -434,23 +440,255 @@ final class StreamingServerLifecycleTests: XCTestCase {
             sessionID: accepted.sessionID,
             sessionEpoch: accepted.sessionEpoch
         ))
+        var laterConnected = connected
+        laterConnected.inputID = 3
+        laterConnected.controllerID = "pad-2"
+        let laterConnectedFrame = try encodedEnvelope(envelope(
+            id: 7,
+            payload: .controllerEvent(laterConnected),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ))
         var requestKeyframe = VSRequestKeyframe()
         requestKeyframe.streamID = video.streamID
         requestKeyframe.reasonCode = "controller-test-barrier"
         let barrierFrame = try encodedEnvelope(envelope(
-            id: 7,
+            id: 8,
             payload: .requestKeyframe(requestKeyframe),
             sessionID: accepted.sessionID,
             sessionEpoch: accepted.sessionEpoch
         ))
-        try send(connectedFrame + stateFrame + barrierFrame, on: client)
+        try send(stateFrame + laterConnectedFrame + barrierFrame, on: client)
 
         let errorEnvelope = try receiveEnvelope(from: client)
         XCTAssertEqual(errorEnvelope.protocolError.code, .invalidState)
         XCTAssertTrue(errorEnvelope.protocolError.message.contains("Controller injection failed"))
+        XCTAssertFalse(errorEnvelope.protocolError.retryable)
+        XCTAssertEqual(errorEnvelope.protocolError.component, "macos-host-session")
+        XCTAssertEqual(errorEnvelope.correlationID, 6)
+        XCTAssertEqual(errorEnvelope.sessionID, accepted.sessionID)
+        XCTAssertEqual(errorEnvelope.sessionEpoch, accepted.sessionEpoch)
         wait(for: [controllerCallbacksDrained, networkBarrierCompleted], timeout: 2)
         XCTAssertEqual(callbackState.networkBarrierResult(), .success)
-        XCTAssertEqual(callbackState.controllerDeliveryCount(), 1)
+        XCTAssertEqual(callbackState.controllerDeliveryCount(), 2)
+    }
+
+    func testProtocolV1ControllerConnectedAckAndLifecycleNoAck() throws {
+        let port = testPort(offset: 12)
+        let server = StreamingServer(port: port)
+        server.controllerAvailable = true
+        let routed = expectation(description: "controller lifecycle routed")
+        routed.expectedFulfillmentCount = 3
+        server.onControllerEvent = { _, _ in
+            routed.fulfill()
+            return true
+        }
+        defer { server.stop() }
+
+        let (client, accepted, videoEnvelope) = try readyControllerProtocolSession(
+            server: server,
+            port: port,
+            deviceID: "controller-ack"
+        )
+        defer { client.cancel() }
+
+        var connected = VSControllerEvent()
+        connected.inputID = 1
+        connected.controllerID = "pad-1"
+        connected.controllerEpoch = 1
+        connected.kind = .connected
+        try sendEnvelope(envelope(
+            id: 5,
+            payload: .controllerEvent(connected),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ), on: client)
+
+        let acknowledgementEnvelope = try receiveEnvelope(from: client)
+        guard case .inputAck(let acknowledgement)? = acknowledgementEnvelope.payload else {
+            return XCTFail("Expected CONNECTED InputAck")
+        }
+        XCTAssertEqual(acknowledgement.inputID, 1)
+        XCTAssertTrue(acknowledgement.accepted)
+        XCTAssertTrue(acknowledgement.rejectionReason.isEmpty)
+        XCTAssertEqual(acknowledgementEnvelope.correlationID, 5)
+        XCTAssertEqual(acknowledgementEnvelope.sessionID, accepted.sessionID)
+        XCTAssertEqual(acknowledgementEnvelope.sessionEpoch, accepted.sessionEpoch)
+        XCTAssertGreaterThan(acknowledgementEnvelope.messageID, videoEnvelope.messageID)
+
+        var state = connected
+        state.inputID = 2
+        state.kind = .state
+        state.leftStickX = 0.5
+        var disconnected = connected
+        disconnected.inputID = 3
+        disconnected.kind = .disconnected
+        var ping = VSPing()
+        ping.sequence = 99
+        let stateFrame = try encodedEnvelope(envelope(
+            id: 6,
+            payload: .controllerEvent(state),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ))
+        let disconnectedFrame = try encodedEnvelope(envelope(
+            id: 7,
+            payload: .controllerEvent(disconnected),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ))
+        let barrierFrame = try encodedEnvelope(envelope(
+            id: 8,
+            payload: .ping(ping),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ))
+        try send(stateFrame + disconnectedFrame + barrierFrame, on: client)
+
+        let barrierEnvelope = try receiveEnvelope(from: client)
+        guard case .pong(let pong)? = barrierEnvelope.payload else {
+            return XCTFail("STATE or DISCONNECTED unexpectedly produced a control response")
+        }
+        XCTAssertEqual(pong.sequence, 99)
+        XCTAssertEqual(barrierEnvelope.correlationID, 8)
+        XCTAssertGreaterThan(barrierEnvelope.messageID, acknowledgementEnvelope.messageID)
+        wait(for: [routed], timeout: 2)
+    }
+
+    func testProtocolV1StaleControllerGenerationDoesNotSendAcceptedAck() throws {
+        let port = testPort(offset: 13)
+        let server = StreamingServer(port: port)
+        server.controllerAvailable = true
+        let routed = expectation(description: "stale controller handler completed")
+        server.onControllerEvent = { _, generation in
+            server.advanceClientGenerationForSelfTest(to: generation &+ 1)
+            routed.fulfill()
+            return true
+        }
+        defer { server.stop() }
+
+        let (client, accepted, _) = try readyControllerProtocolSession(
+            server: server,
+            port: port,
+            deviceID: "controller-stale-generation"
+        )
+        defer { client.cancel() }
+
+        var connected = VSControllerEvent()
+        connected.inputID = 1
+        connected.controllerID = "pad-1"
+        connected.controllerEpoch = 1
+        connected.kind = .connected
+        try sendEnvelope(envelope(
+            id: 5,
+            payload: .controllerEvent(connected),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ), on: client)
+        wait(for: [routed], timeout: 2)
+
+        var ping = VSPing()
+        ping.sequence = 100
+        try sendEnvelope(envelope(
+            id: 6,
+            payload: .ping(ping),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ), on: client)
+
+        let barrierEnvelope = try receiveEnvelope(from: client)
+        guard case .pong(let pong)? = barrierEnvelope.payload else {
+            return XCTFail("Stale generation must not emit an accepted InputAck")
+        }
+        XCTAssertEqual(pong.sequence, 100)
+        XCTAssertEqual(barrierEnvelope.correlationID, 6)
+    }
+
+    func testProtocolV1StaleConnectionOwnerDoesNotSendAcceptedAck() throws {
+        let port = testPort(offset: 14)
+        let server = StreamingServer(port: port)
+        server.controllerAvailable = true
+        let secondReady = expectation(description: "replacement connection ready")
+        let firstClosed = expectation(description: "stale connection closed")
+        let releaseHandler = DispatchSemaphore(value: 0)
+        let socketState = StreamingServerLifecycleSocketState()
+        let second = NWConnection(
+            host: NWEndpoint.Host("127.0.0.1"),
+            port: NWEndpoint.Port(rawValue: port)!,
+            using: .tcp
+        )
+        second.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                secondReady.fulfill()
+            case .failed(let error):
+                socketState.storeFailure(error)
+                secondReady.fulfill()
+            default:
+                break
+            }
+        }
+        server.onControllerEvent = { _, _ in
+            second.start(queue: self.queue)
+            XCTAssertEqual(releaseHandler.wait(timeout: .now() + 2), .success)
+            return true
+        }
+        defer {
+            second.cancel()
+            server.stop()
+        }
+
+        let (first, firstAccepted, _) = try readyControllerProtocolSession(
+            server: server,
+            port: port,
+            deviceID: "controller-stale-owner-a"
+        )
+        defer { first.cancel() }
+        receiveUntilClosed(
+            first,
+            received: { socketState.appendReceivedBytes($0) },
+            completion: {
+                releaseHandler.signal()
+                firstClosed.fulfill()
+            }
+        )
+
+        var connected = VSControllerEvent()
+        connected.inputID = 1
+        connected.controllerID = "pad-1"
+        connected.controllerEpoch = 1
+        connected.kind = .connected
+        try sendEnvelope(envelope(
+            id: 5,
+            payload: .controllerEvent(connected),
+            sessionID: firstAccepted.sessionID,
+            sessionEpoch: firstAccepted.sessionEpoch
+        ), on: first)
+
+        wait(for: [secondReady, firstClosed], timeout: 3)
+        if let failure = socketState.failure() { throw failure }
+        XCTAssertTrue(socketState.receivedBytes().isEmpty)
+        waitForNetworkQueue(server)
+
+        let (secondAccepted, _) = try negotiateControllerProtocolSession(
+            client: second,
+            deviceID: "controller-stale-owner-b"
+        )
+        var ping = VSPing()
+        ping.sequence = 200
+        try sendEnvelope(envelope(
+            id: 5,
+            payload: .ping(ping),
+            sessionID: secondAccepted.sessionID,
+            sessionEpoch: secondAccepted.sessionEpoch
+        ), on: second)
+
+        let barrierEnvelope = try receiveEnvelope(from: second)
+        guard case .pong(let pong)? = barrierEnvelope.payload else {
+            return XCTFail("Stale completion must not emit InputAck on the replacement connection")
+        }
+        XCTAssertEqual(pong.sequence, 200)
+        XCTAssertEqual(barrierEnvelope.correlationID, 5)
     }
 
     private func readyClient(port: UInt16) throws -> NWConnection {
@@ -476,6 +714,98 @@ final class StreamingServerLifecycleTests: XCTestCase {
         wait(for: [ready], timeout: 2)
         if let failure { throw failure }
         return client
+    }
+
+    private func readyControllerProtocolSession(
+        server: StreamingServer,
+        port: UInt16,
+        deviceID: String
+    ) throws -> (client: NWConnection, accepted: VSSessionAccepted, video: VSEnvelope) {
+        server.onCodecNegotiated = { _, _, completion in
+            completion(NegotiatedDisplayConfiguration(
+                width: 1_920,
+                height: 1_080,
+                rotation: 0
+            ))
+        }
+        try server.start()
+
+        let client = try readyClient(port: port)
+        let (accepted, videoEnvelope) = try negotiateControllerProtocolSession(
+            client: client,
+            deviceID: deviceID
+        )
+        return (client, accepted, videoEnvelope)
+    }
+
+    private func negotiateControllerProtocolSession(
+        client: NWConnection,
+        deviceID: String
+    ) throws -> (accepted: VSSessionAccepted, video: VSEnvelope) {
+        try send(Data([ProtocolV1Upgrade.offer]), on: client)
+        XCTAssertEqual(try receiveExactly(2, from: client), ProtocolV1Upgrade.acknowledgement)
+
+        var range = VSProtocolRange()
+        range.minimum = 1
+        range.maximum = 1
+        var hello = VSClientHello()
+        hello.supportedProtocols = range
+        hello.deviceID = deviceID
+        hello.deviceName = deviceID
+        hello.capabilities = [.touch, .multiDisplay, .controller]
+        hello.requiredCapabilities = [.touch]
+        hello.codecs = [.hevc]
+        hello.transports = [.usb]
+        try sendEnvelope(envelope(id: 1, payload: .clientHello(hello), scoped: false), on: client)
+        _ = try receiveEnvelope(from: client)
+        let accepted = try XCTUnwrap(try receiveEnvelope(from: client).sessionAccepted)
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.controller))
+
+        try sendEnvelope(envelope(
+            id: 2,
+            payload: .listDisplaysRequest(VSListDisplaysRequest()),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ), on: client)
+        _ = try receiveEnvelope(from: client)
+        var start = VSStartDisplayRequest()
+        start.mode = .existing
+        try sendEnvelope(envelope(
+            id: 3,
+            payload: .startDisplayRequest(start),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ), on: client)
+        _ = try receiveEnvelope(from: client)
+        let videoEnvelope = try receiveEnvelope(from: client)
+        let video = try XCTUnwrap(videoEnvelope.videoConfig)
+        var result = VSVideoConfigResult()
+        result.configEpoch = video.configEpoch
+        result.streamID = video.streamID
+        result.accepted = true
+        try sendEnvelope(envelope(
+            id: 4,
+            payload: .videoConfigResult(result),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ), on: client)
+        return (accepted, videoEnvelope)
+    }
+
+    private func receiveUntilClosed(
+        _ client: NWConnection,
+        received: @escaping (Data) -> Void,
+        completion: @escaping () -> Void
+    ) {
+        client.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1_024) {
+            [weak self, weak client] data, _, isComplete, error in
+            if let data, !data.isEmpty { received(data) }
+            guard error == nil, !isComplete, let self, let client else {
+                completion()
+                return
+            }
+            self.receiveUntilClosed(client, received: received, completion: completion)
+        }
     }
 
     private func envelope(
@@ -606,5 +936,27 @@ private final class StreamingServerLifecycleCallbackState: @unchecked Sendable {
 
     func networkBarrierResult() -> DispatchTimeoutResult? {
         lock.withLock { barrierResult }
+    }
+}
+
+private final class StreamingServerLifecycleSocketState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedFailure: Error?
+    private var storedReceivedBytes = Data()
+
+    func storeFailure(_ failure: Error) {
+        lock.withLock { storedFailure = failure }
+    }
+
+    func failure() -> Error? {
+        lock.withLock { storedFailure }
+    }
+
+    func appendReceivedBytes(_ bytes: Data) {
+        lock.withLock { storedReceivedBytes.append(bytes) }
+    }
+
+    func receivedBytes() -> Data {
+        lock.withLock { storedReceivedBytes }
     }
 }

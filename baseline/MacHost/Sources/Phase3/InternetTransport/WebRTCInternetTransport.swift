@@ -9,6 +9,29 @@ final class WebRTCInternetTransport {
     var onMediaReceived: ((Data) -> Void)?
     var onFreshSessionRecoveryRequired: ((Int) -> Void)?
 
+    private final class ControlTransmissionCompletion {
+        let identifier: UInt64
+
+        private let lock = NSLock()
+        private var handler: ((Result<Void, InternetTransportError>) -> Void)?
+
+        init(
+            identifier: UInt64,
+            handler: @escaping (Result<Void, InternetTransportError>) -> Void
+        ) {
+            self.identifier = identifier
+            self.handler = handler
+        }
+
+        func complete(_ result: Result<Void, InternetTransportError>) {
+            lock.lock()
+            let handler = handler
+            self.handler = nil
+            lock.unlock()
+            handler?(result)
+        }
+    }
+
     private struct ControlTransmission {
         let identifier: UInt64
         let payload: Data
@@ -16,6 +39,7 @@ final class WebRTCInternetTransport {
         let path: InternetPathKind
         let engineContext: WebRTCEngineTransmissionContext
         let relayReservationBytes: UInt64
+        let completion: ControlTransmissionCompletion?
     }
 
     private struct ControlTransmissionQueue {
@@ -61,6 +85,7 @@ final class WebRTCInternetTransport {
         let generation: UInt64
         let error: InternetTransportError
         let reportError: Bool
+        let invalidatedControlCompletions: [ControlTransmissionCompletion]
     }
 
     private struct RecoveryTransition {
@@ -68,6 +93,7 @@ final class WebRTCInternetTransport {
         let changed: Bool
         let generation: UInt64
         let recoveringState: InternetTransportState
+        let invalidatedControlCompletions: [ControlTransmissionCompletion]
     }
 
     private struct MutableState {
@@ -80,6 +106,7 @@ final class WebRTCInternetTransport {
         var controlInFlight = false
         var activeControlTransmissionIdentifier: UInt64?
         var controlQueue = ControlTransmissionQueue()
+        var controlCompletions: [UInt64: ControlTransmissionCompletion] = [:]
         var dispatchedControlTransmissionIdentifiers: Set<UInt64> = []
         var dispatchedControlRelayReservations: [UInt64: UInt64] = [:]
         var nextMediaTransmissionIdentifier: UInt64 = 0
@@ -107,6 +134,7 @@ final class WebRTCInternetTransport {
     private let lock = NSLock()
     private let sendGate = NSRecursiveLock()
     private let engineLifecycleGate = NSRecursiveLock()
+    private var engineCloseInvoked = false
     private let beforeEngineStart: (() -> Void)?
     private let beforeControlSend: (() -> Void)?
     private let beforeMediaRecordSend: (() -> Void)?
@@ -131,6 +159,7 @@ final class WebRTCInternetTransport {
         initialPipelineGeneration: UInt64 = 0,
         initialControlTransmissionIdentifier: UInt64 = 0,
         initialMediaTransmissionIdentifier: UInt64 = 0,
+        initialControlBytesSent: UInt64 = 0,
         initialMediaBytesSent: UInt64 = 0,
         initialRelayBytesSent: UInt64 = 0,
         initialRelayBytesReserved: UInt64 = 0
@@ -159,6 +188,7 @@ final class WebRTCInternetTransport {
         initialState.pipelineGeneration = initialPipelineGeneration
         initialState.nextControlTransmissionIdentifier = initialControlTransmissionIdentifier
         initialState.nextMediaTransmissionIdentifier = initialMediaTransmissionIdentifier
+        initialState.controlBytesSent = initialControlBytesSent
         initialState.mediaBytesSent = initialMediaBytesSent
         initialState.relayBytesSent = initialRelayBytesSent
         initialState.relayBytesReserved = initialRelayBytesReserved
@@ -174,6 +204,17 @@ final class WebRTCInternetTransport {
                 self?.handleInbound(payload, channel: channel)
             }
         ))
+    }
+
+    deinit {
+        lock.lock()
+        let pendingCompletions = mutableState.controlCompletions.values.sorted {
+            $0.identifier < $1.identifier
+        }
+        mutableState.controlCompletions.removeAll()
+        lock.unlock()
+        completeControlTransmissions(pendingCompletions, with: .notConnected)
+        closeEngineOnce()
     }
 
     func start(configuration: WebRTCTransportConfiguration) throws {
@@ -238,7 +279,10 @@ final class WebRTCInternetTransport {
     }
 
     @discardableResult
-    func sendControl(_ payload: Data) -> Result<Void, InternetTransportError> {
+    func sendControl(
+        _ payload: Data,
+        completion: ((Result<Void, InternetTransportError>) -> Void)? = nil
+    ) -> Result<Void, InternetTransportError> {
         guard !payload.isEmpty else {
             return .failure(.emptyPayload(channel: .control))
         }
@@ -288,14 +332,24 @@ final class WebRTCInternetTransport {
                     return .sequenceExhausted("control transmission identifier")
                 }
                 state.nextControlTransmissionIdentifier += 1
+                let trackedCompletion = completion.map {
+                    ControlTransmissionCompletion(
+                        identifier: state.nextControlTransmissionIdentifier,
+                        handler: $0
+                    )
+                }
                 let admitted = ControlTransmission(
                     identifier: state.nextControlTransmissionIdentifier,
                     payload: payload,
                     generation: state.pipelineGeneration,
                     path: activePath,
                     engineContext: engineContext,
-                    relayReservationBytes: relayReservationBytes
+                    relayReservationBytes: relayReservationBytes,
+                    completion: trackedCompletion
                 )
+                if let trackedCompletion {
+                    state.controlCompletions[admitted.identifier] = trackedCompletion
+                }
                 state.bufferedControlBytes += payload.count
                 if state.controlInFlight {
                     state.controlQueue.append(admitted)
@@ -420,20 +474,25 @@ final class WebRTCInternetTransport {
     }
 
     func close() {
-        engineLifecycleGate.lock()
-        defer { engineLifecycleGate.unlock() }
-        let shouldClose = withSendGate {
-            withLock { state -> Bool in
-                guard state.transportState != .closed else { return false }
-                state.transportState = .closed
-                state.activePath = nil
-                invalidatePipeline(state: &state)
-                return true
+        let closeTransition = {
+            engineLifecycleGate.lock()
+            defer { engineLifecycleGate.unlock() }
+            let transition = withSendGate {
+                withLock { state -> (
+                    changed: Bool,
+                    completions: [ControlTransmissionCompletion]
+                ) in
+                    guard state.transportState != .closed else { return (false, []) }
+                    state.transportState = .closed
+                    state.activePath = nil
+                    return (true, invalidatePipeline(state: &state))
+                }
             }
-        }
-        guard shouldClose else { return }
-        engine.close()
-        onStateChanged?(.closed)
+            closeEngineOnce()
+            return transition
+        }()
+        completeControlTransmissions(closeTransition.completions, with: .notConnected)
+        if closeTransition.changed { onStateChanged?(.closed) }
     }
 
     func snapshot() -> InternetTransportSnapshot {
@@ -457,6 +516,7 @@ final class WebRTCInternetTransport {
 
     private func transmitControl(_ transmission: ControlTransmission) {
         beforeControlSend?()
+        var rejectedCompletions: [ControlTransmissionCompletion] = []
         let canSend = withSendGate {
             withLock { state -> Bool in
                 guard state.pipelineGeneration == transmission.generation,
@@ -465,7 +525,10 @@ final class WebRTCInternetTransport {
                       isConnected(state.transportState),
                       state.activePath == transmission.path,
                       state.engineTransmissionContext == transmission.engineContext else {
-                    recoverRejectedControlSend(transmission, state: &state)
+                    rejectedCompletions = recoverRejectedControlSend(
+                        transmission,
+                        state: &state
+                    )
                     return false
                 }
                 state.dispatchedControlTransmissionIdentifiers.insert(transmission.identifier)
@@ -476,7 +539,10 @@ final class WebRTCInternetTransport {
                 return true
             }
         }
-        guard canSend else { return }
+        guard canSend else {
+            completeControlTransmissions(rejectedCompletions, with: .notConnected)
+            return
+        }
 
         let completionHandoff = EngineSendCompletionHandoff()
         engine.send(
@@ -484,7 +550,10 @@ final class WebRTCInternetTransport {
             channel: .control,
             expectedContext: transmission.engineContext
         ) { [weak self] result in
-            guard let self else { return }
+            guard let self else {
+                transmission.completion?.complete(.failure(.notConnected))
+                return
+            }
             if completionHandoff.receive(result) {
                 self.handleControlCompletion(transmission, result: result)
             }
@@ -501,6 +570,8 @@ final class WebRTCInternetTransport {
     ) {
         var next: ControlTransmission?
         var failureTransition: FailureTransition?
+        var completion: ControlTransmissionCompletion?
+        var completionResult: Result<Void, InternetTransportError>?
         withSendGate {
             var reportedError: InternetTransportError?
             withLock { state in
@@ -521,19 +592,36 @@ final class WebRTCInternetTransport {
                     let (relayBytesSent, relayOverflow) = state.relayBytesSent
                         .addingReportingOverflow(relayReservationBytes)
                     guard !controlOverflow, !relayOverflow else {
-                        reportedError = .sequenceExhausted("transport byte accounting")
+                        let transportError = InternetTransportError.sequenceExhausted(
+                            "transport byte accounting"
+                        )
+                        completion = state.controlCompletions.removeValue(
+                            forKey: transmission.identifier
+                        )
+                        completionResult = .failure(transportError)
+                        reportedError = transportError
                         return
                     }
                     state.controlBytesSent = controlBytesSent
                     state.relayBytesSent = relayBytesSent
                 }
-                guard isCurrent else { return }
+                guard isCurrent else {
+                    completion = state.controlCompletions.removeValue(
+                        forKey: transmission.identifier
+                    )
+                    completionResult = .failure(.notConnected)
+                    return
+                }
                 state.bufferedControlBytes = max(
                     0,
                     state.bufferedControlBytes - transmission.payload.count
                 )
                 switch result {
                 case .success:
+                    completion = state.controlCompletions.removeValue(
+                        forKey: transmission.identifier
+                    )
+                    completionResult = .success(())
                     if let queued = state.controlQueue.popFirst() {
                         next = queued
                         state.activeControlTransmissionIdentifier = next?.identifier
@@ -542,12 +630,22 @@ final class WebRTCInternetTransport {
                         state.activeControlTransmissionIdentifier = nil
                     }
                 case .failure(let error):
-                    reportedError = .engineSendFailed(error.localizedDescription)
+                    let transportError = InternetTransportError.engineSendFailed(
+                        error.localizedDescription
+                    )
+                    completion = state.controlCompletions.removeValue(
+                        forKey: transmission.identifier
+                    )
+                    completionResult = .failure(transportError)
+                    reportedError = transportError
                 }
             }
             if let reportedError {
                 failureTransition = prepareFailureWithinSendGate(reportedError)
             }
+        }
+        if let completion, let completionResult {
+            completion.complete(completionResult)
         }
         if let failureTransition {
             performFailureTransition(failureTransition)
@@ -743,13 +841,18 @@ final class WebRTCInternetTransport {
                 return
             }
             let update = withSendGate {
-                withLock { state -> (accepted: Bool, changed: Bool) in
-                    guard state.transportState != .closed else { return (false, false) }
-                    if case .failed = state.transportState { return (false, false) }
+                withLock { state -> (
+                    accepted: Bool,
+                    changed: Bool,
+                    completions: [ControlTransmissionCompletion]
+                ) in
+                    guard state.transportState != .closed else { return (false, false, []) }
+                    if case .failed = state.transportState { return (false, false, []) }
                     guard let engineContext = state.engineTransmissionContext,
-                          engineContext.path == path else { return (false, false) }
+                          engineContext.path == path else { return (false, false, []) }
+                    var invalidatedCompletions: [ControlTransmissionCompletion] = []
                     if let previousPath = state.activePath, previousPath != path {
-                        invalidatePipeline(state: &state)
+                        invalidatedCompletions = invalidatePipeline(state: &state)
                         state.engineTransmissionContext = engineContext
                     }
                     state.activePath = path
@@ -757,31 +860,38 @@ final class WebRTCInternetTransport {
                     state.recoveryAttemptAwaitingOutcome = false
                     state.waitingForKeyframe = true
                     let connectedState = InternetTransportState.connected(path)
-                    guard state.transportState != connectedState else { return (true, false) }
+                    guard state.transportState != connectedState else {
+                        return (true, false, invalidatedCompletions)
+                    }
                     state.transportState = connectedState
-                    return (true, true)
+                    return (true, true, invalidatedCompletions)
                 }
             }
             guard update.accepted else { return }
             if update.changed { onStateChanged?(.connected(path)) }
             engine.requestMediaKeyframe()
             onKeyframeRequired?()
+            completeControlTransmissions(update.completions, with: .notConnected)
         case .disconnected:
             recoverConnectivity()
         case .failed(let reason):
             failTransport(.engineSendFailed(reason), reportError: false)
         case .closed:
-            let shouldReportClosed = withSendGate {
-                withLock { state -> Bool in
-                    if case .failed = state.transportState { return false }
-                    guard state.transportState != .closed else { return false }
+            let closeTransition = withSendGate {
+                withLock { state -> (
+                    changed: Bool,
+                    completions: [ControlTransmissionCompletion]
+                ) in
+                    if case .failed = state.transportState { return (false, []) }
+                    guard state.transportState != .closed else { return (false, []) }
                     state.transportState = .closed
                     state.activePath = nil
-                    invalidatePipeline(state: &state)
-                    return true
+                    return (true, invalidatePipeline(state: &state))
                 }
             }
-            if shouldReportClosed { onStateChanged?(.closed) }
+            closeEngineOnce()
+            if closeTransition.changed { onStateChanged?(.closed) }
+            completeControlTransmissions(closeTransition.completions, with: .notConnected)
         }
     }
 
@@ -836,6 +946,7 @@ final class WebRTCInternetTransport {
         _ context: WebRTCEngineTransmissionContext?
     ) {
         var didExhaustPipeline = false
+        var invalidatedCompletions: [ControlTransmissionCompletion] = []
         withSendGate {
             withLock { state in
                 guard state.transportState != .closed else { return }
@@ -843,13 +954,14 @@ final class WebRTCInternetTransport {
                 guard state.engineTransmissionContext != context
                         || (context == nil && state.activePath != nil) else { return }
                 if state.engineTransmissionContext != nil || state.activePath != nil {
-                    invalidatePipeline(state: &state)
+                    invalidatedCompletions = invalidatePipeline(state: &state)
                     didExhaustPipeline = state.pipelineGenerationExhausted
                 }
                 state.activePath = nil
                 state.engineTransmissionContext = context
             }
         }
+        completeControlTransmissions(invalidatedCompletions, with: .notConnected)
         if didExhaustPipeline {
             failTransport(.sequenceExhausted("pipeline generation"), reportError: false)
         }
@@ -900,7 +1012,7 @@ final class WebRTCInternetTransport {
                 canRestart = false
             }
             guard canRestart else { return nil }
-            invalidatePipeline(state: &state)
+            let invalidatedCompletions = invalidatePipeline(state: &state)
             state.activePath = nil
             state.waitingForKeyframe = true
             state.recoveryAttemptAwaitingOutcome = false
@@ -911,7 +1023,8 @@ final class WebRTCInternetTransport {
                     attempt: attempt,
                     changed: false,
                     generation: state.pipelineGeneration,
-                    recoveringState: recoveringState
+                    recoveringState: recoveringState,
+                    invalidatedControlCompletions: invalidatedCompletions
                 )
             }
             state.transportState = recoveringState
@@ -919,13 +1032,18 @@ final class WebRTCInternetTransport {
                 attempt: attempt,
                 changed: true,
                 generation: state.pipelineGeneration,
-                recoveringState: recoveringState
+                recoveringState: recoveringState,
+                invalidatedControlCompletions: invalidatedCompletions
             )
         }
     }
 
     private func performPreparedICERestart(_ transition: RecoveryTransition?) {
         guard let transition else { return }
+        completeControlTransmissions(
+            transition.invalidatedControlCompletions,
+            with: .notConnected
+        )
         duringRecoveryDecision?()
         guard isCurrentRecovery(transition) else { return }
         duringMediaRecoveryTransition?()
@@ -1049,12 +1167,13 @@ final class WebRTCInternetTransport {
     ) -> FailureTransition? {
         let failedState = InternetTransportState.failed(error.localizedDescription)
         var failureGeneration: UInt64 = 0
+        var invalidatedCompletions: [ControlTransmissionCompletion] = []
         let changed = withLock { state -> Bool in
             guard state.transportState != .closed else { return false }
             if case .failed = state.transportState { return false }
             state.transportState = failedState
             state.activePath = nil
-            invalidatePipeline(state: &state)
+            invalidatedCompletions = invalidatePipeline(state: &state)
             failureGeneration = state.pipelineGeneration
             return true
         }
@@ -1063,13 +1182,18 @@ final class WebRTCInternetTransport {
             failedState: failedState,
             generation: failureGeneration,
             error: error,
-            reportError: reportError
+            reportError: reportError,
+            invalidatedControlCompletions: invalidatedCompletions
         )
     }
 
     private func performFailureTransition(_ transition: FailureTransition) {
+        completeControlTransmissions(
+            transition.invalidatedControlCompletions,
+            with: .notConnected
+        )
         beforeFailureSideEffects?()
-        engine.close()
+        closeEngineOnce()
         let shouldPublish = withSendGate {
             let isCurrent = withLock {
                 $0.pipelineGeneration == transition.generation
@@ -1082,7 +1206,21 @@ final class WebRTCInternetTransport {
         if transition.reportError { onError?(transition.error) }
     }
 
-    private func invalidatePipeline(state: inout MutableState) {
+    private func closeEngineOnce() {
+        engineLifecycleGate.lock()
+        defer { engineLifecycleGate.unlock() }
+        guard !engineCloseInvoked else { return }
+        engineCloseInvoked = true
+        engine.close()
+    }
+
+    private func invalidatePipeline(
+        state: inout MutableState
+    ) -> [ControlTransmissionCompletion] {
+        let controlCompletions = state.controlCompletions.values.sorted {
+            $0.identifier < $1.identifier
+        }
+        state.controlCompletions.removeAll(keepingCapacity: true)
         if state.pipelineGeneration < UInt64.max {
             state.pipelineGeneration += 1
         } else {
@@ -1098,18 +1236,25 @@ final class WebRTCInternetTransport {
         state.activeControlTransmissionIdentifier = nil
         state.mediaInFlight = false
         state.recoveryAttemptAwaitingOutcome = false
+        // The engine port still owns dispatched-send accounting until its
+        // exactly-once completion reports whether those network bytes drained.
         state.relayBytesReserved =
             state.dispatchedControlRelayReservations.values.reduce(0, +)
             + state.dispatchedMediaRelayReservations.values.reduce(0, +)
+        return controlCompletions
     }
 
     private func recoverRejectedControlSend(
         _ transmission: ControlTransmission,
         state: inout MutableState
-    ) {
+    ) -> [ControlTransmissionCompletion] {
         // A generation change already invalidated the old queue and released its reservations.
         guard state.pipelineGeneration == transmission.generation,
-              state.controlInFlight else { return }
+              state.controlInFlight else { return [] }
+        let controlCompletions = state.controlCompletions.values.sorted {
+            $0.identifier < $1.identifier
+        }
+        state.controlCompletions.removeAll(keepingCapacity: true)
         let queuedPayloadBytes = state.controlQueue.payloadBytes()
         let queuedRelayReservationBytes = state.controlQueue.relayReservationBytes()
         state.bufferedControlBytes = max(
@@ -1122,6 +1267,16 @@ final class WebRTCInternetTransport {
         state.controlQueue.removeAll()
         state.controlInFlight = false
         state.activeControlTransmissionIdentifier = nil
+        return controlCompletions
+    }
+
+    private func completeControlTransmissions(
+        _ completions: [ControlTransmissionCompletion],
+        with error: InternetTransportError
+    ) {
+        for completion in completions {
+            completion.complete(.failure(error))
+        }
     }
 
     private func isConnected(_ state: InternetTransportState) -> Bool {

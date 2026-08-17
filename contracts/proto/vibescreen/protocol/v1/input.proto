@@ -97,10 +97,19 @@ message StylusEvent {
 // decreasing an epoch for the same controller_id is invalid.
 // Duplicate CONNECTED, STATE before CONNECTED, and STATE after DISCONNECTED
 // are invalid. At most four controller lifecycles may be active concurrently
-// in one negotiated session. A receiver must reject a CONNECTED event that
-// would exceed this limit with an InputAck whose accepted field is false and
-// rejection_reason is "maximum_active_controllers_exceeded", without closing
-// the session or changing any admitted controller lifecycle.
+// in one negotiated session. For each CONNECTED that reaches a non-terminal
+// admission result, a receiver must send exactly one InputAck. It must send
+// accepted=true only after the production/native controller handler accepts
+// the lifecycle. A CONNECTED that would exceed the active-controller limit
+// instead receives accepted=false with rejection_reason
+// "maximum_active_controllers_exceeded", without closing the session or
+// changing any admitted controller lifecycle. A native-handler failure is a
+// hard protocol error: the receiver sends ProtocolError and closes the session
+// without sending an accepted InputAck. STATE and DISCONNECTED do not receive
+// InputAck. A sender must not send either for a lifecycle until its CONNECTED
+// receives accepted=true. Every controller InputAck must copy input_id, and its
+// Envelope must correlate to the triggering ControllerEvent message_id while
+// carrying the active session_id and session_epoch.
 // A new negotiated session resets both monotonic sequences.
 // Kind must be CONNECTED, STATE, or DISCONNECTED; UNSPECIFIED and unknown enum
 // values are invalid. Button bits 0-12 are defined and all higher bits are
@@ -161,6 +170,9 @@ message KeyEvent {
   InputTarget target = 6;
 }
 
+// When acknowledging ControllerEvent, correlation and session metadata follow
+// the ControllerEvent rules above. No controller identity is repeated here; a
+// sender correlates input_id to its bounded set of pending CONNECTED lifecycles.
 message InputAck {
   uint64 input_id = 1;
   bool accepted = 2;

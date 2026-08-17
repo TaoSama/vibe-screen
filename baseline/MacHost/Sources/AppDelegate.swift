@@ -2654,15 +2654,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return injected
         }
         session.onAuthenticatedControllerEvent = {
-            sessionEpoch, event in
-            guard let controllerRoute else { return false }
-            do {
-                try controllerRoute.handle(event, generation: sessionEpoch)
-                return true
-            } catch {
-                debugLog("Internet controller injection failed: \(error.localizedDescription)")
-                return false
+            [weak self, weak session]
+            _, sessionGeneration, event in
+            let inject = { () -> Bool in
+                guard let self, let session, let controllerRoute,
+                      self.serverLifecycle.ownsSession(sessionToken),
+                      self.internetProductSession === session,
+                      self.internetControllerInputRoute === controllerRoute else {
+                    return false
+                }
+                do {
+                    try controllerRoute.handle(event, generation: sessionGeneration)
+                    return self.serverLifecycle.ownsSession(sessionToken)
+                        && self.internetProductSession === session
+                        && self.internetControllerInputRoute === controllerRoute
+                } catch {
+                    debugLog(
+                        "Internet controller injection failed: \(error.localizedDescription)"
+                    )
+                    return false
+                }
             }
+            return Thread.isMainThread
+                ? inject()
+                : DispatchQueue.main.sync(execute: inject)
         }
         session.onKeyframeRequired = { [weak self, weak session] in
             let request = {

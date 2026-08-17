@@ -470,14 +470,30 @@ struct InternetProductProtocolCodec {
     mutating func inputAck(
         inputID: UInt64,
         accepted: Bool,
-        rejectionReason: String = ""
+        rejectionReason: String = "",
+        correlationID: UInt64
     ) throws -> Data {
         var ack = VSInputAck()
         ack.inputID = inputID
         ack.accepted = accepted
         ack.rejectionReason = rejectionReason
-        var envelope = baseEnvelope()
+        var envelope = baseEnvelope(correlationID: correlationID)
         envelope.inputAck = ack
+        return try encode(envelope)
+    }
+
+    mutating func protocolError(
+        code: VSProtocolErrorCode,
+        message: String,
+        correlationID: UInt64
+    ) throws -> Data {
+        var error = VSProtocolError()
+        error.code = code
+        error.message = message
+        error.retryable = false
+        error.component = "macos-host-internet-session"
+        var envelope = baseEnvelope(correlationID: correlationID)
+        envelope.protocolError = error
         return try encode(envelope)
     }
 

@@ -234,6 +234,9 @@ class SecurityContractTest(unittest.TestCase):
         }.items():
             self.assertRegex(input_source, rf"{name}\s*=\s*{raw_value}\s*;")
         declaration = input_source[input_source.index("// Controller input"):input_source.index("message ControllerEvent")]
+        normalized_declaration = " ".join(
+            line.removeprefix("//").strip() for line in declaration.splitlines()
+        )
         self.assertIn("strictly increase within the ControllerEvent subsequence", declaration)
         self.assertIn("controller_id must encode to 1-128 UTF-8 bytes", declaration)
         self.assertIn("must not contain a raw serial", declaration)
@@ -242,9 +245,19 @@ class SecurityContractTest(unittest.TestCase):
         self.assertIn("A new negotiated session resets both monotonic sequences.", declaration)
         self.assertIn("CONNECTED starts a lifecycle", declaration)
         self.assertIn("At most four controller lifecycles may be active concurrently", declaration)
+        self.assertIn("a receiver must send exactly one InputAck", declaration)
+        self.assertIn("accepted=true only after the production/native controller handler accepts", declaration)
         self.assertIn("maximum_active_controllers_exceeded", declaration)
         self.assertIn("without closing", declaration)
-        self.assertIn("or changing any admitted controller lifecycle", declaration)
+        self.assertIn("or changing any admitted controller lifecycle", normalized_declaration)
+        self.assertIn("A native-handler failure is a hard protocol error", normalized_declaration)
+        self.assertIn("STATE and DISCONNECTED do not receive InputAck", normalized_declaration)
+        self.assertIn("until its CONNECTED", normalized_declaration)
+        self.assertIn(
+            "correlate to the triggering ControllerEvent message_id",
+            normalized_declaration,
+        )
+        self.assertIn("active session_id and session_epoch", normalized_declaration)
         self.assertIn("CONNECTED and DISCONNECTED are neutral lifecycle markers", declaration)
         self.assertIn("transport loss", declaration)
         controller_message = input_source[input_source.index("message ControllerEvent"):input_source.index("message PointerEvent")]
@@ -254,6 +267,11 @@ class SecurityContractTest(unittest.TestCase):
         )
         self.assertIn("select, start, guide/mode, L3, and R3", controller_message)
         self.assertEqual(66, message_fields(envelope_source, "Envelope")["controller_event"])
+        self.assertEqual(64, message_fields(envelope_source, "Envelope")["input_ack"])
+        self.assertEqual(
+            {"input_id": 1, "accepted": 2, "rejection_reason": 3},
+            message_fields(input_source, "InputAck"),
+        )
         self.assertRegex(session_source, r"CAPABILITY_CONTROLLER\s*=\s*26\s*;")
 
     def test_envelope_security_payloads_do_not_reuse_existing_numbers(self) -> None:
