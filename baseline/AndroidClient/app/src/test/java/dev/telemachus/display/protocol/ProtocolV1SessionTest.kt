@@ -1,6 +1,9 @@
 package dev.telemachus.display.protocol
 
 import com.google.protobuf.ByteString
+import dev.telemachus.display.ControllerAxes
+import dev.telemachus.display.ControllerEventKind
+import dev.telemachus.display.ControllerStateSample
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Dimensions
@@ -12,6 +15,7 @@ import dev.vibescreen.protocol.v1.HostActionCatalog
 import dev.vibescreen.protocol.v1.HostActionDescriptor
 import dev.vibescreen.protocol.v1.HostActionResult
 import dev.vibescreen.protocol.v1.HostHello
+import dev.vibescreen.protocol.v1.InputAck
 import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.ListDisplaysResponse
 import dev.vibescreen.protocol.v1.MediaPacketHeader
@@ -26,6 +30,7 @@ import dev.vibescreen.protocol.v1.VideoConfig
 import dev.vibescreen.protocol.v1.VideoQualityPreset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -900,6 +905,277 @@ class ProtocolV1SessionTest {
         assertTrue(session.isStreaming)
     }
 
+
+    @Test
+    fun defaultClientHelloExcludesControllerCapability() {
+        val session = session()
+        val hello = session.clientHello()
+        assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_CONTROLLER))
+    }
+
+    @Test
+    fun advertiseControllerAddsControllerWithoutDroppingExistingCapabilities() {
+        val defaultCapabilities = session().clientHello().clientHello.capabilitiesList.toSet()
+        val session =
+            ProtocolV1Session(
+                deviceId = "android-test",
+                deviceName = "Test Android",
+                transport = TransportKind.TRANSPORT_KIND_USB,
+                codecs = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
+                advertiseController = true,
+                nowNs = { 1_000L },
+            )
+        val hello = session.clientHello()
+        assertEquals(
+            defaultCapabilities + Capability.CAPABILITY_CONTROLLER,
+            hello.clientHello.capabilitiesList.toSet(),
+        )
+    }
+
+    @Test
+    fun canSendControllerRequiresNegotiatedControllerCapability() {
+        val session = controllerStreamingSession()
+        assertTrue(session.canSendController)
+    }
+
+    @Test
+    fun canSendControllerRequiresStreamingState() {
+        val session = controllerSessionThroughDisplayStart()
+        assertFalse(session.canSendController)
+    }
+
+    @Test
+    fun canSendControllerIsFalseDuringRuntimeDisplaySelection() {
+        val session = controllerMultiDisplayStreamingSession()
+
+        assertNotNull(session.selectDisplay("display-2"))
+        assertFalse(session.canSendController)
+    }
+
+    @Test
+    fun canSendControllerFalseWithoutNegotiation() {
+        val session = streamingSession()
+        assertFalse(session.canSendController)
+    }
+
+    @Test
+    fun controllerEncodesFullStateSample() {
+        val session = controllerStreamingSession()
+        val sample =
+            ControllerStateSample(
+                controllerId = "pad-1",
+                controllerEpoch = 1,
+                kind = ControllerEventKind.STATE,
+                buttonMask = 0b101,
+                axes =
+                    ControllerAxes(
+                        leftX = 0.5,
+                        leftY = -0.25,
+                        rightX = 1.0,
+                        rightY = -1.0,
+                        leftTrigger = 0.75,
+                        rightTrigger = 0.0,
+                        hatX = 1,
+                        hatY = -1,
+                    ),
+            )
+        val envelope = session.controller(inputId = 9, sample = sample)
+        assertEquals(Envelope.PayloadCase.CONTROLLER_EVENT, envelope.payloadCase)
+        val event = envelope.controllerEvent
+        assertEquals(9L, event.inputId)
+        assertEquals("pad-1", event.controllerId)
+        assertEquals(1L, event.controllerEpoch)
+        assertEquals(dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE, event.kind)
+        assertEquals(0b101, event.buttonMask)
+        assertEquals(0.5, event.leftStickX, 0.0)
+        assertEquals(-0.25, event.leftStickY, 0.0)
+        assertEquals(1.0, event.rightStickX, 0.0)
+        assertEquals(-1.0, event.rightStickY, 0.0)
+        assertEquals(0.75, event.leftTrigger, 0.0)
+        assertEquals(0.0, event.rightTrigger, 0.0)
+        assertEquals(1, event.hatX)
+        assertEquals(-1, event.hatY)
+        assertEquals("display-main", event.target.displayId)
+        assertEquals(42L, event.target.streamId)
+    }
+
+    @Test
+    fun controllerRejectsNonPositiveInputId() {
+        val session = controllerStreamingSession()
+        val sample = ControllerStateSample("pad-1", 1, ControllerEventKind.STATE)
+        assertThrows(IllegalArgumentException::class.java) {
+            session.controller(inputId = 0, sample = sample)
+        }
+    }
+
+    @Test
+    fun controllerEncodesNeutralLifecycleKinds() {
+        val session = controllerStreamingSession()
+        val connected = session.controller(1, ControllerStateSample("pad-1", 1, ControllerEventKind.CONNECTED))
+        assertEquals(
+            dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+            connected.controllerEvent.kind,
+        )
+        assertEquals(0, connected.controllerEvent.buttonMask)
+        assertEquals(ControllerAxes.NEUTRAL.leftX, connected.controllerEvent.leftStickX, 0.0)
+
+        val disconnected = session.controller(2, ControllerStateSample("pad-1", 1, ControllerEventKind.DISCONNECTED))
+        assertEquals(
+            dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED,
+            disconnected.controllerEvent.kind,
+        )
+        assertEquals(0, disconnected.controllerEvent.buttonMask)
+    }
+
+    @Test
+    fun controllerBeforeStreamingFails() {
+        val session = controllerSessionThroughDisplayStart()
+        val sample = ControllerStateSample("pad-1", 1, ControllerEventKind.CONNECTED)
+        assertThrows(IllegalStateException::class.java) {
+            session.controller(inputId = 1, sample = sample)
+        }
+    }
+
+    @Test
+    fun controllerWithoutNegotiatedCapabilityFails() {
+        val session = streamingSession()
+        val sample = ControllerStateSample("pad-1", 1, ControllerEventKind.STATE)
+        assertThrows(IllegalStateException::class.java) {
+            session.controller(inputId = 1, sample = sample)
+        }
+    }
+
+    @Test
+    fun inputAckAcceptedIsDecoded() {
+        val session = controllerStreamingSession()
+        val ack =
+            base(8)
+                .setInputAck(
+                    InputAck
+                        .newBuilder()
+                        .setInputId(9)
+                        .setAccepted(true),
+                ).build()
+        val action = session.receive(ack).single() as ProtocolV1Session.Action.ControllerInputAck
+        assertEquals(9L, action.inputId)
+        assertTrue(action.accepted)
+        assertEquals("", action.rejectionReason)
+    }
+
+    @Test
+    fun inputAckRejectedRequiresReason() {
+        val session = controllerStreamingSession()
+        val ack =
+            base(8)
+                .setInputAck(
+                    InputAck
+                        .newBuilder()
+                        .setInputId(9)
+                        .setAccepted(false)
+                        .setRejectionReason("maximum_active_controllers_exceeded"),
+                ).build()
+        val action = session.receive(ack).single() as ProtocolV1Session.Action.ControllerInputAck
+        assertEquals(9L, action.inputId)
+        assertFalse(action.accepted)
+        assertEquals("maximum_active_controllers_exceeded", action.rejectionReason)
+    }
+
+    @Test
+    fun inputAckRejectedWithoutReasonFails() {
+        val session = controllerStreamingSession()
+        val ack =
+            base(8)
+                .setInputAck(
+                    InputAck
+                        .newBuilder()
+                        .setInputId(9)
+                        .setAccepted(false),
+                ).build()
+        assertInvalidPeerMessage { session.receive(ack) }
+    }
+
+    @Test
+    fun inputAckNonPositiveInputIdFails() {
+        val session = controllerStreamingSession()
+        val ack =
+            base(8)
+                .setInputAck(
+                    InputAck
+                        .newBuilder()
+                        .setInputId(0)
+                        .setAccepted(true),
+                ).build()
+        assertInvalidPeerMessage { session.receive(ack) }
+    }
+
+    @Test
+    fun inputAckWithoutNegotiatedControllerFails() {
+        val session = streamingSession()
+        val ack =
+            base(8)
+                .setInputAck(
+                    InputAck
+                        .newBuilder()
+                        .setInputId(9)
+                        .setAccepted(true),
+                ).build()
+        assertInvalidPeerMessage { session.receive(ack) }
+    }
+
+    @Test
+    fun inputAckBeforeSessionNegotiationFails() {
+        val session =
+            ProtocolV1Session(
+                deviceId = "android-test",
+                deviceName = "Test Android",
+                transport = TransportKind.TRANSPORT_KIND_USB,
+                codecs = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
+                advertiseController = true,
+                nowNs = { 1_000L },
+            )
+        session.clientHello()
+        val ack =
+            base(1)
+                .setInputAck(InputAck.newBuilder().setInputId(9).setAccepted(true))
+                .build()
+
+        assertInvalidPeerMessage { session.receive(ack) }
+    }
+
+    @Test
+    fun inputAckDuringDisplaySetupIsDecodedWhenControllerCapabilityNegotiated() {
+        val session = controllerSessionThroughDisplayStart()
+        val ack =
+            base(6)
+                .setInputAck(
+                    InputAck
+                        .newBuilder()
+                        .setInputId(9)
+                        .setAccepted(false)
+                        .setRejectionReason("maximum_active_controllers_exceeded"),
+                ).build()
+
+        val action = session.receive(ack).single() as ProtocolV1Session.Action.ControllerInputAck
+        assertEquals(9L, action.inputId)
+        assertFalse(action.accepted)
+        assertEquals("maximum_active_controllers_exceeded", action.rejectionReason)
+    }
+
+    @Test
+    fun inputAckDuringRuntimeDisplaySelectionIsDecodedWhenControllerCapabilityNegotiated() {
+        val session = controllerMultiDisplayStreamingSession()
+        assertNotNull(session.selectDisplay("display-2"))
+        val ack =
+            base(7)
+                .setInputAck(InputAck.newBuilder().setInputId(9).setAccepted(true))
+                .build()
+
+        val action = session.receive(ack).single() as ProtocolV1Session.Action.ControllerInputAck
+        assertEquals(9L, action.inputId)
+        assertTrue(action.accepted)
+        assertEquals("", action.rejectionReason)
+    }
+
     private fun streamingSession(): ProtocolV1Session =
         sessionThroughDisplayStart().also {
             val requested =
@@ -912,6 +1188,60 @@ class ProtocolV1SessionTest {
                 rejectionReason = "",
             )
         }
+
+    private val controllerCaps =
+        listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CONTROLLER)
+
+    private fun controllerSessionThroughDisplayStart(): ProtocolV1Session =
+        ProtocolV1Session(
+            deviceId = "android-test",
+            deviceName = "Test Android",
+            transport = TransportKind.TRANSPORT_KIND_USB,
+            codecs = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
+            advertiseController = true,
+            nowNs = { 1_000L },
+        ).also {
+            it.clientHello()
+            it.receive(hostHello(2, advertisedCapabilities = controllerCaps))
+            it.receive(sessionAccepted(3, negotiatedCapabilities = controllerCaps))
+            it.receive(displayList(4))
+            it.receive(startDisplay(5))
+        }
+
+    private fun controllerStreamingSession(): ProtocolV1Session =
+        controllerSessionThroughDisplayStart().also {
+            val requested =
+                it.receive(videoConfig(6)).single()
+                    as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        }
+
+    private fun controllerMultiDisplayStreamingSession(): ProtocolV1Session {
+        val capabilities = controllerCaps + Capability.CAPABILITY_MULTI_DISPLAY
+        return ProtocolV1Session(
+            deviceId = "android-test",
+            deviceName = "Test Android",
+            transport = TransportKind.TRANSPORT_KIND_USB,
+            codecs = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
+            advertiseController = true,
+            nowNs = { 1_000L },
+        ).also {
+            it.clientHello()
+            it.receive(hostHello(2, advertisedCapabilities = capabilities))
+            it.receive(sessionAccepted(3, negotiatedCapabilities = capabilities))
+            it.receive(twoDisplayList(4))
+            it.receive(startDisplay(5))
+            val requested =
+                it.receive(videoConfig(6)).single()
+                    as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(3, requested.configurationToken, true, "")
+        }
+    }
 
     private fun nativeInputStreamingSession(standardModifierByte: Boolean = true): ProtocolV1Session {
         val caps =

@@ -1,9 +1,13 @@
 package dev.telemachus.display.protocol
 
 import com.google.protobuf.ByteString
+import dev.telemachus.display.ControllerEventKind
+import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.NativeInputWire
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClientHello
+import dev.vibescreen.protocol.v1.ControllerEvent
+import dev.vibescreen.protocol.v1.ControllerEventKind as ProtocolControllerEventKind
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.HostActionInvoke
@@ -54,6 +58,7 @@ internal class ProtocolV1Session(
     private val deviceName: String,
     private val transport: TransportKind,
     private val codecs: List<Codec>,
+    private val advertiseController: Boolean = false,
     private val nowNs: () -> Long = System::nanoTime,
 ) {
     sealed class Action {
@@ -93,6 +98,12 @@ internal class ProtocolV1Session(
         ) : Action()
 
         data class PongReceived(val sequence: Long) : Action()
+
+        data class ControllerInputAck(
+            val inputId: Long,
+            val accepted: Boolean,
+            val rejectionReason: String,
+        ) : Action()
 
         /**
          * Host-advertised action catalog for the active session, filtered to
@@ -181,17 +192,11 @@ internal class ProtocolV1Session(
     private val pendingHostActionInvocations = ArrayDeque<ByteString>()
 
     private val advertisedCapabilities =
-        setOf(
-            Capability.CAPABILITY_TOUCH,
-            Capability.CAPABILITY_KEYBOARD,
-            Capability.CAPABILITY_POINTER,
-            Capability.CAPABILITY_STYLUS,
-            Capability.CAPABILITY_STYLUS_EXTENDED,
-            Capability.CAPABILITY_MULTI_DISPLAY,
-            Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
-            Capability.CAPABILITY_HOST_ACTIONS,
-            Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
-        )
+        if (advertiseController) {
+            BASE_ADVERTISED_CAPABILITIES + Capability.CAPABILITY_CONTROLLER
+        } else {
+            BASE_ADVERTISED_CAPABILITIES
+        }
     private val requiredCapabilities = emptySet<Capability>()
 
     val activeSessionEpoch: Long
@@ -238,6 +243,10 @@ internal class ProtocolV1Session(
         get() =
             canSendStylus &&
                 Capability.CAPABILITY_STYLUS_EXTENDED in negotiatedCapabilities
+
+    val canSendController: Boolean
+        @Synchronized
+        get() = state == State.STREAMING && Capability.CAPABILITY_CONTROLLER in negotiatedCapabilities
 
     /** Host actions the client may invoke, empty until a catalog arrives. */
     val hostActions: List<HostAction>
@@ -313,6 +322,7 @@ internal class ProtocolV1Session(
                     ),
                 )
             Envelope.PayloadCase.PONG -> listOf(Action.PongReceived(envelope.pong.sequence))
+            Envelope.PayloadCase.INPUT_ACK -> onInputAck(envelope)
             Envelope.PayloadCase.HOST_ACTION_CATALOG -> onHostActionCatalog(envelope)
             Envelope.PayloadCase.HOST_ACTION_RESULT -> onHostActionResult(envelope)
             Envelope.PayloadCase.DISCONNECT_NOTICE -> {
@@ -340,6 +350,25 @@ internal class ProtocolV1Session(
             }
             else -> throw protocolFailure("Unexpected ${envelope.payloadCase} in state $state")
         }
+    }
+
+    private fun onInputAck(envelope: Envelope): List<Action> {
+        if (!isNegotiated()) throw protocolFailure("InputAck arrived before session negotiation")
+        if (Capability.CAPABILITY_CONTROLLER !in negotiatedCapabilities) {
+            throw protocolFailure("InputAck arrived without negotiated controller input")
+        }
+        val acknowledgement = envelope.inputAck
+        if (acknowledgement.inputId <= 0L) throw protocolFailure("InputAck input_id must be positive")
+        if (!acknowledgement.accepted && acknowledgement.rejectionReason.isBlank()) {
+            throw protocolFailure("Rejected InputAck requires a reason")
+        }
+        return listOf(
+            Action.ControllerInputAck(
+                inputId = acknowledgement.inputId,
+                accepted = acknowledgement.accepted,
+                rejectionReason = acknowledgement.rejectionReason,
+            ),
+        )
     }
 
     @Synchronized
@@ -631,6 +660,35 @@ internal class ProtocolV1Session(
                 .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
                 .build()
         return envelope().setKeyEvent(event).build()
+    }
+
+    @Synchronized
+    fun controller(
+        inputId: Long,
+        sample: ControllerStateSample,
+    ): Envelope {
+        check(state == State.STREAMING)
+        check(Capability.CAPABILITY_CONTROLLER in negotiatedCapabilities) { "Controller was not negotiated" }
+        require(inputId > 0)
+        val event =
+            ControllerEvent
+                .newBuilder()
+                .setInputId(inputId)
+                .setControllerId(sample.controllerId)
+                .setControllerEpoch(sample.controllerEpoch)
+                .setKind(sample.kind.toProto())
+                .setButtonMask(sample.buttonMask)
+                .setLeftStickX(sample.axes.leftX)
+                .setLeftStickY(sample.axes.leftY)
+                .setRightStickX(sample.axes.rightX)
+                .setRightStickY(sample.axes.rightY)
+                .setLeftTrigger(sample.axes.leftTrigger)
+                .setRightTrigger(sample.axes.rightTrigger)
+                .setHatX(sample.axes.hatX)
+                .setHatY(sample.axes.hatY)
+                .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
+                .build()
+        return envelope().setControllerEvent(event).build()
     }
 
     @Synchronized
@@ -1108,10 +1166,29 @@ internal class ProtocolV1Session(
         val resetQualityToAuto: Boolean,
     )
 
+    private fun ControllerEventKind.toProto(): ProtocolControllerEventKind =
+        when (this) {
+            ControllerEventKind.CONNECTED -> ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED
+            ControllerEventKind.STATE -> ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE
+            ControllerEventKind.DISCONNECTED -> ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED
+        }
+
     companion object {
         private const val STYLUS_BUTTON_MASK = 0b11
         const val VERSION = 1
         private val VALID_ROTATIONS = setOf(0, 90, 180, 270)
+        private val BASE_ADVERTISED_CAPABILITIES =
+            setOf(
+                Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_KEYBOARD,
+                Capability.CAPABILITY_POINTER,
+                Capability.CAPABILITY_STYLUS,
+                Capability.CAPABILITY_STYLUS_EXTENDED,
+                Capability.CAPABILITY_MULTI_DISPLAY,
+                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
+                Capability.CAPABILITY_HOST_ACTIONS,
+                Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
+            )
 
         /** Move the focused Mac window onto the client display. Fixed with the host. */
         const val ACTION_MOVE_WINDOW = "move-window"

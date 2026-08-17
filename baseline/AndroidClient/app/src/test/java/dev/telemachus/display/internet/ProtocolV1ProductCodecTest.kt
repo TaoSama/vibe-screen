@@ -1,21 +1,28 @@
 package dev.telemachus.display.internet
 
 import com.google.protobuf.ByteString
+import dev.telemachus.display.ControllerAxes
+import dev.telemachus.display.ControllerEventKind
+import dev.telemachus.display.ControllerStateSample
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
+import dev.vibescreen.protocol.v1.ControllerEventKind as ProtocolControllerEventKind
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.HostHello
+import dev.vibescreen.protocol.v1.InputAck
 import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.ResourceLimits
 import dev.vibescreen.protocol.v1.SessionAccepted
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProtocolV1ProductCodecTest {
     private val codec = ProtobufProtocolV1ProductCodec("device-1", "Android", setOf(ProductVideoCodec.H264, ProductVideoCodec.HEVC)) { 99 }
+    private val controllerCodec = ProtobufProtocolV1ProductCodec("device-1", "Android", setOf(ProductVideoCodec.H264, ProductVideoCodec.HEVC), advertiseController = true) { 99 }
     private val sessionId = "session-1".toByteArray()
 
     @Test
@@ -228,6 +235,142 @@ class ProtocolV1ProductCodecTest {
                 mediaHeader(oversizedPayload.size),
                 oversizedPayload,
             )
+        }
+    }
+
+    @Test
+    fun defaultClientHelloExcludesControllerCapability() {
+        val hello = Envelope.parseFrom(codec.encodeClientHello(1, sessionId, 7))
+        assertEquals(codec.offeredCapabilities, hello.clientHello.capabilitiesList.toSet())
+        assertTrue(!hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_CONTROLLER))
+    }
+
+    @Test
+    fun advertiseControllerAddsControllerWithoutDroppingExistingCapabilities() {
+        val defaultCapabilities =
+            Envelope.parseFrom(codec.encodeClientHello(1, sessionId, 7)).clientHello.capabilitiesList.toSet()
+        val hello = Envelope.parseFrom(controllerCodec.encodeClientHello(1, sessionId, 7))
+        assertEquals(defaultCapabilities + Capability.CAPABILITY_CONTROLLER, controllerCodec.offeredCapabilities)
+        assertEquals(
+            controllerCodec.offeredCapabilities,
+            hello.clientHello.capabilitiesList.toSet(),
+        )
+    }
+
+    @Test
+    fun encodeControllerProducesValidProtoEvent() {
+        val sample =
+            ControllerStateSample(
+                controllerId = "pad-1",
+                controllerEpoch = 3,
+                kind = ControllerEventKind.STATE,
+                buttonMask = 0b101,
+                axes =
+                    ControllerAxes(
+                        leftX = 0.5,
+                        leftY = -0.25,
+                        rightX = 1.0,
+                        rightY = -1.0,
+                        leftTrigger = 0.75,
+                        rightTrigger = 0.0,
+                        hatX = 1,
+                        hatY = -1,
+                    ),
+            )
+        val envelope = Envelope.parseFrom(controllerCodec.encodeController(2, sessionId, 7, 42, 9, sample))
+        assertEquals(Envelope.PayloadCase.CONTROLLER_EVENT, envelope.payloadCase)
+        val controller = envelope.controllerEvent
+        assertEquals(9L, controller.inputId)
+        assertEquals("pad-1", controller.controllerId)
+        assertEquals(3L, controller.controllerEpoch)
+        assertEquals(ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_STATE, controller.kind)
+        assertEquals(0b101, controller.buttonMask)
+        assertEquals(0.5, controller.leftStickX, 0.0)
+        assertEquals(-0.25, controller.leftStickY, 0.0)
+        assertEquals(1.0, controller.rightStickX, 0.0)
+        assertEquals(-1.0, controller.rightStickY, 0.0)
+        assertEquals(0.75, controller.leftTrigger, 0.0)
+        assertEquals(0.0, controller.rightTrigger, 0.0)
+        assertEquals(1, controller.hatX)
+        assertEquals(-1, controller.hatY)
+        assertEquals(42L, controller.target.streamId)
+        assertEquals("", controller.target.displayId)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            controllerCodec.encodeController(3, sessionId, 7, 0, 9, sample)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            controllerCodec.encodeController(3, sessionId, 7, 42, 0, sample)
+        }
+    }
+
+    @Test
+    fun encodeControllerLifecycleMapsKindAndStaysNeutral() {
+        val connected = ControllerStateSample("pad-1", 1, ControllerEventKind.CONNECTED)
+        val connectedEnv = Envelope.parseFrom(controllerCodec.encodeController(2, sessionId, 7, 42, 1, connected))
+        assertEquals(ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED, connectedEnv.controllerEvent.kind)
+        assertEquals(0, connectedEnv.controllerEvent.buttonMask)
+
+        val disconnected = ControllerStateSample("pad-1", 1, ControllerEventKind.DISCONNECTED)
+        val disconnectedEnv = Envelope.parseFrom(controllerCodec.encodeController(3, sessionId, 7, 42, 2, disconnected))
+        assertEquals(ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED, disconnectedEnv.controllerEvent.kind)
+    }
+
+    @Test
+    fun decodeInputAckAcceptedAndRejected() {
+        val accepted =
+            baseEnvelope(8)
+                .setInputAck(InputAck.newBuilder().setInputId(9).setAccepted(true))
+                .build()
+        val decodedAccepted = codec.decodeControl(accepted.toByteArray()).message as ProductControlMessage.InputAck
+        assertEquals(9L, decodedAccepted.inputId)
+        assertTrue(decodedAccepted.accepted)
+        assertEquals("", decodedAccepted.rejectionReason)
+
+        val rejected =
+            baseEnvelope(9)
+                .setInputAck(
+                    InputAck
+                        .newBuilder()
+                        .setInputId(10)
+                        .setAccepted(false)
+                        .setRejectionReason("maximum_active_controllers_exceeded"),
+                ).build()
+        val decodedRejected = codec.decodeControl(rejected.toByteArray()).message as ProductControlMessage.InputAck
+        assertEquals(10L, decodedRejected.inputId)
+        assertFalse(decodedRejected.accepted)
+        assertEquals("maximum_active_controllers_exceeded", decodedRejected.rejectionReason)
+    }
+
+    @Test
+    fun decodeInputAckRejectsInvalidIdentifierAndMissingReason() {
+        val invalidIdentifier =
+            baseEnvelope(10)
+                .setInputAck(InputAck.newBuilder().setInputId(0).setAccepted(true))
+                .build()
+        assertThrows(IllegalArgumentException::class.java) {
+            codec.decodeControl(invalidIdentifier.toByteArray())
+        }
+
+        val missingReason =
+            baseEnvelope(11)
+                .setInputAck(InputAck.newBuilder().setInputId(11).setAccepted(false))
+                .build()
+        assertThrows(IllegalArgumentException::class.java) {
+            codec.decodeControl(missingReason.toByteArray())
+        }
+
+        val blankReason =
+            baseEnvelope(12)
+                .setInputAck(
+                    InputAck
+                        .newBuilder()
+                        .setInputId(12)
+                        .setAccepted(false)
+                        .setRejectionReason("   "),
+                ).build()
+        assertThrows(IllegalArgumentException::class.java) {
+            codec.decodeControl(blankReason.toByteArray())
         }
     }
 

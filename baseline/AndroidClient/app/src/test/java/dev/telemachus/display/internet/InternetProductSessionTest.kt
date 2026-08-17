@@ -13,6 +13,7 @@ import dev.vibescreen.protocol.v1.Dimensions
 import dev.vibescreen.protocol.v1.DeviceRevoked
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.HostHello
+import dev.vibescreen.protocol.v1.InputAck
 import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.Ping
 import dev.vibescreen.protocol.v1.ResourceLimits
@@ -34,6 +35,75 @@ import java.util.concurrent.atomic.AtomicReference
 import java.security.SecureRandom
 
 class InternetProductSessionTest {
+    @Test
+    fun inputAckWithoutNegotiatedControllerFailsClosed() {
+        val peer = ProductFakePeerEngine()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        peer.receive(
+            controlEnvelope(3)
+                .setInputAck(InputAck.newBuilder().setInputId(1).setAccepted(true))
+                .build(),
+        )
+
+        assertEquals(InternetProductSessionState.FAILED, session.state)
+        assertEquals(1, peer.closeCalls)
+        assertEquals(
+            "Controller input acknowledgement arrived without a negotiated controller session",
+            callbacks.failures.single().message,
+        )
+    }
+
+    @Test
+    fun negotiatedControllerInputAckWithoutSenderIsNoOp() {
+        val peer = ProductFakePeerEngine()
+        val callbacks = ProductCallbacks()
+        val controllerCodec =
+            ProtobufProtocolV1ProductCodec(
+                localDeviceId = "device-1",
+                deviceName = "Android",
+                supportedCodecs = setOf(ProductVideoCodec.HEVC),
+                advertiseController = true,
+                monotonicNanos = { 1 },
+            )
+        val session = session(peer, ProductFakeNetworkMonitor(), callbacks, codec = controllerCodec)
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(
+            controlEnvelope(1)
+                .setHostHello(hostHello().addCapabilities(Capability.CAPABILITY_CONTROLLER))
+                .build(),
+        )
+        peer.receive(
+            controlEnvelope(2)
+                .setSessionAccepted(
+                    sessionAccepted().addNegotiatedCapabilities(Capability.CAPABILITY_CONTROLLER),
+                ).build(),
+        )
+        val sentBeforeAck = peer.control.size
+
+        peer.receive(
+            controlEnvelope(3)
+                .setInputAck(InputAck.newBuilder().setInputId(1).setAccepted(true))
+                .build(),
+        )
+        peer.receive(controlEnvelope(4).setPing(Ping.newBuilder().setSequence(99)).build())
+
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertEquals(0, peer.closeCalls)
+        assertTrue(callbacks.failures.isEmpty())
+        assertEquals(sentBeforeAck + 1, peer.control.size)
+        val pong = Envelope.parseFrom(peer.control.last())
+        assertEquals(Envelope.PayloadCase.PONG, pong.payloadCase)
+        assertEquals(4L, pong.correlationId)
+        assertEquals(99L, pong.pong.sequence)
+    }
+
     @Test
     fun structuralHevcRejectionIsSentBeforeOwnerFailsAndCloses() {
         val events = mutableListOf<String>()
@@ -252,6 +322,40 @@ class InternetProductSessionTest {
         session.close()
         assertEquals(1, peer.closeCalls)
         assertEquals(1, monitor.closeCalls)
+    }
+
+    @Test
+    fun controllerOptInNegotiatesTheCapabilityAdvertisedByThisCodecInstance() {
+        val peer = ProductFakePeerEngine()
+        val callbacks = ProductCallbacks()
+        val controllerCodec =
+            ProtobufProtocolV1ProductCodec(
+                localDeviceId = "device-1",
+                deviceName = "Android",
+                supportedCodecs = setOf(ProductVideoCodec.HEVC),
+                advertiseController = true,
+                monotonicNanos = { 1 },
+            )
+        val session = session(peer, ProductFakeNetworkMonitor(), callbacks, codec = controllerCodec)
+        session.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+
+        val clientHello = Envelope.parseFrom(peer.control.single()).clientHello
+        assertTrue(clientHello.capabilitiesList.contains(Capability.CAPABILITY_CONTROLLER))
+        peer.receive(
+            controlEnvelope(1)
+                .setHostHello(hostHello().addCapabilities(Capability.CAPABILITY_CONTROLLER))
+                .build(),
+        )
+        peer.receive(
+            controlEnvelope(2)
+                .setSessionAccepted(
+                    sessionAccepted().addNegotiatedCapabilities(Capability.CAPABILITY_CONTROLLER),
+                ).build(),
+        )
+
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(callbacks.failures.isEmpty())
     }
 
     @Test
@@ -1579,6 +1683,7 @@ class InternetProductSessionTest {
         testHooks: InternetProductSessionTestHooks = InternetProductSessionTestHooks(),
         revocationCoordinator: InternetProductRevocationCoordinator = InternetProductRevocationCoordinator(),
         revocationStore: InternetProductRevocationStore = ProductRevocationStore(),
+        codec: ProtocolV1ProductCodec = this.codec,
     ) = InternetProductSession(
         lease = lease,
         configuration =

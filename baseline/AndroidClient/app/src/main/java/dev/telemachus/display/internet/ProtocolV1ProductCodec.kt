@@ -2,6 +2,8 @@ package dev.telemachus.display.internet
 
 import com.google.protobuf.ByteString
 import com.google.protobuf.InvalidProtocolBufferException
+import dev.telemachus.display.ControllerEventKind
+import dev.telemachus.display.ControllerStateSample
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClientHello
 import dev.vibescreen.protocol.v1.Codec
@@ -160,6 +162,16 @@ sealed class ProductControlMessage {
     data class VideoConfiguration(val value: ProductVideoConfiguration) : ProductControlMessage()
 
     data class Pong(val sequence: Long) : ProductControlMessage()
+    data class InputAck(
+        val inputId: Long,
+        val accepted: Boolean,
+        val rejectionReason: String,
+    ) : ProductControlMessage() {
+        init {
+            require(inputId > 0) { "Input acknowledgement identifier must be positive" }
+            require(accepted || rejectionReason.isNotBlank()) { "Rejected input acknowledgement requires a reason" }
+        }
+    }
 
     data class Ping(val sequence: Long) : ProductControlMessage()
 
@@ -179,8 +191,9 @@ data class DecodedProductControl(
     val message: ProductControlMessage,
 )
 
-interface ProtocolV1ProductCodec {
+internal interface ProtocolV1ProductCodec {
     val localDeviceId: String
+    val offeredCapabilities: Set<Capability>
 
     fun encodeClientHello(messageId: Long, sessionId: ByteArray, sessionEpoch: Long): ByteArray
 
@@ -192,6 +205,14 @@ interface ProtocolV1ProductCodec {
         sessionEpoch: Long,
         streamId: Long,
         event: ProductStylusEvent,
+    ): ByteArray
+    fun encodeController(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        streamId: Long,
+        inputId: Long,
+        sample: ControllerStateSample,
     ): ByteArray
 
     fun encodeKeyframeRequest(messageId: Long, sessionId: ByteArray, sessionEpoch: Long, streamId: Long, reason: String): ByteArray
@@ -221,12 +242,19 @@ interface ProtocolV1ProductCodec {
 }
 
 /** Generated-lite Protocol v1 adapter; schemas are consumed directly from contracts/proto at build time. */
-class ProtobufProtocolV1ProductCodec(
+internal class ProtobufProtocolV1ProductCodec(
     override val localDeviceId: String,
     private val deviceName: String,
     private val supportedCodecs: Set<ProductVideoCodec>,
+    private val advertiseController: Boolean = false,
     private val monotonicNanos: () -> Long = System::nanoTime,
 ) : ProtocolV1ProductCodec {
+    override val offeredCapabilities: Set<Capability> =
+        buildSet {
+            addAll(OFFERED_CLIENT_CAPABILITIES)
+            if (advertiseController) add(Capability.CAPABILITY_CONTROLLER)
+        }
+
     init {
         require(localDeviceId.isNotBlank() && deviceName.isNotBlank()) { "Device identity is required" }
         require(supportedCodecs.isNotEmpty()) { "At least one decoder codec is required" }
@@ -239,7 +267,7 @@ class ProtobufProtocolV1ProductCodec(
                 .setSupportedProtocols(ProtocolRange.newBuilder().setMinimum(PROTOCOL_VERSION).setMaximum(PROTOCOL_VERSION))
                 .setDeviceId(localDeviceId)
                 .setDeviceName(deviceName)
-                .addAllCapabilities(OFFERED_CLIENT_CAPABILITIES)
+                .addAllCapabilities(offeredCapabilities)
                 .addAllRequiredCapabilities(REQUIRED_CLIENT_CAPABILITIES)
                 .addAllCodecs(supportedCodecs.map { it.toProto() })
                 .addTransports(TransportKind.TRANSPORT_KIND_INTERNET)
@@ -297,6 +325,36 @@ class ProtobufProtocolV1ProductCodec(
         }
         val stylus = builder.build()
         return envelope(messageId, sessionId, sessionEpoch).setStylusEvent(stylus).build().toByteArray()
+    }
+
+    override fun encodeController(
+        messageId: Long,
+        sessionId: ByteArray,
+        sessionEpoch: Long,
+        streamId: Long,
+        inputId: Long,
+        sample: ControllerStateSample,
+    ): ByteArray {
+        require(streamId > 0 && inputId > 0)
+        val controller =
+            dev.vibescreen.protocol.v1.ControllerEvent
+                .newBuilder()
+                .setInputId(inputId)
+                .setControllerId(sample.controllerId)
+                .setControllerEpoch(sample.controllerEpoch)
+                .setKind(sample.kind.toProto())
+                .setButtonMask(sample.buttonMask)
+                .setLeftStickX(sample.axes.leftX)
+                .setLeftStickY(sample.axes.leftY)
+                .setRightStickX(sample.axes.rightX)
+                .setRightStickY(sample.axes.rightY)
+                .setLeftTrigger(sample.axes.leftTrigger)
+                .setRightTrigger(sample.axes.rightTrigger)
+                .setHatX(sample.axes.hatX)
+                .setHatY(sample.axes.hatY)
+                .setTarget(dev.vibescreen.protocol.v1.InputTarget.newBuilder().setStreamId(streamId))
+                .build()
+        return envelope(messageId, sessionId, sessionEpoch).setControllerEvent(controller).build().toByteArray()
     }
 
     override fun encodeKeyframeRequest(
@@ -391,6 +449,10 @@ class ProtobufProtocolV1ProductCodec(
                 }
                 Envelope.PayloadCase.VIDEO_CONFIG -> ProductControlMessage.VideoConfiguration(envelope.videoConfig.toProduct())
                 Envelope.PayloadCase.PONG -> ProductControlMessage.Pong(envelope.pong.sequence)
+                Envelope.PayloadCase.INPUT_ACK -> {
+                    val value = envelope.inputAck
+                    ProductControlMessage.InputAck(value.inputId, value.accepted, value.rejectionReason)
+                }
                 Envelope.PayloadCase.PING -> ProductControlMessage.Ping(envelope.ping.sequence)
                 Envelope.PayloadCase.DISCONNECT_NOTICE -> {
                     val value = envelope.disconnectNotice
@@ -515,6 +577,13 @@ class ProtobufProtocolV1ProductCodec(
             ProductInputPhase.CHANGED -> InputPhase.INPUT_PHASE_CHANGED
             ProductInputPhase.ENDED -> InputPhase.INPUT_PHASE_ENDED
             ProductInputPhase.CANCELLED -> InputPhase.INPUT_PHASE_CANCELLED
+        }
+
+    private fun ControllerEventKind.toProto(): dev.vibescreen.protocol.v1.ControllerEventKind =
+        when (this) {
+            ControllerEventKind.CONNECTED -> dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED
+            ControllerEventKind.STATE -> dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE
+            ControllerEventKind.DISCONNECTED -> dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED
         }
 
     companion object {

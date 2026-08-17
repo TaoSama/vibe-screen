@@ -552,6 +552,20 @@ class InternetProductSession internal constructor(
             }
             is ProductControlMessage.VideoConfiguration -> handleVideoConfiguration(owner, message.value)
             is ProductControlMessage.Pong -> notifyPongIfOwned(owner, message.sequence)
+            is ProductControlMessage.InputAck -> {
+                val controllerWasNegotiated =
+                    synchronized(lock) {
+                        acceptsTransportCallbackLocked(owner) &&
+                            acceptedSession &&
+                            Capability.CAPABILITY_CONTROLLER in expectedNegotiatedCapabilities
+                    }
+                if (!controllerWasNegotiated) {
+                    failIfOwned(
+                        owner,
+                        IllegalStateException("Controller input acknowledgement arrived without a negotiated controller session"),
+                    )
+                }
+            }
             is ProductControlMessage.Ping -> {
                 val response =
                     codec.encodePong(
@@ -630,8 +644,7 @@ class InternetProductSession internal constructor(
         message: ProductControlMessage.HostHello,
     ) {
         val required = ProtobufProtocolV1ProductCodec.REQUIRED_CLIENT_CAPABILITIES.toSet()
-        val expectedCapabilities =
-            message.capabilities.intersect(ProtobufProtocolV1ProductCodec.OFFERED_CLIENT_CAPABILITIES.toSet())
+        val expectedCapabilities = message.capabilities.intersect(codec.offeredCapabilities)
         if (
             message.hostId != lease.pinnedHostId ||
             message.selectedProtocol != ProtobufProtocolV1ProductCodec.PROTOCOL_VERSION ||
@@ -1256,7 +1269,7 @@ class InternetProductSession internal constructor(
         private const val MAX_HEARTBEAT_INTERVAL_MS = 60_000L
         private const val MEDIA_KEYFRAME_REASON_INVALID_FRAGMENT = "invalid_media_fragment"
         private const val VIDEO_CONFIGURATION_TIMEOUT_MS = 5_000L
-        fun create(
+        internal fun create(
             storedSessionFactory: AndroidStoredInternetSessionFactory,
             localDeviceId: String,
             lease: InternetProductSessionLease,

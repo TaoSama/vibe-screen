@@ -97,6 +97,7 @@ class StreamClient(
     private val videoConfigurationCommitTimeoutMs: Long = VIDEO_CONFIGURATION_COMMIT_TIMEOUT_MS,
     private val videoConfigurationTimeoutExecutor: ScheduledExecutorService = VIDEO_CONFIGURATION_TIMEOUT_EXECUTOR,
     private val terminationExecutor: Executor = SESSION_TERMINATION_EXECUTOR,
+    private val advertiseController: Boolean = false,
 ) {
     internal val actualPort: Int = port
     private val transportOwner = StreamTransportOwner<SocketStreamTransportConnection>()
@@ -579,6 +580,7 @@ class StreamClient(
                         StreamCodec.H264 -> Codec.CODEC_H264
                     }
                 },
+            advertiseController = advertiseController,
         )
 
     private fun configureLegacyMode(firstByte: Int? = null) {
@@ -1611,6 +1613,9 @@ class StreamClient(
                            onLatencyMeasured?.invoke((System.nanoTime() - lastV1PingSentNs) / 1_000_000.0)
                        }
                    }
+                    is ProtocolV1Session.Action.ControllerInputAck -> {
+                        Unit
+                    }
                     is ProtocolV1Session.Action.HostActionsAvailable -> {
                         val options =
                             action.actions.map {
@@ -1775,6 +1780,7 @@ class StreamClient(
                 }
                is ProtocolV1Session.Action.VideoConfigurationRequested,
                is ProtocolV1Session.Action.PongReceived,
+               is ProtocolV1Session.Action.ControllerInputAck,
                is ProtocolV1Session.Action.Disconnected,
                is ProtocolV1Session.Action.DisplaysAvailable,
                 is ProtocolV1Session.Action.HostActionsAvailable,

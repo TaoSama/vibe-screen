@@ -6,12 +6,15 @@ import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.HostHello
+import dev.vibescreen.protocol.v1.InputAck
 import dev.vibescreen.protocol.v1.MediaPacketHeader
+import dev.vibescreen.protocol.v1.Ping
 import dev.vibescreen.protocol.v1.SessionRejected
 import dev.vibescreen.protocol.v1.SessionAccepted
 import com.google.protobuf.ByteString
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
@@ -130,6 +133,116 @@ class StreamClientProtocolFailureTest {
             rawFrame = byteArrayOf(ProtocolChannel.CONTROL.wireValue.toByte(), 0, 0),
             expectedReason = "invalid_frame",
         )
+
+    @Test
+    fun negotiatedControllerInputAckWithoutSenderIsNoOpAndConnectionContinues() =
+        runProtocolTest { serverDispatcher ->
+            ServerSocket(0).use { server ->
+                val serverReady = CountDownLatch(1)
+                val pongReceived = CountDownLatch(1)
+                val disconnectRequested = CountDownLatch(1)
+                val sessionEnded = CountDownLatch(1)
+                val sessionId = ByteString.copyFrom(ByteArray(16) { 1 })
+                val serverJob =
+                    async(serverDispatcher) {
+                        serverReady.countDown()
+                        server.accept().use { peer ->
+                            assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
+                            peer.getOutputStream().write(byteArrayOf(PROTOCOL_UPGRADE_BYTE.toByte(), 1))
+                            peer.getOutputStream().flush()
+                            val clientHello = Envelope.parseFrom(ProtocolV1Framing.read(peer.getInputStream()).payload)
+                            assertTrue(clientHello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_CONTROLLER))
+                            write(
+                                peer,
+                                Envelope
+                                    .newBuilder()
+                                    .setProtocolVersion(1)
+                                    .setMessageId(1)
+                                    .setHostHello(
+                                        HostHello
+                                            .newBuilder()
+                                            .setSelectedProtocol(1)
+                                            .addCapabilities(Capability.CAPABILITY_CONTROLLER)
+                                            .addCodecs(Codec.CODEC_HEVC),
+                                    ).build(),
+                            )
+                            write(
+                                peer,
+                                Envelope
+                                    .newBuilder()
+                                    .setProtocolVersion(1)
+                                    .setMessageId(2)
+                                    .setSessionAccepted(
+                                        SessionAccepted
+                                            .newBuilder()
+                                            .setSessionId(sessionId)
+                                            .setSessionEpoch(1)
+                                            .addNegotiatedCapabilities(Capability.CAPABILITY_CONTROLLER),
+                                    ).build(),
+                            )
+                            val displayRequest = ProtocolV1Framing.read(peer.getInputStream())
+                            assertEquals(
+                                Envelope.PayloadCase.LIST_DISPLAYS_REQUEST,
+                                Envelope.parseFrom(displayRequest.payload).payloadCase,
+                            )
+                            write(
+                                peer,
+                                Envelope
+                                    .newBuilder()
+                                    .setProtocolVersion(1)
+                                    .setMessageId(3)
+                                    .setSessionId(sessionId)
+                                    .setSessionEpoch(1)
+                                    .setInputAck(InputAck.newBuilder().setInputId(1).setAccepted(true))
+                                    .build(),
+                            )
+                            write(
+                                peer,
+                                Envelope
+                                    .newBuilder()
+                                    .setProtocolVersion(1)
+                                    .setMessageId(4)
+                                    .setSessionId(sessionId)
+                                    .setSessionEpoch(1)
+                                    .setPing(Ping.newBuilder().setSequence(99))
+                                    .build(),
+                            )
+                            val pong = Envelope.parseFrom(ProtocolV1Framing.read(peer.getInputStream()).payload)
+                            assertEquals(Envelope.PayloadCase.PONG, pong.payloadCase)
+                            assertEquals(4L, pong.correlationId)
+                            assertEquals(99L, pong.pong.sequence)
+                            pongReceived.countDown()
+                            assertTrue(disconnectRequested.await(1, TimeUnit.SECONDS))
+                        }
+                    }
+                val reconnect = CountDownLatch(1)
+                var reportedFailure: SessionFailure? = null
+                val client =
+                    StreamClient(
+                        host = "127.0.0.1",
+                        port = server.localPort,
+                        advertiseController = true,
+                    )
+                client.onSessionEnded = { failure ->
+                    reportedFailure = failure
+                    sessionEnded.countDown()
+                }
+                client.onReconnectSuggested = { reconnect.countDown() }
+
+                assertTrue("fake protocol server did not start", serverReady.await(1, TimeUnit.SECONDS))
+                val connectJob = async(Dispatchers.IO) { runCatching { withTimeout(TEST_OPERATION_TIMEOUT_MS) { client.connect() } } }
+                assertTrue("client did not answer Ping after InputAck", pongReceived.await(1, TimeUnit.SECONDS))
+                assertEquals(null, reportedFailure)
+                client.disconnect()
+                disconnectRequested.countDown()
+                withTimeout(TEST_OPERATION_TIMEOUT_MS) { serverJob.await() }
+                val connectResult = withTimeout(TEST_OPERATION_TIMEOUT_MS) { connectJob.await() }
+                assertTrue(sessionEnded.await(1, TimeUnit.SECONDS))
+                assertEquals(SessionFailureKind.USER_REQUESTED, checkNotNull(reportedFailure).kind)
+                assertFalse(reconnect.await(200, TimeUnit.MILLISECONDS))
+                assertTrue("intentional disconnect failed", connectResult.isSuccess)
+            }
+        }
 
     private fun runMalformedPeerFrame(
         payload: ByteArray? = null,
