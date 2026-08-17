@@ -164,6 +164,23 @@ test('negotiated capabilities must be a legal subset and gate optional input', (
   assert.throws(() => session.receive(fixture('session_accepted.binpb'), 3n), /invalid negotiated/);
 });
 
+test('controller capability 26 remains model-only until production input is implemented', () => {
+  assert.equal(Capability.CONTROLLER, 26);
+  assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.CONTROLLER), false);
+});
+
+test('controller capability has no additional capability dependency', () => {
+  assert.doesNotThrow(() => new ClientCapabilities(
+    [Capability.TOUCH, Capability.CONTROLLER], [Capability.TOUCH]));
+});
+
+test('controller negotiation rejects a capability the client did not offer', () => {
+  const capabilities = new ClientCapabilities([Capability.TOUCH], [Capability.TOUCH]);
+  capabilities.acceptHost([Capability.TOUCH, Capability.CONTROLLER]);
+  assert.throws(() => capabilities.acceptNegotiated(
+    [Capability.TOUCH, Capability.CONTROLLER]), /invalid negotiated capability set/);
+});
+
 test('USB HID modifier capability 27 preserves standard and legacy layouts', () => {
   assert.equal(Capability.USB_HID_MODIFIER_BYTE, 27);
   assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.USB_HID_MODIFIER_BYTE), true);
