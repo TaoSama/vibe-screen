@@ -1,0 +1,25 @@
+source=privacy-safe projection of app-private diagnostic
+raw_source_committed=false
+device=nubia P0110 / pacific / Android 16
+hardware_serial=[redacted]
+surface_pixels=1264x2800
+device_health=battery_100 charging_true saver_false thermal_nominal
+foreground_connected=false
+
+observation_result=blocked
+first_to_last_transport_closed_seconds=108.453
+session_ended_transport_closed_retryable=72
+protocol_v1_entries=0
+decoder_entries=0
+first_output_frame_entries=0
+fatal_entries=0
+
+visible_state=Waiting for your Mac
+interpretation=Host never listened because Screen Recording permission was denied
+reconnect_claim=false
+media_claim=false
+
+The 72 retryable transport endings are initial connection attempts without a
+successful session. They do not demonstrate disconnect recovery or reconnect.
+No raw logcat, UI XML, endpoint, hardware identifier, credential, or captured Mac
+content is included in this projection.
