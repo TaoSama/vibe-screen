@@ -140,32 +140,94 @@ def parse_vmmap_summary(text: str) -> VMMapSnapshot:
     physical_match = _VM_PHYSICAL_PATTERN.search(text)
     if physical_match is None:
         raise MemoryToolParseError("vmmap summary has no physical footprint")
-    marker = text.find("MALLOC ZONE")
-    if marker < 0:
+    lines = text.splitlines()
+    header_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if line.lstrip().startswith("MALLOC ZONE")
+            and "ALLOCATED" in line
+            and "FRAG SIZE" in line
+        ),
+        None,
+    )
+    if header_index is None:
         raise MemoryToolParseError("vmmap summary has no malloc-zone table")
 
-    dirty = 0
-    allocated = 0
-    fragmentation = 0
-    zone_count = 0
-    for line in text[marker:].splitlines():
+    rows: list[re.Match[str]] = []
+    for line in lines[header_index + 1 :]:
         match = _VM_ZONE_ROW_PATTERN.match(line)
-        if match is None:
+        if match is not None:
+            if match.group("name") == "TOTAL" and _is_vmmap_total(match, rows):
+                break
+            rows.append(match)
             continue
-        if match.group("name") == "TOTAL":
-            continue
-        dirty += parse_size_bytes(match.group("dirty"))
-        allocated += parse_size_bytes(match.group("allocated"))
-        fragmentation += parse_size_bytes(match.group("fragmentation"))
-        zone_count += 1
-    if zone_count == 0:
+        if rows:
+            if not line.strip() or not set(line.strip()) <= {"=", "-"}:
+                break
+
+    if not rows:
         raise MemoryToolParseError("vmmap summary has no parseable malloc zones")
     return VMMapSnapshot(
         physical_footprint_bytes=parse_size_bytes(physical_match.group("size")),
-        malloc_zone_dirty_bytes=dirty,
-        malloc_zone_allocated_bytes=allocated,
-        malloc_zone_fragmentation_bytes=fragmentation,
+        malloc_zone_dirty_bytes=sum(
+            parse_size_bytes(match.group("dirty")) for match in rows
+        ),
+        malloc_zone_allocated_bytes=sum(
+            parse_size_bytes(match.group("allocated")) for match in rows
+        ),
+        malloc_zone_fragmentation_bytes=sum(
+            parse_size_bytes(match.group("fragmentation")) for match in rows
+        ),
     )
+
+
+def _is_vmmap_total(
+    candidate: re.Match[str], rows: list[re.Match[str]]
+) -> bool:
+    if not rows:
+        return False
+    integer_fields = ("count", "regions")
+    integers_match = all(
+        int(candidate.group(field).replace(",", ""))
+        == sum(int(row.group(field).replace(",", "")) for row in rows)
+        for field in integer_fields
+    )
+    size_fields = (
+        "virtual",
+        "resident",
+        "dirty",
+        "swapped",
+        "allocated",
+        "fragmentation",
+    )
+    return integers_match and all(
+        _size_ranges_overlap(candidate.group(field), rows, field)
+        for field in size_fields
+    )
+
+
+def _size_ranges_overlap(
+    candidate: str, rows: list[re.Match[str]], field: str
+) -> bool:
+    candidate_low, candidate_high = _displayed_size_range(candidate)
+    row_ranges = [_displayed_size_range(row.group(field)) for row in rows]
+    row_low = sum(bounds[0] for bounds in row_ranges)
+    row_high = sum(bounds[1] for bounds in row_ranges)
+    return candidate_high >= row_low and row_high >= candidate_low
+
+
+def _displayed_size_range(raw_value: str) -> tuple[float, float]:
+    value = raw_value.strip().replace(",", "").upper()
+    match = _SIZE_PATTERN.fullmatch(value)
+    if match is None:
+        raise MemoryToolParseError(f"unsupported memory size: {raw_value!r}")
+    digits = match.group("value")
+    decimal_places = len(digits.partition(".")[2])
+    multiplier = _SIZE_MULTIPLIERS[match.group("unit")]
+    center = float(digits) * multiplier
+    half_step = multiplier * (10**-decimal_places) / 2
+    return max(0.0, center - half_step), center + half_step
 
 
 def parse_heap_summary(text: str) -> HeapSnapshot:

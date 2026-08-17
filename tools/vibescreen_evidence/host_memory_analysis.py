@@ -8,6 +8,8 @@ import math
 from statistics import median
 from typing import Any
 
+from .soak_public_report import EvidenceInputError
+
 
 ATTRIBUTIONS = {"retained_growth", "allocator_high_water", "inconclusive"}
 VERDICTS = {"pass", "fail", "insufficient"}
@@ -203,53 +205,78 @@ def _analyze_telemetry(
     stream_records: list[dict[str, Any]] = []
     stream_timestamps: list[datetime] = []
     session_epochs: set[int] = set()
+    total_stream_stats = 0
+    out_of_window_records = 0
     invalid_records = 0
+    required = ("queue_depth", "queue_capacity", "fps")
+    optional = ("encoder_in_flight", "encoder_in_flight_capacity")
+    missing_required_fields: set[str] = set()
+    missing_optional_fields: set[str] = set()
+    values: dict[str, list[float]] = {
+        key: [] for key in (*required, *optional)
+    }
     for record in records:
         if record.get("event") != "stream_stats":
             continue
+        total_stream_stats += 1
         try:
             timestamp = _parse_time(record.get("wall_time"))
         except (TypeError, ValueError):
             invalid_records += 1
             continue
-        if started_at <= timestamp <= finished_at:
-            stream_records.append(record)
-            stream_timestamps.append(timestamp)
-            monotonic_ns = record.get("monotonic_ns")
-            if (
-                record.get("schema_version") != 1
-                or isinstance(monotonic_ns, bool)
-                or not isinstance(monotonic_ns, int)
-                or monotonic_ns < 0
-            ):
-                invalid_records += 1
-            session_epoch = record.get("session_epoch")
-            if (
-                isinstance(session_epoch, bool)
-                or not isinstance(session_epoch, int)
-                or session_epoch < 1
-            ):
-                invalid_records += 1
-            else:
-                session_epochs.add(session_epoch)
-    stream_timestamps.sort()
-
-    values: dict[str, list[float]] = {
-        "queue_depth": [],
-        "queue_capacity": [],
-        "encoder_in_flight": [],
-        "encoder_in_flight_capacity": [],
-        "fps": [],
-    }
-    for record in stream_records:
-        attributes = record.get("attributes")
-        if not isinstance(attributes, dict):
+        schema_version = record.get("schema_version")
+        monotonic_ns = record.get("monotonic_ns")
+        session_epoch = record.get("session_epoch")
+        if (
+            isinstance(schema_version, bool)
+            or not isinstance(schema_version, int)
+            or schema_version != 1
+            or isinstance(monotonic_ns, bool)
+            or not isinstance(monotonic_ns, int)
+            or monotonic_ns < 0
+            or isinstance(session_epoch, bool)
+            or not isinstance(session_epoch, int)
+            or session_epoch < 1
+        ):
             invalid_records += 1
             continue
-        for key in values:
+        attributes = record.get("attributes")
+        if not isinstance(attributes, dict):
+            missing_required_fields.update(required)
+            missing_optional_fields.update(optional)
+            invalid_records += 1
+            continue
+        normalized: dict[str, float] = {}
+        invalid_fields = False
+        for key in required:
             value = _number(attributes.get(key))
-            if value is not None:
-                values[key].append(value)
+            if value is None:
+                missing_required_fields.add(key)
+                invalid_fields = True
+            else:
+                normalized[key] = value
+        for key in optional:
+            if key not in attributes:
+                missing_optional_fields.add(key)
+                continue
+            value = _number(attributes.get(key))
+            if value is None:
+                missing_optional_fields.add(key)
+                invalid_fields = True
+            else:
+                normalized[key] = value
+        if invalid_fields:
+            invalid_records += 1
+            continue
+        if not started_at <= timestamp <= finished_at:
+            out_of_window_records += 1
+            continue
+        stream_records.append(record)
+        stream_timestamps.append(timestamp)
+        session_epochs.add(session_epoch)
+        for key, value in normalized.items():
+            values[key].append(value)
+    stream_timestamps.sort()
 
     anomalies: list[str] = []
     if (
@@ -272,8 +299,6 @@ def _analyze_telemetry(
         anomalies.append("VideoToolbox in-flight count exceeded its advertised capacity")
     if values["fps"] and min(values["fps"]) <= 0:
         anomalies.append("stream_stats reported non-positive FPS")
-    required = ("queue_depth", "queue_capacity", "fps")
-    optional = ("encoder_in_flight", "encoder_in_flight_capacity")
     start_gap = (stream_timestamps[0] - started_at).total_seconds() if stream_timestamps else None
     finish_gap = (finished_at - stream_timestamps[-1]).total_seconds() if stream_timestamps else None
     internal_gaps = [
@@ -289,16 +314,18 @@ def _analyze_telemetry(
         and 0 <= finish_gap <= MAXIMUM_TELEMETRY_BOUNDARY_GAP_SECONDS
         and maximum_internal_gap <= MAXIMUM_TELEMETRY_INTERNAL_GAP_SECONDS
     )
-    missing_required_fields = [
-        key for key in required if len(values[key]) != len(stream_records)
-    ]
+    admitted_record_count = len(stream_records)
+    if total_stream_stats != (
+        admitted_record_count + out_of_window_records + invalid_records
+    ):
+        raise EvidenceInputError("host memory diagnostic: telemetry counts disagree")
     return {
-        "stream_stats_count": len(stream_records),
+        "total_stream_stats_count": total_stream_stats,
+        "stream_stats_count": admitted_record_count,
+        "out_of_window_record_count": out_of_window_records,
         "invalid_record_count": invalid_records,
-        "missing_required_fields": missing_required_fields,
-        "missing_optional_fields": [
-            key for key in optional if len(values[key]) != len(stream_records)
-        ],
+        "missing_required_fields": sorted(missing_required_fields),
+        "missing_optional_fields": sorted(missing_optional_fields),
         "session_epochs": sorted(session_epochs),
         "single_session": len(session_epochs) == 1,
         "start_boundary_gap_seconds": start_gap,
@@ -322,6 +349,17 @@ def _analyze_telemetry(
         ),
         "anomalies": anomalies,
     }
+
+
+def _validate_final_state(attribution: str, verdict: str) -> None:
+    if attribution not in ATTRIBUTIONS:
+        raise EvidenceInputError(
+            f"host memory diagnostic: invalid attribution {attribution!r}"
+        )
+    if verdict not in VERDICTS:
+        raise EvidenceInputError(
+            f"host memory diagnostic: invalid verdict {verdict!r}"
+        )
 
 
 def analyze_records(
@@ -357,6 +395,7 @@ def analyze_records(
         right - left for left, right in pairwise(sorted(elapsed_values))
     ]
     sufficiency = {
+        "collection_complete": bool(records),
         "duration": sampled_duration >= MINIMUM_DURATION_SECONDS,
         "memory_samples": len(records) >= MINIMUM_LIGHTWEIGHT_SAMPLE_COUNT,
         "memory_window_coverage": (
@@ -373,7 +412,7 @@ def analyze_records(
             and min(heap_elapsed) <= MAXIMUM_BOUNDARY_GAP_SECONDS
             and max(heap_elapsed) >= sampled_duration * 0.98
         ),
-        "error_free": not errors,
+        "error_free": bool(records) and not errors,
     }
 
     metrics: dict[str, Any] = {}
@@ -387,7 +426,9 @@ def analyze_records(
     )
     for field in memory_fields:
         points = _series(records, field, section="memory")
-        sufficiency[f"{field}_complete"] = len(points) == len(records)
+        sufficiency[f"{field}_complete"] = (
+            bool(records) and len(points) == len(records)
+        )
         if len(points) >= 2:
             metrics[field] = _trend(points)
     for field in ("malloc_large_dirty_bytes", "iosurface_dirty_bytes"):
@@ -401,7 +442,9 @@ def analyze_records(
         metrics["vmmap_physical_footprint_bytes"] = _trend(vmmap_footprint)
     for field in ("node_count", "allocated_bytes"):
         points = _series(records, field, section="heap")
-        sufficiency[f"heap_{field}_complete"] = len(points) == len(heap_elapsed)
+        sufficiency[f"heap_{field}_complete"] = (
+            bool(heap_elapsed) and len(points) == len(heap_elapsed)
+        )
         if len(points) >= 2:
             metrics[f"heap_{field}"] = _trend(points)
     metrics["heap_class_growth"] = _heap_class_growth(records)
@@ -471,8 +514,7 @@ def analyze_records(
     elif telemetry["anomalies"]:
         verdict = "fail"
 
-    assert attribution in ATTRIBUTIONS
-    assert verdict in VERDICTS
+    _validate_final_state(attribution, verdict)
     return {
         "verdict": verdict,
         "attribution": attribution,
