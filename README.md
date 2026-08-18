@@ -380,9 +380,9 @@ fixed-binary device rerun remains open; see the
 - Harden window migration/return, disconnect recovery, automatic reconnect,
   permission onboarding, and actionable errors across supported system states.
 - Validate sustained operation on the active Android acceptance device. Xiaomi
-  13/fuxi remains a named evidence source, while Nubia P0110/pacific may
-  substitute for general Android sustained-operation checks when the evidence is
-  labeled with its real identity.
+  13/fuxi remains a named evidence source, while Nubia P0110/pacific and other
+  qualifying Android devices may substitute for general Android
+  sustained-operation checks when the evidence records their real identity.
 
 Initial targets are stable 1920×1080 or 1920×1200 at 60 FPS, sub-50 ms USB
 glass-to-glass latency, sub-80 ms on a healthy LAN, sub-50 ms P95 input latency,
