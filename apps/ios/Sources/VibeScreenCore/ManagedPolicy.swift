@@ -111,7 +111,7 @@ public struct ManagedPolicy: Equatable, Sendable {
             customGesturesAllowed: remoteStatus.customGesturesAllowed,
             hostActionsAllowed: remoteStatus.hostActionsAllowed,
             maximumFileBytes: remoteStatus.maximumFileBytes,
-            allowedHosts: []
+            allowedHosts: Set(remoteStatus.allowedHosts.filter { !$0.isEmpty })
         )
     }
 
@@ -125,6 +125,7 @@ public struct ManagedPolicy: Equatable, Sendable {
         status.customGesturesAllowed = customGesturesAllowed
         status.hostActionsAllowed = hostActionsAllowed
         status.maximumFileBytes = maximumFileBytes
+        status.allowedHosts = allowedHosts.sorted()
         return status
     }
 

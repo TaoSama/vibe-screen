@@ -11,28 +11,166 @@ struct ProtocolV1DisplayInfo: Equatable {
     let isVirtual: Bool
 }
 
+struct ManagedPolicy: Equatable {
+    static let defaultMaximumFileBytes: UInt64 = 512 * 1_024 * 1_024
+    static let defaultMaximumAudioStreams: UInt32 = 1
+    static let defaultMaximumClipboardBytes: UInt64 = 1 * 1_024 * 1_024
+    static let defaultMaximumFileChunkBytes: UInt32 = 64 * 1_024
+
+    let isManaged: Bool
+    let clipboardAllowed: Bool
+    let fileTransferAllowed: Bool
+    let audioAllowed: Bool
+    let wakeAllowed: Bool
+    let customGesturesAllowed: Bool
+    let hostActionsAllowed: Bool
+    let maximumFileBytes: UInt64
+    let allowedHosts: Set<String>
+
+    static let unmanaged = ManagedPolicy(
+        isManaged: false,
+        clipboardAllowed: true,
+        fileTransferAllowed: true,
+        audioAllowed: true,
+        wakeAllowed: true,
+        customGesturesAllowed: true,
+        hostActionsAllowed: true,
+        maximumFileBytes: defaultMaximumFileBytes,
+        allowedHosts: []
+    )
+
+    init(
+        isManaged: Bool,
+        clipboardAllowed: Bool,
+        fileTransferAllowed: Bool,
+        audioAllowed: Bool,
+        wakeAllowed: Bool,
+        customGesturesAllowed: Bool,
+        hostActionsAllowed: Bool,
+        maximumFileBytes: UInt64,
+        allowedHosts: Set<String>
+    ) {
+        self.isManaged = isManaged
+        self.clipboardAllowed = clipboardAllowed
+        self.fileTransferAllowed = fileTransferAllowed
+        self.audioAllowed = audioAllowed
+        self.wakeAllowed = wakeAllowed
+        self.customGesturesAllowed = customGesturesAllowed
+        self.hostActionsAllowed = hostActionsAllowed
+        self.maximumFileBytes = maximumFileBytes
+        self.allowedHosts = allowedHosts
+    }
+
+    init(remoteStatus: VSManagedPolicyStatus) {
+        guard remoteStatus.managed else {
+            self = .unmanaged
+            return
+        }
+        self.init(
+            isManaged: true,
+            clipboardAllowed: remoteStatus.clipboardAllowed,
+            fileTransferAllowed: remoteStatus.fileTransferAllowed,
+            audioAllowed: remoteStatus.audioAllowed,
+            wakeAllowed: remoteStatus.wakeAllowed,
+            customGesturesAllowed: remoteStatus.customGesturesAllowed,
+            hostActionsAllowed: remoteStatus.hostActionsAllowed,
+            maximumFileBytes: remoteStatus.maximumFileBytes,
+            allowedHosts: Set(remoteStatus.allowedHosts.filter { !$0.isEmpty })
+        )
+    }
+
+    var protocolStatus: VSManagedPolicyStatus {
+        var status = VSManagedPolicyStatus()
+        status.managed = isManaged
+        status.clipboardAllowed = clipboardAllowed
+        status.fileTransferAllowed = fileTransferAllowed
+        status.audioAllowed = audioAllowed
+        status.wakeAllowed = wakeAllowed
+        status.customGesturesAllowed = customGesturesAllowed
+        status.hostActionsAllowed = hostActionsAllowed
+        status.maximumFileBytes = maximumFileBytes
+        status.allowedHosts = allowedHosts.sorted()
+        return status
+    }
+
+    func applying(remote: ManagedPolicy) -> ManagedPolicy {
+        guard remote.isManaged else { return self }
+        return ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: clipboardAllowed && remote.clipboardAllowed,
+            fileTransferAllowed: fileTransferAllowed && remote.fileTransferAllowed,
+            audioAllowed: audioAllowed && remote.audioAllowed,
+            wakeAllowed: wakeAllowed && remote.wakeAllowed,
+            customGesturesAllowed: customGesturesAllowed && remote.customGesturesAllowed,
+            hostActionsAllowed: hostActionsAllowed && remote.hostActionsAllowed,
+            maximumFileBytes: min(maximumFileBytes, remote.maximumFileBytes),
+            allowedHosts: allowedHosts.isEmpty ? remote.allowedHosts :
+                (remote.allowedHosts.isEmpty ? allowedHosts : allowedHosts.intersection(remote.allowedHosts))
+        )
+    }
+
+    func allows(hostID: String) -> Bool {
+        allowedHosts.isEmpty || allowedHosts.contains(hostID)
+    }
+
+    static let advertisedCapabilities: Set<VSCapability> = [.managedConfiguration]
+
+    func applyingResourceLimits(to limits: inout VSResourceLimits) {
+        limits.maximumAudioStreams = audioAllowed ? limits.maximumAudioStreams : 0
+        limits.maximumClipboardBytes = clipboardAllowed ? limits.maximumClipboardBytes : 0
+        limits.maximumFileBytes = fileTransferAllowed ? min(limits.maximumFileBytes, maximumFileBytes) : 0
+        limits.maximumFileChunkBytes = fileTransferAllowed ? limits.maximumFileChunkBytes : 0
+    }
+}
+
+struct ManagedPolicyResolver: Equatable {
+    private(set) var localPolicy: ManagedPolicy
+    private(set) var remotePolicy: ManagedPolicy?
+
+    var effectivePolicy: ManagedPolicy {
+        remotePolicy.map { localPolicy.applying(remote: $0) } ?? localPolicy
+    }
+
+    init(localPolicy: ManagedPolicy = .unmanaged, remotePolicy: ManagedPolicy? = nil) {
+        self.localPolicy = localPolicy
+        self.remotePolicy = remotePolicy
+    }
+
+    mutating func setRemote(_ policy: ManagedPolicy?) {
+        remotePolicy = policy
+    }
+
+    mutating func clearRemote() {
+        remotePolicy = nil
+    }
+}
+
 struct ProtocolV1SessionConfiguration {
     static let version: UInt32 = 1
 
-   static func productionHostCapabilities(
-       touchEnabled: Bool,
-       controllerAvailable: Bool = false
-   ) -> Set<VSCapability> {
+    static func productionHostCapabilities(
+        touchEnabled: Bool,
+        controllerAvailable: Bool = false,
+        managedPolicy: ManagedPolicy = .unmanaged
+    ) -> Set<VSCapability> {
         // Native pointer/keyboard ride the same input toggle as touch: they
         // require Accessibility to actually inject, but the capability is
         // advertised so a USB session can negotiate them. When input is
         // disabled entirely, only multi-display selection is offered.
         // Client video control tunes the host encoder, needs no Accessibility,
         // and is always offered so the client can adjust bitrate/fps/quality.
-        // Clipboard is always offered: it does not require Accessibility and
-        // is gated by explicit user action plus the effective managed-policy
-        // clipboard allow bit when a peer sends one.
+        // Clipboard does not require Accessibility, but local managed policy
+        // can deny it before HostHello so the peer's intersection check still
+        // matches SessionAccepted.
         var capabilities: Set<VSCapability> = touchEnabled
-            ? [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions, .usbHidModifierByte, .clipboard, .managedConfiguration]
-            : [.multiDisplay, .clientVideoControl, .clipboard, .managedConfiguration]
+            ? [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .usbHidModifierByte, .managedConfiguration]
+            : [.multiDisplay, .clientVideoControl, .managedConfiguration]
+        capabilities.formUnion(ManagedPolicy.advertisedCapabilities)
+        if managedPolicy.clipboardAllowed { capabilities.insert(.clipboard) }
+        if touchEnabled && managedPolicy.hostActionsAllowed { capabilities.insert(.hostActions) }
         if controllerAvailable { capabilities.insert(.controller) }
         return capabilities
-   }
+    }
 
    let sessionID: Data
    let sessionEpoch: UInt64
@@ -53,6 +191,7 @@ struct ProtocolV1SessionConfiguration {
    /// synthesizes a single entry from the currently captured identity so the
    /// single-display path keeps ListDisplays count == 1.
    var displays: [ProtocolV1DisplayInfo] = []
+    var managedPolicy: ManagedPolicy = .unmanaged
 }
 
 enum ProtocolV1SessionPhase: Equatable {
@@ -131,6 +270,7 @@ final class ProtocolV1SessionCoordinator {
 
     private var configuration: ProtocolV1SessionConfiguration
     private var nextMessageID: UInt64 = 1
+    private var baseNegotiatedCapabilities: Set<VSCapability> = []
     private var negotiatedCapabilities: Set<VSCapability> = []
     private var stylusSequenceState = StylusSequenceState()
     private var controllerSequenceState = GameControllerStateMachine()
@@ -145,6 +285,7 @@ final class ProtocolV1SessionCoordinator {
     /// change) is ignored.
     private var pendingVideoPreferencesToken: UInt64 = 0
     private var nextVideoPreferencesToken: UInt64 = 1
+    private var managedPolicyResolver: ManagedPolicyResolver
     /// Host-action invocations the host is currently running, keyed by the
     /// client's invocation_id and mapped to the request's Envelope message_id.
     /// The result echoes both the invocation_id (in the payload) and the
@@ -175,6 +316,11 @@ final class ProtocolV1SessionCoordinator {
         precondition(!configuration.sessionID.isEmpty)
         precondition(configuration.sessionEpoch > 0)
         self.configuration = configuration
+        self.managedPolicyResolver = ManagedPolicyResolver(localPolicy: configuration.managedPolicy)
+    }
+
+    var effectiveManagedPolicy: ManagedPolicy {
+        withSessionLock { managedPolicyResolver.effectivePolicy }
     }
 
     func updateDisplayGeometry(width: Int, height: Int, rotation: Int) {
@@ -383,9 +529,7 @@ final class ProtocolV1SessionCoordinator {
             accepted.sessionEpoch = configuration.sessionEpoch
             accepted.heartbeatIntervalMs = 1_000
             accepted.negotiatedCapabilities = negotiatedCapabilities.sorted { $0.rawValue < $1.rawValue }
-            var acceptedLimits = VSResourceLimits()
-            acceptedLimits.maximumClipboardBytes = UInt64(negotiatedMaximumClipboardBytes)
-            accepted.negotiatedResourceLimits = acceptedLimits
+            accepted.negotiatedResourceLimits = negotiatedResourceLimits()
 
             phase = .awaitingDisplayStart
             do {
@@ -417,8 +561,8 @@ final class ProtocolV1SessionCoordinator {
                 }
                 if negotiatedCapabilities.contains(.managedConfiguration) {
                     actions.append(.sendControl(try encode(
-                        payload: .managedPolicyStatus(Self.unmanagedPolicyStatus()),
-                        correlationID: 0
+                        payload: .managedPolicyStatus(managedPolicyResolver.localPolicy.protocolStatus),
+                        correlationID: correlationID
                     )))
                 }
                 return actions
@@ -832,6 +976,9 @@ final class ProtocolV1SessionCoordinator {
             guard negotiatedCapabilities.contains(.hostActions) else {
                 return unsupportedCapability("Host actions were not negotiated.", envelope.messageID)
             }
+            guard managedPolicyResolver.effectivePolicy.hostActionsAllowed else {
+                return unsupportedCapability("Host actions are denied by managed policy.", envelope.messageID)
+            }
             guard case .streaming = phase else {
                 return invalidState("HostActionInvoke arrived before media was streaming.", envelope.messageID)
             }
@@ -886,6 +1033,7 @@ final class ProtocolV1SessionCoordinator {
             pendingHostActionInvocations.removeAll()
             clipboardCore?.reset()
             remoteManagedClipboardAllowed = true
+            managedPolicyResolver.clearRemote()
             return [.peerError(error), .close]
 
         case .disconnectNotice:
@@ -895,6 +1043,7 @@ final class ProtocolV1SessionCoordinator {
             pendingHostActionInvocations.removeAll()
             clipboardCore?.reset()
             remoteManagedClipboardAllowed = true
+            managedPolicyResolver.clearRemote()
             return [.close]
 
         default:
@@ -1117,22 +1266,26 @@ final class ProtocolV1SessionCoordinator {
             )
         }
         selectedCodec = codec
-        var negotiatedCapabilities = configuration.hostCapabilities.intersection(offeredCapabilities)
-        if !negotiatedCapabilities.contains(.stylus) {
-            negotiatedCapabilities.remove(.stylusExtended)
+        var baseNegotiatedCapabilities = configuration.hostCapabilities.intersection(offeredCapabilities)
+        if !baseNegotiatedCapabilities.contains(.stylus) {
+            baseNegotiatedCapabilities.remove(.stylusExtended)
         }
-        if !negotiatedCapabilities.contains(.keyboard) {
-            negotiatedCapabilities.remove(.usbHidModifierByte)
+        if !baseNegotiatedCapabilities.contains(.keyboard) {
+            baseNegotiatedCapabilities.remove(.usbHidModifierByte)
         }
-        self.negotiatedCapabilities = negotiatedCapabilities
-        remoteManagedClipboardAllowed = true
+        self.baseNegotiatedCapabilities = baseNegotiatedCapabilities
+        self.negotiatedCapabilities = policyFilteredCapabilities(
+            baseNegotiatedCapabilities,
+            policy: managedPolicyResolver.effectivePolicy
+        )
+        remoteManagedClipboardAllowed = managedPolicyResolver.effectivePolicy.clipboardAllowed
 
         // Capture the peer's device identity. Every incoming clipboard
         // offer/content must originate from this exact device; an empty or
         // mismatched origin is rejected. When clipboard is negotiated the
         // device ID must be non-empty so origin validation is meaningful.
         clientDeviceID = hello.deviceID
-        if negotiatedCapabilities.contains(.clipboard) {
+        if self.negotiatedCapabilities.contains(.clipboard) {
             guard !clientDeviceID.isEmpty else {
                 return fail(
                     code: .invalidState,
@@ -1147,7 +1300,7 @@ final class ProtocolV1SessionCoordinator {
         // zero peer limit means "unbounded from the peer side", so the host
         // cap wins. When clipboard was not negotiated the limit stays zero
         // and no ClipboardCore is created.
-        if negotiatedCapabilities.contains(.clipboard) {
+        if self.negotiatedCapabilities.contains(.clipboard) {
             let peerLimit = hello.resourceLimits.maximumClipboardBytes
             let hostLimit = UInt64(ClipboardCore.localMaximumBytes)
             negotiatedMaximumClipboardBytes = peerLimit == 0
@@ -1166,6 +1319,34 @@ final class ProtocolV1SessionCoordinator {
         phase = .preparingCodec(correlationID: correlationID)
         let streamCodec: StreamCodec = codec == .h264 ? .h264 : .hevc
         return [.codecNegotiated(streamCodec)]
+    }
+
+    private func negotiatedResourceLimits() -> VSResourceLimits {
+        var limits = VSResourceLimits()
+        limits.maximumClients = 1
+        limits.maximumDisplays = UInt32(max(1, configuredDisplays().count))
+        limits.maximumVideoStreams = 1
+        limits.maximumAudioStreams = ManagedPolicy.defaultMaximumAudioStreams
+        limits.maximumClipboardBytes = negotiatedMaximumClipboardBytes > 0
+            ? UInt64(negotiatedMaximumClipboardBytes)
+            : ManagedPolicy.defaultMaximumClipboardBytes
+        limits.maximumFileBytes = ManagedPolicy.defaultMaximumFileBytes
+        limits.maximumFileChunkBytes = ManagedPolicy.defaultMaximumFileChunkBytes
+        managedPolicyResolver.effectivePolicy.applyingResourceLimits(to: &limits)
+        return limits
+    }
+
+    private func policyFilteredCapabilities(
+        _ capabilities: Set<VSCapability>,
+        policy: ManagedPolicy
+    ) -> Set<VSCapability> {
+        var filtered = capabilities
+        if !policy.clipboardAllowed { filtered.remove(.clipboard) }
+        if !policy.fileTransferAllowed { filtered.remove(.fileTransfer) }
+        if !policy.audioAllowed { filtered.remove(.audio) }
+        if !policy.wakeAllowed { filtered.remove(.wakeHost) }
+        if !policy.hostActionsAllowed { filtered.remove(.hostActions) }
+        return filtered
     }
 
     private func startDisplay(correlationID: UInt64) -> [ProtocolV1SessionAction] {
@@ -1365,13 +1546,25 @@ final class ProtocolV1SessionCoordinator {
         _ status: VSManagedPolicyStatus,
         correlationID: UInt64
     ) -> [ProtocolV1SessionAction] {
-        guard negotiatedCapabilities.contains(.managedConfiguration) else {
+        guard baseNegotiatedCapabilities.contains(.managedConfiguration) else {
             return unsupportedCapability("Managed policy was not negotiated.", correlationID)
         }
-        let allowed = !status.managed || status.clipboardAllowed
-        remoteManagedClipboardAllowed = allowed
-        if !allowed {
+        managedPolicyResolver.setRemote(ManagedPolicy(remoteStatus: status))
+        let effectivePolicy = managedPolicyResolver.effectivePolicy
+        guard effectivePolicy.allows(hostID: configuration.hostID) else {
+            return fail(
+                code: .unauthorized,
+                message: "Managed policy does not allow this host.",
+                correlationID: correlationID
+            )
+        }
+        remoteManagedClipboardAllowed = effectivePolicy.clipboardAllowed
+        if !remoteManagedClipboardAllowed {
             clipboardCore?.reset()
+        }
+        negotiatedCapabilities = policyFilteredCapabilities(baseNegotiatedCapabilities, policy: effectivePolicy)
+        if !effectivePolicy.hostActionsAllowed {
+            pendingHostActionInvocations.removeAll()
         }
         return []
     }
@@ -1489,6 +1682,8 @@ final class ProtocolV1SessionCoordinator {
         resetControllerState()
         pendingHostActionInvocations.removeAll()
         clipboardCore?.reset()
+        remoteManagedClipboardAllowed = true
+        managedPolicyResolver.clearRemote()
         do {
             return [
                 .sendControl(try encode(
@@ -1524,7 +1719,18 @@ final class ProtocolV1SessionCoordinator {
         _ = stylusSequenceState.consumeReset()
         resetControllerState()
         clipboardCore?.reset()
+        remoteManagedClipboardAllowed = true
+        managedPolicyResolver.clearRemote()
         return [.close]
+    }
+
+    private var isNegotiated: Bool {
+        switch phase {
+        case .awaitingDisplayStart, .awaitingVideoConfig, .streaming:
+            return true
+        default:
+            return false
+        }
     }
 
     private func resetControllerState() {

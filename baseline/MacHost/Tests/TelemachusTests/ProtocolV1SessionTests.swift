@@ -15,6 +15,60 @@ final class ProtocolV1SessionTests: XCTestCase {
         )
     }
 
+    func testManagedPolicyAppliesDenyWinsAndAllowedHosts() {
+        let local = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: 4_096,
+            allowedHosts: ["host", "other"]
+        )
+        var remoteStatus = ManagedPolicy.unmanaged.protocolStatus
+        remoteStatus.managed = true
+        remoteStatus.clipboardAllowed = false
+        remoteStatus.fileTransferAllowed = true
+        remoteStatus.audioAllowed = false
+        remoteStatus.wakeAllowed = true
+        remoteStatus.customGesturesAllowed = true
+        remoteStatus.hostActionsAllowed = false
+        remoteStatus.maximumFileBytes = 1_024
+        remoteStatus.allowedHosts = ["host"]
+
+        let effective = local.applying(remote: ManagedPolicy(remoteStatus: remoteStatus))
+
+        XCTAssertFalse(effective.clipboardAllowed)
+        XCTAssertTrue(effective.fileTransferAllowed)
+        XCTAssertFalse(effective.audioAllowed)
+        XCTAssertTrue(effective.wakeAllowed)
+        XCTAssertTrue(effective.customGesturesAllowed)
+        XCTAssertFalse(effective.hostActionsAllowed)
+        XCTAssertEqual(effective.maximumFileBytes, 1_024)
+        XCTAssertEqual(effective.allowedHosts, ["host"])
+        XCTAssertTrue(effective.allows(hostID: "host"))
+        XCTAssertFalse(effective.allows(hostID: "other"))
+    }
+
+    func testManagedRemoteStatusWithUnsetFieldsFailsClosed() {
+        var status = VSManagedPolicyStatus()
+        status.managed = true
+
+        let policy = ManagedPolicy(remoteStatus: status)
+
+        XCTAssertTrue(policy.isManaged)
+        XCTAssertFalse(policy.clipboardAllowed)
+        XCTAssertFalse(policy.fileTransferAllowed)
+        XCTAssertFalse(policy.audioAllowed)
+        XCTAssertFalse(policy.wakeAllowed)
+        XCTAssertFalse(policy.customGesturesAllowed)
+        XCTAssertFalse(policy.hostActionsAllowed)
+        XCTAssertEqual(policy.maximumFileBytes, 0)
+        XCTAssertTrue(policy.allowedHosts.isEmpty)
+    }
+
     func testFramerHandlesSplitAndCoalescedFrames() throws {
         let first = try ProtocolV1TransportFrame(channel: .control, payload: Data([1, 2])).encoded()
         let second = try ProtocolV1TransportFrame(channel: .video, payload: Data([3])).encoded()
@@ -279,6 +333,89 @@ final class ProtocolV1SessionTests: XCTestCase {
         }
         XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .stylus, .clipboard, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .stylusExtended, .usbHidModifierByte])
         XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .multiDisplay])
+    }
+
+    func testManagedPolicyStatusIsSentAndRemoteDenyGatesHostActions() throws {
+        let localPolicy = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: false,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: 2_048,
+            allowedHosts: ["host"]
+        )
+        let session = makeSession(managedPolicy: localPolicy)
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions, .managedConfiguration]
+        _ = session.handleControl(try hello.serializedData())
+        let responses = try controlEnvelopes(session.completeCodecNegotiation())
+        XCTAssertEqual(responses.count, 4)
+        guard case .sessionAccepted(let accepted)? = responses[1].payload else {
+            return XCTFail("Expected SessionAccepted")
+        }
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumAudioStreams, 0)
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumClipboardBytes, 1 * 1_024 * 1_024)
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumFileBytes, 2_048)
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumFileChunkBytes, 64 * 1_024)
+        guard case .managedPolicyStatus(let localStatus)? = responses[3].payload else {
+            return XCTFail("Expected ManagedPolicyStatus")
+        }
+        XCTAssertTrue(localStatus.managed)
+        XCTAssertTrue(localStatus.hostActionsAllowed)
+        XCTAssertEqual(localStatus.maximumFileBytes, 2_048)
+        XCTAssertEqual(localStatus.allowedHosts, ["host"])
+
+        var remote = VSManagedPolicyStatus()
+        remote.managed = true
+        remote.clipboardAllowed = true
+        remote.fileTransferAllowed = true
+        remote.audioAllowed = true
+        remote.wakeAllowed = true
+        remote.customGesturesAllowed = true
+        remote.hostActionsAllowed = false
+        remote.maximumFileBytes = 4_096
+        remote.allowedHosts = ["host"]
+        XCTAssertTrue(session.handleControl(try envelope(
+            id: 2,
+            payload: .managedPolicyStatus(remote)
+        ).serializedData()).isEmpty)
+
+        _ = session.handleControl(try envelope(id: 3, payload: .listDisplaysRequest(VSListDisplaysRequest())).serializedData())
+        _ = session.handleControl(try envelope(id: 4, payload: .startDisplayRequest(existingDisplayRequest())).serializedData())
+        var result = VSVideoConfigResult()
+        result.configEpoch = 1
+        result.streamID = 1
+        result.accepted = true
+        _ = session.handleControl(try envelope(id: 5, payload: .videoConfigResult(result)).serializedData())
+
+        var invoke = VSHostActionInvoke()
+        invoke.actionID = "move-window"
+        invoke.invocationID = Data([0x01])
+        XCTAssertEqual(try protocolError(from: session.handleControl(
+            try envelope(id: 6, payload: .hostActionInvoke(invoke)).serializedData()
+        )).code, .unsupportedCapability)
+    }
+
+    func testManagedPolicyAllowedHostsFailsClosed() throws {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .managedConfiguration]
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+
+        var remote = ManagedPolicy.unmanaged.protocolStatus
+        remote.managed = true
+        remote.allowedHosts = ["different-host"]
+        let actions = session.handleControl(try envelope(
+            id: 2,
+            payload: .managedPolicyStatus(remote)
+        ).serializedData())
+
+        XCTAssertEqual(try protocolError(from: actions).code, .unauthorized)
+        XCTAssertTrue(actions.containsClose)
     }
 
     func testInvalidDisplayAndStaleEpochFailClosed() throws {
@@ -1364,8 +1501,8 @@ final class ProtocolV1SessionTests: XCTestCase {
     private let sessionID = Data(repeating: 0xAB, count: 16)
     private let sessionEpoch: UInt64 = 7
 
-    private func makeSession() -> ProtocolV1SessionCoordinator {
-        ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
+    private func makeSession(managedPolicy: ManagedPolicy = .unmanaged) -> ProtocolV1SessionCoordinator {
+        var configuration = ProtocolV1SessionConfiguration(
             sessionID: sessionID,
             sessionEpoch: sessionEpoch,
             displayWidth: 1920,
@@ -1374,7 +1511,8 @@ final class ProtocolV1SessionTests: XCTestCase {
             framesPerSecond: 60,
             bitrateKbps: 20_000,
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
-                touchEnabled: true
+                touchEnabled: true,
+                managedPolicy: managedPolicy
             ),
             requiredClientCapabilities: [.touch],
             supportedCodecs: [.hevc, .h264],
@@ -1383,7 +1521,9 @@ final class ProtocolV1SessionTests: XCTestCase {
             displayID: "active-display",
             displayName: "Display",
             displayIsVirtual: true
-        ))
+        )
+        configuration.managedPolicy = managedPolicy
+        return ProtocolV1SessionCoordinator(configuration: configuration)
     }
 
     private func makeControllerSession() -> ProtocolV1SessionCoordinator {
