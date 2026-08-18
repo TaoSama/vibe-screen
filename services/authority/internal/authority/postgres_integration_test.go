@@ -230,6 +230,16 @@ func TestPostgresAuthorityReviewContracts(t *testing.T) {
 	if !billedToday {
 		t.Fatal("usage was not billed to the database UTC ingestion day")
 	}
+	if err := store.RevokeDevice(ctx, "client", 1, now); err != nil {
+		t.Fatal(err)
+	}
+	finalUsage := CoturnUsage{SourceID: "node", EventID: "final-close", AllocationID: "valid", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 3, EgressBytes: 5, Closed: true, ObservedAt: now.Add(2 * time.Second)}
+	if _, err := store.ApplyCoturnUsage(ctx, finalUsage); err != nil {
+		t.Fatalf("final usage after revocation rejected: %v", err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "after-revoke", SourceID: "node"}, now); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("relay admission after device revocation error=%v", err)
+	}
 	if err := store.InvalidateSignaling(ctx, session.SessionID, now); err != nil {
 		t.Fatal(err)
 	}
