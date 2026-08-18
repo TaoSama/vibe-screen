@@ -394,6 +394,7 @@ def analyze_records(
     finished = _parse_time(finished_at)
     if finished <= started:
         raise ValueError("finished_at must be later than started_at")
+    requested_duration = (finished - started).total_seconds()
     errors = [
         error
         for record in records
@@ -415,13 +416,21 @@ def analyze_records(
     memory_internal_gaps = [
         right - left for left, right in pairwise(sorted(elapsed_values))
     ]
+    memory_start_gap = min(elapsed_values) if elapsed_values else None
+    memory_finish_gap = (
+        requested_duration - max(elapsed_values) if elapsed_values else None
+    )
+    heap_start_gap = min(heap_elapsed) if heap_elapsed else None
+    heap_finish_gap = requested_duration - max(heap_elapsed) if heap_elapsed else None
     sufficiency = {
         "collection_complete": bool(records),
         "duration": sampled_duration >= MINIMUM_DURATION_SECONDS,
         "memory_samples": len(records) >= MINIMUM_LIGHTWEIGHT_SAMPLE_COUNT,
         "memory_window_coverage": (
-            bool(elapsed_values)
-            and min(elapsed_values) <= MAXIMUM_BOUNDARY_GAP_SECONDS
+            memory_start_gap is not None
+            and memory_finish_gap is not None
+            and 0 <= memory_start_gap <= MAXIMUM_BOUNDARY_GAP_SECONDS
+            and 0 <= memory_finish_gap <= MAXIMUM_BOUNDARY_GAP_SECONDS
             and (
                 not memory_internal_gaps
                 or max(memory_internal_gaps) <= MAXIMUM_MEMORY_INTERNAL_GAP_SECONDS
@@ -430,8 +439,10 @@ def analyze_records(
         "heap_samples": len(heap_elapsed) >= MINIMUM_HEAP_SAMPLE_COUNT,
         "heap_window_coverage": (
             len(heap_elapsed) >= MINIMUM_HEAP_SAMPLE_COUNT
-            and min(heap_elapsed) <= MAXIMUM_BOUNDARY_GAP_SECONDS
-            and max(heap_elapsed) >= sampled_duration * 0.98
+            and heap_start_gap is not None
+            and heap_finish_gap is not None
+            and 0 <= heap_start_gap <= MAXIMUM_BOUNDARY_GAP_SECONDS
+            and 0 <= heap_finish_gap <= MAXIMUM_BOUNDARY_GAP_SECONDS
         ),
         "error_free": bool(records) and not errors,
     }
@@ -498,18 +509,28 @@ def analyze_records(
             and metrics["malloc_zone_fragmentation_bytes"]["endpoint_median_drift"]
             >= FRAGMENTATION_MINIMUM_DRIFT_BYTES
         )
-        short_window_stable = all(
-            _is_not_growing(metrics[field])
-            for field in (
-                "rss_bytes",
-                "physical_footprint_bytes",
-                "malloc_small_dirty_bytes",
-                "malloc_zone_dirty_bytes",
-                "malloc_zone_allocated_bytes",
-                "malloc_zone_fragmentation_bytes",
-                "heap_allocated_bytes",
+        stability_fields = (
+            "rss_bytes",
+            "physical_footprint_bytes",
+            "malloc_small_dirty_bytes",
+            "malloc_zone_dirty_bytes",
+            "malloc_zone_allocated_bytes",
+            "malloc_zone_fragmentation_bytes",
+            "heap_allocated_bytes",
+        )
+        optional_stability_fields = (
+            "malloc_large_dirty_bytes",
+            "iosurface_dirty_bytes",
+        )
+        short_window_stable = (
+            all(_is_not_growing(metrics[field]) for field in stability_fields)
+            and all(
+                _is_not_growing(metrics[field])
+                for field in optional_stability_fields
+                if field in metrics
             )
-        ) and heap_node_drift <= STABLE_MAXIMUM_NODE_DRIFT
+            and heap_node_drift <= STABLE_MAXIMUM_NODE_DRIFT
+        )
 
         if pressure_growth and live_growth and (heap_byte_growth or heap_node_growth):
             attribution = "retained_growth"

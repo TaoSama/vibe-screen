@@ -463,6 +463,17 @@ class HostMemoryAnalysisTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "pass")
         self.assertIn("cannot close", INTERPRETATION)
 
+    def test_optional_surface_growth_prevents_short_window_pass(self):
+        records = memory_records("flat")
+        for index, record in enumerate(records):
+            record["memory"]["iosurface_dirty_bytes"] += int(2 * MIB * index / 20)
+
+        result = self.analyze("flat", records=records)
+
+        self.assertEqual(result["attribution"], "inconclusive")
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertIn("iosurface_dirty_bytes", result["metrics"])
+
     def test_queue_capacity_overage_fails_even_when_attribution_inconclusive(self):
         result = self.analyze("retained", depth=3)
 
@@ -762,6 +773,19 @@ class HostMemoryAnalysisTests(unittest.TestCase):
         self.assertEqual(result["attribution"], "inconclusive")
         self.assertEqual(result["verdict"], "insufficient")
         self.assertFalse(result["sufficiency"]["duration"])
+
+    def test_memory_samples_must_cover_report_window_finish(self):
+        result = analyze_records(
+            memory_records("flat"),
+            telemetry(),
+            started_at=timestamp(STARTED),
+            finished_at=timestamp(STARTED + timedelta(minutes=15)),
+        )
+
+        self.assertEqual(result["attribution"], "inconclusive")
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertFalse(result["sufficiency"]["memory_window_coverage"])
+        self.assertFalse(result["sufficiency"]["heap_window_coverage"])
 
     def test_zero_memory_records_fail_every_completeness_check(self):
         result = analyze_records(
