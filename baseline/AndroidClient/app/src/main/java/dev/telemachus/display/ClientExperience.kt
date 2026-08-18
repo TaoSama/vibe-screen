@@ -3,7 +3,28 @@ package dev.telemachus.display
 import dev.vibescreen.protocol.v1.VideoQualityPreset
 
 internal object ControlBarAccessibilityPolicy {
+    const val STANDARD_AUTO_HIDE_MS = 3_000L
+    const val SESSION_STARTED_AUTO_HIDE_MS = 7_000L
+
+    enum class RevealReason {
+        USER_REQUEST,
+        SESSION_STARTED,
+    }
+
     fun shouldAutoHide(touchExplorationEnabled: Boolean): Boolean = !touchExplorationEnabled
+
+    fun autoHideDelayMs(
+        touchExplorationEnabled: Boolean,
+        revealReason: RevealReason,
+    ): Long? =
+        if (shouldAutoHide(touchExplorationEnabled)) {
+            when (revealReason) {
+                RevealReason.SESSION_STARTED -> SESSION_STARTED_AUTO_HIDE_MS
+                RevealReason.USER_REQUEST -> STANDARD_AUTO_HIDE_MS
+            }
+        } else {
+            null
+        }
 
     fun shouldExposeRevealAction(
         connected: Boolean,
