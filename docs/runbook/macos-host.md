@@ -42,9 +42,10 @@ Vibe Screen requests two independent permissions:
 
 - **Screen & System Audio Recording** (called **Screen Recording** on older
   macOS): required for capture.
-- **Accessibility**: required only for touch-derived pointer gestures and
-  window migration/restoration. The legacy session does not yet carry
-  keyboard or native-mouse messages.
+- **Accessibility**: required for touch-derived pointer gestures, Protocol v1
+  keyboard/native-pointer injection, and window migration/restoration. The
+  legacy fallback session still does not carry keyboard or native-mouse
+  messages.
 
 Grant both in **System Settings → Privacy & Security**, then quit and reopen
 Vibe Screen. The app rechecks permission while it is running, but a relaunch is
@@ -172,11 +173,25 @@ encrypted in this baseline.
 - After a macOS update, assume the private virtual-display API may have changed
   until verified on that exact release.
 
-### Touch or window migration does nothing
+### Touch, native input, or window migration does nothing
 
 Recheck Accessibility permission. Remove and re-add the current app if it was
 rebuilt, re-signed, or replaced. Input is posted system-wide; test with a
-non-sensitive window first.
+non-sensitive window first. Protocol v1 keyboard and native pointer events are
+expected only after the client and host negotiate those capabilities; a legacy
+session can still stream and handle touch while rejecting native input.
+
+### Virtual controller is unavailable
+
+The host advertises Protocol v1 controller support only when the running app can
+create an `IOHIDUserDevice` gamepad. Development ad-hoc builds normally cannot
+do this: they need an Apple identity-signed build with the approved
+`com.apple.developer.hid.virtual.device` entitlement in the provisioning
+profile. Android production controller forwarding is not wired yet; after it
+lands, a physical Android controller run can prove client mapping and Protocol
+v1 delivery, but it still does not prove Mac virtual-gamepad injection unless
+the host logs controller availability and a Mac-side test target sees the
+virtual controller input.
 
 ### Logs and diagnostics
 
@@ -214,11 +229,17 @@ requires a project-controlled Developer ID signature and Apple notarization.
   Mirror mode still depends on the private virtual-display API. Runtime symbol
   presence is diagnostic only; create/apply/online/capture must all succeed on
   the exact macOS build before the feature is accepted.
-- Protocol v1 integration is in progress; legacy clients do not receive all
-  negotiated session and input capabilities.
+- Protocol v1 keyboard and native-pointer forwarding are implemented in the
+  current host/client path, with keyboard and scroll verified on device. Native
+  mouse move/click still require physical Android HID-mouse confirmation.
+- Controller protocol models, Android mapping/state, Host state machines, and
+  Mac virtual-gamepad injection are source- and self-tested. Android production
+  controller event forwarding is not wired yet; Mac virtual-gamepad runtime
+  acceptance also requires an identity-signed, entitled build and physical
+  Android controller evidence after that wiring exists.
 - The legacy product session has no keyboard or native-mouse message entry
-  point. Touch-derived click, drag, right-click, scroll, and zoom are present;
-  keyboard/native-mouse forwarding is not an implemented product capability.
+  point. Touch-derived click, drag, right-click, scroll, and zoom are present
+  only as compatibility behavior.
 - Adaptive bitrate/resolution policy, external glass-to-glass latency, Xiaomi
   12 acceptance, two-hour Phase 1 soak, and eight-hour Phase 2 soak remain
   unverified.
