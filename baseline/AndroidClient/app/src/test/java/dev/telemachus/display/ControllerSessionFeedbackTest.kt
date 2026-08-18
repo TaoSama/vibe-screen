@@ -17,8 +17,11 @@ class ControllerSessionFeedbackTest {
         assertFalse(tracker.recordConnected(7, "c2", 1))
         assertFalse(tracker.recordConnected(8, "c1", 1))
         assertEquals(1, tracker.pendingCount())
+        assertTrue(tracker.isPending("c1", 1))
+        assertFalse(tracker.isPending("c2", 1))
 
         assertEquals(ControllerConnection("c1", 1), tracker.acknowledge(7))
+        assertFalse(tracker.isPending("c1", 1))
         assertNull(tracker.acknowledge(7))
         assertEquals(0, tracker.pendingCount())
     }
@@ -30,6 +33,8 @@ class ControllerSessionFeedbackTest {
         tracker.recordConnected(8, "c2", 1)
 
         tracker.recordDisconnected("c1", 1)
+        assertFalse(tracker.isPending("c1", 1))
+        assertTrue(tracker.isPending("c2", 1))
         assertNull(tracker.acknowledge(7))
         assertEquals(1, tracker.pendingCount())
 

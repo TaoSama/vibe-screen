@@ -16,10 +16,16 @@ internal data class ClientPointerInput(
     val verticalScroll: Float = 0f,
 )
 
+internal data class ClientControllerInput(
+    val dispatch: ControllerDispatch,
+)
+
 internal interface ClientSessionInputSink {
     fun sendKey(input: ClientKeyInput): Boolean
 
     fun sendPointer(input: ClientPointerInput): Boolean
+
+    fun sendController(input: ClientControllerInput): Boolean
 }
 
 internal data class ClientSessionBinding(
@@ -32,6 +38,9 @@ internal data class ClientSessionBinding(
         }
         require(!capabilities.nativePointer || inputSink != null) {
             "Native pointer capability requires a session input sink"
+        }
+        require(!capabilities.controller || inputSink != null) {
+            "Controller capability requires a session input sink"
         }
     }
 
@@ -57,6 +66,11 @@ internal class ClientInputDispatch(
     fun sendPointer(input: ClientPointerInput): ClientInputDispatchResult {
         if (!binding.capabilities.nativePointer) return ClientInputDispatchResult.UNSUPPORTED
         return binding.inputSink.send { sendPointer(input) }
+    }
+
+    fun sendController(input: ClientControllerInput): ClientInputDispatchResult {
+        if (!binding.capabilities.controller) return ClientInputDispatchResult.UNSUPPORTED
+        return binding.inputSink.send { sendController(input) }
     }
 
     private fun ClientSessionInputSink?.send(block: ClientSessionInputSink.() -> Boolean): ClientInputDispatchResult =
