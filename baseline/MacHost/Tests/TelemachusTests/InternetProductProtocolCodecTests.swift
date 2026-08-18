@@ -439,6 +439,7 @@ final class InternetProductProtocolCodecTests: XCTestCase {
             return XCTFail("Expected initial video configuration")
         }
         XCTAssertEqual(initialVideo.configEpoch, 9)
+        XCTAssertEqual(initialVideo.colorDescription, HostVideoColorNegotiator.legacySDRColor)
         XCTAssertEqual(initialVideo.rotationDegrees, 90)
 
         let updates = try codec.updateRotation(270)
@@ -450,6 +451,7 @@ final class InternetProductProtocolCodecTests: XCTestCase {
             return XCTFail("Expected DisplayChanged followed by VideoConfig")
         }
         XCTAssertEqual(display.rotationDegrees, 270)
+        XCTAssertEqual(video.colorDescription, HostVideoColorNegotiator.legacySDRColor)
         XCTAssertEqual(video.rotationDegrees, 270)
         XCTAssertEqual(video.configEpoch, 10)
         XCTAssertEqual(codec.video.rotationDegrees, 270)

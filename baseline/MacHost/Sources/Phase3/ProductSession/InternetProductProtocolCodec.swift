@@ -391,6 +391,7 @@ struct InternetProductProtocolCodec {
         configuration.framesPerSecond = UInt32(video.framesPerSecond)
         configuration.bitrateKbps = UInt32(video.bitrateKbps)
         configuration.streamID = video.streamID
+        configuration.colorDescription = HostVideoColorNegotiator.legacySDRColor
         configuration.rotationDegrees = UInt32(video.rotationDegrees)
         var envelope = baseEnvelope()
         envelope.videoConfig = configuration
