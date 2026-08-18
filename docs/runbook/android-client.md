@@ -116,15 +116,15 @@ negotiation and the host log line for the received event.
 | physical mouse primary click | button press and release with `BUTTON_PRIMARY`, host pointer begin/end events, visible Mac click result, and button-up release before disconnect |
 | physical mouse wheel | Android `ACTION_SCROLL` with `AXIS_VSCROLL` or `AXIS_HSCROLL`, host scroll injection, and visible Mac scroll result |
 | physical stylus | Android stylus source/tool kind plus pressure/tilt/barrel/hover fields as applicable, negotiated stylus capability, host tablet event construction, and drawing-app result |
-| physical controller | Not a current production path: Android controller mapping/state and Protocol v1 envelope encoding are offline-tested, but `SOURCE_GAMEPAD`/`SOURCE_JOYSTICK` events are not yet forwarded by `MainActivity` and `StreamClient`. After that wiring lands, require a stable controller ID, connected/state/disconnected samples, host virtual-gamepad availability, visible Mac-side controller response, and neutral release on disconnect |
+| physical controller | Android controller mapping/state, `MainActivity`/`StreamClient` forwarding, and Protocol v1 envelope encoding are offline-tested. Runtime acceptance requires a stable controller ID, connected/state/disconnected samples, host virtual-gamepad availability, visible Mac-side controller response, and neutral release on disconnect |
 
 Native pointer move/click cannot be closed with `adb shell input tap/swipe`:
 those commands synthesize touchscreen contact, not HID hover or mouse-button
 events. They may support touch and mapper regression notes, but the native
 pointer gate remains open without a physical mouse or equivalent Android HID
-pointer. Controller acceptance first requires Android production forwarding for
-gamepad/joystick events, then a physical controller; JVM mapper tests and
-constructed Protocol v1 envelopes prove serialization only.
+pointer. Controller acceptance requires a physical controller; JVM mapper tests
+and constructed Protocol v1 envelopes prove serialization and dispatch only,
+not physical runtime behavior.
 
 ## Permissions and lifecycle
 

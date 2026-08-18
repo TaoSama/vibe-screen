@@ -187,11 +187,11 @@ The host advertises Protocol v1 controller support only when the running app can
 create an `IOHIDUserDevice` gamepad. Development ad-hoc builds normally cannot
 do this: they need an Apple identity-signed build with the approved
 `com.apple.developer.hid.virtual.device` entitlement in the provisioning
-profile. Android production controller forwarding is not wired yet; after it
-lands, a physical Android controller run can prove client mapping and Protocol
-v1 delivery, but it still does not prove Mac virtual-gamepad injection unless
-the host logs controller availability and a Mac-side test target sees the
-virtual controller input.
+profile. Android controller forwarding is wired through Protocol v1, but a
+physical Android controller run is still required to prove client mapping and
+Protocol v1 delivery. That run still does not prove Mac virtual-gamepad
+injection unless the host logs controller availability and a Mac-side test
+target sees the virtual controller input.
 
 ### Logs and diagnostics
 
@@ -232,11 +232,10 @@ requires a project-controlled Developer ID signature and Apple notarization.
 - Protocol v1 keyboard and native-pointer forwarding are implemented in the
   current host/client path, with keyboard and scroll verified on device. Native
   mouse move/click still require physical Android HID-mouse confirmation.
-- Controller protocol models, Android mapping/state, Host state machines, and
-  Mac virtual-gamepad injection are source- and self-tested. Android production
-  controller event forwarding is not wired yet; Mac virtual-gamepad runtime
-  acceptance also requires an identity-signed, entitled build and physical
-  Android controller evidence after that wiring exists.
+- Controller protocol models, Android mapping/state/forwarding, Host state
+  machines, and Mac virtual-gamepad injection are source- and self-tested. Mac
+  virtual-gamepad runtime acceptance also requires an identity-signed, entitled
+  build and physical Android controller evidence.
 - The legacy product session has no keyboard or native-mouse message entry
   point. Touch-derived click, drag, right-click, scroll, and zoom are present
   only as compatibility behavior.
