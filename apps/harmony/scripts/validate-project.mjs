@@ -618,32 +618,42 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   check(methodHasDominatingCapabilityGuard(controllerPath, 'HarmonySessionController', 'sendKey', 'Capability.KEYBOARD', 'key'),
     `${controllerPath}: HarmonySessionController.sendKey() must use a dominating KEYBOARD early-return guard`);
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendKey', 'active', 'key');
+  check(methodHasDominatingCapabilityGuard(controllerPath, 'HarmonySessionController', 'sendController', 'Capability.CONTROLLER', 'controller'),
+    `${controllerPath}: HarmonySessionController.sendController() must use a dominating CONTROLLER early-return guard`);
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendController', 'active', 'controller');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendStylus', 'active', 'stylus');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendStylus', 'active', 'touch');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendAction', 'writer', 'enqueue');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'sendAction', 'active', 'cancelControllerSend');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'configureVideo', 'this.videoDecoder', 'configure');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'configureVideo', 'active', 'completeVideoConfiguration');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'startHeartbeat', 'active', 'heartbeatTimedOut');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'onTransportReady', 'this', 'armSessionWatchdog');
-  requireCallInMethod(controllerPath, 'HarmonySessionController', 'onTransportLost', 'this.session', 'resumableSnapshot');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'cleanupAfterLoss', 'this', 'releaseActiveInputs');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'cleanupAfterLoss', 'this.session', 'resumableSnapshot');
+  check(methodCallsBefore(controllerPath, 'HarmonySessionController', 'cleanupAfterLoss',
+    'this', 'releaseActiveInputs', 'this.session', 'close'),
+  `${controllerPath}: HarmonySessionController.cleanupAfterLoss() must release active inputs before closing the session`);
   check(methodHasDirectCall(controllerPath, 'HarmonySessionController', 'cleanupResources', 'runAllCleanup'),
     `${controllerPath}: HarmonySessionController.cleanupResources() must call runAllCleanup()`);
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'cleanupResources', 'this.transport', 'close');
   requireCallInMethod(controllerPath, 'HarmonySessionController', 'cleanupResources', 'this.videoDecoder', 'release');
   for (const methodName of ['connect', 'disconnect', 'onBackground']) {
     check(methodCallsBefore(controllerPath, 'HarmonySessionController', methodName,
-      'this', 'releaseStylusInputs', 'this', 'closeWriter'),
-    `${controllerPath}: HarmonySessionController.${methodName}() must release stylus inputs before closing the writer`);
+      'this', 'releaseActiveInputs', 'this', 'closeWriter'),
+    `${controllerPath}: HarmonySessionController.${methodName}() must release active inputs before closing the writer`);
   }
   check(methodCallsBefore(controllerPath, 'HarmonySessionController', 'onBackground',
-    'this', 'releaseStylusInputs', 'this.controlWriter', 'nextMessageIdValue'),
-  `${controllerPath}: HarmonySessionController.onBackground() must release stylus inputs before taking the resume snapshot`);
-  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseStylusInputs', 'active', 'releaseStylusInputs');
-  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseStylusInputs', 'writer', 'beginRelease');
-  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseStylusInputs', 'writer', 'enqueueRelease');
-  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseStylusInputs', 'writer', 'awaitReleaseDrain');
-  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseStylusInputs', 'active', 'confirmSent');
-  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseStylusInputs', 'active', 'completeStylusRelease');
+    'this', 'releaseActiveInputs', 'this.controlWriter', 'nextMessageIdValue'),
+  `${controllerPath}: HarmonySessionController.onBackground() must release active inputs before taking the resume snapshot`);
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseActiveInputs', 'active', 'releaseStylusInputs');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseActiveInputs', 'active', 'releaseControllerInputs');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseActiveInputs', 'writer', 'beginRelease');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseActiveInputs', 'writer', 'enqueueRelease');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseActiveInputs', 'writer', 'awaitReleaseDrain');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseActiveInputs', 'active', 'confirmSent');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseActiveInputs', 'active', 'completeStylusRelease');
+  requireCallInMethod(controllerPath, 'HarmonySessionController', 'releaseActiveInputs', 'active', 'completeControllerRelease');
 
   const decoderPath = 'entry/src/main/ets/platform/HarmonyVideoDecoder.ets';
   requireImport(decoderPath, '../core/media/DecoderLifecycle', 'DecoderLifecycle');
