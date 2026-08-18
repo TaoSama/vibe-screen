@@ -8,7 +8,7 @@ import { FrameQueueState, LatestFrameQueue } from '../.test-dist/media/LatestFra
 import { MediaPacketParser } from '../.test-dist/media/MediaPacketParser.js';
 import { AeadAlgorithm, Capability, Codec, ColorPrimaries, InputPhase, KeyAgreementAlgorithm, MatrixCoefficients,
   SignatureAlgorithm, StylusContactState, StylusToolKind, TransferFunction, TransportKind } from '../.test-dist/protocol/ProtocolModels.js';
-import { ProtocolEncoder } from '../.test-dist/protocol/ProtocolEncoder.js';
+import { EnvelopePayloadField, ProtocolEncoder } from '../.test-dist/protocol/ProtocolEncoder.js';
 import { ProtocolDecoder } from '../.test-dist/protocol/ProtocolDecoder.js';
 import { MAX_PENDING_CONTROLS, OutboundControlWriter } from '../.test-dist/protocol/OutboundControlWriter.js';
 import { ProtobufWriter } from '../.test-dist/protocol/ProtobufWriter.js';
@@ -167,6 +167,8 @@ test('negotiated capabilities must be a legal subset and gate optional input', (
 test('controller capability 26 remains model-only until production input is implemented', () => {
   assert.equal(Capability.CONTROLLER, 26);
   assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.CONTROLLER), false);
+  assert.equal(EnvelopePayloadField.CONTROLLER, undefined);
+  assert.equal(typeof new ProtocolEncoder().controller, 'undefined');
 });
 
 test('controller capability has no additional capability dependency', () => {
@@ -179,6 +181,13 @@ test('controller negotiation rejects a capability the client did not offer', () 
   capabilities.acceptHost([Capability.TOUCH, Capability.CONTROLLER]);
   assert.throws(() => capabilities.acceptNegotiated(
     [Capability.TOUCH, Capability.CONTROLLER]), /invalid negotiated capability set/);
+});
+
+test('product session rejects incoming ControllerEvent while controller input is not implemented', () => {
+  const session = createStreamingSession();
+  assert.equal(new ProtocolDecoder().envelope(fixture('controller_connected.binpb')).payloadField, 66);
+  assert.throws(() => session.receive(fixture('controller_connected.binpb'), 21n),
+    /Unexpected Protocol v1 payload 66/);
 });
 
 test('USB HID modifier capability 27 preserves standard and legacy layouts', () => {

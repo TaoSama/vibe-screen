@@ -565,6 +565,26 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
     });
     return found;
   };
+  const enumHasMember = (relative, enumName, memberName) => {
+    let found = false;
+    visitSource(relative, (node) => {
+      if (ts.isEnumDeclaration(node) && node.name.text === enumName) {
+        found = node.members.some((member) => member.name.getText().replaceAll("'", '') === memberName);
+      }
+    });
+    return found;
+  };
+  const exportedArrayIncludesExpression = (relative, variableName, expressionText) => {
+    let found = false;
+    visitSource(relative, (node, sourceFile) => {
+      if (!ts.isVariableStatement(node) || !node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) return;
+      for (const declaration of node.declarationList.declarations) {
+        if (declaration.name.getText(sourceFile) !== variableName || !ts.isArrayLiteralExpression(declaration.initializer)) continue;
+        if (declaration.initializer.elements.some((element) => element.getText(sourceFile) === expressionText)) found = true;
+      }
+    });
+    return found;
+  };
   const requireImport = (relative, moduleName, importedName) => check(hasNamedImport(relative, moduleName, importedName),
     `${relative}: must import ${importedName} from ${moduleName}`);
   const requireCallInMethod = (relative, className, containerMethod, receiver, calledMethod) =>
@@ -700,6 +720,18 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   const capabilitiesPath = 'entry/src/main/ets/core/session/ClientCapabilities.ts';
   check(hasClassMethod(capabilitiesPath, 'ClientCapabilities', 'acceptNegotiated'),
     `${capabilitiesPath}: ClientCapabilities.acceptNegotiated() is required`);
+  check(!exportedArrayIncludesExpression(capabilitiesPath, 'HARMONY_ADVERTISED_CAPABILITIES', 'Capability.CONTROLLER'),
+    `${capabilitiesPath}: production Harmony client must not advertise CAPABILITY_CONTROLLER until ControllerEvent encoder, platform routing, and device gates are implemented`);
+
+  const protocolEncoderPath = 'entry/src/main/ets/core/protocol/ProtocolEncoder.ts';
+  check(!enumHasMember(protocolEncoderPath, 'EnvelopePayloadField', 'CONTROLLER'),
+    `${protocolEncoderPath}: production Harmony encoder must not expose ControllerEvent payload field 66 before controller lifecycle support exists`);
+  check(!hasClassMethod(protocolEncoderPath, 'ProtocolEncoder', 'controller'),
+    `${protocolEncoderPath}: ProtocolEncoder.controller() is gated until ControllerEvent lifecycle and neutral-release handling are implemented`);
+  check(!hasClassMethod(sessionPath, 'ProductSession', 'controller'),
+    `${sessionPath}: ProductSession.controller() is gated until ControllerEvent lifecycle and neutral-release handling are implemented`);
+  check(!hasClassMethod(controllerPath, 'HarmonySessionController', 'sendController'),
+    `${controllerPath}: HarmonySessionController.sendController() is gated until platform controller routing and device evidence exist`);
 
   const queuePath = 'entry/src/main/ets/core/media/LatestFrameQueue.ts';
   check(hasEnumMembers(queuePath, 'FrameQueueState', ['WAITING_FOR_KEYFRAME', 'KEYFRAME_PENDING', 'DECODABLE']),

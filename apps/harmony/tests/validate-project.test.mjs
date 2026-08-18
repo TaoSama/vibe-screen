@@ -230,6 +230,59 @@ test('semantic validator rejects a capability guard placed after the protected s
     failure.includes('sendTouch() must use a dominating TOUCH early-return guard')));
 });
 
+test('semantic validator rejects advertising controller capability before production support', (t) => {
+  const fixture = projectFixture(t);
+  const capabilitiesPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/core/session/ClientCapabilities.ts');
+  const source = readFileSync(capabilitiesPath, 'utf8').replace(
+    'Capability.TOUCH, Capability.KEYBOARD, Capability.POINTER, Capability.STYLUS, Capability.SESSION_RESUME,',
+    'Capability.TOUCH, Capability.KEYBOARD, Capability.POINTER, Capability.STYLUS, Capability.CONTROLLER, Capability.SESSION_RESUME,');
+  assert.notEqual(source, readFileSync(capabilitiesPath, 'utf8'));
+  writeFileSync(capabilitiesPath, source);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('must not advertise CAPABILITY_CONTROLLER')));
+});
+
+test('semantic validator rejects a premature ControllerEvent encoder surface', (t) => {
+  const fixture = projectFixture(t);
+  const encoderPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/core/protocol/ProtocolEncoder.ts');
+  const source = readFileSync(encoderPath, 'utf8');
+  const modified = source
+    .replace('TOUCH = 60, POINTER = 61, SCROLL = 62, KEY = 63, STYLUS = 65',
+      'TOUCH = 60, POINTER = 61, SCROLL = 62, KEY = 63, STYLUS = 65, CONTROLLER = 66')
+    .replace('  static metadata(messageId: bigint',
+      '  controller(): Uint8Array { return new Uint8Array(); }\n\n  static metadata(messageId: bigint');
+  assert.notEqual(modified, source);
+  writeFileSync(encoderPath, modified);
+  const failures = validateFixture(fixture);
+  assert(failures.some((failure) => failure.includes('ControllerEvent payload field 66')));
+  assert(failures.some((failure) => failure.includes('ProtocolEncoder.controller() is gated')));
+});
+
+test('semantic validator rejects premature controller session and platform routes', (t) => {
+  const fixture = projectFixture(t);
+  const sessionPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/core/session/ProductSession.ts');
+  const sessionSource = readFileSync(sessionPath, 'utf8');
+  const sessionModified = sessionSource.replace('  heartbeat(sequence: bigint): SessionAction {',
+    '  controller(): SessionAction { throw new Error(\'not implemented\'); }\n\n  heartbeat(sequence: bigint): SessionAction {');
+  assert.notEqual(sessionModified, sessionSource);
+  writeFileSync(sessionPath, sessionModified);
+
+  const controllerPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/platform/HarmonySessionController.ets');
+  const controllerSource = readFileSync(controllerPath, 'utf8');
+  const controllerModified = controllerSource.replace('  onTransportReady(owner: number): void {',
+    '  sendController(): void { return; }\n\n  onTransportReady(owner: number): void {');
+  assert.notEqual(controllerModified, controllerSource);
+  writeFileSync(controllerPath, controllerModified);
+
+  const failures = validateFixture(fixture);
+  assert(failures.some((failure) => failure.includes('ProductSession.controller() is gated')));
+  assert(failures.some((failure) => failure.includes('HarmonySessionController.sendController() is gated')));
+});
+
 test('semantic validator rejects capability guard and send after an always-true return', (t) => {
   const fixture = projectFixture(t);
   const controllerPath = resolve(fixture.fixtureHarmony,

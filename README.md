@@ -530,7 +530,12 @@ network quality may increase it.
   DevEco/API-checker/HAP/MatePad evidence exists. A contacting pen can fall back
   to touch when the peer lacks stylus support; eraser, proximity/hover, and
   barrel buttons cannot be losslessly downgraded and are suppressed when the
-  extended capability is not negotiated. No DevEco SDK was available for this
+  extended capability is not negotiated. Protocol v1 also defines
+  `CAPABILITY_CONTROLLER = 26` and a lifecycle-scoped `ControllerEvent` wire
+  contract, which the Harmony portable protocol model mirrors, but the
+  production Harmony client does not advertise `CAPABILITY_CONTROLLER` and has
+  no `ControllerEvent` encoder, controller lifecycle implementation, or platform
+  routing. No DevEco SDK was available for this
   record, so the repository does not claim ArkTS compilation, a HAP, signing,
   installation, hardware decode, HUKS-backed secure pairing, authenticated
   transport, resume-capable Host interoperability, or real-device behavior.

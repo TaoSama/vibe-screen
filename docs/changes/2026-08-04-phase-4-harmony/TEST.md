@@ -89,6 +89,30 @@ to advertise only base stylus.
 This record does not establish DevEco ArkTS compilation, API compatibility, a
 HAP, signing, installation, hardware decode, or MatePad behavior.
 
+## 2026-08-19 controller gate audit
+
+The Harmony controller-input gate was audited without claiming production
+controller support. The portable project validator now fails closed if the
+production Harmony client starts advertising `CAPABILITY_CONTROLLER`, exposes a
+`ControllerEvent` payload field or encoder, adds a `ProductSession.controller()`
+send path, or adds a platform `HarmonySessionController.sendController()` route
+before lifecycle, neutral-release, DevEco, HAP, and MatePad evidence exists. The
+runtime portable tests also pin that field 66 remains absent from the production
+encoder surface and that an incoming `ControllerEvent` fixture is rejected by a
+streaming Harmony `ProductSession` as an unexpected Protocol v1 payload.
+
+```text
+cd apps/harmony && pnpm run verify
+  PASS: 35 semantic project files; 109/109 portable tests
+```
+
+This pass does not implement controller-specific input and does not prove the
+receiver-side all-zero neutral-state synthesis required for button masks, stick
+axes, triggers, and hat axes when an admitted controller lifecycle is discarded.
+It also does not establish DevEco/API-checker, HAP, signing, installation,
+hardware decode, HUKS-backed secure pairing, host interoperability, or MatePad
+behavior.
+
 ## Clean cross-repository gates
 
 The following commands ran against the tested commit/tree above:
@@ -174,12 +198,15 @@ contract gate then passed `test_upgrade_bytes_are_pinned`.
   and lifecycle-scoped `ControllerEvent`, and the Harmony portable protocol
   model mirrors `Capability.CONTROLLER = 26`; the production client does not
   advertise the capability and has no `ControllerEvent` encoder, controller
-  lifecycle implementation, or platform routing. A future receiver must prove
+  lifecycle implementation, or platform routing. Portable checks now reject
+  premature production advertisement, encoder, session, and platform routes and
+  reject an incoming field-66 fixture in the streaming session. A future
+  receiver must prove
   that it synthesizes the same all-zero neutral state for the button mask, stick
   axes, triggers, and hat axes before discarding an active controller on
   disconnect, session teardown, ownership takeover, or transport loss. Current
-  portable checks do not prove that rule; DevEco/API-checker, HAP, and device
-  evidence are also absent;
+  portable checks do not prove that neutral-state rule; DevEco/API-checker, HAP,
+  and device evidence are also absent;
 - background/foreground, permission denial, Wi-Fi loss/restore/roam, host restart,
   bounded reconnect, resume-result behavior, and no old-epoch render;
 - MatePad Mini eight-hour thermal/power/RSS/frame-drop soak and external-camera
