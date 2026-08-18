@@ -1079,6 +1079,7 @@ class MainActivity : AppCompatActivity() {
                         point.x,
                         point.y,
                         buttonState = event.buttonState,
+                        actionButton = event.actionButton,
                     )
 
                 MotionEvent.ACTION_BUTTON_RELEASE ->
@@ -1087,6 +1088,7 @@ class MainActivity : AppCompatActivity() {
                         point.x,
                         point.y,
                         buttonState = event.buttonState,
+                        actionButton = event.actionButton,
                     )
 
                 MotionEvent.ACTION_SCROLL ->
@@ -4472,6 +4474,7 @@ class MainActivity : AppCompatActivity() {
         override fun sendPointer(input: ClientPointerInput): Boolean {
             if (!isCurrentSession(client, generation)) return false
             val buttonMask = NativeInputWire.buttonMask(input.buttonState)
+            val changedButtonMask = NativeInputWire.buttonMask(input.actionButton)
             val admitted =
                 when (input.action) {
                     ClientPointerAction.SCROLL ->
@@ -4480,29 +4483,15 @@ class MainActivity : AppCompatActivity() {
                             deltaY = input.verticalScroll.toDouble(),
                         )
 
-                    ClientPointerAction.MOVE ->
+                    else -> {
+                        val phase = NativeInputWire.pointerPhase(input.action, buttonMask, changedButtonMask) ?: return false
                         client.sendPointer(
-                            phase = InputPhase.INPUT_PHASE_CHANGED,
+                            phase = phase,
                             x = input.x,
                             y = input.y,
                             buttonMask = buttonMask,
                         )
-
-                    ClientPointerAction.BUTTON_PRESS ->
-                        client.sendPointer(
-                            phase = InputPhase.INPUT_PHASE_BEGAN,
-                            x = input.x,
-                            y = input.y,
-                            buttonMask = buttonMask,
-                        )
-
-                    ClientPointerAction.BUTTON_RELEASE ->
-                        client.sendPointer(
-                            phase = InputPhase.INPUT_PHASE_ENDED,
-                            x = input.x,
-                            y = input.y,
-                            buttonMask = buttonMask,
-                        )
+                    }
                 }
             if (admitted && input.action != ClientPointerAction.SCROLL) {
                 nativeInputSessionState.recordPointer(client, generation, input.x, input.y, buttonMask)
