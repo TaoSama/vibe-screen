@@ -92,6 +92,63 @@ func TestPostgresDenyWinsAndPersistsRevocation(t *testing.T) {
 	}
 }
 
+func TestPostgresSignalingAdmissionReplayIsDurableAndExact(t *testing.T) {
+	store, cfg := openIntegrationStore(t)
+	ctx := context.Background()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"host", "client"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now().UTC()
+	request := SignalingRequest{RequestID: "durable-request", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 3, TTLSeconds: 60}
+	created, err := store.CreateSignaling(ctx, request, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created.Created {
+		t.Fatal("first admission was not marked created")
+	}
+
+	restarted, err := OpenPostgres(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Close()
+	replayed, err := restarted.CreateSignaling(ctx, request, now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayed.SessionID != created.SessionID || replayed.HostToken != created.HostToken || replayed.ClientToken != created.ClientToken || replayed.Created {
+		t.Fatalf("durable replay changed stable admission fields: replay=%#v created=%#v", replayed, created)
+	}
+	expiresDelta := replayed.ExpiresAt.Sub(created.ExpiresAt)
+	if expiresDelta < 0 {
+		expiresDelta = -expiresDelta
+	}
+	if expiresDelta > time.Microsecond {
+		t.Fatalf("durable replay changed expiry beyond database precision: replay=%s created=%s delta=%s", replayed.ExpiresAt, created.ExpiresAt, expiresDelta)
+	}
+
+	changed := request
+	changed.TTLSeconds = 120
+	if _, err := restarted.CreateSignaling(ctx, changed, now.Add(2*time.Second)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("changed idempotency replay error=%v, want ErrConflict", err)
+	}
+	if _, err := restarted.CreateSignaling(ctx, SignalingRequest{RequestID: "host-rollback", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(3*time.Second)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("durable host epoch floor error=%v, want ErrConflict", err)
+	}
+	if err := restarted.RegisterDevice(ctx, "account", "other-host"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restarted.CreateSignaling(ctx, SignalingRequest{RequestID: "client-rollback", AccountID: "account", HostDeviceID: "other-host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(4*time.Second)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("durable client epoch floor error=%v, want ErrConflict", err)
+	}
+}
+
 func TestPostgresAllocationLimitIsAtomicAcrossConcurrentConnections(t *testing.T) {
 	store, _ := openIntegrationStore(t)
 	ctx := context.Background()

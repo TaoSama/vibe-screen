@@ -566,6 +566,7 @@ func TestSignalingEpochCannotRollBack(t *testing.T) {
 	_ = store.EnsureAccount(ctx, "account")
 	_ = store.RegisterDevice(ctx, "account", "host")
 	_ = store.RegisterDevice(ctx, "account", "client")
+	_ = store.RegisterDevice(ctx, "account", "other-host")
 	base := SignalingRequest{RequestID: "newer", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 19, TTLSeconds: 60}
 	if _, err := store.CreateSignaling(ctx, base, time.Now()); err != nil {
 		t.Fatal(err)
@@ -580,6 +581,12 @@ func TestSignalingEpochCannotRollBack(t *testing.T) {
 	base.ClientDeviceID = "other-client"
 	if _, err := store.CreateSignaling(ctx, base, time.Now()); !errors.Is(err, ErrConflict) {
 		t.Fatalf("per-device epoch rollback error=%v", err)
+	}
+	base.RequestID = "other-host-client"
+	base.HostDeviceID = "other-host"
+	base.ClientDeviceID = "client"
+	if _, err := store.CreateSignaling(ctx, base, time.Now()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("client epoch rollback error=%v", err)
 	}
 	base.RequestID = "overflow"
 	base.SessionEpoch = math.MaxInt64 + 1
@@ -953,6 +960,37 @@ func TestHTTPAuthorityStrictlyScopesTokensAndIdempotentSession(t *testing.T) {
 	request(t, handler, http.MethodPost, "/v1/devices/client/revoke", cfg.AdminToken, `{"epoch":1}`, http.StatusNoContent)
 	authorize := `{"role_token":"` + b.ClientToken + `"}`
 	request(t, handler, http.MethodPost, "/v1/signaling/sessions/"+b.SessionID+"/authorize", cfg.SignalingToken, authorize, http.StatusForbidden)
+}
+
+func TestHTTPSuspendAccountRevokesAllSessions(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Handler()
+	request(t, handler, http.MethodPut, "/v1/accounts/account", cfg.AdminToken, "", http.StatusNoContent)
+	for _, deviceID := range []string{"host-one", "client-one", "host-two", "client-two"} {
+		request(t, handler, http.MethodPut, "/v1/accounts/account/devices/"+deviceID, cfg.AdminToken, "", http.StatusNoContent)
+	}
+
+	first := request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, `{"request_id":"request-one","account_id":"account","host_device_id":"host-one","client_device_id":"client-one","session_epoch":1,"ttl_seconds":60}`, http.StatusCreated)
+	second := request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, `{"request_id":"request-two","account_id":"account","host_device_id":"host-two","client_device_id":"client-two","session_epoch":1,"ttl_seconds":60}`, http.StatusCreated)
+	var admissions []SignalingAdmission
+	for _, response := range []*httptest.ResponseRecorder{first, second} {
+		var admission SignalingAdmission
+		if err := json.Unmarshal(response.Body.Bytes(), &admission); err != nil {
+			t.Fatal(err)
+		}
+		admissions = append(admissions, admission)
+	}
+
+	request(t, handler, http.MethodPost, "/v1/accounts/account/suspend", cfg.AdminToken, "{}", http.StatusNoContent)
+	for _, admission := range admissions {
+		authorize := `{"role_token":"` + admission.ClientToken + `"}`
+		request(t, handler, http.MethodPost, "/v1/signaling/sessions/"+admission.SessionID+"/authorize", cfg.SignalingToken, authorize, http.StatusForbidden)
+	}
 }
 
 func TestHTTPRelayCoturnUsageTokensAndRevokedFinalCloseFailClosed(t *testing.T) {
