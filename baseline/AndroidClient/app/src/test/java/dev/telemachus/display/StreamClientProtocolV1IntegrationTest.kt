@@ -16,6 +16,7 @@ import dev.vibescreen.protocol.v1.HostActionDescriptor
 import dev.vibescreen.protocol.v1.HostActionResult
 import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.InputPhase
+import dev.vibescreen.protocol.v1.InputAck
 import dev.vibescreen.protocol.v1.ListDisplaysResponse
 import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.ProtocolError
@@ -143,6 +144,88 @@ class StreamClientProtocolV1IntegrationTest {
             checkNotNull(commit.get()).complete(StreamVideoConfigurationDecision.ACCEPTED)
 
             assertNull(withTimeout(8_000) { serverResult.await() })
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
+    fun controllerForwardingWaitsForConnectedAckBeforeStateResync() = runBlocking {
+        ServerSocket(0).use { server ->
+            val configurationRequested = CountDownLatch(1)
+            val controllerAcked = CountDownLatch(1)
+            val client = StreamClient("127.0.0.1", server.localPort, advertiseController = true)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CONTROLLER),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CONTROLLER),
+                            expectedClientCapabilities = DEFAULT_CLIENT_CAPABILITIES + Capability.CAPABILITY_CONTROLLER,
+                        )
+                        configurationRequested.await(8, TimeUnit.SECONDS)
+                        val connected = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.CONTROLLER_EVENT, connected.payloadCase)
+                        assertEquals(
+                            dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_CONNECTED,
+                            connected.controllerEvent.kind,
+                        )
+                        peer.soTimeout = 250
+                        assertNull(readEnvelopeOrNull(peer))
+                        peer.soTimeout = 3_000
+                        write(
+                            peer,
+                            base(6)
+                                .setInputAck(
+                                    InputAck
+                                        .newBuilder()
+                                        .setInputId(connected.controllerEvent.inputId)
+                                        .setAccepted(true),
+                                ).build(),
+                        )
+                        controllerAcked.await(8, TimeUnit.SECONDS)
+                        val state = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.CONTROLLER_EVENT, state.payloadCase)
+                        assertEquals(
+                            dev.vibescreen.protocol.v1.ControllerEventKind.CONTROLLER_EVENT_KIND_STATE,
+                            state.controllerEvent.kind,
+                        )
+                        write(peer, disconnect(id = 7))
+                    }
+                }
+            client.onVideoConfiguration = { _, commit ->
+                configurationRequested.countDown()
+                commit.accept()
+            }
+            client.onControllerInputAck = { _, accepted, _ ->
+                if (accepted) {
+                    controllerAcked.countDown()
+                    client.sendController(
+                        ControllerDispatch(
+                            samples = listOf(ControllerStateSample("pad-1", 1, ControllerEventKind.STATE, buttonMask = 1)),
+                            delivery = ControllerDelivery.STRUCTURAL,
+                        ),
+                    )
+                }
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            assertTrue(configurationRequested.await(8, TimeUnit.SECONDS))
+            val admitted =
+                client.sendController(
+                    ControllerDispatch(
+                        samples =
+                            listOf(
+                                ControllerStateSample("pad-1", 1, ControllerEventKind.CONNECTED),
+                                ControllerStateSample("pad-1", 1, ControllerEventKind.STATE, buttonMask = 1),
+                            ),
+                        delivery = ControllerDelivery.STRUCTURAL,
+                    ),
+                )
+            assertTrue(admitted)
+            withTimeout(8_000) { serverJob.await() }
             withTimeout(8_000) { clientJob.await() }
             Unit
         }
@@ -727,8 +810,9 @@ class StreamClientProtocolV1IntegrationTest {
         initialRotation: Int,
         hostCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
         negotiatedCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
+        expectedClientCapabilities: List<Capability> = DEFAULT_CLIENT_CAPABILITIES,
     ) {
-        beginHandshake(peer, initialRotation, hostCapabilities, negotiatedCapabilities)
+        beginHandshake(peer, initialRotation, hostCapabilities, negotiatedCapabilities, expectedClientCapabilities)
         val result = readEnvelope(peer)
         assertEquals(Envelope.PayloadCase.VIDEO_CONFIG_RESULT, result.payloadCase)
         assertTrue(result.videoConfigResult.accepted)
@@ -740,26 +824,14 @@ class StreamClientProtocolV1IntegrationTest {
         initialRotation: Int,
         hostCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
         negotiatedCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
+        expectedClientCapabilities: List<Capability> = DEFAULT_CLIENT_CAPABILITIES,
     ) {
         assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
         peer.getOutputStream().write(byteArrayOf(PROTOCOL_UPGRADE_BYTE.toByte(), 1))
         peer.getOutputStream().flush()
         val clientHello = readEnvelope(peer)
         assertEquals(Envelope.PayloadCase.CLIENT_HELLO, clientHello.payloadCase)
-        assertEquals(
-            listOf(
-                Capability.CAPABILITY_TOUCH,
-                Capability.CAPABILITY_KEYBOARD,
-                Capability.CAPABILITY_POINTER,
-                Capability.CAPABILITY_STYLUS,
-                Capability.CAPABILITY_STYLUS_EXTENDED,
-                Capability.CAPABILITY_MULTI_DISPLAY,
-                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
-                Capability.CAPABILITY_HOST_ACTIONS,
-                Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
-            ),
-            clientHello.clientHello.capabilitiesList,
-        )
+        assertEquals(expectedClientCapabilities, clientHello.clientHello.capabilitiesList)
         assertEquals(emptyList<Capability>(), clientHello.clientHello.requiredCapabilitiesList)
         write(peer, hostHello(1, hostCapabilities))
         write(peer, sessionAccepted(2, negotiatedCapabilities))
@@ -1056,5 +1128,17 @@ class StreamClientProtocolV1IntegrationTest {
         // locally; a tight ceiling makes the reject assertions flaky there.
         private const val REJECTED_CONFIG_AWAIT_MS = 8_000L
         private val SESSION_ID = ByteString.copyFrom(ByteArray(16) { 1 })
+        private val DEFAULT_CLIENT_CAPABILITIES =
+            listOf(
+                Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_KEYBOARD,
+                Capability.CAPABILITY_POINTER,
+                Capability.CAPABILITY_STYLUS,
+                Capability.CAPABILITY_STYLUS_EXTENDED,
+                Capability.CAPABILITY_MULTI_DISPLAY,
+                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
+                Capability.CAPABILITY_HOST_ACTIONS,
+                Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
+            )
     }
 }

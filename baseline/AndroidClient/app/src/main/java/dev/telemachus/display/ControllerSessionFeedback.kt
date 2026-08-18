@@ -50,6 +50,13 @@ internal class ControllerConnectionAckTracker {
         connection
     }
 
+    fun isPending(
+        controllerId: String,
+        controllerEpoch: Long,
+    ): Boolean = synchronized(lock) {
+        inputIdsByConnection.containsKey(ControllerConnection(controllerId, controllerEpoch))
+    }
+
     fun reset() = synchronized(lock) {
         connectionsByInputId.clear()
         inputIdsByConnection.clear()

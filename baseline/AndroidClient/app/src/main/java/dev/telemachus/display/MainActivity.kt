@@ -196,6 +196,7 @@ class MainActivity : AppCompatActivity() {
     private val sessionState = SessionState<StreamClient>()
     private val nativeInputSessionState = NativeInputSessionState<StreamClient>()
     private val nativeInputReleaseCoordinator = NativeInputReleaseCoordinator(nativeInputSessionState)
+    private val streamControllerSessionState = ControllerSessionState()
     private var activeSessionGeneration = 0L
     private var unsupportedKeyboardNoticeShown = false
     private val inputHandler = Handler(Looper.getMainLooper())
@@ -467,6 +468,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (!isConnected || event.isSystemKey()) return super.dispatchKeyEvent(event)
+        ControllerInputMapper.keyChange(event)?.let { change ->
+            val dispatch = streamControllerSessionState.applyKey(change)
+            if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller key")) return true
+            if (ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)) return true
+        }
         val clientEvent =
             AndroidKeyInputMapper.map(
                 keyCode = event.keyCode,
@@ -1042,6 +1048,11 @@ class MainActivity : AppCompatActivity() {
             return handleInternetStylus(view, event, session, extendedOnly = true)
         }
         if (!isConnected) return false
+        ControllerInputMapper.snapshot(event)?.let { snapshot ->
+            val dispatch = streamControllerSessionState.applyMotion(snapshot)
+            if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller motion")) return true
+            return ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)
+        }
         val stylusSnapshot = StylusInputMapper.snapshot(event) { x, y -> mapInputPoint(view, x, y) }
         val client = streamClient
         if (stylusSnapshot.pointers.any { it.toolKind != null } && client?.canSendExtendedStylus() == true) {
@@ -1163,6 +1174,24 @@ class MainActivity : AppCompatActivity() {
         pendingRightClickRelease = release
         inputHandler.postDelayed(release, LEGACY_RIGHT_CLICK_HOLD_MS)
         mainDiag("secondary mouse button adapted to legacy long press")
+    }
+
+    private fun sendStreamControllerDispatch(
+        dispatch: ControllerDispatch,
+        source: String,
+    ): Boolean {
+        val result = ClientInputDispatch(currentSessionBinding()).sendController(ClientControllerInput(dispatch))
+        return when (result) {
+            ClientInputDispatchResult.SENT -> true
+            ClientInputDispatchResult.REJECTED -> {
+                mainDiag("negotiated controller sink rejected $source")
+                false
+            }
+            ClientInputDispatchResult.UNSUPPORTED -> {
+                mainDiag("controller input blocked by host without controller capability source=$source")
+                false
+            }
+        }
     }
 
     private fun finishPendingRightClick() {
@@ -2651,6 +2680,7 @@ class MainActivity : AppCompatActivity() {
     private fun activateSession(client: StreamClient): Long {
         mainSessionDisplayLifecycle?.invalidate()
         mainSessionDisplayLifecycle = null
+        streamControllerSessionState.resetForNewSession()
         val generation = sessionState.activate(client)
         streamClient = client
         activeSessionGeneration = generation
@@ -3270,18 +3300,21 @@ class MainActivity : AppCompatActivity() {
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_KEYBOARD in negotiated
                 val nativePointer =
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_POINTER in negotiated
+                val controller =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_CONTROLLER in negotiated
                 val hostActions =
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in negotiated
-                if (displaySelection || keyboard || nativePointer || hostActions) {
+                if (displaySelection || keyboard || nativePointer || controller || hostActions) {
                     val capabilities =
                         ClientSessionCapabilities.LEGACY_TOUCH_ONLY.copy(
                             displaySelection = displaySelection,
                             keyboard = keyboard,
                             nativePointer = nativePointer,
+                            controller = controller,
                             hostActions = hostActions,
                         )
                     val sink =
-                        if (keyboard || nativePointer) {
+                        if (keyboard || nativePointer || controller) {
                             StreamClientInputSink(callbackClient, callbackGeneration)
                         } else {
                             null
@@ -3297,7 +3330,8 @@ class MainActivity : AppCompatActivity() {
                     populateHostActions(availableHostActions)
                     mainDiag(
                         "session binding promoted: displaySelection=$displaySelection " +
-                            "keyboard=$keyboard nativePointer=$nativePointer hostActions=$hostActions",
+                            "keyboard=$keyboard nativePointer=$nativePointer " +
+                            "controller=$controller hostActions=$hostActions",
                     )
                 }
                 populateDisplayCapsule(options, selectedId)
@@ -3310,6 +3344,20 @@ class MainActivity : AppCompatActivity() {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                 mainDiag("onHostActionsAvailable: ${actions.joinToString { it.id }}")
                 populateHostActions(actions)
+            }
+        }
+        callbackClient.onControllerInputAck = controllerAck@{ connection, accepted, rejectionReason ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@controllerAck
+            if (accepted) {
+                val resync = streamControllerSessionState.resynchronize() ?: return@controllerAck
+                sendStreamControllerDispatch(resync, "controller ack resync")
+                return@controllerAck
+            }
+            if (streamControllerSessionState.rejectConnection(connection.controllerId, connection.controllerEpoch)) {
+                mainDiag(
+                    "controller connection rejected id=${connection.controllerId} " +
+                        "epoch=${connection.controllerEpoch} reason=$rejectionReason",
+                )
             }
         }
         callbackClient.onHostActionResult = hostActionResult@{ accepted, rejectionReason ->
@@ -4056,7 +4104,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (isConnected || connectionAttemptInProgress) return
         connectionAttemptInProgress = true
-        val callbackClient = StreamClient(host, port, applicationContext)
+        val callbackClient = StreamClient(host, port, applicationContext, advertiseController = true)
         val callbackGeneration = activateSession(callbackClient)
         val retryCoordinator =
             createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration) {
@@ -4169,7 +4217,7 @@ class MainActivity : AppCompatActivity() {
         if (prefs.connectionMode == ConnectionMode.USB) {
             updateDisconnectedHeader(ConnectionMode.USB)
         }
-        val callbackClient = StreamClient(host, port, applicationContext)
+        val callbackClient = StreamClient(host, port, applicationContext, advertiseController = true)
         val guidanceContext = ConnectionGuidanceContext.adb(port, currentUsbTransportSnapshot().adbTransport)
         val callbackGeneration = activateSession(callbackClient)
         val retryCoordinator =
@@ -4461,6 +4509,11 @@ class MainActivity : AppCompatActivity() {
             }
             return admitted
         }
+
+        override fun sendController(input: ClientControllerInput): Boolean {
+            if (!isCurrentSession(client, generation)) return false
+            return client.sendController(input.dispatch)
+        }
     }
 
     private fun completeCurrentNativeInputBoundary(
@@ -4492,8 +4545,14 @@ class MainActivity : AppCompatActivity() {
         afterRelease: () -> Unit,
     ) {
         if (client == null) {
+            streamControllerSessionState.takeRelease()
             afterRelease()
             return
+        }
+        streamControllerSessionState.takeRelease()?.let { release ->
+            if (!sendStreamControllerDispatch(release, "controller release")) {
+                mainDiag("controller release was rejected for generation=$generation")
+            }
         }
         val submission =
             nativeInputReleaseCoordinator.completeBoundary(
