@@ -23,11 +23,36 @@ from . import SCHEMA_VERSION
 
 KIND_GLASS_TO_GLASS = "glass-to-glass"
 KIND_INPUT = "input"
+KIND_TELEMETRY_STAGE = "telemetry-stage"
 METHOD_EXTERNAL_CAMERA = "external-camera"
 METHOD_SYNCHRONIZED_CLOCK = "synchronized-clock"
+METHOD_HOST_TELEMETRY = "host-telemetry"
+METHOD_CLIENT_TELEMETRY = "client-telemetry"
 METHOD_UNSYNCHRONIZED_CLOCKS = "unsynchronized-host-device-clocks"
 TRANSPORT_USB = "usb"
 TRANSPORT_LAN = "lan"
+TELEMETRY_STAGE_METHODS = (METHOD_HOST_TELEMETRY, METHOD_CLIENT_TELEMETRY)
+GATE_USB_GLASS_TO_GLASS_SUB50 = "usb-glass-to-glass-sub50"
+GATE_LAN_GLASS_TO_GLASS_SUB80 = "lan-glass-to-glass-sub80"
+GATE_INPUT_P95_SUB50 = "input-p95-sub50"
+MIN_GATE_SAMPLE_COUNT = 5
+GATE_PROFILES = {
+    GATE_USB_GLASS_TO_GLASS_SUB50: {
+        "kind": KIND_GLASS_TO_GLASS,
+        "transport": TRANSPORT_USB,
+        "threshold_ms": 50.0,
+    },
+    GATE_LAN_GLASS_TO_GLASS_SUB80: {
+        "kind": KIND_GLASS_TO_GLASS,
+        "transport": TRANSPORT_LAN,
+        "threshold_ms": 80.0,
+    },
+    GATE_INPUT_P95_SUB50: {
+        "kind": KIND_INPUT,
+        "transport": None,
+        "threshold_ms": 50.0,
+    },
+}
 
 
 class LatencyInputError(ValueError):
@@ -83,6 +108,17 @@ def _latency_from_sample(sample: Any, sample_number: int) -> float:
     return latency_ms
 
 
+def _stage_from_sample(sample: Any, sample_number: int) -> str:
+    if not isinstance(sample, dict):
+        raise LatencyInputError(f"sample {sample_number}: expected an object/CSV row")
+    stage = sample.get("stage")
+    if not isinstance(stage, str) or not stage.strip():
+        raise LatencyInputError(
+            f"sample {sample_number}: telemetry-stage samples require a non-empty stage"
+        )
+    return stage.strip()
+
+
 def load_samples(stream: TextIO, input_format: str) -> list[dict[str, Any]]:
     """Load raw rows from CSV or JSON without assigning measurement semantics."""
     try:
@@ -119,6 +155,60 @@ def percentile(values: Sequence[float], probability: float) -> float:
     return ordered[lower_index] + fraction * (ordered[upper_index] - ordered[lower_index])
 
 
+def _derive_gate_verdict(
+    *,
+    gate_profile: str,
+    kind: str,
+    transport: str,
+    measurement_method: str,
+    statistics_summary: dict[str, float | int],
+) -> dict[str, Any]:
+    profile = GATE_PROFILES.get(gate_profile)
+    if profile is None:
+        raise LatencyInputError(f"unsupported gate profile: {gate_profile}")
+    if kind == KIND_TELEMETRY_STAGE:
+        raise LatencyInputError("telemetry-stage samples cannot be used with a gate profile")
+    expected_kind = profile["kind"]
+    if kind != expected_kind:
+        raise LatencyInputError(
+            f"gate profile {gate_profile} requires --kind {expected_kind}, got {kind}"
+        )
+    expected_transport = profile["transport"]
+    if expected_transport is not None and transport != expected_transport:
+        raise LatencyInputError(
+            f"gate profile {gate_profile} requires --transport {expected_transport}, got {transport}"
+        )
+
+    reasons: list[str] = []
+    if kind == KIND_GLASS_TO_GLASS and measurement_method != METHOD_EXTERNAL_CAMERA:
+        reasons.append("glass-to-glass gate requires external-camera measurement")
+    sample_count = int(statistics_summary["count"])
+    if sample_count < MIN_GATE_SAMPLE_COUNT:
+        reasons.append(
+            f"only {sample_count} samples provided; at least {MIN_GATE_SAMPLE_COUNT} are required"
+        )
+    threshold_ms = float(profile["threshold_ms"])
+    p95_ms = float(statistics_summary["p95"])
+    if reasons:
+        verdict = "insufficient"
+    elif p95_ms <= threshold_ms:
+        verdict = "pass"
+    else:
+        verdict = "fail"
+        reasons.append(f"p95 {p95_ms:.3f} ms exceeds threshold {threshold_ms:.3f} ms")
+
+    return {
+        "profile": gate_profile,
+        "verdict": verdict,
+        "metric": "p95",
+        "threshold_ms": threshold_ms,
+        "observed_ms": p95_ms,
+        "min_sample_count": MIN_GATE_SAMPLE_COUNT,
+        "sample_count": sample_count,
+        "reasons": reasons,
+    }
+
+
 def summarize(
     rows: Sequence[dict[str, Any]],
     *,
@@ -126,6 +216,7 @@ def summarize(
     measurement_method: str,
     transport: str,
     run_id: str | None = None,
+    gate_profile: str | None = None,
 ) -> dict[str, Any]:
     """Validate measurement provenance and compute latency statistics."""
     if measurement_method == METHOD_UNSYNCHRONIZED_CLOCKS:
@@ -133,14 +224,29 @@ def summarize(
             "unsynchronized host/device timestamps cannot establish end-to-end latency; "
             "use one external-camera timebase for glass-to-glass evidence"
         )
+    if kind in (KIND_GLASS_TO_GLASS, KIND_INPUT) and measurement_method in TELEMETRY_STAGE_METHODS:
+        raise LatencyInputError(
+            "host/client telemetry can only be summarized with --kind telemetry-stage; "
+            "it cannot establish glass-to-glass or input event latency"
+        )
     if kind == KIND_GLASS_TO_GLASS and measurement_method != METHOD_EXTERNAL_CAMERA:
         raise LatencyInputError(
             "glass-to-glass latency requires an external-camera measurement on one timebase; "
             "host/device timestamps are not glass-to-glass evidence"
         )
-    if kind not in (KIND_GLASS_TO_GLASS, KIND_INPUT):
+    if kind == KIND_TELEMETRY_STAGE and measurement_method not in TELEMETRY_STAGE_METHODS:
+        raise LatencyInputError(
+            "telemetry-stage latency requires --measurement-method host-telemetry "
+            "or client-telemetry; it is informational and cannot close end-to-end gates"
+        )
+    if kind not in (KIND_GLASS_TO_GLASS, KIND_INPUT, KIND_TELEMETRY_STAGE):
         raise LatencyInputError(f"unsupported latency kind: {kind}")
-    if measurement_method not in (METHOD_EXTERNAL_CAMERA, METHOD_SYNCHRONIZED_CLOCK):
+    if measurement_method not in (
+        METHOD_EXTERNAL_CAMERA,
+        METHOD_SYNCHRONIZED_CLOCK,
+        METHOD_HOST_TELEMETRY,
+        METHOD_CLIENT_TELEMETRY,
+    ):
         raise LatencyInputError(f"unsupported measurement method: {measurement_method}")
     if transport not in (TRANSPORT_USB, TRANSPORT_LAN):
         raise LatencyInputError(f"unsupported transport: {transport}")
@@ -154,20 +260,74 @@ def summarize(
         "median": statistics.median(latencies),
         "p95": percentile(latencies, 0.95),
     }
-    evidence_kind = "glass_to_glass" if kind == KIND_GLASS_TO_GLASS else "input_latency"
-    return {
+    if kind == KIND_GLASS_TO_GLASS:
+        evidence_kind = "glass_to_glass"
+        gate_summary = {
+            "can_close_performance_gate": True,
+            "requires_external_hardware": True,
+            "reason": "all samples were measured on one external-camera timebase",
+        }
+        status = "complete"
+    elif kind == KIND_INPUT:
+        evidence_kind = "input_latency"
+        gate_summary = {
+            "can_close_performance_gate": True,
+            "requires_external_hardware": measurement_method == METHOD_EXTERNAL_CAMERA,
+            "reason": "input samples use an accepted single timebase",
+        }
+        status = "complete"
+    else:
+        evidence_kind = "telemetry_stage_latency"
+        gate_summary = {
+            "can_close_performance_gate": False,
+            "requires_external_hardware": False,
+            "reason": (
+                "host/client telemetry measures one clock domain or pipeline stage only; "
+                "it can diagnose latency sources but cannot prove glass-to-glass or input latency"
+            ),
+        }
+        status = "informational"
+
+    summary = {
         "schema_version": SCHEMA_VERSION,
         "run_id": run_id or str(uuid.uuid4()),
         "kind": evidence_kind,
-        "status": "complete",
+        "status": status,
         "latency_kind": kind,
         "measurement_method": measurement_method,
         "transport": transport,
         "unit": "ms",
+        "gate": gate_summary,
         "metrics": statistics_summary,
         "statistics": statistics_summary,
         "samples_ms": latencies,
     }
+    if gate_profile is not None:
+        gate_result = _derive_gate_verdict(
+            gate_profile=gate_profile,
+            kind=kind,
+            transport=transport,
+            measurement_method=measurement_method,
+            statistics_summary=statistics_summary,
+        )
+        summary["verdict"] = gate_result["verdict"]
+        summary["gate"].update(gate_result)
+    if kind == KIND_TELEMETRY_STAGE:
+        stage_latencies: dict[str, list[float]] = {}
+        for index, row in enumerate(rows, start=1):
+            stage_latencies.setdefault(_stage_from_sample(row, index), []).append(latencies[index - 1])
+        summary["stages"] = {
+            stage: {
+                "count": len(stage_values),
+                "min": min(stage_values),
+                "max": max(stage_values),
+                "mean": statistics.fmean(stage_values),
+                "median": statistics.median(stage_values),
+                "p95": percentile(stage_values, 0.95),
+            }
+            for stage, stage_values in sorted(stage_latencies.items())
+        }
+    return summary
 
 
 def _infer_input_format(path: str, explicit_format: str | None) -> str:
@@ -204,6 +364,27 @@ def _write_summary(summary: dict[str, Any], output_format: str, stream: TextIO) 
                 value,
             )
         )
+    if "verdict" in summary:
+        for metric in (
+            "profile",
+            "verdict",
+            "threshold_ms",
+            "observed_ms",
+            "min_sample_count",
+            "sample_count",
+        ):
+            writer.writerow(
+                (
+                    summary["schema_version"],
+                    summary["run_id"],
+                    summary["latency_kind"],
+                    summary["transport"],
+                    summary["measurement_method"],
+                    summary["unit"],
+                    f"gate.{metric}",
+                    summary["gate"][metric],
+                )
+            )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -211,17 +392,22 @@ def build_parser() -> argparse.ArgumentParser:
         description="Summarize raw glass-to-glass or input latency samples.",
         epilog=(
             "CSV/JSON samples contain either latency_ms, or start_frame, end_frame, "
-            "and camera_fps. Glass-to-glass claims require --measurement-method external-camera."
+            "and camera_fps. Telemetry-stage samples also require stage. "
+            "Glass-to-glass claims require --measurement-method external-camera."
         ),
     )
     parser.add_argument("input", help="raw .csv/.json file, or - for stdin")
-    parser.add_argument("--kind", choices=(KIND_GLASS_TO_GLASS, KIND_INPUT), required=True)
+    parser.add_argument(
+        "--kind", choices=(KIND_GLASS_TO_GLASS, KIND_INPUT, KIND_TELEMETRY_STAGE), required=True
+    )
     parser.add_argument("--transport", choices=(TRANSPORT_USB, TRANSPORT_LAN), required=True)
     parser.add_argument(
         "--measurement-method",
         choices=(
             METHOD_EXTERNAL_CAMERA,
             METHOD_SYNCHRONIZED_CLOCK,
+            METHOD_HOST_TELEMETRY,
+            METHOD_CLIENT_TELEMETRY,
             METHOD_UNSYNCHRONIZED_CLOCKS,
         ),
         required=True,
@@ -230,6 +416,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-format", choices=("json", "csv"), default="json")
     parser.add_argument("--output", help="output file (default: stdout)")
     parser.add_argument("--run-id", help="identifier shared with the evidence manifest")
+    parser.add_argument(
+        "--gate-profile",
+        choices=tuple(GATE_PROFILES),
+        help=(
+            "optional performance gate to evaluate: usb-glass-to-glass-sub50, "
+            "lan-glass-to-glass-sub80, or input-p95-sub50"
+        ),
+    )
     return parser
 
 
@@ -253,6 +447,7 @@ def run(argv: Sequence[str] | None = None) -> int:
             measurement_method=args.measurement_method,
             transport=args.transport,
             run_id=args.run_id,
+            gate_profile=args.gate_profile,
         )
         if args.output:
             try:
