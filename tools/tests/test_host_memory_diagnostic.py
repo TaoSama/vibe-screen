@@ -15,6 +15,7 @@ import vibescreen_evidence.host_memory_diagnostic as host_memory_diagnostic
 from vibescreen_evidence.host_memory_analysis import (
     EvidenceInputError,
     INTERPRETATION,
+    SUFFICIENCY_FIELDS,
     _validate_final_state,
     analyze_records,
 )
@@ -301,6 +302,36 @@ Physical footprint:         944K
 MALLOC ZONE                         SIZE       SIZE       SIZE       SIZE      COUNT  ALLOCATED  FRAG SIZE  % FRAG   COUNT
 -----------                      -------  ---------  ---------  ---------  ---------  ---------  ---------  ------  ------
 DefaultMallocZone_0x1                2M       128K       128K         0K         20        64K        64K     50%       2
+"""
+        )
+
+        self.assertEqual(snapshot.malloc_zone_dirty_bytes, 128 * 1024)
+        self.assertEqual(snapshot.malloc_zone_allocated_bytes, 64 * 1024)
+        self.assertEqual(snapshot.malloc_zone_fragmentation_bytes, 64 * 1024)
+
+    def test_vmmap_rejects_malformed_content_before_first_zone(self):
+        with self.assertRaisesRegex(
+            MemoryToolParseError, "malformed malloc-zone table"
+        ):
+            parse_vmmap_summary(
+                """
+Physical footprint:         944K
+MALLOC ZONE                         SIZE       SIZE       SIZE       SIZE      COUNT  ALLOCATED  FRAG SIZE  % FRAG   COUNT
+===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======
+DefaultMallocZone_0x1              missing fields
+NanoMallocZone_0x2                   16M       128K       128K         0K        200        64K        64K     50%       2
+"""
+            )
+
+    def test_vmmap_stops_at_first_non_row_after_zone_rows(self):
+        snapshot = parse_vmmap_summary(
+            """
+Physical footprint:         944K
+MALLOC ZONE                         SIZE       SIZE       SIZE       SIZE      COUNT  ALLOCATED  FRAG SIZE  % FRAG   COUNT
+===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======
+DefaultMallocZone_0x1                2M       128K       128K         0K         20        64K        64K     50%       2
+table ended here
+NanoMallocZone_0x2                   16M       128K       128K         0K        200        64K        64K     50%       2
 """
         )
 
@@ -780,12 +811,15 @@ except EvidenceInputError:
     raise SystemExit(0)
 raise SystemExit(1)
 """
+        environment = dict(os.environ)
+        environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
         completed = subprocess.run(
             [sys.executable, "-O", "-c", code],
             check=False,
             capture_output=True,
             text=True,
             timeout=20,
+            env=environment,
         )
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
@@ -1095,6 +1129,7 @@ raise SystemExit(1)
         self.assertEqual(report["verdict"], "insufficient")
         self.assertEqual(report["attribution"], "inconclusive")
         self.assertTrue(report["sufficiency"])
+        self.assertEqual(set(report["sufficiency"]), set(SUFFICIENCY_FIELDS))
         self.assertTrue(
             all(value is False for value in report["sufficiency"].values())
         )

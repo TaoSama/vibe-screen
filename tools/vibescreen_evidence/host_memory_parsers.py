@@ -162,9 +162,14 @@ def parse_vmmap_summary(text: str) -> VMMapSnapshot:
                 break
             rows.append(match)
             continue
-        if rows:
-            if not line.strip() or not set(line.strip()) <= {"=", "-"}:
-                break
+        is_divider = not line.strip() or set(line) <= {"=", "-", " "}
+        if not rows and is_divider:
+            continue
+        if not rows:
+            raise MemoryToolParseError(
+                "vmmap summary has malformed malloc-zone table"
+            )
+        break
 
     if not rows:
         raise MemoryToolParseError("vmmap summary has no parseable malloc zones")

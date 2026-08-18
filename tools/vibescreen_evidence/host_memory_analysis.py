@@ -39,6 +39,27 @@ INTERPRETATION = (
     "no-growth gate and cannot close it; only host_rss_gate can evaluate "
     "the two-hour requirement."
 )
+MEMORY_COMPLETENESS_FIELDS = (
+    "rss_bytes",
+    "physical_footprint_bytes",
+    "malloc_small_dirty_bytes",
+    "malloc_zone_dirty_bytes",
+    "malloc_zone_allocated_bytes",
+    "malloc_zone_fragmentation_bytes",
+)
+HEAP_COMPLETENESS_FIELDS = ("node_count", "allocated_bytes")
+SUFFICIENCY_FIELDS = (
+    "collection_complete",
+    "duration",
+    "memory_samples",
+    "memory_window_coverage",
+    "heap_samples",
+    "heap_window_coverage",
+    "error_free",
+    *(f"{field}_complete" for field in MEMORY_COMPLETENESS_FIELDS),
+    *(f"heap_{field}_complete" for field in HEAP_COMPLETENESS_FIELDS),
+    "stream_telemetry",
+)
 
 
 def thresholds() -> dict[str, float | int]:
@@ -416,15 +437,7 @@ def analyze_records(
     }
 
     metrics: dict[str, Any] = {}
-    memory_fields = (
-        "rss_bytes",
-        "physical_footprint_bytes",
-        "malloc_small_dirty_bytes",
-        "malloc_zone_dirty_bytes",
-        "malloc_zone_allocated_bytes",
-        "malloc_zone_fragmentation_bytes",
-    )
-    for field in memory_fields:
+    for field in MEMORY_COMPLETENESS_FIELDS:
         points = _series(records, field, section="memory")
         sufficiency[f"{field}_complete"] = (
             bool(records) and len(points) == len(records)
@@ -440,7 +453,7 @@ def analyze_records(
     )
     if len(vmmap_footprint) >= 2:
         metrics["vmmap_physical_footprint_bytes"] = _trend(vmmap_footprint)
-    for field in ("node_count", "allocated_bytes"):
+    for field in HEAP_COMPLETENESS_FIELDS:
         points = _series(records, field, section="heap")
         sufficiency[f"heap_{field}_complete"] = (
             bool(heap_elapsed) and len(points) == len(heap_elapsed)

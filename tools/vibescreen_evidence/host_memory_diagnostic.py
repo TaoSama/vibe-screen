@@ -21,7 +21,12 @@ from typing import Any, Callable, Sequence
 import uuid
 
 from . import SCHEMA_VERSION
-from .host_memory_analysis import INTERPRETATION, analyze_records, thresholds
+from .host_memory_analysis import (
+    INTERPRETATION,
+    SUFFICIENCY_FIELDS,
+    analyze_records,
+    thresholds,
+)
 from .host_memory_parsers import (
     HeapSnapshot,
     MemoryToolParseError,
@@ -309,25 +314,7 @@ def _failure_report(pid: int, reason: str) -> dict[str, Any]:
 
 
 def _incomplete_sufficiency() -> dict[str, bool]:
-    fields = (
-        "collection_complete",
-        "duration",
-        "memory_samples",
-        "memory_window_coverage",
-        "heap_samples",
-        "heap_window_coverage",
-        "error_free",
-        "rss_bytes_complete",
-        "physical_footprint_bytes_complete",
-        "malloc_small_dirty_bytes_complete",
-        "malloc_zone_dirty_bytes_complete",
-        "malloc_zone_allocated_bytes_complete",
-        "malloc_zone_fragmentation_bytes_complete",
-        "heap_node_count_complete",
-        "heap_allocated_bytes_complete",
-        "stream_telemetry",
-    )
-    return dict.fromkeys(fields, False)
+    return dict.fromkeys(SUFFICIENCY_FIELDS, False)
 
 
 def _build_report(
