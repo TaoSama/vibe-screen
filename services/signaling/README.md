@@ -270,14 +270,17 @@ blocked, verifies role-token and request-ID replay rejection, scrapes metrics,
 sends `SIGTERM`, verifies a clean exit, and checks that known
 SDP/candidate/token secrets were absent from logs.
 
-The authority-backed process test starts both `vibe-authority` (PostgreSQL) and
-`vibe-signaling` (`production_authority`), registers an account and both
-devices, creates a session through the issuer endpoint, exchanges a host offer
-to the device poll, revokes the client device at the authority, and asserts
-that both role tokens are then rejected by signaling. It also confirms that
-neither process logs any service token, role token, or SDP secret. This proves
-rendezvous behavior and fail-closed revocation propagation, not a WebRTC ICE
-connection or TURN allocation.
+The authority-backed process test starts `vibe-authority` (PostgreSQL),
+`vibe-signaling` (`production_authority`), and `vibe-relay`
+(`production_authority`), registers an account and both devices, creates
+authority-backed sessions through the issuer endpoint, exchanges a host offer to
+the device poll, obtains authority-admitted relay credentials, invalidates one
+session, revokes the client device at the authority, and asserts that signaling
+role access plus future relay credential admission are then rejected. It also
+confirms that none of the processes logs any service token, role token, SDP
+secret, or relay credential secret. This proves rendezvous behavior and future
+TURN-credential fail-closed revocation propagation, not a WebRTC ICE connection
+or an already-active TURN allocation.
 
 ## Upgrade and rollback
 
@@ -306,7 +309,9 @@ slice, not accepted production behavior:
 - Automatic account and device registration is not wired; accounts and devices
   must be registered through the authority admin API before a session can be
   created.
-- The relay/coturn control plane is not yet wired to the authority.
+- Relay credential admission is wired to the authority, but the coturn exporter,
+  reconciliation loop, and active-allocation disconnect path are not production
+  proven.
 - An active PeerConnection or TURN allocation is not actively disconnected when
   a session is revoked at the authority; signaling invalidation only stops new
   rendezvous access.

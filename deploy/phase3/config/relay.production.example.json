@@ -13,6 +13,8 @@
   "daily_bytes_per_device": 21474836480,
   "max_usage_event_bytes": 1073741824,
   "egress_microcents_per_gibibyte": 9000000,
-  "state_file": "/data/relay-state.json"
+  "state_file": "/data/relay-state.json",
+  "authority_mode": "production_authority",
+  "authority_url": "https://authority.internal.example.com",
+  "authority_source_id": "turn-prod-1"
 }
-

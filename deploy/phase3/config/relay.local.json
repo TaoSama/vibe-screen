@@ -12,6 +12,6 @@
   "daily_bytes_per_device": 1073741824,
   "max_usage_event_bytes": 67108864,
   "egress_microcents_per_gibibyte": 0,
-  "state_file": "/data/relay-state.json"
+  "state_file": "/data/relay-state.json",
+  "authority_mode": "local_development"
 }
-

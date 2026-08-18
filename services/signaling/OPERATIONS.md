@@ -120,7 +120,8 @@ does not guarantee immediate byte-level erasure.
 - Mac/Android automatic profile/account/session issuance is not wired to the
   authority.
 - Automatic account/device registration is not wired.
-- The relay/coturn control plane is not wired to the authority.
+- Relay credential admission is wired to the authority; coturn exporter
+  reconciliation and active-allocation disconnect are not production proven.
 - Active PeerConnection/TURN allocations are not actively disconnected on
   authority revocation.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped

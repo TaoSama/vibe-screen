@@ -34,12 +34,14 @@ services:
       VIBE_RELAY_USAGE_TOKEN_FILE: /run/secrets/usage_token
       VIBE_RELAY_METRICS_TOKEN_FILE: /run/secrets/metrics_token
       VIBE_RELAY_ADMIN_TOKEN_FILE: /run/secrets/admin_token
+      VIBE_RELAY_AUTHORITY_TOKEN_FILE: /run/secrets/authority_token
     secrets:
       - turn_secret
       - client_token
       - usage_token
       - metrics_token
       - admin_token
+      - authority_token
     volumes:
       - ./config/relay.local.json:/etc/vibe-relay/config.json:ro
       - relay-data:/data
@@ -93,6 +95,8 @@ secrets:
     file: ./secrets/metrics_token.txt
   admin_token:
     file: ./secrets/admin_token.txt
+  authority_token:
+    file: ./secrets/authority_token.txt
 
 volumes:
   relay-data:
