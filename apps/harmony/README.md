@@ -159,11 +159,20 @@ for data handling and [UPGRADE.md](UPGRADE.md) for install/migration policy.
   proximity/hover) on-device confirmation, audio, and Internet transport;
 - Mac interoperability and the complete MatePad Mini acceptance/soak matrix.
 
-Controller input and wheel-specific semantics cannot be claimed from encoder
-code alone. Protocol v1 has no controller/peripheral event wire contract on
-main, so this change does not add controller input. The shared Protocol v1
-stylus schema now defines base CAPABILITY_STYLUS and the additive
-CAPABILITY_STYLUS_EXTENDED (tool kind, barrel buttons, contact/proximity state);
+Protocol v1 now defines `CAPABILITY_CONTROLLER = 26` and a lifecycle-scoped
+`ControllerEvent` wire contract, and the Harmony portable protocol model now
+mirrors `Capability.CONTROLLER = 26`. The production client does not advertise
+that capability and has no `ControllerEvent` encoder, controller lifecycle
+implementation, or platform routing. A conforming receiver must synthesize the
+same all-zero neutral state for the button mask, stick axes, triggers, and hat
+axes before discarding an active controller on disconnect, session teardown,
+ownership takeover, or transport loss. Harmony does not implement that rule,
+and its portable checks do not prove it. DevEco/API-checker, HAP, and
+MatePad evidence also remain absent; controller-specific input stays open.
+Wheel-specific semantics likewise cannot be claimed from encoder code alone.
+The shared Protocol v1 stylus schema now defines base CAPABILITY_STYLUS and the
+additive CAPABILITY_STYLUS_EXTENDED (tool kind, barrel buttons,
+contact/proximity state);
 the Harmony portable core encodes both under capability gating, but the
 production client advertises only CAPABILITY_STYLUS and not
 CAPABILITY_STYLUS_EXTENDED until DevEco/API-checker/HAP/MatePad evidence

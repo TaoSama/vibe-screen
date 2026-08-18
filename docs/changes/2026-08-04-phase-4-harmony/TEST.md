@@ -170,6 +170,16 @@ contract gate then passed `test_upgrade_bytes_are_pinned`.
 - multi-touch, Up/Cancel, keyboard/HID/modifiers, pointer/buttons, wheel/trackpad,
   stylus (base pressure/tilt and extended eraser/barrel/proximity under
   capability gating), focus, safe area, letterbox, and both orientations;
+- controller-specific input: Protocol v1 defines `CAPABILITY_CONTROLLER = 26`
+  and lifecycle-scoped `ControllerEvent`, and the Harmony portable protocol
+  model mirrors `Capability.CONTROLLER = 26`; the production client does not
+  advertise the capability and has no `ControllerEvent` encoder, controller
+  lifecycle implementation, or platform routing. A future receiver must prove
+  that it synthesizes the same all-zero neutral state for the button mask, stick
+  axes, triggers, and hat axes before discarding an active controller on
+  disconnect, session teardown, ownership takeover, or transport loss. Current
+  portable checks do not prove that rule; DevEco/API-checker, HAP, and device
+  evidence are also absent;
 - background/foreground, permission denial, Wi-Fi loss/restore/roam, host restart,
   bounded reconnect, resume-result behavior, and no old-epoch render;
 - MatePad Mini eight-hour thermal/power/RSS/frame-drop soak and external-camera
