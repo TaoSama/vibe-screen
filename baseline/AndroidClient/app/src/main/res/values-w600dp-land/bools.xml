@@ -7,4 +7,5 @@
          freeform windows below this threshold keep the stacked single column
          from values-land. -->
     <bool name="connection_panel_two_column">true</bool>
+    <bool name="connection_panel_inline_settings_button">false</bool>
 </resources>
