@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase2-tablet-gate.schema.json",
+  "title": "Vibe Screen Phase 2 tablet productization gate v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "kind", "derivation_status", "verdict", "thresholds", "sufficiency", "criteria", "reasons", "interpretation"],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase2_tablet_productization_gate"},
+    "derivation_status": {"enum": ["complete", "failed"]},
+    "verdict": {"enum": ["pass", "fail", "insufficient"]},
+    "run_id": {"type": ["string", "null"]},
+    "window": {"type": "object"},
+    "source_summary": {"type": "object"},
+    "thresholds": {"type": "object"},
+    "sufficiency": {"type": "object"},
+    "criteria": {"type": "object"},
+    "reasons": {"type": "array", "items": {"type": "string"}},
+    "interpretation": {"type": "string"}
+  }
+}
