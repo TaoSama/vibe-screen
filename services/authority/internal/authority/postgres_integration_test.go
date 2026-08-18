@@ -240,11 +240,109 @@ func TestPostgresAuthorityReviewContracts(t *testing.T) {
 	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "after-revoke", SourceID: "node"}, now); !errors.Is(err, ErrRevoked) {
 		t.Fatalf("relay admission after device revocation error=%v", err)
 	}
-	if err := store.InvalidateSignaling(ctx, session.SessionID, now); err != nil {
+}
+
+func TestPostgresSignalingInvalidationClosesRelayAllocationLedgerOnly(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "revoked", SourceID: "node"}, now); !errors.Is(err, ErrRevoked) {
-		t.Fatalf("revoked relay session error=%v", err)
+	for _, deviceID := range []string{"host", "client"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	session, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "invalidate-ledger", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 1, TTLSeconds: 60}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}, now); err != nil {
+		t.Fatal(err)
+	}
+	first := CoturnUsage{SourceID: "node", EventID: "first", AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 3, EgressBytes: 5, ObservedAt: now.Add(time.Second)}
+	if _, err := store.ApplyCoturnUsage(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.InvalidateSignaling(ctx, session.SessionID, now.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "blocked", SourceID: "node"}, now.Add(3*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("invalidated session relay admission error=%v", err)
+	}
+	final := CoturnUsage{SourceID: "node", EventID: "final", AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 4, EgressBytes: 7, ObservedAt: now.Add(3 * time.Second), Closed: true}
+	if _, err := store.ApplyCoturnUsage(ctx, final); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("final usage after signaling invalidation error=%v, want ErrRevoked", err)
+	}
+	var ingress, egress string
+	if err := store.pool.QueryRow(ctx, `SELECT ingress_bytes::text,egress_bytes::text FROM authority_relay_daily_usage WHERE device_id=$1`, "client").Scan(&ingress, &egress); err != nil {
+		t.Fatal(err)
+	}
+	if ingress != "3" || egress != "5" {
+		t.Fatalf("final invalidated usage mutated ledger to %s/%s", ingress, egress)
+	}
+	var closedAt *time.Time
+	if err := store.pool.QueryRow(ctx, `SELECT closed_at FROM authority_relay_allocations WHERE allocation_id=$1`, "allocation").Scan(&closedAt); err != nil {
+		t.Fatal(err)
+	}
+	wantClosedAt := now.Add(2 * time.Second).Truncate(time.Microsecond)
+	if closedAt == nil || !closedAt.UTC().Truncate(time.Microsecond).Equal(wantClosedAt) {
+		t.Fatalf("closed_at=%v, want invalidation timestamp %v", closedAt, wantClosedAt)
+	}
+}
+
+func TestPostgresRevocationClosesRelayAllocationsForLedgerOnly(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	store.allocationLimit = 1
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"host", "client", "replacement"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	session, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "revocation-ledger", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 1, TTLSeconds: 60}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RevokeDevice(ctx, "client", 1, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	final := CoturnUsage{SourceID: "node", EventID: "final-after-revoke", AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 9, EgressBytes: 4, ObservedAt: now.Add(2 * time.Second), Closed: true}
+	if _, err := store.ApplyCoturnUsage(ctx, final); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("final usage after device revoke error=%v, want ErrRevoked", err)
+	}
+	var dailyRows int
+	if err := store.pool.QueryRow(ctx, `SELECT count(*) FROM authority_relay_daily_usage WHERE device_id=$1`, "client").Scan(&dailyRows); err != nil {
+		t.Fatal(err)
+	}
+	if dailyRows != 0 {
+		t.Fatalf("revoked final usage created %d daily rows", dailyRows)
+	}
+	var closedAt *time.Time
+	if err := store.pool.QueryRow(ctx, `SELECT closed_at FROM authority_relay_allocations WHERE allocation_id=$1`, "allocation").Scan(&closedAt); err != nil {
+		t.Fatal(err)
+	}
+	wantClosedAt := now.Add(time.Second).Truncate(time.Microsecond)
+	if closedAt == nil || !closedAt.UTC().Truncate(time.Microsecond).Equal(wantClosedAt) {
+		t.Fatalf("closed_at=%v, want revocation timestamp %v", closedAt, wantClosedAt)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "blocked", SourceID: "node"}, now.Add(3*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("revoked device admission error=%v", err)
+	}
+	replacement, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "replacement", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "replacement", SessionEpoch: 2, TTLSeconds: 60}, now.Add(3*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "replacement", SessionID: replacement.SessionID, AllocationID: "replacement-allocation", SourceID: "node"}, now.Add(3*time.Second)); err != nil {
+		t.Fatalf("closed revoked allocation still consumed quota: %v", err)
 	}
 }
 

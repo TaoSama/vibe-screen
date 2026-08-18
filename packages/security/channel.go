@@ -16,6 +16,9 @@ const (
 	SenderHost       SenderRole = 1
 	SenderDevice     SenderRole = 2
 	replayWindowSize            = 64
+	// maxSequence bounds the per-session send sequence so the 4-byte
+	// nonce suffix never wraps and reuses a (key, nonce) pair.
+	maxSequence = uint64(math.MaxUint32)
 )
 
 var (
@@ -98,7 +101,7 @@ func (state *SecureChannelState) Seal(plaintext []byte) (EncryptedPacket, error)
 	if err != nil {
 		return EncryptedPacket{}, err
 	}
-	nonce := packetNonce(state.channel, sequence)
+	nonce := packetNonce(state.sessionEpoch, sequence)
 	header := PacketHeader{
 		ProtocolVersion: state.protocolVersion,
 		SessionID:       append([]byte(nil), state.sessionID...),
@@ -118,7 +121,7 @@ func (state *SecureChannelState) Seal(plaintext []byte) (EncryptedPacket, error)
 func (state *SecureChannelState) nextSequence() (uint64, error) {
 	for {
 		current := state.sendSequence.Load()
-		if current == math.MaxUint64 {
+		if current >= maxSequence {
 			return 0, ErrSequenceLimit
 		}
 		if state.sendSequence.CompareAndSwap(current, current+1) {
@@ -152,7 +155,7 @@ func (state *SecureChannelState) canAccept(sequence uint64) bool {
 }
 
 func (state *SecureChannelState) matches(header PacketHeader) bool {
-	expectedNonce := packetNonce(header.Channel, header.Sequence)
+	expectedNonce := packetNonce(header.SessionEpoch, header.Sequence)
 	return header.ProtocolVersion == state.protocolVersion &&
 		header.SessionEpoch == state.sessionEpoch && header.KeyID == state.keyID &&
 		header.KeyEpoch == state.keyEpoch && header.Channel == state.channel &&
@@ -162,10 +165,14 @@ func (state *SecureChannelState) matches(header PacketHeader) bool {
 		equalBytes(header.Nonce, expectedNonce)
 }
 
-func packetNonce(channel Channel, sequence uint64) []byte {
+// packetNonce derives a 12-byte AES-GCM nonce from the session epoch and
+// the per-channel sequence. The session epoch guarantees that two sessions
+// sharing the same key epoch never reuse a (key, nonce) pair; the 32-bit
+// sequence suffix is bounded by maxSequence so it cannot wrap.
+func packetNonce(sessionEpoch uint64, sequence uint64) []byte {
 	nonce := make([]byte, 12)
-	binary.BigEndian.PutUint32(nonce[:4], uint32(channel))
-	binary.BigEndian.PutUint64(nonce[4:], sequence)
+	binary.BigEndian.PutUint64(nonce[:8], sessionEpoch)
+	binary.BigEndian.PutUint32(nonce[8:], uint32(sequence))
 	return nonce
 }
 

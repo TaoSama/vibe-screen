@@ -171,26 +171,30 @@ Linux host:
    `authority_mode=production_authority`, point `authority_url` at the private
    Authority endpoint, and set `authority_source_id` to a stable identifier for
    this TURN source.
-2. Provision independent secret files with mode `0600`; distribute the same
+2. Set `VIBE_RELAY_IMAGE_REPOSITORY` and the exact 64-character
+   `VIBE_RELAY_IMAGE_SHA256`; Compose constructs a digest-only image reference
+   and the production profile intentionally has no local relay build fallback.
+3. Provision independent secret files with mode `0600`; distribute the same
    `turn_secret.txt` to relay and coturn, and provision `authority_token.txt`
    with the same value Authority exposes as `VIBE_AUTHORITY_RELAY_TOKEN`.
    Store/rotate them through the deployment secret manager, not source control.
-3. Install the public certificate chain as ignored `tls/fullchain.pem` and its
+4. Install the public certificate chain as ignored `tls/fullchain.pem` and its
    private key as `tls/privkey.pem`.
-4. Set `COTURN_REALM` to the certificate DNS hostname and
+5. Set `COTURN_REALM` to the certificate DNS hostname and
    `COTURN_EXTERNAL_IP` to `public-ip/private-ip` behind one-to-one NAT, or to
    the public IP on a directly addressed host.
-5. Allow inbound UDP/TCP 3478, TCP 5349, and UDP 49152-65535. Keep relay HTTP
+6. Allow inbound UDP/TCP 3478, TCP 5349, and UDP 49152-65535. Keep relay HTTP
    on loopback behind an authenticated TLS reverse proxy. Apply provider DDoS
    controls before these host rules.
-6. Validate the effective configuration, start, and inspect health/logs:
+7. Validate the effective configuration, start, and inspect health/logs:
 
 ```bash
 export COTURN_REALM=relay.example.com
 export COTURN_EXTERNAL_IP=203.0.113.10/10.0.0.10
+export VIBE_RELAY_IMAGE_REPOSITORY=registry.example.com/vibe-relay
+export VIBE_RELAY_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 docker compose -f docker-compose.production.yml config --quiet
-docker compose -f docker-compose.production.yml pull coturn
-docker compose -f docker-compose.production.yml build relay
+docker compose -f docker-compose.production.yml pull relay coturn
 docker compose -f docker-compose.production.yml up -d --wait
 curl --fail http://127.0.0.1:8090/readyz
 docker compose -f docker-compose.production.yml logs --since=10m relay coturn

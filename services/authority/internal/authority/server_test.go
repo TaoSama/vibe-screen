@@ -78,6 +78,11 @@ func (s *memoryStore) SuspendAccount(_ context.Context, id string, _ time.Time) 
 			session.revoked = true
 		}
 	}
+	for _, allocation := range s.allocations {
+		if s.devices[allocation.request.DeviceID] == id {
+			allocation.closed = true
+		}
+	}
 	return nil
 }
 func (s *memoryStore) RegisterDevice(_ context.Context, accountID, deviceID string) error {
@@ -108,6 +113,11 @@ func (s *memoryStore) RevokeDevice(_ context.Context, id string, epoch uint64, _
 	for _, session := range s.sessions {
 		if session.request.HostDeviceID == id || session.request.ClientDeviceID == id {
 			session.revoked = true
+		}
+	}
+	for _, allocation := range s.allocations {
+		if allocation.request.DeviceID == id {
+			allocation.closed = true
 		}
 	}
 	return nil
@@ -166,6 +176,11 @@ func (s *memoryStore) InvalidateSignaling(_ context.Context, id string, _ time.T
 		return ErrNotFound
 	}
 	s.sessions[id].revoked = true
+	for _, allocation := range s.allocations {
+		if allocation.request.SessionID == id {
+			allocation.closed = true
+		}
+	}
 	return nil
 }
 func (s *memoryStore) AdmitRelay(_ context.Context, request RelayAdmissionRequest, now time.Time) error {
@@ -227,7 +242,7 @@ func (s *memoryStore) ApplyCoturnUsage(_ context.Context, usage CoturnUsage) (bo
 	if allocation == nil {
 		return false, ErrNotFound
 	}
-	if allocation.request.SourceID != usage.SourceID || allocation.request.DeviceID != usage.DeviceID || allocation.request.SessionID != usage.SessionID || usage.Sequence <= allocation.sequence || usage.IngressBytes < allocation.ingress || usage.EgressBytes < allocation.egress || usage.ObservedAt.Before(allocation.observed) || allocation.closed {
+	if allocation.request.SourceID != usage.SourceID || allocation.request.DeviceID != usage.DeviceID || allocation.request.SessionID != usage.SessionID || usage.Sequence <= allocation.sequence || usage.IngressBytes < allocation.ingress || usage.EgressBytes < allocation.egress || usage.ObservedAt.Before(allocation.observed) {
 		return false, ErrStaleUsage
 	}
 	session := s.sessions[allocation.request.SessionID]
@@ -236,6 +251,9 @@ func (s *memoryStore) ApplyCoturnUsage(_ context.Context, usage CoturnUsage) (bo
 	}
 	if s.revoked[usage.DeviceID] > 0 || s.accounts[s.devices[usage.DeviceID]] || session.revoked || !usage.ObservedAt.Before(session.admission.ExpiresAt) {
 		return false, ErrRevoked
+	}
+	if allocation.closed {
+		return false, ErrStaleUsage
 	}
 	s.events[key] = digest
 	dayKey := dailyUsageKey(usage.DeviceID, s.now())

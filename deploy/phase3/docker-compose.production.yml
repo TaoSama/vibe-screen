@@ -19,11 +19,7 @@ services:
     restart: "no"
 
   relay:
-    build:
-      context: ../../services/relay
-      dockerfile: Dockerfile
-      args:
-        VERSION: 0.1.0
+    image: ${VIBE_RELAY_IMAGE_REPOSITORY:?set the vibe-relay image repository}@sha256:${VIBE_RELAY_IMAGE_SHA256:?set the 64-character vibe-relay image digest}
     restart: unless-stopped
     network_mode: host
     depends_on:

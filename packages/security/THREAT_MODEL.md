@@ -34,7 +34,8 @@ The design considers:
   bootstrap secret. Host/device and control/media keys are distinct.
 - AES-GCM authenticates ciphertext and the complete routing/security header.
   A deterministic 96-bit nonce is unique within each direction/channel key:
-  32-bit channel plus 64-bit strictly increasing sequence.
+  64-bit session epoch plus a 32-bit strictly increasing sequence. The send
+  sequence fails closed before the suffix wraps.
 - Control records require a sequence strictly greater than the last accepted
   sequence, preventing authenticated delivery reordering from changing action
   order. Media alone uses a 64-record receive window for limited network
