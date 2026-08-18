@@ -409,6 +409,42 @@ class HostMemoryAnalysisTests(unittest.TestCase):
             result["metrics"]["heap_class_growth"][0]["name"],
             "ObservationRegistrar",
         )
+        watched = result["metrics"]["heap_watch_summary"]
+        self.assertEqual(
+            watched["swiftui_observation"]["matched_classes"],
+            ["ObservationRegistrar"],
+        )
+        self.assertEqual(watched["swiftui_observation"]["count_drift"], 1500)
+        self.assertEqual(watched["video_frames"]["count_drift"], 0)
+        self.assertEqual(watched["video_frames"]["allocated_bytes_drift"], 0)
+
+    def test_heap_watch_summary_uses_union_of_first_and_last_snapshots(self):
+        records = memory_records("flat")
+        records[0]["heap"]["classes"] = [
+            {"name": "PixelBufferBox", "count": 2, "allocated_bytes": 200},
+            {"name": "ObservationEntry", "count": 3, "allocated_bytes": 300},
+        ]
+        records[-1]["heap"]["classes"] = [
+            {"name": "IOSurface", "count": 1, "allocated_bytes": 1000},
+            {"name": "ObservationEntry", "count": 8, "allocated_bytes": 900},
+            {"name": "AnyKeyPath", "count": 4, "allocated_bytes": 400},
+        ]
+
+        result = self.analyze("flat", records=records)
+        watched = result["metrics"]["heap_watch_summary"]
+
+        self.assertEqual(
+            watched["swiftui_observation"]["matched_classes"],
+            ["AnyKeyPath", "ObservationEntry"],
+        )
+        self.assertEqual(watched["swiftui_observation"]["count_drift"], 9)
+        self.assertEqual(watched["swiftui_observation"]["allocated_bytes_drift"], 1000)
+        self.assertEqual(
+            watched["video_frames"]["matched_classes"],
+            ["IOSurface", "PixelBufferBox"],
+        )
+        self.assertEqual(watched["video_frames"]["count_drift"], -1)
+        self.assertEqual(watched["video_frames"]["allocated_bytes_drift"], 800)
 
     def test_custom_heap_watch_extends_required_diagnostic_classes(self):
         watched = _watched_classes(

@@ -28,6 +28,7 @@ final class VideoEncoderInFlightAdmissionTests: XCTestCase {
     func testAcceptedFramesWithoutCallbacksStayAtCapacityAndCompletionRestoresAdmission() {
         let admission = VideoEncoderInFlightAdmission(capacity: 2)
         let videoToolbox = FakeVideoToolbox()
+        XCTAssertEqual(admission.capacity, 2)
 
         XCTAssertEqual(admission.submit(videoToolbox.submit), .submitted(noErr))
         XCTAssertEqual(admission.submit(videoToolbox.submit), .submitted(noErr))
