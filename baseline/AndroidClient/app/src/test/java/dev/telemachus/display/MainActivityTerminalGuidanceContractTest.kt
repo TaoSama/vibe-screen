@@ -48,6 +48,90 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun usbConnectionGuidanceUsesInlineErrorInsteadOfBlockingDialog() {
+        val source = mainActivitySource()
+        val connect = extractMethod(source, "private fun connect")
+        val disconnected = extractMethod(source, "private fun applyDisconnectedSessionUi")
+
+        assertFalse(
+            "USB connection failures must not block the disconnected panel with an AlertDialog",
+            connect.contains("showError(guidance.message)"),
+        )
+        assertTrue(
+            "Manual USB connection failures should render inline guidance",
+            connect.contains("inlineGuidance?.let(::showUsbConnectionGuidance)"),
+        )
+        assertTrue(
+            "Terminal guidance must render inline only from the active USB branch",
+            disconnected.contains(
+                "if (mode == ConnectionMode.USB) {\n                showUsbConnectionGuidance(guidance)\n            } else {\n                updateStatus(guidance.status)\n                showError(guidance.message)\n            }",
+            ),
+        )
+    }
+
+    @Test
+    fun terminalGuidanceDoesNotUseUsbInlinePanelForNonUsbModes() {
+        val disconnected = extractMethod(mainActivitySource(), "private fun applyDisconnectedSessionUi")
+        val compact = disconnected.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Terminal guidance must branch on the current connection mode",
+            compact.contains(
+                "if(mode==ConnectionMode.USB){showUsbConnectionGuidance(guidance)}" +
+                    "else{updateStatus(guidance.status)showError(guidance.message)}",
+            ),
+        )
+        assertFalse(
+            "The non-USB branch must not show the USB-specific inline panel",
+            compact.contains("else{showUsbConnectionGuidance(guidance)}"),
+        )
+        assertTrue(
+            "The non-USB branch should retain the previous terminal guidance dialog",
+            compact.contains("else{updateStatus(guidance.status)showError(guidance.message)}"),
+        )
+    }
+
+    @Test
+    fun inlineUsbGuidanceExpandsChecklistForRecovery() {
+        val source = mainActivitySource()
+        val setupUi = extractMethod(source, "private fun setupUI")
+        val inlineGuidance = extractMethod(source, "private fun showUsbConnectionGuidance")
+
+        assertFalse(
+            "USB validation guidance must use string resources instead of hardcoded text",
+            setupUi.contains("Please enter a host address"),
+        )
+        assertTrue(
+            "USB validation guidance must load its message from strings.xml",
+            setupUi.contains("getString(R.string.host_address_required)"),
+        )
+        assertUsesLiveRegion(inlineGuidance, "connectionErrorTitle", "showUsbConnectionGuidance")
+        assertUsesLiveRegionShow(inlineGuidance, "connectionErrorMessage", "showUsbConnectionGuidance")
+        assertTrue(
+            "Inline USB guidance should expand details so the failed checklist item is visible",
+            inlineGuidance.contains("setConnectionDetailsVisible(true)"),
+        )
+    }
+
+    @Test
+    fun disconnectedStreamUiKeepsSettingsButtonReachable() {
+        val disconnected = extractMethod(mainActivitySource(), "private fun showDisconnectedStreamUi")
+
+        assertTrue(
+            "Disconnected state should keep display settings reachable",
+            disconnected.contains("settingsButton.visibility = View.VISIBLE"),
+        )
+        assertTrue(
+            "Disconnected settings button must sit above the connection panel",
+            disconnected.contains("settingsButton.bringToFront()"),
+        )
+        assertTrue(
+            "Disconnected settings button must have a higher z-order than the connection panel",
+            disconnected.contains("settingsButton.translationZ = binding.settingsPanel.elevation + 1f"),
+        )
+    }
+
+    @Test
     fun onConfigurationChangedConnectionTitleUsesLiveRegionApplier() {
         val source = mainActivitySource()
         val onConfigurationChanged = extractMethod(source, "override fun onConfigurationChanged")
