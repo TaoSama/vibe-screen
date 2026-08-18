@@ -132,6 +132,35 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun disjointAllowedHostsDenyAllHosts() {
+        val local =
+            ProtocolV1Session.ManagedPolicy(
+                isManaged = true,
+                clipboardAllowed = true,
+                fileTransferAllowed = true,
+                audioAllowed = true,
+                wakeAllowed = true,
+                customGesturesAllowed = true,
+                hostActionsAllowed = true,
+                maximumFileBytes = 4_096,
+                allowedHosts = setOf("local-host"),
+            )
+        val remote =
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.toStatus()
+                .toBuilder()
+                .setManaged(true)
+                .addAllowedHosts("remote-host")
+                .build()
+
+        val effective = local.applying(ProtocolV1Session.ManagedPolicy.fromStatus(remote))
+
+        assertTrue(effective.allowedHostsRestricted)
+        assertTrue(effective.allowedHosts.isEmpty())
+        assertFalse(effective.allowsHost("local-host"))
+        assertFalse(effective.allowsHost("remote-host"))
+    }
+
+    @Test
     fun managedRemoteStatusWithUnsetFieldsFailsClosed() {
         val policy =
             ProtocolV1Session.ManagedPolicy.fromStatus(

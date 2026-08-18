@@ -14,6 +14,7 @@ enum ProtocolV1SelfTest {
         testGoldenBytes(failures: &failures)
         testSharedGoldenFixtures(failures: &failures)
         testNegotiationAndMediaGate(failures: &failures)
+        testManagedPolicyGate(failures: &failures)
         testMultiDisplaySelection(failures: &failures)
         testVirtualDisplayCatalog(failures: &failures)
         testRejections(failures: &failures)
@@ -296,6 +297,37 @@ enum ProtocolV1SelfTest {
             }
         } catch {
             failures.append("modifier compatibility test failed: \(error)")
+        }
+    }
+
+    private static func testManagedPolicyGate(failures: inout [String]) {
+        do {
+            let session = makeSession()
+            var offeredHello = clientHello()
+            offeredHello.clientHello.capabilities.append(.managedConfiguration)
+            _ = session.handleControl(try offeredHello.serializedData())
+            let helloResponses = try responseEnvelopes(session.completeCodecNegotiation())
+            guard helloResponses.contains(where: {
+                if case .managedPolicyStatus = $0.payload { return true }
+                return false
+            }) else {
+                failures.append("managed policy status was not emitted after negotiation")
+                return
+            }
+
+            var denied = ManagedPolicy.unmanaged.protocolStatus
+            denied.managed = true
+            denied.allowedHosts = ["other-host"]
+            let deniedActions = session.handleControl(try envelope(
+                id: 2,
+                payload: .managedPolicyStatus(denied)
+            ).serializedData())
+            guard try protocolError(deniedActions).code == .unauthorized else {
+                failures.append("managed policy allowlist mismatch did not fail closed")
+                return
+            }
+        } catch {
+            failures.append("managed policy gate test failed: \(error)")
         }
     }
 

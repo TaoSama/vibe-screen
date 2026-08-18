@@ -129,8 +129,7 @@ final class StreamViewModel: ObservableObject {
             errorMessage = "配对链接无效：\(error.localizedDescription)"
             return
         }
-        let allowedHosts = managedConfiguration.policy.allowedHosts
-        guard allowedHosts.isEmpty || allowedHosts.contains(pairing.host) else {
+        guard managedConfiguration.policy.allows(host: pairing.host) else {
             errorMessage = "此主机不在组织允许列表中"
             return
         }

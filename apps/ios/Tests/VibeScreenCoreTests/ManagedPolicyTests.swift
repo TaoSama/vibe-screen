@@ -164,6 +164,29 @@ final class ManagedPolicyTests: XCTestCase {
         XCTAssertEqual(resolver.effectivePolicy.maximumFileBytes, 256)
     }
 
+    func testDisjointAllowedHostsDenyAllHosts() {
+        let local = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: 1_024,
+            allowedHosts: ["local-host"]
+        )
+        var remote = permissiveRemoteStatus()
+        remote.allowedHosts = ["remote-host"]
+
+        let effective = local.applying(remote: ManagedPolicy(remoteStatus: remote))
+
+        XCTAssertTrue(effective.allowedHostsRestricted)
+        XCTAssertTrue(effective.allowedHosts.isEmpty)
+        XCTAssertFalse(effective.allows(host: "local-host"))
+        XCTAssertFalse(effective.allows(host: "remote-host"))
+    }
+
     func testResolverUnmanagedRemoteDoesNotRestrictLocal() {
         let local = ManagedPolicy(
             isManaged: true,

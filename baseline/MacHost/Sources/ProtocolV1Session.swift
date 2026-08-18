@@ -26,6 +26,7 @@ struct ManagedPolicy: Equatable {
     let hostActionsAllowed: Bool
     let maximumFileBytes: UInt64
     let allowedHosts: Set<String>
+    let allowedHostsRestricted: Bool
 
     static let unmanaged = ManagedPolicy(
         isManaged: false,
@@ -36,7 +37,8 @@ struct ManagedPolicy: Equatable {
         customGesturesAllowed: true,
         hostActionsAllowed: true,
         maximumFileBytes: defaultMaximumFileBytes,
-        allowedHosts: []
+        allowedHosts: [],
+        allowedHostsRestricted: false
     )
 
     init(
@@ -48,8 +50,10 @@ struct ManagedPolicy: Equatable {
         customGesturesAllowed: Bool,
         hostActionsAllowed: Bool,
         maximumFileBytes: UInt64,
-        allowedHosts: Set<String>
+        allowedHosts: Set<String>,
+        allowedHostsRestricted: Bool? = nil
     ) {
+        let normalizedHosts = Self.normalizedHosts(allowedHosts)
         self.isManaged = isManaged
         self.clipboardAllowed = clipboardAllowed
         self.fileTransferAllowed = fileTransferAllowed
@@ -58,7 +62,8 @@ struct ManagedPolicy: Equatable {
         self.customGesturesAllowed = customGesturesAllowed
         self.hostActionsAllowed = hostActionsAllowed
         self.maximumFileBytes = maximumFileBytes
-        self.allowedHosts = allowedHosts
+        self.allowedHosts = normalizedHosts
+        self.allowedHostsRestricted = allowedHostsRestricted ?? !normalizedHosts.isEmpty
     }
 
     init(remoteStatus: VSManagedPolicyStatus) {
@@ -75,7 +80,7 @@ struct ManagedPolicy: Equatable {
             customGesturesAllowed: remoteStatus.customGesturesAllowed,
             hostActionsAllowed: remoteStatus.hostActionsAllowed,
             maximumFileBytes: remoteStatus.maximumFileBytes,
-            allowedHosts: Set(remoteStatus.allowedHosts.filter { !$0.isEmpty })
+            allowedHosts: Set(remoteStatus.allowedHosts.filter { !Self.isBlankHost($0) })
         )
     }
 
@@ -95,6 +100,14 @@ struct ManagedPolicy: Equatable {
 
     func applying(remote: ManagedPolicy) -> ManagedPolicy {
         guard remote.isManaged else { return self }
+        let restricted = allowedHostsRestricted || remote.allowedHostsRestricted
+        let hosts: Set<String>
+        switch (allowedHostsRestricted, remote.allowedHostsRestricted) {
+        case (true, true): hosts = allowedHosts.intersection(remote.allowedHosts)
+        case (true, false): hosts = allowedHosts
+        case (false, true): hosts = remote.allowedHosts
+        case (false, false): hosts = []
+        }
         return ManagedPolicy(
             isManaged: true,
             clipboardAllowed: clipboardAllowed && remote.clipboardAllowed,
@@ -104,13 +117,21 @@ struct ManagedPolicy: Equatable {
             customGesturesAllowed: customGesturesAllowed && remote.customGesturesAllowed,
             hostActionsAllowed: hostActionsAllowed && remote.hostActionsAllowed,
             maximumFileBytes: min(maximumFileBytes, remote.maximumFileBytes),
-            allowedHosts: allowedHosts.isEmpty ? remote.allowedHosts :
-                (remote.allowedHosts.isEmpty ? allowedHosts : allowedHosts.intersection(remote.allowedHosts))
+            allowedHosts: hosts,
+            allowedHostsRestricted: restricted
         )
     }
 
     func allows(hostID: String) -> Bool {
-        allowedHosts.isEmpty || allowedHosts.contains(hostID)
+        !allowedHostsRestricted || allowedHosts.contains(hostID)
+    }
+
+    private static func normalizedHosts(_ hosts: Set<String>) -> Set<String> {
+        Set(hosts.filter { !isBlankHost($0) })
+    }
+
+    private static func isBlankHost(_ host: String) -> Bool {
+        host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     static let advertisedCapabilities: Set<VSCapability> = [.managedConfiguration]

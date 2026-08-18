@@ -189,9 +189,18 @@ internal class ProtocolV1Session(
         val hostActionsAllowed: Boolean,
         val maximumFileBytes: Long,
         val allowedHosts: Set<String>,
+        val allowedHostsRestricted: Boolean = allowedHosts.isNotEmpty(),
     ) {
         fun applying(remote: ManagedPolicy): ManagedPolicy {
             if (!remote.isManaged) return this
+            val restricted = allowedHostsRestricted || remote.allowedHostsRestricted
+            val hosts =
+                when {
+                    allowedHostsRestricted && remote.allowedHostsRestricted -> allowedHosts.intersect(remote.allowedHosts)
+                    allowedHostsRestricted -> allowedHosts
+                    remote.allowedHostsRestricted -> remote.allowedHosts
+                    else -> emptySet()
+                }
             return ManagedPolicy(
                 isManaged = true,
                 clipboardAllowed = clipboardAllowed && remote.clipboardAllowed,
@@ -201,16 +210,12 @@ internal class ProtocolV1Session(
                 customGesturesAllowed = customGesturesAllowed && remote.customGesturesAllowed,
                 hostActionsAllowed = hostActionsAllowed && remote.hostActionsAllowed,
                 maximumFileBytes = minOf(maximumFileBytes, remote.maximumFileBytes),
-                allowedHosts =
-                    when {
-                        allowedHosts.isEmpty() -> remote.allowedHosts
-                        remote.allowedHosts.isEmpty() -> allowedHosts
-                        else -> allowedHosts.intersect(remote.allowedHosts)
-                    },
+                allowedHosts = hosts,
+                allowedHostsRestricted = restricted,
             )
         }
 
-        fun allowsHost(hostId: String): Boolean = allowedHosts.isEmpty() || hostId in allowedHosts
+        fun allowsHost(hostId: String): Boolean = !allowedHostsRestricted || hostId in allowedHosts
 
         fun toStatus(): ManagedPolicyStatus =
             ManagedPolicyStatus
@@ -239,6 +244,7 @@ internal class ProtocolV1Session(
                     hostActionsAllowed = true,
                     maximumFileBytes = DEFAULT_MAXIMUM_FILE_BYTES,
                     allowedHosts = emptySet(),
+                    allowedHostsRestricted = false,
                 )
 
             fun fromStatus(status: ManagedPolicyStatus): ManagedPolicy {

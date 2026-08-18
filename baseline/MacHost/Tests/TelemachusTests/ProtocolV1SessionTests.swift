@@ -52,6 +52,30 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertFalse(effective.allows(hostID: "other"))
     }
 
+    func testDisjointAllowedHostsDenyAllHosts() {
+        let local = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: 4_096,
+            allowedHosts: ["local-host"]
+        )
+        var remoteStatus = ManagedPolicy.unmanaged.protocolStatus
+        remoteStatus.managed = true
+        remoteStatus.allowedHosts = ["remote-host"]
+
+        let effective = local.applying(remote: ManagedPolicy(remoteStatus: remoteStatus))
+
+        XCTAssertTrue(effective.allowedHostsRestricted)
+        XCTAssertTrue(effective.allowedHosts.isEmpty)
+        XCTAssertFalse(effective.allows(hostID: "local-host"))
+        XCTAssertFalse(effective.allows(hostID: "remote-host"))
+    }
+
     func testManagedRemoteStatusWithUnsetFieldsFailsClosed() {
         var status = VSManagedPolicyStatus()
         status.managed = true
