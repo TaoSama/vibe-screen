@@ -23,6 +23,10 @@ if CommandLine.arguments.contains("--video-encoder-self-test") {
     exit(VideoEncoderSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
 }
 
+if CommandLine.arguments.contains("--audio-capture-self-test") {
+    exit(AudioCaptureSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
+}
+
 if CommandLine.arguments.contains("--host-self-test") {
     exit(HostSelfTest.run() ? EXIT_SUCCESS : EXIT_FAILURE)
 }
