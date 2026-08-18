@@ -234,8 +234,15 @@ func TestPostgresAuthorityReviewContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	finalUsage := CoturnUsage{SourceID: "node", EventID: "final-close", AllocationID: "valid", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 3, EgressBytes: 5, Closed: true, ObservedAt: now.Add(2 * time.Second)}
-	if _, err := store.ApplyCoturnUsage(ctx, finalUsage); err != nil {
-		t.Fatalf("final usage after revocation rejected: %v", err)
+	if _, err := store.ApplyCoturnUsage(ctx, finalUsage); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("final usage after revocation error=%v, want ErrRevoked", err)
+	}
+	var validIngress, validEgress int64
+	if err := store.pool.QueryRow(ctx, "SELECT ingress_bytes,egress_bytes FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2", "node", "valid").Scan(&validIngress, &validEgress); err != nil {
+		t.Fatal(err)
+	}
+	if validIngress != 1 || validEgress != 0 {
+		t.Fatalf("revoked final usage mutated allocation counters to %d/%d", validIngress, validEgress)
 	}
 	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "after-revoke", SourceID: "node"}, now); !errors.Is(err, ErrRevoked) {
 		t.Fatalf("relay admission after device revocation error=%v", err)
@@ -245,6 +252,46 @@ func TestPostgresAuthorityReviewContracts(t *testing.T) {
 	}
 	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "revoked", SourceID: "node"}, now); !errors.Is(err, ErrRevoked) {
 		t.Fatalf("revoked relay session error=%v", err)
+	}
+}
+
+func TestPostgresRevocationRejectsExistingAllocationUsage(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"host", "client"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	session, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "request", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 1, TTLSeconds: 60}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ApplyCoturnUsage(ctx, CoturnUsage{SourceID: "node", EventID: "before-revoke", AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 10, EgressBytes: 20, ObservedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RevokeDevice(ctx, "client", 1, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ApplyCoturnUsage(ctx, CoturnUsage{SourceID: "node", EventID: "after-revoke", AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 11, EgressBytes: 21, ObservedAt: now.Add(2 * time.Second)}); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("usage after device revoke error=%v, want ErrRevoked", err)
+	}
+	if _, err := store.Reconcile(ctx, ReconcileRequest{SourceID: "node", ObservedAt: now.Add(3 * time.Second), Allocations: []CoturnUsage{{AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 11, EgressBytes: 21}}}, time.Minute); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("reconcile after device revoke error=%v, want ErrRevoked", err)
+	}
+	var ingress, egress string
+	if err := store.pool.QueryRow(ctx, `SELECT ingress_bytes::text,egress_bytes::text FROM authority_relay_daily_usage WHERE device_id=$1`, "client").Scan(&ingress, &egress); err != nil {
+		t.Fatal(err)
+	}
+	if ingress != "10" || egress != "20" {
+		t.Fatalf("usage after revoke mutated ledger to %s/%s", ingress, egress)
 	}
 }
 

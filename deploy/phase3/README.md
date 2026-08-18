@@ -212,9 +212,14 @@ precedence over denies.
   secret, so the safe current procedure is to stop new credential issuance,
   wait at most the configured maximum credential TTL, drain allocations,
   replace the shared file on both services, and restart.
-- Revocation stops future credential issuance only. For urgent abuse, also
-  disable the signaling session and drain/terminate matching coturn
-  allocations; do not wait for credential expiry alone.
+- Revocation stops future credential issuance only. For urgent abuse, revoke the
+  device in Authority, invalidate every matching signaling session, revoke the
+  same device in the relay credential service while that local-state service is
+  still in use, and drain or terminate matching coturn allocations through the
+  deployment's enabled coturn management surface. The repository does not yet
+  provide an automatic coturn allocation-disconnect executor, so retain the
+  operator command output and a reconciliation snapshot as evidence; do not wait
+  for credential expiry alone.
 
 ## Abuse, observability, and current limitations
 

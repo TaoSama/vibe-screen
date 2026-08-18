@@ -41,8 +41,12 @@ non-root scratch image, validates the local and production-shaped Compose models
 starts a real PostgreSQL, verifies ordered migration and readiness, creates and
 authorizes a session, restarts Authority without losing that admission, then
 proves database-outage liveness/readiness separation and storage failure before
-recovery. It also checks the runtime user, read-only root filesystem, dropped
-capabilities, and generated-secret absence from container logs.
+recovery. The PostgreSQL authority tests also cover persisted device revocation
+rejecting later relay admission and coturn usage/reconciliation updates for an
+already admitted allocation. They prove control-plane fail-closed behavior only;
+they do not prove that coturn data-plane allocations are actively disconnected.
+The container gate also checks the runtime user, read-only root filesystem,
+dropped capabilities, and generated-secret absence from container logs.
 
 This local container gate does not prove production PostgreSQL TLS, managed
 secret delivery, NTP offset monitoring, PITR/restore, public ingress, automatic

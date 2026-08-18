@@ -205,11 +205,12 @@ increasing `sequence`, cumulative ingress/egress counters, `observed_at`, and a
 `closed` flag. Event retries are idempotent. Counter or sequence regression is
 `409`. `observed_at` may equal the preceding observation but cannot move
 backward; quota accounting uses the database's UTC ingestion day rather than the
-collector timestamp. Actual usage is recorded even after device revocation or
-after it exceeds quota, because billing facts cannot be discarded. Revocation
-only forbids new admission. Relay admission retries with the same source,
-allocation, device and session identity return the original reservation without
-consuming quota again; reuse with different identity is a conflict.
+collector timestamp. A new usage event for a revoked device, suspended account,
+revoked session, expired session, or already closed allocation fails closed and
+does not advance counters. Exact event retries remain idempotent. Relay admission
+retries with the same source, allocation, device and session identity return the
+original reservation without consuming quota again; reuse with different identity
+is a conflict.
 
 `POST /v1/coturn/reconcile` accepts one source snapshot (maximum 10,000
 allocations). Its `observed_at` cannot be in the future, including for an empty
@@ -217,9 +218,12 @@ snapshot. The service applies newer counters and returns ledger allocations miss
 from a source beyond `reconciliation_grace_seconds`. The response separately
 lists `unauthorized_allocation_ids` that exist only at the source and
 `conflict_allocation_ids` whose identity or counters conflict with the ledger;
-one conflict does not stop processing the rest of the snapshot. Operators must
-disconnect unauthorized allocations and close ledger-only allocations only after
-the configured consecutive-snapshot policy in their collector.
+one conflict does not stop processing the rest of the snapshot. A revoked device
+or session fails the snapshot closed rather than silently advancing its ledger.
+Operators must disconnect unauthorized allocations and close ledger-only
+allocations only after the configured consecutive-snapshot policy in their
+collector. Authority does not itself call the coturn data plane to disconnect an
+allocation.
 
 The repository does **not** yet contain a production-proven coturn exporter.
 Launch remains blocked until the pinned coturn build or provider API proves it

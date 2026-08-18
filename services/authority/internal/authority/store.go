@@ -492,6 +492,20 @@ func (s *PostgresStore) ApplyCoturnUsage(ctx context.Context, usage CoturnUsage)
 		if sourceID != usage.SourceID || deviceID != usage.DeviceID || sessionID != usage.SessionID || usage.Sequence <= uint64(sequence) || usage.IngressBytes < uint64(ingress) || usage.EgressBytes < uint64(egress) || usage.ObservedAt.Before(lastObservedAt) || closedAt != nil {
 			return ErrStaleUsage
 		}
+		if err := lockActiveDevice(ctx, tx, deviceID); err != nil {
+			return err
+		}
+		var sessionRevokedAt *time.Time
+		var sessionExpiresAt time.Time
+		if err := tx.QueryRow(ctx, `SELECT revoked_at,expires_at FROM authority_signaling_sessions WHERE session_id=$1 AND (host_device_id=$2 OR client_device_id=$2) FOR UPDATE`, sessionID, deviceID).Scan(&sessionRevokedAt, &sessionExpiresAt); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if sessionRevokedAt != nil || !usage.ObservedAt.Before(sessionExpiresAt) {
+			return ErrRevoked
+		}
 		deltaIngress := usage.IngressBytes - uint64(ingress)
 		deltaEgress := usage.EgressBytes - uint64(egress)
 		_, err = tx.Exec(ctx, `INSERT INTO authority_relay_daily_usage(device_id,usage_day,ingress_bytes,egress_bytes) VALUES ($1,(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date,$2::numeric,$3::numeric) ON CONFLICT (device_id,usage_day) DO UPDATE SET ingress_bytes=authority_relay_daily_usage.ingress_bytes+EXCLUDED.ingress_bytes,egress_bytes=authority_relay_daily_usage.egress_bytes+EXCLUDED.egress_bytes`, deviceID, strconv.FormatUint(deltaIngress, 10), strconv.FormatUint(deltaEgress, 10))
