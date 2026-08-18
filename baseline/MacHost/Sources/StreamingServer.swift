@@ -387,6 +387,7 @@ class StreamingServer: EncodedFrameSink {
     private let frameQueue = DispatchQueue(label: "frameQueue", qos: .userInteractive)
     private let receiveQueue = DispatchQueue(label: "receiveQueue", qos: .userInteractive)
     private let networkQueue = DispatchQueue(label: "networkQueue", qos: .userInteractive)
+    private let wakeHostQueue = DispatchQueue(label: "wakeHostQueue", qos: .utility)
     private struct FrameSubmission {
         let data: Data
         let timestamp: UInt64
@@ -461,6 +462,8 @@ class StreamingServer: EncodedFrameSink {
     private var stopSequence: UInt64 = 0
     private var stopInProgress: UInt64?
     private let telemetry: TelemetryRecording?
+    private let wakeHostAuthorizer: any WakeHostAuthorizing
+    private let wakeHostPacketSender: any WakeHostPacketSending
 
     var currentSessionEpoch: UInt64 { sessionEpochGate.current }
 
@@ -469,12 +472,16 @@ class StreamingServer: EncodedFrameSink {
         mode: StreamingServerMode = .usb,
         telemetry: TelemetryRecording? = nil,
         allowPlaintextWirelessLegacyFallback: Bool = false,
-        protocolUpgradeGraceMillisecondsOverride: Int? = nil
+        protocolUpgradeGraceMillisecondsOverride: Int? = nil,
+        wakeHostAuthorizer: any WakeHostAuthorizing = DenyWakeHostAuthorizer(),
+        wakeHostPacketSender: any WakeHostPacketSending = UDPWakeHostPacketSender()
     ) {
         self.port = port
         self.mode = mode
         self.allowPlaintextWirelessLegacyFallback = allowPlaintextWirelessLegacyFallback
         self.protocolUpgradeGraceMillisecondsOverride = protocolUpgradeGraceMillisecondsOverride
+        self.wakeHostAuthorizer = wakeHostAuthorizer
+        self.wakeHostPacketSender = wakeHostPacketSender
         if let telemetry {
             self.telemetry = telemetry
         } else if let path = ProcessInfo.processInfo.environment["VIBE_SCREEN_TELEMETRY_PATH"],
@@ -1979,6 +1986,9 @@ class StreamingServer: EncodedFrameSink {
             hostCapabilities.insert(.endToEndEncryption)
             hostCapabilities.insert(.replayProtection)
         }
+        if wakeHostAuthorizer.wakeAllowed {
+            hostCapabilities.insert(.wakeHost)
+        }
         protocolV1Session = ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
             sessionID: sessionID,
             sessionEpoch: sessionEpochGate.current,
@@ -2401,6 +2411,13 @@ class StreamingServer: EncodedFrameSink {
                 protocolV1OutgoingFiles.removeValue(forKey: result.transferID)?.cancel()
             case .remoteManagedPolicyChanged(let status):
                 protocolV1RemoteManagedPolicy = ProtocolV1RemoteManagedPolicy(status: status)
+            case .wakeHost(let request, let correlationID):
+                dispatchWakeHostRequest(
+                    request,
+                    correlationID: correlationID,
+                    connection: conn,
+                    generation: generation
+                )
             }
         }
         if shouldClose && controlPayloads.isEmpty { conn.cancel() }
@@ -2494,6 +2511,39 @@ class StreamingServer: EncodedFrameSink {
         }
     }
 
+    private func dispatchWakeHostRequest(
+        _ request: WakeHostRequestContext,
+        correlationID: UInt64,
+        connection conn: NWConnection,
+        generation: UInt64
+    ) {
+        let authorizer = wakeHostAuthorizer
+        let packetSender = wakeHostPacketSender
+        wakeHostQueue.async { [weak self, weak conn] in
+            let result = Self.performWakeHostRequest(
+                request,
+                authorizer: authorizer,
+                packetSender: packetSender
+            )
+            self?.networkQueue.async { [weak self, weak conn] in
+                guard let self, let conn else { return }
+                guard self.connection === conn,
+                      self.activeConnectionGeneration == generation,
+                      self.connectionProtocolMode == .protocolV1,
+                      !self.isStopped else { return }
+                let followUp = self.protocolV1Session?.completeWakeHost(
+                    requestID: request.requestID,
+                    accepted: result.accepted,
+                    rejectionReason: result.reason,
+                    correlationID: correlationID
+                ) ?? []
+                if !followUp.isEmpty {
+                    self.applyProtocolV1Actions(followUp, connection: conn, generation: generation)
+                }
+            }
+        }
+    }
+
     private func sendNextProtocolV1FileChunk(
         _ transfer: ProtocolV1OutgoingFileTransfer,
         session: ProtocolV1SessionCoordinator,
@@ -2531,6 +2581,31 @@ class StreamingServer: EncodedFrameSink {
                 connection: conn,
                 generation: generation
             )
+        }
+    }
+
+    static func performWakeHostRequest(
+        _ request: WakeHostRequestContext,
+        authorizer: any WakeHostAuthorizing,
+        packetSender: any WakeHostPacketSending
+    ) -> (accepted: Bool, reason: String) {
+        do {
+            let packet = try WakeHostDecision.magicPacket(
+                for: request,
+                authorizer: authorizer
+            )
+            try packetSender.sendWakeHostPacket(packet)
+            return (true, "")
+        } catch WakeHostRequestError.policyDenied {
+            return (false, "wake_host_policy_denied")
+        } catch WakeHostRequestError.invalidRequestID {
+            return (false, "invalid_request_id")
+        } catch WakeHostRequestError.invalidMACAddress {
+            return (false, "invalid_mac_address")
+        } catch WakeHostRequestError.invalidSecureOnPassword {
+            return (false, "invalid_secure_on_password")
+        } catch {
+            return (false, "wake_packet_send_failed")
         }
     }
 

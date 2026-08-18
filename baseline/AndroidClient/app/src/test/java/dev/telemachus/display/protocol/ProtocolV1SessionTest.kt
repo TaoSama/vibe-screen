@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString
 import dev.telemachus.display.ControllerAxes
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
+import dev.telemachus.display.StaticWakeHostPolicy
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.ColorDescription
@@ -39,6 +40,8 @@ import dev.vibescreen.protocol.v1.TransferFunction
 import dev.vibescreen.protocol.v1.TransportKind
 import dev.vibescreen.protocol.v1.VideoConfig
 import dev.vibescreen.protocol.v1.VideoQualityPreset
+import dev.vibescreen.protocol.v1.WakeHostRequest
+import dev.vibescreen.protocol.v1.WakeHostResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -1294,6 +1297,64 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun defaultClientHelloExcludesWakeHostCapability() {
+        val hello = session().clientHello()
+
+        assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_WAKE_HOST))
+    }
+
+    @Test
+    fun wakeHostPolicyAllowsCapabilityAdvertisement() {
+        val session = session(wakeAllowed = true)
+        val hello = session.clientHello()
+
+        assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_WAKE_HOST))
+    }
+
+    @Test
+    fun requestWakeHostTracksResultByRequestId() {
+        val session = wakeHostStreamingSession()
+        val requestId = ByteString.copyFrom(byteArrayOf(0x44))
+        val mac = ByteString.copyFrom(byteArrayOf(1, 2, 3, 4, 5, 6))
+
+        val request = session.requestWakeHost(requestId, mac)!!
+        assertEquals(Envelope.PayloadCase.WAKE_HOST_REQUEST, request.payloadCase)
+        assertEquals(requestId, request.wakeHostRequest.requestId)
+        assertEquals(mac, request.wakeHostRequest.targetMacAddress)
+        assertEquals("mac-host", request.wakeHostRequest.hostId)
+        assertEquals("android-test", request.wakeHostRequest.deviceId)
+        assertTrue(session.receive(wakeHostResult(7, ByteString.copyFrom(byteArrayOf(0x45)), accepted = true)).isEmpty())
+
+        val completed =
+            session.receive(wakeHostResult(8, requestId, accepted = false, rejectionReason = "wake_host_policy_denied")).single()
+                as ProtocolV1Session.Action.WakeHostCompleted
+        assertEquals(requestId, completed.requestId)
+        assertFalse(completed.accepted)
+        assertEquals("wake_host_policy_denied", completed.rejectionReason)
+        assertTrue(session.receive(wakeHostResult(9, requestId, accepted = true)).isEmpty())
+    }
+
+    @Test
+    fun wakeHostRequestRequiresNegotiatedCapabilityStreamingAndHostMatch() {
+        val ungated = streamingSession()
+        assertInvalidPeerMessage { ungated.receive(wakeHostRequest(7, hostId = "mac-host")) }
+
+        val negotiated = wakeHostSessionThroughDisplayStart()
+        assertFalse(negotiated.canRequestWakeHost)
+        assertInvalidPeerMessage { negotiated.receive(wakeHostRequest(7, hostId = "mac-host")) }
+
+        val streaming = wakeHostStreamingSession()
+        val action =
+            streaming.receive(wakeHostRequest(7, hostId = "mac-host")).single()
+                as ProtocolV1Session.Action.WakeHost
+        assertEquals(ByteString.copyFrom(byteArrayOf(0x31)), action.request.requestId)
+        assertEquals(7L, action.correlationId)
+        assertInvalidPeerMessage { wakeHostStreamingSession().receive(wakeHostRequest(8, hostId = "")) }
+
+        assertInvalidPeerMessage { wakeHostStreamingSession().receive(wakeHostRequest(8, hostId = "other-host")) }
+    }
+
+    @Test
     fun advertiseControllerAddsControllerWithoutDroppingExistingCapabilities() {
         val defaultCapabilities = session().clientHello().clientHello.capabilitiesList.toSet()
         val session =
@@ -1874,6 +1935,31 @@ class ProtocolV1SessionTest {
         }
     }
 
+    private val wakeHostCaps =
+        listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_WAKE_HOST)
+
+    private fun wakeHostSessionThroughDisplayStart(): ProtocolV1Session =
+        session(wakeAllowed = true).also {
+            it.clientHello()
+            it.receive(hostHello(2, advertisedCapabilities = wakeHostCaps, hostId = "mac-host"))
+            it.receive(sessionAccepted(3, negotiatedCapabilities = wakeHostCaps))
+            it.receive(displayList(4))
+            it.receive(startDisplay(5))
+        }
+
+    private fun wakeHostStreamingSession(): ProtocolV1Session =
+        wakeHostSessionThroughDisplayStart().also {
+            val requested =
+                it.receive(videoConfig(6)).single()
+                    as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        }
+
     private fun videoControlStreamingSession(): ProtocolV1Session =
         session().also {
             it.clientHello()
@@ -1912,6 +1998,7 @@ class ProtocolV1SessionTest {
 
     private fun session(
         localManagedPolicy: ProtocolV1Session.ManagedPolicy = ProtocolV1Session.ManagedPolicy.UNMANAGED,
+        wakeAllowed: Boolean = false,
     ): ProtocolV1Session =
         ProtocolV1Session(
             deviceId = "android-test",
@@ -1919,6 +2006,7 @@ class ProtocolV1SessionTest {
             transport = TransportKind.TRANSPORT_KIND_USB,
             codecs = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
             localManagedPolicy = localManagedPolicy,
+            wakeHostPolicy = StaticWakeHostPolicy(wakeAllowed),
             nowNs = { 1_000L },
         )
 
@@ -1958,6 +2046,7 @@ class ProtocolV1SessionTest {
         id: Long,
         advertisedCodecs: List<Codec> = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
         advertisedCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
+        hostId: String = "",
     ): Envelope =
         Envelope
             .newBuilder()
@@ -1967,7 +2056,7 @@ class ProtocolV1SessionTest {
                 HostHello
                     .newBuilder()
                     .setSelectedProtocol(1)
-                    .setHostId("host")
+                    .setHostId(hostId.ifBlank { "host" })
                     .addAllCapabilities(advertisedCapabilities)
                     .addAllCodecs(advertisedCodecs),
             ).build()
@@ -1976,6 +2065,35 @@ class ProtocolV1SessionTest {
         id: Long,
         status: ManagedPolicyStatus,
     ): Envelope = base(id).setManagedPolicyStatus(status).build()
+
+    private fun wakeHostRequest(
+        id: Long,
+        requestId: ByteString = ByteString.copyFrom(byteArrayOf(0x31)),
+        hostId: String = "",
+    ): Envelope =
+        base(id)
+            .setWakeHostRequest(
+                WakeHostRequest
+                    .newBuilder()
+                    .setRequestId(requestId)
+                    .setTargetMacAddress(ByteString.copyFrom(byteArrayOf(1, 2, 3, 4, 5, 6)))
+                    .setHostId(hostId),
+            ).build()
+
+    private fun wakeHostResult(
+        id: Long,
+        requestId: ByteString,
+        accepted: Boolean,
+        rejectionReason: String = "",
+    ): Envelope =
+        base(id)
+            .setWakeHostResult(
+                WakeHostResult
+                    .newBuilder()
+                    .setRequestId(requestId)
+                    .setAccepted(accepted)
+                    .setRejectionReason(rejectionReason),
+            ).build()
 
     private fun sessionAccepted(
         id: Long,

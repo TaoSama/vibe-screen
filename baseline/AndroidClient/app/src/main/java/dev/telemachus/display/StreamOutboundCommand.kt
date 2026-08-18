@@ -1,7 +1,8 @@
 package dev.telemachus.display
 
-import dev.telemachus.display.protocol.ProtocolV1Session
+import com.google.protobuf.ByteString
 import dev.telemachus.display.protocol.FileChunk
+import dev.telemachus.display.protocol.ProtocolV1Session
 import dev.vibescreen.protocol.v1.Envelope
 import java.util.concurrent.CompletableFuture
 
@@ -48,6 +49,15 @@ internal sealed interface StreamOutboundCommand {
     data class ProtocolVideoConfigurationCompletion(
         val pending: StreamVideoConfigurationPendingCommit,
         val decision: StreamVideoConfigurationDecision,
+    ) : StreamOutboundCommand
+
+    data class ProtocolWakeHostCompletion(
+        val session: ProtocolV1Session,
+        val connectionGeneration: Long,
+        val requestId: ByteString,
+        val accepted: Boolean,
+        val rejectionReason: String,
+        val correlationId: Long,
     ) : StreamOutboundCommand
 }
 

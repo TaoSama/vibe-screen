@@ -4,6 +4,8 @@ import com.google.protobuf.ByteString
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.NativeInputWire
+import dev.telemachus.display.WakeHostPolicy
+import dev.telemachus.display.WakeHostRequestContext
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClientHello
 import dev.vibescreen.protocol.v1.ClipboardContent
@@ -43,6 +45,8 @@ import dev.vibescreen.protocol.v1.TransportKind
 import dev.vibescreen.protocol.v1.TouchEvent
 import dev.vibescreen.protocol.v1.VideoConfigResult
 import dev.vibescreen.protocol.v1.VideoQualityPreset
+import dev.vibescreen.protocol.v1.WakeHostRequest
+import dev.vibescreen.protocol.v1.WakeHostResult
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
@@ -77,6 +81,7 @@ internal class ProtocolV1Session(
     private val advertiseController: Boolean = false,
     localManagedPolicy: ManagedPolicy = ManagedPolicy.UNMANAGED,
     private val fileTransferPolicy: FileTransferPolicy = FileTransferPolicy(),
+    private val wakeHostPolicy: WakeHostPolicy = WakeHostPolicy.DENY,
     private val nowNs: () -> Long = System::nanoTime,
 ) {
     sealed class Action {
@@ -161,6 +166,17 @@ internal class ProtocolV1Session(
 
         data class ManagedPolicyReceived(
             val status: ManagedPolicyStatus,
+        ) : Action()
+
+        data class WakeHost(
+            val request: WakeHostRequestContext,
+            val correlationId: Long,
+        ) : Action()
+
+        data class WakeHostCompleted(
+            val requestId: ByteString,
+            val accepted: Boolean,
+            val rejectionReason: String,
         ) : Action()
 
         data class Disconnected(
@@ -366,7 +382,7 @@ internal class ProtocolV1Session(
     private var lastInboundMessageId = 0L
     private var sessionId = ByteString.EMPTY
     private var sessionEpoch = 0L
-    private var hostId = ""
+    private var peerHostId = ""
     private var streamId = 0L
     private var configEpoch = 0L
     private var retiredConfigEpoch = 0L
@@ -401,6 +417,7 @@ internal class ProtocolV1Session(
     // evicted when full. A result must match a tracked id, so the host cannot
     // forge an unsolicited success/failure that the UI would surface.
     private val pendingHostActionInvocations = ArrayDeque<ByteString>()
+    private val pendingWakeHostRequests = ArrayDeque<ByteString>()
     private val managedPolicyResolver = ManagedPolicyResolver(localManagedPolicy)
 
     // Host-advertised clipboard byte limit from HostHello.resource_limits.
@@ -431,6 +448,9 @@ internal class ProtocolV1Session(
             addAll(BASE_ADVERTISED_CAPABILITIES)
             if (advertiseController) add(Capability.CAPABILITY_CONTROLLER)
             if (fileTransferPolicy.allowed) add(Capability.CAPABILITY_FILE_TRANSFER)
+            if (wakeHostPolicy.wakeAllowed) {
+                add(Capability.CAPABILITY_WAKE_HOST)
+            }
         }.filteredBy(localManagedPolicy)
     private val requiredCapabilities = emptySet<Capability>()
 
@@ -520,6 +540,10 @@ internal class ProtocolV1Session(
         @Synchronized
         get() = negotiatedFileTransferPolicy
 
+    val canRequestWakeHost: Boolean
+        @Synchronized
+        get() = state == State.STREAMING && Capability.CAPABILITY_WAKE_HOST in negotiatedCapabilities
+
     enum class MediaDisposition {
         ACCEPT,
         DROP_PENDING_CONFIGURATION,
@@ -597,12 +621,15 @@ internal class ProtocolV1Session(
             Envelope.PayloadCase.FILE_TRANSFER_PROGRESS -> onFileTransferProgress(envelope)
             Envelope.PayloadCase.FILE_TRANSFER_CANCEL -> onFileTransferCancel(envelope)
             Envelope.PayloadCase.FILE_TRANSFER_COMPLETE -> onFileTransferComplete(envelope)
+            Envelope.PayloadCase.WAKE_HOST_REQUEST -> onWakeHostRequest(envelope)
+            Envelope.PayloadCase.WAKE_HOST_RESULT -> onWakeHostResult(envelope)
             Envelope.PayloadCase.DISCONNECT_NOTICE -> {
                 pendingVideoConfiguration = null
                 pendingVideoPreferences = null
                 videoPreferencesRequestInFlight = false
                 availableHostActions = emptyList()
                 pendingHostActionInvocations.clear()
+                pendingWakeHostRequests.clear()
                 clearClipboardState()
                 remoteManagedClipboardAllowed = true
                 managedPolicyResolver.clearRemote()
@@ -850,6 +877,33 @@ internal class ProtocolV1Session(
                 .setReasonCode(reasonCode)
                 .build()
         return envelope().setFileTransferCancel(cancel).build()
+    }
+
+    @Synchronized
+    fun requestWakeHost(
+        requestId: ByteString,
+        targetMacAddress: ByteString,
+        secureOnPassword: ByteString = ByteString.EMPTY,
+    ): Envelope? {
+        if (state != State.STREAMING) return null
+        if (Capability.CAPABILITY_WAKE_HOST !in negotiatedCapabilities) return null
+        if (requestId.isEmpty) return null
+        if (peerHostId.isBlank()) return null
+        if (pendingWakeHostRequests.contains(requestId)) return null
+        if (pendingWakeHostRequests.size >= MAX_PENDING_WAKE_HOST_REQUESTS) {
+            pendingWakeHostRequests.removeFirst()
+        }
+        pendingWakeHostRequests.addLast(requestId)
+        val request =
+            WakeHostRequest
+                .newBuilder()
+                .setRequestId(requestId)
+                .setTargetMacAddress(targetMacAddress)
+                .setSecureOnPassword(secureOnPassword)
+                .setHostId(peerHostId)
+                .setDeviceId(deviceId)
+                .build()
+        return envelope().setWakeHostRequest(request).build()
     }
 
     @Synchronized
@@ -1104,7 +1158,7 @@ internal class ProtocolV1Session(
         ) {
             throw protocolFailure("USB HID modifier-byte capability requires keyboard")
         }
-        hostId = hello.hostId
+        peerHostId = hello.hostId
         hostMaxClipboardBytes = hello.resourceLimits.maximumClipboardBytes
         remoteManagedClipboardAllowed = true
         val missing = requiredCapabilities - hostCapabilities
@@ -1153,7 +1207,7 @@ internal class ProtocolV1Session(
                 if (hostMaxClipboardBytes > 0L) hostMaxClipboardBytes else LOCAL_MAX_CLIPBOARD_BYTES,
                 if (acceptedMax > 0L) acceptedMax else LOCAL_MAX_CLIPBOARD_BYTES,
             )
-        if (Capability.CAPABILITY_CLIPBOARD in baseNegotiatedCapabilities && hostId.isBlank()) {
+        if (Capability.CAPABILITY_CLIPBOARD in baseNegotiatedCapabilities && peerHostId.isBlank()) {
             throw protocolFailure("Host id is required when clipboard capability is negotiated")
         }
         state = State.ACTIVE
@@ -1566,7 +1620,7 @@ internal class ProtocolV1Session(
         if (offer.originDeviceId.isBlank()) {
             throw protocolFailure("ClipboardOffer missing origin_device_id")
         }
-        if (offer.originDeviceId != hostId) {
+        if (offer.originDeviceId != peerHostId) {
             throw protocolFailure("ClipboardOffer origin_device_id does not match host id")
         }
         if (offer.mimeType != CLIPBOARD_MIME_TEXT_PLAIN) {
@@ -1676,7 +1730,7 @@ internal class ProtocolV1Session(
         if (content.originDeviceId.isBlank()) {
             throw protocolFailure("ClipboardContent missing origin_device_id")
         }
-        if (content.originDeviceId != hostId) {
+        if (content.originDeviceId != peerHostId) {
             throw protocolFailure("ClipboardContent origin_device_id does not match host id")
         }
         if (content.mimeType != CLIPBOARD_MIME_TEXT_PLAIN) {
@@ -1743,6 +1797,42 @@ internal class ProtocolV1Session(
         )
     }
 
+    private fun onWakeHostRequest(envelope: Envelope): List<Action> {
+        if (!isNegotiated()) throw protocolFailure("WakeHostRequest in state $state")
+        if (Capability.CAPABILITY_WAKE_HOST !in negotiatedCapabilities) {
+            throw protocolFailure("WakeHostRequest without negotiated wake host")
+        }
+        if (state != State.STREAMING) throw protocolFailure("WakeHostRequest before streaming")
+        val request = envelope.wakeHostRequest
+        if (request.requestId.isEmpty) throw protocolFailure("WakeHostRequest missing request id")
+        if (request.hostId.isBlank() || request.hostId != peerHostId) {
+            throw protocolFailure("WakeHostRequest targets a different host")
+        }
+        return listOf(Action.WakeHost(request.toContext(), envelope.messageId))
+    }
+
+    private fun onWakeHostResult(envelope: Envelope): List<Action> {
+        if (!isNegotiated()) throw protocolFailure("WakeHostResult in state $state")
+        if (Capability.CAPABILITY_WAKE_HOST !in negotiatedCapabilities) {
+            throw protocolFailure("WakeHostResult without negotiated wake host")
+        }
+        val result = envelope.wakeHostResult
+        if (result.requestId.isEmpty) throw protocolFailure("WakeHostResult missing request id")
+        if (!result.accepted && result.rejectionReason.isBlank()) {
+            throw protocolFailure("Rejected WakeHostResult requires a reason")
+        }
+        if (!pendingWakeHostRequests.remove(result.requestId)) {
+            return emptyList()
+        }
+        return listOf(
+            Action.WakeHostCompleted(
+                requestId = result.requestId,
+                accepted = result.accepted,
+                rejectionReason = result.rejectionReason,
+            ),
+        )
+    }
+
     private fun recordClipboardFeedback(feedback: ClipboardFeedback) {
         clipboardFeedbackHistory.addLast(feedback)
         while (clipboardFeedbackHistory.size > MAX_CLIPBOARD_FEEDBACK_HISTORY) {
@@ -1792,7 +1882,7 @@ internal class ProtocolV1Session(
         negotiatedFileTransferPolicy = fileTransferPolicy
             .negotiated(acceptedResourceLimits)
             .applying(RemoteManagedPolicy(effective.toStatus()))
-        if (!effective.allowsHost(hostId = hostId)) {
+        if (!effective.allowsHost(hostId = peerHostId)) {
             throw protocolFailure("Managed policy does not allow this host")
         }
         val hadHostActionState =
@@ -1856,6 +1946,40 @@ internal class ProtocolV1Session(
         if (envelope.fileTransferComplete.transferId.isEmpty) throw protocolFailure("FileTransferComplete missing transfer id")
         return listOf(Action.FileCompleteReceived(envelope.fileTransferComplete))
     }
+
+    @Synchronized
+    fun completeWakeHost(
+        requestId: ByteString,
+        accepted: Boolean,
+        rejectionReason: String,
+        correlationId: Long,
+    ): Envelope? {
+        if (state != State.STREAMING && state != State.REDISPLAY_REQUESTED) return null
+        if (Capability.CAPABILITY_WAKE_HOST !in negotiatedCapabilities) return null
+        if (requestId.isEmpty) return null
+        return envelope(correlationId = correlationId)
+            .setWakeHostResult(
+                WakeHostResult
+                    .newBuilder()
+                    .setRequestId(requestId)
+                    .setAccepted(accepted)
+                    .setRejectionReason(if (accepted) "" else rejectionReason.ifBlank { "wake_host_rejected" }),
+            ).build()
+    }
+
+    private fun WakeHostRequest.toContext(): WakeHostRequestContext =
+        WakeHostRequestContext(
+            requestId = requestId,
+            targetMacAddress = targetMacAddress,
+            secureOnPassword = secureOnPassword,
+            hostId = hostId,
+            deviceId = deviceId,
+            keyId = keyId,
+            issuedAtUnixSeconds = issuedAtUnixSeconds,
+            expiresAtUnixSeconds = expiresAtUnixSeconds,
+            nonce = nonce,
+            signature = signature,
+        )
 
     private fun toDisplayOption(display: dev.vibescreen.protocol.v1.DisplayDescriptor): DisplayOption {
         if (display.displayId.isBlank() ||
@@ -2047,6 +2171,7 @@ internal class ProtocolV1Session(
         // host or caller cannot grow either without limit.
         private const val MAX_HOST_ACTIONS = 8
         private const val MAX_PENDING_HOST_ACTIONS = 16
+        private const val MAX_PENDING_WAKE_HOST_REQUESTS = 16
 
         // Clipboard transfer limits and wire constants.
         const val LOCAL_MAX_CLIPBOARD_BYTES: Long = 1024L * 1024L
