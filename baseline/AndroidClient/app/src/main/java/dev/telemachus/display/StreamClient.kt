@@ -118,6 +118,7 @@ class StreamClient(
     private val pendingVideoConfigurationCommit = AtomicReference<PendingVideoConfigurationCommit?>(null)
     @Volatile private var lastV1PingSequence = 0L
     @Volatile private var lastV1PingSentNs = 0L
+    private val controllerConnectionAcks = ControllerConnectionAckTracker()
 
     private val heartbeat = HeartbeatMonitor(HEARTBEAT_TIMEOUT_MS)
     private val reconnectBackoff = ReconnectBackoff()
@@ -550,6 +551,8 @@ class StreamClient(
                 pendingLegacyFirstByte = null
                 val session = createProtocolSession(transport)
                 protocolSession = session
+                nextInputId.set(1L)
+                controllerConnectionAcks.reset()
                 submitOutbound(
                     kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
                     command = OutboundCommand.ProtocolBatch { listOf(it.clientHello()) },
@@ -586,6 +589,7 @@ class StreamClient(
     private fun configureLegacyMode(firstByte: Int? = null) {
         wireMode = WireMode.LEGACY
         protocolSession = null
+        controllerConnectionAcks.reset()
         pendingLegacyFirstByte = firstByte
         advertiseAvcOnlyIfNeeded()
         advertiseFrameMetadataSupport()
@@ -1339,9 +1343,52 @@ class StreamClient(
     // Callback for latency measurement (round-trip ping/pong)
     var onLatencyMeasured: ((Double) -> Unit)? = null
 
+    internal var onControllerInputAck: ((ControllerConnection, Boolean, String) -> Unit)? = null
+
     /** Capabilities negotiated for the active Protocol v1 session, empty otherwise. */
     internal fun negotiatedCapabilities(): Set<dev.vibescreen.protocol.v1.Capability> =
         if (wireMode == WireMode.V1) protocolSession?.negotiated ?: emptySet() else emptySet()
+
+    internal fun sendController(dispatch: ControllerDispatch): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canSendController) return false
+        val submission =
+            submitOutbound(
+                kind =
+                    when (dispatch.delivery) {
+                        ControllerDelivery.ANALOG -> OutboundCommandScheduler.Kind.CONTROLLER_MOVE
+                        ControllerDelivery.STRUCTURAL -> OutboundCommandScheduler.Kind.CONTROLLER_STRUCTURAL
+                    },
+                command =
+                    OutboundCommand.ProtocolBatch { activeSession ->
+                        val pendingConnections =
+                            dispatch.samples
+                                .filter { it.kind == ControllerEventKind.CONNECTED }
+                                .map { ControllerConnection(it.controllerId, it.controllerEpoch) }
+                                .toMutableSet()
+                        dispatch.samples.mapNotNull { sample ->
+                            val connection = ControllerConnection(sample.controllerId, sample.controllerEpoch)
+                            if (sample.kind != ControllerEventKind.CONNECTED &&
+                                (connection in pendingConnections ||
+                                    controllerConnectionAcks.isPending(sample.controllerId, sample.controllerEpoch))
+                            ) {
+                                return@mapNotNull null
+                            }
+                            val inputId = nextInputId.getAndIncrement()
+                            if (sample.kind == ControllerEventKind.CONNECTED) {
+                                check(controllerConnectionAcks.recordConnected(inputId, sample.controllerId, sample.controllerEpoch)) {
+                                    "duplicate controller CONNECTED input id"
+                                }
+                            } else if (sample.kind == ControllerEventKind.DISCONNECTED) {
+                                controllerConnectionAcks.recordDisconnected(sample.controllerId, sample.controllerEpoch)
+                            }
+                            activeSession.controller(inputId = inputId, sample = sample)
+                        }
+                    },
+            )
+        return submission.wasAdmitted()
+    }
 
     /**
      * Ask the host to switch the captured display at runtime. No-op unless the
@@ -1614,7 +1661,9 @@ class StreamClient(
                        }
                    }
                     is ProtocolV1Session.Action.ControllerInputAck -> {
-                        Unit
+                        controllerConnectionAcks.acknowledge(action.inputId)?.let { connection ->
+                            onControllerInputAck?.invoke(connection, action.accepted, action.rejectionReason)
+                        }
                     }
                     is ProtocolV1Session.Action.HostActionsAvailable -> {
                         val options =
@@ -2017,6 +2066,7 @@ class StreamClient(
             Log.e(TAG, "Error during cleanup", e)
         }
         protocolSession = null
+        controllerConnectionAcks.reset()
         pendingLegacyFirstByte = null
     }
 

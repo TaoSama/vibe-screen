@@ -63,6 +63,7 @@ class SessionStateTest {
                        displaySelection = true,
                        keyboard = true,
                        nativePointer = true,
+                       controller = true,
                         hostActions = false,
                    ),
                 inputSink = AcceptingInputSink,
@@ -100,5 +101,7 @@ class SessionStateTest {
         override fun sendKey(input: ClientKeyInput) = true
 
         override fun sendPointer(input: ClientPointerInput) = true
+
+        override fun sendController(input: ClientControllerInput) = true
     }
 }
