@@ -115,10 +115,18 @@ the Host's pointer/tool/contact lifecycle. A stylus control remains pending
 until the control writer reports a successful send; resume snapshots and
 background release completion fail closed while any accepted stylus control is
 still unwritten.
-Wheel/trackpad axis delivery, the complete physical-key map, and controller
-events remain gates rather than claims. Protocol v1 has no controller/
-peripheral event wire contract on main, so this change does not add controller
-input.
+Wheel/trackpad axis delivery and the complete physical-key map remain gates
+rather than claims. Protocol v1 now defines `CAPABILITY_CONTROLLER = 26` and a
+lifecycle-scoped `ControllerEvent` wire contract, and the Harmony portable
+protocol model now mirrors `Capability.CONTROLLER = 26`. The production client
+does not advertise that capability and has no `ControllerEvent` encoder,
+controller lifecycle implementation, or platform routing. The receiver-side
+contract requires synthesizing the same all-zero neutral state for the button
+mask, stick axes, triggers, and hat axes before discarding an active controller
+on disconnect, session teardown, ownership takeover, or transport loss. Harmony
+does not implement that rule, and its portable checks do not prove it.
+DevEco/API-checker, HAP, and device evidence for that path are also absent, so
+controller-specific input remains a gate rather than a claim.
 
 ## Pairing, privacy, and upgrades
 
