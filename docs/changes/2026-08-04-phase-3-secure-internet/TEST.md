@@ -142,7 +142,7 @@ docs/changes/2026-08-04-phase-3-secure-internet/evidence/
     logcat-redacted.txt
     host-log-redacted.txt
     packet-capture-notes.md
-    latency-method.md
+    latency-method.md          # copy or link docs/runbook/latency-measurement.md
 ```
 
 Start by proving device identity, not merely that some ADB endpoint responded:

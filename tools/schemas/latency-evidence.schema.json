@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/latency-evidence.schema.json",
+  "title": "Vibe Screen external-camera latency evidence package v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "latency_kind",
+    "transport",
+    "measurement_method",
+    "gate_profile",
+    "camera",
+    "recording",
+    "samples",
+    "device",
+    "host",
+    "build",
+    "measurement_setup"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "latency_kind": {"enum": ["glass-to-glass", "input"]},
+    "transport": {"enum": ["usb", "lan"]},
+    "measurement_method": {"const": "external-camera"},
+    "gate_profile": {
+      "enum": ["usb-glass-to-glass-sub50", "lan-glass-to-glass-sub80", "input-p95-sub50"]
+    },
+    "camera": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manufacturer", "model", "mode", "frame_rate_fps", "shutter_mode"],
+      "properties": {
+        "manufacturer": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1},
+        "mode": {"type": "string", "minLength": 1},
+        "frame_rate_fps": {"type": ["number", "string"]},
+        "shutter_mode": {"type": "string", "minLength": 1}
+      }
+    },
+    "recording": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw_video", "recorded_at", "operator", "sha256"],
+      "properties": {
+        "raw_video": {"type": "string", "minLength": 1},
+        "recorded_at": {"type": "string", "minLength": 1},
+        "operator": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "minLength": 1}
+      }
+    },
+    "samples": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "format", "annotation_method", "annotator"],
+      "properties": {
+        "file": {"type": "string", "minLength": 1},
+        "format": {"enum": ["csv", "json"]},
+        "annotation_method": {"type": "string", "minLength": 1},
+        "annotator": {"type": "string", "minLength": 1}
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manufacturer", "model", "codename", "os_version"],
+      "properties": {
+        "manufacturer": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1},
+        "codename": {"type": "string", "minLength": 1},
+        "os_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "macos_version"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1},
+        "macos_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository_revision", "host_artifact", "client_artifact"],
+      "properties": {
+        "repository_revision": {"type": "string", "minLength": 1},
+        "host_artifact": {"type": "string", "minLength": 1},
+        "client_artifact": {"type": "string", "minLength": 1}
+      }
+    },
+    "measurement_setup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stimulus",
+        "start_event_definition",
+        "end_event_definition",
+        "lighting",
+        "mounting",
+        "clock_domain",
+        "max_frame_annotation_uncertainty_ms",
+        "notes"
+      ],
+      "properties": {
+        "stimulus": {"type": "string", "minLength": 1},
+        "start_event_definition": {"type": "string", "minLength": 1},
+        "end_event_definition": {"type": "string", "minLength": 1},
+        "lighting": {"type": "string", "minLength": 1},
+        "mounting": {"type": "string", "minLength": 1},
+        "clock_domain": {"const": "single-external-camera-timebase"},
+        "max_frame_annotation_uncertainty_ms": {"type": "number", "minimum": 0},
+        "notes": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

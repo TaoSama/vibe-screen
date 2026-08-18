@@ -1,0 +1,52 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "run_id": "fixture-external-camera-missing-video",
+  "latency_kind": "glass-to-glass",
+  "transport": "usb",
+  "measurement_method": "external-camera",
+  "gate_profile": "usb-glass-to-glass-sub50",
+  "camera": {
+    "manufacturer": "Fixture Camera Co",
+    "model": "Synthetic 240",
+    "mode": "1080p240",
+    "frame_rate_fps": "240",
+    "shutter_mode": "fixed"
+  },
+  "recording": {
+    "raw_video": "missing-camera-video.mov",
+    "recorded_at": "2026-08-19T00:00:00Z",
+    "operator": "fixture",
+    "sha256": "fixture-placeholder"
+  },
+  "samples": {
+    "file": "samples.csv",
+    "format": "csv",
+    "annotation_method": "manual frame count from one camera timeline",
+    "annotator": "fixture"
+  },
+  "device": {
+    "manufacturer": "Fixture",
+    "model": "Fixture Device",
+    "codename": "fixture",
+    "os_version": "Android fixture"
+  },
+  "host": {
+    "model": "Fixture Mac",
+    "macos_version": "fixture"
+  },
+  "build": {
+    "repository_revision": "fixture-revision",
+    "host_artifact": "fixture-host",
+    "client_artifact": "fixture-client"
+  },
+  "measurement_setup": {
+    "stimulus": "mac display flash visible to the camera",
+    "start_event_definition": "first camera frame where the Mac stimulus changes",
+    "end_event_definition": "first camera frame where the Android render shows the same change",
+    "lighting": "stable indoor light",
+    "mounting": "fixed tripod framing both screens",
+    "clock_domain": "single-external-camera-timebase",
+    "max_frame_annotation_uncertainty_ms": 4.2,
+    "notes": "Synthetic checker fixture only; not acceptance evidence."
+  }
+}

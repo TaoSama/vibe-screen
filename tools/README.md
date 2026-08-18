@@ -209,6 +209,21 @@ based on unsynchronized host and Android clocks. Keep the raw camera file,
 sample CSV, summary, device info, and a manifest together; create the latter
 with `python3 -m vibescreen_evidence.manifest --help`.
 
+For a formal gate claim, validate the whole evidence directory with the stricter
+external-camera provenance checker:
+
+    PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
+      latency-run/manifest.json \
+      --gate-profile usb-glass-to-glass-sub50 \
+      --output latency-run/latency-evidence-report.json
+
+The manifest follows `tools/schemas/latency-evidence.schema.json` and must bind
+the run ID, transport, profile, raw camera recording, sample file, camera mode,
+device identity, build identity, and annotation method. The checker exits `0`
+only when the profile verdict is `pass` and provenance is complete; missing raw
+video or mismatched metadata stays `insufficient`. The step-by-step method is in
+`docs/runbook/latency-measurement.md`.
+
 For telemetry-stage diagnostics, prepare rows with `stage,latency_ms` and mark
 the clock domain explicitly:
 
