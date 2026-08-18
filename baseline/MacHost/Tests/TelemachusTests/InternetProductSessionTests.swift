@@ -1,4 +1,6 @@
 import Foundation
+import CoreMedia
+import CoreVideo
 import VibeScreenProtocol
 import XCTest
 @testable import Telemachus
@@ -2201,6 +2203,120 @@ final class InternetProductSessionTests: XCTestCase {
         let before = harness.engine.sentPlaintext.filter { $0.channel == .media }.count
         harness.session.sendFrame(Data([0xEE]), timestamp: 5, isKeyframe: true, sessionEpoch: 1)
         XCTAssertTrue(harness.waitForSentMediaCount(before + 1))
+    }
+
+
+    func testRealVideoToolboxHEVCFrameRoundsThroughProtocolV1MediaPath() throws {
+        let harness = try Harness()
+        try reachStreaming(harness)
+
+        let encoder = VideoEncoder(
+            width: 640,
+            height: 480,
+            codec: .hevc,
+            bitrateMbps: 20,
+            quality: "medium",
+            frameRate: 60
+        )
+        guard encoder.hasActiveCompressionSession else {
+            throw XCTSkip("VideoToolbox HEVC compression session is unavailable on this host")
+        }
+
+        guard let pixelBuffer = makeSyntheticPixelBuffer(width: 640, height: 480) else {
+            return XCTFail("Failed to create a synthetic CVPixelBuffer for the real-media gate")
+        }
+
+        let frameReceived = DispatchSemaphore(value: 0)
+        let payloadStore = NSLock()
+        var encodedPayload: Data?
+        encoder.onEncodedFrame = { data, _, isKeyframe, _ in
+            guard isKeyframe else { return }
+            payloadStore.lock()
+            encodedPayload = data
+            payloadStore.unlock()
+            frameReceived.signal()
+        }
+        encoder.requestKeyframe()
+        encoder.encode(
+            pixelBuffer: pixelBuffer,
+            presentationTimeStamp: CMTime(value: 1, timescale: 60),
+            sessionEpoch: harness.session.currentSessionEpoch
+        )
+
+        guard frameReceived.wait(timeout: .now() + 10) == .success else {
+            return XCTFail("VideoToolbox did not deliver an encoded HEVC keyframe within the gate window")
+        }
+        let payload: Data
+        payloadStore.lock()
+        payload = encodedPayload ?? Data()
+        payloadStore.unlock()
+        XCTAssertFalse(payload.isEmpty)
+        // Annex-B HEVC keyframes begin with a start code followed by a VPS/SPS/PPS or IDR NAL unit.
+        XCTAssertTrue(payload.starts(with: [0x00, 0x00, 0x00, 0x01]))
+
+        let sessionEpoch = harness.session.currentSessionEpoch
+        harness.session.sendFrame(
+            payload,
+            timestamp: 1_000,
+            isKeyframe: true,
+            sessionEpoch: sessionEpoch
+        )
+
+        XCTAssertTrue(harness.waitForSentMediaCount(1))
+        let mediaRecords = harness.engine.sentPlaintext
+            .filter { $0.channel == .media }
+            .map { $0.payload }
+        XCTAssertFalse(mediaRecords.isEmpty)
+
+        var fragments: [(header: VSMediaPacketHeader, payload: Data)] = []
+        for record in mediaRecords {
+            let decoded = try ProtocolV1MediaPacketCodec.decode(record)
+            fragments.append(decoded)
+        }
+
+        let frameID = fragments[0].header.frameID
+        XCTAssertTrue(fragments.allSatisfy { $0.header.frameID == frameID })
+        XCTAssertEqual(fragments[0].header.sessionEpoch, sessionEpoch)
+        XCTAssertTrue(fragments[0].header.keyframe)
+        XCTAssertEqual(fragments[0].header.codec, .hevc)
+
+        let sorted = fragments.sorted { $0.header.fragmentIndex < $1.header.fragmentIndex }
+        XCTAssertEqual(sorted.count, Int(sorted[0].header.fragmentCount))
+        for (index, fragment) in sorted.enumerated() {
+            XCTAssertEqual(fragment.header.fragmentIndex, UInt32(index))
+        }
+
+        let reassembled = sorted.reduce(into: Data()) { $0.append($1.payload) }
+        XCTAssertEqual(reassembled, payload, "Reassembled Protocol v1 media payload must match the original VideoToolbox HEVC keyframe")
+    }
+
+    private func makeSyntheticPixelBuffer(width: Int, height: Int) -> CVPixelBuffer? {
+        var pixelBuffer: CVPixelBuffer?
+        let attributes: [CFString: Any] = [
+            kCVPixelBufferIOSurfacePropertiesKey: [:],
+            kCVPixelBufferMetalCompatibilityKey: true
+        ]
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+            attributes as CFDictionary,
+            &pixelBuffer
+        )
+        guard status == kCVReturnSuccess, let pixelBuffer else { return nil }
+
+        CVPixelBufferLockBaseAddress(pixelBuffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
+        for plane in 0..<CVPixelBufferGetPlaneCount(pixelBuffer) {
+            guard let baseAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, plane) else {
+                return nil
+            }
+            let byteCount = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, plane)
+                * CVPixelBufferGetHeightOfPlane(pixelBuffer, plane)
+            memset(baseAddress, plane == 0 ? 16 : 128, byteCount)
+        }
+        return pixelBuffer
     }
 
 }
