@@ -34,6 +34,10 @@ class DeviceHealthMonitorTest {
             DeviceHealthPolicy.attention(DeviceHealthSnapshot(powerSaveMode = true)),
         )
         assertEquals(
+            DeviceHealthAttention.POWER_SAVER,
+            DeviceHealthPolicy.attention(DeviceHealthSnapshot(10, charging = false, powerSaveMode = true)),
+        )
+        assertEquals(
             DeviceHealthAttention.POWER_RECOMMENDED,
             DeviceHealthPolicy.attention(DeviceHealthSnapshot(20, charging = false)),
         )
