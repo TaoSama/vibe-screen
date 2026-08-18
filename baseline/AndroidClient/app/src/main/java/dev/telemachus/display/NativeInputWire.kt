@@ -1,6 +1,7 @@
 package dev.telemachus.display
 
 import android.view.MotionEvent
+import dev.vibescreen.protocol.v1.InputPhase
 
 /**
  * Shared native-input wire encoding for Protocol v1 pointer/keyboard.
@@ -32,6 +33,25 @@ internal object NativeInputWire {
         if (androidButtonState and MotionEvent.BUTTON_SECONDARY != 0) mask = mask or BUTTON_SECONDARY
         return mask
     }
+
+    /**
+     * Maps Android button transitions onto the Host's absolute button-mask
+     * contract. A non-terminal release must update the remaining mask instead
+     * of ending the pointer sequence, because the Host releases every button on
+     * terminal pointer phases.
+     */
+    fun pointerPhase(
+        action: ClientPointerAction,
+        wireButtonMask: Int,
+    ): InputPhase? =
+        when (action) {
+            ClientPointerAction.MOVE -> InputPhase.INPUT_PHASE_CHANGED
+            ClientPointerAction.BUTTON_PRESS ->
+                if (wireButtonMask == 0) null else InputPhase.INPUT_PHASE_BEGAN
+            ClientPointerAction.BUTTON_RELEASE ->
+                if (wireButtonMask == 0) InputPhase.INPUT_PHASE_ENDED else InputPhase.INPUT_PHASE_CHANGED
+            ClientPointerAction.SCROLL -> null
+        }
 
     /** Translates protocol-neutral key modifiers into wire modifier bits. */
     fun modifierMask(modifiers: Set<ClientKeyModifier>): Int {

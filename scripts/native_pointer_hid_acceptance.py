@@ -1,0 +1,351 @@
+#!/usr/bin/env python3
+"""Collect native HID mouse acceptance evidence for Android -> macOS input.
+
+The script is intentionally read-only with respect to the Android app: it does
+not install, clear data, uninstall, reset permissions, or modify settings. It
+captures the connected device identity, verifies that Android currently exposes
+an external mouse-like input source, then waits for a human to move and click a
+physical USB/Bluetooth mouse attached to the Android device while the Vibe Screen
+USB/LAN Protocol v1 session is already streaming. The pass/fail decision is made
+from new Host log lines appended during the run.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import subprocess
+import sys
+import time
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Sequence
+
+
+BLOCKED_EXIT = 2
+DEFAULT_HOST_LOG = Path.home() / "Library/Logs/Telemachus/telemachus.log"
+DEFAULT_OBSERVATION_SECONDS = 20.0
+POINTER_PATTERNS = {
+    "move": re.compile(r"Pointer injected: phase=(?:INPUT_PHASE_)?changed\b|Pointer injected: phase=changed\b"),
+    "press": re.compile(r"Pointer injected: phase=(?:INPUT_PHASE_)?began\b|Pointer injected: phase=began\b"),
+    "release": re.compile(r"Pointer injected: phase=(?:INPUT_PHASE_)?ended\b|Pointer injected: phase=ended\b"),
+}
+
+
+class AcceptanceError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    command: list[str]
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+@dataclass(frozen=True)
+class DeviceIdentity:
+    serial: str
+    endpoint: str
+    manufacturer: str
+    model: str
+    device: str
+    android_release: str
+    sdk: str
+    fingerprint_sha256: str
+    display_size: str
+    display_density: str
+    battery_summary: str
+    boot_completed: str
+
+
+@dataclass(frozen=True)
+class InputDeviceSummary:
+    name: str
+    sources: str
+    is_external: str
+
+
+@dataclass(frozen=True)
+class AcceptanceResult:
+    status: str
+    reason: str
+    created_at: str
+    observation_seconds: float
+    device: DeviceIdentity
+    external_mouse_devices: list[InputDeviceSummary]
+    host_log: str
+    host_log_appended_bytes: int
+    host_log_appended_sha256: str
+    required_pointer_events: list[str]
+    observed_pointer_events: list[str]
+
+
+def run_command(command: Sequence[str], *, timeout: float = 15.0) -> CommandResult:
+    try:
+        completed = subprocess.run(
+            list(command),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except FileNotFoundError as error:
+        raise AcceptanceError(f"required command not found: {command[0]}") from error
+    except subprocess.TimeoutExpired as error:
+        raise AcceptanceError(f"command timed out: {' '.join(command)}") from error
+    return CommandResult(list(command), completed.returncode, completed.stdout, completed.stderr)
+
+
+def adb(serial: str, args: Sequence[str], *, timeout: float = 15.0) -> CommandResult:
+    result = run_command(["adb", "-s", serial, *args], timeout=timeout)
+    if result.returncode != 0:
+        raise AcceptanceError(
+            f"adb command failed ({result.returncode}): adb -s {serial} {' '.join(args)}\n"
+            f"stdout: {result.stdout.strip()}\nstderr: {result.stderr.strip()}"
+        )
+    return result
+
+
+def adb_shell(serial: str, *args: str, timeout: float = 15.0) -> str:
+    return adb(serial, ["shell", *args], timeout=timeout).stdout.strip()
+
+
+def read_device_identity(serial: str) -> DeviceIdentity:
+    devices = run_command(["adb", "devices", "-l"]).stdout.splitlines()
+    endpoint = next((line for line in devices if line.startswith(serial + "\t") or line.startswith(serial + " ")), serial)
+    fingerprint = adb_shell(serial, "getprop", "ro.build.fingerprint")
+    battery = adb_shell(serial, "dumpsys", "battery", timeout=20.0)
+    battery_lines = [line.strip() for line in battery.splitlines() if line.strip()]
+    return DeviceIdentity(
+        serial=serial,
+        endpoint=endpoint,
+        manufacturer=adb_shell(serial, "getprop", "ro.product.manufacturer"),
+        model=adb_shell(serial, "getprop", "ro.product.model"),
+        device=adb_shell(serial, "getprop", "ro.product.device"),
+        android_release=adb_shell(serial, "getprop", "ro.build.version.release"),
+        sdk=adb_shell(serial, "getprop", "ro.build.version.sdk"),
+        fingerprint_sha256=hashlib.sha256(fingerprint.encode("utf-8")).hexdigest(),
+        display_size=adb_shell(serial, "wm", "size"),
+        display_density=adb_shell(serial, "wm", "density"),
+        battery_summary="; ".join(battery_lines[:12]),
+        boot_completed=adb_shell(serial, "getprop", "sys.boot_completed"),
+    )
+
+
+def parse_input_devices(dumpsys_input: str) -> list[InputDeviceSummary]:
+    summaries: list[InputDeviceSummary] = []
+    current_name: str | None = None
+    current_external: str | None = None
+    current_sources: str | None = None
+    for raw_line in dumpsys_input.splitlines():
+        line = raw_line.rstrip()
+        match = re.match(r"\s*Device\s+[^:]+:\s*(.+)", line)
+        if match:
+            if current_name and current_sources:
+                summaries.append(
+                    InputDeviceSummary(
+                        name=current_name,
+                        sources=current_sources,
+                        is_external=current_external or "unknown",
+                    )
+                )
+            current_name = match.group(1).strip()
+            current_external = None
+            current_sources = None
+            continue
+        if current_name is None:
+            continue
+        external = re.match(r"\s*IsExternal:\s*(.+)", line)
+        if external:
+            current_external = external.group(1).strip()
+            continue
+        sources = re.match(r"\s*Sources:\s*(.+)", line)
+        if sources:
+            current_sources = sources.group(1).strip()
+    if current_name and current_sources:
+        summaries.append(
+            InputDeviceSummary(
+                name=current_name,
+                sources=current_sources,
+                is_external=current_external or "unknown",
+            )
+        )
+    return summaries
+
+
+def external_mouse_devices(devices: Sequence[InputDeviceSummary]) -> list[InputDeviceSummary]:
+    candidates = []
+    for device in devices:
+        sources = device.sources.upper()
+        external = device.is_external.lower() == "true"
+        if external and ("MOUSE" in sources or "TOUCHPAD" in sources or "TRACKBALL" in sources):
+            candidates.append(device)
+    return candidates
+
+
+def host_log_cursor(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except FileNotFoundError as error:
+        raise AcceptanceError(f"host log does not exist: {path}") from error
+
+
+def read_new_host_log(path: Path, offset: int, max_bytes: int) -> bytes:
+    try:
+        current_size = path.stat().st_size
+        if current_size < offset:
+            raise AcceptanceError(f"host log was truncated during acceptance: {path}")
+        appended = current_size - offset
+        if appended > max_bytes:
+            raise AcceptanceError(f"host log appended {appended} bytes, above limit {max_bytes}")
+        with path.open("rb") as handle:
+            handle.seek(offset)
+            return handle.read(appended)
+    except OSError as error:
+        raise AcceptanceError(f"cannot read host log {path}: {error}") from error
+
+
+def observed_events(log_text: str) -> list[str]:
+    return [name for name, pattern in POINTER_PATTERNS.items() if pattern.search(log_text)]
+
+
+def write_result(path: Path, result: AcceptanceResult, dumpsys_input: str) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "result.json").write_text(json.dumps(asdict(result), indent=2) + "\n", encoding="utf-8")
+    (path / "dumpsys-input.txt").write_text(dumpsys_input, encoding="utf-8")
+    summary = [
+        f"# Native pointer HID acceptance: {result.status}",
+        "",
+        f"Created: {result.created_at}",
+        f"Reason: {result.reason}",
+        f"Device: {result.device.manufacturer} {result.device.model} / {result.device.device} / Android {result.device.android_release} / serial {result.device.serial}",
+        f"External mouse devices: {len(result.external_mouse_devices)}",
+        f"Observed pointer events: {', '.join(result.observed_pointer_events) or 'none'}",
+        "",
+        "This evidence must remain scoped to the exact device identity above.",
+    ]
+    (path / "README.md").write_text("\n".join(summary) + "\n", encoding="utf-8")
+
+
+def parse_args(argv: Sequence[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--serial", required=True, help="ADB serial for the Android device under test.")
+    parser.add_argument(
+        "--host-log",
+        type=Path,
+        default=DEFAULT_HOST_LOG,
+        help=f"Host log to inspect for Pointer injected lines. Default: {DEFAULT_HOST_LOG}",
+    )
+    parser.add_argument(
+        "--evidence-dir",
+        type=Path,
+        required=True,
+        help="Directory where result.json, dumpsys-input.txt, and README.md will be written.",
+    )
+    parser.add_argument(
+        "--observe-seconds",
+        type=float,
+        default=DEFAULT_OBSERVATION_SECONDS,
+        help="Seconds to wait while the operator moves and clicks the physical mouse.",
+    )
+    parser.add_argument(
+        "--max-host-log-bytes",
+        type=int,
+        default=1_000_000,
+        help="Maximum appended host log bytes to read after observation.",
+    )
+    parser.add_argument(
+        "--require-events",
+        choices=sorted(POINTER_PATTERNS),
+        nargs="+",
+        default=["move", "press", "release"],
+        help="Pointer event kinds required for PASS.",
+    )
+    parser.add_argument(
+        "--no-wait",
+        action="store_true",
+        help="Only perform prerequisite checks and write evidence. Useful for blocked dry runs.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv or sys.argv[1:])
+    if args.observe_seconds < 0:
+        raise SystemExit("--observe-seconds must be non-negative")
+    if args.max_host_log_bytes <= 0:
+        raise SystemExit("--max-host-log-bytes must be positive")
+
+    created_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    try:
+        identity = read_device_identity(args.serial)
+        dumpsys_input = adb(args.serial, ["shell", "dumpsys", "input"], timeout=30.0).stdout
+        input_devices = parse_input_devices(dumpsys_input)
+        mouse_devices = external_mouse_devices(input_devices)
+        if not mouse_devices:
+            result = AcceptanceResult(
+                status="blocked",
+                reason="No external Android input device with MOUSE, TOUCHPAD, or TRACKBALL source is currently attached.",
+                created_at=created_at,
+                observation_seconds=0.0,
+                device=identity,
+                external_mouse_devices=[],
+                host_log=str(args.host_log),
+                host_log_appended_bytes=0,
+                host_log_appended_sha256=hashlib.sha256(b"").hexdigest(),
+                required_pointer_events=list(args.require_events),
+                observed_pointer_events=[],
+            )
+            write_result(args.evidence_dir, result, dumpsys_input)
+            print(result.reason, file=sys.stderr)
+            return BLOCKED_EXIT
+
+        cursor = host_log_cursor(args.host_log)
+        if args.no_wait:
+            appended_log = b""
+        else:
+            print(
+                "Move the physical mouse attached to the Android device, then left-click and release. "
+                f"Waiting {args.observe_seconds:.1f}s...",
+                file=sys.stderr,
+            )
+            time.sleep(args.observe_seconds)
+            appended_log = read_new_host_log(args.host_log, cursor, args.max_host_log_bytes)
+        appended_text = appended_log.decode("utf-8", errors="replace")
+        observed = observed_events(appended_text)
+        missing = [name for name in args.require_events if name not in observed]
+        status = "passed" if not missing else "failed"
+        reason = "All required native pointer events were observed." if not missing else (
+            "Missing required host log pointer events: " + ", ".join(missing)
+        )
+        result = AcceptanceResult(
+            status=status,
+            reason=reason,
+            created_at=created_at,
+            observation_seconds=0.0 if args.no_wait else float(args.observe_seconds),
+            device=identity,
+            external_mouse_devices=mouse_devices,
+            host_log=str(args.host_log),
+            host_log_appended_bytes=len(appended_log),
+            host_log_appended_sha256=hashlib.sha256(appended_log).hexdigest(),
+            required_pointer_events=list(args.require_events),
+            observed_pointer_events=observed,
+        )
+        write_result(args.evidence_dir, result, dumpsys_input)
+        if status != "passed":
+            print(reason, file=sys.stderr)
+            return 1
+        print(reason)
+        return 0
+    except AcceptanceError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,7 +1,9 @@
 package dev.telemachus.display
 
 import android.view.MotionEvent
+import dev.vibescreen.protocol.v1.InputPhase
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /** Verifies the shared native-input wire encoding matches the host bits. */
@@ -15,6 +17,29 @@ class NativeInputWireTest {
             NativeInputWire.buttonMask(MotionEvent.BUTTON_PRIMARY or MotionEvent.BUTTON_SECONDARY),
         )
         assertEquals(0, NativeInputWire.buttonMask(0))
+    }
+
+    @Test
+    fun pointerPhasePreservesRemainingButtonsOnPartialRelease() {
+        assertEquals(
+            InputPhase.INPUT_PHASE_BEGAN,
+            NativeInputWire.pointerPhase(ClientPointerAction.BUTTON_PRESS, NativeInputWire.BUTTON_PRIMARY),
+        )
+        assertEquals(
+            InputPhase.INPUT_PHASE_CHANGED,
+            NativeInputWire.pointerPhase(ClientPointerAction.BUTTON_RELEASE, NativeInputWire.BUTTON_SECONDARY),
+        )
+        assertEquals(
+            InputPhase.INPUT_PHASE_ENDED,
+            NativeInputWire.pointerPhase(ClientPointerAction.BUTTON_RELEASE, 0),
+        )
+    }
+
+    @Test
+    fun pointerPhaseDropsUnsupportedButtonPresses() {
+        assertEquals(InputPhase.INPUT_PHASE_CHANGED, NativeInputWire.pointerPhase(ClientPointerAction.MOVE, 0))
+        assertNull(NativeInputWire.pointerPhase(ClientPointerAction.BUTTON_PRESS, 0))
+        assertNull(NativeInputWire.pointerPhase(ClientPointerAction.SCROLL, NativeInputWire.BUTTON_PRIMARY))
     }
 
     @Test

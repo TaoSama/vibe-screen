@@ -4455,29 +4455,15 @@ class MainActivity : AppCompatActivity() {
                             deltaY = input.verticalScroll.toDouble(),
                         )
 
-                    ClientPointerAction.MOVE ->
+                    else -> {
+                        val phase = NativeInputWire.pointerPhase(input.action, buttonMask) ?: return false
                         client.sendPointer(
-                            phase = InputPhase.INPUT_PHASE_CHANGED,
+                            phase = phase,
                             x = input.x,
                             y = input.y,
                             buttonMask = buttonMask,
                         )
-
-                    ClientPointerAction.BUTTON_PRESS ->
-                        client.sendPointer(
-                            phase = InputPhase.INPUT_PHASE_BEGAN,
-                            x = input.x,
-                            y = input.y,
-                            buttonMask = buttonMask,
-                        )
-
-                    ClientPointerAction.BUTTON_RELEASE ->
-                        client.sendPointer(
-                            phase = InputPhase.INPUT_PHASE_ENDED,
-                            x = input.x,
-                            y = input.y,
-                            buttonMask = buttonMask,
-                        )
+                    }
                 }
             if (admitted && input.action != ClientPointerAction.SCROLL) {
                 nativeInputSessionState.recordPointer(client, generation, input.x, input.y, buttonMask)
