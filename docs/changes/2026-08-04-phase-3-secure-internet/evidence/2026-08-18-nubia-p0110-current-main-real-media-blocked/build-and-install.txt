@@ -1,0 +1,68 @@
+Android build
+=============
+Command: ./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug
+Result: PASS
+Exit: 0
+Elapsed: 47.155 seconds
+Tasks: 70 actionable, 68 executed, 2 up-to-date
+APK SHA-256: a795e3f37eac867cdcfeaa9c51fb24153449c5b996d3eaeb1e7564bfb6a4283e
+
+macOS package
+=============
+Command: python3 scripts/package_macos.py
+First result: execution conflict after 48.168 seconds
+First diagnostic: another terminated build worker wrote the shared release-artifacts directory concurrently, producing FileExistsError
+Resolution: terminate the stale writer and rerun the same command exclusively
+Exclusive rerun result: PASS
+Exclusive rerun exit: 0
+Exclusive rerun elapsed: 3.514 seconds
+App signature verification: PASS
+This was an execution conflict, not a product source failure.
+
+Android in-place install
+========================
+Command: adb -s $ANDROID_SERIAL install -r baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+Result: PASS (Success)
+Exit: 0
+Elapsed: 2.009 seconds
+
+Before install-r:
+  firstInstallTime=2026-08-17 18:36:44
+  lastUpdateTime=2026-08-17 22:10:36
+  ceDataInode=54313
+  deDataInode=54251
+  signature=2088cf51
+  android.permission.CAMERA granted=false
+
+After install-r:
+  firstInstallTime=2026-08-17 18:36:44
+  lastUpdateTime=2026-08-18 00:10:51
+  ceDataInode=54313
+  deDataInode=54251
+  signature=2088cf51
+  android.permission.CAMERA granted=false
+
+Interpretation:
+  - first-install time and CE/DE data inodes stayed unchanged
+  - only last-update time advanced
+  - Camera permission stayed denied
+  - no uninstall, pm clear, or permission reset was performed
+
+Android explicit cold launch
+============================
+Component: dev.telemachus.display/.MainActivity
+Status: ok
+Launch state: COLD
+Total time: 409 milliseconds
+Wait time: 412 milliseconds
+
+One Host-triggered launch occurred inside the install replacement window and
+temporarily reported that the activity did not exist. Package resolution and the
+explicit cold launch immediately afterward passed, so this is recorded as an
+install-window race rather than a missing APK or launch failure.
+
+Limits
+======
+Every build/test command completed well below the 20-minute hard limit. Full
+macOS XCTest was not run because only Command Line Tools, not full Xcode, was
+available. This environment boundary does not change the blocked device result.
