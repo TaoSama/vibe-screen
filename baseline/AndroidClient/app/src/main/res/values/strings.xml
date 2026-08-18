@@ -60,6 +60,7 @@
     <string name="stats_bitrate">BITRATE</string>
     <string name="stats_resolution">RESOLUTION</string>
     <string name="stats_rtt">RTT</string>
+    <string name="stats_link">LINK</string>
     <string name="placeholder_dashes">--</string>
     <string name="wordmark">VIBE SCREEN</string>
     <string name="waiting_for_mac">Waiting for your Mac</string>
@@ -67,6 +68,14 @@
     <string name="control_disconnect">Disconnect</string>
     <string name="control_settings">Settings</string>
     <string name="control_displays">Choose display</string>
+    <string name="stream_status_usb_label">USB</string>
+    <string name="stream_status_usb_detail">ADB reverse</string>
+    <string name="stream_status_lan_label">LAN</string>
+    <string name="stream_status_lan_detail">Not encrypted</string>
+    <string name="stream_status_internet_label">Internet</string>
+    <string name="stream_status_internet_detail">Encrypted records</string>
+    <string name="stream_status_overlay_format">%1$s · %2$s</string>
+    <string name="stream_status_accessibility">%1$s connection, %2$s</string>
     <string name="show_stream_controls">Show stream controls</string>
     <string name="disconnect_confirm_title">Disconnect?</string>
     <string name="disconnect_confirm_message">This ends the current screen session with the Mac.</string>
@@ -101,8 +110,8 @@
     <string name="internet_waiting_title">Internet development preview</string>
     <string name="internet_waiting_title_compact">Internet preview</string>
     <string name="internet_waiting_description">Experimental Internet transport. Protocol v1 application records are encrypted on direct and TURN routes. Public Internet traversal, real display capture, cross-service revocation, and soak stability are not yet accepted.</string>
-    <string name="internet_security_details_collapsed">Internet security details collapsed</string>
-    <string name="internet_security_details_expanded">Internet security details expanded</string>
+    <string name="internet_security_details_collapsed">Internet security details visible</string>
+    <string name="internet_security_details_expanded">Internet security details visible</string>
     <string name="internet_security_details_expand_action">Expand Internet security details</string>
     <string name="internet_security_details_collapse_action">Collapse Internet security details</string>
     <string name="internet_profile_missing">No Internet pairing profile. Import a fresh profile from your Mac.</string>

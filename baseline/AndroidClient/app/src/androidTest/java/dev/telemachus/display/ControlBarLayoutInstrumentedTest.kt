@@ -417,6 +417,7 @@ class ControlBarLayoutInstrumentedTest {
             ControlBarViews(
                 card = root.findViewById(R.id.controlBar),
                 content = root.findViewById(R.id.controlBarContent),
+                connectionStatus = root.findViewById(R.id.connectionSecurityGroup),
                 displaySelector = root.findViewById(R.id.displayCapsuleGroup),
                 actions = root.findViewById(R.id.controlActionsGroup),
                 hostAction = root.findViewById(R.id.controlHostActionsButton),
@@ -425,6 +426,7 @@ class ControlBarLayoutInstrumentedTest {
             )
         val label = root.findViewById<TextView>(R.id.controlDisplaysLabel)
         views.card.visibility = View.VISIBLE
+        views.connectionStatus.visibility = View.VISIBLE
         views.displaySelector.visibility = if (selectorVisible) View.VISIBLE else View.GONE
         views.hostAction.visibility = if (hostVisible) View.VISIBLE else View.GONE
         if (selectorVisible) {

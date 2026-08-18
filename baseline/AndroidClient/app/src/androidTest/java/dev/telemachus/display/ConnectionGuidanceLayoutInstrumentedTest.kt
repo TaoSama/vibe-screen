@@ -76,11 +76,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                         subtitleExpanded = false,
                     )
                     layout.measureAndLayout()
-                    if (mode == ConnectionMode.INTERNET && widthDp <= heightDp) {
-                        layout.assertTextRenderedWithEndEllipsis(layout.subtitle)
-                    } else {
-                        layout.assertTextRenderedWithoutEllipsis(layout.subtitle)
-                    }
+                    layout.assertTextRenderedWithoutEllipsis(layout.subtitle)
                     layout.assertFullyReachableByScroll(layout.subtitle)
                     layout.assertHeaderAndActionsSeparated()
                 }
@@ -103,7 +99,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 )
                 layout.measureAndLayout()
                 assertEquals(completeDescription, layout.subtitle.text.toString())
-                layout.assertTextRenderedWithEndEllipsis(layout.subtitle)
+                layout.assertTextRenderedWithoutEllipsis(layout.subtitle)
                 layout.assertPrimaryInternetActionVisible()
 
                 layout.applyPanel(
@@ -267,13 +263,6 @@ class ConnectionGuidanceLayoutInstrumentedTest {
             assertTrue(text.measuredWidth > 0 && text.measuredHeight > 0)
             assertTrue((0 until textLayout.lineCount).all { line -> textLayout.getEllipsisCount(line) == 0 })
             assertEquals(text.text.length, textLayout.getLineEnd(textLayout.lineCount - 1))
-        }
-
-        fun assertTextRenderedWithEndEllipsis(text: TextView) {
-            val textLayout = checkNotNull(text.layout)
-            assertEquals(ConnectionSubtitleDisclosurePolicy.COLLAPSED_MAX_LINES, text.maxLines)
-            assertEquals(ConnectionSubtitleDisclosurePolicy.COLLAPSED_MAX_LINES, textLayout.lineCount)
-            assertTrue(textLayout.getEllipsisCount(textLayout.lineCount - 1) > 0)
         }
 
         fun assertFullyReachableByScroll(view: View) {

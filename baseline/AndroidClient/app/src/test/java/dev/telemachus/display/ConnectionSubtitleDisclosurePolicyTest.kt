@@ -7,7 +7,7 @@ import org.junit.Test
 
 class ConnectionSubtitleDisclosurePolicyTest {
     @Test
-    fun `portrait Internet starts collapsed with an end ellipsis`() {
+    fun `portrait Internet keeps security details fully visible`() {
         val presentation =
             ConnectionSubtitleDisclosurePolicy.resolve(
                 connectionMode = ConnectionMode.INTERNET,
@@ -15,23 +15,8 @@ class ConnectionSubtitleDisclosurePolicyTest {
                 requestedExpanded = false,
             )
 
-        assertTrue(presentation.expandable)
+        assertFalse(presentation.expandable)
         assertFalse(presentation.expanded)
-        assertEquals(ConnectionSubtitleDisclosurePolicy.COLLAPSED_MAX_LINES, presentation.maxLines)
-        assertTrue(presentation.ellipsizeEnd)
-    }
-
-    @Test
-    fun `explicitly expanded portrait Internet shows the complete description`() {
-        val presentation =
-            ConnectionSubtitleDisclosurePolicy.resolve(
-                connectionMode = ConnectionMode.INTERNET,
-                stackedPortrait = true,
-                requestedExpanded = true,
-            )
-
-        assertTrue(presentation.expandable)
-        assertTrue(presentation.expanded)
         assertEquals(ConnectionSubtitleDisclosurePolicy.MAX_LINES_UNLIMITED, presentation.maxLines)
         assertFalse(presentation.ellipsizeEnd)
     }

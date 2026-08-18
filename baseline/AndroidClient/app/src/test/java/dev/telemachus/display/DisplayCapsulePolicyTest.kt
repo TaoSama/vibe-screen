@@ -75,47 +75,51 @@ class ControlBarLayoutPolicyTest {
             actionMarginPx = 4,
             disconnectSeparationPx = 12,
             columnActionSpacingPx = 8,
+            statusMinimumWidthPx = 72,
+            statusGapPx = 6,
         )
 
     @Test
     fun `single display keeps a compact capsule`() {
         assertEquals(
             ControlBarLayoutPolicy.Mode.COMPACT,
-            ControlBarLayoutPolicy.mode(184, false, true, geometry),
+            ControlBarLayoutPolicy.mode(262, false, true, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COLUMN,
-            ControlBarLayoutPolicy.mode(183, false, true, geometry),
+            ControlBarLayoutPolicy.mode(261, false, true, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COMPACT,
-            ControlBarLayoutPolicy.mode(128, false, false, geometry),
+            ControlBarLayoutPolicy.mode(206, false, false, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COLUMN,
-            ControlBarLayoutPolicy.mode(127, false, false, geometry),
+            ControlBarLayoutPolicy.mode(205, false, false, geometry),
         )
     }
 
     @Test
-    fun `common phone widths keep all negotiated controls inline`() {
-        listOf(320, 360).forEach { width ->
-            assertEquals(
-                ControlBarLayoutPolicy.Mode.INLINE,
-                ControlBarLayoutPolicy.mode(width, true, true, geometry),
-            )
-        }
+    fun `common phone widths keep all controls visible without truncating actions`() {
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.STACKED,
+            ControlBarLayoutPolicy.mode(320, true, true, geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.INLINE,
+            ControlBarLayoutPolicy.mode(360, true, true, geometry),
+        )
     }
 
     @Test
     fun `selector layout changes exactly at measured pixel boundaries`() {
         assertEquals(
             ControlBarLayoutPolicy.Mode.INLINE,
-            ControlBarLayoutPolicy.mode(272, true, true, geometry),
+            ControlBarLayoutPolicy.mode(350, true, true, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
-            ControlBarLayoutPolicy.mode(271, true, true, geometry),
+            ControlBarLayoutPolicy.mode(349, true, true, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
@@ -127,11 +131,11 @@ class ControlBarLayoutPolicyTest {
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.INLINE,
-            ControlBarLayoutPolicy.mode(216, true, false, geometry),
+            ControlBarLayoutPolicy.mode(294, true, false, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
-            ControlBarLayoutPolicy.mode(215, true, false, geometry),
+            ControlBarLayoutPolicy.mode(293, true, false, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
@@ -153,14 +157,16 @@ class ControlBarLayoutPolicyTest {
                 actionMarginPx = 11,
                 disconnectSeparationPx = 33,
                 columnActionSpacingPx = 22,
+                statusMinimumWidthPx = 198,
+                statusGapPx = 17,
             )
         assertEquals(
             ControlBarLayoutPolicy.Mode.INLINE,
-            ControlBarLayoutPolicy.mode(749, true, true, density275Geometry),
+            ControlBarLayoutPolicy.mode(964, true, true, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
-            ControlBarLayoutPolicy.mode(748, true, true, density275Geometry),
+            ControlBarLayoutPolicy.mode(963, true, true, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
@@ -172,11 +178,11 @@ class ControlBarLayoutPolicyTest {
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.INLINE,
-            ControlBarLayoutPolicy.mode(595, true, false, density275Geometry),
+            ControlBarLayoutPolicy.mode(810, true, false, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
-            ControlBarLayoutPolicy.mode(594, true, false, density275Geometry),
+            ControlBarLayoutPolicy.mode(809, true, false, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
@@ -188,19 +194,19 @@ class ControlBarLayoutPolicyTest {
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COMPACT,
-            ControlBarLayoutPolicy.mode(507, false, true, density275Geometry),
+            ControlBarLayoutPolicy.mode(722, false, true, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COLUMN,
-            ControlBarLayoutPolicy.mode(506, false, true, density275Geometry),
+            ControlBarLayoutPolicy.mode(721, false, true, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COMPACT,
-            ControlBarLayoutPolicy.mode(353, false, false, density275Geometry),
+            ControlBarLayoutPolicy.mode(568, false, false, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COLUMN,
-            ControlBarLayoutPolicy.mode(352, false, false, density275Geometry),
+            ControlBarLayoutPolicy.mode(567, false, false, density275Geometry),
         )
     }
 
@@ -234,12 +240,29 @@ class ControlBarLayoutPolicyTest {
             ),
         )
     }
+
+    @Test
+    fun `stream status consumes explicit space and stacks before truncating actions`() {
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.INLINE,
+            ControlBarLayoutPolicy.mode(350, true, true, geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Margins(0, 0, 6),
+            ControlBarLayoutPolicy.statusMargins(ControlBarLayoutPolicy.Mode.INLINE, geometry),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Margins(0, 0, 0, 6),
+            ControlBarLayoutPolicy.statusMargins(ControlBarLayoutPolicy.Mode.STACKED, geometry),
+        )
+    }
 }
 
 class ControlBarAccessibilityPolicyTest {
     @Test
     fun `transient controls auto hide for standard touch navigation`() {
         assertTrue(ControlBarAccessibilityPolicy.shouldAutoHide(touchExplorationEnabled = false))
+        assertEquals(5_000L, ControlBarAccessibilityPolicy.STANDARD_AUTO_HIDE_MS)
     }
 
     @Test

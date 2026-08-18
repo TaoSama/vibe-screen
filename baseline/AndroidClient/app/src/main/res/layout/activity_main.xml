@@ -135,7 +135,8 @@
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
+                android:orientation="vertical"
+                android:layout_marginEnd="16dp">
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -148,6 +149,29 @@
                     android:layout_height="wrap_content"
                     android:text="@string/placeholder_dashes"
                     android:textColor="#E91E63"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Connection and security state stays visible whenever the stats overlay is enabled. -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/stats_link"
+                    android:textColor="#88FFFFFF"
+                    android:textSize="11sp" />
+                <TextView
+                    android:id="@+id/securityText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="@string/placeholder_dashes"
+                    android:textColor="@color/on_surface"
                     android:textSize="16sp"
                     android:textStyle="bold" />
             </LinearLayout>
@@ -178,13 +202,46 @@
             android:gravity="center"
             android:padding="@dimen/control_bar_content_padding">
 
+            <LinearLayout
+                android:id="@+id/connectionSecurityGroup"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="@dimen/connection_status_min_width"
+                android:minHeight="@dimen/display_capsule_min_height"
+                android:orientation="vertical"
+                android:gravity="center_vertical"
+                android:paddingStart="@dimen/display_capsule_horizontal_padding"
+                android:paddingEnd="@dimen/display_capsule_horizontal_padding"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/connectionSecurityLabel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="@string/stream_status_usb_label"
+                    android:textColor="@color/on_surface"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/connectionSecurityDetail"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="@string/stream_status_usb_detail"
+                    android:textColor="@color/on_surface_muted"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
             <!-- Display picker collapses entirely unless multi-display is
                  negotiated, so single-display sessions expose no dead tap area. -->
             <LinearLayout
                 android:id="@+id/displayCapsuleGroup"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
                 android:minWidth="@dimen/display_capsule_min_width"
                 android:minHeight="@dimen/display_capsule_min_height"
                 android:orientation="horizontal"

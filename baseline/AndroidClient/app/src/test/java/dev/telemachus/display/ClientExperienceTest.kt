@@ -24,6 +24,22 @@ class ClientExperienceTest {
     }
 
     @Test
+    fun `streaming status distinguishes transport security`() {
+        val usb = ConnectionSecurityPresentationPolicy.presentation(ConnectionMode.USB)
+        val lan = ConnectionSecurityPresentationPolicy.presentation(ConnectionMode.WIRELESS)
+        val internet = ConnectionSecurityPresentationPolicy.presentation(ConnectionMode.INTERNET)
+
+        assertEquals(R.string.stream_status_usb_label, usb.labelResource)
+        assertFalse(usb.warning)
+        assertEquals(R.string.stream_status_lan_label, lan.labelResource)
+        assertEquals(R.string.stream_status_lan_detail, lan.detailResource)
+        assertTrue(lan.warning)
+        assertEquals(R.string.stream_status_internet_label, internet.labelResource)
+        assertEquals(R.string.stream_status_internet_detail, internet.detailResource)
+        assertFalse(internet.warning)
+    }
+
+    @Test
     fun `saved enum parsing falls back safely`() {
         assertEquals(VideoScaleMode.FIT, VideoScaleMode.fromName("unknown"))
         assertEquals(ClientRotation.FOLLOW_HOST, ClientRotation.fromName(null))

@@ -31,6 +31,7 @@ import android.widget.PopupMenu
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.TooltipCompat
 import androidx.constraintlayout.widget.ConstraintSet
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
@@ -1308,6 +1309,33 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showTerminalConnectionGuidance(
+        mode: ConnectionMode,
+        guidance: ConnectionGuidance,
+    ) {
+        when (mode) {
+            ConnectionMode.USB -> showUsbConnectionGuidance(guidance)
+            ConnectionMode.WIRELESS -> {
+                updateStatus(guidance.status)
+                wirelessController.showConnectionGuidance(guidance)
+            }
+            ConnectionMode.INTERNET -> {
+                LiveRegionTextApplier.show(
+                    binding.internetErrorText,
+                    guidance.status + ". " + guidance.message,
+                )
+                LiveRegionTextApplier.apply(
+                    binding.internetStateText,
+                    getString(
+                        R.string.internet_state_format,
+                        guidance.status.lowercase(Locale.US),
+                        getString(R.string.internet_route_pending),
+                    ),
+                )
+            }
+        }
+    }
+
     private fun clearUsbConnectionGuidance() {
         if (!::binding.isInitialized) return
         binding.connectionErrorContainer.visibility = View.GONE
@@ -1673,6 +1701,7 @@ class MainActivity : AppCompatActivity() {
         val connectedStatus = getString(R.string.connected_streaming)
         clearUsbConnectionGuidance()
         setConnectionDetailsVisible(false)
+        updateConnectionSecurityStatus()
         binding.videoViewport.visibility = View.VISIBLE
         binding.disconnectedBackdrop.visibility = View.GONE
         binding.settingsPanel.visibility = View.GONE
@@ -1705,6 +1734,7 @@ class MainActivity : AppCompatActivity() {
         binding.settingsButton.translationZ = binding.settingsPanel.elevation + 1f
         binding.settingsButton.bringToFront()
         binding.statusBar.visibility = View.GONE
+        binding.connectionSecurityGroup.visibility = View.GONE
         binding.connectButton.isEnabled = true
         binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_waiting)
         hideControlBar()
@@ -1910,6 +1940,7 @@ class MainActivity : AppCompatActivity() {
                 ControlBarViews(
                     card = binding.controlBar,
                     content = binding.controlBarContent,
+                    connectionStatus = binding.connectionSecurityGroup,
                     displaySelector = binding.displayCapsuleGroup,
                     actions = binding.controlActionsGroup,
                     hostAction = binding.controlHostActionsButton,
@@ -1920,6 +1951,26 @@ class MainActivity : AppCompatActivity() {
             windowWidthPx = windowWidthPx,
             safeAreaInsets = safeAreaInsets,
         )
+    }
+
+    private fun updateConnectionSecurityStatus() {
+        val presentation = ConnectionSecurityPresentationPolicy.presentation(prefs.connectionMode)
+        val label = getString(presentation.labelResource)
+        val detail = getString(presentation.detailResource)
+        val detailColor =
+            ContextCompat.getColor(
+                this,
+                if (presentation.warning) R.color.warning else R.color.on_surface_muted,
+            )
+        LiveRegionTextApplier.apply(binding.connectionSecurityLabel, label)
+        LiveRegionTextApplier.apply(binding.connectionSecurityDetail, detail)
+        binding.connectionSecurityDetail.setTextColor(detailColor)
+        binding.connectionSecurityGroup.contentDescription =
+            getString(R.string.stream_status_accessibility, label, detail)
+        binding.connectionSecurityGroup.visibility = View.VISIBLE
+        binding.securityText.text = getString(R.string.stream_status_overlay_format, label, detail)
+        binding.securityText.setTextColor(detailColor)
+        applyControlBarLayout()
     }
 
     /**
@@ -4297,12 +4348,7 @@ class MainActivity : AppCompatActivity() {
         }
         pendingTerminalGuidance?.let { guidance ->
             pendingTerminalGuidance = null
-            if (mode == ConnectionMode.USB) {
-                showUsbConnectionGuidance(guidance)
-            } else {
-                updateStatus(guidance.status)
-                showError(guidance.message)
-            }
+            showTerminalConnectionGuidance(mode, guidance)
         }
     }
 
