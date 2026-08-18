@@ -276,6 +276,7 @@ class StreamingServer: EncodedFrameSink {
     var onTouchEvent: ((Float, Float, Int, Int, Float, Float, UInt64) -> Void)?
     var onInputCancelled: ((UInt64) -> Void)?
     var onStats: ((Double, Double, UInt64) -> Void)?
+    var encoderStatsProvider: (() -> (inFlight: Int, capacity: Int))?
     var onKeyframeRequested: ((Bool, UInt64) -> Void)?
     // Whether host wants to receive touch events from client. Ping/pong is
     // handled regardless. When false, incoming touch frames are dropped
@@ -2127,21 +2128,29 @@ class StreamingServer: EncodedFrameSink {
             if profiledFrameCount > 0 {
                 let avgAgeMs = Double(totalFrameAgeNs) / Double(profiledFrameCount) / 1_000_000.0
                 debugLog("Pipeline: \(String(format: "%.1f", fps))fps, \(String(format: "%.1f", mbps))Mbps, avg frame age: \(String(format: "%.1f", avgAgeMs))ms, dropped: \(droppedFrames)")
+                var attributes: [String: TelemetryValue] = [
+                    "fps": .double(fps),
+                    "mbps": .double(mbps),
+                    "average_frame_age_ms": .double(avgAgeMs),
+                    "dropped_frames": .unsigned(droppedFrames),
+                    "queue_depth": .integer(
+                        Int64(pendingFrames.count + (sendInFlight ? 1 : 0))
+                    ),
+                    "queue_capacity": .integer(
+                        Int64(pendingFrames.capacity + 1)
+                    )
+                ]
+                if let encoderStatsProvider {
+                    let stats = encoderStatsProvider()
+                    if stats.capacity > 0 {
+                        attributes["encoder_in_flight"] = .integer(Int64(stats.inFlight))
+                        attributes["encoder_in_flight_capacity"] = .integer(Int64(stats.capacity))
+                    }
+                }
                 recordTelemetry(
                     "stream_stats",
                     epoch: sessionEpochGate.current,
-                    attributes: [
-                        "fps": .double(fps),
-                        "mbps": .double(mbps),
-                        "average_frame_age_ms": .double(avgAgeMs),
-                        "dropped_frames": .unsigned(droppedFrames),
-                        "queue_depth": .integer(
-                            Int64(pendingFrames.count + (sendInFlight ? 1 : 0))
-                        ),
-                        "queue_capacity": .integer(
-                            Int64(pendingFrames.capacity + 1)
-                        )
-                    ]
+                    attributes: attributes
                 )
             }
 

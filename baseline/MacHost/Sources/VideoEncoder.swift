@@ -90,6 +90,8 @@ final class VideoEncoderInFlightAdmission {
         return state.activeIdentifiers.count
     }
 
+    var capacityLimit: Int { capacity }
+
     private func release(_ identifier: UInt64) {
         lock.lock()
         state.activeIdentifiers.remove(identifier)
@@ -246,6 +248,9 @@ class VideoEncoder {
     private let stateLock = OSAllocatedUnfairLock(initialState: EncoderState())
     private let inFlightAdmission = VideoEncoderInFlightAdmission(capacity: 2)
     private let callbackOwner = VideoEncoderCallbackOwner()
+
+    var inFlightCount: Int { inFlightAdmission.inFlightCount }
+    var inFlightCapacity: Int { inFlightAdmission.capacityLimit }
 
     var hasActiveCompressionSession: Bool {
         sessionLock.lock()

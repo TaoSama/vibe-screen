@@ -200,6 +200,9 @@ class ScreenCapture {
     private var encodeQueue: DispatchQueue?
     private var lastPixelBuffer: CVPixelBuffer?
 
+    var encoderInFlightCount: Int { encoder?.inFlightCount ?? 0 }
+    var encoderInFlightCapacity: Int { encoder?.inFlightCapacity ?? 0 }
+
     /// Callback when capture method changes (e.g. SCStream → CGDisplayStream fallback)
     var onCaptureMethodChanged: ((String) -> Void)?
     /// Current-display mode follows a replacement Screen Sharing Virtual Display
@@ -688,18 +691,19 @@ class ScreenCapture {
 
         streamOutput?.onFrameReceived = { [weak self] sampleBuffer in
             guard let self = self else { return }
+            autoreleasepool {
+                let now = DispatchTime.now()
 
-            let now = DispatchTime.now()
+                self.recordSourceFrame(at: now, label: "SCStream")
 
-            self.recordSourceFrame(at: now, label: "SCStream")
-
-            if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
-                self.lastPixelBuffer = imageBuffer
-                let boxedBuffer = PixelBufferBox(imageBuffer)
-                self.pacingLock.withLock { $0.latestPixelBuffer = boxedBuffer }
-            } else if let cached = self.lastPixelBuffer {
-                let boxedBuffer = PixelBufferBox(cached)
-                self.pacingLock.withLock { $0.latestPixelBuffer = boxedBuffer }
+                if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
+                    self.lastPixelBuffer = imageBuffer
+                    let boxedBuffer = PixelBufferBox(imageBuffer)
+                    self.pacingLock.withLock { $0.latestPixelBuffer = boxedBuffer }
+                } else if let cached = self.lastPixelBuffer {
+                    let boxedBuffer = PixelBufferBox(cached)
+                    self.pacingLock.withLock { $0.latestPixelBuffer = boxedBuffer }
+                }
             }
         }
     }

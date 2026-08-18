@@ -2263,6 +2263,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
+            streamingServer?.encoderStatsProvider = { [weak self] in
+                guard let capture = self?.screenCapture else {
+                    return (inFlight: 0, capacity: 0)
+                }
+                return (
+                    inFlight: capture.encoderInFlightCount,
+                    capacity: capture.encoderInFlightCapacity
+                )
+            }
+
             streamingServer?.onServerFailed = {
                 [weak self, weak configuredServer] error in
                 Task { @MainActor in

@@ -276,6 +276,7 @@ def _analyze_telemetry(
                 invalid_fields = True
             else:
                 normalized[key] = value
+        present_optional_fields: set[str] = set()
         for key in optional:
             if key not in attributes:
                 missing_optional_fields.add(key)
@@ -285,7 +286,10 @@ def _analyze_telemetry(
                 missing_optional_fields.add(key)
                 invalid_fields = True
             else:
+                present_optional_fields.add(key)
                 normalized[key] = value
+        if present_optional_fields and present_optional_fields != set(optional):
+            invalid_fields = True
         if invalid_fields:
             invalid_records += 1
             continue
