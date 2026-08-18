@@ -202,10 +202,12 @@ Repeat the run with `--transport lan --gate-profile lan-glass-to-glass-sub80`
 for LAN evidence. For input latency use `--kind input --gate-profile
 input-p95-sub50`. Gate profiles evaluate P95 with a minimum sample count and
 write `verdict=pass|fail|insufficient`; omit `--gate-profile` for a pure
-summary. The tool deliberately rejects a glass-to-glass claim based on
-unsynchronized host and Android clocks. Keep the raw camera file, sample CSV,
-summary, device info, and a manifest together; create the latter with
-`python3 -m vibescreen_evidence.manifest --help`.
+summary. When a gate profile is supplied the exit status follows the verdict:
+`0` for `pass`, `1` for `fail` or `insufficient`. Without `--gate-profile` the
+command always exits `0`. The tool deliberately rejects a glass-to-glass claim
+based on unsynchronized host and Android clocks. Keep the raw camera file,
+sample CSV, summary, device info, and a manifest together; create the latter
+with `python3 -m vibescreen_evidence.manifest --help`.
 
 For telemetry-stage diagnostics, prepare rows with `stage,latency_ms` and mark
 the clock domain explicitly:
@@ -222,6 +224,9 @@ Use `--measurement-method client-telemetry` for Android decoder or render-stage
 samples. The output has `status=informational` and
 `gate.can_close_performance_gate=false`; keep it next to the camera/input
 evidence to explain bottlenecks, not as a substitute for external measurement.
+Synthetic CLI fixtures live in `tools/fixtures/latency/` and cover pass, fail,
+insufficient, input, and telemetry-stage behavior. They are test data only, not
+acceptance evidence.
 
 ## Troubleshooting
 

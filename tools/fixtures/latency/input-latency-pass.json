@@ -1,0 +1,9 @@
+{
+  "samples": [
+    {"start_frame": 10, "end_frame": 17, "camera_fps": 240},
+    {"start_frame": 110, "end_frame": 118, "camera_fps": 240},
+    {"start_frame": 210, "end_frame": 219, "camera_fps": 240},
+    {"start_frame": 310, "end_frame": 319, "camera_fps": 240},
+    {"start_frame": 410, "end_frame": 421, "camera_fps": 240}
+  ]
+}
