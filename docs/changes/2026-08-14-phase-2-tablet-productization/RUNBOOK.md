@@ -2,7 +2,7 @@
 
 This runbook is for the physical 8-9 inch tablet and sustained-use gates that
 cannot be closed by unit tests, synthetic dp layouts, phones, emulators, or
-short soaks. Record every run under `evidence/YYYY-MM-DD-<device-codename>-phase2-8h/`
+short soaks. Record every run under `evidence/YYYY-MM-DD-<device>-phase2-8h/`
 and keep raw logs even when the run fails.
 
 ## Preconditions

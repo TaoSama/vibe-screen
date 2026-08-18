@@ -3,7 +3,7 @@
 Create one subdirectory per physical-tablet run:
 
 ```text
-YYYY-MM-DD-<device-codename>-phase2-8h/
+YYYY-MM-DD-<device>-phase2-8h/
 ├── README.md
 ├── device.txt
 ├── host.txt
