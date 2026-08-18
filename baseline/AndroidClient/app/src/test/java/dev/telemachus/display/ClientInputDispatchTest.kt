@@ -77,6 +77,7 @@ class ClientInputDispatchTest {
                nativePointer = true,
                 controller = true,
                 hostActions = false,
+                clipboard = false,
            )
     }
 }

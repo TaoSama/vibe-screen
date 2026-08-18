@@ -24,9 +24,12 @@ struct ProtocolV1SessionConfiguration {
         // disabled entirely, only multi-display selection is offered.
         // Client video control tunes the host encoder, needs no Accessibility,
         // and is always offered so the client can adjust bitrate/fps/quality.
+        // Clipboard is always offered: it does not require Accessibility and
+        // is gated by explicit user action plus the effective managed-policy
+        // clipboard allow bit when a peer sends one.
         var capabilities: Set<VSCapability> = touchEnabled
-            ? [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions, .usbHidModifierByte]
-            : [.multiDisplay, .clientVideoControl]
+            ? [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions, .usbHidModifierByte, .clipboard, .managedConfiguration]
+            : [.multiDisplay, .clientVideoControl, .clipboard, .managedConfiguration]
         if controllerAvailable { capabilities.insert(.controller) }
         return capabilities
    }
@@ -100,6 +103,16 @@ enum ProtocolV1SessionAction {
     /// through completeHostAction, which is the only place HostActionResult is
     /// emitted back on the session FIFO.
     case hostAction(actionID: String, invocationID: Data, target: VSInputTarget?)
+    /// A remote peer offered clipboard content. The server forwards the
+    /// metadata to the UI so the user can approve a content request.
+    case clipboardOffer(ClipboardOfferMetadata)
+    /// A remote peer sent clipboard content that matched a pending request.
+    /// The server forwards the validated text to the UI for pasteboard write.
+    case clipboardContent(ValidatedClipboardContent)
+    /// A remote peer sent clipboard content without a matching pending
+    /// offer/request. The server forwards it to the UI as an unsolicited
+    /// transfer that still requires explicit local approval.
+    case clipboardDirectContent(ValidatedClipboardContent)
    case peerError(VSProtocolError)
    case close
 }
@@ -139,6 +152,24 @@ final class ProtocolV1SessionCoordinator {
     /// unknown completion is a safe no-op. Bounded by
     /// maximumPendingHostActionInvocations.
     private var pendingHostActionInvocations: [Data: UInt64] = [:]
+
+    /// The remote peer's device identity captured from ClientHello. Every
+    /// incoming clipboard offer/content must carry this exact, non-empty
+    /// origin; otherwise the message is rejected.
+    private var clientDeviceID: String = ""
+    /// The negotiated clipboard byte limit: min(host local cap, peer's
+    /// non-zero maximum_clipboard_bytes). Zero means clipboard was not
+    /// negotiated.
+    private var negotiatedMaximumClipboardBytes: Int = 0
+    /// Session-scoped clipboard state. Created only when the client
+    /// negotiated CAPABILITY_CLIPBOARD; nil otherwise so all clipboard
+    /// messages are rejected for legacy/non-negotiated peers.
+    private var clipboardCore: ClipboardCore?
+    /// Remote managed-policy status for clipboard. MacHost has no local MDM
+    /// policy integration in this slice, so local policy is permissive. A
+    /// managed remote status with clipboard_allowed=false denies clipboard
+    /// transfer for the active session and clears any staged clipboard state.
+    private var remoteManagedClipboardAllowed = true
 
     init(configuration: ProtocolV1SessionConfiguration) {
         precondition(!configuration.sessionID.isEmpty)
@@ -339,12 +370,22 @@ final class ProtocolV1SessionCoordinator {
             hostHello.hostName = configuration.hostName
             hostHello.capabilities = configuration.hostCapabilities.sorted { $0.rawValue < $1.rawValue }
             hostHello.codecs = configuration.supportedCodecs
+            // Echo the negotiated resource limits back to the client so both
+            // sides agree on the clipboard byte ceiling. HostHello carries the
+            // host's view; SessionAccepted carries the jointly negotiated
+            // value. They are identical for clipboard.
+            var hostLimits = VSResourceLimits()
+            hostLimits.maximumClipboardBytes = UInt64(negotiatedMaximumClipboardBytes)
+            hostHello.resourceLimits = hostLimits
 
             var accepted = VSSessionAccepted()
             accepted.sessionID = configuration.sessionID
             accepted.sessionEpoch = configuration.sessionEpoch
             accepted.heartbeatIntervalMs = 1_000
             accepted.negotiatedCapabilities = negotiatedCapabilities.sorted { $0.rawValue < $1.rawValue }
+            var acceptedLimits = VSResourceLimits()
+            acceptedLimits.maximumClipboardBytes = UInt64(negotiatedMaximumClipboardBytes)
+            accepted.negotiatedResourceLimits = acceptedLimits
 
             phase = .awaitingDisplayStart
             do {
@@ -372,6 +413,12 @@ final class ProtocolV1SessionCoordinator {
                     actions.append(.sendControl(try encode(
                         payload: .hostActionCatalog(catalog),
                         correlationID: correlationID
+                    )))
+                }
+                if negotiatedCapabilities.contains(.managedConfiguration) {
+                    actions.append(.sendControl(try encode(
+                        payload: .managedPolicyStatus(Self.unmanagedPolicyStatus()),
+                        correlationID: 0
                     )))
                 }
                 return actions
@@ -820,11 +867,25 @@ final class ProtocolV1SessionCoordinator {
                 target: invoke.hasTarget ? invoke.target : nil
             )]
 
+        case .clipboardOffer(let offer):
+            return handleIncomingClipboardOffer(offer, correlationID: envelope.messageID)
+
+        case .clipboardRequest(let request):
+            return handleIncomingClipboardRequest(request, correlationID: envelope.messageID)
+
+        case .clipboardContent(let content):
+            return handleIncomingClipboardContent(content, correlationID: envelope.messageID)
+
+        case .managedPolicyStatus(let status):
+            return handleManagedPolicyStatus(status, correlationID: envelope.messageID)
+
         case .protocolError(let error):
             phase = .failed
             _ = stylusSequenceState.consumeReset()
             resetControllerState()
             pendingHostActionInvocations.removeAll()
+            clipboardCore?.reset()
+            remoteManagedClipboardAllowed = true
             return [.peerError(error), .close]
 
         case .disconnectNotice:
@@ -832,6 +893,8 @@ final class ProtocolV1SessionCoordinator {
             _ = stylusSequenceState.consumeReset()
             resetControllerState()
             pendingHostActionInvocations.removeAll()
+            clipboardCore?.reset()
+            remoteManagedClipboardAllowed = true
             return [.close]
 
         default:
@@ -959,6 +1022,15 @@ final class ProtocolV1SessionCoordinator {
         }
     }
 
+    /// Whether the peer negotiated CAPABILITY_CLIPBOARD. Exposed so the UI
+    /// layer can decide whether to show clipboard controls without reaching
+    /// into the session's private capability set.
+    var hasClipboardCapability: Bool {
+        withSessionLock {
+            negotiatedCapabilities.contains(.clipboard) && remoteManagedClipboardAllowed
+        }
+    }
+
     private func validatesStylusExtension(
         _ stylus: VSStylusEvent,
         extended: Bool,
@@ -1053,6 +1125,43 @@ final class ProtocolV1SessionCoordinator {
             negotiatedCapabilities.remove(.usbHidModifierByte)
         }
         self.negotiatedCapabilities = negotiatedCapabilities
+        remoteManagedClipboardAllowed = true
+
+        // Capture the peer's device identity. Every incoming clipboard
+        // offer/content must originate from this exact device; an empty or
+        // mismatched origin is rejected. When clipboard is negotiated the
+        // device ID must be non-empty so origin validation is meaningful.
+        clientDeviceID = hello.deviceID
+        if negotiatedCapabilities.contains(.clipboard) {
+            guard !clientDeviceID.isEmpty else {
+                return fail(
+                    code: .invalidState,
+                    message: "ClientHello.device_id is required when clipboard is negotiated.",
+                    correlationID: correlationID
+                )
+            }
+        }
+
+        // Negotiate the clipboard byte limit. The host caps at 1 MiB; the
+        // peer's non-zero maximum_clipboard_bytes further constrains it. A
+        // zero peer limit means "unbounded from the peer side", so the host
+        // cap wins. When clipboard was not negotiated the limit stays zero
+        // and no ClipboardCore is created.
+        if negotiatedCapabilities.contains(.clipboard) {
+            let peerLimit = hello.resourceLimits.maximumClipboardBytes
+            let hostLimit = UInt64(ClipboardCore.localMaximumBytes)
+            negotiatedMaximumClipboardBytes = peerLimit == 0
+                ? Int(hostLimit)
+                : Int(min(hostLimit, peerLimit))
+            clipboardCore = ClipboardCore(
+                maximumBytes: negotiatedMaximumClipboardBytes,
+                localDeviceID: configuration.hostID,
+                remoteDeviceID: clientDeviceID
+            )
+        } else {
+            negotiatedMaximumClipboardBytes = 0
+            clipboardCore = nil
+        }
 
         phase = .preparingCodec(correlationID: correlationID)
         let streamCodec: StreamCodec = codec == .h264 ? .h264 : .hevc
@@ -1097,6 +1206,18 @@ final class ProtocolV1SessionCoordinator {
         display.isPrimary = activeDisplayInfo()?.isPrimary ?? true
         display.isVirtual = configuration.displayIsVirtual
         return display
+    }
+
+    private static func unmanagedPolicyStatus() -> VSManagedPolicyStatus {
+        var status = VSManagedPolicyStatus()
+        status.managed = false
+        status.clipboardAllowed = true
+        status.fileTransferAllowed = true
+        status.audioAllowed = true
+        status.wakeAllowed = true
+        status.customGesturesAllowed = true
+        status.hostActionsAllowed = true
+        return status
     }
 
     /// The full catalog to advertise. Falls back to a single synthesized entry
@@ -1188,6 +1309,170 @@ final class ProtocolV1SessionCoordinator {
         fail(code: .unsupportedCapability, message: message, correlationID: correlationID)
     }
 
+    // MARK: - Clipboard
+
+    /// Explicit user share: cache a single snapshot of the given string and
+    /// emit a ClipboardOffer. The caller must read the pasteboard on the main
+    /// thread before calling this; the core never touches NSPasteboard.
+    /// Returns an empty action list when clipboard was not negotiated.
+    func shareClipboard(text: String) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard let core = clipboardCore else { return [] }
+            guard remoteManagedClipboardAllowed else { return [] }
+            guard isStreaming else { return [] }
+            do {
+                let offer = try core.prepareOffer(text: text)
+                return sendActions(payload: .clipboardOffer(offer), correlationID: 0)
+            } catch {
+                // This is a local UI operation. Invalid or stale local input
+                // must not emit a peer-facing ProtocolError or close an
+                // otherwise healthy stream.
+                return []
+            }
+        }
+    }
+
+    /// UI-approved request for the full content of a previously received
+    /// clipboard offer. Returns an empty action list when the change ID is
+    /// unknown or clipboard was not negotiated.
+    func requestClipboardContent(changeID: Data) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard let core = clipboardCore else { return [] }
+            guard remoteManagedClipboardAllowed else { return [] }
+            guard isStreaming else { return [] }
+            do {
+                let request = try core.requestContent(for: changeID)
+                return sendActions(payload: .clipboardRequest(request), correlationID: 0)
+            } catch {
+                // Unknown/stale local approval is a no-op. Only malformed
+                // messages received from the peer fail the session.
+                return []
+            }
+        }
+    }
+
+    /// Release an exact request that the UI timed out waiting for. The offer
+    /// remains available for a user-initiated retry. A false result means the
+    /// request was already consumed, replaced, or never existed.
+    func expireClipboardRequest(changeID: Data) -> Bool {
+        withSessionLock {
+            guard isStreaming, remoteManagedClipboardAllowed, let core = clipboardCore else { return false }
+            return core.expireRequest(for: changeID)
+        }
+    }
+
+    private func handleManagedPolicyStatus(
+        _ status: VSManagedPolicyStatus,
+        correlationID: UInt64
+    ) -> [ProtocolV1SessionAction] {
+        guard negotiatedCapabilities.contains(.managedConfiguration) else {
+            return unsupportedCapability("Managed policy was not negotiated.", correlationID)
+        }
+        let allowed = !status.managed || status.clipboardAllowed
+        remoteManagedClipboardAllowed = allowed
+        if !allowed {
+            clipboardCore?.reset()
+        }
+        return []
+    }
+
+    private func handleIncomingClipboardOffer(
+        _ offer: VSClipboardOffer,
+        correlationID: UInt64
+    ) -> [ProtocolV1SessionAction] {
+        guard let core = clipboardCore else {
+            return unsupportedCapability("Clipboard was not negotiated.", correlationID)
+        }
+        guard remoteManagedClipboardAllowed else {
+            return unsupportedCapability("Clipboard is disabled by managed policy.", correlationID)
+        }
+        guard isStreaming else {
+            return invalidState("ClipboardOffer arrived before media was streaming.", correlationID)
+        }
+        do {
+            let metadata = try core.handleOffer(offer)
+            return [.clipboardOffer(metadata)]
+        } catch let error as ClipboardCoreError {
+            return clipboardFail(error, correlationID: correlationID)
+        } catch {
+            return serializationFailure()
+        }
+    }
+
+    private func handleIncomingClipboardRequest(
+        _ request: VSClipboardRequest,
+        correlationID: UInt64
+    ) -> [ProtocolV1SessionAction] {
+        guard let core = clipboardCore else {
+            return unsupportedCapability("Clipboard was not negotiated.", correlationID)
+        }
+        guard remoteManagedClipboardAllowed else {
+            return unsupportedCapability("Clipboard is disabled by managed policy.", correlationID)
+        }
+        guard isStreaming else {
+            return invalidState("ClipboardRequest arrived before media was streaming.", correlationID)
+        }
+        // A malformed change ID (wrong length) is a protocol violation and
+        // fails the session. A well-formed but unknown or already-consumed
+        // change ID is a legal no-op: the peer may retransmit a request for
+        // content we no longer have, and we simply ignore it.
+        guard request.changeID.count == ClipboardCore.changeIDByteCount else {
+            return invalidState("ClipboardRequest.change_id has an invalid length.", correlationID)
+        }
+        guard let content = core.makeContent(for: request.changeID) else {
+            return []
+        }
+        return sendActions(payload: .clipboardContent(content), correlationID: correlationID)
+    }
+
+    private func handleIncomingClipboardContent(
+        _ content: VSClipboardContent,
+        correlationID: UInt64
+    ) -> [ProtocolV1SessionAction] {
+        guard let core = clipboardCore else {
+            return unsupportedCapability("Clipboard was not negotiated.", correlationID)
+        }
+        guard remoteManagedClipboardAllowed else {
+            return unsupportedCapability("Clipboard is disabled by managed policy.", correlationID)
+        }
+        guard isStreaming else {
+            return invalidState("ClipboardContent arrived before media was streaming.", correlationID)
+        }
+        do {
+            let result = try core.handleContent(content)
+            if result.isDirect {
+                return [.clipboardDirectContent(result.validated)]
+            }
+            return [.clipboardContent(result.validated)]
+        } catch let error as ClipboardCoreError {
+            return clipboardFail(error, correlationID: correlationID)
+        } catch {
+            return serializationFailure()
+        }
+    }
+
+    /// Map a ClipboardCoreError to the appropriate Protocol v1 error code and
+    /// fail the session. Resource-exhaustion errors (too many pending
+    /// offers/requests) map to resourceExhausted; everything else maps to
+    /// invalidState or unsupportedCapability.
+    private func clipboardFail(
+        _ error: ClipboardCoreError,
+        correlationID: UInt64
+    ) -> [ProtocolV1SessionAction] {
+        switch error {
+        case .capabilityNotNegotiated:
+            return unsupportedCapability("Clipboard was not negotiated.", correlationID)
+        case .tooManyPendingOffers, .tooManyPendingRequests:
+            return fail(
+                code: .resourceExhausted,
+                message: "Clipboard pending state exceeded the bounded limit.",
+                correlationID: correlationID
+            )
+        default:
+            return invalidState("Clipboard validation failed: \(error)", correlationID)
+        }
+    }
+
     private func fail(
         code: VSProtocolErrorCode,
         message: String,
@@ -1203,6 +1488,7 @@ final class ProtocolV1SessionCoordinator {
         _ = stylusSequenceState.consumeReset()
         resetControllerState()
         pendingHostActionInvocations.removeAll()
+        clipboardCore?.reset()
         do {
             return [
                 .sendControl(try encode(
@@ -1237,6 +1523,7 @@ final class ProtocolV1SessionCoordinator {
         phase = .failed
         _ = stylusSequenceState.consumeReset()
         resetControllerState()
+        clipboardCore?.reset()
         return [.close]
     }
 

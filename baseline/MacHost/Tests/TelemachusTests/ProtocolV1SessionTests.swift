@@ -7,11 +7,11 @@ final class ProtocolV1SessionTests: XCTestCase {
     func testProductionHostCapabilitiesAreExact() {
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true),
-            [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .hostActions, .usbHidModifierByte]
+            [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .clipboard, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .stylusExtended, .usbHidModifierByte]
         )
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false),
-            [.multiDisplay, .clientVideoControl]
+            [.clipboard, .multiDisplay, .managedConfiguration, .clientVideoControl]
         )
     }
 
@@ -73,7 +73,8 @@ final class ProtocolV1SessionTests: XCTestCase {
             "client_hello", "host_hello", "session_accepted",
             "list_displays_request", "list_displays_response",
             "start_display_request", "start_display_response", "video_config",
-            "video_config_result", "touch", "stylus", "ping", "pong", "protocol_error",
+            "video_config_result", "touch", "stylus", "clipboard_offer",
+            "clipboard_request", "clipboard_content", "ping", "pong", "protocol_error",
             "controller_connected", "controller_state", "controller_disconnected"
         ]
         for name in controls {
@@ -137,9 +138,7 @@ final class ProtocolV1SessionTests: XCTestCase {
             return XCTFail("Expected HostHello")
         }
         XCTAssertEqual(hostHello.selectedProtocol, 1)
-        // hostHello.capabilities is sorted by raw value: multiDisplay(18) <
-        // hostActions(20) < clientVideoControl(24).
-        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .stylus, .multiDisplay, .hostActions, .clientVideoControl, .stylusExtended, .usbHidModifierByte])
+        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .stylus, .clipboard, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .stylusExtended, .usbHidModifierByte])
         guard case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected SessionAccepted")
         }
@@ -278,7 +277,7 @@ final class ProtocolV1SessionTests: XCTestCase {
               case .sessionAccepted(let accepted)? = responses[1].payload else {
             return XCTFail("Expected HostHello + SessionAccepted")
         }
-        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .stylus, .multiDisplay, .hostActions, .clientVideoControl, .stylusExtended, .usbHidModifierByte])
+        XCTAssertEqual(hostHello.capabilities, [.touch, .keyboard, .pointer, .stylus, .clipboard, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .stylusExtended, .usbHidModifierByte])
         XCTAssertEqual(accepted.negotiatedCapabilities, [.touch, .multiDisplay])
     }
 

@@ -97,6 +97,7 @@ class ControlBarLayoutInstrumentedTest {
                         availableWidthPx = layout.dp(widthDp),
                         displaySelectorVisible = true,
                         hostActionsVisible = true,
+                        clipboardVisible = true,
                         geometry = ControlBarLayoutApplier.geometry(layout.context.resources),
                     )
                 assertEquals(expectedMode, layout.mode)
@@ -158,13 +159,10 @@ class ControlBarLayoutInstrumentedTest {
     @Test
     fun productionApplierCoversStackedColumnAndHiddenSelectorBoundaries() {
         val geometry = ControlBarLayoutApplier.geometry(applicationContext().resources)
-        val statusWidth = geometry.statusMinimumWidthPx + geometry.statusGapPx
-        val withHostColumnWidth =
-            geometry.horizontalContentPaddingPx + statusWidth + geometry.horizontalActionsWidthPx(true)
-        val withoutHostColumnWidth =
-            geometry.horizontalContentPaddingPx + statusWidth + geometry.horizontalActionsWidthPx(false)
-        val withHostStackedWidth = stackedMinimumWidth(geometry, hostActionsVisible = true)
-        val withoutHostStackedWidth = stackedMinimumWidth(geometry, hostActionsVisible = false)
+        val withHostColumnWidth = compactMinimumWidth(geometry, hostActionsVisible = true, clipboardVisible = true)
+        val withoutHostColumnWidth = compactMinimumWidth(geometry, hostActionsVisible = false, clipboardVisible = false)
+        val withHostStackedWidth = stackedMinimumWidth(geometry, hostActionsVisible = true, clipboardVisible = true)
+        val withoutHostStackedWidth = stackedMinimumWidth(geometry, hostActionsVisible = false, clipboardVisible = false)
         val withHostInlineWidth = withHostColumnWidth + geometry.selectorMinimumWidthPx
         val withoutHostInlineWidth = withoutHostColumnWidth + geometry.selectorMinimumWidthPx
         assertModeAndShape(
@@ -189,18 +187,21 @@ class ControlBarLayoutInstrumentedTest {
             widthPx = withoutHostInlineWidth - 1,
             selectorVisible = true,
             hostVisible = false,
+            clipboardVisible = false,
             expectedMode = ControlBarLayoutPolicy.Mode.STACKED,
         )
         assertModeAndShape(
             widthPx = withoutHostStackedWidth - 1,
             selectorVisible = true,
             hostVisible = false,
+            clipboardVisible = false,
             expectedMode = ControlBarLayoutPolicy.Mode.COLUMN,
         )
         assertModeAndShape(
             widthPx = withoutHostColumnWidth - 1,
             selectorVisible = false,
             hostVisible = false,
+            clipboardVisible = false,
             expectedMode = ControlBarLayoutPolicy.Mode.COLUMN,
         )
     }
@@ -266,13 +267,10 @@ class ControlBarLayoutInstrumentedTest {
         assertEquals(198, geometry.statusMinimumWidthPx)
         assertEquals(17, geometry.statusGapPx)
 
-        val statusWidth = geometry.statusMinimumWidthPx + geometry.statusGapPx
-        val withHostColumnWidth =
-            geometry.horizontalContentPaddingPx + statusWidth + geometry.horizontalActionsWidthPx(true)
-        val withoutHostColumnWidth =
-            geometry.horizontalContentPaddingPx + statusWidth + geometry.horizontalActionsWidthPx(false)
-        val withHostStackedWidth = stackedMinimumWidth(geometry, hostActionsVisible = true)
-        val withoutHostStackedWidth = stackedMinimumWidth(geometry, hostActionsVisible = false)
+        val withHostColumnWidth = compactMinimumWidth(geometry, hostActionsVisible = true, clipboardVisible = true)
+        val withoutHostColumnWidth = compactMinimumWidth(geometry, hostActionsVisible = false, clipboardVisible = false)
+        val withHostStackedWidth = stackedMinimumWidth(geometry, hostActionsVisible = true, clipboardVisible = true)
+        val withoutHostStackedWidth = stackedMinimumWidth(geometry, hostActionsVisible = false, clipboardVisible = false)
         val withHostInlineWidth = withHostColumnWidth + geometry.selectorMinimumWidthPx
         val withoutHostInlineWidth = withoutHostColumnWidth + geometry.selectorMinimumWidthPx
 
@@ -306,11 +304,8 @@ class ControlBarLayoutInstrumentedTest {
     fun hiddenSelectorUsesExactCompactBoundariesAtNonIntegerDensity() {
         val context = densityContext(DENSITY_DPI_FOR_2_75)
         val geometry = ControlBarLayoutApplier.geometry(context.resources)
-        val statusWidth = geometry.statusMinimumWidthPx + geometry.statusGapPx
-        val withHostColumnWidth =
-            geometry.horizontalContentPaddingPx + statusWidth + geometry.horizontalActionsWidthPx(true)
-        val withoutHostColumnWidth =
-            geometry.horizontalContentPaddingPx + statusWidth + geometry.horizontalActionsWidthPx(false)
+        val withHostColumnWidth = compactMinimumWidth(geometry, hostActionsVisible = true, clipboardVisible = true)
+        val withoutHostColumnWidth = compactMinimumWidth(geometry, hostActionsVisible = false, clipboardVisible = false)
 
         withLayout(context = context, widthPx = withHostColumnWidth, selectorVisible = false) { layout ->
             assertEquals(ControlBarLayoutPolicy.Mode.COMPACT, layout.mode)
@@ -323,6 +318,7 @@ class ControlBarLayoutInstrumentedTest {
             widthPx = withoutHostColumnWidth,
             selectorVisible = false,
             hostVisible = false,
+            clipboardVisible = false,
         ) { layout ->
             assertEquals(ControlBarLayoutPolicy.Mode.COMPACT, layout.mode)
         }
@@ -331,6 +327,7 @@ class ControlBarLayoutInstrumentedTest {
             widthPx = withoutHostColumnWidth - 1,
             selectorVisible = false,
             hostVisible = false,
+            clipboardVisible = false,
         ) { layout ->
             assertEquals(ControlBarLayoutPolicy.Mode.COLUMN, layout.mode)
         }
@@ -340,12 +337,14 @@ class ControlBarLayoutInstrumentedTest {
         widthPx: Int,
         selectorVisible: Boolean,
         hostVisible: Boolean,
+        clipboardVisible: Boolean = hostVisible,
         expectedMode: ControlBarLayoutPolicy.Mode,
     ) {
         withLayout(
             widthPx = widthPx,
             selectorVisible = selectorVisible,
             hostVisible = hostVisible,
+            clipboardVisible = clipboardVisible,
         ) { layout ->
             assertEquals(expectedMode, layout.mode)
             when (expectedMode) {
@@ -383,13 +382,24 @@ class ControlBarLayoutInstrumentedTest {
     private fun stackedMinimumWidth(
         geometry: ControlBarLayoutPolicy.Geometry,
         hostActionsVisible: Boolean,
+        clipboardVisible: Boolean,
     ): Int =
         geometry.horizontalContentPaddingPx +
             maxOf(
                 geometry.statusMinimumWidthPx,
                 geometry.selectorMinimumWidthPx,
-                geometry.horizontalActionsWidthPx(hostActionsVisible),
+                geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible),
             )
+
+    private fun compactMinimumWidth(
+        geometry: ControlBarLayoutPolicy.Geometry,
+        hostActionsVisible: Boolean,
+        clipboardVisible: Boolean,
+    ): Int =
+        geometry.horizontalContentPaddingPx +
+            geometry.statusMinimumWidthPx +
+            geometry.statusGapPx +
+            geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible)
 
     private fun assertAccessibleDisplayName(layout: MeasuredLayout) {
         assertEquals(FULL_DISPLAY_NAME, layout.label.text.toString())
@@ -426,7 +436,7 @@ class ControlBarLayoutInstrumentedTest {
             )
         }
         val actionBounds =
-            listOf(layout.views.hostAction, layout.views.settings, layout.views.disconnect)
+            listOf(layout.views.hostAction, layout.views.clipboard, layout.views.settings, layout.views.disconnect)
                 .filter { it.visibility == View.VISIBLE }
                 .map { control ->
                     assertTrue("Control ${control.id} was narrower than 48dp", control.measuredWidth >= minimum)
@@ -460,6 +470,7 @@ class ControlBarLayoutInstrumentedTest {
         widthPx: Int? = null,
         selectorVisible: Boolean = true,
         hostVisible: Boolean = true,
+        clipboardVisible: Boolean = hostVisible,
         applyLayout: Boolean = true,
         assertion: (MeasuredLayout) -> Unit,
     ) {
@@ -473,6 +484,7 @@ class ControlBarLayoutInstrumentedTest {
                 displaySelector = root.findViewById(R.id.displayCapsuleGroup),
                 actions = root.findViewById(R.id.controlActionsGroup),
                 hostAction = root.findViewById(R.id.controlHostActionsButton),
+                clipboard = root.findViewById(R.id.controlClipboardButton),
                 settings = root.findViewById(R.id.controlSettingsButton),
                 disconnect = root.findViewById(R.id.controlDisconnectButton),
             )
@@ -481,6 +493,7 @@ class ControlBarLayoutInstrumentedTest {
         views.connectionStatus.visibility = View.VISIBLE
         views.displaySelector.visibility = if (selectorVisible) View.VISIBLE else View.GONE
         views.hostAction.visibility = if (hostVisible) View.VISIBLE else View.GONE
+        views.clipboard.visibility = if (clipboardVisible) View.VISIBLE else View.GONE
         if (selectorVisible) {
             DisplayCapsuleViewBinder.bind(
                 resources = themedContext.resources,

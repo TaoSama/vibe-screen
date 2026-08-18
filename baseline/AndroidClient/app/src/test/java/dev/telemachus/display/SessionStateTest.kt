@@ -65,6 +65,7 @@ class SessionStateTest {
                        nativePointer = true,
                        controller = true,
                         hostActions = false,
+                        clipboard = false,
                    ),
                 inputSink = AcceptingInputSink,
             )

@@ -6,6 +6,9 @@ import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.NativeInputWire
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.ClientHello
+import dev.vibescreen.protocol.v1.ClipboardContent
+import dev.vibescreen.protocol.v1.ClipboardOffer
+import dev.vibescreen.protocol.v1.ClipboardRequest
 import dev.vibescreen.protocol.v1.ControllerEvent
 import dev.vibescreen.protocol.v1.ControllerEventKind as ProtocolControllerEventKind
 import dev.vibescreen.protocol.v1.Codec
@@ -15,6 +18,7 @@ import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.InputTarget
 import dev.vibescreen.protocol.v1.KeyEvent
 import dev.vibescreen.protocol.v1.ListDisplaysRequest
+import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import dev.vibescreen.protocol.v1.NormalizedPoint
 import dev.vibescreen.protocol.v1.Ping
 import dev.vibescreen.protocol.v1.PointerEvent
@@ -35,6 +39,12 @@ import dev.vibescreen.protocol.v1.TouchEvent
 import dev.vibescreen.protocol.v1.VideoConfigResult
 import dev.vibescreen.protocol.v1.VideoQualityPreset
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.security.SecureRandom
 
 internal class ProtocolV1Failure(
     val reason: String,
@@ -125,6 +135,29 @@ internal class ProtocolV1Session(
             val reasonCode: String,
             val mayResume: Boolean,
         ) : Action()
+
+        /** A peer clipboard offer has arrived and may be requested. */
+        data class ClipboardOffered(
+            val changeId: ByteString,
+            val originDeviceId: String,
+            val mimeType: String,
+            val byteLength: Long,
+            val sha256: ByteString,
+        ) : Action()
+
+        /**
+         * Peer clipboard content has arrived. When [pending] is true the content
+         * was sent without a matching offer/request handshake and must not be
+         * auto-applied to the system clipboard.
+         */
+        data class ClipboardContentReceived(
+            val changeId: ByteString,
+            val originDeviceId: String,
+            val mimeType: String,
+            val content: ByteArray,
+            val sha256: ByteString,
+            val pending: Boolean,
+        ) : Action()
     }
 
     /** A host action the client may invoke, surfaced without Android imports. */
@@ -190,6 +223,31 @@ internal class ProtocolV1Session(
     // evicted when full. A result must match a tracked id, so the host cannot
     // forge an unsolicited success/failure that the UI would surface.
     private val pendingHostActionInvocations = ArrayDeque<ByteString>()
+
+    // Host identity advertised in HostHello; remote clipboard origin must match it.
+    private var hostId = ""
+    // Host-advertised clipboard byte limit from HostHello.resource_limits.
+    private var hostMaxClipboardBytes = 0L
+    // Effective negotiated limit: min(local, hostHello if >0, accepted if >0).
+    private var negotiatedMaxClipboardBytesValue = LOCAL_MAX_CLIPBOARD_BYTES
+    // Our cached clipboard offer snapshot (only one outstanding offer at a time).
+    private var offeredClipboard: OfferedClipboard? = null
+    // Most recent peer clipboard offer received.
+    private var receivedClipboardOffer: ReceivedClipboardOffer? = null
+    // changeId of the peer offer we have explicitly requested content for.
+    // Content is solicited only when it matches this id; otherwise it is
+    // treated as direct/pending and must not be auto-applied.
+    private var requestedClipboardChangeId: ByteString? = null
+    // Bounded FIFO set of changeIds already sent or accepted, used to reject
+    // loopback echoes of our own offers/content.
+    private val clipboardSeenChangeIds = ArrayDeque<ByteString>()
+    // Bounded history of completed clipboard transfers for diagnostics.
+    private val clipboardFeedbackHistory = ArrayDeque<ClipboardFeedback>()
+    // Local Android managed-configuration integration is outside this slice,
+    // so local policy is permissive. A remote managed status with
+    // clipboard_allowed=false denies clipboard for the active session.
+    private var remoteManagedClipboardAllowed = true
+    private val secureRandom = SecureRandom()
 
     private val advertisedCapabilities =
         if (advertiseController) {
@@ -258,6 +316,22 @@ internal class ProtocolV1Session(
         @Synchronized
         get() = state == State.STREAMING && Capability.CAPABILITY_HOST_ACTIONS in negotiatedCapabilities
 
+    /** Whether clipboard transfer was negotiated and media is streaming. */
+    val canSendClipboard: Boolean
+        @Synchronized
+        get() = state == State.STREAMING && Capability.CAPABILITY_CLIPBOARD in negotiatedCapabilities &&
+            remoteManagedClipboardAllowed
+
+    /** Effective clipboard byte limit for the active session. */
+    val negotiatedMaxClipboardBytes: Long
+        @Synchronized
+        get() =
+            if (state != State.CLOSED && Capability.CAPABILITY_CLIPBOARD in negotiatedCapabilities) {
+                negotiatedMaxClipboardBytesValue
+            } else {
+                0L
+            }
+
     enum class MediaDisposition {
         ACCEPT,
         DROP_PENDING_CONFIGURATION,
@@ -289,7 +363,8 @@ internal class ProtocolV1Session(
                         .newBuilder()
                         .setMaximumClients(1)
                         .setMaximumDisplays(1)
-                        .setMaximumVideoStreams(1),
+                        .setMaximumVideoStreams(1)
+                        .setMaximumClipboardBytes(LOCAL_MAX_CLIPBOARD_BYTES),
                 ).build()
         return envelope().setClientHello(hello).build()
     }
@@ -331,6 +406,8 @@ internal class ProtocolV1Session(
                 videoPreferencesRequestInFlight = false
                 availableHostActions = emptyList()
                 pendingHostActionInvocations.clear()
+                clearClipboardState()
+                remoteManagedClipboardAllowed = true
                 state = State.CLOSED
                 listOf(
                     Action.Disconnected(
@@ -339,7 +416,13 @@ internal class ProtocolV1Session(
                     ),
                 )
             }
+            Envelope.PayloadCase.CLIPBOARD_OFFER -> onClipboardOffer(envelope)
+            Envelope.PayloadCase.CLIPBOARD_REQUEST -> onClipboardRequest(envelope)
+            Envelope.PayloadCase.CLIPBOARD_CONTENT -> onClipboardContent(envelope)
+            Envelope.PayloadCase.MANAGED_POLICY_STATUS -> onManagedPolicyStatus(envelope.managedPolicyStatus)
             Envelope.PayloadCase.PROTOCOL_ERROR -> {
+                clearClipboardState()
+                remoteManagedClipboardAllowed = true
                 val error = envelope.protocolError
                 throw ProtocolV1Failure(
                     reason = error.code.name,
@@ -767,6 +850,9 @@ internal class ProtocolV1Session(
         ) {
             throw protocolFailure("USB HID modifier-byte capability requires keyboard")
         }
+        hostId = hello.hostId
+        hostMaxClipboardBytes = hello.resourceLimits.maximumClipboardBytes
+        remoteManagedClipboardAllowed = true
         val missing = requiredCapabilities - hostCapabilities
         if (missing.isNotEmpty()) {
             throw protocolFailure("Host lacks required capabilities: $missing")
@@ -796,8 +882,24 @@ internal class ProtocolV1Session(
         sessionId = accepted.sessionId
         sessionEpoch = accepted.sessionEpoch
         negotiatedCapabilities = negotiated
+        remoteManagedClipboardAllowed = true
+        val acceptedMax = accepted.negotiatedResourceLimits.maximumClipboardBytes
+        negotiatedMaxClipboardBytesValue =
+            minOf(
+                LOCAL_MAX_CLIPBOARD_BYTES,
+                if (hostMaxClipboardBytes > 0L) hostMaxClipboardBytes else LOCAL_MAX_CLIPBOARD_BYTES,
+                if (acceptedMax > 0L) acceptedMax else LOCAL_MAX_CLIPBOARD_BYTES,
+            )
+        if (Capability.CAPABILITY_CLIPBOARD in negotiated && hostId.isBlank()) {
+            throw protocolFailure("Host id is required when clipboard capability is negotiated")
+        }
         state = State.ACTIVE
-        return listOf(Action.Send(envelope().setListDisplaysRequest(ListDisplaysRequest.getDefaultInstance()).build()))
+        val actions = mutableListOf<Action>()
+        if (Capability.CAPABILITY_MANAGED_CONFIGURATION in negotiatedCapabilities) {
+            actions += Action.Send(envelope().setManagedPolicyStatus(unmanagedPolicyStatus()).build())
+        }
+        actions += Action.Send(envelope().setListDisplaysRequest(ListDisplaysRequest.getDefaultInstance()).build())
+        return actions
     }
 
     private fun onDisplays(envelope: Envelope): List<Action> {
@@ -1068,6 +1170,310 @@ internal class ProtocolV1Session(
         )
     }
 
+    /**
+     * Offer the given text to the peer. The session caches exactly one snapshot;
+     * a subsequent offer replaces the previous one. Returns the offer envelope
+     * to send, or null when clipboard was not negotiated or the text is invalid.
+     */
+    @Synchronized
+    fun offerClipboard(text: String): Envelope? {
+        if (state != State.STREAMING) return null
+        if (Capability.CAPABILITY_CLIPBOARD !in negotiatedCapabilities) return null
+        if (!remoteManagedClipboardAllowed) return null
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        if (bytes.isEmpty()) return null
+        if (bytes.size.toLong() > negotiatedMaxClipboardBytesValue) return null
+        val changeId = ByteString.copyFrom(ByteArray(CLIPBOARD_CHANGE_ID_BYTES).also(secureRandom::nextBytes))
+        val sha256 = ByteString.copyFrom(sha256Digest(bytes))
+        rememberClipboardChangeId(changeId)
+        offeredClipboard =
+            OfferedClipboard(
+                changeId = changeId,
+                originDeviceId = deviceId,
+                mimeType = CLIPBOARD_MIME_TEXT_PLAIN,
+                byteLength = bytes.size.toLong(),
+                sha256 = sha256,
+                content = bytes,
+            )
+        val offer =
+            ClipboardOffer
+                .newBuilder()
+                .setChangeId(changeId)
+                .setOriginDeviceId(deviceId)
+                .setMimeType(CLIPBOARD_MIME_TEXT_PLAIN)
+                .setByteLength(bytes.size.toLong())
+                .setSha256(sha256)
+                .build()
+        return envelope().setClipboardOffer(offer).build()
+    }
+
+    /**
+     * Request the content for a previously received clipboard offer. The request
+     * is only valid for the most recently received offer. Returns the request
+     * envelope to send, or null when no matching offer exists.
+     */
+    @Synchronized
+    fun requestClipboard(changeId: ByteString): Envelope? {
+        if (state != State.STREAMING) return null
+        if (Capability.CAPABILITY_CLIPBOARD !in negotiatedCapabilities) return null
+        if (!remoteManagedClipboardAllowed) return null
+        val received = receivedClipboardOffer ?: return null
+        if (received.changeId != changeId) return null
+        // Do not re-request the same offer while a request is already in flight.
+        if (requestedClipboardChangeId == changeId) return null
+        requestedClipboardChangeId = changeId
+        val request = ClipboardRequest.newBuilder().setChangeId(changeId).build()
+        return envelope().setClipboardRequest(request).build()
+    }
+
+    /**
+     * Release a request that the UI timed out waiting for. This does not drop
+     * the cached offer, so the user may explicitly retry the same change ID.
+     */
+    @Synchronized
+    fun expireClipboardRequest(changeId: ByteString): Boolean {
+        if (!remoteManagedClipboardAllowed) return false
+        if (requestedClipboardChangeId != changeId) return false
+        requestedClipboardChangeId = null
+        return true
+    }
+
+    private fun onManagedPolicyStatus(status: ManagedPolicyStatus): List<Action> {
+        if (!isNegotiated()) throw protocolFailure("ManagedPolicyStatus arrived before session negotiation")
+        remoteManagedClipboardAllowed = !status.managed || status.clipboardAllowed
+        if (!remoteManagedClipboardAllowed) clearClipboardState()
+        return emptyList()
+    }
+
+    private fun onClipboardOffer(envelope: Envelope): List<Action> {
+        if (state != State.STREAMING) throw protocolFailure("ClipboardOffer in state $state")
+        if (Capability.CAPABILITY_CLIPBOARD !in negotiatedCapabilities) {
+            throw protocolFailure("ClipboardOffer without negotiated clipboard")
+        }
+        if (!remoteManagedClipboardAllowed) {
+            throw protocolFailure("ClipboardOffer denied by managed policy")
+        }
+        val offer = envelope.clipboardOffer
+        if (offer.changeId.size() != CLIPBOARD_CHANGE_ID_BYTES) {
+            throw protocolFailure("Invalid clipboard change_id length: ${offer.changeId.size()}")
+        }
+        if (offer.originDeviceId.isBlank()) {
+            throw protocolFailure("ClipboardOffer missing origin_device_id")
+        }
+        if (offer.originDeviceId != hostId) {
+            throw protocolFailure("ClipboardOffer origin_device_id does not match host id")
+        }
+        if (offer.mimeType != CLIPBOARD_MIME_TEXT_PLAIN) {
+            throw protocolFailure("Unsupported clipboard mime type: ${offer.mimeType}")
+        }
+        if (offer.byteLength <= 0L || offer.byteLength > negotiatedMaxClipboardBytesValue) {
+            throw protocolFailure("Invalid clipboard byte_length: ${offer.byteLength}")
+        }
+        if (offer.sha256.size() != CLIPBOARD_SHA256_BYTES) {
+            throw protocolFailure("Invalid clipboard sha256 length: ${offer.sha256.size()}")
+        }
+        // Reject loopback: the host echoed a changeId we originated.
+        if (offer.changeId in clipboardSeenChangeIds) {
+            throw protocolFailure("ClipboardOffer change_id is a loopback of our own offer")
+        }
+        val existing = receivedClipboardOffer
+        if (existing != null &&
+            existing.changeId == offer.changeId &&
+            (existing.originDeviceId != offer.originDeviceId ||
+                existing.mimeType != offer.mimeType ||
+                existing.byteLength != offer.byteLength ||
+                existing.sha256 != offer.sha256)
+        ) {
+            throw protocolFailure("ClipboardOffer metadata changed for an existing change_id")
+        }
+        // A new offer supersedes any previous offer and its in-flight request.
+        requestedClipboardChangeId = null
+        receivedClipboardOffer =
+            ReceivedClipboardOffer(
+                changeId = offer.changeId,
+                originDeviceId = offer.originDeviceId,
+                mimeType = offer.mimeType,
+                byteLength = offer.byteLength,
+                sha256 = offer.sha256,
+            )
+        return listOf(
+            Action.ClipboardOffered(
+                changeId = offer.changeId,
+                originDeviceId = offer.originDeviceId,
+                mimeType = offer.mimeType,
+                byteLength = offer.byteLength,
+                sha256 = offer.sha256,
+            ),
+        )
+    }
+
+    private fun onClipboardRequest(envelope: Envelope): List<Action> {
+        if (state != State.STREAMING) throw protocolFailure("ClipboardRequest in state $state")
+        if (Capability.CAPABILITY_CLIPBOARD !in negotiatedCapabilities) {
+            throw protocolFailure("ClipboardRequest without negotiated clipboard")
+        }
+        if (!remoteManagedClipboardAllowed) {
+            throw protocolFailure("ClipboardRequest denied by managed policy")
+        }
+        val request = envelope.clipboardRequest
+        if (request.changeId.size() != CLIPBOARD_CHANGE_ID_BYTES) {
+            throw protocolFailure("Invalid clipboard request change_id length")
+        }
+        // A valid but unknown request can race a replacement offer or repeat
+        // after the one-shot snapshot was consumed. It is an authenticated
+        // no-op, not a reason to tear down the streaming session.
+        val offered = offeredClipboard ?: return emptyList()
+        if (request.changeId != offered.changeId) {
+            return emptyList()
+        }
+        val content =
+            ClipboardContent
+                .newBuilder()
+                .setChangeId(offered.changeId)
+                .setOriginDeviceId(deviceId)
+                .setMimeType(offered.mimeType)
+                .setContent(ByteString.copyFrom(offered.content))
+                .setSha256(offered.sha256)
+                .build()
+        // Consume the snapshot: a repeated request for the same changeId must
+        // not re-send the body. Track the id so loopback echoes are rejected.
+        rememberClipboardChangeId(offered.changeId)
+        offeredClipboard = null
+        recordClipboardFeedback(
+            ClipboardFeedback(
+                changeId = offered.changeId,
+                originDeviceId = offered.originDeviceId,
+                byteLength = offered.byteLength,
+                success = true,
+                reason = "",
+            ),
+        )
+        return listOf(Action.Send(envelope().setClipboardContent(content).build()))
+    }
+
+    private fun onClipboardContent(envelope: Envelope): List<Action> {
+        if (state != State.STREAMING) throw protocolFailure("ClipboardContent in state $state")
+        if (Capability.CAPABILITY_CLIPBOARD !in negotiatedCapabilities) {
+            throw protocolFailure("ClipboardContent without negotiated clipboard")
+        }
+        if (!remoteManagedClipboardAllowed) {
+            throw protocolFailure("ClipboardContent denied by managed policy")
+        }
+        val content = envelope.clipboardContent
+        if (content.changeId.size() != CLIPBOARD_CHANGE_ID_BYTES) {
+            throw protocolFailure("Invalid clipboard content change_id length")
+        }
+        // Reject loopback echoes of changeIds we already sent or accepted.
+        if (content.changeId in clipboardSeenChangeIds) {
+            throw protocolFailure("ClipboardContent change_id was already sent or accepted")
+        }
+        if (content.originDeviceId.isBlank()) {
+            throw protocolFailure("ClipboardContent missing origin_device_id")
+        }
+        if (content.originDeviceId != hostId) {
+            throw protocolFailure("ClipboardContent origin_device_id does not match host id")
+        }
+        if (content.mimeType != CLIPBOARD_MIME_TEXT_PLAIN) {
+            throw protocolFailure("Unsupported clipboard content mime type: ${content.mimeType}")
+        }
+        val contentBytes = content.content.toByteArray()
+        if (contentBytes.isEmpty()) throw protocolFailure("ClipboardContent content is empty")
+        if (contentBytes.size.toLong() > negotiatedMaxClipboardBytesValue) {
+            throw protocolFailure("ClipboardContent exceeds negotiated limit")
+        }
+        // Strict UTF-8 validation: reject malformed bytes rather than replacing them.
+        validateUtf8(contentBytes)
+        if (content.sha256.size() != CLIPBOARD_SHA256_BYTES) {
+            throw protocolFailure("Invalid clipboard content sha256 length")
+        }
+        val actualSha256 = ByteString.copyFrom(sha256Digest(contentBytes))
+        if (actualSha256 != content.sha256) {
+            throw protocolFailure("ClipboardContent sha256 mismatch")
+        }
+        // Content is solicited only when it matches a changeId we explicitly
+        // requested. A received offer alone is not enough; unrequested content
+        // is delivered as pending and must not be auto-applied.
+        val solicited = requestedClipboardChangeId == content.changeId
+        if (solicited) {
+            val received = receivedClipboardOffer
+            if (received == null || received.changeId != content.changeId) {
+                throw protocolFailure("ClipboardContent matches request but no offer is cached")
+            }
+            if (received.byteLength != contentBytes.size.toLong()) {
+                throw protocolFailure("ClipboardContent byte_length does not match offer")
+            }
+            if (received.sha256 != content.sha256) {
+                throw protocolFailure("ClipboardContent sha256 does not match offer")
+            }
+            if (received.originDeviceId != content.originDeviceId ||
+                received.mimeType != content.mimeType
+            ) {
+                throw protocolFailure("ClipboardContent identity does not match offer")
+            }
+            receivedClipboardOffer = null
+            requestedClipboardChangeId = null
+        }
+        // Direct content is staged, not yet accepted by the user. Do not add it
+        // to the accepted-ID history until an offer/request flow completes.
+        if (solicited) rememberClipboardChangeId(content.changeId)
+        recordClipboardFeedback(
+            ClipboardFeedback(
+                changeId = content.changeId,
+                originDeviceId = content.originDeviceId,
+                byteLength = contentBytes.size.toLong(),
+                success = true,
+                reason = "",
+            ),
+        )
+        return listOf(
+            Action.ClipboardContentReceived(
+                changeId = content.changeId,
+                originDeviceId = content.originDeviceId,
+                mimeType = content.mimeType,
+                content = contentBytes,
+                sha256 = content.sha256,
+                pending = !solicited,
+            ),
+        )
+    }
+
+    private fun recordClipboardFeedback(feedback: ClipboardFeedback) {
+        clipboardFeedbackHistory.addLast(feedback)
+        while (clipboardFeedbackHistory.size > MAX_CLIPBOARD_FEEDBACK_HISTORY) {
+            clipboardFeedbackHistory.removeFirst()
+        }
+    }
+
+    private fun rememberClipboardChangeId(changeId: ByteString) {
+        if (changeId in clipboardSeenChangeIds) return
+        clipboardSeenChangeIds.addLast(changeId)
+        while (clipboardSeenChangeIds.size > MAX_CLIPBOARD_SEEN_IDS) {
+            clipboardSeenChangeIds.removeFirst()
+        }
+    }
+
+    private fun clearClipboardState() {
+        offeredClipboard = null
+        receivedClipboardOffer = null
+        requestedClipboardChangeId = null
+        clipboardSeenChangeIds.clear()
+        clipboardFeedbackHistory.clear()
+    }
+
+    private fun validateUtf8(bytes: ByteArray) {
+        val decoder = StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+        try {
+            decoder.decode(ByteBuffer.wrap(bytes))
+        } catch (e: CharacterCodingException) {
+            throw protocolFailure("Clipboard content is not valid UTF-8")
+        }
+    }
+
+    private fun sha256Digest(bytes: ByteArray): ByteArray =
+        MessageDigest.getInstance("SHA-256").digest(bytes)
+
     private fun toDisplayOption(display: dev.vibescreen.protocol.v1.DisplayDescriptor): DisplayOption {
         if (display.displayId.isBlank() ||
             !display.hasLogicalSize() ||
@@ -1102,6 +1508,18 @@ internal class ProtocolV1Session(
                     .setAccepted(accepted)
                     .setRejectionReason(rejectionReason),
             ).build()
+
+    private fun unmanagedPolicyStatus(): ManagedPolicyStatus =
+        ManagedPolicyStatus
+            .newBuilder()
+            .setManaged(false)
+            .setClipboardAllowed(true)
+            .setFileTransferAllowed(true)
+            .setAudioAllowed(true)
+            .setWakeAllowed(true)
+            .setCustomGesturesAllowed(true)
+            .setHostActionsAllowed(true)
+            .build()
 
     private fun validateEnvelope(envelope: Envelope) {
         if (envelope.protocolVersion != VERSION) throw protocolFailure("Unsupported envelope version ${envelope.protocolVersion}")
@@ -1173,6 +1591,31 @@ internal class ProtocolV1Session(
             ControllerEventKind.DISCONNECTED -> ProtocolControllerEventKind.CONTROLLER_EVENT_KIND_DISCONNECTED
         }
 
+    private data class OfferedClipboard(
+        val changeId: ByteString,
+        val originDeviceId: String,
+        val mimeType: String,
+        val byteLength: Long,
+        val sha256: ByteString,
+        val content: ByteArray,
+    )
+
+    private data class ReceivedClipboardOffer(
+        val changeId: ByteString,
+        val originDeviceId: String,
+        val mimeType: String,
+        val byteLength: Long,
+        val sha256: ByteString,
+    )
+
+    private data class ClipboardFeedback(
+        val changeId: ByteString,
+        val originDeviceId: String,
+        val byteLength: Long,
+        val success: Boolean,
+        val reason: String,
+    )
+
     companion object {
         private const val STYLUS_BUTTON_MASK = 0b11
         const val VERSION = 1
@@ -1188,6 +1631,8 @@ internal class ProtocolV1Session(
                 Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,
                 Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
+                Capability.CAPABILITY_CLIPBOARD,
+                Capability.CAPABILITY_MANAGED_CONFIGURATION,
             )
 
         /** Move the focused Mac window onto the client display. Fixed with the host. */
@@ -1204,5 +1649,13 @@ internal class ProtocolV1Session(
         // host or caller cannot grow either without limit.
         private const val MAX_HOST_ACTIONS = 8
         private const val MAX_PENDING_HOST_ACTIONS = 16
+
+        // Clipboard transfer limits and wire constants.
+        const val LOCAL_MAX_CLIPBOARD_BYTES: Long = 1024L * 1024L
+        private const val CLIPBOARD_CHANGE_ID_BYTES = 16
+        private const val CLIPBOARD_SHA256_BYTES = 32
+        private const val MAX_CLIPBOARD_SEEN_IDS = 128
+        private const val MAX_CLIPBOARD_FEEDBACK_HISTORY = 128
+        private const val CLIPBOARD_MIME_TEXT_PLAIN = "text/plain"
     }
 }

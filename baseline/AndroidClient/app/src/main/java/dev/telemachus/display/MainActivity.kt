@@ -2,6 +2,8 @@ package dev.telemachus.display
 
 import android.annotation.SuppressLint
 import android.app.Dialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
@@ -245,6 +247,8 @@ class MainActivity : AppCompatActivity() {
     private var hasConnectedThisRun = false
     private var lastAppliedVideoPreferenceConfigEpoch = 0L
     private val controlBarHandler = Handler(Looper.getMainLooper())
+    private val clipboardRequestHandler = Handler(Looper.getMainLooper())
+    private var clipboardRequestTimeout: Runnable? = null
     private val accessibilityManager by lazy { getSystemService(AccessibilityManager::class.java) }
     private val controlBarHideRunnable =
         Runnable {
@@ -257,6 +261,7 @@ class MainActivity : AppCompatActivity() {
     private var availableDisplays = emptyList<StreamDisplayOption>()
     private var selectedDisplayId = ""
     private var availableHostActions = emptyList<HostActionOption>()
+    private val clipboardApprovalState = ClipboardApprovalState<StreamClient>()
     private val autoConnectRunnable =
         Runnable {
             if (automaticUsbConnect && isInForeground && !isConnected && !connectionAttemptInProgress) {
@@ -1776,6 +1781,10 @@ class MainActivity : AppCompatActivity() {
             revealControlBar()
             showHostActionsMenu()
         }
+        binding.controlClipboardButton.setOnClickListener {
+            revealControlBar()
+            showClipboardMenu()
+        }
         // The whole capsule row is the dropdown-selector tap target so touch
         // users hit it reliably, not just the leading icon.
         binding.displayCapsuleGroup.setOnClickListener {
@@ -1788,6 +1797,7 @@ class MainActivity : AppCompatActivity() {
         TooltipCompat.setTooltipText(binding.controlDisconnectButton, getText(R.string.control_disconnect))
         TooltipCompat.setTooltipText(binding.displayCapsuleGroup, getText(R.string.control_displays))
         TooltipCompat.setTooltipText(binding.controlHostActionsButton, getText(R.string.control_host_actions))
+        TooltipCompat.setTooltipText(binding.controlClipboardButton, getText(R.string.control_clipboard))
     }
 
     /**
@@ -1953,6 +1963,242 @@ class MainActivity : AppCompatActivity() {
         applyControlBarLayout()
     }
 
+    /** Clipboard is absent from legacy and unnegotiated sessions. */
+    private fun refreshClipboardControl() {
+        val client = streamClient
+        val available =
+            client != null &&
+                ClipboardMenuPolicy.isAvailable(currentSessionBinding().capabilities.clipboard)
+        binding.controlClipboardButton.visibility = if (available) View.VISIBLE else View.GONE
+        binding.controlClipboardButton.isEnabled = available && client?.canSendClipboard == true
+        updateClipboardAccessibilityLabel(client, activeSessionGeneration)
+        applyControlBarLayout()
+    }
+
+    private fun updateClipboardAccessibilityLabel(
+        client: StreamClient?,
+        generation: Long,
+    ) {
+        val pending =
+            client != null && clipboardApprovalState.hasPendingReceive(client, generation)
+        binding.controlClipboardButton.contentDescription =
+            getString(if (pending) R.string.control_clipboard_pending else R.string.control_clipboard)
+        TooltipCompat.setTooltipText(
+            binding.controlClipboardButton,
+            binding.controlClipboardButton.contentDescription,
+        )
+    }
+
+    /**
+     * Builds the menu without inspecting Android's clipboard. The local text is
+     * read only after the user selects Send to Mac.
+     */
+    private fun showClipboardMenu() {
+        val client = streamClient ?: return
+        val generation = activeSessionGeneration
+        if (!isCurrentSession(client, generation) ||
+            !currentSessionBinding().capabilities.clipboard ||
+            !client.canSendClipboard
+        ) {
+            return
+        }
+        val popup = PopupMenu(this, binding.controlClipboardButton)
+        popup.menu.add(0, CLIPBOARD_MENU_SEND, 0, R.string.clipboard_send_to_mac).isEnabled = true
+        popup.menu
+            .add(0, CLIPBOARD_MENU_RECEIVE, 1, R.string.clipboard_get_from_mac)
+            .isEnabled = clipboardApprovalState.hasPendingReceive(client, generation)
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                CLIPBOARD_MENU_SEND -> beginSendLocalClipboard(client, generation)
+                CLIPBOARD_MENU_RECEIVE -> beginReceiveRemoteClipboard(client, generation)
+                else -> false
+            }
+        }
+        controlBarHandler.removeCallbacks(controlBarHideRunnable)
+        popup.setOnDismissListener { revealControlBar() }
+        popup.show()
+    }
+
+    private fun beginSendLocalClipboard(
+        client: StreamClient,
+        generation: Long,
+    ): Boolean {
+        if (!isCurrentSession(client, generation) || !client.canSendClipboard) return false
+        if (prefs.connectionMode == ConnectionMode.WIRELESS) {
+            showImmersiveDialog(
+                MaterialAlertDialogBuilder(this)
+                    .setTitle(R.string.clipboard_lan_confirm_title)
+                    .setMessage(R.string.clipboard_lan_confirm_message)
+                    .setPositiveButton(R.string.clipboard_lan_confirm_action) { _, _ ->
+                        sendLocalClipboard(client, generation)
+                    }
+                    .setNegativeButton(R.string.cancel, null),
+            )
+            return true
+        }
+        return sendLocalClipboard(client, generation)
+    }
+
+    /** Reads the system clipboard only after the transport-specific approval. */
+    private fun sendLocalClipboard(
+        client: StreamClient,
+        generation: Long,
+    ): Boolean {
+        if (!isCurrentSession(client, generation) || !client.canSendClipboard) return false
+        val clipboard = getSystemService(ClipboardManager::class.java)
+        val text =
+            clipboard.primaryClip
+                ?.takeIf { it.itemCount > 0 }
+                ?.getItemAt(0)
+                ?.text
+                ?.toString()
+        if (!ClipboardMenuPolicy.canSend(text)) {
+            Toast.makeText(this, R.string.clipboard_empty, Toast.LENGTH_SHORT).show()
+            return true
+        }
+        val clipboardText = requireNotNull(text)
+        if (!ClipboardMenuPolicy.isWithinSizeLimit(clipboardText, client.negotiatedMaxClipboardBytes)) {
+            Toast.makeText(this, R.string.clipboard_too_large, Toast.LENGTH_SHORT).show()
+            return true
+        }
+        val sent = client.offerClipboard(clipboardText)
+        Toast.makeText(
+            this,
+            if (sent) R.string.clipboard_sent_to_mac else R.string.clipboard_send_failed,
+            Toast.LENGTH_SHORT,
+        ).show()
+        return true
+    }
+
+    private fun receiveRemoteClipboard(
+        client: StreamClient,
+        generation: Long,
+    ): Boolean {
+        if (!isCurrentSession(client, generation) || !client.canSendClipboard) return false
+        val direct = clipboardApprovalState.directContentForConfirmation(client, generation)
+        if (direct != null) {
+            showDirectClipboardConfirmation(client, generation, direct)
+            return true
+        }
+        val offer = clipboardApprovalState.offerForRequest(client, generation)
+        if (offer == null) {
+            Toast.makeText(this, R.string.clipboard_mac_unavailable, Toast.LENGTH_SHORT).show()
+            return true
+        }
+        if (!clipboardApprovalState.approveOffer(client, generation, offer.changeId) ||
+            !client.requestClipboard(offer.changeId)
+        ) {
+            clipboardApprovalState.cancelOfferApproval(client, generation, offer.changeId)
+            Toast.makeText(this, R.string.clipboard_receive_failed, Toast.LENGTH_SHORT).show()
+        } else {
+            scheduleClipboardRequestTimeout(client, generation, offer.changeId)
+            refreshClipboardControl()
+        }
+        return true
+    }
+
+    private fun beginReceiveRemoteClipboard(
+        client: StreamClient,
+        generation: Long,
+    ): Boolean {
+        if (!isCurrentSession(client, generation) || !client.canSendClipboard) return false
+        val direct = clipboardApprovalState.directContentForConfirmation(client, generation)
+        if (direct != null || prefs.connectionMode != ConnectionMode.WIRELESS) {
+            return receiveRemoteClipboard(client, generation)
+        }
+        showImmersiveDialog(
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.clipboard_lan_receive_confirm_title)
+                .setMessage(R.string.clipboard_lan_receive_confirm_message)
+                .setPositiveButton(R.string.clipboard_receive_confirm_action) { _, _ ->
+                    receiveRemoteClipboard(client, generation)
+                }
+                .setNegativeButton(R.string.cancel, null),
+        )
+        return true
+    }
+
+    private fun showDirectClipboardConfirmation(
+        client: StreamClient,
+        generation: Long,
+        content: ClipboardContentData,
+    ) {
+        showImmersiveDialog(
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.clipboard_receive_confirm_title)
+                .setMessage(
+                    if (prefs.connectionMode == ConnectionMode.WIRELESS) {
+                        R.string.clipboard_lan_direct_receive_confirm_message
+                    } else {
+                        R.string.clipboard_receive_confirm_message
+                    },
+                )
+                .setPositiveButton(R.string.clipboard_receive_confirm_action) { _, _ ->
+                    val approved =
+                        clipboardApprovalState.consumeDirectContent(
+                            client,
+                            generation,
+                            content.changeId,
+                        )
+                    if (approved != null) writeRemoteClipboard(approved)
+                    updateClipboardAccessibilityLabel(client, generation)
+                }
+                .setNegativeButton(R.string.cancel) { _, _ ->
+                    clipboardApprovalState.discardDirectContent(client, generation, content.changeId)
+                    updateClipboardAccessibilityLabel(client, generation)
+                },
+        )
+    }
+
+    private fun writeRemoteClipboard(content: ClipboardContentData) {
+        val text = content.content.toString(Charsets.UTF_8)
+        val result =
+            runCatching {
+                getSystemService(ClipboardManager::class.java).setPrimaryClip(
+                    ClipData.newPlainText(getString(R.string.clipboard_plain_text_label), text),
+                )
+            }
+        Toast.makeText(
+            this,
+            if (result.isSuccess) R.string.clipboard_copied_from_mac else R.string.clipboard_write_failed,
+            Toast.LENGTH_SHORT,
+        ).show()
+        result.exceptionOrNull()?.let { error ->
+            mainDiag("clipboard write failed: " + error.javaClass.simpleName)
+        }
+    }
+
+    private fun scheduleClipboardRequestTimeout(
+        client: StreamClient,
+        generation: Long,
+        changeId: ByteArray,
+    ) {
+        cancelClipboardRequestTimeout()
+        val exactChangeId = changeId.copyOf()
+        val timeout =
+            Runnable {
+                clipboardRequestTimeout = null
+                if (!isCurrentSession(client, generation)) return@Runnable
+                client.expireClipboardRequest(exactChangeId) { expired ->
+                    runOnUiThread {
+                        if (!expired || !isCurrentSession(client, generation)) return@runOnUiThread
+                        if (!clipboardApprovalState.cancelOfferApproval(client, generation, exactChangeId)) {
+                            return@runOnUiThread
+                        }
+                        refreshClipboardControl()
+                        Toast.makeText(this, R.string.clipboard_request_timed_out, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        clipboardRequestTimeout = timeout
+        clipboardRequestHandler.postDelayed(timeout, CLIPBOARD_REQUEST_TIMEOUT_MS)
+    }
+
+    private fun cancelClipboardRequestTimeout() {
+        clipboardRequestTimeout?.let(clipboardRequestHandler::removeCallbacks)
+        clipboardRequestTimeout = null
+    }
+
     private fun applyControlBarLayout() {
         val windowWidthPx = binding.root.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
         ControlBarLayoutApplier.apply(
@@ -1964,6 +2210,7 @@ class MainActivity : AppCompatActivity() {
                     displaySelector = binding.displayCapsuleGroup,
                     actions = binding.controlActionsGroup,
                     hostAction = binding.controlHostActionsButton,
+                    clipboard = binding.controlClipboardButton,
                     settings = binding.controlSettingsButton,
                     disconnect = binding.controlDisconnectButton,
                 ),
@@ -2749,12 +2996,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun activateSession(client: StreamClient): Long {
+        cancelClipboardRequestTimeout()
         mainSessionDisplayLifecycle?.invalidate()
         mainSessionDisplayLifecycle = null
         streamControllerSessionState.resetForNewSession()
         val generation = sessionState.activate(client)
         streamClient = client
         activeSessionGeneration = generation
+        clipboardApprovalState.activate(client, generation)
         return generation
     }
 
@@ -3292,6 +3541,7 @@ class MainActivity : AppCompatActivity() {
                     stopChecklistUpdates()
                     enableFullscreenMode()
                     binding.inputViewport.requestFocus()
+                    refreshClipboardControl()
                     // For wireless mode, transition controller to CONNECTED here —
                     // not in MainActivity.connectWireless's coroutine after the
                     // receive loop returns (that runs AFTER disconnect, causing
@@ -3376,7 +3626,9 @@ class MainActivity : AppCompatActivity() {
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_CONTROLLER in negotiated
                 val hostActions =
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in negotiated
-                if (displaySelection || keyboard || nativePointer || controller || hostActions) {
+                val clipboard =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_CLIPBOARD in negotiated
+                if (displaySelection || keyboard || nativePointer || controller || hostActions || clipboard) {
                     val capabilities =
                         ClientSessionCapabilities.LEGACY_TOUCH_ONLY.copy(
                             displaySelection = displaySelection,
@@ -3384,6 +3636,7 @@ class MainActivity : AppCompatActivity() {
                             nativePointer = nativePointer,
                             controller = controller,
                             hostActions = hostActions,
+                            clipboard = clipboard,
                         )
                     val sink =
                         if (keyboard || nativePointer || controller) {
@@ -3400,10 +3653,11 @@ class MainActivity : AppCompatActivity() {
                     // Re-evaluate the cached catalog after capability promotion so
                     // that arrival order cannot leave the button permanently hidden.
                     populateHostActions(availableHostActions)
+                    refreshClipboardControl()
                     mainDiag(
                         "session binding promoted: displaySelection=$displaySelection " +
                             "keyboard=$keyboard nativePointer=$nativePointer " +
-                            "controller=$controller hostActions=$hostActions",
+                            "controller=$controller hostActions=$hostActions clipboard=$clipboard",
                     )
                 }
                 populateDisplayCapsule(options, selectedId)
@@ -3446,6 +3700,65 @@ class MainActivity : AppCompatActivity() {
                         getString(R.string.host_action_rejected)
                     }
                 Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        callbackClient.onClipboardOffered = clipboardOffer@{ offer ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@clipboardOffer
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                cancelClipboardRequestTimeout()
+                val staged =
+                    clipboardApprovalState.stageOffer(
+                        callbackClient,
+                        callbackGeneration,
+                        PendingClipboardOffer(
+                            changeId = offer.changeId,
+                            originDeviceId = offer.originDeviceId,
+                            mimeType = offer.mimeType,
+                            byteLength = offer.byteLength,
+                            sha256 = offer.sha256,
+                        ),
+                    )
+                if (staged) {
+                    refreshClipboardControl()
+                    binding.controlClipboardButton.announceForAccessibility(
+                        getString(R.string.clipboard_pending_from_mac),
+                    )
+                }
+            }
+        }
+        callbackClient.onClipboardContentReceived = clipboardContent@{ content ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@clipboardContent
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                if (content.pending) {
+                    val staged =
+                        clipboardApprovalState.stageDirectContent(
+                            callbackClient,
+                            callbackGeneration,
+                            content,
+                        )
+                    if (staged) {
+                        cancelClipboardRequestTimeout()
+                        refreshClipboardControl()
+                        binding.controlClipboardButton.announceForAccessibility(
+                            getString(R.string.clipboard_pending_confirmation),
+                        )
+                    }
+                    return@runOnUiThread
+                }
+                cancelClipboardRequestTimeout()
+                val approved =
+                    clipboardApprovalState.consumeSolicitedContent(
+                        callbackClient,
+                        callbackGeneration,
+                        content,
+                    )
+                if (approved != null) {
+                    writeRemoteClipboard(approved)
+                    refreshClipboardControl()
+                }
             }
         }
 
@@ -4410,6 +4723,12 @@ class MainActivity : AppCompatActivity() {
         availableHostActions = emptyList()
         binding.controlHostActionsButton.visibility = View.GONE
         binding.controlHostActionsButton.isEnabled = false
+        cancelClipboardRequestTimeout()
+        clipboardApprovalState.clear()
+        binding.controlClipboardButton.visibility = View.GONE
+        binding.controlClipboardButton.isEnabled = false
+        binding.controlClipboardButton.contentDescription = getString(R.string.control_clipboard)
+        TooltipCompat.setTooltipText(binding.controlClipboardButton, getText(R.string.control_clipboard))
         availableDisplays = emptyList()
         selectedDisplayId = ""
         DisplayCapsuleViewBinder.bind(
@@ -4896,6 +5215,7 @@ class MainActivity : AppCompatActivity() {
         if (::deviceHealthMonitor.isInitialized) deviceHealthMonitor.stop()
         autoConnectHandler.removeCallbacks(autoConnectRunnable)
         wirelessReconnectHandler.removeCallbacks(wirelessReconnectRunnable)
+        cancelClipboardRequestTimeout()
         stopChecklistUpdates()
         activeSettingsDialog?.dismiss()
         runCatching(::discardPendingInternetPairing).onFailure { failure ->
@@ -4907,6 +5227,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TOUCH_MAPPING_LOG_TAG = "VibeScreenTouchMap"
+        private const val CLIPBOARD_REQUEST_TIMEOUT_MS = 10_000L
         private const val EXTRA_AUTO_CONNECT = "auto_connect"
         private const val STATE_AUTOMATIC_USB_CONNECT = "automatic_usb_connect"
         private const val ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE"
@@ -4926,6 +5247,9 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_FORWARDED_POINTERS = 2
         private const val LEGACY_RIGHT_CLICK_HOLD_MS = 650L
         private const val FOREGROUND_RECONNECT_DELAY_MS = 150L
+        private const val CLIPBOARD_MENU_SEND = 1
+        private const val CLIPBOARD_MENU_RECEIVE = 2
+
         // Uniform breathing gap, in dp, added on top of the safe-area insets for
         // floating chrome (control bar, settings panel, settings button) and the
         // draggable overlay clamp. Matches the settings button's resting margin.

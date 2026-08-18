@@ -342,6 +342,57 @@
       "source": "json/controller_disconnected.json"
     },
     {
+      "binary": "bin/clipboard_offer.binpb",
+      "byteLength": 107,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "24",
+        "payloadCase": "clipboardOffer",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000024",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "clipboard_offer",
+      "sha256": "d93eb1fa036d34fde782a3add542ee8f04443810c72aaeb3b6d191feb87db8dc",
+      "source": "json/clipboard_offer.json"
+    },
+    {
+      "binary": "bin/clipboard_request.binpb",
+      "byteLength": 45,
+      "channel": 1,
+      "expected": {
+        "correlationId": "24",
+        "messageId": "25",
+        "payloadCase": "clipboardRequest",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000025",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "clipboard_request",
+      "sha256": "873e26f3789236af0f85f60ea743fd91925a1676f08249230ca96769095571f6",
+      "source": "json/clipboard_request.json"
+    },
+    {
+      "binary": "bin/clipboard_content.binpb",
+      "byteLength": 134,
+      "channel": 1,
+      "expected": {
+        "correlationId": "25",
+        "messageId": "26",
+        "payloadCase": "clipboardContent",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000026",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "clipboard_content",
+      "sha256": "d5d36df09345985bfea8862f39fbe7c46da2202bd8701965e5bb1de855942dd6",
+      "source": "json/clipboard_content.json"
+    },
+    {
       "binary": "bin/ping.binpb",
       "byteLength": 27,
       "channel": 1,

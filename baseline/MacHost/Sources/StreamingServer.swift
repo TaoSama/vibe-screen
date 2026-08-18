@@ -325,6 +325,24 @@ class StreamingServer: EncodedFrameSink {
     var onHostActionRequested:
         (@MainActor (_ actionID: String, _ invocationID: Data, _ target: VSInputTarget?) -> Void)?
 
+    /// Fired on the main actor when a negotiated client offers clipboard
+    /// content. The UI decides whether to request the full content via
+    /// requestClipboardContent. The generation is the active connection
+    /// generation; the UI should drop the callback if it no longer matches.
+    var onClipboardOfferReceived:
+        (@MainActor (_ offer: ClipboardOfferMetadata, _ generation: UInt64) -> Void)?
+
+    /// Fired on the main actor when a requested clipboard content arrives and
+    /// passes validation. The UI writes the validated text to the pasteboard.
+    var onClipboardContentReceived:
+        (@MainActor (_ content: ValidatedClipboardContent, _ generation: UInt64) -> Void)?
+
+    /// Fired on the main actor when a client sends clipboard content without a
+    /// matching pending offer/request. The UI must obtain explicit user
+    /// approval before writing to the pasteboard; the core never writes it.
+    var onClipboardDirectContentReceived:
+        (@MainActor (_ content: ValidatedClipboardContent, _ generation: UInt64) -> Void)?
+
     private let frameQueue = DispatchQueue(label: "frameQueue", qos: .userInteractive)
     private let receiveQueue = DispatchQueue(label: "receiveQueue", qos: .userInteractive)
     private let networkQueue = DispatchQueue(label: "networkQueue", qos: .userInteractive)
@@ -1433,12 +1451,100 @@ class StreamingServer: EncodedFrameSink {
         }
     }
 
-    private func performOnNetworkQueue(_ operation: @escaping () -> Void) {
-        if DispatchQueue.getSpecific(key: Self.networkQueueKey) == ObjectIdentifier(self) {
-            operation()
-        } else {
-            networkQueue.sync(execute: operation)
+    /// Share a string from the Mac pasteboard. The caller must read the
+    /// pasteboard on the main thread before calling this. The core caches one
+    /// snapshot and sends a ClipboardOffer; it never re-reads the pasteboard.
+    /// Returns true when the offer was sent; false when clipboard was not
+    /// negotiated, the session is not streaming, or the content failed
+    /// validation (empty/oversized). Runs synchronously on the network queue
+    /// so the UI gets a deterministic success/failure without a callback.
+    @discardableResult
+    func shareClipboard(_ text: String) -> Bool {
+        withNetworkQueue {
+            guard !isStopped,
+                  connectionProtocolMode == .protocolV1,
+                  let session = protocolV1Session,
+                  let conn = connection else { return false }
+            let generation = activeConnectionGeneration
+            let actions = session.shareClipboard(text: text)
+            guard !actions.isEmpty else { return false }
+            applyProtocolV1Actions(actions, connection: conn, generation: generation)
+            return true
         }
+    }
+
+    /// Request the full content for a previously received clipboard offer.
+    /// The UI calls this after the user approves the receive. Returns true
+    /// when the request was sent; false when the change ID is unknown,
+    /// clipboard was not negotiated, or the session is not streaming.
+    @discardableResult
+    func requestClipboard(changeID: Data) -> Bool {
+        withNetworkQueue {
+            guard !isStopped,
+                  connectionProtocolMode == .protocolV1,
+                  let session = protocolV1Session,
+                  let conn = connection else { return false }
+            let generation = activeConnectionGeneration
+            let actions = session.requestClipboardContent(changeID: changeID)
+            guard !actions.isEmpty else { return false }
+            applyProtocolV1Actions(actions, connection: conn, generation: generation)
+            return true
+        }
+    }
+
+    /// Release an exact in-flight clipboard request after the UI timeout. The
+    /// session core retains the offer so the user may retry. Running this on
+    /// the network queue also orders expiry against concurrently arriving
+    /// content.
+    @discardableResult
+    func expireClipboardRequest(changeID: Data) -> Bool {
+        withNetworkQueue {
+            guard !isStopped,
+                  connectionProtocolMode == .protocolV1,
+                  let session = protocolV1Session,
+                  connection != nil else { return false }
+            return session.expireClipboardRequest(changeID: changeID)
+        }
+    }
+
+    // MARK: - ClipboardServer conformance
+
+    /// True when the connected peer negotiated the clipboard capability on an
+    /// active Protocol v1 session. The clipboard menu items are disabled while
+    /// this is false so the user cannot attempt clipboard operations against a
+    /// peer that did not agree to them.
+    var clipboardAvailable: Bool {
+        withNetworkQueue {
+            connectionProtocolMode == .protocolV1
+                && (protocolV1Session?.hasClipboardCapability ?? false)
+        }
+    }
+
+    /// The clipboard UI calls this through the `ClipboardServer` protocol.
+    /// Returns the underlying `shareClipboard` result so the caller knows
+    /// whether the offer was actually sent.
+    @discardableResult
+    func shareClipboardText(_ text: String) -> Bool {
+        shareClipboard(text)
+    }
+
+    /// The clipboard UI calls this through the `ClipboardServer` protocol.
+    /// Returns the underlying `requestClipboard` result so the caller knows
+    /// whether the request was actually sent.
+    @discardableResult
+    func sendClipboardRequest(_ request: VSClipboardRequest) -> Bool {
+        requestClipboard(changeID: request.changeID)
+    }
+
+    private func withNetworkQueue<T>(_ operation: () -> T) -> T {
+        if DispatchQueue.getSpecific(key: Self.networkQueueKey) == ObjectIdentifier(self) {
+            return operation()
+        }
+        return networkQueue.sync(execute: operation)
+    }
+
+    private func performOnNetworkQueue(_ operation: @escaping () -> Void) {
+        withNetworkQueue(operation)
     }
 
     /// Update rotation and send to connected client
@@ -2019,6 +2125,34 @@ class StreamingServer: EncodedFrameSink {
                     guard let self,
                           self.clientCallbackGeneration.isCurrent(generation) else { return }
                     self.onHostActionRequested?(actionID, invocationID, target)
+                }
+            case .clipboardOffer(let metadata):
+                // Forward the offer metadata to the UI so the user can decide
+                // whether to request the full content. The generation guard
+                // drops stale offers from a previous connection.
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onClipboardOfferReceived?(metadata, generation)
+                }
+            case .clipboardContent(let content):
+                // A requested clipboard content passed validation. The UI
+                // writes it to the pasteboard. Stale content from a previous
+                // connection is dropped by the generation guard.
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onClipboardContentReceived?(content, generation)
+                }
+            case .clipboardDirectContent(let content):
+                // Unsolicited clipboard content. The UI must obtain explicit
+                // user approval before writing to the pasteboard; the core
+                // never writes it. Stale content is dropped by the generation
+                // guard.
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.clientCallbackGeneration.isCurrent(generation) else { return }
+                    self.onClipboardDirectContentReceived?(content, generation)
                 }
             }
         }
@@ -2632,3 +2766,7 @@ class StreamingServer: EncodedFrameSink {
         completion?()
     }
 }
+
+// MARK: - ClipboardServer conformance
+
+extension StreamingServer: ClipboardServer {}

@@ -141,6 +141,10 @@ class StreamClient(
     internal var onDisplaysAvailable: ((List<StreamDisplayOption>, selectedId: String) -> Unit)? = null
     internal var onHostActionsAvailable: ((List<HostActionOption>) -> Unit)? = null
     internal var onHostActionResult: ((accepted: Boolean, rejectionReason: String) -> Unit)? = null
+    /** A peer clipboard offer has arrived; the UI may request the content by changeId. */
+    internal var onClipboardOffered: ((offer: ClipboardOfferData) -> Unit)? = null
+    /** Peer clipboard content has arrived. pending=true means no offer/request handshake preceded it. */
+    internal var onClipboardContentReceived: ((content: ClipboardContentData) -> Unit)? = null
     var onStats: ((Double, Double) -> Unit)? = null
     var onReconnectSuggested: ((delayMs: Long) -> Unit)? = null
     var onWriteFailure: ((reason: String) -> Unit)? = null
@@ -1239,6 +1243,76 @@ class StreamClient(
         return inputDispatcher.sendController(dispatch)
     }
 
+    /** True when clipboard transfer is available on the active Protocol v1 session. */
+    val canSendClipboard: Boolean
+        get() = isConnected && wireMode == WireMode.V1 && protocolSession?.canSendClipboard == true
+
+    /** Negotiated clipboard byte limit for the active session; 0 when not negotiated. */
+    val negotiatedMaxClipboardBytes: Long
+        get() = if (wireMode == WireMode.V1) protocolSession?.negotiatedMaxClipboardBytes ?: 0L else 0L
+
+    /**
+     * Offer the given text to the peer as a clipboard transfer.
+     * Returns true when the offer was queued; false when clipboard was not
+     * negotiated, the session is not streaming, or the text exceeds the limit.
+     */
+    fun offerClipboard(text: String): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canSendClipboard) return false
+        val submission =
+            submitOutbound(
+                kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                command = StreamOutboundCommand.ProtocolBatch { activeSession ->
+                    activeSession.offerClipboard(text)?.let { listOf(it) } ?: emptyList()
+                },
+            )
+        return isOutboundAdmitted(submission)
+    }
+
+    /**
+     * Request the content for a previously received clipboard offer.
+     * Returns true when the request was queued; false when no matching offer
+     * exists or clipboard was not negotiated.
+     */
+    fun requestClipboard(changeId: ByteArray): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canSendClipboard) return false
+        val id = ByteString.copyFrom(changeId)
+        val submission =
+            submitOutbound(
+                kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                command = StreamOutboundCommand.ProtocolBatch { activeSession ->
+                    activeSession.requestClipboard(id)?.let { listOf(it) } ?: emptyList()
+                },
+            )
+        return isOutboundAdmitted(submission)
+    }
+
+    /**
+     * Serialize a UI timeout behind the original request so a retry for the
+     * same change ID cannot overtake request-state cleanup.
+     */
+    fun expireClipboardRequest(
+        changeId: ByteArray,
+        completion: (Boolean) -> Unit,
+    ): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canSendClipboard) return false
+        val id = ByteString.copyFrom(changeId)
+        val submission =
+            submitOutbound(
+                kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                command = StreamOutboundCommand.ProtocolBatch { activeSession ->
+                    completion(activeSession.expireClipboardRequest(id))
+                    emptyList()
+                },
+            )
+        return isOutboundAdmitted(submission)
+    }
+
     /**
      * Ask the host to switch the captured display at runtime. No-op unless the
      * session is streaming, display selection was negotiated, and the id names a
@@ -1399,6 +1473,10 @@ class StreamClient(
         return submission
     }
 
+    private fun isOutboundAdmitted(submission: OutboundCommandScheduler.Submission): Boolean =
+        submission != OutboundCommandScheduler.Submission.TIMED_OUT &&
+            submission != OutboundCommandScheduler.Submission.CLOSED
+
 
     private fun writeOutboundCommand(command: StreamOutboundCommand) {
         val out = transportOwner.activeConnection()?.output ?: throw IOException("session output is closed")
@@ -1520,6 +1598,31 @@ class StreamClient(
                     }
                     is ProtocolV1Session.Action.HostActionCompleted -> {
                         onHostActionResult?.invoke(action.accepted, action.rejectionReason)
+                    }
+                    is ProtocolV1Session.Action.ClipboardOffered -> {
+                        if (!isCurrentProtocolSession(session, connectionEpoch)) return@forEach
+                        onClipboardOffered?.invoke(
+                            ClipboardOfferData(
+                                changeId = action.changeId.toByteArray(),
+                                originDeviceId = action.originDeviceId,
+                                mimeType = action.mimeType,
+                                byteLength = action.byteLength,
+                                sha256 = action.sha256.toByteArray(),
+                            ),
+                        )
+                    }
+                    is ProtocolV1Session.Action.ClipboardContentReceived -> {
+                        if (!isCurrentProtocolSession(session, connectionEpoch)) return@forEach
+                        onClipboardContentReceived?.invoke(
+                            ClipboardContentData(
+                                changeId = action.changeId.toByteArray(),
+                                originDeviceId = action.originDeviceId,
+                                mimeType = action.mimeType,
+                                content = action.content,
+                                sha256 = action.sha256.toByteArray(),
+                                pending = action.pending,
+                            ),
+                        )
                     }
                    is ProtocolV1Session.Action.Disconnected -> {
                         pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
@@ -1680,6 +1783,8 @@ class StreamClient(
                is ProtocolV1Session.Action.DisplaysAvailable,
                 is ProtocolV1Session.Action.HostActionsAvailable,
                 is ProtocolV1Session.Action.HostActionCompleted,
+                is ProtocolV1Session.Action.ClipboardOffered,
+                is ProtocolV1Session.Action.ClipboardContentReceived,
                -> throw IllegalStateException("Unexpected action while completing decoder configuration")
             }
         }

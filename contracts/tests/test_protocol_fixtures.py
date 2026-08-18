@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import math
@@ -178,6 +179,33 @@ class ProtocolFixtureTest(unittest.TestCase):
                 event = json.loads(output.read_text())["keyEvent"]
                 self.assertEqual(mask, event["modifierMask"], name)
 
+    def test_clipboard_fixtures_cover_offer_request_and_content(self) -> None:
+        fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}
+        with tempfile.TemporaryDirectory(prefix="vibescreen-clipboard-fixtures-") as temporary:
+            decoded: dict[str, dict[str, object]] = {}
+            for name in ("clipboard_offer", "clipboard_request", "clipboard_content"):
+                entry = fixtures[name]
+                output = Path(temporary) / f"{name}.json"
+                convert(entry["messageType"], FIXTURE_ROOT / entry["binary"], "binpb", output, "json")
+                decoded[name] = json.loads(output.read_text())
+
+        offer = decoded["clipboard_offer"]["clipboardOffer"]
+        request = decoded["clipboard_request"]["clipboardRequest"]
+        content = decoded["clipboard_content"]["clipboardContent"]
+        expected_change_id = "AAECAwQFBgcICQoLDA0ODw=="
+        expected_sha = hashlib.sha256(b"Clipboard fixture payload").digest()
+
+        self.assertEqual(expected_change_id, offer["changeId"])
+        self.assertEqual(expected_change_id, request["changeId"])
+        self.assertEqual(expected_change_id, content["changeId"])
+        self.assertEqual("android-golden", offer["originDeviceId"])
+        self.assertEqual("android-golden", content["originDeviceId"])
+        self.assertEqual("text/plain", offer["mimeType"])
+        self.assertEqual("text/plain", content["mimeType"])
+        self.assertEqual("25", offer["byteLength"])
+        self.assertEqual("Q2xpcGJvYXJkIGZpeHR1cmUgcGF5bG9hZA==", content["content"])
+        self.assertEqual(expected_sha, base64.b64decode(offer["sha256"]))
+        self.assertEqual(expected_sha, base64.b64decode(content["sha256"]))
 
     def test_rotation_fixtures_cover_initial_and_runtime_values(self) -> None:
         fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}
