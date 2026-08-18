@@ -6,18 +6,27 @@ This command cannot close the formal two-hour RSS gate.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import shlex
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from typing import Any, Callable, Sequence
 import uuid
 
 from . import SCHEMA_VERSION
-from .host_memory_analysis import INTERPRETATION, analyze_records, thresholds
+from .host_memory_analysis import (
+    INTERPRETATION,
+    SUFFICIENCY_FIELDS,
+    analyze_records,
+    thresholds,
+)
 from .host_memory_parsers import (
     HeapSnapshot,
     MemoryToolParseError,
@@ -56,22 +65,83 @@ class DiagnosticArgumentParser(argparse.ArgumentParser):
         self.exit(1, f"{self.prog}: error: {message}\n")
 
 
+class DiagnosticInterrupted(Exception):
+    """Raised when a termination signal requests a partial diagnostic."""
+
+    def __init__(self, signal_name: str) -> None:
+        super().__init__(f"collection interrupted by {signal_name}")
+        self.signal_name = signal_name
+
+
+class _InterruptionState:
+    def __init__(self) -> None:
+        self.signal_name: str | None = None
+
+    def record(self, signal_name: str) -> None:
+        if self.signal_name is None:
+            self.signal_name = signal_name
+
+
+def _require_main_thread() -> None:
+    if threading.current_thread() is not threading.main_thread():
+        raise RuntimeError(
+            "host memory diagnostic signal handling requires the main thread"
+        )
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _run_command(command: list[str]) -> str:
-    completed = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=COMMAND_TIMEOUT_SECONDS,
-    )
+    command_context = shlex.join(command)
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError(f"failed to run {command_context}: {error}") from error
     if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip() or "no diagnostic"
-        raise RuntimeError(f"{' '.join(command[:2])} failed: {detail}")
+        raise RuntimeError(
+            f"{command_context} exited with {completed.returncode}"
+        )
     return completed.stdout
+
+
+@contextmanager
+def _signals_as_interruption():
+    _require_main_thread()
+    state = _InterruptionState()
+    handled_signals = (signal.SIGINT, signal.SIGTERM)
+    previous = {signum: signal.getsignal(signum) for signum in handled_signals}
+
+    def request_partial_report(signum: int, _frame: Any) -> None:
+        signal_name = signal.Signals(signum).name
+        if state.signal_name is None:
+            state.record(signal_name)
+            raise DiagnosticInterrupted(signal_name)
+
+    for signum in handled_signals:
+        signal.signal(signum, request_partial_report)
+    try:
+        yield state
+    finally:
+        for signum in handled_signals:
+            signal.signal(signum, previous[signum])
+
+
+@contextmanager
+def _block_interruption_signals():
+    handled_signals = {signal.SIGINT, signal.SIGTERM}
+    previous = signal.pthread_sigmask(signal.SIG_BLOCK, handled_signals)
+    try:
+        yield
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous)
 
 
 def _heap_payload(snapshot: HeapSnapshot, watched: tuple[str, ...]) -> dict[str, Any]:
@@ -199,6 +269,31 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
+def _write_samples(path: Path, records: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    serialized = "".join(
+        json.dumps(record, sort_keys=True, allow_nan=False) + "\n"
+        for record in records
+    )
+    temporary.write_text(serialized, encoding="utf-8")
+    temporary.replace(path)
+
+
+def _commit_sample(
+    samples_path: Path,
+    records: list[dict[str, Any]],
+    record: dict[str, Any],
+) -> None:
+    with _block_interruption_signals():
+        try:
+            _write_samples(samples_path, [*records, record])
+            records.append(record)
+        except BaseException:
+            _write_samples(samples_path, records)
+            raise
+
+
 def _failure_report(pid: int, reason: str) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
@@ -209,7 +304,7 @@ def _failure_report(pid: int, reason: str) -> dict[str, Any]:
         "host_pid": pid,
         "window": {},
         "thresholds": thresholds(),
-        "sufficiency": {},
+        "sufficiency": _incomplete_sufficiency(),
         "metrics": {},
         "telemetry": {},
         "errors": [reason],
@@ -218,69 +313,58 @@ def _failure_report(pid: int, reason: str) -> dict[str, Any]:
     }
 
 
-def collect(
+def _incomplete_sufficiency() -> dict[str, bool]:
+    return dict.fromkeys(SUFFICIENCY_FIELDS, False)
+
+
+def _build_report(
     *,
     pid: int,
     duration_seconds: float,
     interval_seconds: float,
+    run_id: str,
+    started_at: str,
+    finished_at: str,
+    records: list[dict[str, Any]],
     telemetry_path: Path,
-    samples_path: Path,
-    output_path: Path,
     watched_classes: tuple[str, ...],
-    monotonic: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    interruption_signal: str | None,
 ) -> dict[str, Any]:
-    _run_command(["/bin/ps", "-o", "rss=", "-p", str(pid)])
-    if not telemetry_path.is_file():
-        raise ValueError(f"host telemetry file does not exist: {telemetry_path}")
-    run_id = str(uuid.uuid4())
-    started_at = _utc_now()
-    started = monotonic()
-    midpoint_captured = False
-    records: list[dict[str, Any]] = []
-    samples_path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="vibescreen-memory-") as raw_temp:
-        footprint_path = Path(raw_temp) / "footprint.json"
-        with samples_path.open("w", encoding="utf-8") as output:
-            index = 0
-            while True:
-                elapsed = min(duration_seconds, max(0.0, monotonic() - started))
-                final = elapsed >= duration_seconds
-                midpoint = not midpoint_captured and elapsed >= duration_seconds / 2
-                if midpoint:
-                    midpoint_captured = True
-                record = _capture_sample(
-                    pid,
-                    index=index,
-                    elapsed_seconds=elapsed,
-                    footprint_path=footprint_path,
-                    capture_heap=index == 0 or midpoint or final,
-                    watched_classes=watched_classes,
-                )
-                record["elapsed_seconds"] = max(0.0, monotonic() - started)
-                record["run_id"] = run_id
-                records.append(record)
-                output.write(json.dumps(record, sort_keys=True, allow_nan=False) + "\n")
-                output.flush()
-                if any(error.startswith("rss:") for error in record["errors"]):
-                    break
-                if final:
-                    break
-                index += 1
-                target = min(duration_seconds, index * interval_seconds)
-                sleep(max(0.0, target - (monotonic() - started)))
-
-    finished_at = _utc_now()
-    analysis = analyze_records(
-        records,
-        _read_jsonl(telemetry_path),
-        started_at=started_at,
-        finished_at=finished_at,
-    )
+    try:
+        analysis = analyze_records(
+            records,
+            _read_jsonl(telemetry_path),
+            started_at=started_at,
+            finished_at=finished_at,
+        )
+    except Exception as error:
+        if interruption_signal is None:
+            raise
+        analysis = {
+            "verdict": "insufficient",
+            "attribution": "inconclusive",
+            "sufficiency": _incomplete_sufficiency(),
+            "metrics": {},
+            "telemetry": {},
+            "errors": [
+                "collection interrupted before partial analysis completed",
+                f"partial analysis failed with {type(error).__name__}",
+            ],
+            "reasons": ["required short-run samples or telemetry are incomplete"],
+        }
+    if interruption_signal is not None:
+        interruption_error = f"collection interrupted by {interruption_signal}"
+        analysis["sufficiency"]["collection_complete"] = False
+        analysis["verdict"] = "insufficient"
+        analysis["attribution"] = "inconclusive"
+        analysis["errors"].append(interruption_error)
+        analysis["reasons"].append(interruption_error)
     report = {
         "schema_version": SCHEMA_VERSION,
         "kind": DIAGNOSTIC_KIND,
-        "derivation_status": "complete",
+        "derivation_status": (
+            "complete" if interruption_signal is None else "partial"
+        ),
         "run_id": run_id,
         "host_pid": pid,
         "window": {
@@ -295,8 +379,105 @@ def collect(
         **analysis,
         "interpretation": INTERPRETATION,
     }
-    _write_json(output_path, report)
+    if interruption_signal is not None:
+        report["interruption_signal"] = interruption_signal
     return report
+
+
+def collect(
+    *,
+    pid: int,
+    duration_seconds: float,
+    interval_seconds: float,
+    telemetry_path: Path,
+    samples_path: Path,
+    output_path: Path,
+    watched_classes: tuple[str, ...],
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    _require_main_thread()
+    run_id = str(uuid.uuid4())
+    started_at = _utc_now()
+    started = monotonic()
+    midpoint_captured = False
+    records: list[dict[str, Any]] = []
+    finished_at: str | None = None
+    with _signals_as_interruption() as interruption:
+        try:
+            _run_command(["/bin/ps", "-o", "rss=", "-p", str(pid)])
+            if not telemetry_path.is_file():
+                raise ValueError(
+                    f"host telemetry file does not exist: {telemetry_path}"
+                )
+            samples_path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix="vibescreen-memory-") as raw_temp:
+                footprint_path = Path(raw_temp) / "footprint.json"
+                index = 0
+                while True:
+                    elapsed = min(duration_seconds, max(0.0, monotonic() - started))
+                    final = elapsed >= duration_seconds
+                    midpoint = (
+                        not midpoint_captured
+                        and elapsed >= duration_seconds / 2
+                    )
+                    if midpoint:
+                        midpoint_captured = True
+                    record = _capture_sample(
+                        pid,
+                        index=index,
+                        elapsed_seconds=elapsed,
+                        footprint_path=footprint_path,
+                        capture_heap=index == 0 or midpoint or final,
+                        watched_classes=watched_classes,
+                    )
+                    record["elapsed_seconds"] = max(0.0, monotonic() - started)
+                    record["run_id"] = run_id
+                    _commit_sample(samples_path, records, record)
+                    if any(error.startswith("rss:") for error in record["errors"]):
+                        break
+                    if final:
+                        break
+                    index += 1
+                    target = min(duration_seconds, index * interval_seconds)
+                    sleep(max(0.0, target - (monotonic() - started)))
+            finished_at = _utc_now()
+            report = _build_report(
+                pid=pid,
+                duration_seconds=duration_seconds,
+                interval_seconds=interval_seconds,
+                run_id=run_id,
+                started_at=started_at,
+                finished_at=finished_at,
+                records=records,
+                telemetry_path=telemetry_path,
+                watched_classes=watched_classes,
+                interruption_signal=None,
+            )
+            _write_json(output_path, report)
+            return report
+        except DiagnosticInterrupted as error:
+            interruption.record(error.signal_name)
+        except KeyboardInterrupt:
+            interruption.record("SIGINT")
+
+        if finished_at is None:
+            finished_at = _utc_now()
+        _write_samples(samples_path, records)
+        report = _build_report(
+            pid=pid,
+            duration_seconds=duration_seconds,
+            interval_seconds=interval_seconds,
+            run_id=run_id,
+            started_at=started_at,
+            finished_at=finished_at,
+            records=records,
+            telemetry_path=telemetry_path,
+            watched_classes=watched_classes,
+            interruption_signal=interruption.signal_name,
+        )
+        _write_json(output_path, report)
+        return report
 
 
 def build_parser() -> argparse.ArgumentParser:
