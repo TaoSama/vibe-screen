@@ -387,7 +387,12 @@ class MainActivity : AppCompatActivity() {
         if (enabled) {
             revealControlBar()
         } else if (binding.controlBar.visibility == View.VISIBLE) {
-            controlBarHandler.postDelayed(controlBarHideRunnable, CONTROL_BAR_AUTO_HIDE_MS)
+            ControlBarAccessibilityPolicy.autoHideDelayMs(
+                touchExplorationEnabled = false,
+                revealReason = ControlBarAccessibilityPolicy.RevealReason.USER_REQUEST,
+            )?.let { delayMs ->
+                controlBarHandler.postDelayed(controlBarHideRunnable, delayMs)
+            }
         }
     }
 
@@ -1647,7 +1652,7 @@ class MainActivity : AppCompatActivity() {
         // persistent floating button that occludes the video.
         binding.settingsButton.visibility = View.GONE
         updateOverlayVisibility(prefs.showStatsOverlay)
-        revealControlBar()
+        revealControlBar(ControlBarAccessibilityPolicy.RevealReason.SESSION_STARTED)
         connectionStatusAnnouncements.announceIfChanged(connectedStatus) { announcement ->
             binding.controlBar.announceForAccessibility(announcement)
         }
@@ -1722,7 +1727,10 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun revealControlBar() {
+    private fun revealControlBar(
+        revealReason: ControlBarAccessibilityPolicy.RevealReason =
+            ControlBarAccessibilityPolicy.RevealReason.USER_REQUEST,
+    ) {
         if (!isConnected) return
         binding.controlBar.visibility = View.VISIBLE
         ControlBarAccessibilityApplier.applyRevealAction(
@@ -1732,8 +1740,11 @@ class MainActivity : AppCompatActivity() {
         )
         binding.controlBar.animate().alpha(1f).setDuration(120).start()
         controlBarHandler.removeCallbacks(controlBarHideRunnable)
-        if (ControlBarAccessibilityPolicy.shouldAutoHide(accessibilityManager.isTouchExplorationEnabled)) {
-            controlBarHandler.postDelayed(controlBarHideRunnable, CONTROL_BAR_AUTO_HIDE_MS)
+        ControlBarAccessibilityPolicy.autoHideDelayMs(
+            touchExplorationEnabled = accessibilityManager.isTouchExplorationEnabled,
+            revealReason = revealReason,
+        )?.let { delayMs ->
+            controlBarHandler.postDelayed(controlBarHideRunnable, delayMs)
         }
     }
 
@@ -4733,8 +4744,6 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_FORWARDED_POINTERS = 2
         private const val LEGACY_RIGHT_CLICK_HOLD_MS = 650L
         private const val FOREGROUND_RECONNECT_DELAY_MS = 150L
-        private const val CONTROL_BAR_AUTO_HIDE_MS = 3_000L
-
         // Uniform breathing gap, in dp, added on top of the safe-area insets for
         // floating chrome (control bar, settings panel, settings button) and the
         // draggable overlay clamp. Matches the settings button's resting margin.

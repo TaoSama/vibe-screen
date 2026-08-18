@@ -248,6 +248,40 @@ class ControlBarAccessibilityPolicyTest {
     }
 
     @Test
+    fun `session-start reveal stays visible longer than a manual reveal`() {
+        assertEquals(
+            ControlBarAccessibilityPolicy.STANDARD_AUTO_HIDE_MS,
+            ControlBarAccessibilityPolicy.autoHideDelayMs(
+                touchExplorationEnabled = false,
+                revealReason = ControlBarAccessibilityPolicy.RevealReason.USER_REQUEST,
+            ),
+        )
+        assertEquals(
+            ControlBarAccessibilityPolicy.SESSION_STARTED_AUTO_HIDE_MS,
+            ControlBarAccessibilityPolicy.autoHideDelayMs(
+                touchExplorationEnabled = false,
+                revealReason = ControlBarAccessibilityPolicy.RevealReason.SESSION_STARTED,
+            ),
+        )
+        assertTrue(
+            ControlBarAccessibilityPolicy.SESSION_STARTED_AUTO_HIDE_MS >
+                ControlBarAccessibilityPolicy.STANDARD_AUTO_HIDE_MS,
+        )
+    }
+
+    @Test
+    fun `touch exploration disables every auto-hide delay`() {
+        ControlBarAccessibilityPolicy.RevealReason.entries.forEach { reason ->
+            assertNull(
+                ControlBarAccessibilityPolicy.autoHideDelayMs(
+                    touchExplorationEnabled = true,
+                    revealReason = reason,
+                ),
+            )
+        }
+    }
+
+    @Test
     fun `reveal action is exposed only for connected sessions with hidden controls`() {
         assertTrue(
             ControlBarAccessibilityPolicy.shouldExposeRevealAction(
