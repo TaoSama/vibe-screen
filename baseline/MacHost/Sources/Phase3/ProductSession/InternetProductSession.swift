@@ -21,6 +21,8 @@ struct FreshSessionRecoveryBudget {
 }
 
 final class InternetProductSession: EncodedFrameSink {
+    private static let terminalProtocolErrorDrainTimeoutMilliseconds = 500
+
     typealias EngineFactory = () -> WebRTCEnginePort
     typealias SecuritySessionFactory = (
         InternetProductSessionConfiguration
@@ -75,7 +77,11 @@ final class InternetProductSession: EncodedFrameSink {
         UInt64, UInt64, UInt32, Float, Float, VSInputPhase, Double, Double, Double,
         VSStylusToolKind, UInt32, VSStylusContactState
     ) -> Bool)?
-    var onAuthenticatedControllerEvent: ((UInt64, GameControllerInputEvent) -> Bool)?
+    var onAuthenticatedControllerEvent: ((
+        _ sessionEpoch: UInt64,
+        _ sessionGeneration: UInt64,
+        _ event: GameControllerInputEvent
+    ) -> Bool)?
     var onKeyframeRequired: (() -> Void)?
     var onFreshSessionRecoveryRequired: ((Int) -> Void)?
     var onAdaptiveProfileRequested: ((
@@ -114,6 +120,7 @@ final class InternetProductSession: EncodedFrameSink {
     private var sessionGeneration: UInt64 = 0
     private var heartbeatTimer: DispatchSourceTimer?
     private var negotiationTimer: DispatchSourceTimer?
+    private var terminalProtocolFailureGeneration: UInt64?
     private var nextHeartbeatSequence: UInt64 = 1
     private var lastPeerActivityNanoseconds: UInt64 = 0
     private var peerSupportsTouch = false
@@ -178,6 +185,7 @@ final class InternetProductSession: EncodedFrameSink {
     func close() {
         performSync {
             _ = advanceSessionGeneration()
+            terminalProtocolFailureGeneration = nil
             resetQueuedWork(generation: sessionGeneration, limits: nil)
             stopHeartbeat()
             stopNegotiationDeadline()
@@ -207,6 +215,7 @@ final class InternetProductSession: EncodedFrameSink {
                 )
             }
             _ = advanceSessionGeneration()
+            terminalProtocolFailureGeneration = nil
             resetQueuedWork(generation: sessionGeneration, limits: nil)
             stopHeartbeat()
             stopNegotiationDeadline()
@@ -473,6 +482,7 @@ final class InternetProductSession: EncodedFrameSink {
     private func startFreshSession(_ configuration: InternetProductSessionConfiguration) throws {
         stopHeartbeat()
         stopNegotiationDeadline()
+        terminalProtocolFailureGeneration = nil
         guard advanceSessionGeneration() else {
             throw InternetProductSessionError.securityFailure(
                 "Internet product session generation was exhausted."
@@ -616,6 +626,12 @@ final class InternetProductSession: EncodedFrameSink {
         generation: UInt64
     ) {
         guard generation == sessionGeneration else { return }
+        if terminalProtocolFailureGeneration == generation {
+            if case .failed(let reason) = transportState {
+                fail(.securityFailure(reason))
+            }
+            return
+        }
         switch transportState {
         case .idle: break
         case .connecting: setState(.connecting)
@@ -648,7 +664,9 @@ final class InternetProductSession: EncodedFrameSink {
     }
 
     private func handleControl(_ data: Data, generation: UInt64) {
-        guard generation == sessionGeneration, var codec else { return }
+        guard generation == sessionGeneration,
+              terminalProtocolFailureGeneration == nil,
+              var codec else { return }
         do {
             let allowHello = state == .authenticating
             let envelope = try codec.decodeControl(data, allowUnscopedHello: allowHello)
@@ -760,7 +778,13 @@ final class InternetProductSession: EncodedFrameSink {
 
             case .controllerEvent(let controller) where isStreaming
                 || (state == .awaitingVideoConfiguration && controller.kind == .disconnected):
-                try routeController(controller, sessionEpoch: codec.sessionEpoch, codec: &codec)
+                try routeController(
+                    controller,
+                    sessionEpoch: codec.sessionEpoch,
+                    requestMessageID: envelope.messageID,
+                    generation: generation,
+                    codec: &codec
+                )
 
             case .disconnectNotice:
                 self.codec = codec
@@ -902,6 +926,8 @@ final class InternetProductSession: EncodedFrameSink {
     private func routeController(
         _ controller: VSControllerEvent,
         sessionEpoch: UInt64,
+        requestMessageID: UInt64,
+        generation: UInt64,
         codec: inout InternetProductProtocolCodec
     ) throws {
         guard peerSupportsController else {
@@ -922,15 +948,44 @@ final class InternetProductSession: EncodedFrameSink {
             // synchronously close the session; handleControl must never restore
             // this retired codec after that reentrant close.
             self.codec = codec
-            guard onAuthenticatedControllerEvent?(sessionEpoch, event) == true else {
-                throw InternetProductProtocolError.invalidController
+            guard generation == sessionGeneration else { return }
+            let nativeAccepted = onAuthenticatedControllerEvent?(
+                sessionEpoch,
+                generation,
+                event
+            ) == true
+            guard generation == sessionGeneration, var activeCodec = self.codec else { return }
+            guard nativeAccepted else {
+                let failure = InternetProductSessionError.protocolFailure(.invalidController)
+                let errorPayload = try activeCodec.protocolError(
+                    code: .invalidState,
+                    message: "Controller injection failed: native controller handler was unavailable or rejected the event.",
+                    correlationID: requestMessageID
+                )
+                self.codec = activeCodec
+                beginTerminalProtocolFailure(
+                    errorPayload,
+                    failure: failure,
+                    generation: generation
+                )
+                return
+            }
+            if event.kind == .connected {
+                let acknowledgement = try activeCodec.inputAck(
+                    inputID: event.inputID,
+                    accepted: true,
+                    correlationID: requestMessageID
+                )
+                self.codec = activeCodec
+                try sendControl(acknowledgement)
             }
 
         case .rejected(let inputID, let reason):
             let acknowledgement = try codec.inputAck(
                 inputID: inputID,
                 accepted: false,
-                rejectionReason: reason
+                rejectionReason: reason,
+                correlationID: requestMessageID
             )
             self.codec = codec
             try sendControl(acknowledgement)
@@ -1061,6 +1116,70 @@ final class InternetProductSession: EncodedFrameSink {
         }
     }
 
+    private func beginTerminalProtocolFailure(
+        _ payload: Data,
+        failure: InternetProductSessionError,
+        generation: UInt64
+    ) {
+        guard generation == sessionGeneration, let terminalTransport = transport else {
+            fail(failure)
+            return
+        }
+        stopHeartbeat()
+        stopNegotiationDeadline()
+        terminalProtocolFailureGeneration = generation
+        resetQueuedWork(generation: generation, limits: nil)
+
+        let sendResult = terminalTransport.sendControl(payload) {
+            [weak self, weak terminalTransport] result in
+            guard let self, let terminalTransport else { return }
+            self.queue.async {
+                self.finishTerminalProtocolFailure(
+                    result.mapError(InternetProductSessionError.transportFailure),
+                    fallbackFailure: failure,
+                    generation: generation,
+                    transport: terminalTransport
+                )
+            }
+        }
+        if case .failure(let error) = sendResult {
+            terminalProtocolFailureGeneration = nil
+            fail(.transportFailure(error))
+            return
+        }
+        queue.asyncAfter(
+            deadline: .now() + .milliseconds(
+                Self.terminalProtocolErrorDrainTimeoutMilliseconds
+            )
+        ) { [weak self, weak terminalTransport] in
+            guard let self, let terminalTransport else { return }
+            self.finishTerminalProtocolFailure(
+                .success(()),
+                fallbackFailure: failure,
+                generation: generation,
+                transport: terminalTransport
+            )
+        }
+    }
+
+    private func finishTerminalProtocolFailure(
+        _ sendResult: Result<Void, InternetProductSessionError>,
+        fallbackFailure: InternetProductSessionError,
+        generation: UInt64,
+        transport terminalTransport: WebRTCInternetTransport
+    ) {
+        guard terminalProtocolFailureGeneration == generation,
+              sessionGeneration == generation,
+              transport === terminalTransport else { return }
+        terminalProtocolFailureGeneration = nil
+        switch sendResult {
+        case .success:
+            fail(fallbackFailure)
+        case .failure(let error):
+            fail(error)
+        }
+    }
+
     private func startHeartbeat() {
         stopHeartbeat()
         guard let configuration else { return }
@@ -1098,7 +1217,8 @@ final class InternetProductSession: EncodedFrameSink {
     }
 
     private func beginFreshSessionRecovery(attempt: Int, generation: UInt64) {
-        guard generation == sessionGeneration else { return }
+        guard generation == sessionGeneration,
+              terminalProtocolFailureGeneration == nil else { return }
         guard attempt > 0,
               let sessionAttempt = freshSessionRecoveryBudget.nextAttempt() else {
             fail(.securityFailure(
@@ -1318,6 +1438,7 @@ final class InternetProductSession: EncodedFrameSink {
         if case .failed = state { return }
         stopHeartbeat()
         stopNegotiationDeadline()
+        terminalProtocolFailureGeneration = nil
         _ = advanceSessionGeneration()
         resetQueuedWork(generation: sessionGeneration, limits: nil)
         let failedTransport = transport
@@ -1348,7 +1469,8 @@ final class InternetProductSession: EncodedFrameSink {
     }
 
     private var isStreaming: Bool {
-        if case .streaming = state { return true }
+        if terminalProtocolFailureGeneration == nil,
+           case .streaming = state { return true }
         return false
     }
 

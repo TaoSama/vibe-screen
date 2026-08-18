@@ -83,7 +83,7 @@ enum ProtocolV1SessionAction {
     case pointer(x: Float, y: Float, phase: VSInputPhase, buttonMask: UInt32)
     case scroll(deltaX: Double, deltaY: Double)
     case key(usage: UInt32, pressed: Bool, modifiers: UInt32, text: String)
-    case controller(GameControllerInputEvent)
+    case controller(event: GameControllerInputEvent, correlationID: UInt64)
     case heartbeat
     case requestKeyframe(force: Bool)
     case selectDisplay(id: String)
@@ -105,6 +105,12 @@ enum ProtocolV1SessionAction {
 }
 
 final class ProtocolV1SessionCoordinator {
+    private struct PendingControllerConnection {
+        let controllerID: String
+        let controllerEpoch: UInt64
+        let correlationID: UInt64
+    }
+
     private(set) var phase: ProtocolV1SessionPhase = .awaitingClientHello
     private(set) var selectedCodec: VSCodec = .unspecified
     private(set) var lastReceivedMessageID: UInt64 = 0
@@ -115,6 +121,7 @@ final class ProtocolV1SessionCoordinator {
     private var negotiatedCapabilities: Set<VSCapability> = []
     private var stylusSequenceState = StylusSequenceState()
     private var controllerSequenceState = GameControllerStateMachine()
+    private var pendingControllerConnections: [UInt64: PendingControllerConnection] = [:]
     private var advertisedVideoRotation = 0
     private let lock = NSLock()
     /// Identifies the newest in-flight client video-preferences request. The
@@ -248,6 +255,35 @@ final class ProtocolV1SessionCoordinator {
             result.accepted = accepted
             result.rejectionReason = accepted ? "" : rejectionReason
             return sendActions(payload: .hostActionResult(result), correlationID: requestMessageID)
+        }
+    }
+
+    /// Completes one native controller CONNECTED delivery. The pending entry
+    /// owns the request correlation so callers cannot acknowledge a different
+    /// lifecycle, and removal before encoding makes duplicate completions a
+    /// safe no-op. The table is bounded by the four admitted controller slots.
+    func completeControllerConnection(
+        _ event: GameControllerInputEvent
+    ) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard event.kind == .connected,
+                  let pending = pendingControllerConnections[event.inputID],
+                  pending.controllerID == event.controllerID,
+                  pending.controllerEpoch == event.controllerEpoch else { return [] }
+            pendingControllerConnections.removeValue(forKey: event.inputID)
+            switch phase {
+            case .streaming, .awaitingVideoConfig:
+                break
+            default:
+                return []
+            }
+            var acknowledgement = VSInputAck()
+            acknowledgement.inputID = event.inputID
+            acknowledgement.accepted = true
+            return sendActions(
+                payload: .inputAck(acknowledgement),
+                correlationID: pending.correlationID
+            )
         }
     }
 
@@ -649,6 +685,16 @@ final class ProtocolV1SessionCoordinator {
                   let event = GameControllerInputEvent(wireEvent: controller) else {
                 return invalidState("ControllerEvent is invalid or media is not ready.", envelope.messageID)
             }
+            if event.kind != .connected,
+               pendingControllerConnections.values.contains(where: { pending in
+                   pending.controllerID == event.controllerID
+                       && pending.controllerEpoch == event.controllerEpoch
+               }) {
+                return invalidState(
+                    "Controller STATE or DISCONNECTED arrived before CONNECTED was acknowledged.",
+                    envelope.messageID
+                )
+            }
             // The state machine owns lifecycle admission and the monotonic
             // controller input_id. A fifth concurrent CONNECTED is the only
             // soft rejection; it consumes input_id while preserving all four
@@ -661,7 +707,22 @@ final class ProtocolV1SessionCoordinator {
             }
             switch admission {
             case .accepted:
-                return [.controller(event)]
+                if event.kind == .connected {
+                    guard pendingControllerConnections.count
+                            < GameControllerContract.maximumActiveControllers,
+                          pendingControllerConnections[event.inputID] == nil else {
+                        return invalidState(
+                            "Controller CONNECTED acknowledgement state is inconsistent.",
+                            envelope.messageID
+                        )
+                    }
+                    pendingControllerConnections[event.inputID] = PendingControllerConnection(
+                        controllerID: event.controllerID,
+                        controllerEpoch: event.controllerEpoch,
+                        correlationID: envelope.messageID
+                    )
+                }
+                return [.controller(event: event, correlationID: envelope.messageID)]
             case .rejectedMaximumActiveControllers:
                 var ack = VSInputAck()
                 ack.inputID = event.inputID
@@ -762,14 +823,14 @@ final class ProtocolV1SessionCoordinator {
         case .protocolError(let error):
             phase = .failed
             _ = stylusSequenceState.consumeReset()
-            controllerSequenceState.reset()
+            resetControllerState()
             pendingHostActionInvocations.removeAll()
             return [.peerError(error), .close]
 
         case .disconnectNotice:
             phase = .closed
             _ = stylusSequenceState.consumeReset()
-            controllerSequenceState.reset()
+            resetControllerState()
             pendingHostActionInvocations.removeAll()
             return [.close]
 
@@ -807,9 +868,16 @@ final class ProtocolV1SessionCoordinator {
         }
     }
 
-    func rejectControllerInjection(_ message: String) -> [ProtocolV1SessionAction] {
+    func rejectControllerInjection(
+        _ message: String,
+        correlationID: UInt64
+    ) -> [ProtocolV1SessionAction] {
         withSessionLock {
-            fail(code: .invalidState, message: message, correlationID: 0)
+            fail(
+                code: .invalidState,
+                message: message,
+                correlationID: correlationID
+            )
         }
     }
 
@@ -1133,7 +1201,7 @@ final class ProtocolV1SessionCoordinator {
         let sessionScoped = phase != .awaitingClientHello
         phase = .failed
         _ = stylusSequenceState.consumeReset()
-        controllerSequenceState.reset()
+        resetControllerState()
         pendingHostActionInvocations.removeAll()
         do {
             return [
@@ -1168,8 +1236,13 @@ final class ProtocolV1SessionCoordinator {
     private func serializationFailure() -> [ProtocolV1SessionAction] {
         phase = .failed
         _ = stylusSequenceState.consumeReset()
-        controllerSequenceState.reset()
+        resetControllerState()
         return [.close]
+    }
+
+    private func resetControllerState() {
+        controllerSequenceState.reset()
+        pendingControllerConnections.removeAll()
     }
 
     private func withSessionLock<T>(_ operation: () throws -> T) rethrows -> T {

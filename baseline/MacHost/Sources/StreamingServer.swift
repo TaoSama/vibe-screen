@@ -1120,7 +1120,11 @@ class StreamingServer: EncodedFrameSink {
     /// The Protocol v1 state machine accepted this controller event, but the
     /// native HID boundary could not apply it. Fail closed on the originating
     /// connection so the peer never assumes input is still being delivered.
-    func failProtocolV1ControllerInput(generation: UInt64, reason: String) {
+    func failProtocolV1ControllerInput(
+        generation: UInt64,
+        correlationID: UInt64,
+        reason: String
+    ) {
         networkQueue.async { [weak self] in
             guard let self, !self.isStopped,
                   self.activeConnectionGeneration == generation,
@@ -1129,9 +1133,33 @@ class StreamingServer: EncodedFrameSink {
                   let conn = self.connection else { return }
             self.applyProtocolV1Actions(
                 session.rejectControllerInjection(
-                    "Controller injection failed: \(reason)"
+                    "Controller injection failed: \(reason)",
+                    correlationID: correlationID
                 ),
                 connection: conn,
+                generation: generation
+            )
+        }
+    }
+
+    private func completeProtocolV1ControllerConnection(
+        _ event: GameControllerInputEvent,
+        session expectedSession: ProtocolV1SessionCoordinator,
+        connection expectedConnection: NWConnection,
+        generation: UInt64
+    ) {
+        networkQueue.async { [weak self, weak expectedConnection] in
+            guard let self, let expectedConnection, !self.isStopped,
+                  self.connection === expectedConnection,
+                  self.activeConnectionGeneration == generation,
+                  self.clientCallbackGeneration.isCurrent(generation),
+                  self.connectionProtocolMode == .protocolV1,
+                  self.protocolV1Session === expectedSession else { return }
+            let actions = expectedSession.completeControllerConnection(event)
+            guard !actions.isEmpty else { return }
+            self.applyProtocolV1Actions(
+                actions,
+                connection: expectedConnection,
                 generation: generation
             )
         }
@@ -1606,9 +1634,11 @@ class StreamingServer: EncodedFrameSink {
                           self.clientCallbackGeneration.isCurrent(generation) else { return }
                     self.onKeyEvent?(usage, pressed, modifiers, text, generation)
                 }
-            case .controller(let event):
-                DispatchQueue.main.async { [weak self] in
+            case .controller(let event, let correlationID):
+                guard let session = protocolV1Session else { break }
+                DispatchQueue.main.async { [weak self, weak conn] in
                     guard let self,
+                          let conn,
                           self.clientCallbackGeneration.isCurrent(generation) else { return }
                     guard GameControllerEventDelivery.deliver(
                         event,
@@ -1621,9 +1651,18 @@ class StreamingServer: EncodedFrameSink {
                         self.clientCallbackGeneration.invalidateIfCurrent(generation)
                         self.failProtocolV1ControllerInput(
                             generation: generation,
+                            correlationID: correlationID,
                             reason: "native controller handler was unavailable or rejected the event"
                         )
                         return
+                    }
+                    if event.kind == .connected {
+                        self.completeProtocolV1ControllerConnection(
+                            event,
+                            session: session,
+                            connection: conn,
+                            generation: generation
+                        )
                     }
                 }
             case .heartbeat:

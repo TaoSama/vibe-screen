@@ -346,6 +346,171 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertEqual(transport.snapshot().bufferedControlBytes, 0)
     }
 
+    func testControlCompletionReportsSuccessfulEngineDelivery() throws {
+        let engine = FakeWebRTCEngine()
+        let transport = connectedTransport(engine: engine)
+        let completion = LockedTransportResult()
+
+        XCTAssertSuccess(transport.sendControl(Data([1])) { result in
+            completion.store(result)
+        })
+        XCTAssertNil(completion.load())
+
+        engine.completeSend(at: 0)
+
+        guard case .success? = completion.load() else {
+            return XCTFail("Successful engine delivery must complete the control send")
+        }
+    }
+
+    func testControlCompletionReportsEngineSendFailure() throws {
+        let engine = FakeWebRTCEngine()
+        let transport = connectedTransport(engine: engine)
+        let failedCompletion = LockedTransportResult()
+        let queuedCompletion = LockedTransportResult()
+
+        XCTAssertSuccess(transport.sendControl(Data([1])) { result in
+            failedCompletion.store(result)
+        })
+        XCTAssertSuccess(transport.sendControl(Data([2])) { result in
+            queuedCompletion.store(result)
+        })
+        engine.completeSend(at: 0, result: .failure(TestError.sendFailed))
+
+        guard case .failure(let error)? = failedCompletion.load() else {
+            return XCTFail("Failed engine delivery must complete the control send")
+        }
+        guard case .engineSendFailed = error else {
+            return XCTFail("Expected engineSendFailed, got \(error)")
+        }
+        XCTAssertFailure(try XCTUnwrap(queuedCompletion.load()), expected: .notConnected)
+        XCTAssertEqual(failedCompletion.invocationCount, 1)
+        XCTAssertEqual(queuedCompletion.invocationCount, 1)
+        guard case .failed = transport.snapshot().state else {
+            return XCTFail("A failed control completion must fail the transport")
+        }
+    }
+
+    func testPipelineInvalidationCompletesInFlightAndQueuedControlExactlyOnce() throws {
+        let engine = FakeWebRTCEngine()
+        let transport = connectedTransport(engine: engine)
+        let inFlightCompletion = LockedTransportResult()
+        let queuedCompletion = LockedTransportResult()
+
+        XCTAssertSuccess(transport.sendControl(Data([1])) { result in
+            inFlightCompletion.store(result)
+        })
+        XCTAssertSuccess(transport.sendControl(Data([2])) { result in
+            queuedCompletion.store(result)
+        })
+
+        engine.emitPath(InternetNetworkPath(
+            interface: .wifi,
+            isSatisfied: true,
+            fingerprint: "wifi-a"
+        ))
+        engine.emitPath(InternetNetworkPath(
+            interface: .cellular,
+            isSatisfied: true,
+            fingerprint: "cellular-b"
+        ))
+
+        XCTAssertFailure(try XCTUnwrap(inFlightCompletion.load()), expected: .notConnected)
+        XCTAssertFailure(try XCTUnwrap(queuedCompletion.load()), expected: .notConnected)
+        XCTAssertEqual(inFlightCompletion.invocationCount, 1)
+        XCTAssertEqual(queuedCompletion.invocationCount, 1)
+
+        engine.completeSend(at: 0)
+
+        XCTAssertEqual(inFlightCompletion.invocationCount, 1)
+        XCTAssertEqual(queuedCompletion.invocationCount, 1)
+        XCTAssertEqual(engine.sentPayloads.map(\.payload), [Data([1])])
+        XCTAssertEqual(transport.snapshot().bufferedControlBytes, 0)
+    }
+
+    func testCloseCompletesInFlightAndQueuedControlExactlyOnce() throws {
+        let engine = FakeWebRTCEngine()
+        let transport = connectedTransport(engine: engine)
+        let inFlightCompletion = LockedTransportResult()
+        let queuedCompletion = LockedTransportResult()
+
+        XCTAssertSuccess(transport.sendControl(Data([1])) { result in
+            inFlightCompletion.store(result)
+        })
+        XCTAssertSuccess(transport.sendControl(Data([2])) { result in
+            queuedCompletion.store(result)
+        })
+
+        transport.close()
+
+        XCTAssertFailure(try XCTUnwrap(inFlightCompletion.load()), expected: .notConnected)
+        XCTAssertFailure(try XCTUnwrap(queuedCompletion.load()), expected: .notConnected)
+        XCTAssertEqual(inFlightCompletion.invocationCount, 1)
+        XCTAssertEqual(queuedCompletion.invocationCount, 1)
+
+        engine.completeSend(at: 0)
+
+        XCTAssertEqual(inFlightCompletion.invocationCount, 1)
+        XCTAssertEqual(queuedCompletion.invocationCount, 1)
+        XCTAssertEqual(transport.snapshot().state, .closed)
+    }
+
+    func testDeinitCompletesInFlightAndQueuedControlExactlyOnce() throws {
+        let engine = FakeWebRTCEngine()
+        var transport: WebRTCInternetTransport? = connectedTransport(engine: engine)
+        weak var weakTransport = transport
+        let inFlightCompletion = LockedTransportResult()
+        let queuedCompletion = LockedTransportResult()
+
+        XCTAssertSuccess(try XCTUnwrap(transport).sendControl(Data([1])) { result in
+            inFlightCompletion.store(result)
+        })
+        XCTAssertSuccess(try XCTUnwrap(transport).sendControl(Data([2])) { result in
+            queuedCompletion.store(result)
+        })
+
+        transport = nil
+
+        XCTAssertNil(weakTransport)
+        XCTAssertFailure(try XCTUnwrap(inFlightCompletion.load()), expected: .notConnected)
+        XCTAssertFailure(try XCTUnwrap(queuedCompletion.load()), expected: .notConnected)
+        XCTAssertEqual(inFlightCompletion.invocationCount, 1)
+        XCTAssertEqual(queuedCompletion.invocationCount, 1)
+
+        engine.completeSend(at: 0)
+
+        XCTAssertEqual(inFlightCompletion.invocationCount, 1)
+        XCTAssertEqual(queuedCompletion.invocationCount, 1)
+        XCTAssertEqual(engine.sentPayloads.map(\.payload), [Data([1])])
+        XCTAssertEqual(engine.closeCount, 1)
+    }
+
+    func testControlCompletionCanCloseReentrantlyAndCancelQueueExactlyOnce() throws {
+        let engine = FakeWebRTCEngine()
+        let transport = connectedTransport(engine: engine)
+        let deliveredCompletion = LockedTransportResult()
+        let queuedCompletion = LockedTransportResult()
+
+        XCTAssertSuccess(transport.sendControl(Data([1])) { result in
+            deliveredCompletion.store(result)
+            transport.close()
+        })
+        XCTAssertSuccess(transport.sendControl(Data([2])) { result in
+            queuedCompletion.store(result)
+        })
+
+        engine.completeSend(at: 0)
+
+        guard case .success? = deliveredCompletion.load() else {
+            return XCTFail("The delivered control message must complete successfully")
+        }
+        XCTAssertFailure(try XCTUnwrap(queuedCompletion.load()), expected: .notConnected)
+        XCTAssertEqual(deliveredCompletion.invocationCount, 1)
+        XCTAssertEqual(queuedCompletion.invocationCount, 1)
+        XCTAssertEqual(engine.sentPayloads.map(\.payload), [Data([1])])
+        XCTAssertEqual(transport.snapshot().state, .closed)
+    }
+
     func testControlBacklogIsBounded() {
         let engine = FakeWebRTCEngine()
         let limits = InternetTransportLimits(
@@ -597,6 +762,22 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertEqual(engine.closeCount, 1)
     }
 
+    func testRemoteClosedStateClosesEngineExactlyOnce() throws {
+        let engine = FakeWebRTCEngine()
+        let transport = connectedTransport(engine: engine)
+        var states: [InternetTransportState] = []
+        transport.onStateChanged = { states.append($0) }
+
+        engine.emitConnection(.closed)
+        XCTAssertEqual(engine.closeCount, 1)
+        transport.close()
+        transport.close()
+
+        XCTAssertEqual(states, [.closed])
+        XCTAssertEqual(transport.snapshot().state, .closed)
+        XCTAssertEqual(engine.closeCount, 1)
+    }
+
     func testMediaAccountingOverflowFailsAndClearsEntireMediaPipeline() throws {
         let engine = FakeWebRTCEngine()
         let transport = WebRTCInternetTransport(
@@ -618,6 +799,34 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertFalse(transport.snapshot().mediaInFlight)
         XCTAssertFalse(transport.snapshot().hasPendingMediaFrame)
         XCTAssertEqual(transport.snapshot().relayBytesReserved, 0)
+        XCTAssertTrue(engine.didClose)
+    }
+
+    func testControlAccountingOverflowCompletesExactlyOnceAndFailsClosed() throws {
+        let engine = FakeWebRTCEngine()
+        let transport = WebRTCInternetTransport(
+            engine: engine,
+            packetCipher: engine.localCipher,
+            initialControlBytesSent: UInt64.max
+        )
+        try transport.start(configuration: validConfiguration())
+        engine.emitConnection(.connected(path: .direct))
+        let completion = LockedTransportResult()
+
+        XCTAssertSuccess(transport.sendControl(Data([1])) { result in
+            completion.store(result)
+        })
+        engine.completeSend(at: 0)
+
+        XCTAssertFailure(
+            try XCTUnwrap(completion.load()),
+            expected: .sequenceExhausted("transport byte accounting")
+        )
+        XCTAssertEqual(completion.invocationCount, 1)
+        guard case .failed(let reason) = transport.snapshot().state else {
+            return XCTFail("Control byte accounting overflow must fail the transport")
+        }
+        XCTAssertTrue(reason.contains("transport byte accounting"))
         XCTAssertTrue(engine.didClose)
     }
 
@@ -841,6 +1050,7 @@ final class WebRTCInternetTransportTests: XCTestCase {
         XCTAssertEqual(transport.snapshot().state, .closed)
         XCTAssertEqual(states, [.closed])
         XCTAssertNil(reportedError)
+        XCTAssertEqual(engine.closeCount, 1)
     }
 
     func testInitialControlSendRechecksGenerationAfterCloseBeforeEngineSend() {
@@ -2285,9 +2495,11 @@ final class WebRTCInternetTransportTests: XCTestCase {
 private final class LockedTransportResult: @unchecked Sendable {
     private let lock = NSLock()
     private var result: Result<Void, InternetTransportError>?
+    private var storedInvocationCount = 0
 
     func store(_ result: Result<Void, InternetTransportError>) {
         lock.lock()
+        storedInvocationCount += 1
         self.result = result
         lock.unlock()
     }
@@ -2296,6 +2508,12 @@ private final class LockedTransportResult: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return result
+    }
+
+    var invocationCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedInvocationCount
     }
 }
 

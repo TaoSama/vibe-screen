@@ -350,7 +350,7 @@ final class InternetProductSessionTests: XCTestCase {
         let routed = expectation(description: "controllers routed")
         routed.expectedFulfillmentCount = 7
         let routedEvents = TestLockedArray<GameControllerInputEvent>()
-        harness.session.onAuthenticatedControllerEvent = { epoch, event in
+        harness.session.onAuthenticatedControllerEvent = { epoch, _, event in
             XCTAssertEqual(epoch, 1)
             routedEvents.append(event)
             routed.fulfill()
@@ -376,6 +376,15 @@ final class InternetProductSessionTests: XCTestCase {
                 controllerID: "pad-\(index + 1)",
                 kind: .connected
             ))
+            XCTAssertTrue(harness.waitForInputAck(inputID: UInt64(index + 1)))
+            let acceptedEnvelope = try XCTUnwrap(
+                harness.sentInputAckEnvelope(inputID: UInt64(index + 1))
+            )
+            XCTAssertTrue(acceptedEnvelope.inputAck.accepted)
+            XCTAssertTrue(acceptedEnvelope.inputAck.rejectionReason.isEmpty)
+            XCTAssertEqual(acceptedEnvelope.correlationID, UInt64(index + 3))
+            XCTAssertEqual(acceptedEnvelope.sessionID, Data("product-session".utf8))
+            XCTAssertEqual(acceptedEnvelope.sessionEpoch, 1)
         }
         harness.receiveControl(harness.controller(
             messageID: 7,
@@ -390,6 +399,13 @@ final class InternetProductSessionTests: XCTestCase {
             acknowledgement.rejectionReason,
             "maximum_active_controllers_exceeded"
         )
+        XCTAssertEqual(
+            try XCTUnwrap(harness.sentInputAckEnvelope(inputID: 5)).correlationID,
+            7
+        )
+        let rejectedEnvelope = try XCTUnwrap(harness.sentInputAckEnvelope(inputID: 5))
+        XCTAssertEqual(rejectedEnvelope.sessionID, Data("product-session".utf8))
+        XCTAssertEqual(rejectedEnvelope.sessionEpoch, 1)
         XCTAssertEqual(harness.session.snapshotState(), .streaming(.direct))
 
         harness.receiveControl(harness.controller(
@@ -413,6 +429,11 @@ final class InternetProductSessionTests: XCTestCase {
             kind: .connected
         ))
         wait(for: [routed], timeout: 1)
+        XCTAssertNil(harness.sentInputAck(inputID: 6))
+        XCTAssertNil(harness.sentInputAck(inputID: 7))
+        for inputID in UInt64(1)...4 {
+            XCTAssertEqual(harness.sentInputAckCount(inputID: inputID), 1)
+        }
 
         let events = routedEvents.snapshot()
         XCTAssertEqual(events.count, 7)
@@ -424,7 +445,7 @@ final class InternetProductSessionTests: XCTestCase {
 
     func testInternetControllerInjectionFailureClosesSession() throws {
         let harness = try Harness(controllerAvailable: true)
-        harness.session.onAuthenticatedControllerEvent = { _, _ in false }
+        harness.session.onAuthenticatedControllerEvent = { _, _, _ in false }
         try harness.session.start(configuration: harness.configuration)
         harness.engine.emitConnection(.connected(path: .direct))
         harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
@@ -436,8 +457,256 @@ final class InternetProductSessionTests: XCTestCase {
             kind: .connected
         ))
 
+        XCTAssertTrue(harness.waitForProtocolError())
+        let errorEnvelope = try XCTUnwrap(harness.sentProtocolErrorEnvelope())
+        XCTAssertEqual(errorEnvelope.protocolError.code, .invalidState)
+        XCTAssertTrue(errorEnvelope.protocolError.message.contains("Controller injection failed"))
+        XCTAssertFalse(errorEnvelope.protocolError.retryable)
+        XCTAssertEqual(errorEnvelope.protocolError.component, "macos-host-internet-session")
+        XCTAssertEqual(errorEnvelope.correlationID, 3)
+        XCTAssertEqual(errorEnvelope.sessionID, Data("product-session".utf8))
+        XCTAssertEqual(errorEnvelope.sessionEpoch, 1)
         XCTAssertTrue(harness.waitForFailure())
         XCTAssertTrue(harness.engine.didClose)
+        XCTAssertNil(harness.sentInputAck(inputID: 1))
+    }
+
+    func testInternetControllerInjectionFailureDrainsProtocolErrorBeforeClose() throws {
+        let harness = try Harness(controllerAvailable: true)
+        harness.session.onAuthenticatedControllerEvent = { _, _, _ in false }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        harness.engine.deferNextControlSendCompletion()
+
+        harness.receiveControl(harness.controller(
+            messageID: 3,
+            inputID: 1,
+            controllerID: "pad-1",
+            kind: .connected
+        ))
+
+        XCTAssertFalse(harness.waitForProtocolError(timeout: 0.05))
+        XCTAssertFalse(harness.engine.didClose)
+        XCTAssertNil(harness.sentInputAck(inputID: 1))
+        harness.engine.completeDeferredControlSend(succeeded: true)
+        XCTAssertTrue(harness.waitForProtocolError())
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
+    }
+
+    func testInternetControllerProtocolErrorSendFailureStillClosesSession() throws {
+        let harness = try Harness(controllerAvailable: true)
+        harness.session.onAuthenticatedControllerEvent = { _, _, _ in false }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        harness.engine.failNextControlSend()
+
+        harness.receiveControl(harness.controller(
+            messageID: 3,
+            inputID: 1,
+            controllerID: "pad-1",
+            kind: .connected
+        ))
+
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertNil(harness.sentProtocolErrorEnvelope())
+        XCTAssertNil(harness.sentInputAck(inputID: 1))
+    }
+
+    func testInternetControllerProtocolErrorAdmissionFailureStillClosesSession() throws {
+        let harness = try Harness(controllerAvailable: true)
+        harness.session.onAuthenticatedControllerEvent = { _, _, _ in
+            harness.engine.emitConnection(.closed)
+            return false
+        }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+
+        harness.receiveControl(harness.controller(
+            messageID: 3,
+            inputID: 1,
+            controllerID: "pad-1",
+            kind: .connected
+        ))
+
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertNil(harness.sentProtocolErrorEnvelope())
+        XCTAssertNil(harness.sentInputAck(inputID: 1))
+    }
+
+    func testInternetControllerProtocolErrorDeferredSendFailureStillClosesSession() throws {
+        let harness = try Harness(controllerAvailable: true)
+        harness.session.onAuthenticatedControllerEvent = { _, _, _ in false }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        harness.engine.deferNextControlSendCompletion()
+
+        harness.receiveControl(harness.controller(
+            messageID: 3,
+            inputID: 1,
+            controllerID: "pad-1",
+            kind: .connected
+        ))
+
+        XCTAssertTrue(harness.waitForDeferredControlSend())
+        XCTAssertFalse(harness.waitForFailure(timeout: 0.05))
+        XCTAssertFalse(harness.engine.didClose)
+        harness.engine.completeDeferredControlSend(succeeded: false)
+        XCTAssertTrue(harness.waitForFailure(timeout: 2))
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertNil(harness.sentProtocolErrorEnvelope())
+        XCTAssertNil(harness.sentInputAck(inputID: 1))
+    }
+
+    func testInternetControllerProtocolErrorDrainTimeoutFailsClosed() throws {
+        let harness = try Harness(controllerAvailable: true)
+        harness.session.onAuthenticatedControllerEvent = { _, _, _ in false }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        harness.engine.deferNextControlSendCompletion()
+
+        harness.receiveControl(harness.controller(
+            messageID: 3,
+            inputID: 1,
+            controllerID: "pad-1",
+            kind: .connected
+        ))
+
+        XCTAssertTrue(harness.waitForDeferredControlSend())
+        XCTAssertTrue(harness.waitForFailure(timeout: 2))
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertNil(harness.sentProtocolErrorEnvelope())
+        XCTAssertNil(harness.sentInputAck(inputID: 1))
+    }
+
+    func testInternetControllerProtocolErrorDrainRejectsFreshSessionRecovery() throws {
+        let harness = try Harness(controllerAvailable: true)
+        let recoveryRequests = TestLockedArray<Int>()
+        harness.session.onFreshSessionRecoveryRequired = { recoveryRequests.append($0) }
+        harness.session.onAuthenticatedControllerEvent = { _, _, _ in false }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        harness.engine.deferNextControlSendCompletion()
+
+        harness.receiveControl(harness.controller(
+            messageID: 3,
+            inputID: 1,
+            controllerID: "pad-1",
+            kind: .connected
+        ))
+        XCTAssertTrue(harness.waitForDeferredControlSend())
+        harness.engine.emitPath(.init(
+            interface: .wifi,
+            isSatisfied: true,
+            fingerprint: "controller-drain-wifi"
+        ))
+        harness.engine.emitPath(.init(
+            interface: .wiredEthernet,
+            isSatisfied: true,
+            fingerprint: "controller-drain-ethernet"
+        ))
+
+        XCTAssertTrue(harness.waitForFailure(timeout: 2))
+        XCTAssertTrue(recoveryRequests.snapshot().isEmpty)
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertNil(harness.sentInputAck(inputID: 1))
+    }
+
+    func testInternetControllerProtocolErrorDrainIgnoresRemoteCloseUntilFailure() throws {
+        let harness = try Harness(controllerAvailable: true)
+        harness.session.onAuthenticatedControllerEvent = { _, _, _ in false }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+        harness.engine.deferNextControlSendCompletion()
+
+        harness.receiveControl(harness.controller(
+            messageID: 3,
+            inputID: 1,
+            controllerID: "pad-1",
+            kind: .connected
+        ))
+        XCTAssertTrue(harness.waitForDeferredControlSend())
+        harness.engine.emitConnection(.closed)
+
+        XCTAssertTrue(harness.waitForFailure())
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertNil(harness.sentInputAck(inputID: 1))
+    }
+
+    func testInternetControllerReentrantCloseDoesNotSendAcceptedAck() throws {
+        let harness = try Harness(controllerAvailable: true)
+        harness.session.onAuthenticatedControllerEvent = { _, _, _ in
+            harness.session.close()
+            return true
+        }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+
+        harness.receiveControl(harness.controller(
+            messageID: 3,
+            inputID: 1,
+            controllerID: "pad-1",
+            kind: .connected
+        ))
+
+        XCTAssertEqual(harness.session.snapshotState(), .closed)
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertNil(harness.sentProtocolErrorEnvelope())
+        XCTAssertNil(harness.sentInputAck(inputID: 1))
+    }
+
+    func testInternetControllerReentrantReplacementDoesNotSendAcceptedAck() throws {
+        let harness = try Harness(engineCount: 2, controllerAvailable: true)
+        let replacement = try XCTUnwrap(harness.replacementEngine)
+        let replacementConfiguration = try XCTUnwrap(harness.replacementConfiguration)
+        let handledGeneration = TestLockedValue<UInt64>()
+        harness.session.onAuthenticatedControllerEvent = { _, generation, _ in
+            handledGeneration.store(generation)
+            harness.session.close()
+            do {
+                try harness.session.start(configuration: replacementConfiguration)
+            } catch {
+                XCTFail("Replacing the Internet product session failed: \(error)")
+            }
+            return false
+        }
+        try harness.session.start(configuration: harness.configuration)
+        harness.engine.emitConnection(.connected(path: .direct))
+        harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
+        harness.receiveControl(harness.videoAccepted(messageID: 2))
+
+        harness.receiveControl(harness.controller(
+            messageID: 3,
+            inputID: 1,
+            controllerID: "pad-1",
+            kind: .connected
+        ))
+
+        XCTAssertEqual(harness.session.snapshotState(), .connecting)
+        XCTAssertEqual(handledGeneration.load(), 1)
+        XCTAssertTrue(harness.engine.didClose)
+        XCTAssertTrue(replacement.didStart)
+        XCTAssertNil(harness.sentProtocolErrorEnvelope())
+        XCTAssertNil(harness.sentInputAck(inputID: 1))
+        XCTAssertNil(harness.sentInputAck(inputID: 1, engineIndex: 1))
     }
 
     func testInternetMissingControllerHandlerClosesSession() throws {
@@ -453,13 +722,23 @@ final class InternetProductSessionTests: XCTestCase {
             kind: .connected
         ))
 
+        XCTAssertTrue(harness.waitForProtocolError())
+        let errorEnvelope = try XCTUnwrap(harness.sentProtocolErrorEnvelope())
+        XCTAssertEqual(errorEnvelope.protocolError.code, .invalidState)
+        XCTAssertTrue(errorEnvelope.protocolError.message.contains("Controller injection failed"))
+        XCTAssertFalse(errorEnvelope.protocolError.retryable)
+        XCTAssertEqual(errorEnvelope.protocolError.component, "macos-host-internet-session")
+        XCTAssertEqual(errorEnvelope.correlationID, 3)
+        XCTAssertEqual(errorEnvelope.sessionID, Data("product-session".utf8))
+        XCTAssertEqual(errorEnvelope.sessionEpoch, 1)
         XCTAssertTrue(harness.waitForFailure())
         XCTAssertTrue(harness.engine.didClose)
+        XCTAssertNil(harness.sentInputAck(inputID: 1))
     }
 
     func testInternetControllerForeignTargetClosesSession() throws {
         let harness = try Harness(controllerAvailable: true)
-        harness.session.onAuthenticatedControllerEvent = { _, _ in true }
+        harness.session.onAuthenticatedControllerEvent = { _, _, _ in true }
         try harness.session.start(configuration: harness.configuration)
         harness.engine.emitConnection(.connected(path: .direct))
         harness.receiveControl(harness.clientHello(messageID: 1, supportsController: true))
@@ -484,7 +763,7 @@ final class InternetProductSessionTests: XCTestCase {
     func testInternetControllerSurvivesCompletedVideoReconfiguration() throws {
         let harness = try Harness(controllerAvailable: true)
         let stateRouted = expectation(description: "controller state routed after reconfiguration")
-        harness.session.onAuthenticatedControllerEvent = { _, event in
+        harness.session.onAuthenticatedControllerEvent = { _, _, event in
             if event.kind == .state { stateRouted.fulfill() }
             return true
         }
@@ -498,6 +777,7 @@ final class InternetProductSessionTests: XCTestCase {
             controllerID: "pad-1",
             kind: .connected
         ))
+        XCTAssertTrue(harness.waitForInputAck(inputID: 1))
 
         try harness.session.updateRotation(90)
         harness.receiveControl(harness.videoAccepted(messageID: 4, configEpoch: 2))
@@ -517,7 +797,7 @@ final class InternetProductSessionTests: XCTestCase {
     func testInternetAllowsControllerDisconnectDuringVideoReconfiguration() throws {
         let harness = try Harness(controllerAvailable: true)
         let disconnected = expectation(description: "controller disconnected during reconfiguration")
-        harness.session.onAuthenticatedControllerEvent = { _, event in
+        harness.session.onAuthenticatedControllerEvent = { _, _, event in
             if event.kind == .disconnected { disconnected.fulfill() }
             return true
         }
@@ -531,6 +811,7 @@ final class InternetProductSessionTests: XCTestCase {
             controllerID: "pad-1",
             kind: .connected
         ))
+        XCTAssertTrue(harness.waitForInputAck(inputID: 1))
         try harness.session.updateRotation(90)
         XCTAssertEqual(harness.session.snapshotState(), .awaitingVideoConfiguration)
 
@@ -541,6 +822,7 @@ final class InternetProductSessionTests: XCTestCase {
             kind: .disconnected
         ))
         wait(for: [disconnected], timeout: 1)
+        XCTAssertNil(harness.sentInputAck(inputID: 2))
         XCTAssertEqual(harness.session.snapshotState(), .awaitingVideoConfiguration)
         XCTAssertFalse(harness.engine.didClose)
     }
@@ -2186,8 +2468,8 @@ private final class Harness {
         }
     }
 
-    func waitForFailure() -> Bool {
-        waitUntil {
+    func waitForFailure(timeout: TimeInterval = 1) -> Bool {
+        waitUntil(timeout: timeout) {
             if case .failed = self.session.snapshotState() { return true }
             return false
         }
@@ -2208,17 +2490,59 @@ private final class Harness {
         }
     }
 
-    func waitForInputAck(inputID: UInt64) -> Bool {
-        waitUntil { self.sentInputAck(inputID: inputID) != nil }
+    func waitForInputAck(inputID: UInt64, engineIndex: Int = 0) -> Bool {
+        waitUntil { self.sentInputAck(inputID: inputID, engineIndex: engineIndex) != nil }
     }
 
-    func sentInputAck(inputID: UInt64) -> VSInputAck? {
-        engine.sentPlaintext.lazy.compactMap { item -> VSInputAck? in
+    func sentInputAck(inputID: UInt64, engineIndex: Int = 0) -> VSInputAck? {
+        selectedEngine(engineIndex).sentPlaintext.lazy.compactMap { item -> VSInputAck? in
             guard item.channel == .control,
                   let envelope = try? VSEnvelope(serializedBytes: item.payload),
                   case .inputAck(let acknowledgement) = envelope.payload,
                   acknowledgement.inputID == inputID else { return nil }
             return acknowledgement
+        }.first
+    }
+
+    func sentInputAckEnvelope(inputID: UInt64, engineIndex: Int = 0) -> VSEnvelope? {
+        selectedEngine(engineIndex).sentPlaintext.lazy.compactMap { item -> VSEnvelope? in
+            guard item.channel == .control,
+                  let envelope = try? VSEnvelope(serializedBytes: item.payload),
+                  case .inputAck(let acknowledgement) = envelope.payload,
+                  acknowledgement.inputID == inputID else { return nil }
+            return envelope
+        }.first
+    }
+
+    func sentInputAckCount(inputID: UInt64, engineIndex: Int = 0) -> Int {
+        selectedEngine(engineIndex).sentPlaintext.reduce(into: 0) { count, item in
+            guard item.channel == .control,
+                  let envelope = try? VSEnvelope(serializedBytes: item.payload),
+                  case .inputAck(let acknowledgement) = envelope.payload,
+                  acknowledgement.inputID == inputID else { return }
+            count += 1
+        }
+    }
+
+    func waitForProtocolError(
+        engineIndex: Int = 0,
+        timeout: TimeInterval = 1
+    ) -> Bool {
+        waitUntil(timeout: timeout) {
+            self.sentProtocolErrorEnvelope(engineIndex: engineIndex) != nil
+        }
+    }
+
+    func waitForDeferredControlSend() -> Bool {
+        waitUntil { self.engine.hasDeferredControlSend }
+    }
+
+    func sentProtocolErrorEnvelope(engineIndex: Int = 0) -> VSEnvelope? {
+        selectedEngine(engineIndex).sentPlaintext.lazy.compactMap { item -> VSEnvelope? in
+            guard item.channel == .control,
+                  let envelope = try? VSEnvelope(serializedBytes: item.payload),
+                  case .protocolError = envelope.payload else { return nil }
+            return envelope
         }.first
     }
 
@@ -2236,8 +2560,11 @@ private final class Harness {
         return replacementEngine!
     }
 
-    private func waitUntil(_ predicate: () -> Bool) -> Bool {
-        let deadline = Date().addingTimeInterval(1)
+    private func waitUntil(
+        timeout: TimeInterval = 1,
+        _ predicate: () -> Bool
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if predicate() { return true }
             Thread.sleep(forTimeInterval: 0.005)
@@ -2298,18 +2625,31 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
     private var transmissionEpoch: UInt64 = 0
     private var activeTransmissionPath: InternetPathKind?
     private var lastNetworkPathFingerprint: String?
-    private(set) var restartICECount = 0
-    private(set) var didClose = false
-    private(set) var closeCount = 0
-    private(set) var didStart = false
-    private(set) var startedAfterClose = false
+    private var storedRestartICECount = 0
+    private var storedDidClose = false
+    private var storedCloseCount = 0
+    private var storedDidStart = false
+    private var storedStartedAfterClose = false
     private var storage: [PlaintextItem] = []
     private var shouldInvalidateTransmissionContextOnNextControlSend = false
+    private var shouldFailNextControlSend = false
+    private var shouldDeferNextControlSendCompletion = false
+    private var deferredControlSendCompletion: ((Result<Void, Error>) -> Void)?
+    private var deferredControlSendPlaintext: PlaintextItem?
 
     var sentPlaintext: [PlaintextItem] {
         lock.lock()
         defer { lock.unlock() }
         return storage
+    }
+
+    var restartICECount: Int { lock.withLock { storedRestartICECount } }
+    var didClose: Bool { lock.withLock { storedDidClose } }
+    var closeCount: Int { lock.withLock { storedCloseCount } }
+    var didStart: Bool { lock.withLock { storedDidStart } }
+    var startedAfterClose: Bool { lock.withLock { storedStartedAfterClose } }
+    var hasDeferredControlSend: Bool {
+        lock.withLock { deferredControlSendCompletion != nil }
     }
 
     init(remoteCipher: PlatformSessionPacketCipher) {
@@ -2322,10 +2662,41 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
         lock.unlock()
     }
 
+    func failNextControlSend() {
+        lock.withLock { shouldFailNextControlSend = true }
+    }
+
+    func deferNextControlSendCompletion() {
+        lock.withLock { shouldDeferNextControlSendCompletion = true }
+    }
+
+    func completeDeferredControlSend(succeeded: Bool) {
+        let deferred = lock.withLock {
+            () -> (((Result<Void, Error>) -> Void)?, PlaintextItem?) in
+            defer {
+                deferredControlSendCompletion = nil
+                deferredControlSendPlaintext = nil
+            }
+            return (deferredControlSendCompletion, deferredControlSendPlaintext)
+        }
+        if succeeded {
+            if let plaintext = deferred.1 {
+                lock.withLock { storage.append(plaintext) }
+            }
+            deferred.0?(.success(()))
+        } else {
+            deferred.0?(.failure(
+                PlatformSecurityError.invalidInput("deferred control send failed")
+            ))
+        }
+    }
+
     func install(callbacks: WebRTCEngineCallbacks) { self.callbacks = callbacks }
     func start(configuration: WebRTCTransportConfiguration, channels: [WebRTCDataChannelConfiguration]) throws {
-        didStart = true
-        startedAfterClose = didClose
+        lock.withLock {
+            storedDidStart = true
+            storedStartedAfterClose = storedDidClose
+        }
     }
 
     func send(
@@ -2343,8 +2714,24 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
             return
         }
         var shouldInvalidateTransmissionContext = false
+        var shouldFail = false
+        var shouldDefer = false
         lock.lock()
-        storage.append(PlaintextItem(payload: plaintext, channel: channel))
+        if channel == .control, shouldFailNextControlSend {
+            shouldFailNextControlSend = false
+            shouldFail = true
+        } else if channel == .control, shouldDeferNextControlSendCompletion {
+            shouldDeferNextControlSendCompletion = false
+            shouldDefer = true
+            deferredControlSendCompletion = completion
+            deferredControlSendPlaintext = PlaintextItem(
+                payload: plaintext,
+                channel: channel
+            )
+        }
+        if !shouldFail, !shouldDefer {
+            storage.append(PlaintextItem(payload: plaintext, channel: channel))
+        }
         if channel == .control, shouldInvalidateTransmissionContextOnNextControlSend {
             shouldInvalidateTransmissionContextOnNextControlSend = false
             shouldInvalidateTransmissionContext = true
@@ -2353,20 +2740,29 @@ private final class ProductFakeWebRTCEngine: WebRTCEnginePort {
         if shouldInvalidateTransmissionContext {
             callbacks?.transmissionContextChanged(nil)
         }
+        if shouldFail {
+            completion(.failure(
+                PlatformSecurityError.invalidInput("test control send failed")
+            ))
+            return
+        }
+        if shouldDefer { return }
         completion(.success(()))
     }
 
     func restartICE() -> WebRTCEngineRecoveryDisposition {
         invalidateTransmissionContext()
-        restartICECount += 1
+        lock.withLock { storedRestartICECount += 1 }
         callbacks?.connectionStateChanged(.connecting)
         return .peerReplacementStarted
     }
     func requestMediaKeyframe() {}
     func close() {
         invalidateTransmissionContext()
-        closeCount += 1
-        didClose = true
+        lock.withLock {
+            storedCloseCount += 1
+            storedDidClose = true
+        }
     }
     func emitConnection(_ state: WebRTCEngineConnectionState) {
         switch state {
