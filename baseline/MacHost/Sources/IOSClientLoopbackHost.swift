@@ -60,7 +60,11 @@ enum IOSClientLoopbackHost {
         }
 
         let state = State()
-        let server = StreamingServer(port: requestedPort, mode: .wireless(authToken: token))
+        let server = StreamingServer(
+            port: requestedPort,
+            mode: .wireless(authToken: token),
+            allowPlaintextWirelessLegacyFallback: true
+        )
         server.setDisplaySize(width: 1_920, height: 1_080)
         server.setProtocolV1VideoConfiguration(
             framesPerSecond: 60,
@@ -136,7 +140,8 @@ enum IOSClientLoopbackHost {
         print(
             "iOS MacHost loopback: \(passed ? "PASS" : "FAIL") " +
             "(scenario=\(expectsInvalidTarget ? "invalid-target" : "lifecycle"), " +
-            "port=\(listeningPort), wirelessAuth=true, protocolV1=true, " +
+            "port=\(listeningPort), wirelessAuth=true, encryptedRecords=false, " +
+            "explicitLegacyFallback=true, protocolV1=true, " +
             "media=true, touch=\(snapshot.0), " +
             "clientDisconnected=\(snapshot.1), error=\(snapshot.2 ?? "none"))"
         )

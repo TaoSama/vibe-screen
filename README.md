@@ -31,9 +31,9 @@ platform scaffolding under active development.
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage, with fixed-binary device re-verification still gated on macOS permission for the rebuilt Host |
 | Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. Controller protocol models, Android mapping/state, Host state machines, and Mac virtual-gamepad injection are offline-tested, but Android production event forwarding is not wired yet; later runtime acceptance also requires an identity-signed Host build with the approved virtual HID entitlement plus a physical Android controller. Physical-stylus drawing-app confirmation, controller production forwarding/runtime acceptance, and other peripherals remain open |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
-| LAN | Experimental trusted-network mode; authenticated but not encrypted |
+| LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted |
 | Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
-| iOS trusted LAN | Core client interoperates with the baseline MacHost on TCP `54321` in a real two-process loopback; Simulator UI and device acceptance remain gated |
+| iOS trusted LAN | Core client interoperates with the baseline MacHost on TCP `54321` only through the explicit plaintext legacy fallback in a real two-process loopback; Simulator UI and device acceptance remain gated |
 | HarmonyOS/Internet | In development; not part of the current runnable baseline |
 
 ## Quick start
@@ -182,7 +182,9 @@ settings, input, telemetry, heartbeat, reconnection, and errors.
 Transport implementations are replaceable:
 
 - USB uses ADB reverse and a low-latency local connection.
-- Trusted LAN uses direct QUIC or WebRTC connectivity and device discovery.
+- Trusted LAN uses direct local connectivity and device discovery; current
+  macOS/Android peers protect the admitted TCP session with application records,
+  while legacy plaintext fallback is explicit and separately reported.
 - Internet access uses WebRTC P2P with STUN and falls back to TURN relay only
   when direct traversal fails.
 - Control events use a reliable ordered channel while media favors current
@@ -450,8 +452,10 @@ forced local coturn using synthetic Protocol v1 media. This historical result is
 limited to that dated source/device combination and must not be extrapolated to
 the current working tree or later commits. It is not real ScreenCaptureKit or
 display-capture evidence.
-The existing trusted-LAN path is still a separate plaintext mode and must not be
-presented as Internet E2EE.
+The trusted-LAN path is still separate from Internet mode. Its current
+macOS/Android peers use application records on the admitted private-network TCP
+session, while explicit legacy fallback remains plaintext and must not be
+presented as encrypted or as Internet E2EE evidence.
 
 Adaptive video profiles are scoped to the WebRTC Internet transport only; USB and
 trusted-LAN sessions keep manual client-driven bitrate/quality/frame-rate presets
@@ -548,12 +552,14 @@ network quality may increase it.
   clipboard, bounded verified files, epoch filtering, native touch plus
   hardware-keyboard/hover-pointer UI, and bounded trusted-LAN reconnect are
   implemented and core-self-tested.
-- The trusted-LAN iOS Core client now interoperates with the baseline MacHost
-  on TCP `54321`: authenticated `SSWA`/`SSWR` admission and the `0D` upgrade
-  lead into the Protocol v1 main session, with Hello/capability negotiation,
-  display list/start, video-config acknowledgement, media framing,
-  ping/pong, display/stream-targeted touch, protocol error, and disconnect
-  covered by a real two-process loopback gate.
+- The trusted-LAN iOS Core client still uses the explicit plaintext legacy
+  fallback to interoperate with the baseline MacHost on TCP `54321`:
+  authenticated `SSWA`/`SSWR` admission and the `0D` upgrade lead into the
+  Protocol v1 main session, with Hello/capability negotiation, display
+  list/start, video-config acknowledgement, media framing, ping/pong,
+  display/stream-targeted touch, protocol error, and disconnect covered by a
+  real two-process loopback gate. This is not evidence for the current
+  macOS/Android secure-record LAN path.
 - The iOS app serializes every outbound control envelope through a
   session-owner-scoped FIFO, rejects old connection/decoder deliveries, gates
   each stream on its sent video-config acknowledgement and exact media epochs,

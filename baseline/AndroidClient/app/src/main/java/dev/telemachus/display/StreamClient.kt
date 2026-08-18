@@ -116,6 +116,10 @@ class StreamClient(
     private val pendingOutboundFailure = AtomicReference<SessionFailure?>(null)
     private val pendingDecoderFailure = AtomicReference<SessionFailure?>(null)
     private val pendingVideoConfigurationCommit = AtomicReference<PendingVideoConfigurationCommit?>(null)
+    @Volatile private var lanRecordProtectionState = LanRecordProtectionState.NOT_APPLICABLE
+    @Volatile private var lanSecureRecordSession: LanSecureRecordSession? = null
+    // Android currently sends only client-to-host control messages on the trusted-LAN record layer.
+    @Volatile private var nextOutboundChannel = dev.telemachus.display.internet.SessionChannel.CONTROL
     @Volatile private var lastV1PingSequence = 0L
     @Volatile private var lastV1PingSentNs = 0L
     private val controllerConnectionAcks = ControllerConnectionAckTracker()
@@ -321,6 +325,7 @@ class StreamClient(
     suspend fun connectWireless(
         token: ByteArray,
         deviceName: String,
+        allowPlaintextLegacyFallback: Boolean = false,
     ) = withContext(Dispatchers.IO) {
         if (terminationDispatcher.isClaimed()) return@withContext
         sessionReady = false
@@ -452,12 +457,43 @@ class StreamClient(
                 val startupSucceeded =
                     try {
                         s.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
-                        candidate.connection.installStreams(rawInput, rawOutput)
+                        connectionEpoch = SESSION_EPOCHS.beginSession()
+                        val protection =
+                            if (allowPlaintextLegacyFallback) {
+                                LanSecureRecordClientNegotiation(
+                                    LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK,
+                                    null,
+                                )
+                            } else {
+                                negotiateLanSecureRecordsAsClient(
+                                    input = rawInput,
+                                    output = rawOutput,
+                                    token = token,
+                                )
+                            }
+                        lanSecureRecordSession?.close()
+                        lanSecureRecordSession = protection.session
+                        lanRecordProtectionState = protection.state
+                        val protectedInput =
+                            if (protection.state == LanRecordProtectionState.ENCRYPTED) {
+                                LanSecureRecordInputStream(rawInput, checkNotNull(protection.session))
+                            } else {
+                                rawInput
+                            }
+                        val protectedOutput =
+                            if (protection.state == LanRecordProtectionState.ENCRYPTED) {
+                                LanSecureRecordOutputStream(
+                                    rawOutput,
+                                    checkNotNull(protection.session),
+                                ) { nextOutboundChannel }
+                            } else {
+                                rawOutput
+                            }
+                        candidate.connection.installStreams(protectedInput, protectedOutput)
                         if (!promoteTransportCandidate(candidate) { !terminationDispatcher.isClaimed() }) {
                             outboundScheduler.shutdownNow()
                             return@withContext
                         }
-                        connectionEpoch = SESSION_EPOCHS.beginSession()
                         isConnected = true
                         if (terminationDispatcher.isClaimed()) {
                             isConnected = false
@@ -469,7 +505,12 @@ class StreamClient(
                         codecNegotiated = false
                         val upgradeDecision = negotiateProtocol(TransportKind.TRANSPORT_KIND_LAN)
                         if (upgradeDecision == UpgradeFallbackDecision.OpenFreshLegacyConnection) {
-                            reopenWirelessAsLegacy(token, deviceName, connectionEpoch)
+                            reopenWirelessAsLegacy(
+                                token,
+                                deviceName,
+                                connectionEpoch,
+                                allowPlaintextLegacyFallback,
+                            )
                         }
                         true
                     } catch (error: IOException) {
@@ -486,9 +527,23 @@ class StreamClient(
                 heartbeat.reset(System.nanoTime())
                 emitTelemetry(
                     "connection_opened",
-                    mapOf("host" to host, "port" to port, "session_epoch" to connectionEpoch),
+                    mapOf(
+                        "host" to host,
+                        "port" to port,
+                        "session_epoch" to connectionEpoch,
+                        "trusted_lan_encrypted" to (lanRecordProtectionState == LanRecordProtectionState.ENCRYPTED),
+                        "trusted_lan_legacy_plaintext" to
+                            (lanRecordProtectionState == LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK),
+                    ),
                 )
-                diagLog("Wireless connected to $host:$port")
+                diagLog(
+                    "Wireless connected to $host:$port " +
+                        if (lanRecordProtectionState == LanRecordProtectionState.ENCRYPTED) {
+                            "(trusted LAN encrypted records)"
+                        } else {
+                            "(explicit trusted LAN legacy plaintext)"
+                        },
+                )
                 receiveData()
             }
 
@@ -601,6 +656,7 @@ class StreamClient(
         installFreshLegacyTransport(attemptGeneration) { fresh ->
             fresh.tcpNoDelay = true
             fresh.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+            fresh.getInputStream() to fresh.getOutputStream()
         }
     }
 
@@ -608,24 +664,25 @@ class StreamClient(
         token: ByteArray,
         deviceName: String,
         attemptGeneration: Long,
+        allowPlaintextLegacyFallback: Boolean = false,
     ) {
         closeTransport()
         installFreshLegacyTransport(attemptGeneration) { fresh ->
             configureWirelessSocket(fresh)
-            authenticateWirelessSocket(fresh, token, deviceName)
+            authenticateWirelessSocket(fresh, token, deviceName, allowPlaintextLegacyFallback)
         }
     }
 
     private fun installFreshLegacyTransport(
         attemptGeneration: Long,
-        prepare: (Socket) -> Unit,
+        prepare: (Socket) -> Pair<java.io.InputStream, java.io.OutputStream>,
     ) {
         val candidate = registerTransportCandidate(attemptGeneration, ::ownsAttempt)
         var promoted = false
         try {
-            prepare(candidate.connection.socket)
+            val streams = prepare(candidate.connection.socket)
             candidate.connection.socket.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
-            candidate.connection.installStreams()
+            candidate.connection.installStreams(streams.first, streams.second)
             promoted = promoteTransportCandidate(candidate, ::ownsAttempt)
             check(promoted) { "Fallback connection attempt was superseded" }
             configureLegacyMode()
@@ -705,15 +762,17 @@ class StreamClient(
         fresh: Socket,
         token: ByteArray,
         deviceName: String,
-    ) {
+        allowPlaintextLegacyFallback: Boolean = false,
+    ): Pair<java.io.InputStream, java.io.OutputStream> {
         fresh.soTimeout = HANDSHAKE_TIMEOUT_MS
         val output = fresh.getOutputStream()
+        val rawInput = fresh.getInputStream()
         output.write(AuthHandshake.encodeRequest(token, deviceName))
         output.flush()
         val response = ByteArray(AUTH_RESPONSE_BYTES)
         var offset = 0
         while (offset < response.size) {
-            val count = fresh.getInputStream().read(response, offset, response.size - offset)
+            val count = rawInput.read(response, offset, response.size - offset)
             if (count < 0) throw IOException("Wireless authentication ended early")
             if (count == 0) continue
             offset += count
@@ -723,6 +782,35 @@ class StreamClient(
             AuthHandshake.ResponseStatus.INVALID_TOKEN -> throw WirelessConnectError.TokenRejected
             else -> throw WirelessConnectError.ProtocolError
         }
+        val protection =
+            if (allowPlaintextLegacyFallback) {
+                LanSecureRecordClientNegotiation(
+                    LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK,
+                    null,
+                )
+            } else {
+                negotiateLanSecureRecordsAsClient(
+                    input = rawInput,
+                    output = output,
+                    token = token,
+                )
+            }
+        lanSecureRecordSession?.close()
+        lanSecureRecordSession = protection.session
+        lanRecordProtectionState = protection.state
+        val protectedInput =
+            if (protection.state == LanRecordProtectionState.ENCRYPTED) {
+                LanSecureRecordInputStream(rawInput, checkNotNull(protection.session))
+            } else {
+                rawInput
+            }
+        val protectedOutput =
+            if (protection.state == LanRecordProtectionState.ENCRYPTED) {
+                LanSecureRecordOutputStream(output, checkNotNull(protection.session)) { nextOutboundChannel }
+            } else {
+                output
+            }
+        return protectedInput to protectedOutput
     }
 
     /**
@@ -2068,6 +2156,10 @@ class StreamClient(
         protocolSession = null
         controllerConnectionAcks.reset()
         pendingLegacyFirstByte = null
+        lanSecureRecordSession?.close()
+        lanSecureRecordSession = null
+        lanRecordProtectionState = LanRecordProtectionState.NOT_APPLICABLE
+        nextOutboundChannel = dev.telemachus.display.internet.SessionChannel.CONTROL
     }
 
     private fun cleanupCandidateTransport(
