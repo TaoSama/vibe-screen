@@ -7,8 +7,8 @@
   "properties": {
     "schema_version": {"const": "vibescreen.evidence/v1"},
     "run_id": {"type": "string"},
-    "kind": {"enum": ["soak", "glass_to_glass", "input_latency", "reconnect"]},
-    "status": {"enum": ["complete", "partial", "failed"]},
+    "kind": {"enum": ["soak", "glass_to_glass", "input_latency", "telemetry_stage_latency", "reconnect"]},
+    "status": {"enum": ["complete", "partial", "failed", "informational"]},
     "transport": {"enum": ["usb", "lan"]},
     "metrics": {"type": "object"},
     "errors": {"type": "array", "items": {"type": "string"}}

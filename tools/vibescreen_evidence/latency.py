@@ -459,7 +459,10 @@ def run(argv: Sequence[str] | None = None) -> int:
             _write_summary(summary, args.output_format, sys.stdout)
     except LatencyInputError as error:
         parser.error(str(error))
-    return 0
+    verdict = summary.get("verdict")
+    if verdict is None:
+        return 0
+    return 0 if verdict == "pass" else 1
 
 
 if __name__ == "__main__":
