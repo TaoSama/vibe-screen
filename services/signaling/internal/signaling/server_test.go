@@ -25,8 +25,23 @@ func testConfig() Config {
 		MaxRequestBodyBytes: 2048, MaxSDPBytes: 1024, MaxCandidateBytes: 512,
 		MaxCandidatesPerRole: 2, MaxWaitSeconds: 1, MaxWaitersPerRole: 1,
 		CleanupIntervalSeconds: 1, AuthorityMode: AuthorityModeLocalDevelopment,
-		IssuerToken: testIssuerToken, MetricsToken: testMetricsToken,
+		StoreBackend: StoreBackendMemory,
+		IssuerToken:  testIssuerToken, MetricsToken: testMetricsToken,
 	}
+}
+
+func testServerWithStore(t *testing.T, cfg Config, store Store) *Server {
+	t.Helper()
+	return &Server{cfg: cfg, store: store, now: time.Now}
+}
+
+func localMemoryStoreForTest(t *testing.T, service *Server) *MemoryStore {
+	t.Helper()
+	store, ok := service.store.(*MemoryStore)
+	if !ok {
+		t.Fatalf("server store = %T, want *MemoryStore", service.store)
+	}
+	return store
 }
 
 func TestHTTPRendezvousAndRoleIsolation(t *testing.T) {
@@ -58,6 +73,10 @@ func TestHTTPRendezvousAndRoleIsolation(t *testing.T) {
 	deviceEvents := pollForTest(t, handler, created.SessionID, created.DeviceToken, 0, 0, http.StatusOK)
 	if len(deviceEvents.Events) != 1 || deviceEvents.Events[0].Type != MessageOffer || deviceEvents.NextCursor != 1 {
 		t.Fatalf("device did not receive offer: %#v", deviceEvents)
+	}
+	deviceEvents = pollForTest(t, handler, created.SessionID, created.DeviceToken, 1, 0, http.StatusOK)
+	if len(deviceEvents.Events) != 0 || deviceEvents.NextCursor != 1 {
+		t.Fatalf("immediate empty poll blocked or advanced: %#v", deviceEvents)
 	}
 	answer := postMessageForTest(t, handler, created.SessionID, created.DeviceToken,
 		MessageRequest{MessageID: "answer-1", Type: MessageAnswer, SDP: "v=0\r\na=fingerprint:sha-256 BB\r\n"}, http.StatusCreated)
@@ -158,18 +177,18 @@ func TestPollWakesForRemoteEventAndEnforcesWaiterLimit(t *testing.T) {
 	defer cancel()
 	result := make(chan []Event, 1)
 	go func() {
-		events, _, pollErr := service.store.PollAuthorized(ctx, created.SessionID, RoleDevice, 0)
+		events, _, pollErr := service.store.PollAuthorized(ctx, created.SessionID, RoleDevice, 0, true)
 		if pollErr != nil {
 			result <- nil
 			return
 		}
 		result <- events
 	}()
-	waitForWaiter(t, service.store, created.SessionID, RoleDevice)
-	if _, _, err := service.store.PollAuthorized(context.Background(), created.SessionID, RoleDevice, 0); !errors.Is(err, ErrTooManyWaiters) {
+	waitForWaiter(t, localMemoryStoreForTest(t, service), created.SessionID, RoleDevice)
+	if _, _, err := service.store.PollAuthorized(context.Background(), created.SessionID, RoleDevice, 0, true); !errors.Is(err, ErrTooManyWaiters) {
 		t.Fatalf("second waiter error = %v", err)
 	}
-	_, _, err = service.store.AddMessageAuthorized(created.SessionID, RoleHost, MessageRequest{MessageID: "wake", Type: MessageOffer, SDP: "v=0"})
+	_, _, err = service.store.AddMessageAuthorized(context.Background(), created.SessionID, RoleHost, MessageRequest{MessageID: "wake", Type: MessageOffer, SDP: "v=0"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,27 +214,29 @@ func TestPollFailsWhenSessionExpiresWhileWaiting(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	started := time.Now()
-	_, _, err = service.store.PollAuthorized(ctx, created.SessionID, RoleHost, 0)
+	_, _, err = service.store.PollAuthorized(ctx, created.SessionID, RoleHost, 0, true)
 	if !errors.Is(err, ErrExpired) {
 		t.Fatalf("poll expiration error = %v", err)
 	}
 	if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
 		t.Fatalf("expiration did not wake poll promptly: %s", elapsed)
 	}
-	if removed := service.store.Cleanup(); removed != 1 || service.store.ActiveCount() != 0 {
-		t.Fatalf("expired cleanup removed=%d active=%d", removed, service.store.ActiveCount())
+	removed := service.store.Cleanup()
+	stats := service.store.Stats()
+	if removed != 1 || stats.ActiveSessions != 0 {
+		t.Fatalf("expired cleanup removed=%d active=%d", removed, stats.ActiveSessions)
 	}
 }
 
 func TestInvalidateDestroysSessionAndRetainsRequestTombstoneUntilExpiry(t *testing.T) {
-	store := NewStore(testConfig(), nil)
+	store := NewMemoryStore(testConfig(), nil)
 	now := time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC)
 	store.now = func() time.Time { return now }
 	created, _, err := store.Create(context.Background(), CreateSessionRequest{RequestID: "invalidate-request", TTL: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.AddMessageAuthorized(created.SessionID, RoleHost, MessageRequest{
+	if _, _, err := store.AddMessageAuthorized(context.Background(), created.SessionID, RoleHost, MessageRequest{
 		MessageID: "offer-before-invalidation", Type: MessageOffer, SDP: "v=0",
 	}); err != nil {
 		t.Fatal(err)
@@ -225,7 +246,7 @@ func TestInvalidateDestroysSessionAndRetainsRequestTombstoneUntilExpiry(t *testi
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	go func() {
-		_, _, pollErr := store.PollAuthorized(ctx, created.SessionID, RoleDevice, 1)
+		_, _, pollErr := store.PollAuthorized(ctx, created.SessionID, RoleDevice, 1, true)
 		pollResult <- pollErr
 	}()
 	waitForWaiter(t, store, created.SessionID, RoleDevice)
@@ -245,7 +266,7 @@ func TestInvalidateDestroysSessionAndRetainsRequestTombstoneUntilExpiry(t *testi
 	if _, err := store.Authorize(context.Background(), created.SessionID, created.HostToken); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("host token remained valid: %v", err)
 	}
-	if _, _, err := store.AddMessageAuthorized(created.SessionID, RoleDevice, MessageRequest{
+	if _, _, err := store.AddMessageAuthorized(context.Background(), created.SessionID, RoleDevice, MessageRequest{
 		MessageID: "candidate-after-invalidation", Type: MessageICECandidate,
 		Candidate: &ICECandidate{Candidate: "candidate:invalidated"},
 	}); !errors.Is(err, ErrNotFound) {
@@ -363,7 +384,7 @@ func TestMessageRateLimit(t *testing.T) {
 		MessageRequest{MessageID: "candidate-rate", Type: MessageICECandidate, Candidate: &ICECandidate{Candidate: "candidate:rate"}}, http.StatusTooManyRequests)
 }
 
-func waitForWaiter(t *testing.T, store *Store, sessionID string, role Role) {
+func waitForWaiter(t *testing.T, store *MemoryStore, sessionID string, role Role) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {

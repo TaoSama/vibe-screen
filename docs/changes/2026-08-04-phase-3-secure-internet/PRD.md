@@ -30,8 +30,8 @@ The repository currently contains:
   revocation, with unit tests;
 - a standalone Go relay control service for short-lived coturn credentials,
   persisted usage quotas, metrics, and cost estimates;
-- a runnable, single-instance Go signaling service and authenticated Swift/Kotlin
-  HTTP signaling clients;
+- a runnable Go signaling service with local memory and production PostgreSQL
+  routing backends plus authenticated Swift/Kotlin HTTP signaling clients;
 - macOS/Android platform security lifecycle code and deterministic policy/network
   simulation;
 - macOS and Android product-session composition, manual pairing/profile import,

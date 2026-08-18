@@ -30,7 +30,7 @@ type authorityReadinessRefresh struct {
 
 type Server struct {
 	cfg                       Config
-	store                     *Store
+	store                     Store
 	authority                 *AuthorityClient
 	metrics                   Metrics
 	ready                     atomic.Bool
@@ -55,13 +55,30 @@ func NewServer(cfg Config) (*Server, error) {
 		}
 		authority = client
 	}
+	store, err := openStore(context.Background(), cfg, authority)
+	if err != nil {
+		return nil, err
+	}
 	return &Server{
 		cfg:       cfg,
-		store:     NewStore(cfg, authority),
+		store:     store,
 		authority: authority,
 		now:       time.Now,
 	}, nil
 }
+
+func openStore(ctx context.Context, cfg Config, authority *AuthorityClient) (Store, error) {
+	switch cfg.StoreBackend {
+	case StoreBackendMemory:
+		return NewMemoryStore(cfg, authority), nil
+	case StoreBackendPostgres:
+		return OpenPostgresStore(ctx, cfg, authority)
+	default:
+		return nil, fmt.Errorf("unsupported store backend %q", cfg.StoreBackend)
+	}
+}
+
+func (s *Server) Close() { s.store.Close() }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -122,9 +139,13 @@ func (s *Server) readiness(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusServiceUnavailable, "not ready")
 		return
 	}
+	ctx, cancel := context.WithTimeout(r.Context(), authorityReadinessRefreshTimeout)
+	defer cancel()
+	if err := s.store.Ready(ctx); err != nil {
+		s.reject(w, http.StatusServiceUnavailable, "not ready")
+		return
+	}
 	if s.authority != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), authorityReadinessRefreshTimeout)
-		defer cancel()
 		if err := s.cachedAuthorityReadiness(ctx); err != nil {
 			s.reject(w, http.StatusServiceUnavailable, "not ready")
 			return
@@ -303,7 +324,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, ErrUnauthorized)
 		return
 	}
-	event, created, err := s.store.AddMessageAuthorized(sessionID, refreshedRole, request)
+	event, created, err := s.store.AddMessageAuthorized(r.Context(), sessionID, refreshedRole, request)
 	if err != nil {
 		s.writeStoreError(w, err)
 		return
@@ -340,9 +361,13 @@ func (s *Server) getEvents(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(waitSeconds)*time.Second)
-	defer cancel()
-	events, next, err := s.store.PollAuthorized(ctx, sessionID, role, after)
+	ctx := r.Context()
+	if waitSeconds > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(r.Context(), time.Duration(waitSeconds)*time.Second)
+		defer cancel()
+	}
+	events, next, err := s.store.PollAuthorized(ctx, sessionID, role, after, waitSeconds > 0)
 	if err != nil {
 		s.writeStoreError(w, err)
 		return
@@ -456,6 +481,8 @@ func (s *Server) writeStoreError(w http.ResponseWriter, err error) {
 		s.reject(w, http.StatusConflict, err.Error())
 	case errors.Is(err, ErrRateLimited), errors.Is(err, ErrTooManyWaiters), errors.Is(err, ErrCapacity), errors.Is(err, ErrCandidateLimit):
 		s.reject(w, http.StatusTooManyRequests, err.Error())
+	case errors.Is(err, ErrStorage):
+		s.reject(w, http.StatusServiceUnavailable, "signaling storage unavailable")
 	case errors.Is(err, ErrAuthorityUnavailable):
 		s.reject(w, http.StatusBadGateway, "authority service unavailable")
 	default:

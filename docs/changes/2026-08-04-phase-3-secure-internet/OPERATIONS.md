@@ -9,11 +9,11 @@ migration, readiness checks, and a bounded restart-persistence gate. The recorde
 local REST-credential, Allocation, ChannelBind and forced
 WebRTC relay integration used the host-installed coturn 4.16.0 binary; it does
 not prove execution of the pinned container image. This is still not a
-deployable production stack: signaling is single-instance/in-memory, no
-authoritative usage exporter is bundled, automatic issuance is not wired to
-Authority, the current relay/coturn deployment does not call Authority relay
-admission or coturn usage APIs, and no integrated implementation has run on a
-public host in this environment.
+deployable production stack: signaling has PostgreSQL-backed durable routing but
+multi-instance operation is not proved, no authoritative usage exporter is
+bundled, automatic issuance is not wired to Authority, the current relay/coturn
+deployment does not call Authority relay admission or coturn usage APIs, and no
+integrated implementation has run on a public host in this environment.
 
 The current `services/relay/` binary is an experimental credential/usage control
 service, not the production shape below. A trusted control-plane bearer requests
@@ -30,12 +30,13 @@ account/device-revocation slice intended to replace process-local authority
 state. It also exposes cumulative coturn usage ingestion and
 snapshot reconciliation. The signaling service now supports a
 `production_authority` mode that delegates session creation, per-request
-role-token authorization, and session invalidation to the authority. Dependency
-or malformed-response failures return `502` without falling back to locally
-minted tokens; authority policy rejections remain denials. Relay credential
-admission now delegates to the authority before TURN credential issuance, and
-Authority owns coturn usage/reconciliation APIs. The repository still has no
-production-proven coturn machine exporter, reconciliation loop, or
+role-token authorization, and session invalidation to the authority, with
+PostgreSQL-backed routing state in production. Dependency or malformed-response
+failures return `502` without falling back to locally minted tokens; signaling
+storage failures return `503`; authority policy rejections remain denials. Relay
+credential admission now delegates to the authority before TURN credential
+issuance, and Authority owns coturn usage/reconciliation APIs. The repository
+still has no production-proven coturn machine exporter, reconciliation loop, or
 active-allocation disconnect executor. Therefore this does not remove the
 public-launch prohibition below. See the service README for the migration
 procedure, API contract, and remaining infrastructure gates.
@@ -83,16 +84,15 @@ active disconnection after revocation.
 
 The signaling service accepts one offer/answer per session and exposes an
 issuer-only idempotent invalidation operation. In `production_authority` mode
-session creation, per-request role authorization, and invalidation are
-delegated to the PostgreSQL authority; signaling holds only in-memory SDP/ICE
-routing state. After a signaling restart that in-memory state is lost, so an
-old `request_id` cannot be replayed against the authority's existing admission:
-signaling returns `409` and the owner must issue a fresh request with a larger
-`session_epoch`. Current product transports request a wholly fresh session
-instead of attempting a second offer. Operators must not enable unattended
-network-handoff recovery until authority issuance can deliver both endpoints a
-new session ID, role tokens, optional TURN credential, PeerConnection, and
-larger common epoch and a Mac/Android test proves it.
+session creation, per-request role authorization, and invalidation are delegated
+to the PostgreSQL authority, while signaling stores SDP/ICE routing state in its
+own PostgreSQL schema until TTL cleanup. A signaling process restart can replay
+the existing `request_id` from this store, but it still does not create a second
+offer generation after invalidation or expiry. Current product transports request
+a wholly fresh session instead of attempting a second offer. Operators must not
+enable unattended network-handoff recovery until authority issuance can deliver
+both endpoints a new session ID, role tokens, optional TURN credential,
+PeerConnection, and larger common epoch and a Mac/Android test proves it.
 
 ## Service inventory
 
@@ -314,8 +314,10 @@ shipped:
   authority revocation; signaling invalidation only stops new rendezvous access.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped
   epoch operate in different scopes and are not yet unified.
-- Signaling remains single-instance in-memory routing.
-- Per-message remote authority authorization and the global `authorityCreateMu`
+- PostgreSQL durable signaling routing is implemented, but multi-instance
+  operation, global create-rate enforcement, and throughput under multiple
+  replicas remain unproved.
+- Per-message remote authority authorization and the global PostgreSQL advisory-lock
   create serialization are fail-closed correctness choices, not a
   high-throughput design.
 - Signaling and authority require NTP clock synchronization. Authority startup

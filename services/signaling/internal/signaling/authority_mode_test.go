@@ -28,9 +28,32 @@ func testAuthorityConfig(authorityURL string) Config {
 		MaxRequestBodyBytes: 2048, MaxSDPBytes: 1024, MaxCandidateBytes: 512,
 		MaxCandidatesPerRole: 2, MaxWaitSeconds: 1, MaxWaitersPerRole: 1,
 		CleanupIntervalSeconds: 1, AuthorityMode: AuthorityModeProductionAuthority,
+		StoreBackend: StoreBackendPostgres,
 		AuthorityURL: authorityURL, AuthorityToken: testAuthorityToken,
 		IssuerToken: testIssuerToken, MetricsToken: testMetricsToken,
 	}
+}
+
+func newAuthorityMemoryServer(t *testing.T, authorityURL string) *Server {
+	t.Helper()
+	cfg := testAuthorityConfig(authorityURL)
+	cfg.StoreBackend = StoreBackendMemory
+	authority, err := NewAuthorityClient(cfg.AuthorityURL, cfg.AuthorityToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := testServerWithStore(t, cfg, NewMemoryStore(cfg, authority))
+	service.authority = authority
+	return service
+}
+
+func memoryStoreForTest(t *testing.T, service *Server) *MemoryStore {
+	t.Helper()
+	store, ok := service.store.(*MemoryStore)
+	if !ok {
+		t.Fatalf("server store = %T, want *MemoryStore", service.store)
+	}
+	return store
 }
 
 func TestAuthorityModeCreateSessionDelegatesToAuthority(t *testing.T) {
@@ -53,10 +76,7 @@ func TestAuthorityModeCreateSessionDelegatesToAuthority(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 
@@ -98,10 +118,7 @@ func TestAuthorityModeCreateSessionReplay(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 
@@ -143,10 +160,7 @@ func TestAuthorityModeReplayExtendsLocalExpiryForSameAdmission(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 	body := "{\"request_id\":\"req-1\",\"account_id\":\"acct-1\",\"host_device_id\":\"host-1\",\"client_device_id\":\"client-1\",\"session_epoch\":1,\"ttl_seconds\":60}"
@@ -164,9 +178,10 @@ func TestAuthorityModeReplayExtendsLocalExpiryForSameAdmission(t *testing.T) {
 	if replayed.HostToken != "host-token-2" || replayed.DeviceToken != "client-token-2" {
 		t.Fatalf("replay did not return latest authority tokens: %#v", replayed)
 	}
-	service.store.mu.Lock()
-	storedResponse := service.store.sessions["sess-1"].response
-	service.store.mu.Unlock()
+	store := memoryStoreForTest(t, service)
+	store.mu.Lock()
+	storedResponse := store.sessions["sess-1"].response
+	store.mu.Unlock()
 	if !storedResponse.ExpiresAt.Equal(extendedExpiry) {
 		t.Fatalf("local expiry=%s want=%s", storedResponse.ExpiresAt, extendedExpiry)
 	}
@@ -197,10 +212,7 @@ func TestAuthorityModeReplayShortensLocalExpiry(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 	body := "{\"request_id\":\"req-1\",\"account_id\":\"acct-1\",\"host_device_id\":\"host-1\",\"client_device_id\":\"client-1\",\"session_epoch\":1,\"ttl_seconds\":60}"
@@ -211,9 +223,10 @@ func TestAuthorityModeReplayShortensLocalExpiry(t *testing.T) {
 	if replay.Code != http.StatusOK {
 		t.Fatalf("shorter replay status=%d body=%s", replay.Code, replay.Body.String())
 	}
-	service.store.mu.Lock()
-	storedExpiry := service.store.sessions["sess-1"].response.ExpiresAt
-	service.store.mu.Unlock()
+	store := memoryStoreForTest(t, service)
+	store.mu.Lock()
+	storedExpiry := store.sessions["sess-1"].response.ExpiresAt
+	store.mu.Unlock()
 	wantExpiry := initialExpiry.Add(-time.Minute)
 	if !storedExpiry.Equal(wantExpiry) {
 		t.Fatalf("local expiry=%s want=%s", storedExpiry, wantExpiry)
@@ -243,10 +256,7 @@ func TestAuthorityModeReplayExpiryChangeWakesActivePoll(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	request := CreateSessionRequest{
 		RequestID: "req-1", TTL: time.Minute,
 		AccountID: "acct-1", HostDeviceID: "host-1", ClientDeviceID: "client-1", SessionEpoch: 1,
@@ -264,10 +274,10 @@ func TestAuthorityModeReplayExpiryChangeWakesActivePoll(t *testing.T) {
 	defer cancel()
 	result := make(chan pollResult, 1)
 	go func() {
-		events, _, pollErr := service.store.PollAuthorized(ctx, created.SessionID, RoleDevice, 0)
+		events, _, pollErr := service.store.PollAuthorized(ctx, created.SessionID, RoleDevice, 0, true)
 		result <- pollResult{events: events, err: pollErr}
 	}()
-	waitForWaiter(t, service.store, created.SessionID, RoleDevice)
+	waitForWaiter(t, memoryStoreForTest(t, service), created.SessionID, RoleDevice)
 
 	if _, replayCreated, err := service.store.Create(context.Background(), request); err != nil || replayCreated {
 		t.Fatalf("short-expiry replay: created=%t err=%v", replayCreated, err)
@@ -299,14 +309,12 @@ func TestAuthorityModeReplayAfterLocalStateLossRequiresFreshAdmission(t *testing
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
-	service.store.mu.Lock()
-	service.store.requestSessions["old-request"] = "stale-session"
-	service.store.mu.Unlock()
+	store := memoryStoreForTest(t, service)
+	store.mu.Lock()
+	store.requestSessions["old-request"] = "stale-session"
+	store.mu.Unlock()
 	body := "{\"request_id\":\"old-request\",\"account_id\":\"acct-1\",\"host_device_id\":\"host-1\",\"client_device_id\":\"client-1\",\"session_epoch\":1,\"ttl_seconds\":60}"
 	response := performRequest(t, service.Handler(), http.MethodPost, "/v1/sessions", testIssuerToken, body)
 	if response.Code != http.StatusConflict {
@@ -318,9 +326,9 @@ func TestAuthorityModeReplayAfterLocalStateLossRequiresFreshAdmission(t *testing
 	if stats := service.store.Stats(); stats.ReservedRecords != 0 {
 		t.Fatalf("durable replay reconstructed local routing state: %#v", stats)
 	}
-	service.store.mu.Lock()
-	_, mappingExists := service.store.requestSessions["old-request"]
-	service.store.mu.Unlock()
+	store.mu.Lock()
+	_, mappingExists := store.requestSessions["old-request"]
+	store.mu.Unlock()
 	if mappingExists {
 		t.Fatal("missing local session left a stale request mapping")
 	}
@@ -342,10 +350,7 @@ func TestAuthorityModeSessionIDCollisionFailsClosedWithoutOverwrite(t *testing.T
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 	firstBody := "{\"request_id\":\"req-1\",\"account_id\":\"acct-1\",\"host_device_id\":\"host-1\",\"client_device_id\":\"client-1\",\"session_epoch\":1,\"ttl_seconds\":60}"
@@ -356,21 +361,22 @@ func TestAuthorityModeSessionIDCollisionFailsClosedWithoutOverwrite(t *testing.T
 		t.Fatalf("first create status=%d body=%s", first.Code, first.Body.String())
 	}
 	originalEvent := Event{Sequence: 1, MessageID: "existing-offer", Type: MessageOffer, SenderRole: RoleHost, SDP: "v=0"}
-	service.store.mu.Lock()
-	original := service.store.sessions["colliding-session"]
+	store := memoryStoreForTest(t, service)
+	store.mu.Lock()
+	original := store.sessions["colliding-session"]
 	original.offerSent = true
 	original.events = []Event{originalEvent}
-	service.store.mu.Unlock()
+	store.mu.Unlock()
 	second := performRequest(t, handler, http.MethodPost, "/v1/sessions", testIssuerToken, secondBody)
 	if second.Code != http.StatusBadGateway {
 		t.Fatalf("colliding create status=%d body=%s", second.Code, second.Body.String())
 	}
 
-	service.store.mu.Lock()
-	stored := service.store.sessions["colliding-session"]
-	firstMapping := service.store.requestSessions["req-1"]
-	_, secondMappingExists := service.store.requestSessions["req-2"]
-	service.store.mu.Unlock()
+	store.mu.Lock()
+	stored := store.sessions["colliding-session"]
+	firstMapping := store.requestSessions["req-1"]
+	_, secondMappingExists := store.requestSessions["req-2"]
+	store.mu.Unlock()
 	if stored == nil || stored != original || stored.requestID != "req-1" || !stored.offerSent || len(stored.events) != 1 || stored.events[0] != originalEvent || firstMapping != "colliding-session" || secondMappingExists {
 		t.Fatalf("collision overwrote local state: stored=%#v first=%q second_exists=%t", stored, firstMapping, secondMappingExists)
 	}
@@ -390,13 +396,11 @@ func TestAuthorityModeInconsistentSameRequestDoesNotResetSession(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	originalEvent := Event{Sequence: 1, MessageID: "existing-offer", Type: MessageOffer, SenderRole: RoleHost, SDP: "v=0"}
-	service.store.mu.Lock()
-	service.store.sessions["existing-session"] = &session{
+	store := memoryStoreForTest(t, service)
+	store.mu.Lock()
+	store.sessions["existing-session"] = &session{
 		requestID: "same-request", ttlSeconds: 60,
 		response:       SessionResponse{SessionID: "existing-session", ExpiresAt: time.Now().Add(time.Hour)},
 		events:         []Event{originalEvent},
@@ -406,7 +410,7 @@ func TestAuthorityModeInconsistentSameRequestDoesNotResetSession(t *testing.T) {
 		candidateCount: map[Role]int{RoleHost: 0, RoleDevice: 0},
 		rates:          map[Role]rateWindow{}, waiters: map[Role]int{}, notify: make(chan struct{}),
 	}
-	service.store.mu.Unlock()
+	store.mu.Unlock()
 	service.SetReady(true)
 	body := "{\"request_id\":\"same-request\",\"account_id\":\"acct-1\",\"host_device_id\":\"host-1\",\"client_device_id\":\"client-1\",\"session_epoch\":1,\"ttl_seconds\":60}"
 
@@ -414,10 +418,10 @@ func TestAuthorityModeInconsistentSameRequestDoesNotResetSession(t *testing.T) {
 	if response.Code != http.StatusConflict {
 		t.Fatalf("inconsistent same-request create status=%d body=%s", response.Code, response.Body.String())
 	}
-	service.store.mu.Lock()
-	stored := service.store.sessions["existing-session"]
-	_, mappingCreated := service.store.requestSessions["same-request"]
-	service.store.mu.Unlock()
+	store.mu.Lock()
+	stored := store.sessions["existing-session"]
+	_, mappingCreated := store.requestSessions["same-request"]
+	store.mu.Unlock()
 	if stored == nil || !stored.offerSent || len(stored.events) != 1 || stored.events[0] != originalEvent || mappingCreated {
 		t.Fatalf("inconsistent create reset local state: stored=%#v mapping_created=%t", stored, mappingCreated)
 	}
@@ -430,10 +434,7 @@ func TestAuthorityModeCreateRequiresAuthorityFields(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 
@@ -462,10 +463,13 @@ func TestAuthorityModeCapacityRejectsBeforeAuthorityAdmission(t *testing.T) {
 
 	cfg := testAuthorityConfig(authorityServer.URL)
 	cfg.MaxActiveSessions = 1
-	service, err := NewServer(cfg)
+	cfg.StoreBackend = StoreBackendMemory
+	authority, err := NewAuthorityClient(cfg.AuthorityURL, cfg.AuthorityToken)
 	if err != nil {
 		t.Fatal(err)
 	}
+	service := testServerWithStore(t, cfg, NewMemoryStore(cfg, authority))
+	service.authority = authority
 	service.SetReady(true)
 	handler := service.Handler()
 	firstBody := "{\"request_id\":\"req-1\",\"account_id\":\"acct-1\",\"host_device_id\":\"host-1\",\"client_device_id\":\"client-1\",\"session_epoch\":1,\"ttl_seconds\":60}"
@@ -515,10 +519,7 @@ func TestAuthorityModePostMessageAuthorizesViaAuthority(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 
@@ -565,10 +566,7 @@ func TestAuthorityModeRevocationBeforeMessageCommitDoesNotPublish(t *testing.T) 
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 
@@ -583,9 +581,10 @@ func TestAuthorityModeRevocationBeforeMessageCommitDoesNotPublish(t *testing.T) 
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("message accepted after pre-commit revocation: status=%d body=%s", response.Code, response.Body.String())
 	}
-	service.store.mu.Lock()
-	eventCount := len(service.store.sessions["sess-1"].events)
-	service.store.mu.Unlock()
+	store := memoryStoreForTest(t, service)
+	store.mu.Lock()
+	eventCount := len(store.sessions["sess-1"].events)
+	store.mu.Unlock()
 	if eventCount != 0 {
 		t.Fatalf("revoked message published %d local events", eventCount)
 	}
@@ -618,10 +617,7 @@ func TestAuthorityModePollAuthorizesViaAuthority(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 
@@ -670,10 +666,7 @@ func TestAuthorityModeRevocationBeforePollResponseDoesNotReleaseEvent(t *testing
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 
@@ -697,9 +690,9 @@ func TestAuthorityModeRevocationBeforePollResponseDoesNotReleaseEvent(t *testing
 	case <-time.After(time.Second):
 		t.Fatal("poll did not reach authority authorization")
 	}
-	waitForWaiter(t, service.store, "sess-1", RoleDevice)
+	waitForWaiter(t, memoryStoreForTest(t, service), "sess-1", RoleDevice)
 	revoked.Store(true)
-	_, _, err = service.store.AddMessageAuthorized("sess-1", RoleHost, MessageRequest{
+	_, _, err := service.store.AddMessageAuthorized(context.Background(), "sess-1", RoleHost, MessageRequest{
 		MessageID: "offer-1", Type: MessageOffer,
 		SDP: "v=0\r\na=ice-pwd:must-not-release\r\n",
 	})
@@ -743,10 +736,7 @@ func TestAuthorityModeInvalidateDelegatesToAuthority(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 
@@ -793,10 +783,7 @@ func TestAuthorityModeInvalidatedRequestDoesNotReplayRevokedCredentials(t *testi
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 	body := "{\"request_id\":\"req-1\",\"account_id\":\"acct-1\",\"host_device_id\":\"host-1\",\"client_device_id\":\"client-1\",\"session_epoch\":1,\"ttl_seconds\":60}"
@@ -827,10 +814,7 @@ func TestAuthorityModeFailClosedOnCreateFailure(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 
@@ -860,10 +844,7 @@ func TestAuthorityModeFailClosedOnAuthorizeFailure(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 
@@ -891,10 +872,7 @@ func TestAuthorityModeReadinessFailsWhenAuthorityIsUnavailable(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 	for i := 0; i < 2; i++ {
@@ -917,10 +895,7 @@ func TestAuthorityModeReadinessCachesAndRefreshes(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	now := time.Now()
 	service.now = func() time.Time { return now }
@@ -961,10 +936,7 @@ func TestAuthorityModeReadinessCollapsesConcurrentRefreshes(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 	const requests = 12
@@ -1011,10 +983,7 @@ func TestAuthorityModeReadinessWaiterHonorsRequestContext(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 	leaderDone := make(chan int, 1)
@@ -1070,10 +1039,7 @@ func TestAuthorityModeCanceledReadinessLeaderDoesNotCancelSharedRefresh(t *testi
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1110,10 +1076,7 @@ func TestAuthorityModeCanceledReadinessLeaderDoesNotCancelSharedRefresh(t *testi
 }
 
 func TestAuthorityModeReadinessPanicReleasesRefreshAndDoesNotCacheResult(t *testing.T) {
-	service, err := NewServer(testAuthorityConfig("http://127.0.0.1:1"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, "http://127.0.0.1:1")
 	service.SetReady(true)
 	var readinessCalls atomic.Int32
 	service.authority.httpClient = &http.Client{Transport: readinessRoundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -1176,10 +1139,7 @@ func TestAuthorityModeDoesNotFallbackToLocalTokens(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 
@@ -1212,10 +1172,7 @@ func TestAuthorityModeCreateSessionMapsClientTokenToDeviceToken(t *testing.T) {
 	}))
 	defer authorityServer.Close()
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 	service.SetReady(true)
 	handler := service.Handler()
 
@@ -1255,10 +1212,7 @@ func TestAuthorityModeStoreCreateDoesNotHoldLockDuringHTTP(t *testing.T) {
 	defer authorityServer.Close()
 	defer close(release)
 
-	service, err := NewServer(testAuthorityConfig(authorityServer.URL))
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newAuthorityMemoryServer(t, authorityServer.URL)
 
 	createDone := make(chan struct{})
 	go func() {

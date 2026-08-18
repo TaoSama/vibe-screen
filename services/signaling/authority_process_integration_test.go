@@ -22,7 +22,8 @@ import (
 // single authority-backed signaling integration run. All secrets are generated
 // per test so a leak in one run cannot compromise another.
 type authorityProcessTest struct {
-	databaseURL string
+	authorityDatabaseURL string
+	signalingDatabaseURL string
 
 	authorityAdminToken     string
 	authoritySignalingToken string
@@ -59,13 +60,15 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("signal-based process test is Unix-only")
 	}
-	databaseURL := os.Getenv("VIBE_AUTHORITY_TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("VIBE_AUTHORITY_TEST_DATABASE_URL is not set")
+	authorityDatabaseURL := os.Getenv("VIBE_AUTHORITY_TEST_DATABASE_URL")
+	signalingDatabaseURL := os.Getenv("VIBE_SIGNALING_TEST_DATABASE_URL")
+	if authorityDatabaseURL == "" || signalingDatabaseURL == "" {
+		t.Skip("VIBE_AUTHORITY_TEST_DATABASE_URL and VIBE_SIGNALING_TEST_DATABASE_URL must be set")
 	}
 
 	run := &authorityProcessTest{
-		databaseURL: databaseURL,
+		authorityDatabaseURL: authorityDatabaseURL,
+		signalingDatabaseURL: signalingDatabaseURL,
 
 		authorityAdminToken:     "authority-admin-token-" + randomSuffix(t),
 		authoritySignalingToken: "authority-signaling-token-" + randomSuffix(t),
@@ -97,8 +100,11 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 
 	// Apply the authority schema before starting the server.
 	migrateAuthority(t, run)
-	resetAuthorityDatabase(t, run.databaseURL)
-	t.Cleanup(func() { resetAuthorityDatabase(t, run.databaseURL) })
+	migrateSignaling(t, run)
+	resetAuthorityDatabase(t, run.authorityDatabaseURL)
+	resetSignalingDatabase(t, run.signalingDatabaseURL)
+	t.Cleanup(func() { resetAuthorityDatabase(t, run.authorityDatabaseURL) })
+	t.Cleanup(func() { resetSignalingDatabase(t, run.signalingDatabaseURL) })
 
 	// Start the authority service first; signaling depends on it for /readyz.
 	startAuthority(t, run)
@@ -316,6 +322,17 @@ func resetAuthorityDatabase(t *testing.T, databaseURL string) {
 	}
 }
 
+func resetSignalingDatabase(t *testing.T, databaseURL string) {
+	t.Helper()
+	const statement = "TRUNCATE signaling_waiters, signaling_role_rates, signaling_messages, signaling_sessions RESTART IDENTITY CASCADE"
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "psql", databaseURL, "--no-psqlrc", "--set=ON_ERROR_STOP=1", "--quiet", "--command", statement)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("reset signaling integration database: %v\n%s", err, output)
+	}
+}
+
 func buildAuthority(t *testing.T, binaryPath string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -371,7 +388,7 @@ func migrateAuthority(t *testing.T, run *authorityProcessTest) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, run.authorityBinary, "--config", configPath, "--migrate", migrationPath)
 	cmd.Env = append(os.Environ(),
-		"VIBE_AUTHORITY_DATABASE_URL="+run.databaseURL,
+		"VIBE_AUTHORITY_DATABASE_URL="+run.authorityDatabaseURL,
 		"VIBE_AUTHORITY_ADMIN_TOKEN="+run.authorityAdminToken,
 		"VIBE_AUTHORITY_SIGNALING_TOKEN="+run.authoritySignalingToken,
 		"VIBE_AUTHORITY_RELAY_TOKEN="+run.authorityRelayToken,
@@ -380,6 +397,21 @@ func migrateAuthority(t *testing.T, run *authorityProcessTest) {
 	)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("authority migrate: %v\n%s", err, output)
+	}
+}
+
+func migrateSignaling(t *testing.T, run *authorityProcessTest) {
+	t.Helper()
+	migrationPath, err := filepath.Abs("migrations/001_signaling.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, run.signalingBinary, "--migrate", migrationPath)
+	cmd.Env = append(os.Environ(), "VIBE_SIGNALING_DATABASE_URL="+run.signalingDatabaseURL)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("signaling migrate: %v\n%s", err, output)
 	}
 }
 
@@ -398,7 +430,7 @@ func startAuthority(t *testing.T, run *authorityProcessTest) {
 	}
 	cmd := exec.CommandContext(context.Background(), run.authorityBinary, "--config", configPath)
 	cmd.Env = append(os.Environ(),
-		"VIBE_AUTHORITY_DATABASE_URL="+run.databaseURL,
+		"VIBE_AUTHORITY_DATABASE_URL="+run.authorityDatabaseURL,
 		"VIBE_AUTHORITY_ADMIN_TOKEN="+run.authorityAdminToken,
 		"VIBE_AUTHORITY_SIGNALING_TOKEN="+run.authoritySignalingToken,
 		"VIBE_AUTHORITY_RELAY_TOKEN="+run.authorityRelayToken,
@@ -431,6 +463,7 @@ func startSignaling(t *testing.T, run *authorityProcessTest) {
   "max_waiters_per_role": 1,
   "cleanup_interval_seconds": 1,
   "authority_mode": "production_authority",
+  "store_backend": "postgres",
   "authority_url": "http://%s"
 }`, run.signalingAddress, run.authorityAddress)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
@@ -441,6 +474,7 @@ func startSignaling(t *testing.T, run *authorityProcessTest) {
 		"VIBE_SIGNALING_ISSUER_TOKEN="+run.signalingIssuerToken,
 		"VIBE_SIGNALING_METRICS_TOKEN="+run.signalingMetricsToken,
 		"VIBE_SIGNALING_AUTHORITY_TOKEN="+run.authoritySignalingToken,
+		"VIBE_SIGNALING_DATABASE_URL="+run.signalingDatabaseURL,
 	)
 	cmd.Stdout = &run.signalingLog
 	cmd.Stderr = &run.signalingLog

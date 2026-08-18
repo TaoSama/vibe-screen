@@ -29,6 +29,8 @@ func TestConfigSeparatesLocalDevelopmentAndProductionAuthority(t *testing.T) {
 	production.AuthorityMode = AuthorityModeProductionAuthority
 	production.AuthorityURL = "https://authority.example.test"
 	production.AuthorityToken = testAuthorityToken
+	production.StoreBackend = StoreBackendPostgres
+	production.DatabaseURL = "postgres://authority@127.0.0.1/vibescreen?sslmode=disable"
 	if err := production.Validate(); err != nil {
 		t.Fatalf("valid production authority config: %v", err)
 	}
@@ -36,6 +38,49 @@ func TestConfigSeparatesLocalDevelopmentAndProductionAuthority(t *testing.T) {
 	production.IssuerToken = production.AuthorityToken
 	if err := production.Validate(); err == nil {
 		t.Fatal("production config reused the authority token as the issuer token")
+	}
+}
+
+func TestConfigRequiresStoreBackendAndProductionPostgres(t *testing.T) {
+	cfg := testConfig()
+	cfg.StoreBackend = ""
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("missing store_backend was accepted")
+	}
+
+	production := testConfig()
+	production.AuthorityMode = AuthorityModeProductionAuthority
+	production.AuthorityURL = "https://authority.example.test"
+	production.AuthorityToken = testAuthorityToken
+	production.StoreBackend = StoreBackendMemory
+	if err := production.Validate(); err == nil || !strings.Contains(err.Error(), "requires postgres") {
+		t.Fatalf("production memory store error = %v", err)
+	}
+}
+
+func TestConfigValidatesDatabaseURLPolicy(t *testing.T) {
+	cfg := testConfig()
+	cfg.StoreBackend = StoreBackendMemory
+	cfg.DatabaseURL = "postgres://authority@127.0.0.1/vibescreen?sslmode=disable"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("memory store accepted database URL")
+	}
+
+	cfg = testConfig()
+	cfg.StoreBackend = StoreBackendPostgres
+	cfg.DatabaseURL = ""
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), databaseURLEnv) {
+		t.Fatalf("missing postgres URL error = %v", err)
+	}
+
+	cfg.DatabaseURL = "postgres://authority@example.com/vibescreen?sslmode=require"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "verify-full") {
+		t.Fatalf("non-loopback weak TLS mode error = %v", err)
+	}
+
+	cfg.DatabaseURL = "postgresql://authority@example.com/vibescreen?sslmode=verify-full"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("verify-full postgres URL rejected: %v", err)
 	}
 }
 
@@ -87,6 +132,8 @@ func TestConfigRejectsAuthorityTokenReuseAndWeakToken(t *testing.T) {
 	cfg := testConfig()
 	cfg.AuthorityMode = AuthorityModeProductionAuthority
 	cfg.AuthorityURL = "https://authority.example.test"
+	cfg.StoreBackend = StoreBackendPostgres
+	cfg.DatabaseURL = "postgres://authority@127.0.0.1/vibescreen?sslmode=disable"
 	cfg.AuthorityToken = "short"
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("weak authority token was accepted")
