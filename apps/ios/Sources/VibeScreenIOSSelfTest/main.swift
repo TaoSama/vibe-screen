@@ -803,6 +803,25 @@ func testClipboardAndManagedPolicy() throws {
             && !disjointHosts.allows(host: "other.local"),
         "disjoint managed host allowlists must deny all hosts"
     )
+    let restrictedEmpty = ManagedPolicy(
+        isManaged: true,
+        clipboardAllowed: true,
+        fileTransferAllowed: true,
+        audioAllowed: true,
+        wakeAllowed: true,
+        customGesturesAllowed: true,
+        hostActionsAllowed: true,
+        maximumFileBytes: 4_096,
+        allowedHosts: [],
+        allowedHostsRestricted: true
+    )
+    let restrictedEmptyRoundTrip = ManagedPolicy(remoteStatus: restrictedEmpty.protocolStatus)
+    try require(
+        restrictedEmptyRoundTrip.allowedHostsRestricted
+            && restrictedEmptyRoundTrip.allowedHosts.isEmpty
+            && !restrictedEmptyRoundTrip.allows(host: "mac.local"),
+        "restricted empty managed host allowlist must round-trip as deny-all"
+    )
 
     let customGesturesDenied = try ManagedPolicy(managedConfiguration: [
         "ClipboardAllowed": true,

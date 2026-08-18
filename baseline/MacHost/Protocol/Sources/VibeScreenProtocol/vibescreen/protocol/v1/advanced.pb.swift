@@ -629,6 +629,8 @@ public struct VSManagedPolicyStatus: Sendable {
 
   public var allowedHosts: [String] = []
 
+  public var allowedHostsRestricted: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1680,7 +1682,7 @@ extension VSWakeHostResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImpleme
 
 extension VSManagedPolicyStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ManagedPolicyStatus"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}managed\0\u{3}clipboard_allowed\0\u{3}file_transfer_allowed\0\u{3}audio_allowed\0\u{3}wake_allowed\0\u{3}maximum_file_bytes\0\u{3}custom_gestures_allowed\0\u{3}host_actions_allowed\0\u{3}allowed_hosts\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}managed\0\u{3}clipboard_allowed\0\u{3}file_transfer_allowed\0\u{3}audio_allowed\0\u{3}wake_allowed\0\u{3}maximum_file_bytes\0\u{3}custom_gestures_allowed\0\u{3}host_actions_allowed\0\u{3}allowed_hosts\0\u{3}allowed_hosts_restricted\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1697,6 +1699,7 @@ extension VSManagedPolicyStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
       case 7: try { try decoder.decodeSingularBoolField(value: &self.customGesturesAllowed) }()
       case 8: try { try decoder.decodeSingularBoolField(value: &self.hostActionsAllowed) }()
       case 9: try { try decoder.decodeRepeatedStringField(value: &self.allowedHosts) }()
+      case 10: try { try decoder.decodeSingularBoolField(value: &self.allowedHostsRestricted) }()
       default: break
       }
     }
@@ -1730,6 +1733,9 @@ extension VSManagedPolicyStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
     if !self.allowedHosts.isEmpty {
       try visitor.visitRepeatedStringField(value: self.allowedHosts, fieldNumber: 9)
     }
+    if self.allowedHostsRestricted != false {
+      try visitor.visitSingularBoolField(value: self.allowedHostsRestricted, fieldNumber: 10)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1743,6 +1749,7 @@ extension VSManagedPolicyStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
     if lhs.customGesturesAllowed != rhs.customGesturesAllowed {return false}
     if lhs.hostActionsAllowed != rhs.hostActionsAllowed {return false}
     if lhs.allowedHosts != rhs.allowedHosts {return false}
+    if lhs.allowedHostsRestricted != rhs.allowedHostsRestricted {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

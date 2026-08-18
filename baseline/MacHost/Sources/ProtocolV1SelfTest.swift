@@ -326,6 +326,26 @@ enum ProtocolV1SelfTest {
                 failures.append("managed policy allowlist mismatch did not fail closed")
                 return
             }
+
+            let restrictedEmpty = ManagedPolicy(
+                isManaged: true,
+                clipboardAllowed: true,
+                fileTransferAllowed: true,
+                audioAllowed: true,
+                wakeAllowed: true,
+                customGesturesAllowed: true,
+                hostActionsAllowed: true,
+                maximumFileBytes: 4_096,
+                allowedHosts: [],
+                allowedHostsRestricted: true
+            )
+            let roundTripped = ManagedPolicy(remoteStatus: restrictedEmpty.protocolStatus)
+            guard roundTripped.allowedHostsRestricted,
+                  roundTripped.allowedHosts.isEmpty,
+                  !roundTripped.allows(hostID: "any-host") else {
+                failures.append("restricted empty managed allowlist did not round-trip as deny-all")
+                return
+            }
         } catch {
             failures.append("managed policy gate test failed: \(error)")
         }

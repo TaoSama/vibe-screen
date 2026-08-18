@@ -161,6 +161,29 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun restrictedEmptyAllowedHostsRoundTripsThroughStatus() {
+        val policy =
+            ProtocolV1Session.ManagedPolicy(
+                isManaged = true,
+                clipboardAllowed = true,
+                fileTransferAllowed = true,
+                audioAllowed = true,
+                wakeAllowed = true,
+                customGesturesAllowed = true,
+                hostActionsAllowed = true,
+                maximumFileBytes = 4_096,
+                allowedHosts = emptySet(),
+                allowedHostsRestricted = true,
+            )
+
+        val roundTripped = ProtocolV1Session.ManagedPolicy.fromStatus(policy.toStatus())
+
+        assertTrue(roundTripped.allowedHostsRestricted)
+        assertTrue(roundTripped.allowedHosts.isEmpty())
+        assertFalse(roundTripped.allowsHost("any-host"))
+    }
+
+    @Test
     fun managedRemoteStatusWithUnsetFieldsFailsClosed() {
         val policy =
             ProtocolV1Session.ManagedPolicy.fromStatus(

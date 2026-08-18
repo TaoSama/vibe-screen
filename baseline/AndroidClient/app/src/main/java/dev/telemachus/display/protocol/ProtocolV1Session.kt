@@ -229,6 +229,7 @@ internal class ProtocolV1Session(
                 .setHostActionsAllowed(hostActionsAllowed)
                 .setMaximumFileBytes(maximumFileBytes)
                 .addAllAllowedHosts(allowedHosts.sorted())
+                .setAllowedHostsRestricted(allowedHostsRestricted)
                 .build()
 
         companion object {
@@ -249,6 +250,7 @@ internal class ProtocolV1Session(
 
             fun fromStatus(status: ManagedPolicyStatus): ManagedPolicy {
                 if (!status.managed) return UNMANAGED
+                val hosts = status.allowedHostsList.filter { it.isNotBlank() }.toSet()
                 return ManagedPolicy(
                     isManaged = true,
                     clipboardAllowed = status.clipboardAllowed,
@@ -258,7 +260,8 @@ internal class ProtocolV1Session(
                     customGesturesAllowed = status.customGesturesAllowed,
                     hostActionsAllowed = status.hostActionsAllowed,
                     maximumFileBytes = status.maximumFileBytes,
-                    allowedHosts = status.allowedHostsList.filter { it.isNotBlank() }.toSet(),
+                    allowedHosts = hosts,
+                    allowedHostsRestricted = status.allowedHostsRestricted || hosts.isNotEmpty(),
                 )
             }
         }

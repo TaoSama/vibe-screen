@@ -76,6 +76,27 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertFalse(effective.allows(hostID: "remote-host"))
     }
 
+    func testRestrictedEmptyAllowedHostsRoundTripsThroughStatus() {
+        let policy = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: 4_096,
+            allowedHosts: [],
+            allowedHostsRestricted: true
+        )
+
+        let roundTripped = ManagedPolicy(remoteStatus: policy.protocolStatus)
+
+        XCTAssertTrue(roundTripped.allowedHostsRestricted)
+        XCTAssertTrue(roundTripped.allowedHosts.isEmpty)
+        XCTAssertFalse(roundTripped.allows(hostID: "any-host"))
+    }
+
     func testManagedRemoteStatusWithUnsetFieldsFailsClosed() {
         var status = VSManagedPolicyStatus()
         status.managed = true

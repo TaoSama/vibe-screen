@@ -107,6 +107,7 @@ public struct ManagedPolicy: Equatable, Sendable {
             self = .unmanaged
             return
         }
+        let hosts = Set(remoteStatus.allowedHosts.filter { !Self.isBlankHost($0) })
         self.init(
             isManaged: true,
             clipboardAllowed: remoteStatus.clipboardAllowed,
@@ -116,7 +117,8 @@ public struct ManagedPolicy: Equatable, Sendable {
             customGesturesAllowed: remoteStatus.customGesturesAllowed,
             hostActionsAllowed: remoteStatus.hostActionsAllowed,
             maximumFileBytes: remoteStatus.maximumFileBytes,
-            allowedHosts: Set(remoteStatus.allowedHosts.filter { !Self.isBlankHost($0) })
+            allowedHosts: hosts,
+            allowedHostsRestricted: remoteStatus.allowedHostsRestricted || !hosts.isEmpty
         )
     }
 
@@ -131,6 +133,7 @@ public struct ManagedPolicy: Equatable, Sendable {
         status.hostActionsAllowed = hostActionsAllowed
         status.maximumFileBytes = maximumFileBytes
         status.allowedHosts = allowedHosts.sorted()
+        status.allowedHostsRestricted = allowedHostsRestricted
         return status
     }
 

@@ -206,4 +206,5 @@ message ManagedPolicyStatus {
   bool custom_gestures_allowed = 7;
   bool host_actions_allowed = 8;
   repeated string allowed_hosts = 9;
+  bool allowed_hosts_restricted = 10;
 }
