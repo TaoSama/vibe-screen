@@ -170,38 +170,53 @@ Linux host:
    its `turn_realm` equals `COTURN_REALM`. Keep
    `authority_mode=production_authority`, point `authority_url` at the private
    Authority endpoint, and set `authority_source_id` to a stable identifier for
-   this TURN source.
+   this TURN source. The production example selects `storage_backend: postgres`;
+   do not change it to the file backend for a multi-process or public
+   deployment.
 2. Set `VIBE_RELAY_IMAGE_REPOSITORY` and the exact 64-character
    `VIBE_RELAY_IMAGE_SHA256`; Compose constructs a digest-only image reference
    and the production profile intentionally has no local relay build fallback.
-3. Provision independent secret files with mode `0600`; distribute the same
+3. Provision independent migration and runtime PostgreSQL URL secret files.
+   Use a short-lived DDL role for migration and a least-privilege runtime role
+   for relay. Both URLs must include `sslmode=verify-full` because the profile
+   sets `VIBE_RELAY_DATABASE_TLS_MODE=verify-full`.
+4. Provision independent secret files with mode `0600`; distribute the same
    `turn_secret.txt` to relay and coturn, and provision `authority_token.txt`
    with the same value Authority exposes as `VIBE_AUTHORITY_RELAY_TOKEN`.
    Because the coturn container runs as UID/GID `65532`, make
    `turn_secret.txt` owned by `65532:65532` or otherwise readable by that
    account while retaining `0600` permissions. Store/rotate all secrets through
    the deployment secret manager, not source control.
-4. Install the public certificate chain as ignored `tls/fullchain.pem` and its
+5. Install the public certificate chain as ignored `tls/fullchain.pem` and its
    private key as `tls/privkey.pem`.
-5. Set `COTURN_REALM` to the certificate DNS hostname and
+6. Set `COTURN_REALM` to the certificate DNS hostname and
    `COTURN_EXTERNAL_IP` to `public-ip/private-ip` behind one-to-one NAT, or to
    the public IP on a directly addressed host.
-6. Allow inbound UDP/TCP 3478, TCP 5349, and UDP 49152-65535. Keep relay HTTP
+7. Allow inbound UDP/TCP 3478, TCP 5349, and UDP 49152-65535. Keep relay HTTP
    on loopback behind an authenticated TLS reverse proxy. Apply provider DDoS
    controls before these host rules.
-7. Validate the effective configuration, start, and inspect health/logs:
+8. Validate the effective configuration, start, and inspect health/logs:
 
 ```bash
 export COTURN_REALM=relay.example.com
 export COTURN_EXTERNAL_IP=203.0.113.10/10.0.0.10
 export VIBE_RELAY_IMAGE_REPOSITORY=registry.example.com/vibe-relay
 export VIBE_RELAY_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+export VIBE_RELAY_MIGRATION_DATABASE_URL_FILE=/run/secrets/relay-migration-url
+export VIBE_RELAY_DATABASE_URL_FILE=/run/secrets/relay-runtime-url
 docker compose -f docker-compose.production.yml config --quiet
 docker compose -f docker-compose.production.yml pull relay coturn
 docker compose -f docker-compose.production.yml up -d --wait
 curl --fail http://127.0.0.1:8090/readyz
 docker compose -f docker-compose.production.yml logs --since=10m relay coturn
 ```
+
+The `relay-migrate` job applies `001_relay.sql` behind an advisory lock and a
+checksum ledger. Relay starts only after that job exits successfully. `/readyz`
+requires the database, schema checksum, required relations/columns/constraints,
+and database clock skew to be inside the configured bound. A database outage or
+schema drift leaves `/healthz` at 200 while `/readyz`, credential issuance,
+usage writes, revocation, and metrics fail closed with 503.
 
 `production.conf` enables UDP/TCP TURN, TLS on 5349, TLS 1.2+, fingerprints,
 short nonces, stable per-device and total allocation quotas, a 20 MB/s
@@ -218,9 +233,12 @@ precedence over denies.
 - Resolve a new immutable multi-platform image digest, audit its SBOM and
   licenses, update tag plus digest together, then run local credential/TURN and
   forced-relay canaries before production rollout.
-- Back up the `relay-data` volume before changing the control-plane binary.
-  Roll back binary/image/config together, but never roll back persisted device
-  revocation or key epochs.
+- Back up the relay PostgreSQL database before changing the control-plane
+  binary or applying a migration. Roll back binary/image/config together, but
+  never restore an older logical device-revocation, usage, or active-session
+  ledger as an application rollback. Database recovery must use the approved
+  PITR procedure and keep callers fail-closed until the recovered ledger passes
+  `/readyz` and an issuance/usage canary.
 - Rotate API-token files one service at a time. TURN-secret rotation requires
   a bounded dual-key or drain window; this coturn profile accepts one REST
   secret, so the safe current procedure is to stop new credential issuance,
@@ -245,11 +263,14 @@ atomically counts all session/expiry credentials under one device principal.
 `device_id/session_id/allocation_id/source_id` tuple before returning that TURN
 credential; revoked or expired Authority sessions and revoked devices fail closed
 before coturn sees a credential. Revalidate `user-quota` against legitimate
-UDP/TCP/TLS ICE allocation counts before changing it. The repository still has no
-coturn-to-`/v1/usage` collector. Therefore the control plane's daily-byte and
-per-device concurrent-session accounting is not authoritative for this deployment;
-coturn's own limits remain the immediate enforcement boundary. The control plane
-is also single-replica/local-state. These are production launch blockers, not
+UDP/TCP/TLS ICE allocation counts before changing it. The repository still has
+no coturn-to-`/v1/usage` collector. Therefore the control plane's daily-byte and
+per-device concurrent-session accounting is not authoritative for this
+deployment; coturn's own limits remain the immediate enforcement boundary.
+Postgres removes the previous local-state blocker for multiple relay
+control-plane processes, but it does not provide TURN usage collection, billing
+reconciliation, production database backups, NTP monitoring, or multi-region
+consistency by itself. These are production launch blockers, not
 implied features.
 
 ## Provenance and license

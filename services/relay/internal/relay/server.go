@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/subtle"
@@ -29,7 +30,7 @@ type rateWindow struct {
 
 type Server struct {
 	cfg       Config
-	store     *UsageStore
+	store     Store
 	authority relayAuthority
 	metrics   Metrics
 	now       func() time.Time
@@ -42,7 +43,7 @@ func NewServer(cfg Config) (*Server, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	store, err := NewUsageStore(cfg.StateFile, cfg.DailyBytesPerDevice, cfg.MaxConcurrentSessionsPerDevice)
+	store, err := OpenStore(context.Background(), cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -57,6 +58,17 @@ func NewServer(cfg Config) (*Server, error) {
 	return &Server{cfg: cfg, store: store, authority: authority, now: time.Now, rates: make(map[string]rateWindow)}, nil
 }
 
+func OpenStore(ctx context.Context, cfg Config) (Store, error) {
+	switch cfg.EffectiveStorageBackend() {
+	case storageBackendFile:
+		return NewUsageStore(cfg.StateFile, cfg.DailyBytesPerDevice, cfg.MaxConcurrentSessionsPerDevice)
+	case storageBackendPostgres:
+		return OpenPostgres(ctx, cfg)
+	default:
+		return nil, fmt.Errorf("unsupported storage backend %q", cfg.StorageBackend)
+	}
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
@@ -66,6 +78,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/usage", s.usage)
 	mux.HandleFunc("POST /v1/devices/{device_id}/revoke", s.revoke)
 	return securityHeaders(mux)
+}
+
+func (s *Server) Close() {
+	s.store.Close()
 }
 
 func securityHeaders(next http.Handler) http.Handler {
@@ -81,7 +97,7 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.Ready(); err != nil {
+	if err := s.store.Ready(r.Context()); err != nil {
 		s.reject(w, http.StatusServiceUnavailable, "state storage unavailable")
 		return
 	}
@@ -99,7 +115,11 @@ func (s *Server) metricsHandler(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	_, egress, active := s.store.Totals(s.now())
+	_, egress, active, err := s.store.Totals(r.Context(), s.now())
+	if err != nil {
+		s.rejectStorage(w)
+		return
+	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	if err := s.metrics.WritePrometheus(w, active, costMicrocents(egress, s.cfg.EgressMicrocentsPerGibibyte)); err != nil {
 		return
@@ -132,19 +152,26 @@ func (s *Server) credentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.revokeMu.RLock()
-	if s.store.IsRevoked(request.DeviceID) {
-		s.revokeMu.RUnlock()
+	revoked, err := s.store.IsRevoked(r.Context(), request.DeviceID)
+	s.revokeMu.RUnlock()
+	if err != nil {
+		s.rejectStorage(w)
+		return
+	}
+	if revoked {
 		s.rejectRevoked(w)
 		return
 	}
 	if !s.allowCredential(request.DeviceID) {
-		s.revokeMu.RUnlock()
 		s.reject(w, http.StatusTooManyRequests, "credential rate limit exceeded")
 		return
 	}
-	ingress, egress, sessions := s.store.Snapshot(s.now(), request.DeviceID)
+	ingress, egress, sessions, err := s.store.Snapshot(r.Context(), s.now(), request.DeviceID)
+	if err != nil {
+		s.rejectStorage(w)
+		return
+	}
 	if ingress+egress >= s.cfg.DailyBytesPerDevice || sessions >= s.cfg.MaxConcurrentSessionsPerDevice {
-		s.revokeMu.RUnlock()
 		s.reject(w, http.StatusTooManyRequests, "device relay quota exceeded")
 		return
 	}
@@ -153,16 +180,24 @@ func (s *Server) credentials(w http.ResponseWriter, r *http.Request) {
 		ttl = s.cfg.CredentialTTLSeconds
 	}
 	if ttl <= 0 || ttl > s.cfg.MaxCredentialTTLSeconds {
-		s.revokeMu.RUnlock()
 		s.reject(w, http.StatusBadRequest, "ttl_seconds outside allowed range")
 		return
 	}
 	if s.authority == nil {
+		s.revokeMu.RLock()
 		defer s.revokeMu.RUnlock()
+		revoked, err = s.store.IsRevoked(r.Context(), request.DeviceID)
+		if err != nil {
+			s.rejectStorage(w)
+			return
+		}
+		if revoked {
+			s.rejectRevoked(w)
+			return
+		}
 		s.writeCredential(w, request, ttl)
 		return
 	}
-	s.revokeMu.RUnlock()
 
 	if s.authority != nil {
 		err := s.authority.AdmitRelay(r.Context(), relayAdmissionRequest{
@@ -192,7 +227,12 @@ func (s *Server) credentials(w http.ResponseWriter, r *http.Request) {
 	}
 	s.revokeMu.RLock()
 	defer s.revokeMu.RUnlock()
-	if s.store.IsRevoked(request.DeviceID) {
+	revoked, err = s.store.IsRevoked(r.Context(), request.DeviceID)
+	if err != nil {
+		s.rejectStorage(w)
+		return
+	}
+	if revoked {
 		s.rejectRevoked(w)
 		return
 	}
@@ -224,8 +264,8 @@ func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
 	}
 	s.revokeMu.Lock()
 	defer s.revokeMu.Unlock()
-	if err := s.store.Revoke(deviceID, s.now()); err != nil {
-		s.reject(w, http.StatusInternalServerError, "persist revocation failed")
+	if err := s.store.Revoke(r.Context(), deviceID, s.now()); err != nil {
+		s.rejectStorage(w)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
@@ -249,7 +289,7 @@ func (s *Server) usage(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusBadRequest, "usage event exceeds byte limit")
 		return
 	}
-	err := s.store.Apply(s.now(), event)
+	err := s.store.Apply(r.Context(), s.now(), event)
 	if errors.Is(err, ErrDeviceRevoked) {
 		s.rejectRevoked(w)
 		return
@@ -260,6 +300,10 @@ func (s *Server) usage(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, ErrQuotaExceeded) || errors.Is(err, ErrSessionLimit) {
 		s.reject(w, http.StatusTooManyRequests, err.Error())
+		return
+	}
+	if errors.Is(err, ErrStorage) {
+		s.rejectStorage(w)
 		return
 	}
 	if err != nil {
@@ -307,6 +351,10 @@ func (s *Server) reject(w http.ResponseWriter, status int, message string) {
 func (s *Server) rejectRevoked(w http.ResponseWriter) {
 	s.metrics.revokedRejected.Add(1)
 	s.reject(w, http.StatusForbidden, ErrDeviceRevoked.Error())
+}
+
+func (s *Server) rejectStorage(w http.ResponseWriter) {
+	s.reject(w, http.StatusServiceUnavailable, "state storage unavailable")
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) error {

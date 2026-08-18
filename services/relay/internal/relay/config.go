@@ -4,8 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"math"
+	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 const (
@@ -15,25 +19,37 @@ const (
 	metricsTokenEnv    = "VIBE_RELAY_METRICS_TOKEN"
 	adminTokenEnv      = "VIBE_RELAY_ADMIN_TOKEN"
 	authorityTokenEnv  = "VIBE_RELAY_AUTHORITY_TOKEN"
+	databaseURLEnv     = "VIBE_RELAY_DATABASE_URL"
+	databaseTLSModeEnv = "VIBE_RELAY_DATABASE_TLS_MODE"
+
 	AuthorityModeLocal = "local_development"
 	AuthorityModeProd  = "production_authority"
+
+	storageBackendFile     = "file"
+	storageBackendPostgres = "postgres"
+
+	maxDurationSeconds                           = math.MaxInt64 / int64(time.Second)
+	defaultMaximumDatabaseClockSkewSeconds int64 = 5
+	maximumDatabaseClockSkewSeconds              = defaultMaximumDatabaseClockSkewSeconds
 )
 
 type Config struct {
-	ListenAddress                  string   `json:"listen_address"`
-	TurnRealm                      string   `json:"turn_realm"`
-	TurnURIs                       []string `json:"turn_uris"`
-	CredentialTTLSeconds           int64    `json:"credential_ttl_seconds"`
-	MaxCredentialTTLSeconds        int64    `json:"max_credential_ttl_seconds"`
-	CredentialRequestsPerMinute    int      `json:"credential_requests_per_minute"`
-	MaxConcurrentSessionsPerDevice int      `json:"max_concurrent_sessions_per_device"`
-	DailyBytesPerDevice            uint64   `json:"daily_bytes_per_device"`
-	MaxUsageEventBytes             uint64   `json:"max_usage_event_bytes"`
-	EgressMicrocentsPerGibibyte    uint64   `json:"egress_microcents_per_gibibyte"`
-	StateFile                      string   `json:"state_file"`
-	AuthorityMode                  string   `json:"authority_mode,omitempty"`
-	AuthorityURL                   string   `json:"authority_url,omitempty"`
-	AuthoritySourceID              string   `json:"authority_source_id,omitempty"`
+	ListenAddress                   string   `json:"listen_address"`
+	TurnRealm                       string   `json:"turn_realm"`
+	TurnURIs                        []string `json:"turn_uris"`
+	CredentialTTLSeconds            int64    `json:"credential_ttl_seconds"`
+	MaxCredentialTTLSeconds         int64    `json:"max_credential_ttl_seconds"`
+	CredentialRequestsPerMinute     int      `json:"credential_requests_per_minute"`
+	MaxConcurrentSessionsPerDevice  int      `json:"max_concurrent_sessions_per_device"`
+	DailyBytesPerDevice             uint64   `json:"daily_bytes_per_device"`
+	MaxUsageEventBytes              uint64   `json:"max_usage_event_bytes"`
+	EgressMicrocentsPerGibibyte     uint64   `json:"egress_microcents_per_gibibyte"`
+	StorageBackend                  string   `json:"storage_backend,omitempty"`
+	StateFile                       string   `json:"state_file"`
+	AuthorityMode                   string   `json:"authority_mode,omitempty"`
+	AuthorityURL                    string   `json:"authority_url,omitempty"`
+	AuthoritySourceID               string   `json:"authority_source_id,omitempty"`
+	MaximumDatabaseClockSkewSeconds int64    `json:"maximum_database_clock_skew_seconds,omitempty"`
 
 	TurnSecret     string `json:"-"`
 	ClientToken    string `json:"-"`
@@ -41,6 +57,7 @@ type Config struct {
 	MetricsToken   string `json:"-"`
 	AdminToken     string `json:"-"`
 	AuthorityToken string `json:"-"`
+	DatabaseURL    string `json:"-"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -48,11 +65,17 @@ func LoadConfig(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("read config: %w", err)
 	}
-	var cfg Config
+	cfg := Config{StorageBackend: storageBackendFile, MaximumDatabaseClockSkewSeconds: defaultMaximumDatabaseClockSkewSeconds}
 	decoder := json.NewDecoder(strings.NewReader(string(contents)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&cfg); err != nil {
 		return Config{}, fmt.Errorf("decode config: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			err = errors.New("multiple JSON values")
+		}
+		return Config{}, fmt.Errorf("decode config: trailing content: %w", err)
 	}
 	cfg.TurnSecret, err = loadSecret(turnSecretEnv)
 	if err != nil {
@@ -78,10 +101,49 @@ func LoadConfig(path string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	if cfg.EffectiveStorageBackend() == storageBackendPostgres {
+		databaseURL, err := LoadDatabaseURL()
+		if err != nil {
+			return Config{}, err
+		}
+		cfg.DatabaseURL = databaseURL
+	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func LoadDatabaseURL() (string, error) {
+	value, err := loadSecret(databaseURLEnv)
+	if err != nil {
+		return "", err
+	}
+	if value == "" {
+		return "", fmt.Errorf("%s is required when storage_backend is postgres", databaseURLEnv)
+	}
+	if err := validateDatabaseTLS(value, strings.TrimSpace(os.Getenv(databaseTLSModeEnv))); err != nil {
+		return "", err
+	}
+	return value, nil
+}
+
+func validateDatabaseTLS(databaseURL, requiredMode string) error {
+	if requiredMode == "" {
+		return nil
+	}
+	if requiredMode != "verify-full" {
+		return fmt.Errorf("%s must be empty or verify-full", databaseTLSModeEnv)
+	}
+	parsed, err := url.Parse(databaseURL)
+	if err != nil || (parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") || parsed.Host == "" {
+		return errors.New("production relay requires a PostgreSQL URL with sslmode=verify-full")
+	}
+	sslModes := parsed.Query()["sslmode"]
+	if len(sslModes) != 1 || sslModes[0] != requiredMode {
+		return errors.New("production relay requires sslmode=verify-full")
+	}
+	return nil
 }
 
 func loadSecret(name string) (string, error) {
@@ -116,8 +178,15 @@ func (c Config) Validate() error {
 	if len(c.TurnURIs) == 0 {
 		missing = append(missing, "turn_uris")
 	}
-	if c.StateFile == "" {
+	backend := c.EffectiveStorageBackend()
+	if backend != storageBackendFile && backend != storageBackendPostgres {
+		return fmt.Errorf("unsupported storage_backend %q", c.StorageBackend)
+	}
+	if backend == storageBackendFile && c.StateFile == "" {
 		missing = append(missing, "state_file")
+	}
+	if backend == storageBackendPostgres && c.DatabaseURL == "" {
+		missing = append(missing, databaseURLEnv)
 	}
 	if c.TurnSecret == "" {
 		missing = append(missing, turnSecretEnv)
@@ -177,11 +246,22 @@ func (c Config) Validate() error {
 	if c.CredentialTTLSeconds <= 0 || c.MaxCredentialTTLSeconds < c.CredentialTTLSeconds {
 		return errors.New("credential TTL must be positive and no greater than maximum TTL")
 	}
+	if c.CredentialTTLSeconds > maxDurationSeconds || c.MaxCredentialTTLSeconds > maxDurationSeconds {
+		return errors.New("credential TTL values exceed the safe int64 nanosecond bound")
+	}
 	if c.CredentialRequestsPerMinute <= 0 || c.MaxConcurrentSessionsPerDevice <= 0 {
 		return errors.New("rate and concurrent-session limits must be positive")
 	}
 	if c.DailyBytesPerDevice == 0 || c.MaxUsageEventBytes == 0 {
 		return errors.New("byte limits must be positive")
+	}
+	if backend == storageBackendPostgres {
+		if c.MaximumDatabaseClockSkewSeconds <= 0 {
+			return errors.New("maximum_database_clock_skew_seconds must be positive for postgres storage")
+		}
+		if c.MaximumDatabaseClockSkewSeconds > maximumDatabaseClockSkewSeconds {
+			return fmt.Errorf("maximum_database_clock_skew_seconds must not exceed %d", maximumDatabaseClockSkewSeconds)
+		}
 	}
 	for _, uri := range c.TurnURIs {
 		if !strings.HasPrefix(uri, "turn:") && !strings.HasPrefix(uri, "turns:") {
@@ -196,4 +276,15 @@ func (c Config) EffectiveAuthorityMode() string {
 		return AuthorityModeLocal
 	}
 	return c.AuthorityMode
+}
+
+func (c Config) EffectiveStorageBackend() string {
+	if c.StorageBackend == "" {
+		return storageBackendFile
+	}
+	return c.StorageBackend
+}
+
+func (c Config) MaximumDatabaseClockSkew() time.Duration {
+	return time.Duration(c.MaximumDatabaseClockSkewSeconds) * time.Second
 }

@@ -112,3 +112,26 @@ func TestParseAuthorityURLAllowsOnlyHTTPSOrLoopbackHTTP(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigRequiresDatabaseURLForPostgresStorage(t *testing.T) {
+	cfg := Config{
+		ListenAddress: "127.0.0.1:8090", TurnRealm: "relay.test", TurnURIs: []string{"turn:relay.test:3478"},
+		CredentialTTLSeconds: 60, MaxCredentialTTLSeconds: 120, CredentialRequestsPerMinute: 1,
+		MaxConcurrentSessionsPerDevice: 1, DailyBytesPerDevice: 1, MaxUsageEventBytes: 1, StorageBackend: storageBackendPostgres,
+		MaximumDatabaseClockSkewSeconds: defaultMaximumDatabaseClockSkewSeconds,
+		TurnSecret:                      strings.Repeat("t", 32), ClientToken: strings.Repeat("c", 32), UsageToken: strings.Repeat("u", 32),
+		MetricsToken: strings.Repeat("m", 32), AdminToken: strings.Repeat("a", 32),
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), databaseURLEnv) {
+		t.Fatalf("expected missing database URL rejection, got %v", err)
+	}
+}
+
+func TestConfigRequiresProductionDatabaseTLSWhenRequested(t *testing.T) {
+	if err := validateDatabaseTLS("postgres://relay:secret@db.example.com:5432/relay?sslmode=require", "verify-full"); err == nil || !strings.Contains(err.Error(), "verify-full") {
+		t.Fatalf("expected TLS mode rejection, got %v", err)
+	}
+	if err := validateDatabaseTLS("postgres://relay:secret@db.example.com:5432/relay?sslmode=verify-full", "verify-full"); err != nil {
+		t.Fatalf("verify-full URL rejected: %v", err)
+	}
+}

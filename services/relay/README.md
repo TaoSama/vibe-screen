@@ -13,6 +13,7 @@ screen content, so the relay cannot terminate Vibe Screen content encryption.
 ## Requirements and build
 
 - Go 1.23 or newer (verified with Go 1.24.13)
+- PostgreSQL 16 or newer for the production storage backend
 - A TURN server configured with the same REST authentication secret
 - TLS termination in front of this HTTP service outside local development
 
@@ -23,9 +24,9 @@ make build VERSION=0.1.0
 ./bin/vibe-relay --version
 ```
 
-The build uses only the Go standard library and has no downloaded module
-dependencies. The container build pins `golang:1.24.13-alpine3.22` by OCI
-digest and produces a static, non-root scratch image:
+The control plane uses `pgx` for the optional PostgreSQL storage backend. The
+container build pins `golang:1.24.13-alpine3.22` by OCI digest and produces a
+static, non-root scratch image with CA certificates and the relay migration SQL:
 
 ```bash
 docker build --build-arg VERSION=0.1.0 -t vibe-relay:0.1.0 .
@@ -60,16 +61,35 @@ export VIBE_RELAY_AUTHORITY_TOKEN="$(openssl rand -base64 48)"
   signaling, admin, metrics, usage, coturn, and TURN secret.
 
 The service refuses to start when a secret is missing or shorter than 32
-characters. State is atomically stored at `state_file` with mode `0600`. Back
-up that file before an upgrade; the v0.1 JSON schema is forwards-readable by
-v0.1 releases. Stop the old process, replace the binary, and restart against
-the same configuration and state file. Roll back by restoring both the prior
-binary and its state backup.
+characters. The default `storage_backend` is `file`: state is atomically stored
+at `state_file` with mode `0600`. Back up that file before an upgrade; the v0.1
+JSON schema is forwards-readable by v0.1 releases. Stop the old process, replace
+the binary, and restart against the same configuration and state file. Roll back
+by restoring both the prior binary and its state backup.
 
-For a container, mount a read-only configuration file and a writable `/data`
-directory owned by UID/GID 65532. Set `state_file` to
+Set `storage_backend` to `postgres` for production. In that mode the service
+requires `VIBE_RELAY_DATABASE_URL` or `VIBE_RELAY_DATABASE_URL_FILE`, runs only
+after migration `001_relay.sql` has been applied, and fails closed when `/readyz`
+cannot verify the database clock, schema checksum, required relations, columns,
+or constraints. Run the migration with a short-lived DDL role before starting
+the service:
+
+```bash
+export VIBE_RELAY_DATABASE_URL_FILE=/run/secrets/relay_migration_database_url
+./bin/vibe-relay --migrate migrations/001_relay.sql
+```
+
+Set `VIBE_RELAY_DATABASE_TLS_MODE=verify-full` in production; when present, the
+database URL must be `postgres://` or `postgresql://` and include
+`sslmode=verify-full`. `maximum_database_clock_skew_seconds` defaults to five
+seconds and may only be tightened.
+
+For a local file-backed container, mount a read-only configuration file and a
+writable `/data` directory owned by UID/GID 65532. Set `state_file` to
 `/data/relay-state.json`, inject secrets through the runtime secret store, and
-publish the HTTP port only to the internal load balancer.
+publish the HTTP port only to the internal load balancer. A Postgres-backed
+container does not need the `/data` state volume, but still requires runtime
+secret files and a private load-balancer listener.
 
 Each secret also supports a mutually exclusive `<NAME>_FILE` variable, for
 example `VIBE_RELAY_TURN_SECRET_FILE=/run/secrets/turn_secret`. File contents
@@ -137,8 +157,10 @@ allocation-disconnect mechanism and reconcile any active-session ledger entry
 left behind by the rejected lifecycle events.
 
 Unauthenticated liveness/readiness endpoints are `/healthz` and `/readyz`;
-readiness verifies that the state directory is writable and, in
-`production_authority` mode, that Authority `/readyz` is reachable.
+readiness verifies that the file state directory is writable or that the
+Postgres backend is reachable with the expected schema and clock bound. In
+`production_authority` mode, readiness also requires Authority `/readyz` to be
+reachable.
 Prometheus scrapes `/metrics` with the dedicated metrics token. Metrics expose issued and
 rejected requests, a dedicated
 `vibescreen_relay_revoked_device_requests_rejected_total` counter, accepted
@@ -171,17 +193,15 @@ not the arbitrary `device_id` string in a request. In production, signaling must
 obtain or derive a stable `allocation_id` for the TURN attempt and pass it to
 relay so retries are exactly idempotent at Authority.
 
-This single-process v0.1 service is intended for one control-plane replica. Its
-atomic local ledger prevents duplicate counting across restarts, but it does
-not coordinate quotas across replicas. Before horizontal scaling, replace the
-`UsageStore` behind its narrow interface with a transactional shared store and
-retain the same API/idempotency semantics. Rate limiting is per process and
-per device, so the edge proxy should additionally enforce source-IP and global
-limits. Authority-backed relay admission blocks new credentials after device or
-session revocation, but a credential already issued remains valid until its short
-expiry. Immediate removal additionally requires blocking the device at signaling
-policy and disconnecting its TURN allocation; rotating the shared TURN secret
-affects every device.
+The file backend is intended for one local control-plane replica. The Postgres
+backend provides shared transactional quota, revocation, active-session, and
+event-idempotency state for multiple relay control-plane processes, while
+credential issuance rate limiting remains per process and per device. The edge
+proxy should additionally enforce source-IP and global limits. Authority-backed
+relay admission blocks new credentials after device or session revocation, but a
+credential already issued remains valid until its short expiry. Immediate removal
+additionally requires blocking the device at signaling policy and disconnecting
+its TURN allocation; rotating the shared TURN secret affects every device.
 
 The `/v1/usage` daily-byte and active-session ledger is not authoritative until
 a trusted coturn collector and reconciliation loop are deployed. It must not be
@@ -191,12 +211,13 @@ used as the real-time allocation security boundary; coturn's stable-device
 ## Threat model
 
 Protected assets are relay capacity, quota/cost records, TURN shared secret,
-API tokens, and the privacy of device identifiers. Defenses cover stolen or
-replayed usage events (scoped bearer token plus persistent event IDs), quota
-exhaustion (daily bytes, concurrent allocations, event-size bounds), credential
-scraping (separate token, short TTL, rate limit), parser abuse (16 KiB body cap,
-strict JSON), timing disclosure (constant-time token comparison), and restart
-replay (atomic persisted ledger).
+API tokens, database credentials, and the privacy of device identifiers.
+Defenses cover stolen or replayed usage events (scoped bearer token plus
+persistent event IDs), quota exhaustion (daily bytes, concurrent allocations,
+event-size bounds), credential scraping (separate token, short TTL, rate limit),
+parser abuse (16 KiB body cap, strict JSON), timing disclosure (constant-time
+token comparison), restart replay (atomic persisted ledger), and production
+storage drift (schema checksum and database clock readiness checks).
 
 The deployment must supply TLS, trusted-device authentication at signaling,
 token rotation, network isolation, log redaction, TURN allocation telemetry,
@@ -209,13 +230,16 @@ end-to-end device identity.
 
 ## Provenance and licenses
 
-No third-party source code is copied into this module, and the compiled service
-uses only the Go standard library.
+No third-party source code is copied into this module. The compiled service uses
+the Go standard library plus the module dependencies listed below for PostgreSQL
+connectivity; source is resolved by Go modules and not vendored.
 
 | Project | Immutable version | License | Use | Copied code |
 | --- | --- | --- | --- | --- |
 | SideScreen, <https://github.com/tranvuongquocdat/SideScreen> | `a651a81b7d6468c7a564c038551872d3346a2d55` | MIT | Repository architecture/behavior context only; no relay implementation used | No |
 | Telemachus, <https://github.com/aaditagrawal/telemachus> | `a5dd1298870846d749175812f936ceebfd8b6b69` | MIT | Repository reliability context only; no relay implementation used | No |
+| pgx, <https://github.com/jackc/pgx> | module `github.com/jackc/pgx/v5` version `v5.7.5` | MIT | PostgreSQL driver and connection pool for the optional production storage backend | No |
+| pgx transitive modules | `github.com/jackc/pgpassfile v1.0.0`, `github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761`, `github.com/jackc/puddle/v2 v2.2.2`, `golang.org/x/crypto v0.37.0`, `golang.org/x/sync v0.13.0`, `golang.org/x/text v0.24.0` | BSD/MIT-style and Go project licenses | PostgreSQL configuration, pooling, and support libraries resolved by Go modules | No |
 | coturn, <https://github.com/coturn/coturn> | source `678996a52954ddc7a44afd9f72f5b5c647e41083` (`4.7.0`); container build `aa685e2669bac662d553a3d8eef6412d95ba7664` (`docker/4.7.0-r0`) | BSD-3-Clause; the container also carries its base/library licenses | External interoperable TURN data plane pinned by multi-platform digest `sha256:99bf5bf6ab1c119862d0c3d2dfb2bbf805a86a131492cab18c148be64ae7d978` | No |
 
 The credential format implements the open TURN REST API mechanism documented

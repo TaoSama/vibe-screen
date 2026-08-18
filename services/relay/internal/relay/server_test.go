@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
@@ -14,6 +15,20 @@ import (
 	"testing"
 	"time"
 )
+
+type failingStore struct{}
+
+func (failingStore) Apply(context.Context, time.Time, UsageEvent) error { return ErrStorage }
+func (failingStore) Snapshot(context.Context, time.Time, string) (uint64, uint64, int, error) {
+	return 0, 0, 0, ErrStorage
+}
+func (failingStore) IsRevoked(context.Context, string) (bool, error) { return false, ErrStorage }
+func (failingStore) Revoke(context.Context, string, time.Time) error { return ErrStorage }
+func (failingStore) Ready(context.Context) error                     { return ErrStorage }
+func (failingStore) Totals(context.Context, time.Time) (uint64, uint64, int64, error) {
+	return 0, 0, 0, ErrStorage
+}
+func (failingStore) Close() {}
 
 const (
 	testClientToken    = "client-token-at-least-thirty-two-bytes"
@@ -65,6 +80,28 @@ func TestCredentialsUseTURNRESTAndRateLimit(t *testing.T) {
 	limited := requestJSON(t, handler, http.MethodPost, "/v1/credentials", testClientToken, `{"device_id":"xiaomi-12","session_id":"session-1"}`)
 	if limited.Code != http.StatusTooManyRequests {
 		t.Fatalf("rate-limit status = %d", limited.Code)
+	}
+}
+
+func TestStorageFailuresFailClosed(t *testing.T) {
+	server, err := NewServer(testConfig(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.store = failingStore{}
+	handler := server.Handler()
+	credentialBody := "{\"device_id\":\"device\",\"session_id\":\"session\"}"
+	usageBody := "{\"event_id\":\"event\",\"device_id\":\"device\",\"session_id\":\"session\",\"kind\":\"start\"}"
+	for name, response := range map[string]*httptest.ResponseRecorder{
+		"ready":       requestJSON(t, handler, http.MethodGet, "/readyz", "", ""),
+		"credentials": requestJSON(t, handler, http.MethodPost, "/v1/credentials", testClientToken, credentialBody),
+		"usage":       requestJSON(t, handler, http.MethodPost, "/v1/usage", testUsageToken, usageBody),
+		"revoke":      requestJSON(t, handler, http.MethodPost, "/v1/devices/device/revoke", testAdminToken, "{}"),
+		"metrics":     requestJSON(t, handler, http.MethodGet, "/metrics", testMetricsToken, ""),
+	} {
+		if response.Code != http.StatusServiceUnavailable {
+			t.Fatalf("%s status=%d body=%s", name, response.Code, response.Body.String())
+		}
 	}
 }
 
@@ -277,7 +314,10 @@ func TestUsagePersistsAndMetricsRequireAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ingress, egress, sessions := restarted.store.Snapshot(time.Now(), "device-1")
+	ingress, egress, sessions, err := restarted.store.Snapshot(context.Background(), time.Now(), "device-1")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if ingress != 100 || egress != 200 || sessions != 1 {
 		t.Fatalf("restored = %d/%d/%d", ingress, egress, sessions)
 	}
@@ -371,7 +411,11 @@ func TestRevokedDeviceCannotReceiveCredentialsOrReportUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !restarted.store.IsRevoked("device-1") {
+	revoked, err := restarted.store.IsRevoked(context.Background(), "device-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !revoked {
 		t.Fatal("revocation was not restored")
 	}
 	update := `{"event_id":"event-after-restart","device_id":"device-1","session_id":"session-1","kind":"update","ingress_bytes":1,"egress_bytes":1}`
