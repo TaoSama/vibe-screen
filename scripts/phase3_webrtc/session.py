@@ -141,6 +141,7 @@ def signaling_config(port: int) -> dict[str, Any]:
         "max_waiters_per_role": 1,
         "cleanup_interval_seconds": 5,
         "authority_mode": "local_development",
+        "store_backend": "memory",
     }
 
 

@@ -83,6 +83,7 @@ class RunnerTests(unittest.TestCase):
     def test_signaling_config_is_loopback_and_bounded(self) -> None:
         config = signaling_config(39001)
         self.assertEqual(config["listen_address"], "127.0.0.1:39001")
+        self.assertEqual(config["store_backend"], "memory")
         self.assertLessEqual(config["max_active_sessions"], 8)
         self.assertEqual(
             config["session_ttl_seconds"], config["max_session_ttl_seconds"]
