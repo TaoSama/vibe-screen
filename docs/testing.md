@@ -51,7 +51,10 @@ The formal latency summaries should use the matching gate profile:
 `usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, or `input-p95-sub50`.
 A `pass` verdict closes only that specific profile for the recorded device,
 transport, build, and measurement setup; `fail` and `insufficient` keep the
-gate open.
+gate open. The CLI exits `0` only for a profile `pass` and exits nonzero for
+`fail` or `insufficient`. The synthetic examples under
+`tools/fixtures/latency/` are only CLI fixtures for exercising these verdicts;
+they are not real-device evidence.
 
 The current Phase 0 evidence is recorded in
 `docs/changes/2026-08-04-phase-0-baseline/TEST.md`. Any connected Android
