@@ -55,6 +55,10 @@
     <string name="video_bitrate_label">Bitrate</string>
     <string name="video_bitrate_value">%1$d Mbps</string>
     <string name="video_control_unavailable">Connect to a compatible Mac session to tune video quality.</string>
+    <string name="video_quality_request_sent">Quality request sent to Mac</string>
+    <string name="video_frame_rate_request_sent">Frame-rate request sent to Mac</string>
+    <string name="video_bitrate_request_sent">Bitrate request sent to Mac</string>
+    <string name="video_preferences_applied">Mac applied video settings</string>
     <string name="keyboard_requires_compatible_host">Keyboard input is unavailable: the connected Mac session supports touch only. Update both apps to a compatible negotiated session.</string>
     <string name="stats_fps">FPS</string>
     <string name="stats_bitrate">BITRATE</string>

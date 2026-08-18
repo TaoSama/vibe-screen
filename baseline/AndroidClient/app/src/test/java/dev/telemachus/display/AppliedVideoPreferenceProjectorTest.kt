@@ -46,4 +46,36 @@ class AppliedVideoPreferenceProjectorTest {
         assertNull(projection.bitrateMbps)
         assertNull(projection.framesPerSecond)
     }
+
+    @Test
+    fun `video preference requests announce only when host control is available`() {
+        assertTrue(VideoPreferenceFeedbackPolicy.shouldAnnounceRequest(clientAvailable = true))
+        assertFalse(VideoPreferenceFeedbackPolicy.shouldAnnounceRequest(clientAvailable = false))
+    }
+
+    @Test
+    fun `video preference applied feedback announces only once per client requested epoch`() {
+        assertFalse(
+            VideoPreferenceFeedbackPolicy.shouldAnnounceApplied(
+                appliesClientVideoPreferences = false,
+                configEpoch = 2,
+                lastAnnouncedConfigEpoch = 1,
+            ),
+        )
+        assertFalse(
+            VideoPreferenceFeedbackPolicy.shouldAnnounceApplied(
+                appliesClientVideoPreferences = true,
+                configEpoch = 2,
+                lastAnnouncedConfigEpoch = 2,
+            ),
+        )
+        assertTrue(
+            VideoPreferenceFeedbackPolicy.shouldAnnounceApplied(
+                appliesClientVideoPreferences = true,
+                configEpoch = 3,
+                lastAnnouncedConfigEpoch = 2,
+            ),
+        )
+    }
+
 }
