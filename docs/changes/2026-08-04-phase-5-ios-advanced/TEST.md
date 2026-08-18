@@ -172,12 +172,14 @@ The following remain unproved until their dedicated gates produce evidence:
 
 ## Required iOS acceptance run
 
-After installing full Xcode, run the commands in `apps/ios/README.md`, then on
-real iPhone and iPad hardware record Xcode/OS/device identifiers, app revision,
-host revision, negotiation envelopes, codec choice, stream/epoch telemetry,
-touch acknowledgement, USB/network interruption, reconnect duration, and a
-30-minute memory/latency series. Raw logs belong under this change directory's
-`evidence/` subdirectory.
+After installing full Xcode, follow the
+[iOS device acceptance runbook](../../runbook/ios-device-acceptance.md). Run the
+commands in `apps/ios/README.md`, then on real iPhone and iPad hardware record
+Xcode/OS/device identifiers, app revision, host revision, negotiation
+envelopes, codec choice, stream/epoch telemetry, touch acknowledgement,
+network interruption, reconnect duration, and any owner-requested bounded
+memory/latency series. Raw logs belong under this change directory's
+`evidence/` subdirectory or an external release bundle after privacy review.
 
 While the Phase 0 soak owns the controlled endpoint (redacted as
 `$ADB_ENDPOINT`), Phase 5 performs only
