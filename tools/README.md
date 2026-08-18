@@ -171,22 +171,57 @@ formal two-hour Host RSS no-growth gate remains open until a matching
 
 ## Latency evidence
 
-Prepare a CSV with either `latency_ms`, or `start_frame,end_frame,camera_fps`
-from one external-camera recording, then summarize it:
+Latency evidence is split by what the measurement can prove:
+
+- `glass-to-glass`: end-to-end display latency from Mac-visible stimulus to the
+  rendered Android frame. This requires one external high-frame-rate camera or
+  equivalent optical timebase. Host, Android, RTT, or decoder timestamps cannot
+  close this gate.
+- `input`: input-event latency from physical Android input to visible Mac
+  result. Prefer the same external-camera method. A synchronized-clock run is
+  acceptable only when the evidence records the synchronization method and error
+  budget.
+- `telemetry-stage`: host or client pipeline-stage timing used to diagnose where
+  latency is spent. These summaries are informational and cannot close
+  glass-to-glass or input latency gates.
+
+For glass-to-glass, prepare a CSV with either `latency_ms`, or
+`start_frame,end_frame,camera_fps` from one external-camera recording, then
+summarize it:
 
 ```sh
 PYTHONPATH=tools python3 -m vibescreen_evidence.latency samples.csv \
   --kind glass-to-glass \
   --transport usb \
   --measurement-method external-camera \
+  --gate-profile usb-glass-to-glass-sub50 \
   --output summary.json
 ```
 
-Repeat the run with `--transport lan` for LAN evidence. For input latency use
-`--kind input`. The tool deliberately rejects a
-glass-to-glass claim based on unsynchronized host and Android clocks. Keep the
-raw camera file, sample CSV, summary, device info, and a manifest together;
-create the latter with `python3 -m vibescreen_evidence.manifest --help`.
+Repeat the run with `--transport lan --gate-profile lan-glass-to-glass-sub80`
+for LAN evidence. For input latency use `--kind input --gate-profile
+input-p95-sub50`. Gate profiles evaluate P95 with a minimum sample count and
+write `verdict=pass|fail|insufficient`; omit `--gate-profile` for a pure
+summary. The tool deliberately rejects a glass-to-glass claim based on
+unsynchronized host and Android clocks. Keep the raw camera file, sample CSV,
+summary, device info, and a manifest together; create the latter with
+`python3 -m vibescreen_evidence.manifest --help`.
+
+For telemetry-stage diagnostics, prepare rows with `stage,latency_ms` and mark
+the clock domain explicitly:
+
+```sh
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency host-stages.csv \
+  --kind telemetry-stage \
+  --transport usb \
+  --measurement-method host-telemetry \
+  --output host-stage-summary.json
+```
+
+Use `--measurement-method client-telemetry` for Android decoder or render-stage
+samples. The output has `status=informational` and
+`gate.can_close_performance_gate=false`; keep it next to the camera/input
+evidence to explain bottlenecks, not as a substitute for external measurement.
 
 ## Troubleshooting
 
