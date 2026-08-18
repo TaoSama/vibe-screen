@@ -134,6 +134,12 @@ it must not be relabeled as Xiaomi 13/fuxi.
   Xiaomi 13 with a stable stream and stable client memory; the host
   resident-memory no-growth gate is still open (host RSS grew about 18.3 MB), so
   a host-RSS-stable two-hour run remains required before claiming no-growth.
+- Physical stylus drawing-app confirmation requires a Protocol v1 session, a
+  real stylus contacting the named Android device, host-side stylus injection
+  logs preserving pressure/tilt/barrel/proximity fields as applicable, and a
+  visible macOS drawing-app result. ADB-only input-device snapshots, synthetic
+  MotionEvents, or offline protocol tests may support the investigation but do
+  not close the README stylus gate.
 
 Internal timestamps may measure encoder, decoder, queue, and reconnect
 durations only within their own clock domain. Glass-to-glass latency requires

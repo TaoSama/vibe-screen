@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import argparse
 import json
 import re
 import subprocess
@@ -17,6 +18,7 @@ from webrtc_m150_notices import NOTICE_RELATIVE_PATH, validate_notice_bundle
 import generate_webrtc_m150_notices
 import package_macos
 import prepare_release
+import android_stylus_acceptance
 from phase3_webrtc.model import SUPPORTED_COTURN_VERSIONS
 
 
@@ -32,6 +34,110 @@ VERSION = "1.2.3"
 TAG = f"v{VERSION}"
 COMMIT = "a" * 40
 CREATED = "2026-08-05T10:00:00+08:00"
+
+
+class AndroidStylusAcceptanceTests(unittest.TestCase):
+    def test_dumpsys_parser_finds_stylus_axes_and_buttons(self) -> None:
+        devices = android_stylus_acceptance.parse_input_devices(
+            """
+Input Reader State:
+  Device 5: goodix_stylus_input
+    Descriptor: abc123
+    Sources: 0x00005002 TOUCHSCREEN STYLUS
+    Motion Ranges:
+      Motion Range: X source=0x00001002 min=0.0 max=1440.0 flat=0.0 fuzz=0.0 resolution=0.0
+      Motion Range: Y source=0x00001002 min=0.0 max=2880.0 flat=0.0 fuzz=0.0 resolution=0.0
+      Motion Range: PRESSURE source=0x00004002 min=0.0 max=1.0 flat=0.0 fuzz=0.0 resolution=0.0
+      Motion Range: TILT source=0x00004002 min=0.0 max=1.5708 flat=0.0 fuzz=0.0 resolution=0.0
+    Buttons: BUTTON_STYLUS_PRIMARY BUTTON_STYLUS_SECONDARY
+  Device 4: goodix_stylus_input
+    Sources: KEYBOARD | TOUCHSCREEN | STYLUS
+    Motion Ranges:
+      PRESSURE: source=TOUCHSCREEN | STYLUS, min=0.000, max=1.000
+      ORIENTATION: source=TOUCHSCREEN | STYLUS, min=-3.142, max=3.142
+      TILT: source=TOUCHSCREEN | STYLUS, min=0.000, max=1.571
+  Device 6: qwerty
+    Sources: KEYBOARD
+  Device 7: gdix_input_agent
+    Sources: KEYBOARD | TOUCHSCREEN
+    Motion Ranges:
+      PRESSURE: source=TOUCHSCREEN, min=0.000, max=1.000
+  BatteryController:
+    Device Monitors: 1 monitors
+      0: DeviceId=4, Name='goodix_stylus_input', NativeBattery=State{<not present>}
+"""
+        )
+
+        candidates = android_stylus_acceptance.select_stylus_candidates(devices)
+
+        self.assertEqual(2, len(candidates))
+        self.assertEqual("goodix_stylus_input", candidates[0].name)
+        self.assertTrue(candidates[0].required_axes_present)
+        self.assertEqual(("STYLUS_PRIMARY", "STYLUS_SECONDARY"), candidates[0].buttons)
+        self.assertEqual(("ORIENTATION", "PRESSURE", "TILT"), candidates[1].axes)
+
+    def test_capability_without_physical_observation_stays_blocked(self) -> None:
+        args = argparse.Namespace(observed_physical_drawing=False, drawing_observation="", host_log=None)
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=("STYLUS_PRIMARY",),
+        )
+
+        self.assertEqual(
+            "blocked_physical_stylus_not_observed",
+            android_stylus_acceptance.conclusion_status(args, [candidate]),
+        )
+
+    def test_passing_status_requires_host_log_and_observation(self) -> None:
+        args = argparse.Namespace(observed_physical_drawing=True, drawing_observation="", host_log=None)
+        with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "drawing-observation"):
+            android_stylus_acceptance.conclusion_status(args, [])
+
+    def test_observed_drawing_without_required_capability_stays_blocked(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host-stylus.log"
+            host_log.write_text("stylus event observed\n", encoding="utf-8")
+            args = argparse.Namespace(
+                observed_physical_drawing=True,
+                drawing_observation="physical stylus produced visible ink",
+                host_log=host_log,
+            )
+
+            self.assertEqual(
+                "blocked_no_required_stylus_capability",
+                android_stylus_acceptance.conclusion_status(args, []),
+            )
+
+    def test_render_readme_uses_none_for_empty_candidate_fields(self) -> None:
+        summary = {
+            "status": "blocked_physical_stylus_not_observed",
+            "device_identity": {
+                "manufacturer": "nubia",
+                "model": "P0110",
+                "device": "pacific",
+                "os_release": "16",
+                "api_level": "36",
+                "serialno": "EP0110PZ0B9110300B",
+                "fingerprint": "test",
+                "wm_size": "Physical size: 1264x2800",
+                "wm_density": "Physical density: 560",
+            },
+            "stylus_candidates": [{
+                "name": "goodix_stylus_input",
+                "sources": [],
+                "axes": ["PRESSURE", "TILT"],
+                "buttons": [],
+            }],
+        }
+
+        readme = android_stylus_acceptance.render_readme(summary)
+
+        self.assertIn("  - Sources: none", readme)
+        self.assertIn("  - Buttons: none", readme)
+        self.assertFalse(any(line.endswith(" ") for line in readme.splitlines()))
 
 
 class ArchiveArtifactTests(unittest.TestCase):
