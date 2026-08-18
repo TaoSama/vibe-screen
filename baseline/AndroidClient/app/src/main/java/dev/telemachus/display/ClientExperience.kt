@@ -220,6 +220,7 @@ data class ClientSessionCapabilities(
     val displaySelection: Boolean,
     val keyboard: Boolean,
     val nativePointer: Boolean,
+    val controller: Boolean,
     val hostActions: Boolean,
 ) {
     companion object {
@@ -229,6 +230,7 @@ data class ClientSessionCapabilities(
                 displaySelection = false,
                 keyboard = false,
                 nativePointer = false,
+                controller = false,
                 hostActions = false,
             )
     }
