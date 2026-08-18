@@ -26,6 +26,14 @@ class DeviceHealthMonitorTest {
     fun `thermal severity takes priority over low battery guidance`() {
         assertEquals(DeviceHealthAttention.UNKNOWN, DeviceHealthPolicy.attention(DeviceHealthSnapshot()))
         assertEquals(
+            DeviceHealthAttention.POWER_SAVER,
+            DeviceHealthPolicy.attention(DeviceHealthSnapshot(90, charging = true, powerSaveMode = true)),
+        )
+        assertEquals(
+            DeviceHealthAttention.POWER_SAVER,
+            DeviceHealthPolicy.attention(DeviceHealthSnapshot(powerSaveMode = true)),
+        )
+        assertEquals(
             DeviceHealthAttention.POWER_RECOMMENDED,
             DeviceHealthPolicy.attention(DeviceHealthSnapshot(20, charging = false)),
         )
@@ -48,7 +56,7 @@ class DeviceHealthMonitorTest {
         assertEquals(
             DeviceHealthAttention.THERMAL_ELEVATED,
             DeviceHealthPolicy.attention(
-                DeviceHealthSnapshot(10, charging = false, thermalState = DeviceThermalState.ELEVATED),
+                DeviceHealthSnapshot(10, charging = false, powerSaveMode = true, thermalState = DeviceThermalState.ELEVATED),
             ),
         )
         assertEquals(
