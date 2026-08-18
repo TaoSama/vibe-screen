@@ -1,0 +1,13 @@
+{
+  "protocolVersion": 1,
+  "messageId": "31",
+  "correlationId": "30",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000031",
+  "fileAccept": {
+    "transferId": "AQIDBA==",
+    "accepted": true,
+    "maximumChunkBytes": 65536
+  }
+}

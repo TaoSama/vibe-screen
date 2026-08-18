@@ -13,6 +13,11 @@ import dev.vibescreen.protocol.v1.ControllerEvent
 import dev.vibescreen.protocol.v1.ControllerEventKind as ProtocolControllerEventKind
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Envelope
+import dev.vibescreen.protocol.v1.FileAccept
+import dev.vibescreen.protocol.v1.FileOffer
+import dev.vibescreen.protocol.v1.FileTransferCancel
+import dev.vibescreen.protocol.v1.FileTransferComplete
+import dev.vibescreen.protocol.v1.FileTransferProgress
 import dev.vibescreen.protocol.v1.HostActionInvoke
 import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.InputTarget
@@ -71,6 +76,7 @@ internal class ProtocolV1Session(
     private val codecs: List<Codec>,
     private val advertiseController: Boolean = false,
     localManagedPolicy: ManagedPolicy = ManagedPolicy.UNMANAGED,
+    private val fileTransferPolicy: FileTransferPolicy = FileTransferPolicy(),
     private val nowNs: () -> Long = System::nanoTime,
 ) {
     sealed class Action {
@@ -131,6 +137,30 @@ internal class ProtocolV1Session(
             val invocationId: ByteString,
             val accepted: Boolean,
             val rejectionReason: String,
+        ) : Action()
+
+        data class FileOfferReceived(
+            val offer: FileOffer,
+        ) : Action()
+
+        data class FileAcceptReceived(
+            val response: FileAccept,
+        ) : Action()
+
+        data class FileProgressReceived(
+            val progress: FileTransferProgress,
+        ) : Action()
+
+        data class FileCancelReceived(
+            val cancellation: FileTransferCancel,
+        ) : Action()
+
+        data class FileCompleteReceived(
+            val result: FileTransferComplete,
+        ) : Action()
+
+        data class ManagedPolicyReceived(
+            val status: ManagedPolicyStatus,
         ) : Action()
 
         data class Disconnected(
@@ -361,6 +391,8 @@ internal class ProtocolV1Session(
     private var hostCapabilities = emptySet<Capability>()
     private var hostCodecs = emptySet<Codec>()
     private val decodeCapabilities = VideoColorNegotiation.sdrDecodeCapabilities(codecs)
+    private var negotiatedFileTransferPolicy = fileTransferPolicy
+    private var acceptedResourceLimits = ResourceLimits.getDefaultInstance()
     // Host actions advertised for the active session, filtered to the fixed ids
     // this client can invoke. Reset whenever a session ends.
     private var availableHostActions = emptyList<HostAction>()
@@ -395,11 +427,11 @@ internal class ProtocolV1Session(
     private val secureRandom = SecureRandom()
 
     private val advertisedCapabilities =
-        (if (advertiseController) {
-            BASE_ADVERTISED_CAPABILITIES + Capability.CAPABILITY_CONTROLLER
-        } else {
-            BASE_ADVERTISED_CAPABILITIES
-        }).filteredBy(localManagedPolicy)
+        buildSet {
+            addAll(BASE_ADVERTISED_CAPABILITIES)
+            if (advertiseController) add(Capability.CAPABILITY_CONTROLLER)
+            if (fileTransferPolicy.allowed) add(Capability.CAPABILITY_FILE_TRANSFER)
+        }.filteredBy(localManagedPolicy)
     private val requiredCapabilities = emptySet<Capability>()
 
     val activeSessionEpoch: Long
@@ -480,6 +512,14 @@ internal class ProtocolV1Session(
                 0L
             }
 
+    val canTransferFiles: Boolean
+        @Synchronized
+        get() = isNegotiated() && Capability.CAPABILITY_FILE_TRANSFER in negotiatedCapabilities
+
+    val negotiatedFilePolicy: FileTransferPolicy
+        @Synchronized
+        get() = negotiatedFileTransferPolicy
+
     enum class MediaDisposition {
         ACCEPT,
         DROP_PENDING_CONFIGURATION,
@@ -510,8 +550,11 @@ internal class ProtocolV1Session(
                     ResourceLimits
                         .newBuilder()
                         .setMaximumClients(1)
+                        .setMaximumDisplays(1)
                         .setMaximumVideoStreams(1)
-                        .setMaximumClipboardBytes(LOCAL_MAX_CLIPBOARD_BYTES),
+                        .setMaximumClipboardBytes(LOCAL_MAX_CLIPBOARD_BYTES)
+                        .setMaximumFileBytes(if (fileTransferPolicy.allowed) fileTransferPolicy.maximumFileBytes else 0L)
+                        .setMaximumFileChunkBytes(if (fileTransferPolicy.allowed) fileTransferPolicy.maximumChunkBytes else 0),
                 ).addAllVideoDecodeCapabilities(decodeCapabilities)
                 .build()
         return envelope().setClientHello(hello).build()
@@ -549,6 +592,11 @@ internal class ProtocolV1Session(
             Envelope.PayloadCase.HOST_ACTION_CATALOG -> onHostActionCatalog(envelope)
             Envelope.PayloadCase.HOST_ACTION_RESULT -> onHostActionResult(envelope)
             Envelope.PayloadCase.MANAGED_POLICY_STATUS -> onManagedPolicyStatus(envelope.managedPolicyStatus)
+            Envelope.PayloadCase.FILE_OFFER -> onFileOffer(envelope)
+            Envelope.PayloadCase.FILE_ACCEPT -> onFileAccept(envelope)
+            Envelope.PayloadCase.FILE_TRANSFER_PROGRESS -> onFileTransferProgress(envelope)
+            Envelope.PayloadCase.FILE_TRANSFER_CANCEL -> onFileTransferCancel(envelope)
+            Envelope.PayloadCase.FILE_TRANSFER_COMPLETE -> onFileTransferComplete(envelope)
             Envelope.PayloadCase.DISCONNECT_NOTICE -> {
                 pendingVideoConfiguration = null
                 pendingVideoPreferences = null
@@ -747,6 +795,61 @@ internal class ProtocolV1Session(
                 .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
                 .build()
         return envelope().setHostActionInvoke(invoke).build()
+    }
+
+    @Synchronized
+    fun offerFile(offer: FileOffer): Envelope? {
+        if (!canTransferFiles) return null
+        return envelope().setFileOffer(offer).build()
+    }
+
+    @Synchronized
+    fun fileAccept(response: FileAccept): Envelope? {
+        if (!canTransferFiles) return null
+        return envelope().setFileAccept(response).build()
+    }
+
+    @Synchronized
+    fun fileProgress(transferId: ByteString, receivedBytes: Long): Envelope? {
+        if (!canTransferFiles) return null
+        val progress =
+            FileTransferProgress
+                .newBuilder()
+                .setTransferId(transferId)
+                .setReceivedBytes(receivedBytes)
+                .build()
+        return envelope().setFileTransferProgress(progress).build()
+    }
+
+    @Synchronized
+    fun fileComplete(
+        transferId: ByteString,
+        accepted: Boolean,
+        sha256: ByteString,
+        rejectionReason: String,
+    ): Envelope? {
+        if (!canTransferFiles) return null
+        val result =
+            FileTransferComplete
+                .newBuilder()
+                .setTransferId(transferId)
+                .setAccepted(accepted)
+                .setSha256(sha256)
+                .setRejectionReason(if (accepted) "" else rejectionReason)
+                .build()
+        return envelope().setFileTransferComplete(result).build()
+    }
+
+    @Synchronized
+    fun fileCancel(transferId: ByteString, reasonCode: String): Envelope? {
+        if (!canTransferFiles) return null
+        val cancel =
+            FileTransferCancel
+                .newBuilder()
+                .setTransferId(transferId)
+                .setReasonCode(reasonCode)
+                .build()
+        return envelope().setFileTransferCancel(cancel).build()
     }
 
     @Synchronized
@@ -995,7 +1098,6 @@ internal class ProtocolV1Session(
         val hello = envelope.hostHello
         if (hello.selectedProtocol != VERSION) throw protocolFailure("Unsupported selected protocol ${hello.selectedProtocol}")
         hostCapabilities = hello.capabilitiesList.toSet()
-        hostId = hello.hostId
         hostCodecs = hello.codecsList.toSet()
         if (Capability.CAPABILITY_USB_HID_MODIFIER_BYTE in hostCapabilities &&
             Capability.CAPABILITY_KEYBOARD !in hostCapabilities
@@ -1037,6 +1139,8 @@ internal class ProtocolV1Session(
         if (omittedNonPolicyCapabilities.isNotEmpty()) {
             throw protocolFailure("Negotiated capabilities omitted required peer intersection: $omittedNonPolicyCapabilities")
         }
+        acceptedResourceLimits = accepted.negotiatedResourceLimits
+        negotiatedFileTransferPolicy = fileTransferPolicy.negotiated(acceptedResourceLimits)
         sessionId = accepted.sessionId
         sessionEpoch = accepted.sessionEpoch
         baseNegotiatedCapabilities = negotiated
@@ -1685,6 +1789,9 @@ internal class ProtocolV1Session(
         val effective = managedPolicyResolver.effectivePolicy
         remoteManagedClipboardAllowed = effective.clipboardAllowed
         if (!remoteManagedClipboardAllowed) clearClipboardState()
+        negotiatedFileTransferPolicy = fileTransferPolicy
+            .negotiated(acceptedResourceLimits)
+            .applying(RemoteManagedPolicy(effective.toStatus()))
         if (!effective.allowsHost(hostId = hostId)) {
             throw protocolFailure("Managed policy does not allow this host")
         }
@@ -1697,12 +1804,57 @@ internal class ProtocolV1Session(
             availableHostActions = emptyList()
             pendingHostActionInvocations.clear()
             return if (hadHostActionState) {
-                listOf(Action.HostActionsAvailable(emptyList()))
+                listOf(Action.ManagedPolicyReceived(status), Action.HostActionsAvailable(emptyList()))
             } else {
-                emptyList()
+                listOf(Action.ManagedPolicyReceived(status))
             }
         }
-        return emptyList()
+        return listOf(Action.ManagedPolicyReceived(status))
+    }
+
+    private fun onFileOffer(envelope: Envelope): List<Action> {
+        if (!isNegotiated()) throw protocolFailure("FileOffer in state $state")
+        if (Capability.CAPABILITY_FILE_TRANSFER !in negotiatedCapabilities) {
+            throw protocolFailure("FileOffer without negotiated file transfer")
+        }
+        if (envelope.fileOffer.transferId.isEmpty) throw protocolFailure("FileOffer missing transfer id")
+        return listOf(Action.FileOfferReceived(envelope.fileOffer))
+    }
+
+    private fun onFileAccept(envelope: Envelope): List<Action> {
+        if (!isNegotiated()) throw protocolFailure("FileAccept in state $state")
+        if (Capability.CAPABILITY_FILE_TRANSFER !in negotiatedCapabilities) {
+            throw protocolFailure("FileAccept without negotiated file transfer")
+        }
+        if (envelope.fileAccept.transferId.isEmpty) throw protocolFailure("FileAccept missing transfer id")
+        return listOf(Action.FileAcceptReceived(envelope.fileAccept))
+    }
+
+    private fun onFileTransferProgress(envelope: Envelope): List<Action> {
+        if (!isNegotiated()) throw protocolFailure("FileTransferProgress in state $state")
+        if (Capability.CAPABILITY_FILE_TRANSFER !in negotiatedCapabilities) {
+            throw protocolFailure("FileTransferProgress without negotiated file transfer")
+        }
+        if (envelope.fileTransferProgress.transferId.isEmpty) throw protocolFailure("FileTransferProgress missing transfer id")
+        return listOf(Action.FileProgressReceived(envelope.fileTransferProgress))
+    }
+
+    private fun onFileTransferCancel(envelope: Envelope): List<Action> {
+        if (!isNegotiated()) throw protocolFailure("FileTransferCancel in state $state")
+        if (Capability.CAPABILITY_FILE_TRANSFER !in negotiatedCapabilities) {
+            throw protocolFailure("FileTransferCancel without negotiated file transfer")
+        }
+        if (envelope.fileTransferCancel.transferId.isEmpty) throw protocolFailure("FileTransferCancel missing transfer id")
+        return listOf(Action.FileCancelReceived(envelope.fileTransferCancel))
+    }
+
+    private fun onFileTransferComplete(envelope: Envelope): List<Action> {
+        if (!isNegotiated()) throw protocolFailure("FileTransferComplete in state $state")
+        if (Capability.CAPABILITY_FILE_TRANSFER !in negotiatedCapabilities) {
+            throw protocolFailure("FileTransferComplete without negotiated file transfer")
+        }
+        if (envelope.fileTransferComplete.transferId.isEmpty) throw protocolFailure("FileTransferComplete missing transfer id")
+        return listOf(Action.FileCompleteReceived(envelope.fileTransferComplete))
     }
 
     private fun toDisplayOption(display: dev.vibescreen.protocol.v1.DisplayDescriptor): DisplayOption {
@@ -1745,18 +1897,6 @@ internal class ProtocolV1Session(
                         }
                     },
             ).build()
-
-    private fun unmanagedPolicyStatus(): ManagedPolicyStatus =
-        ManagedPolicyStatus
-            .newBuilder()
-            .setManaged(false)
-            .setClipboardAllowed(true)
-            .setFileTransferAllowed(true)
-            .setAudioAllowed(true)
-            .setWakeAllowed(true)
-            .setCustomGesturesAllowed(true)
-            .setHostActionsAllowed(true)
-            .build()
 
     private fun validateEnvelope(envelope: Envelope) {
         if (envelope.protocolVersion != VERSION) throw protocolFailure("Unsupported envelope version ${envelope.protocolVersion}")

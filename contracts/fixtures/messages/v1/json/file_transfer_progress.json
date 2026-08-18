@@ -1,0 +1,11 @@
+{
+  "protocolVersion": 1,
+  "messageId": "32",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000032",
+  "fileTransferProgress": {
+    "transferId": "AQIDBA==",
+    "receivedBytes": "5"
+  }
+}

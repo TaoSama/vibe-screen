@@ -146,6 +146,48 @@ The portable self-test and HarmonyOS core test now consume the same exact
 fixture exactly; SwiftProtobuf must decode the same Hello fields. This does not
 satisfy the separate Android application fixture criterion.
 
+## Mac/Android bounded file-transfer loop
+
+On 2026-08-19 the MacHost and Android Protocol v1 file-transfer implementation
+was verified offline from the repository root with:
+
+```bash
+git diff --check
+make protocol
+cd baseline/MacHost && swift build
+cd ../.. && make baseline-macos-self-test
+cd baseline/AndroidClient && ./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug
+```
+
+Observed result:
+
+```text
+Protocol fixture/security tests: 35 tests, OK
+MacHost swift build: Build complete
+Host self-test: PASS
+Transport self-test: PASS
+Reliability self-test: PASS
+Protocol v1 self-test: PASS
+video encoder self-test passed
+Android Gradle: BUILD SUCCESSFUL, 70 actionable tasks
+```
+
+The added Mac/Android unit fixtures cover explicit approval default-reject,
+safe basenames, deny-wins managed policy, maximum byte and chunk limits,
+ordered offsets, per-chunk and final SHA-256, session-epoch rejection, empty
+file final-chunk handling, cancel cleanup, and logical bulk channel `4`
+framing. Production USB/LAN integration sends one file chunk per
+accept/progress acknowledgement and cancels/stages fail-closed on policy, digest,
+disk, backpressure, disconnect, or peer cancellation.
+
+This is not real-device evidence. It does not prove Android picker/UI flows, an
+installed APK moving files against a live Mac, public Internet behavior, WebRTC
+bulk DataChannels, or host/iOS advanced file adapters. A local
+`swift test --filter ProtocolV1FileTransferTests` attempt failed before running
+tests because the selected Command Line Tools SwiftPM environment could not
+import `XCTest`; the full-Xcode CI gate remains responsible for Mac XCTest
+execution.
+
 ## Environment gates and unproved behavior
 
 For the original local run, `xcode-select -p` returned Command Line Tools.

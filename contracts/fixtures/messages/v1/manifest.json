@@ -1,5 +1,24 @@
 {
   "bufVersion": "v1.72.0",
+  "bulkFixture": {
+    "binary": "bin/file_chunk.bin",
+    "byteLength": 52,
+    "channel": 4,
+    "expectedHeader": {
+      "chunkSha256": "LPJNul+wow4m6DsqxbninhsWHlwfp0JecwQzYpOLmCQ=",
+      "final": true,
+      "payloadLength": 5,
+      "sessionEpoch": "7",
+      "transferId": "AQIDBA=="
+    },
+    "headerBinary": "bin/file_chunk_header.binpb",
+    "headerMessageType": "vibescreen.protocol.v1.FileChunkHeader",
+    "headerSha256": "0666b3cb3def1ee1d38e49304824bbd0797975e74698e3c38df82a9b87b253c8",
+    "name": "file_chunk",
+    "payloadHex": "68656c6c6f",
+    "sha256": "38f55d953b86ac7bbb66d319ce89f007a9f3441d221ae59156ce400fbaf60969",
+    "source": "json/file_chunk_header.json"
+  },
   "controlFixtures": [
     {
       "binary": "bin/client_hello.binpb",
@@ -442,6 +461,91 @@
       "name": "protocol_error",
       "sha256": "9e0792cc7b62cc239ef4afe886e1a5e52029b60f75d1881f607d138cee5c2e5f",
       "source": "json/protocol_error.json"
+    },
+    {
+      "binary": "bin/file_offer.binpb",
+      "byteLength": 90,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "30",
+        "payloadCase": "fileOffer",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000030",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "file_offer",
+      "sha256": "24aacb0fc33ac46375026ffd8483696d54453e4cc9dc2be608a7a09f4d745a07",
+      "source": "json/file_offer.json"
+    },
+    {
+      "binary": "bin/file_accept.binpb",
+      "byteLength": 39,
+      "channel": 1,
+      "expected": {
+        "correlationId": "30",
+        "messageId": "31",
+        "payloadCase": "fileAccept",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000031",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "file_accept",
+      "sha256": "157a2105fb768234c85cbe6d705ece5056f2d2276745688b499a683b6247ac06",
+      "source": "json/file_accept.json"
+    },
+    {
+      "binary": "bin/file_transfer_progress.binpb",
+      "byteLength": 33,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "32",
+        "payloadCase": "fileTransferProgress",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000032",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "file_transfer_progress",
+      "sha256": "3ad075c443d09ee31dc2f0bf1ba87ba0ce59958a1de06db680c83629ca8897d5",
+      "source": "json/file_transfer_progress.json"
+    },
+    {
+      "binary": "bin/file_transfer_cancel.binpb",
+      "byteLength": 47,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "33",
+        "payloadCase": "fileTransferCancel",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000033",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "file_transfer_cancel",
+      "sha256": "4ae7230b59e71eb748e3b8bd8739574c2c874630b24d23ea605285a054b09e2e",
+      "source": "json/file_transfer_cancel.json"
+    },
+    {
+      "binary": "bin/file_transfer_complete.binpb",
+      "byteLength": 67,
+      "channel": 1,
+      "expected": {
+        "correlationId": "0",
+        "messageId": "34",
+        "payloadCase": "fileTransferComplete",
+        "protocolVersion": 1,
+        "sentAtMonotonicNs": "1000000034",
+        "sessionEpoch": "7"
+      },
+      "messageType": "vibescreen.protocol.v1.Envelope",
+      "name": "file_transfer_complete",
+      "sha256": "6a3b6468b4dd0685087fb1c6f8f22fff3a161fecd2764162691fbd9b09953bd7",
+      "source": "json/file_transfer_complete.json"
     }
   ],
   "mediaFixture": {
@@ -469,6 +573,7 @@
   },
   "protocolVersion": 1,
   "transport": {
+    "bulkChannel": 4,
     "controlChannel": 1,
     "header": "channel:uint8,payload_length:uint32-big-endian",
     "maximumPayloadBytes": 16777216,

@@ -62,19 +62,30 @@ def convert(
     destination: Path,
     destination_format: str,
 ) -> None:
-    subprocess.run(
-        [
-            *BUF_COMMAND,
-            "convert",
-            str(CONTRACT_ROOT),
-            f"--type={message_type}",
-            f"--from={source}#format={source_format}",
-            f"--to={destination}#format={destination_format}",
-        ],
-        check=True,
-        cwd=CONTRACT_ROOT,
-        capture_output=True,
-        text=True,
+    command = [
+        *BUF_COMMAND,
+        "convert",
+        str(CONTRACT_ROOT),
+        f"--type={message_type}",
+        f"--from={source}#format={source_format}",
+        f"--to={destination}#format={destination_format}",
+    ]
+    last_result: subprocess.CompletedProcess[str] | None = None
+    for _ in range(3):
+        last_result = subprocess.run(
+            command,
+            cwd=CONTRACT_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if last_result.returncode == 0:
+            return
+    assert last_result is not None
+    raise subprocess.CalledProcessError(
+        last_result.returncode,
+        command,
+        output=last_result.stdout,
+        stderr=last_result.stderr,
     )
 
 
@@ -83,6 +94,7 @@ def frame(channel: int, payload: bytes) -> bytes:
     if channel not in {
         MANIFEST["transport"]["controlChannel"],
         MANIFEST["transport"]["videoChannel"],
+        MANIFEST["transport"]["bulkChannel"],
     }:
         raise ValueError("unsupported channel")
     if len(payload) > maximum:
@@ -117,6 +129,14 @@ def parse_media_packet(packet: bytes) -> tuple[bytes, bytes]:
     header_end = payload_offset + header_length
     if header_end > len(packet):
         raise ValueError("truncated media header")
+    return packet[payload_offset:header_end], packet[header_end:]
+
+
+def parse_delimited_packet(packet: bytes) -> tuple[bytes, bytes]:
+    header_length, payload_offset = decode_varint(packet)
+    header_end = payload_offset + header_length
+    if header_length <= 0 or header_end > len(packet):
+        raise ValueError("truncated delimited header")
     return packet[payload_offset:header_end], packet[header_end:]
 
 
@@ -206,6 +226,51 @@ class ProtocolFixtureTest(unittest.TestCase):
         self.assertEqual("Q2xpcGJvYXJkIGZpeHR1cmUgcGF5bG9hZA==", content["content"])
         self.assertEqual(expected_sha, base64.b64decode(offer["sha256"]))
         self.assertEqual(expected_sha, base64.b64decode(content["sha256"]))
+
+    def test_file_transfer_fixtures_cover_control_and_bulk_contract(self) -> None:
+        fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}
+        expected_payloads = {
+            "file_offer",
+            "file_accept",
+            "file_transfer_progress",
+            "file_transfer_cancel",
+            "file_transfer_complete",
+        }
+        self.assertTrue(expected_payloads.issubset(fixtures))
+        with tempfile.TemporaryDirectory(prefix="vibescreen-file-fixtures-") as temporary:
+            temporary_root = Path(temporary)
+            decoded: dict[str, dict[str, object]] = {}
+            for name in expected_payloads:
+                entry = fixtures[name]
+                output = temporary_root / f"{name}.json"
+                convert(entry["messageType"], FIXTURE_ROOT / entry["binary"], "binpb", output, "json")
+                decoded[name] = json.loads(output.read_text())
+        offer = decoded["file_offer"]["fileOffer"]
+        self.assertEqual("hello.txt", offer["fileName"])
+        self.assertEqual("5", offer["byteLength"])
+        self.assertEqual(32, len(base64.b64decode(offer["sha256"])))
+        self.assertTrue(decoded["file_accept"]["fileAccept"]["accepted"])
+        self.assertEqual(65536, decoded["file_accept"]["fileAccept"]["maximumChunkBytes"])
+        self.assertEqual("5", decoded["file_transfer_progress"]["fileTransferProgress"]["receivedBytes"])
+        self.assertEqual("user_cancelled", decoded["file_transfer_cancel"]["fileTransferCancel"]["reasonCode"])
+        self.assertTrue(decoded["file_transfer_complete"]["fileTransferComplete"]["accepted"])
+
+        bulk = MANIFEST["bulkFixture"]
+        packet = (FIXTURE_ROOT / bulk["binary"]).read_bytes()
+        self.assertEqual(bulk["byteLength"], len(packet))
+        self.assertEqual(bulk["sha256"], hashlib.sha256(packet).hexdigest())
+        header_bytes, payload = parse_delimited_packet(packet)
+        self.assertEqual(bytes.fromhex(bulk["payloadHex"]), payload)
+        self.assertEqual(hashlib.sha256(payload).digest(), base64.b64decode(bulk["expectedHeader"]["chunkSha256"]))
+        framed = frame(MANIFEST["transport"]["bulkChannel"], packet)
+        decoder = FrameDecoder()
+        self.assertEqual([(MANIFEST["transport"]["bulkChannel"], packet)], decoder.append(framed))
+        with tempfile.TemporaryDirectory(prefix="vibescreen-file-header-") as temporary:
+            header_path = Path(temporary) / "file_chunk_header.binpb"
+            header_path.write_bytes(header_bytes)
+            decoded_path = Path(temporary) / "file_chunk_header.json"
+            convert(bulk["headerMessageType"], header_path, "binpb", decoded_path, "json")
+            self.assertEqual(bulk["expectedHeader"], json.loads(decoded_path.read_text()))
 
     def test_rotation_fixtures_cover_initial_and_runtime_values(self) -> None:
         fixtures = {entry["name"]: entry for entry in MANIFEST["controlFixtures"]}

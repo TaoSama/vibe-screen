@@ -135,6 +135,16 @@ Negotiation rules:
   per-chunk and final SHA-256, idempotent cancellation, and cleanup. Outgoing
   files stream from a security-scoped document URL rather than loading whole
   files into memory.
+- macOS and Android now implement the same bounded single-file transfer domain
+  for the production Protocol v1 USB/LAN TCP session. The transport adapter
+  exposes logical channel `4` as bulk without assuming any WebRTC DataChannel.
+  Control carries offer/accept/progress/cancel/complete; bulk chunks advance one
+  chunk per accept/progress acknowledgement so writes remain bounded by the
+  existing transport FIFO. Receivers default to reject until an application
+  callback grants explicit approval, sanitize the advertised basename before any
+  staging path is created, merge managed policy deny-wins, validate session
+  epoch, offset, final flag, per-chunk SHA-256, and final SHA-256, and clean
+  staging files on cancel, digest mismatch, disk error, or disconnect.
 - The current renderer advertises 8-bit SDR only. Unsupported Main10/PQ/HLG
   requests produce a structured SDR fallback with a larger `config_epoch`.
 - Gesture mappings are local Codable state and may invoke only catalogued host
@@ -151,8 +161,8 @@ video configuration acknowledgement and media framing, heartbeat, targeted
 touch, protocol error, and disconnect. It does not implement or prove advanced
 host behavior. A compatible advanced host still must provide per-client
 resource allocation, multi-display stream IDs, PCM capture, advanced control
-handlers, bulk streaming, color retry, a finite host-action catalog, and an
-authenticated wake helper. `SecureChannel` now allocates audio `3` and bulk
+handlers, WebRTC bulk streaming, color retry, a finite host-action catalog, and
+an authenticated wake helper. `SecureChannel` now allocates audio `3` and bulk
 `4`; the Android and macOS Internet record layers now derive independent
 directional keys, durable nonce counters, and replay windows for all four
 channels. Shared fixed vectors prove offline record interoperability only.

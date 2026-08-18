@@ -2,6 +2,7 @@ package dev.telemachus.display.protocol
 
 import dev.vibescreen.protocol.v1.Envelope
 import dev.vibescreen.protocol.v1.Capability
+import dev.vibescreen.protocol.v1.FileChunkHeader
 import dev.vibescreen.protocol.v1.MediaPacketHeader
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -20,7 +21,10 @@ class ProtocolV1FramingTest {
     fun crossPlatformGoldenControlBytesRoundTripExactly() {
         val directory = fixtures().resolve("bin")
         directory
-            .listFiles { file -> file.extension == "binpb" && file.name != "media_packet_header.binpb" }!!
+            .listFiles { file ->
+                file.extension == "binpb" &&
+                    file.name !in setOf("media_packet_header.binpb", "file_chunk_header.binpb")
+            }!!
             .sortedBy(File::getName)
             .forEach { file ->
             val golden = file.readBytes()
@@ -49,6 +53,12 @@ class ProtocolV1FramingTest {
         assertEquals(42L, decoded.header.streamId)
         assertEquals(1, decoded.header.fragmentCount)
         assertArrayEquals(golden, ProtocolV1Framing.encodeVideo(decoded.header, decoded.annexB))
+
+        val fileChunk = directory.resolve("file_chunk.bin").readBytes()
+        val decodedChunk = ProtocolV1Framing.decodeFileChunk(fileChunk)
+        assertEquals(7L, decodedChunk.header.sessionEpoch)
+        assertArrayEquals("hello".toByteArray(), decodedChunk.payload)
+        assertArrayEquals(fileChunk, ProtocolV1Framing.encodeFileChunk(decodedChunk.header, decodedChunk.payload))
     }
 
     @Test
@@ -56,6 +66,7 @@ class ProtocolV1FramingTest {
         val bytes = ByteArrayOutputStream()
         ProtocolV1Framing.write(bytes, ProtocolChannel.CONTROL, byteArrayOf(1, 2, 3))
         ProtocolV1Framing.write(bytes, ProtocolChannel.VIDEO, byteArrayOf(4, 5))
+        ProtocolV1Framing.write(bytes, ProtocolChannel.BULK, byteArrayOf(6, 7, 8, 9))
         val input = OneByteInputStream(bytes.toByteArray())
 
         val control = ProtocolV1Framing.read(input)
@@ -64,6 +75,9 @@ class ProtocolV1FramingTest {
         val video = ProtocolV1Framing.read(input)
         assertEquals(ProtocolChannel.VIDEO, video.channel)
         assertArrayEquals(byteArrayOf(4, 5), video.payload)
+        val bulk = ProtocolV1Framing.read(input)
+        assertEquals(ProtocolChannel.BULK, bulk.channel)
+        assertArrayEquals(byteArrayOf(6, 7, 8, 9), bulk.payload)
     }
 
     @Test
@@ -89,6 +103,17 @@ class ProtocolV1FramingTest {
         assertArrayEquals(byteArrayOf(1, 2, 4), ProtocolV1Framing.decodeVideo(corrupted).annexB)
         assertThrows(IllegalArgumentException::class.java) {
             ProtocolV1Framing.encodeVideo(header, byteArrayOf(1))
+        }
+    }
+
+    @Test
+    fun validatesFileChunkLengthsAndSingleHeaderEncoding() {
+        val header = FileChunkHeader.newBuilder().setPayloadLength(3).build()
+        val encoded = ProtocolV1Framing.encodeFileChunk(header, byteArrayOf(1, 2, 3))
+        val corrupted = encoded.copyOf().also { it[it.lastIndex] = 4 }
+        assertArrayEquals(byteArrayOf(1, 2, 4), ProtocolV1Framing.decodeFileChunk(corrupted).payload)
+        assertThrows(IllegalArgumentException::class.java) {
+            ProtocolV1Framing.encodeFileChunk(header, byteArrayOf(1))
         }
     }
 

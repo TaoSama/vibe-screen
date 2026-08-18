@@ -1,0 +1,12 @@
+{
+  "protocolVersion": 1,
+  "messageId": "34",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000034",
+  "fileTransferComplete": {
+    "transferId": "AQIDBA==",
+    "accepted": true,
+    "sha256": "LPJNul+wow4m6DsqxbninhsWHlwfp0JecwQzYpOLmCQ="
+  }
+}

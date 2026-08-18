@@ -1,0 +1,11 @@
+{
+  "protocolVersion": 1,
+  "messageId": "33",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000033",
+  "fileTransferCancel": {
+    "transferId": "AQIDBA==",
+    "reasonCode": "user_cancelled"
+  }
+}

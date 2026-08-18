@@ -13,6 +13,11 @@ import dev.vibescreen.protocol.v1.DisconnectNotice
 import dev.vibescreen.protocol.v1.DisplayDescriptor
 import dev.vibescreen.protocol.v1.DisplayChanged
 import dev.vibescreen.protocol.v1.Envelope
+import dev.vibescreen.protocol.v1.FileAccept
+import dev.vibescreen.protocol.v1.FileOffer
+import dev.vibescreen.protocol.v1.FileTransferCancel
+import dev.vibescreen.protocol.v1.FileTransferComplete
+import dev.vibescreen.protocol.v1.FileTransferProgress
 import dev.vibescreen.protocol.v1.HostActionCatalog
 import dev.vibescreen.protocol.v1.HostActionDescriptor
 import dev.vibescreen.protocol.v1.HostActionResult
@@ -26,6 +31,7 @@ import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.Ping
 import dev.vibescreen.protocol.v1.ProtocolError
 import dev.vibescreen.protocol.v1.ProtocolErrorCode
+import dev.vibescreen.protocol.v1.ResourceLimits
 import dev.vibescreen.protocol.v1.SessionAccepted
 import dev.vibescreen.protocol.v1.SessionRejected
 import dev.vibescreen.protocol.v1.StartDisplayResponse
@@ -53,7 +59,7 @@ class ProtocolV1SessionTest {
         assertEquals(1, hello.clientHello.supportedProtocols.minimum)
         assertEquals(1, hello.clientHello.supportedProtocols.maximum)
         assertEquals(
-            listOf(
+            setOf(
                 Capability.CAPABILITY_TOUCH,
                 Capability.CAPABILITY_KEYBOARD,
                 Capability.CAPABILITY_POINTER,
@@ -65,9 +71,10 @@ class ProtocolV1SessionTest {
                 Capability.CAPABILITY_HOST_ACTIONS,
                 Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
                 Capability.CAPABILITY_CLIPBOARD,
+                Capability.CAPABILITY_FILE_TRANSFER,
                 Capability.CAPABILITY_MANAGED_CONFIGURATION,
             ),
-            hello.clientHello.capabilitiesList,
+            hello.clientHello.capabilitiesList.toSet(),
         )
         assertEquals(emptyList<Capability>(), hello.clientHello.requiredCapabilitiesList)
         assertEquals(listOf(Codec.CODEC_HEVC, Codec.CODEC_H264), hello.clientHello.codecsList)
@@ -77,6 +84,27 @@ class ProtocolV1SessionTest {
                 capability.transferFunctionsList.contains(TransferFunction.TRANSFER_FUNCTION_BT709) &&
                 capability.transferFunctionsList.contains(TransferFunction.TRANSFER_FUNCTION_SRGB)
         })
+        assertEquals(FileTransferPolicy.DEFAULT_MAXIMUM_FILE_BYTES, hello.clientHello.resourceLimits.maximumFileBytes)
+        assertEquals(FileTransferPolicy.DEFAULT_MAXIMUM_CHUNK_BYTES, hello.clientHello.resourceLimits.maximumFileChunkBytes)
+    }
+
+    @Test
+    fun fileTransferPolicyDisabledRemovesFileCapabilitiesAndResourceLimits() {
+        val session =
+            ProtocolV1Session(
+                deviceId = "android-test",
+                deviceName = "Test Android",
+                transport = TransportKind.TRANSPORT_KIND_USB,
+                codecs = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
+                fileTransferPolicy = FileTransferPolicy(allowed = false),
+                nowNs = { 1_000L },
+            )
+        val hello = session.clientHello().clientHello
+
+        assertFalse(hello.capabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
+        assertTrue(hello.capabilitiesList.contains(Capability.CAPABILITY_MANAGED_CONFIGURATION))
+        assertEquals(0L, hello.resourceLimits.maximumFileBytes)
+        assertEquals(0, hello.resourceLimits.maximumFileChunkBytes)
     }
 
     @Test
@@ -900,7 +928,7 @@ class ProtocolV1SessionTest {
                 .build()
         val actions = session.receive(managedPolicyStatus(8, denied))
 
-        val available = actions.single() as ProtocolV1Session.Action.HostActionsAvailable
+        val available = actions.filterIsInstance<ProtocolV1Session.Action.HostActionsAvailable>().single()
         assertTrue(available.actions.isEmpty())
         assertTrue(session.hostActions.isEmpty())
         assertFalse(Capability.CAPABILITY_HOST_ACTIONS in session.negotiated)
@@ -1528,6 +1556,139 @@ class ProtocolV1SessionTest {
         assertEquals("", action.rejectionReason)
     }
 
+    @Test
+    fun fileTransferNegotiationSendsManagedPolicyAndListDisplaysWithPeerLimits() {
+        val capabilities =
+            listOf(
+                Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_FILE_TRANSFER,
+                Capability.CAPABILITY_MANAGED_CONFIGURATION,
+            )
+        val peerLimits =
+            ResourceLimits
+                .newBuilder()
+                .setMaximumFileBytes(10)
+                .setMaximumFileChunkBytes(4)
+                .build()
+        val session = session()
+        session.clientHello()
+        session.receive(hostHello(2, advertisedCapabilities = capabilities))
+
+        val actions = session.receive(
+            sessionAccepted(3, negotiatedCapabilities = capabilities, resourceLimits = peerLimits),
+        ).map { it as ProtocolV1Session.Action.Send }
+
+        assertEquals(2, actions.size)
+        assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, actions[0].envelope.payloadCase)
+        assertEquals(Envelope.PayloadCase.MANAGED_POLICY_STATUS, actions[1].envelope.payloadCase)
+        assertFalse(actions[1].envelope.managedPolicyStatus.managed)
+        assertTrue(actions[1].envelope.managedPolicyStatus.fileTransferAllowed)
+        assertEquals(FileTransferPolicy.DEFAULT_MAXIMUM_FILE_BYTES, actions[1].envelope.managedPolicyStatus.maximumFileBytes)
+        assertTrue(session.canTransferFiles)
+        assertEquals(10L, session.negotiatedFilePolicy.maximumFileBytes)
+        assertEquals(4, session.negotiatedFilePolicy.maximumChunkBytes)
+    }
+
+    @Test
+    fun managedConfigurationCanNegotiateWithoutFileTransfer() {
+        val session = session()
+        session.clientHello()
+
+        session.receive(hostHello(2, advertisedCapabilities = listOf(Capability.CAPABILITY_MANAGED_CONFIGURATION)))
+        val actions = session.receive(
+            sessionAccepted(3, negotiatedCapabilities = listOf(Capability.CAPABILITY_MANAGED_CONFIGURATION)),
+        ).filterIsInstance<ProtocolV1Session.Action.Send>()
+
+        assertEquals(2, actions.size)
+        assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, actions[0].envelope.payloadCase)
+        assertEquals(Envelope.PayloadCase.MANAGED_POLICY_STATUS, actions[1].envelope.payloadCase)
+        assertFalse(session.canTransferFiles)
+    }
+
+    @Test
+    fun fileControlMessagesRequireNegotiatedCapabilityAndNonEmptyTransferId() {
+        val ungated = streamingSession()
+        assertInvalidPeerMessage { ungated.receive(base(7).setFileOffer(fileOffer()).build()) }
+
+        val session = fileTransferStreamingSession()
+        val offer = fileOffer()
+        val received = session.receive(base(7).setFileOffer(offer).build()).single()
+            as ProtocolV1Session.Action.FileOfferReceived
+        assertEquals(offer.transferId, received.offer.transferId)
+
+        val accept = FileAccept.newBuilder().setTransferId(offer.transferId).setAccepted(true).build()
+        val accepted = session.receive(base(8).setFileAccept(accept).build()).single()
+            as ProtocolV1Session.Action.FileAcceptReceived
+        assertTrue(accepted.response.accepted)
+
+        val progress =
+            FileTransferProgress
+                .newBuilder()
+                .setTransferId(offer.transferId)
+                .setReceivedBytes(5)
+                .build()
+        val progressed = session.receive(base(9).setFileTransferProgress(progress).build()).single()
+            as ProtocolV1Session.Action.FileProgressReceived
+        assertEquals(5L, progressed.progress.receivedBytes)
+
+        val cancel = FileTransferCancel.newBuilder().setTransferId(offer.transferId).setReasonCode("user_cancelled").build()
+        val cancelled = session.receive(base(10).setFileTransferCancel(cancel).build()).single()
+            as ProtocolV1Session.Action.FileCancelReceived
+        assertEquals("user_cancelled", cancelled.cancellation.reasonCode)
+
+        val complete =
+            FileTransferComplete
+                .newBuilder()
+                .setTransferId(offer.transferId)
+                .setAccepted(true)
+                .setSha256(sha256("hello".toByteArray()))
+                .build()
+        val completed = session.receive(base(11).setFileTransferComplete(complete).build()).single()
+            as ProtocolV1Session.Action.FileCompleteReceived
+        assertTrue(completed.result.accepted)
+
+        assertInvalidPeerMessage {
+            session.receive(base(12).setFileAccept(FileAccept.newBuilder().setAccepted(true)).build())
+        }
+    }
+
+    @Test
+    fun fileControlSendersAreNullUntilNegotiatedAndSessionScopedAfterwards() {
+        val ungated = streamingSession()
+        val transferId = ByteString.copyFrom(byteArrayOf(1, 2, 3, 4))
+        assertNull(ungated.offerFile(fileOffer(transferId)))
+        assertNull(ungated.fileAccept(FileAccept.newBuilder().setTransferId(transferId).setAccepted(true).build()))
+        assertNull(ungated.fileProgress(transferId, 1))
+        assertNull(ungated.fileComplete(transferId, accepted = true, sha256 = ByteString.EMPTY, rejectionReason = ""))
+        assertNull(ungated.fileCancel(transferId, "test"))
+
+        val session = fileTransferStreamingSession()
+        assertEquals(Envelope.PayloadCase.FILE_OFFER, session.offerFile(fileOffer(transferId))!!.payloadCase)
+        assertEquals(
+            Envelope.PayloadCase.FILE_ACCEPT,
+            session.fileAccept(FileAccept.newBuilder().setTransferId(transferId).setAccepted(true).build())!!.payloadCase,
+        )
+        assertEquals(Envelope.PayloadCase.FILE_TRANSFER_PROGRESS, session.fileProgress(transferId, 1)!!.payloadCase)
+        assertEquals(
+            Envelope.PayloadCase.FILE_TRANSFER_COMPLETE,
+            session.fileComplete(transferId, accepted = false, sha256 = ByteString.EMPTY, rejectionReason = "policy_denied")!!.payloadCase,
+        )
+        assertEquals(Envelope.PayloadCase.FILE_TRANSFER_CANCEL, session.fileCancel(transferId, "user_cancelled")!!.payloadCase)
+    }
+
+    @Test
+    fun remoteManagedPolicyStatusRequiresNegotiatedManagedConfiguration() {
+        val ungated = streamingSession()
+        val status = managedStatus(fileTransferAllowed = false, maximumFileBytes = 10)
+        assertInvalidPeerMessage { ungated.receive(base(7).setManagedPolicyStatus(status).build()) }
+
+        val session = fileTransferStreamingSession()
+        val action = session.receive(base(7).setManagedPolicyStatus(status).build()).single()
+            as ProtocolV1Session.Action.ManagedPolicyReceived
+        assertFalse(action.status.fileTransferAllowed)
+        assertEquals(10L, action.status.maximumFileBytes)
+    }
+
     private fun streamingSession(): ProtocolV1Session =
         sessionThroughDisplayStart().also {
             val requested =
@@ -1761,6 +1922,24 @@ class ProtocolV1SessionTest {
             nowNs = { 1_000L },
         )
 
+    private fun fileTransferStreamingSession(): ProtocolV1Session {
+        val capabilities =
+            listOf(
+                Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_FILE_TRANSFER,
+                Capability.CAPABILITY_MANAGED_CONFIGURATION,
+            )
+        return session().also {
+            it.clientHello()
+            it.receive(hostHello(2, advertisedCapabilities = capabilities))
+            it.receive(sessionAccepted(3, negotiatedCapabilities = capabilities))
+            it.receive(displayList(4))
+            it.receive(startDisplay(5))
+            val requested = it.receive(videoConfig(6)).single() as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(3, requested.configurationToken, true, "")
+        }
+    }
+
     private fun assertInvalidPeerMessage(block: () -> Unit) {
         val failure = assertThrows(ProtocolV1Failure::class.java, block)
         assertEquals("invalid_peer_message", failure.reason)
@@ -1801,6 +1980,7 @@ class ProtocolV1SessionTest {
     private fun sessionAccepted(
         id: Long,
         negotiatedCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
+        resourceLimits: ResourceLimits = ResourceLimits.getDefaultInstance(),
     ): Envelope =
         Envelope
             .newBuilder()
@@ -1812,8 +1992,32 @@ class ProtocolV1SessionTest {
                     .setSessionId(SESSION_ID)
                     .setSessionEpoch(7)
                     .setHeartbeatIntervalMs(1_000)
-                    .addAllNegotiatedCapabilities(negotiatedCapabilities),
+                    .addAllNegotiatedCapabilities(negotiatedCapabilities)
+                    .setNegotiatedResourceLimits(resourceLimits),
             ).build()
+
+    private fun fileOffer(
+        transferId: ByteString = ByteString.copyFrom(byteArrayOf(1, 2, 3, 4)),
+    ): FileOffer =
+        FileOffer
+            .newBuilder()
+            .setTransferId(transferId)
+            .setFileName("hello.txt")
+            .setMimeType("text/plain")
+            .setByteLength(5)
+            .setSha256(sha256("hello".toByteArray()))
+            .build()
+
+    private fun managedStatus(
+        fileTransferAllowed: Boolean,
+        maximumFileBytes: Long,
+    ): ManagedPolicyStatus =
+        ManagedPolicyStatus
+            .newBuilder()
+            .setManaged(true)
+            .setFileTransferAllowed(fileTransferAllowed)
+            .setMaximumFileBytes(maximumFileBytes)
+            .build()
 
     private fun displayList(id: Long): Envelope =
         base(id)

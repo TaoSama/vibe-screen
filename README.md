@@ -587,6 +587,14 @@ network quality may increase it.
   channels and legacy-compatible key rotation. Audio/bulk WebRTC DataChannels,
   admission/backlog limits, and public-network end-to-end behavior remain
   unproved.
+- The macOS Host and Android client now share a transport-neutral, bounded
+  single-file transfer domain over Protocol v1 for the existing USB/LAN TCP
+  session. File offers require explicit receiver approval and default to reject;
+  both sides enforce safe basenames, deny-wins managed policy and resource
+  limits, ordered chunks, per-chunk and final SHA-256, session-epoch checks,
+  progress-driven backpressure, and cancel/disconnect cleanup. This is offline
+  and self-test evidence only: no Android real-device file-transfer acceptance,
+  public-Internet run, or WebRTC bulk DataChannel path is claimed.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,

@@ -381,7 +381,7 @@ class StreamClientProtocolFailureTest {
         val envelope = Envelope.parseFrom(payload)
         assertEquals(Envelope.PayloadCase.CLIENT_HELLO, envelope.payloadCase)
         assertEquals(
-            listOf(
+            setOf(
                 Capability.CAPABILITY_TOUCH,
                 Capability.CAPABILITY_KEYBOARD,
                 Capability.CAPABILITY_POINTER,
@@ -393,9 +393,10 @@ class StreamClientProtocolFailureTest {
                 Capability.CAPABILITY_HOST_ACTIONS,
                 Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
                 Capability.CAPABILITY_CLIPBOARD,
+                Capability.CAPABILITY_FILE_TRANSFER,
                 Capability.CAPABILITY_MANAGED_CONFIGURATION,
             ),
-            envelope.clientHello.capabilitiesList,
+            envelope.clientHello.capabilitiesList.toSet(),
         )
         assertEquals(emptyList<Capability>(), envelope.clientHello.requiredCapabilitiesList)
         assertEquals(2, envelope.clientHello.videoDecodeCapabilitiesCount)

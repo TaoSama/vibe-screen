@@ -2,6 +2,7 @@ package dev.telemachus.display.protocol
 
 import com.google.protobuf.CodedInputStream
 import com.google.protobuf.CodedOutputStream
+import dev.vibescreen.protocol.v1.FileChunkHeader
 import dev.vibescreen.protocol.v1.MediaPacketHeader
 import java.io.EOFException
 import java.io.IOException
@@ -13,6 +14,7 @@ import java.nio.ByteOrder
 internal enum class ProtocolChannel(val wireValue: Int) {
     CONTROL(1),
     VIDEO(2),
+    BULK(4),
     ;
 
     companion object {
@@ -92,9 +94,42 @@ internal object ProtocolV1Framing {
         return VideoPayload(header, annexB)
     }
 
+    fun encodeFileChunk(
+        header: FileChunkHeader,
+        payload: ByteArray,
+    ): ByteArray {
+        require(header.payloadLength == payload.size) { "File payload_length does not match payload" }
+        val headerBytes = header.toByteArray()
+        val prefixSize = CodedOutputStream.computeUInt32SizeNoTag(headerBytes.size)
+        return ByteArray(prefixSize + headerBytes.size + payload.size).also { output ->
+            val coded = CodedOutputStream.newInstance(output)
+            coded.writeUInt32NoTag(headerBytes.size)
+            coded.writeRawBytes(headerBytes)
+            coded.writeRawBytes(payload)
+            coded.flush()
+        }
+    }
+
+    fun decodeFileChunk(payload: ByteArray): FileChunkPayload {
+        val coded = CodedInputStream.newInstance(payload)
+        val headerLength = coded.readUInt32()
+        if (headerLength <= 0 || headerLength > coded.bytesUntilLimit) {
+            throw IOException("Invalid file chunk header length: $headerLength")
+        }
+        val header = FileChunkHeader.parseFrom(coded.readRawBytes(headerLength))
+        val content = coded.readRawBytes(coded.bytesUntilLimit)
+        if (header.payloadLength != content.size) throw IOException("File payload_length mismatch")
+        return FileChunkPayload(header, content)
+    }
+
     data class VideoPayload(
         val header: MediaPacketHeader,
         val annexB: ByteArray,
+    )
+
+    data class FileChunkPayload(
+        val header: FileChunkHeader,
+        val payload: ByteArray,
     )
 
     private fun InputStream.readExactly(size: Int): ByteArray {

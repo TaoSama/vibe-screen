@@ -48,6 +48,7 @@ class OutboundCommandScheduler<C : Any>(
         CONTROLLER_MOVE,
         KEYFRAME,
         PING,
+        FILE_TRANSFER,
     }
 
     enum class Submission {
@@ -381,6 +382,7 @@ class OutboundCommandScheduler<C : Any>(
                 }
             Kind.STRUCTURAL_TOUCH,
             Kind.CONTROLLER_STRUCTURAL,
+            Kind.FILE_TRANSFER,
             -> null
         }
 
@@ -419,6 +421,7 @@ class OutboundCommandScheduler<C : Any>(
             Kind.MOVE,
             Kind.CONTROLLER_STRUCTURAL,
             Kind.CONTROLLER_MOVE,
+            Kind.FILE_TRANSFER,
             -> touchCommands.addLast(PendingTouch(kind, command, commandGeneration))
             Kind.KEYFRAME -> keyframe = command
             Kind.PING -> ping = command
@@ -713,6 +716,7 @@ class OutboundCommandScheduler<C : Any>(
             Kind.STRUCTURAL_TOUCH,
             Kind.MOVE,
             Kind.CONTROLLER_STRUCTURAL,
+            Kind.FILE_TRANSFER,
             -> null
         }
 
@@ -773,6 +777,7 @@ class OutboundCommandScheduler<C : Any>(
             Kind.CONTROLLER_STRUCTURAL,
             Kind.KEYFRAME,
             Kind.PING,
+            Kind.FILE_TRANSFER,
             -> capacity
         }
 

@@ -260,7 +260,7 @@ enum TransportSelfTest {
             hello.supportedProtocols = range
             hello.deviceID = "transport-self-test"
             hello.deviceName = "Transport Self Test"
-            hello.capabilities = [.touch, .multiDisplay]
+            hello.capabilities = [.touch, .multiDisplay, .fileTransfer, .managedConfiguration]
             hello.requiredCapabilities = [.touch]
             hello.codecs = [.hevc]
             hello.videoDecodeCapabilities = [sdrDecodeCapability(codec: .hevc)]
@@ -269,9 +269,17 @@ enum TransportSelfTest {
             let hostHello = try client.readEnvelope()
             let accepted = try client.readEnvelope()
             guard case .hostHello(let advertised)? = hostHello.payload,
-                  Set(advertised.capabilities) == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .clipboard, .colorManagement, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .usbHidModifierByte],
+                  Set(advertised.capabilities) == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .clipboard, .colorManagement, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .usbHidModifierByte, .fileTransfer],
                   case .sessionAccepted(let session)? = accepted.payload,
-                  session.negotiatedCapabilities == [.touch, .multiDisplay] else {
+                  Set(session.negotiatedCapabilities) == [.touch, .multiDisplay, .fileTransfer, .managedConfiguration] else {
+                server.stop()
+                return false
+            }
+
+            guard case .managedPolicyStatus(let managedStatus)? = try client.readEnvelope().payload,
+                  managedStatus.managed,
+                  managedStatus.fileTransferAllowed,
+                  managedStatus.maximumFileBytes > 0 else {
                 server.stop()
                 return false
             }
@@ -433,7 +441,7 @@ enum TransportSelfTest {
                     hello.supportedProtocols = range
                     hello.deviceID = "stop-stage"
                     hello.deviceName = "Stop Stage"
-                    hello.capabilities = [.touch, .multiDisplay]
+                    hello.capabilities = [.touch, .multiDisplay, .fileTransfer, .managedConfiguration]
                     hello.requiredCapabilities = [.touch]
                     hello.codecs = [.hevc]
                     hello.videoDecodeCapabilities = [sdrDecodeCapability(codec: .hevc)]
@@ -447,6 +455,10 @@ enum TransportSelfTest {
                         _ = try client.readEnvelope()
                         let accepted = try client.readEnvelope()
                         guard case .sessionAccepted(let session)? = accepted.payload else {
+                            server.stop()
+                            return false
+                        }
+                        guard case .managedPolicyStatus? = try client.readEnvelope().payload else {
                             server.stop()
                             return false
                         }
@@ -479,16 +491,23 @@ enum TransportSelfTest {
                 let shutdown = try client.readEnvelope()
                 guard case .disconnectNotice(let notice)? = shutdown.payload,
                       notice.reasonCode == "host_shutdown",
-                      !notice.mayResume else { return false }
+                      !notice.mayResume else {
+                    print("Protocol v1 pre-ready stop failed at stage=\(stage): unexpected payload=\(String(describing: shutdown.payload)) id=\(shutdown.messageID)")
+                    return false
+                }
                 let expectedID: UInt64
                 switch stage {
                 case .upgraded, .preparingCodec: expectedID = 1
-                case .awaitingDisplay: expectedID = 3
-                case .awaitingVideoResult: expectedID = 6
+                case .awaitingDisplay: expectedID = 4
+                case .awaitingVideoResult: expectedID = 7
                 }
-                guard shutdown.messageID == expectedID else { return false }
+                guard shutdown.messageID == expectedID else {
+                    print("Protocol v1 pre-ready stop failed at stage=\(stage): shutdown id=\(shutdown.messageID) expected=\(expectedID)")
+                    return false
+                }
             } catch {
                 server.stop()
+                print("Protocol v1 pre-ready stop failed at stage=\(stage): \(error)")
                 return false
             }
         }
