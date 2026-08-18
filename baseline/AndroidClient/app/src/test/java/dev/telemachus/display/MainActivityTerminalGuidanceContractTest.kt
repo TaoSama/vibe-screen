@@ -132,6 +132,33 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun connectedStreamUiUsesLongInitialControlBarReveal() {
+        val source = mainActivitySource()
+        val connected = extractMethod(source, "private fun showConnectedStreamUi")
+        val reveal = extractMethod(source, "private fun revealControlBar")
+        val compactConnected = connected.replace(Regex("\\s+"), "")
+        val compactReveal = reveal.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Newly connected sessions should leave controls visible long enough to find settings and disconnect",
+            compactConnected.contains(
+                "revealControlBar(ControlBarAccessibilityPolicy.RevealReason.SESSION_STARTED)",
+            ),
+        )
+        assertTrue(
+            "Manual reveals should keep the standard reveal reason by default",
+            compactReveal.contains(
+                "revealReason:ControlBarAccessibilityPolicy.RevealReason=" +
+                    "ControlBarAccessibilityPolicy.RevealReason.USER_REQUEST",
+            ),
+        )
+        assertTrue(
+            "Control-bar hide timing should be resolved by the shared accessibility policy",
+            compactReveal.contains("ControlBarAccessibilityPolicy.autoHideDelayMs("),
+        )
+    }
+
+    @Test
     fun onConfigurationChangedConnectionTitleUsesLiveRegionApplier() {
         val source = mainActivitySource()
         val onConfigurationChanged = extractMethod(source, "override fun onConfigurationChanged")
