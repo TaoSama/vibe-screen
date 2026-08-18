@@ -56,9 +56,7 @@ final class StreamViewModel: ObservableObject {
         }
     )
     let audioPlayback = AudioPlaybackController()
-    var audioFormat: PCMStreamFormat?
-    var audioConfig: VSAudioConfig?
-    var audioJitter = AudioJitterBuffer(firstSequence: 0)
+    var audioSession = AudioPlaybackSession()
     var decoders: [UInt64: VideoDecoder] = [:]
     var decoderOwners: [UInt64: DecoderOwner] = [:]
     var mediaGate = VideoMediaGate()
@@ -245,9 +243,7 @@ final class StreamViewModel: ObservableObject {
         pendingFileOffers = [:]
         outgoingFiles = [:]
         pendingFileName = nil
-        audioConfig = nil
-        audioFormat = nil
-        audioJitter.reset(firstSequence: 0)
+        audioSession.reset()
         availableHostActions = []
         pixelBuffer = nil
         nextInputID = 1

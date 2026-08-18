@@ -612,17 +612,115 @@ func testAudioQueue() throws {
         return try AudioPacket(serializedFrame: encodeVarint(bytes.count) + bytes + payload)
     }
     var jitter = AudioJitterBuffer(firstSequence: 0, maximumPackets: 3)
-    _ = try jitter.enqueue(packet(sequence: 1), sessionEpoch: 9, configEpoch: 2, format: format)
-    _ = try jitter.enqueue(packet(sequence: 0), sessionEpoch: 9, configEpoch: 2, format: format)
+    _ = try jitter.enqueue(packet(sequence: 1), streamID: 7, sessionEpoch: 9, configEpoch: 2, format: format)
+    _ = try jitter.enqueue(packet(sequence: 0), streamID: 7, sessionEpoch: 9, configEpoch: 2, format: format)
     try require(jitter.drainReady().map(\.header.sequence) == [0, 1], "audio reorder")
     try require(
-        jitter.enqueue(packet(sequence: 0), sessionEpoch: 9, configEpoch: 2, format: format) == .stale,
+        jitter.enqueue(packet(sequence: 0), streamID: 7, sessionEpoch: 9, configEpoch: 2, format: format) == .stale,
         "late audio packet"
     )
+    do {
+        _ = try jitter.enqueue(packet(sequence: 2), streamID: 8, sessionEpoch: 9, configEpoch: 2, format: format)
+        throw SelfTestError.failed("audio queue accepted wrong stream")
+    } catch AudioStreamError.streamIDMismatch(expected: 8, received: 7) { }
     for sequence in 5...9 {
-        _ = try jitter.enqueue(packet(sequence: UInt64(sequence)), sessionEpoch: 9, configEpoch: 2, format: format)
+        _ = try jitter.enqueue(packet(sequence: UInt64(sequence)), streamID: 7, sessionEpoch: 9, configEpoch: 2, format: format)
     }
     try require(jitter.queuedPacketCount <= 3, "audio queue exceeded bound")
+}
+
+func testAudioPlaybackSessionFailClosed() throws {
+    var config = VSAudioConfig()
+    config.streamID = 7
+    config.configEpoch = 2
+    config.codec = .pcmS16Le
+    config.sampleRateHz = 48_000
+    config.channelCount = 2
+    config.framesPerPacket = 4
+    let format = try PCMStreamFormat(config: config)
+    let payload = Data(repeating: 0x01, count: format.bytesPerPacket)
+
+    func packet(sequence: UInt64, configEpoch: UInt64 = 2) throws -> AudioPacket {
+        var header = VSAudioPacketHeader()
+        header.streamID = 7
+        header.sessionEpoch = 9
+        header.configEpoch = configEpoch
+        header.sequence = sequence
+        header.frameCount = 4
+        header.payloadLength = UInt32(payload.count)
+        let bytes = try header.serializedData()
+        return try AudioPacket(serializedFrame: encodeVarint(bytes.count) + bytes + payload)
+    }
+
+    var session = AudioPlaybackSession(maximumBufferedPackets: 3)
+    try require(!session.isConfigured, "audio session started configured")
+    try session.validate(config: config)
+    try require(session.lastConfigEpoch == 0, "audio validation advanced config epoch")
+    try session.accept(config: config, format: format)
+    try require(session.isConfigured, "audio session did not accept config")
+    try require(
+        try session.enqueue(packet(sequence: 1), sessionEpoch: 9).isEmpty,
+        "audio session drained across a gap"
+    )
+    try require(session.queuedPacketCount == 1, "audio session did not retain gap packet")
+    try require(
+        try session.enqueue(packet(sequence: 0), sessionEpoch: 9).map(\.header.sequence) == [0, 1],
+        "audio session did not drain contiguous packets"
+    )
+
+    var nextConfig = config
+    nextConfig.configEpoch = 3
+    try session.accept(config: nextConfig, format: format)
+    _ = try session.enqueue(packet(sequence: 2, configEpoch: 3), sessionEpoch: 9)
+    session.failClosed()
+    try require(!session.isConfigured, "audio fail-closed left config active")
+    try require(session.queuedPacketCount == 0, "audio fail-closed left queued packets")
+    do {
+        try session.accept(config: nextConfig, format: format)
+        throw SelfTestError.failed("audio fail-closed reset config epoch watermark")
+    } catch AudioStreamError.nonIncreasingConfigEpoch(previous: 3, received: 3) { }
+    try require(
+        try session.enqueue(packet(sequence: 0), sessionEpoch: 9).isEmpty,
+        "audio fail-closed admitted media without a config"
+    )
+
+    var newConfig = config
+    newConfig.configEpoch = 4
+    try session.accept(config: newConfig, format: format)
+    do {
+        _ = try session.enqueue(packet(sequence: 0, configEpoch: 3), sessionEpoch: 9)
+        throw SelfTestError.failed("audio session accepted stale config epoch")
+    } catch AudioStreamError.staleConfigEpoch { }
+
+    do {
+        try session.accept(config: newConfig, format: format)
+        throw SelfTestError.failed("audio session accepted non-increasing config epoch")
+    } catch AudioStreamError.nonIncreasingConfigEpoch(previous: 4, received: 4) { }
+
+    session.reset()
+    try session.accept(config: config, format: format)
+    try require(session.lastConfigEpoch == 2, "audio reset did not clear config epoch watermark")
+
+    var zeroStream = config
+    zeroStream.streamID = 0
+    do {
+        _ = try PCMStreamFormat(config: zeroStream)
+        throw SelfTestError.failed("audio config accepted zero stream")
+    } catch AudioStreamError.invalidStreamID(0) { }
+
+    var zeroEpoch = config
+    zeroEpoch.configEpoch = 0
+    do {
+        _ = try PCMStreamFormat(config: zeroEpoch)
+        throw SelfTestError.failed("audio config accepted zero config epoch")
+    } catch AudioStreamError.invalidConfigEpoch(0) { }
+
+    var oversizedPacket = config
+    oversizedPacket.framesPerPacket = PCMStreamFormat.maximumFramesPerPacket + 1
+    do {
+        _ = try PCMStreamFormat(config: oversizedPacket)
+        throw SelfTestError.failed("audio config accepted oversized frames-per-packet")
+    } catch AudioStreamError.invalidFramesPerPacket(PCMStreamFormat.maximumFramesPerPacket + 1) { }
 }
 
 func testClipboardAndManagedPolicy() throws {
@@ -1123,6 +1221,7 @@ do {
     FileHandle.standardError.write(Data("RUN: multi-display/audio\n".utf8))
     try testMultiDisplaySessions()
     try testAudioQueue()
+    try testAudioPlaybackSessionFailClosed()
     FileHandle.standardError.write(Data("RUN: clipboard/file/policy\n".utf8))
     try testClipboardAndManagedPolicy()
     try testFileTransfer()

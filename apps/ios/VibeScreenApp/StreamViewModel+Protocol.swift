@@ -375,11 +375,14 @@ extension StreamViewModel {
             guard negotiatedCapabilities.contains(.audio), managedConfiguration.policy.audioAllowed else {
                 throw ClipboardTransferError.policyDenied
             }
-            audioFormat = try audioPlayback.configure(config)
-            audioConfig = config
-            audioJitter.reset(firstSequence: 0)
+            let format = try PCMStreamFormat(config: config)
+            try audioSession.validate(config: config)
+            _ = try audioPlayback.configure(config)
+            try audioSession.accept(config: config, format: format)
             result.accepted = true
         } catch {
+            audioPlayback.stop()
+            audioSession.failClosed()
             result.accepted = false
             result.rejectionReason = error.localizedDescription
         }
@@ -419,14 +422,9 @@ extension StreamViewModel {
     }
 
     func handleAudio(_ packet: AudioPacket) throws {
-        guard let audioConfig, let audioFormat else { return }
-        _ = try audioJitter.enqueue(
-            packet,
-            sessionEpoch: state.sessionEpoch,
-            configEpoch: audioConfig.configEpoch,
-            format: audioFormat
-        )
-        for ready in audioJitter.drainReady() { _ = try audioPlayback.schedule(ready) }
+        for ready in try audioSession.enqueue(packet, sessionEpoch: state.sessionEpoch) {
+            _ = try audioPlayback.schedule(ready)
+        }
     }
 
     func handleBulk(_ chunk: FileChunk) throws {
@@ -545,8 +543,7 @@ extension StreamViewModel {
         let policy = managedConfiguration.policy
         if !policy.audioAllowed {
             audioPlayback.stop()
-            audioConfig = nil
-            audioFormat = nil
+            audioSession.failClosed()
         }
         if !policy.clipboardAllowed { clipboard.rejectPending() }
         if !policy.fileTransferAllowed {
