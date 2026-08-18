@@ -46,13 +46,37 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
 
         self.assertEqual(acceptance.observed_events(log), ["move", "press", "release"])
 
+    def test_utc_timestamp_uses_z_suffix(self) -> None:
+        created_at = acceptance.utc_timestamp()
+
+        self.assertRegex(created_at, r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+
     def test_read_new_host_log_rejects_truncation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             log = Path(temporary_directory) / "host.log"
             log.write_text("short", encoding="utf-8")
+            cursor = acceptance.HostLogCursor(device=log.stat().st_dev, inode=log.stat().st_ino, offset=10)
 
             with self.assertRaisesRegex(acceptance.AcceptanceError, "truncated"):
-                acceptance.read_new_host_log(log, 10, 100)
+                acceptance.read_new_host_log(log, cursor, 100)
+
+    def test_read_new_host_log_rejects_replacement_with_larger_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            log = Path(temporary_directory) / "host.log"
+            log.write_text("before\n", encoding="utf-8")
+            cursor = acceptance.host_log_cursor(log)
+            replacement_log = Path(temporary_directory) / "replacement.log"
+            replacement = "historical replacement content\n"
+            replacement += "Pointer injected: phase=changed buttons=0\n"
+            replacement += "Pointer injected: phase=began buttons=1\n"
+            replacement += "Pointer injected: phase=ended buttons=0\n"
+            replacement_log.write_text(replacement, encoding="utf-8")
+            self.assertNotEqual(replacement_log.stat().st_ino, cursor.inode)
+            replacement_log.replace(log)
+
+            self.assertGreater(log.stat().st_size, cursor.offset)
+            with self.assertRaisesRegex(acceptance.AcceptanceError, "identity changed"):
+                acceptance.read_new_host_log(log, cursor, 1000)
 
     def test_main_writes_blocked_evidence_when_mouse_is_absent(self) -> None:
         identity = acceptance.DeviceIdentity(
@@ -127,7 +151,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             host_log = Path(temporary_directory) / "host.log"
             host_log.write_text("before\n", encoding="utf-8")
-            cursor = host_log.stat().st_size
+            cursor = acceptance.host_log_cursor(host_log)
             host_log.write_text(
                 "before\n"
                 "Pointer injected: phase=changed buttons=0\n"

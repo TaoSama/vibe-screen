@@ -80,9 +80,9 @@ foregrounded on the streaming view. Then run:
 
 ```bash
 python3 scripts/native_pointer_hid_acceptance.py \
-  --serial EP0110PZ0B9110300B \
+  --serial "$ADB_SERIAL" \
   --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
-  --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/$(date +%F)-p0110-native-pointer-hid
+  --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/$(date -u +%F)-p0110-native-pointer-hid
 ```
 
 While the script waits, move the physical mouse over the Android stream, then

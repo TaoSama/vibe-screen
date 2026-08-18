@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -68,6 +69,13 @@ class InputDeviceSummary:
     name: str
     sources: str
     is_external: str
+
+
+@dataclass(frozen=True)
+class HostLogCursor:
+    device: int
+    inode: int
+    offset: int
 
 
 @dataclass(frozen=True)
@@ -188,26 +196,37 @@ def external_mouse_devices(devices: Sequence[InputDeviceSummary]) -> list[InputD
     return candidates
 
 
-def host_log_cursor(path: Path) -> int:
+def host_log_cursor(path: Path) -> HostLogCursor:
     try:
-        return path.stat().st_size
+        stat = path.stat()
+        return HostLogCursor(device=stat.st_dev, inode=stat.st_ino, offset=stat.st_size)
     except FileNotFoundError as error:
         raise AcceptanceError(f"host log does not exist: {path}") from error
 
 
-def read_new_host_log(path: Path, offset: int, max_bytes: int) -> bytes:
+def read_new_host_log(path: Path, cursor: HostLogCursor, max_bytes: int) -> bytes:
     try:
-        current_size = path.stat().st_size
-        if current_size < offset:
-            raise AcceptanceError(f"host log was truncated during acceptance: {path}")
-        appended = current_size - offset
-        if appended > max_bytes:
-            raise AcceptanceError(f"host log appended {appended} bytes, above limit {max_bytes}")
         with path.open("rb") as handle:
-            handle.seek(offset)
-            return handle.read(appended)
+            stat = os.fstat(handle.fileno())
+            if stat.st_dev != cursor.device or stat.st_ino != cursor.inode:
+                raise AcceptanceError(f"host log identity changed during acceptance: {path}")
+            current_size = stat.st_size
+            if current_size < cursor.offset:
+                raise AcceptanceError(f"host log was truncated during acceptance: {path}")
+            appended = current_size - cursor.offset
+            if appended > max_bytes:
+                raise AcceptanceError(f"host log appended {appended} bytes, above limit {max_bytes}")
+            handle.seek(cursor.offset)
+            data = handle.read(appended)
+        if len(data) != appended:
+            raise AcceptanceError(f"host log was truncated during acceptance: {path}")
+        return data
     except OSError as error:
         raise AcceptanceError(f"cannot read host log {path}: {error}") from error
+
+
+def utc_timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def observed_events(log_text: str) -> list[str]:
@@ -281,7 +300,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.max_host_log_bytes <= 0:
         raise SystemExit("--max-host-log-bytes must be positive")
 
-    created_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    created_at = utc_timestamp()
     try:
         identity = read_device_identity(args.serial)
         dumpsys_input = adb(args.serial, ["shell", "dumpsys", "input"], timeout=30.0).stdout

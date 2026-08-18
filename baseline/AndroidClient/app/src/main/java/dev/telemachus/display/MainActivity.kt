@@ -1079,6 +1079,7 @@ class MainActivity : AppCompatActivity() {
                         point.x,
                         point.y,
                         buttonState = event.buttonState,
+                        actionButton = event.actionButton,
                     )
 
                 MotionEvent.ACTION_BUTTON_RELEASE ->
@@ -1087,6 +1088,7 @@ class MainActivity : AppCompatActivity() {
                         point.x,
                         point.y,
                         buttonState = event.buttonState,
+                        actionButton = event.actionButton,
                     )
 
                 MotionEvent.ACTION_SCROLL ->
@@ -4472,6 +4474,7 @@ class MainActivity : AppCompatActivity() {
         override fun sendPointer(input: ClientPointerInput): Boolean {
             if (!isCurrentSession(client, generation)) return false
             val buttonMask = NativeInputWire.buttonMask(input.buttonState)
+            val changedButtonMask = NativeInputWire.buttonMask(input.actionButton)
             val admitted =
                 when (input.action) {
                     ClientPointerAction.SCROLL ->
@@ -4481,7 +4484,7 @@ class MainActivity : AppCompatActivity() {
                         )
 
                     else -> {
-                        val phase = NativeInputWire.pointerPhase(input.action, buttonMask) ?: return false
+                        val phase = NativeInputWire.pointerPhase(input.action, buttonMask, changedButtonMask) ?: return false
                         client.sendPointer(
                             phase = phase,
                             x = input.x,

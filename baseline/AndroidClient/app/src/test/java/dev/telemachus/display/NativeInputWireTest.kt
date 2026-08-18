@@ -23,23 +23,55 @@ class NativeInputWireTest {
     fun pointerPhasePreservesRemainingButtonsOnPartialRelease() {
         assertEquals(
             InputPhase.INPUT_PHASE_BEGAN,
-            NativeInputWire.pointerPhase(ClientPointerAction.BUTTON_PRESS, NativeInputWire.BUTTON_PRIMARY),
+            NativeInputWire.pointerPhase(
+                ClientPointerAction.BUTTON_PRESS,
+                NativeInputWire.BUTTON_PRIMARY,
+                NativeInputWire.BUTTON_PRIMARY,
+            ),
         )
         assertEquals(
             InputPhase.INPUT_PHASE_CHANGED,
-            NativeInputWire.pointerPhase(ClientPointerAction.BUTTON_RELEASE, NativeInputWire.BUTTON_SECONDARY),
+            NativeInputWire.pointerPhase(
+                ClientPointerAction.BUTTON_RELEASE,
+                NativeInputWire.BUTTON_SECONDARY,
+                NativeInputWire.BUTTON_PRIMARY,
+            ),
         )
         assertEquals(
             InputPhase.INPUT_PHASE_ENDED,
-            NativeInputWire.pointerPhase(ClientPointerAction.BUTTON_RELEASE, 0),
+            NativeInputWire.pointerPhase(
+                ClientPointerAction.BUTTON_RELEASE,
+                0,
+                NativeInputWire.BUTTON_PRIMARY,
+            ),
         )
     }
 
     @Test
     fun pointerPhaseDropsUnsupportedButtonPresses() {
-        assertEquals(InputPhase.INPUT_PHASE_CHANGED, NativeInputWire.pointerPhase(ClientPointerAction.MOVE, 0))
-        assertNull(NativeInputWire.pointerPhase(ClientPointerAction.BUTTON_PRESS, 0))
-        assertNull(NativeInputWire.pointerPhase(ClientPointerAction.SCROLL, NativeInputWire.BUTTON_PRIMARY))
+        assertEquals(InputPhase.INPUT_PHASE_CHANGED, NativeInputWire.pointerPhase(ClientPointerAction.MOVE, 0, 0))
+        assertNull(NativeInputWire.pointerPhase(ClientPointerAction.BUTTON_PRESS, 0, 0))
+        assertNull(NativeInputWire.pointerPhase(ClientPointerAction.SCROLL, NativeInputWire.BUTTON_PRIMARY, 0))
+    }
+
+    @Test
+    fun pointerPhaseDropsUnsupportedButtonTransitionEvenWithSupportedButtonHeld() {
+        val heldButtonMask = NativeInputWire.BUTTON_PRIMARY
+
+        assertNull(
+            NativeInputWire.pointerPhase(
+                ClientPointerAction.BUTTON_PRESS,
+                heldButtonMask,
+                changedButtonMask = 0,
+            ),
+        )
+        assertNull(
+            NativeInputWire.pointerPhase(
+                ClientPointerAction.BUTTON_RELEASE,
+                heldButtonMask,
+                changedButtonMask = 0,
+            ),
+        )
     }
 
     @Test

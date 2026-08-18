@@ -36,20 +36,27 @@ internal object NativeInputWire {
 
     /**
      * Maps Android button transitions onto the Host's absolute button-mask
-     * contract. A non-terminal release must update the remaining mask instead
-     * of ending the pointer sequence, because the Host releases every button on
-     * terminal pointer phases.
+     * contract. Android reports the absolute post-transition button state
+     * separately from the button that changed; unsupported changed buttons must
+     * not create or mutate a host pointer sequence.
      */
     fun pointerPhase(
         action: ClientPointerAction,
         wireButtonMask: Int,
+        changedButtonMask: Int,
     ): InputPhase? =
         when (action) {
             ClientPointerAction.MOVE -> InputPhase.INPUT_PHASE_CHANGED
             ClientPointerAction.BUTTON_PRESS ->
-                if (wireButtonMask == 0) null else InputPhase.INPUT_PHASE_BEGAN
+                if (changedButtonMask == 0) null else InputPhase.INPUT_PHASE_BEGAN
             ClientPointerAction.BUTTON_RELEASE ->
-                if (wireButtonMask == 0) InputPhase.INPUT_PHASE_ENDED else InputPhase.INPUT_PHASE_CHANGED
+                if (changedButtonMask == 0) {
+                    null
+                } else if (wireButtonMask == 0) {
+                    InputPhase.INPUT_PHASE_ENDED
+                } else {
+                    InputPhase.INPUT_PHASE_CHANGED
+                }
             ClientPointerAction.SCROLL -> null
         }
 

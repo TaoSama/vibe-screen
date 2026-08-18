@@ -1,7 +1,7 @@
 {
   "status": "blocked",
   "reason": "No external Android input device with MOUSE, TOUCHPAD, or TRACKBALL source is currently attached.",
-  "created_at": "2026-08-19T00:51:08+08:00",
+  "created_at": "2026-08-18T16:51:08Z",
   "observation_seconds": 0.0,
   "device": {
     "serial": "EP0110PZ0B9110300B",
