@@ -9,7 +9,13 @@ from pathlib import Path
 from tools.vibescreen_evidence.latency import (
     KIND_GLASS_TO_GLASS,
     KIND_INPUT,
+    KIND_TELEMETRY_STAGE,
+    GATE_INPUT_P95_SUB50,
+    GATE_LAN_GLASS_TO_GLASS_SUB80,
+    GATE_USB_GLASS_TO_GLASS_SUB50,
+    METHOD_CLIENT_TELEMETRY,
     METHOD_EXTERNAL_CAMERA,
+    METHOD_HOST_TELEMETRY,
     METHOD_SYNCHRONIZED_CLOCK,
     METHOD_UNSYNCHRONIZED_CLOCKS,
     TRANSPORT_LAN,
@@ -46,6 +52,74 @@ class LatencySummaryTest(unittest.TestCase):
         self.assertEqual(result["statistics"]["median"], 30)
         self.assertAlmostEqual(result["statistics"]["p95"], 48)
 
+    def test_usb_glass_to_glass_gate_passes_on_p95_threshold(self) -> None:
+        result = summarize(
+            [
+                {"latency_ms": 20},
+                {"latency_ms": 24},
+                {"latency_ms": 28},
+                {"latency_ms": 32},
+                {"latency_ms": 36},
+            ],
+            kind=KIND_GLASS_TO_GLASS,
+            measurement_method=METHOD_EXTERNAL_CAMERA,
+            transport=TRANSPORT_USB,
+            gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+        )
+
+        self.assertEqual(result["verdict"], "pass")
+        self.assertEqual(result["gate"]["threshold_ms"], 50.0)
+        self.assertEqual(result["gate"]["sample_count"], 5)
+        self.assertEqual(result["gate"]["reasons"], [])
+
+    def test_latency_gate_fails_when_p95_exceeds_threshold(self) -> None:
+        result = summarize(
+            [
+                {"latency_ms": 70},
+                {"latency_ms": 72},
+                {"latency_ms": 74},
+                {"latency_ms": 76},
+                {"latency_ms": 100},
+            ],
+            kind=KIND_GLASS_TO_GLASS,
+            measurement_method=METHOD_EXTERNAL_CAMERA,
+            transport=TRANSPORT_LAN,
+            gate_profile=GATE_LAN_GLASS_TO_GLASS_SUB80,
+        )
+
+        self.assertEqual(result["verdict"], "fail")
+        self.assertIn("exceeds threshold", result["gate"]["reasons"][0])
+
+    def test_latency_gate_is_insufficient_with_too_few_samples(self) -> None:
+        result = summarize(
+            [{"latency_ms": 10}, {"latency_ms": 12}],
+            kind=KIND_INPUT,
+            measurement_method=METHOD_SYNCHRONIZED_CLOCK,
+            transport=TRANSPORT_USB,
+            gate_profile=GATE_INPUT_P95_SUB50,
+        )
+
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertIn("at least 5", result["gate"]["reasons"][0])
+
+    def test_gate_profile_rejects_wrong_kind_or_transport(self) -> None:
+        with self.assertRaisesRegex(LatencyInputError, "requires --kind glass-to-glass"):
+            summarize(
+                [{"latency_ms": 10}] * 5,
+                kind=KIND_INPUT,
+                measurement_method=METHOD_EXTERNAL_CAMERA,
+                transport=TRANSPORT_USB,
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+        with self.assertRaisesRegex(LatencyInputError, "requires --transport usb"):
+            summarize(
+                [{"latency_ms": 10}] * 5,
+                kind=KIND_GLASS_TO_GLASS,
+                measurement_method=METHOD_EXTERNAL_CAMERA,
+                transport=TRANSPORT_LAN,
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
     def test_converts_camera_frames_on_one_timebase(self) -> None:
         result = summarize(
             [{"start_frame": 100, "end_frame": 112, "camera_fps": 240}],
@@ -55,6 +129,25 @@ class LatencySummaryTest(unittest.TestCase):
         )
 
         self.assertEqual(result["samples_ms"], [50.0])
+
+    def test_summarizes_telemetry_stage_without_closing_latency_gate(self) -> None:
+        result = summarize(
+            [
+                {"stage": "host_capture_to_encode", "latency_ms": 6},
+                {"stage": "host_capture_to_encode", "latency_ms": 10},
+                {"stage": "client_decode", "latency_ms": 8},
+            ],
+            kind=KIND_TELEMETRY_STAGE,
+            measurement_method=METHOD_HOST_TELEMETRY,
+            transport=TRANSPORT_USB,
+        )
+
+        self.assertEqual(result["kind"], "telemetry_stage_latency")
+        self.assertEqual(result["status"], "informational")
+        self.assertFalse(result["gate"]["can_close_performance_gate"])
+        self.assertIn("client_decode", result["stages"])
+        self.assertEqual(result["stages"]["host_capture_to_encode"]["count"], 2)
+        self.assertEqual(result["stages"]["host_capture_to_encode"]["median"], 8.0)
 
     def test_rejects_unsynchronized_host_device_timestamps_for_any_claim(self) -> None:
         with self.assertRaisesRegex(LatencyInputError, "cannot establish end-to-end latency"):
@@ -71,6 +164,27 @@ class LatencySummaryTest(unittest.TestCase):
                 [{"latency_ms": 12}],
                 kind=KIND_GLASS_TO_GLASS,
                 measurement_method=METHOD_SYNCHRONIZED_CLOCK,
+                transport=TRANSPORT_USB,
+            )
+
+    def test_rejects_telemetry_method_for_end_to_end_claims(self) -> None:
+        for kind in (KIND_GLASS_TO_GLASS, KIND_INPUT):
+            with self.subTest(kind=kind), self.assertRaisesRegex(
+                LatencyInputError, "can only be summarized with --kind telemetry-stage"
+            ):
+                summarize(
+                    [{"stage": "client_decode", "latency_ms": 12}],
+                    kind=kind,
+                    measurement_method=METHOD_CLIENT_TELEMETRY,
+                    transport=TRANSPORT_USB,
+                )
+
+    def test_rejects_telemetry_stage_without_stage_name(self) -> None:
+        with self.assertRaisesRegex(LatencyInputError, "non-empty stage"):
+            summarize(
+                [{"latency_ms": 12}],
+                kind=KIND_TELEMETRY_STAGE,
+                measurement_method=METHOD_CLIENT_TELEMETRY,
                 transport=TRANSPORT_USB,
             )
 
@@ -127,6 +241,8 @@ class LatencyCliTest(unittest.TestCase):
             METHOD_EXTERNAL_CAMERA,
             "--transport",
             TRANSPORT_USB,
+            "--gate-profile",
+            GATE_USB_GLASS_TO_GLASS_SUB50,
             stdin='[{"start_frame":0,"end_frame":12,"camera_fps":240}]',
         )
 
@@ -135,6 +251,30 @@ class LatencyCliTest(unittest.TestCase):
         self.assertEqual(output["latency_kind"], KIND_GLASS_TO_GLASS)
         self.assertEqual(output["transport"], TRANSPORT_USB)
         self.assertEqual(output["statistics"]["p95"], 50)
+        self.assertEqual(output["verdict"], "insufficient")
+
+    def test_telemetry_stage_cli_output(self) -> None:
+        result = self.run_cli(
+            "-",
+            "--input-format",
+            "json",
+            "--kind",
+            KIND_TELEMETRY_STAGE,
+            "--measurement-method",
+            METHOD_CLIENT_TELEMETRY,
+            "--transport",
+            TRANSPORT_USB,
+            stdin=(
+                '[{"stage":"client_decode","latency_ms":6},'
+                '{"stage":"client_decode","latency_ms":10}]'
+            ),
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["status"], "informational")
+        self.assertFalse(output["gate"]["can_close_performance_gate"])
+        self.assertEqual(output["stages"]["client_decode"]["p95"], 9.8)
 
     def test_csv_cli_output_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -150,6 +290,8 @@ class LatencyCliTest(unittest.TestCase):
                 METHOD_SYNCHRONIZED_CLOCK,
                 "--transport",
                 TRANSPORT_LAN,
+                "--gate-profile",
+                GATE_INPUT_P95_SUB50,
                 "--output-format",
                 "csv",
                 "--output",
@@ -160,6 +302,7 @@ class LatencyCliTest(unittest.TestCase):
             output = output_path.read_text(encoding="utf-8")
             self.assertIn("metric,value\n", output)
             self.assertIn("median,15.0\n", output)
+            self.assertIn("gate.verdict,insufficient\n", output)
 
     def test_cli_rejects_unsynchronized_clock_claim(self) -> None:
         result = self.run_cli(
