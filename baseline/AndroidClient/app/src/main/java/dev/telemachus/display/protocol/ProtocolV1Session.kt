@@ -987,7 +987,9 @@ internal class ProtocolV1Session(
         if (!negotiated.containsAll(requiredCapabilities)) {
             throw protocolFailure("Required capabilities were not negotiated")
         }
-        val peerIntersection = advertisedCapabilities.intersect(hostCapabilities)
+        val peerIntersection = advertisedCapabilities
+            .intersect(hostCapabilities)
+            .withCapabilityDependenciesApplied()
         if (!peerIntersection.containsAll(negotiated)) {
             throw protocolFailure("Negotiated capabilities include capabilities not advertised by both peers")
         }
@@ -1800,6 +1802,17 @@ internal class ProtocolV1Session(
                 Capability.CAPABILITY_WAKE_HOST,
                 Capability.CAPABILITY_HOST_ACTIONS,
             )
+
+        private fun Set<Capability>.withCapabilityDependenciesApplied(): Set<Capability> {
+            val capabilities = toMutableSet()
+            if (Capability.CAPABILITY_STYLUS !in capabilities) {
+                capabilities.remove(Capability.CAPABILITY_STYLUS_EXTENDED)
+            }
+            if (Capability.CAPABILITY_KEYBOARD !in capabilities) {
+                capabilities.remove(Capability.CAPABILITY_USB_HID_MODIFIER_BYTE)
+            }
+            return capabilities
+        }
 
         // Bound the surfaced actions and in-flight invocations so a misbehaving
         // host or caller cannot grow either without limit.

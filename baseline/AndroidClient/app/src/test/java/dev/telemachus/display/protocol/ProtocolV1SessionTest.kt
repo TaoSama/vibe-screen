@@ -822,6 +822,41 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun acceptsSessionAcceptedThatOmitsCapabilityAfterDependencyPruning() {
+        val session = session()
+        session.clientHello()
+        session.receive(
+            hostHello(
+                id = 2,
+                advertisedCapabilities = listOf(Capability.CAPABILITY_STYLUS_EXTENDED),
+            ),
+        )
+
+        val listRequest =
+            session.receive(sessionAccepted(3, negotiatedCapabilities = emptyList())).single()
+                as ProtocolV1Session.Action.Send
+
+        assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, listRequest.envelope.payloadCase)
+        assertTrue(session.negotiated.isEmpty())
+    }
+
+    @Test
+    fun rejectsSessionAcceptedThatOmitsMutuallyAdvertisedKeyboard() {
+        val session = session()
+        session.clientHello()
+        session.receive(
+            hostHello(
+                id = 2,
+                advertisedCapabilities = listOf(Capability.CAPABILITY_KEYBOARD),
+            ),
+        )
+
+        assertInvalidPeerMessage {
+            session.receive(sessionAccepted(3, negotiatedCapabilities = emptyList()))
+        }
+    }
+
+    @Test
     fun displayOnlyNegotiationStreamsButBlocksTouch() {
         val session = session()
         session.clientHello()
