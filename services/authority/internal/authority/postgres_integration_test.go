@@ -220,7 +220,7 @@ func TestPostgresAuthorityReviewContracts(t *testing.T) {
 	if err := store.AdmitRelay(ctx, oldAdmission, oldObservedAt); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ApplyCoturnUsage(ctx, CoturnUsage{SourceID: "node", EventID: "old-clock", AllocationID: "old-clock", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 7, ObservedAt: oldObservedAt}); err != nil {
+	if _, err := store.ApplyCoturnUsage(ctx, CoturnUsage{SourceID: "node", EventID: "old-clock", AllocationID: "old-clock", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 7, ObservedAt: now.Add(time.Second)}); err != nil {
 		t.Fatal(err)
 	}
 	var billedToday bool
@@ -234,8 +234,8 @@ func TestPostgresAuthorityReviewContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	finalUsage := CoturnUsage{SourceID: "node", EventID: "final-close", AllocationID: "valid", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 3, EgressBytes: 5, Closed: true, ObservedAt: now.Add(2 * time.Second)}
-	if _, err := store.ApplyCoturnUsage(ctx, finalUsage); err != nil {
-		t.Fatalf("final usage after revocation rejected: %v", err)
+	if _, err := store.ApplyCoturnUsage(ctx, finalUsage); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("final usage after revocation error=%v, want ErrRevoked", err)
 	}
 	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "after-revoke", SourceID: "node"}, now); !errors.Is(err, ErrRevoked) {
 		t.Fatalf("relay admission after device revocation error=%v", err)
@@ -273,6 +273,211 @@ func TestPostgresReadinessRejectsCriticalConstraintDrift(t *testing.T) {
 	})
 	if err := store.Ready(ctx); !errors.Is(err, ErrStorage) {
 		t.Fatalf("readiness constraint drift error=%v", err)
+	}
+}
+
+func TestPostgresCoturnUsageOverDailyLimitRevokesAfterLedgerUpdate(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	store.allocationLimit = 3
+	store.dailyLimit = 40
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"host", "client"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	session, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "request", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 1, TTLSeconds: 60}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}, now); err != nil {
+		t.Fatal(err)
+	}
+	exactLimit := CoturnUsage{SourceID: "node", EventID: "event-1", AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 30, EgressBytes: 10, ObservedAt: now}
+	if duplicate, err := store.ApplyCoturnUsage(ctx, exactLimit); err != nil || duplicate {
+		t.Fatalf("exact-limit usage=%v/%v", duplicate, err)
+	}
+	var billedToday bool
+	if err := store.pool.QueryRow(ctx, "SELECT usage_day=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date FROM authority_relay_daily_usage WHERE device_id=$1", "client").Scan(&billedToday); err != nil {
+		t.Fatal(err)
+	}
+	if !billedToday {
+		t.Fatal("usage was not billed to the database UTC ingestion day")
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "at-quota", SourceID: "node"}, now); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("admission at exact quota error=%v, want ErrQuotaExceeded", err)
+	}
+	overage := exactLimit
+	overage.EventID = "event-2"
+	overage.Sequence = 2
+	overage.IngressBytes = 31
+	overage.ObservedAt = now.Add(time.Second)
+	if duplicate, err := store.ApplyCoturnUsage(ctx, overage); err != nil || duplicate {
+		t.Fatalf("overage usage=%v/%v", duplicate, err)
+	}
+	var total, revocationEpoch string
+	var revokedAt *time.Time
+	if err := store.pool.QueryRow(ctx, "SELECT (u.ingress_bytes+u.egress_bytes)::text,d.revocation_epoch::text,d.revoked_at FROM authority_relay_daily_usage u JOIN authority_devices d ON d.device_id=u.device_id WHERE u.device_id=$1", "client").Scan(&total, &revocationEpoch, &revokedAt); err != nil {
+		t.Fatal(err)
+	}
+	if total != "41" || revocationEpoch != "1" || revokedAt == nil {
+		t.Fatalf("overage ledger/revocation total=%s epoch=%s revokedAt=%v", total, revocationEpoch, revokedAt)
+	}
+	if _, err := store.AuthorizeSignaling(ctx, session.SessionID, session.ClientToken, now.Add(2*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("session authorized after over-quota revoke: %v", err)
+	}
+	if duplicate, err := store.ApplyCoturnUsage(ctx, overage); err != nil || !duplicate {
+		t.Fatalf("duplicate overage retry=%v/%v", duplicate, err)
+	}
+	var auditCount int
+	if err := store.pool.QueryRow(ctx, "SELECT count(*) FROM authority_audit_events WHERE event_type='relay_quota_exceeded' AND device_id=$1", "client").Scan(&auditCount); err != nil {
+		t.Fatal(err)
+	}
+	if auditCount != 1 {
+		t.Fatalf("quota audit count=%d, want 1", auditCount)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "after-overage", SourceID: "node"}, now); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("relay admission after over-quota revoke error=%v, want ErrRevoked", err)
+	}
+}
+
+func TestPostgresRevocationRejectsExistingAllocationUsage(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	store.allocationLimit = 3
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"host", "client", "other-host", "other-client"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	session, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "request", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 1, TTLSeconds: 60}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	activeSession, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "active-request", AccountID: "account", HostDeviceID: "other-host", ClientDeviceID: "other-client", SessionEpoch: 1, TTLSeconds: 60}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "other-client", SessionID: activeSession.SessionID, AllocationID: "active-before-revoked", SourceID: "node"}, now); err != nil {
+		t.Fatal(err)
+	}
+	for _, allocationID := range []string{"allocation", "already-applied", "after-revoked"} {
+		if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: allocationID, SourceID: "node"}, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.ApplyCoturnUsage(ctx, CoturnUsage{SourceID: "node", EventID: "before-revoke", AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 10, EgressBytes: 20, ObservedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ApplyCoturnUsage(ctx, CoturnUsage{SourceID: "node", EventID: "already-applied", AllocationID: "already-applied", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 3, ObservedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RevokeDevice(ctx, "client", 1, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ApplyCoturnUsage(ctx, CoturnUsage{SourceID: "node", EventID: "after-revoke", AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 11, EgressBytes: 21, ObservedAt: now.Add(2 * time.Second)}); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("usage after device revoke error=%v, want ErrRevoked", err)
+	}
+	result, err := store.Reconcile(ctx, ReconcileRequest{SourceID: "node", ObservedAt: now.Add(3 * time.Second), Allocations: []CoturnUsage{
+		{AllocationID: "active-before-revoked", DeviceID: "other-client", SessionID: activeSession.SessionID, Sequence: 1, IngressBytes: 5},
+		{AllocationID: "already-applied", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 3},
+		{AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 11, EgressBytes: 21},
+		{AllocationID: "after-revoked", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 99},
+	}}, time.Minute)
+	if !errors.Is(err, ErrRevoked) {
+		t.Fatalf("reconcile after device revoke error=%v, want ErrRevoked", err)
+	}
+	if result.Applied != 1 || result.AlreadyAhead != 1 || result.Duplicate != 0 || len(result.MissingAllocationIDs) != 0 {
+		t.Fatalf("partial reconcile result before fail-closed stop=%+v", result)
+	}
+	var ingress, egress string
+	if err := store.pool.QueryRow(ctx, "SELECT ingress_bytes::text,egress_bytes::text FROM authority_relay_daily_usage WHERE device_id=$1", "client").Scan(&ingress, &egress); err != nil {
+		t.Fatal(err)
+	}
+	if ingress != "13" || egress != "20" {
+		t.Fatalf("usage after revoke mutated ledger to %s/%s", ingress, egress)
+	}
+	var activeIngress string
+	if err := store.pool.QueryRow(ctx, "SELECT ingress_bytes::text FROM authority_relay_daily_usage WHERE device_id=$1", "other-client").Scan(&activeIngress); err != nil {
+		t.Fatal(err)
+	}
+	if activeIngress != "5" {
+		t.Fatalf("active allocation before revoked entry was not committed: ingress=%s", activeIngress)
+	}
+}
+
+func TestPostgresConcurrentCoturnEventRetryDebitsAndRevokesOnce(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	store.dailyLimit = 100
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"host", "client"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	session, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "request", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 1, TTLSeconds: 60}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}, now); err != nil {
+		t.Fatal(err)
+	}
+	usage := CoturnUsage{SourceID: "node", EventID: "event", AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 70, EgressBytes: 31, ObservedAt: now}
+	start := make(chan struct{})
+	results := make(chan struct {
+		duplicate bool
+		err       error
+	}, 8)
+	var wait sync.WaitGroup
+	for range 8 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			duplicate, err := store.ApplyCoturnUsage(ctx, usage)
+			results <- struct {
+				duplicate bool
+				err       error
+			}{duplicate: duplicate, err: err}
+		}()
+	}
+	close(start)
+	wait.Wait()
+	close(results)
+	applied := 0
+	duplicates := 0
+	for result := range results {
+		if result.err != nil {
+			t.Fatalf("usage retry error=%v", result.err)
+		}
+		if result.duplicate {
+			duplicates++
+		} else {
+			applied++
+		}
+	}
+	if applied != 1 || duplicates != 7 {
+		t.Fatalf("applied=%d duplicates=%d, want 1/7", applied, duplicates)
+	}
+	var total, revocationEpoch string
+	var auditCount int
+	if err := store.pool.QueryRow(ctx, "SELECT (u.ingress_bytes+u.egress_bytes)::text,d.revocation_epoch::text,(SELECT count(*) FROM authority_audit_events WHERE event_type='relay_quota_exceeded' AND device_id='client') FROM authority_relay_daily_usage u JOIN authority_devices d ON d.device_id=u.device_id WHERE u.device_id='client'").Scan(&total, &revocationEpoch, &auditCount); err != nil {
+		t.Fatal(err)
+	}
+	if total != "101" || revocationEpoch != "1" || auditCount != 1 {
+		t.Fatalf("total=%s revocationEpoch=%s auditCount=%d, want 101/1/1", total, revocationEpoch, auditCount)
 	}
 }
 
