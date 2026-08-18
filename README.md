@@ -113,9 +113,13 @@ the roadmap destination, not a statement that each item is shipped today:
 - Native Android, HarmonyOS NEXT, and iOS clients.
 
 Current Android real-device evidence comes from a Xiaomi 13 (model 2211133C,
-codename fuxi) running Android 16 over USB, plus earlier evidence from a Nubia
-P0110 on the same Android version. On the Xiaomi 13 the streaming baseline is
-verified: stable ~60 FPS, hardware HEVC decode at roughly 6 ms,
+codename fuxi) running Android 16 over USB, plus evidence from a Nubia P0110
+on the same Android version. The connected Nubia P0110 may be used as an
+Android-device substitute for general USB/LAN streaming, protocol, UI,
+decoder, and reconnect acceptance work; evidence still records the exact
+manufacturer, model, codename, and OS version, and hardware-specific claims
+remain tied to the device that produced them. On the Xiaomi 13 the streaming
+baseline is verified: stable ~60 FPS, hardware HEVC decode at roughly 6 ms,
 touch-to-pointer control, reconnect recovery, and Protocol v1
 display-selection negotiation. On 2026-08-08 physical<->virtual display
 switching was also verified on device through the client display dropdown with
@@ -272,8 +276,10 @@ are still being extracted.
 
 - Fork and build SideScreen as the initial codebase.
 - Evaluate and port the relevant Telemachus reliability improvements.
-- Build the Mac host and Android client and complete the planned Xiaomi 13
-  acceptance gate.
+- Build the Mac host and Android client and complete the Android device
+  acceptance gate. Xiaomi 13/fuxi remains a named evidence source, while Nubia
+  P0110/pacific and other qualifying Android devices may substitute for
+  general Android acceptance when their identity and limits are recorded.
 - Establish versioned protocol schemas, transport interfaces, module ownership,
   automated tests, telemetry, and performance benchmarks.
 
@@ -373,7 +379,10 @@ fixed-binary device rerun remains open; see the
 - Complete touch, keyboard, mouse, and peripheral input.
 - Harden window migration/return, disconnect recovery, automatic reconnect,
   permission onboarding, and actionable errors across supported system states.
-- Validate sustained operation on the target Xiaomi 13.
+- Validate sustained operation on the active Android acceptance device. Xiaomi
+  13/fuxi remains a named evidence source, while Nubia P0110/pacific and other
+  qualifying Android devices may substitute for general Android
+  sustained-operation checks when the evidence records their real identity.
 
 Initial targets are stable 1920×1080 or 1920×1200 at 60 FPS, sub-50 ms USB
 glass-to-glass latency, sub-80 ms on a healthy LAN, sub-50 ms P95 input latency,
@@ -561,12 +570,18 @@ network quality may increase it.
 
 ## Device Strategy
 
-The Xiaomi 13 (model 2211133C, codename fuxi) is the primary acceptance target
-for decoding, protocol behavior, input, networking, and performance. As of
-2026-08-10 the Xiaomi 13 has recorded verified streaming, touch, keyboard and
-mouse-wheel input, reconnect, a 30-minute soak, display-selection negotiation,
-the physical<->virtual<->physical display-switch round-trip, and HiDPI
-private-API virtual-display creation/capture (4000x2400 physical / 2000x1200
+The Android acceptance device can be any currently connected Android handset or
+tablet that meets the runtime requirements and is explicitly identified in the
+evidence. Xiaomi 13 (model 2211133C, codename fuxi) remains the primary named
+evidence source, and Nubia P0110 (codename pacific) is an acceptable substitute
+for general Android decoding, protocol behavior, input, networking, UI, and
+performance validation. Do not relabel one device as another: device-specific
+evidence and hardware-gated claims, such as native HID, stylus, thermal, panel,
+or SoC decode behavior, remain scoped to the exact device that produced them.
+As of 2026-08-10 the Xiaomi 13 has recorded verified streaming, touch, keyboard
+and mouse-wheel input, reconnect, a 30-minute soak, display-selection
+negotiation, the physical<->virtual<->physical display-switch round-trip, and
+HiDPI private-API virtual-display creation/capture (4000x2400 physical / 2000x1200
 logical) over USB, plus in-place quality/FPS/bitrate video preferences and
 client-invoked focused-window migration/return with disconnect recovery. A
 client-local Fit/Fill and four-direction rotation/input matrix is also verified
@@ -581,7 +596,8 @@ The viewport/input and window-action records are retained under
 and
 [2026-08-10-xiaomi13-window-actions](docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-10-xiaomi13-window-actions/README.md).
 Earlier Android evidence also comes from Nubia
-P0110. Final tablet
+P0110, and future P0110 runs may close general Android gates when their
+evidence satisfies the same pass criteria. Final tablet
 selection emphasizes
 an 8–9 inch high-density 90/120 Hz panel, Wi-Fi 6 or newer, stable low-latency
 HEVC decoding, USB data support, peripherals and stylus, and acceptable thermal

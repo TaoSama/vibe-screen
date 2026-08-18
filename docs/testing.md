@@ -28,11 +28,14 @@ For every device run, record:
 - per-minute Host/Android memory, temperature, and frame samples during soak.
 
 The current Phase 0 evidence is recorded in
-`docs/changes/2026-08-04-phase-0-baseline/TEST.md`. The final coordinated
-acceptance endpoint is redacted as `$ADB_ENDPOINT` and identified itself as
-Nubia P0110, not the Xiaomi 13 (model 2211133C, codename fuxi) primary target;
-results must retain that distinction. Later Xiaomi 13 streaming, display-switch,
-input, and two-hour-soak evidence is recorded separately under
+`docs/changes/2026-08-04-phase-0-baseline/TEST.md`. Any connected Android
+device that meets the runtime requirements may be used for general Android
+acceptance work, including Nubia P0110 as a substitute for Xiaomi 13/fuxi. Each
+run must still retain the real device identity in its evidence: a P0110 result
+must be labeled P0110/pacific, and a Xiaomi 13 result must be labeled
+2211133C/fuxi. Hardware-specific claims remain scoped to the exact device that
+produced them. Later Xiaomi 13 streaming, display-switch, input, and
+two-hour-soak evidence is recorded separately under
 `docs/changes/2026-08-04-phase-0-baseline/evidence/`.
 
 ## Pass criteria
