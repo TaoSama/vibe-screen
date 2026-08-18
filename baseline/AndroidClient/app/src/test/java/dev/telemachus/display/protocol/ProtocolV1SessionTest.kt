@@ -702,6 +702,30 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun acceptsSessionAcceptedThatOmitsPolicyFilteredOptionalCapability() {
+        val session = session()
+        session.clientHello()
+        session.receive(
+            hostHello(
+                id = 2,
+                advertisedCapabilities =
+                    listOf(
+                        Capability.CAPABILITY_TOUCH,
+                        Capability.CAPABILITY_HOST_ACTIONS,
+                    ),
+            ),
+        )
+
+        val listRequest =
+            session.receive(sessionAccepted(3, negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH))).single()
+                as ProtocolV1Session.Action.Send
+
+        assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, listRequest.envelope.payloadCase)
+        assertEquals(setOf(Capability.CAPABILITY_TOUCH), session.negotiated)
+        assertFalse(session.canInvokeHostActions)
+    }
+
+    @Test
     fun managedPolicyStatusIsSentAfterNegotiation() {
         val session = session(
             localManagedPolicy =

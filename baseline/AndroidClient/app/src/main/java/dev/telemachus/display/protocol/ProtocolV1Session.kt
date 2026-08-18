@@ -987,9 +987,13 @@ internal class ProtocolV1Session(
         if (!negotiated.containsAll(requiredCapabilities)) {
             throw protocolFailure("Required capabilities were not negotiated")
         }
-        val expectedCapabilities = advertisedCapabilities.intersect(hostCapabilities)
-        if (negotiated != expectedCapabilities) {
-            throw protocolFailure("Negotiated capabilities are not the peer intersection")
+        val peerIntersection = advertisedCapabilities.intersect(hostCapabilities)
+        if (!peerIntersection.containsAll(negotiated)) {
+            throw protocolFailure("Negotiated capabilities include capabilities not advertised by both peers")
+        }
+        val omittedNonPolicyCapabilities = (peerIntersection - negotiated) - POLICY_FILTERABLE_CAPABILITIES
+        if (omittedNonPolicyCapabilities.isNotEmpty()) {
+            throw protocolFailure("Negotiated capabilities omitted required peer intersection: $omittedNonPolicyCapabilities")
         }
         sessionId = accepted.sessionId
         sessionEpoch = accepted.sessionEpoch
@@ -1788,6 +1792,14 @@ internal class ProtocolV1Session(
         // Only these fixed ids are surfaced; unknown catalog entries are ignored
         // so the client never offers an action it cannot present or invoke.
         private val KNOWN_HOST_ACTION_IDS = setOf(ACTION_MOVE_WINDOW, ACTION_RETURN_WINDOWS)
+        private val POLICY_FILTERABLE_CAPABILITIES =
+            setOf(
+                Capability.CAPABILITY_CLIPBOARD,
+                Capability.CAPABILITY_FILE_TRANSFER,
+                Capability.CAPABILITY_AUDIO,
+                Capability.CAPABILITY_WAKE_HOST,
+                Capability.CAPABILITY_HOST_ACTIONS,
+            )
 
         // Bound the surfaced actions and in-flight invocations so a misbehaving
         // host or caller cannot grow either without limit.
