@@ -2221,7 +2221,7 @@ class MainActivity : AppCompatActivity() {
                     val mbps = slider.value.toInt()
                     // An explicit bitrate wins over the preset intent.
                     streamClient?.setVideoPreferences(
-                        bitrateKbps = mbps * KBPS_PER_MBPS,
+                        bitrateKbps = mbps * ClientVideoBounds.KBPS_PER_MBPS,
                         framesPerSecond = 0,
                         qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
                     )
@@ -3212,6 +3212,7 @@ class MainActivity : AppCompatActivity() {
                 if (connected) {
                     nativeInputSessionState.admit(callbackClient, callbackGeneration)
                     if (prefs.connectionMode == ConnectionMode.USB) automaticUsbConnect = true
+                    replaySavedVideoPreferencesIfAvailable(callbackClient, callbackGeneration)
                     hasConnectedThisRun = true
                     isReconnecting = false
                     unsupportedKeyboardNoticeShown = false
@@ -3386,6 +3387,37 @@ class MainActivity : AppCompatActivity() {
                 binding.fpsText.text = String.format(Locale.US, "%.1f", fps)
                 binding.bitrateText.text = String.format(Locale.US, "%.1f Mbps", mbps)
             }
+        }
+    }
+
+    private fun replaySavedVideoPreferencesIfAvailable(
+        callbackClient: StreamClient,
+        callbackGeneration: Long,
+    ) {
+        if (!isCurrentSession(callbackClient, callbackGeneration)) return
+        if (
+            dev.vibescreen.protocol.v1.Capability.CAPABILITY_CLIENT_VIDEO_CONTROL !in
+            callbackClient.negotiatedCapabilities()
+        ) {
+            return
+        }
+        SavedVideoPreferenceReplayer.replayIfAvailable(
+            clientVideoControlAvailable = true,
+            quality = prefs.videoQuality,
+            bitrateMbps = prefs.videoBitrateMbps,
+            framesPerSecond = prefs.videoFrameRate,
+        ) { replay ->
+            callbackClient.setVideoPreferences(
+                bitrateKbps = replay.bitrateKbps,
+                framesPerSecond = replay.framesPerSecond,
+                qualityPreset = replay.qualityPreset,
+                resetQualityToAuto = replay.resetQualityToAuto,
+            )
+            mainDiag(
+                "Replayed saved video preferences " +
+                    "bitrate=${replay.bitrateKbps}kbps fps=${replay.framesPerSecond} " +
+                    "quality=${replay.qualityPreset.name} resetAuto=${replay.resetQualityToAuto}",
+            )
         }
     }
 
@@ -4798,7 +4830,6 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TOUCH_MAPPING_LOG_TAG = "VibeScreenTouchMap"
         private const val EXTRA_AUTO_CONNECT = "auto_connect"
-        private const val KBPS_PER_MBPS = 1_000
         private const val STATE_AUTOMATIC_USB_CONNECT = "automatic_usb_connect"
         private const val ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE"
         private const val EXTRA_USB_CONNECTED = "connected"

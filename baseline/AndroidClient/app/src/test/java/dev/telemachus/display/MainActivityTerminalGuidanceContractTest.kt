@@ -284,6 +284,26 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun connectedMainSessionReplaysSavedVideoPreferencesBehindCapabilityGate() {
+        val source = mainActivitySource()
+        val connectionStatus = extractCallback(source, "callbackClient.onConnectionStatus = connectionStatus@{ connected ->")
+        val replay = extractMethod(source, "private fun replaySavedVideoPreferencesIfAvailable")
+
+        assertTrue(
+            "Connected main sessions must try to replay saved video preferences",
+            connectionStatus.contains("replaySavedVideoPreferencesIfAvailable(callbackClient, callbackGeneration)"),
+        )
+        assertTrue(
+            "Replay must stay gated on negotiated client-video-control capability",
+            replay.contains("CAPABILITY_CLIENT_VIDEO_CONTROL"),
+        )
+        assertTrue(
+            "Replay must send through the existing StreamClient video-preference path",
+            replay.contains("callbackClient.setVideoPreferences("),
+        )
+    }
+
+    @Test
     fun methodExtractionIgnoresBracesOutsideTheMethodStructure() {
         val source =
             """
@@ -458,6 +478,24 @@ class MainActivityTerminalGuidanceContractTest {
         val end = source.indexOf(endMarker, start)
         require(end > start) { "MainActivity onSessionEnded callback boundary not found" }
         return source.substring(start, end)
+    }
+
+    private fun extractCallback(source: String, startMarker: String): String {
+        val start = source.indexOf(startMarker)
+        require(start >= 0) { "Callback not found: $startMarker" }
+        val bodyStart = source.indexOf('{', start)
+        require(bodyStart >= 0) { "Callback body not found: $startMarker" }
+        var depth = 0
+        for (index in bodyStart until source.length) {
+            when (source[index]) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return source.substring(start, index + 1)
+                }
+            }
+        }
+        error("Callback closing brace not found: $startMarker")
     }
 
     private fun mainActivitySource(): String {
