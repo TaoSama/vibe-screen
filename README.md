@@ -575,7 +575,7 @@ network quality may increase it.
   VideoToolbox behavior, host-side advanced adapters, AVAudioEngine playback,
   HDR output, audio/bulk Internet transport, native input behavior, reconnect
   behavior, and all advanced real-device behavior remain separate device
-  gates; see the
+  gates. Android results are never treated as iOS evidence; see the
   [evidence record](docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md).
 
 ## Device Strategy
