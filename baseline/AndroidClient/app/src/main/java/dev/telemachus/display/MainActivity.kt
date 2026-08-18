@@ -196,6 +196,7 @@ class MainActivity : AppCompatActivity() {
     private val sessionState = SessionState<StreamClient>()
     private val nativeInputSessionState = NativeInputSessionState<StreamClient>()
     private val nativeInputReleaseCoordinator = NativeInputReleaseCoordinator(nativeInputSessionState)
+    private val streamControllerSessionState = ControllerSessionState()
     private var activeSessionGeneration = 0L
     private var unsupportedKeyboardNoticeShown = false
     private val inputHandler = Handler(Looper.getMainLooper())
@@ -387,7 +388,12 @@ class MainActivity : AppCompatActivity() {
         if (enabled) {
             revealControlBar()
         } else if (binding.controlBar.visibility == View.VISIBLE) {
-            controlBarHandler.postDelayed(controlBarHideRunnable, CONTROL_BAR_AUTO_HIDE_MS)
+            ControlBarAccessibilityPolicy.autoHideDelayMs(
+                touchExplorationEnabled = false,
+                revealReason = ControlBarAccessibilityPolicy.RevealReason.USER_REQUEST,
+            )?.let { delayMs ->
+                controlBarHandler.postDelayed(controlBarHideRunnable, delayMs)
+            }
         }
     }
 
@@ -462,6 +468,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (!isConnected || event.isSystemKey()) return super.dispatchKeyEvent(event)
+        ControllerInputMapper.keyChange(event)?.let { change ->
+            val dispatch = streamControllerSessionState.applyKey(change)
+            if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller key")) return true
+            if (ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)) return true
+        }
         val clientEvent =
             AndroidKeyInputMapper.map(
                 keyCode = event.keyCode,
@@ -588,6 +599,7 @@ class MainActivity : AppCompatActivity() {
         // checklist updates whenever Wireless is the active tab.
         if (mode != ConnectionMode.USB) {
             stopChecklistUpdates()
+            clearUsbConnectionGuidance()
         } else {
             startChecklistUpdates()
         }
@@ -1036,6 +1048,11 @@ class MainActivity : AppCompatActivity() {
             return handleInternetStylus(view, event, session, extendedOnly = true)
         }
         if (!isConnected) return false
+        ControllerInputMapper.snapshot(event)?.let { snapshot ->
+            val dispatch = streamControllerSessionState.applyMotion(snapshot)
+            if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller motion")) return true
+            return ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)
+        }
         val stylusSnapshot = StylusInputMapper.snapshot(event) { x, y -> mapInputPoint(view, x, y) }
         val client = streamClient
         if (stylusSnapshot.pointers.any { it.toolKind != null } && client?.canSendExtendedStylus() == true) {
@@ -1159,6 +1176,24 @@ class MainActivity : AppCompatActivity() {
         mainDiag("secondary mouse button adapted to legacy long press")
     }
 
+    private fun sendStreamControllerDispatch(
+        dispatch: ControllerDispatch,
+        source: String,
+    ): Boolean {
+        val result = ClientInputDispatch(currentSessionBinding()).sendController(ClientControllerInput(dispatch))
+        return when (result) {
+            ClientInputDispatchResult.SENT -> true
+            ClientInputDispatchResult.REJECTED -> {
+                mainDiag("negotiated controller sink rejected $source")
+                false
+            }
+            ClientInputDispatchResult.UNSUPPORTED -> {
+                mainDiag("controller input blocked by host without controller capability source=$source")
+                false
+            }
+        }
+    }
+
     private fun finishPendingRightClick() {
         val release = pendingRightClickRelease ?: return
         inputHandler.removeCallbacks(release)
@@ -1183,10 +1218,17 @@ class MainActivity : AppCompatActivity() {
 
             // Validate input
             if (host.isBlank()) {
-                showError("Please enter a host address")
+                showUsbConnectionGuidance(
+                    ConnectionGuidance(
+                        kind = ConnectionFailureKind.UNKNOWN,
+                        status = getString(R.string.connection_issue),
+                        message = getString(R.string.host_address_required),
+                    ),
+                )
                 return@setOnClickListener
             }
 
+            clearUsbConnectionGuidance()
             updateStatus("Checking for your Mac…")
             automaticUsbConnect = false
             connect(host, port, automatic = false)
@@ -1209,20 +1251,7 @@ class MainActivity : AppCompatActivity() {
 
         // Advanced settings toggle
         binding.showAdvanced.setOnClickListener {
-            connectionDetailsVisible = !connectionDetailsVisible
-            val visibility = if (connectionDetailsVisible) View.VISIBLE else View.GONE
-            binding.checklistContainer.visibility = visibility
-            binding.advancedSettings.visibility = visibility
-            binding.showAdvanced.setText(
-                if (connectionDetailsVisible) {
-                    R.string.hide_connection_details
-                } else {
-                    R.string.connection_details
-                },
-            )
-            if (connectionDetailsVisible) {
-                updateChecklist()
-            }
+            setConnectionDetailsVisible(!connectionDetailsVisible)
         }
 
         showDisconnectedStreamUi()
@@ -1262,6 +1291,44 @@ class MainActivity : AppCompatActivity() {
     private fun updateStatus(status: String) {
         runOnUiThread {
             LiveRegionTextApplier.apply(binding.statusText, status)
+        }
+    }
+
+    private fun showUsbConnectionGuidance(guidance: ConnectionGuidance) {
+        runOnUiThread {
+            LiveRegionTextApplier.apply(binding.connectionErrorTitle, guidance.status)
+            LiveRegionTextApplier.show(binding.connectionErrorMessage, guidance.message)
+            binding.connectionErrorContainer.visibility = View.VISIBLE
+            if (!connectionDetailsVisible) {
+                setConnectionDetailsVisible(true)
+            } else {
+                updateChecklist()
+            }
+            updateStatus(guidance.status)
+        }
+    }
+
+    private fun clearUsbConnectionGuidance() {
+        if (!::binding.isInitialized) return
+        binding.connectionErrorContainer.visibility = View.GONE
+        LiveRegionTextApplier.apply(binding.connectionErrorTitle, getString(R.string.connection_issue))
+        LiveRegionTextApplier.hide(binding.connectionErrorMessage)
+    }
+
+    private fun setConnectionDetailsVisible(visible: Boolean) {
+        connectionDetailsVisible = visible
+        val visibility = if (visible) View.VISIBLE else View.GONE
+        binding.checklistContainer.visibility = visibility
+        binding.advancedSettings.visibility = visibility
+        binding.showAdvanced.setText(
+            if (visible) {
+                R.string.hide_connection_details
+            } else {
+                R.string.connection_details
+            },
+        )
+        if (visible) {
+            updateChecklist()
         }
     }
 
@@ -1604,10 +1671,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showConnectedStreamUi() {
         val connectedStatus = getString(R.string.connected_streaming)
-        connectionDetailsVisible = false
-        binding.checklistContainer.visibility = View.GONE
-        binding.advancedSettings.visibility = View.GONE
-        binding.showAdvanced.setText(R.string.connection_details)
+        clearUsbConnectionGuidance()
+        setConnectionDetailsVisible(false)
         binding.videoViewport.visibility = View.VISIBLE
         binding.disconnectedBackdrop.visibility = View.GONE
         binding.settingsPanel.visibility = View.GONE
@@ -1616,7 +1681,7 @@ class MainActivity : AppCompatActivity() {
         // persistent floating button that occludes the video.
         binding.settingsButton.visibility = View.GONE
         updateOverlayVisibility(prefs.showStatsOverlay)
-        revealControlBar()
+        revealControlBar(ControlBarAccessibilityPolicy.RevealReason.SESSION_STARTED)
         connectionStatusAnnouncements.announceIfChanged(connectedStatus) { announcement ->
             binding.controlBar.announceForAccessibility(announcement)
         }
@@ -1636,7 +1701,9 @@ class MainActivity : AppCompatActivity() {
         binding.videoViewport.visibility = View.VISIBLE
         binding.disconnectedBackdrop.visibility = View.VISIBLE
         binding.settingsPanel.visibility = View.VISIBLE
-        binding.settingsButton.visibility = View.GONE
+        binding.settingsButton.visibility = View.VISIBLE
+        binding.settingsButton.translationZ = binding.settingsPanel.elevation + 1f
+        binding.settingsButton.bringToFront()
         binding.statusBar.visibility = View.GONE
         binding.connectButton.isEnabled = true
         binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_waiting)
@@ -1689,7 +1756,10 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun revealControlBar() {
+    private fun revealControlBar(
+        revealReason: ControlBarAccessibilityPolicy.RevealReason =
+            ControlBarAccessibilityPolicy.RevealReason.USER_REQUEST,
+    ) {
         if (!isConnected) return
         binding.controlBar.visibility = View.VISIBLE
         ControlBarAccessibilityApplier.applyRevealAction(
@@ -1699,8 +1769,11 @@ class MainActivity : AppCompatActivity() {
         )
         binding.controlBar.animate().alpha(1f).setDuration(120).start()
         controlBarHandler.removeCallbacks(controlBarHideRunnable)
-        if (ControlBarAccessibilityPolicy.shouldAutoHide(accessibilityManager.isTouchExplorationEnabled)) {
-            controlBarHandler.postDelayed(controlBarHideRunnable, CONTROL_BAR_AUTO_HIDE_MS)
+        ControlBarAccessibilityPolicy.autoHideDelayMs(
+            touchExplorationEnabled = accessibilityManager.isTouchExplorationEnabled,
+            revealReason = revealReason,
+        )?.let { delayMs ->
+            controlBarHandler.postDelayed(controlBarHideRunnable, delayMs)
         }
     }
 
@@ -2591,6 +2664,7 @@ class MainActivity : AppCompatActivity() {
     private fun activateSession(client: StreamClient): Long {
         mainSessionDisplayLifecycle?.invalidate()
         mainSessionDisplayLifecycle = null
+        streamControllerSessionState.resetForNewSession()
         val generation = sessionState.activate(client)
         streamClient = client
         activeSessionGeneration = generation
@@ -3201,18 +3275,21 @@ class MainActivity : AppCompatActivity() {
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_KEYBOARD in negotiated
                 val nativePointer =
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_POINTER in negotiated
+                val controller =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_CONTROLLER in negotiated
                 val hostActions =
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in negotiated
-                if (displaySelection || keyboard || nativePointer || hostActions) {
+                if (displaySelection || keyboard || nativePointer || controller || hostActions) {
                     val capabilities =
                         ClientSessionCapabilities.LEGACY_TOUCH_ONLY.copy(
                             displaySelection = displaySelection,
                             keyboard = keyboard,
                             nativePointer = nativePointer,
+                            controller = controller,
                             hostActions = hostActions,
                         )
                     val sink =
-                        if (keyboard || nativePointer) {
+                        if (keyboard || nativePointer || controller) {
                             StreamClientInputSink(callbackClient, callbackGeneration)
                         } else {
                             null
@@ -3228,7 +3305,8 @@ class MainActivity : AppCompatActivity() {
                     populateHostActions(availableHostActions)
                     mainDiag(
                         "session binding promoted: displaySelection=$displaySelection " +
-                            "keyboard=$keyboard nativePointer=$nativePointer hostActions=$hostActions",
+                            "keyboard=$keyboard nativePointer=$nativePointer " +
+                            "controller=$controller hostActions=$hostActions",
                     )
                 }
                 populateDisplayCapsule(options, selectedId)
@@ -3241,6 +3319,20 @@ class MainActivity : AppCompatActivity() {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
                 mainDiag("onHostActionsAvailable: ${actions.joinToString { it.id }}")
                 populateHostActions(actions)
+            }
+        }
+        callbackClient.onControllerInputAck = controllerAck@{ connection, accepted, rejectionReason ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@controllerAck
+            if (accepted) {
+                val resync = streamControllerSessionState.resynchronize() ?: return@controllerAck
+                sendStreamControllerDispatch(resync, "controller ack resync")
+                return@controllerAck
+            }
+            if (streamControllerSessionState.rejectConnection(connection.controllerId, connection.controllerEpoch)) {
+                mainDiag(
+                    "controller connection rejected id=${connection.controllerId} " +
+                        "epoch=${connection.controllerEpoch} reason=$rejectionReason",
+                )
             }
         }
         callbackClient.onHostActionResult = hostActionResult@{ accepted, rejectionReason ->
@@ -3987,7 +4079,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (isConnected || connectionAttemptInProgress) return
         connectionAttemptInProgress = true
-        val callbackClient = StreamClient(host, port, applicationContext)
+        val callbackClient = StreamClient(host, port, applicationContext, advertiseController = true)
         val callbackGeneration = activateSession(callbackClient)
         val retryCoordinator =
             createSessionAutomaticRetryCoordinator(callbackClient, callbackGeneration) {
@@ -4080,6 +4172,7 @@ class MainActivity : AppCompatActivity() {
         }
         disconnectInternet(showIdle = false)
         connectionAttemptInProgress = false
+        clearUsbConnectionGuidance()
         applyDisconnectedSessionUi()
     }
 
@@ -4095,10 +4188,11 @@ class MainActivity : AppCompatActivity() {
         if (isConnected || connectionAttemptInProgress) return
         connectionAttemptInProgress = true
         hasAttemptedUsbConnection = true
+        clearUsbConnectionGuidance()
         if (prefs.connectionMode == ConnectionMode.USB) {
             updateDisconnectedHeader(ConnectionMode.USB)
         }
-        val callbackClient = StreamClient(host, port, applicationContext)
+        val callbackClient = StreamClient(host, port, applicationContext, advertiseController = true)
         val guidanceContext = ConnectionGuidanceContext.adb(port, currentUsbTransportSnapshot().adbTransport)
         val callbackGeneration = activateSession(callbackClient)
         val retryCoordinator =
@@ -4108,6 +4202,7 @@ class MainActivity : AppCompatActivity() {
             }
         setupStreamClientCallbacks(callbackClient, callbackGeneration, retryCoordinator, guidanceContext)
         lifecycleScope.launch(Dispatchers.IO) {
+            var inlineGuidance: ConnectionGuidance? = null
             try {
                 log("Connecting to $host:$port...")
                 callbackClient.connect()
@@ -4115,8 +4210,7 @@ class MainActivity : AppCompatActivity() {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@launch
                 val guidance = ConnectionGuidanceFactory.from(e, guidanceContext)
                 if (!automatic && e !is SessionProtocolException) {
-                    updateStatus(guidance.status)
-                    showError(guidance.message)
+                    inlineGuidance = guidance
                 }
             } finally {
                 runOnUiThread {
@@ -4128,6 +4222,7 @@ class MainActivity : AppCompatActivity() {
                     )
                     if (!isConnected && prefs.connectionMode == ConnectionMode.USB) {
                         updateDisconnectedHeader(ConnectionMode.USB)
+                        inlineGuidance?.let(::showUsbConnectionGuidance)
                     }
                 }
             }
@@ -4202,8 +4297,12 @@ class MainActivity : AppCompatActivity() {
         }
         pendingTerminalGuidance?.let { guidance ->
             pendingTerminalGuidance = null
-            updateStatus(guidance.status)
-            showError(guidance.message)
+            if (mode == ConnectionMode.USB) {
+                showUsbConnectionGuidance(guidance)
+            } else {
+                updateStatus(guidance.status)
+                showError(guidance.message)
+            }
         }
     }
 
@@ -4385,6 +4484,11 @@ class MainActivity : AppCompatActivity() {
             }
             return admitted
         }
+
+        override fun sendController(input: ClientControllerInput): Boolean {
+            if (!isCurrentSession(client, generation)) return false
+            return client.sendController(input.dispatch)
+        }
     }
 
     private fun completeCurrentNativeInputBoundary(
@@ -4416,8 +4520,14 @@ class MainActivity : AppCompatActivity() {
         afterRelease: () -> Unit,
     ) {
         if (client == null) {
+            streamControllerSessionState.takeRelease()
             afterRelease()
             return
+        }
+        streamControllerSessionState.takeRelease()?.let { release ->
+            if (!sendStreamControllerDispatch(release, "controller release")) {
+                mainDiag("controller release was rejected for generation=$generation")
+            }
         }
         val submission =
             nativeInputReleaseCoordinator.completeBoundary(
@@ -4693,8 +4803,6 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_FORWARDED_POINTERS = 2
         private const val LEGACY_RIGHT_CLICK_HOLD_MS = 650L
         private const val FOREGROUND_RECONNECT_DELAY_MS = 150L
-        private const val CONTROL_BAR_AUTO_HIDE_MS = 3_000L
-
         // Uniform breathing gap, in dp, added on top of the safe-area insets for
         // floating chrome (control bar, settings panel, settings button) and the
         // draggable overlay clamp. Matches the settings button's resting margin.
