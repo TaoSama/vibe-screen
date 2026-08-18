@@ -11,6 +11,7 @@ class ClientInputDispatchTest {
 
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendKey(key(pressed = true)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.SCROLL)))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendController(controller()))
     }
 
     @Test
@@ -27,6 +28,11 @@ class ClientInputDispatchTest {
                     received += input.action.name
                     return true
                 }
+
+                override fun sendController(input: ClientControllerInput): Boolean {
+                    received += input.dispatch.delivery.name
+                    return true
+                }
             }
         val dispatch = ClientInputDispatch(ClientSessionBinding(NEGOTIATED_INPUT, sink))
 
@@ -35,9 +41,10 @@ class ClientInputDispatchTest {
         dispatch.sendPointer(pointer(ClientPointerAction.BUTTON_PRESS))
         dispatch.sendPointer(pointer(ClientPointerAction.BUTTON_RELEASE))
         dispatch.sendPointer(pointer(ClientPointerAction.SCROLL))
+        dispatch.sendController(controller())
 
         assertEquals(
-            listOf("key-down", "key-up", "BUTTON_PRESS", "BUTTON_RELEASE", "SCROLL"),
+            listOf("key-down", "key-up", "BUTTON_PRESS", "BUTTON_RELEASE", "SCROLL", "STRUCTURAL"),
             received,
         )
     }
@@ -53,6 +60,14 @@ class ClientInputDispatchTest {
 
     private fun pointer(action: ClientPointerAction) = ClientPointerInput(action, 0.5f, 0.5f)
 
+    private fun controller() =
+        ClientControllerInput(
+            ControllerDispatch(
+                samples = listOf(ControllerStateSample("pad-1", 1, ControllerEventKind.STATE)),
+                delivery = ControllerDelivery.STRUCTURAL,
+            ),
+        )
+
     private companion object {
         val NEGOTIATED_INPUT =
            ClientSessionCapabilities(
@@ -60,6 +75,7 @@ class ClientInputDispatchTest {
                displaySelection = false,
                keyboard = true,
                nativePointer = true,
+                controller = true,
                 hostActions = false,
            )
     }
