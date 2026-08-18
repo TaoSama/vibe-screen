@@ -1265,6 +1265,7 @@ class StreamClientProtocolV1IntegrationTest {
         assertEquals(emptyList<Capability>(), clientHello.clientHello.requiredCapabilitiesList)
         write(peer, hostHello(1, hostCapabilities, maxClipboardBytes = maxClipboardBytes))
         write(peer, sessionAccepted(2, negotiatedCapabilities, maxClipboardBytes = maxClipboardBytes))
+        assertEquals(2, clientHello.clientHello.videoDecodeCapabilitiesCount)
         assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, readEnvelope(peer).payloadCase)
         write(peer, displayList(3))
         assertEquals(Envelope.PayloadCase.START_DISPLAY_REQUEST, readEnvelope(peer).payloadCase)
@@ -1620,6 +1621,7 @@ class StreamClientProtocolV1IntegrationTest {
                 Capability.CAPABILITY_POINTER,
                 Capability.CAPABILITY_STYLUS,
                 Capability.CAPABILITY_STYLUS_EXTENDED,
+                Capability.CAPABILITY_COLOR_MANAGEMENT,
                 Capability.CAPABILITY_MULTI_DISPLAY,
                 Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,

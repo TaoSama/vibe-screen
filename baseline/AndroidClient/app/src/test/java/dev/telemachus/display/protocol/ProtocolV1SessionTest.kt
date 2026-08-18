@@ -6,6 +6,8 @@ import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
+import dev.vibescreen.protocol.v1.ColorDescription
+import dev.vibescreen.protocol.v1.ColorPrimaries
 import dev.vibescreen.protocol.v1.Dimensions
 import dev.vibescreen.protocol.v1.DisconnectNotice
 import dev.vibescreen.protocol.v1.DisplayDescriptor
@@ -19,6 +21,7 @@ import dev.vibescreen.protocol.v1.InputAck
 import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.ListDisplaysResponse
 import dev.vibescreen.protocol.v1.ManagedPolicyStatus
+import dev.vibescreen.protocol.v1.MatrixCoefficients
 import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.Ping
 import dev.vibescreen.protocol.v1.ProtocolError
@@ -26,6 +29,7 @@ import dev.vibescreen.protocol.v1.ProtocolErrorCode
 import dev.vibescreen.protocol.v1.SessionAccepted
 import dev.vibescreen.protocol.v1.SessionRejected
 import dev.vibescreen.protocol.v1.StartDisplayResponse
+import dev.vibescreen.protocol.v1.TransferFunction
 import dev.vibescreen.protocol.v1.TransportKind
 import dev.vibescreen.protocol.v1.VideoConfig
 import dev.vibescreen.protocol.v1.VideoQualityPreset
@@ -55,6 +59,7 @@ class ProtocolV1SessionTest {
                 Capability.CAPABILITY_POINTER,
                 Capability.CAPABILITY_STYLUS,
                 Capability.CAPABILITY_STYLUS_EXTENDED,
+                Capability.CAPABILITY_COLOR_MANAGEMENT,
                 Capability.CAPABILITY_MULTI_DISPLAY,
                 Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,
@@ -66,6 +71,12 @@ class ProtocolV1SessionTest {
         )
         assertEquals(emptyList<Capability>(), hello.clientHello.requiredCapabilitiesList)
         assertEquals(listOf(Codec.CODEC_HEVC, Codec.CODEC_H264), hello.clientHello.codecsList)
+        assertEquals(2, hello.clientHello.videoDecodeCapabilitiesCount)
+        assertTrue(hello.clientHello.videoDecodeCapabilitiesList.all { capability ->
+            capability.bitDepthsList == listOf(8) &&
+                capability.transferFunctionsList.contains(TransferFunction.TRANSFER_FUNCTION_BT709) &&
+                capability.transferFunctionsList.contains(TransferFunction.TRANSFER_FUNCTION_SRGB)
+        })
     }
 
     @Test
@@ -698,6 +709,36 @@ class ProtocolV1SessionTest {
         session.receive(startDisplay(5))
         val result = session.receive(videoConfig(6)).single() as ProtocolV1Session.Action.Send
         assertFalse(result.envelope.videoConfigResult.accepted)
+        assertFalse(session.isStreaming)
+    }
+
+    @Test
+    fun hdrVideoConfigWithoutNegotiatedHdrReturnsSdrFallback() {
+        val session = session()
+        session.clientHello()
+        session.receive(
+            hostHello(
+                2,
+                advertisedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_COLOR_MANAGEMENT),
+            ),
+        )
+        session.receive(
+            sessionAccepted(
+                3,
+                negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_COLOR_MANAGEMENT),
+            ),
+        )
+        session.receive(displayList(4))
+        session.receive(startDisplay(5))
+
+        val result = session.receive(videoConfig(6, colorDescription = hdrColor())).single() as ProtocolV1Session.Action.Send
+
+        assertFalse(result.envelope.videoConfigResult.accepted)
+        assertEquals(
+            VideoColorNegotiation.UNSUPPORTED_COLOR_OR_DECODE_PROFILE,
+            result.envelope.videoConfigResult.rejectionReason,
+        )
+        assertEquals(VideoColorNegotiation.legacySdrColor, result.envelope.videoConfigResult.selectedColorDescription)
         assertFalse(session.isStreaming)
     }
 
@@ -1804,6 +1845,7 @@ class ProtocolV1SessionTest {
     private fun videoConfig(
         id: Long,
         configEpoch: Long = 3,
+        colorDescription: ColorDescription? = null,
     ): Envelope =
         base(id)
             .setVideoConfig(
@@ -1815,16 +1857,30 @@ class ProtocolV1SessionTest {
                     .setFramesPerSecond(60)
                     .setBitrateKbps(12_000)
                     .setStreamId(42)
-                    .setRotationDegrees(90),
+                    .setRotationDegrees(90)
+                    .also { builder ->
+                        if (colorDescription != null) {
+                            builder.colorDescription = colorDescription
+                        }
+                    },
             ).build()
 
-   private fun base(id: Long): Envelope.Builder =
-       Envelope
-           .newBuilder()
-           .setProtocolVersion(1)
-           .setMessageId(id)
-           .setSessionId(SESSION_ID)
-           .setSessionEpoch(7)
+    private fun hdrColor(): ColorDescription =
+        ColorDescription
+            .newBuilder()
+            .setPrimaries(ColorPrimaries.COLOR_PRIMARIES_BT2020)
+            .setTransferFunction(TransferFunction.TRANSFER_FUNCTION_PQ)
+            .setMatrixCoefficients(MatrixCoefficients.MATRIX_COEFFICIENTS_BT2020_NON_CONSTANT)
+            .setBitDepth(10)
+            .build()
+
+    private fun base(id: Long): Envelope.Builder =
+        Envelope
+            .newBuilder()
+            .setProtocolVersion(1)
+            .setMessageId(id)
+            .setSessionId(SESSION_ID)
+            .setSessionEpoch(7)
 
     private fun hostActionCatalog(
         id: Long,

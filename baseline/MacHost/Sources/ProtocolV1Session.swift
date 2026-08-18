@@ -193,8 +193,8 @@ struct ProtocolV1SessionConfiguration {
         // can deny it before HostHello so the peer's intersection check still
         // matches SessionAccepted.
         var capabilities: Set<VSCapability> = touchEnabled
-            ? [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .multiDisplay, .clientVideoControl, .usbHidModifierByte, .managedConfiguration]
-            : [.multiDisplay, .clientVideoControl, .managedConfiguration]
+            ? [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .colorManagement, .multiDisplay, .clientVideoControl, .usbHidModifierByte, .managedConfiguration]
+            : [.colorManagement, .multiDisplay, .clientVideoControl, .managedConfiguration]
         capabilities.formUnion(ManagedPolicy.advertisedCapabilities)
         if managedPolicy.clipboardAllowed { capabilities.insert(.clipboard) }
         if touchEnabled && managedPolicy.hostActionsAllowed { capabilities.insert(.hostActions) }
@@ -202,8 +202,8 @@ struct ProtocolV1SessionConfiguration {
         return capabilities
     }
 
-   let sessionID: Data
-   let sessionEpoch: UInt64
+    let sessionID: Data
+    let sessionEpoch: UInt64
     var displayWidth: Int
     var displayHeight: Int
     var rotation: Int
@@ -302,6 +302,7 @@ final class ProtocolV1SessionCoordinator {
     private var nextMessageID: UInt64 = 1
     private var baseNegotiatedCapabilities: Set<VSCapability> = []
     private var negotiatedCapabilities: Set<VSCapability> = []
+    private var clientDecodeCapabilities: [VSVideoDecodeCapability] = []
     private var stylusSequenceState = StylusSequenceState()
     private var controllerSequenceState = GameControllerStateMachine()
     private var pendingControllerConnections: [UInt64: PendingControllerConnection] = [:]
@@ -512,14 +513,7 @@ final class ProtocolV1SessionCoordinator {
         response.display = displayDescriptor()
         response.streamID = streamID
 
-        var config = VSVideoConfig()
-        config.configEpoch = nextEpoch
-        config.codec = selectedCodec
-        config.encodedSize = dimensions()
-        config.framesPerSecond = configuration.framesPerSecond
-        config.bitrateKbps = configuration.bitrateKbps
-        config.streamID = streamID
-        config.rotationDegrees = UInt32(clamping: configuration.rotation)
+        let config = videoConfig(configEpoch: nextEpoch, streamID: streamID, color: HostVideoColorNegotiator.legacySDRColor)
         advertisedVideoRotation = configuration.rotation
 
         phase = .awaitingVideoConfig(configEpoch: nextEpoch, streamID: streamID)
@@ -738,6 +732,14 @@ final class ProtocolV1SessionCoordinator {
                 return invalidState("VideoConfigResult does not match the pending configuration.", envelope.messageID)
             }
             guard result.accepted else {
+                if let fallback = makeFallbackVideoConfigResult(
+                    result,
+                    configEpoch: configEpoch,
+                    streamID: streamID,
+                    correlationID: envelope.messageID
+                ) {
+                    return fallback
+                }
                 return fail(
                     code: .invalidState,
                     message: "Client rejected VideoConfig: \(result.rejectionReason)",
@@ -1288,10 +1290,23 @@ final class ProtocolV1SessionCoordinator {
                 correlationID: correlationID
             )
         }
-        guard let codec = configuration.supportedCodecs.first(where: hello.codecs.contains) else {
+        clientDecodeCapabilities = hello.videoDecodeCapabilities
+        let encodedSize = dimensions()
+        let colorNegotiator = HostVideoColorNegotiator(
+            clientCapabilities: configuration.hostCapabilities.intersection(offeredCapabilities),
+            decodeCapabilities: clientDecodeCapabilities
+        )
+        guard let codec = configuration.supportedCodecs.first(where: { codec in
+            hello.codecs.contains(codec)
+                && colorNegotiator.supportsLegacySDR(
+                    codec: codec,
+                    encodedSize: encodedSize,
+                    framesPerSecond: configuration.framesPerSecond
+                )
+        }) else {
             return fail(
                 code: .unsupportedCapability,
-                message: "Host and client have no common video codec.",
+                message: "Host and client have no common SDR video codec.",
                 correlationID: correlationID
             )
         }
@@ -1387,14 +1402,7 @@ final class ProtocolV1SessionCoordinator {
         response.display = displayDescriptor()
         response.streamID = streamID
 
-        var config = VSVideoConfig()
-        config.configEpoch = configEpoch
-        config.codec = selectedCodec
-        config.encodedSize = dimensions()
-        config.framesPerSecond = configuration.framesPerSecond
-        config.bitrateKbps = configuration.bitrateKbps
-        config.streamID = streamID
-        config.rotationDegrees = UInt32(clamping: configuration.rotation)
+        let config = videoConfig(configEpoch: configEpoch, streamID: streamID, color: HostVideoColorNegotiator.legacySDRColor)
         advertisedVideoRotation = configuration.rotation
 
         phase = .awaitingVideoConfig(configEpoch: configEpoch, streamID: streamID)
@@ -1403,6 +1411,53 @@ final class ProtocolV1SessionCoordinator {
                 .sendControl(try encode(payload: .startDisplayResponse(response), correlationID: correlationID)),
                 .sendControl(try encode(payload: .videoConfig(config), correlationID: correlationID))
             ]
+        } catch {
+            return serializationFailure()
+        }
+    }
+
+    private func videoConfig(
+        configEpoch: UInt64,
+        streamID: UInt64,
+        color: VSColorDescription
+    ) -> VSVideoConfig {
+        var config = VSVideoConfig()
+        config.configEpoch = configEpoch
+        config.codec = selectedCodec
+        config.encodedSize = dimensions()
+        config.framesPerSecond = configuration.framesPerSecond
+        config.bitrateKbps = configuration.bitrateKbps
+        config.streamID = streamID
+        config.colorDescription = HostVideoColorNegotiator.normalized(color)
+        config.rotationDegrees = UInt32(clamping: configuration.rotation)
+        return config
+    }
+
+    private func makeFallbackVideoConfigResult(
+        _ result: VSVideoConfigResult,
+        configEpoch: UInt64,
+        streamID: UInt64,
+        correlationID: UInt64
+    ) -> [ProtocolV1SessionAction]? {
+        guard result.rejectionReason == HostVideoColorNegotiator.unsupportedHDRFallbackReason else { return nil }
+        guard result.hasSelectedColorDescription else { return nil }
+        guard negotiatedCapabilities.contains(.colorManagement) else { return nil }
+        let negotiator = HostVideoColorNegotiator(
+            clientCapabilities: negotiatedCapabilities,
+            decodeCapabilities: clientDecodeCapabilities
+        )
+        guard let color = negotiator.validatedFallback(
+            result.selectedColorDescription,
+            codec: selectedCodec,
+            encodedSize: dimensions(),
+            framesPerSecond: configuration.framesPerSecond
+        ) else { return nil }
+        let nextEpoch = configEpoch + 1
+        guard nextEpoch > configEpoch else { return nil }
+        let config = videoConfig(configEpoch: nextEpoch, streamID: streamID, color: color)
+        phase = .awaitingVideoConfig(configEpoch: nextEpoch, streamID: streamID)
+        do {
+            return [.sendControl(try encode(payload: .videoConfig(config), correlationID: correlationID))]
         } catch {
             return serializationFailure()
         }
