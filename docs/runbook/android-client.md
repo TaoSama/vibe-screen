@@ -108,7 +108,21 @@ python3 -m tools.vibescreen_evidence.host_display_rotation_gate \
 ## Input matrix
 
 Use a non-sensitive Mac test window and grant Accessibility to the exact host
-binary. Record Android diagnostic logs and the visible Mac result for each:
+binary. Record Android diagnostic logs and the visible Mac result for each.
+Before running the opt-in touch-gesture acceptance driver, collect the
+read-only fixed-binary preflight and keep it with the evidence directory:
+
+```bash
+make evidence-touch-rerun-preflight \
+  EVIDENCE_SERIAL=<adb-serial> \
+  EVIDENCE_DIR=<evidence-dir> \
+  TOUCH_RERUN_EXPECTED_HOST_SHA256=<fixed-host-binary-sha256>
+```
+
+Do not run the gesture driver if the preflight result is `blocked`. Record the
+actual device identity from the preflight output; the Nubia P0110/pacific is a
+valid Android substitute for general client dispatch, but it is not Xiaomi
+13/fuxi evidence.
 
 ### Legacy compatibility path
 
