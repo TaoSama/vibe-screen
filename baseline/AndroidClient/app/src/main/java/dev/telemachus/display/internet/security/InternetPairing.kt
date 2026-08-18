@@ -451,7 +451,14 @@ internal const val SIGNATURE_ALGORITHM = "ECDSA_P256_SHA256"
 private const val KEY_AGREEMENT_ALGORITHM = "ECDH_P256"
 private const val AEAD_ALGORITHM = "AES_256_GCM"
 private val REQUIRED_CAPABILITIES =
-    listOf("application_e2ee", "control_data_channel", "media_data_channel", "peer_identity")
+    listOf(
+        "application_e2ee",
+        "audio_data_channel",
+        "bulk_data_channel",
+        "control_data_channel",
+        "media_data_channel",
+        "peer_identity",
+    )
 private const val REQUEST_DOMAIN = "vibescreen/pairing-request/v1"
 private const val BOOTSTRAP_DOMAIN = "vibescreen/pairing-bootstrap/v1"
 private const val SHARED_DOMAIN = "vibescreen/pairing-shared/v1"

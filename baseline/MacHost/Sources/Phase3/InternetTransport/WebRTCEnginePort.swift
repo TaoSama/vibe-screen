@@ -272,7 +272,7 @@ enum WebRTCEngineRecoveryDisposition: Equatable {
 
 /// Boundary implemented by the production WebRTC SDK adapter.
 ///
-/// The adapter must create two negotiated data channels using the supplied
+/// The adapter must create the negotiated Protocol v1 data channels using the supplied
 /// descriptors. It owns SDP exchange, DTLS/SRTP, ICE candidate signaling, and
 /// certificate verification. The transport policy above this port never sees
 /// plaintext relay credentials beyond initial configuration and TURN must not

@@ -18,10 +18,10 @@ enum ProductionWebRTCEngineSelfTest {
     static func run() -> Bool {
         do {
             guard runTerminalStartContract(),
-                  runDataChannelClosureContract(kind: .control),
-                  runDataChannelClosureContract(kind: .media),
-                  runDataChannelClosureContract(kind: .control, simulatePreConnection: true),
-                  runDataChannelClosureContract(kind: .media, simulatePreConnection: true) else {
+                  InternetTransportChannel.allCases.allSatisfy({ runDataChannelClosureContract(kind: $0) }),
+                  InternetTransportChannel.allCases.allSatisfy({
+                      runDataChannelClosureContract(kind: $0, simulatePreConnection: true)
+                  }) else {
                 return false
             }
             let initialHub = LoopbackSignalingHub()
@@ -321,6 +321,7 @@ enum ProductionWebRTCEngineSelfTest {
                     switch channel {
                     case .control: offererReceivedControl = payload; offererControlReceived.signal()
                     case .media: offererReceivedMedia = payload; offererMediaReceived.signal()
+                    case .audio, .bulk: break
                     }
                 }
             },
@@ -348,6 +349,7 @@ enum ProductionWebRTCEngineSelfTest {
                         answererReceivedControl = payload
                         answererControlReceived.signal()
                     case .media: answererReceivedMedia = payload; answererMediaReceived.signal()
+                    case .audio, .bulk: break
                     }
                 }
             }

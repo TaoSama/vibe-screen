@@ -143,6 +143,8 @@ final class InternetPairingCoordinator {
     static let aeadAlgorithms = ["AES_256_GCM"]
     static let requiredCapabilities = [
         "application_e2ee",
+        "audio_data_channel",
+        "bulk_data_channel",
         "control_data_channel",
         "media_data_channel",
         "peer_identity"

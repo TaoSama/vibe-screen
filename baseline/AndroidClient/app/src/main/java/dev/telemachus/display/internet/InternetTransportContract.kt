@@ -127,6 +127,45 @@ enum class SessionChannel {
     BULK,
 }
 
+enum class WebRtcDataChannelKind(
+    val label: String,
+    val sessionChannel: SessionChannel,
+    val semantics: DataChannelSemantics,
+    val maximumEncryptedRecordBytes: Int,
+) {
+    CONTROL(
+        label = "vibescreen.control.v1",
+        sessionChannel = SessionChannel.CONTROL,
+        semantics = DataChannelSemantics.RELIABLE_CONTROL,
+        maximumEncryptedRecordBytes = InternetControlRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
+    ),
+    MEDIA(
+        label = "vibescreen.media.v1",
+        sessionChannel = SessionChannel.MEDIA,
+        semantics = DataChannelSemantics.LATEST_MEDIA,
+        maximumEncryptedRecordBytes = InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
+    ),
+    AUDIO(
+        label = "vibescreen.audio.v1",
+        sessionChannel = SessionChannel.AUDIO,
+        semantics = DataChannelSemantics.LATEST_AUDIO,
+        maximumEncryptedRecordBytes = InternetAudioRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
+    ),
+    BULK(
+        label = "vibescreen.bulk.v1",
+        sessionChannel = SessionChannel.BULK,
+        semantics = DataChannelSemantics.RELIABLE_BULK,
+        maximumEncryptedRecordBytes = InternetBulkRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
+    );
+
+    val ordered: Boolean = semantics.ordered
+    val maxRetransmits: Int? = semantics.maxRetransmits
+
+    companion object {
+        fun fromLabel(label: String): WebRtcDataChannelKind? = entries.firstOrNull { it.label == label }
+    }
+}
+
 /** End-to-end record protection above WebRTC; TURN only observes DTLS ciphertext. */
 interface SessionPacketCipher : AutoCloseable {
     val sessionEpoch: Long
@@ -209,6 +248,8 @@ data class DataChannelSemantics(
     companion object {
         val RELIABLE_CONTROL = DataChannelSemantics(ordered = true, maxRetransmits = null)
         val LATEST_MEDIA = DataChannelSemantics(ordered = false, maxRetransmits = 0)
+        val LATEST_AUDIO = DataChannelSemantics(ordered = false, maxRetransmits = 0)
+        val RELIABLE_BULK = DataChannelSemantics(ordered = true, maxRetransmits = null)
     }
 }
 
@@ -279,6 +320,16 @@ interface WebRtcPeerEngine : AutoCloseable {
             payload: ByteArray,
         )
 
+        fun onAudioRecord(
+            sessionEpoch: Long,
+            payload: ByteArray,
+        ) = Unit
+
+        fun onBulkRecord(
+            sessionEpoch: Long,
+            payload: ByteArray,
+        ) = Unit
+
         fun onStats(stats: WebRtcStats)
 
         fun onFailure(error: Throwable) = Unit
@@ -286,6 +337,14 @@ interface WebRtcPeerEngine : AutoCloseable {
 
     val controlSemantics: DataChannelSemantics
     val mediaSemantics: DataChannelSemantics
+    val dataChannelSemantics: Map<WebRtcDataChannelKind, DataChannelSemantics>
+        get() =
+            mapOf(
+                WebRtcDataChannelKind.CONTROL to controlSemantics,
+                WebRtcDataChannelKind.MEDIA to mediaSemantics,
+                WebRtcDataChannelKind.AUDIO to DataChannelSemantics.LATEST_AUDIO,
+                WebRtcDataChannelKind.BULK to DataChannelSemantics.RELIABLE_BULK,
+            )
 
     fun start(
         configuration: PeerConfiguration,
@@ -296,6 +355,12 @@ interface WebRtcPeerEngine : AutoCloseable {
 
     /** Must finish a started frame batch before switching to the newest pending frame. */
     fun sendMedia(frame: OutboundMediaFrame): Boolean
+
+    /** Raw audio transport record only; this does not imply audio capture or playback. */
+    fun sendAudioRecord(payload: ByteArray): Boolean = false
+
+    /** Raw bulk transport record only; this does not imply clipboard or file-transfer support. */
+    fun sendBulkRecord(payload: ByteArray): Boolean = false
 
     fun restartIce()
 

@@ -23,6 +23,8 @@ P256_GENERATOR = (
 )
 REQUIRED_CAPABILITIES = [
     "application_e2ee",
+    "audio_data_channel",
+    "bulk_data_channel",
     "control_data_channel",
     "media_data_channel",
     "peer_identity",

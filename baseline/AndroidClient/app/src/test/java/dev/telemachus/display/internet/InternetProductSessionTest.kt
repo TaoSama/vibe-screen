@@ -384,28 +384,37 @@ class InternetProductSessionTest {
     }
 
     @Test
-    fun rejectsLegacyHostWithoutMediaFragmentationDuringHandshake() {
-        val peer = ProductFakePeerEngine()
-        val callbacks = ProductCallbacks()
-        val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
-        session.start()
-        peer.observer.onConnected(PeerRoute.DIRECT)
+    fun rejectsLegacyHostMissingRequiredTransportBoundaryDuringHandshake() {
+        val removedCapabilities =
+            listOf(
+                Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION,
+                Capability.CAPABILITY_AUDIO_DATA_CHANNEL,
+                Capability.CAPABILITY_BULK_DATA_CHANNEL,
+            )
 
-        peer.receive(
-            controlEnvelope(1)
-                .setHostHello(
-                    hostHello()
-                        .clearCapabilities()
-                        .addAllCapabilities(
-                            ProtobufProtocolV1ProductCodec.REQUIRED_CLIENT_CAPABILITIES.filterNot {
-                                it == Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION
-                            },
-                        ),
-                ).build(),
-        )
+        removedCapabilities.forEach { removed ->
+            val peer = ProductFakePeerEngine()
+            val callbacks = ProductCallbacks()
+            val session = session(peer, ProductFakeNetworkMonitor(), callbacks)
+            session.start()
+            peer.observer.onConnected(PeerRoute.DIRECT)
 
-        assertEquals(InternetProductSessionState.FAILED, session.state)
-        assertEquals(1, callbacks.failures.size)
+            peer.receive(
+                controlEnvelope(1)
+                    .setHostHello(
+                        hostHello()
+                            .clearCapabilities()
+                            .addAllCapabilities(
+                                ProtobufProtocolV1ProductCodec.REQUIRED_CLIENT_CAPABILITIES.filterNot {
+                                    it == removed
+                                },
+                            ),
+                    ).build(),
+            )
+
+            assertEquals(InternetProductSessionState.FAILED, session.state)
+            assertEquals(1, callbacks.failures.size)
+        }
     }
 
     @Test

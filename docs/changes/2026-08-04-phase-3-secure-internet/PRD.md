@@ -23,8 +23,8 @@ The repository currently contains:
 - versioned Protocol v1 messages for identity, pairing proofs, encrypted
   control/media packets, key rotation, revocation, and replay metadata;
 - pinned macOS M150 and Android M144 WebRTC binary adapters plus transport-policy
-  ports for separate control and media paths, ICE restart, bounded media queues,
-  relay-byte accounting, and adaptive video;
+  ports for separate control, media, audio-record, and bulk-record paths, ICE
+  restart, bounded media/audio queues, relay-byte accounting, and adaptive video;
 - a standalone Go security package implementing ECDSA-P256 identity, ECDH-P256/HKDF
   session derivation, AES-GCM secure channels, replay windows, rotation, and
   revocation, with unit tests;

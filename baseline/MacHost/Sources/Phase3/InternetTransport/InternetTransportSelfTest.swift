@@ -161,10 +161,7 @@ enum InternetTransportSelfTest {
             )
         let passed = controlAccepted && emptyControlRejected && keyframeAccepted && staleFrameAccepted
             && latestFrameAccepted && overBudgetRejected
-            && engine.channelConfigurations == [
-                InternetTransportChannel.control.dataChannelConfiguration,
-                InternetTransportChannel.media.dataChannelConfiguration
-            ]
+            && engine.channelConfigurations == InternetTransportChannel.allCases.map(\.dataChannelConfiguration)
             && engine.restartCount == 1
             && snapshot.relayBytesSent == expectedRelayBytes
             && snapshot.relayBytesReserved == 0
@@ -262,11 +259,17 @@ enum InternetTransportSelfTest {
             return false
         }
 
-        var legacyCodec = codec
-        var legacyHello = hello
-        legacyHello.capabilities.removeAll { $0 == .mediaRecordFragmentation }
-        legacyHello.requiredCapabilities.removeAll { $0 == .mediaRecordFragmentation }
-        guard (try? legacyCodec.validate(legacyHello)) == nil else { return false }
+        for removedCapability in [
+            VSCapability.mediaRecordFragmentation,
+            .audioDataChannel,
+            .bulkDataChannel,
+        ] {
+            var legacyCodec = codec
+            var legacyHello = hello
+            legacyHello.capabilities.removeAll { $0 == removedCapability }
+            legacyHello.requiredCapabilities.removeAll { $0 == removedCapability }
+            guard (try? legacyCodec.validate(legacyHello)) == nil else { return false }
+        }
         var invalidLimitCodec = codec
         var invalidLimitHello = hello
         invalidLimitHello.resourceLimits.maximumEncryptedMediaRecordBytes = 0
@@ -1975,7 +1978,7 @@ enum InternetTransportSelfTest {
         guard startSelfTestTransport(transport, sessionIdentifier: "startup-ordering-self-test") else {
             return false
         }
-        return engine.channelConfigurations.count == 2
+        return engine.channelConfigurations.count == InternetTransportChannel.allCases.count
             && engine.didClose
             && !engine.startedAfterClose
             && transport.snapshot().state == .closed

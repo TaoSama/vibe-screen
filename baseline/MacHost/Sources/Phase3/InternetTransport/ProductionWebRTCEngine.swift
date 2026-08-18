@@ -554,7 +554,7 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
     ) throws -> [String: InternetTransportChannel] {
         guard channels.count == InternetTransportChannel.allCases.count else {
             throw AdapterError.invalidChannelConfiguration(
-                "Production WebRTC requires exactly one control and one media data-channel descriptor."
+                "Production WebRTC requires exactly one descriptor for each Protocol v1 data channel."
             )
         }
         var mapping: [String: InternetTransportChannel] = [:]
@@ -566,7 +566,7 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
                   }),
                   !assignedKinds.contains(kind) else {
                 throw AdapterError.invalidChannelConfiguration(
-                    "Production WebRTC data-channel descriptors must have unique control and media labels."
+                    "Production WebRTC data-channel descriptors must use unique Protocol v1 labels."
                 )
             }
             mapping[descriptor.label] = kind
@@ -632,6 +632,10 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
             )
         case .media:
             return UInt64(InternetMediaRecordContract.maximumEncryptedRecordBytes)
+        case .audio:
+            return UInt64(InternetAudioRecordContract.maximumEncryptedRecordBytes)
+        case .bulk:
+            return UInt64(InternetBulkRecordContract.maximumEncryptedRecordBytes)
         }
     }
 
@@ -1272,10 +1276,6 @@ final class ProductionWebRTCEngine: NSObject, WebRTCEnginePort {
         if DispatchQueue.getSpecific(key: queueKey) != nil { return try operation() }
         return try queue.sync(execute: operation)
     }
-}
-
-extension InternetTransportChannel: CaseIterable {
-    static var allCases: [InternetTransportChannel] { [.control, .media] }
 }
 
 private extension ProductionWebRTCEngine {

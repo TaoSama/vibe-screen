@@ -45,6 +45,12 @@ enum Capability {
   // Requires CAPABILITY_KEYBOARD and negotiates the standard USB HID modifier
   // byte for KeyEvent.
   CAPABILITY_USB_HID_MODIFIER_BYTE = 27;
+  // Negotiates an encrypted WebRTC SCTP data channel for future audio records.
+  // This does not imply microphone capture, playback, or audio product UI.
+  CAPABILITY_AUDIO_DATA_CHANNEL = 28;
+  // Negotiates an encrypted WebRTC SCTP data channel for future bulk records.
+  // This does not imply clipboard or file-transfer product behavior.
+  CAPABILITY_BULK_DATA_CHANNEL = 29;
 }
 
 message ClientHello {

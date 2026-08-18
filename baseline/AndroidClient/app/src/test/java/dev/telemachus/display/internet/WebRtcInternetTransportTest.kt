@@ -15,11 +15,38 @@ class WebRtcInternetTransportTest {
     fun productionChannelLabelsMatchTheCrossPlatformContract() {
         assertEquals("vibescreen.control.v1", AndroidWebRtcPeerEngine.CONTROL_CHANNEL_LABEL)
         assertEquals("vibescreen.media.v1", AndroidWebRtcPeerEngine.MEDIA_CHANNEL_LABEL)
+        assertEquals("vibescreen.audio.v1", AndroidWebRtcPeerEngine.AUDIO_CHANNEL_LABEL)
+        assertEquals("vibescreen.bulk.v1", AndroidWebRtcPeerEngine.BULK_CHANNEL_LABEL)
+        assertEquals(
+            listOf(
+                AndroidWebRtcPeerEngine.CONTROL_CHANNEL_LABEL,
+                AndroidWebRtcPeerEngine.MEDIA_CHANNEL_LABEL,
+                AndroidWebRtcPeerEngine.AUDIO_CHANNEL_LABEL,
+                AndroidWebRtcPeerEngine.BULK_CHANNEL_LABEL,
+            ),
+            WebRtcDataChannelKind.entries.map { it.label },
+        )
+    }
+
+    @Test
+    fun dataChannelKindsDefineProtocolV1ReliabilityAndRecordLimits() {
+        assertEquals(DataChannelSemantics.RELIABLE_CONTROL, WebRtcDataChannelKind.CONTROL.semantics)
+        assertEquals(DataChannelSemantics.LATEST_MEDIA, WebRtcDataChannelKind.MEDIA.semantics)
+        assertEquals(DataChannelSemantics.LATEST_AUDIO, WebRtcDataChannelKind.AUDIO.semantics)
+        assertEquals(DataChannelSemantics.RELIABLE_BULK, WebRtcDataChannelKind.BULK.semantics)
+        assertEquals(SessionChannel.AUDIO, WebRtcDataChannelKind.fromLabel("vibescreen.audio.v1")?.sessionChannel)
+        assertEquals(SessionChannel.BULK, WebRtcDataChannelKind.fromLabel("vibescreen.bulk.v1")?.sessionChannel)
+        assertEquals(256 * 1024, WebRtcDataChannelKind.AUDIO.maximumEncryptedRecordBytes)
+        assertEquals(4 * 1024 * 1024, WebRtcDataChannelKind.BULK.maximumEncryptedRecordBytes)
     }
 
     @Test
     fun validatesChannelSemanticsBeforeStarting() {
-        val peer = FakePeerEngine(mediaSemantics = DataChannelSemantics.RELIABLE_CONTROL)
+        val peer = FakePeerEngine(
+            dataChannelSemantics = WebRtcDataChannelKind.entries.associateWith { kind ->
+                if (kind == WebRtcDataChannelKind.AUDIO) DataChannelSemantics.RELIABLE_CONTROL else kind.semantics
+            },
+        )
         val transport = fixture(peer = peer)
 
         assertThrows(IllegalArgumentException::class.java) { transport.start() }
@@ -40,7 +67,7 @@ class WebRtcInternetTransportTest {
     }
 
     @Test
-    fun keepsControlAndMediaOnSeparateEnginePaths() {
+    fun keepsProtocolV1RecordsOnSeparateEnginePaths() {
         val peer = FakePeerEngine()
         val transport = fixture(peer = peer)
         transport.start()
@@ -48,8 +75,23 @@ class WebRtcInternetTransportTest {
 
         assertTrue(transport.sendControl(byteArrayOf(1)))
         assertTrue(transport.sendMedia(OutboundMediaFrame.single(byteArrayOf(2))))
+        assertTrue(transport.sendAudioRecord(byteArrayOf(3)))
+        assertTrue(transport.sendBulkRecord(byteArrayOf(4)))
         assertEquals(listOf(1.toByte()), peer.controlPayloads.map { it.single() })
         assertEquals(listOf(2.toByte()), peer.mediaPayloads.map { it.single() })
+        assertEquals(listOf(3.toByte()), peer.audioPayloads.map { it.single() })
+        assertEquals(listOf(4.toByte()), peer.bulkPayloads.map { it.single() })
+    }
+
+    @Test
+    fun bulkBackpressureFailurePropagatesFromPeerEngine() {
+        val peer = FakePeerEngine(acceptBulkRecords = false)
+        val transport = fixture(peer = peer)
+        transport.start()
+        peer.observer.onConnected(PeerRoute.DIRECT)
+
+        assertFalse(transport.sendBulkRecord(byteArrayOf(4)))
+        assertTrue(peer.bulkPayloads.isEmpty())
     }
 
     @Test
@@ -200,17 +242,27 @@ class WebRtcInternetTransportTest {
         val monitor = FakeNetworkMonitor()
         val transport = fixture(peer, monitor)
         val received = mutableListOf<Int>()
+        val receivedAudio = mutableListOf<Int>()
+        val receivedBulk = mutableListOf<Int>()
         transport.onMediaPacket = { received += it.single().toInt() }
+        transport.onAudioRecord = { receivedAudio += it.single().toInt() }
+        transport.onBulkRecord = { receivedBulk += it.single().toInt() }
         transport.start()
         monitor.available(network("wifi"))
         peer.observer.onConnected(PeerRoute.DIRECT)
 
         peer.observer.onMediaPacket(6, byteArrayOf(1))
         peer.observer.onMediaPacket(7, byteArrayOf(2))
+        peer.observer.onAudioRecord(7, byteArrayOf(4))
+        peer.observer.onBulkRecord(7, byteArrayOf(5))
         peer.observer.onDisconnected()
         peer.observer.onMediaPacket(7, byteArrayOf(3))
+        peer.observer.onAudioRecord(7, byteArrayOf(6))
+        peer.observer.onBulkRecord(7, byteArrayOf(7))
 
         assertEquals(listOf(2), received)
+        assertEquals(listOf(4), receivedAudio)
+        assertEquals(listOf(5), receivedBulk)
     }
 
     @Test
@@ -321,7 +373,10 @@ private class FakeNetworkMonitor : NetworkMonitor {
 private class FakePeerEngine(
     override val controlSemantics: DataChannelSemantics = DataChannelSemantics.RELIABLE_CONTROL,
     override val mediaSemantics: DataChannelSemantics = DataChannelSemantics.LATEST_MEDIA,
+    override val dataChannelSemantics: Map<WebRtcDataChannelKind, DataChannelSemantics> =
+        WebRtcDataChannelKind.entries.associateWith { it.semantics },
     private val startFailure: Throwable? = null,
+    private val acceptBulkRecords: Boolean = true,
 ) : WebRtcPeerEngine {
     lateinit var observer: WebRtcPeerEngine.Observer
     var started = false
@@ -331,6 +386,8 @@ private class FakePeerEngine(
     val profiles = mutableListOf<VideoProfile>()
     val controlPayloads = mutableListOf<ByteArray>()
     val mediaPayloads = mutableListOf<ByteArray>()
+    val audioPayloads = mutableListOf<ByteArray>()
+    val bulkPayloads = mutableListOf<ByteArray>()
 
     override fun start(
         configuration: PeerConfiguration,
@@ -347,6 +404,11 @@ private class FakePeerEngine(
         mediaPayloads += frame.records.map(ByteArray::copyOf)
         return true
     }
+
+    override fun sendAudioRecord(payload: ByteArray): Boolean = audioPayloads.add(payload)
+
+    override fun sendBulkRecord(payload: ByteArray): Boolean =
+        acceptBulkRecords && bulkPayloads.add(payload)
 
     override fun restartIce() {
         iceRestartCalls++

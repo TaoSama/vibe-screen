@@ -237,24 +237,13 @@ final class WebRTCInternetTransportTests: XCTestCase {
         )
     }
 
-    func testStartsEngineWithSeparatedControlAndMediaChannels() throws {
+    func testStartsEngineWithAllProtocolV1DataChannels() throws {
         let engine = FakeWebRTCEngine()
         let transport = WebRTCInternetTransport(engine: engine, packetCipher: engine.localCipher)
 
         try transport.start(configuration: validConfiguration())
 
-        XCTAssertEqual(engine.startedChannels, [
-            WebRTCDataChannelConfiguration(
-                label: "vibescreen.control.v1",
-                isOrdered: true,
-                maximumRetransmits: nil
-            ),
-            WebRTCDataChannelConfiguration(
-                label: "vibescreen.media.v1",
-                isOrdered: false,
-                maximumRetransmits: 0
-            )
-        ])
+        XCTAssertEqual(engine.startedChannels, InternetTransportChannel.allCases.map(\.dataChannelConfiguration))
     }
 
     func testRejectsTURNWithoutCredentials() {
@@ -567,7 +556,7 @@ final class WebRTCInternetTransportTests: XCTestCase {
 
         try transport.start(configuration: validConfiguration())
 
-        XCTAssertEqual(engine.startedChannels.count, 2)
+        XCTAssertEqual(engine.startedChannels.count, InternetTransportChannel.allCases.count)
         XCTAssertTrue(engine.didClose)
         XCTAssertFalse(engine.startedAfterClose)
         XCTAssertEqual(transport.snapshot().state, .closed)
@@ -1292,6 +1281,154 @@ final class WebRTCInternetTransportTests: XCTestCase {
             firstKeyframe.records + newerKeyframe.records
         )
         XCTAssertEqual(transport.snapshot().droppedMediaFrames, 1)
+    }
+
+    func testAudioRecordKeepsNewestPendingRealtimeRecord() {
+        let engine = FakeWebRTCEngine()
+        let transport = connectedTransport(engine: engine)
+
+        XCTAssertSuccess(transport.sendAudioRecord(Data([1])))
+        XCTAssertSuccess(transport.sendAudioRecord(Data([2])))
+        XCTAssertSuccess(transport.sendAudioRecord(Data([3])))
+
+        XCTAssertEqual(engine.sentPayloads.map(\.channel), [.audio])
+        XCTAssertEqual(engine.sentPayloads.map(\.payload), [Data([1])])
+        XCTAssertEqual(transport.snapshot().droppedAudioRecords, 1)
+        XCTAssertTrue(transport.snapshot().hasPendingAudioRecord)
+
+        engine.completeSend(at: 0)
+
+        XCTAssertEqual(engine.sentPayloads.map(\.payload), [Data([1]), Data([3])])
+        engine.completeSend(at: 1)
+        XCTAssertEqual(transport.snapshot().audioBytesSent, 2)
+        XCTAssertFalse(transport.snapshot().audioInFlight)
+    }
+
+    func testAudioRecordRejectsOversizedPlaintextBeforeEngineSend() {
+        let engine = FakeWebRTCEngine()
+        let transport = connectedTransport(engine: engine)
+        let oversized = Data(
+            repeating: 0x61,
+            count: InternetAudioRecordContract.maximumPlaintextRecordBytes + 1
+        )
+
+        XCTAssertFailure(
+            transport.sendAudioRecord(oversized),
+            expected: .payloadTooLarge(
+                channel: .audio,
+                actual: oversized.count,
+                maximum: InternetAudioRecordContract.maximumPlaintextRecordBytes
+            )
+        )
+        XCTAssertTrue(engine.sentPayloads.isEmpty)
+        XCTAssertEqual(transport.snapshot().audioBytesSent, 0)
+    }
+
+    func testBulkRecordsRemainReliableAndOrdered() {
+        let engine = FakeWebRTCEngine()
+        let transport = connectedTransport(engine: engine)
+
+        XCTAssertSuccess(transport.sendBulkRecord(Data([1])))
+        XCTAssertSuccess(transport.sendBulkRecord(Data([2])))
+        XCTAssertSuccess(transport.sendBulkRecord(Data([3])))
+
+        XCTAssertEqual(engine.sentPayloads.map(\.channel), [.bulk])
+        XCTAssertEqual(engine.sentPayloads.map(\.payload), [Data([1])])
+        XCTAssertEqual(transport.snapshot().bufferedBulkMessages, 3)
+
+        engine.completeSend(at: 0)
+        XCTAssertEqual(engine.sentPayloads.map(\.payload), [Data([1]), Data([2])])
+        engine.completeSend(at: 1)
+        XCTAssertEqual(engine.sentPayloads.map(\.payload), [Data([1]), Data([2]), Data([3])])
+        engine.completeSend(at: 2)
+
+        XCTAssertEqual(transport.snapshot().bulkBytesSent, 3)
+        XCTAssertEqual(transport.snapshot().bufferedBulkMessages, 0)
+    }
+
+    func testBulkRecordRejectsOversizedPlaintextBeforeEngineSend() {
+        let engine = FakeWebRTCEngine()
+        let transport = connectedTransport(engine: engine)
+        let oversized = Data(
+            repeating: 0x62,
+            count: InternetBulkRecordContract.maximumPlaintextRecordBytes + 1
+        )
+
+        XCTAssertFailure(
+            transport.sendBulkRecord(oversized),
+            expected: .payloadTooLarge(
+                channel: .bulk,
+                actual: oversized.count,
+                maximum: InternetBulkRecordContract.maximumPlaintextRecordBytes
+            )
+        )
+        XCTAssertTrue(engine.sentPayloads.isEmpty)
+        XCTAssertEqual(transport.snapshot().bufferedBulkMessages, 0)
+    }
+
+    func testBulkBacklogByteLimitFailsClosed() {
+        let engine = FakeWebRTCEngine()
+        let limits = InternetTransportLimits(
+            maximumControlMessageBytes: 8,
+            maximumBufferedControlBytes: 8,
+            maximumMediaFrameBytes: 8,
+            maximumBufferedBulkBytes: 3,
+            maximumBufferedBulkMessages: 64,
+            maximumRelayBytesPerSession: 100
+        )
+        let transport = connectedTransport(engine: engine, limits: limits)
+
+        XCTAssertSuccess(transport.sendBulkRecord(Data([1, 2])))
+        XCTAssertFailure(
+            transport.sendBulkRecord(Data([3, 4])),
+            expected: .bulkBacklogExceeded(maximumBytes: 3)
+        )
+        guard case .failed = transport.snapshot().state else {
+            return XCTFail("A reliable-bulk byte overflow must fail the session")
+        }
+        XCTAssertEqual(engine.sentPayloads.map(\.payload), [Data([1, 2])])
+        XCTAssertTrue(engine.didClose)
+    }
+
+    func testBulkBacklogEntryCountFailsClosed() {
+        let engine = FakeWebRTCEngine()
+        let limits = InternetTransportLimits(
+            maximumControlMessageBytes: 8,
+            maximumBufferedControlBytes: 8,
+            maximumMediaFrameBytes: 8,
+            maximumBufferedBulkBytes: 64,
+            maximumBufferedBulkMessages: 2,
+            maximumRelayBytesPerSession: 100
+        )
+        let transport = connectedTransport(engine: engine, limits: limits)
+
+        XCTAssertSuccess(transport.sendBulkRecord(Data([1])))
+        XCTAssertSuccess(transport.sendBulkRecord(Data([2])))
+        XCTAssertEqual(transport.snapshot().bufferedBulkMessages, 2)
+        XCTAssertFailure(
+            transport.sendBulkRecord(Data([3])),
+            expected: .bulkBacklogExceeded(maximumBytes: 64)
+        )
+        guard case .failed = transport.snapshot().state else {
+            return XCTFail("A reliable-bulk entry overflow must fail closed")
+        }
+        XCTAssertEqual(engine.sentPayloads.map(\.payload), [Data([1])])
+        XCTAssertTrue(engine.didClose)
+    }
+
+    func testInboundAudioAndBulkRecordsAreDeliveredAsRawTransportRecords() {
+        let engine = FakeWebRTCEngine()
+        let transport = connectedTransport(engine: engine)
+        var audio: [Data] = []
+        var bulk: [Data] = []
+        transport.onAudioRecordReceived = { audio.append($0) }
+        transport.onBulkRecordReceived = { bulk.append($0) }
+
+        engine.receiveRaw(engine.makeInboundRecord(Data([4]), channel: .audio), channel: .audio)
+        engine.receiveRaw(engine.makeInboundRecord(Data([5]), channel: .bulk), channel: .bulk)
+
+        XCTAssertEqual(audio, [Data([4])])
+        XCTAssertEqual(bulk, [Data([5])])
     }
 
     func testFragmentedMediaSendsCompleteFrameBatchBeforeNewestReplacement() {
