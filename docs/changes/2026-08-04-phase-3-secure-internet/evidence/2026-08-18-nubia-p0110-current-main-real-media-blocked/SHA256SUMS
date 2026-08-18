@@ -1,0 +1,11 @@
+0b093be7daef59824ea307c3981eb3323fb43451c6516860b1a6ddd5fe0927aa  ./acceptance.json
+d36612016f8851f304e6b8cb99c4d9810130863f1bb3babdd55fd67e7c3aa60b  ./android-blocked-window.log
+d6dc1f19319dbeacbb0ad090bf70f84da67ed65928ff089af3c08a10157480f2  ./android-blocked.log
+40336fdf68367578afca0fdd3a7a337d95c6dd1897b020b93166534fe9151c4e  ./android-waiting-for-mac.png
+498ff38c24ecf1c67fae5b6a2a3da8f37395ac351d39d94711d0619bbad7b19d  ./build-and-install.txt
+455fdb41301527e0177974c2cbfce74f85a2bfc9dc5be4b09efb1e3fa39a05f7  ./commands.txt
+84331669dfbc538bf06ab623b48efb44bbeebfb6745cd61a3cccdf9406455b18  ./device-and-artifact-identity.txt
+92533cc3a6933f768d9c8965f3e0b5ce9ecc54a6c351efae5124edc5365c4122  ./host-permission-window.log
+89333251303b4a912d4908a6c1223e01473e1b804cef738f66bb4e5e18f3c279  ./host-signing-and-permissions.txt
+b3433b6c8761e1469ed6b35cbb2c2d496e3fbdf452a1911b75d2df2640792feb  ./privacy-scan.json
+6ec418b4cbd05739eacb9eb7e74d51ab4a48456b37d5f60edc82ac26f3ba8e0f  ./README.md

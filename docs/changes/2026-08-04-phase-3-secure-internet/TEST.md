@@ -373,6 +373,17 @@ not prove negative lease cases through the UI, cross-service revocation, public
 Internet/STUN/TURN or carrier/CGNAT traversal, packet capture, latency, or soak;
 those release gates remain open. Xiaomi 13 (2211133C) acceptance also remains open.
 
+- A 2026-08-18 attempt to re-verify current-main real display capture through
+  the USB media path on `Nubia P0110 / pacific / Android 16` is archived as
+  [`BLOCKED`](evidence/2026-08-18-nubia-p0110-current-main-real-media-blocked/README.md).
+  The Android and macOS artifacts built from clean commit
+  `5f7a4c394ac6f33b75636b17e12d15b425a0688b`, and the Android app was updated
+  only with `install -r`, but the packaged Host had no macOS Screen Recording
+  permission and never opened its listener. No capture frame, VideoToolbox
+  output, Protocol v1 media session, MediaCodec first output, FPS/decode result,
+  or successful-session reconnect was produced. This environment block does not
+  change any open Phase 3 release gate.
+
 ### Main CI follow-up snapshot (2026-08-06)
 
 On 2026-08-06, main commit `4c2e908fe31af4c187684991301e163371444eab`

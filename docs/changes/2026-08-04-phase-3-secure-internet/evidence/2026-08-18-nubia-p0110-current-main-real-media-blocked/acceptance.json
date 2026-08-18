@@ -1,0 +1,62 @@
+{
+  "result": "blocked",
+  "recorded_local_date": "2026-08-18",
+  "source_commit": "5f7a4c394ac6f33b75636b17e12d15b425a0688b",
+  "source_matched_origin_main": true,
+  "source_dirty_before_run": false,
+  "device": {
+    "manufacturer": "nubia",
+    "product": "P0110",
+    "codename": "pacific",
+    "android_version": "16",
+    "sdk": 36,
+    "display_pixels": "1264x2800",
+    "density_dpi": 560,
+    "hardware_serial": "[redacted]"
+  },
+  "constraints_observed": {
+    "android_install_r_only": true,
+    "application_data_cleared": false,
+    "application_uninstalled": false,
+    "tcc_or_keychain_reset": false,
+    "build_command_limit_minutes": 20,
+    "observation_limit_minutes": 20
+  },
+  "stages": {
+    "android_build_unit_tests_lint_apk": "pass",
+    "macos_package_and_signature": "pass",
+    "android_in_place_install": "pass",
+    "android_cold_launch": "pass",
+    "macos_screen_recording_permission": "blocked",
+    "host_usb_listener": "not_run",
+    "real_display_capture": "not_run",
+    "videotoolbox_output": "not_run",
+    "protocol_v1_session": "not_run",
+    "mediacodec_first_output_frame": "not_run",
+    "continuous_fps_and_decode_latency": "not_run",
+    "successful_session_reconnect": "not_run"
+  },
+  "blocker": {
+    "component": "macOS Screen Recording permission",
+    "bundle_identifier": "dev.telemachus.display",
+    "tcc_service": "kTCCServiceScreenCapture",
+    "tcc_auth_value": 0,
+    "host_listener_observed": false
+  },
+  "android_blocked_observation": {
+    "transport_closed_retryable_count": 72,
+    "first_to_last_event_seconds": 108.453,
+    "protocol_v1_entries": 0,
+    "decoder_entries": 0,
+    "first_output_frame_entries": 0,
+    "fatal_entries": 0
+  },
+  "claims": {
+    "real_capture": false,
+    "real_media_delivery": false,
+    "hardware_decode": false,
+    "reconnect": false,
+    "internet_or_turn": false,
+    "stable_release": false
+  }
+}
