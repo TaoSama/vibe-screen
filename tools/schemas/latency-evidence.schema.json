@@ -36,7 +36,7 @@
         "manufacturer": {"type": "string", "minLength": 1},
         "model": {"type": "string", "minLength": 1},
         "mode": {"type": "string", "minLength": 1},
-        "frame_rate_fps": {"type": ["number", "string"]},
+        "frame_rate_fps": {"type": "number", "minimum": 120},
         "shutter_mode": {"type": "string", "minLength": 1}
       }
     },
@@ -48,17 +48,18 @@
         "raw_video": {"type": "string", "minLength": 1},
         "recorded_at": {"type": "string", "minLength": 1},
         "operator": {"type": "string", "minLength": 1},
-        "sha256": {"type": "string", "minLength": 1}
+        "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}
       }
     },
     "samples": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["file", "format", "annotation_method", "annotator"],
+      "required": ["file", "format", "sha256", "annotation_method", "annotator"],
       "properties": {
         "file": {"type": "string", "minLength": 1},
         "format": {"enum": ["csv", "json"]},
-        "annotation_method": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+        "annotation_method": {"enum": ["manual-frame-count", "direct-latency-ms"]},
         "annotator": {"type": "string", "minLength": 1}
       }
     },

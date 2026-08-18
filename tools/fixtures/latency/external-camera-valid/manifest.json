@@ -9,19 +9,20 @@
     "manufacturer": "Fixture Camera Co",
     "model": "Synthetic 240",
     "mode": "1080p240",
-    "frame_rate_fps": "240",
+    "frame_rate_fps": 240,
     "shutter_mode": "fixed"
   },
   "recording": {
     "raw_video": "raw-camera-placeholder.mov",
     "recorded_at": "2026-08-19T00:00:00Z",
     "operator": "fixture",
-    "sha256": "fixture-placeholder"
+    "sha256": "6da41ddaf06005de793b1b17b11fb8c3e91d5b64f633d7098fa66860334368eb"
   },
   "samples": {
     "file": "samples.csv",
     "format": "csv",
-    "annotation_method": "manual frame count from one camera timeline",
+    "sha256": "5c0966fd341feecf327afa0e3406246e62553626c60edc3ec57f9e6130e370eb",
+    "annotation_method": "manual-frame-count",
     "annotator": "fixture"
   },
   "device": {

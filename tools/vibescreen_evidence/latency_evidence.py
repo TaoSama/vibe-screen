@@ -10,7 +10,10 @@ before a latency profile can pass.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
+import re
 import sys
 from pathlib import Path
 from typing import Any, Sequence
@@ -34,6 +37,14 @@ FORMAL_LATENCY_PROFILES = (
     GATE_INPUT_P95_SUB50,
 )
 
+SHA256_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
+ANNOTATION_MANUAL_FRAME_COUNT = "manual-frame-count"
+ANNOTATION_DIRECT_LATENCY_MS = "direct-latency-ms"
+ANNOTATION_METHODS = (
+    ANNOTATION_MANUAL_FRAME_COUNT,
+    ANNOTATION_DIRECT_LATENCY_MS,
+)
+
 REQUIRED_TOP_LEVEL_OBJECTS = (
     "camera",
     "recording",
@@ -47,7 +58,7 @@ REQUIRED_TOP_LEVEL_OBJECTS = (
 REQUIRED_TEXT_FIELDS = {
     "camera": ("manufacturer", "model", "mode", "shutter_mode"),
     "recording": ("raw_video", "recorded_at", "operator", "sha256"),
-    "samples": ("file", "format", "annotation_method", "annotator"),
+    "samples": ("file", "format", "sha256", "annotation_method", "annotator"),
     "device": ("manufacturer", "model", "codename", "os_version"),
     "host": ("model", "macos_version"),
     "build": ("repository_revision", "host_artifact", "client_artifact"),
@@ -94,13 +105,34 @@ def _require_object(document: dict[str, Any], field: str, errors: list[str]) -> 
     return value
 
 
-def _resolve_manifest_path(manifest_path: Path, raw_path: str | None) -> Path | None:
-    if raw_path is None:
+def _resolve_package_path(
+    manifest_path: Path,
+    raw_path: Any,
+    field: str,
+    errors: list[str],
+) -> Path | None:
+    if not isinstance(raw_path, str) or not raw_path.strip():
         return None
-    path = Path(raw_path)
+    path = Path(raw_path.strip())
     if path.is_absolute():
-        return path
-    return manifest_path.parent / path
+        errors.append(f"{field} must be relative to the evidence directory")
+        return None
+    package_root = manifest_path.parent.resolve()
+    try:
+        resolved_path = (package_root / path).resolve()
+        resolved_path.relative_to(package_root)
+    except (OSError, ValueError):
+        errors.append(f"{field} must stay within the evidence directory")
+        return None
+    return resolved_path
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _validate_required_metadata(manifest: dict[str, Any]) -> list[str]:
@@ -116,12 +148,21 @@ def _validate_required_metadata(manifest: dict[str, Any]) -> list[str]:
             _as_non_empty_text(section_document.get(field), f"{section}.{field}", errors)
 
     camera = manifest.get("camera") if isinstance(manifest.get("camera"), dict) else {}
-    try:
-        frame_rate = float(camera.get("frame_rate_fps"))
-        if frame_rate < 120:
+    frame_rate_value = camera.get("frame_rate_fps")
+    if isinstance(frame_rate_value, bool) or not isinstance(frame_rate_value, (int, float)):
+        errors.append("camera.frame_rate_fps must be a finite number")
+    else:
+        frame_rate = float(frame_rate_value)
+        if not math.isfinite(frame_rate):
+            errors.append("camera.frame_rate_fps must be a finite number")
+        elif frame_rate < 120:
             errors.append("camera.frame_rate_fps must be at least 120 for high-frame-rate evidence")
-    except (TypeError, ValueError):
-        errors.append("camera.frame_rate_fps must be numeric")
+
+    samples = manifest.get("samples") if isinstance(manifest.get("samples"), dict) else {}
+    if samples.get("annotation_method") not in ANNOTATION_METHODS:
+        errors.append(
+            "samples.annotation_method must be manual-frame-count or direct-latency-ms"
+        )
 
     setup = manifest.get("measurement_setup") if isinstance(manifest.get("measurement_setup"), dict) else {}
     if setup.get("clock_domain") != "single-external-camera-timebase":
@@ -131,7 +172,12 @@ def _validate_required_metadata(manifest: dict[str, Any]) -> list[str]:
         errors.append("measurement_setup.max_frame_annotation_uncertainty_ms is required")
     else:
         try:
-            if float(uncertainty) < 0:
+            uncertainty_ms = float(uncertainty)
+            if not math.isfinite(uncertainty_ms):
+                errors.append(
+                    "measurement_setup.max_frame_annotation_uncertainty_ms must be finite"
+                )
+            elif uncertainty_ms < 0:
                 errors.append("measurement_setup.max_frame_annotation_uncertainty_ms must not be negative")
         except (TypeError, ValueError):
             errors.append("measurement_setup.max_frame_annotation_uncertainty_ms must be numeric")
@@ -145,14 +191,6 @@ def _validate_manifest_matches_summary(
     errors: list[str] = []
     profile = GATE_PROFILES[gate_profile]
 
-    if manifest.get("run_id") != summary.get("run_id"):
-        errors.append("manifest.run_id must match summary.run_id")
-    if manifest.get("latency_kind") != summary.get("latency_kind"):
-        errors.append("manifest.latency_kind must match summary.latency_kind")
-    if manifest.get("transport") != summary.get("transport"):
-        errors.append("manifest.transport must match summary.transport")
-    if manifest.get("measurement_method") != summary.get("measurement_method"):
-        errors.append("manifest.measurement_method must match summary.measurement_method")
     if manifest.get("gate_profile") != gate_profile:
         errors.append("manifest.gate_profile must match --gate-profile")
     if summary.get("measurement_method") != METHOD_EXTERNAL_CAMERA:
@@ -166,19 +204,78 @@ def _validate_manifest_matches_summary(
     return errors
 
 
-def _validate_referenced_files(manifest_path: Path, manifest: dict[str, Any]) -> list[str]:
+def _validate_referenced_files(
+    manifest_path: Path,
+    manifest: dict[str, Any],
+) -> tuple[list[str], dict[str, Path | None]]:
     errors: list[str] = []
     recording = manifest.get("recording") if isinstance(manifest.get("recording"), dict) else {}
     samples = manifest.get("samples") if isinstance(manifest.get("samples"), dict) else {}
-    references = {
+    raw_references = {
         "recording.raw_video": recording.get("raw_video"),
         "samples.file": samples.get("file"),
     }
-    for field, raw_path in references.items():
-        text_path = _as_non_empty_text(raw_path, field, errors)
-        path = _resolve_manifest_path(manifest_path, text_path)
+    references: dict[str, Path | None] = {}
+    for field, raw_path in raw_references.items():
+        path = _resolve_package_path(manifest_path, raw_path, field, errors)
+        references[field] = path
         if path is not None and not path.is_file():
             errors.append(f"{field} does not exist: {path}")
+
+    digest_bindings = (
+        ("recording.sha256", recording.get("sha256"), references["recording.raw_video"]),
+        ("samples.sha256", samples.get("sha256"), references["samples.file"]),
+    )
+    for field, expected_sha256, path in digest_bindings:
+        if not isinstance(expected_sha256, str) or SHA256_PATTERN.fullmatch(expected_sha256) is None:
+            errors.append(f"{field} must be a 64-character hexadecimal SHA-256 digest")
+        elif path is not None and path.is_file():
+            try:
+                actual_sha256 = _sha256(path)
+            except OSError as error:
+                errors.append(f"cannot hash {path}: {error}")
+            else:
+                if actual_sha256 != expected_sha256.lower():
+                    errors.append(f"{field} does not match its referenced file")
+    return errors, references
+
+
+def _validate_sample_annotations(
+    manifest: dict[str, Any], rows: Sequence[dict[str, Any]]
+) -> list[str]:
+    errors: list[str] = []
+    samples = manifest.get("samples") if isinstance(manifest.get("samples"), dict) else {}
+    camera = manifest.get("camera") if isinstance(manifest.get("camera"), dict) else {}
+    annotation_method = samples.get("annotation_method")
+    try:
+        declared_frame_rate = float(camera.get("frame_rate_fps"))
+    except (TypeError, ValueError):
+        declared_frame_rate = math.nan
+
+    for index, row in enumerate(rows, start=1):
+        has_latency = row.get("latency_ms") not in (None, "")
+        frame_fields = ("start_frame", "end_frame", "camera_fps")
+        present_frame_fields = [field for field in frame_fields if row.get(field) not in (None, "")]
+        if annotation_method == ANNOTATION_MANUAL_FRAME_COUNT:
+            if has_latency or len(present_frame_fields) != len(frame_fields):
+                errors.append(
+                    f"sample {index}: manual-frame-count requires only start_frame, "
+                    "end_frame, and camera_fps"
+                )
+                continue
+            try:
+                sample_frame_rate = float(row["camera_fps"])
+            except (TypeError, ValueError):
+                continue
+            if (
+                math.isfinite(declared_frame_rate)
+                and math.isfinite(sample_frame_rate)
+                and not math.isclose(sample_frame_rate, declared_frame_rate, rel_tol=0, abs_tol=1e-6)
+            ):
+                errors.append(f"sample {index}: camera_fps must match camera.frame_rate_fps")
+        elif annotation_method == ANNOTATION_DIRECT_LATENCY_MS:
+            if not has_latency or present_frame_fields:
+                errors.append(f"sample {index}: direct-latency-ms requires only latency_ms")
     return errors
 
 
@@ -217,17 +314,18 @@ def build_latency_evidence_report(
     """Validate formal external-camera metadata and return a gate report."""
     manifest = _load_json(manifest_path, "latency evidence manifest")
     errors = _validate_required_metadata(manifest)
-    errors.extend(_validate_referenced_files(manifest_path, manifest))
+    reference_errors, references = _validate_referenced_files(manifest_path, manifest)
+    errors.extend(reference_errors)
 
     samples_section = manifest.get("samples") if isinstance(manifest.get("samples"), dict) else {}
     sample_format = samples_section.get("format")
-    sample_path_text = samples_section.get("file") if isinstance(samples_section.get("file"), str) else None
-    sample_path = _resolve_manifest_path(manifest_path, sample_path_text)
+    sample_path = references.get("samples.file")
     summary: dict[str, Any] | None = None
     if sample_path is not None and sample_path.is_file() and sample_format in ("csv", "json"):
         try:
             with sample_path.open("r", encoding="utf-8", newline="") as stream:
                 rows = load_samples(stream, sample_format)
+            errors.extend(_validate_sample_annotations(manifest, rows))
             summary = summarize(
                 rows,
                 kind=str(manifest.get("latency_kind")),
@@ -245,9 +343,25 @@ def build_latency_evidence_report(
         errors.extend(_validate_manifest_matches_summary(manifest, summary, gate_profile))
 
     gate = summary.get("gate", {}) if summary is not None else {}
-    profile_verdict = summary.get("verdict") if summary is not None else "insufficient"
-    verdict = "insufficient" if errors else str(profile_verdict)
+    summary_verdict = summary.get("verdict") if summary is not None else "insufficient"
     reasons = list(gate.get("reasons", [])) if isinstance(gate.get("reasons"), list) else []
+    formal_verdict = str(summary_verdict)
+    conservative_observed_ms: float | None = None
+    if summary is not None and summary_verdict == "pass":
+        try:
+            uncertainty_ms = float(manifest["measurement_setup"]["max_frame_annotation_uncertainty_ms"])
+            observed_ms = float(gate["observed_ms"])
+            threshold_ms = float(gate["threshold_ms"])
+            conservative_observed_ms = observed_ms + uncertainty_ms
+        except (KeyError, TypeError, ValueError):
+            pass
+        else:
+            if math.isfinite(conservative_observed_ms) and conservative_observed_ms > threshold_ms:
+                formal_verdict = "insufficient"
+                reasons.append(
+                    "p95 plus maximum annotation uncertainty exceeds the gate threshold"
+                )
+    verdict = "insufficient" if errors else formal_verdict
     reasons.extend(errors)
 
     return {
@@ -263,9 +377,10 @@ def build_latency_evidence_report(
         "gate": {
             "profile": gate_profile,
             "can_close_performance_gate": verdict == "pass",
-            "summary_verdict": profile_verdict,
+            "summary_verdict": summary_verdict,
             "threshold_ms": gate.get("threshold_ms"),
             "observed_ms": gate.get("observed_ms"),
+            "observed_with_uncertainty_ms": conservative_observed_ms,
             "sample_count": gate.get("sample_count"),
             "min_sample_count": gate.get("min_sample_count"),
             "requires_external_hardware": True,

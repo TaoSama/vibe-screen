@@ -67,7 +67,8 @@ and annotation method. A minimal shape is:
       "samples": {
         "file": "samples.csv",
         "format": "csv",
-        "annotation_method": "manual frame count from one camera timeline",
+        "sha256": "sample annotations sha256",
+        "annotation_method": "manual-frame-count",
         "annotator": "annotator name"
       },
       "device": {
@@ -119,8 +120,11 @@ Then validate the formal evidence package:
 Use lan-glass-to-glass-sub80 for LAN glass-to-glass and input-p95-sub50 for
 input latency. The checker exits 0 only when the profile verdict is pass and
 required external-camera provenance is complete. Missing raw video, mismatched
-manifest fields, too few samples, wrong transport, or a threshold miss all
-return nonzero with a JSON report whose verdict is insufficient or fail.
+manifest fields, changed sample annotations, frame-rate mismatches, annotation
+uncertainty that crosses the threshold, too few samples, wrong transport, or a
+threshold miss all return nonzero with a JSON report whose verdict is
+insufficient or fail. Referenced files must use package-relative paths and stay
+inside the evidence directory.
 
 ## Claim boundary
 
