@@ -98,6 +98,22 @@ internal object AppliedVideoPreferenceProjector {
     }
 }
 
+internal enum class VideoPreferenceFeedbackKind {
+    QUALITY,
+    FRAME_RATE,
+    BITRATE,
+}
+
+internal object VideoPreferenceFeedbackPolicy {
+    fun shouldAnnounceRequest(clientAvailable: Boolean): Boolean = clientAvailable
+
+    fun shouldAnnounceApplied(
+        appliesClientVideoPreferences: Boolean,
+        configEpoch: Long,
+        lastAnnouncedConfigEpoch: Long,
+    ): Boolean = appliesClientVideoPreferences && configEpoch > lastAnnouncedConfigEpoch
+}
+
 enum class ClientRotation(
     val degrees: Int,
 ) {
