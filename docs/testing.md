@@ -24,6 +24,11 @@ For every device run, record:
 - ADB reverse mapping and host listener;
 - decoder name, first output frame, continuing frame counters, and drops;
 - Mac pointer positions before/after Android touches;
+- For native pointer, HID mouse/controller, stylus, and physical keyboard runs,
+  the exact attached peripheral name, Android input source observed in logs, the
+  Protocol v1 negotiated capabilities, host-side injection logs, and visible Mac
+  result. ADB `input` commands may exercise Android dispatch but do not prove a
+  physical HID peripheral;
 - Host PID and a complete post-disconnect connection sequence;
 - per-minute Host/Android memory, temperature, and frame samples during soak.
 
@@ -43,6 +48,18 @@ two-hour-soak evidence is recorded separately under
 - APK installs and cold-starts without fatal exception.
 - A real stream reaches a hardware decoder and produces output frames.
 - Touch on two distinct device locations moves the Mac pointer accordingly.
+- Protocol v1 native pointer claims require a physical mouse or equivalent HID
+  pointer attached to the Android device. Record hover/move, primary click,
+  release, and scroll through the negotiated pointer channel, plus the visible
+  Mac pointer/button result. Synthetic ADB pointer or touchscreen events may
+  support mapper coverage only.
+- Controller claims first require Android production forwarding for
+  gamepad/joystick events. After that wiring exists, acceptance also requires a
+  physical controller attached to the Android device, accepted Protocol v1
+  `controller` capability, host virtual-gamepad availability, visible
+  controller input in a Mac-side test target, and neutral release on
+  disconnect. Offline HID report and mapper tests do not prove the OS accepted
+  a virtual gamepad.
 - Client/process or ADB TCP interruption produces a fresh connected session
   while the Host PID survives.
 - A sustained stream keeps live PIDs and rising frames throughout, with no fatal

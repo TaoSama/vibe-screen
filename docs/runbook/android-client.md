@@ -1,7 +1,8 @@
 # Android client operation and acceptance
 
-This runbook covers the runnable legacy Android client. It distinguishes local
-client behavior from controls that still require a negotiated host protocol.
+This runbook covers the runnable Android client. It distinguishes the legacy
+touch-compatible fallback from Protocol v1 native-input behavior, and keeps
+synthetic ADB input separate from physical HID evidence.
 
 ## Device ownership gate
 
@@ -32,7 +33,8 @@ cd baseline/AndroidClient
 ```
 
 The JVM suite covers Fit/Fill corners through all four rotations, viewport and
-decoder-surface dimensions, common physical keyboard-to-HID sequences,
+decoder-surface dimensions, common physical keyboard-to-HID sequences, native
+pointer capability gating and release ordering, controller mapping/state,
 session-generation/capability gating, Camera settings-return policy, bounded
 outbound ordering, typed connection guidance, reconnect backoff, framing, and
 reliability. This proves code paths and packaging only; it is not device
@@ -68,8 +70,10 @@ Open the in-stream settings button:
 3. Cycle rotation through Follow Mac, 90°, 180°, and 270°; tap all four corners
    after each change and correlate the Android event with the Mac pointer.
 4. Disconnect and reconnect; confirm scale and rotation preferences persist.
-5. Confirm the UI says the legacy stream is selected on the Mac. Do not report
-   Android display enumeration or selection as implemented.
+5. Confirm from the UI and diagnostic logs whether the session is legacy
+   fallback or Protocol v1. Report Android display enumeration or selection
+   only when Protocol v1 multi-display negotiation and the display selector
+   were actually exercised in that run.
 
 Connected windows use `FLAG_SECURE`, so ADB screenshots of the stream may be
 black. Use diagnostic logs plus direct observation or an external camera.
@@ -79,7 +83,12 @@ black. Use diagnostic logs plus direct observation or an external camera.
 Use a non-sensitive Mac test window and grant Accessibility to the exact host
 binary. Record Android diagnostic logs and the visible Mac result for each:
 
-| Input | Expected legacy behavior |
+### Legacy compatibility path
+
+Use this table only when the session falls back to the legacy touch-compatible
+path or the peer has not negotiated Protocol v1 native-input capabilities.
+
+| Input | Expected behavior |
 | --- | --- |
 | tap / double tap | left click / double click |
 | long press | right click |
@@ -92,9 +101,30 @@ binary. Record Android diagnostic logs and the visible Mac result for each:
 
 ADB event injection can exercise Android dispatch but does not prove a physical
 mouse or keyboard. Physical-peripheral acceptance requires the named hardware
-and a visible Mac-side result. Native hover, pointer buttons, stylus fields,
-keyboard forwarding, and shortcuts remain blocked until both applications use
-a negotiated input channel.
+and a visible Mac-side result.
+
+### Protocol v1 native input
+
+Use this table only after the Host and client have negotiated the matching
+Protocol v1 capability. Record the client diagnostic log line for the capability
+negotiation and the host log line for the received event.
+
+| Input | Required evidence |
+| --- | --- |
+| physical keyboard key / shortcut | Android `KeyEvent` source and key code, mapped USB HID usage, host key injection, visible Mac text/shortcut result, and key-up release |
+| physical mouse hover or move | Android `MotionEvent` from `SOURCE_MOUSE`, host `PointerEvent` with `INPUT_PHASE_CHANGED`, visible Mac pointer movement, and no fallback touch gesture claim |
+| physical mouse primary click | button press and release with `BUTTON_PRIMARY`, host pointer begin/end events, visible Mac click result, and button-up release before disconnect |
+| physical mouse wheel | Android `ACTION_SCROLL` with `AXIS_VSCROLL` or `AXIS_HSCROLL`, host scroll injection, and visible Mac scroll result |
+| physical stylus | Android stylus source/tool kind plus pressure/tilt/barrel/hover fields as applicable, negotiated stylus capability, host tablet event construction, and drawing-app result |
+| physical controller | Not a current production path: Android controller mapping/state and Protocol v1 envelope encoding are offline-tested, but `SOURCE_GAMEPAD`/`SOURCE_JOYSTICK` events are not yet forwarded by `MainActivity` and `StreamClient`. After that wiring lands, require a stable controller ID, connected/state/disconnected samples, host virtual-gamepad availability, visible Mac-side controller response, and neutral release on disconnect |
+
+Native pointer move/click cannot be closed with `adb shell input tap/swipe`:
+those commands synthesize touchscreen contact, not HID hover or mouse-button
+events. They may support touch and mapper regression notes, but the native
+pointer gate remains open without a physical mouse or equivalent Android HID
+pointer. Controller acceptance first requires Android production forwarding for
+gamepad/joystick events, then a physical controller; JVM mapper tests and
+constructed Protocol v1 envelopes prove serialization only.
 
 ## Permissions and lifecycle
 
