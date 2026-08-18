@@ -1,0 +1,5 @@
+stage,latency_ms
+host_capture_to_encode,6
+host_capture_to_encode,10
+host_encode_to_send,4
+host_encode_to_send,8

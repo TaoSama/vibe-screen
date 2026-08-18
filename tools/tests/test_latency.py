@@ -28,6 +28,7 @@ from tools.vibescreen_evidence.latency import (
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MODULE = "tools.vibescreen_evidence.latency"
+FIXTURE_DIR = REPOSITORY_ROOT / "tools" / "fixtures" / "latency"
 
 
 class LatencySummaryTest(unittest.TestCase):
@@ -246,7 +247,7 @@ class LatencyCliTest(unittest.TestCase):
             stdin='[{"start_frame":0,"end_frame":12,"camera_fps":240}]',
         )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 1, result.stderr)
         output = json.loads(result.stdout)
         self.assertEqual(output["latency_kind"], KIND_GLASS_TO_GLASS)
         self.assertEqual(output["transport"], TRANSPORT_USB)
@@ -298,7 +299,7 @@ class LatencyCliTest(unittest.TestCase):
                 str(output_path),
             )
 
-            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.returncode, 1, result.stderr)
             output = output_path.read_text(encoding="utf-8")
             self.assertIn("metric,value\n", output)
             self.assertIn("median,15.0\n", output)
@@ -321,6 +322,131 @@ class LatencyCliTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("cannot establish end-to-end latency", result.stderr)
         self.assertEqual(result.stdout, "")
+
+    def test_fixture_usb_glass_to_glass_profile_passes(self) -> None:
+        result = self.run_cli(
+            str(FIXTURE_DIR / "usb-glass-to-glass-pass.csv"),
+            "--kind",
+            KIND_GLASS_TO_GLASS,
+            "--measurement-method",
+            METHOD_EXTERNAL_CAMERA,
+            "--transport",
+            TRANSPORT_USB,
+            "--gate-profile",
+            GATE_USB_GLASS_TO_GLASS_SUB50,
+            "--run-id",
+            "fixture-usb-glass-pass",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["run_id"], "fixture-usb-glass-pass")
+        self.assertEqual(output["verdict"], "pass")
+        self.assertEqual(output["gate"]["profile"], GATE_USB_GLASS_TO_GLASS_SUB50)
+        self.assertAlmostEqual(output["statistics"]["p95"], 45.0)
+
+    def test_fixture_lan_glass_to_glass_profile_fails(self) -> None:
+        result = self.run_cli(
+            str(FIXTURE_DIR / "lan-glass-to-glass-fail.csv"),
+            "--kind",
+            KIND_GLASS_TO_GLASS,
+            "--measurement-method",
+            METHOD_EXTERNAL_CAMERA,
+            "--transport",
+            TRANSPORT_LAN,
+            "--gate-profile",
+            GATE_LAN_GLASS_TO_GLASS_SUB80,
+            "--run-id",
+            "fixture-lan-glass-fail",
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["verdict"], "fail")
+        self.assertGreater(output["gate"]["observed_ms"], output["gate"]["threshold_ms"])
+        self.assertIn("exceeds threshold", output["gate"]["reasons"][0])
+
+    def test_fixture_usb_glass_to_glass_profile_is_insufficient(self) -> None:
+        result = self.run_cli(
+            str(FIXTURE_DIR / "usb-glass-to-glass-insufficient.csv"),
+            "--kind",
+            KIND_GLASS_TO_GLASS,
+            "--measurement-method",
+            METHOD_EXTERNAL_CAMERA,
+            "--transport",
+            TRANSPORT_USB,
+            "--gate-profile",
+            GATE_USB_GLASS_TO_GLASS_SUB50,
+            "--run-id",
+            "fixture-usb-glass-insufficient",
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["verdict"], "insufficient")
+        self.assertLess(output["gate"]["sample_count"], output["gate"]["min_sample_count"])
+        self.assertIn("at least 5", output["gate"]["reasons"][0])
+
+    def test_fixture_input_latency_profile_passes_from_json(self) -> None:
+        result = self.run_cli(
+            str(FIXTURE_DIR / "input-latency-pass.json"),
+            "--kind",
+            KIND_INPUT,
+            "--measurement-method",
+            METHOD_EXTERNAL_CAMERA,
+            "--transport",
+            TRANSPORT_USB,
+            "--gate-profile",
+            GATE_INPUT_P95_SUB50,
+            "--run-id",
+            "fixture-input-pass",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["verdict"], "pass")
+        self.assertTrue(output["gate"]["can_close_performance_gate"])
+        self.assertLessEqual(output["gate"]["observed_ms"], 50.0)
+
+    def test_fixture_usb_glass_to_glass_insufficient_exits_nonzero(self) -> None:
+        result = self.run_cli(
+            str(FIXTURE_DIR / "usb-glass-to-glass-insufficient.csv"),
+            "--kind",
+            KIND_GLASS_TO_GLASS,
+            "--measurement-method",
+            METHOD_EXTERNAL_CAMERA,
+            "--transport",
+            TRANSPORT_USB,
+            "--gate-profile",
+            GATE_USB_GLASS_TO_GLASS_SUB50,
+            "--run-id",
+            "fixture-usb-insufficient",
+        )
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["verdict"], "insufficient")
+        self.assertLess(output["gate"]["sample_count"], output["gate"]["min_sample_count"])
+        self.assertIn("at least 5", output["gate"]["reasons"][0])
+
+    def test_fixture_telemetry_stage_stays_informational(self) -> None:
+        result = self.run_cli(
+            str(FIXTURE_DIR / "telemetry-stage-informational.csv"),
+            "--kind",
+            KIND_TELEMETRY_STAGE,
+            "--measurement-method",
+            METHOD_HOST_TELEMETRY,
+            "--transport",
+            TRANSPORT_USB,
+            "--run-id",
+            "fixture-stage-info",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["status"], "informational")
+        self.assertFalse(output["gate"]["can_close_performance_gate"])
+        self.assertEqual(output["stages"]["host_capture_to_encode"]["count"], 2)
 
 
 if __name__ == "__main__":

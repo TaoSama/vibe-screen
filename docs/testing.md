@@ -51,7 +51,10 @@ The formal latency summaries should use the matching gate profile:
 `usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, or `input-p95-sub50`.
 A `pass` verdict closes only that specific profile for the recorded device,
 transport, build, and measurement setup; `fail` and `insufficient` keep the
-gate open.
+gate open. The CLI exits `0` only for a profile `pass` and exits nonzero for
+`fail` or `insufficient`. The synthetic examples under
+`tools/fixtures/latency/` are only CLI fixtures for exercising these verdicts;
+they are not real-device evidence.
 
 The current Phase 0 evidence is recorded in
 `docs/changes/2026-08-04-phase-0-baseline/TEST.md`. Any connected Android
@@ -74,9 +77,8 @@ two-hour-soak evidence is recorded separately under
   release, and scroll through the negotiated pointer channel, plus the visible
   Mac pointer/button result. Synthetic ADB pointer or touchscreen events may
   support mapper coverage only.
-- Controller claims first require Android production forwarding for
-  gamepad/joystick events. After that wiring exists, acceptance also requires a
-  physical controller attached to the Android device, accepted Protocol v1
+- Controller runtime claims require a physical controller attached to the
+  Android device, accepted Protocol v1
   `controller` capability, host virtual-gamepad availability, visible
   controller input in a Mac-side test target, and neutral release on
   disconnect. Offline HID report and mapper tests do not prove the OS accepted
