@@ -1,0 +1,62 @@
+This is a privacy-safe command ledger. The device serial is represented by the
+ANDROID_SERIAL environment variable, and user-specific absolute paths are
+omitted. Commands that inspect TCC were read-only.
+
+Source identity
+===============
+git fetch origin main
+git rev-parse HEAD
+git rev-parse origin/main
+git status --short --branch
+
+Android identity preflight
+==========================
+adb -s $ANDROID_SERIAL get-state
+adb -s $ANDROID_SERIAL shell getprop ro.product.manufacturer
+adb -s $ANDROID_SERIAL shell getprop ro.product.model
+adb -s $ANDROID_SERIAL shell getprop ro.product.device
+adb -s $ANDROID_SERIAL shell getprop ro.build.version.release
+adb -s $ANDROID_SERIAL shell getprop ro.build.version.sdk
+adb -s $ANDROID_SERIAL shell getprop ro.build.fingerprint
+adb -s $ANDROID_SERIAL shell wm size
+adb -s $ANDROID_SERIAL shell wm density
+
+Build and verify
+================
+(cd baseline/AndroidClient && ./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug)
+python3 scripts/package_macos.py
+shasum -a 256 baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+shasum -a 256 .build/release-artifacts/Vibe\ Screen.app/Contents/MacOS/Vibe\ Screen
+shasum -a 256 .build/release-artifacts/Vibe-Screen-macos-0.12.0-arm64.zip
+codesign --verify --deep --strict .build/release-artifacts/Vibe\ Screen.app
+
+Preserve and update Android application
+=======================================
+adb -s $ANDROID_SERIAL shell dumpsys package dev.telemachus.display
+adb -s $ANDROID_SERIAL install -r baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+adb -s $ANDROID_SERIAL shell dumpsys package dev.telemachus.display
+adb -s $ANDROID_SERIAL shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true
+
+Blocked Host and Android observation
+====================================
+open -n .build/release-artifacts/Vibe\ Screen.app
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+adb -s $ANDROID_SERIAL reverse tcp:54321 tcp:54321
+adb -s $ANDROID_SERIAL exec-out run-as dev.telemachus.display sh -c 'cat files/diag.log.old 2>/dev/null; cat files/diag.log 2>/dev/null'
+adb -s $ANDROID_SERIAL exec-out screencap -p
+sqlite3 USER_TCC_DB 'SELECT service,client,auth_value,auth_reason,auth_version,last_modified FROM access WHERE client="dev.telemachus.display";'
+sqlite3 SYSTEM_TCC_DB 'SELECT service,client,auth_value,auth_reason,auth_version,last_modified FROM access WHERE client="dev.telemachus.display";'
+
+Cleanup
+========
+adb -s $ANDROID_SERIAL shell am force-stop dev.telemachus.display
+adb -s $ANDROID_SERIAL reverse --remove tcp:54321
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+
+Explicitly not run
+==================
+adb uninstall
+adb shell pm clear
+tccutil reset
+Keychain mutation
+permission reset

@@ -1,0 +1,49 @@
+Run identity
+============
+Local date: 2026-08-18
+Source HEAD: 5f7a4c394ac6f33b75636b17e12d15b425a0688b
+origin/main at preflight: 5f7a4c394ac6f33b75636b17e12d15b425a0688b
+origin/main after final pre-evidence fetch: 5f7a4c394ac6f33b75636b17e12d15b425a0688b
+Source tree before run: clean
+
+Device identity
+===============
+Manufacturer: nubia
+Model: P0110
+Codename: pacific
+Android: 16
+SDK: 36
+Display: 1264x2800
+Density: 560 dpi
+Build fingerprint: nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys
+ADB target identifier: [redacted]
+Battery at preflight: 100 percent
+Power at preflight: AC powered
+Boot complete: true
+
+Android artifact
+================
+Path: baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+SHA-256: a795e3f37eac867cdcfeaa9c51fb24153449c5b996d3eaeb1e7564bfb6a4283e
+Signer certificate SHA-256: b108fb9e0c8e5544171d57eb3be57d9fb93f332fc4954e26d5f51b20b876aa0b
+Application ID: dev.telemachus.display
+Version code: 100000
+Version name: 0.0.0
+
+macOS artifacts
+===============
+App binary SHA-256: 38237d6f2785e387200e27bdac1a1ae8db6e10fe58aed1f68c2840d7dd5c6aa3
+ZIP SHA-256: 01702eef33d0ec6d5280e219aa243e7e112008b35a782c542496ac8e1365933b
+Bundle identifier: dev.telemachus.display
+Signing authority: Vibe Screen Dev
+CDHash: 41cb6ee87b4e08a54bd57bb9b35cfeb83bdba9f1
+Designated requirement certificate leaf hash: 9aae572bf6d764e3436a6109197d345b5a87998c
+Strict deep code-sign verification: pass
+
+Host environment
+================
+macOS: 26.4.1 (25E253)
+Architecture: arm64
+Developer directory: Command Line Tools
+Swift: 6.3.3
+Full Xcode available: false

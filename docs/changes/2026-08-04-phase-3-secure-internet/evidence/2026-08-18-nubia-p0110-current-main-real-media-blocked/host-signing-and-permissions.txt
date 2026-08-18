@@ -1,0 +1,41 @@
+Packaged Host identity
+======================
+Bundle identifier: dev.telemachus.display
+Signing authority: Vibe Screen Dev
+CDHash: 41cb6ee87b4e08a54bd57bb9b35cfeb83bdba9f1
+Strict deep code-sign verification: pass
+
+Current-main launch window
+==========================
+Host launched: true
+Observed launch window: approximately 181 seconds
+USB listener observed on configured port: false
+
+Scoped Host log projection:
+  App binary fingerprint changed; showing post-update permission hint
+  Auto-start deferred until onboarding and Screen Recording are complete
+  checkPermissions - macOS 26.4.1
+  Screen recording permission not granted yet
+  Requesting screen capture access to register app and prompt user
+
+The previously installed Host produced the same permission result in a separate
+preflight. The current-main launch did not log server start, capture method,
+first capture frame, encoder output, or a ready client session in its scoped
+window.
+
+Read-only TCC projection
+========================
+Columns: service | client | auth_value | auth_reason | auth_version | last_modified
+kTCCServiceAccessibility | dev.telemachus.display | 0 | 0 | 4 | 1786811429
+kTCCServiceScreenCapture | dev.telemachus.display | 0 | 0 | 4 | 1786982624
+
+Interpretation:
+  auth_value=0 for ScreenCapture agrees with the Host preflight log. The run did
+  not modify the user or system TCC database, reset permissions, modify Keychain,
+  or use a different signature to bypass the denial.
+
+Result
+======
+BLOCKED before listener startup, real display capture, and VideoToolbox output.
+The result is an environment/permission block, not evidence that the media
+implementation passed or failed.

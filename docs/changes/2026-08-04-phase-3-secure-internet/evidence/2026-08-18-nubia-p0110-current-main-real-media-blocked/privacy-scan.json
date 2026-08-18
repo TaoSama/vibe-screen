@@ -1,0 +1,152 @@
+{
+  "artifacts": [
+    {
+      "bytes": 4247,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "6ec418b4cbd05739eacb9eb7e74d51ab4a48456b37d5f60edc82ac26f3ba8e0f"
+    },
+    {
+      "bytes": 1902,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "acceptance.json",
+      "result": "pass",
+      "sha256": "0b093be7daef59824ea307c3981eb3323fb43451c6516860b1a6ddd5fe0927aa"
+    },
+    {
+      "bytes": 5338,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-blocked-window.log",
+      "result": "pass",
+      "sha256": "d36612016f8851f304e6b8cb99c4d9810130863f1bb3babdd55fd67e7c3aa60b"
+    },
+    {
+      "bytes": 913,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-blocked.log",
+      "result": "pass",
+      "sha256": "d6dc1f19319dbeacbb0ad090bf70f84da67ed65928ff089af3c08a10157480f2"
+    },
+    {
+      "bytes": 209184,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "android-waiting-for-mac.png",
+      "result": "pass",
+      "sha256": "40336fdf68367578afca0fdd3a7a337d95c6dd1897b020b93166534fe9151c4e"
+    },
+    {
+      "bytes": 2368,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "build-and-install.txt",
+      "result": "pass",
+      "sha256": "498ff38c24ecf1c67fae5b6a2a3da8f37395ac351d39d94711d0619bbad7b19d"
+    },
+    {
+      "bytes": 2723,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "commands.txt",
+      "result": "pass",
+      "sha256": "455fdb41301527e0177974c2cbfce74f85a2bfc9dc5be4b09efb1e3fa39a05f7"
+    },
+    {
+      "bytes": 1621,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "device-and-artifact-identity.txt",
+      "result": "pass",
+      "sha256": "84331669dfbc538bf06ab623b48efb44bbeebfb6745cd61a3cccdf9406455b18"
+    },
+    {
+      "bytes": 451,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-permission-window.log",
+      "result": "pass",
+      "sha256": "92533cc3a6933f768d9c8965f3e0b5ce9ecc54a6c351efae5124edc5365c4122"
+    },
+    {
+      "bytes": 1669,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "host-signing-and-permissions.txt",
+      "result": "pass",
+      "sha256": "89333251303b4a912d4908a6c1223e01473e1b804cef738f66bb4e5e18f3c279"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-06.4",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}
