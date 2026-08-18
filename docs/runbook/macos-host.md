@@ -123,6 +123,42 @@ If macOS reports that the login item requires approval, open **System Settings
 → General → Login Items** and approve Vibe Screen. Registration alone is not
 treated as proof that login launch is active.
 
+### Acceptance gate matrix
+
+Use this matrix when turning the login-startup/headless path from source-level
+support into accepted evidence. Offline tests can prove policy decisions and
+bounded retries, but they cannot prove macOS launched the app after a reboot or
+that a headless machine still exposes a capturable display.
+
+| Gate | Covered by offline checks | Required integration evidence | Blocking conditions |
+| --- | --- | --- | --- |
+| Login item registration state | `DaemonManager` distinguishes enabled, approval-required, unavailable, and unregistered states. | Reboot after enabling **Launch at Login**; capture a timestamped app launch log and System Settings state showing the item is enabled, not approval-required. | Login item awaiting approval, app moved to a different path, ad-hoc rebuild/resign changing macOS privacy identity. |
+| Automatic startup policy | `HostStartupPolicy` and `AutomaticLaunchCoordinator` prove auto-start waits for Screen Recording/onboarding and consumes one launch intent once. | After login launch, verify the configured Startup mode starts without user interaction and the Android client can connect/render. | Screen Recording missing or stale, onboarding incomplete outside explicit benchmark mode, no reachable USB/LAN client path. |
+| Unattended listener recovery | `UnattendedRecoveryPolicy` proves bounded 1, 2, 4, 8, 16, 30, 30, and 30 second retries and stops after eight attempts. | Force a listener/capture failure during an unattended run; preserve logs showing scheduled retries, no full-speed loop, and either successful restart or bounded exhaustion. | Auto-start disabled, Screen Recording unavailable, interactive/manual run, repeated port conflict, ADB/LAN unavailable. |
+| Window restoration on disconnect/failure | `WindowPlacement` tests prove frame mapping and fallback to the main display when the original display is offline. | Move a real focused window to the client display, disconnect or stop the client, and record that it returns to the original frame or main-display fallback. | Accessibility missing/stale, target app lacks standard AX position/size attributes. |
+| Headless Mac mini reboot | Startup/display policy self-tests cover decision logic only. | With a monitor attached for setup, reboot, confirm login launch, streaming, and recovery; then repeat with the intended dummy/physical/Screen Sharing display configuration and record display identity plus successful capture. | FileVault/first-login prompt, expired TCC grants, no usable physical/dummy/Screen Sharing display, macOS update changing private virtual-display behavior. |
+
+For login-startup evidence, preserve `~/Library/Logs/Telemachus/telemachus.log`
+from before and after the reboot. The accepted record should include the app
+launch timestamp, the **Launch at Login** state, the configured Startup mode,
+permission state, and the first successful server start or a bounded recovery
+exhaustion log. Do not count a manual Finder/Dock launch as login-startup
+evidence.
+
+Before a headless run, complete onboarding while a monitor is attached. Record
+that Screen Recording is granted, whether Accessibility is granted, and that
+`hasCompletedOnboarding` has been set by completing the app onboarding flow.
+Then record the exact display setup used for the headless pass: physical
+display, dummy plug, or Screen Sharing virtual display, including display UUID
+and logical/physical dimensions from the host logs.
+
+For unattended recovery evidence, the trigger must be stated in the evidence
+record: listener startup failure, capture stop, client disconnect, selected
+display disappearance, or another explicit failure. Keep the log segment that
+shows each scheduled retry delay. For display-removal window recovery, record
+the original window frame and display, remove or disable that display during the
+run, then record the restored frame on the current main display.
+
 ## Upgrade and rollback
 
 1. Stop streaming and quit Vibe Screen.

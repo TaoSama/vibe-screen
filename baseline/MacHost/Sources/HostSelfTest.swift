@@ -82,8 +82,19 @@ enum HostSelfTest {
             failures.append("HiDPI and native virtual display identities collided")
         }
 
-        let expectedDelays: [TimeInterval?] = [1, 2, 4, 8, 16, 30, 30, 30, nil]
-        let actualDelays = (0...UnattendedRecoveryPolicy.maximumAttempts).map {
+        let expectedDelays: [TimeInterval?] = [
+            nil,
+            1,
+            2,
+            4,
+            8,
+            16,
+            30,
+            30,
+            30,
+            nil
+        ]
+        let actualDelays = (-1...UnattendedRecoveryPolicy.maximumAttempts).map {
             UnattendedRecoveryPolicy.delay(afterFailure: $0)
         }
         if actualDelays != expectedDelays {
