@@ -724,6 +724,54 @@ func TestHTTPAuthorityStrictlyScopesTokensAndIdempotentSession(t *testing.T) {
 	request(t, handler, http.MethodPost, "/v1/signaling/sessions/"+b.SessionID+"/authorize", cfg.SignalingToken, authorize, http.StatusForbidden)
 }
 
+func TestHTTPRelayCoturnUsageTokensAndRevokedFinalClose(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 18, 10, 0, 0, 0, time.UTC)
+	server.now = func() time.Time { return now.Add(time.Second) }
+	handler := server.Handler()
+
+	request(t, handler, http.MethodPut, "/v1/accounts/account", cfg.AdminToken, "", http.StatusNoContent)
+	request(t, handler, http.MethodPut, "/v1/accounts/account/devices/host", cfg.AdminToken, "", http.StatusNoContent)
+	request(t, handler, http.MethodPut, "/v1/accounts/account/devices/client", cfg.AdminToken, "", http.StatusNoContent)
+	created := request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, `{"request_id":"request","account_id":"account","host_device_id":"host","client_device_id":"client","session_epoch":1,"ttl_seconds":60}`, http.StatusCreated)
+	var admission SignalingAdmission
+	if err := json.Unmarshal(created.Body.Bytes(), &admission); err != nil {
+		t.Fatal(err)
+	}
+
+	relayBody := mustJSON(t, RelayAdmissionRequest{DeviceID: "client", SessionID: admission.SessionID, AllocationID: "allocation", SourceID: "node"})
+	request(t, handler, http.MethodPost, "/v1/relay/admissions", cfg.CoturnToken, relayBody, http.StatusUnauthorized)
+	request(t, handler, http.MethodPost, "/v1/relay/admissions", cfg.RelayToken, relayBody, http.StatusNoContent)
+
+	usage := CoturnUsage{SourceID: "node", EventID: "event-1", AllocationID: "allocation", DeviceID: "client", SessionID: admission.SessionID, Sequence: 1, IngressBytes: 10, EgressBytes: 20, ObservedAt: now.Add(2 * time.Second)}
+	usageBody := mustJSON(t, usage)
+	request(t, handler, http.MethodPost, "/v1/coturn/usage", cfg.RelayToken, usageBody, http.StatusUnauthorized)
+	accepted := request(t, handler, http.MethodPost, "/v1/coturn/usage", cfg.CoturnToken, usageBody, http.StatusAccepted)
+	if !strings.Contains(accepted.Body.String(), `"accepted"`) {
+		t.Fatalf("usage response=%s", accepted.Body.String())
+	}
+	duplicate := request(t, handler, http.MethodPost, "/v1/coturn/usage", cfg.CoturnToken, usageBody, http.StatusOK)
+	if !strings.Contains(duplicate.Body.String(), `"duplicate"`) {
+		t.Fatalf("duplicate response=%s", duplicate.Body.String())
+	}
+
+	request(t, handler, http.MethodPost, "/v1/devices/client/revoke", cfg.AdminToken, `{"epoch":1}`, http.StatusNoContent)
+	finalUsage := usage
+	finalUsage.EventID = "event-2"
+	finalUsage.Sequence = 2
+	finalUsage.IngressBytes = 12
+	finalUsage.EgressBytes = 25
+	finalUsage.Closed = true
+	request(t, handler, http.MethodPost, "/v1/coturn/usage", cfg.CoturnToken, mustJSON(t, finalUsage), http.StatusAccepted)
+	newRelay := mustJSON(t, RelayAdmissionRequest{DeviceID: "client", SessionID: admission.SessionID, AllocationID: "after-revoke", SourceID: "node"})
+	request(t, handler, http.MethodPost, "/v1/relay/admissions", cfg.RelayToken, newRelay, http.StatusForbidden)
+}
+
 func TestAuthorityResponsesSetSecurityHeaders(t *testing.T) {
 	server, err := NewServer(testAuthorityConfig(), newMemoryStore())
 	if err != nil {
@@ -784,6 +832,15 @@ func request(t *testing.T, handler http.Handler, method, path, token, body strin
 		t.Fatalf("%s %s=%d want %d: %s", method, path, response.Code, want, response.Body.String())
 	}
 	return response
+}
+
+func mustJSON(t *testing.T, value any) string {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
 }
 
 func TestConfigBoundsPreventDurationAndUint64Overflow(t *testing.T) {
