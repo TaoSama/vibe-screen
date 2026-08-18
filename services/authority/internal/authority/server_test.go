@@ -186,7 +186,8 @@ func (s *memoryStore) InvalidateSignaling(_ context.Context, id string, _ time.T
 func (s *memoryStore) AdmitRelay(_ context.Context, request RelayAdmissionRequest, now time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if existing := s.allocations[request.AllocationID]; existing != nil {
+	allocationKey := memoryAllocationKey(request.SourceID, request.AllocationID)
+	if existing := s.allocations[allocationKey]; existing != nil {
 		if existing.request == request {
 			return nil
 		}
@@ -217,7 +218,7 @@ func (s *memoryStore) AdmitRelay(_ context.Context, request RelayAdmissionReques
 	if active >= s.allocationLimit {
 		return ErrQuotaExceeded
 	}
-	s.allocations[request.AllocationID] = &memoryAllocation{request: request, observed: now}
+	s.allocations[allocationKey] = &memoryAllocation{request: request, observed: now}
 	return nil
 }
 func (s *memoryStore) ApplyCoturnUsage(_ context.Context, usage CoturnUsage) (bool, error) {
@@ -238,7 +239,7 @@ func (s *memoryStore) ApplyCoturnUsage(_ context.Context, usage CoturnUsage) (bo
 		}
 		return true, nil
 	}
-	allocation := s.allocations[usage.AllocationID]
+	allocation := s.allocations[memoryAllocationKey(usage.SourceID, usage.AllocationID)]
 	if allocation == nil {
 		return false, ErrNotFound
 	}
@@ -289,7 +290,7 @@ func (s *memoryStore) Reconcile(ctx context.Context, request ReconcileRequest, g
 			}
 			if errors.Is(err, ErrStaleUsage) {
 				s.mu.Lock()
-				allocation := s.allocations[usage.AllocationID]
+				allocation := s.allocations[memoryAllocationKey(usage.SourceID, usage.AllocationID)]
 				ahead := allocation != nil && allocation.request.SourceID == usage.SourceID && allocation.request.DeviceID == usage.DeviceID && allocation.request.SessionID == usage.SessionID && allocation.sequence >= usage.Sequence && allocation.ingress >= usage.IngressBytes && allocation.egress >= usage.EgressBytes
 				s.mu.Unlock()
 				if ahead {
@@ -317,15 +318,20 @@ func (s *memoryStore) Reconcile(ctx context.Context, request ReconcileRequest, g
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for id, allocation := range s.allocations {
-		if allocation.request.SourceID == request.SourceID && !allocation.closed && allocation.observed.Before(request.ObservedAt.Add(-grace)) && !seen[id] {
-			result.MissingAllocationIDs = append(result.MissingAllocationIDs, id)
+	for _, allocation := range s.allocations {
+		allocationID := allocation.request.AllocationID
+		if allocation.request.SourceID == request.SourceID && !allocation.closed && allocation.observed.Before(request.ObservedAt.Add(-grace)) && !seen[allocationID] {
+			result.MissingAllocationIDs = append(result.MissingAllocationIDs, allocationID)
 		}
 	}
 	sort.Strings(result.MissingAllocationIDs)
 	sort.Strings(result.UnauthorizedAllocationIDs)
 	sort.Strings(result.ConflictAllocationIDs)
 	return result, nil
+}
+
+func memoryAllocationKey(sourceID, allocationID string) string {
+	return sourceID + "\x00" + allocationID
 }
 
 func testAuthorityConfig() Config {
@@ -610,6 +616,7 @@ func TestRelayAdmissionRequiresActiveBoundSession(t *testing.T) {
 
 func TestRelayAdmissionRetryIsExactlyIdempotent(t *testing.T) {
 	store := newMemoryStore()
+	store.allocationLimit = 2
 	now := time.Now().UTC()
 	session := createMemorySession(t, store, "account", "host", "client", 1, now)
 	request := RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}
@@ -618,6 +625,11 @@ func TestRelayAdmissionRetryIsExactlyIdempotent(t *testing.T) {
 	}
 	if err := store.AdmitRelay(context.Background(), request, now.Add(time.Second)); err != nil {
 		t.Fatalf("exact retry failed after quota was consumed: %v", err)
+	}
+	otherSource := request
+	otherSource.SourceID = "other-node"
+	if err := store.AdmitRelay(context.Background(), otherSource, now); err != nil {
+		t.Fatalf("same allocation id from another source should be independent: %v", err)
 	}
 	changed := request
 	changed.DeviceID = "host"

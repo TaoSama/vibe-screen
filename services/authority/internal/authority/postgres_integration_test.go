@@ -132,7 +132,7 @@ func TestPostgresAllocationLimitIsAtomicAcrossConcurrentConnections(t *testing.T
 
 func TestPostgresAuthorityReviewContracts(t *testing.T) {
 	store, _ := openIntegrationStore(t)
-	store.allocationLimit = 4
+	store.allocationLimit = 5
 	ctx := context.Background()
 	now := time.Now().UTC()
 	if err := store.EnsureAccount(ctx, "account"); err != nil {
@@ -176,6 +176,11 @@ func TestPostgresAuthorityReviewContracts(t *testing.T) {
 	exactRetry := RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "valid", SourceID: "node"}
 	if err := store.AdmitRelay(ctx, exactRetry, now.Add(time.Second)); err != nil {
 		t.Fatalf("exact relay retry failed: %v", err)
+	}
+	otherSource := exactRetry
+	otherSource.SourceID = "other-node"
+	if err := store.AdmitRelay(ctx, otherSource, now); err != nil {
+		t.Fatalf("same allocation id from another source should be independent: %v", err)
 	}
 	changedRetry := exactRetry
 	changedRetry.DeviceID = "host"
