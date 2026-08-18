@@ -90,7 +90,10 @@ the desired serial in host settings.
   display is unplugged without forgetting the selection.
 - **Mirror Main Display** creates a private client display and configures it as
   a mirror of the current main display.
-- Rotation is advertised to the client as 0°, 90°, 180°, or 270°.
+- Rotation is advertised to the client as 0°, 90°, 180°, or 270°. This updates
+  display geometry and client orientation; it is not evidence that the Host
+  rotated captured source pixels. Rotated physical and virtual host displays
+  need their own visual and input acceptance record.
 - **Move Focused Window to Client Display** in the menu bar moves the current
   accessible window while preserving its relative placement.
 - **Return Moved Windows** restores windows to their original display and

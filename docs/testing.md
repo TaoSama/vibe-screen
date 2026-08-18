@@ -29,6 +29,10 @@ For every device run, record:
   Protocol v1 negotiated capabilities, host-side injection logs, and visible Mac
   result. ADB `input` commands may exercise Android dispatch but do not prove a
   physical HID peripheral;
+- when closing rotated host-display acceptance, the physical and virtual
+  display identities, original and rotated macOS display rotation, client
+  rotation mode, screenshots, touch matrix, and proof that the original macOS
+  rotation was restored;
 - Host PID and a complete post-disconnect connection sequence;
 - per-minute Host/Android memory, temperature, and frame samples during soak.
 
