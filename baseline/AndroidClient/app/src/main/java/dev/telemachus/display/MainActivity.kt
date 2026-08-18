@@ -2152,6 +2152,19 @@ class MainActivity : AppCompatActivity() {
 
         if (!available) return
 
+        fun announceRequest(kind: VideoPreferenceFeedbackKind) {
+            if (!VideoPreferenceFeedbackPolicy.shouldAnnounceRequest(clientAvailable = available && streamClient != null)) {
+                return
+            }
+            val messageId =
+                when (kind) {
+                    VideoPreferenceFeedbackKind.QUALITY -> R.string.video_quality_request_sent
+                    VideoPreferenceFeedbackKind.FRAME_RATE -> R.string.video_frame_rate_request_sent
+                    VideoPreferenceFeedbackKind.BITRATE -> R.string.video_bitrate_request_sent
+                }
+            Toast.makeText(this, messageId, Toast.LENGTH_SHORT).show()
+        }
+
         qualityGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
             val choice =
@@ -2178,6 +2191,7 @@ class MainActivity : AppCompatActivity() {
                 )
             }
             prefs.videoQuality = choice
+            announceRequest(VideoPreferenceFeedbackKind.QUALITY)
         }
 
         frameRateGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
@@ -2191,6 +2205,7 @@ class MainActivity : AppCompatActivity() {
                 qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
             )
             prefs.videoFrameRate = fps
+            announceRequest(VideoPreferenceFeedbackKind.FRAME_RATE)
         }
 
         bitrateSlider.addOnChangeListener { _, value, _ ->
@@ -2209,6 +2224,7 @@ class MainActivity : AppCompatActivity() {
                         qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
                     )
                     prefs.videoBitrateMbps = mbps
+                    announceRequest(VideoPreferenceFeedbackKind.BITRATE)
                 }
             },
         )
@@ -3240,7 +3256,6 @@ class MainActivity : AppCompatActivity() {
                 ) {
                     return@runOnUiThread
                 }
-                lastAppliedVideoPreferenceConfigEpoch = configuration.configEpoch
                 val projection =
                     AppliedVideoPreferenceProjector.project(
                         bitrateKbps = configuration.bitrateKbps,
@@ -3248,6 +3263,16 @@ class MainActivity : AppCompatActivity() {
                     )
                 projection.bitrateMbps?.let { prefs.videoBitrateMbps = it }
                 projection.framesPerSecond?.let { prefs.videoFrameRate = it }
+                if (
+                    VideoPreferenceFeedbackPolicy.shouldAnnounceApplied(
+                        appliesClientVideoPreferences = configuration.appliesClientVideoPreferences,
+                        configEpoch = configuration.configEpoch,
+                        lastAnnouncedConfigEpoch = lastAppliedVideoPreferenceConfigEpoch,
+                    )
+                ) {
+                    Toast.makeText(this, R.string.video_preferences_applied, Toast.LENGTH_SHORT).show()
+                }
+                lastAppliedVideoPreferenceConfigEpoch = configuration.configEpoch
                 mainDiag(
                     "Applied authoritative video preferences " +
                         "epoch=${configuration.configEpoch} " +
