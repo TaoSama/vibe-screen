@@ -588,6 +588,7 @@ class MainActivity : AppCompatActivity() {
         // checklist updates whenever Wireless is the active tab.
         if (mode != ConnectionMode.USB) {
             stopChecklistUpdates()
+            clearUsbConnectionGuidance()
         } else {
             startChecklistUpdates()
         }
@@ -1183,10 +1184,17 @@ class MainActivity : AppCompatActivity() {
 
             // Validate input
             if (host.isBlank()) {
-                showError("Please enter a host address")
+                showUsbConnectionGuidance(
+                    ConnectionGuidance(
+                        kind = ConnectionFailureKind.UNKNOWN,
+                        status = getString(R.string.connection_issue),
+                        message = getString(R.string.host_address_required),
+                    ),
+                )
                 return@setOnClickListener
             }
 
+            clearUsbConnectionGuidance()
             updateStatus("Checking for your Mac…")
             automaticUsbConnect = false
             connect(host, port, automatic = false)
@@ -1209,20 +1217,7 @@ class MainActivity : AppCompatActivity() {
 
         // Advanced settings toggle
         binding.showAdvanced.setOnClickListener {
-            connectionDetailsVisible = !connectionDetailsVisible
-            val visibility = if (connectionDetailsVisible) View.VISIBLE else View.GONE
-            binding.checklistContainer.visibility = visibility
-            binding.advancedSettings.visibility = visibility
-            binding.showAdvanced.setText(
-                if (connectionDetailsVisible) {
-                    R.string.hide_connection_details
-                } else {
-                    R.string.connection_details
-                },
-            )
-            if (connectionDetailsVisible) {
-                updateChecklist()
-            }
+            setConnectionDetailsVisible(!connectionDetailsVisible)
         }
 
         showDisconnectedStreamUi()
@@ -1262,6 +1257,44 @@ class MainActivity : AppCompatActivity() {
     private fun updateStatus(status: String) {
         runOnUiThread {
             LiveRegionTextApplier.apply(binding.statusText, status)
+        }
+    }
+
+    private fun showUsbConnectionGuidance(guidance: ConnectionGuidance) {
+        runOnUiThread {
+            LiveRegionTextApplier.apply(binding.connectionErrorTitle, guidance.status)
+            LiveRegionTextApplier.show(binding.connectionErrorMessage, guidance.message)
+            binding.connectionErrorContainer.visibility = View.VISIBLE
+            if (!connectionDetailsVisible) {
+                setConnectionDetailsVisible(true)
+            } else {
+                updateChecklist()
+            }
+            updateStatus(guidance.status)
+        }
+    }
+
+    private fun clearUsbConnectionGuidance() {
+        if (!::binding.isInitialized) return
+        binding.connectionErrorContainer.visibility = View.GONE
+        LiveRegionTextApplier.apply(binding.connectionErrorTitle, getString(R.string.connection_issue))
+        LiveRegionTextApplier.hide(binding.connectionErrorMessage)
+    }
+
+    private fun setConnectionDetailsVisible(visible: Boolean) {
+        connectionDetailsVisible = visible
+        val visibility = if (visible) View.VISIBLE else View.GONE
+        binding.checklistContainer.visibility = visibility
+        binding.advancedSettings.visibility = visibility
+        binding.showAdvanced.setText(
+            if (visible) {
+                R.string.hide_connection_details
+            } else {
+                R.string.connection_details
+            },
+        )
+        if (visible) {
+            updateChecklist()
         }
     }
 
@@ -1604,10 +1637,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showConnectedStreamUi() {
         val connectedStatus = getString(R.string.connected_streaming)
-        connectionDetailsVisible = false
-        binding.checklistContainer.visibility = View.GONE
-        binding.advancedSettings.visibility = View.GONE
-        binding.showAdvanced.setText(R.string.connection_details)
+        clearUsbConnectionGuidance()
+        setConnectionDetailsVisible(false)
         binding.videoViewport.visibility = View.VISIBLE
         binding.disconnectedBackdrop.visibility = View.GONE
         binding.settingsPanel.visibility = View.GONE
@@ -1636,7 +1667,9 @@ class MainActivity : AppCompatActivity() {
         binding.videoViewport.visibility = View.VISIBLE
         binding.disconnectedBackdrop.visibility = View.VISIBLE
         binding.settingsPanel.visibility = View.VISIBLE
-        binding.settingsButton.visibility = View.GONE
+        binding.settingsButton.visibility = View.VISIBLE
+        binding.settingsButton.translationZ = binding.settingsPanel.elevation + 1f
+        binding.settingsButton.bringToFront()
         binding.statusBar.visibility = View.GONE
         binding.connectButton.isEnabled = true
         binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_waiting)
@@ -4080,6 +4113,7 @@ class MainActivity : AppCompatActivity() {
         }
         disconnectInternet(showIdle = false)
         connectionAttemptInProgress = false
+        clearUsbConnectionGuidance()
         applyDisconnectedSessionUi()
     }
 
@@ -4095,6 +4129,7 @@ class MainActivity : AppCompatActivity() {
         if (isConnected || connectionAttemptInProgress) return
         connectionAttemptInProgress = true
         hasAttemptedUsbConnection = true
+        clearUsbConnectionGuidance()
         if (prefs.connectionMode == ConnectionMode.USB) {
             updateDisconnectedHeader(ConnectionMode.USB)
         }
@@ -4108,6 +4143,7 @@ class MainActivity : AppCompatActivity() {
             }
         setupStreamClientCallbacks(callbackClient, callbackGeneration, retryCoordinator, guidanceContext)
         lifecycleScope.launch(Dispatchers.IO) {
+            var inlineGuidance: ConnectionGuidance? = null
             try {
                 log("Connecting to $host:$port...")
                 callbackClient.connect()
@@ -4115,8 +4151,7 @@ class MainActivity : AppCompatActivity() {
                 if (!isCurrentSession(callbackClient, callbackGeneration)) return@launch
                 val guidance = ConnectionGuidanceFactory.from(e, guidanceContext)
                 if (!automatic && e !is SessionProtocolException) {
-                    updateStatus(guidance.status)
-                    showError(guidance.message)
+                    inlineGuidance = guidance
                 }
             } finally {
                 runOnUiThread {
@@ -4128,6 +4163,7 @@ class MainActivity : AppCompatActivity() {
                     )
                     if (!isConnected && prefs.connectionMode == ConnectionMode.USB) {
                         updateDisconnectedHeader(ConnectionMode.USB)
+                        inlineGuidance?.let(::showUsbConnectionGuidance)
                     }
                 }
             }
@@ -4202,8 +4238,12 @@ class MainActivity : AppCompatActivity() {
         }
         pendingTerminalGuidance?.let { guidance ->
             pendingTerminalGuidance = null
-            updateStatus(guidance.status)
-            showError(guidance.message)
+            if (mode == ConnectionMode.USB) {
+                showUsbConnectionGuidance(guidance)
+            } else {
+                updateStatus(guidance.status)
+                showError(guidance.message)
+            }
         }
     }
 
