@@ -32,6 +32,27 @@ For every device run, record:
 - Host PID and a complete post-disconnect connection sequence;
 - per-minute Host/Android memory, temperature, and frame samples during soak.
 
+For performance-gate runs, keep latency evidence in the same evidence directory
+as the device identity and soak artifacts:
+
+- USB and LAN glass-to-glass latency require raw high-frame-rate camera footage,
+  the sampled `latency_ms` or `start_frame,end_frame,camera_fps` CSV/JSON, the
+  `vibescreen_evidence.latency` summary, device info, and an evidence manifest.
+- Input latency requires either the same external-camera single timebase or a
+  documented synchronized-clock setup with an error budget small enough for the
+  sub-50 ms P95 gate. Unsynchronized host/device timestamps are diagnostic only.
+- Host/client telemetry-stage summaries may be recorded from pipeline, decoder,
+  queue, or RTT logs with `--kind telemetry-stage`. They explain where latency
+  is spent, but their summary must retain
+  `gate.can_close_performance_gate=false` and cannot replace the camera/input
+  evidence above.
+
+The formal latency summaries should use the matching gate profile:
+`usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, or `input-p95-sub50`.
+A `pass` verdict closes only that specific profile for the recorded device,
+transport, build, and measurement setup; `fail` and `insufficient` keep the
+gate open.
+
 The current Phase 0 evidence is recorded in
 `docs/changes/2026-08-04-phase-0-baseline/TEST.md`. Any connected Android
 device that meets the runtime requirements may be used for general Android
@@ -98,3 +119,6 @@ Internal timestamps may measure encoder, decoder, queue, and reconnect
 durations only within their own clock domain. Glass-to-glass latency requires
 an external high-frame-rate camera or optical measurement; RTT and decoder
 latency are not substitutes.
+
+Use `PYTHONPATH=tools python3 -m vibescreen_evidence.latency --help` for the
+supported latency evidence formats and gate semantics.
