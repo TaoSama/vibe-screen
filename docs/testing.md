@@ -77,9 +77,8 @@ two-hour-soak evidence is recorded separately under
   release, and scroll through the negotiated pointer channel, plus the visible
   Mac pointer/button result. Synthetic ADB pointer or touchscreen events may
   support mapper coverage only.
-- Controller claims first require Android production forwarding for
-  gamepad/joystick events. After that wiring exists, acceptance also requires a
-  physical controller attached to the Android device, accepted Protocol v1
+- Controller runtime claims require a physical controller attached to the
+  Android device, accepted Protocol v1
   `controller` capability, host virtual-gamepad availability, visible
   controller input in a Mac-side test target, and neutral release on
   disconnect. Offline HID report and mapper tests do not prove the OS accepted
