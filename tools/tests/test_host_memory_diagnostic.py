@@ -550,7 +550,9 @@ class HostMemoryAnalysisTests(unittest.TestCase):
 
     def test_stream_telemetry_treats_encoder_in_flight_fields_as_optional(self):
         incomplete = telemetry()
-        incomplete[10]["attributes"].pop("encoder_in_flight")
+        for record in incomplete:
+            record["attributes"].pop("encoder_in_flight")
+            record["attributes"].pop("encoder_in_flight_capacity")
 
         result = analyze_records(
             memory_records("retained"),
@@ -565,7 +567,34 @@ class HostMemoryAnalysisTests(unittest.TestCase):
             "encoder_in_flight",
             result["telemetry"]["missing_optional_fields"],
         )
+        self.assertIn(
+            "encoder_in_flight_capacity",
+            result["telemetry"]["missing_optional_fields"],
+        )
         self.assertTrue(result["sufficiency"]["stream_telemetry"])
+
+    def test_stream_telemetry_requires_encoder_in_flight_pair_when_present(self):
+        for missing in ("encoder_in_flight", "encoder_in_flight_capacity"):
+            with self.subTest(missing=missing):
+                incomplete = telemetry()
+                incomplete[10]["attributes"].pop(missing)
+
+                result = analyze_records(
+                    memory_records("retained"),
+                    incomplete,
+                    started_at=timestamp(STARTED),
+                    finished_at=timestamp(FINISHED),
+                )
+
+                self.assertEqual(result["attribution"], "inconclusive")
+                self.assertEqual(result["verdict"], "insufficient")
+                self.assertEqual(result["telemetry"]["invalid_record_count"], 1)
+                self.assertEqual(result["telemetry"]["stream_stats_count"], 120)
+                self.assertIn(
+                    missing,
+                    result["telemetry"]["missing_optional_fields"],
+                )
+                self.assertFalse(result["sufficiency"]["stream_telemetry"])
 
     def test_stream_telemetry_gap_fails_closed(self):
         sparse = telemetry()[::20]
