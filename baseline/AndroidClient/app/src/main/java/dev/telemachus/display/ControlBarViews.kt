@@ -10,6 +10,7 @@ import android.widget.TextView
 internal data class ControlBarViews(
     val card: View,
     val content: LinearLayout,
+    val connectionStatus: View,
     val displaySelector: View,
     val actions: LinearLayout,
     val hostAction: View,
@@ -90,6 +91,8 @@ internal object ControlBarLayoutApplier {
                 resources.getDimensionPixelSize(R.dimen.control_bar_disconnect_margin_start),
             columnActionSpacingPx =
                 resources.getDimensionPixelSize(R.dimen.control_bar_column_button_margin),
+            statusMinimumWidthPx = resources.getDimensionPixelSize(R.dimen.connection_status_min_width),
+            statusGapPx = resources.getDimensionPixelSize(R.dimen.connection_status_gap),
         )
 
     fun apply(
@@ -109,14 +112,17 @@ internal object ControlBarLayoutApplier {
                 displaySelectorVisible = views.displaySelector.visibility == View.VISIBLE,
                 hostActionsVisible = hostActionsVisible,
                 geometry = geometry,
-            )
+        )
         val cardParams = views.card.layoutParams
+        val statusParams = views.connectionStatus.layoutParams as LinearLayout.LayoutParams
         val selectorParams = views.displaySelector.layoutParams as LinearLayout.LayoutParams
         val actionsParams = views.actions.layoutParams as LinearLayout.LayoutParams
         when (mode) {
             ControlBarLayoutPolicy.Mode.COMPACT -> {
                 cardParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
                 views.content.orientation = LinearLayout.HORIZONTAL
+                statusParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
+                statusParams.weight = 0f
                 selectorParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
                 selectorParams.weight = 0f
                 actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -125,6 +131,8 @@ internal object ControlBarLayoutApplier {
             ControlBarLayoutPolicy.Mode.INLINE -> {
                 cardParams.width = 0
                 views.content.orientation = LinearLayout.HORIZONTAL
+                statusParams.width = 0
+                statusParams.weight = 1f
                 selectorParams.width = 0
                 selectorParams.weight = 1f
                 actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -133,6 +141,8 @@ internal object ControlBarLayoutApplier {
             ControlBarLayoutPolicy.Mode.STACKED -> {
                 cardParams.width = 0
                 views.content.orientation = LinearLayout.VERTICAL
+                statusParams.width = ViewGroup.LayoutParams.MATCH_PARENT
+                statusParams.weight = 0f
                 selectorParams.width = ViewGroup.LayoutParams.MATCH_PARENT
                 selectorParams.weight = 0f
                 actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -141,6 +151,8 @@ internal object ControlBarLayoutApplier {
             ControlBarLayoutPolicy.Mode.COLUMN -> {
                 cardParams.width = 0
                 views.content.orientation = LinearLayout.VERTICAL
+                statusParams.width = ViewGroup.LayoutParams.MATCH_PARENT
+                statusParams.weight = 0f
                 selectorParams.width = ViewGroup.LayoutParams.MATCH_PARENT
                 selectorParams.weight = 0f
                 actionsParams.width = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -148,8 +160,17 @@ internal object ControlBarLayoutApplier {
             }
         }
         views.card.layoutParams = cardParams
+        views.connectionStatus.layoutParams = statusParams
         views.displaySelector.layoutParams = selectorParams
         views.actions.layoutParams = actionsParams
+        val statusMargins = ControlBarLayoutPolicy.statusMargins(mode, geometry)
+        (views.connectionStatus.layoutParams as LinearLayout.LayoutParams).also { params ->
+            params.marginStart = statusMargins.startPx
+            params.topMargin = statusMargins.topPx
+            params.marginEnd = statusMargins.endPx
+            params.bottomMargin = statusMargins.bottomPx
+            views.connectionStatus.layoutParams = params
+        }
         listOf(
             views.hostAction to ControlBarLayoutPolicy.Action.HOST,
             views.settings to ControlBarLayoutPolicy.Action.SETTINGS,

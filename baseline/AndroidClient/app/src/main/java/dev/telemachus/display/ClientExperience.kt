@@ -3,7 +3,7 @@ package dev.telemachus.display
 import dev.vibescreen.protocol.v1.VideoQualityPreset
 
 internal object ControlBarAccessibilityPolicy {
-    const val STANDARD_AUTO_HIDE_MS = 3_000L
+    const val STANDARD_AUTO_HIDE_MS = 5_000L
     const val SESSION_STARTED_AUTO_HIDE_MS = 7_000L
 
     enum class RevealReason {
@@ -30,6 +30,36 @@ internal object ControlBarAccessibilityPolicy {
         connected: Boolean,
         controlBarVisible: Boolean,
     ): Boolean = connected && !controlBarVisible
+}
+
+internal object ConnectionSecurityPresentationPolicy {
+    data class Presentation(
+        val labelResource: Int,
+        val detailResource: Int,
+        val warning: Boolean,
+    )
+
+    fun presentation(mode: ConnectionMode): Presentation =
+        when (mode) {
+            ConnectionMode.USB ->
+                Presentation(
+                    labelResource = R.string.stream_status_usb_label,
+                    detailResource = R.string.stream_status_usb_detail,
+                    warning = false,
+                )
+            ConnectionMode.WIRELESS ->
+                Presentation(
+                    labelResource = R.string.stream_status_lan_label,
+                    detailResource = R.string.stream_status_lan_detail,
+                    warning = false,
+                )
+            ConnectionMode.INTERNET ->
+                Presentation(
+                    labelResource = R.string.stream_status_internet_label,
+                    detailResource = R.string.stream_status_internet_detail,
+                    warning = false,
+                )
+        }
 }
 
 /** Client-local viewport choices that do not require a wire-protocol change. */
@@ -382,6 +412,8 @@ internal object ControlBarLayoutPolicy {
         val actionMarginPx: Int,
         val disconnectSeparationPx: Int,
         val columnActionSpacingPx: Int,
+        val statusMinimumWidthPx: Int,
+        val statusGapPx: Int,
     ) {
         init {
             require(horizontalContentPaddingPx >= 0)
@@ -390,6 +422,8 @@ internal object ControlBarLayoutPolicy {
             require(actionMarginPx >= 0)
             require(disconnectSeparationPx >= 0)
             require(columnActionSpacingPx >= 0)
+            require(statusMinimumWidthPx > 0)
+            require(statusGapPx >= 0)
         }
 
         fun horizontalActionsWidthPx(hostActionsVisible: Boolean): Int {
@@ -414,20 +448,34 @@ internal object ControlBarLayoutPolicy {
         geometry: Geometry,
     ): Mode {
         val actionWidthPx = geometry.horizontalActionsWidthPx(hostActionsVisible)
+        val statusWidthPx = geometry.statusMinimumWidthPx + geometry.statusGapPx
         if (!displaySelectorVisible) {
-            val compactMinimumPx = geometry.horizontalContentPaddingPx + actionWidthPx
+            val compactMinimumPx = geometry.horizontalContentPaddingPx + statusWidthPx + actionWidthPx
             return if (availableWidthPx >= compactMinimumPx) Mode.COMPACT else Mode.COLUMN
         }
         val inlineMinimumPx =
-            geometry.horizontalContentPaddingPx + geometry.selectorMinimumWidthPx + actionWidthPx
+            geometry.horizontalContentPaddingPx +
+                statusWidthPx +
+                geometry.selectorMinimumWidthPx +
+                actionWidthPx
         val stackedMinimumPx =
-            geometry.horizontalContentPaddingPx + maxOf(geometry.selectorMinimumWidthPx, actionWidthPx)
+            geometry.horizontalContentPaddingPx +
+                maxOf(geometry.statusMinimumWidthPx, geometry.selectorMinimumWidthPx, actionWidthPx)
         return when {
             availableWidthPx >= inlineMinimumPx -> Mode.INLINE
             availableWidthPx >= stackedMinimumPx -> Mode.STACKED
             else -> Mode.COLUMN
         }
     }
+
+    fun statusMargins(
+        mode: Mode,
+        geometry: Geometry,
+    ): Margins =
+        when (mode) {
+            Mode.COMPACT, Mode.INLINE -> Margins(0, 0, geometry.statusGapPx)
+            Mode.STACKED, Mode.COLUMN -> Margins(0, 0, 0, geometry.statusGapPx)
+        }
 
     fun actionMargins(
         mode: Mode,
