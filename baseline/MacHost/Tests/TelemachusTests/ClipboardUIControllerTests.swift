@@ -26,6 +26,25 @@ final class ClipboardUIControllerTests: XCTestCase {
         }
     }
 
+    private final class PasteboardStorageSpy: ClipboardPasteboardStorage {
+        var stored: String?
+        var writeSucceeds = true
+        var writeCount = 0
+
+        func string(forType dataType: NSPasteboard.PasteboardType) -> String? {
+            dataType == .string ? stored : nil
+        }
+
+        func writeObjects(_ objects: [NSPasteboardWriting]) -> Bool {
+            writeCount += 1
+            guard writeSucceeds else { return false }
+            if let item = objects.first as? NSPasteboardItem {
+                stored = item.string(forType: .string)
+            }
+            return true
+        }
+    }
+
     private final class ServerSpy: ClipboardServer {
         var clipboardAvailable = true
         var shareSucceeds = true
@@ -171,6 +190,29 @@ final class ClipboardUIControllerTests: XCTestCase {
             text: text,
             sha256: Data(SHA256.hash(data: Data(text.utf8)))
         )
+    }
+
+    func testPasteboardAdapterFailedWritePreservesExistingString() {
+        let storage = PasteboardStorageSpy()
+        storage.stored = "existing"
+        storage.writeSucceeds = false
+        let adapter = NSPasteboardClipboardAdapter(pasteboard: storage)
+
+        XCTAssertFalse(adapter.writeString("replacement"))
+
+        XCTAssertEqual(storage.writeCount, 1)
+        XCTAssertEqual(adapter.readString(), "existing")
+    }
+
+    func testPasteboardAdapterSuccessfulWriteReplacesString() {
+        let storage = PasteboardStorageSpy()
+        storage.stored = "existing"
+        let adapter = NSPasteboardClipboardAdapter(pasteboard: storage)
+
+        XCTAssertTrue(adapter.writeString("replacement"))
+
+        XCTAssertEqual(storage.writeCount, 1)
+        XCTAssertEqual(adapter.readString(), "replacement")
     }
 
     func testDirectContentRequiresConfirmationBeforePasteboardWrite() {

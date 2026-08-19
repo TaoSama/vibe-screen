@@ -1,6 +1,14 @@
 import AppKit
 import Foundation
 
+@MainActor
+protocol ClipboardPasteboardStorage: AnyObject {
+    func string(forType dataType: NSPasteboard.PasteboardType) -> String?
+    func writeObjects(_ objects: [NSPasteboardWriting]) -> Bool
+}
+
+extension NSPasteboard: ClipboardPasteboardStorage {}
+
 /// Abstracts the macOS pasteboard so clipboard reads and writes can be tested
 /// without touching `NSPasteboard.general`. Every implementation must be
 /// confined to the main actor: `NSPasteboard` is a main-thread-only AppKit
@@ -23,9 +31,9 @@ protocol ClipboardPasteboard: AnyObject {
 /// main actor crashes loudly instead of racing AppKit's pasteboard state.
 @MainActor
 final class NSPasteboardClipboardAdapter: ClipboardPasteboard {
-    private let pasteboard: NSPasteboard
+    private let pasteboard: ClipboardPasteboardStorage
 
-    init(pasteboard: NSPasteboard = .general) {
+    init(pasteboard: ClipboardPasteboardStorage = NSPasteboard.general) {
         self.pasteboard = pasteboard
     }
 
