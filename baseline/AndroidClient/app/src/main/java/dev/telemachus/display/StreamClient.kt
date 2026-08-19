@@ -116,6 +116,7 @@ class StreamClient(
     private val nextPingSequence = AtomicLong(1L)
     private val pendingOutboundFailure = AtomicReference<SessionFailure?>(null)
     private val pendingDecoderFailure = AtomicReference<SessionFailure?>(null)
+    private val pendingInboundFailure = AtomicReference<SessionFailure?>(null)
     private val pendingVideoConfigurationCommit = AtomicReference<PendingVideoConfigurationCommit?>(null)
     @Volatile private var lanRecordProtectionState = LanRecordProtectionState.NOT_APPLICABLE
     @Volatile private var lanSecureRecordSession: LanSecureRecordSession? = null
@@ -262,6 +263,7 @@ class StreamClient(
             stopRequested = false
             pendingOutboundFailure.set(null)
             pendingDecoderFailure.set(null)
+            pendingInboundFailure.set(null)
             try {
                 val candidate = registerInitialTransportCandidate() ?: return@withContext
                 if (terminationDispatcher.isClaimed()) {
@@ -307,11 +309,14 @@ class StreamClient(
                     if (failure != null && !failure.retryable) throw SessionProtocolException(failure)
                     throw IOException("Mac connection closed before display configuration")
                 }
+            } catch (e: SessionProtocolException) {
+                Log.e(TAG, "Session protocol failure", e)
+                completeConnectionEndNow(e.failure)
+                if (!sessionReady && !stopRequested) throw e
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Connection error", e)
                 completeConnectionEndNow(SessionFailure.transport(e.message ?: e.javaClass.simpleName))
                 if (!sessionReady && !stopRequested) {
-                    if (e is SessionProtocolException) throw e
                     val failure = lastTerminationFailure
                     if (failure != null && !failure.retryable) throw SessionProtocolException(failure)
                     if (e.message.orEmpty().contains("before display configuration")) throw e
@@ -344,6 +349,7 @@ class StreamClient(
         stopRequested = false
         pendingOutboundFailure.set(null)
         pendingDecoderFailure.set(null)
+        pendingInboundFailure.set(null)
         val request =
             try {
                 AuthHandshake.encodeRequest(token, deviceName)
@@ -620,10 +626,7 @@ class StreamClient(
                 protocolSession = session
                 nextInputId.set(1L)
                 controllerConnectionAcks.reset()
-                submitOutbound(
-                    kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-                    command = StreamOutboundCommand.ProtocolBatch { listOf(it.clientHello()) },
-                )
+                writeProtocolEnvelope(output, session.clientHello())
                 diagLog("Protocol v1 upgrade accepted")
             }
             is UpgradeFallbackDecision.UseCurrentLegacyConnection -> {
@@ -1031,14 +1034,17 @@ class StreamClient(
                 pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
                 completeConnectionEndNow(error.failure)
                 Log.e(TAG, "Session protocol failure: ${error.failure.detail}", error)
+                throw error
             } catch (error: ProtocolV1Failure) {
                 terminalFailure = error.toSessionFailure()
                 pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
                 completeConnectionEndNow(checkNotNull(terminalFailure))
                 Log.e(TAG, "Protocol v1 failure: ${error.message}", error)
+                throw SessionProtocolException(checkNotNull(terminalFailure))
             } catch (e: IOException) {
                 terminalFailure =
-                    pendingDecoderFailure.get()
+                    pendingInboundFailure.get()
+                        ?: pendingDecoderFailure.get()
                         ?: SessionFailure.transport(e.message ?: e.javaClass.simpleName)
                 pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
                 completeConnectionEndNow(checkNotNull(terminalFailure))
@@ -1048,8 +1054,8 @@ class StreamClient(
             } finally {
                 completeConnectionEndNow(
                     terminalFailure
+                        ?: pendingInboundFailure.get()
                         ?: pendingDecoderFailure.get()
-                        ?: pendingOutboundFailure.get()
                         ?: SessionFailure.transport("receive loop ended"),
                 )
             }
@@ -1071,7 +1077,7 @@ class StreamClient(
             try {
                 ProtocolV1Framing.read(input, firstChannel)
             } catch (failure: IOException) {
-                throw protocolFailure(
+                throw terminalProtocolFailure(
                     reason = "invalid_frame",
                     source = ProtocolV1Failure.Source.FRAME,
                     cause = failure,
@@ -1083,7 +1089,7 @@ class StreamClient(
                     try {
                         Envelope.parseFrom(frame.payload)
                     } catch (failure: Exception) {
-                        throw protocolFailure(
+                        throw terminalProtocolFailure(
                             reason = "invalid_envelope",
                             source = ProtocolV1Failure.Source.ENVELOPE,
                             cause = failure,
@@ -1116,7 +1122,7 @@ class StreamClient(
                     try {
                         ProtocolV1Framing.decodeVideo(frame.payload)
                     } catch (failure: Exception) {
-                        throw protocolFailure(
+                        throw terminalProtocolFailure(
                             reason = "invalid_media_payload",
                             source = ProtocolV1Failure.Source.MEDIA_PAYLOAD,
                             cause = failure,
@@ -1669,8 +1675,10 @@ class StreamClient(
                     throw writeFailure
                 }
             }
-            requestConnectionEnd(failure.toSessionFailure())
-            command.completion.completeExceptionally(failure)
+            val sessionFailure = failure.toSessionFailure()
+            pendingInboundFailure.compareAndSet(null, sessionFailure)
+            completeConnectionEndNow(sessionFailure)
+            command.completion.completeExceptionally(SessionProtocolException(sessionFailure))
         } catch (failure: IOException) {
             pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
             requestConnectionEnd(
@@ -2067,7 +2075,19 @@ class StreamClient(
             retryable = false,
             source = source,
             message = "$reason: ${cause.message ?: cause.javaClass.simpleName}",
-        ).also { it.initCause(cause) }
+            cause = cause,
+        )
+
+    private fun terminalProtocolFailure(
+        reason: String,
+        source: ProtocolV1Failure.Source,
+        cause: Throwable,
+    ): SessionProtocolException {
+        val failure = protocolFailure(reason, source, cause).toSessionFailure()
+        pendingInboundFailure.compareAndSet(null, failure)
+        completeConnectionEndNow(failure)
+        return SessionProtocolException(failure)
+    }
 
     private fun diagLog(msg: String) = DiagLog.log("SC", msg)
 
