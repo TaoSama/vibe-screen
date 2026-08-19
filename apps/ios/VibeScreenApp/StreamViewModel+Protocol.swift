@@ -22,7 +22,7 @@ extension StreamViewModel {
             switch frame.channel {
             case .control: try handleControl(EnvelopeCodec.deserialize(frame.payload))
             case .video: try handleVideo(MediaPacket(serializedFrame: frame.payload))
-            case .audio: try handleAudio(AudioPacket(serializedFrame: frame.payload))
+            case .audio: try handleAudioFrame(frame.payload)
             case .bulkTransfer: try handleBulk(FileChunk(serializedFrame: frame.payload))
             }
         } catch {
@@ -375,11 +375,14 @@ extension StreamViewModel {
             guard negotiatedCapabilities.contains(.audio), managedConfiguration.policy.audioAllowed else {
                 throw ClipboardTransferError.policyDenied
             }
-            audioFormat = try audioPlayback.configure(config)
-            audioConfig = config
-            audioJitter.reset(firstSequence: 0)
+            let format = try PCMStreamFormat(config: config)
+            try audioSession.validate(config: config)
+            _ = try audioPlayback.configure(config)
+            try audioSession.accept(config: config, format: format)
             result.accepted = true
         } catch {
+            audioPlayback.stop()
+            audioSession.failClosed()
             result.accepted = false
             result.rejectionReason = error.localizedDescription
         }
@@ -419,14 +422,23 @@ extension StreamViewModel {
     }
 
     func handleAudio(_ packet: AudioPacket) throws {
-        guard let audioConfig, let audioFormat else { return }
-        _ = try audioJitter.enqueue(
-            packet,
-            sessionEpoch: state.sessionEpoch,
-            configEpoch: audioConfig.configEpoch,
-            format: audioFormat
-        )
-        for ready in audioJitter.drainReady() { _ = try audioPlayback.schedule(ready) }
+        let ready: [AudioPacket]
+        do {
+            ready = try audioSession.enqueue(packet, sessionEpoch: state.sessionEpoch)
+        } catch let error as AudioStreamError where error.isDroppableMediaPacketError {
+            return
+        }
+        for ready in ready {
+            _ = try audioPlayback.schedule(ready)
+        }
+    }
+
+    private func handleAudioFrame(_ payload: Data) throws {
+        do {
+            try handleAudio(AudioPacket(serializedFrame: payload))
+        } catch let error as AudioStreamError where error.isDroppableMediaPacketError {
+            return
+        }
     }
 
     func handleBulk(_ chunk: FileChunk) throws {
@@ -545,8 +557,7 @@ extension StreamViewModel {
         let policy = managedConfiguration.policy
         if !policy.audioAllowed {
             audioPlayback.stop()
-            audioConfig = nil
-            audioFormat = nil
+            audioSession.failClosed()
         }
         if !policy.clipboardAllowed { clipboard.rejectPending() }
         if !policy.fileTransferAllowed {

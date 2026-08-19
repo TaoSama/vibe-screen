@@ -28,13 +28,51 @@ dummy display is required when macOS does not expose a usable headless display.
    ```
 
 3. Unzip it and move `Vibe Screen.app` to `/Applications`.
-4. Open the app from Finder. Development artifacts are ad-hoc signed and are
-   not notarized; only install an artifact you built or obtained from the
-   project's official release channel.
+4. Open the app from Finder. Development preview artifacts are not notarized;
+   only install an artifact you built or obtained from the project's official
+   release channel.
 
 The current bundle identifier is `dev.telemachus.display`. Keep the app at the
 same path across upgrades so macOS has the best chance of retaining its privacy
 grants.
+
+## Local development Host identity
+
+For iterative Android device reruns, build and install the Host with one stable
+local codesigning identity and one stable install path:
+
+```bash
+make baseline-macos-dev-install
+```
+
+The command uses `VIBE_SCREEN_SIGN_IDENTITY` when it is set, otherwise it uses
+the default `Vibe Screen Dev` identity. It refuses ad-hoc signing for local
+device reruns because ad-hoc signatures drift across rebuilds and invalidate the
+macOS TCC grants. CI and release-preview packaging still pass `--sign-identity -`
+explicitly where a throwaway signature is acceptable.
+
+Create or select the stable identity in Keychain Access as a self-signed Code
+Signing certificate named `Vibe Screen Dev`, then confirm it is visible to
+codesign:
+
+```bash
+security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
+```
+
+Do not create multiple certificates with the same name. If more than one
+`Vibe Screen Dev` identity exists, the build fails closed so the certificate
+leaf hash cannot drift accidentally. The local install script writes the current
+identity, certificate SHA-1, CDHash, binary SHA-256, designated requirement, and
+read-only TCC state to:
+
+```text
+.build/dev-macos-host/host-signing-and-permissions.txt
+```
+
+The script does not import certificates, store passwords, update Keychain ACLs,
+modify `TCC.db`, run `tccutil`, or grant permissions. If codesign cannot access
+the private key, fix the Keychain item ownership/ACL for `/usr/bin/codesign` on
+that machine instead of switching to ad-hoc signing.
 
 ## First-run permissions
 
@@ -51,6 +89,25 @@ Grant both in **System Settings → Privacy & Security**, then quit and reopen
 Vibe Screen. The app rechecks permission while it is running, but a relaunch is
 the most reliable path after a new grant. Never grant Accessibility to an
 untrusted build: it can synthesize system-wide input.
+
+## Touch-rerun preflight
+
+Before running the opt-in Android touch-gesture rerun, install the stable local
+Host and require the preflight to pass:
+
+```bash
+make baseline-macos-dev-install
+make baseline-macos-touch-preflight
+```
+
+`baseline-macos-touch-preflight` verifies `/Applications/Vibe Screen.app`, the
+`dev.telemachus.display` bundle identity, strict codesign validation, a non
+ad-hoc signing identity, the designated requirement, and read-only Screen
+Recording plus Accessibility rows in the user's TCC database. It exits non-zero
+if any check is missing. When blocked, open **System Settings → Privacy &
+Security → Screen & System Audio Recording** and **Accessibility**, grant the
+installed `/Applications/Vibe Screen.app`, quit and reopen Vibe Screen, then run
+the preflight again.
 
 ## USB quick start
 
@@ -90,7 +147,10 @@ the desired serial in host settings.
   display is unplugged without forgetting the selection.
 - **Mirror Main Display** creates a private client display and configures it as
   a mirror of the current main display.
-- Rotation is advertised to the client as 0°, 90°, 180°, or 270°.
+- Rotation is advertised to the client as 0°, 90°, 180°, or 270°. This updates
+  display geometry and client orientation; it is not evidence that the Host
+  rotated captured source pixels. Rotated physical and virtual host displays
+  need their own visual and input acceptance record.
 - **Move Focused Window to Client Display** in the menu bar moves the current
   accessible window while preserving its relative placement.
 - **Return Moved Windows** restores windows to their original display and
@@ -223,11 +283,12 @@ The host advertises Protocol v1 controller support only when the running app can
 create an `IOHIDUserDevice` gamepad. Development ad-hoc builds normally cannot
 do this: they need an Apple identity-signed build with the approved
 `com.apple.developer.hid.virtual.device` entitlement in the provisioning
-profile. Android production controller forwarding is not wired yet; after it
-lands, a physical Android controller run can prove client mapping and Protocol
-v1 delivery, but it still does not prove Mac virtual-gamepad injection unless
-the host logs controller availability and a Mac-side test target sees the
-virtual controller input.
+profile. Android production controller forwarding is wired and offline-tested,
+but a physical Android controller run proves runtime acceptance only when the
+host logs controller availability and a Mac-side test target sees the virtual
+controller input. If the physical controller or entitled Host is unavailable,
+record a blocked summary with `vibescreen_evidence.controller_runtime` instead
+of treating the mapper/protocol tests as a pass.
 
 ### Logs and diagnostics
 
@@ -254,9 +315,13 @@ make baseline-macos-test
 make baseline-macos-app
 ```
 
-`make baseline-macos-app` creates an ad-hoc signed `.app`, versioned ZIP, and
-SHA-256 file under `.build/release-artifacts/`. Public distribution still
-requires a project-controlled Developer ID signature and Apple notarization.
+`make baseline-macos-app` creates a stable-signed local `.app` by default,
+versioned ZIP, and SHA-256 file under `.build/release-artifacts/`. Set
+`VIBE_SCREEN_SIGN_IDENTITY` to use another existing identity. Passing
+`--sign-identity -` directly to `scripts/package_macos.py` creates an ad-hoc
+preview artifact and should not be used for iterative device reruns. Public
+distribution still requires a project-controlled Developer ID signature and
+Apple notarization.
 
 ## Known limitations
 
@@ -268,15 +333,15 @@ requires a project-controlled Developer ID signature and Apple notarization.
 - Protocol v1 keyboard and native-pointer forwarding are implemented in the
   current host/client path, with keyboard and scroll verified on device. Native
   mouse move/click still require physical Android HID-mouse confirmation.
-- Controller protocol models, Android mapping/state, Host state machines, and
-  Mac virtual-gamepad injection are source- and self-tested. Android production
-  controller event forwarding is not wired yet; Mac virtual-gamepad runtime
-  acceptance also requires an identity-signed, entitled build and physical
-  Android controller evidence after that wiring exists.
+- Controller protocol models, Android mapping/state, Android production event
+  forwarding, Host state machines, and Mac virtual-gamepad injection are
+  source- and self-tested. Mac virtual-gamepad runtime acceptance still requires
+  an identity-signed, entitled build and physical Android controller evidence.
 - The legacy product session has no keyboard or native-mouse message entry
   point. Touch-derived click, drag, right-click, scroll, and zoom are present
   only as compatibility behavior.
 - Adaptive bitrate/resolution policy, external glass-to-glass latency, Xiaomi
   12 acceptance, two-hour Phase 1 soak, and eight-hour Phase 2 soak remain
   unverified.
-- The current development ZIP is ad-hoc signed and not notarized.
+- The current development ZIP is not notarized. CI preview artifacts are ad-hoc
+  signed; local device-rerun builds should use the stable development identity.

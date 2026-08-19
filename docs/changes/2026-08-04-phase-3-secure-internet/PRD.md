@@ -52,8 +52,10 @@ real ScreenCaptureKit content, visible Mac input, carrier/CGNAT, automatic
 handoff, latency, or stability evidence. The services remain single-node
 development implementations; automatic authority issuance, cross-service
 revocation propagation, authoritative coturn byte accounting, and a production
-deployment remain open. Existing wireless mode remains trusted-LAN plaintext
-TCP authenticated with a bearer token; it is not Phase 3 security.
+deployment remain open. Trusted-LAN remains separate from Phase 3 Internet
+transport: current macOS/Android peers protect the token-admitted TCP session
+with per-session application records, while explicit legacy fallback remains
+plaintext and is not Phase 3 security.
 
 As of 2026-08-06, main commit
 `4c2e908fe31af4c187684991301e163371444eab` had passed Phase 0
@@ -140,7 +142,8 @@ cryptographic primitive may be introduced.
 - audio, clipboard, file transfer, multiple clients, managed-device enrollment,
   or account recovery;
 - treating WebRTC DTLS/SRTP alone as the product's relay-independent E2EE claim;
-- silently routing trusted-LAN plaintext mode through the Internet.
+- silently routing trusted-LAN mode or explicit plaintext legacy fallback through
+  the Internet.
 
 ## Target acceptance criteria
 

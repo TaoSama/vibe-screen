@@ -244,5 +244,17 @@ class AndroidSessionPacketCipher internal constructor(
         private const val NONCE_BYTES = 12
         private const val GCM_TAG_BYTES = 16
         private const val HEADER_BYTES = 4 + 1 + SESSION_ID_HASH_BYTES + 8 + 8 + 1 + 1 + NONCE_BYTES
+
+        fun declaredSessionChannel(record: ByteArray): SessionChannel? {
+            if (record.size < HEADER_BYTES + GCM_TAG_BYTES) return null
+            val header = ByteBuffer.wrap(record)
+            if (header.int != MAGIC || header.get() != VERSION) return null
+            header.position(4 + 1 + SESSION_ID_HASH_BYTES + Long.SIZE_BYTES + Long.SIZE_BYTES + 1)
+            return when (header.get().toInt() and 0xff) {
+                SecurityChannel.CONTROL.wireValue -> SessionChannel.CONTROL
+                SecurityChannel.MEDIA.wireValue -> SessionChannel.MEDIA
+                else -> null
+            }
+        }
     }
 }

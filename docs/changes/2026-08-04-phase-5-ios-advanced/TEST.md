@@ -81,13 +81,15 @@ apps/ios/Scripts/run_machost_loopback.py
 ```
 
 The harness starts the production `Vibe Screen` executable with its bounded iOS
-loopback adapter on `127.0.0.1:54321`, then starts the iOS Core transport/session
-executable as a separate process. The client uses the production
+loopback adapter on `127.0.0.1:54321` and explicit plaintext legacy fallback,
+then starts the iOS Core transport/session executable as a separate process. The
+client uses the production
 generation-scoped `ControlOutbox` for every outbound control envelope. It runs
 a normal lifecycle and a separate invalid-target case. The covered boundary is:
 
 ```text
-SSWA/SSWR authentication -> 0D/0D01 upgrade -> ClientHello/HostHello
+SSWA/SSWR authentication -> explicit plaintext legacy fallback
+-> 0D/0D01 upgrade -> ClientHello/HostHello
 -> SessionAccepted/capabilities -> display list/start -> VideoConfigResult
 -> video media frame -> Ping/Pong -> display+stream-targeted TouchEvent
 -> DisconnectNotice
@@ -108,10 +110,10 @@ production-process integration)
 ```
 
 This proves the iOS Core trusted-LAN transport, FIFO control writer, and
-main-session composition
-against the baseline MacHost. It does not exercise `StreamViewModel`, the
-decoder, or UI; boot the iOS application; use an iOS device; or prove hardware
-VideoToolbox behavior.
+main-session composition against the baseline MacHost's explicit legacy
+fallback. It does not exercise `StreamViewModel`, the decoder, or UI; boot the
+iOS application; use an iOS device; prove hardware VideoToolbox behavior; or
+prove the macOS/Android secure-record LAN path.
 
 ## iOS SDK build evidence
 
