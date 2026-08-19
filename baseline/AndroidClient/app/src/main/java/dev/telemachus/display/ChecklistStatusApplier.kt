@@ -1,8 +1,10 @@
 package dev.telemachus.display
 
 import android.content.Context
+import android.graphics.Typeface
 import android.view.View
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 
 internal enum class ChecklistStatus {
     READY,
@@ -42,5 +44,15 @@ internal object ChecklistStatusApplier {
         if (label.text.toString() != description) {
             label.text = description
         }
+        label.setTextColor(
+            ContextCompat.getColor(
+                context,
+                when (status) {
+                    ChecklistStatus.NOT_READY -> R.color.warning
+                    else -> R.color.on_surface_muted
+                },
+            ),
+        )
+        label.setTypeface(null, if (status == ChecklistStatus.NOT_READY) Typeface.BOLD else Typeface.NORMAL)
     }
 }

@@ -20,6 +20,8 @@
     <!-- Extra separation before the destructive Disconnect button so it is
          not adjacent to the settings/display controls. -->
     <dimen name="control_bar_disconnect_margin_start">12dp</dimen>
+    <dimen name="connection_status_min_width">72dp</dimen>
+    <dimen name="connection_status_gap">6dp</dimen>
 
     <!-- Display-selection capsule presented as a tappable dropdown selector:
          a leading displays icon, the active display name, and a chevron. Sized
