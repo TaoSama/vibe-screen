@@ -7,12 +7,13 @@ The client is an early developer release. Its core modules build and self-test
 on macOS; the iPhone Simulator UI smoke and unsigned iPhoneOS archive gates
 pass in CI. Signing, installation, and iPhone/iPad hardware decode remain
 separate gates; do not treat Simulator or Android records as that evidence.
-The trusted-LAN Core client now
-connects to the baseline MacHost on TCP port `54321`, completes authenticated
+The trusted-LAN Core client still uses the legacy plaintext compatibility path:
+it connects to the baseline MacHost on TCP port `54321`, completes authenticated
 `SSWA`/`SSWR` admission plus the `0D` legacy-to-v1 upgrade, and then runs its
 Protocol v1 main session. A real two-process loopback covers this baseline
-boundary; it is not iOS-device, UI, hardware VideoToolbox, or advanced-host
-evidence.
+boundary only when the test MacHost explicitly enables plaintext legacy
+fallback; it is not iOS-device, UI, hardware VideoToolbox, current macOS/Android
+secure-record LAN, or advanced-host evidence.
 
 ## Requirements
 
@@ -51,14 +52,15 @@ Run the real release-build, two-process iOS Core to baseline MacHost loopback:
 apps/ios/Scripts/run_machost_loopback.py
 ```
 
-This starts MacHost on an OS-assigned loopback test port and checks authenticated
-`SSWA`/`SSWR` admission, the `0D`/`0D01` upgrade exchange, Hello and negotiated
-capabilities, display list/start, video-config acknowledgement, video media
-framing, ping/pong, display/stream-targeted touch, invalid-target protocol
-error, and disconnect. The gate passes the bound port through a strictly
-validated test-only environment variable; production trusted-LAN connections
-still default to `54321`. Use `--skip-build` only after both release products
-have already been built.
+This starts MacHost on an OS-assigned loopback test port with explicit plaintext
+legacy fallback enabled and checks authenticated `SSWA`/`SSWR` admission, the
+`0D`/`0D01` upgrade exchange, Hello and negotiated capabilities, display
+list/start, video-config acknowledgement, video media framing, ping/pong,
+display/stream-targeted touch, invalid-target protocol error, and disconnect.
+The gate passes the bound port through a strictly validated test-only
+environment variable; production trusted-LAN connections still default to
+`54321`. Use `--skip-build` only after both release products have already been
+built.
 
 All outbound main-session control uses one session-owner-scoped FIFO writer;
 message ID allocation, envelope encoding, and the TCP send therefore share one
@@ -120,8 +122,10 @@ device, and Run. The app supports both device families from one target.
    movement while they remain over the stream.
 7. Tap **断开** before changing hosts.
 
-The current developer transport is plaintext trusted-LAN TCP. Do not expose it
-to the Internet or an untrusted network.
+The iOS developer transport is plaintext trusted-LAN TCP and requires a MacHost
+configured for explicit legacy fallback. Do not expose it to the Internet or an
+untrusted network, and do not treat it as evidence for the macOS/Android secure
+LAN record path.
 
 ## Upgrade, reset, and uninstall
 
