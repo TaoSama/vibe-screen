@@ -67,6 +67,32 @@ produced them. Later Xiaomi 13 streaming, display-switch, input, and
 two-hour-soak evidence is recorded separately under
 `docs/changes/2026-08-04-phase-0-baseline/evidence/`.
 
+### Native pointer HID mouse gate
+
+Native pointer move/click is a hardware-gated acceptance item. Use a real USB or
+Bluetooth mouse attached to the Android device under test; `adb shell input
+mouse ...` can exercise scroll, but it does not reliably deliver hover/move to
+the focused Android view and cannot close the native-pointer gate.
+
+Before running the gate, start the matching macOS Host, grant Accessibility,
+establish a Protocol v1 USB or trusted-LAN session, and keep the Android client
+foregrounded on the streaming view. Then run:
+
+```bash
+python3 scripts/native_pointer_hid_acceptance.py \
+  --serial "$ADB_SERIAL" \
+  --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
+  --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/$(date -u +%F)-p0110-native-pointer-hid
+```
+
+While the script waits, move the physical mouse over the Android stream, then
+left-click and release. A pass requires newly appended Host log lines for native
+pointer `changed`, `began`, and `ended` injection. If no external Android input
+device with a mouse, touchpad, or trackball source is present, the script exits
+with code `2` and writes a `blocked` evidence bundle instead of fabricating a
+device result. Evidence from a Nubia P0110 must remain labeled P0110/pacific;
+it must not be relabeled as Xiaomi 13/fuxi.
+
 ## Pass criteria
 
 - APK installs and cold-starts without fatal exception.

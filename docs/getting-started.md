@@ -122,8 +122,11 @@ LAN support is experimental. Pair with the QR code shown by the Mac host while
 both devices are on the same trusted private network. Android camera permission
 is used only to scan a new QR code. Existing USB use does not require it.
 
-LAN currently uses authenticated but unencrypted TCP. Screen content and input
-may be observable on the network. Do not use it on public or hostile networks.
+Current macOS and Android peers require the QR/token admission gate and then
+protect the admitted LAN session with per-session AES-256-GCM application
+records. Explicit legacy fallback remains plaintext for old peers only and must
+not be described as encrypted. Do not use LAN mode on public or hostile
+networks.
 
 ## Release signing
 
