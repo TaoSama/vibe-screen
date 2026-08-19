@@ -215,6 +215,12 @@ func (s *PostgresStore) SuspendAccount(ctx context.Context, accountID string, no
 		if _, err := tx.Exec(ctx, `UPDATE authority_signaling_sessions SET revoked_at=COALESCE(revoked_at,$2) WHERE account_id=$1 AND revoked_at IS NULL`, accountID, now); err != nil {
 			return err
 		}
+		// Fail closed: close every relay allocation bound to this account so a
+		// suspended account cannot keep consuming TURN bandwidth or advance
+		// coturn accounting through a later usage update.
+		if _, err := tx.Exec(ctx, `UPDATE authority_relay_allocations SET closed_at=COALESCE(closed_at,$2) WHERE device_id IN (SELECT device_id FROM authority_devices WHERE account_id=$1) AND closed_at IS NULL`, accountID, now); err != nil {
+			return err
+		}
 		_, err := tx.Exec(ctx, `INSERT INTO authority_audit_events(event_type,account_id,occurred_at) VALUES ('account_suspended',$1,$2)`, accountID, now)
 		return err
 	})
@@ -273,6 +279,12 @@ func (s *PostgresStore) RevokeDevice(ctx context.Context, deviceID string, epoch
 			return err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE authority_signaling_sessions SET revoked_at=COALESCE(revoked_at,$2) WHERE (host_device_id=$1 OR client_device_id=$1) AND revoked_at IS NULL`, deviceID, now); err != nil {
+			return err
+		}
+		// Fail closed: close every relay allocation bound to this device so a
+		// revoked device cannot keep consuming TURN bandwidth or advance
+		// coturn accounting through a later usage update.
+		if _, err := tx.Exec(ctx, `UPDATE authority_relay_allocations SET closed_at=COALESCE(closed_at,$2) WHERE device_id=$1 AND closed_at IS NULL`, deviceID, now); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `INSERT INTO authority_audit_events(event_type,device_id,occurred_at) VALUES ('device_revoked',$1,$2)`, deviceID, now)
@@ -397,14 +409,22 @@ func (s *PostgresStore) AuthorizeSignaling(ctx context.Context, sessionID, token
 }
 
 func (s *PostgresStore) InvalidateSignaling(ctx context.Context, sessionID string, now time.Time) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE authority_signaling_sessions SET revoked_at=COALESCE(revoked_at,$2) WHERE session_id=$1`, sessionID, now)
-	if err != nil {
-		return storageError("invalidate signaling", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return s.transaction(ctx, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE authority_signaling_sessions SET revoked_at=COALESCE(revoked_at,$2) WHERE session_id=$1`, sessionID, now)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		// Fail closed: close every relay allocation bound to this session so
+		// invalidating a signaling admission also blocks later coturn usage
+		// updates for the authority ledger.
+		if _, err := tx.Exec(ctx, `UPDATE authority_relay_allocations SET closed_at=COALESCE(closed_at,$2) WHERE session_id=$1 AND closed_at IS NULL`, sessionID, now); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (s *PostgresStore) AdmitRelay(ctx context.Context, request RelayAdmissionRequest, now time.Time) error {
@@ -490,7 +510,7 @@ func (s *PostgresStore) ApplyCoturnUsage(ctx context.Context, usage CoturnUsage)
 			}
 			return err
 		}
-		if sourceID != usage.SourceID || deviceID != usage.DeviceID || sessionID != usage.SessionID || usage.Sequence <= uint64(sequence) || usage.IngressBytes < uint64(ingress) || usage.EgressBytes < uint64(egress) || usage.ObservedAt.Before(lastObservedAt) || closedAt != nil {
+		if sourceID != usage.SourceID || deviceID != usage.DeviceID || sessionID != usage.SessionID || usage.Sequence <= uint64(sequence) || usage.IngressBytes < uint64(ingress) || usage.EgressBytes < uint64(egress) || usage.ObservedAt.Before(lastObservedAt) {
 			return ErrStaleUsage
 		}
 		if err := lockActiveDevice(ctx, tx, deviceID); err != nil {
@@ -507,6 +527,9 @@ func (s *PostgresStore) ApplyCoturnUsage(ctx context.Context, usage CoturnUsage)
 		if sessionRevokedAt != nil || !usage.ObservedAt.Before(sessionExpiresAt) {
 			return ErrRevoked
 		}
+		if closedAt != nil {
+			return ErrStaleUsage
+		}
 		deltaIngress := usage.IngressBytes - uint64(ingress)
 		deltaEgress := usage.EgressBytes - uint64(egress)
 		var quotaExceeded bool
@@ -519,7 +542,7 @@ func (s *PostgresStore) ApplyCoturnUsage(ctx context.Context, usage CoturnUsage)
 				return err
 			}
 		}
-		_, err = tx.Exec(ctx, `UPDATE authority_relay_allocations SET observed_sequence=$3,ingress_bytes=$4,egress_bytes=$5,last_observed_at=$6::timestamptz,closed_at=CASE WHEN $7 THEN $6::timestamptz ELSE NULL END WHERE source_id=$1 AND allocation_id=$2`, usage.SourceID, usage.AllocationID, int64(usage.Sequence), int64(usage.IngressBytes), int64(usage.EgressBytes), usage.ObservedAt, usage.Closed)
+		_, err = tx.Exec(ctx, `UPDATE authority_relay_allocations SET observed_sequence=$3,ingress_bytes=$4,egress_bytes=$5,last_observed_at=$6::timestamptz,closed_at=CASE WHEN closed_at IS NOT NULL THEN closed_at WHEN $7 THEN $6::timestamptz ELSE NULL END WHERE source_id=$1 AND allocation_id=$2`, usage.SourceID, usage.AllocationID, int64(usage.Sequence), int64(usage.IngressBytes), int64(usage.EgressBytes), usage.ObservedAt, usage.Closed)
 		return err
 	})
 	return duplicate, err
@@ -552,6 +575,9 @@ func revokeDeviceForRelayQuotaExceeded(ctx context.Context, tx pgx.Tx, deviceID 
 		return nil
 	}
 	if _, err := tx.Exec(ctx, `UPDATE authority_signaling_sessions SET revoked_at=COALESCE(revoked_at,CURRENT_TIMESTAMP) WHERE (host_device_id=$1 OR client_device_id=$1) AND revoked_at IS NULL`, deviceID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE authority_relay_allocations SET closed_at=COALESCE(closed_at,CURRENT_TIMESTAMP) WHERE device_id=$1 AND closed_at IS NULL`, deviceID); err != nil {
 		return err
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO authority_audit_events(event_type,device_id) VALUES ('relay_quota_exceeded',$1)`, deviceID)

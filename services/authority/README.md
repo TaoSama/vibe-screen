@@ -112,7 +112,7 @@ Authority remains the durable source of truth for accepted per-device session
 epoch floors in production. Callers must never mint a local fallback epoch or
 credential when Authority is unavailable. This Compose profile does not add
 automatic account/session issuance, relay/coturn integration, active transport
-revocation, public ingress, or horizontally shared signaling state.
+disconnect, public ingress, or horizontally shared signaling state.
 
 ## Internal API
 
@@ -276,6 +276,10 @@ separate production requirement.
 - signaling and relay integration that fails closed on authority errors
   (signaling `production_authority` mode is implemented and covered by a
   two-process PostgreSQL test; relay/coturn integration remains open);
+- ledger-side closure of relay allocations when an account is suspended, a
+  device is revoked, or a signaling admission is invalidated is implemented;
+  later coturn usage for revoked, suspended, expired, or closed allocations
+  fails closed without advancing daily counters;
 - collector durable cursor/WAL, node heartbeat, gap detection and two-snapshot
   close reconciliation;
 - mapping from issued allocation IDs to complete coturn REST usernames;
@@ -292,7 +296,8 @@ separate production requirement.
   created.
 - The relay/coturn control plane is not yet wired to the authority.
 - An active PeerConnection or TURN allocation is not actively disconnected when
-  a device is revoked or a signaling admission is invalidated.
+  a device is revoked or a signaling admission is invalidated; the current
+  closure is an authority-ledger boundary, not a data-plane kill path.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped
   epoch operate in different scopes and are not yet unified.
 - Signaling remains single-instance in-memory routing; per-message remote

@@ -152,6 +152,53 @@ func TestSecureChannelSequenceNeverWraps(t *testing.T) {
 	}
 }
 
+func TestSecureChannelRejectsOutOfRangeSequenceBeforeNonceWrap(t *testing.T) {
+	keys := testSessionKeys()
+	sender := mustChannel(t, keys, ChannelMedia, SenderHost)
+	receiver := mustChannel(t, keys, ChannelMedia, SenderHost)
+	packet, err := sender.Seal([]byte("first"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tampered := packet
+	tampered.Header.SessionID = append([]byte(nil), packet.Header.SessionID...)
+	tampered.Header.Sequence = maxSequence + 2
+	tampered.Header.Nonce = packetNonce(packet.Header.SessionEpoch, tampered.Header.Sequence)
+	if !bytes.Equal(tampered.Header.Nonce, packet.Header.Nonce) {
+		t.Fatalf("test setup error: expected wrapped nonce suffix, got %x and %x", tampered.Header.Nonce, packet.Header.Nonce)
+	}
+	if _, err := receiver.Open(tampered); !errors.Is(err, ErrInvalidPacket) {
+		t.Fatalf("out-of-range sequence error=%v, want ErrInvalidPacket", err)
+	}
+	if _, err := receiver.Open(packet); err != nil {
+		t.Fatalf("valid packet rejected after out-of-range sequence: %v", err)
+	}
+}
+
+func TestSecureChannelNonceIncludesSessionEpoch(t *testing.T) {
+	keys := testSessionKeys()
+	first := mustChannel(t, keys, ChannelControl, SenderHost)
+	second, err := NewSecureChannel(make([]byte, 16), 2, keys, ChannelControl, SenderHost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstPacket, err := first.Seal([]byte("first"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondPacket, err := second.Seal([]byte("second"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(firstPacket.Header.Nonce, secondPacket.Header.Nonce) {
+		t.Fatalf("sessions sharing a key must not reuse a nonce: %x", firstPacket.Header.Nonce)
+	}
+	if firstPacket.Header.SessionEpoch == secondPacket.Header.SessionEpoch {
+		t.Fatal("test setup error: session epochs must differ")
+	}
+}
+
 func mustChannel(t *testing.T, keys SessionKeys, channel Channel, role SenderRole) *SecureChannelState {
 	t.Helper()
 	state, err := NewSecureChannel(make([]byte, 16), 1, keys, channel, role)

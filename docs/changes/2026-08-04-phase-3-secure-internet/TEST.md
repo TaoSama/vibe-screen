@@ -55,6 +55,14 @@ sessions, obtains authority-admitted relay credentials, invalidates one session,
 revokes the client device at Authority, then proves both signaling role access
 and future relay credential admission fail closed.
 
+`make phase3-test` also runs static production-profile checks for the Phase 3
+relay/Authority deployment files. These checks prove only repository configuration
+invariants: production relay and Authority profiles require digest-pinned images,
+secrets are file-backed, relay HTTP remains loopback-only, and the coturn
+production profile retains TLS, quota, bounded relay-port, and private/internal
+peer-deny policy. They do not start a public relay, inspect real secret delivery,
+or prove public reachability.
+
 Record failures as failures. In particular, an unavailable XCTest/full-Xcode or
 device environment is not a waiver. When production WebRTC/crypto/signaling code
 is added, add deterministic Make targets rather than relying on undocumented IDE
@@ -305,10 +313,13 @@ named by that run:
   payloads, wakes long polls, and retains only the request-ID tombstone until
   expiry.
 - Relay revoke/issuance serialization and revoked-device rejection passed race
-  and persistence tests. New credentials and every later usage lifecycle event
-  fail closed after revocation. The coturn integration still relayed 10/10 test
-  messages; it did not prove termination of an allocation that was already active
-  when the control-plane revoke occurred.
+  and persistence tests. New credentials fail closed after revocation. Authority
+  PostgreSQL tests now also prove account suspension, device revocation, and
+  signaling invalidation close the authority relay-allocation ledger while later
+  coturn usage for those revoked, suspended, expired, or closed allocations
+  fails closed without advancing counters. The coturn
+  integration still relayed 10/10 test messages; it did not prove termination of
+  an allocation that was already active when the control-plane revoke occurred.
 - Phase 3 Python tests cover fail-closed device-lease handling and evidence
   revision recording. These tests do not access the Android endpoint.
 - Swift and Kotlin pairing implementations have local happy-path, one-time,
