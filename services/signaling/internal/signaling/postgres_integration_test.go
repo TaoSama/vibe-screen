@@ -2,7 +2,10 @@ package signaling
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync"
@@ -43,6 +46,139 @@ func openSignalingIntegrationStore(t *testing.T, cfg Config) (*PostgresStore, Co
 	}
 	t.Cleanup(store.Close)
 	return store, cfg
+}
+
+func TestPostgresAuthorityReplayRebuildsMissingLocalReservation(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour).UTC().Round(time.Microsecond)
+	var calls atomic.Int32
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		created := calls.Add(1) == 1
+		w.Header().Set("Content-Type", "application/json")
+		if created {
+			w.WriteHeader(http.StatusCreated)
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
+		_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+			SessionID:   "authority-session-1",
+			HostToken:   "host-token-1",
+			ClientToken: "client-token-1",
+			ExpiresAt:   expiresAt,
+			Created:     created,
+		})
+	}))
+	defer authorityServer.Close()
+
+	cfg := testAuthorityConfig(authorityServer.URL)
+	store, _ := openSignalingIntegrationStore(t, cfg)
+	authority, err := NewAuthorityClient(cfg.AuthorityURL, cfg.AuthorityToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.authority = authority
+	ctx := context.Background()
+
+	request := CreateSessionRequest{
+		RequestID: "authority-replay", TTL: time.Minute,
+		AccountID: "acct-1", HostDeviceID: "host-1",
+		ClientDeviceID: "device-1", SessionEpoch: 1,
+	}
+	created, wasCreated, err := store.Create(ctx, request)
+	if err != nil || !wasCreated || created.SessionID != "authority-session-1" {
+		t.Fatalf("initial authority create response=%#v created=%t err=%v", created, wasCreated, err)
+	}
+	if _, err := store.pool.Exec(ctx, "TRUNCATE signaling_waiters,signaling_role_rates,signaling_messages,signaling_sessions RESTART IDENTITY CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+
+	replayed, wasCreated, err := store.Create(ctx, request)
+	if err != nil || wasCreated {
+		t.Fatalf("replay response=%#v created=%t err=%v", replayed, wasCreated, err)
+	}
+	if replayed.SessionID != "authority-session-1" || replayed.HostToken != "host-token-1" || replayed.DeviceToken != "client-token-1" {
+		t.Fatalf("unexpected replay response: %#v", replayed)
+	}
+	if stats := store.Stats(); stats.ActiveSessions != 1 || stats.ReservedRecords != 1 {
+		t.Fatalf("replay did not rebuild local reservation: %#v", stats)
+	}
+}
+
+func TestPostgresAuthorityCreateDoesNotHoldDatabaseLockDuringHTTP(t *testing.T) {
+	firstEntered := make(chan struct{})
+	secondEntered := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	defer close(releaseFirst)
+	var calls atomic.Int32
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request authoritySignalingRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decode authority request: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		call := calls.Add(1)
+		if call == 1 {
+			close(firstEntered)
+			<-releaseFirst
+		} else if call == 2 {
+			close(secondEntered)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+			SessionID:   "authority-" + request.RequestID,
+			HostToken:   "host-token-" + request.RequestID,
+			ClientToken: "client-token-" + request.RequestID,
+			ExpiresAt:   time.Now().Add(time.Hour).UTC(),
+			Created:     true,
+		})
+	}))
+	defer authorityServer.Close()
+
+	cfg := testAuthorityConfig(authorityServer.URL)
+	cfg.MaxActiveSessions = 2
+	store, _ := openSignalingIntegrationStore(t, cfg)
+	authority, err := NewAuthorityClient(cfg.AuthorityURL, cfg.AuthorityToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.authority = authority
+
+	createErr := make(chan error, 2)
+	go func() {
+		_, _, err := store.Create(context.Background(), CreateSessionRequest{
+			RequestID: "req-1", TTL: time.Minute,
+			AccountID: "acct-1", HostDeviceID: "host-1",
+			ClientDeviceID: "device-1", SessionEpoch: 1,
+		})
+		createErr <- err
+	}()
+	select {
+	case <-firstEntered:
+	case <-time.After(time.Second):
+		t.Fatal("first create did not reach the authority")
+	}
+
+	go func() {
+		_, _, err := store.Create(context.Background(), CreateSessionRequest{
+			RequestID: "req-2", TTL: time.Minute,
+			AccountID: "acct-1", HostDeviceID: "host-1",
+			ClientDeviceID: "device-1", SessionEpoch: 2,
+		})
+		createErr <- err
+	}()
+	select {
+	case <-secondEntered:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("second create was blocked by the first authority HTTP call")
+	}
+
+	releaseFirst <- struct{}{}
+	for i := 0; i < 2; i++ {
+		if err := <-createErr; err != nil {
+			t.Fatalf("create %d error: %v", i+1, err)
+		}
+	}
 }
 
 func TestPostgresLocalStoreLifecycleAndRestart(t *testing.T) {

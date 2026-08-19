@@ -120,7 +120,8 @@ rate window, and waiter count are backed by PostgreSQL and survive a signaling
 process restart until TTL cleanup. Replaying the same `request_id` after restart
 therefore returns the existing session rather than reconstructing an empty
 session. With `store_backend: memory`, a restart still loses all routing state,
-so operators must issue a fresh `request_id` and larger `session_epoch`.
+so operators must issue a fresh `request_id`. In `production_authority` mode,
+they must also use a larger `session_epoch`.
 
 Invalidate a session through the same trusted authority when the product ends
 or revokes it:
@@ -283,9 +284,12 @@ covered by the real-process integration test.
 make verify
 go test -run TestRealProcessHostDeviceExchangeAndGracefulShutdown -count=1 .
 # Requires running PostgreSQL URLs for both services:
+VIBE_AUTHORITY_TEST_DATABASE_URL='postgres://...' \
 VIBE_SIGNALING_TEST_DATABASE_URL='postgres://...' \
   go test -run Postgres -count=1 ./internal/signaling
-go test -run TestAuthorityProcessSessionRevocationFailClosed -count=1 .
+VIBE_AUTHORITY_TEST_DATABASE_URL='postgres://...' \
+VIBE_SIGNALING_TEST_DATABASE_URL='postgres://...' \
+  go test -run TestAuthorityProcessSessionRevocationFailClosed -count=1 .
 ```
 
 The local process test builds and starts the real binary in `local_development`

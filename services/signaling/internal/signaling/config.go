@@ -226,7 +226,8 @@ func validateDatabaseURL(value string) error {
 	if parsed.Scheme != "postgres" && parsed.Scheme != "postgresql" {
 		return errors.New("scheme must be postgres or postgresql")
 	}
-	if parsed.Host == "" || parsed.User == nil || parsed.Path == "" || parsed.Path == "/" {
+	if parsed.Hostname() == "" || parsed.User == nil || parsed.User.Username() == "" ||
+		parsed.Path == "" || parsed.Path == "/" {
 		return errors.New("URL must include user, host, and database name")
 	}
 	sslMode := parsed.Query().Get("sslmode")

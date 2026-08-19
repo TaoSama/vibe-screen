@@ -61,12 +61,17 @@ Metrics are process-local and reset at restart. Do not use them as an audit log.
    the authority credential was compromised, rotate the shared value under
    `VIBE_SIGNALING_AUTHORITY_TOKEN` in signaling and
    `VIBE_AUTHORITY_SIGNALING_TOKEN` in authority.
-3. Invalidate known sessions through the issuer endpoint. In `memory` mode, a
-   restart deletes process-local sessions; in `postgres` mode, the database
-   tombstone/TTL rows remain and must not be manually deleted to mint replacement
-   credentials.
-4. Review low-cardinality creation/rejection metrics and redacted edge telemetry.
-5. Rotate TURN service credentials separately if the authority could access them.
+3. Invalidate known sessions through the issuer endpoint. In `production_authority`
+   mode, also revoke the affected account or devices in the authority service,
+   or raise their session-epoch floor so unknown attacker-created role tokens can
+   no longer be authorized. If the affected scope cannot be identified, keep
+   signaling externally unreachable and fail closed until the maximum session TTL
+   has elapsed.
+4. In `memory` mode, a restart deletes process-local sessions; in `postgres`
+   mode, the database tombstone/TTL rows remain and must not be manually deleted
+   to mint replacement credentials.
+5. Review low-cardinality creation/rejection metrics and redacted edge telemetry.
+6. Rotate TURN service credentials separately if the authority could access them.
 
 ### Role token or SDP/ICE disclosure
 

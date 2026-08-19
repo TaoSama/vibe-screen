@@ -21,6 +21,7 @@ import (
 const (
 	authorityReadinessCacheTTL       = time.Second
 	authorityReadinessRefreshTimeout = 2 * time.Second
+	storeStartupTimeout              = 10 * time.Second
 )
 
 type authorityReadinessRefresh struct {
@@ -55,7 +56,9 @@ func NewServer(cfg Config) (*Server, error) {
 		}
 		authority = client
 	}
-	store, err := openStore(context.Background(), cfg, authority)
+	ctx, cancel := context.WithTimeout(context.Background(), storeStartupTimeout)
+	defer cancel()
+	store, err := openStore(ctx, cfg, authority)
 	if err != nil {
 		return nil, err
 	}

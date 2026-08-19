@@ -64,10 +64,12 @@ mandatory even when signaling authentication succeeds.
   not reject duplicate object keys. Clients and the authority must emit canonical
   unique keys; a future protocol version should add duplicate-key rejection
   before accepting untrusted public issuance.
-- Process memory, crash dumps, and PostgreSQL/WAL/backups can contain live SDP,
-  ICE candidates, request/session identifiers, and local-mode role tokens until
-  TTL cleanup. Disable core dumps, restrict process/database debugging, encrypt
-  backups, and keep retention short.
+- Process memory and crash dumps can contain live SDP, ICE candidates,
+  request/session identifiers, and local-mode role tokens until TTL cleanup.
+  PostgreSQL active rows are removed by TTL cleanup, but WAL, snapshots, and
+  backups may retain those values until their separate encrypted retention and
+  purge controls run. Disable core dumps, restrict process/database debugging,
+  encrypt backups, and keep retention short.
 
 ## Security test gates
 

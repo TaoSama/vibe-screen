@@ -103,18 +103,53 @@ def _perform_run_checked(
             exception.__traceback__ = None
             exception.__cause__ = None
             exception.__context__ = None
-            rendered_output = project_and_validate_public_diagnostic(
-                timeout_output,
-                secret_values=redact_values,
-                private_paths=(cwd, Path.home(), *diagnostic_private_paths),
-            )
+            try:
+                rendered_output = project_and_validate_public_diagnostic(
+                    timeout_output,
+                    secret_values=redact_values,
+                    private_paths=(cwd, Path.home(), *diagnostic_private_paths),
+                )
+            except Exception as projection_exception:
+                detail = None
+                prefix = "diagnostic projection failed the public privacy scan: "
+                if isinstance(projection_exception, E2EFailure) and str(
+                    projection_exception
+                ).startswith(prefix):
+                    detail = "privacy_findings:" + str(projection_exception)[
+                        len(prefix) :
+                    ]
+                projection_exception.__traceback__ = None
+                projection_exception.__cause__ = None
+                projection_exception.__context__ = None
+                return _RunCheckedOutcome(
+                    completed=None,
+                    failure_message=_safe_failure_summary(
+                        projection_exception,
+                        stage="stdout_projection",
+                        output=timeout_output,
+                        detail=detail,
+                    ),
+                )
             rendered_command = project_and_validate_public_diagnostic(
                 " ".join(command),
                 secret_values=redact_values,
                 private_paths=(cwd, Path.home(), *diagnostic_private_paths),
             )
             if diagnostic_path is not None:
-                write_private_text(diagnostic_path, rendered_output)
+                try:
+                    write_private_text(diagnostic_path, rendered_output)
+                except Exception as write_exception:
+                    write_exception.__traceback__ = None
+                    write_exception.__cause__ = None
+                    write_exception.__context__ = None
+                    return _RunCheckedOutcome(
+                        completed=None,
+                        failure_message=_safe_failure_summary(
+                            write_exception,
+                            stage="diagnostic_write",
+                            output=rendered_output,
+                        ),
+                    )
             return _RunCheckedOutcome(
                 completed=None,
                 failure_message=(

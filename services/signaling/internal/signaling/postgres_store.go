@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -16,7 +17,9 @@ import (
 const (
 	requiredSignalingSchemaVersion  int64 = 1
 	requiredSignalingSchemaChecksum       = "10d8417ba2f7ecba631db9e6c076befd5a8beb9e6e06af9cbe133e20a5278ee1"
+	authorityReservationPrefix            = "pending-authority-"
 	postgresNotifyTimeout                 = 250 * time.Millisecond
+	postgresBackgroundTimeout             = 10 * time.Second
 	maximumDatabaseClockSkew              = 5 * time.Second
 )
 
@@ -225,7 +228,73 @@ func (s *PostgresStore) createLocal(ctx context.Context, request CreateSessionRe
 }
 
 func (s *PostgresStore) createAuthority(ctx context.Context, request CreateSessionRequest) (SessionResponse, bool, error) {
-	response := SessionResponse{}
+	reservation, reserved, err := s.reserveAuthorityRequest(ctx, request)
+	if err != nil {
+		return SessionResponse{}, false, err
+	}
+	admission, err := s.authority.CreateSession(ctx, authoritySignalingRequest{
+		RequestID: request.RequestID, AccountID: request.AccountID, HostDeviceID: request.HostDeviceID,
+		ClientDeviceID: request.ClientDeviceID, SessionEpoch: request.SessionEpoch, TTLSeconds: int64(request.TTL / time.Second),
+	})
+	if err != nil {
+		if reserved {
+			s.cleanupAuthorityReservation(request.RequestID, reservation.Response.SessionID)
+		}
+		return SessionResponse{}, false, err
+	}
+	return s.finalizeAuthorityAdmission(ctx, request, admission)
+}
+
+func (s *PostgresStore) reserveAuthorityRequest(ctx context.Context, request CreateSessionRequest) (storedSession, bool, error) {
+	reservation := storedSession{}
+	reserved := false
+	err := s.transaction(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(838433003)"); err != nil {
+			return err
+		}
+		if err := s.cleanupTx(ctx, tx); err != nil {
+			return err
+		}
+		existing, err := s.sessionByRequestTx(ctx, tx, request.RequestID)
+		if errors.Is(err, ErrExpired) {
+			err = ErrNotFound
+		}
+		if err == nil {
+			if existing.Invalidated {
+				return ErrInvalidated
+			}
+			reservation = existing
+			return nil
+		}
+		if !errors.Is(err, ErrNotFound) {
+			return err
+		}
+		if err := s.enforceCapacityTx(ctx, tx); err != nil {
+			return err
+		}
+		reservationID, err := randomToken(16)
+		if err != nil {
+			return fmt.Errorf("generate authority reservation ID: %w", err)
+		}
+		reservationID = authorityReservationPrefix + reservationID
+		reservation = storedSession{
+			RequestID:   request.RequestID,
+			TTLSeconds:  int64(request.TTL / time.Second),
+			Response:    SessionResponse{SessionID: reservationID, ExpiresAt: s.now().UTC().Add(request.TTL)},
+			Invalidated: false,
+		}
+		_, err = tx.Exec(ctx, "INSERT INTO signaling_sessions(session_id,request_id,ttl_seconds,expires_at,host_token,device_token,created_at) VALUES ($1,$2,$3,$4,NULL,NULL,$5)", reservationID, request.RequestID, reservation.TTLSeconds, reservation.Response.ExpiresAt, s.now().UTC())
+		if err != nil {
+			return err
+		}
+		reserved = true
+		return nil
+	})
+	return reservation, reserved, err
+}
+
+func (s *PostgresStore) finalizeAuthorityAdmission(ctx context.Context, request CreateSessionRequest, admission authoritySignalingAdmission) (SessionResponse, bool, error) {
+	response := SessionResponse{SessionID: admission.SessionID, HostToken: admission.HostToken, DeviceToken: admission.ClientToken, ExpiresAt: admission.ExpiresAt}
 	created := false
 	err := s.transaction(ctx, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(838433003)"); err != nil {
@@ -238,27 +307,21 @@ func (s *PostgresStore) createAuthority(ctx context.Context, request CreateSessi
 		if errors.Is(err, ErrExpired) {
 			err = ErrNotFound
 		}
-		if err == nil && existing.Invalidated {
-			return ErrInvalidated
-		}
-		if !errors.Is(err, ErrNotFound) && err != nil {
-			return err
-		}
-		if errors.Is(err, ErrNotFound) {
-			if err := s.enforceCapacityTx(ctx, tx); err != nil {
-				return err
+		if err == nil {
+			if existing.Invalidated {
+				return ErrInvalidated
 			}
-		}
-		admission, err := s.authority.CreateSession(ctx, authoritySignalingRequest{
-			RequestID: request.RequestID, AccountID: request.AccountID, HostDeviceID: request.HostDeviceID,
-			ClientDeviceID: request.ClientDeviceID, SessionEpoch: request.SessionEpoch, TTLSeconds: int64(request.TTL / time.Second),
-		})
-		if err != nil {
-			return err
-		}
-		response = SessionResponse{SessionID: admission.SessionID, HostToken: admission.HostToken, DeviceToken: admission.ClientToken, ExpiresAt: admission.ExpiresAt}
-		if existing.RequestID != "" {
-			if existing.Response.SessionID != admission.SessionID || admission.Created {
+			if isAuthorityReservation(existing.Response.SessionID) {
+				if err := s.ensureAuthoritySessionIDAvailableTx(ctx, tx, admission.SessionID); err != nil {
+					return err
+				}
+				if _, err := tx.Exec(ctx, "UPDATE signaling_sessions SET session_id=$2, ttl_seconds=$3, expires_at=$4 WHERE session_id=$1", existing.Response.SessionID, admission.SessionID, int64(request.TTL/time.Second), admission.ExpiresAt); err != nil {
+					return err
+				}
+				created = admission.Created
+				return nil
+			}
+			if existing.Response.SessionID != admission.SessionID {
 				return ErrAuthorityUnavailable
 			}
 			if _, err := tx.Exec(ctx, "UPDATE signaling_sessions SET expires_at=$2 WHERE session_id=$1", admission.SessionID, admission.ExpiresAt); err != nil {
@@ -269,12 +332,13 @@ func (s *PostgresStore) createAuthority(ctx context.Context, request CreateSessi
 			}
 			return nil
 		}
-		if !admission.Created {
-			return ErrInvalidated
+		if !errors.Is(err, ErrNotFound) {
+			return err
 		}
-		if _, err := s.sessionByIDTx(ctx, tx, admission.SessionID); err == nil {
-			return ErrAuthorityUnavailable
-		} else if !errors.Is(err, ErrNotFound) {
+		if err := s.enforceCapacityTx(ctx, tx); err != nil {
+			return err
+		}
+		if err := s.ensureAuthoritySessionIDAvailableTx(ctx, tx, admission.SessionID); err != nil {
 			return err
 		}
 		_, err = tx.Exec(ctx, "INSERT INTO signaling_sessions(session_id,request_id,ttl_seconds,expires_at,host_token,device_token,created_at) VALUES ($1,$2,$3,$4,NULL,NULL,$5)", admission.SessionID, request.RequestID, int64(request.TTL/time.Second), admission.ExpiresAt, s.now().UTC())
@@ -285,6 +349,33 @@ func (s *PostgresStore) createAuthority(ctx context.Context, request CreateSessi
 		return nil
 	})
 	return response, created, err
+}
+
+func (s *PostgresStore) ensureAuthoritySessionIDAvailableTx(ctx context.Context, tx pgx.Tx, sessionID string) error {
+	if _, err := s.sessionByIDTx(ctx, tx, sessionID); err == nil {
+		return ErrAuthorityUnavailable
+	} else if errors.Is(err, ErrExpired) {
+		return ErrInvalidated
+	} else if !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	return nil
+}
+
+func isAuthorityReservation(sessionID string) bool {
+	return strings.HasPrefix(sessionID, authorityReservationPrefix)
+}
+
+func (s *PostgresStore) cleanupAuthorityReservation(requestID, sessionID string) {
+	if !isAuthorityReservation(sessionID) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), postgresBackgroundTimeout)
+	defer cancel()
+	_ = s.transaction(ctx, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, "DELETE FROM signaling_sessions WHERE request_id=$1 AND session_id=$2", requestID, sessionID)
+		return err
+	})
 }
 
 func (s *PostgresStore) Invalidate(ctx context.Context, sessionID string) (bool, error) {
@@ -382,7 +473,7 @@ func (s *PostgresStore) AddMessageAuthorized(ctx context.Context, sessionID stri
 		if err := tx.QueryRow(ctx, "SELECT COALESCE(MAX(sequence),0)+1 FROM signaling_messages WHERE session_id=$1", sessionID).Scan(&sequence); err != nil {
 			return err
 		}
-		if sequence <= 0 || sequence > math.MaxInt64 {
+		if sequence <= 0 {
 			return ErrConflict
 		}
 		event = Event{Sequence: uint64(sequence), MessageID: request.MessageID, Type: request.Type, SenderRole: role, SDP: request.SDP, Candidate: cloneCandidate(request.Candidate), CreatedAt: s.now().UTC()}
@@ -406,7 +497,9 @@ func (s *PostgresStore) PollAuthorized(ctx context.Context, sessionID string, ro
 	waiting := false
 	defer func() {
 		if waiting {
-			_ = s.releaseWaiter(context.Background(), sessionID, role)
+			releaseCtx, cancel := context.WithTimeout(context.Background(), postgresBackgroundTimeout)
+			defer cancel()
+			_ = s.releaseWaiter(releaseCtx, sessionID, role)
 		}
 	}()
 	for {
@@ -467,7 +560,9 @@ func (s *PostgresStore) pollOnce(ctx context.Context, sessionID string, role Rol
 }
 
 func (s *PostgresStore) Stats() StoreStats {
-	stats, err := s.stats(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), postgresBackgroundTimeout)
+	defer cancel()
+	stats, err := s.stats(ctx)
 	if err != nil {
 		return StoreStats{}
 	}
@@ -476,9 +571,11 @@ func (s *PostgresStore) Stats() StoreStats {
 
 func (s *PostgresStore) Cleanup() int {
 	removed := 0
-	_ = s.transaction(context.Background(), func(tx pgx.Tx) error {
+	ctx, cancel := context.WithTimeout(context.Background(), postgresBackgroundTimeout)
+	defer cancel()
+	_ = s.transaction(ctx, func(tx pgx.Tx) error {
 		var err error
-		removed, err = s.cleanupTxCount(context.Background(), tx)
+		removed, err = s.cleanupTxCount(ctx, tx)
 		return err
 	})
 	return removed
@@ -615,11 +712,11 @@ func (s *PostgresStore) allowRateTx(ctx context.Context, tx pgx.Tx, sessionID st
 	var started time.Time
 	var count int
 	err := tx.QueryRow(ctx, "SELECT window_started_at,message_count FROM signaling_role_rates WHERE session_id=$1 AND role=$2 FOR UPDATE", sessionID, role).Scan(&started, &count)
-	if errors.Is(err, pgx.ErrNoRows) || now.Sub(started) >= time.Minute {
-		_, err = tx.Exec(ctx, "INSERT INTO signaling_role_rates(session_id,role,window_started_at,message_count) VALUES ($1,$2,$3,1) ON CONFLICT (session_id,role) DO UPDATE SET window_started_at=EXCLUDED.window_started_at,message_count=1", sessionID, role, now)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
-	if err != nil {
+	if errors.Is(err, pgx.ErrNoRows) || now.Sub(started) >= time.Minute {
+		_, err = tx.Exec(ctx, "INSERT INTO signaling_role_rates(session_id,role,window_started_at,message_count) VALUES ($1,$2,$3,1) ON CONFLICT (session_id,role) DO UPDATE SET window_started_at=EXCLUDED.window_started_at,message_count=1", sessionID, role, now)
 		return err
 	}
 	if count >= s.messagesPerMinute {

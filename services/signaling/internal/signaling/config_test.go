@@ -78,6 +78,16 @@ func TestConfigValidatesDatabaseURLPolicy(t *testing.T) {
 		t.Fatalf("non-loopback weak TLS mode error = %v", err)
 	}
 
+	cfg.DatabaseURL = "postgres://@127.0.0.1/vibescreen?sslmode=disable"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "user") {
+		t.Fatalf("empty database user error = %v", err)
+	}
+
+	cfg.DatabaseURL = "postgres://authority@:5432/vibescreen?sslmode=disable"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "host") {
+		t.Fatalf("empty database host error = %v", err)
+	}
+
 	cfg.DatabaseURL = "postgresql://authority@example.com/vibescreen?sslmode=verify-full"
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("verify-full postgres URL rejected: %v", err)
