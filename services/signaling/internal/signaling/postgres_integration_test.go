@@ -48,7 +48,7 @@ func openSignalingIntegrationStore(t *testing.T, cfg Config) (*PostgresStore, Co
 	return store, cfg
 }
 
-func TestPostgresAuthorityReplayRebuildsMissingLocalReservation(t *testing.T) {
+func TestPostgresAuthorityReplayWithoutLocalStateFailsClosed(t *testing.T) {
 	expiresAt := time.Now().Add(time.Hour).UTC().Round(time.Microsecond)
 	var calls atomic.Int32
 	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -91,15 +91,83 @@ func TestPostgresAuthorityReplayRebuildsMissingLocalReservation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	replayed, wasCreated, err := store.Create(ctx, request)
-	if err != nil || wasCreated {
+	if replayed, wasCreated, err := store.Create(ctx, request); !errors.Is(err, ErrInvalidated) || wasCreated || replayed.SessionID != "" {
 		t.Fatalf("replay response=%#v created=%t err=%v", replayed, wasCreated, err)
 	}
-	if replayed.SessionID != "authority-session-1" || replayed.HostToken != "host-token-1" || replayed.DeviceToken != "client-token-1" {
-		t.Fatalf("unexpected replay response: %#v", replayed)
+	if stats := store.Stats(); stats.ActiveSessions != 0 || stats.ReservedRecords != 0 {
+		t.Fatalf("fail-closed replay left local state: %#v", stats)
 	}
-	if stats := store.Stats(); stats.ActiveSessions != 1 || stats.ReservedRecords != 1 {
-		t.Fatalf("replay did not rebuild local reservation: %#v", stats)
+}
+
+func TestPostgresAuthorityPendingReservationRejectsConflictingReplay(t *testing.T) {
+	firstEntered := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	defer close(releaseFirst)
+	var calls atomic.Int32
+	authorityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request authoritySignalingRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decode authority request: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if calls.Add(1) != 1 {
+			t.Errorf("pending replay unexpectedly reached authority: %#v", request)
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		close(firstEntered)
+		<-releaseFirst
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(authoritySignalingAdmission{
+			SessionID:   "authority-same-request",
+			HostToken:   "host-token-same-request",
+			ClientToken: "client-token-same-request",
+			ExpiresAt:   time.Now().Add(time.Hour).UTC(),
+			Created:     true,
+		})
+	}))
+	defer authorityServer.Close()
+
+	cfg := testAuthorityConfig(authorityServer.URL)
+	store, _ := openSignalingIntegrationStore(t, cfg)
+	authority, err := NewAuthorityClient(cfg.AuthorityURL, cfg.AuthorityToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.authority = authority
+
+	firstErr := make(chan error, 1)
+	go func() {
+		_, _, err := store.Create(context.Background(), CreateSessionRequest{
+			RequestID: "same-request", TTL: time.Minute,
+			AccountID: "acct-1", HostDeviceID: "host-1",
+			ClientDeviceID: "device-1", SessionEpoch: 1,
+		})
+		firstErr <- err
+	}()
+	select {
+	case <-firstEntered:
+	case <-time.After(time.Second):
+		t.Fatal("first create did not reach the authority")
+	}
+
+	_, _, err = store.Create(context.Background(), CreateSessionRequest{
+		RequestID: "same-request", TTL: time.Minute,
+		AccountID: "acct-2", HostDeviceID: "host-2",
+		ClientDeviceID: "device-2", SessionEpoch: 2,
+	})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("pending conflicting replay error=%v", err)
+	}
+
+	releaseFirst <- struct{}{}
+	if err := <-firstErr; err != nil {
+		t.Fatalf("first create error: %v", err)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("authority calls=%d, want 1", got)
 	}
 }
 

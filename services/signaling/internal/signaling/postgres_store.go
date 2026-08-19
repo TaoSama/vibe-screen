@@ -242,6 +242,10 @@ func (s *PostgresStore) createAuthority(ctx context.Context, request CreateSessi
 		}
 		return SessionResponse{}, false, err
 	}
+	if reserved && !admission.Created {
+		s.cleanupAuthorityReservation(request.RequestID, reservation.Response.SessionID)
+		return SessionResponse{}, false, ErrInvalidated
+	}
 	return s.finalizeAuthorityAdmission(ctx, request, admission)
 }
 
@@ -262,6 +266,9 @@ func (s *PostgresStore) reserveAuthorityRequest(ctx context.Context, request Cre
 		if err == nil {
 			if existing.Invalidated {
 				return ErrInvalidated
+			}
+			if isAuthorityReservation(existing.Response.SessionID) {
+				return ErrConflict
 			}
 			reservation = existing
 			return nil

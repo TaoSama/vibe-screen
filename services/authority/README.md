@@ -22,7 +22,7 @@ locally minted tokens; normal policy rejections remain `404`, `409`, or `429`.
 
 ## Run locally
 
-Requirements are Go 1.23+ and PostgreSQL 15+.
+Requirements are Go 1.25+ and PostgreSQL 15+.
 
 ```bash
 cd services/authority

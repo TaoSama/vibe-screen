@@ -372,9 +372,9 @@ standard library plus pgx client libraries for PostgreSQL access.
 
 | Project | Immutable version | License | Use | Copied code |
 | --- | --- | --- | --- | --- |
-| Go | `go1.24.13`, <https://github.com/golang/go/tree/go1.24.13> | BSD-3-Clause | compiler/build stage and standard-library runtime | No source copied; standard library linked into binary |
-| Official Go container | `golang:1.24.13-alpine3.22@sha256:3641e0d9b931dc4f2f185dcd669c4679670e9277c8166a838ddb98a2d4389cb5` | Go BSD-3-Clause plus Alpine package licenses | build stage only; absent from final `scratch` image | No |
-| pgx | `github.com/jackc/pgx/v5 v5.7.5`, <https://github.com/jackc/pgx> | MIT | PostgreSQL client, migration, readiness and store implementation | No |
+| Go | `go1.25.0`, <https://github.com/golang/go/tree/go1.25.0> | BSD-3-Clause | compiler/build stage and standard-library runtime | No source copied; standard library linked into binary |
+| Official Go container | `golang:1.25.5-alpine3.22@sha256:3587db7cc96576822c606d119729370dbf581931c5f43ac6d3fa03ab4ed85a10` | Go BSD-3-Clause plus Alpine package licenses | build stage only; absent from final `scratch` image | No |
+| pgx | `github.com/jackc/pgx/v5 v5.9.2`, <https://github.com/jackc/pgx> | MIT | PostgreSQL client, migration, readiness and store implementation | No |
 | pgpassfile | `github.com/jackc/pgpassfile v1.0.0`, <https://github.com/jackc/pgpassfile> | MIT | pgx dependency for PostgreSQL password file support | No |
 | pgservicefile | `github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761`, <https://github.com/jackc/pgservicefile> | MIT | pgx dependency for PostgreSQL service file support | No |
 | puddle | `github.com/jackc/puddle/v2 v2.2.2`, <https://github.com/jackc/puddle> | MIT | pgx connection-pool dependency | No |
