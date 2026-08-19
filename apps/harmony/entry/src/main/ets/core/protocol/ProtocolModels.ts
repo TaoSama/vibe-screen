@@ -10,6 +10,7 @@ export enum Capability {
 export enum InputPhase { UNSPECIFIED = 0, BEGAN = 1, CHANGED = 2, ENDED = 3, CANCELLED = 4 }
 export enum StylusToolKind { UNSPECIFIED = 0, PEN = 1, ERASER = 2 }
 export enum StylusContactState { UNSPECIFIED = 0, CONTACT = 1, PROXIMITY = 2 }
+export enum ControllerEventKind { UNSPECIFIED = 0, CONNECTED = 1, STATE = 2, DISCONNECTED = 3 }
 export enum ColorPrimaries { UNSPECIFIED = 0, BT709 = 1, DISPLAY_P3 = 2, BT2020 = 3 }
 export enum TransferFunction { UNSPECIFIED = 0, SRGB = 1, BT709 = 2, PQ = 3, HLG = 4 }
 export enum MatrixCoefficients { UNSPECIFIED = 0, BT709 = 1, BT2020_NON_CONSTANT = 2 }
@@ -117,6 +118,25 @@ export interface StylusInput {
   buttonMask?: number;
   contactState?: StylusContactState;
 }
+
+export interface ControllerInput {
+  inputId: bigint;
+  controllerId: string;
+  controllerEpoch: bigint;
+  kind: ControllerEventKind;
+  buttonMask: number;
+  leftStickX: number;
+  leftStickY: number;
+  rightStickX: number;
+  rightStickY: number;
+  leftTrigger: number;
+  rightTrigger: number;
+  hatX: number;
+  hatY: number;
+  target?: InputTarget;
+}
+
+export interface InputAck { inputId: bigint; accepted: boolean; rejectionReason: string; }
 
 export function defaultCapabilities(): Capability[] {
   return [Capability.DISPLAY_MIRROR, Capability.VIRTUAL_DISPLAY, Capability.TOUCH,

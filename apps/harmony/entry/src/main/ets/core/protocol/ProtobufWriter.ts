@@ -25,6 +25,15 @@ export class ProtobufWriter {
     return this;
   }
 
+  sint32(fieldNumber: number, value: number): ProtobufWriter {
+    if (value !== 0) {
+      const encoded: number = value < 0 ? ((-value) * 2) - 1 : value * 2;
+      this.writeTag(fieldNumber, WIRE_VARINT);
+      this.writeVarint(BigInt(encoded));
+    }
+    return this;
+  }
+
   uint64(fieldNumber: number, value: bigint): ProtobufWriter {
     if (value !== 0n) { this.writeTag(fieldNumber, WIRE_VARINT); this.writeVarint(value); }
     return this;

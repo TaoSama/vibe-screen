@@ -1,5 +1,6 @@
 import { systemDateTime } from '@kit.BasicServicesKit';
 import { CoordinateMapper, Rotation } from '../core/input/CoordinateMapper';
+import { HarmonyControllerSample } from '../core/input/ControllerInputMapper';
 import { HarmonyStylusSample, StylusInputMapper } from '../core/input/StylusInputMapper';
 import { MediaPacketParser } from '../core/media/MediaPacketParser';
 import { OutboundControlWriter, OutboundControlReceipt } from '../core/protocol/OutboundControlWriter';
@@ -93,7 +94,7 @@ export class HarmonySessionController {
     const owner: number = ++this.operationGeneration; this.decoderGeneration += 1;
     this.resumeSnapshot = undefined;
     this.cancelReconnect(); this.cancelHeartbeat(); this.cancelSessionWatchdog();
-    const releaseFailures: CleanupFailure[] = await this.releaseStylusInputs();
+    const releaseFailures: CleanupFailure[] = await this.releaseActiveInputs();
     if (owner !== this.operationGeneration) return;
     this.session?.close(); this.closeWriter();
     const failures: CleanupFailure[] = [...releaseFailures, ...await this.cleanupResources()];
@@ -106,7 +107,7 @@ export class HarmonySessionController {
   async disconnect(): Promise<void> {
     const owner: number = ++this.operationGeneration; this.decoderGeneration += 1;
     this.userStopped = true; this.resumeSnapshot = undefined; this.cancelReconnect(); this.cancelHeartbeat(); this.cancelSessionWatchdog();
-    const releaseFailures: CleanupFailure[] = await this.releaseStylusInputs();
+    const releaseFailures: CleanupFailure[] = await this.releaseActiveInputs();
     if (owner !== this.operationGeneration) return;
     this.session?.close(); this.closeWriter();
     const failures: CleanupFailure[] = [...releaseFailures, ...await this.cleanupResources()];
@@ -139,7 +140,7 @@ export class HarmonySessionController {
   async onBackground(): Promise<void> {
     const owner: number = ++this.operationGeneration; this.decoderGeneration += 1;
     this.foreground = false; this.cancelReconnect(); this.cancelHeartbeat(); this.cancelSessionWatchdog();
-    const releaseFailures: CleanupFailure[] = await this.releaseStylusInputs();
+    const releaseFailures: CleanupFailure[] = await this.releaseActiveInputs();
     if (owner !== this.operationGeneration) return;
     const nextMessageId: bigint | undefined = this.controlWriter?.nextMessageIdValue();
     this.resumeSnapshot = releaseFailures.length > 0 || nextMessageId === undefined ? undefined :
@@ -217,6 +218,20 @@ export class HarmonySessionController {
       this.operationGeneration);
   }
 
+  sendController(sample: HarmonyControllerSample): void {
+    const active: ProductSession | undefined = this.session;
+    if (active?.state() !== ProductSessionState.STREAMING || !active.canSend(Capability.CONTROLLER)) return;
+    try {
+      this.applyActions([active.controller({ ...sample, inputId: this.nextInputId++, target: active.target(),
+        buttonMask: sample.buttonMask ?? 0, leftStickX: sample.leftStickX ?? 0, leftStickY: sample.leftStickY ?? 0,
+        rightStickX: sample.rightStickX ?? 0, rightStickY: sample.rightStickY ?? 0,
+        leftTrigger: sample.leftTrigger ?? 0, rightTrigger: sample.rightTrigger ?? 0, hatX: sample.hatX ?? 0,
+        hatY: sample.hatY ?? 0 })], this.operationGeneration);
+    } catch (error) {
+      this.ui?.onStatus('手柄输入被拒绝：' + (error as Error).message, true);
+    }
+  }
+
   onTransportReady(owner: number): void {
     if (owner !== this.operationGeneration) return;
     this.ui?.onStatus('正在协商 Protocol v1…', false);
@@ -250,15 +265,10 @@ export class HarmonySessionController {
 
   onTransportLost(reason: string, retryable: boolean = true, owner: number = this.operationGeneration): void {
     if (owner !== this.operationGeneration) return;
-    const nextMessageId: bigint | undefined = this.controlWriter?.nextMessageIdValue();
-    const resumable: SessionResumeSnapshot | undefined = nextMessageId === undefined ? undefined :
-      this.session?.resumableSnapshot(nextMessageId);
-    this.resumeSnapshot = retryable ? resumable : undefined;
     const cleanupOwner: number = ++this.operationGeneration;
-    this.decoderGeneration += 1; this.session?.close(); this.closeWriter(); this.cancelHeartbeat();
-    this.cancelSessionWatchdog(); this.cancelReconnect();
+    this.decoderGeneration += 1; this.cancelHeartbeat(); this.cancelSessionWatchdog(); this.cancelReconnect();
     this.renderedFirstFrame = false;
-    this.cleanupLoss(cleanupOwner, reason, retryable).catch((error: Error) => {
+    this.cleanupAfterLoss(cleanupOwner, reason, retryable).catch((error: Error) => {
       if (cleanupOwner === this.operationGeneration) this.ui?.onStatus(`连接清理失败：${error.message}`, false);
     });
   }
@@ -357,6 +367,10 @@ export class HarmonySessionController {
       (messageId: bigint, nowNs: bigint) => active.confirmAssigned(action.onAssigned!, messageId, nowNs))
       .then((_receipt: OutboundControlReceipt) => {
         if (action.afterSend?.kind === 'stylus') active.confirmSent(action.afterSend);
+        if (writer.isReleasing() && action.afterSend?.kind === 'controller') {
+          active.cancelControllerSend(action.afterSend.event);
+          return;
+        }
         if (owner !== this.operationGeneration || this.session !== active) return;
         if (action.afterSend !== undefined && action.afterSend.kind !== 'stylus') {
           active.confirmSent(action.afterSend);
@@ -367,6 +381,7 @@ export class HarmonySessionController {
           }
         }
       }).catch((error: Error) => {
+        if (writer.isReleasing() && action.afterSend?.kind === 'controller') active.cancelControllerSend(action.afterSend.event);
         if (!writer.isReleasing()) this.onTransportLost(error.message, true, owner);
       });
   }
@@ -439,15 +454,18 @@ export class HarmonySessionController {
     this.controlWriter = undefined;
   }
 
-  private async releaseStylusInputs(): Promise<CleanupFailure[]> {
+  private async releaseActiveInputs(): Promise<CleanupFailure[]> {
     const active: ProductSession | undefined = this.session;
     const writer: OutboundControlWriter | undefined = this.controlWriter;
-    const actions: SessionAction[] = active?.releaseStylusInputs(() => this.nextInputId++) ?? [];
+    const actions: SessionAction[] = active === undefined ? [] : [
+      ...active.releaseStylusInputs(() => this.nextInputId++),
+      ...active.releaseControllerInputs(() => this.nextInputId++)
+    ];
     if (active === undefined || writer === undefined) return [];
-    return runAllCleanup([{ name: 'stylus.release', run: async () => {
+    return runAllCleanup([{ name: 'input.release', run: async () => {
       writer.beginRelease();
       const pending: Promise<OutboundControlReceipt>[] = actions.map((action: SessionAction) => {
-        if (action.kind !== 'send') throw new Error('Unexpected stylus release action');
+        if (action.kind !== 'send') throw new Error('Unexpected input release action');
         return writer.enqueueRelease(action.intent, active.outboundScope()).then((receipt: OutboundControlReceipt) => {
           if (action.afterSend !== undefined) active.confirmSent(action.afterSend);
           return receipt;
@@ -455,6 +473,7 @@ export class HarmonySessionController {
       });
       await Promise.all([...pending, writer.awaitReleaseDrain()]);
       active.completeStylusRelease();
+      active.completeControllerRelease();
     } }]);
   }
 
@@ -462,8 +481,19 @@ export class HarmonySessionController {
     if (this.session === undefined) throw new Error('Session is not initialized'); return this.session;
   }
 
-  private async cleanupLoss(owner: number, reason: string, retryable: boolean): Promise<void> {
-    const failures: CleanupFailure[] = await this.cleanupResources();
+  private async cleanupAfterLoss(owner: number, reason: string, retryable: boolean): Promise<void> {
+    const releaseFailures: CleanupFailure[] = await this.releaseActiveInputs();
+    if (owner !== this.operationGeneration) return;
+    const nextMessageId: bigint | undefined = releaseFailures.length === 0 ? this.controlWriter?.nextMessageIdValue() : undefined;
+    const resumable: SessionResumeSnapshot | undefined = nextMessageId === undefined ? undefined :
+      this.session?.resumableSnapshot(nextMessageId);
+    this.resumeSnapshot = retryable ? resumable : undefined;
+    this.session?.close(); this.closeWriter();
+    await this.cleanupLoss(owner, reason, retryable, releaseFailures);
+  }
+
+  private async cleanupLoss(owner: number, reason: string, retryable: boolean, inputFailures: CleanupFailure[] = []): Promise<void> {
+    const failures: CleanupFailure[] = [...inputFailures, ...await this.cleanupResources()];
     if (owner !== this.operationGeneration) return;
     const observableReason: string = failures.length === 0 ? reason :
       `${reason}；清理警告：${describeCleanupFailures(failures)}`;
