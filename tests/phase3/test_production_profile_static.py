@@ -19,6 +19,14 @@ PROHIBITED_RELAY_BUILD_MARKERS = (
     "context: ../../services/relay",
     "dockerfile: Dockerfile",
 )
+EXPECTED_RELAY_SECRET_FILES = (
+    "VIBE_RELAY_TURN_SECRET_FILE: /run/secrets/turn_secret",
+    "VIBE_RELAY_CLIENT_TOKEN_FILE: /run/secrets/client_token",
+    "VIBE_RELAY_USAGE_TOKEN_FILE: /run/secrets/usage_token",
+    "VIBE_RELAY_METRICS_TOKEN_FILE: /run/secrets/metrics_token",
+    "VIBE_RELAY_ADMIN_TOKEN_FILE: /run/secrets/admin_token",
+    "VIBE_RELAY_AUTHORITY_TOKEN_FILE: /run/secrets/authority_token",
+)
 EXPECTED_COTURN_DENIES = {
     "denied-peer-ip=0.0.0.0-0.255.255.255",
     "denied-peer-ip=10.0.0.0-10.255.255.255",
@@ -52,17 +60,22 @@ class ProductionProfileStaticTests(unittest.TestCase):
     def test_relay_production_profile_requires_immutable_image(self) -> None:
         compose = read(RELAY_PRODUCTION_COMPOSE)
 
-        self.assertRegex(
-            compose,
-            r"image: \$\{VIBE_RELAY_IMAGE_REPOSITORY:\?[^}]+}"
+        expected_images = {
+            "relay-data-init": r"coturn/coturn:[^\s]+@sha256:[0-9a-f]{64}",
+            "relay": r"\$\{VIBE_RELAY_IMAGE_REPOSITORY:\?[^}]+}"
             r"@sha256:\$\{VIBE_RELAY_IMAGE_SHA256:\?[^}]+}",
-        )
+            "coturn": r"coturn/coturn:[^\s]+@sha256:[0-9a-f]{64}",
+        }
+        for service, image in expected_images.items():
+            with self.subTest(service=service):
+                self.assertRegex(compose, rf"(?ms)^  {service}:\n(?:    .+\n)*?    image: {image}$")
         for marker in PROHIBITED_RELAY_BUILD_MARKERS:
             with self.subTest(marker=marker):
                 self.assertNotIn(marker, compose)
         self.assertIn("network_mode: host", compose)
-        self.assertIn("VIBE_RELAY_TURN_SECRET_FILE: /run/secrets/turn_secret", compose)
-        self.assertIn("VIBE_RELAY_ADMIN_TOKEN_FILE: /run/secrets/admin_token", compose)
+        for secret_file in EXPECTED_RELAY_SECRET_FILES:
+            with self.subTest(secret_file=secret_file):
+                self.assertIn(secret_file, compose)
         self.assertIn("./config/relay.production.json:/etc/vibe-relay/config.json:ro", compose)
 
     def test_authority_production_profile_requires_digest_tls_and_loopback_http(self) -> None:
@@ -85,7 +98,8 @@ class ProductionProfileStaticTests(unittest.TestCase):
         lines = non_comment_coturn_lines()
 
         self.assertTrue(EXPECTED_COTURN_DENIES.issubset(lines))
-        self.assertNotIn("allowed-peer-ip=0.0.0.0-255.255.255.255", lines)
+        allowed_peer_lines = sorted(line for line in lines if line.startswith("allowed-peer-ip="))
+        self.assertEqual([], allowed_peer_lines)
         self.assertNotIn("no-auth", lines)
         self.assertIn("use-auth-secret", lines)
         self.assertIn("fingerprint", lines)
@@ -138,7 +152,10 @@ class ProductionProfileStaticTests(unittest.TestCase):
             )
         )
 
-        self.assertNotRegex(combined, re.compile(r"(?i)(bearer|token|secret)\s*[:=]\s*[A-Za-z0-9+/=_-]{32,}"))
+        self.assertNotRegex(
+            combined,
+            re.compile(r"(?i)(bearer|token|secret)\s*[:=]\s*['\"]?[A-Za-z0-9+/=_-]{32,}"),
+        )
         self.assertIn("_FILE:", combined)
         self.assertIn("file: ./secrets/turn_secret.txt", combined)
         self.assertIn("file: ${VIBE_AUTHORITY_DATABASE_URL_FILE", combined)

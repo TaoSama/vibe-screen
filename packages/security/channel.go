@@ -148,6 +148,9 @@ func (state *SecureChannelState) Open(packet EncryptedPacket) ([]byte, error) {
 }
 
 func (state *SecureChannelState) canAccept(sequence uint64) bool {
+	if !validSequence(sequence) {
+		return false
+	}
 	if state.channel == ChannelControl {
 		return sequence > state.replay.highest
 	}
@@ -155,14 +158,21 @@ func (state *SecureChannelState) canAccept(sequence uint64) bool {
 }
 
 func (state *SecureChannelState) matches(header PacketHeader) bool {
+	if !validSequence(header.Sequence) {
+		return false
+	}
 	expectedNonce := packetNonce(header.SessionEpoch, header.Sequence)
 	return header.ProtocolVersion == state.protocolVersion &&
 		header.SessionEpoch == state.sessionEpoch && header.KeyID == state.keyID &&
 		header.KeyEpoch == state.keyEpoch && header.Channel == state.channel &&
 		header.SenderRole == state.senderRole &&
 		header.AeadAlgorithm == AeadAlgorithmAES256GCM &&
-		header.Sequence > 0 && equalBytes(header.SessionID, state.sessionID) &&
+		equalBytes(header.SessionID, state.sessionID) &&
 		equalBytes(header.Nonce, expectedNonce)
+}
+
+func validSequence(sequence uint64) bool {
+	return sequence > 0 && sequence <= maxSequence
 }
 
 // packetNonce derives a 12-byte AES-GCM nonce from the session epoch and

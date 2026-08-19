@@ -177,7 +177,10 @@ Linux host:
 3. Provision independent secret files with mode `0600`; distribute the same
    `turn_secret.txt` to relay and coturn, and provision `authority_token.txt`
    with the same value Authority exposes as `VIBE_AUTHORITY_RELAY_TOKEN`.
-   Store/rotate them through the deployment secret manager, not source control.
+   Because the coturn container runs as UID/GID `65532`, make
+   `turn_secret.txt` owned by `65532:65532` or otherwise readable by that
+   account while retaining `0600` permissions. Store/rotate all secrets through
+   the deployment secret manager, not source control.
 4. Install the public certificate chain as ignored `tls/fullchain.pem` and its
    private key as `tls/privkey.pem`.
 5. Set `COTURN_REALM` to the certificate DNS hostname and
