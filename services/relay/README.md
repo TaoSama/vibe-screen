@@ -52,8 +52,8 @@ export VIBE_RELAY_AUTHORITY_TOKEN="$(openssl rand -base64 48)"
   requests credentials after it has authenticated a paired device.
 - `VIBE_RELAY_USAGE_TOKEN` authenticates only the trusted TURN usage collector.
 - `VIBE_RELAY_METRICS_TOKEN` authenticates only the Prometheus scraper.
-- `VIBE_RELAY_ADMIN_TOKEN` authenticates device-revocation requests. The local
-  client, usage, metrics, and admin API tokens must differ.
+- `VIBE_RELAY_ADMIN_TOKEN` authenticates device-revocation requests. The client,
+  usage, metrics, and admin API tokens must differ.
 - `VIBE_RELAY_AUTHORITY_TOKEN` authenticates relay to `vibe-authority` in
   `production_authority` mode. It must match Authority's
   `VIBE_AUTHORITY_RELAY_TOKEN` and remain distinct from every other relay,
