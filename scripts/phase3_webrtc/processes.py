@@ -42,6 +42,27 @@ def _raise_sanitized_failure(message: str) -> NoReturn:
     raise E2EFailure(message) from None
 
 
+def _safe_failure_summary(
+    exception: BaseException,
+    *,
+    stage: str,
+    output: str | bytes | None = None,
+) -> str:
+    if isinstance(output, bytes):
+        rendered_output = output.decode("utf-8", errors="replace")
+    else:
+        rendered_output = output or ""
+    output_bytes = len(rendered_output.encode("utf-8", errors="replace"))
+    output_hash = hashlib.sha256(
+        rendered_output.encode("utf-8", errors="replace")
+    ).hexdigest()
+    return (
+        "command execution failed before a safe result was available "
+        f"(stage={stage}, exception={type(exception).__name__}, "
+        f"output_bytes={output_bytes}, output_sha256={output_hash})"
+    )
+
+
 def _perform_run_checked(
     command: list[str],
     *,
@@ -95,13 +116,35 @@ def _perform_run_checked(
                     f"{rendered_command}\n{rendered_output}"
                 ),
             )
-        rendered_output = project_and_validate_public_diagnostic(
-            completed.stdout,
-            secret_values=redact_values,
-            private_paths=(cwd, Path.home(), *diagnostic_private_paths),
-        )
+        try:
+            rendered_output = project_and_validate_public_diagnostic(
+                completed.stdout,
+                secret_values=redact_values,
+                private_paths=(cwd, Path.home(), *diagnostic_private_paths),
+            )
+        except Exception as exception:
+            exception.__traceback__ = None
+            exception.__cause__ = None
+            exception.__context__ = None
+            return _RunCheckedOutcome(
+                completed=None,
+                failure_message=_safe_failure_summary(
+                    exception, stage="stdout_projection", output=completed.stdout
+                ),
+            )
         if diagnostic_path is not None:
-            write_private_text(diagnostic_path, rendered_output)
+            try:
+                write_private_text(diagnostic_path, rendered_output)
+            except Exception as exception:
+                exception.__traceback__ = None
+                exception.__cause__ = None
+                exception.__context__ = None
+                return _RunCheckedOutcome(
+                    completed=None,
+                    failure_message=_safe_failure_summary(
+                        exception, stage="diagnostic_write", output=rendered_output
+                    ),
+                )
         if completed.returncode != 0:
             rendered_command = project_and_validate_public_diagnostic(
                 " ".join(command),
@@ -122,7 +165,7 @@ def _perform_run_checked(
         exception.__context__ = None
         return _RunCheckedOutcome(
             completed=None,
-            failure_message="command execution failed before a safe result was available",
+            failure_message=_safe_failure_summary(exception, stage="subprocess_run"),
         )
 
 

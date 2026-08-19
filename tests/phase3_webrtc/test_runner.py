@@ -128,6 +128,35 @@ class RunnerTests(unittest.TestCase):
             ("generated-secret",),
         )
 
+    @mock.patch("scripts.phase3_webrtc.processes.project_and_validate_public_diagnostic")
+    def test_command_projection_failure_reports_only_safe_summary(
+        self,
+        project: mock.Mock,
+    ) -> None:
+        project.side_effect = E2EFailure("private path /Users/alice leaked")
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                run_checked(
+                    ["/bin/sh", "-c", "printf unsafe-secret"],
+                    cwd=Path(directory),
+                    timeout=2,
+                    redact_values=("unsafe-secret",),
+                )
+            except E2EFailure as exception:
+                failure = exception
+            else:
+                self.fail("run_checked unexpectedly accepted a projection failure")
+
+        message = str(failure)
+        self.assertIn("stage=stdout_projection", message)
+        self.assertIn("exception=E2EFailure", message)
+        self.assertIn("output_bytes=13", message)
+        self.assertIn(hashlib.sha256(b"unsafe-secret").hexdigest(), message)
+        self.assertNotIn("unsafe-secret", message)
+        self.assertNotIn("/Users/alice", message)
+        self.assertIsNone(failure.__cause__)
+        self.assertIsNone(failure.__context__)
+
     @mock.patch("scripts.phase3_webrtc.processes.subprocess.run")
     def test_timeout_clears_raw_exception_and_traceback_locals(
         self,
