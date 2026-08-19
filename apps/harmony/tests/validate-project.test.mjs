@@ -109,7 +109,7 @@ test('semantic validator rejects dropping ordinary TouchEvent pressure', (t) => 
     failure.includes('must preserve TouchEvent event.pressure for ordinary touch input')));
 });
 
-test('semantic validator rejects closing an explicit disconnect before stylus release', (t) => {
+test('semantic validator rejects closing an explicit disconnect before active input release', (t) => {
   const fixture = projectFixture(t);
   const controllerPath = resolve(fixture.fixtureHarmony,
     'entry/src/main/ets/platform/HarmonySessionController.ets');
@@ -118,44 +118,45 @@ test('semantic validator rejects closing an explicit disconnect before stylus re
   const disconnectEnd = source.indexOf('\n  setSurface(', disconnectStart);
   assert(disconnectStart >= 0 && disconnectEnd > disconnectStart);
   const disconnect = source.slice(disconnectStart, disconnectEnd);
-  const release = '    const releaseFailures: CleanupFailure[] = await this.releaseStylusInputs();\n' +
+  const release = '    const releaseFailures: CleanupFailure[] = await this.releaseActiveInputs();\n' +
     '    if (owner !== this.operationGeneration) return;\n' +
     '    this.session?.close(); this.closeWriter();';
   const modifiedDisconnect = disconnect.replace(release,
     '    this.session?.close(); this.closeWriter();\n' +
-    '    const releaseFailures: CleanupFailure[] = await this.releaseStylusInputs();\n' +
+    '    const releaseFailures: CleanupFailure[] = await this.releaseActiveInputs();\n' +
     '    if (owner !== this.operationGeneration) return;');
   assert.notEqual(modifiedDisconnect, disconnect);
   const modified = source.slice(0, disconnectStart) + modifiedDisconnect + source.slice(disconnectEnd);
   writeFileSync(controllerPath, modified);
   assert(validateFixture(fixture).some((failure) =>
-    failure.includes('disconnect() must release stylus inputs before closing the writer')));
+    failure.includes('disconnect() must release active inputs before closing the writer')));
 });
 
-test('semantic validator rejects taking a resume snapshot before stylus release', (t) => {
+test('semantic validator rejects taking a resume snapshot before active input release', (t) => {
   const fixture = projectFixture(t);
   const controllerPath = resolve(fixture.fixtureHarmony,
     'entry/src/main/ets/platform/HarmonySessionController.ets');
   const source = readFileSync(controllerPath, 'utf8');
-  const release = '    const releaseFailures: CleanupFailure[] = await this.releaseStylusInputs();\n' +
+  const release = '    const releaseFailures: CleanupFailure[] = await this.releaseActiveInputs();\n' +
     '    if (owner !== this.operationGeneration) return;\n' +
     '    const nextMessageId: bigint | undefined = this.controlWriter?.nextMessageIdValue();';
   const modified = source.replace(release,
     '    const nextMessageId: bigint | undefined = this.controlWriter?.nextMessageIdValue();\n' +
-    '    const releaseFailures: CleanupFailure[] = await this.releaseStylusInputs();\n' +
+    '    const releaseFailures: CleanupFailure[] = await this.releaseActiveInputs();\n' +
     '    if (owner !== this.operationGeneration) return;');
   assert.notEqual(modified, source);
   writeFileSync(controllerPath, modified);
   assert(validateFixture(fixture).some((failure) =>
-    failure.includes('onBackground() must release stylus inputs before taking the resume snapshot')));
+    failure.includes('onBackground() must release active inputs before taking the resume snapshot')));
 });
 
 for (const [receiver, methodName] of [
   ['writer', 'beginRelease'],
   ['writer', 'awaitReleaseDrain'],
-  ['active', 'completeStylusRelease']
+  ['active', 'completeStylusRelease'],
+  ['active', 'completeControllerRelease']
 ]) {
-  test(`semantic validator rejects removal of ${receiver}.${methodName}() from stylus release`, (t) => {
+  test(`semantic validator rejects removal of ${receiver}.${methodName}() from active input release`, (t) => {
     const fixture = projectFixture(t);
     const controllerPath = resolve(fixture.fixtureHarmony,
       'entry/src/main/ets/platform/HarmonySessionController.ets');
@@ -164,11 +165,11 @@ for (const [receiver, methodName] of [
     assert.notEqual(modified, source);
     writeFileSync(controllerPath, modified);
     assert(validateFixture(fixture).some((failure) =>
-      failure.includes(`releaseStylusInputs() must call ${receiver}.${methodName}()`)));
+      failure.includes(`releaseActiveInputs() must call ${receiver}.${methodName}()`)));
   });
 }
 
-test('semantic validator rejects unconfirmed stylus release sends', (t) => {
+test('semantic validator rejects unconfirmed active input release sends', (t) => {
   const fixture = projectFixture(t);
   const controllerPath = resolve(fixture.fixtureHarmony,
     'entry/src/main/ets/platform/HarmonySessionController.ets');
@@ -179,7 +180,42 @@ test('semantic validator rejects unconfirmed stylus release sends', (t) => {
   assert.notEqual(modified, source);
   writeFileSync(controllerPath, modified);
   assert(validateFixture(fixture).some((failure) =>
-    failure.includes('releaseStylusInputs() must call active.confirmSent()')));
+    failure.includes('releaseActiveInputs() must call active.confirmSent()')));
+});
+
+test('semantic validator rejects dropping controller release from active input cleanup', (t) => {
+  const fixture = projectFixture(t);
+  const controllerPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/platform/HarmonySessionController.ets');
+  const source = readFileSync(controllerPath, 'utf8');
+  const modified = source.replace('...active.releaseControllerInputs(() => this.nextInputId++)', '');
+  assert.notEqual(modified, source);
+  writeFileSync(controllerPath, modified);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('releaseActiveInputs() must call active.releaseControllerInputs()')));
+});
+
+test('semantic validator rejects dropping pending controller send cancellation', (t) => {
+  const fixture = projectFixture(t);
+  const controllerPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/platform/HarmonySessionController.ets');
+  const source = readFileSync(controllerPath, 'utf8');
+  const modified = source.replaceAll('active.cancelControllerSend(action.afterSend.event)', 'void action.afterSend.event');
+  assert.notEqual(modified, source);
+  writeFileSync(controllerPath, modified);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('sendAction() must call active.cancelControllerSend()')));
+});
+
+test('semantic validator rejects a missing controller capability guard', (t) => {
+  const fixture = projectFixture(t);
+  const controllerPath = resolve(fixture.fixtureHarmony,
+    'entry/src/main/ets/platform/HarmonySessionController.ets');
+  const source = readFileSync(controllerPath, 'utf8').replace('!active.canSend(Capability.CONTROLLER)', 'false');
+  assert.notEqual(source, readFileSync(controllerPath, 'utf8'));
+  writeFileSync(controllerPath, source);
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('sendController() must use a dominating CONTROLLER early-return guard')));
 });
 
 test('semantic validator rejects a disconnected production capability gate', (t) => {
