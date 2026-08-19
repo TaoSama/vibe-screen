@@ -28,13 +28,14 @@ type rateWindow struct {
 }
 
 type Server struct {
-	cfg      Config
-	store    *UsageStore
-	metrics  Metrics
-	now      func() time.Time
-	rateMu   sync.Mutex
-	rates    map[string]rateWindow
-	revokeMu sync.RWMutex
+	cfg       Config
+	store     *UsageStore
+	authority relayAuthority
+	metrics   Metrics
+	now       func() time.Time
+	rateMu    sync.Mutex
+	rates     map[string]rateWindow
+	revokeMu  sync.RWMutex
 }
 
 func NewServer(cfg Config) (*Server, error) {
@@ -45,7 +46,15 @@ func NewServer(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, store: store, now: time.Now, rates: make(map[string]rateWindow)}, nil
+	var authority relayAuthority
+	if cfg.EffectiveAuthorityMode() == AuthorityModeProd {
+		client, err := NewAuthorityClient(cfg.AuthorityURL, cfg.AuthorityToken)
+		if err != nil {
+			return nil, err
+		}
+		authority = client
+	}
+	return &Server{cfg: cfg, store: store, authority: authority, now: time.Now, rates: make(map[string]rateWindow)}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -71,10 +80,16 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) ready(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.Ready(); err != nil {
 		s.reject(w, http.StatusServiceUnavailable, "state storage unavailable")
 		return
+	}
+	if s.authority != nil {
+		if err := s.authority.Ready(r.Context()); err != nil {
+			s.reject(w, http.StatusServiceUnavailable, "authority unavailable")
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -92,9 +107,10 @@ func (s *Server) metricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type credentialRequest struct {
-	DeviceID   string `json:"device_id"`
-	SessionID  string `json:"session_id"`
-	TTLSeconds int64  `json:"ttl_seconds,omitempty"`
+	DeviceID     string `json:"device_id"`
+	SessionID    string `json:"session_id"`
+	AllocationID string `json:"allocation_id,omitempty"`
+	TTLSeconds   int64  `json:"ttl_seconds,omitempty"`
 }
 
 func (s *Server) credentials(w http.ResponseWriter, r *http.Request) {
@@ -111,18 +127,24 @@ func (s *Server) credentials(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, http.StatusBadRequest, "invalid device_id or session_id")
 		return
 	}
+	if s.authority != nil && !validIdentifier(request.AllocationID) {
+		s.reject(w, http.StatusBadRequest, "allocation_id is required in production authority mode")
+		return
+	}
 	s.revokeMu.RLock()
-	defer s.revokeMu.RUnlock()
 	if s.store.IsRevoked(request.DeviceID) {
+		s.revokeMu.RUnlock()
 		s.rejectRevoked(w)
 		return
 	}
 	if !s.allowCredential(request.DeviceID) {
+		s.revokeMu.RUnlock()
 		s.reject(w, http.StatusTooManyRequests, "credential rate limit exceeded")
 		return
 	}
 	ingress, egress, sessions := s.store.Snapshot(s.now(), request.DeviceID)
 	if ingress+egress >= s.cfg.DailyBytesPerDevice || sessions >= s.cfg.MaxConcurrentSessionsPerDevice {
+		s.revokeMu.RUnlock()
 		s.reject(w, http.StatusTooManyRequests, "device relay quota exceeded")
 		return
 	}
@@ -131,9 +153,53 @@ func (s *Server) credentials(w http.ResponseWriter, r *http.Request) {
 		ttl = s.cfg.CredentialTTLSeconds
 	}
 	if ttl <= 0 || ttl > s.cfg.MaxCredentialTTLSeconds {
+		s.revokeMu.RUnlock()
 		s.reject(w, http.StatusBadRequest, "ttl_seconds outside allowed range")
 		return
 	}
+	if s.authority == nil {
+		defer s.revokeMu.RUnlock()
+		s.writeCredential(w, request, ttl)
+		return
+	}
+	s.revokeMu.RUnlock()
+
+	if s.authority != nil {
+		err := s.authority.AdmitRelay(r.Context(), relayAdmissionRequest{
+			DeviceID:     request.DeviceID,
+			SessionID:    request.SessionID,
+			AllocationID: request.AllocationID,
+			SourceID:     s.cfg.AuthoritySourceID,
+		})
+		switch {
+		case err == nil:
+		case errors.Is(err, ErrDeviceRevoked):
+			s.rejectRevoked(w)
+			return
+		case errors.Is(err, ErrQuotaExceeded):
+			s.reject(w, http.StatusTooManyRequests, err.Error())
+			return
+		case errors.Is(err, ErrConflict):
+			s.reject(w, http.StatusConflict, err.Error())
+			return
+		case errors.Is(err, ErrAuthorityUnavailable):
+			s.reject(w, http.StatusBadGateway, ErrAuthorityUnavailable.Error())
+			return
+		default:
+			s.reject(w, http.StatusBadGateway, ErrAuthorityUnavailable.Error())
+			return
+		}
+	}
+	s.revokeMu.RLock()
+	defer s.revokeMu.RUnlock()
+	if s.store.IsRevoked(request.DeviceID) {
+		s.rejectRevoked(w)
+		return
+	}
+	s.writeCredential(w, request, ttl)
+}
+
+func (s *Server) writeCredential(w http.ResponseWriter, request credentialRequest, ttl int64) {
 	expires := s.now().UTC().Add(time.Duration(ttl) * time.Second).Unix()
 	username := fmt.Sprintf("%d:%s", expires, request.DeviceID)
 	mac := hmac.New(sha1.New, []byte(s.cfg.TurnSecret))

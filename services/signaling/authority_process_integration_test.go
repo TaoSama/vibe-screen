@@ -32,18 +32,27 @@ type authorityProcessTest struct {
 
 	signalingIssuerToken  string
 	signalingMetricsToken string
+	relayClientToken      string
+	relayUsageToken       string
+	relayMetricsToken     string
+	relayAdminToken       string
+	relayTurnSecret       string
 
 	authorityAddress string
 	signalingAddress string
+	relayAddress     string
 
 	authorityBinary string
 	signalingBinary string
+	relayBinary     string
 
 	authorityLog bytes.Buffer
 	signalingLog bytes.Buffer
+	relayLog     bytes.Buffer
 
 	authorityCmd *exec.Cmd
 	signalingCmd *exec.Cmd
+	relayCmd     *exec.Cmd
 }
 
 func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
@@ -66,17 +75,25 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 
 		signalingIssuerToken:  "signaling-issuer-token-" + randomSuffix(t),
 		signalingMetricsToken: "signaling-metrics-token-" + randomSuffix(t),
+		relayClientToken:      "relay-client-token-" + randomSuffix(t),
+		relayUsageToken:       "relay-usage-token-" + randomSuffix(t),
+		relayMetricsToken:     "relay-metrics-token-" + randomSuffix(t),
+		relayAdminToken:       "relay-admin-token-" + randomSuffix(t),
+		relayTurnSecret:       "relay-turn-secret-" + randomSuffix(t),
 
 		authorityAddress: reserveAddress(t),
 		signalingAddress: reserveAddress(t),
+		relayAddress:     reserveAddress(t),
 	}
 
 	tmpDir := t.TempDir()
 	run.authorityBinary = filepath.Join(tmpDir, "vibe-authority")
 	run.signalingBinary = filepath.Join(tmpDir, "vibe-signaling")
+	run.relayBinary = filepath.Join(tmpDir, "vibe-relay")
 
 	buildAuthority(t, run.authorityBinary)
 	buildSignaling(t, run.signalingBinary)
+	buildRelay(t, run.relayBinary)
 
 	// Apply the authority schema before starting the server.
 	migrateAuthority(t, run)
@@ -89,14 +106,19 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 
 	startSignaling(t, run)
 	t.Cleanup(func() { stopProcess(t, run.signalingCmd, &run.signalingLog, "signaling") })
+	startRelay(t, run)
+	t.Cleanup(func() { stopProcess(t, run.relayCmd, &run.relayLog, "relay") })
 
 	authorityBase := "http://" + run.authorityAddress
 	signalingBase := "http://" + run.signalingAddress
+	relayBase := "http://" + run.relayAddress
 
 	waitUntilHealthy(t, authorityBase+"/healthz")
 	waitUntilHealthy(t, signalingBase+"/healthz")
+	waitUntilHealthy(t, relayBase+"/healthz")
 	waitUntilReady(t, authorityBase+"/readyz")
 	waitUntilReady(t, signalingBase+"/readyz")
+	waitUntilReady(t, relayBase+"/readyz")
 
 	accountID := "acct-" + randomSuffix(t)
 	hostDeviceID := "host-" + randomSuffix(t)
@@ -125,28 +147,90 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 }`, requestID, accountID, hostDeviceID, clientDeviceID, sessionEpoch)
 	createResp := postJSON(t, signalingBase+"/v1/sessions", run.signalingIssuerToken,
 		createBody, http.StatusCreated)
-	var created sessionResponse
-	if err := json.Unmarshal(createResp, &created); err != nil {
+	var firstSession sessionResponse
+	if err := json.Unmarshal(createResp, &firstSession); err != nil {
 		t.Fatal(err)
 	}
-	if created.SessionID == "" || created.HostToken == "" || created.DeviceToken == "" {
-		t.Fatalf("incomplete session response: %#v", created)
+	if firstSession.SessionID == "" || firstSession.HostToken == "" || firstSession.DeviceToken == "" {
+		t.Fatalf("incomplete session response: %#v", firstSession)
 	}
-	if created.HostToken == created.DeviceToken {
-		t.Fatalf("host and device tokens must differ: %#v", created)
+	if firstSession.HostToken == firstSession.DeviceToken {
+		t.Fatalf("host and device tokens must differ: %#v", firstSession)
+	}
+	credentialPasswords := []string{}
+	assertCredential := func(body string) {
+		t.Helper()
+		credentialResp := relayRequest(t, http.MethodPost, relayBase+"/v1/credentials", run.relayClientToken, body, http.StatusOK)
+		var credential struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if err := json.Unmarshal(credentialResp, &credential); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasSuffix(credential.Username, ":"+clientDeviceID) || credential.Password == "" {
+			t.Fatalf("relay returned incomplete TURN credential: %#v", credential)
+		}
+		credentialPasswords = append(credentialPasswords, credential.Password)
 	}
 
 	// Host posts an offer; the client polls and receives it.
 	const offerSDP = "v=0\r\na=fingerprint:sha-256 AUTHORITY-OFFER-SECRET\r\n"
-	postJSON(t, signalingBase+"/v1/sessions/"+created.SessionID+"/messages",
-		created.HostToken,
+	postJSON(t, signalingBase+"/v1/sessions/"+firstSession.SessionID+"/messages",
+		firstSession.HostToken,
 		fmt.Sprintf(`{"message_id":"offer-1","type":"offer","sdp":%q}`, offerSDP),
 		http.StatusCreated)
-	clientPoll := poll(t, signalingBase, created.SessionID, created.DeviceToken, 0)
+	clientPoll := poll(t, signalingBase, firstSession.SessionID, firstSession.DeviceToken, 0)
 	if len(clientPoll.Events) != 1 || clientPoll.Events[0].Type != "offer" ||
 		clientPoll.Events[0].SDP != offerSDP {
 		t.Fatalf("client did not receive host offer: %#v", clientPoll)
 	}
+
+	// Relay credentials are issued only after relay asks the shared authority to
+	// reserve capacity for this signaling session/device/allocation tuple.
+	credentialBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-before-session-invalidate"}`, clientDeviceID, firstSession.SessionID)
+	assertCredential(credentialBody)
+
+	// Session-only invalidation must also propagate to relay admission. The
+	// device is still registered and not revoked, so this proves the authority
+	// session tombstone is enough to block a future TURN credential.
+	status, _, err := requestStatus(http.MethodDelete,
+		signalingBase+"/v1/sessions/"+firstSession.SessionID,
+		run.signalingIssuerToken, "")
+	if err != nil {
+		t.Fatalf("invalidate first session: %v", err)
+	}
+	if status != http.StatusNoContent {
+		t.Fatalf("invalidate first session status=%d, want 204", status)
+	}
+	postJSON(t, signalingBase+"/v1/sessions/"+firstSession.SessionID+"/messages",
+		firstSession.HostToken,
+		`{"message_id":"offer-after-session-invalidate","type":"offer","sdp":"v=0\r\n"}`,
+		http.StatusNotFound)
+	credentialAfterSessionInvalidate := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-after-session-invalidate"}`, clientDeviceID, firstSession.SessionID)
+	relayRequest(t, http.MethodPost, relayBase+"/v1/credentials", run.relayClientToken, credentialAfterSessionInvalidate, http.StatusForbidden)
+
+	secondRequestID := "req-" + randomSuffix(t)
+	const secondSessionEpoch uint64 = 2
+	secondCreateBody := fmt.Sprintf(`{
+  "request_id": %q,
+  "account_id": %q,
+  "host_device_id": %q,
+  "client_device_id": %q,
+  "session_epoch": %d,
+  "ttl_seconds": 60
+}`, secondRequestID, accountID, hostDeviceID, clientDeviceID, secondSessionEpoch)
+	secondCreateResp := postJSON(t, signalingBase+"/v1/sessions", run.signalingIssuerToken,
+		secondCreateBody, http.StatusCreated)
+	var secondSession sessionResponse
+	if err := json.Unmarshal(secondCreateResp, &secondSession); err != nil {
+		t.Fatal(err)
+	}
+	if secondSession.SessionID == "" || secondSession.HostToken == "" || secondSession.DeviceToken == "" {
+		t.Fatalf("incomplete second session response: %#v", secondSession)
+	}
+	secondCredentialBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-before-device-revoke"}`, clientDeviceID, secondSession.SessionID)
+	assertCredential(secondCredentialBody)
 
 	// Revoke the client device through the authority admin API. The session
 	// epoch is the revocation epoch; the authority marks every session that
@@ -154,23 +238,29 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 	authorityRequest(t, http.MethodPost,
 		authorityBase+"/v1/devices/"+clientDeviceID+"/revoke",
 		run.authorityAdminToken,
-		fmt.Sprintf(`{"epoch": %d}`, sessionEpoch),
+		fmt.Sprintf(`{"epoch": %d}`, secondSessionEpoch),
 		http.StatusNoContent)
 
 	// After revocation, both role tokens must be rejected by signaling with
 	// 404. The authority returns 403 for revoked sessions; signaling maps that
 	// to 404 so it does not disclose whether the session exists.
-	postJSON(t, signalingBase+"/v1/sessions/"+created.SessionID+"/messages",
-		created.HostToken,
+	postJSON(t, signalingBase+"/v1/sessions/"+secondSession.SessionID+"/messages",
+		secondSession.HostToken,
 		`{"message_id":"offer-after-revoke","type":"offer","sdp":"v=0\r\n"}`,
 		http.StatusNotFound)
-	pollExpectStatus(t, signalingBase, created.SessionID, created.DeviceToken,
-		clientPoll.NextCursor, http.StatusNotFound)
+	pollExpectStatus(t, signalingBase, secondSession.SessionID, secondSession.DeviceToken,
+		0, http.StatusNotFound)
+
+	// The same authority tombstone must propagate to relay admission: a new TURN
+	// credential for the revoked device/session fails closed instead of falling
+	// back to the relay-local JSON store.
+	credentialAfterRevokeBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-after-revoke"}`, clientDeviceID, secondSession.SessionID)
+	relayRequest(t, http.MethodPost, relayBase+"/v1/credentials", run.relayClientToken, credentialAfterRevokeBody, http.StatusForbidden)
 
 	// The issuer can still invalidate the session record, but the underlying
 	// authority admission is already revoked.
-	status, _, err := requestStatus(http.MethodDelete,
-		signalingBase+"/v1/sessions/"+created.SessionID,
+	status, _, err = requestStatus(http.MethodDelete,
+		signalingBase+"/v1/sessions/"+secondSession.SessionID,
 		run.signalingIssuerToken, "")
 	if err != nil {
 		t.Fatalf("invalidate after revoke: %v", err)
@@ -182,6 +272,8 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 	// Stop both processes with SIGTERM and assert bounded shutdown.
 	stopProcess(t, run.signalingCmd, &run.signalingLog, "signaling")
 	run.signalingCmd = nil
+	stopProcess(t, run.relayCmd, &run.relayLog, "relay")
+	run.relayCmd = nil
 	stopProcess(t, run.authorityCmd, &run.authorityLog, "authority")
 	run.authorityCmd = nil
 
@@ -190,9 +282,13 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 		run.authorityAdminToken, run.authoritySignalingToken,
 		run.authorityRelayToken, run.authorityCoturnToken, run.authorityRoleSecret,
 		run.signalingIssuerToken, run.signalingMetricsToken,
-		created.HostToken, created.DeviceToken,
+		run.relayClientToken, run.relayUsageToken, run.relayMetricsToken,
+		run.relayAdminToken, run.relayTurnSecret,
+		firstSession.HostToken, firstSession.DeviceToken,
+		secondSession.HostToken, secondSession.DeviceToken,
 		offerSDP, "AUTHORITY-OFFER-SECRET",
 	}
+	secrets = append(secrets, credentialPasswords...)
 	for _, secret := range secrets {
 		if secret == "" {
 			continue
@@ -202,6 +298,9 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 		}
 		if strings.Contains(run.signalingLog.String(), secret) {
 			t.Fatalf("signaling log leaked secret %q", secret)
+		}
+		if strings.Contains(run.relayLog.String(), secret) {
+			t.Fatalf("relay log leaked secret %q", secret)
 		}
 	}
 }
@@ -235,6 +334,17 @@ func buildSignaling(t *testing.T, binaryPath string) {
 	build := exec.CommandContext(ctx, "go", "build", "-o", binaryPath, "./cmd/vibe-signaling")
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build signaling process: %v\n%s", err, output)
+	}
+}
+
+func buildRelay(t *testing.T, binaryPath string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	build := exec.CommandContext(ctx, "go", "build", "-o", binaryPath, "./cmd/vibe-relay")
+	build.Dir = "../relay"
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build relay process: %v\n%s", err, output)
 	}
 }
 
@@ -340,6 +450,45 @@ func startSignaling(t *testing.T, run *authorityProcessTest) {
 	run.signalingCmd = cmd
 }
 
+func startRelay(t *testing.T, run *authorityProcessTest) {
+	t.Helper()
+	configPath := filepath.Join(t.TempDir(), "relay-config.json")
+	config := fmt.Sprintf(`{
+  "listen_address": %q,
+  "turn_realm": "relay.test",
+  "turn_uris": ["turn:127.0.0.1:3478?transport=udp"],
+  "credential_ttl_seconds": 60,
+  "max_credential_ttl_seconds": 120,
+  "credential_requests_per_minute": 60,
+  "max_concurrent_sessions_per_device": 2,
+  "daily_bytes_per_device": 21474836480,
+  "max_usage_event_bytes": 1073741824,
+  "egress_microcents_per_gibibyte": 0,
+  "state_file": %q,
+  "authority_mode": "production_authority",
+  "authority_url": "http://%s",
+  "authority_source_id": "turn-integration-1"
+}`, run.relayAddress, filepath.Join(t.TempDir(), "relay-state.json"), run.authorityAddress)
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(context.Background(), run.relayBinary, "--config", configPath)
+	cmd.Env = append(os.Environ(),
+		"VIBE_RELAY_TURN_SECRET="+run.relayTurnSecret,
+		"VIBE_RELAY_CLIENT_TOKEN="+run.relayClientToken,
+		"VIBE_RELAY_USAGE_TOKEN="+run.relayUsageToken,
+		"VIBE_RELAY_METRICS_TOKEN="+run.relayMetricsToken,
+		"VIBE_RELAY_ADMIN_TOKEN="+run.relayAdminToken,
+		"VIBE_RELAY_AUTHORITY_TOKEN="+run.authorityRelayToken,
+	)
+	cmd.Stdout = &run.relayLog
+	cmd.Stderr = &run.relayLog
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	run.relayCmd = cmd
+}
+
 // stopProcess sends SIGTERM and waits up to 5 seconds for the process to exit.
 // It is safe to call on a nil or already-exited command.
 func stopProcess(t *testing.T, cmd *exec.Cmd, logBuffer *bytes.Buffer, name string) {
@@ -375,6 +524,18 @@ func authorityRequest(t *testing.T, method, url, token, body string, expectedSta
 		t.Fatalf("authority %s %s status=%d want=%d body=%s",
 			method, url, status, expectedStatus, responseBody)
 	}
+}
+
+func relayRequest(t *testing.T, method, url, token, body string, expectedStatus int) []byte {
+	t.Helper()
+	status, responseBody, err := requestStatus(method, url, token, body)
+	if err != nil {
+		t.Fatalf("relay request %s %s: %v", method, url, err)
+	}
+	if status != expectedStatus {
+		t.Fatalf("relay %s %s status=%d want=%d body=%s", method, url, status, expectedStatus, responseBody)
+	}
+	return responseBody
 }
 
 // pollExpectStatus polls for events and asserts the HTTP status without

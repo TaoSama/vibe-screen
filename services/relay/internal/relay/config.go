@@ -9,11 +9,14 @@ import (
 )
 
 const (
-	turnSecretEnv   = "VIBE_RELAY_TURN_SECRET"
-	clientTokenEnv  = "VIBE_RELAY_CLIENT_TOKEN"
-	usageTokenEnv   = "VIBE_RELAY_USAGE_TOKEN"
-	metricsTokenEnv = "VIBE_RELAY_METRICS_TOKEN"
-	adminTokenEnv   = "VIBE_RELAY_ADMIN_TOKEN"
+	turnSecretEnv      = "VIBE_RELAY_TURN_SECRET"
+	clientTokenEnv     = "VIBE_RELAY_CLIENT_TOKEN"
+	usageTokenEnv      = "VIBE_RELAY_USAGE_TOKEN"
+	metricsTokenEnv    = "VIBE_RELAY_METRICS_TOKEN"
+	adminTokenEnv      = "VIBE_RELAY_ADMIN_TOKEN"
+	authorityTokenEnv  = "VIBE_RELAY_AUTHORITY_TOKEN"
+	AuthorityModeLocal = "local_development"
+	AuthorityModeProd  = "production_authority"
 )
 
 type Config struct {
@@ -28,12 +31,16 @@ type Config struct {
 	MaxUsageEventBytes             uint64   `json:"max_usage_event_bytes"`
 	EgressMicrocentsPerGibibyte    uint64   `json:"egress_microcents_per_gibibyte"`
 	StateFile                      string   `json:"state_file"`
+	AuthorityMode                  string   `json:"authority_mode,omitempty"`
+	AuthorityURL                   string   `json:"authority_url,omitempty"`
+	AuthoritySourceID              string   `json:"authority_source_id,omitempty"`
 
-	TurnSecret   string `json:"-"`
-	ClientToken  string `json:"-"`
-	UsageToken   string `json:"-"`
-	MetricsToken string `json:"-"`
-	AdminToken   string `json:"-"`
+	TurnSecret     string `json:"-"`
+	ClientToken    string `json:"-"`
+	UsageToken     string `json:"-"`
+	MetricsToken   string `json:"-"`
+	AdminToken     string `json:"-"`
+	AuthorityToken string `json:"-"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -67,6 +74,10 @@ func LoadConfig(path string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	cfg.AuthorityToken, err = loadSecret(authorityTokenEnv)
+	if err != nil {
+		return Config{}, err
+	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
@@ -91,6 +102,10 @@ func loadSecret(name string) (string, error) {
 }
 
 func (c Config) Validate() error {
+	mode := c.AuthorityMode
+	if mode == "" {
+		mode = AuthorityModeLocal
+	}
 	var missing []string
 	if c.ListenAddress == "" {
 		missing = append(missing, "listen_address")
@@ -119,19 +134,45 @@ func (c Config) Validate() error {
 	if c.AdminToken == "" {
 		missing = append(missing, adminTokenEnv)
 	}
+	if mode == AuthorityModeProd {
+		if c.AuthorityURL == "" {
+			missing = append(missing, "authority_url")
+		}
+		if c.AuthoritySourceID == "" {
+			missing = append(missing, "authority_source_id")
+		}
+		if c.AuthorityToken == "" {
+			missing = append(missing, authorityTokenEnv)
+		}
+	}
 	if len(missing) > 0 {
 		return fmt.Errorf("missing required configuration: %s", strings.Join(missing, ", "))
 	}
 	if len(c.TurnSecret) < 32 || len(c.ClientToken) < 32 || len(c.UsageToken) < 32 || len(c.MetricsToken) < 32 || len(c.AdminToken) < 32 {
 		return errors.New("TURN secret and API tokens must each contain at least 32 characters")
 	}
+	if mode == AuthorityModeProd && len(c.AuthorityToken) < 32 {
+		return errors.New("authority API token must contain at least 32 characters")
+	}
 	tokens := []string{c.ClientToken, c.UsageToken, c.MetricsToken, c.AdminToken}
+	if c.AuthorityToken != "" {
+		tokens = append(tokens, c.AuthorityToken)
+	}
 	for left := range tokens {
 		for right := left + 1; right < len(tokens); right++ {
 			if tokens[left] == tokens[right] {
-				return errors.New("client, usage, metrics, and admin API tokens must be different")
+				return errors.New("client, usage, metrics, admin, and authority API tokens must be different")
 			}
 		}
+	}
+	if mode != AuthorityModeLocal && mode != AuthorityModeProd {
+		return fmt.Errorf("unsupported authority_mode %q", c.AuthorityMode)
+	}
+	if mode == AuthorityModeLocal && (c.AuthorityURL != "" || c.AuthoritySourceID != "") {
+		return errors.New("authority_url and authority_source_id require production_authority mode")
+	}
+	if mode == AuthorityModeProd && !validIdentifier(c.AuthoritySourceID) {
+		return errors.New("authority_source_id must be a valid identifier")
 	}
 	if c.CredentialTTLSeconds <= 0 || c.MaxCredentialTTLSeconds < c.CredentialTTLSeconds {
 		return errors.New("credential TTL must be positive and no greater than maximum TTL")
@@ -148,4 +189,11 @@ func (c Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+func (c Config) EffectiveAuthorityMode() string {
+	if c.AuthorityMode == "" {
+		return AuthorityModeLocal
+	}
+	return c.AuthorityMode
 }
