@@ -1,0 +1,965 @@
+[1787067046200] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787067046200] MA: lifecycle foreground connected=false
+[1787067046242] MA: surfaceCreated
+[1787067046243] MA: surfaceChanged: 1264x2800
+[1787067046366] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787067047885] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787067049414] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787067050948] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787067052484] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787067054015] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787067055551] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787067057073] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787067058618] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787067060144] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787067061681] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787067063216] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787067064737] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787067066257] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787067067790] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069361131] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787069361131] MA: lifecycle foreground connected=false
+[1787069361177] MA: surfaceCreated
+[1787069361178] MA: surfaceChanged: 1264x2800
+[1787069361297] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069362816] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069364333] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069365845] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069367361] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069368882] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069370394] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069371920] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069373452] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069374979] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069376496] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069378039] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069379569] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069381097] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069382629] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069384153] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069385677] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069387207] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069388731] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069390264] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787069391896] SC: Protocol v1 upgrade accepted
+[1787069391896] SC: Connected to 127.0.0.1:54321
+[1787069391922] MA: onHostActionsAvailable: move-window, return-windows
+[1787069391937] MA: onDisplaysAvailable: count=3 selected=35 negotiated=[CAPABILITY_TOUCH, CAPABILITY_KEYBOARD, CAPABILITY_POINTER, CAPABILITY_STYLUS, CAPABILITY_MULTI_DISPLAY, CAPABILITY_HOST_ACTIONS, CAPABILITY_CLIENT_VIDEO_CONTROL, CAPABILITY_STYLUS_EXTENDED, CAPABILITY_USB_HID_MODIFIER_BYTE] displays=35:Vibe Screen Virtual (扩展屏):2000x1200:primary=false, 1:Built-in Retina Display:1512x982:primary=true, 3:DELL U2723QE:1920x1080:primary=false
+[1787069391938] MA: session binding promoted: displaySelection=true keyboard=true nativePointer=true hostActions=true
+[1787069391938] MA: onVideoConfiguration: 2000x1200 @ 0° epoch=1
+[1787069391939] MA: Video config arrived, initializing decoder 2000x1200
+[1787069391939] MA: initializeDecoder called, surface=Surface(name=null mNativeObject=-5476376613998263600)/@0x9f6abe, valid=true, encoded=2000x1200
+[1787069391942] VD: setupDecoder: 2000x1200, decoder=c2.qti.hevc.decoder
+[1787069391983] VD: Configured with full low-latency
+[1787069391984] VD: Surface frame rate requested: 60.000004Hz fixed-source
+[1787069392008] VD: Decoder started: 2000x1200 @ 60.000004Hz, surface=Surface(name=null mNativeObject=-5476376613998263600)/@0x9f6abe, valid=true
+[1787069392010] MA: Decoder configuration committed 2000x1200 epoch=1
+[1787069392016] MA: onDisplayGeometry: 2000x1200 @ 0°
+[1787069392070] MA: surfaceChanged: 1264x758
+[1787069392076] MA: surfaceChanged: 1264x758
+[1787069392077] MA: surfaceChanged: 2106x1264
+[1787069575516] VD: First frame: size=61317, header=[00 00 00 01 40 01 0c 01 ff ff 01 60 00 00 03 00], keyframe=true, surface=Surface(name=null mNativeObject=-5476376613998263600)/@0x9f6abe, valid=true
+[1787069575569] VD: Output format changed: {crop-right=1999, max-height=4320, sar-width=1, color-format=2130708361, mime=video/raw, hdr-static-info=java.nio.HeapByteBuffer[pos=0 lim=25 cap=25], priority=0, color-standard=1, feature-secure-playback=0, color-transfer=3, sar-height=1, hdr10-plus-info=java.nio.HeapByteBuffer[pos=0 lim=0 cap=0], crop-bottom=1199, max-width=8192, crop-left=0, width=2000, color-range=1, crop-top=0, rotation-degrees=0, frame-rate=1, height=1200}
+[1787069575570] VD: First output frame! size=1, flags=1
+[1787069576464] VD: Decode stats: input=60, output=57, dropped=0, availBufs=8
+[1787069576473] VD: Output #60: decoder latency avg=10.4ms max=55.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787069577514] VD: Decode stats: input=120, output=119, dropped=0, availBufs=10
+[1787069577524] VD: Output #120: decoder latency avg=7.6ms max=11.6ms over 60 samples, input bufs avail=10, dropped=0
+[1787069578538] VD: Decode stats: input=180, output=179, dropped=0, availBufs=10
+[1787069578550] VD: Output #180: decoder latency avg=7.9ms max=11.2ms over 60 samples, input bufs avail=9, dropped=0
+[1787069579546] VD: Decode stats: input=240, output=239, dropped=0, availBufs=10
+[1787069579554] VD: Output #240: decoder latency avg=7.6ms max=12.6ms over 60 samples, input bufs avail=10, dropped=0
+[1787069580614] VD: Decode stats: input=300, output=299, dropped=0, availBufs=10
+[1787069580619] VD: Output #300: decoder latency avg=7.4ms max=14.5ms over 60 samples, input bufs avail=10, dropped=0
+[1787069581653] VD: Decode stats: input=360, output=359, dropped=0, availBufs=10
+[1787069581658] VD: Output #360: decoder latency avg=7.3ms max=10.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787069582649] VD: Decode stats: input=420, output=419, dropped=0, availBufs=10
+[1787069582658] VD: Output #420: decoder latency avg=7.6ms max=13.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787069583664] VD: Decode stats: input=480, output=479, dropped=0, availBufs=10
+[1787069583673] VD: Output #480: decoder latency avg=8.0ms max=15.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787069584684] VD: Decode stats: input=540, output=539, dropped=0, availBufs=10
+[1787069584689] VD: Output #540: decoder latency avg=6.7ms max=21.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787069585684] VD: Decode stats: input=600, output=598, dropped=0, availBufs=10
+[1787069585692] VD: Output #600: decoder latency avg=8.0ms max=14.9ms over 60 samples, input bufs avail=10, dropped=0
+[1787069586864] VD: Decode stats: input=660, output=659, dropped=0, availBufs=10
+[1787069586872] VD: Output #660: decoder latency avg=7.6ms max=16.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787069587862] VD: Decode stats: input=720, output=719, dropped=0, availBufs=10
+[1787069587868] VD: Output #720: decoder latency avg=6.8ms max=12.3ms over 60 samples, input bufs avail=9, dropped=0
+[1787069588879] VD: Decode stats: input=780, output=779, dropped=0, availBufs=10
+[1787069588884] VD: Output #780: decoder latency avg=7.5ms max=14.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787069589896] VD: Decode stats: input=840, output=839, dropped=0, availBufs=10
+[1787069589903] VD: Output #840: decoder latency avg=6.9ms max=12.3ms over 60 samples, input bufs avail=10, dropped=0
+[1787069590895] VD: Decode stats: input=900, output=899, dropped=0, availBufs=10
+[1787069590902] VD: Output #900: decoder latency avg=8.0ms max=13.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787069591930] VD: Decode stats: input=960, output=959, dropped=0, availBufs=10
+[1787069591938] VD: Output #960: decoder latency avg=7.9ms max=11.0ms over 60 samples, input bufs avail=10, dropped=0
+[1787069592978] VD: Decode stats: input=1020, output=1019, dropped=0, availBufs=10
+[1787069592985] VD: Output #1020: decoder latency avg=7.9ms max=14.5ms over 60 samples, input bufs avail=10, dropped=0
+[1787069594078] VD: Decode stats: input=1080, output=1079, dropped=0, availBufs=10
+[1787069594084] VD: Output #1080: decoder latency avg=7.1ms max=11.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787069595096] VD: Decode stats: input=1140, output=1139, dropped=0, availBufs=10
+[1787069595105] VD: Output #1140: decoder latency avg=7.5ms max=19.0ms over 60 samples, input bufs avail=9, dropped=0
+[1787069596112] VD: Decode stats: input=1200, output=1199, dropped=0, availBufs=10
+[1787069596117] VD: Output #1200: decoder latency avg=7.4ms max=14.4ms over 60 samples, input bufs avail=10, dropped=0
+[1787069597179] VD: Decode stats: input=1260, output=1259, dropped=0, availBufs=10
+[1787069597186] VD: Output #1260: decoder latency avg=8.7ms max=19.5ms over 60 samples, input bufs avail=10, dropped=0
+[1787069598181] VD: Decode stats: input=1320, output=1319, dropped=0, availBufs=10
+[1787069598189] VD: Output #1320: decoder latency avg=7.8ms max=13.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787069599213] VD: Decode stats: input=1380, output=1379, dropped=0, availBufs=10
+[1787069599218] VD: Output #1380: decoder latency avg=6.8ms max=11.4ms over 60 samples, input bufs avail=10, dropped=0
+[1787069600296] VD: Decode stats: input=1440, output=1439, dropped=0, availBufs=10
+[1787069600303] VD: Output #1440: decoder latency avg=6.0ms max=10.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787069601315] VD: Decode stats: input=1500, output=1499, dropped=0, availBufs=10
+[1787069601320] VD: Output #1500: decoder latency avg=7.8ms max=16.0ms over 60 samples, input bufs avail=10, dropped=0
+[1787069602334] VD: Decode stats: input=1560, output=1559, dropped=0, availBufs=10
+[1787069602341] VD: Output #1560: decoder latency avg=8.2ms max=15.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787069603363] VD: Decode stats: input=1620, output=1619, dropped=0, availBufs=10
+[1787069603371] VD: Output #1620: decoder latency avg=8.3ms max=14.2ms over 60 samples, input bufs avail=9, dropped=0
+[1787069604395] VD: Decode stats: input=1680, output=1678, dropped=0, availBufs=10
+[1787069604402] VD: Output #1680: decoder latency avg=7.2ms max=11.5ms over 60 samples, input bufs avail=10, dropped=0
+[1787069605394] VD: Decode stats: input=1740, output=1739, dropped=0, availBufs=10
+[1787069605401] VD: Output #1740: decoder latency avg=7.4ms max=12.5ms over 60 samples, input bufs avail=10, dropped=0
+[1787069606430] VD: Decode stats: input=1800, output=1799, dropped=0, availBufs=10
+[1787069606439] VD: Output #1800: decoder latency avg=8.0ms max=17.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787069607427] VD: Decode stats: input=1860, output=1859, dropped=0, availBufs=10
+[1787069607431] VD: Output #1860: decoder latency avg=7.1ms max=16.4ms over 60 samples, input bufs avail=10, dropped=0
+[1787069608447] VD: Decode stats: input=1920, output=1919, dropped=0, availBufs=10
+[1787069608455] VD: Output #1920: decoder latency avg=7.3ms max=12.0ms over 60 samples, input bufs avail=9, dropped=0
+[1787069609502] VD: Decode stats: input=1980, output=1978, dropped=0, availBufs=9
+[1787069609511] VD: Output #1980: decoder latency avg=7.8ms max=13.8ms over 60 samples, input bufs avail=9, dropped=0
+[1787069610508] VD: Decode stats: input=2040, output=2037, dropped=0, availBufs=8
+[1787069610519] VD: Output #2040: decoder latency avg=7.5ms max=19.5ms over 60 samples, input bufs avail=9, dropped=0
+[1787069611500] VD: Decode stats: input=2100, output=2097, dropped=0, availBufs=8
+[1787069611508] VD: Output #2100: decoder latency avg=7.1ms max=9.4ms over 60 samples, input bufs avail=10, dropped=0
+[1787069612503] VD: Decode stats: input=2160, output=2158, dropped=0, availBufs=9
+[1787069612509] VD: Output #2160: decoder latency avg=7.2ms max=13.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787069613504] VD: Decode stats: input=2220, output=2218, dropped=0, availBufs=9
+[1787069613510] VD: Output #2220: decoder latency avg=7.2ms max=10.5ms over 60 samples, input bufs avail=10, dropped=0
+[1787069614503] VD: Decode stats: input=2280, output=2277, dropped=0, availBufs=8
+[1787069614511] VD: Output #2280: decoder latency avg=6.1ms max=9.3ms over 60 samples, input bufs avail=9, dropped=0
+[1787069615547] VD: Decode stats: input=2340, output=2339, dropped=0, availBufs=10
+[1787069615552] VD: Output #2340: decoder latency avg=7.2ms max=12.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787069616545] VD: Decode stats: input=2400, output=2399, dropped=0, availBufs=10
+[1787069616551] VD: Output #2400: decoder latency avg=7.5ms max=14.3ms over 60 samples, input bufs avail=10, dropped=0
+[1787069617584] VD: Decode stats: input=2460, output=2458, dropped=0, availBufs=10
+[1787069617595] VD: Output #2460: decoder latency avg=7.3ms max=11.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787069618597] VD: Decode stats: input=2520, output=2519, dropped=0, availBufs=10
+[1787069618606] VD: Output #2520: decoder latency avg=6.7ms max=11.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787069619596] VD: Decode stats: input=2580, output=2579, dropped=0, availBufs=10
+[1787069619603] VD: Output #2580: decoder latency avg=7.9ms max=13.7ms over 60 samples, input bufs avail=9, dropped=0
+[1787069620637] VD: Decode stats: input=2640, output=2639, dropped=0, availBufs=10
+[1787069620645] VD: Output #2640: decoder latency avg=8.0ms max=12.7ms over 60 samples, input bufs avail=9, dropped=0
+[1787069621613] VD: Decode stats: input=2700, output=2699, dropped=0, availBufs=10
+[1787069621622] VD: Output #2700: decoder latency avg=7.4ms max=13.9ms over 60 samples, input bufs avail=10, dropped=0
+[1787069622646] VD: Decode stats: input=2760, output=2759, dropped=0, availBufs=10
+[1787069622655] VD: Output #2760: decoder latency avg=8.2ms max=17.9ms over 60 samples, input bufs avail=10, dropped=0
+[1787069623700] VD: Decode stats: input=2820, output=2819, dropped=0, availBufs=10
+[1787069623706] VD: Output #2820: decoder latency avg=7.8ms max=14.3ms over 60 samples, input bufs avail=10, dropped=0
+[1787069624714] VD: Decode stats: input=2880, output=2879, dropped=0, availBufs=10
+[1787069624721] VD: Output #2880: decoder latency avg=7.9ms max=14.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787069625747] VD: Decode stats: input=2940, output=2939, dropped=0, availBufs=10
+[1787069625754] VD: Output #2940: decoder latency avg=7.5ms max=11.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787069626766] VD: Decode stats: input=3000, output=2999, dropped=0, availBufs=10
+[1787069626774] VD: Output #3000: decoder latency avg=7.7ms max=11.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787069627768] VD: Decode stats: input=3060, output=3059, dropped=0, availBufs=10
+[1787069627776] VD: Output #3060: decoder latency avg=7.0ms max=11.9ms over 60 samples, input bufs avail=10, dropped=0
+[1787069628761] VD: Decode stats: input=3120, output=3119, dropped=0, availBufs=10
+[1787069628767] VD: Output #3120: decoder latency avg=7.6ms max=14.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787069629800] VD: Decode stats: input=3180, output=3178, dropped=0, availBufs=9
+[1787069629808] VD: Output #3180: decoder latency avg=8.1ms max=17.6ms over 60 samples, input bufs avail=9, dropped=0
+[1787069630815] VD: Decode stats: input=3240, output=3239, dropped=0, availBufs=10
+[1787069630824] VD: Output #3240: decoder latency avg=7.7ms max=12.9ms over 60 samples, input bufs avail=10, dropped=0
+[1787069631931] VD: Decode stats: input=3300, output=3299, dropped=0, availBufs=10
+[1787069631940] VD: Output #3300: decoder latency avg=7.7ms max=12.9ms over 60 samples, input bufs avail=10, dropped=0
+[1787069633546] VD: Decode stats: input=3360, output=3357, dropped=0, availBufs=8
+[1787069633550] VD: Output #3360: decoder latency avg=7.1ms max=12.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787069634692] VD: Decode stats: input=3420, output=3419, dropped=0, availBufs=10
+[1787069634700] VD: Output #3420: decoder latency avg=7.2ms max=10.6ms over 60 samples, input bufs avail=9, dropped=0
+[1787069636049] VD: Decode stats: input=3480, output=3479, dropped=0, availBufs=10
+[1787069636057] VD: Output #3480: decoder latency avg=7.0ms max=12.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787069637384] VD: Decode stats: input=3540, output=3539, dropped=0, availBufs=10
+[1787069637389] VD: Output #3540: decoder latency avg=7.5ms max=13.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787069638413] VD: Decode stats: input=3600, output=3599, dropped=0, availBufs=10
+[1787069638420] VD: Output #3600: decoder latency avg=7.1ms max=13.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787069639414] VD: Decode stats: input=3660, output=3659, dropped=0, availBufs=10
+[1787069639422] VD: Output #3660: decoder latency avg=7.1ms max=11.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787069644524] VD: Decode stats: input=3720, output=3717, dropped=0, availBufs=8
+[1787069644532] VD: Output #3720: decoder latency avg=7.3ms max=12.9ms over 60 samples, input bufs avail=10, dropped=0
+[1787069646299] VD: Decode stats: input=3780, output=3779, dropped=0, availBufs=10
+[1787069646304] VD: Output #3780: decoder latency avg=7.2ms max=14.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787069647332] VD: Decode stats: input=3840, output=3839, dropped=0, availBufs=10
+[1787069647340] VD: Output #3840: decoder latency avg=7.1ms max=14.5ms over 60 samples, input bufs avail=10, dropped=0
+[1787069648347] VD: Decode stats: input=3900, output=3899, dropped=0, availBufs=10
+[1787069648356] VD: Output #3900: decoder latency avg=7.0ms max=12.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787069649346] VD: Decode stats: input=3960, output=3959, dropped=0, availBufs=10
+[1787069649351] VD: Output #3960: decoder latency avg=6.8ms max=12.6ms over 60 samples, input bufs avail=10, dropped=0
+[1787069650363] VD: Decode stats: input=4020, output=4019, dropped=0, availBufs=10
+[1787069650369] VD: Output #4020: decoder latency avg=6.3ms max=9.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787069651379] VD: Decode stats: input=4080, output=4079, dropped=0, availBufs=10
+[1787069651384] VD: Output #4080: decoder latency avg=6.9ms max=11.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787069652398] VD: Decode stats: input=4140, output=4139, dropped=0, availBufs=10
+[1787069652403] VD: Output #4140: decoder latency avg=7.1ms max=11.6ms over 60 samples, input bufs avail=9, dropped=0
+[1787069653398] VD: Decode stats: input=4200, output=4199, dropped=0, availBufs=10
+[1787069653406] VD: Output #4200: decoder latency avg=6.7ms max=9.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787069654411] VD: Decode stats: input=4260, output=4259, dropped=0, availBufs=10
+[1787069654417] VD: Output #4260: decoder latency avg=7.0ms max=12.6ms over 60 samples, input bufs avail=10, dropped=0
+[1787069655415] VD: Decode stats: input=4320, output=4319, dropped=0, availBufs=10
+[1787069655420] VD: Output #4320: decoder latency avg=7.3ms max=10.6ms over 60 samples, input bufs avail=10, dropped=0
+[1787069656414] VD: Decode stats: input=4380, output=4379, dropped=0, availBufs=10
+[1787069656423] VD: Output #4380: decoder latency avg=7.2ms max=11.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787069657417] VD: Decode stats: input=4440, output=4439, dropped=0, availBufs=10
+[1787069657424] VD: Output #4440: decoder latency avg=7.3ms max=10.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787069658446] VD: Decode stats: input=4500, output=4499, dropped=0, availBufs=10
+[1787069658454] VD: Output #4500: decoder latency avg=7.2ms max=12.4ms over 60 samples, input bufs avail=10, dropped=0
+[1787069659587] VD: Decode stats: input=4560, output=4557, dropped=0, availBufs=8
+[1787069659596] VD: Output #4560: decoder latency avg=7.1ms max=11.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787069660747] VD: Decode stats: input=4620, output=4619, dropped=0, availBufs=10
+[1787069660753] VD: Output #4620: decoder latency avg=5.2ms max=10.7ms over 60 samples, input bufs avail=10, dropped=0
+[1787069661746] VD: Decode stats: input=4680, output=4679, dropped=0, availBufs=10
+[1787069661750] VD: Output #4680: decoder latency avg=7.1ms max=12.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787069662745] VD: Decode stats: input=4740, output=4739, dropped=0, availBufs=10
+[1787069662752] VD: Output #4740: decoder latency avg=6.9ms max=10.0ms over 60 samples, input bufs avail=10, dropped=0
+[1787069663766] VD: Decode stats: input=4800, output=4799, dropped=0, availBufs=10
+[1787069663773] VD: Output #4800: decoder latency avg=7.4ms max=14.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787069664797] VD: Decode stats: input=4860, output=4859, dropped=0, availBufs=10
+[1787069664802] VD: Output #4860: decoder latency avg=7.6ms max=13.2ms over 60 samples, input bufs avail=10, dropped=0
+[1787069665814] VD: Decode stats: input=4920, output=4919, dropped=0, availBufs=10
+[1787069665822] VD: Output #4920: decoder latency avg=7.6ms max=12.4ms over 60 samples, input bufs avail=9, dropped=0
+[1787069666864] VD: Decode stats: input=4980, output=4979, dropped=0, availBufs=10
+[1787069666868] VD: Output #4980: decoder latency avg=6.7ms max=11.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787071599865] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787071599866] MA: lifecycle foreground connected=false
+[1787071599910] MA: surfaceCreated
+[1787071599911] MA: surfaceChanged: 1264x2800
+[1787071600030] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071601549] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071603069] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071604591] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071606120] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071607634] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071609149] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071610671] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071612209] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071613732] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071615246] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071616762] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071618284] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071619818] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071621346] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071622863] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071624402] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071625931] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071627461] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071628992] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071630535] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071632048] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071633575] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071635104] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071636626] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071638147] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071639665] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071641186] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071642719] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071644255] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071645786] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071647314] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071648848] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071650388] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071651921] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071653447] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071654981] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071656522] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071658035] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071659582] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071661112] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071662640] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071664171] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071665711] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071667236] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071668761] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071670276] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071671794] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071673339] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071674870] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071676398] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071677932] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071679459] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071680985] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071682502] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071684016] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071685539] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071687073] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071688604] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071690132] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071691659] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071693182] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071694714] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071696257] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071697780] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071699316] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071700853] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071702379] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071703905] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071705426] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071706984] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071708519] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071710034] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071711550] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071713072] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071714608] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071716139] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071717672] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071719197] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071720737] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071722267] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071723796] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071725337] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071726865] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071728396] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071729920] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071731445] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071732978] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071734498] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071736013] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071737528] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071739055] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071740586] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071742124] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071743647] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071745176] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071746700] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071748231] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071749770] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071751295] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071752815] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071754336] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071755854] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071757368] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071758884] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071760407] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071761942] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071763476] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071765002] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071766535] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071768069] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071769606] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071771134] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071772668] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071774203] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071775728] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071777261] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071778797] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071780325] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071781858] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071783382] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071784908] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071786447] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071787976] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071789509] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071791041] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071792559] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071794077] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071795592] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071797120] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071798653] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071800195] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071801723] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071803243] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071804768] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071806282] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071807811] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071809347] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071810876] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071812406] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071813939] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071815471] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071817005] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071818525] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071820039] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071821558] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071823072] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071824595] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071826129] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071827662] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071829207] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071830725] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071832264] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071833797] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071835321] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071836859] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071838378] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071839892] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071841417] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071842955] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071844482] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071846016] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071847539] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071849063] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071850601] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071852125] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071853653] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071855168] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071856690] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071858222] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071859759] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071861315] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071862834] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071864365] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071865892] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071867411] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071868926] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071870453] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071871988] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071873519] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071875046] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071876591] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071878117] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071879639] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071881179] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071882711] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071884232] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071885756] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071887290] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071888824] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071890364] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071891882] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071893419] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071894951] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071896472] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071897990] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071899506] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071901021] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071902542] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071904065] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787071905673] SC: Protocol v1 upgrade accepted
+[1787071905673] SC: Connected to 127.0.0.1:54321
+[1787071905748] MA: onHostActionsAvailable: move-window, return-windows
+[1787071905754] MA: onDisplaysAvailable: count=3 selected=36 negotiated=[CAPABILITY_TOUCH, CAPABILITY_KEYBOARD, CAPABILITY_POINTER, CAPABILITY_STYLUS, CAPABILITY_MULTI_DISPLAY, CAPABILITY_HOST_ACTIONS, CAPABILITY_CLIENT_VIDEO_CONTROL, CAPABILITY_STYLUS_EXTENDED] displays=36:Vibe Screen Virtual (扩展屏):2000x1200:primary=false, 1:Built-in Retina Display:1512x982:primary=true, 3:DELL U2723QE:1920x1080:primary=false
+[1787071905755] MA: session binding promoted: displaySelection=true keyboard=true nativePointer=true hostActions=true
+[1787071905770] MA: onVideoConfiguration: 2000x1200 @ 0° epoch=1
+[1787071905771] MA: Video config arrived, initializing decoder 2000x1200
+[1787071905771] MA: initializeDecoder called, surface=Surface(name=null mNativeObject=-5476376613998235584)/@0x595d81a, valid=true, encoded=2000x1200
+[1787071905775] VD: setupDecoder: 2000x1200, decoder=c2.qti.hevc.decoder
+[1787071905823] VD: Configured with full low-latency
+[1787071905825] VD: Surface frame rate requested: 60.000004Hz fixed-source
+[1787071905844] VD: Decoder started: 2000x1200 @ 60.000004Hz, surface=Surface(name=null mNativeObject=-5476376613998235584)/@0x595d81a, valid=true
+[1787071905846] MA: Decoder configuration committed 2000x1200 epoch=1
+[1787071905849] MA: onDisplayGeometry: 2000x1200 @ 0°
+[1787071905870] VD: First frame: size=61750, header=[00 00 00 01 40 01 0c 01 ff ff 01 60 00 00 03 00], keyframe=true, surface=Surface(name=null mNativeObject=-5476376613998235584)/@0x595d81a, valid=true
+[1787071905897] MA: surfaceChanged: 1264x758
+[1787071905897] VD: Output format changed: {crop-right=1999, max-height=4320, sar-width=1, color-format=2130708361, mime=video/raw, hdr-static-info=java.nio.HeapByteBuffer[pos=0 lim=25 cap=25], priority=0, color-standard=1, feature-secure-playback=0, color-transfer=3, sar-height=1, hdr10-plus-info=java.nio.HeapByteBuffer[pos=0 lim=0 cap=0], crop-bottom=1199, max-width=8192, crop-left=0, width=2000, color-range=1, crop-top=0, rotation-degrees=0, frame-rate=1, height=1200}
+[1787071905897] VD: First output frame! size=1, flags=1
+[1787071905911] MA: surfaceChanged: 1264x758
+[1787071905914] MA: surfaceChanged: 2106x1264
+[1787071906786] VD: Decode stats: input=60, output=59, dropped=0, availBufs=10
+[1787071906792] VD: Output #60: decoder latency avg=6.3ms max=29.6ms over 60 samples, input bufs avail=10, dropped=0
+[1787071907786] VD: Decode stats: input=120, output=119, dropped=0, availBufs=10
+[1787071907795] VD: Output #120: decoder latency avg=7.2ms max=10.8ms over 60 samples, input bufs avail=10, dropped=0
+[1787071908786] VD: Decode stats: input=180, output=179, dropped=0, availBufs=10
+[1787071908793] VD: Output #180: decoder latency avg=6.4ms max=11.5ms over 60 samples, input bufs avail=9, dropped=0
+[1787071909785] VD: Decode stats: input=240, output=239, dropped=0, availBufs=10
+[1787071909793] VD: Output #240: decoder latency avg=7.3ms max=13.5ms over 60 samples, input bufs avail=10, dropped=0
+[1787071910786] VD: Decode stats: input=300, output=299, dropped=0, availBufs=10
+[1787071910795] VD: Output #300: decoder latency avg=7.6ms max=12.5ms over 60 samples, input bufs avail=9, dropped=0
+[1787071911786] VD: Decode stats: input=360, output=359, dropped=0, availBufs=10
+[1787071911793] VD: Output #360: decoder latency avg=7.6ms max=13.1ms over 60 samples, input bufs avail=10, dropped=0
+[1787071912789] VD: Decode stats: input=420, output=419, dropped=0, availBufs=10
+[1787071912796] VD: Output #420: decoder latency avg=6.9ms max=17.1ms over 60 samples, input bufs avail=9, dropped=0
+[1787071913786] VD: Decode stats: input=480, output=479, dropped=0, availBufs=10
+[1787071913793] VD: Output #480: decoder latency avg=6.8ms max=11.0ms over 60 samples, input bufs avail=9, dropped=0
+[1787071914788] VD: Decode stats: input=540, output=539, dropped=0, availBufs=10
+[1787071914797] VD: Output #540: decoder latency avg=7.4ms max=13.9ms over 60 samples, input bufs avail=10, dropped=0
+[1787072016354] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072017875] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072019413] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072020936] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072022474] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072024000] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072025536] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072027071] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072028599] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072030129] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072031690] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072033212] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072034751] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072036274] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072037791] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072039323] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072040837] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072042353] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072043884] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072045411] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072046942] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072048473] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072050005] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072051530] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072053045] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072054559] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072056079] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072057593] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072059111] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072060627] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072062143] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072063659] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072065181] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072066705] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072068221] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072069742] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072071287] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072072813] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072074340] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072075871] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072077392] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072078925] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072080448] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072081975] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072083511] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072085040] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072086571] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072088103] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072089632] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072091169] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072092708] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072094238] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072095766] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072097292] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072098813] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072100333] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072101866] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072103397] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072104927] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072106465] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072107986] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072109500] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072111022] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072112549] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072114066] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072115590] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072117125] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072118663] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072120180] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072121701] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072123233] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072124764] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072126291] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072127815] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072129352] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072130883] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072132416] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072133950] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072135474] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072136985] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072138510] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072140048] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072141575] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072143108] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072144630] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072146156] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072147696] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072149226] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072150759] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072152289] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072153821] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072155347] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072156861] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072158386] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072159915] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072161453] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072162972] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072164490] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072166013] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072167545] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072169078] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072170614] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072172148] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072173664] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072175188] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072176725] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072178256] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072179790] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072181326] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072182846] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072184366] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072185886] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072187419] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072188957] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072190484] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072192016] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072193547] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072195098] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072196620] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072198155] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072199683] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072201208] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072202736] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072204261] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072205783] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072207302] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072208829] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072210357] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072211883] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072213399] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072214915] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072216434] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072217961] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072219472] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072220993] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072222515] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072224047] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072225576] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072227090] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072228606] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072230130] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072231666] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072233196] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072234715] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072236243] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072237776] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072239309] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072240835] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072242348] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072243864] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072245379] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072246898] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072248422] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072249954] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072251496] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072253020] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072254543] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072256061] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072257571] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072259099] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072260633] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072262167] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072263698] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072265222] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072266742] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787072268269] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073967429] MA: device health battery=100 charging=true saver=false thermal=nominal
+[1787073967430] MA: lifecycle foreground connected=false
+[1787073967481] MA: surfaceCreated
+[1787073967482] MA: surfaceChanged: 1264x2800
+[1787073967597] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073969112] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073970633] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073972150] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073973665] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073975189] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073976718] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073978227] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073979754] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073981280] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073982805] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073984339] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073985865] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073987392] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073988912] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073990452] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073991971] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073993501] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073995034] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073996559] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073998090] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787073999617] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074001140] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074002676] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074004209] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074005743] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074007275] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074008796] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074010337] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074011873] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074013399] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074014932] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074016465] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074017986] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074019511] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074021045] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074022575] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074024114] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074025634] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074027149] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074028675] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074030212] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074031737] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074033268] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074034801] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074036338] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074037865] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074039392] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074040924] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074042448] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074043985] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074045504] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074047021] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074048569] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074050093] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074051631] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074053160] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074054694] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074056223] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074057752] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074059287] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074060822] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074062351] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074063871] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074065400] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074066934] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074068454] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074069969] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074071495] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074073021] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074074552] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074076091] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074077619] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074079153] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074080690] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074082222] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074083750] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074085292] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074086810] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074088324] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074089839] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074091362] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074092900] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074094435] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074095966] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074097500] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074099034] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074100563] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074102083] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074103600] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074105127] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074106658] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074108202] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074109736] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074111269] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074112799] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074114332] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074115872] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074117403] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074118934] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074120465] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074121995] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074123519] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074125047] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074126581] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074128098] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074129626] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074131156] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074132691] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074134221] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074135740] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074137272] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074138792] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074140311] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074141849] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074143383] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074144912] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074146444] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074147979] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074149515] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074151044] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074152581] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074154109] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074155631] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074157147] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074158678] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074160206] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074161744] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074163270] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074164794] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074166322] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074167846] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074169398] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074170930] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074172466] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074173996] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074175515] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074177031] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074178547] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074180062] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074181590] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074183123] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074184657] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074186185] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074187712] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074189252] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074190784] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074192321] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074193849] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074195371] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074196884] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074198398] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074199926] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074201467] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074202979] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074204496] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074206013] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074207537] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074209077] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074210606] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074212132] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074213667] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074215196] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074216724] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074218237] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074219751] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074221279] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074222811] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074224337] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074225848] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074227371] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074228910] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074230434] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074231990] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074233511] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074235027] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074236550] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074238084] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074239617] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074241149] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074242672] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074244196] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074245731] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074247259] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074248786] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074250309] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074251838] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074253367] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074254902] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074256436] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074257959] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074259484] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074261022] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074262547] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074264087] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074265616] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074267138] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074268653] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074270174] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074271717] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074273246] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074274779] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074276311] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074277837] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074279351] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074280888] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074282420] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074283951] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074285486] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074287023] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074288542] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074290063] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074291599] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074293132] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074294662] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074296186] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074297700] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074299222] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074300760] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074302291] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074303816] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074305335] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074306851] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074308378] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074309903] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074311431] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074312952] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074314474] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074316000] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074317530] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074319054] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074320569] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074322099] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074323631] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074325163] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074326696] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074328220] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074329751] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074331279] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074332792] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074334315] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074335841] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074337365] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074338901] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074340430] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074341960] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074343486] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074345010] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074346532] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074348066] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074349583] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074351100] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074352617] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074354143] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074355673] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074357204] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074358739] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074360270] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074361794] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074363309] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074364834] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074366375] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074367900] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074369424] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074370949] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074372484] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074374013] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074375539] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074377078] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074378605] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074380128] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074381644] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074383169] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074384703] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074386239] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074387773] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074389302] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074390835] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074392356] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074393875] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074395413] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074396944] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074398469] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074399988] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074401500] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074403024] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074404560] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074406087] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074407624] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074409154] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074410692] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074412218] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074413743] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074415267] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074416791] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074418305] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074419826] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074421362] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074422903] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074424418] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074425939] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074427469] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074428998] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074430525] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074432058] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074433585] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074435123] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074436650] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074438175] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074439687] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074441207] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074442732] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074444265] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074445799] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074447331] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074448858] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074450383] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074451898] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074453420] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074454987] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074456520] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074458053] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074459579] MA: session ended kind=TRANSPORT_CLOSED retryable=true
+[1787074461092] MA: session ended kind=TRANSPORT_CLOSED retryable=true

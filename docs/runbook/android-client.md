@@ -174,6 +174,43 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime \
   --output controller-runtime-summary.json
 ```
 
+## Physical stylus acceptance
+
+Use this gate only with a Protocol v1 USB/LAN/Internet session and a real stylus
+on the named Android device. Do not clear app data, reset permissions, change ADB
+reverse mappings, or run a long soak for this check; the stylus pass is a short
+interactive input confirmation.
+
+First collect the read-only device capability snapshot:
+
+```bash
+python3 scripts/android_stylus_acceptance.py \
+  --serial DEVICE_SERIAL \
+  --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/YYYY-MM-DD-device-stylus
+```
+
+This records device identity, `dumpsys input`, stylus input-device candidates,
+and the app private diagnostic log when `run-as` can read it. A result of
+`blocked_physical_stylus_not_observed` is expected when no human has drawn with
+the pen; pressure/tilt/barrel capability in `dumpsys input` is necessary
+evidence, not acceptance.
+
+For a passing run, open a non-sensitive macOS drawing app in the streamed display
+and record all of the following in the evidence directory:
+
+- the same script output with `--observed-physical-drawing`,
+  `--drawing-observation`, and `--host-log HOST_STYLUS_LOG`;
+- host log excerpts showing stylus injection with pressure and signed two-axis
+  tilt, plus barrel/proximity fields when exercised;
+- Android diag log entries from the same connected session;
+- a written observation or external-camera note that the drawing app received a
+  visible stylus stroke. If pressure or barrel behavior is claimed, the visible
+  result must exercise that claim.
+
+If the device exposes a stylus input device but no real pen action is available,
+commit or attach the script output as blocked evidence and keep the README
+physical-stylus drawing-app gate open.
+
 ## Permissions and lifecycle
 
 - USB mode must work without Camera permission.
