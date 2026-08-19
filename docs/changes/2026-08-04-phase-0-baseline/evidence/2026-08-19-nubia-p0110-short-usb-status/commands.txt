@@ -1,0 +1,29 @@
+The original non-destructive capture ran in an independent worktree for this
+branch.
+
+Non-destructive checks represented by this minimal evidence record:
+
+  adb devices -l
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+  adb -s EP0110PZ0B9110300B reverse --list
+  adb -s EP0110PZ0B9110300B shell dumpsys package dev.telemachus.display
+  shasum -a 256 /Applications/Vibe\ Screen.app/Contents/MacOS/Vibe\ Screen
+  lsof -nP -iTCP:54321 -sTCP:LISTEN
+  log show --last 10m --style compact --predicate 'process == "Vibe Screen" OR eventMessage CONTAINS[c] "CGPreflight" OR eventMessage CONTAINS[c] "TCCAccessRequest"'
+
+Operator-recorded state transitions:
+
+  Host defaults originally pointed at bac5b092.
+  Host defaults were temporarily changed to P0110 for this attempt.
+  Host defaults were restored after this attempt.
+
+Commands/actions intentionally not used:
+
+  tccutil reset
+  Accessibility/input verification
+  long-running soak or stress loops
+  treating historical stream evidence as a substitute for this current-tree run
+  recording the P0110 device as fuxi evidence
