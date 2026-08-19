@@ -519,9 +519,10 @@ Automatic account/session-authority issuance, real
 encoded ScreenCaptureKit output through the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
 revocation propagation and soak remain release gates rather than shipped
-features. Signaling and relay stores are currently single-node implementations,
-and coturn usage is not yet an authoritative input to the control-plane
-daily-byte ledger.
+features. Signaling and relay stores are currently single-node implementations.
+The Authority service can now debit accepted coturn usage into the control-plane
+daily-byte ledger, but the coturn exporter, relay integration, and production
+end-to-end enforcement remain release gates.
 
 The target is roughly 80–150 ms on healthy Internet paths; relay distance and
 network quality may increase it.

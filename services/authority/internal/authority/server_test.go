@@ -48,12 +48,13 @@ type memoryStore struct {
 	events          map[string][sha256.Size]byte
 	daily           map[string]uint64
 	epochFloors     map[string]uint64
+	now             func() time.Time
 	allocationLimit int
 	dailyLimit      uint64
 }
 
 func newMemoryStore() *memoryStore {
-	return &memoryStore{accounts: map[string]bool{}, devices: map[string]string{}, revoked: map[string]uint64{}, sessions: map[string]*memorySession{}, requests: map[string]string{}, allocations: map[string]*memoryAllocation{}, events: map[string][sha256.Size]byte{}, daily: map[string]uint64{}, epochFloors: map[string]uint64{}, allocationLimit: 1, dailyLimit: 100}
+	return &memoryStore{accounts: map[string]bool{}, devices: map[string]string{}, revoked: map[string]uint64{}, sessions: map[string]*memorySession{}, requests: map[string]string{}, allocations: map[string]*memoryAllocation{}, events: map[string][sha256.Size]byte{}, daily: map[string]uint64{}, epochFloors: map[string]uint64{}, now: time.Now, allocationLimit: 1, dailyLimit: 100}
 }
 func (s *memoryStore) Close()                      {}
 func (s *memoryStore) Ready(context.Context) error { return s.readyError }
@@ -189,7 +190,7 @@ func (s *memoryStore) AdmitRelay(_ context.Context, request RelayAdmissionReques
 	if session.revoked || !now.Before(session.admission.ExpiresAt) {
 		return ErrRevoked
 	}
-	if s.daily[request.DeviceID] >= s.dailyLimit {
+	if s.daily[dailyUsageKey(request.DeviceID, now)] >= s.dailyLimit {
 		return ErrQuotaExceeded
 	}
 	active := 0
@@ -229,11 +230,32 @@ func (s *memoryStore) ApplyCoturnUsage(_ context.Context, usage CoturnUsage) (bo
 	if allocation.request.SourceID != usage.SourceID || allocation.request.DeviceID != usage.DeviceID || allocation.request.SessionID != usage.SessionID || usage.Sequence <= allocation.sequence || usage.IngressBytes < allocation.ingress || usage.EgressBytes < allocation.egress || usage.ObservedAt.Before(allocation.observed) || allocation.closed {
 		return false, ErrStaleUsage
 	}
+	session := s.sessions[allocation.request.SessionID]
+	if session == nil {
+		return false, ErrNotFound
+	}
+	if s.revoked[usage.DeviceID] > 0 || s.accounts[s.devices[usage.DeviceID]] || session.revoked || !usage.ObservedAt.Before(session.admission.ExpiresAt) {
+		return false, ErrRevoked
+	}
 	s.events[key] = digest
-	s.daily[usage.DeviceID] += usage.IngressBytes - allocation.ingress + usage.EgressBytes - allocation.egress
+	dayKey := dailyUsageKey(usage.DeviceID, s.now())
+	s.daily[dayKey] += usage.IngressBytes - allocation.ingress + usage.EgressBytes - allocation.egress
+	if s.daily[dayKey] > s.dailyLimit && s.revoked[usage.DeviceID] == 0 {
+		s.revoked[usage.DeviceID] = 1
+		for _, session := range s.sessions {
+			if session.request.HostDeviceID == usage.DeviceID || session.request.ClientDeviceID == usage.DeviceID {
+				session.revoked = true
+			}
+		}
+	}
 	allocation.sequence, allocation.ingress, allocation.egress, allocation.closed, allocation.observed = usage.Sequence, usage.IngressBytes, usage.EgressBytes, usage.Closed, usage.ObservedAt
 	return false, nil
 }
+
+func dailyUsageKey(deviceID string, day time.Time) string {
+	return deviceID + "/" + day.UTC().Format(time.DateOnly)
+}
+
 func (s *memoryStore) Reconcile(ctx context.Context, request ReconcileRequest, grace time.Duration) (ReconcileResult, error) {
 	result := ReconcileResult{MissingAllocationIDs: []string{}, UnauthorizedAllocationIDs: []string{}, ConflictAllocationIDs: []string{}}
 	seen := map[string]bool{}
@@ -586,7 +608,7 @@ func TestRelayAdmissionRetryIsExactlyIdempotent(t *testing.T) {
 	}
 }
 
-func TestCoturnCountersAreIdempotentAndFinalUsageSurvivesRevocation(t *testing.T) {
+func TestCoturnCountersAreIdempotentAndFailClosedAfterRevocation(t *testing.T) {
 	store := newMemoryStore()
 	ctx := context.Background()
 	now := time.Now().UTC()
@@ -618,14 +640,193 @@ func TestCoturnCountersAreIdempotentAndFinalUsageSurvivesRevocation(t *testing.T
 	final.IngressBytes = 15
 	final.EgressBytes = 30
 	final.Closed = true
-	if _, err := store.ApplyCoturnUsage(ctx, final); err != nil {
-		t.Fatalf("final revoked usage rejected: %v", err)
+	if _, err := store.ApplyCoturnUsage(ctx, final); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("final usage after revoke error=%v, want ErrRevoked", err)
 	}
-	if got := store.daily["device"]; got != 45 {
-		t.Fatalf("daily bytes=%d, want 45", got)
+	if got := store.daily[dailyUsageKey("device", now)]; got != 30 {
+		t.Fatalf("daily bytes=%d, want 30", got)
 	}
 	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "device", SessionID: "new", AllocationID: "new", SourceID: "node"}, now); !errors.Is(err, ErrRevoked) {
 		t.Fatalf("new allocation after revoke: %v", err)
+	}
+}
+
+func TestCoturnUsageFailsClosedAfterSessionOrAccountRevocation(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(context.Context, *memoryStore, SignalingAdmission, time.Time) error
+	}{
+		{name: "session revoked", mutate: func(ctx context.Context, store *memoryStore, session SignalingAdmission, now time.Time) error {
+			return store.InvalidateSignaling(ctx, session.SessionID, now)
+		}},
+		{name: "account suspended", mutate: func(ctx context.Context, store *memoryStore, _ SignalingAdmission, now time.Time) error {
+			return store.SuspendAccount(ctx, "account", now)
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := newMemoryStore()
+			ctx := context.Background()
+			now := time.Now().UTC()
+			session := createMemorySession(t, store, "account", "host", "device", 1, now)
+			if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "device", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}, now); err != nil {
+				t.Fatal(err)
+			}
+			if err := test.mutate(ctx, store, session, now.Add(time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			usage := CoturnUsage{SourceID: "node", EventID: "event", AllocationID: "allocation", DeviceID: "device", SessionID: session.SessionID, Sequence: 1, IngressBytes: 1, ObservedAt: now.Add(2 * time.Second)}
+			if _, err := store.ApplyCoturnUsage(ctx, usage); !errors.Is(err, ErrRevoked) {
+				t.Fatalf("usage error=%v, want ErrRevoked", err)
+			}
+			if got := store.daily[dailyUsageKey("device", now)]; got != 0 {
+				t.Fatalf("revoked usage mutated daily bytes to %d", got)
+			}
+		})
+	}
+}
+
+func TestCoturnUsageFailsClosedAtSessionExpiry(t *testing.T) {
+	store := newMemoryStore()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	session := createMemorySession(t, store, "account", "host", "device", 1, now)
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "device", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}, now); err != nil {
+		t.Fatal(err)
+	}
+	usage := CoturnUsage{SourceID: "node", EventID: "event", AllocationID: "allocation", DeviceID: "device", SessionID: session.SessionID, Sequence: 1, IngressBytes: 1, ObservedAt: session.ExpiresAt}
+	if _, err := store.ApplyCoturnUsage(ctx, usage); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("expired session usage error=%v, want ErrRevoked", err)
+	}
+}
+
+func TestCoturnUsageOverDailyLimitRevokesAfterLedgerUpdate(t *testing.T) {
+	store := newMemoryStore()
+	store.allocationLimit = 2
+	store.dailyLimit = 40
+	ctx := context.Background()
+	now := time.Now().UTC()
+	session := createMemorySession(t, store, "account", "host", "device", 1, now)
+	admission := RelayAdmissionRequest{DeviceID: "device", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}
+	if err := store.AdmitRelay(ctx, admission, now); err != nil {
+		t.Fatal(err)
+	}
+	exactLimit := CoturnUsage{SourceID: "node", EventID: "event-1", AllocationID: "allocation", DeviceID: "device", SessionID: session.SessionID, Sequence: 1, IngressBytes: 30, EgressBytes: 10, ObservedAt: now}
+	if duplicate, err := store.ApplyCoturnUsage(ctx, exactLimit); err != nil || duplicate {
+		t.Fatalf("exact limit usage=%v/%v", duplicate, err)
+	}
+	if store.revoked["device"] != 0 {
+		t.Fatalf("device revoked at exact quota: %d", store.revoked["device"])
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "device", SessionID: session.SessionID, AllocationID: "at-quota", SourceID: "node"}, now); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("admission at exact quota error=%v, want ErrQuotaExceeded", err)
+	}
+	overage := exactLimit
+	overage.EventID = "event-2"
+	overage.Sequence = 2
+	overage.IngressBytes = 31
+	overage.ObservedAt = now.Add(time.Second)
+	if duplicate, err := store.ApplyCoturnUsage(ctx, overage); err != nil || duplicate {
+		t.Fatalf("overage usage=%v/%v", duplicate, err)
+	}
+	if got := store.daily[dailyUsageKey("device", now)]; got != 41 {
+		t.Fatalf("daily bytes=%d, want 41", got)
+	}
+	if store.revoked["device"] == 0 {
+		t.Fatal("over-quota usage did not revoke device")
+	}
+	if _, err := store.AuthorizeSignaling(ctx, session.SessionID, session.ClientToken, now.Add(2*time.Second)); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("session authorized after over-quota revoke: %v", err)
+	}
+	if duplicate, err := store.ApplyCoturnUsage(ctx, overage); err != nil || !duplicate {
+		t.Fatalf("overage retry=%v/%v", duplicate, err)
+	}
+	if got := store.daily[dailyUsageKey("device", now)]; got != 41 {
+		t.Fatalf("duplicate retry changed daily bytes to %d", got)
+	}
+}
+
+func TestRelayDailyQuotaUsesUTCIngestionDayBoundary(t *testing.T) {
+	store := newMemoryStore()
+	store.allocationLimit = 2
+	store.dailyLimit = 40
+	ctx := context.Background()
+	dayOne := time.Date(2026, 8, 18, 23, 59, 20, 0, time.UTC)
+	store.now = func() time.Time { return dayOne }
+	session := createMemorySession(t, store, "account", "host", "device", 1, dayOne)
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "device", SessionID: session.SessionID, AllocationID: "allocation-one", SourceID: "node"}, dayOne); err != nil {
+		t.Fatal(err)
+	}
+	usage := CoturnUsage{SourceID: "node", EventID: "event-one", AllocationID: "allocation-one", DeviceID: "device", SessionID: session.SessionID, Sequence: 1, IngressBytes: 30, EgressBytes: 10, ObservedAt: dayOne}
+	if _, err := store.ApplyCoturnUsage(ctx, usage); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "device", SessionID: session.SessionID, AllocationID: "blocked-same-day", SourceID: "node"}, dayOne.Add(10*time.Second)); !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("same-day admission error=%v, want ErrQuotaExceeded", err)
+	}
+	dayTwo := dayOne.Add(50 * time.Second)
+	store.now = func() time.Time { return dayTwo }
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "device", SessionID: session.SessionID, AllocationID: "allocation-two", SourceID: "node"}, dayTwo); err != nil {
+		t.Fatalf("next-day admission rejected: %v", err)
+	}
+	if got := store.daily[dailyUsageKey("device", dayOne)]; got != 40 {
+		t.Fatalf("day-one bytes=%d, want 40", got)
+	}
+	if got := store.daily[dailyUsageKey("device", dayTwo)]; got != 0 {
+		t.Fatalf("day-two bytes=%d before usage, want 0", got)
+	}
+}
+
+func TestConcurrentCoturnEventRetryDebitsAndRevokesOnce(t *testing.T) {
+	store := newMemoryStore()
+	store.dailyLimit = 100
+	ctx := context.Background()
+	now := time.Now().UTC()
+	session := createMemorySession(t, store, "account", "host", "device", 1, now)
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "device", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}, now); err != nil {
+		t.Fatal(err)
+	}
+	usage := CoturnUsage{SourceID: "node", EventID: "event", AllocationID: "allocation", DeviceID: "device", SessionID: session.SessionID, Sequence: 1, IngressBytes: 70, EgressBytes: 31, ObservedAt: now}
+	start := make(chan struct{})
+	results := make(chan struct {
+		duplicate bool
+		err       error
+	}, 8)
+	var wait sync.WaitGroup
+	for range 8 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			duplicate, err := store.ApplyCoturnUsage(ctx, usage)
+			results <- struct {
+				duplicate bool
+				err       error
+			}{duplicate: duplicate, err: err}
+		}()
+	}
+	close(start)
+	wait.Wait()
+	close(results)
+	applied := 0
+	duplicates := 0
+	for result := range results {
+		if result.err != nil {
+			t.Fatalf("usage retry error=%v", result.err)
+		}
+		if result.duplicate {
+			duplicates++
+		} else {
+			applied++
+		}
+	}
+	if applied != 1 || duplicates != 7 {
+		t.Fatalf("applied=%d duplicates=%d, want 1/7", applied, duplicates)
+	}
+	if got := store.daily[dailyUsageKey("device", now)]; got != 101 {
+		t.Fatalf("daily bytes=%d, want 101", got)
+	}
+	if store.revoked["device"] != 1 {
+		t.Fatalf("revocation epoch=%d, want 1", store.revoked["device"])
 	}
 }
 
@@ -724,7 +925,7 @@ func TestHTTPAuthorityStrictlyScopesTokensAndIdempotentSession(t *testing.T) {
 	request(t, handler, http.MethodPost, "/v1/signaling/sessions/"+b.SessionID+"/authorize", cfg.SignalingToken, authorize, http.StatusForbidden)
 }
 
-func TestHTTPRelayCoturnUsageTokensAndRevokedFinalClose(t *testing.T) {
+func TestHTTPRelayCoturnUsageTokensAndRevokedFinalCloseFailClosed(t *testing.T) {
 	store := newMemoryStore()
 	cfg := testAuthorityConfig()
 	server, err := NewServer(cfg, store)
@@ -767,7 +968,7 @@ func TestHTTPRelayCoturnUsageTokensAndRevokedFinalClose(t *testing.T) {
 	finalUsage.IngressBytes = 12
 	finalUsage.EgressBytes = 25
 	finalUsage.Closed = true
-	request(t, handler, http.MethodPost, "/v1/coturn/usage", cfg.CoturnToken, mustJSON(t, finalUsage), http.StatusAccepted)
+	request(t, handler, http.MethodPost, "/v1/coturn/usage", cfg.CoturnToken, mustJSON(t, finalUsage), http.StatusForbidden)
 	newRelay := mustJSON(t, RelayAdmissionRequest{DeviceID: "client", SessionID: admission.SessionID, AllocationID: "after-revoke", SourceID: "node"})
 	request(t, handler, http.MethodPost, "/v1/relay/admissions", cfg.RelayToken, newRelay, http.StatusForbidden)
 }

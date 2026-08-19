@@ -435,7 +435,7 @@ func (s *PostgresStore) AdmitRelay(ctx context.Context, request RelayAdmissionRe
 			return ErrRevoked
 		}
 		var quotaExceeded bool
-		if err := tx.QueryRow(ctx, `SELECT COALESCE(ingress_bytes+egress_bytes,0)>=$1::numeric FROM authority_relay_daily_usage WHERE device_id=$2 AND usage_day=$3`, strconv.FormatUint(s.dailyLimit, 10), request.DeviceID, now.UTC().Format(time.DateOnly)).Scan(&quotaExceeded); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(ingress_bytes+egress_bytes,0)>=$1::numeric FROM authority_relay_daily_usage WHERE device_id=$2 AND usage_day=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date`, strconv.FormatUint(s.dailyLimit, 10), request.DeviceID).Scan(&quotaExceeded); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
 		if quotaExceeded {
@@ -479,6 +479,7 @@ func (s *PostgresStore) ApplyCoturnUsage(ctx context.Context, usage CoturnUsage)
 			duplicate = true
 			return nil
 		}
+		duplicate = false
 		var sourceID, deviceID, sessionID string
 		var sequence, ingress, egress int64
 		var closedAt *time.Time
@@ -492,16 +493,69 @@ func (s *PostgresStore) ApplyCoturnUsage(ctx context.Context, usage CoturnUsage)
 		if sourceID != usage.SourceID || deviceID != usage.DeviceID || sessionID != usage.SessionID || usage.Sequence <= uint64(sequence) || usage.IngressBytes < uint64(ingress) || usage.EgressBytes < uint64(egress) || usage.ObservedAt.Before(lastObservedAt) || closedAt != nil {
 			return ErrStaleUsage
 		}
+		if err := lockActiveDevice(ctx, tx, deviceID); err != nil {
+			return err
+		}
+		var sessionRevokedAt *time.Time
+		var sessionExpiresAt time.Time
+		if err := tx.QueryRow(ctx, `SELECT revoked_at,expires_at FROM authority_signaling_sessions WHERE session_id=$1 AND (host_device_id=$2 OR client_device_id=$2) FOR UPDATE`, sessionID, deviceID).Scan(&sessionRevokedAt, &sessionExpiresAt); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if sessionRevokedAt != nil || !usage.ObservedAt.Before(sessionExpiresAt) {
+			return ErrRevoked
+		}
 		deltaIngress := usage.IngressBytes - uint64(ingress)
 		deltaEgress := usage.EgressBytes - uint64(egress)
-		_, err = tx.Exec(ctx, `INSERT INTO authority_relay_daily_usage(device_id,usage_day,ingress_bytes,egress_bytes) VALUES ($1,(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date,$2::numeric,$3::numeric) ON CONFLICT (device_id,usage_day) DO UPDATE SET ingress_bytes=authority_relay_daily_usage.ingress_bytes+EXCLUDED.ingress_bytes,egress_bytes=authority_relay_daily_usage.egress_bytes+EXCLUDED.egress_bytes`, deviceID, strconv.FormatUint(deltaIngress, 10), strconv.FormatUint(deltaEgress, 10))
+		var quotaExceeded bool
+		err = tx.QueryRow(ctx, `INSERT INTO authority_relay_daily_usage(device_id,usage_day,ingress_bytes,egress_bytes) VALUES ($1,(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date,$2::numeric,$3::numeric) ON CONFLICT (device_id,usage_day) DO UPDATE SET ingress_bytes=authority_relay_daily_usage.ingress_bytes+EXCLUDED.ingress_bytes,egress_bytes=authority_relay_daily_usage.egress_bytes+EXCLUDED.egress_bytes RETURNING (ingress_bytes+egress_bytes)>$4::numeric`, deviceID, strconv.FormatUint(deltaIngress, 10), strconv.FormatUint(deltaEgress, 10), strconv.FormatUint(s.dailyLimit, 10)).Scan(&quotaExceeded)
 		if err != nil {
 			return err
+		}
+		if quotaExceeded {
+			if err := revokeDeviceForRelayQuotaExceeded(ctx, tx, deviceID); err != nil {
+				return err
+			}
 		}
 		_, err = tx.Exec(ctx, `UPDATE authority_relay_allocations SET observed_sequence=$3,ingress_bytes=$4,egress_bytes=$5,last_observed_at=$6::timestamptz,closed_at=CASE WHEN $7 THEN $6::timestamptz ELSE NULL END WHERE source_id=$1 AND allocation_id=$2`, usage.SourceID, usage.AllocationID, int64(usage.Sequence), int64(usage.IngressBytes), int64(usage.EgressBytes), usage.ObservedAt, usage.Closed)
 		return err
 	})
 	return duplicate, err
+}
+
+func revokeDeviceForRelayQuotaExceeded(ctx context.Context, tx pgx.Tx, deviceID string) error {
+	var accountID string
+	if err := tx.QueryRow(ctx, `SELECT account_id FROM authority_devices WHERE device_id=$1`, deviceID).Scan(&accountID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	var accountMarker int
+	if err := tx.QueryRow(ctx, `SELECT 1 FROM authority_accounts WHERE account_id=$1 FOR UPDATE`, accountID).Scan(&accountMarker); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `UPDATE authority_devices SET revocation_epoch=CASE WHEN revocation_epoch<$2 THEN revocation_epoch+1 ELSE revocation_epoch END,revoked_at=CURRENT_TIMESTAMP WHERE device_id=$1 AND revoked_at IS NULL`, deviceID, int64(math.MaxInt64))
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		var revokedAt *time.Time
+		if err := tx.QueryRow(ctx, `SELECT revoked_at FROM authority_devices WHERE device_id=$1`, deviceID).Scan(&revokedAt); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		return nil
+	}
+	if _, err := tx.Exec(ctx, `UPDATE authority_signaling_sessions SET revoked_at=COALESCE(revoked_at,CURRENT_TIMESTAMP) WHERE (host_device_id=$1 OR client_device_id=$1) AND revoked_at IS NULL`, deviceID); err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO authority_audit_events(event_type,device_id) VALUES ('relay_quota_exceeded',$1)`, deviceID)
+	return err
 }
 
 func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest, grace time.Duration) (ReconcileResult, error) {
