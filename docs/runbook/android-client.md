@@ -143,15 +143,22 @@ negotiation and the host log line for the received event.
 | physical mouse primary click | button press and release with `BUTTON_PRIMARY`, host pointer begin/end events, visible Mac click result, and button-up release before disconnect |
 | physical mouse wheel | Android `ACTION_SCROLL` with `AXIS_VSCROLL` or `AXIS_HSCROLL`, host scroll injection, and visible Mac scroll result |
 | physical stylus | Android stylus source/tool kind plus pressure/tilt/barrel/hover fields as applicable, negotiated stylus capability, host tablet event construction, and drawing-app result |
-| physical controller | Not a current production path: Android controller mapping/state and Protocol v1 envelope encoding are offline-tested, but `SOURCE_GAMEPAD`/`SOURCE_JOYSTICK` events are not yet forwarded by `MainActivity` and `StreamClient`. After that wiring lands, require a stable controller ID, connected/state/disconnected samples, host virtual-gamepad availability, visible Mac-side controller response, and neutral release on disconnect |
+| physical controller | Android controller mapping/state, production forwarding through `MainActivity` and `StreamClient`, and Protocol v1 envelope encoding are offline-tested. Runtime acceptance still requires a named physical controller, Android `SOURCE_GAMEPAD` or `SOURCE_JOYSTICK` logs, negotiated controller capability, a stable controller ID, connected/state/disconnected samples, host virtual-gamepad availability from an entitled Host, visible Mac-side controller response, and neutral release on disconnect |
 
 Native pointer move/click cannot be closed with `adb shell input tap/swipe`:
 those commands synthesize touchscreen contact, not HID hover or mouse-button
 events. They may support touch and mapper regression notes, but the native
 pointer gate remains open without a physical mouse or equivalent Android HID
-pointer. Controller acceptance first requires Android production forwarding for
-gamepad/joystick events, then a physical controller; JVM mapper tests and
-constructed Protocol v1 envelopes prove serialization only.
+pointer. Controller production forwarding is wired and covered offline, but
+runtime acceptance still needs a physical controller and an entitled Host; JVM
+mapper tests and constructed Protocol v1 envelopes prove serialization only.
+Summarize a run, including blocked runs, with:
+
+```bash
+PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime \
+  controller-runtime-observations.json \
+  --output controller-runtime-summary.json
+```
 
 ## Permissions and lifecycle
 

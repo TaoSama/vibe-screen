@@ -34,4 +34,12 @@
   through the '$KEYCHAIN_PASSWORD' variable rather than embedding it, and
   verify the exact 'security(1)' syntax on the target macOS version). Do not
   reset or replace a keychain whose password is unknown; import a fresh identity
-  into the current unlocked login keychain instead.
+  into the current unlocked login keychain instead. Before an Android touch
+  rerun, use `make baseline-macos-dev-install` followed by
+  `make baseline-macos-touch-preflight`; the generated
+  `.build/dev-macos-host/host-signing-and-permissions.txt` records the leaf
+  certificate SHA-1, CDHash, designated requirement, binary SHA-256, and
+  read-only TCC state. If the leaf certificate SHA-1 changes, treat the Host as
+  a new macOS privacy identity and ask the user to grant Screen Recording and
+  Accessibility to `/Applications/Vibe Screen.app` again through System
+  Settings.

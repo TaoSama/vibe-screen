@@ -12,6 +12,7 @@ internal data class ClientPointerInput(
     val x: Float,
     val y: Float,
     val buttonState: Int = 0,
+    val actionButton: Int = 0,
     val horizontalScroll: Float = 0f,
     val verticalScroll: Float = 0f,
 )
