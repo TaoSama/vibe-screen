@@ -319,6 +319,26 @@ final class Phase1HostCapabilityTests: XCTestCase {
         XCTAssertFalse(disabled.consumeIfEligible(true))
     }
 
+    func testUnattendedRecoveryPolicyUsesBoundedBackoffAndStopsAfterLimit() {
+        let expectedDelays: [TimeInterval?] = [
+            nil,
+            1,
+            2,
+            4,
+            8,
+            16,
+            30,
+            30,
+            30,
+            nil
+        ]
+        let attempts = (-1...UnattendedRecoveryPolicy.maximumAttempts).map {
+            UnattendedRecoveryPolicy.delay(afterFailure: $0)
+        }
+
+        XCTAssertEqual(attempts, expectedDelays)
+    }
+
     func testFallbackRemovalReportsTerminalOnlyForCurrentGeneration() {
         let lifecycle = FallbackCaptureLifecycle()
         guard case .started(let generation) = lifecycle.begin() else {

@@ -118,6 +118,10 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
 - 当前短窗回归门禁仅完成离线工具与阈值验证，尚无基于本分支源码的 Xiaomi 13
   10-17 分钟短窗实测证据；本次变更未引入新的生产内存修复，正式两小时 Host RSS
   no-growth 门禁仍需 `host_rss_gate` 独立输出 `pass` 方可关闭。
+- 短窗诊断报告现在把 watched heap 类按 `swiftui_observation`、`autorelease_pool`
+  和 `video_frames` 聚合为 `metrics.heap_watch_summary`，让下一次短窗实测能直接
+  对比已知 SwiftUI Observation 增长候选与有界视频帧候选，而不用人工从
+  `heap_class_growth` 列表中重建首末漂移。
 
 正式复测仍必须由具备 Screen Recording/Accessibility 权限的主任务执行：
 

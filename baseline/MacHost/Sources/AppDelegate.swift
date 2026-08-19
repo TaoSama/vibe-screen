@@ -1827,8 +1827,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let newCapture = try await ScreenCapture()
             try requireCurrentStart(startToken, intentIsCurrent: intentIsCurrent)
             screenCapture = newCapture
-            let configuredCapture = screenCapture
-            configuredCapture?.onCaptureMethodChanged = {
+            let configuredCapture = newCapture
+            configuredCapture.onCaptureMethodChanged = {
                 [weak self, weak configuredCapture] method in
                 Task { @MainActor in
                     guard let self, let configuredCapture,
@@ -1838,7 +1838,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.settings.captureMethod = method
                 }
             }
-            configuredCapture?.onDisplayIDChanged = {
+            configuredCapture.onDisplayIDChanged = {
                 [weak self, weak configuredCapture] displayID in
                 Task { @MainActor in
                     guard let self, let configuredCapture,
@@ -1847,7 +1847,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.activeDisplayID = displayID
                 }
             }
-            configuredCapture?.onTerminalCaptureFailure = {
+            configuredCapture.onTerminalCaptureFailure = {
                 [weak self, weak configuredCapture] error in
                 Task { @MainActor in
                     guard let self, let configuredCapture,
@@ -2260,6 +2260,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     ) {
                         self.settings.metrics.update(fps: fps, bitrateMbps: mbps)
                     }
+                }
+            }
+
+            streamingServer?.encoderStatsProvider = { [weak configuredCapture] in
+                configuredCapture?.encoderStats.map { stats in
+                    (inFlight: stats.inFlight, capacity: stats.capacity)
                 }
             }
 
