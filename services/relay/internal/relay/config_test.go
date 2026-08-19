@@ -66,3 +66,49 @@ func TestConfigRejectsReusedMetricsToken(t *testing.T) {
 		t.Fatalf("expected duplicate-token rejection, got %v", err)
 	}
 }
+
+func TestConfigRequiresProductionAuthorityFieldsTogether(t *testing.T) {
+	cfg := Config{
+		ListenAddress: "127.0.0.1:8090", TurnRealm: "relay.test", TurnURIs: []string{"turn:relay.test:3478"},
+		CredentialTTLSeconds: 60, MaxCredentialTTLSeconds: 120, CredentialRequestsPerMinute: 1,
+		MaxConcurrentSessionsPerDevice: 1, DailyBytesPerDevice: 1, MaxUsageEventBytes: 1, StateFile: filepath.Join(t.TempDir(), "state.json"),
+		TurnSecret: strings.Repeat("t", 32), ClientToken: strings.Repeat("c", 32), UsageToken: strings.Repeat("u", 32),
+		MetricsToken: strings.Repeat("m", 32), AdminToken: strings.Repeat("a", 32), AuthorityMode: AuthorityModeProd,
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "authority_url") || !strings.Contains(err.Error(), authorityTokenEnv) {
+		t.Fatalf("expected missing authority fields, got %v", err)
+	}
+
+	cfg.AuthorityURL = "http://127.0.0.1:8091"
+	cfg.AuthoritySourceID = "turn-node-1"
+	cfg.AuthorityToken = strings.Repeat("r", 32)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid production authority config rejected: %v", err)
+	}
+}
+
+func TestConfigRejectsAuthorityFieldsInLocalMode(t *testing.T) {
+	cfg := Config{
+		ListenAddress: "127.0.0.1:8090", TurnRealm: "relay.test", TurnURIs: []string{"turn:relay.test:3478"},
+		CredentialTTLSeconds: 60, MaxCredentialTTLSeconds: 120, CredentialRequestsPerMinute: 1,
+		MaxConcurrentSessionsPerDevice: 1, DailyBytesPerDevice: 1, MaxUsageEventBytes: 1, StateFile: filepath.Join(t.TempDir(), "state.json"),
+		TurnSecret: strings.Repeat("t", 32), ClientToken: strings.Repeat("c", 32), UsageToken: strings.Repeat("u", 32),
+		MetricsToken: strings.Repeat("m", 32), AdminToken: strings.Repeat("a", 32), AuthorityURL: "http://127.0.0.1:8091",
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "production_authority") {
+		t.Fatalf("expected local authority-field rejection, got %v", err)
+	}
+}
+
+func TestParseAuthorityURLAllowsOnlyHTTPSOrLoopbackHTTP(t *testing.T) {
+	for _, raw := range []string{"https://authority.example.com", "http://127.0.0.1:8091", "http://localhost:8091"} {
+		if _, err := parseAuthorityURL(raw); err != nil {
+			t.Fatalf("%s rejected: %v", raw, err)
+		}
+	}
+	for _, raw := range []string{"http://authority.example.com", "https://authority.example.com/path", "https://user@authority.example.com", "ftp://127.0.0.1"} {
+		if _, err := parseAuthorityURL(raw); err == nil {
+			t.Fatalf("%s accepted", raw)
+		}
+	}
+}

@@ -14,6 +14,7 @@ var (
 	ErrQuotaExceeded  = errors.New("daily byte quota exceeded")
 	ErrSessionLimit   = errors.New("concurrent session limit exceeded")
 	ErrDuplicateEvent = errors.New("duplicate event")
+	ErrConflict       = errors.New("conflict")
 	ErrUnknownSession = errors.New("unknown session")
 	ErrSessionExists  = errors.New("session already exists")
 	ErrDeviceRevoked  = errors.New("device revoked")

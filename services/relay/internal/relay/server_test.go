@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	testClientToken  = "client-token-at-least-thirty-two-bytes"
-	testUsageToken   = "usage-token-at-least-thirty-two-bytes-"
-	testMetricsToken = "metrics-token-at-least-thirty-two-bytes"
-	testAdminToken   = "admin-token-at-least-thirty-two-bytes-"
+	testClientToken    = "client-token-at-least-thirty-two-bytes"
+	testUsageToken     = "usage-token-at-least-thirty-two-bytes-"
+	testMetricsToken   = "metrics-token-at-least-thirty-two-bytes"
+	testAdminToken     = "admin-token-at-least-thirty-two-bytes-"
+	testAuthorityToken = "authority-token-at-least-thirty-two-bytes"
 )
 
 func testConfig(t *testing.T) Config {
@@ -102,6 +103,140 @@ func TestCredentialsUseStableDeviceQuotaPrincipalAcrossSessionsAndExpiries(t *te
 		if strings.Contains(username, "session-") {
 			t.Fatalf("username %q leaks session into coturn quota principal", username)
 		}
+	}
+}
+
+func TestCredentialsRequireAuthorityAdmissionInProduction(t *testing.T) {
+	var admitted relayAdmissionRequest
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/readyz" {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+			return
+		}
+		if r.URL.Path != "/v1/relay/admissions" {
+			t.Fatalf("unexpected authority path %s", r.URL.Path)
+		}
+		if !authorized(r, testAuthorityToken) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&admitted); err != nil {
+			t.Fatalf("decode authority admission: %v", err)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer authority.Close()
+
+	cfg := testConfig(t)
+	cfg.CredentialRequestsPerMinute = 10
+	cfg.AuthorityMode = AuthorityModeProd
+	cfg.AuthorityURL = authority.URL
+	cfg.AuthoritySourceID = "turn-node-1"
+	cfg.AuthorityToken = testAuthorityToken
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/credentials", testClientToken, `{"device_id":"device-1","session_id":"session-1","allocation_id":"allocation-1"}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("credential status = %d: %s", response.Code, response.Body.String())
+	}
+	if admitted != (relayAdmissionRequest{DeviceID: "device-1", SessionID: "session-1", AllocationID: "allocation-1", SourceID: "turn-node-1"}) {
+		t.Fatalf("authority admission = %#v", admitted)
+	}
+	ready := requestJSON(t, server.Handler(), http.MethodGet, "/readyz", "", "")
+	if ready.Code != http.StatusOK {
+		t.Fatalf("ready status = %d: %s", ready.Code, ready.Body.String())
+	}
+}
+
+func TestReadyFailsClosedWhenAuthorityUnavailable(t *testing.T) {
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer authority.Close()
+	cfg := testConfig(t)
+	cfg.AuthorityMode = AuthorityModeProd
+	cfg.AuthorityURL = authority.URL
+	cfg.AuthoritySourceID = "turn-node-1"
+	cfg.AuthorityToken = testAuthorityToken
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ready := requestJSON(t, server.Handler(), http.MethodGet, "/readyz", "", "")
+	if ready.Code != http.StatusServiceUnavailable || !strings.Contains(ready.Body.String(), "authority unavailable") {
+		t.Fatalf("ready status = %d: %s", ready.Code, ready.Body.String())
+	}
+}
+
+func TestCredentialsFailClosedWhenAuthorityIsUnavailable(t *testing.T) {
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	authority.Close()
+	cfg := testConfig(t)
+	cfg.AuthorityMode = AuthorityModeProd
+	cfg.AuthorityURL = authority.URL
+	cfg.AuthoritySourceID = "turn-node-1"
+	cfg.AuthorityToken = testAuthorityToken
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/credentials", testClientToken, `{"device_id":"device-1","session_id":"session-1","allocation_id":"allocation-1"}`)
+	if response.Code != http.StatusBadGateway || !strings.Contains(response.Body.String(), ErrAuthorityUnavailable.Error()) {
+		t.Fatalf("unavailable authority status = %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestCredentialsMapAuthorityPolicyRejections(t *testing.T) {
+	for name, tc := range map[string]struct {
+		authorityStatus int
+		wantStatus      int
+		wantBody        string
+	}{
+		"revoked":     {authorityStatus: http.StatusForbidden, wantStatus: http.StatusForbidden, wantBody: ErrDeviceRevoked.Error()},
+		"unknown":     {authorityStatus: http.StatusNotFound, wantStatus: http.StatusForbidden, wantBody: ErrDeviceRevoked.Error()},
+		"quota":       {authorityStatus: http.StatusTooManyRequests, wantStatus: http.StatusTooManyRequests, wantBody: ErrQuotaExceeded.Error()},
+		"conflict":    {authorityStatus: http.StatusConflict, wantStatus: http.StatusConflict, wantBody: ErrConflict.Error()},
+		"bad_gateway": {authorityStatus: http.StatusOK, wantStatus: http.StatusBadGateway, wantBody: ErrAuthorityUnavailable.Error()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.authorityStatus)
+			}))
+			defer authority.Close()
+			cfg := testConfig(t)
+			cfg.AuthorityMode = AuthorityModeProd
+			cfg.AuthorityURL = authority.URL
+			cfg.AuthoritySourceID = "turn-node-1"
+			cfg.AuthorityToken = testAuthorityToken
+			server, err := NewServer(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/credentials", testClientToken, `{"device_id":"device-1","session_id":"session-1","allocation_id":"allocation-1"}`)
+			if response.Code != tc.wantStatus || !strings.Contains(response.Body.String(), tc.wantBody) {
+				t.Fatalf("status = %d body = %s, want %d containing %q", response.Code, response.Body.String(), tc.wantStatus, tc.wantBody)
+			}
+		})
+	}
+}
+
+func TestCredentialsRequireAllocationIDInProductionAuthorityMode(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.AuthorityMode = AuthorityModeProd
+	cfg.AuthorityURL = "http://127.0.0.1:1"
+	cfg.AuthoritySourceID = "turn-node-1"
+	cfg.AuthorityToken = testAuthorityToken
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/credentials", testClientToken, `{"device_id":"device-1","session_id":"session-1"}`)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "allocation_id") {
+		t.Fatalf("missing allocation status = %d: %s", response.Code, response.Body.String())
 	}
 }
 

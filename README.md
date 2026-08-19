@@ -62,6 +62,12 @@ limitations are summarized in [Security](SECURITY.md).
   equivalent to full validation.
 - Android 8.0 / API 26 or newer; JDK 17, Android SDK Platform 34, Build Tools
   34.0.0, and ADB are required to build and install the current client.
+- Verified Android devices: Xiaomi 13 (model 2211133C, codename fuxi) is the
+  primary named evidence source; Nubia P0110 (codename pacific) is an
+  acceptable substitute for general Android acceptance. Both are Android
+  handsets, but evidence must always record the exact manufacturer, model,
+  codename, and OS version of the device that produced it, and Nubia P0110
+  results must not be relabeled as Xiaomi 13/fuxi evidence.
 - Go 1.25.12 is used to run the pinned Buf v1.72.0 protocol checks.
 - The first build requires network access for Gradle, Maven, and Go modules.
 
@@ -421,7 +427,8 @@ the status readable in small-tablet and resized-window configurations. This is a
 offline product slice, not thermal or power acceptance: 8–9 inch hardware,
 stand-mounted charging, background/foreground recovery, and the eight-hour run
 remain device gates. Login startup and headless Mac mini acceptance also remain
-open. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md).
+open. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
+and the [tablet acceptance runbook](docs/changes/2026-08-14-phase-2-tablet-productization/RUNBOOK.md).
 
 ### Phase 3 — Secure Internet access
 

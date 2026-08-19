@@ -3,6 +3,171 @@ import XCTest
 @testable import Telemachus
 
 final class Phase1HostCapabilityTests: XCTestCase {
+    func testGestureHostActionPolicyDefaultsToExistingTouchHandling() {
+        XCTAssertFalse(
+            GestureHostActionPolicy.shouldInterceptThreeFingerGestures(profile: .default)
+        )
+        XCTAssertEqual(
+            GestureHostActionPolicy.resolve(
+                trigger: .threeFingerSwipeUp,
+                profile: .default,
+                context: GestureHostActionPolicyContext(
+                    customGesturesAllowed: true,
+                    hostActionsAllowed: true,
+                    hostActionsNegotiated: true,
+                    availableHostActionIds: [ProtocolV1SessionCoordinator.moveWindowActionID]
+                )
+            ),
+            .default
+        )
+    }
+
+    func testGestureHostActionPolicyInvokesOnlyExplicitAvailableHostAction() {
+        let profile = GestureHostActionProfile(mappings: [
+            GestureHostActionMapping(
+                trigger: .threeFingerSwipeUp,
+                action: .invokeHostAction(ProtocolV1SessionCoordinator.moveWindowActionID)
+            )
+        ])
+
+        XCTAssertTrue(GestureHostActionPolicy.shouldInterceptThreeFingerGestures(profile: profile))
+        XCTAssertEqual(
+            GestureHostActionPolicy.resolve(
+                trigger: .threeFingerSwipeUp,
+                profile: profile,
+                context: GestureHostActionPolicyContext(
+                    customGesturesAllowed: true,
+                    hostActionsAllowed: true,
+                    hostActionsNegotiated: true,
+                    availableHostActionIds: [ProtocolV1SessionCoordinator.moveWindowActionID]
+                )
+            ),
+            .invokeHostAction(ProtocolV1SessionCoordinator.moveWindowActionID)
+        )
+        XCTAssertEqual(
+            GestureHostActionPolicy.resolve(
+                trigger: .threeFingerSwipeDown,
+                profile: profile,
+                context: GestureHostActionPolicyContext(
+                    customGesturesAllowed: true,
+                    hostActionsAllowed: true,
+                    hostActionsNegotiated: true,
+                    availableHostActionIds: [ProtocolV1SessionCoordinator.moveWindowActionID]
+                )
+            ),
+            .default
+        )
+    }
+
+    func testGestureHostActionPolicyAppliesDenyWins() {
+        let profile = GestureHostActionProfile(mappings: [
+            GestureHostActionMapping(
+                trigger: .threeFingerSwipeUp,
+                action: .invokeHostAction(ProtocolV1SessionCoordinator.moveWindowActionID)
+            )
+        ])
+
+        let deniedContexts = [
+            GestureHostActionPolicyContext(
+                customGesturesAllowed: false,
+                hostActionsAllowed: true,
+                hostActionsNegotiated: true,
+                availableHostActionIds: [ProtocolV1SessionCoordinator.moveWindowActionID]
+            ),
+            GestureHostActionPolicyContext(
+                customGesturesAllowed: true,
+                hostActionsAllowed: false,
+                hostActionsNegotiated: true,
+                availableHostActionIds: [ProtocolV1SessionCoordinator.moveWindowActionID]
+            ),
+            GestureHostActionPolicyContext(
+                customGesturesAllowed: true,
+                hostActionsAllowed: true,
+                hostActionsNegotiated: false,
+                availableHostActionIds: [ProtocolV1SessionCoordinator.moveWindowActionID]
+            ),
+            GestureHostActionPolicyContext(
+                customGesturesAllowed: true,
+                hostActionsAllowed: true,
+                hostActionsNegotiated: true,
+                availableHostActionIds: []
+            )
+        ]
+
+        for context in deniedContexts {
+            XCTAssertEqual(
+                GestureHostActionPolicy.resolve(
+                    trigger: .threeFingerSwipeUp,
+                    profile: profile,
+                    context: context
+                ),
+                .denied
+            )
+        }
+
+        XCTAssertEqual(
+            GestureHostActionPolicy.resolve(
+                trigger: .threeFingerSwipeDown,
+                profile: GestureHostActionProfile(mappings: [
+                    GestureHostActionMapping(trigger: .threeFingerSwipeDown, action: .deny)
+                ]),
+                context: GestureHostActionPolicyContext(
+                    customGesturesAllowed: true,
+                    hostActionsAllowed: true,
+                    hostActionsNegotiated: true,
+                    availableHostActionIds: [ProtocolV1SessionCoordinator.returnWindowsActionID]
+                )
+            ),
+            .denied
+        )
+    }
+
+    func testGestureHostActionPolicyPreservesExplicitDefaultMapping() {
+        let profile = GestureHostActionProfile(mappings: [
+            GestureHostActionMapping(trigger: .threeFingerSwipeUp, action: .default),
+            GestureHostActionMapping(trigger: .threeFingerSwipeDown, action: .deny)
+        ])
+
+        XCTAssertTrue(GestureHostActionPolicy.shouldInterceptThreeFingerGestures(profile: profile))
+        XCTAssertEqual(
+            GestureHostActionPolicy.resolve(
+                trigger: .threeFingerSwipeUp,
+                profile: profile,
+                context: GestureHostActionPolicyContext(
+                    customGesturesAllowed: true,
+                    hostActionsAllowed: true,
+                    hostActionsNegotiated: true,
+                    availableHostActionIds: [ProtocolV1SessionCoordinator.moveWindowActionID]
+                )
+            ),
+            .default
+        )
+    }
+
+    func testGestureHostActionPolicyDeniesDuplicateTriggers() {
+        let profile = GestureHostActionProfile(mappings: [
+            GestureHostActionMapping(
+                trigger: .threeFingerSwipeUp,
+                action: .invokeHostAction(ProtocolV1SessionCoordinator.moveWindowActionID)
+            ),
+            GestureHostActionMapping(trigger: .threeFingerSwipeUp, action: .deny)
+        ])
+
+        XCTAssertEqual(
+            GestureHostActionPolicy.resolve(
+                trigger: .threeFingerSwipeUp,
+                profile: profile,
+                context: GestureHostActionPolicyContext(
+                    customGesturesAllowed: true,
+                    hostActionsAllowed: true,
+                    hostActionsNegotiated: true,
+                    availableHostActionIds: [ProtocolV1SessionCoordinator.moveWindowActionID]
+                )
+            ),
+            .denied
+        )
+    }
+
     func testTouchGestureFactoryIsolatesSyntheticZoomModifier() throws {
         let pointerSource = try XCTUnwrap(CGEventSource(stateID: .privateState))
         let zoomSource = try XCTUnwrap(CGEventSource(stateID: .privateState))
@@ -317,6 +482,26 @@ final class Phase1HostCapabilityTests: XCTestCase {
         XCTAssertTrue(pending.consumeIfEligible(true))
         let disabled = AutomaticLaunchCoordinator(enabled: false)
         XCTAssertFalse(disabled.consumeIfEligible(true))
+    }
+
+    func testUnattendedRecoveryPolicyUsesBoundedBackoffAndStopsAfterLimit() {
+        let expectedDelays: [TimeInterval?] = [
+            nil,
+            1,
+            2,
+            4,
+            8,
+            16,
+            30,
+            30,
+            30,
+            nil
+        ]
+        let attempts = (-1...UnattendedRecoveryPolicy.maximumAttempts).map {
+            UnattendedRecoveryPolicy.delay(afterFailure: $0)
+        }
+
+        XCTAssertEqual(attempts, expectedDelays)
     }
 
     func testFallbackRemovalReportsTerminalOnlyForCurrentGeneration() {

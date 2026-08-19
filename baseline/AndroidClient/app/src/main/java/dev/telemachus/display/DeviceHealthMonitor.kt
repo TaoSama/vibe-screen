@@ -30,6 +30,7 @@ internal data class DeviceHealthSnapshot(
 internal enum class DeviceHealthAttention {
     UNKNOWN,
     NORMAL,
+    POWER_SAVER,
     POWER_RECOMMENDED,
     THERMAL_ELEVATED,
     THERMAL_HIGH,
@@ -70,7 +71,9 @@ internal object DeviceHealthPolicy {
 
             DeviceThermalState.ELEVATED -> DeviceHealthAttention.THERMAL_ELEVATED
             else ->
-                if (snapshot.batteryPercent == null && snapshot.charging == null) {
+                if (snapshot.powerSaveMode) {
+                    DeviceHealthAttention.POWER_SAVER
+                } else if (snapshot.batteryPercent == null && snapshot.charging == null) {
                     DeviceHealthAttention.UNKNOWN
                 } else if (snapshot.charging != true && (snapshot.batteryPercent ?: 100) <= LOW_BATTERY_PERCENT) {
                     DeviceHealthAttention.POWER_RECOMMENDED

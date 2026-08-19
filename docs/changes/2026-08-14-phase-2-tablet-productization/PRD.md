@@ -25,7 +25,8 @@ external hardware results:
 Automated tests may prove state classification, callback lifecycle, and layout.
 They cannot prove a particular tablet's sensors, charging stability, temperature,
 power draw, decoder throttling, or recovery behavior. Those results require the
-named physical device and the eight-hour run in [TEST.md](TEST.md).
+named physical device and the eight-hour run in [TEST.md](TEST.md), executed
+with the evidence package described in [RUNBOOK.md](RUNBOOK.md).
 
 The slice deliberately reports health rather than applying an automatic FPS or
 bitrate override. An override needs a separate protocol/product policy that can

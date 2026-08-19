@@ -409,6 +409,42 @@ class HostMemoryAnalysisTests(unittest.TestCase):
             result["metrics"]["heap_class_growth"][0]["name"],
             "ObservationRegistrar",
         )
+        watched = result["metrics"]["heap_watch_summary"]
+        self.assertEqual(
+            watched["swiftui_observation"]["matched_classes"],
+            ["ObservationRegistrar"],
+        )
+        self.assertEqual(watched["swiftui_observation"]["count_drift"], 1500)
+        self.assertEqual(watched["video_frames"]["count_drift"], 0)
+        self.assertEqual(watched["video_frames"]["allocated_bytes_drift"], 0)
+
+    def test_heap_watch_summary_uses_union_of_first_and_last_snapshots(self):
+        records = memory_records("flat")
+        records[0]["heap"]["classes"] = [
+            {"name": "PixelBufferBox", "count": 2, "allocated_bytes": 200},
+            {"name": "ObservationEntry", "count": 3, "allocated_bytes": 300},
+        ]
+        records[-1]["heap"]["classes"] = [
+            {"name": "IOSurface", "count": 1, "allocated_bytes": 1000},
+            {"name": "ObservationEntry", "count": 8, "allocated_bytes": 900},
+            {"name": "AnyKeyPath", "count": 4, "allocated_bytes": 400},
+        ]
+
+        result = self.analyze("flat", records=records)
+        watched = result["metrics"]["heap_watch_summary"]
+
+        self.assertEqual(
+            watched["swiftui_observation"]["matched_classes"],
+            ["AnyKeyPath", "ObservationEntry"],
+        )
+        self.assertEqual(watched["swiftui_observation"]["count_drift"], 9)
+        self.assertEqual(watched["swiftui_observation"]["allocated_bytes_drift"], 1000)
+        self.assertEqual(
+            watched["video_frames"]["matched_classes"],
+            ["IOSurface", "PixelBufferBox"],
+        )
+        self.assertEqual(watched["video_frames"]["count_drift"], -1)
+        self.assertEqual(watched["video_frames"]["allocated_bytes_drift"], 800)
 
     def test_custom_heap_watch_extends_required_diagnostic_classes(self):
         watched = _watched_classes(
@@ -514,7 +550,9 @@ class HostMemoryAnalysisTests(unittest.TestCase):
 
     def test_stream_telemetry_treats_encoder_in_flight_fields_as_optional(self):
         incomplete = telemetry()
-        incomplete[10]["attributes"].pop("encoder_in_flight")
+        for record in incomplete:
+            record["attributes"].pop("encoder_in_flight")
+            record["attributes"].pop("encoder_in_flight_capacity")
 
         result = analyze_records(
             memory_records("retained"),
@@ -529,7 +567,34 @@ class HostMemoryAnalysisTests(unittest.TestCase):
             "encoder_in_flight",
             result["telemetry"]["missing_optional_fields"],
         )
+        self.assertIn(
+            "encoder_in_flight_capacity",
+            result["telemetry"]["missing_optional_fields"],
+        )
         self.assertTrue(result["sufficiency"]["stream_telemetry"])
+
+    def test_stream_telemetry_requires_encoder_in_flight_pair_when_present(self):
+        for missing in ("encoder_in_flight", "encoder_in_flight_capacity"):
+            with self.subTest(missing=missing):
+                incomplete = telemetry()
+                incomplete[10]["attributes"].pop(missing)
+
+                result = analyze_records(
+                    memory_records("retained"),
+                    incomplete,
+                    started_at=timestamp(STARTED),
+                    finished_at=timestamp(FINISHED),
+                )
+
+                self.assertEqual(result["attribution"], "inconclusive")
+                self.assertEqual(result["verdict"], "insufficient")
+                self.assertEqual(result["telemetry"]["invalid_record_count"], 1)
+                self.assertEqual(result["telemetry"]["stream_stats_count"], 120)
+                self.assertIn(
+                    missing,
+                    result["telemetry"]["missing_optional_fields"],
+                )
+                self.assertFalse(result["sufficiency"]["stream_telemetry"])
 
     def test_stream_telemetry_gap_fails_closed(self):
         sparse = telemetry()[::20]
