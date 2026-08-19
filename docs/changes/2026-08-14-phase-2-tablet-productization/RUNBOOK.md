@@ -27,6 +27,7 @@ and keep raw logs even when the run fails.
 Capture these before the eight-hour timer starts:
 
 ```bash
+make evidence-device-info EVIDENCE_SERIAL="$ADB_SERIAL" EVIDENCE_DIR="$RUN_DIR"
 adb shell getprop > device.txt
 adb shell wm size > wm-size.txt
 adb shell wm density > wm-density.txt
@@ -41,6 +42,21 @@ If `dumpsys thermalservice` fails or writes an empty dump, keep
 `thermal-before.err`, mark the thermal gate failed, and do not count the run as
 Phase 2 thermal evidence. SurfaceFlinger latency-clear failures are diagnostic
 only and do not invalidate the run by themselves.
+`android-pid.txt` is a diagnostic process-identity snapshot for comparing the
+start and end of a run; it is not a required evidence artifact.
+
+Capture the matching end-of-run platform state before stopping the app or host:
+
+```bash
+adb shell dumpsys battery > adb-battery-after.txt
+adb shell dumpsys power > adb-power-after.txt
+adb shell dumpsys thermalservice > thermal-after.txt 2> thermal-after.err
+adb shell pidof dev.telemachus.display > android-pid-after.txt || true
+```
+
+If the final `dumpsys thermalservice` command fails or writes an empty dump,
+keep `thermal-after.err`, mark the thermal gate failed, and preserve the failed
+evidence directory.
 
 Also capture settings screenshots in portrait and landscape, including any
 split-screen or freeform window size that the tablet supports. The screenshots
@@ -115,13 +131,15 @@ Each run directory should include at minimum:
 - `README.md` with the result, device identity, host identity, exact commands,
   pass/fail thresholds declared before the run, first failure if any, and links
   to raw logs;
+- `device-info.json` collected by `make evidence-device-info` and valid against
+  `tools/schemas/device-info.schema.json`;
 - `device.txt`, `host.txt`, `apk-sha256.txt`, `build.txt`, and
   `manifest.json`;
 - `samples.jsonl` and `summary.json` for the eight-hour series, plus optional
   derived `samples.csv` when spreadsheet inspection is useful;
 - `adb-battery-before.txt`, `adb-battery-after.txt`, `adb-power-before.txt`,
-  `adb-power-after.txt`, thermal dumps before/after, and any
-  `thermal-*.err` failure records;
+  `adb-power-after.txt`, thermal dumps before/after, and the corresponding
+  `thermal-*.err` stderr captures;
 - `raw-logcat.txt`, `host.log`, `reconnects.log`, `frame-drops.log`, and
   `decoder-telemetry.jsonl`;
 - `screenshots/` for portrait, landscape, power-saver, thermal/load, reconnect,
