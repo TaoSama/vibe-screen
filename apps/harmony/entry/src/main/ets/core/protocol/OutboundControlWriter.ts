@@ -1,4 +1,4 @@
-import { EnvelopeMetadata, PROTOCOL_VERSION } from './ProtocolModels';
+import { ControllerEventKind, EnvelopeMetadata, PROTOCOL_VERSION } from './ProtocolModels';
 import { OutboundControlIntent, ProtocolEncoder } from './ProtocolEncoder';
 
 export const MAX_PENDING_CONTROLS: number = 128;
@@ -87,7 +87,10 @@ export class OutboundControlWriter {
     while (this.inputQueue.length > 0) {
       const pending: PendingControl | undefined = this.inputQueue.shift();
       if (pending === undefined) break;
-      if (pending.intent.kind === 'stylus') this.releaseQueue.push(pending);
+      if (pending.intent.kind === 'stylus' ||
+        (pending.intent.kind === 'controller' && pending.intent.event.kind === ControllerEventKind.DISCONNECTED)) {
+        this.releaseQueue.push(pending);
+      }
       else pending.reject(error);
     }
   }
@@ -155,7 +158,7 @@ export class OutboundControlWriter {
 
   private isInput(intent: OutboundControlIntent): boolean {
     return intent.kind === 'touch' || intent.kind === 'pointer' || intent.kind === 'scroll' || intent.kind === 'key' ||
-      intent.kind === 'stylus';
+      intent.kind === 'stylus' || intent.kind === 'controller';
   }
 
   private settleReleaseDrain(): void {

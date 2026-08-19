@@ -2,7 +2,7 @@ import { Capability } from '../protocol/ProtocolModels';
 
 export const HARMONY_ADVERTISED_CAPABILITIES: Capability[] = [
   Capability.TOUCH, Capability.KEYBOARD, Capability.POINTER, Capability.STYLUS, Capability.SESSION_RESUME,
-  Capability.USB_HID_MODIFIER_BYTE
+  Capability.CONTROLLER, Capability.USB_HID_MODIFIER_BYTE
 ];
 export const HARMONY_REQUIRED_CAPABILITIES: Capability[] = [Capability.TOUCH];
 
