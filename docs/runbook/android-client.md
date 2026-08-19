@@ -78,6 +78,33 @@ Open the in-stream settings button:
 Connected windows use `FLAG_SECURE`, so ADB screenshots of the stream may be
 black. Use diagnostic logs plus direct observation or an external camera.
 
+### Rotated host-display acceptance
+
+Client-local rotation is the Android Surface/input transform selected in the
+Viewport settings. Host display rotation is macOS display state advertised by
+the Host. Do not combine them when judging touch mapping: the current client
+keeps the Surface/input transform client-local and uses host rotation only for
+device orientation.
+
+To close the rotated host-display gate, run a fresh Protocol v1 real-device
+pass for both an existing physical Mac display and a virtual display after the
+host display itself is rotated to 90°, 180°, or 270°. For each display kind,
+record the original and rotated host-display snapshots, Android visual result,
+corner/center touch matrix, Host log, Android logcat, stable stream/no-teardown
+result, and proof that the original macOS rotation was restored. The existing
+client-local Follow Mac/90°/180°/270° matrix with `hostRotation=0` is not host
+display rotation evidence.
+
+After collecting those artifacts, summarize them in `host-display-rotation.json`
+and run the offline evidence-summary gate. The gate only validates the retained
+record; it does not rotate displays, start the Host, or touch ADB:
+
+```bash
+python3 -m tools.vibescreen_evidence.host_display_rotation_gate \
+  docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation.json \
+  --output docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation-gate.json
+```
+
 ## Input matrix
 
 Use a non-sensitive Mac test window and grant Accessibility to the exact host

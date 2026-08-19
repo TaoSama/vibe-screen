@@ -1,6 +1,5 @@
 package dev.telemachus.display
 
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
 import android.view.View
@@ -75,7 +74,10 @@ class WirelessTabController(
                     transition(State.FIRST_TIME)
                     return@setOnClickListener
                 }
-            showConnecting("Reconnecting to ${entry.macName}", "${entry.host}:${entry.port}")
+            showConnecting(
+                activity.getString(R.string.reconnecting_to_mac, entry.macName),
+                activity.getString(R.string.host_port_format, entry.host, entry.port),
+            )
             attemptAutoConnect(entry)
         }
     }
@@ -144,49 +146,52 @@ class WirelessTabController(
         val parsed = PairingURL.parse(url) ?: return
         val deviceName = (android.os.Build.MODEL ?: "Android").take(64)
         storage.save(PairedHostStorage.Entry(parsed.host, parsed.port, parsed.token, parsed.macName))
-        showConnecting("Connecting to ${parsed.macName}", "${parsed.host}:${parsed.port}")
+        showConnecting(
+            activity.getString(R.string.connecting_to_mac, parsed.macName),
+            activity.getString(R.string.host_port_format, parsed.host, parsed.port),
+        )
         onConnectRequested(parsed.host, parsed.port, parsed.token, deviceName, parsed.macName)
     }
 
-    @SuppressLint("SetTextI18n") // Detailed runtime diagnostics include host-specific values.
     fun onConnectError(error: StreamClient.WirelessConnectError) {
         val cached = storage.load()
         when (error) {
             is StreamClient.WirelessConnectError.NetworkUnreachable -> {
-                LiveRegionTextApplier.apply(views.repairTitle, "⚠ Couldn't reach Mac")
+                LiveRegionTextApplier.apply(views.repairTitle, activity.getString(R.string.wireless_error_title_couldnt_reach_mac))
                 LiveRegionTextApplier.apply(
                     views.repairMessage,
                     if (cached != null) {
-                        "No response from ${cached.macName} at ${cached.host}:${cached.port}.\n\n" +
-                            "The Mac may have switched WiFi networks, changed its port, or is not " +
-                            "running. Open Vibe Screen on the Mac and scan the new QR to re-pair."
+                        activity.getString(
+                            R.string.wireless_error_network_cached,
+                            cached.macName,
+                            cached.host,
+                            cached.port,
+                        )
                     } else {
-                        "No response from your Mac. Make sure both devices are on the same WiFi " +
-                            "and the Mac app is running, then scan the QR again."
+                        activity.getString(R.string.wireless_error_network_uncached)
                     },
                 )
                 transition(State.REPAIR_NEEDED)
             }
 
             is StreamClient.WirelessConnectError.TokenRejected -> {
-                LiveRegionTextApplier.apply(views.repairTitle, "⚠ Re-pair required")
+                LiveRegionTextApplier.apply(views.repairTitle, activity.getString(R.string.wireless_error_title_repair_required))
                 LiveRegionTextApplier.apply(
                     views.repairMessage,
                     if (cached != null) {
-                        "${cached.macName} reset its pairing token (e.g. Reset Token clicked, or " +
-                            "reinstalled). Scan the new QR to pair again."
+                        activity.getString(R.string.wireless_error_token_rejected_cached, cached.macName)
                     } else {
-                        "The Mac reset its pairing token. Scan the new QR to pair again."
+                        activity.getString(R.string.wireless_error_token_rejected_uncached)
                     },
                 )
                 transition(State.REPAIR_NEEDED)
             }
 
             is StreamClient.WirelessConnectError.ProtocolError -> {
-                LiveRegionTextApplier.apply(views.repairTitle, "⚠ Connection error")
+                LiveRegionTextApplier.apply(views.repairTitle, activity.getString(R.string.wireless_error_title_connection_error))
                 LiveRegionTextApplier.apply(
                     views.repairMessage,
-                    "Couldn't complete the secure handshake with the Mac. Scan the QR again.",
+                    activity.getString(R.string.wireless_error_protocol_message),
                 )
                 transition(State.REPAIR_NEEDED)
             }

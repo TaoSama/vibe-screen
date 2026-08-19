@@ -339,7 +339,9 @@ picker collapses entirely on single-display sessions to avoid mis-taps. The
 Xiaomi 13 also verifies the client-local Fit/Fill and Follow Mac/90/180/270
 viewport matrix, including inverse touch mapping at the corners and center,
 with host rotation fixed at zero. Rotated physical/virtual host-display
-acceptance remains separate. The
+acceptance remains separate and now has a focused offline evidence-summary
+gate documented in the Phase 1 test record; that gate still requires a fresh
+real-device host-rotation pass before the acceptance item can close. The
 host advertises its online physical displays plus, when the private
 virtual-display API is available, one selectable virtual extended display so a
 single-monitor Mac can still offer a second display to switch to; selecting it
@@ -601,7 +603,9 @@ HiDPI private-API virtual-display creation/capture (4000x2400 physical / 2000x12
 logical) over USB, plus in-place quality/FPS/bitrate video preferences and
 client-invoked focused-window migration/return with disconnect recovery. A
 client-local Fit/Fill and four-direction rotation/input matrix is also verified
-with host rotation zero; rotated host-display acceptance remains open. A
+with host rotation zero; rotated host-display acceptance remains open, with the
+recording checklist and offline evidence-summary gate in the Phase 1 test
+record. A
 post-fix 30-minute preference run completed 60/60 connected samples with no
 reconnect or sample error; it is a short regression run, not a replacement for
 the formal gate. A 2026-08-09 two-hour soak held a stable stream but left the

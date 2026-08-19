@@ -209,6 +209,104 @@ Evidence:
 
 - [`evidence/2026-08-10-xiaomi13-viewport-input/`](evidence/2026-08-10-xiaomi13-viewport-input/)
 
+## Rotated host-display acceptance gate
+
+The retained viewport/input evidence closes only the client-local Fit/Fill and
+Follow Mac/90/180/270 matrix with `hostRotation=0`. The host=90 experiment in
+that evidence is a boundary check: it proves host display rotation must not be
+combined into the Android Surface/input transform. It is not an acceptance run
+for a rotated physical or virtual Mac display.
+
+Before claiming rotated host-display acceptance, run a fresh real-device pass
+that records both display kinds:
+
+1. Rotate an existing physical Mac display, stream it over a Protocol v1 USB or
+   LAN session, capture visual source orientation, corner/center input mapping,
+   stable stream state, no session teardown, and restoration of the original
+   macOS rotation.
+2. Repeat the same probes for a virtual display in its rotated host-display
+   state.
+3. Keep client rotation as an explicit client-local setting, usually Follow Mac
+   or 0 for the host-display run, and do not treat the existing client-local
+   90/180/270 matrix as host-display rotation evidence.
+4. Record retained artifacts for device identity, before/rotated host display
+   snapshots, Android screenshot, touch matrix, Host log, and Android logcat.
+
+Summarize the retained evidence in a JSON file and run the offline gate. This
+command validates the record only; it does not rotate displays, start the Host,
+touch ADB, or perform device actions:
+
+```bash
+python3 -m tools.vibescreen_evidence.host_display_rotation_gate \
+  docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation.json \
+  --output docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation-gate.json
+```
+
+Minimum summary shape:
+
+```json
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "host_display_rotation_acceptance",
+  "runs": [
+    {
+      "display_kind": "physical",
+      "display_id": "<macOS display id/name>",
+      "transport": "usb",
+      "host_rotation_degrees": 90,
+      "original_host_rotation_degrees": 0,
+      "client_rotation_degrees": 0,
+      "client_transform_scope": "client-local-only",
+      "host_rotation_combined_with_client_transform": false,
+      "host_rotation_source": "macOS Displays settings",
+      "probes": {
+        "visual_source_orientation": true,
+        "input_mapping": true,
+        "stable_stream": true,
+        "no_session_teardown": true,
+        "restored_original_host_rotation": true
+      },
+      "artifacts": {
+        "device_identity": "device-and-artifact-identity.txt",
+        "host_display_snapshot_before": "host-display-before.txt",
+        "host_display_snapshot_rotated": "host-display-rotated.txt",
+        "android_screenshot": "android-rotated-host-display.png",
+        "touch_matrix": "touch-matrix.txt",
+        "host_log": "host.log",
+        "android_logcat": "logcat.txt"
+      }
+    },
+    {
+      "display_kind": "virtual",
+      "display_id": "<macOS virtual display id/name>",
+      "transport": "usb",
+      "host_rotation_degrees": 90,
+      "original_host_rotation_degrees": 0,
+      "client_rotation_degrees": 0,
+      "client_transform_scope": "client-local-only",
+      "host_rotation_combined_with_client_transform": false,
+      "host_rotation_source": "macOS Displays settings or Host virtual-display configuration",
+      "probes": {
+        "visual_source_orientation": true,
+        "input_mapping": true,
+        "stable_stream": true,
+        "no_session_teardown": true,
+        "restored_original_host_rotation": true
+      },
+      "artifacts": {
+        "device_identity": "device-and-artifact-identity.txt",
+        "host_display_snapshot_before": "virtual-display-before.txt",
+        "host_display_snapshot_rotated": "virtual-display-rotated.txt",
+        "android_screenshot": "android-virtual-rotated-host-display.png",
+        "touch_matrix": "virtual-touch-matrix.txt",
+        "host_log": "host.log",
+        "android_logcat": "logcat.txt"
+      }
+    }
+  ]
+}
+```
+
 ## Xiaomi 13 window-action and recovery follow-up
 
 On 2026-08-10, the Protocol v1 Host action catalog was wired to an opt-in
