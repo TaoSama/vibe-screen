@@ -905,6 +905,54 @@ func TestCoturnEventIdentityAndReconcileConflicts(t *testing.T) {
 	}
 }
 
+func TestCoturnUsageAndReconcileStaySourceScoped(t *testing.T) {
+	store := newMemoryStore()
+	store.allocationLimit = 6
+	now := time.Now().UTC()
+	session := createMemorySession(t, store, "account", "host", "client", 1, now)
+	ctx := context.Background()
+	for _, sourceID := range []string{"turn-a", "turn-b"} {
+		for _, allocationID := range []string{"shared", "stale-" + sourceID} {
+			request := RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: allocationID, SourceID: sourceID}
+			if err := store.AdmitRelay(ctx, request, now); err != nil {
+				t.Fatalf("admit %s/%s: %v", sourceID, allocationID, err)
+			}
+		}
+	}
+	for _, usage := range []CoturnUsage{
+		{SourceID: "turn-a", EventID: "event-a", AllocationID: "shared", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 10, EgressBytes: 1, ObservedAt: now.Add(time.Second)},
+		{SourceID: "turn-b", EventID: "event-b", AllocationID: "shared", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 20, EgressBytes: 2, ObservedAt: now.Add(time.Second)},
+	} {
+		if _, err := store.ApplyCoturnUsage(ctx, usage); err != nil {
+			t.Fatalf("usage %s: %v", usage.SourceID, err)
+		}
+	}
+	if got := store.allocations[memoryAllocationKey("turn-a", "shared")].ingress; got != 10 {
+		t.Fatalf("turn-a shared ingress=%d, want 10", got)
+	}
+	if got := store.allocations[memoryAllocationKey("turn-b", "shared")].ingress; got != 20 {
+		t.Fatalf("turn-b shared ingress=%d, want 20", got)
+	}
+	first, err := store.Reconcile(ctx, ReconcileRequest{SourceID: "turn-a", ObservedAt: now.Add(2 * time.Second), Allocations: []CoturnUsage{
+		{AllocationID: "shared", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 11, EgressBytes: 1},
+	}}, 500*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Applied != 1 || !slices.Equal(first.MissingAllocationIDs, []string{"stale-turn-a"}) {
+		t.Fatalf("turn-a reconcile result=%+v", first)
+	}
+	second, err := store.Reconcile(ctx, ReconcileRequest{SourceID: "turn-b", ObservedAt: now.Add(3 * time.Second), Allocations: []CoturnUsage{
+		{AllocationID: "shared", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 21, EgressBytes: 2},
+	}}, 500*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Applied != 1 || !slices.Equal(second.MissingAllocationIDs, []string{"stale-turn-b"}) {
+		t.Fatalf("turn-b reconcile result=%+v", second)
+	}
+}
+
 func TestReconciliationEventIDIsStableAndBounded(t *testing.T) {
 	observedAt := time.Date(1678, 1, 2, 3, 4, 5, 6, time.UTC)
 	allocationID := strings.Repeat("a", 128)
