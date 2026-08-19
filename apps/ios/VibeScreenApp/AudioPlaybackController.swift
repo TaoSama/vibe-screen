@@ -10,6 +10,7 @@ final class AudioPlaybackController {
     private var streamFormat: PCMStreamFormat?
     private var audioFormat: AVAudioFormat?
     private var scheduledBuffers = 0
+    private var audioSessionActive = false
     private let maximumScheduledBuffers = 8
 
     init() {
@@ -17,6 +18,9 @@ final class AudioPlaybackController {
     }
 
     func configure(_ config: VSAudioConfig) throws -> PCMStreamFormat {
+        if let stopError = stop() {
+            throw AudioPlaybackError.sessionDeactivationFailed(stopError.localizedDescription)
+        }
         let streamFormat = try PCMStreamFormat(config: config)
         guard let audioFormat = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
@@ -26,16 +30,24 @@ final class AudioPlaybackController {
         ) else {
             throw AudioPlaybackError.unavailableFormat
         }
-        stop()
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
-        try session.setActive(true)
-        engine.connect(player, to: engine.mainMixerNode, format: audioFormat)
-        try engine.start()
-        player.play()
-        self.streamFormat = streamFormat
-        self.audioFormat = audioFormat
-        return streamFormat
+        do {
+            try session.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
+            try session.setActive(true)
+            audioSessionActive = true
+            engine.connect(player, to: engine.mainMixerNode, format: audioFormat)
+            try engine.start()
+            player.play()
+            self.streamFormat = streamFormat
+            self.audioFormat = audioFormat
+            return streamFormat
+        } catch {
+            let cleanupError = stop()
+            throw AudioPlaybackError.activationFailed(
+                error.localizedDescription,
+                cleanupError?.localizedDescription
+            )
+        }
     }
 
     @discardableResult
@@ -65,19 +77,51 @@ final class AudioPlaybackController {
         return true
     }
 
-    func stop() {
+    @discardableResult
+    func stop() -> Error? {
         player.stop()
         engine.stop()
         engine.disconnectNodeOutput(player)
         streamFormat = nil
         audioFormat = nil
         scheduledBuffers = 0
+        guard audioSessionActive else { return nil }
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+            audioSessionActive = false
+            return nil
+        } catch {
+            return error
+        }
     }
 }
 
-enum AudioPlaybackError: Error {
+enum AudioPlaybackError: Error, LocalizedError {
     case unavailableFormat
     case notConfigured
     case invalidPCMByteCount
     case bufferAllocationFailed
+    case sessionDeactivationFailed(String)
+    case activationFailed(String, String?)
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailableFormat:
+            "当前设备无法创建 PCM S16LE 播放格式"
+        case .notConfigured:
+            "音频播放尚未完成配置"
+        case .invalidPCMByteCount:
+            "音频帧字节数与协商格式不匹配"
+        case .bufferAllocationFailed:
+            "音频播放缓冲区分配失败"
+        case let .sessionDeactivationFailed(message):
+            "旧音频会话停止失败：\(message)"
+        case let .activationFailed(message, cleanupMessage):
+            if let cleanupMessage {
+                "音频会话启动失败：\(message)；清理失败：\(cleanupMessage)"
+            } else {
+                "音频会话启动失败：\(message)"
+            }
+        }
+    }
 }
