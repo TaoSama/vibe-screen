@@ -279,6 +279,8 @@ class StreamingServer: EncodedFrameSink {
     var onTouchEvent: ((Float, Float, Int, Int, Float, Float, UInt64) -> Void)?
     var onInputCancelled: ((UInt64) -> Void)?
     var onStats: ((Double, Double, UInt64) -> Void)?
+    /// Called from the frame queue while emitting stream telemetry. Providers
+    /// must avoid main-actor state and synchronize any capture/encoder reads.
     var encoderStatsProvider: (() -> (inFlight: Int, capacity: Int))?
     var onKeyframeRequested: ((Bool, UInt64) -> Void)?
     // Whether host wants to receive touch events from client. Ping/pong is
