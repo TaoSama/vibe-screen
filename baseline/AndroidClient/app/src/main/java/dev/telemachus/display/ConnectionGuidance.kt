@@ -1,5 +1,6 @@
 package dev.telemachus.display
 
+import android.content.res.Resources
 import java.io.IOException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
@@ -19,9 +20,31 @@ internal enum class ConnectionFailureKind {
 
 internal data class ConnectionGuidance(
     val kind: ConnectionFailureKind,
-    val status: String,
-    val message: String,
+    val status: ConnectionGuidanceText,
+    val message: ConnectionGuidanceText,
 )
+
+internal data class ConnectionGuidanceText(
+    val resourceId: Int,
+    val args: List<Any> = emptyList(),
+)
+
+internal object ConnectionGuidanceTextFormatter {
+    fun format(
+        resources: Resources,
+        text: ConnectionGuidanceText,
+    ): String {
+        val resolvedArgs =
+            text.args.map { arg ->
+                if (arg is ConnectionGuidanceText) {
+                    format(resources, arg)
+                } else {
+                    arg
+                }
+            }.toTypedArray()
+        return resources.getString(text.resourceId, *resolvedArgs)
+    }
+}
 
 internal enum class AdbTransportKind {
     USB,
@@ -69,22 +92,22 @@ internal object ConnectionGuidanceFactory {
             ->
                 ConnectionGuidance(
                     kind = ConnectionFailureKind.INCOMPATIBLE_SESSION,
-                    status = "Mac app is incompatible",
-                    message = "Update Vibe Screen on both devices, then reconnect.",
+                    status = text(R.string.connection_guidance_mac_incompatible_title),
+                    message = text(R.string.connection_guidance_mac_incompatible_message),
                 )
 
             SessionFailureKind.OUTBOUND_BACKPRESSURE ->
                 ConnectionGuidance(
                     kind = ConnectionFailureKind.INPUT_OVERLOADED,
-                    status = "Input stream overloaded",
-                    message = "Reconnect, then reduce simultaneous touch or peripheral input.",
+                    status = text(R.string.connection_guidance_input_overloaded_title),
+                    message = text(R.string.connection_guidance_input_overloaded_message),
                 )
 
             SessionFailureKind.CODEC_CONFIGURATION ->
                 ConnectionGuidance(
                     kind = ConnectionFailureKind.INCOMPATIBLE_SESSION,
-                    status = "Video decoder recovery",
-                    message = "Keep the Mac app open while the client retries with a compatible codec.",
+                    status = text(R.string.connection_guidance_video_decoder_recovery_title),
+                    message = text(R.string.connection_guidance_video_decoder_recovery_message),
                 )
 
             SessionFailureKind.HEARTBEAT_TIMEOUT,
@@ -95,15 +118,15 @@ internal object ConnectionGuidanceFactory {
             SessionFailureKind.SERVER_SHUTDOWN ->
                 ConnectionGuidance(
                     kind = ConnectionFailureKind.UNKNOWN,
-                    status = "Session ended",
-                    message = "Mac ended the session",
+                    status = text(R.string.connection_guidance_session_ended_title),
+                    message = text(R.string.connection_guidance_mac_ended_session_message),
                 )
 
             SessionFailureKind.USER_REQUESTED ->
                 ConnectionGuidance(
                     kind = ConnectionFailureKind.UNKNOWN,
-                    status = "Session ended",
-                    message = "Disconnected by user",
+                    status = text(R.string.connection_guidance_session_ended_title),
+                    message = text(R.string.connection_guidance_user_disconnected_message),
                 )
         }
 
@@ -136,18 +159,15 @@ internal object ConnectionGuidanceFactory {
     private fun hostNotRunning(context: ConnectionGuidanceContext): ConnectionGuidance =
         ConnectionGuidance(
             kind = ConnectionFailureKind.HOST_NOT_RUNNING,
-            status = "Mac app unavailable",
+            status = text(R.string.connection_guidance_mac_unavailable_title),
             message =
                 when (context.mode) {
                     ConnectionMode.USB ->
-                        adbRecovery(context, "Open Vibe Screen on your Mac.")
+                        adbRecovery(context, text(R.string.connection_guidance_usb_open_mac_prefix))
                     ConnectionMode.WIRELESS ->
-                        "Open Vibe Screen on your Mac in LAN mode. Confirm both devices use the same " +
-                            "trusted Wi-Fi, the saved host address and port ${context.requiredPort()} are current, " +
-                            "and the macOS firewall allows Vibe Screen, then reconnect or scan a fresh QR code."
+                        text(R.string.connection_guidance_lan_host_unavailable_message, context.requiredPort())
                     ConnectionMode.INTERNET ->
-                        "Open Vibe Screen on your Mac in Internet mode and confirm it is online. " +
-                            "Try again; if the lease expired, import a fresh session profile from the Mac."
+                        text(R.string.connection_guidance_internet_host_unavailable_message)
                 },
         )
 
@@ -156,57 +176,51 @@ internal object ConnectionGuidanceFactory {
             kind = ConnectionFailureKind.NETWORK_UNREACHABLE,
             status =
                 if (context.mode == ConnectionMode.USB) {
-                    "ADB route unavailable"
+                    text(R.string.connection_guidance_adb_route_unavailable_title)
                 } else {
-                    "Network unavailable"
+                    text(R.string.connection_guidance_network_unavailable_title)
                 },
             message =
                 when (context.mode) {
                     ConnectionMode.USB ->
-                        adbRecovery(context, "The Android-to-Mac route is unavailable.")
+                        adbRecovery(context, text(R.string.connection_guidance_usb_route_unavailable_prefix))
                     ConnectionMode.WIRELESS ->
-                        "Reconnect both devices to the same trusted Wi-Fi and disable VPN or guest-network " +
-                            "isolation. Verify the saved Mac address and port ${context.requiredPort()}, then reconnect."
+                        text(R.string.connection_guidance_lan_network_unavailable_message, context.requiredPort())
                     ConnectionMode.INTERNET ->
-                        "Restore this device's Internet connection, then try again. If direct routing remains " +
-                            "unavailable, select TURN only when the imported profile provides TURN credentials."
+                        text(R.string.connection_guidance_internet_network_unavailable_message)
                 },
         )
 
     private fun timeout(context: ConnectionGuidanceContext): ConnectionGuidance =
         ConnectionGuidance(
             kind = ConnectionFailureKind.TIMEOUT,
-            status = "Connection timed out",
+            status = text(R.string.connection_guidance_timeout_title),
             message =
                 when (context.mode) {
                     ConnectionMode.USB ->
                         adbRecovery(
                             context,
-                            "Confirm Vibe Screen is listening on port ${context.requiredPort()} on your Mac.",
+                            text(R.string.connection_guidance_usb_timeout_prefix, context.requiredPort()),
                         )
                     ConnectionMode.WIRELESS ->
-                        "Confirm Vibe Screen is listening in LAN mode on port ${context.requiredPort()}, both devices " +
-                            "remain on the same trusted Wi-Fi, and the macOS firewall allows the connection, then retry."
+                        text(R.string.connection_guidance_lan_timeout_message, context.requiredPort())
                     ConnectionMode.INTERNET ->
-                        "Check this device's Internet connection and the selected Direct or TURN route, then retry. " +
-                            "If the lease expired, import a fresh session profile from the Mac."
+                        text(R.string.connection_guidance_internet_timeout_message)
                 },
         )
 
     private fun unknown(context: ConnectionGuidanceContext): ConnectionGuidance =
         ConnectionGuidance(
             kind = ConnectionFailureKind.UNKNOWN,
-            status = "Connection failed",
+            status = text(R.string.connection_guidance_failed_title),
             message =
                 when (context.mode) {
                     ConnectionMode.USB ->
-                        adbRecovery(context, "Check Vibe Screen on your Mac and retry.")
+                        adbRecovery(context, text(R.string.connection_guidance_usb_unknown_prefix))
                     ConnectionMode.WIRELESS ->
-                        "Check Vibe Screen in LAN mode, the trusted Wi-Fi connection, the saved host address, " +
-                            "port ${context.requiredPort()}, and the macOS firewall, then retry."
+                        text(R.string.connection_guidance_lan_unknown_message, context.requiredPort())
                     ConnectionMode.INTERNET ->
-                        "Check Vibe Screen in Internet mode and this device's network, then retry. " +
-                            "If the session is no longer valid, import a fresh session profile."
+                        text(R.string.connection_guidance_internet_unknown_message)
                 },
         )
 
@@ -226,24 +240,20 @@ internal object ConnectionGuidanceFactory {
 
     private fun adbRecovery(
         context: ConnectionGuidanceContext,
-        prefix: String,
-    ): String {
+        prefix: ConnectionGuidanceText,
+    ): ConnectionGuidanceText {
         val port = context.requiredPort()
-        val routeSteps =
-            when (context.adbTransport) {
-                AdbTransportKind.USB ->
-                    "Keep the USB data cable connected, authorize USB debugging, then run " +
-                        "adb reverse tcp:$port tcp:$port on the Mac."
-                AdbTransportKind.WIRELESS ->
-                    "Keep Wireless debugging enabled, run adb connect <device-ip>:<wireless-adb-port> on the Mac, " +
-                        "authorize the connection, then run adb reverse tcp:$port tcp:$port."
-                AdbTransportKind.UNAVAILABLE ->
-                    "Enable Developer options and connect either a USB data cable with USB debugging or Wireless " +
-                        "debugging. For Wireless debugging, run adb connect <device-ip>:<wireless-adb-port>; " +
-                        "then run adb reverse tcp:$port tcp:$port."
-            }
-        return "$prefix $routeSteps"
+        return when (context.adbTransport) {
+            AdbTransportKind.USB -> text(R.string.connection_guidance_usb_recovery_usb, prefix, port)
+            AdbTransportKind.WIRELESS -> text(R.string.connection_guidance_usb_recovery_wireless_adb, prefix, port)
+            AdbTransportKind.UNAVAILABLE -> text(R.string.connection_guidance_usb_recovery_unavailable, prefix, port)
+        }
     }
+
+    private fun text(
+        resourceId: Int,
+        vararg args: Any,
+    ) = ConnectionGuidanceText(resourceId, args.toList())
 
     private fun ConnectionGuidanceContext.requiredPort(): Int =
         checkNotNull(port) { "Port is required for USB and LAN guidance" }
