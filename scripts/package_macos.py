@@ -92,10 +92,19 @@ def resolve_sign_identity(requested: str) -> str:
         stderr=subprocess.STDOUT,
     )
     quoted_identity = f'"{requested}"'
-    if lookup.returncode == 0 and any(
-        line.strip().endswith(quoted_identity) for line in lookup.stdout.splitlines()
-    ):
+    matching_identities = [
+        line.strip()
+        for line in lookup.stdout.splitlines()
+        if line.strip().endswith(quoted_identity)
+    ]
+    if lookup.returncode == 0 and len(matching_identities) == 1:
         return requested
+    if lookup.returncode == 0 and len(matching_identities) > 1:
+        raise SystemExit(
+            f"multiple codesign identities named '{requested}' were found in the keychain. "
+            "Remove or rename duplicates so local builds keep one stable certificate "
+            "leaf hash for macOS Screen Recording/Accessibility grants."
+        )
     raise SystemExit(
         f"codesign identity '{requested}' not found in the keychain. "
         f"Create the '{DEFAULT_SIGN_IDENTITY}' self-signed identity (or set "
