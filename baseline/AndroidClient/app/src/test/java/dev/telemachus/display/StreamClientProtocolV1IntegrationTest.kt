@@ -224,6 +224,7 @@ class StreamClientProtocolV1IntegrationTest {
     fun controllerForwardingWaitsForConnectedAckBeforeStateResync() = runBlocking {
         ServerSocket(0).use { server ->
             val configurationRequested = CountDownLatch(1)
+            val configurationApplied = CountDownLatch(1)
             val controllerAcked = CountDownLatch(1)
             val client = StreamClient("127.0.0.1", server.localPort, advertiseController = true)
             val serverJob =
@@ -246,7 +247,7 @@ class StreamClientProtocolV1IntegrationTest {
                                 ),
                             expectedClientCapabilities = DEFAULT_CLIENT_CAPABILITIES + Capability.CAPABILITY_CONTROLLER,
                         )
-                        configurationRequested.await(8, TimeUnit.SECONDS)
+                        assertTrue(configurationApplied.await(8, TimeUnit.SECONDS))
                         val connected = readEnvelope(peer)
                         assertEquals(Envelope.PayloadCase.CONTROLLER_EVENT, connected.payloadCase)
                         assertEquals(
@@ -275,10 +276,13 @@ class StreamClientProtocolV1IntegrationTest {
                         )
                         write(peer, disconnect(id = 7))
                     }
-                }
+            }
             client.onVideoConfiguration = { _, commit ->
-                configurationRequested.countDown()
                 commit.accept()
+                configurationRequested.countDown()
+            }
+            client.onVideoConfigurationApplied = {
+                configurationApplied.countDown()
             }
             client.onControllerInputAck = { _, accepted, _ ->
                 if (accepted) {
@@ -294,6 +298,7 @@ class StreamClientProtocolV1IntegrationTest {
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
 
             assertTrue(configurationRequested.await(8, TimeUnit.SECONDS))
+            assertTrue(configurationApplied.await(8, TimeUnit.SECONDS))
             val admitted =
                 client.sendController(
                     ControllerDispatch(
