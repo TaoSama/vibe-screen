@@ -2,13 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CoordinateMapper, Rotation } from '../.test-dist/input/CoordinateMapper.js';
+import { ControllerInputMapper, MAXIMUM_ACTIVE_CONTROLLERS_REJECTION_REASON } from '../.test-dist/input/ControllerInputMapper.js';
 import { PeripheralInputMapper } from '../.test-dist/input/PeripheralInputMapper.js';
 import { StylusInputMapper } from '../.test-dist/input/StylusInputMapper.js';
 import { FrameQueueState, LatestFrameQueue } from '../.test-dist/media/LatestFrameQueue.js';
 import { MediaPacketParser } from '../.test-dist/media/MediaPacketParser.js';
-import { AeadAlgorithm, Capability, Codec, ColorPrimaries, InputPhase, KeyAgreementAlgorithm, MatrixCoefficients,
-  SignatureAlgorithm, StylusContactState, StylusToolKind, TransferFunction, TransportKind } from '../.test-dist/protocol/ProtocolModels.js';
-import { ProtocolEncoder } from '../.test-dist/protocol/ProtocolEncoder.js';
+import { AeadAlgorithm, Capability, Codec, ColorPrimaries, ControllerEventKind, InputPhase, KeyAgreementAlgorithm,
+  MatrixCoefficients, SignatureAlgorithm, StylusContactState, StylusToolKind, TransferFunction,
+  TransportKind } from '../.test-dist/protocol/ProtocolModels.js';
+import { EnvelopePayloadField, ProtocolEncoder } from '../.test-dist/protocol/ProtocolEncoder.js';
 import { ProtocolDecoder } from '../.test-dist/protocol/ProtocolDecoder.js';
 import { MAX_PENDING_CONTROLS, OutboundControlWriter } from '../.test-dist/protocol/OutboundControlWriter.js';
 import { ProtobufWriter } from '../.test-dist/protocol/ProtobufWriter.js';
@@ -38,7 +40,19 @@ const confirmStylus = (session, action) => {
   session.confirmSent(action.afterSend);
   return action;
 };
+const confirmController = (session, action, messageId = undefined) => {
+  assert.equal(action.afterSend?.kind, 'controller');
+  if (action.onAssigned !== undefined) {
+    assert.equal(action.onAssigned.kind, 'controllerConnect');
+    session.confirmAssigned(action.onAssigned, messageId ?? action.afterSend.event.inputId + 100n, 1n);
+  }
+  session.confirmSent(action.afterSend);
+  return action;
+};
 const confirmRequest = (session, action, messageId) => session.confirmAssigned(action.onAssigned, messageId, 1n);
+const inputAckEnvelope = (messageId, correlationId, inputId, accepted = true,
+  rejectionReason = MAXIMUM_ACTIVE_CONTROLLERS_REJECTION_REASON) => controlEnvelope(messageId, 64,
+  new ProtobufWriter().uint64(1, inputId).bool(2, accepted).string(3, accepted ? '' : rejectionReason), true, correlationId);
 const createStreamingSession = () => {
   const session = new ProductSession('harmony-test', 'Harmony test',
     [Capability.TOUCH, Capability.KEYBOARD, Capability.POINTER, Capability.TELEMETRY], [Codec.HEVC, Codec.H264]);
@@ -164,9 +178,11 @@ test('negotiated capabilities must be a legal subset and gate optional input', (
   assert.throws(() => session.receive(fixture('session_accepted.binpb'), 3n), /invalid negotiated/);
 });
 
-test('controller capability 26 remains model-only until production input is implemented', () => {
+test('controller capability 26 is advertised with a production encoder surface', () => {
   assert.equal(Capability.CONTROLLER, 26);
-  assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.CONTROLLER), false);
+  assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.CONTROLLER), true);
+  assert.equal(EnvelopePayloadField.CONTROLLER, 66);
+  assert.equal(typeof new ProtocolEncoder().controller, 'function');
 });
 
 test('controller capability has no additional capability dependency', () => {
@@ -711,6 +727,45 @@ test('stylus encoder matches the shared base and extended formal fixtures', () =
   assert.deepEqual(extended, fixture('stylus_extended.binpb'));
 });
 
+test('controller encoder matches formal lifecycle and state fixtures', () => {
+  const encoder = new ProtocolEncoder();
+  const target = { displayId: 'display-main', streamId: 42n };
+  assert.deepEqual(encoder.controller(ProtocolEncoder.metadata(21n, sessionId, 7n, 1000000021n), {
+    inputId: 103n, controllerId: 'controller-xbox-1', controllerEpoch: 1n, kind: ControllerEventKind.CONNECTED,
+    buttonMask: 0, leftStickX: 0, leftStickY: 0, rightStickX: 0, rightStickY: 0, leftTrigger: 0,
+    rightTrigger: 0, hatX: 0, hatY: 0
+  }, target), fixture('controller_connected.binpb'));
+  assert.deepEqual(encoder.controller(ProtocolEncoder.metadata(22n, sessionId, 7n, 1000000022n), {
+    inputId: 104n, controllerId: 'controller-xbox-1', controllerEpoch: 1n, kind: ControllerEventKind.STATE,
+    buttonMask: 4101, leftStickX: -0.75, leftStickY: 0.5, rightStickX: 0.25, rightStickY: -0.125,
+    leftTrigger: 0.375, rightTrigger: 0.875, hatX: 1, hatY: -1
+  }, target), fixture('controller_state.binpb'));
+  assert.deepEqual(encoder.controller(ProtocolEncoder.metadata(23n, sessionId, 7n, 1000000023n), {
+    inputId: 105n, controllerId: 'controller-xbox-1', controllerEpoch: 1n, kind: ControllerEventKind.DISCONNECTED,
+    buttonMask: 0, leftStickX: 0, leftStickY: 0, rightStickX: 0, rightStickY: 0, leftTrigger: 0,
+    rightTrigger: 0, hatX: 0, hatY: 0
+  }, target), fixture('controller_disconnected.binpb'));
+});
+
+test('controller mapper rejects invalid scalar fields and neutral lifecycle violations', () => {
+  const mapper = new ControllerInputMapper();
+  const valid = { controllerId: 'controller-1', controllerEpoch: 1n, kind: ControllerEventKind.STATE };
+  assert.throws(() => mapper.map(0n, valid), /inputId/);
+  assert.throws(() => mapper.map(1n, { ...valid, controllerId: '' }), /id must be non-empty/);
+  assert.throws(() => mapper.map(1n, { ...valid, controllerId: '手'.repeat(43) }), /at most 128/);
+  assert.throws(() => mapper.map(1n, { ...valid, controllerEpoch: 0n }), /epoch/);
+  assert.throws(() => mapper.map(1n, { ...valid, kind: ControllerEventKind.UNSPECIFIED }), /kind/);
+  assert.throws(() => mapper.map(1n, { ...valid, buttonMask: 0x2000 }), /button bits/);
+  assert.throws(() => mapper.map(1n, { ...valid, leftStickX: 1.1 }), /stick axes/);
+  assert.throws(() => mapper.map(1n, { ...valid, rightTrigger: Number.NaN }), /triggers/);
+  assert.throws(() => mapper.map(1n, { ...valid, hatY: 2 }), /hat axes/);
+  assert.throws(() => mapper.map(1n, { ...valid, kind: ControllerEventKind.CONNECTED, buttonMask: 1 }), /neutral/);
+  const neutral = mapper.neutralDisconnect(2n, mapper.map(1n, { ...valid, buttonMask: 1, hatX: -1 }));
+  assert.equal(neutral.kind, ControllerEventKind.DISCONNECTED);
+  assert.equal(neutral.buttonMask, 0);
+  assert.equal(neutral.hatX, 0);
+});
+
 test('Harmony advertised capabilities omit stylus extended and its dependency fails closed', () => {
   assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.STYLUS_EXTENDED), false);
   assert.equal(HARMONY_ADVERTISED_CAPABILITIES.includes(Capability.STYLUS), true);
@@ -843,6 +898,95 @@ test('product session gates stylus on negotiated base and extended capabilities'
   const extended = both.stylus({ ...baseEvent, inputId: 2n, pointerId: 2, toolKind: StylusToolKind.ERASER,
     buttonMask: 1, contactState: StylusContactState.CONTACT });
   assert.equal(confirmStylus(both, extended).intent.kind, 'stylus');
+});
+
+test('product session gates controller input on negotiated capability and Host ack', () => {
+  const noController = createStreamingSessionWithCapabilities([Capability.TOUCH], [Capability.TOUCH]);
+  assert.throws(() => noController.controller({ inputId: 1n, controllerId: 'pad-1', controllerEpoch: 1n,
+    kind: ControllerEventKind.CONNECTED, buttonMask: 0, leftStickX: 0, leftStickY: 0, rightStickX: 0,
+    rightStickY: 0, leftTrigger: 0, rightTrigger: 0, hatX: 0, hatY: 0 }), /was not negotiated/);
+
+  const session = createStreamingSessionWithCapabilities([Capability.TOUCH, Capability.CONTROLLER],
+    [Capability.TOUCH, Capability.CONTROLLER]);
+  const connected = session.controller({ inputId: 1n, controllerId: 'pad-1', controllerEpoch: 1n,
+    kind: ControllerEventKind.CONNECTED, buttonMask: 0, leftStickX: 0, leftStickY: 0, rightStickX: 0,
+    rightStickY: 0, leftTrigger: 0, rightTrigger: 0, hatX: 0, hatY: 0 });
+  assert.equal(connected.intent.kind, 'controller');
+  confirmController(session, connected, 30n);
+  assert.throws(() => session.controller({ inputId: 2n, controllerId: 'pad-1', controllerEpoch: 1n,
+    kind: ControllerEventKind.STATE, buttonMask: 1, leftStickX: 0, leftStickY: 0, rightStickX: 0,
+    rightStickY: 0, leftTrigger: 0, rightTrigger: 0, hatX: 0, hatY: 0 }), /Invalid controller lifecycle/);
+  session.receive(inputAckEnvelope(31n, 30n, 1n), 31n);
+  const state = session.controller({ inputId: 3n, controllerId: 'pad-1', controllerEpoch: 1n,
+    kind: ControllerEventKind.STATE, buttonMask: 1, leftStickX: -0.25, leftStickY: 0.5, rightStickX: 0,
+    rightStickY: 0, leftTrigger: 0.25, rightTrigger: 0, hatX: 1, hatY: -1 });
+  assert.equal(confirmController(session, state).intent.event.hatY, -1);
+});
+
+test('product session controller release sends neutral disconnect and blocks resume until written', () => {
+  const session = createStreamingSessionWithCapabilities(
+    [Capability.TOUCH, Capability.CONTROLLER, Capability.SESSION_RESUME],
+    [Capability.TOUCH, Capability.CONTROLLER, Capability.SESSION_RESUME]);
+  assert.notEqual(session.resumableSnapshot(20n), undefined);
+  const connected = session.controller({ inputId: 1n, controllerId: 'pad-1', controllerEpoch: 1n,
+    kind: ControllerEventKind.CONNECTED, buttonMask: 0, leftStickX: 0, leftStickY: 0, rightStickX: 0,
+    rightStickY: 0, leftTrigger: 0, rightTrigger: 0, hatX: 0, hatY: 0 });
+  confirmController(session, connected, 40n);
+  assert.equal(session.resumableSnapshot(21n), undefined);
+  session.receive(inputAckEnvelope(41n, 40n, 1n), 41n);
+  assert.equal(session.resumableSnapshot(22n), undefined);
+  confirmController(session, session.controller({ inputId: 2n, controllerId: 'pad-1', controllerEpoch: 1n,
+    kind: ControllerEventKind.STATE, buttonMask: 4101, leftStickX: -0.75, leftStickY: 0.5, rightStickX: 0.25,
+    rightStickY: -0.125, leftTrigger: 0.375, rightTrigger: 0.875, hatX: 1, hatY: -1 }));
+  const releases = session.releaseControllerInputs(() => 10n);
+  assert.equal(releases.length, 1);
+  assert.equal(releases[0].intent.event.kind, ControllerEventKind.DISCONNECTED);
+  assert.equal(releases[0].intent.event.buttonMask, 0);
+  assert.equal(releases[0].intent.event.leftStickX, 0);
+  assert.equal(releases[0].intent.event.rightTrigger, 0);
+  assert.equal(releases[0].intent.event.hatX, 0);
+  assert.equal(session.resumableSnapshot(23n), undefined);
+  assert.throws(() => session.completeControllerRelease(), /incomplete/);
+  assert.throws(() => session.controller({ inputId: 11n, controllerId: 'pad-1', controllerEpoch: 1n,
+    kind: ControllerEventKind.STATE, buttonMask: 0, leftStickX: 0, leftStickY: 0, rightStickX: 0,
+    rightStickY: 0, leftTrigger: 0, rightTrigger: 0, hatX: 0, hatY: 0 }), /Controller input is closing/);
+  confirmController(session, releases[0]);
+  session.completeControllerRelease();
+  assert.notEqual(session.resumableSnapshot(23n), undefined);
+});
+
+test('product session enforces controller lifecycle bounds and rejected ack cleanup', () => {
+  const session = createStreamingSessionWithCapabilities([Capability.TOUCH, Capability.CONTROLLER],
+    [Capability.TOUCH, Capability.CONTROLLER]);
+  const connect = (id, inputId, messageId) => {
+    const action = session.controller({ inputId: BigInt(inputId), controllerId: id, controllerEpoch: 1n,
+      kind: ControllerEventKind.CONNECTED, buttonMask: 0, leftStickX: 0, leftStickY: 0, rightStickX: 0,
+      rightStickY: 0, leftTrigger: 0, rightTrigger: 0, hatX: 0, hatY: 0 });
+    confirmController(session, action, BigInt(messageId));
+    session.receive(inputAckEnvelope(BigInt(messageId + 100), BigInt(messageId), BigInt(inputId)), BigInt(messageId + 100));
+  };
+  connect('pad-1', 1, 51); connect('pad-2', 2, 52); connect('pad-3', 3, 53); connect('pad-4', 4, 54);
+  assert.throws(() => session.controller({ inputId: 5n, controllerId: 'pad-5', controllerEpoch: 1n,
+    kind: ControllerEventKind.CONNECTED, buttonMask: 0, leftStickX: 0, leftStickY: 0, rightStickX: 0,
+    rightStickY: 0, leftTrigger: 0, rightTrigger: 0, hatX: 0, hatY: 0 }),
+  new RegExp(MAXIMUM_ACTIVE_CONTROLLERS_REJECTION_REASON));
+  assert.throws(() => session.controller({ inputId: 4n, controllerId: 'pad-1', controllerEpoch: 1n,
+    kind: ControllerEventKind.STATE, buttonMask: 0, leftStickX: 0, leftStickY: 0, rightStickX: 0,
+    rightStickY: 0, leftTrigger: 0, rightTrigger: 0, hatX: 0, hatY: 0 }), /strictly increase/);
+});
+
+test('cancelled pending controller connect releases admission state', () => {
+  const session = createStreamingSessionWithCapabilities(
+    [Capability.TOUCH, Capability.CONTROLLER, Capability.SESSION_RESUME],
+    [Capability.TOUCH, Capability.CONTROLLER, Capability.SESSION_RESUME]);
+  const connected = session.controller({ inputId: 1n, controllerId: 'pad-1', controllerEpoch: 1n,
+    kind: ControllerEventKind.CONNECTED, buttonMask: 0, leftStickX: 0, leftStickY: 0, rightStickX: 0,
+    rightStickY: 0, leftTrigger: 0, rightTrigger: 0, hatX: 0, hatY: 0 });
+  confirmController(session, connected, 70n);
+  assert.equal(session.resumableSnapshot(71n), undefined);
+  session.cancelControllerSend(connected.afterSend.event);
+  assert.doesNotThrow(() => session.completeControllerRelease());
+  assert.notEqual(session.resumableSnapshot(71n), undefined);
 });
 
 test('product session enforces stylus lifecycle and release cancels active inputs', () => {

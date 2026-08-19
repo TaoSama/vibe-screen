@@ -1,6 +1,6 @@
 import { AeadAlgorithm, Codec, ColorDescription, ColorPrimaries, DeviceIdentity, DeviceRevoked, DisplayDescriptor,
-  HostHello, KeyAgreementAlgorithm, MatrixCoefficients, MediaPacketHeader, PairingOffer, PairingProof, PairingResult,
-  ResumeSessionResult, SessionAccepted, SignatureAlgorithm, TransferFunction, VideoConfig } from './ProtocolModels';
+  HostHello, InputAck, KeyAgreementAlgorithm, MatrixCoefficients, MediaPacketHeader, PairingOffer, PairingProof,
+  PairingResult, ResumeSessionResult, SessionAccepted, SignatureAlgorithm, TransferFunction, VideoConfig } from './ProtocolModels';
 import { ProtobufReader } from './ProtobufReader';
 
 export interface DecodedEnvelope {
@@ -257,6 +257,20 @@ export class ProtocolDecoder {
     const reader: ProtobufReader = new ProtobufReader(payload);
     while (!reader.done()) { const tag: number = reader.tag(); if ((tag >>> 3) === 1 && (tag & 7) === 0) return reader.varint(); reader.skip(tag & 7); }
     return 0n;
+  }
+
+  inputAck(payload: Uint8Array): InputAck {
+    const reader: ProtobufReader = new ProtobufReader(payload);
+    const ack: InputAck = { inputId: 0n, accepted: false, rejectionReason: '' };
+    while (!reader.done()) {
+      const tag: number = reader.tag(); const field: number = tag >>> 3; const wire: number = tag & 7;
+      if (field === 1 && wire === 0) ack.inputId = reader.varint();
+      else if (field === 2 && wire === 0) ack.accepted = reader.varint() !== 0n;
+      else if (field === 3 && wire === 2) ack.rejectionReason = reader.string();
+      else reader.skip(wire);
+    }
+    if (ack.inputId === 0n || (!ack.accepted && ack.rejectionReason.length === 0)) throw new Error('Invalid InputAck');
+    return ack;
   }
 
   failure(payload: Uint8Array, protocolError: boolean): FailureMessage {

@@ -62,6 +62,12 @@ limitations are summarized in [Security](SECURITY.md).
   equivalent to full validation.
 - Android 8.0 / API 26 or newer; JDK 17, Android SDK Platform 34, Build Tools
   34.0.0, and ADB are required to build and install the current client.
+- Verified Android devices: Xiaomi 13 (model 2211133C, codename fuxi) is the
+  primary named evidence source; Nubia P0110 (codename pacific) is an
+  acceptable substitute for general Android acceptance. Both are Android
+  handsets, but evidence must always record the exact manufacturer, model,
+  codename, and OS version of the device that produced it, and Nubia P0110
+  results must not be relabeled as Xiaomi 13/fuxi evidence.
 - Go 1.25.12 is used to run the pinned Buf v1.72.0 protocol checks.
 - The first build requires network access for Gradle, Maven, and Go modules.
 
@@ -537,7 +543,11 @@ network quality may increase it.
   DevEco/API-checker/HAP/MatePad evidence exists. A contacting pen can fall back
   to touch when the peer lacks stylus support; eraser, proximity/hover, and
   barrel buttons cannot be losslessly downgraded and are suppressed when the
-  extended capability is not negotiated. No DevEco SDK was available for this
+  extended capability is not negotiated. The portable Harmony core now also
+  advertises CAPABILITY_CONTROLLER, encodes ControllerEvent field 66, waits for
+  Host InputAck acceptance before sending controller state, and releases active
+  controllers through all-zero neutral DISCONNECTED events before teardown or
+  resume. No DevEco SDK was available for this
   record, so the repository does not claim ArkTS compilation, a HAP, signing,
   installation, hardware decode, HUKS-backed secure pairing, authenticated
   transport, resume-capable Host interoperability, or real-device behavior.

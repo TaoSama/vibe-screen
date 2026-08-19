@@ -89,6 +89,30 @@ to advertise only base stylus.
 This record does not establish DevEco ArkTS compilation, API compatibility, a
 HAP, signing, installation, hardware decode, or MatePad behavior.
 
+## 2026-08-19 controller input portable closure
+
+The Harmony controller-input source path now has a portable/offline closure. The
+production Harmony source advertises `CAPABILITY_CONTROLLER`, exposes
+`ControllerEvent` payload field 66 in the protocol encoder, validates controller
+identity, button, stick, trigger, hat, lifecycle, and four-active-controller
+bounds, and waits for the Host's accepted `InputAck` for CONNECTED before
+admitting STATE or DISCONNECTED. Active controller state blocks resume until a
+terminal all-zero neutral `DISCONNECTED` release has been written through the
+control writer. The platform session controller routes controller samples behind
+a dominating `Capability.CONTROLLER` guard and uses the same active-input
+release path for disconnect, background, reconnect, and transport-loss cleanup.
+
+```text
+cd apps/harmony && pnpm run verify
+  PASS: 35 semantic project files; 115/115 portable tests
+```
+
+This is not DevEco or device evidence. It does not establish ArkTS/API-checker
+compatibility, a debug or release HAP, signing, installation, hardware decode,
+HUKS-backed secure pairing, Host interoperability on a HarmonyOS device, or
+MatePad behavior. Controller-specific input still needs the MatePad Mini
+acceptance matrix before being claimed as device-verified.
+
 ## Clean cross-repository gates
 
 The following commands ran against the tested commit/tree above:
@@ -170,16 +194,12 @@ contract gate then passed `test_upgrade_bytes_are_pinned`.
 - multi-touch, Up/Cancel, keyboard/HID/modifiers, pointer/buttons, wheel/trackpad,
   stylus (base pressure/tilt and extended eraser/barrel/proximity under
   capability gating), focus, safe area, letterbox, and both orientations;
-- controller-specific input: Protocol v1 defines `CAPABILITY_CONTROLLER = 26`
-  and lifecycle-scoped `ControllerEvent`, and the Harmony portable protocol
-  model mirrors `Capability.CONTROLLER = 26`; the production client does not
-  advertise the capability and has no `ControllerEvent` encoder, controller
-  lifecycle implementation, or platform routing. A future receiver must prove
-  that it synthesizes the same all-zero neutral state for the button mask, stick
-  axes, triggers, and hat axes before discarding an active controller on
-  disconnect, session teardown, ownership takeover, or transport loss. Current
-  portable checks do not prove that rule; DevEco/API-checker, HAP, and device
-  evidence are also absent;
+- controller-specific input: the Harmony portable source now advertises
+  `CAPABILITY_CONTROLLER = 26`, encodes lifecycle-scoped `ControllerEvent`,
+  waits for accepted CONNECTED `InputAck`, and sends all-zero neutral
+  DISCONNECTED release controls before active controller teardown or resume.
+  DevEco/API-checker, HAP, Host interoperability, and device evidence remain
+  absent;
 - background/foreground, permission denial, Wi-Fi loss/restore/roam, host restart,
   bounded reconnect, resume-result behavior, and no old-epoch render;
 - MatePad Mini eight-hour thermal/power/RSS/frame-drop soak and external-camera
