@@ -104,11 +104,13 @@ it must not be relabeled as Xiaomi 13/fuxi.
   Mac pointer/button result. Synthetic ADB pointer or touchscreen events may
   support mapper coverage only.
 - Controller runtime claims require a physical controller attached to the
-  Android device, accepted Protocol v1
-  `controller` capability, host virtual-gamepad availability, visible
+  Android device, Android `SOURCE_GAMEPAD` or `SOURCE_JOYSTICK` production
+  forwarding through the active Protocol v1 session, accepted Protocol v1
+  `controller` capability, host virtual-gamepad availability from an
+  identity-signed build with the approved virtual HID entitlement, visible
   controller input in a Mac-side test target, and neutral release on
-  disconnect. Offline HID report and mapper tests do not prove the OS accepted
-  a virtual gamepad.
+  disconnect. Offline HID report, Android mapper, session, and protocol tests
+  do not prove the OS accepted a virtual gamepad.
 - Client/process or ADB TCP interruption produces a fresh connected session
   while the Host PID survives.
 - A sustained stream keeps live PIDs and rising frames throughout, with no fatal
@@ -124,3 +126,7 @@ latency are not substitutes.
 
 Use `PYTHONPATH=tools python3 -m vibescreen_evidence.latency --help` for the
 supported latency evidence formats and gate semantics.
+
+Use `PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime --help`
+for the controller runtime gate summary. The tool treats missing physical
+controller or entitled Host runtime observations as `blocked`, not `pass`.

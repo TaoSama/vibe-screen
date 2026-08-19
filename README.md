@@ -29,7 +29,7 @@ platform scaffolding under active development.
 | Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264, MediaCodec decode |
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage, with fixed-binary device re-verification still gated on macOS permission for the rebuilt Host |
-| Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. Controller protocol models, Android mapping/state, Host state machines, and Mac virtual-gamepad injection are offline-tested, but Android production event forwarding is not wired yet; later runtime acceptance also requires an identity-signed Host build with the approved virtual HID entitlement plus a physical Android controller. Physical-stylus drawing-app confirmation, controller production forwarding/runtime acceptance, and other peripherals remain open |
+| Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. Controller protocol models, Android mapping/state, Android production forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted |
 | Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
@@ -148,13 +148,13 @@ boundaries:
 - CGEvent and Accessibility provide the macOS keyboard, pointer, touch-derived
   gesture, and stylus input adapters. Protocol v1 wires keyboard, native
   pointer/scroll, pen and eraser pressure/tilt, barrel buttons, hover/proximity
-  state, and Host-side controller event handling. The Android client has
-  offline-tested controller mapping and protocol encoding, but production
-  controller event forwarding is not wired yet. Host controller events feed a
-  virtual gamepad through `IOHIDUserDevice` when an identity-signed build has
-  the approved virtual HID entitlement. Physical HID mouse, stylus, and
-  controller runtime behavior still require their respective device
-  confirmations after the remaining production wiring is present.
+  state, and Host-side controller event handling. The Android client now routes
+  gamepad/joystick key and motion events through the production Protocol v1
+  session when controller capability is negotiated, with mapper, session, and
+  protocol behavior covered offline. Host controller events feed a virtual
+  gamepad through `IOHIDUserDevice` when an identity-signed build has the
+  approved virtual HID entitlement. Physical HID mouse, stylus, and controller
+  runtime behavior still require their respective device confirmations.
 - Window management moves the current window or application between physical
   and virtual displays and supports headless startup.
 
@@ -581,7 +581,7 @@ network quality may increase it.
   VideoToolbox behavior, host-side advanced adapters, AVAudioEngine playback,
   HDR output, audio/bulk Internet transport, native input behavior, reconnect
   behavior, and all advanced real-device behavior remain separate device
-  gates; see the
+  gates. Android results are never treated as iOS evidence; see the
   [evidence record](docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md).
 
 ## Device Strategy
