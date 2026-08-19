@@ -147,7 +147,10 @@ the desired serial in host settings.
   display is unplugged without forgetting the selection.
 - **Mirror Main Display** creates a private client display and configures it as
   a mirror of the current main display.
-- Rotation is advertised to the client as 0°, 90°, 180°, or 270°.
+- Rotation is advertised to the client as 0°, 90°, 180°, or 270°. This updates
+  display geometry and client orientation; it is not evidence that the Host
+  rotated captured source pixels. Rotated physical and virtual host displays
+  need their own visual and input acceptance record.
 - **Move Focused Window to Client Display** in the menu bar moves the current
   accessible window while preserving its relative placement.
 - **Return Moved Windows** restores windows to their original display and
@@ -244,11 +247,12 @@ The host advertises Protocol v1 controller support only when the running app can
 create an `IOHIDUserDevice` gamepad. Development ad-hoc builds normally cannot
 do this: they need an Apple identity-signed build with the approved
 `com.apple.developer.hid.virtual.device` entitlement in the provisioning
-profile. Android production controller forwarding is not wired yet; after it
-lands, a physical Android controller run can prove client mapping and Protocol
-v1 delivery, but it still does not prove Mac virtual-gamepad injection unless
-the host logs controller availability and a Mac-side test target sees the
-virtual controller input.
+profile. Android production controller forwarding is wired and offline-tested,
+but a physical Android controller run proves runtime acceptance only when the
+host logs controller availability and a Mac-side test target sees the virtual
+controller input. If the physical controller or entitled Host is unavailable,
+record a blocked summary with `vibescreen_evidence.controller_runtime` instead
+of treating the mapper/protocol tests as a pass.
 
 ### Logs and diagnostics
 
@@ -293,11 +297,10 @@ Apple notarization.
 - Protocol v1 keyboard and native-pointer forwarding are implemented in the
   current host/client path, with keyboard and scroll verified on device. Native
   mouse move/click still require physical Android HID-mouse confirmation.
-- Controller protocol models, Android mapping/state, Host state machines, and
-  Mac virtual-gamepad injection are source- and self-tested. Android production
-  controller event forwarding is not wired yet; Mac virtual-gamepad runtime
-  acceptance also requires an identity-signed, entitled build and physical
-  Android controller evidence after that wiring exists.
+- Controller protocol models, Android mapping/state, Android production event
+  forwarding, Host state machines, and Mac virtual-gamepad injection are
+  source- and self-tested. Mac virtual-gamepad runtime acceptance still requires
+  an identity-signed, entitled build and physical Android controller evidence.
 - The legacy product session has no keyboard or native-mouse message entry
   point. Touch-derived click, drag, right-click, scroll, and zoom are present
   only as compatibility behavior.
