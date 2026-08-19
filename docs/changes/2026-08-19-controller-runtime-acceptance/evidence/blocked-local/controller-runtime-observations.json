@@ -1,0 +1,21 @@
+{
+  "android_controller_source_observed": false,
+  "android_production_forwarding_observed": true,
+  "apk_identity_recorded": false,
+  "artifact_paths": [
+    "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+    "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamClient.kt",
+    "baseline/MacHost/Sources/GameControllerVirtualHID.swift",
+    "baseline/MacHost/Sources/GameControllerInput.swift"
+  ],
+  "controller_connected_state_disconnected_observed": false,
+  "device_identity_recorded": false,
+  "host_identity_signed": false,
+  "host_virtual_gamepad_available": false,
+  "host_virtual_hid_entitlement_present": false,
+  "mac_side_controller_response_observed": false,
+  "neutral_release_on_disconnect_observed": false,
+  "notes": "Local evidence is blocked because no physical Android controller and no identity-signed Host with the approved virtual HID entitlement were available. Android production forwarding is recorded as source/fixture-observed only and does not close runtime acceptance.",
+  "physical_controller_attached": false,
+  "protocol_controller_capability_negotiated": false
+}

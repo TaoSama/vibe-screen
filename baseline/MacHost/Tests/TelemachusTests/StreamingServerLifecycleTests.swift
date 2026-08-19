@@ -1,6 +1,7 @@
-import XCTest
+import CryptoKit
 import Foundation
 import Network
+import XCTest
 import VibeScreenProtocol
 @testable import Telemachus
 
@@ -83,7 +84,9 @@ final class StreamingServerLifecycleTests: XCTestCase {
         let client = try readyClient(port: port)
         defer { client.cancel() }
         let request = handshakeRequest(token: token, name: "Test tablet")
-        for (index, byte) in request.enumerated() {
+        let negotiation = try secureRecordNegotiationRequest()
+        let bytes = request + negotiation.request
+        for (index, byte) in bytes.enumerated() {
             queue.asyncAfter(deadline: .now() + .milliseconds(index)) {
                 client.send(
                     content: Data([byte]),
@@ -111,11 +114,11 @@ final class StreamingServerLifecycleTests: XCTestCase {
         server.onClientDisconnected = { _ in disconnected.fulfill() }
         try server.start()
 
-        let legitimate = try readyClient(port: port)
+        let legitimate = try readySecureWirelessClient(port: port, token: token, name: "Legitimate")
         defer { legitimate.cancel() }
-        legitimate.send(
-            content: handshakeRequest(token: token, name: "Legitimate"),
-            completion: .contentProcessed { _ in }
+        _ = try readySecureWirelessProtocolSession(
+            client: legitimate,
+            deviceID: "legitimate-active-client"
         )
         wait(for: [connected], timeout: 2)
 
@@ -162,11 +165,11 @@ final class StreamingServerLifecycleTests: XCTestCase {
         server.onClientDisconnected = { _ in disconnected.fulfill() }
         try server.start()
 
-        let client = try readyClient(port: port)
+        let client = try readySecureWirelessClient(port: port, token: token, name: "Revoked")
         defer { client.cancel() }
-        client.send(
-            content: handshakeRequest(token: token, name: "Revoked"),
-            completion: .contentProcessed { _ in }
+        _ = try readySecureWirelessProtocolSession(
+            client: client,
+            deviceID: "revoked-active-client"
         )
         wait(for: [connected], timeout: 2)
 
@@ -199,19 +202,19 @@ final class StreamingServerLifecycleTests: XCTestCase {
         server.onClientDisconnected = { _ in disconnected.fulfill() }
         try server.start()
 
-        let first = try readyClient(port: port)
+        let first = try readySecureWirelessClient(port: port, token: token, name: "First")
         defer { first.cancel() }
-        first.send(
-            content: handshakeRequest(token: token, name: "First"),
-            completion: .contentProcessed { _ in }
+        _ = try readySecureWirelessProtocolSession(
+            client: first,
+            deviceID: "replacement-first"
         )
         wait(for: [firstConnected], timeout: 2)
 
-        let second = try readyClient(port: port)
+        let second = try readySecureWirelessClient(port: port, token: token, name: "Second")
         defer { second.cancel() }
-        second.send(
-            content: handshakeRequest(token: token, name: "Second"),
-            completion: .contentProcessed { _ in }
+        _ = try readySecureWirelessProtocolSession(
+            client: second,
+            deviceID: "replacement-second"
         )
         wait(for: [secondConnected], timeout: 2)
         wait(for: [disconnected], timeout: 0.5)
@@ -282,35 +285,152 @@ final class StreamingServerLifecycleTests: XCTestCase {
         defer { server.stop() }
         try server.start()
 
-        let client = try readyClient(port: port)
+        let client = try readySecureWirelessClient(port: port, token: token, name: "Delayed Android")
         defer { client.cancel() }
-        let authenticated = expectation(description: "wireless authentication response")
-        client.receive(minimumIncompleteLength: 5, maximumLength: 5) { data, _, _, error in
-            XCTAssertNil(error)
-            XCTAssertEqual(data, HandshakeCodec.encodeResponse(status: .ok))
-            authenticated.fulfill()
-        }
-        client.send(
-            content: handshakeRequest(token: token, name: "Delayed iOS"),
-            completion: .contentProcessed { error in XCTAssertNil(error) }
-        )
-        wait(for: [authenticated], timeout: 2)
 
         let delayElapsed = expectation(description: "representative LAN scheduling delay")
         queue.asyncAfter(deadline: .now() + .milliseconds(300)) { delayElapsed.fulfill() }
         wait(for: [delayElapsed], timeout: 1)
 
         let upgraded = expectation(description: "delayed protocol v1 offer accepted")
-        client.receive(minimumIncompleteLength: 2, maximumLength: 2) { data, _, _, error in
-            XCTAssertNil(error)
-            XCTAssertEqual(data, ProtocolV1Upgrade.acknowledgement)
-            upgraded.fulfill()
-        }
-        client.send(
-            content: Data([ProtocolV1Upgrade.offer]),
-            completion: .contentProcessed { error in XCTAssertNil(error) }
-        )
+        try send(Data([ProtocolV1Upgrade.offer]), on: client)
+        XCTAssertEqual(try receiveExactly(2, from: client), ProtocolV1Upgrade.acknowledgement)
+        upgraded.fulfill()
         wait(for: [upgraded], timeout: 2)
+    }
+
+    func testSecureWirelessProtocolV1AdvertisesEncryptionAndEncryptsMediaFrames() throws {
+        let port = testPort(offset: 15)
+        let token = Data(repeating: 0xA9, count: 32)
+        let server = StreamingServer(port: port, mode: .wireless(authToken: token))
+        let connected = expectation(description: "secure wireless protocol v1 streaming")
+        server.onClientConnected = { _ in connected.fulfill() }
+        defer { server.stop() }
+        try server.start()
+
+        let client = try readySecureWirelessClient(port: port, token: token, name: "Encrypted Android")
+        defer { client.cancel() }
+        try send(Data([ProtocolV1Upgrade.offer]), on: client)
+        XCTAssertEqual(try receiveExactly(2, from: client), ProtocolV1Upgrade.acknowledgement)
+
+        var range = VSProtocolRange()
+        range.minimum = 1
+        range.maximum = 1
+        var hello = VSClientHello()
+        hello.supportedProtocols = range
+        hello.deviceID = "secure-wireless-media"
+        hello.deviceName = "Secure wireless media"
+        hello.capabilities = [.touch, .multiDisplay, .endToEndEncryption, .replayProtection]
+        hello.requiredCapabilities = [.endToEndEncryption, .replayProtection]
+        hello.codecs = [.hevc]
+        hello.transports = [.lan]
+        try sendEnvelope(envelope(id: 1, payload: .clientHello(hello), scoped: false), on: client)
+
+        let hostHelloEnvelope = try receiveEnvelope(from: client)
+        let hostHello = try XCTUnwrap(hostHelloEnvelope.hostHello)
+        XCTAssertTrue(hostHello.capabilities.contains(.endToEndEncryption))
+        XCTAssertTrue(hostHello.capabilities.contains(.replayProtection))
+        let accepted = try XCTUnwrap(try receiveEnvelope(from: client).sessionAccepted)
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.endToEndEncryption))
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.replayProtection))
+
+        var start = VSStartDisplayRequest()
+        start.mode = .existing
+        try sendEnvelope(envelope(
+            id: 2,
+            payload: .startDisplayRequest(start),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ), on: client)
+        _ = try receiveEnvelope(from: client)
+        let videoEnvelope = try receiveEnvelope(from: client)
+        let video = try XCTUnwrap(videoEnvelope.videoConfig)
+        var result = VSVideoConfigResult()
+        result.configEpoch = video.configEpoch
+        result.streamID = video.streamID
+        result.accepted = true
+        try sendEnvelope(envelope(
+            id: 3,
+            payload: .videoConfigResult(result),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ), on: client)
+        wait(for: [connected], timeout: 2)
+
+        let payload = Data([0, 0, 0, 1, 0x26])
+        server.sendFrame(
+            payload,
+            timestamp: 123,
+            isKeyframe: true,
+            sessionEpoch: accepted.sessionEpoch
+        )
+
+        let mediaPlaintext = try receiveSecurePlaintext(from: client, expectedChannel: .media)
+        var framer = ProtocolV1Framer()
+        let frames = try framer.append(mediaPlaintext)
+        XCTAssertEqual(frames.count, 1)
+        let frame = try XCTUnwrap(frames.first)
+        XCTAssertEqual(frame.channel, .video)
+        let media = try ProtocolV1MediaPacketCodec.decode(frame.payload)
+        XCTAssertEqual(media.header.sessionEpoch, accepted.sessionEpoch)
+        XCTAssertEqual(media.header.configEpoch, video.configEpoch)
+        XCTAssertEqual(media.header.streamID, video.streamID)
+        XCTAssertTrue(media.header.keyframe)
+        XCTAssertEqual(media.payload, payload)
+    }
+
+    func testExplicitLegacyFallbackHostStillNegotiatesSecureRecordsWithNewPeer() throws {
+        let port = testPort(offset: 16)
+        let token = Data(repeating: 0xB1, count: 32)
+        let server = StreamingServer(
+            port: port,
+            mode: .wireless(authToken: token),
+            allowPlaintextWirelessLegacyFallback: true
+        )
+        defer { server.stop() }
+        try server.start()
+
+        let client = try readySecureWirelessClient(port: port, token: token, name: "New secure peer")
+        defer { client.cancel() }
+        try send(Data([ProtocolV1Upgrade.offer]), on: client)
+        XCTAssertEqual(try receiveExactly(2, from: client), ProtocolV1Upgrade.acknowledgement)
+    }
+
+    func testExplicitLegacyFallbackDoesNotAdvertiseEncryptionCapabilities() throws {
+        let port = testPort(offset: 17)
+        let token = Data(repeating: 0xB2, count: 32)
+        let server = StreamingServer(
+            port: port,
+            mode: .wireless(authToken: token),
+            allowPlaintextWirelessLegacyFallback: true
+        )
+        defer { server.stop() }
+        try server.start()
+
+        let client = try readyLegacyWirelessClient(port: port, token: token, name: "Legacy peer")
+        defer { client.cancel() }
+        try send(Data([ProtocolV1Upgrade.offer]), on: client)
+        XCTAssertEqual(try receiveExactly(2, from: client), ProtocolV1Upgrade.acknowledgement)
+
+        var range = VSProtocolRange()
+        range.minimum = 1
+        range.maximum = 1
+        var hello = VSClientHello()
+        hello.supportedProtocols = range
+        hello.deviceID = "legacy-fallback"
+        hello.deviceName = "Legacy fallback"
+        hello.capabilities = [.touch, .multiDisplay]
+        hello.requiredCapabilities = [.touch]
+        hello.codecs = [.hevc]
+        hello.transports = [.lan]
+        try sendEnvelope(envelope(id: 1, payload: .clientHello(hello), scoped: false), on: client)
+
+        let hostHello = try XCTUnwrap(try receiveEnvelope(from: client).hostHello)
+        XCTAssertFalse(hostHello.capabilities.contains(.endToEndEncryption))
+        XCTAssertFalse(hostHello.capabilities.contains(.replayProtection))
+        let accepted = try XCTUnwrap(try receiveEnvelope(from: client).sessionAccepted)
+        XCTAssertFalse(accepted.negotiatedCapabilities.contains(.endToEndEncryption))
+        XCTAssertFalse(accepted.negotiatedCapabilities.contains(.replayProtection))
     }
 
     func testProtocolV1ControllerFailureDropsLaterQueuedDelivery() throws {
@@ -716,6 +836,66 @@ final class StreamingServerLifecycleTests: XCTestCase {
         return client
     }
 
+    private func readySecureWirelessClient(
+        port: UInt16,
+        token: Data,
+        name: String
+    ) throws -> SecureTestClient {
+        let client = try readyClient(port: port)
+        try send(handshakeRequest(token: token, name: name), on: client)
+        XCTAssertEqual(try receiveExactly(5, from: client), HandshakeCodec.encodeResponse(status: .ok))
+        let negotiation = try secureRecordNegotiationRequest()
+        try send(negotiation.request, on: client)
+        let response = try LANSecureRecordNegotiation.decodeResponse(
+            receiveExactly(LANSecureRecordNegotiation.responseBytes, from: client)
+        )
+        XCTAssertTrue(response.encrypted)
+        XCTAssertFalse(response.legacy)
+        let sessionID = LANSecureRecordSession.sessionIdentifier(
+            hostPublicKey: response.publicKey,
+            devicePublicKey: negotiation.devicePublicKey
+        )
+        let context = LANSecureRecordSession.transcriptContext(
+            sessionIdentifier: sessionID,
+            hostPublicKey: response.publicKey,
+            devicePublicKey: negotiation.devicePublicKey
+        )
+        let session = try LANSecureRecordSession(
+            role: .device,
+            sessionIdentifier: sessionID,
+            sessionEpoch: LANSecureRecordSession.recordSessionEpoch,
+            sharedSecret: try negotiation.devicePrivateKey.sharedSecretData(with: response.publicKey),
+            bootstrapToken: token,
+            context: context
+        )
+        return SecureTestClient(connection: client, session: session, owner: self)
+    }
+
+    private func readyLegacyWirelessClient(
+        port: UInt16,
+        token: Data,
+        name: String
+    ) throws -> NWConnection {
+        let client = try readyClient(port: port)
+        try send(handshakeRequest(token: token, name: name), on: client)
+        XCTAssertEqual(try receiveExactly(5, from: client), HandshakeCodec.encodeResponse(status: .ok))
+        return client
+    }
+
+    private func secureRecordNegotiationRequest() throws -> (
+        request: Data,
+        devicePrivateKey: P256.KeyAgreement.PrivateKey,
+        devicePublicKey: Data
+    ) {
+        let privateKey = P256.KeyAgreement.PrivateKey()
+        let publicKey = privateKey.publicKey.x963Representation
+        let request = try LANSecureRecordNegotiation.encodeRequest(
+            publicKey: publicKey,
+            allowLegacyFallback: false
+        )
+        return (request, privateKey, publicKey)
+    }
+
     private func readyControllerProtocolSession(
         server: StreamingServer,
         port: UInt16,
@@ -736,6 +916,54 @@ final class StreamingServerLifecycleTests: XCTestCase {
             deviceID: deviceID
         )
         return (client, accepted, videoEnvelope)
+    }
+
+    private func readySecureWirelessProtocolSession(
+        client: SecureTestClient,
+        deviceID: String
+    ) throws -> (accepted: VSSessionAccepted, video: VSEnvelope) {
+        try send(Data([ProtocolV1Upgrade.offer]), on: client)
+        XCTAssertEqual(try receiveExactly(2, from: client), ProtocolV1Upgrade.acknowledgement)
+
+        var range = VSProtocolRange()
+        range.minimum = 1
+        range.maximum = 1
+        var hello = VSClientHello()
+        hello.supportedProtocols = range
+        hello.deviceID = deviceID
+        hello.deviceName = deviceID
+        hello.capabilities = [.touch, .multiDisplay, .endToEndEncryption, .replayProtection]
+        hello.requiredCapabilities = [.touch, .endToEndEncryption, .replayProtection]
+        hello.codecs = [.hevc]
+        hello.transports = [.lan]
+        try sendEnvelope(envelope(id: 1, payload: .clientHello(hello), scoped: false), on: client)
+        _ = try receiveEnvelope(from: client)
+        let accepted = try XCTUnwrap(try receiveEnvelope(from: client).sessionAccepted)
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.endToEndEncryption))
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.replayProtection))
+
+        var start = VSStartDisplayRequest()
+        start.mode = .existing
+        try sendEnvelope(envelope(
+            id: 2,
+            payload: .startDisplayRequest(start),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ), on: client)
+        _ = try receiveEnvelope(from: client)
+        let videoEnvelope = try receiveEnvelope(from: client)
+        let video = try XCTUnwrap(videoEnvelope.videoConfig)
+        var result = VSVideoConfigResult()
+        result.configEpoch = video.configEpoch
+        result.streamID = video.streamID
+        result.accepted = true
+        try sendEnvelope(envelope(
+            id: 3,
+            payload: .videoConfigResult(result),
+            sessionID: accepted.sessionID,
+            sessionEpoch: accepted.sessionEpoch
+        ), on: client)
+        return (accepted, videoEnvelope)
     }
 
     private func negotiateControllerProtocolSession(
@@ -831,6 +1059,10 @@ final class StreamingServerLifecycleTests: XCTestCase {
         try send(try encodedEnvelope(envelope), on: client)
     }
 
+    private func sendEnvelope(_ envelope: VSEnvelope, on client: SecureTestClient) throws {
+        try send(try encodedEnvelope(envelope), on: client)
+    }
+
     private func encodedEnvelope(_ envelope: VSEnvelope) throws -> Data {
         try ProtocolV1TransportFrame(
             channel: .control,
@@ -849,7 +1081,18 @@ final class StreamingServerLifecycleTests: XCTestCase {
         if let failure { throw failure }
     }
 
+    private func send(_ data: Data, on client: SecureTestClient) throws {
+        try send(try client.seal(data, channel: .control), on: client.connection)
+    }
+
     private func receiveEnvelope(from client: NWConnection) throws -> VSEnvelope {
+        let header = try receiveExactly(5, from: client)
+        XCTAssertEqual(header.first, ProtocolV1LogicalChannel.control.rawValue)
+        let length = header.dropFirst().reduce(UInt32.zero) { ($0 << 8) | UInt32($1) }
+        return try VSEnvelope(serializedBytes: receiveExactly(Int(length), from: client))
+    }
+
+    private func receiveEnvelope(from client: SecureTestClient) throws -> VSEnvelope {
         let header = try receiveExactly(5, from: client)
         XCTAssertEqual(header.first, ProtocolV1LogicalChannel.control.rawValue)
         let length = header.dropFirst().reduce(UInt32.zero) { ($0 << 8) | UInt32($1) }
@@ -880,6 +1123,28 @@ final class StreamingServerLifecycleTests: XCTestCase {
         return result
     }
 
+    private func receiveExactly(_ count: Int, from client: SecureTestClient) throws -> Data {
+        while client.buffer.count < count {
+            client.buffer.append(try receiveSecurePlaintext(from: client))
+        }
+        let result = client.buffer.prefix(count)
+        client.buffer.removeFirst(count)
+        return Data(result)
+    }
+
+    private func receiveSecurePlaintext(
+        from client: SecureTestClient,
+        expectedChannel: InternetTransportChannel? = nil
+    ) throws -> Data {
+        let prefix = try receiveExactly(4, from: client.connection)
+        let recordLength = prefix.reduce(UInt32.zero) { ($0 << 8) | UInt32($1) }
+        let record = try receiveExactly(Int(recordLength), from: client.connection)
+        if let expectedChannel {
+            XCTAssertEqual(PlatformSessionPacketCipher.declaredInternetChannel(in: record), expectedChannel)
+        }
+        return try client.session.openDeclaredChannel(record)
+    }
+
     private func handshakeRequest(token: Data, name: String) -> Data {
         let nameData = Data(name.utf8)
         var request = Data(HandshakeCodec.requestMagic)
@@ -903,6 +1168,33 @@ final class StreamingServerLifecycleTests: XCTestCase {
 
     private enum TestError: Error {
         case connectionClosed
+    }
+}
+
+private final class SecureTestClient {
+    let connection: NWConnection
+    let session: LANSecureRecordSession
+    fileprivate var buffer = Data()
+
+    private weak var owner: StreamingServerLifecycleTests?
+
+    init(
+        connection: NWConnection,
+        session: LANSecureRecordSession,
+        owner: StreamingServerLifecycleTests
+    ) {
+        self.connection = connection
+        self.session = session
+        self.owner = owner
+    }
+
+    func cancel() {
+        session.close()
+        connection.cancel()
+    }
+
+    func seal(_ data: Data, channel: InternetTransportChannel) throws -> Data {
+        try LANSecureRecordStreamFramer.encode(try session.seal(data, channel: channel))
     }
 }
 
