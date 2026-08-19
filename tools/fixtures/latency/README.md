@@ -15,3 +15,7 @@ used to claim a shipped latency result.
   with a non-zero status.
 - `telemetry-stage-informational.csv`: host telemetry-stage samples that remain
   informational and cannot close a performance gate.
+- external-camera-valid/: synthetic formal evidence package with manifest,
+  sample CSV, and placeholder raw-camera artifact for the provenance checker.
+- external-camera-missing-video/: same synthetic samples, but the manifest
+  references a missing raw-camera artifact and must remain insufficient.

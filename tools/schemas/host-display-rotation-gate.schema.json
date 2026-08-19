@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/host-display-rotation-gate.schema.json",
+  "title": "Vibe Screen host display rotation gate result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "status",
+    "covered_display_kinds",
+    "required_display_kinds",
+    "required_probes",
+    "required_artifacts",
+    "errors"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "host_display_rotation_acceptance"},
+    "status": {"enum": ["complete", "failed"]},
+    "covered_display_kinds": {
+      "type": "array",
+      "items": {"enum": ["physical", "virtual"]}
+    },
+    "required_display_kinds": {
+      "type": "array",
+      "items": {"enum": ["physical", "virtual"]}
+    },
+    "required_probes": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "required_artifacts": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "errors": {"type": "array", "items": {"type": "string"}}
+  }
+}

@@ -52,10 +52,15 @@ class MainActivityTerminalGuidanceContractTest {
         val source = mainActivitySource()
         val connect = extractMethod(source, "private fun connect")
         val disconnected = extractMethod(source, "private fun applyDisconnectedSessionUi")
+        val compactDisconnected = disconnected.replace(Regex("\\s+"), "")
 
         assertFalse(
             "USB connection failures must not block the disconnected panel with an AlertDialog",
             connect.contains("showError(guidance.message)"),
+        )
+        assertFalse(
+            "USB connection failures must not use the blocking terminal dialog path",
+            connect.contains("showError(guidanceMessage(guidance))"),
         )
         assertTrue(
             "Manual USB connection failures should render inline guidance",
@@ -63,8 +68,9 @@ class MainActivityTerminalGuidanceContractTest {
         )
         assertTrue(
             "Terminal guidance must render inline only from the active USB branch",
-            disconnected.contains(
-                "if (mode == ConnectionMode.USB) {\n                showUsbConnectionGuidance(guidance)\n            } else {\n                updateStatus(guidance.status)\n                showError(guidance.message)\n            }",
+            compactDisconnected.contains(
+                "if(mode==ConnectionMode.USB){showUsbConnectionGuidance(guidance)}" +
+                    "else{updateStatus(guidanceStatus(guidance))showError(guidanceMessage(guidance))}",
             ),
         )
     }
@@ -78,7 +84,7 @@ class MainActivityTerminalGuidanceContractTest {
             "Terminal guidance must branch on the current connection mode",
             compact.contains(
                 "if(mode==ConnectionMode.USB){showUsbConnectionGuidance(guidance)}" +
-                    "else{updateStatus(guidance.status)showError(guidance.message)}",
+                    "else{updateStatus(guidanceStatus(guidance))showError(guidanceMessage(guidance))}",
             ),
         )
         assertFalse(
@@ -87,7 +93,7 @@ class MainActivityTerminalGuidanceContractTest {
         )
         assertTrue(
             "The non-USB branch should retain the previous terminal guidance dialog",
-            compact.contains("else{updateStatus(guidance.status)showError(guidance.message)}"),
+            compact.contains("else{updateStatus(guidanceStatus(guidance))showError(guidanceMessage(guidance))}"),
         )
     }
 
@@ -103,10 +109,12 @@ class MainActivityTerminalGuidanceContractTest {
         )
         assertTrue(
             "USB validation guidance must load its message from strings.xml",
-            setupUi.contains("getString(R.string.host_address_required)"),
+            setupUi.contains("ConnectionGuidanceText(R.string.host_address_required)"),
         )
         assertUsesLiveRegion(inlineGuidance, "connectionErrorTitle", "showUsbConnectionGuidance")
         assertUsesLiveRegionShow(inlineGuidance, "connectionErrorMessage", "showUsbConnectionGuidance")
+        assertTrue(inlineGuidance.contains("guidanceStatus(guidance)"))
+        assertTrue(inlineGuidance.contains("guidanceMessage(guidance)"))
         assertTrue(
             "Inline USB guidance should expand details so the failed checklist item is visible",
             inlineGuidance.contains("setConnectionDetailsVisible(true)"),
@@ -114,19 +122,69 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
-    fun disconnectedStreamUiKeepsSettingsButtonReachable() {
+    fun showErrorUsesMaterialDialogImmersiveModeAndResources() {
+        val showError = extractMethod(mainActivitySource(), "private fun showError")
+
+        assertTrue(showError.contains("showImmersiveDialog("))
+        assertTrue(showError.contains("MaterialAlertDialogBuilder(this)"))
+        assertTrue(showError.contains("R.string.connection_error_title"))
+        assertTrue(showError.contains("android.R.string.ok"))
+        assertFalse(showError.contains("android.app.AlertDialog"))
+        assertFalse(showError.contains("Connection Error"))
+        assertFalse(showError.contains("\"OK\""))
+    }
+
+    @Test
+    fun internetFailuresUseLocalizedGuidanceAndStateLabels() {
+        val source = mainActivitySource()
+        val updateInternetState = extractMethod(source, "private fun updateInternetState")
+        val internetStateLabel = extractMethod(source, "private fun internetStateLabel")
+        val showInternetFailure = extractMethod(source, "private fun showInternetFailure")
+
+        assertFalse(updateInternetState.contains("state.name.lowercase()"))
+        assertTrue(updateInternetState.contains("internetStateLabel(state)"))
+        assertTrue(showInternetFailure.contains("guidanceFullMessage(guidance)"))
+        assertTrue(showInternetFailure.contains("internetStateLabel(InternetProductSessionState.FAILED)"))
+        listOf(
+            "R.string.internet_state_label_idle",
+            "R.string.internet_state_label_connecting",
+            "R.string.internet_state_label_negotiating",
+            "R.string.internet_state_label_active",
+            "R.string.internet_state_label_recovering",
+            "R.string.internet_state_label_suspended",
+            "R.string.internet_state_label_failed",
+            "R.string.internet_state_label_closed",
+        ).forEach { labelResource ->
+            assertTrue("Missing $labelResource", internetStateLabel.contains(labelResource))
+        }
+    }
+
+    @Test
+    fun disconnectedStreamUiKeepsSettingsReachableWithoutSmallScreenOcclusion() {
         val disconnected = extractMethod(mainActivitySource(), "private fun showDisconnectedStreamUi")
 
         assertTrue(
-            "Disconnected state should keep display settings reachable",
-            disconnected.contains("settingsButton.visibility = View.VISIBLE"),
+            "Disconnected state should use the resource policy for inline settings",
+            disconnected.contains("resources.getBoolean(R.bool.connection_panel_inline_settings_button)"),
         )
         assertTrue(
-            "Disconnected settings button must sit above the connection panel",
+            "Narrow layouts should show the inline connection settings button",
+            disconnected.contains("binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE"),
+        )
+        assertTrue(
+            "Narrow layouts should hide the floating settings button",
+            disconnected.contains("binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE"),
+        )
+        assertTrue(
+            "Wide layouts should keep the floating button above the connection panel",
+            disconnected.contains("if (!useInlineSettingsButton)"),
+        )
+        assertTrue(
+            "Wide disconnected settings button must sit above the connection panel",
             disconnected.contains("settingsButton.bringToFront()"),
         )
         assertTrue(
-            "Disconnected settings button must have a higher z-order than the connection panel",
+            "Wide disconnected settings button must have a higher z-order than the connection panel",
             disconnected.contains("settingsButton.translationZ = binding.settingsPanel.elevation + 1f"),
         )
     }
@@ -281,6 +339,26 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue("Expected at least 5 error show calls; found $showCount", showCount >= 5)
         // Import success, session creation, and idle disconnect hide stale errors.
         assertTrue("Expected at least 3 error hide calls; found $hideCount", hideCount >= 3)
+    }
+
+    @Test
+    fun connectedMainSessionReplaysSavedVideoPreferencesBehindCapabilityGate() {
+        val source = mainActivitySource()
+        val connectionStatus = extractCallback(source, "callbackClient.onConnectionStatus = connectionStatus@{ connected ->")
+        val replay = extractMethod(source, "private fun replaySavedVideoPreferencesIfAvailable")
+
+        assertTrue(
+            "Connected main sessions must try to replay saved video preferences",
+            connectionStatus.contains("replaySavedVideoPreferencesIfAvailable(callbackClient, callbackGeneration)"),
+        )
+        assertTrue(
+            "Replay must stay gated on negotiated client-video-control capability",
+            replay.contains("CAPABILITY_CLIENT_VIDEO_CONTROL"),
+        )
+        assertTrue(
+            "Replay must send through the existing StreamClient video-preference path",
+            replay.contains("callbackClient.setVideoPreferences("),
+        )
     }
 
     @Test
@@ -458,6 +536,24 @@ class MainActivityTerminalGuidanceContractTest {
         val end = source.indexOf(endMarker, start)
         require(end > start) { "MainActivity onSessionEnded callback boundary not found" }
         return source.substring(start, end)
+    }
+
+    private fun extractCallback(source: String, startMarker: String): String {
+        val start = source.indexOf(startMarker)
+        require(start >= 0) { "Callback not found: $startMarker" }
+        val bodyStart = source.indexOf('{', start)
+        require(bodyStart >= 0) { "Callback body not found: $startMarker" }
+        var depth = 0
+        for (index in bodyStart until source.length) {
+            when (source[index]) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return source.substring(start, index + 1)
+                }
+            }
+        }
+        error("Callback closing brace not found: $startMarker")
     }
 
     private fun mainActivitySource(): String {
