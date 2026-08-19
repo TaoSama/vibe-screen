@@ -53,7 +53,7 @@ final class AudioPlaybackSessionTests: XCTestCase {
             XCTAssertEqual(error as? AudioStreamError, .invalidStreamID(0))
         }
 
-        var zeroEpoch = audioConfig(configEpoch: 0)
+        let zeroEpoch = audioConfig(configEpoch: 0)
         XCTAssertThrowsError(try PCMStreamFormat(config: zeroEpoch)) { error in
             XCTAssertEqual(error as? AudioStreamError, .invalidConfigEpoch(0))
         }
@@ -145,6 +145,18 @@ final class AudioPlaybackSessionTests: XCTestCase {
         XCTAssertThrowsError(try session.enqueue(wrongStreamPacket, sessionEpoch: 9)) { error in
             XCTAssertEqual(error as? AudioStreamError, .streamIDMismatch(expected: 7, received: 8))
         }
+    }
+
+    func testAudioStreamErrorsClassifyOnlyDroppableMediaPackets() {
+        XCTAssertTrue(AudioStreamError.streamIDMismatch(expected: 7, received: 8).isDroppableMediaPacketError)
+        XCTAssertTrue(AudioStreamError.staleSessionEpoch.isDroppableMediaPacketError)
+        XCTAssertTrue(AudioStreamError.staleConfigEpoch.isDroppableMediaPacketError)
+        XCTAssertTrue(AudioStreamError.invalidPCMByteCount.isDroppableMediaPacketError)
+        XCTAssertTrue(AudioStreamError.invalidHeader.isDroppableMediaPacketError)
+        XCTAssertTrue(AudioStreamError.payloadLengthMismatch.isDroppableMediaPacketError)
+
+        XCTAssertFalse(AudioStreamError.nonIncreasingConfigEpoch(previous: 2, received: 2).isDroppableMediaPacketError)
+        XCTAssertFalse(AudioStreamError.unsupportedCodec(.aacLc).isDroppableMediaPacketError)
     }
 }
 

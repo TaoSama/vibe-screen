@@ -199,6 +199,17 @@ public enum AudioStreamError: Error, Equatable {
     case staleSessionEpoch
     case staleConfigEpoch
     case invalidPCMByteCount
+
+    public var isDroppableMediaPacketError: Bool {
+        switch self {
+        case .invalidHeader, .payloadLengthMismatch, .streamIDMismatch, .staleSessionEpoch,
+             .staleConfigEpoch, .invalidPCMByteCount:
+            return true
+        case .unsupportedCodec, .invalidStreamID, .invalidConfigEpoch, .invalidSampleRate,
+             .invalidChannelCount, .invalidFramesPerPacket, .nonIncreasingConfigEpoch:
+            return false
+        }
+    }
 }
 
 enum DelimitedPayload {

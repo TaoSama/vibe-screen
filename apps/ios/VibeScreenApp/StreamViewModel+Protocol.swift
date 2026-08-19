@@ -22,7 +22,7 @@ extension StreamViewModel {
             switch frame.channel {
             case .control: try handleControl(EnvelopeCodec.deserialize(frame.payload))
             case .video: try handleVideo(MediaPacket(serializedFrame: frame.payload))
-            case .audio: try handleAudio(AudioPacket(serializedFrame: frame.payload))
+            case .audio: try handleAudioFrame(frame.payload)
             case .bulkTransfer: try handleBulk(FileChunk(serializedFrame: frame.payload))
             }
         } catch {
@@ -422,8 +422,22 @@ extension StreamViewModel {
     }
 
     func handleAudio(_ packet: AudioPacket) throws {
-        for ready in try audioSession.enqueue(packet, sessionEpoch: state.sessionEpoch) {
+        let ready: [AudioPacket]
+        do {
+            ready = try audioSession.enqueue(packet, sessionEpoch: state.sessionEpoch)
+        } catch let error as AudioStreamError where error.isDroppableMediaPacketError {
+            return
+        }
+        for ready in ready {
             _ = try audioPlayback.schedule(ready)
+        }
+    }
+
+    private func handleAudioFrame(_ payload: Data) throws {
+        do {
+            try handleAudio(AudioPacket(serializedFrame: payload))
+        } catch let error as AudioStreamError where error.isDroppableMediaPacketError {
+            return
         }
     }
 

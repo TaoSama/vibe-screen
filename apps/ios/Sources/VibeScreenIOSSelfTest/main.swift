@@ -721,6 +721,35 @@ func testAudioPlaybackSessionFailClosed() throws {
         _ = try PCMStreamFormat(config: oversizedPacket)
         throw SelfTestError.failed("audio config accepted oversized frames-per-packet")
     } catch AudioStreamError.invalidFramesPerPacket(PCMStreamFormat.maximumFramesPerPacket + 1) { }
+
+    try require(
+        AudioStreamError.streamIDMismatch(expected: 7, received: 8).isDroppableMediaPacketError,
+        "audio stream mismatch was not classified as droppable"
+    )
+    try require(
+        AudioStreamError.staleSessionEpoch.isDroppableMediaPacketError,
+        "stale audio session epoch was not classified as droppable"
+    )
+    try require(
+        AudioStreamError.staleConfigEpoch.isDroppableMediaPacketError,
+        "stale audio config epoch was not classified as droppable"
+    )
+    try require(
+        AudioStreamError.invalidPCMByteCount.isDroppableMediaPacketError,
+        "invalid audio packet byte count was not classified as droppable"
+    )
+    try require(
+        AudioStreamError.invalidHeader.isDroppableMediaPacketError,
+        "invalid audio packet header was not classified as droppable"
+    )
+    try require(
+        AudioStreamError.payloadLengthMismatch.isDroppableMediaPacketError,
+        "audio payload length mismatch was not classified as droppable"
+    )
+    try require(
+        !AudioStreamError.nonIncreasingConfigEpoch(previous: 4, received: 4).isDroppableMediaPacketError,
+        "audio config control-plane error was classified as droppable"
+    )
 }
 
 func testClipboardAndManagedPolicy() throws {
