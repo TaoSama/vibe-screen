@@ -232,8 +232,18 @@ class StreamClientProtocolV1IntegrationTest {
                         completeHandshake(
                             peer,
                             initialRotation = 0,
-                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CONTROLLER),
-                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CONTROLLER),
+                            hostCapabilities =
+                                listOf(
+                                    Capability.CAPABILITY_TOUCH,
+                                    Capability.CAPABILITY_COLOR_MANAGEMENT,
+                                    Capability.CAPABILITY_CONTROLLER,
+                                ),
+                            negotiatedCapabilities =
+                                listOf(
+                                    Capability.CAPABILITY_TOUCH,
+                                    Capability.CAPABILITY_COLOR_MANAGEMENT,
+                                    Capability.CAPABILITY_CONTROLLER,
+                                ),
                             expectedClientCapabilities = DEFAULT_CLIENT_CAPABILITIES + Capability.CAPABILITY_CONTROLLER,
                         )
                         configurationRequested.await(8, TimeUnit.SECONDS)
