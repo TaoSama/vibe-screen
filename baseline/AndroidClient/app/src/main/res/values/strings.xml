@@ -231,6 +231,7 @@
     <string name="device_health_title">Sustained use</string>
     <string name="device_health_checking">Checking device health…</string>
     <string name="device_health_ready">No device warnings</string>
+    <string name="device_health_power_saver_warning">Power saver may limit sustained streaming</string>
     <string name="device_health_connect_power">Connect power for a longer session</string>
     <string name="device_health_warm">Device is warming</string>
     <string name="device_health_hot">Device is hot — reduce load or pause</string>

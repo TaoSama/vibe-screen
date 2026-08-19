@@ -427,7 +427,8 @@ the status readable in small-tablet and resized-window configurations. This is a
 offline product slice, not thermal or power acceptance: 8–9 inch hardware,
 stand-mounted charging, background/foreground recovery, and the eight-hour run
 remain device gates. Login startup and headless Mac mini acceptance also remain
-open. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md).
+open. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
+and the [tablet acceptance runbook](docs/changes/2026-08-14-phase-2-tablet-productization/RUNBOOK.md).
 
 ### Phase 3 — Secure Internet access
 
