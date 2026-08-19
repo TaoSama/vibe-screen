@@ -7,7 +7,7 @@ final class ProtocolV1SessionTests: XCTestCase {
     func testProductionHostCapabilitiesAreExact() {
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true),
-            [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .clipboard, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .stylusExtended, .usbHidModifierByte]
+            [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .clipboard, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .usbHidModifierByte]
         )
         XCTAssertEqual(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false),

@@ -2047,13 +2047,15 @@ class MainActivity : AppCompatActivity() {
         generation: Long,
     ): Boolean {
         if (!isCurrentSession(client, generation) || !client.canSendClipboard) return false
-        val clipboard = getSystemService(ClipboardManager::class.java)
         val text =
-            clipboard.primaryClip
-                ?.takeIf { it.itemCount > 0 }
-                ?.getItemAt(0)
-                ?.text
-                ?.toString()
+            runCatching {
+                getSystemService(ClipboardManager::class.java)
+                    .primaryClip
+                    ?.takeIf { it.itemCount > 0 }
+                    ?.getItemAt(0)
+                    ?.text
+                    ?.toString()
+            }.getOrNull()
         if (!ClipboardMenuPolicy.canSend(text)) {
             Toast.makeText(this, R.string.clipboard_empty, Toast.LENGTH_SHORT).show()
             return true
@@ -2181,7 +2183,7 @@ class MainActivity : AppCompatActivity() {
             Runnable {
                 clipboardRequestTimeout = null
                 if (!isCurrentSession(client, generation)) return@Runnable
-                client.expireClipboardRequest(exactChangeId) { expired ->
+                val submitted = client.expireClipboardRequest(exactChangeId) { expired ->
                     runOnUiThread {
                         if (!expired || !isCurrentSession(client, generation)) return@runOnUiThread
                         if (!clipboardApprovalState.cancelOfferApproval(client, generation, exactChangeId)) {
@@ -2190,6 +2192,9 @@ class MainActivity : AppCompatActivity() {
                         refreshClipboardControl()
                         Toast.makeText(this, R.string.clipboard_request_timed_out, Toast.LENGTH_SHORT).show()
                     }
+                }
+                if (!submitted && clipboardApprovalState.cancelOfferApproval(client, generation, exactChangeId)) {
+                    refreshClipboardControl()
                 }
             }
         clipboardRequestTimeout = timeout

@@ -2072,7 +2072,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             streamingServer?.onClientConnected = {
                 [weak self, weak configuredServer, weak configuredCapture]
                 clientGeneration in
-                Task { @MainActor in
+                DispatchQueue.main.async { [weak self, weak configuredServer, weak configuredCapture] in
                     guard let self, let configuredServer, let configuredCapture,
                           self.screenCapture === configuredCapture else { return }
                     let clipboardAvailable = configuredServer.clipboardAvailable

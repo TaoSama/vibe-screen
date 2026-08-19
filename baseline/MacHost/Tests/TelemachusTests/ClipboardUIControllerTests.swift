@@ -275,6 +275,32 @@ final class ClipboardUIControllerTests: XCTestCase {
         XCTAssertEqual(pasteboard.lastWritten, "already queued")
     }
 
+    func testTimeoutClearsApprovalWhenClipboardBecomesUnavailable() {
+        let pasteboard = PasteboardSpy()
+        let timeoutScheduler = TimeoutSchedulerSpy()
+        let (controller, _, receive, alerts) = makeController(
+            pasteboard: pasteboard,
+            timeoutScheduler: timeoutScheduler
+        )
+        let server = ServerSpy()
+        bind(controller, server: server)
+        let metadata = offerMetadata()
+        controller.handleOffer(metadata, generation: 1)
+        perform(receive, on: controller)
+
+        server.clipboardAvailable = false
+        timeoutScheduler.fire()
+
+        XCTAssertTrue(server.expiredChangeIDs.isEmpty)
+        XCTAssertTrue(alerts.information.isEmpty)
+        XCTAssertFalse(receive.isEnabled)
+        controller.handleContent(
+            validatedContent(changeID: metadata.changeID, text: "late content"),
+            generation: 1
+        )
+        XCTAssertNil(pasteboard.lastWritten)
+    }
+
     func testDirectContentCannotReplaceApprovedInFlightOffer() {
         let pasteboard = PasteboardSpy()
         let timeoutScheduler = TimeoutSchedulerSpy()

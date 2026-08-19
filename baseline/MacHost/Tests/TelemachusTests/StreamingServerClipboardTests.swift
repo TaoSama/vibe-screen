@@ -268,7 +268,8 @@ final class StreamingServerClipboardTests: XCTestCase {
     private let clientDeviceID = "android-device"
 
     private func testPort(offset: UInt16) -> UInt16 {
-        56_000 + UInt16(ProcessInfo.processInfo.processIdentifier % 500) + offset
+        let processStride = UInt16(ProcessInfo.processInfo.processIdentifier % 60) * 200
+        return 52_000 + processStride + offset
     }
 
     private func readyClient(port: UInt16) throws -> NWConnection {

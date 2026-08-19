@@ -1019,6 +1019,80 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun clipboardRequestReturnsFalseForUnknownOfferWithoutWireMessage() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CLIPBOARD)
+            val streaming = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        streaming.countDown()
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                        write(peer, disconnect(6))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                assertTrue(streaming.await(8, TimeUnit.SECONDS))
+                assertTrue(client.canSendClipboard)
+                assertFalse(client.requestClipboard(ByteArray(16) { 0x7F.toByte() }))
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
+    fun clipboardOfferReturnsFalseWhenTextExceedsNegotiatedLimitWithoutWireMessage() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CLIPBOARD)
+            val streaming = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                            maxClipboardBytes = 4L,
+                        )
+                        streaming.countDown()
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                        write(peer, disconnect(6))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                assertTrue(streaming.await(8, TimeUnit.SECONDS))
+                assertTrue(client.canSendClipboard)
+                assertEquals(4L, client.negotiatedMaxClipboardBytes)
+                assertFalse(client.offerClipboard("12345"))
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
     fun clipboardTimeoutDoesNotCancelApprovalAfterContentWasConsumed() = runBlocking {
         ServerSocket(0).use { server ->
             val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CLIPBOARD)
@@ -1154,6 +1228,7 @@ class StreamClientProtocolV1IntegrationTest {
         hostCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
         negotiatedCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
         expectedClientCapabilities: List<Capability> = DEFAULT_CLIENT_CAPABILITIES,
+        maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
         onClientHello: (dev.vibescreen.protocol.v1.ClientHello) -> Unit = {},
     ) {
         beginHandshake(
@@ -1162,6 +1237,7 @@ class StreamClientProtocolV1IntegrationTest {
             hostCapabilities,
             negotiatedCapabilities,
             expectedClientCapabilities,
+            maxClipboardBytes,
             onClientHello,
         )
         val result = readEnvelope(peer)
@@ -1176,6 +1252,7 @@ class StreamClientProtocolV1IntegrationTest {
         hostCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
         negotiatedCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
         expectedClientCapabilities: List<Capability> = DEFAULT_CLIENT_CAPABILITIES,
+        maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
         onClientHello: (dev.vibescreen.protocol.v1.ClientHello) -> Unit = {},
     ) {
         assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
@@ -1186,8 +1263,8 @@ class StreamClientProtocolV1IntegrationTest {
         onClientHello(clientHello.clientHello)
         assertEquals(expectedClientCapabilities, clientHello.clientHello.capabilitiesList)
         assertEquals(emptyList<Capability>(), clientHello.clientHello.requiredCapabilitiesList)
-        write(peer, hostHello(1, hostCapabilities))
-        write(peer, sessionAccepted(2, negotiatedCapabilities))
+        write(peer, hostHello(1, hostCapabilities, maxClipboardBytes = maxClipboardBytes))
+        write(peer, sessionAccepted(2, negotiatedCapabilities, maxClipboardBytes = maxClipboardBytes))
         assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, readEnvelope(peer).payloadCase)
         write(peer, displayList(3))
         assertEquals(Envelope.PayloadCase.START_DISPLAY_REQUEST, readEnvelope(peer).payloadCase)

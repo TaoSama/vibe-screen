@@ -51,7 +51,8 @@ internal class ProtocolV1Failure(
     val retryable: Boolean,
     val source: Source,
     message: String,
-) : IOException(message) {
+    cause: Throwable? = null,
+) : IOException(message, cause) {
     enum class Source {
         SESSION_REJECTED,
         HOST_PROTOCOL_ERROR,
@@ -1226,6 +1227,14 @@ internal class ProtocolV1Session(
         return envelope().setClipboardRequest(request).build()
     }
 
+    @Synchronized
+    fun canRequestClipboard(changeId: ByteString): Boolean =
+        state == State.STREAMING &&
+            Capability.CAPABILITY_CLIPBOARD in negotiatedCapabilities &&
+            remoteManagedClipboardAllowed &&
+            receivedClipboardOffer?.changeId == changeId &&
+            requestedClipboardChangeId != changeId
+
     /**
      * Release a request that the UI timed out waiting for. This does not drop
      * the cached offer, so the user may explicitly retry the same change ID.
@@ -1240,6 +1249,9 @@ internal class ProtocolV1Session(
 
     private fun onManagedPolicyStatus(status: ManagedPolicyStatus): List<Action> {
         if (!isNegotiated()) throw protocolFailure("ManagedPolicyStatus arrived before session negotiation")
+        if (Capability.CAPABILITY_MANAGED_CONFIGURATION !in negotiatedCapabilities) {
+            throw protocolFailure("ManagedPolicyStatus without negotiated managed configuration")
+        }
         remoteManagedClipboardAllowed = !status.managed || status.clipboardAllowed
         if (!remoteManagedClipboardAllowed) clearClipboardState()
         return emptyList()
@@ -1467,7 +1479,7 @@ internal class ProtocolV1Session(
         try {
             decoder.decode(ByteBuffer.wrap(bytes))
         } catch (e: CharacterCodingException) {
-            throw protocolFailure("Clipboard content is not valid UTF-8")
+            throw protocolFailure("Clipboard content is not valid UTF-8", e)
         }
     }
 
@@ -1547,12 +1559,13 @@ internal class ProtocolV1Session(
             .setSessionEpoch(sessionEpoch)
             .setSentAtMonotonicNs(nowNs())
 
-    private fun protocolFailure(message: String): ProtocolV1Failure =
+    private fun protocolFailure(message: String, cause: Throwable? = null): ProtocolV1Failure =
         ProtocolV1Failure(
             reason = "invalid_peer_message",
             retryable = false,
             source = ProtocolV1Failure.Source.PEER_PROTOCOL_VIOLATION,
             message = "Protocol v1: $message",
+            cause = cause,
         )
 
     // A session is negotiated once SessionAccepted has advanced past the

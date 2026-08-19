@@ -33,6 +33,7 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
@@ -1260,6 +1261,8 @@ class StreamClient(
         if (!isConnected || wireMode != WireMode.V1) return false
         val session = protocolSession ?: return false
         if (!session.canSendClipboard) return false
+        val byteCount = text.toByteArray(StandardCharsets.UTF_8).size.toLong()
+        if (byteCount <= 0L || byteCount > session.negotiatedMaxClipboardBytes) return false
         val submission =
             submitOutbound(
                 kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
@@ -1280,6 +1283,7 @@ class StreamClient(
         val session = protocolSession ?: return false
         if (!session.canSendClipboard) return false
         val id = ByteString.copyFrom(changeId)
+        if (!session.canRequestClipboard(id)) return false
         val submission =
             submitOutbound(
                 kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,

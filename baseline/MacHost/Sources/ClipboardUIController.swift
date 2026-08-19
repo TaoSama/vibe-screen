@@ -404,10 +404,14 @@ final class ClipboardUIController: NSObject {
 
     private func scheduleRequestTimeout(changeID: Data, generation: UInt64) {
         requestTimeoutScheduler.schedule { [weak self] in
-            guard let self, self.server != nil, self.clipboardAvailable,
+            guard let self, self.server != nil,
                   self.boundGeneration == generation, self.requestInFlight,
                   case .offer(let metadata) = self.pendingTransfer,
                   metadata.changeID == changeID else { return }
+            guard self.clipboardAvailable, self.server?.clipboardAvailable == true else {
+                self.clearPending(reason: "clipboard unavailable during request timeout")
+                return
+            }
             // Serialize expiry through the server's network queue. If content
             // already consumed the request and merely has a main-actor
             // callback pending, expiry returns false and the approval stays

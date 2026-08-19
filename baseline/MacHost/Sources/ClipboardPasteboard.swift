@@ -36,7 +36,8 @@ final class NSPasteboardClipboardAdapter: ClipboardPasteboard {
 
     func writeString(_ string: String) -> Bool {
         dispatchPrecondition(condition: .onQueue(.main))
-        pasteboard.clearContents()
-        return pasteboard.setString(string, forType: .string)
+        let item = NSPasteboardItem()
+        guard item.setString(string, forType: .string) else { return false }
+        return pasteboard.writeObjects([item])
     }
 }

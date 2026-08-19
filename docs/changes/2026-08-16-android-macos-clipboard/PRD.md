@@ -1,6 +1,6 @@
 # Android + macOS 剪贴板双向传输
 
-Status: 本地候选已实现，离线验证进行中；未形成真机或发布证据
+Status: 本地离线门禁完成；Mac XCTest 受本机 SDK 环境阻断；无真机、USB/LAN 端到端或发布证据
 Owner: Android + MacHost clipboard
 Started: 2026-08-16
 

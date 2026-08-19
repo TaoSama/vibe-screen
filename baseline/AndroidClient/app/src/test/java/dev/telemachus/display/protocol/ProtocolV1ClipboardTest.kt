@@ -25,6 +25,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.charset.CharacterCodingException
 import java.security.MessageDigest
 
 class ProtocolV1ClipboardTest {
@@ -33,7 +34,7 @@ class ProtocolV1ClipboardTest {
     private val sessionId = ByteString.copyFromUtf8("session-1")
 
     private fun clipboardSession(): ProtocolV1Session {
-        val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CLIPBOARD)
+        val caps = clipboardCapabilities(managedConfiguration = true)
         val session =
             ProtocolV1Session(
                 deviceId = deviceId,
@@ -530,6 +531,7 @@ class ProtocolV1ClipboardTest {
                 ).build()
         val failure = assertThrows(ProtocolV1Failure::class.java) { session.receive(contentEnv) }
         assertEquals("invalid_peer_message", failure.reason)
+        assertTrue(failure.cause is CharacterCodingException)
     }
 
     @Test
@@ -627,6 +629,23 @@ class ProtocolV1ClipboardTest {
         assertTrue(session.receive(policy).isEmpty())
         assertTrue(session.canSendClipboard)
         assertNotNull(session.offerClipboard("still allowed"))
+    }
+
+    @Test
+    fun managedPolicyStatusRequiresNegotiatedCapability() {
+        val session = clipboardSessionWithoutManagedConfiguration()
+        val status =
+            ManagedPolicyStatus
+                .newBuilder()
+                .setManaged(false)
+                .setClipboardAllowed(true)
+                .build()
+        val policy = base(10).setManagedPolicyStatus(status).build()
+
+        val failure = assertThrows(ProtocolV1Failure::class.java) { session.receive(policy) }
+
+        assertEquals("invalid_peer_message", failure.reason)
+        assertTrue(session.canSendClipboard)
     }
 
     @Test
@@ -750,6 +769,39 @@ class ProtocolV1ClipboardTest {
 
     private fun sha256(bytes: ByteArray): ByteArray =
         MessageDigest.getInstance("SHA-256").digest(bytes)
+
+    private fun clipboardSessionWithoutManagedConfiguration(): ProtocolV1Session {
+        val caps = clipboardCapabilities(managedConfiguration = false)
+        val session =
+            ProtocolV1Session(
+                deviceId = deviceId,
+                deviceName = "Test Android",
+                transport = TransportKind.TRANSPORT_KIND_USB,
+                codecs = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
+                nowNs = { 1_000L },
+            )
+        session.clientHello()
+        session.receive(hostHello(2, caps))
+        session.receive(sessionAccepted(3, caps))
+        session.receive(displayList(4))
+        session.receive(startDisplay(5))
+        val requested =
+            session.receive(videoConfig(6)).single()
+                as ProtocolV1Session.Action.VideoConfigurationRequested
+        session.completeVideoConfiguration(
+            completedConfigEpoch = 3,
+            configurationToken = requested.configurationToken,
+            accepted = true,
+            rejectionReason = "",
+        )
+        return session
+    }
+
+    private fun clipboardCapabilities(managedConfiguration: Boolean): List<Capability> {
+        val capabilities = mutableListOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CLIPBOARD)
+        if (managedConfiguration) capabilities += Capability.CAPABILITY_MANAGED_CONFIGURATION
+        return capabilities
+    }
 
     private fun hostHello(
         id: Long,
