@@ -145,8 +145,12 @@ def project_and_validate_public_diagnostic(
         secret_values=secret_values,
         private_paths=private_paths,
     )
-    if public_diagnostic_findings(projected):
-        raise E2EFailure("diagnostic projection failed the public privacy scan")
+    findings = public_diagnostic_findings(projected)
+    if findings:
+        categories = ",".join(sorted(set(findings)))
+        raise E2EFailure(
+            f"diagnostic projection failed the public privacy scan: {categories}"
+        )
     return projected
 
 

@@ -133,7 +133,9 @@ class RunnerTests(unittest.TestCase):
         self,
         project: mock.Mock,
     ) -> None:
-        project.side_effect = E2EFailure("private path /Users/alice leaked")
+        project.side_effect = E2EFailure(
+            "diagnostic projection failed the public privacy scan: endpoint,path"
+        )
         with tempfile.TemporaryDirectory() as directory:
             try:
                 run_checked(
@@ -150,6 +152,7 @@ class RunnerTests(unittest.TestCase):
         message = str(failure)
         self.assertIn("stage=stdout_projection", message)
         self.assertIn("exception=E2EFailure", message)
+        self.assertIn("detail=privacy_findings", message)
         self.assertIn("output_bytes=13", message)
         self.assertIn(hashlib.sha256(b"unsafe-secret").hexdigest(), message)
         self.assertNotIn("unsafe-secret", message)

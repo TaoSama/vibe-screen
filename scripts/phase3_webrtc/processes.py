@@ -47,6 +47,7 @@ def _safe_failure_summary(
     *,
     stage: str,
     output: str | bytes | None = None,
+    detail: str | None = None,
 ) -> str:
     if isinstance(output, bytes):
         rendered_output = output.decode("utf-8", errors="replace")
@@ -56,11 +57,16 @@ def _safe_failure_summary(
     output_hash = hashlib.sha256(
         rendered_output.encode("utf-8", errors="replace")
     ).hexdigest()
-    return (
+    summary = (
         "command execution failed before a safe result was available "
         f"(stage={stage}, exception={type(exception).__name__}, "
         f"output_bytes={output_bytes}, output_sha256={output_hash})"
     )
+    if detail and all(
+        character in "abcdefghijklmnopqrstuvwxyz_,-:" for character in detail
+    ):
+        summary = summary[:-1] + f", detail={detail})"
+    return summary
 
 
 def _perform_run_checked(
@@ -123,13 +129,20 @@ def _perform_run_checked(
                 private_paths=(cwd, Path.home(), *diagnostic_private_paths),
             )
         except Exception as exception:
+            detail = None
+            prefix = "diagnostic projection failed the public privacy scan: "
+            if isinstance(exception, E2EFailure) and str(exception).startswith(prefix):
+                detail = "privacy_findings:" + str(exception)[len(prefix):]
             exception.__traceback__ = None
             exception.__cause__ = None
             exception.__context__ = None
             return _RunCheckedOutcome(
                 completed=None,
                 failure_message=_safe_failure_summary(
-                    exception, stage="stdout_projection", output=completed.stdout
+                    exception,
+                    stage="stdout_projection",
+                    output=completed.stdout,
+                    detail=detail,
                 ),
             )
         if diagnostic_path is not None:
