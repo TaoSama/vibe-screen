@@ -1,0 +1,199 @@
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
+MAC_APP_DELEGATE = ROOT / "baseline/MacHost/Sources/AppDelegate.swift"
+MAC_SCREEN_CAPTURE = ROOT / "baseline/MacHost/Sources/ScreenCapture.swift"
+MAC_ENCODED_FRAME_SINK = ROOT / "baseline/MacHost/Sources/EncodedFrameSink.swift"
+MAC_INTERNET_SESSION = (
+    ROOT
+    / "baseline/MacHost/Sources/Phase3/ProductSession/InternetProductSession.swift"
+)
+ANDROID_MAIN_ACTIVITY = ROOT / "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt"
+ANDROID_INTERNET_SESSION = (
+    ROOT
+    / "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/internet/InternetProductSession.kt"
+)
+
+
+def source(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def compact(text: str) -> str:
+    return "".join(text.split())
+
+
+def require_compact(haystack: str, needle: str, *, label: str) -> None:
+    if compact(needle) not in compact(haystack):
+        raise AssertionError(f"missing source contract: {label}")
+
+
+class Phase3RealMediaSourceContractTests(unittest.TestCase):
+    def test_macos_internet_session_is_the_screen_capture_frame_sink(self) -> None:
+        encoded_sink = source(MAC_ENCODED_FRAME_SINK)
+        screen_capture = source(MAC_SCREEN_CAPTURE)
+        app_delegate = source(MAC_APP_DELEGATE)
+        internet_session = source(MAC_INTERNET_SESSION)
+
+        self.assertIn("protocol EncodedFrameSink: AnyObject", encoded_sink)
+        self.assertIn("func sendFrame(", encoded_sink)
+        self.assertIn("var currentSessionEpoch: UInt64", encoded_sink)
+        self.assertIn("final class InternetProductSession: EncodedFrameSink", internet_session)
+
+        require_compact(
+            screen_capture,
+            "func startStreaming(to frameSink: (any EncodedFrameSink)?",
+            label="ScreenCapture.startStreaming accepts an EncodedFrameSink",
+        )
+        require_compact(
+            screen_capture,
+            """
+            newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
+                frameSink?.sendFrame(
+                    data,
+                    timestamp: timestamp,
+                    isKeyframe: isKeyframe,
+                    sessionEpoch: sessionEpoch
+                )
+            }
+            """,
+            label="VideoToolbox encoded frames are forwarded with their session epoch",
+        )
+
+        for snippet, label in (
+            (
+                """
+                let session = InternetProductSession()
+                internetProductSession = session
+                """,
+                "Internet startup creates and retains the product session",
+            ),
+            (
+                "installInternetSessionCallbacks(session, sessionToken: sessionToken)",
+                "Internet startup installs product-session callbacks before streaming",
+            ),
+            (
+                "screenCapture?.setCodec(.hevc)",
+                "Internet startup selects the HEVC capture encoder",
+            ),
+            (
+                "try session.start(configuration: configuration)",
+                "Internet startup begins Protocol v1 negotiation before frame delivery",
+            ),
+            (
+                """
+                try await screenCapture?.startStreaming(
+                    to: session,
+                """,
+                "Internet startup streams real ScreenCapture output into the product session",
+            ),
+        ):
+            require_compact(app_delegate, snippet, label=label)
+
+        require_compact(
+            internet_session,
+            """
+            private func drainLatestFrame(generation: UInt64) {
+                let submission = withFrameAdmissionLock
+            """,
+            label="InternetProductSession encodes captured frames as Protocol v1 media records",
+        )
+        require_compact(
+            internet_session,
+            """
+            let frame = try codec.mediaFrame(
+                payload: submission.data,
+                timestamp: submission.timestamp,
+                isKeyframe: submission.isKeyframe
+            )
+            """,
+            label="InternetProductSession preserves encoded frame payload metadata",
+        )
+        require_compact(
+            internet_session,
+            """
+            if case .failure(let error) = transport.sendMedia(frame) {
+                fail(.transportFailure(error))
+            }
+            """,
+            label="InternetProductSession sends encoded media through the Internet transport",
+        )
+
+    def test_android_internet_media_reaches_the_production_decoder_callback(self) -> None:
+        main_activity = source(ANDROID_MAIN_ACTIVITY)
+        internet_session = source(ANDROID_INTERNET_SESSION)
+
+        require_compact(
+            internet_session,
+            """
+            private fun handleMedia(
+                owner: TransportOwner,
+                payload: ByteArray,
+            )
+            """,
+            label="Android product session decodes Internet media records into video frames",
+        )
+        require_compact(
+            internet_session,
+            """
+            codec.decodeMediaFragment(payload)
+            """,
+            label="Android product session decodes Protocol v1 media fragments",
+        )
+        require_compact(
+            internet_session,
+            """
+            frameAssembler.offer(fragment)
+            """,
+            label="Android product session assembles media fragments into frames",
+        )
+        require_compact(
+            internet_session,
+            """
+            callbacks.onVideoFrame(frame)
+            """,
+            label="Android product session dispatches assembled frames",
+        )
+        require_compact(
+            internet_session,
+            """
+            currentVideoConfiguration = configuration
+            frameAssembler.startConfiguration(configuration, lease.authoritativeSessionEpoch)
+            """,
+            label="Android starts media assembly only after decoder configuration ACK",
+        )
+
+        require_compact(
+            main_activity,
+            "object : InternetProductSessionCallbacks {",
+            label="MainActivity InternetProductSessionCallbacks implementation",
+        )
+        require_compact(
+            main_activity,
+            "videoDecoderLifecycle.onVideoConfiguration(configuration, effect, completion)",
+            label="MainActivity sends Internet video configuration through the decoder lifecycle",
+        )
+        require_compact(
+            main_activity,
+            """
+            override fun onVideoFrame(frame: ProductVideoFrame) {
+                if (!isCurrentInternetSession() || frame.sessionEpoch != internetSessionEpoch) return
+                videoDecoder?.decode(
+                    frame.payload,
+                    frame.payload.size,
+                    System.nanoTime(),
+                    frame.keyframe,
+                    frame.sessionEpoch,
+                )
+            }
+            """,
+            label="Android Internet video frames are submitted to the production VideoDecoder",
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

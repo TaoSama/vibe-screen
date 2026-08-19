@@ -1,5 +1,13 @@
 package dev.telemachus.display.internet
 
+import dev.telemachus.display.internet.security.AndroidSessionPacketCipher
+import dev.telemachus.display.internet.security.DurableSecurityState
+import dev.telemachus.display.internet.security.SecurityLifecycle
+import dev.telemachus.display.internet.security.SecurityStateStore
+import dev.telemachus.display.internet.security.TrafficKeyDerivation
+import dev.telemachus.display.internet.security.pairingSecurityScope
+import dev.vibescreen.protocol.v1.Codec
+import dev.vibescreen.protocol.v1.MediaPacketHeader
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -288,6 +296,62 @@ class ProductMediaFrameAssemblerTest {
         assertRecovery(rejectedResult, ProductMediaFrameAssembler.REASON_FRAME_TOO_LARGE)
     }
 
+    @Test
+    fun encryptedAnnexBKeyframeRecordSurvivesProtocolDecodeAndAssembly() {
+        val assembler = configuredAssembler()
+        val payload = hevcAnnexBKeyframePayload()
+
+        mediaCipherPair().use { ciphers ->
+            val encrypted = ciphers.host.seal(
+                SessionChannel.MEDIA,
+                mediaRecord(frameId = 60, payload = payload),
+            )
+            val plaintext = requireNotNull(ciphers.device.open(SessionChannel.MEDIA, encrypted))
+            val frame = assertFrame(assembler.offer(codec.decodeMediaFragment(plaintext)))
+
+            assertEquals(configuration.streamId, frame.streamId)
+            assertEquals(7, frame.sessionEpoch)
+            assertEquals(configuration.configEpoch, frame.configEpoch)
+            assertEquals(60, frame.frameId)
+            assertEquals(ProductVideoCodec.HEVC, frame.codec)
+            assertTrue(frame.keyframe)
+            assertAnnexBKeyframePayload(frame.payload)
+            assertArrayEquals(payload, frame.payload)
+        }
+    }
+
+    @Test
+    fun encryptedFragmentedAnnexBKeyframeReassemblesAfterOutOfOrderMediaRecords() {
+        val assembler = configuredAssembler()
+        val payload = hevcAnnexBKeyframePayload(InternetMediaRecordContract.MAXIMUM_FRAGMENT_PAYLOAD_BYTES + 257)
+        val chunks = fragmentPayloads(payload)
+        assertEquals(2, chunks.size)
+
+        mediaCipherPair().use { ciphers ->
+            val encrypted =
+                chunks.mapIndexed { index, chunk ->
+                    ciphers.host.seal(
+                        SessionChannel.MEDIA,
+                        mediaRecord(
+                            frameId = 61,
+                            fragmentIndex = index,
+                            fragmentCount = chunks.size,
+                            payload = chunk,
+                        ),
+                    )
+                }
+
+            val second = requireNotNull(ciphers.device.open(SessionChannel.MEDIA, encrypted[1]))
+            assertPending(assembler.offer(codec.decodeMediaFragment(second)))
+            val first = requireNotNull(ciphers.device.open(SessionChannel.MEDIA, encrypted[0]))
+            val frame = assertFrame(assembler.offer(codec.decodeMediaFragment(first)))
+
+            assertEquals(61, frame.frameId)
+            assertAnnexBKeyframePayload(frame.payload)
+            assertArrayEquals(payload, frame.payload)
+        }
+    }
+
     private fun configuredAssembler(
         clock: AssemblerFakeClock = AssemblerFakeClock(0),
         assemblyDeadlineMillis: Long = ProductMediaFrameAssembler.DEFAULT_ASSEMBLY_DEADLINE_MS,
@@ -306,6 +370,111 @@ class ProductMediaFrameAssemblerTest {
         }
         return result
     }
+
+    private fun fragmentPayloads(payload: ByteArray): List<ByteArray> {
+        val sizes = fragmentSizes(payload.size)
+        var offset = 0
+        return sizes.map { size ->
+            payload.copyOfRange(offset, offset + size).also { offset += size }
+        }
+    }
+
+    private fun mediaRecord(
+        frameId: Long,
+        fragmentIndex: Int = 0,
+        fragmentCount: Int = 1,
+        payload: ByteArray,
+    ): ByteArray {
+        val header =
+            MediaPacketHeader
+                .newBuilder()
+                .setStreamId(configuration.streamId)
+                .setSessionEpoch(7)
+                .setConfigEpoch(configuration.configEpoch)
+                .setFrameId(frameId)
+                .setFragmentIndex(fragmentIndex)
+                .setFragmentCount(fragmentCount)
+                .setCaptureTimestampNs(frameId * 100)
+                .setKeyframe(true)
+                .setCodec(Codec.CODEC_HEVC)
+                .setPayloadLength(payload.size)
+                .build()
+        return ProtobufProtocolV1ProductCodec.encodeMediaFragment(header, payload)
+    }
+
+    private fun mediaCipherPair(): MediaCipherPair {
+        val pairingScope = pairingSecurityScope("media-contract-device", "media-contract-pairing")
+        val lifecycle =
+            SecurityLifecycle(
+                MediaContractSecurityStore(
+                    DurableSecurityState(
+                        sessionEpochHighWatermarks = mapOf(pairingScope to 7),
+                        identityEpochHighWatermark = 1,
+                        authorizedIdentityEpoch = 1,
+                    ),
+                ),
+            )
+        return MediaCipherPair(
+            host = mediaCipher(PeerRole.HOST, lifecycle, pairingScope),
+            device = mediaCipher(PeerRole.DEVICE, lifecycle, pairingScope),
+        )
+    }
+
+    private fun mediaCipher(
+        role: PeerRole,
+        lifecycle: SecurityLifecycle,
+        pairingScope: String,
+    ) = AndroidSessionPacketCipher(
+        sessionId = "session-1",
+        sessionEpoch = 7,
+        localRole = role,
+        initialKeys = trafficKeys(),
+        sealWithActiveEpoch = { epoch, channel, sender, keyEpoch, operation ->
+            lifecycle.withReservedSessionNonce(pairingScope, 1, epoch, channel, sender, keyEpoch, operation)
+        },
+        openWithActiveEpoch = { epoch, operation ->
+            lifecycle.withActiveSessionEpoch(pairingScope, 1, epoch, operation)
+        },
+        rotateKeys = { current, updateNonce ->
+            TrafficKeyDerivation.rotate(current, current.keyEpoch + 1, updateNonce)
+        },
+    )
+
+    private fun trafficKeys() =
+        TrafficKeyDerivation.initial(
+            sharedSecret = ByteArray(32) { 1 },
+            bootstrapSecret = ByteArray(32) { 2 },
+            context = ByteArray(32) { 3 },
+        )
+
+    private fun hevcAnnexBKeyframePayload(minimumBytes: Int = 0): ByteArray {
+        val prefix = nal(
+            0x00, 0x00, 0x00, 0x01, 0x40, 0x01, 0x0c, 0x01, 0xff, 0xff, 0x01, 0x60, 0x00, 0x00, 0x03, 0x00,
+            0x90, 0x00, 0x00, 0x03, 0x00, 0x00, 0x03, 0x00, 0x3c, 0x98, 0x09,
+            0x00, 0x00, 0x00, 0x01, 0x42, 0x01, 0x01, 0x01, 0x60, 0x00, 0x00, 0x03, 0x00, 0x90, 0x00,
+            0x00, 0x03, 0x00, 0x00, 0x03, 0x00, 0x3c, 0xa0, 0x02, 0x80, 0x80, 0x2d, 0x16, 0x59, 0x59,
+            0xa4, 0x93, 0x2b, 0xc0, 0x40,
+            0x00, 0x00, 0x00, 0x01, 0x44, 0x01, 0xc0, 0xf1, 0x83, 0x10,
+            0x00, 0x00, 0x00, 0x01, 0x26, 0x01, 0xaf, 0x09, 0x40,
+        )
+        if (minimumBytes <= prefix.size) return prefix
+        return prefix + ByteArray(minimumBytes - prefix.size) { index -> (index * 31 + 17).toByte() }
+    }
+
+    private fun assertAnnexBKeyframePayload(payload: ByteArray) {
+        assertTrue(payload.startsWith(annexBStartCode))
+        assertTrue(countStartCodes(payload) >= 4)
+    }
+
+    private fun ByteArray.startsWith(prefix: ByteArray): Boolean =
+        size >= prefix.size && prefix.indices.all { this[it] == prefix[it] }
+
+    private fun countStartCodes(payload: ByteArray): Int =
+        (0..payload.size - annexBStartCode.size).count { offset ->
+            annexBStartCode.indices.all { payload[offset + it] == annexBStartCode[it] }
+        }
+
+    private fun nal(vararg values: Int): ByteArray = values.map { it.toByte() }.toByteArray()
 
     private fun fragment(
         frameId: Long,
@@ -349,6 +518,8 @@ class ProductMediaFrameAssemblerTest {
     private fun bytes(value: String): ByteArray = value.toByteArray(Charsets.UTF_8)
 
     companion object {
+        private val annexBStartCode = byteArrayOf(0, 0, 0, 1)
+        private val codec = ProtobufProtocolV1ProductCodec("device-1", "Android", setOf(ProductVideoCodec.HEVC)) { 1 }
         private val configuration =
             ProductVideoConfiguration(
                 configEpoch = 3,
@@ -364,4 +535,26 @@ class ProductMediaFrameAssemblerTest {
 
 private class AssemblerFakeClock(var now: Long) : MonotonicClock {
     override fun nowMillis(): Long = now
+}
+
+private data class MediaCipherPair(
+    val host: AndroidSessionPacketCipher,
+    val device: AndroidSessionPacketCipher,
+) : AutoCloseable {
+    override fun close() {
+        host.close()
+        device.close()
+    }
+}
+
+private class MediaContractSecurityStore(
+    initialState: DurableSecurityState,
+) : SecurityStateStore {
+    private var state = initialState
+
+    override fun load(): DurableSecurityState = state
+
+    override fun persist(state: DurableSecurityState) {
+        this.state = state
+    }
 }
