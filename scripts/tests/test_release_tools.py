@@ -115,6 +115,22 @@ class MacOSSigningIdentityTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "not found in the keychain"):
                 package_macos.resolve_sign_identity("Vibe Screen Dev")
 
+    def test_duplicate_named_identity_fails_instead_of_choosing_one(self) -> None:
+        lookup = subprocess.CompletedProcess(
+            args=("security", "find-identity"),
+            returncode=0,
+            stdout=(
+                '  1) 0123456789ABCDEF0123456789ABCDEF01234567 '
+                '"Vibe Screen Dev"\n'
+                '  2) FEDCBA9876543210FEDCBA9876543210FEDCBA98 '
+                '"Vibe Screen Dev"\n'
+                "     2 valid identities found\n"
+            ),
+        )
+        with mock.patch.object(package_macos.subprocess, "run", return_value=lookup):
+            with self.assertRaisesRegex(SystemExit, "multiple codesign identities"):
+                package_macos.resolve_sign_identity("Vibe Screen Dev")
+
     def test_main_resolves_identity_before_validating_or_building(self) -> None:
         arguments = mock.Mock(sign_identity="Vibe Screen Dev")
         with (
