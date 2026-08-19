@@ -283,14 +283,11 @@ final class ProtocolV1IncomingFileTransferManager {
         negotiatedPolicy: ProtocolV1FileTransferPolicy,
         sessionEpoch: UInt64
     ) throws -> VSFileAccept {
-        let effectivePolicy = negotiatedPolicy.applying(remote: remotePolicy)
-        guard effectivePolicy.allowed else { throw ProtocolV1FileTransferError.policyDenied }
-        guard !offer.transferID.isEmpty else { throw ProtocolV1FileTransferError.invalidTransferID }
-        guard Self.isSafeFileName(offer.fileName) else { throw ProtocolV1FileTransferError.invalidFileName }
-        guard offer.sha256.count == SHA256.byteCount else { throw ProtocolV1FileTransferError.invalidDigest }
-        guard offer.byteLength <= effectivePolicy.maximumFileBytes else {
-            throw ProtocolV1FileTransferError.fileTooLarge(offer.byteLength)
-        }
+        let effectivePolicy = try validateOfferForApproval(
+            offer,
+            remotePolicy: remotePolicy,
+            negotiatedPolicy: negotiatedPolicy
+        )
         guard approval(offer) else { throw ProtocolV1FileTransferError.userDenied }
 
         try lock.withLock {
@@ -331,6 +328,35 @@ final class ProtocolV1IncomingFileTransferManager {
         response.accepted = true
         response.maximumChunkBytes = UInt32(clamping: effectivePolicy.maximumChunkBytes)
         return response
+    }
+
+    func validateOfferForApproval(
+        _ offer: VSFileOffer,
+        remotePolicy: ProtocolV1RemoteManagedPolicy,
+        negotiatedPolicy: ProtocolV1FileTransferPolicy,
+        pendingTransferCount: Int = 0
+    ) throws -> ProtocolV1FileTransferPolicy {
+        let effectivePolicy = negotiatedPolicy.applying(remote: remotePolicy)
+        guard effectivePolicy.allowed else { throw ProtocolV1FileTransferError.policyDenied }
+        guard !offer.transferID.isEmpty else { throw ProtocolV1FileTransferError.invalidTransferID }
+        guard Self.isSafeFileName(offer.fileName) else { throw ProtocolV1FileTransferError.invalidFileName }
+        guard offer.sha256.count == SHA256.byteCount else { throw ProtocolV1FileTransferError.invalidDigest }
+        guard offer.byteLength <= effectivePolicy.maximumFileBytes else {
+            throw ProtocolV1FileTransferError.fileTooLarge(offer.byteLength)
+        }
+
+        try lock.withLock {
+            guard transfers[offer.transferID] == nil else { throw ProtocolV1FileTransferError.duplicateTransfer }
+            guard transfers.count + pendingTransferCount < effectivePolicy.maximumConcurrentTransfers else {
+                throw ProtocolV1FileTransferError.concurrentLimitReached
+            }
+            let declared = transfers.values.reduce(UInt64.zero) { $0 + $1.offer.byteLength }
+            guard offer.byteLength <= effectivePolicy.maximumTotalTemporaryBytes,
+                  declared <= effectivePolicy.maximumTotalTemporaryBytes - offer.byteLength else {
+                throw ProtocolV1FileTransferError.temporarySpaceLimitReached
+            }
+        }
+        return effectivePolicy
     }
 
     func append(_ chunk: ProtocolV1FileChunk, sessionEpoch: UInt64) throws -> UInt64 {

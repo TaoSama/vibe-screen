@@ -57,6 +57,10 @@ enum TransportSelfTest {
             print("Transport self-test: FAIL (legacy shutdown policy self-check)")
             return false
         }
+        guard runFileApprovalDispatchSelfCheck() else {
+            print("Transport self-test: FAIL (file approval dispatch self-check)")
+            return false
+        }
         let port: UInt16 = 55432
         let state = ResultState()
         let server = StreamingServer(port: port)
@@ -229,9 +233,50 @@ enum TransportSelfTest {
             "protocolV1Lifecycle=\(protocolV1Lifecycle), " +
             "protocolV1ReadyLifecycle=\(protocolV1ReadyLifecycle), " +
             "protocolV1PreReadyStops=\(protocolV1PreReadyStops), " +
+            "fileApprovalDispatch=true, " +
             "error=\(snapshot.6 ?? "none"))"
         )
         return passed
+    }
+
+    private static func runFileApprovalDispatchSelfCheck() -> Bool {
+        var offer = VSFileOffer()
+        offer.transferID = Data([0x66, 0x69, 0x6c, 0x65])
+        offer.fileName = "self-test.txt"
+        offer.byteLength = 0
+
+        let callerReturned = DispatchSemaphore(value: 0)
+        let releaseApproval = DispatchSemaphore(value: 0)
+        let completionReturned = DispatchSemaphore(value: 0)
+        let resultLock = NSLock()
+        var acceptedResult = false
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            StreamingServer.requestFileTransferApproval(
+                offer: offer,
+                approval: { _ in
+                    _ = releaseApproval.wait(timeout: .now() + .seconds(1))
+                    return true
+                },
+                completion: { accepted in
+                    resultLock.withLock { acceptedResult = accepted }
+                    completionReturned.signal()
+                }
+            )
+            callerReturned.signal()
+        }
+
+        guard callerReturned.wait(timeout: .now() + .milliseconds(250)) == .success else {
+            return false
+        }
+        releaseApproval.signal()
+
+        let deadline = Date(timeIntervalSinceNow: 1)
+        while completionReturned.wait(timeout: .now()) != .success {
+            guard Date() < deadline else { return false }
+            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+        }
+        return resultLock.withLock { acceptedResult }
     }
 
     private static func runProtocolV1Lifecycle() -> Bool {
@@ -277,7 +322,7 @@ enum TransportSelfTest {
             }
 
             guard case .managedPolicyStatus(let managedStatus)? = try client.readEnvelope().payload,
-                  managedStatus.managed,
+                  !managedStatus.managed,
                   managedStatus.fileTransferAllowed,
                   managedStatus.maximumFileBytes > 0 else {
                 server.stop()

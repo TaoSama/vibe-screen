@@ -272,6 +272,20 @@ class StreamingServer: EncodedFrameSink {
         return response
     }
 
+    static func requestFileTransferApproval(
+        offer: VSFileOffer,
+        approval: ((VSFileOffer) -> Bool)?,
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard let approval else {
+            completion(false)
+            return
+        }
+        DispatchQueue.main.async {
+            completion(approval(offer))
+        }
+    }
+
     private enum ConnectionProtocolMode: Equatable {
         case legacy
         case protocolV1
@@ -430,6 +444,8 @@ class StreamingServer: EncodedFrameSink {
     private var protocolV1TouchAggregator = ProtocolV1TouchAggregator()
     private var lanSecureRecordFramer = LANSecureRecordStreamFramer()
     private var protocolV1IncomingFiles: ProtocolV1IncomingFileTransferManager?
+    private var protocolV1PendingIncomingFileApprovals: Set<Data> = []
+    private var protocolV1ApprovedIncomingFileOffers: Set<Data> = []
     private var protocolV1OutgoingFiles: [Data: ProtocolV1OutgoingFileTransfer] = [:]
     private var protocolV1RemoteManagedPolicy: ProtocolV1RemoteManagedPolicy = .unmanaged
     private let protocolV1FileTransferPolicy = ProtocolV1FileTransferPolicy.default
@@ -687,6 +703,8 @@ class StreamingServer: EncodedFrameSink {
         protocolV1TouchAggregator.reset()
         protocolV1IncomingFiles?.cancelAll()
         protocolV1IncomingFiles = nil
+        protocolV1PendingIncomingFileApprovals.removeAll()
+        protocolV1ApprovedIncomingFileOffers.removeAll()
         protocolV1OutgoingFiles.values.forEach { $0.cancel() }
         protocolV1OutgoingFiles.removeAll()
         protocolV1RemoteManagedPolicy = .unmanaged
@@ -775,6 +793,8 @@ class StreamingServer: EncodedFrameSink {
         protocolV1TouchAggregator.reset()
         protocolV1IncomingFiles?.cancelAll()
         protocolV1IncomingFiles = nil
+        protocolV1PendingIncomingFileApprovals.removeAll()
+        protocolV1ApprovedIncomingFileOffers.removeAll()
         protocolV1OutgoingFiles.values.forEach { $0.cancel() }
         protocolV1OutgoingFiles.removeAll()
         protocolV1RemoteManagedPolicy = .unmanaged
@@ -1932,15 +1952,14 @@ class StreamingServer: EncodedFrameSink {
             incomingFiles = try ProtocolV1IncomingFileTransferManager(
                 policy: filePolicy,
                 directory: Self.fileTransferStagingDirectory(sessionID: sessionID),
+                // UI approval is requested asynchronously before accept(), so
+                // the network queue never synchronously waits on the main actor.
                 approval: { [weak self] offer in
-                    if Thread.isMainThread {
-                        return self?.onFileTransferApprovalRequested?(offer) ?? false
+                    guard let self,
+                          DispatchQueue.getSpecific(key: Self.networkQueueKey) == ObjectIdentifier(self) else {
+                        return false
                     }
-                    var accepted = false
-                    DispatchQueue.main.sync { [weak self] in
-                        accepted = self?.onFileTransferApprovalRequested?(offer) ?? false
-                    }
-                    return accepted
+                    return self.protocolV1ApprovedIncomingFileOffers.remove(offer.transferID) != nil
                 }
             )
         } catch {
@@ -2062,12 +2081,14 @@ class StreamingServer: EncodedFrameSink {
             return actions
         } catch let error as ProtocolV1FileTransferError {
             incomingFiles.cancel(transferID: chunk.header.transferID)
+            protocolV1PendingIncomingFileApprovals.remove(chunk.header.transferID)
             return session.makeFileTransferCancel(
                 transferID: chunk.header.transferID,
                 reasonCode: error.reasonCode
             )
         } catch {
             incomingFiles.cancel(transferID: chunk.header.transferID)
+            protocolV1PendingIncomingFileApprovals.remove(chunk.header.transferID)
             return session.makeFileTransferCancel(
                 transferID: chunk.header.transferID,
                 reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
@@ -2347,29 +2368,7 @@ class StreamingServer: EncodedFrameSink {
                     self.onClipboardDirectContentReceived?(content, generation)
                 }
             case .fileOffer(let offer, _):
-                guard let incomingFiles = protocolV1IncomingFiles,
-                      let session = protocolV1Session else { break }
-                let response: VSFileAccept
-                do {
-                    response = try incomingFiles.accept(
-                        offer,
-                        remotePolicy: protocolV1RemoteManagedPolicy,
-                        negotiatedPolicy: session.negotiatedFileTransferPolicySnapshot(),
-                        sessionEpoch: sessionEpochGate.current
-                    )
-                } catch let error as ProtocolV1FileTransferError {
-                    response = Self.rejectedFileAccept(transferID: offer.transferID, reasonCode: error.reasonCode)
-                } catch {
-                    response = Self.rejectedFileAccept(
-                        transferID: offer.transferID,
-                        reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
-                    )
-                }
-                applyProtocolV1Actions(
-                    session.makeFileAccept(response),
-                    connection: conn,
-                    generation: generation
-                )
+                handleProtocolV1FileOffer(offer, connection: conn, generation: generation)
             case .fileAccept(let response):
                 guard response.accepted,
                       let transfer = protocolV1OutgoingFiles[response.transferID],
@@ -2395,6 +2394,8 @@ class StreamingServer: EncodedFrameSink {
                 )
             case .fileTransferCancel(let cancellation):
                 protocolV1IncomingFiles?.cancel(transferID: cancellation.transferID)
+                protocolV1PendingIncomingFileApprovals.remove(cancellation.transferID)
+                protocolV1ApprovedIncomingFileOffers.remove(cancellation.transferID)
                 protocolV1OutgoingFiles.removeValue(forKey: cancellation.transferID)?.cancel()
             case .fileTransferComplete(let result):
                 protocolV1OutgoingFiles.removeValue(forKey: result.transferID)?.cancel()
@@ -2403,6 +2404,94 @@ class StreamingServer: EncodedFrameSink {
             }
         }
         if shouldClose && controlPayloads.isEmpty { conn.cancel() }
+    }
+
+    private func handleProtocolV1FileOffer(
+        _ offer: VSFileOffer,
+        connection conn: NWConnection,
+        generation: UInt64
+    ) {
+        guard let incomingFiles = protocolV1IncomingFiles,
+              let session = protocolV1Session else { return }
+        do {
+            guard !protocolV1PendingIncomingFileApprovals.contains(offer.transferID) else {
+                throw ProtocolV1FileTransferError.duplicateTransfer
+            }
+            _ = try incomingFiles.validateOfferForApproval(
+                offer,
+                remotePolicy: protocolV1RemoteManagedPolicy,
+                negotiatedPolicy: session.negotiatedFileTransferPolicySnapshot(),
+                pendingTransferCount: protocolV1PendingIncomingFileApprovals.count
+            )
+        } catch let error as ProtocolV1FileTransferError {
+            applyProtocolV1Actions(
+                session.makeFileAccept(Self.rejectedFileAccept(
+                    transferID: offer.transferID,
+                    reasonCode: error.reasonCode
+                )),
+                connection: conn,
+                generation: generation
+            )
+            return
+        } catch {
+            applyProtocolV1Actions(
+                session.makeFileAccept(Self.rejectedFileAccept(
+                    transferID: offer.transferID,
+                    reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
+                )),
+                connection: conn,
+                generation: generation
+            )
+            return
+        }
+        protocolV1PendingIncomingFileApprovals.insert(offer.transferID)
+        Self.requestFileTransferApproval(
+            offer: offer,
+            approval: onFileTransferApprovalRequested
+        ) { [weak self, weak conn] accepted in
+            guard let self, let conn else { return }
+            self.networkQueue.async { [weak self, weak conn] in
+                guard let self, let conn,
+                      self.connection === conn,
+                      self.activeConnectionGeneration == generation,
+                      self.connectionProtocolMode == .protocolV1,
+                      !self.isStopped,
+                      let incomingFiles = self.protocolV1IncomingFiles,
+                      let session = self.protocolV1Session,
+                      self.protocolV1PendingIncomingFileApprovals.remove(offer.transferID) != nil else { return }
+                guard self.clientCallbackGeneration.isCurrent(generation) else { return }
+                let response: VSFileAccept
+                if accepted {
+                    do {
+                        self.protocolV1ApprovedIncomingFileOffers.insert(offer.transferID)
+                        defer { self.protocolV1ApprovedIncomingFileOffers.remove(offer.transferID) }
+                        response = try incomingFiles.accept(
+                            offer,
+                            remotePolicy: self.protocolV1RemoteManagedPolicy,
+                            negotiatedPolicy: session.negotiatedFileTransferPolicySnapshot(),
+                            sessionEpoch: self.sessionEpochGate.current
+                        )
+                    } catch let error as ProtocolV1FileTransferError {
+                        response = Self.rejectedFileAccept(transferID: offer.transferID, reasonCode: error.reasonCode)
+                    } catch {
+                        response = Self.rejectedFileAccept(
+                            transferID: offer.transferID,
+                            reasonCode: ProtocolV1FileTransferError.ioFailure(error.localizedDescription).reasonCode
+                        )
+                    }
+                } else {
+                    response = Self.rejectedFileAccept(
+                        transferID: offer.transferID,
+                        reasonCode: ProtocolV1FileTransferError.userDenied.reasonCode
+                    )
+                }
+                self.applyProtocolV1Actions(
+                    session.makeFileAccept(response),
+                    connection: conn,
+                    generation: generation
+                )
+            }
+        }
     }
 
     private func sendNextProtocolV1FileChunk(

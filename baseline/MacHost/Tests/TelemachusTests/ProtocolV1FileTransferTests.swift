@@ -61,6 +61,48 @@ final class ProtocolV1FileTransferTests: XCTestCase {
         XCTAssertEqual(manager.activeTransferCount, 0)
     }
 
+    func testServerFileApprovalRequestDoesNotSynchronouslyWaitForMainQueue() throws {
+        let offer = offer(payload: Data("hello".utf8))
+        let callerReturned = DispatchSemaphore(value: 0)
+        let releaseApproval = DispatchSemaphore(value: 0)
+        let completionReturned = DispatchSemaphore(value: 0)
+        let resultLock = NSLock()
+        var completedValue: Bool?
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            StreamingServer.requestFileTransferApproval(
+                offer: offer,
+                approval: { receivedOffer in
+                    XCTAssertEqual(receivedOffer.transferID, offer.transferID)
+                    _ = releaseApproval.wait(timeout: .now() + .seconds(1))
+                    return true
+                },
+                completion: { accepted in
+                    resultLock.lock()
+                    completedValue = accepted
+                    resultLock.unlock()
+                    completionReturned.signal()
+                }
+            )
+            callerReturned.signal()
+        }
+
+        XCTAssertEqual(callerReturned.wait(timeout: .now() + .milliseconds(250)), .success)
+        releaseApproval.signal()
+
+        let deadline = Date(timeIntervalSinceNow: 1)
+        var completed = completionReturned.wait(timeout: .now()) == .success
+        while !completed, Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+            completed = completionReturned.wait(timeout: .now()) == .success
+        }
+        XCTAssertTrue(completed)
+        resultLock.lock()
+        let accepted = completedValue
+        resultLock.unlock()
+        XCTAssertEqual(accepted, true)
+    }
+
     func testIncomingManagerAcceptsOrderedChunksAndVerifiesCompletedDigest() throws {
         let payload = Data("hello".utf8)
         let directory = temporaryDirectory()

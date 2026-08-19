@@ -415,9 +415,9 @@ final class ProtocolV1SessionTests: XCTestCase {
             maximumFileBytes: 2_048,
             allowedHosts: ["host"]
         )
-        let session = makeSession(managedPolicy: localPolicy)
+        let session = makeSession(managedPolicy: localPolicy, fileTransferAvailable: true)
         var hello = clientHello()
-        hello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions, .managedConfiguration]
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions, .managedConfiguration, .fileTransfer]
         _ = session.handleControl(try hello.serializedData())
         let responses = try controlEnvelopes(session.completeCodecNegotiation())
         XCTAssertEqual(responses.count, 4)
@@ -446,10 +446,16 @@ final class ProtocolV1SessionTests: XCTestCase {
         remote.hostActionsAllowed = false
         remote.maximumFileBytes = 4_096
         remote.allowedHosts = ["host"]
-        XCTAssertTrue(session.handleControl(try envelope(
+        let remotePolicyActions = session.handleControl(try envelope(
             id: 2,
             payload: .managedPolicyStatus(remote)
-        ).serializedData()).isEmpty)
+        ).serializedData())
+        XCTAssertEqual(remotePolicyActions.count, 1)
+        guard case .remoteManagedPolicyChanged(let effectiveRemotePolicy) = remotePolicyActions[0] else {
+            return XCTFail("Expected remoteManagedPolicyChanged")
+        }
+        XCTAssertTrue(effectiveRemotePolicy.managed)
+        XCTAssertFalse(effectiveRemotePolicy.hostActionsAllowed)
 
         _ = session.handleControl(try envelope(id: 3, payload: .listDisplaysRequest(VSListDisplaysRequest())).serializedData())
         _ = session.handleControl(try envelope(id: 4, payload: .startDisplayRequest(existingDisplayRequest())).serializedData())
@@ -1671,7 +1677,10 @@ final class ProtocolV1SessionTests: XCTestCase {
     private let sessionID = Data(repeating: 0xAB, count: 16)
     private let sessionEpoch: UInt64 = 7
 
-    private func makeSession(managedPolicy: ManagedPolicy = .unmanaged) -> ProtocolV1SessionCoordinator {
+    private func makeSession(
+        managedPolicy: ManagedPolicy = .unmanaged,
+        fileTransferAvailable: Bool = false
+    ) -> ProtocolV1SessionCoordinator {
         var configuration = ProtocolV1SessionConfiguration(
             sessionID: sessionID,
             sessionEpoch: sessionEpoch,
@@ -1682,7 +1691,8 @@ final class ProtocolV1SessionTests: XCTestCase {
             bitrateKbps: 20_000,
             hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
                 touchEnabled: true,
-                managedPolicy: managedPolicy
+                managedPolicy: managedPolicy,
+                fileTransferAllowed: fileTransferAvailable && managedPolicy.fileTransferAllowed
             ),
             requiredClientCapabilities: [.touch],
             supportedCodecs: [.hevc, .h264],
