@@ -13,6 +13,10 @@ internal sealed class VideoColorDecision {
         val selectedColor: ColorDescription,
         val reason: String,
     ) : VideoColorDecision()
+
+    data class Rejected(
+        val reason: String,
+    ) : VideoColorDecision()
 }
 
 internal object VideoColorNegotiation {
@@ -52,22 +56,15 @@ internal object VideoColorNegotiation {
         framesPerSecond: Int,
     ): VideoColorDecision {
         val color = normalize(requestedColor ?: legacySdrColor)
+        val supportsLegacySdr = supports(decodeCapabilities, legacySdrColor, codec, width, height, framesPerSecond)
         if (isHdr(color) && !negotiatedHdr) {
-            return VideoColorDecision.Fallback(legacySdrColor, UNSUPPORTED_COLOR_OR_DECODE_PROFILE)
+            return unsupportedDecision(supportsLegacySdr)
         }
-        val supported =
-            decodeCapabilities.any { capability ->
-                capability.codec == codec &&
-                    width <= capability.maximumWidth &&
-                    height <= capability.maximumHeight &&
-                    framesPerSecond <= capability.maximumFramesPerSecond &&
-                    capability.bitDepthsList.contains(color.bitDepth) &&
-                    capability.transferFunctionsList.contains(color.transferFunction)
-            }
+        val supported = supports(decodeCapabilities, color, codec, width, height, framesPerSecond)
         return if (supported) {
             VideoColorDecision.Accepted
         } else {
-            VideoColorDecision.Fallback(legacySdrColor, UNSUPPORTED_COLOR_OR_DECODE_PROFILE)
+            unsupportedDecision(supportsLegacySdr)
         }
     }
 
@@ -94,6 +91,30 @@ internal object VideoColorNegotiation {
             color.transferFunction == TransferFunction.TRANSFER_FUNCTION_HLG ||
             color.primaries == ColorPrimaries.COLOR_PRIMARIES_BT2020 ||
             color.matrixCoefficients == MatrixCoefficients.MATRIX_COEFFICIENTS_BT2020_NON_CONSTANT
+
+    private fun unsupportedDecision(supportsLegacySdr: Boolean): VideoColorDecision =
+        if (supportsLegacySdr) {
+            VideoColorDecision.Fallback(legacySdrColor, UNSUPPORTED_COLOR_OR_DECODE_PROFILE)
+        } else {
+            VideoColorDecision.Rejected(UNSUPPORTED_COLOR_OR_DECODE_PROFILE)
+        }
+
+    private fun supports(
+        decodeCapabilities: Iterable<VideoDecodeCapability>,
+        color: ColorDescription,
+        codec: dev.vibescreen.protocol.v1.Codec,
+        width: Int,
+        height: Int,
+        framesPerSecond: Int,
+    ): Boolean =
+        decodeCapabilities.any { capability ->
+            capability.codec == codec &&
+                width <= capability.maximumWidth &&
+                height <= capability.maximumHeight &&
+                framesPerSecond <= capability.maximumFramesPerSecond &&
+                capability.bitDepthsList.contains(color.bitDepth) &&
+                capability.transferFunctionsList.contains(color.transferFunction)
+        }
 
     private const val MAXIMUM_SDR_WIDTH = 3840
     private const val MAXIMUM_SDR_HEIGHT = 2160

@@ -1154,16 +1154,23 @@ internal class ProtocolV1Session(
                 height = config.encodedSize.height,
                 framesPerSecond = config.framesPerSecond,
             )
-        if (colorDecision is VideoColorDecision.Fallback) {
+        if (colorDecision is VideoColorDecision.Fallback || colorDecision is VideoColorDecision.Rejected) {
             videoPreferencesRequestInFlight = false
+            val selectedColor = (colorDecision as? VideoColorDecision.Fallback)?.selectedColor
+            val reason =
+                when (colorDecision) {
+                    is VideoColorDecision.Fallback -> colorDecision.reason
+                    is VideoColorDecision.Rejected -> colorDecision.reason
+                    VideoColorDecision.Accepted -> error("accepted decision is handled before rejection")
+                }
             return listOf(
                 Action.Send(
                     videoConfigResult(
                         configEpoch = config.configEpoch,
                         streamId = config.streamId,
                         accepted = false,
-                        rejectionReason = colorDecision.reason,
-                        selectedColorDescription = colorDecision.selectedColor,
+                        rejectionReason = reason,
+                        selectedColorDescription = selectedColor,
                         correlationId = envelope.messageId,
                     ),
                 ),

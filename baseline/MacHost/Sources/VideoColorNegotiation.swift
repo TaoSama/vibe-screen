@@ -4,6 +4,7 @@ import VibeScreenProtocol
 enum HostVideoColorDecision: Equatable {
     case accepted(VSColorDescription)
     case fallback(VSColorDescription, reason: String)
+    case rejected(reason: String)
 }
 
 struct HostVideoColorNegotiator {
@@ -12,13 +13,24 @@ struct HostVideoColorNegotiator {
     let clientCapabilities: Set<VSCapability>
     let decodeCapabilities: [VSVideoDecodeCapability]
 
-    func evaluate(_ requested: VSColorDescription) -> HostVideoColorDecision {
+    func evaluate(
+        _ requested: VSColorDescription,
+        codec: VSCodec? = nil,
+        encodedSize: VSDimensions? = nil,
+        framesPerSecond: UInt32? = nil
+    ) -> HostVideoColorDecision {
         let color = Self.normalized(requested)
+        let supportsLegacySDR = supports(
+            Self.legacySDRColor,
+            codec: codec,
+            encodedSize: encodedSize,
+            framesPerSecond: framesPerSecond
+        )
         if Self.isHDR(color), !clientCapabilities.contains(.hdrVideo) {
-            return .fallback(Self.legacySDRColor, reason: Self.unsupportedHDRFallbackReason)
+            return unsupportedDecision(supportsLegacySDR: supportsLegacySDR)
         }
-        guard supports(color) else {
-            return .fallback(Self.legacySDRColor, reason: Self.unsupportedHDRFallbackReason)
+        guard supports(color, codec: codec, encodedSize: encodedSize, framesPerSecond: framesPerSecond) else {
+            return unsupportedDecision(supportsLegacySDR: supportsLegacySDR)
         }
         return .accepted(color)
     }
@@ -89,6 +101,13 @@ struct HostVideoColorNegotiator {
                 && capability.bitDepths.contains(color.bitDepth == 0 ? 8 : color.bitDepth)
                 && capability.transferFunctions.contains(transfer)
         })
+    }
+
+    private func unsupportedDecision(supportsLegacySDR: Bool) -> HostVideoColorDecision {
+        if supportsLegacySDR {
+            return .fallback(Self.legacySDRColor, reason: Self.unsupportedHDRFallbackReason)
+        }
+        return .rejected(reason: Self.unsupportedHDRFallbackReason)
     }
 
     static func isHDR(_ color: VSColorDescription) -> Bool {

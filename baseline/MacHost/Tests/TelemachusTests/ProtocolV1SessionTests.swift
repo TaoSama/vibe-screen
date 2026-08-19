@@ -530,6 +530,38 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(fallbackConfig.colorDescription, HostVideoColorNegotiator.legacySDRColor)
     }
 
+    func testClientDecodeProfileRejectionWithoutSelectedColorFailsClosed() throws {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .colorManagement, .multiDisplay]
+        hello.clientHello.videoDecodeCapabilities = sdrDecodeCapabilities()
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+
+        let startActions = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        let startResponses = try controlEnvelopes(startActions)
+        guard case .videoConfig(let firstConfig)? = startResponses[1].payload else {
+            return XCTFail("Expected first VideoConfig")
+        }
+
+        var result = VSVideoConfigResult()
+        result.configEpoch = firstConfig.configEpoch
+        result.streamID = firstConfig.streamID
+        result.accepted = false
+        result.rejectionReason = HostVideoColorNegotiator.unsupportedHDRFallbackReason
+
+        let failure = try protocolError(from: session.handleControl(try envelope(
+            id: 3,
+            payload: .videoConfigResult(result)
+        ).serializedData()))
+
+        XCTAssertEqual(failure.code, .invalidState)
+        XCTAssertFalse(session.isStreaming)
+    }
+
     func testClientDecodeCapabilitiesSelectSDRCompatibleCodec() throws {
         let session = makeSession()
         var hello = clientHello()

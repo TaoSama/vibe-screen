@@ -15,6 +15,27 @@ final class VideoColorNegotiationTests: XCTestCase {
             XCTAssertEqual(color, HostVideoColorNegotiator.legacySDRColor)
         case .accepted:
             XCTFail("HDR was accepted without CAPABILITY_HDR_VIDEO")
+        case .rejected:
+            XCTFail("HDR color mismatch should fall back when the SDR profile is supported")
+        }
+    }
+
+    func testUnsupportedDecodeProfileRejectsWithoutSDRFallback() {
+        let negotiator = HostVideoColorNegotiator(
+            clientCapabilities: [.colorManagement],
+            decodeCapabilities: sdrDecodeCapabilities()
+        )
+
+        switch negotiator.evaluate(
+            hdrColor(),
+            codec: .hevc,
+            encodedSize: dimensions(),
+            framesPerSecond: 144
+        ) {
+        case let .rejected(reason):
+            XCTAssertEqual(reason, HostVideoColorNegotiator.unsupportedHDRFallbackReason)
+        case .accepted, .fallback:
+            XCTFail("Unsupported decode profile must not advertise a selected SDR fallback")
         }
     }
 
@@ -38,6 +59,12 @@ final class VideoColorNegotiationTests: XCTestCase {
             codec: .hevc,
             encodedSize: dimensions(),
             framesPerSecond: 60
+        ))
+        XCTAssertNil(negotiator.validatedFallback(
+            HostVideoColorNegotiator.legacySDRColor,
+            codec: .hevc,
+            encodedSize: dimensions(),
+            framesPerSecond: 144
         ))
     }
 

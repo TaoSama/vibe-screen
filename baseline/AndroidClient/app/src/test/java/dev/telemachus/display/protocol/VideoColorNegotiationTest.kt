@@ -6,6 +6,7 @@ import dev.vibescreen.protocol.v1.ColorPrimaries
 import dev.vibescreen.protocol.v1.MatrixCoefficients
 import dev.vibescreen.protocol.v1.TransferFunction
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -39,6 +40,41 @@ class VideoColorNegotiationTest {
         val fallback = decision as VideoColorDecision.Fallback
         assertEquals(VideoColorNegotiation.UNSUPPORTED_COLOR_OR_DECODE_PROFILE, fallback.reason)
         assertEquals(VideoColorNegotiation.legacySdrColor, fallback.selectedColor)
+    }
+
+    @Test
+    fun unsupportedDecodeProfileRejectsWithoutSdrFallback() {
+        val decision =
+            VideoColorNegotiation.evaluate(
+                requestedColor = hdrColor(),
+                negotiatedHdr = false,
+                decodeCapabilities = VideoColorNegotiation.sdrDecodeCapabilities(listOf(Codec.CODEC_HEVC)),
+                codec = Codec.CODEC_HEVC,
+                width = 1920,
+                height = 1080,
+                framesPerSecond = 144,
+            )
+
+        assertTrue(decision is VideoColorDecision.Rejected)
+        val rejected = decision as VideoColorDecision.Rejected
+        assertEquals(VideoColorNegotiation.UNSUPPORTED_COLOR_OR_DECODE_PROFILE, rejected.reason)
+    }
+
+    @Test
+    fun supportedDecodeProfileStillReturnsSdrFallbackForHdrOnlyMismatch() {
+        val decision =
+            VideoColorNegotiation.evaluate(
+                requestedColor = hdrColor(),
+                negotiatedHdr = false,
+                decodeCapabilities = VideoColorNegotiation.sdrDecodeCapabilities(listOf(Codec.CODEC_HEVC)),
+                codec = Codec.CODEC_HEVC,
+                width = 1920,
+                height = 1080,
+                framesPerSecond = 120,
+            )
+
+        assertFalse(decision is VideoColorDecision.Rejected)
+        assertEquals(VideoColorNegotiation.legacySdrColor, (decision as VideoColorDecision.Fallback).selectedColor)
     }
 
     private fun hdrColor(): ColorDescription =

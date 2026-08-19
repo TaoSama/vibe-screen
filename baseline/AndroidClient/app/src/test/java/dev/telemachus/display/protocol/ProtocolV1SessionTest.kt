@@ -743,6 +743,43 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun unsupportedDecodeProfileRejectsWithoutSelectedColorFallback() {
+        val session = session()
+        session.clientHello()
+        session.receive(
+            hostHello(
+                2,
+                advertisedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_COLOR_MANAGEMENT),
+            ),
+        )
+        session.receive(
+            sessionAccepted(
+                3,
+                negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_COLOR_MANAGEMENT),
+            ),
+        )
+        session.receive(displayList(4))
+        session.receive(startDisplay(5))
+
+        val result =
+            session.receive(
+                videoConfig(
+                    6,
+                    colorDescription = hdrColor(),
+                    framesPerSecond = 144,
+                ),
+            ).single() as ProtocolV1Session.Action.Send
+
+        assertFalse(result.envelope.videoConfigResult.accepted)
+        assertEquals(
+            VideoColorNegotiation.UNSUPPORTED_COLOR_OR_DECODE_PROFILE,
+            result.envelope.videoConfigResult.rejectionReason,
+        )
+        assertFalse(result.envelope.videoConfigResult.hasSelectedColorDescription())
+        assertFalse(session.isStreaming)
+    }
+
+    @Test
     fun rejectsSessionAcceptedWithCapabilityClientDidNotAdvertise() {
         val session = session()
         session.clientHello()
@@ -1846,6 +1883,7 @@ class ProtocolV1SessionTest {
         id: Long,
         configEpoch: Long = 3,
         colorDescription: ColorDescription? = null,
+        framesPerSecond: Int = 60,
     ): Envelope =
         base(id)
             .setVideoConfig(
@@ -1854,7 +1892,7 @@ class ProtocolV1SessionTest {
                     .setConfigEpoch(configEpoch)
                     .setCodec(Codec.CODEC_HEVC)
                     .setEncodedSize(Dimensions.newBuilder().setWidth(1920).setHeight(1080))
-                    .setFramesPerSecond(60)
+                    .setFramesPerSecond(framesPerSecond)
                     .setBitrateKbps(12_000)
                     .setStreamId(42)
                     .setRotationDegrees(90)
