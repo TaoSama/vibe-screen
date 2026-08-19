@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Network
 import VibeScreenProtocol
@@ -253,6 +254,8 @@ class StreamingServer: EncodedFrameSink {
     // allowing normal LAN scheduling jitter; USB has no authentication hop.
     private static let usbProtocolUpgradeGraceMilliseconds = 100
     private static let wirelessProtocolUpgradeGraceMilliseconds = 500
+    private static let wirelessAuthTimeoutSeconds = 3
+    private static let wirelessSecureRecordTimeoutSeconds = 5
     private enum ConnectionProtocolMode: Equatable {
         case legacy
         case protocolV1
@@ -280,7 +283,7 @@ class StreamingServer: EncodedFrameSink {
     /// capacity for the `stream_stats` telemetry record. The short-window host
     /// memory diagnostic uses these to assert the encoder never exceeds its
     /// admission budget. Optional so tests and non-capture builds can omit it.
-    var encoderStatsProvider: (() -> (inFlight: Int, capacity: Int))?
+    var encoderStatsProvider: (() -> (inFlight: Int, capacity: Int)?)?
     var onKeyframeRequested: ((Bool, UInt64) -> Void)?
     // Whether host wants to receive touch events from client. Ping/pong is
     // handled regardless. When false, incoming touch frames are dropped
@@ -346,6 +349,7 @@ class StreamingServer: EncodedFrameSink {
         let generation: UInt64
         let clientGeneration: UInt64
         let sessionEpoch: UInt64
+        let packetChannel: InternetTransportChannel
     }
     /// At most one frame is inside Network.framework and one newer frame is
     /// retained. This prevents a transient USB/Wi-Fi slowdown from becoming a
@@ -379,9 +383,12 @@ class StreamingServer: EncodedFrameSink {
     private var clientIsAvcOnly = false
     private var codecNegotiationGeneration: UInt64?
     private var connectionProtocolMode = ConnectionProtocolMode.legacy
+    private var lanRecordProtectionState = LANRecordProtectionState.notApplicable
+    private var lanSecureRecordSession: LANSecureRecordSession?
     private var protocolV1Framer = ProtocolV1Framer()
     private var protocolV1Session: ProtocolV1SessionCoordinator?
     private var protocolV1TouchAggregator = ProtocolV1TouchAggregator()
+    private var lanSecureRecordFramer = LANSecureRecordStreamFramer()
     private var inputBuffer = Data()
     private var expectedAuthToken: Data?
     private var pendingHandshakeTimeouts: [ObjectIdentifier: DispatchWorkItem] = [:]
@@ -400,10 +407,12 @@ class StreamingServer: EncodedFrameSink {
     init(
         port: UInt16,
         mode: StreamingServerMode = .usb,
-        telemetry: TelemetryRecording? = nil
+        telemetry: TelemetryRecording? = nil,
+        allowPlaintextWirelessLegacyFallback: Bool = false
     ) {
         self.port = port
         self.mode = mode
+        self.allowPlaintextWirelessLegacyFallback = allowPlaintextWirelessLegacyFallback
         if let telemetry {
             self.telemetry = telemetry
         } else if let path = ProcessInfo.processInfo.environment["VIBE_SCREEN_TELEMETRY_PATH"],
@@ -432,6 +441,8 @@ class StreamingServer: EncodedFrameSink {
         }
         networkQueue.setSpecific(key: Self.networkQueueKey, value: ObjectIdentifier(self))
     }
+
+    private let allowPlaintextWirelessLegacyFallback: Bool
 
     var listeningPort: UInt16? {
         if DispatchQueue.getSpecific(key: Self.networkQueueKey) == ObjectIdentifier(self) {
@@ -584,7 +595,10 @@ class StreamingServer: EncodedFrameSink {
     private func admitConnection(
         _ conn: NWConnection,
         isWireless: Bool,
-        deviceName: String?
+        deviceName: String?,
+        lanRecordSession: LANSecureRecordSession? = nil,
+        lanRecordProtectionState: LANRecordProtectionState? = nil,
+        initialPlaintext: Data = Data()
     ) {
         guard !isStopped else {
             conn.cancel()
@@ -613,6 +627,10 @@ class StreamingServer: EncodedFrameSink {
         clientCallbackGeneration.advance(to: generation)
         connection = conn
         activeConnectionIsWireless = isWireless
+        self.lanSecureRecordSession?.close()
+        self.lanSecureRecordSession = lanRecordSession
+        self.lanSecureRecordFramer = LANSecureRecordStreamFramer()
+        self.lanRecordProtectionState = lanRecordProtectionState ?? (isWireless ? .negotiating : .notApplicable)
         connectionReady = false
         clientSupportsFrameMetadata = false
         clientIsAvcOnly = false
@@ -622,6 +640,7 @@ class StreamingServer: EncodedFrameSink {
         protocolV1Session = nil
         protocolV1TouchAggregator.reset()
         inputBuffer.removeAll(keepingCapacity: true)
+        inputBuffer.append(initialPlaintext)
         isReceiving = false
         droppedFrames = 0
 
@@ -658,6 +677,9 @@ class StreamingServer: EncodedFrameSink {
             onWirelessClientPaired?(deviceName, generation)
         }
         startReceivingTouch(on: conn, generation: generation)
+        if !inputBuffer.isEmpty {
+            processInputBuffer(connection: conn, generation: generation)
+        }
 
         // Give new clients a short chance to opt in before the first frame.
         // Legacy clients send no capability message, so we continue shortly
@@ -679,6 +701,11 @@ class StreamingServer: EncodedFrameSink {
         connection = nil
         connectionReady = false
         isReceiving = false
+        activeConnectionIsWireless = false
+        lanSecureRecordSession?.close()
+        lanSecureRecordSession = nil
+        lanSecureRecordFramer = LANSecureRecordStreamFramer()
+        lanRecordProtectionState = .notApplicable
         heartbeatTimer?.cancel()
         heartbeatTimer = nil
         activeConnectionGeneration &+= 1
@@ -751,7 +778,7 @@ class StreamingServer: EncodedFrameSink {
             // display config so the client knows the codec before it sizes
             // and configures its decoder.
             let msg = Data([WireMessage.codecSelected, codec.wireId])
-            conn.send(content: msg, completion: .contentProcessed { [weak self] error in
+            sendSessionBytes(msg, on: conn, completion: .contentProcessed { [weak self] error in
                 if let error {
                     self?.recordTelemetry(
                         "control_send_failed",
@@ -863,19 +890,11 @@ class StreamingServer: EncodedFrameSink {
 
     private func runAuthHandshake(connection conn: NWConnection, expectedToken: Data) {
         pendingWirelessConnections[ObjectIdentifier(conn)] = conn
-        let timeout = DispatchWorkItem { [weak self, weak conn] in
-            guard let self, let conn else { return }
-            guard self.pendingHandshakeTimeouts.removeValue(
-                forKey: ObjectIdentifier(conn)
-            ) != nil else { return }
-            self.pendingWirelessConnections.removeValue(
-                forKey: ObjectIdentifier(conn)
-            )
-            debugLog("Wireless authentication timed out")
-            conn.cancel()
-        }
-        pendingHandshakeTimeouts[ObjectIdentifier(conn)] = timeout
-        networkQueue.asyncAfter(deadline: .now() + .seconds(3), execute: timeout)
+        schedulePendingWirelessTimeout(
+            for: conn,
+            seconds: Self.wirelessAuthTimeoutSeconds,
+            reason: "Wireless authentication timed out"
+        )
 
         // Read fixed prefix [magic 4][token 32][name_len 1] = 37 bytes.
         receiveExactly(
@@ -924,12 +943,18 @@ class StreamingServer: EncodedFrameSink {
                     let parsed = try HandshakeCodec.parseRequest(full)
                     if WirelessAuth.validate(parsed.token, expected: expectedToken) {
                         debugLog("Wireless auth accepted")
-                        self.sendAuthResponse(conn, status: .ok, thenClose: false)
-                        self.admitConnection(
-                            conn,
-                            isWireless: true,
-                            deviceName: parsed.deviceName
-                        )
+                        self.sendAuthResponse(conn, status: .ok, thenClose: false) {
+                            self.schedulePendingWirelessTimeout(
+                                for: conn,
+                                seconds: Self.wirelessSecureRecordTimeoutSeconds,
+                                reason: "Trusted LAN secure-record negotiation timed out"
+                            )
+                            self.negotiateWirelessRecordProtection(
+                                connection: conn,
+                                token: parsed.token,
+                                deviceName: parsed.deviceName
+                            )
+                        }
                     } else {
                         debugLog("Wireless auth rejected: token mismatch")
                         self.sendAuthResponse(conn, status: .invalidToken, thenClose: true)
@@ -943,6 +968,29 @@ class StreamingServer: EncodedFrameSink {
                 }
             }
         }
+    }
+
+    private func schedulePendingWirelessTimeout(
+        for conn: NWConnection,
+        seconds: Int,
+        reason: String
+    ) {
+        pendingHandshakeTimeouts.removeValue(
+            forKey: ObjectIdentifier(conn)
+        )?.cancel()
+        let timeout = DispatchWorkItem { [weak self, weak conn] in
+            guard let self, let conn else { return }
+            guard self.pendingHandshakeTimeouts.removeValue(
+                forKey: ObjectIdentifier(conn)
+            ) != nil else { return }
+            self.pendingWirelessConnections.removeValue(
+                forKey: ObjectIdentifier(conn)
+            )
+            debugLog(reason)
+            conn.cancel()
+        }
+        pendingHandshakeTimeouts[ObjectIdentifier(conn)] = timeout
+        networkQueue.asyncAfter(deadline: .now() + .seconds(seconds), execute: timeout)
     }
 
     private func receiveExactly(
@@ -992,14 +1040,234 @@ class StreamingServer: EncodedFrameSink {
         pendingWirelessConnections.removeValue(forKey: ObjectIdentifier(conn))
     }
 
-    private func sendAuthResponse(_ conn: NWConnection, status: HandshakeStatus, thenClose: Bool) {
+    private func sendAuthResponse(
+        _ conn: NWConnection,
+        status: HandshakeStatus,
+        thenClose: Bool,
+        completion: (() -> Void)? = nil
+    ) {
         let bytes = HandshakeCodec.encodeResponse(status: status)
         conn.send(content: bytes, completion: .contentProcessed { _ in
             if thenClose {
                 debugLog("Auth rejected (\(status)), closing connection")
                 conn.cancel()
+            } else {
+                completion?()
             }
         })
+    }
+
+    private func sendSessionBytes(
+        _ bytes: Data,
+        channel: InternetTransportChannel = .control,
+        on conn: NWConnection,
+        completion: NWConnection.SendCompletion
+    ) {
+        do {
+            let outbound: Data
+            if activeConnectionIsWireless {
+                switch lanRecordProtectionState {
+                case .encrypted:
+                    guard let recordSession = lanSecureRecordSession else {
+                        throw LANSecureRecordError.encryptionRequired
+                    }
+                    outbound = try LANSecureRecordStreamFramer.encode(
+                        try recordSession.seal(bytes, channel: channel)
+                    )
+                case .explicitLegacyFallback:
+                    outbound = bytes
+                case .notApplicable, .negotiating:
+                    throw LANSecureRecordError.encryptionRequired
+                }
+            } else {
+                outbound = bytes
+            }
+            conn.send(content: outbound, completion: completion)
+        } catch {
+            recordTelemetry(
+                "trusted_lan_record_send_failed",
+                epoch: sessionEpochGate.current,
+                attributes: ["error": .string(String(describing: error))]
+            )
+            conn.cancel()
+        }
+    }
+
+    private func negotiateWirelessRecordProtection(
+        connection conn: NWConnection,
+        token: Data,
+        deviceName: String
+    ) {
+        if allowPlaintextWirelessLegacyFallback {
+            receiveExactly(1, from: conn) { [weak self] firstByte, error in
+                self?.finishWirelessRecordProtectionProbe(
+                    connection: conn,
+                    token: token,
+                    deviceName: deviceName,
+                    firstByte: firstByte,
+                    error: error
+                )
+            }
+            return
+        }
+        receiveExactly(
+            LANSecureRecordNegotiation.requestBytes,
+            from: conn
+        ) { [weak self] requestData, error in
+            self?.finishWirelessRecordProtectionNegotiation(
+                connection: conn,
+                token: token,
+                deviceName: deviceName,
+                requestData: requestData,
+                error: error
+            )
+        }
+    }
+
+    private func finishWirelessRecordProtectionProbe(
+        connection conn: NWConnection,
+        token: Data,
+        deviceName: String,
+        firstByte: Data?,
+        error: Error?
+    ) {
+        guard pendingWirelessConnections[ObjectIdentifier(conn)] === conn else { return }
+        if let error {
+            debugLog("Trusted LAN protection probe failed: \(error)")
+            conn.cancel()
+            return
+        }
+        guard let firstByte, firstByte.count == 1, let byte = firstByte.first else {
+            recordTrustedLANProtectionFailure(LANSecureRecordError.invalidHandshake)
+            conn.cancel()
+            return
+        }
+        if byte == LANSecureRecordNegotiation.requestMagic.first {
+            receiveExactly(
+                LANSecureRecordNegotiation.requestBytes,
+                from: conn,
+                accumulated: firstByte
+            ) { [weak self] requestData, error in
+                self?.finishWirelessRecordProtectionNegotiation(
+                    connection: conn,
+                    token: token,
+                    deviceName: deviceName,
+                    requestData: requestData,
+                    error: error
+                )
+            }
+        } else {
+            admitPlaintextWirelessLegacyFallback(
+                connection: conn,
+                deviceName: deviceName,
+                initialPlaintext: firstByte
+            )
+        }
+    }
+
+    private func admitPlaintextWirelessLegacyFallback(
+        connection conn: NWConnection,
+        deviceName: String,
+        initialPlaintext: Data
+    ) {
+        recordTelemetry(
+            "trusted_lan_record_protection",
+            epoch: sessionEpochGate.current,
+            attributes: [
+                "encrypted": .boolean(false),
+                "legacy_fallback": .boolean(true)
+            ]
+        )
+        debugLog("Trusted LAN continuing with explicit plaintext legacy fallback")
+        admitConnection(
+            conn,
+            isWireless: true,
+            deviceName: deviceName,
+            lanRecordProtectionState: .explicitLegacyFallback,
+            initialPlaintext: initialPlaintext
+        )
+    }
+
+    private func finishWirelessRecordProtectionNegotiation(
+        connection conn: NWConnection,
+        token: Data,
+        deviceName: String,
+        requestData: Data?,
+        error: Error?
+    ) {
+        guard pendingWirelessConnections[ObjectIdentifier(conn)] === conn else { return }
+        if let error {
+            debugLog("Trusted LAN secure-record negotiation read failed: \(error)")
+            recordTrustedLANProtectionFailure(error)
+            conn.cancel()
+            return
+        }
+        guard let requestData else {
+            recordTrustedLANProtectionFailure(LANSecureRecordError.invalidHandshake)
+            conn.cancel()
+            return
+        }
+        do {
+            let request = try LANSecureRecordNegotiation.decodeRequest(requestData)
+            let hostPrivateKey = P256.KeyAgreement.PrivateKey()
+            let hostPublicKey = hostPrivateKey.publicKey.x963Representation
+            let sessionIdentifier = LANSecureRecordSession.sessionIdentifier(
+                hostPublicKey: hostPublicKey,
+                devicePublicKey: request.publicKey
+            )
+            let context = LANSecureRecordSession.transcriptContext(
+                sessionIdentifier: sessionIdentifier,
+                hostPublicKey: hostPublicKey,
+                devicePublicKey: request.publicKey
+            )
+            let sharedSecret = try hostPrivateKey.sharedSecretData(with: request.publicKey)
+            let recordSession = try LANSecureRecordSession(
+                role: .host,
+                sessionIdentifier: sessionIdentifier,
+                sessionEpoch: LANSecureRecordSession.recordSessionEpoch,
+                sharedSecret: sharedSecret,
+                bootstrapToken: token,
+                context: context
+            )
+            let response = try LANSecureRecordNegotiation.encodeResponse(
+                publicKey: hostPublicKey,
+                encrypted: true,
+                explicitLegacyFallback: false
+            )
+            conn.send(content: response, completion: .contentProcessed { [weak self, weak conn] error in
+                guard let self, let conn else { return }
+                if let error {
+                    debugLog("Trusted LAN secure-record negotiation response failed: \(error)")
+                    conn.cancel()
+                    return
+                }
+                self.recordTelemetry(
+                    "trusted_lan_record_protection",
+                    epoch: self.sessionEpochGate.current,
+                    attributes: ["encrypted": .boolean(true)]
+                )
+                debugLog("Trusted LAN secure records negotiated")
+                self.admitConnection(
+                    conn,
+                    isWireless: true,
+                    deviceName: deviceName,
+                    lanRecordSession: recordSession,
+                    lanRecordProtectionState: .encrypted
+                )
+            })
+        } catch {
+            debugLog("Trusted LAN secure records required; rejecting malformed peer: \(error)")
+            recordTrustedLANProtectionFailure(error)
+            conn.cancel()
+        }
+    }
+
+    private func recordTrustedLANProtectionFailure(_ error: Error) {
+        recordTelemetry(
+            "trusted_lan_record_protection_failed",
+            epoch: sessionEpochGate.current,
+            attributes: ["error": .string(String(describing: error))]
+        )
     }
 
     func setDisplaySize(width: Int, height: Int, rotation: Int = 0) {
@@ -1237,7 +1505,7 @@ class StreamingServer: EncodedFrameSink {
         data.append(contentsOf: withUnsafeBytes(of: Int32(displayHeight).bigEndian) { Data($0) })
         data.append(contentsOf: withUnsafeBytes(of: Int32(rotation).bigEndian) { Data($0) })
 
-        connection.send(content: data, completion: .contentProcessed { _ in })
+        sendSessionBytes(data, on: connection, completion: .contentProcessed { _ in })
         debugLog("Sent display config: \(displayWidth)x\(displayHeight) @ \(rotation)°")
     }
 
@@ -1256,7 +1524,7 @@ class StreamingServer: EncodedFrameSink {
               isReceiving,
               !isStopped else { return }
 
-        conn.receive(minimumIncompleteLength: 1, maximumLength: 256) { [weak self] data, _, isComplete, error in
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [weak self] data, _, isComplete, error in
             guard let self,
                   self.connection === conn,
                   self.activeConnectionGeneration == generation,
@@ -1271,16 +1539,46 @@ class StreamingServer: EncodedFrameSink {
             }
 
             if let data = data, !data.isEmpty {
-                self.inputBuffer.append(data)
-                self.processInputBuffer(
-                    connection: conn,
-                    generation: generation
-                )
+                do {
+                    let plaintextChunks = try self.decodeInboundSessionBytes(data)
+                    for plaintext in plaintextChunks where !plaintext.isEmpty {
+                        self.inputBuffer.append(plaintext)
+                        self.processInputBuffer(
+                            connection: conn,
+                            generation: generation
+                        )
+                    }
+                } catch {
+                    self.recordTelemetry(
+                        "trusted_lan_record_open_failed",
+                        epoch: self.sessionEpochGate.current,
+                        attributes: ["error": .string(String(describing: error))]
+                    )
+                    conn.cancel()
+                    return
+                }
             }
 
             self.receiveQueue.async {
                 self.touchReceiveLoop(on: conn, generation: generation)
             }
+        }
+    }
+
+    private func decodeInboundSessionBytes(_ bytes: Data) throws -> [Data] {
+        guard activeConnectionIsWireless else { return [bytes] }
+        switch lanRecordProtectionState {
+        case .encrypted:
+            guard let recordSession = lanSecureRecordSession else {
+                throw LANSecureRecordError.encryptionRequired
+            }
+            return try lanSecureRecordFramer.append(bytes) { record in
+                try recordSession.openDeclaredChannel(record)
+            }
+        case .explicitLegacyFallback:
+            return [bytes]
+        case .notApplicable, .negotiating:
+            throw LANSecureRecordError.encryptionRequired
         }
     }
 
@@ -1345,7 +1643,7 @@ class StreamingServer: EncodedFrameSink {
                     epoch: epoch,
                     attributes: ["accepted": .boolean(accepted)]
                 )
-                connection.send(content: pong, completion: .contentProcessed { [weak self] error in
+                sendSessionBytes(pong, on: connection, completion: .contentProcessed { [weak self] error in
                     if let error {
                         self?.recordTelemetry(
                             "control_send_failed",
@@ -1403,7 +1701,7 @@ class StreamingServer: EncodedFrameSink {
                 // send the 66-byte payload. Older hosts never reach this case.
                 consumeInputBytes(1)
                 let accept = Data([WireMessage.deviceInfoCapability])
-                connection.send(content: accept, completion: .contentProcessed { _ in })
+                sendSessionBytes(accept, on: connection, completion: .contentProcessed { _ in })
                 debugLog("Accepted device-info capability; waiting for type 11 payload")
 
             case WireMessage.protocolV1Offer:
@@ -1440,6 +1738,14 @@ class StreamingServer: EncodedFrameSink {
         connectionProtocolMode = .protocolV1
         protocolV1Framer = ProtocolV1Framer()
         let sessionID: Data = withUnsafeBytes(of: UUID().uuid) { Data($0) }
+        var hostCapabilities = ProtocolV1SessionConfiguration.productionHostCapabilities(
+            touchEnabled: touchEnabled,
+            controllerAvailable: controllerAvailable
+        )
+        if activeConnectionIsWireless && lanRecordProtectionState == .encrypted {
+            hostCapabilities.insert(.endToEndEncryption)
+            hostCapabilities.insert(.replayProtection)
+        }
         protocolV1Session = ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
             sessionID: sessionID,
             sessionEpoch: sessionEpochGate.current,
@@ -1448,10 +1754,7 @@ class StreamingServer: EncodedFrameSink {
             rotation: rotation,
             framesPerSecond: protocolV1FramesPerSecond,
             bitrateKbps: protocolV1BitrateKbps,
-            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
-                touchEnabled: touchEnabled,
-                controllerAvailable: controllerAvailable
-            ),
+            hostCapabilities: hostCapabilities,
             requiredClientCapabilities: touchEnabled ? [.touch] : [],
             supportedCodecs: [.hevc, .h264],
             hostID: "macos-host",
@@ -1461,7 +1764,7 @@ class StreamingServer: EncodedFrameSink {
             displayIsVirtual: protocolV1DisplayIsVirtual,
             displays: protocolV1Displays
         ))
-        conn.send(content: ProtocolV1Upgrade.acknowledgement, completion: .contentProcessed { [weak self] error in
+        sendSessionBytes(ProtocolV1Upgrade.acknowledgement, on: conn, completion: .contentProcessed { [weak self] error in
             if let error {
                 self?.recordTelemetry(
                     "control_send_failed",
@@ -1545,7 +1848,7 @@ class StreamingServer: EncodedFrameSink {
             do {
                 let bytes = try ProtocolV1TransportFrame(channel: .control, payload: payload).encoded()
                 let closesAfterSend = shouldClose && index == controlPayloads.count - 1
-                conn.send(content: bytes, completion: .contentProcessed { error in
+                sendSessionBytes(bytes, on: conn, completion: .contentProcessed { error in
                     if closesAfterSend || error != nil { conn.cancel() }
                 })
             } catch {
@@ -1927,7 +2230,8 @@ class StreamingServer: EncodedFrameSink {
             connection: submission.connection,
             generation: framePipelineGeneration,
             clientGeneration: submission.clientGeneration,
-            sessionEpoch: submission.sessionEpoch
+            sessionEpoch: submission.sessionEpoch,
+            packetChannel: connectionProtocolMode == .protocolV1 ? .media : .control
         )
         let result = pendingFrames.enqueue(frame)
         observeQueueResult(
@@ -2020,7 +2324,7 @@ class StreamingServer: EncodedFrameSink {
             return
         }
 
-        frame.connection.send(content: packet, completion: .contentProcessed { [weak self] error in
+        sendSessionBytes(packet, channel: frame.packetChannel, on: frame.connection, completion: .contentProcessed { [weak self] error in
             guard let self else { return }
             self.frameQueue.async {
                 guard frame.generation == self.framePipelineGeneration,
@@ -2144,8 +2448,7 @@ class StreamingServer: EncodedFrameSink {
                         Int64(pendingFrames.capacity + 1)
                     )
                 ]
-                if let encoderStatsProvider {
-                    let stats = encoderStatsProvider()
+                if let encoderStatsProvider, let stats = encoderStatsProvider() {
                     attributes["encoder_in_flight"] = .integer(Int64(stats.inFlight))
                     attributes["encoder_in_flight_capacity"] = .integer(Int64(stats.capacity))
                 }
@@ -2258,7 +2561,7 @@ class StreamingServer: EncodedFrameSink {
             finishStopOnNetworkQueue(token: token, connection: conn, generation: generation, completion: completion)
             return
         }
-        conn.send(content: shutdownMsg, completion: .contentProcessed { [weak self, weak conn] _ in
+        sendSessionBytes(shutdownMsg, on: conn, completion: .contentProcessed { [weak self, weak conn] _ in
             guard let self else { return }
             self.networkQueue.asyncAfter(deadline: .now() + .milliseconds(50)) {
                 self.finishStopOnNetworkQueue(
@@ -2289,6 +2592,11 @@ class StreamingServer: EncodedFrameSink {
         guard stopInProgress == token else { return }
         stopInProgress = nil
         connectionProtocolMode = .legacy
+        activeConnectionIsWireless = false
+        lanSecureRecordSession?.close()
+        lanSecureRecordSession = nil
+        lanSecureRecordFramer = LANSecureRecordStreamFramer()
+        lanRecordProtectionState = .notApplicable
         protocolV1Framer = ProtocolV1Framer()
         protocolV1Session = nil
         protocolV1TouchAggregator.reset()

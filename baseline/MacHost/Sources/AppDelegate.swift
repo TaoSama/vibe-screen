@@ -1827,8 +1827,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let newCapture = try await ScreenCapture()
             try requireCurrentStart(startToken, intentIsCurrent: intentIsCurrent)
             screenCapture = newCapture
-            let configuredCapture = screenCapture
-            configuredCapture?.onCaptureMethodChanged = {
+            let configuredCapture = newCapture
+            configuredCapture.onCaptureMethodChanged = {
                 [weak self, weak configuredCapture] method in
                 Task { @MainActor in
                     guard let self, let configuredCapture,
@@ -1838,7 +1838,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.settings.captureMethod = method
                 }
             }
-            configuredCapture?.onDisplayIDChanged = {
+            configuredCapture.onDisplayIDChanged = {
                 [weak self, weak configuredCapture] displayID in
                 Task { @MainActor in
                     guard let self, let configuredCapture,
@@ -1847,7 +1847,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.activeDisplayID = displayID
                 }
             }
-            configuredCapture?.onTerminalCaptureFailure = {
+            configuredCapture.onTerminalCaptureFailure = {
                 [weak self, weak configuredCapture] error in
                 Task { @MainActor in
                     guard let self, let configuredCapture,
@@ -2263,14 +2263,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
-            streamingServer?.encoderStatsProvider = { [weak self] in
-                guard let self, let capture = self.screenCapture else {
-                    return (inFlight: 0, capacity: 0)
+            streamingServer?.encoderStatsProvider = { [weak configuredCapture] in
+                configuredCapture?.encoderStats.map { stats in
+                    (inFlight: stats.inFlight, capacity: stats.capacity)
                 }
-                return (
-                    inFlight: capture.encoderInFlightCount,
-                    capacity: capture.encoderInFlightCapacity
-                )
             }
 
             streamingServer?.onServerFailed = {
@@ -4155,7 +4151,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             buttonMask: buttonMask, displayBounds: bounds
         )
         if injected {
-            debugLog("Pointer injected: phase=\(phase) buttons=\(buttonMask)")
+            debugLog("Pointer injected: phase=\(phase) buttons=\(buttonMask) x=\(x) y=\(y)")
         }
         return injected
     }

@@ -1,0 +1,63 @@
+{
+  "result": "blocked",
+  "schema": "dev.vibescreen.short-usb-e2e/v1",
+  "recorded_at": {
+    "local_date": "2026-08-19",
+    "timezone": "Asia/Shanghai",
+    "utc_offset": "+08:00"
+  },
+  "device": {
+    "serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_version": "16"
+  },
+  "android_apk": {
+    "package": "dev.telemachus.display",
+    "version_code": 100000,
+    "version_name": "0.0.0",
+    "last_update_local": "2026-08-19 00:07:12"
+  },
+  "usb": {
+    "adb_reverse_54321_present": true,
+    "adb_reverse_entry": "UsbFfs tcp:54321 tcp:54321"
+  },
+  "host": {
+    "binary_path": "/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen",
+    "binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
+    "defaults_original_target": "bac5b092",
+    "defaults_temporary_target_during_test": "P0110",
+    "defaults_restored_after_test": true,
+    "screen_recording_cgpreflight_tcc": "blocked",
+    "screen_recording_failure_interval_seconds": 2,
+    "auto_start_policy_opened_54321_listener": false
+  },
+  "constraints_observed": {
+    "tcc_reset_performed": false,
+    "accessibility_verified": false,
+    "input_verified": false,
+    "historical_stream_used_as_substitute": false,
+    "recorded_as_fuxi": false
+  },
+  "stages": {
+    "adb_device_identity": "observed",
+    "adb_reverse_54321": "observed",
+    "host_screen_recording_permission": "blocked",
+    "host_54321_listener": "blocked",
+    "short_usb_e2e": "blocked",
+    "protocol_v1_session": "not_run",
+    "stream_established": "not_run",
+    "accessibility_input": "not_run",
+    "latency": "not_run",
+    "memory_or_soak": "not_run"
+  },
+  "claims": {
+    "current_tree_pass": false,
+    "real_stream": false,
+    "protocol_v1_interoperability": false,
+    "accessibility_or_input": false,
+    "native_hid_mouse": false,
+    "device_is_fuxi": false
+  }
+}

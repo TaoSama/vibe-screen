@@ -116,6 +116,10 @@ class StreamClient(
     private val pendingOutboundFailure = AtomicReference<SessionFailure?>(null)
     private val pendingDecoderFailure = AtomicReference<SessionFailure?>(null)
     private val pendingVideoConfigurationCommit = AtomicReference<PendingVideoConfigurationCommit?>(null)
+    @Volatile private var lanRecordProtectionState = LanRecordProtectionState.NOT_APPLICABLE
+    @Volatile private var lanSecureRecordSession: LanSecureRecordSession? = null
+    // Android currently sends only client-to-host control messages on the trusted-LAN record layer.
+    @Volatile private var nextOutboundChannel = dev.telemachus.display.internet.SessionChannel.CONTROL
     @Volatile private var lastV1PingSequence = 0L
     @Volatile private var lastV1PingSentNs = 0L
     private val controllerConnectionAcks = ControllerConnectionAckTracker()
@@ -219,15 +223,22 @@ class StreamClient(
             },
             coalesce = { kind, pending, replacement ->
                 if (kind == OutboundCommandScheduler.Kind.KEYFRAME &&
-                    pending is OutboundCommand.Keyframe &&
-                    replacement is OutboundCommand.Keyframe
+                    pending is StreamOutboundCommand.Keyframe &&
+                    replacement is StreamOutboundCommand.Keyframe
                 ) {
-                    OutboundCommand.Keyframe(pending.flags or replacement.flags)
+                    StreamOutboundCommand.Keyframe(pending.flags or replacement.flags)
                 } else {
                     replacement
                 }
             },
             threadName = "VibeOutboundWriter",
+        )
+    private val inputDispatcher =
+        StreamInputDispatcher(
+            state = ::currentInputSessionState,
+            nextInputId = nextInputId,
+            submitOutbound = ::submitOutbound,
+            controllerConnectionAcks = controllerConnectionAcks,
         )
     private val terminationDispatcher =
         OnceAsyncDispatcher(
@@ -321,6 +332,7 @@ class StreamClient(
     suspend fun connectWireless(
         token: ByteArray,
         deviceName: String,
+        allowPlaintextLegacyFallback: Boolean = false,
     ) = withContext(Dispatchers.IO) {
         if (terminationDispatcher.isClaimed()) return@withContext
         sessionReady = false
@@ -452,12 +464,43 @@ class StreamClient(
                 val startupSucceeded =
                     try {
                         s.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
-                        candidate.connection.installStreams(rawInput, rawOutput)
+                        connectionEpoch = SESSION_EPOCHS.beginSession()
+                        val protection =
+                            if (allowPlaintextLegacyFallback) {
+                                LanSecureRecordClientNegotiation(
+                                    LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK,
+                                    null,
+                                )
+                            } else {
+                                negotiateLanSecureRecordsAsClient(
+                                    input = rawInput,
+                                    output = rawOutput,
+                                    token = token,
+                                )
+                            }
+                        lanSecureRecordSession?.close()
+                        lanSecureRecordSession = protection.session
+                        lanRecordProtectionState = protection.state
+                        val protectedInput =
+                            if (protection.state == LanRecordProtectionState.ENCRYPTED) {
+                                LanSecureRecordInputStream(rawInput, checkNotNull(protection.session))
+                            } else {
+                                rawInput
+                            }
+                        val protectedOutput =
+                            if (protection.state == LanRecordProtectionState.ENCRYPTED) {
+                                LanSecureRecordOutputStream(
+                                    rawOutput,
+                                    checkNotNull(protection.session),
+                                ) { nextOutboundChannel }
+                            } else {
+                                rawOutput
+                            }
+                        candidate.connection.installStreams(protectedInput, protectedOutput)
                         if (!promoteTransportCandidate(candidate) { !terminationDispatcher.isClaimed() }) {
                             outboundScheduler.shutdownNow()
                             return@withContext
                         }
-                        connectionEpoch = SESSION_EPOCHS.beginSession()
                         isConnected = true
                         if (terminationDispatcher.isClaimed()) {
                             isConnected = false
@@ -469,7 +512,12 @@ class StreamClient(
                         codecNegotiated = false
                         val upgradeDecision = negotiateProtocol(TransportKind.TRANSPORT_KIND_LAN)
                         if (upgradeDecision == UpgradeFallbackDecision.OpenFreshLegacyConnection) {
-                            reopenWirelessAsLegacy(token, deviceName, connectionEpoch)
+                            reopenWirelessAsLegacy(
+                                token,
+                                deviceName,
+                                connectionEpoch,
+                                allowPlaintextLegacyFallback,
+                            )
                         }
                         true
                     } catch (error: IOException) {
@@ -486,9 +534,23 @@ class StreamClient(
                 heartbeat.reset(System.nanoTime())
                 emitTelemetry(
                     "connection_opened",
-                    mapOf("host" to host, "port" to port, "session_epoch" to connectionEpoch),
+                    mapOf(
+                        "host" to host,
+                        "port" to port,
+                        "session_epoch" to connectionEpoch,
+                        "trusted_lan_encrypted" to (lanRecordProtectionState == LanRecordProtectionState.ENCRYPTED),
+                        "trusted_lan_legacy_plaintext" to
+                            (lanRecordProtectionState == LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK),
+                    ),
                 )
-                diagLog("Wireless connected to $host:$port")
+                diagLog(
+                    "Wireless connected to $host:$port " +
+                        if (lanRecordProtectionState == LanRecordProtectionState.ENCRYPTED) {
+                            "(trusted LAN encrypted records)"
+                        } else {
+                            "(explicit trusted LAN legacy plaintext)"
+                        },
+                )
                 receiveData()
             }
 
@@ -555,7 +617,7 @@ class StreamClient(
                 controllerConnectionAcks.reset()
                 submitOutbound(
                     kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-                    command = OutboundCommand.ProtocolBatch { listOf(it.clientHello()) },
+                    command = StreamOutboundCommand.ProtocolBatch { listOf(it.clientHello()) },
                 )
                 diagLog("Protocol v1 upgrade accepted")
             }
@@ -601,6 +663,7 @@ class StreamClient(
         installFreshLegacyTransport(attemptGeneration) { fresh ->
             fresh.tcpNoDelay = true
             fresh.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+            fresh.getInputStream() to fresh.getOutputStream()
         }
     }
 
@@ -608,24 +671,25 @@ class StreamClient(
         token: ByteArray,
         deviceName: String,
         attemptGeneration: Long,
+        allowPlaintextLegacyFallback: Boolean = false,
     ) {
         closeTransport()
         installFreshLegacyTransport(attemptGeneration) { fresh ->
             configureWirelessSocket(fresh)
-            authenticateWirelessSocket(fresh, token, deviceName)
+            authenticateWirelessSocket(fresh, token, deviceName, allowPlaintextLegacyFallback)
         }
     }
 
     private fun installFreshLegacyTransport(
         attemptGeneration: Long,
-        prepare: (Socket) -> Unit,
+        prepare: (Socket) -> Pair<java.io.InputStream, java.io.OutputStream>,
     ) {
         val candidate = registerTransportCandidate(attemptGeneration, ::ownsAttempt)
         var promoted = false
         try {
-            prepare(candidate.connection.socket)
+            val streams = prepare(candidate.connection.socket)
             candidate.connection.socket.soTimeout = HEARTBEAT_POLL_INTERVAL_MS
-            candidate.connection.installStreams()
+            candidate.connection.installStreams(streams.first, streams.second)
             promoted = promoteTransportCandidate(candidate, ::ownsAttempt)
             check(promoted) { "Fallback connection attempt was superseded" }
             configureLegacyMode()
@@ -705,15 +769,17 @@ class StreamClient(
         fresh: Socket,
         token: ByteArray,
         deviceName: String,
-    ) {
+        allowPlaintextLegacyFallback: Boolean = false,
+    ): Pair<java.io.InputStream, java.io.OutputStream> {
         fresh.soTimeout = HANDSHAKE_TIMEOUT_MS
         val output = fresh.getOutputStream()
+        val rawInput = fresh.getInputStream()
         output.write(AuthHandshake.encodeRequest(token, deviceName))
         output.flush()
         val response = ByteArray(AUTH_RESPONSE_BYTES)
         var offset = 0
         while (offset < response.size) {
-            val count = fresh.getInputStream().read(response, offset, response.size - offset)
+            val count = rawInput.read(response, offset, response.size - offset)
             if (count < 0) throw IOException("Wireless authentication ended early")
             if (count == 0) continue
             offset += count
@@ -723,6 +789,35 @@ class StreamClient(
             AuthHandshake.ResponseStatus.INVALID_TOKEN -> throw WirelessConnectError.TokenRejected
             else -> throw WirelessConnectError.ProtocolError
         }
+        val protection =
+            if (allowPlaintextLegacyFallback) {
+                LanSecureRecordClientNegotiation(
+                    LanRecordProtectionState.EXPLICIT_LEGACY_FALLBACK,
+                    null,
+                )
+            } else {
+                negotiateLanSecureRecordsAsClient(
+                    input = rawInput,
+                    output = output,
+                    token = token,
+                )
+            }
+        lanSecureRecordSession?.close()
+        lanSecureRecordSession = protection.session
+        lanRecordProtectionState = protection.state
+        val protectedInput =
+            if (protection.state == LanRecordProtectionState.ENCRYPTED) {
+                LanSecureRecordInputStream(rawInput, checkNotNull(protection.session))
+            } else {
+                rawInput
+            }
+        val protectedOutput =
+            if (protection.state == LanRecordProtectionState.ENCRYPTED) {
+                LanSecureRecordOutputStream(output, checkNotNull(protection.session)) { nextOutboundChannel }
+            } else {
+                output
+            }
+        return protectedInput to protectedOutput
     }
 
     /**
@@ -752,7 +847,7 @@ class StreamClient(
         payload[65] = (refreshRate.coerceIn(0, 255) and 0xFF).toByte()
         submitOutbound(
             kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-            command = OutboundCommand.LegacyControl(payload),
+            command = StreamOutboundCommand.LegacyControl(payload),
         )
         diagLog("Queued device info: model=$model, maxRefreshRate=$refreshRate")
     }
@@ -794,7 +889,7 @@ class StreamClient(
     private fun enqueueLegacyControlByte(messageType: Int) {
         submitOutbound(
             kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-            command = OutboundCommand.LegacyControl(byteArrayOf(messageType.toByte())),
+            command = StreamOutboundCommand.LegacyControl(byteArrayOf(messageType.toByte())),
         )
     }
 
@@ -995,7 +1090,7 @@ class StreamClient(
                 val completion = CompletableFuture<Unit>()
                 val submission = submitOutbound(
                     kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-                    command = OutboundCommand.ProtocolReceive(envelope, completion),
+                    command = StreamOutboundCommand.ProtocolReceive(envelope, completion),
                     timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
                 )
                 if (submission == OutboundCommandScheduler.Submission.TIMED_OUT ||
@@ -1056,6 +1151,21 @@ class StreamClient(
         }
     }
 
+    private fun currentInputSessionState(): StreamInputSessionState {
+        val isProtocolV1 = wireMode == WireMode.V1
+        val session = if (isProtocolV1) protocolSession else null
+        return StreamInputSessionState(
+            connected = isConnected,
+            protocolV1 = isProtocolV1,
+            canSendTouch = session?.canSendTouch == true,
+            canSendPointer = session?.canSendPointer == true,
+            canSendKeyboard = session?.canSendKeyboard == true,
+            canSendStylus = session?.canSendStylus == true,
+            canSendExtendedStylus = session?.canSendExtendedStylus == true,
+            canSendController = session?.canSendController == true,
+        )
+    }
+
     fun sendTouch(
         x: Float,
         y: Float,
@@ -1063,145 +1173,23 @@ class StreamClient(
         pointerCount: Int = 1,
         x2: Float = 0f,
         y2: Float = 0f,
-    ) {
-        val phase =
-            when (action) {
-                0 -> InputPhase.INPUT_PHASE_BEGAN
-                1 -> InputPhase.INPUT_PHASE_CHANGED
-                2 -> InputPhase.INPUT_PHASE_ENDED
-                else -> InputPhase.INPUT_PHASE_CANCELLED
-            }
-        val legacyPointers =
-            buildList {
-                add(MotionPointer(0, x.toDouble(), y.toDouble()))
-                if (pointerCount.coerceIn(1, 2) == 2) add(MotionPointer(1, x2.toDouble(), y2.toDouble()))
-            }
-        sendMotionTouch(
-            v1Samples = legacyPointers.map { TouchSample(it.pointerId, phase, it.x, it.y) },
-            legacyAction = action,
-            legacyPointers = legacyPointers,
-        )
-    }
+    ) = inputDispatcher.sendTouch(x, y, action, pointerCount, x2, y2)
 
     internal fun sendMotionTouch(
         v1Samples: List<TouchSample>,
         legacyAction: Int,
         legacyPointers: List<MotionPointer>,
-    ) {
-        if (!isConnected) return
-        if (wireMode == WireMode.V1) {
-            val session = protocolSession ?: return
-            if (!session.canSendTouch) return
-            val samples = v1Samples.toList()
-            if (samples.isEmpty()) return
-            submitOutbound(
-                kind =
-                    if (samples.all { it.phase == InputPhase.INPUT_PHASE_CHANGED }) {
-                        OutboundCommandScheduler.Kind.MOVE
-                    } else {
-                        OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
-                    },
-                command = OutboundCommand.ProtocolBatch { activeSession ->
-                    samples.map { sample ->
-                        activeSession.touch(
-                            inputId = nextInputId.getAndIncrement(),
-                            pointerId = sample.pointerId,
-                            phase = sample.phase,
-                            x = sample.x,
-                            y = sample.y,
-                        )
-                    }
-                },
-            )
-            return
-        }
-
-        val points = legacyPointers.take(MAX_FORWARDED_POINTERS)
-        if (points.isEmpty()) return
-        val first = points.first()
-        val second = points.getOrNull(1)
-        val command =
-            OutboundCommand.Touch(
-                first.x.toFloat(),
-                first.y.toFloat(),
-                legacyAction,
-                points.size,
-                second?.x?.toFloat() ?: 0f,
-                second?.y?.toFloat() ?: 0f,
-            )
-        submitOutbound(
-            kind =
-                if (legacyAction == TOUCH_ACTION_MOVE) {
-                    OutboundCommandScheduler.Kind.MOVE
-                } else {
-                    OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
-                },
-            command = command,
-            timeoutMillis = 0,
-        )
-    }
+    ) = inputDispatcher.sendMotionTouch(v1Samples, legacyAction, legacyPointers)
 
     internal fun canSendStylus(): Boolean =
-        isConnected && wireMode == WireMode.V1 && protocolSession?.canSendStylus == true
+        inputDispatcher.canSendStylus()
 
     internal fun canSendExtendedStylus(): Boolean =
-        isConnected && wireMode == WireMode.V1 && protocolSession?.canSendExtendedStylus == true
+        inputDispatcher.canSendExtendedStylus()
 
     internal fun sendMotionStylus(samples: List<StylusSample>): Boolean {
-        if (!isConnected || wireMode != WireMode.V1) return false
-        val session = protocolSession ?: return false
-        if (!session.canSendStylus) return false
-        val copied = samples.toList()
-        if (copied.isEmpty()) return false
-        submitOutbound(
-            kind =
-                if (copied.all { it.delivery == StylusDelivery.MOTION }) {
-                    OutboundCommandScheduler.Kind.MOVE
-                } else {
-                    OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
-                },
-            command = OutboundCommand.ProtocolBatch { activeSession ->
-                copied.map { sample ->
-                    activeSession.stylus(
-                        inputId = nextInputId.getAndIncrement(),
-                        pointerId = sample.pointerId,
-                        phase = sample.phase,
-                        x = sample.x,
-                        y = sample.y,
-                        pressure = sample.pressure,
-                        tiltXDegrees = sample.tiltXDegrees,
-                        tiltYDegrees = sample.tiltYDegrees,
-                        toolKind =
-                            if (activeSession.canSendExtendedStylus) {
-                                sample.toolKind.toProtocol()
-                            } else {
-                                null
-                            },
-                        buttonMask = if (activeSession.canSendExtendedStylus) sample.buttonMask else 0,
-                        contactState =
-                            if (activeSession.canSendExtendedStylus) {
-                                sample.contactState.toProtocol()
-                            } else {
-                                null
-                            },
-                    )
-                }
-            },
-        )
-        return true
+        return inputDispatcher.sendMotionStylus(samples)
     }
-
-    private fun StylusToolKind.toProtocol(): dev.vibescreen.protocol.v1.StylusToolKind =
-        when (this) {
-            StylusToolKind.PEN -> dev.vibescreen.protocol.v1.StylusToolKind.STYLUS_TOOL_KIND_PEN
-            StylusToolKind.ERASER -> dev.vibescreen.protocol.v1.StylusToolKind.STYLUS_TOOL_KIND_ERASER
-        }
-
-    private fun StylusContactState.toProtocol(): dev.vibescreen.protocol.v1.StylusContactState =
-        when (this) {
-            StylusContactState.CONTACT -> dev.vibescreen.protocol.v1.StylusContactState.STYLUS_CONTACT_STATE_CONTACT
-            StylusContactState.PROXIMITY -> dev.vibescreen.protocol.v1.StylusContactState.STYLUS_CONTACT_STATE_PROXIMITY
-        }
 
     /**
      * Forward a native pointer sample (move/drag/button) to the host. buttonMask
@@ -1213,61 +1201,13 @@ class StreamClient(
         x: Float,
         y: Float,
         buttonMask: Int,
-    ): Boolean {
-        if (!isConnected || wireMode != WireMode.V1) return false
-        val session = protocolSession ?: return false
-        if (!session.canSendPointer) return false
-        val submission = submitOutbound(
-            kind =
-                if (phase == InputPhase.INPUT_PHASE_CHANGED) {
-                    OutboundCommandScheduler.Kind.MOVE
-                } else {
-                    OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH
-                },
-            command =
-                OutboundCommand.ProtocolBatch { activeSession ->
-                    listOf(
-                        activeSession.pointer(
-                            inputId = nextInputId.getAndIncrement(),
-                            phase = phase,
-                            x = x.toDouble(),
-                            y = y.toDouble(),
-                            buttonMask = buttonMask,
-                        ),
-                    )
-                },
-        )
-        return submission.wasAdmitted()
-    }
+    ): Boolean = inputDispatcher.sendPointer(phase, x, y, buttonMask)
 
     /** Forward a scroll delta to the host. No-op unless pointer input negotiated. */
     fun sendScroll(
         deltaX: Double,
         deltaY: Double,
-    ): Boolean {
-        if (!isConnected || wireMode != WireMode.V1) return false
-        val session = protocolSession ?: return false
-        if (!session.canSendPointer) return false
-        submitOutbound(
-            // Scroll deltas are incremental: coalescing (Kind.MOVE) would drop
-            // prior wheel deltas when the queue is busy, losing scroll distance.
-            // Send each delta as a non-coalesced structural command so every
-            // wheel sample reaches the host in order; queue saturation fails
-            // closed via TIMED_OUT rather than silently discarding motion.
-            kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-            command =
-                OutboundCommand.ProtocolBatch { activeSession ->
-                    listOf(
-                        activeSession.scroll(
-                            inputId = nextInputId.getAndIncrement(),
-                            deltaX = deltaX,
-                            deltaY = deltaY,
-                        ),
-                    )
-                },
-        )
-        return true
-    }
+    ): Boolean = inputDispatcher.sendScroll(deltaX, deltaY)
 
     /**
      * Forward a key event to the host. modifierMask uses the canonical USB HID
@@ -1278,67 +1218,13 @@ class StreamClient(
         usbHidUsage: Int,
         pressed: Boolean,
         modifierMask: Int,
-    ): Boolean {
-        if (!isConnected || wireMode != WireMode.V1) return false
-        val session = protocolSession ?: return false
-        if (!session.canSendKeyboard) return false
-        val submission = submitOutbound(
-            kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-            command =
-                OutboundCommand.ProtocolBatch { activeSession ->
-                    listOf(
-                        activeSession.key(
-                            inputId = nextInputId.getAndIncrement(),
-                            usbHidUsage = usbHidUsage,
-                            pressed = pressed,
-                            modifierMask = modifierMask,
-                        ),
-                    )
-                },
-        )
-        return submission.wasAdmitted()
-    }
+    ): Boolean = inputDispatcher.sendKey(usbHidUsage, pressed, modifierMask)
 
     /** Enqueues every native-input boundary in one FIFO batch before teardown. */
     internal fun sendNativeInputRelease(
         release: NativeInputReleasePlan,
         pointerPhase: InputPhase,
-    ): Boolean {
-        require(pointerPhase == InputPhase.INPUT_PHASE_ENDED || pointerPhase == InputPhase.INPUT_PHASE_CANCELLED)
-        if (release.isEmpty) return true
-        if (!isConnected || wireMode != WireMode.V1) return false
-        val session = protocolSession ?: return false
-        if (release.pressedKeyUsages.isNotEmpty() && !session.canSendKeyboard) return false
-        if (release.pointer != null && !session.canSendPointer) return false
-        val submission =
-            submitOutbound(
-                kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-                command =
-                    OutboundCommand.ProtocolBatch { activeSession ->
-                        NativeInputReleaseBatch.build(
-                            release = release,
-                            keyUp = { usage ->
-                                activeSession.key(
-                                    inputId = nextInputId.getAndIncrement(),
-                                    usbHidUsage = usage,
-                                    pressed = false,
-                                    modifierMask = 0,
-                                )
-                            },
-                            pointerTerminal = { pointer ->
-                                activeSession.pointer(
-                                    inputId = nextInputId.getAndIncrement(),
-                                    phase = pointerPhase,
-                                    x = pointer.x.toDouble(),
-                                    y = pointer.y.toDouble(),
-                                    buttonMask = 0,
-                                )
-                            },
-                        )
-                    },
-            )
-        return submission.wasAdmitted()
-    }
+    ): Boolean = inputDispatcher.sendNativeInputRelease(release, pointerPhase)
 
     // Callback for latency measurement (round-trip ping/pong)
     var onLatencyMeasured: ((Double) -> Unit)? = null
@@ -1350,44 +1236,7 @@ class StreamClient(
         if (wireMode == WireMode.V1) protocolSession?.negotiated ?: emptySet() else emptySet()
 
     internal fun sendController(dispatch: ControllerDispatch): Boolean {
-        if (!isConnected || wireMode != WireMode.V1) return false
-        val session = protocolSession ?: return false
-        if (!session.canSendController) return false
-        val submission =
-            submitOutbound(
-                kind =
-                    when (dispatch.delivery) {
-                        ControllerDelivery.ANALOG -> OutboundCommandScheduler.Kind.CONTROLLER_MOVE
-                        ControllerDelivery.STRUCTURAL -> OutboundCommandScheduler.Kind.CONTROLLER_STRUCTURAL
-                    },
-                command =
-                    OutboundCommand.ProtocolBatch { activeSession ->
-                        val pendingConnections =
-                            dispatch.samples
-                                .filter { it.kind == ControllerEventKind.CONNECTED }
-                                .map { ControllerConnection(it.controllerId, it.controllerEpoch) }
-                                .toMutableSet()
-                        dispatch.samples.mapNotNull { sample ->
-                            val connection = ControllerConnection(sample.controllerId, sample.controllerEpoch)
-                            if (sample.kind != ControllerEventKind.CONNECTED &&
-                                (connection in pendingConnections ||
-                                    controllerConnectionAcks.isPending(sample.controllerId, sample.controllerEpoch))
-                            ) {
-                                return@mapNotNull null
-                            }
-                            val inputId = nextInputId.getAndIncrement()
-                            if (sample.kind == ControllerEventKind.CONNECTED) {
-                                check(controllerConnectionAcks.recordConnected(inputId, sample.controllerId, sample.controllerEpoch)) {
-                                    "duplicate controller CONNECTED input id"
-                                }
-                            } else if (sample.kind == ControllerEventKind.DISCONNECTED) {
-                                controllerConnectionAcks.recordDisconnected(sample.controllerId, sample.controllerEpoch)
-                            }
-                            activeSession.controller(inputId = inputId, sample = sample)
-                        }
-                    },
-            )
-        return submission.wasAdmitted()
+        return inputDispatcher.sendController(dispatch)
     }
 
     /**
@@ -1401,7 +1250,7 @@ class StreamClient(
         if (!session.isStreaming) return
         submitOutbound(
             kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-            command = OutboundCommand.ProtocolBatch { activeSession ->
+            command = StreamOutboundCommand.ProtocolBatch { activeSession ->
                 activeSession.selectDisplay(displayId)?.let { listOf(it) } ?: emptyList()
             },
         )
@@ -1420,7 +1269,7 @@ class StreamClient(
         val invocationId = ByteString.copyFrom(ByteArray(HOST_ACTION_INVOCATION_ID_BYTES).also(hostActionRandom::nextBytes))
         submitOutbound(
             kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-            command = OutboundCommand.ProtocolBatch { activeSession ->
+            command = StreamOutboundCommand.ProtocolBatch { activeSession ->
                 activeSession.invokeHostAction(actionId, invocationId)?.let { listOf(it) } ?: emptyList()
             },
         )
@@ -1445,7 +1294,7 @@ class StreamClient(
         protocolSession ?: return
         submitOutbound(
             kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-            command = OutboundCommand.ProtocolBatch { activeSession ->
+            command = StreamOutboundCommand.ProtocolBatch { activeSession ->
                 activeSession
                     .setVideoPreferences(bitrateKbps, framesPerSecond, qualityPreset, resetQualityToAuto)
                     ?.let { listOf(it) } ?: emptyList()
@@ -1486,7 +1335,7 @@ class StreamClient(
             if (!session.isStreaming) return
             submitOutbound(
                 kind = OutboundCommandScheduler.Kind.KEYFRAME,
-                command = OutboundCommand.ProtocolBatch { listOf(it.requestKeyframe(reason)) },
+                command = StreamOutboundCommand.ProtocolBatch { listOf(it.requestKeyframe(reason)) },
             )
             return
         }
@@ -1495,7 +1344,7 @@ class StreamClient(
         diagLog("Requesting keyframe: reason=$reason, force=$force")
         submitOutbound(
             kind = OutboundCommandScheduler.Kind.KEYFRAME,
-            command = OutboundCommand.Keyframe(flags),
+            command = StreamOutboundCommand.Keyframe(flags),
             timeoutMillis = 0,
         )
     }
@@ -1513,19 +1362,19 @@ class StreamClient(
             lastV1PingSentNs = System.nanoTime()
             submitOutbound(
                 kind = OutboundCommandScheduler.Kind.PING,
-                command = OutboundCommand.ProtocolBatch { listOf(it.ping(sequence)) },
+                command = StreamOutboundCommand.ProtocolBatch { listOf(it.ping(sequence)) },
             )
             return
         }
         submitOutbound(
             kind = OutboundCommandScheduler.Kind.PING,
-            command = OutboundCommand.Ping(System.nanoTime()),
+            command = StreamOutboundCommand.Ping(System.nanoTime()),
         )
     }
 
     private fun submitOutbound(
         kind: OutboundCommandScheduler.Kind,
-        command: OutboundCommand,
+        command: StreamOutboundCommand,
         timeoutMillis: Long = 0,
     ): OutboundCommandScheduler.Submission {
         val submission =
@@ -1550,14 +1399,11 @@ class StreamClient(
         return submission
     }
 
-    private fun OutboundCommandScheduler.Submission.wasAdmitted(): Boolean =
-        this != OutboundCommandScheduler.Submission.TIMED_OUT &&
-            this != OutboundCommandScheduler.Submission.CLOSED
 
-    private fun writeOutboundCommand(command: OutboundCommand) {
+    private fun writeOutboundCommand(command: StreamOutboundCommand) {
         val out = transportOwner.activeConnection()?.output ?: throw IOException("session output is closed")
         when (command) {
-            is OutboundCommand.Touch -> {
+            is StreamOutboundCommand.Touch -> {
                 val size = 6 + command.pointerCount * 8
                 val buffer = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
                 buffer.put(MESSAGE_TOUCH.toByte())
@@ -1572,31 +1418,31 @@ class StreamClient(
                 out.write(buffer.array())
             }
 
-            is OutboundCommand.Keyframe ->
+            is StreamOutboundCommand.Keyframe ->
                 out.write(byteArrayOf(MESSAGE_KEYFRAME_REQUEST.toByte(), command.flags.toByte()))
 
-            is OutboundCommand.Ping -> {
+            is StreamOutboundCommand.Ping -> {
                 val buffer = ByteBuffer.allocate(9).order(ByteOrder.LITTLE_ENDIAN)
                 buffer.put(MESSAGE_PING.toByte())
                 buffer.putLong(command.sentAtNs)
                 out.write(buffer.array())
             }
 
-            is OutboundCommand.LegacyControl -> out.write(command.payload)
+            is StreamOutboundCommand.LegacyControl -> out.write(command.payload)
 
-            is OutboundCommand.ProtocolBatch -> {
+            is StreamOutboundCommand.ProtocolBatch -> {
                 val session = checkNotNull(protocolSession) { "Protocol v1 session is closed" }
                 command.build(session).forEach { writeProtocolEnvelope(out, it) }
             }
 
-            is OutboundCommand.ProtocolReceive -> processProtocolReceive(out, command)
+            is StreamOutboundCommand.ProtocolReceive -> processProtocolReceive(out, command)
 
-            is OutboundCommand.ProtocolVideoConfigurationCompletion ->
+            is StreamOutboundCommand.ProtocolVideoConfigurationCompletion ->
                 processVideoConfigurationCompletion(out, command)
         }
-        if (command !is OutboundCommand.ProtocolBatch &&
-            command !is OutboundCommand.ProtocolReceive &&
-            command !is OutboundCommand.ProtocolVideoConfigurationCompletion
+        if (command !is StreamOutboundCommand.ProtocolBatch &&
+            command !is StreamOutboundCommand.ProtocolReceive &&
+            command !is StreamOutboundCommand.ProtocolVideoConfigurationCompletion
         ) {
             out.flush()
         }
@@ -1604,7 +1450,7 @@ class StreamClient(
 
     private fun processProtocolReceive(
         out: java.io.DataOutputStream,
-        command: OutboundCommand.ProtocolReceive,
+        command: StreamOutboundCommand.ProtocolReceive,
     ) {
         val session = checkNotNull(protocolSession) { "Protocol v1 session is closed" }
         try {
@@ -1772,9 +1618,9 @@ class StreamClient(
 
     private fun processVideoConfigurationCompletion(
         out: java.io.DataOutputStream,
-        command: OutboundCommand.ProtocolVideoConfigurationCompletion,
+        command: StreamOutboundCommand.ProtocolVideoConfigurationCompletion,
     ) {
-        val pending = command.pending
+        val pending = command.pending as? PendingVideoConfigurationCommit ?: return
         if (!pendingVideoConfigurationCommit.compareAndSet(pending, null)) return
         if (!isCurrentProtocolSession(pending.session, pending.connectionGeneration)) return
         val actions =
@@ -2068,6 +1914,10 @@ class StreamClient(
         protocolSession = null
         controllerConnectionAcks.reset()
         pendingLegacyFirstByte = null
+        lanSecureRecordSession?.close()
+        lanSecureRecordSession = null
+        lanRecordProtectionState = LanRecordProtectionState.NOT_APPLICABLE
+        nextOutboundChannel = dev.telemachus.display.internet.SessionChannel.CONTROL
     }
 
     private fun cleanupCandidateTransport(
@@ -2119,49 +1969,12 @@ class StreamClient(
         Log.i(TELEMETRY_TAG, TelemetryJson.encode(event, System.currentTimeMillis(), fields))
     }
 
-    private sealed interface OutboundCommand {
-        data class Touch(
-            val x: Float,
-            val y: Float,
-            val action: Int,
-            val pointerCount: Int,
-            val x2: Float,
-            val y2: Float,
-        ) : OutboundCommand
-
-        data class Keyframe(
-            val flags: Int,
-        ) : OutboundCommand
-
-        data class Ping(
-            val sentAtNs: Long,
-        ) : OutboundCommand
-
-        data class LegacyControl(
-            val payload: ByteArray,
-        ) : OutboundCommand
-
-        class ProtocolBatch(
-            val build: (ProtocolV1Session) -> List<Envelope>,
-        ) : OutboundCommand
-
-        data class ProtocolReceive(
-            val envelope: Envelope,
-            val completion: CompletableFuture<Unit>,
-        ) : OutboundCommand
-
-        data class ProtocolVideoConfigurationCompletion(
-            val pending: PendingVideoConfigurationCommit,
-            val decision: StreamVideoConfigurationDecision,
-        ) : OutboundCommand
-    }
-
     private inner class PendingVideoConfigurationCommit(
-        val session: ProtocolV1Session,
-        val connectionGeneration: Long,
-        val configuration: StreamVideoConfiguration,
-        val configurationToken: Long,
-    ) : StreamVideoConfigurationCommit {
+        override val session: ProtocolV1Session,
+        override val connectionGeneration: Long,
+        override val configuration: StreamVideoConfiguration,
+        override val configurationToken: Long,
+    ) : StreamVideoConfigurationPendingCommit {
         private val stateLock = Any()
         private var state = VideoConfigurationCommitState.PENDING
         @Volatile private var timeout: ScheduledFuture<*>? = null
@@ -2260,7 +2073,7 @@ class StreamClient(
             val submission =
                 submitOutbound(
                     kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-                    command = OutboundCommand.ProtocolVideoConfigurationCompletion(this, decision),
+                    command = StreamOutboundCommand.ProtocolVideoConfigurationCompletion(this, decision),
                     timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
                 )
             if (submission == OutboundCommandScheduler.Submission.TIMED_OUT ||
@@ -2393,7 +2206,6 @@ class StreamClient(
         private const val LEGACY_CONFIG_EPOCH = 0L
         private const val UNASSIGNED_ATTEMPT_GENERATION = 0L
         private const val AUTH_RESPONSE_BYTES = 5
-        private const val MAX_FORWARDED_POINTERS = 2
         private const val HOST_ACTION_INVOCATION_ID_BYTES = 16
         private const val HEARTBEAT_POLL_INTERVAL_MS = 1_000
         private const val HEARTBEAT_TIMEOUT_MS = 3_500L
@@ -2418,7 +2230,6 @@ class StreamClient(
         private const val MESSAGE_SERVER_SHUTDOWN = 3
         private const val FRAME_FLAG_KEYFRAME = 1
         private const val KEYFRAME_REQUEST_FLAG_FORCE = 1
-        private const val TOUCH_ACTION_MOVE = 1
         private val SESSION_EPOCHS = SessionEpochGate()
         private val VIDEO_CONFIGURATION_TIMEOUT_EXECUTOR =
             Executors.newSingleThreadScheduledExecutor { runnable ->

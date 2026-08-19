@@ -2,17 +2,22 @@ import Foundation
 import VibeScreenProtocol
 
 public struct PCMStreamFormat: Equatable, Sendable {
+    public static let maximumFramesPerPacket: UInt32 = 10_000
+
     public let sampleRate: UInt32
     public let channelCount: UInt32
     public let framesPerPacket: UInt32
 
     public init(config: VSAudioConfig) throws {
+        guard config.streamID > 0 else { throw AudioStreamError.invalidStreamID(config.streamID) }
+        guard config.configEpoch > 0 else { throw AudioStreamError.invalidConfigEpoch(config.configEpoch) }
         guard config.codec == .pcmS16Le else { throw AudioStreamError.unsupportedCodec(config.codec) }
         guard (8_000...192_000).contains(config.sampleRateHz) else {
             throw AudioStreamError.invalidSampleRate(config.sampleRateHz)
         }
-        guard (1...8).contains(config.channelCount), config.framesPerPacket > 0 else {
-            throw AudioStreamError.invalidChannelCount(config.channelCount)
+        guard (1...8).contains(config.channelCount) else { throw AudioStreamError.invalidChannelCount(config.channelCount) }
+        guard (1...Self.maximumFramesPerPacket).contains(config.framesPerPacket) else {
+            throw AudioStreamError.invalidFramesPerPacket(config.framesPerPacket)
         }
         sampleRate = config.sampleRateHz
         channelCount = config.channelCount
@@ -64,10 +69,18 @@ public struct AudioJitterBuffer: Sendable {
 
     public mutating func enqueue(
         _ packet: AudioPacket,
+        streamID: UInt64,
         sessionEpoch: UInt64,
         configEpoch: UInt64,
         format: PCMStreamFormat
     ) throws -> AudioEnqueueResult {
+        guard streamID > 0 else { throw AudioStreamError.invalidStreamID(streamID) }
+        guard packet.header.streamID == streamID else {
+            throw AudioStreamError.streamIDMismatch(
+                expected: streamID,
+                received: packet.header.streamID
+            )
+        }
         guard packet.header.sessionEpoch == sessionEpoch else { throw AudioStreamError.staleSessionEpoch }
         guard packet.header.configEpoch == configEpoch else { throw AudioStreamError.staleConfigEpoch }
         guard packet.payload.count == format.bytesPerPacket,
@@ -112,15 +125,91 @@ public struct AudioJitterBuffer: Sendable {
     public var queuedPacketCount: Int { packets.count }
 }
 
+public struct AudioPlaybackSession: Sendable {
+    public private(set) var config: VSAudioConfig?
+    public private(set) var format: PCMStreamFormat?
+    public private(set) var lastConfigEpoch: UInt64 = 0
+    private var jitter: AudioJitterBuffer
+
+    public init(firstSequence: UInt64 = 0, maximumBufferedPackets: Int = 8) {
+        jitter = AudioJitterBuffer(
+            firstSequence: firstSequence,
+            maximumPackets: maximumBufferedPackets
+        )
+    }
+
+    public var isConfigured: Bool { config != nil && format != nil }
+    public var queuedPacketCount: Int { jitter.queuedPacketCount }
+
+    public func validate(config: VSAudioConfig) throws {
+        guard config.configEpoch > lastConfigEpoch else {
+            throw AudioStreamError.nonIncreasingConfigEpoch(
+                previous: lastConfigEpoch,
+                received: config.configEpoch
+            )
+        }
+    }
+
+    public mutating func accept(config: VSAudioConfig, format: PCMStreamFormat) throws {
+        try validate(config: config)
+        self.config = config
+        self.format = format
+        lastConfigEpoch = config.configEpoch
+        jitter.reset(firstSequence: 0)
+    }
+
+    public mutating func failClosed() {
+        config = nil
+        format = nil
+        jitter.reset(firstSequence: 0)
+    }
+
+    public mutating func reset() {
+        failClosed()
+        lastConfigEpoch = 0
+    }
+
+    public mutating func enqueue(
+        _ packet: AudioPacket,
+        sessionEpoch: UInt64
+    ) throws -> [AudioPacket] {
+        guard let config, let format else { return [] }
+        _ = try jitter.enqueue(
+            packet,
+            streamID: config.streamID,
+            sessionEpoch: sessionEpoch,
+            configEpoch: config.configEpoch,
+            format: format
+        )
+        return jitter.drainReady()
+    }
+}
+
 public enum AudioStreamError: Error, Equatable {
     case unsupportedCodec(VSAudioCodec)
+    case invalidStreamID(UInt64)
+    case invalidConfigEpoch(UInt64)
     case invalidSampleRate(UInt32)
     case invalidChannelCount(UInt32)
+    case invalidFramesPerPacket(UInt32)
     case invalidHeader
     case payloadLengthMismatch
+    case nonIncreasingConfigEpoch(previous: UInt64, received: UInt64)
+    case streamIDMismatch(expected: UInt64, received: UInt64)
     case staleSessionEpoch
     case staleConfigEpoch
     case invalidPCMByteCount
+
+    public var isDroppableMediaPacketError: Bool {
+        switch self {
+        case .invalidHeader, .payloadLengthMismatch, .streamIDMismatch, .staleSessionEpoch,
+             .staleConfigEpoch, .invalidPCMByteCount:
+            return true
+        case .unsupportedCodec, .invalidStreamID, .invalidConfigEpoch, .invalidSampleRate,
+             .invalidChannelCount, .invalidFramesPerPacket, .nonIncreasingConfigEpoch:
+            return false
+        }
+    }
 }
 
 enum DelimitedPayload {

@@ -3,4 +3,5 @@
     <!-- Connection panel stays single-column by default. Wide landscape
          windows opt into two columns via values-w600dp-land. -->
     <bool name="connection_panel_two_column">false</bool>
+    <bool name="connection_panel_inline_settings_button">true</bool>
 </resources>

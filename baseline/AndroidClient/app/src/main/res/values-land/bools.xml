@@ -6,4 +6,5 @@
          layout is therefore gated on available width in values-w600dp-land, and
          narrow landscape falls back to this stacked single column. -->
     <bool name="connection_panel_two_column">false</bool>
+    <bool name="connection_panel_inline_settings_button">true</bool>
 </resources>
