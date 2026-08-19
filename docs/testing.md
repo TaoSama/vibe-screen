@@ -56,8 +56,15 @@ gate open. The CLI exits `0` only for a profile `pass` and exits nonzero for
 `tools/fixtures/latency/` are only CLI fixtures for exercising these verdicts;
 they are not real-device evidence.
 For formal external-camera runs, validate the full evidence directory with
-`python3 -m vibescreen_evidence.latency_evidence`; see
-[External-camera latency measurement](runbook/latency-measurement.md). The
+the stricter provenance checker:
+
+```bash
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
+  "$EVIDENCE_DIR/manifest.json" \
+  --gate-profile "$GATE_PROFILE"
+```
+
+See [External-camera latency measurement](runbook/latency-measurement.md). The
 checker requires the raw camera file, sample annotations, device/build metadata,
 and matching gate profile before it can return `pass`.
 

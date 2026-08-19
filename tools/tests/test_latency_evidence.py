@@ -211,7 +211,7 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             manifest = self.copy_valid_package(root)
             setup = manifest["measurement_setup"]
             assert isinstance(setup, dict)
-            setup["max_frame_annotation_uncertainty_ms"] = 100
+            setup["max_frame_annotation_uncertainty_ms"] = 7
             self.write_manifest(root, manifest)
 
             report = build_latency_evidence_report(
@@ -223,7 +223,66 @@ class LatencyEvidenceReportTest(unittest.TestCase):
         self.assertEqual(report["verdict"], "insufficient")
         self.assertGreater(report["gate"]["observed_with_uncertainty_ms"], 50)
         self.assertIn(
-            "p95 plus maximum annotation uncertainty exceeds the gate threshold",
+            "p95 plus start/end annotation uncertainty exceeds the gate threshold",
+            report["gate"]["reasons"],
+        )
+
+    def test_annotation_uncertainty_is_counted_for_both_endpoints(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            setup = manifest["measurement_setup"]
+            assert isinstance(setup, dict)
+            setup["max_frame_annotation_uncertainty_ms"] = 7
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["gate"]["summary_verdict"], "pass")
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertAlmostEqual(report["gate"]["observed_ms"], 37.5)
+        self.assertAlmostEqual(report["gate"]["observed_with_uncertainty_ms"], 51.5)
+
+    def test_schema_rejects_boolean_annotation_uncertainty(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            setup = manifest["measurement_setup"]
+            assert isinstance(setup, dict)
+            setup["max_frame_annotation_uncertainty_ms"] = False
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIsNone(report["gate"]["observed_ms"])
+        self.assertIn(
+            "manifest.measurement_setup.max_frame_annotation_uncertainty_ms must be a JSON number",
+            report["gate"]["reasons"],
+        )
+
+    def test_schema_rejects_unknown_manifest_properties(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            manifest["unexpected"] = "not allowed"
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIsNone(report["gate"]["observed_ms"])
+        self.assertIn(
+            "manifest.unexpected is not allowed by schema",
             report["gate"]["reasons"],
         )
 
@@ -285,6 +344,23 @@ class LatencyEvidenceCliTest(unittest.TestCase):
         output = json.loads(result.stdout)
         self.assertEqual(output["verdict"], "insufficient")
         self.assertIn("cannot read latency evidence manifest", output["gate"]["reasons"][0])
+        self.assertEqual(result.stderr, "")
+
+    def test_cli_outputs_insufficient_json_for_invalid_utf8_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manifest_path = Path(directory) / "manifest.json"
+            manifest_path.write_bytes(b"\xff")
+
+            result = self.run_cli(
+                str(manifest_path),
+                "--gate-profile",
+                GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["verdict"], "insufficient")
+        self.assertIn("invalid UTF-8 in latency evidence manifest", output["gate"]["reasons"][0])
         self.assertEqual(result.stderr, "")
 
 

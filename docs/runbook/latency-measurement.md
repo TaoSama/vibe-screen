@@ -98,6 +98,10 @@ and annotation method. A minimal shape is:
       }
     }
 
+The field `max_frame_annotation_uncertainty_ms` is the maximum uncertainty for
+one annotated endpoint frame. The checker applies it to both the start and end
+frames before comparing P95 against the gate threshold.
+
 ## Commands
 
 First summarize the samples with the matching profile:
@@ -117,14 +121,14 @@ Then validate the formal evidence package:
       --gate-profile usb-glass-to-glass-sub50 \
       --output latency-run/latency-evidence-report.json
 
-Use lan-glass-to-glass-sub80 for LAN glass-to-glass and input-p95-sub50 for
-input latency. The checker exits 0 only when the profile verdict is pass and
-required external-camera provenance is complete. Missing raw video, mismatched
-manifest fields, changed sample annotations, frame-rate mismatches, annotation
-uncertainty that crosses the threshold, too few samples, wrong transport, or a
-threshold miss all return nonzero with a JSON report whose verdict is
-insufficient or fail. Referenced files must use package-relative paths and stay
-inside the evidence directory.
+For LAN glass-to-glass, use `--transport lan` with `lan-glass-to-glass-sub80`.
+For input latency, use `--kind input` with `input-p95-sub50`. The checker exits 0 only
+when the profile verdict is pass and required external-camera provenance is
+complete. Missing raw video, mismatched manifest fields, changed sample
+annotations, frame-rate mismatches, annotation uncertainty that crosses the
+threshold, too few samples, wrong transport, or a threshold miss all return
+nonzero with a JSON report whose verdict is insufficient or fail. Referenced
+files must use package-relative paths and stay inside the evidence directory.
 
 ## Claim boundary
 

@@ -212,10 +212,12 @@ with `python3 -m vibescreen_evidence.manifest --help`.
 For a formal gate claim, validate the whole evidence directory with the stricter
 external-camera provenance checker:
 
-    PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
-      latency-run/manifest.json \
-      --gate-profile usb-glass-to-glass-sub50 \
-      --output latency-run/latency-evidence-report.json
+```sh
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
+  latency-run/manifest.json \
+  --gate-profile usb-glass-to-glass-sub50 \
+  --output latency-run/latency-evidence-report.json
+```
 
 The manifest follows `tools/schemas/latency-evidence.schema.json` and must bind
 the run ID, transport, profile, raw camera recording, sample file, camera mode,

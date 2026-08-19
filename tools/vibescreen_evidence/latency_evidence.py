@@ -44,6 +44,7 @@ ANNOTATION_METHODS = (
     ANNOTATION_MANUAL_FRAME_COUNT,
     ANNOTATION_DIRECT_LATENCY_MS,
 )
+SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "latency-evidence.schema.json"
 
 REQUIRED_TOP_LEVEL_OBJECTS = (
     "camera",
@@ -83,11 +84,85 @@ def _load_json(path: Path, label: str) -> dict[str, Any]:
         document = json.loads(path.read_text(encoding="utf-8"))
     except OSError as error:
         raise LatencyEvidenceError(f"cannot read {label} {path}: {error}") from error
+    except UnicodeDecodeError as error:
+        raise LatencyEvidenceError(f"invalid UTF-8 in {label} {path}: {error}") from error
     except json.JSONDecodeError as error:
         raise LatencyEvidenceError(f"invalid JSON in {label} {path}: {error}") from error
     if not isinstance(document, dict):
         raise LatencyEvidenceError(f"{label} must be a JSON object")
     return document
+
+
+def _json_type_matches(value: Any, expected_type: str) -> bool:
+    if expected_type == "object":
+        return isinstance(value, dict)
+    if expected_type == "string":
+        return isinstance(value, str)
+    if expected_type == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return True
+
+
+def _describe_json_type(expected_type: str) -> str:
+    if expected_type == "number":
+        return "a JSON number"
+    if expected_type == "object":
+        return "an object"
+    if expected_type == "string":
+        return "a string"
+    return expected_type
+
+
+def _validate_schema_node(value: Any, schema: dict[str, Any], path: str) -> list[str]:
+    errors: list[str] = []
+
+    if "const" in schema and value != schema["const"]:
+        errors.append(f"{path} must be {schema['const']}")
+    if "enum" in schema and value not in schema["enum"]:
+        allowed = ", ".join(str(item) for item in schema["enum"])
+        errors.append(f"{path} must be one of: {allowed}")
+
+    expected_type = schema.get("type")
+    if isinstance(expected_type, str) and not _json_type_matches(value, expected_type):
+        errors.append(f"{path} must be {_describe_json_type(expected_type)}")
+        return errors
+
+    if expected_type == "object":
+        assert isinstance(value, dict)
+        properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
+        required = schema.get("required") if isinstance(schema.get("required"), list) else []
+        for field in required:
+            if isinstance(field, str) and field not in value:
+                errors.append(f"{path}.{field} is required")
+        if schema.get("additionalProperties") is False:
+            for field in sorted(set(value) - set(properties)):
+                errors.append(f"{path}.{field} is not allowed by schema")
+        for field, child_schema in properties.items():
+            if field in value and isinstance(child_schema, dict):
+                errors.extend(_validate_schema_node(value[field], child_schema, f"{path}.{field}"))
+    elif expected_type == "string":
+        assert isinstance(value, str)
+        min_length = schema.get("minLength")
+        if isinstance(min_length, int) and len(value) < min_length:
+            errors.append(f"{path} must not be empty")
+        pattern = schema.get("pattern")
+        if isinstance(pattern, str) and re.fullmatch(pattern, value) is None:
+            errors.append(f"{path} must match {pattern}")
+    elif expected_type == "number":
+        assert isinstance(value, (int, float)) and not isinstance(value, bool)
+        number = float(value)
+        if not math.isfinite(number):
+            errors.append(f"{path} must be finite")
+        minimum = schema.get("minimum")
+        if isinstance(minimum, (int, float)) and number < float(minimum):
+            errors.append(f"{path} must be at least {minimum}")
+
+    return errors
+
+
+def _validate_manifest_schema(manifest: dict[str, Any]) -> list[str]:
+    schema = _load_json(SCHEMA_PATH, "latency evidence schema")
+    return _validate_schema_node(manifest, schema, "manifest")
 
 
 def _as_non_empty_text(value: Any, field: str, errors: list[str]) -> str | None:
@@ -313,7 +388,9 @@ def build_latency_evidence_report(
 ) -> dict[str, Any]:
     """Validate formal external-camera metadata and return a gate report."""
     manifest = _load_json(manifest_path, "latency evidence manifest")
-    errors = _validate_required_metadata(manifest)
+    schema_errors = _validate_manifest_schema(manifest)
+    errors = list(schema_errors)
+    errors.extend(_validate_required_metadata(manifest))
     reference_errors, references = _validate_referenced_files(manifest_path, manifest)
     errors.extend(reference_errors)
 
@@ -321,7 +398,12 @@ def build_latency_evidence_report(
     sample_format = samples_section.get("format")
     sample_path = references.get("samples.file")
     summary: dict[str, Any] | None = None
-    if sample_path is not None and sample_path.is_file() and sample_format in ("csv", "json"):
+    if (
+        not schema_errors
+        and sample_path is not None
+        and sample_path.is_file()
+        and sample_format in ("csv", "json")
+    ):
         try:
             with sample_path.open("r", encoding="utf-8", newline="") as stream:
                 rows = load_samples(stream, sample_format)
@@ -349,17 +431,19 @@ def build_latency_evidence_report(
     conservative_observed_ms: float | None = None
     if summary is not None and summary_verdict == "pass":
         try:
-            uncertainty_ms = float(manifest["measurement_setup"]["max_frame_annotation_uncertainty_ms"])
+            endpoint_uncertainty_ms = float(
+                manifest["measurement_setup"]["max_frame_annotation_uncertainty_ms"]
+            )
             observed_ms = float(gate["observed_ms"])
             threshold_ms = float(gate["threshold_ms"])
-            conservative_observed_ms = observed_ms + uncertainty_ms
+            conservative_observed_ms = observed_ms + (2 * endpoint_uncertainty_ms)
         except (KeyError, TypeError, ValueError):
             pass
         else:
             if math.isfinite(conservative_observed_ms) and conservative_observed_ms > threshold_ms:
                 formal_verdict = "insufficient"
                 reasons.append(
-                    "p95 plus maximum annotation uncertainty exceeds the gate threshold"
+                    "p95 plus start/end annotation uncertainty exceeds the gate threshold"
                 )
     verdict = "insufficient" if errors else formal_verdict
     reasons.extend(errors)

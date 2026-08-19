@@ -21,7 +21,7 @@
   "samples": {
     "file": "samples.csv",
     "format": "csv",
-    "sha256": "5c0966fd341feecf327afa0e3406246e62553626c60edc3ec57f9e6130e370eb",
+    "sha256": "9e987eefb70a17590de3da63c50ea1732c142e34b5372ed4fe25c657553a6c99",
     "annotation_method": "manual-frame-count",
     "annotator": "fixture"
   },
