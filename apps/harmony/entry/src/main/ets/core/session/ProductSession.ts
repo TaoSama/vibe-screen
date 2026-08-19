@@ -1,10 +1,12 @@
 import { MediaPacket } from '../media/MediaPacketParser';
+import { ControllerInputMapper, MAX_ACTIVE_CONTROLLERS,
+  MAXIMUM_ACTIVE_CONTROLLERS_REJECTION_REASON } from '../input/ControllerInputMapper';
 import { StylusInputMapper } from '../input/StylusInputMapper';
 import { DecodedEnvelope, ProtocolDecoder } from '../protocol/ProtocolDecoder';
 import { OutboundControlIntent } from '../protocol/ProtocolEncoder';
-import { Capability, ClientHello, Codec, ColorPrimaries, InputPhase, InputTarget, KeyInput, MatrixCoefficients,
-  NormalizedInput, PROTOCOL_VERSION, ScrollInput, StylusContactState, StylusInput, StylusToolKind,
-  TransferFunction, TransportKind, VideoConfig } from '../protocol/ProtocolModels';
+import { Capability, ClientHello, Codec, ColorPrimaries, ControllerEventKind, ControllerInput, InputAck,
+  InputPhase, InputTarget, KeyInput, MatrixCoefficients, NormalizedInput, PROTOCOL_VERSION, ScrollInput,
+  StylusContactState, StylusInput, StylusToolKind, TransferFunction, TransportKind, VideoConfig } from '../protocol/ProtocolModels';
 import { OutboundControlScope } from '../protocol/OutboundControlWriter';
 import { ClientCapabilities, HARMONY_REQUIRED_CAPABILITIES } from './ClientCapabilities';
 import { HeartbeatMonitor } from './HeartbeatMonitor';
@@ -51,10 +53,12 @@ export interface SessionResumeSnapshot {
 }
 export type SessionControlAssignment =
   | { kind: 'heartbeat'; sequence: bigint }
-  | { kind: 'request'; request: 'resume' | 'clientHello' | 'listDisplays' | 'startDisplay' };
+  | { kind: 'request'; request: 'resume' | 'clientHello' | 'listDisplays' | 'startDisplay' }
+  | { kind: 'controllerConnect'; event: ControllerInput };
 export type SessionSendCompletion =
   | { kind: 'videoConfiguration'; token: VideoConfigurationToken; accepted: boolean }
-  | { kind: 'stylus' };
+  | { kind: 'stylus' }
+  | { kind: 'controller'; event: ControllerInput; accepted: boolean };
 
 export type SessionSendAction =
   { kind: 'send'; intent: OutboundControlIntent; onAssigned?: SessionControlAssignment; afterSend?: SessionSendCompletion };
@@ -90,9 +94,17 @@ export class ProductSession {
   private startDisplayMessageId: bigint = 0n;
   private decoder: ProtocolDecoder = new ProtocolDecoder();
   private stylusInputMapper: StylusInputMapper = new StylusInputMapper();
+  private controllerInputMapper: ControllerInputMapper = new ControllerInputMapper();
   private activeStylus: Map<number, StylusInput> = new Map();
   private stylusInputClosing: boolean = false;
   private pendingStylusSends: number = 0;
+  private activeControllers: Map<string, ControllerInput> = new Map();
+  private lastControllerEpochs: Map<string, bigint> = new Map();
+  private pendingControllerConnects: Map<string, ControllerInput> = new Map();
+  private pendingControllerConnectByMessageId: Map<bigint, ControllerInput> = new Map();
+  private lastControllerInputId: bigint = 0n;
+  private controllerInputClosing: boolean = false;
+  private pendingControllerSends: number = 0;
 
   constructor(private deviceId: string, private deviceName: string,
     private capabilities: Capability[], private codecs: Codec[]) {
@@ -111,7 +123,10 @@ export class ProductSession {
   resumableSnapshot(nextOutboundMessageId: bigint): SessionResumeSnapshot | undefined {
     if (this.current !== ProductSessionState.STREAMING || this.pendingVideo !== undefined || nextOutboundMessageId <= 0n ||
       this.sessionEpoch <= 0n || !this.capabilityState.has(Capability.SESSION_RESUME) || this.heartbeatIntervalMs <= 0 ||
-      this.activeStylus.size > 0 || this.pendingStylusSends > 0 || this.stylusInputClosing) return undefined;
+      this.activeStylus.size > 0 || this.pendingStylusSends > 0 || this.stylusInputClosing ||
+      this.activeControllers.size > 0 || this.pendingControllerConnects.size > 0 ||
+      this.pendingControllerConnectByMessageId.size > 0 || this.pendingControllerSends > 0 ||
+      this.controllerInputClosing) return undefined;
     return { sessionId: this.sessionId.slice(), sessionEpoch: this.sessionEpoch,
       lastReceivedMessageId: this.lastInboundMessageId, nextOutboundMessageId, heartbeatIntervalMs: this.heartbeatIntervalMs,
       hostCapabilities: this.capabilityState.hostValues(), negotiatedCapabilities: this.capabilityState.values(),
@@ -171,7 +186,7 @@ export class ProductSession {
       }
       return [];
     }
-    if (envelope.payloadField === 64) return [];
+    if (envelope.payloadField === 64) return this.onInputAck(envelope);
     if (envelope.payloadField === 28) {
       const notice = this.decoder.disconnectNotice(envelope.payload);
       return [{ kind: 'disconnect', reason: notice.reason || 'host_disconnect', retryable: notice.mayResume }];
@@ -256,6 +271,17 @@ export class ProductSession {
       afterSend: { kind: 'stylus' } };
   }
 
+  controller(event: ControllerInput): SessionAction {
+    this.requireInputCapability(Capability.CONTROLLER);
+    if (this.controllerInputClosing) throw new Error('Controller input is closing');
+    this.controllerInputMapper.validate(event);
+    this.acceptControllerLifecycle(event);
+    this.pendingControllerSends += 1;
+    return { kind: 'send', intent: { kind: 'controller', event: { ...event, target: this.target() } },
+      onAssigned: event.kind === ControllerEventKind.CONNECTED ? { kind: 'controllerConnect', event: { ...event } } : undefined,
+      afterSend: { kind: 'controller', event: { ...event, target: this.target() }, accepted: false } };
+  }
+
   releaseStylusInputs(nextInputId: () => bigint): SessionAction[] {
     this.stylusInputClosing = true;
     if (this.current !== ProductSessionState.STREAMING) {
@@ -284,9 +310,34 @@ export class ProductSession {
     return actions;
   }
 
+  releaseControllerInputs(nextInputId: () => bigint): SessionAction[] {
+    this.controllerInputClosing = true;
+    if (this.current !== ProductSessionState.STREAMING) {
+      this.activeControllers.clear(); this.pendingControllerConnects.clear(); return [];
+    }
+    const actions: SessionAction[] = [...this.activeControllers.values()]
+      .sort((left, right) => left.controllerId.localeCompare(right.controllerId))
+      .map((event) => {
+        const release: ControllerInput = this.controllerInputMapper.neutralDisconnect(nextInputId(), event);
+        return { kind: 'send', intent: { kind: 'controller', event: release, target: this.target() },
+          afterSend: { kind: 'controller', event: release, accepted: true } } as SessionSendAction;
+      });
+    this.pendingControllerSends += actions.length;
+    this.activeControllers.clear(); this.pendingControllerConnects.clear();
+    this.pendingControllerConnectByMessageId.clear();
+    return actions;
+  }
+
   completeStylusRelease(): void {
     if (this.activeStylus.size > 0 || this.pendingStylusSends > 0) throw new Error('Stylus release is incomplete');
     this.stylusInputClosing = false;
+  }
+
+  completeControllerRelease(): void {
+    if (this.activeControllers.size > 0 || this.pendingControllerSends > 0 || this.pendingControllerConnects.size > 0) {
+      throw new Error('Controller release is incomplete');
+    }
+    this.controllerInputClosing = false;
   }
 
   heartbeat(sequence: bigint): SessionAction {
@@ -299,6 +350,10 @@ export class ProductSession {
   confirmAssigned(assignment: SessionControlAssignment, messageId: bigint, nowNs: bigint): void {
     if (assignment.kind === 'heartbeat') {
       this.heartbeatMonitor.sent(assignment.sequence, messageId, nowNs);
+      return;
+    }
+    if (assignment.kind === 'controllerConnect') {
+      this.confirmControllerConnectMessage(assignment.event, messageId);
       return;
     }
     if (messageId <= 0n) throw new Error('Request message id must be positive');
@@ -314,6 +369,12 @@ export class ProductSession {
       this.pendingStylusSends -= 1;
       return;
     }
+    if (completion.kind === 'controller') {
+      if (this.pendingControllerSends <= 0) throw new Error('Stale controller send completion');
+      this.pendingControllerSends -= 1;
+      this.confirmControllerDelivery(completion.event, completion.accepted);
+      return;
+    }
     const pending: VideoConfigurationToken | undefined = this.pendingVideo;
     if (pending === undefined || pending.id !== completion.token.id) throw new Error('Stale video configuration completion');
     this.pendingVideo = undefined;
@@ -321,6 +382,19 @@ export class ProductSession {
     const config: VideoConfig = pending.config;
     this.configEpoch = config.configEpoch; this.configuredCodec = config.codec; this.lastFrameId = 0n;
     this.current = ProductSessionState.STREAMING;
+  }
+
+  cancelControllerSend(event: ControllerInput): void {
+    if (this.pendingControllerSends > 0) this.pendingControllerSends -= 1;
+    if (event.kind !== ControllerEventKind.CONNECTED) return;
+    const pending: ControllerInput | undefined = this.pendingControllerConnects.get(event.controllerId);
+    if (pending !== undefined && pending.inputId === event.inputId && pending.controllerEpoch === event.controllerEpoch) {
+      this.pendingControllerConnects.delete(event.controllerId);
+    }
+    for (const [messageId, pendingEvent] of this.pendingControllerConnectByMessageId.entries()) {
+      if (pendingEvent.inputId === event.inputId && pendingEvent.controllerId === event.controllerId &&
+        pendingEvent.controllerEpoch === event.controllerEpoch) this.pendingControllerConnectByMessageId.delete(messageId);
+    }
   }
 
   heartbeatTimedOut(nowNs: bigint): boolean { return this.heartbeatMonitor.timedOut(nowNs); }
@@ -341,6 +415,8 @@ export class ProductSession {
 
   close(): void {
     this.stylusInputClosing = true; this.activeStylus.clear(); this.pendingStylusSends = 0;
+    this.controllerInputClosing = true; this.activeControllers.clear(); this.pendingControllerConnects.clear();
+    this.pendingControllerConnectByMessageId.clear(); this.pendingControllerSends = 0;
     this.current = ProductSessionState.CLOSED;
   }
 
@@ -450,6 +526,23 @@ export class ProductSession {
       rotationDegrees: changed.rotationDegrees }];
   }
 
+  private onInputAck(envelope: DecodedEnvelope): SessionAction[] {
+    const event: ControllerInput | undefined = this.pendingControllerConnectByMessageId.get(envelope.correlationId);
+    if (event === undefined) return [];
+    const ack: InputAck = this.decoder.inputAck(envelope.payload);
+    if (ack.inputId !== event.inputId) throw new Error('Controller InputAck input_id mismatch');
+    this.pendingControllerConnectByMessageId.delete(envelope.correlationId);
+    if (!ack.accepted) {
+      if (ack.rejectionReason !== MAXIMUM_ACTIVE_CONTROLLERS_REJECTION_REASON) {
+        throw new Error('Controller CONNECTED was rejected');
+      }
+      this.confirmControllerAdmission(event, false);
+      return [];
+    }
+    this.confirmControllerAdmission(event, true);
+    return [];
+  }
+
   private validateEnvelope(envelope: DecodedEnvelope): void {
     if (envelope.protocolVersion !== PROTOCOL_VERSION || envelope.messageId <= this.lastInboundMessageId) throw new Error('Invalid envelope metadata');
     if (this.current === ProductSessionState.AWAITING_RESUME) {
@@ -493,6 +586,9 @@ export class ProductSession {
     this.resumeMessageId = 0n; this.resumeSnapshot = undefined; this.clientHelloMessageId = 0n;
     this.listDisplaysMessageId = 0n; this.startDisplayMessageId = 0n;
     this.stylusInputClosing = false; this.activeStylus.clear(); this.pendingStylusSends = 0;
+    this.controllerInputClosing = false; this.activeControllers.clear(); this.lastControllerEpochs.clear();
+    this.pendingControllerConnects.clear(); this.pendingControllerConnectByMessageId.clear();
+    this.lastControllerInputId = 0n; this.pendingControllerSends = 0;
   }
 
   private sameStylusSequence(left: StylusInput, right: StylusInput): boolean {
@@ -500,6 +596,59 @@ export class ProductSession {
       (left.toolKind ?? StylusToolKind.PEN) === (right.toolKind ?? StylusToolKind.PEN) &&
       (left.contactState ?? StylusContactState.CONTACT) ===
         (right.contactState ?? StylusContactState.CONTACT);
+  }
+
+  private acceptControllerLifecycle(event: ControllerInput): void {
+    if (event.inputId <= this.lastControllerInputId) throw new Error('Controller input_id must strictly increase');
+    const active: ControllerInput | undefined = this.activeControllers.get(event.controllerId);
+    const pending: ControllerInput | undefined = this.pendingControllerConnects.get(event.controllerId);
+    if (event.kind === ControllerEventKind.CONNECTED) {
+      if (active !== undefined || pending !== undefined) throw new Error('Invalid controller lifecycle');
+      if (event.controllerEpoch <= (this.lastControllerEpochs.get(event.controllerId) ?? 0n)) {
+        throw new Error('Invalid controller lifecycle');
+      }
+      if (this.activeControllers.size + this.pendingControllerConnects.size >= MAX_ACTIVE_CONTROLLERS) {
+        throw new Error(MAXIMUM_ACTIVE_CONTROLLERS_REJECTION_REASON);
+      }
+      this.pendingControllerConnects.set(event.controllerId, { ...event });
+      this.lastControllerEpochs.set(event.controllerId, event.controllerEpoch);
+    } else if (event.kind === ControllerEventKind.STATE) {
+      if (active === undefined || active.controllerEpoch !== event.controllerEpoch) {
+        throw new Error('Invalid controller lifecycle');
+      }
+      this.activeControllers.set(event.controllerId, { ...event });
+    } else {
+      if (active === undefined || active.controllerEpoch !== event.controllerEpoch) {
+        throw new Error('Invalid controller lifecycle');
+      }
+      this.activeControllers.delete(event.controllerId);
+    }
+    this.lastControllerInputId = event.inputId;
+  }
+
+  private confirmControllerDelivery(event: ControllerInput, accepted: boolean): void {
+    if (event.kind !== ControllerEventKind.CONNECTED) return;
+    if (!accepted) return;
+    this.confirmControllerAdmission(event, accepted);
+  }
+
+  confirmControllerConnectMessage(event: ControllerInput, messageId: bigint): void {
+    if (event.kind !== ControllerEventKind.CONNECTED) return;
+    if (messageId <= 0n) throw new Error('Controller message id must be positive');
+    const pending: ControllerInput | undefined = this.pendingControllerConnects.get(event.controllerId);
+    if (pending === undefined || pending.inputId !== event.inputId || pending.controllerEpoch !== event.controllerEpoch) {
+      throw new Error('Unknown controller CONNECTED message');
+    }
+    this.pendingControllerConnectByMessageId.set(messageId, { ...event });
+  }
+
+  private confirmControllerAdmission(event: ControllerInput, accepted: boolean): void {
+    const pending: ControllerInput | undefined = this.pendingControllerConnects.get(event.controllerId);
+    if (pending === undefined || pending.inputId !== event.inputId || pending.controllerEpoch !== event.controllerEpoch) {
+      throw new Error('Stale controller send completion');
+    }
+    this.pendingControllerConnects.delete(event.controllerId);
+    if (accepted) this.activeControllers.set(event.controllerId, { ...event });
   }
 
   private validateResumeSnapshot(snapshot: SessionResumeSnapshot): void {
