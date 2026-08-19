@@ -2,13 +2,13 @@
 <resources>
     <string name="app_name">Vibe Screen</string>
     <string name="trusted_network_dialog_title">Wireless mode is experimental</string>
-    <string name="trusted_network_dialog_message">Wireless streaming is authenticated but not encrypted. Continue only on a private network you trust. Anyone able to monitor that network may see screen or input traffic.</string>
+    <string name="trusted_network_dialog_message">Wireless mode is for trusted private networks only. Current Mac and Android apps protect video and input with per-session application records; explicit legacy fallback remains plaintext.</string>
     <string name="trusted_network_dialog_confirm">I understand — scan</string>
     <string name="qr_scanner_unavailable">QR scanning is unavailable on this device. Use USB mode instead.</string>
     <string name="invalid_pairing_qr">Invalid QR code. Scan a Vibe Screen pairing code.</string>
     <string name="qr_scanner_instruction">Aim the camera at the QR code on your Mac</string>
     <string name="cancel">Cancel</string>
-    <string name="wireless_trusted_network_note">Wireless mode is for trusted private networks only. Video and touch traffic are not encrypted.</string>
+    <string name="wireless_trusted_network_note">Wireless mode is for trusted private networks only. Current Mac and Android apps use encrypted application records unless explicit legacy fallback is selected.</string>
     <string name="connection_details">Connection details</string>
     <string name="hide_connection_details">Hide connection details</string>
     <string name="connecting">Connecting…</string>
@@ -55,6 +55,10 @@
     <string name="video_bitrate_label">Bitrate</string>
     <string name="video_bitrate_value">%1$d Mbps</string>
     <string name="video_control_unavailable">Connect to a compatible Mac session to tune video quality.</string>
+    <string name="video_quality_request_sent">Quality request sent to Mac</string>
+    <string name="video_frame_rate_request_sent">Frame-rate request sent to Mac</string>
+    <string name="video_bitrate_request_sent">Bitrate request sent to Mac</string>
+    <string name="video_preferences_applied">Mac applied video settings</string>
     <string name="keyboard_requires_compatible_host">Keyboard input is unavailable: the connected Mac session supports touch only. Update both apps to a compatible negotiated session.</string>
     <string name="stats_fps">FPS</string>
     <string name="stats_bitrate">BITRATE</string>

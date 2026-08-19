@@ -115,6 +115,14 @@ final class PlatformSessionPacketCipher {
         openRecord(record, securityChannel: channel.securityChannel)
     }
 
+    static func declaredInternetChannel(in record: Data) -> InternetTransportChannel? {
+        guard record.count >= Self.headerBytes + Self.tagBytes,
+              decodeUInt32(record.prefix(4)) == Self.magic,
+              record[4] == Self.version,
+              let channel = PlatformSecurityChannel(rawValue: UInt32(record[38])) else { return nil }
+        return InternetTransportChannel(securityChannel: channel)
+    }
+
     func openAdvanced(_ record: Data, channel: PlatformSecurityChannel) -> Data? {
         guard channel == .audio || channel == .bulk else { return nil }
         return openRecord(record, securityChannel: channel)
@@ -417,6 +425,14 @@ private extension InternetTransportChannel {
         switch self {
         case .control: return .control
         case .media: return .media
+        }
+    }
+
+    init?(securityChannel: PlatformSecurityChannel) {
+        switch securityChannel {
+        case .control: self = .control
+        case .media: self = .media
+        case .audio, .bulk: return nil
         }
     }
 }

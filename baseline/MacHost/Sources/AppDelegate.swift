@@ -4145,7 +4145,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             buttonMask: buttonMask, displayBounds: bounds
         )
         if injected {
-            debugLog("Pointer injected: phase=\(phase) buttons=\(buttonMask)")
+            debugLog("Pointer injected: phase=\(phase) buttons=\(buttonMask) x=\(x) y=\(y)")
         }
         return injected
     }

@@ -42,8 +42,10 @@ payload length declared in that header. Payloads larger than 16 MiB are
 rejected before their body is buffered.
 
 This adapter preserves logical channel identity; QUIC or WebRTC can replace it
-without changing session/product messages. The adapter is development-only
-plaintext and must never be presented as secure Internet transport.
+without changing session/product messages. The current iOS adapter is
+development-only plaintext and works with the MacHost only through explicit
+legacy fallback; it must never be presented as secure Internet transport or as
+evidence for the macOS/Android secure-record LAN path.
 
 ## Protocol v1 backward-compatible advanced negotiation
 
@@ -156,7 +158,7 @@ directional keys, durable nonce counters, and replay windows for all four
 channels. Shared fixed vectors prove offline record interoperability only.
 Audio/bulk WebRTC DataChannels, admission/backlog limits, and public-network
 E2E remain open, and the client's plaintext trusted-LAN implementation is not
-evidence of this security work.
+evidence of this security work or of the macOS/Android secure-record LAN path.
 
 ## Rendering and color
 

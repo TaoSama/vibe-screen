@@ -2428,7 +2428,7 @@ struct WirelessSection: View {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "lock.trianglebadge.exclamationmark")
                     .foregroundColor(.orange)
-                Text("Wireless is experimental and intended only for a trusted private LAN. Video, input, and the pairing token are not encrypted; the saved token is protected by macOS Keychain.")
+                Text("Wireless is experimental and intended only for a trusted private LAN. Current macOS and Android peers protect video and input with per-session application records; explicit legacy fallback remains plaintext. The saved token is protected by macOS Keychain.")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
                 Spacer()

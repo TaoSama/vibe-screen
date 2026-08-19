@@ -450,7 +450,7 @@ class StreamClientCancellationTest {
     }
 
     @Test
-    fun disconnectDuringFreshWirelessAuthClosesCandidateExactlyOnce() = runBlocking {
+    fun disconnectDuringExplicitWirelessLegacyFreshAuthClosesCandidateExactlyOnce() = runBlocking {
         val deviceName = "fallback-auth"
         val requestSize = 37 + deviceName.toByteArray().size
         ServerSocket(0).use { server ->
@@ -476,7 +476,13 @@ class StreamClientCancellationTest {
                 )
             val connectJob =
                 async(Dispatchers.IO) {
-                    runCatching { client.connectWireless(ByteArray(32), deviceName) }
+                    runCatching {
+                        client.connectWireless(
+                            token = ByteArray(32),
+                            deviceName = deviceName,
+                            allowPlaintextLegacyFallback = true,
+                        )
+                    }
                 }
             assertTrue(fresh.authPaused.await(2, TimeUnit.SECONDS))
 
