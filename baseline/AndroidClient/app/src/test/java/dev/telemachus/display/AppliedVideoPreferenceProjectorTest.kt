@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import dev.vibescreen.protocol.v1.VideoQualityPreset
 
 class AppliedVideoPreferenceProjectorTest {
     @Test
@@ -46,4 +47,89 @@ class AppliedVideoPreferenceProjectorTest {
         assertNull(projection.bitrateMbps)
         assertNull(projection.framesPerSecond)
     }
+
+    @Test
+    fun `video preference requests announce only when host control is available`() {
+        assertTrue(VideoPreferenceFeedbackPolicy.shouldAnnounceRequest(clientAvailable = true))
+        assertFalse(VideoPreferenceFeedbackPolicy.shouldAnnounceRequest(clientAvailable = false))
+    }
+
+    @Test
+    fun `video preference applied feedback announces only once per client requested epoch`() {
+        assertFalse(
+            VideoPreferenceFeedbackPolicy.shouldAnnounceApplied(
+                appliesClientVideoPreferences = false,
+                configEpoch = 2,
+                lastAnnouncedConfigEpoch = 1,
+            ),
+        )
+        assertFalse(
+            VideoPreferenceFeedbackPolicy.shouldAnnounceApplied(
+                appliesClientVideoPreferences = true,
+                configEpoch = 2,
+                lastAnnouncedConfigEpoch = 2,
+            ),
+        )
+        assertTrue(
+            VideoPreferenceFeedbackPolicy.shouldAnnounceApplied(
+                appliesClientVideoPreferences = true,
+                configEpoch = 3,
+                lastAnnouncedConfigEpoch = 2,
+            ),
+        )
+    }
+
+    @Test
+    fun `saved default video preferences do not replay on a new session`() {
+        assertNull(
+            SavedVideoPreferenceReplayPolicy.fromSavedPreferences(
+                quality = VideoQualityChoice.AUTO,
+                bitrateMbps = ClientVideoBounds.DEFAULT_BITRATE_MBPS,
+                framesPerSecond = ClientVideoBounds.DEFAULT_FRAME_RATE,
+            ),
+        )
+    }
+
+    @Test
+    fun `saved explicit bitrate and frame rate replay without a preset`() {
+        val replay =
+            SavedVideoPreferenceReplayPolicy.fromSavedPreferences(
+                quality = VideoQualityChoice.AUTO,
+                bitrateMbps = 50,
+                framesPerSecond = 30,
+            )
+
+        assertEquals(50_000, replay?.bitrateKbps)
+        assertEquals(30, replay?.framesPerSecond)
+        assertEquals(VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED, replay?.qualityPreset)
+        assertTrue(checkNotNull(replay).resetQualityToAuto)
+    }
+
+    @Test
+    fun `saved quality preset replays only after client video control is negotiated`() {
+        val sent = mutableListOf<SavedVideoPreferenceReplay>()
+
+        assertFalse(
+            SavedVideoPreferenceReplayer.replayIfAvailable(
+                clientVideoControlAvailable = false,
+                quality = VideoQualityChoice.SHARP,
+                bitrateMbps = ClientVideoBounds.DEFAULT_BITRATE_MBPS,
+                framesPerSecond = ClientVideoBounds.DEFAULT_FRAME_RATE,
+                send = sent::add,
+            ),
+        )
+        assertTrue(sent.isEmpty())
+
+        assertTrue(
+            SavedVideoPreferenceReplayer.replayIfAvailable(
+                clientVideoControlAvailable = true,
+                quality = VideoQualityChoice.SHARP,
+                bitrateMbps = ClientVideoBounds.DEFAULT_BITRATE_MBPS,
+                framesPerSecond = ClientVideoBounds.DEFAULT_FRAME_RATE,
+                send = sent::add,
+            ),
+        )
+        assertEquals(VideoQualityPreset.VIDEO_QUALITY_PRESET_SHARP, sent.single().qualityPreset)
+    }
+
 }

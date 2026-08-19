@@ -344,7 +344,7 @@ class ConnectionStateAccessibilityInstrumentedTest {
                 ChecklistStatus.NOT_READY,
             )
             assertEquals(ContextCompat.getColor(context, R.color.warning), label.currentTextColor)
-            assertEquals(Typeface.BOLD, label.typeface.style and Typeface.BOLD)
+            assertEquals(Typeface.BOLD, (label.typeface?.style ?: Typeface.NORMAL) and Typeface.BOLD)
 
             ChecklistStatusApplier.apply(
                 context,
@@ -354,7 +354,7 @@ class ConnectionStateAccessibilityInstrumentedTest {
                 ChecklistStatus.READY,
             )
             assertEquals(ContextCompat.getColor(context, R.color.on_surface_muted), label.currentTextColor)
-            assertEquals(Typeface.NORMAL, label.typeface.style)
+            assertEquals(Typeface.NORMAL, label.typeface?.style ?: Typeface.NORMAL)
         }
     }
 

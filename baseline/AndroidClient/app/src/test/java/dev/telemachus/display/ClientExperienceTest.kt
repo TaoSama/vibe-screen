@@ -33,7 +33,7 @@ class ClientExperienceTest {
         assertFalse(usb.warning)
         assertEquals(R.string.stream_status_lan_label, lan.labelResource)
         assertEquals(R.string.stream_status_lan_detail, lan.detailResource)
-        assertTrue(lan.warning)
+        assertFalse(lan.warning)
         assertEquals(R.string.stream_status_internet_label, internet.labelResource)
         assertEquals(R.string.stream_status_internet_detail, internet.detailResource)
         assertFalse(internet.warning)

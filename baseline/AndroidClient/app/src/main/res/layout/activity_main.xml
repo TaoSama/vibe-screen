@@ -1272,6 +1272,23 @@
             </LinearLayout>
             <!-- ============= /INTERNET MODE CONTENT ============= -->
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/connectionSettingsButton"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="@dimen/connection_section_margin"
+                android:layout_marginBottom="12dp"
+                android:contentDescription="@string/display_settings"
+                android:text="@string/display_settings"
+                android:textColor="#C4CBD0"
+                android:visibility="gone"
+                app:icon="@drawable/ic_settings"
+                app:iconGravity="textStart"
+                app:iconPadding="8dp"
+                app:iconTint="#C4CBD0"
+                app:strokeColor="#52606A" />
+
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

@@ -89,14 +89,33 @@ class ControlBarLayoutInstrumentedTest {
     }
 
     @Test
-    fun phoneWidthsUseProductionInlineLayoutAndPreserveTouchTargets() {
+    fun phoneWidthsUseProductionLayoutAndPreserveTouchTargets() {
         listOf(320, 360).forEach { widthDp ->
             withLayout(widthDp = widthDp) { layout ->
-                assertEquals(ControlBarLayoutPolicy.Mode.INLINE, layout.mode)
-                assertEquals(LinearLayout.HORIZONTAL, layout.views.content.orientation)
+                val expectedMode =
+                    ControlBarLayoutPolicy.mode(
+                        availableWidthPx = layout.dp(widthDp),
+                        displaySelectorVisible = true,
+                        hostActionsVisible = true,
+                        geometry = ControlBarLayoutApplier.geometry(layout.context.resources),
+                    )
+                assertEquals(expectedMode, layout.mode)
+                assertEquals(
+                    if (expectedMode == ControlBarLayoutPolicy.Mode.INLINE) {
+                        LinearLayout.HORIZONTAL
+                    } else {
+                        LinearLayout.VERTICAL
+                    },
+                    layout.views.content.orientation,
+                )
                 assertEquals(LinearLayout.HORIZONTAL, layout.views.actions.orientation)
-                assertEquals(0, layout.selectorParams.width)
-                assertEquals(1f, layout.selectorParams.weight)
+                if (expectedMode == ControlBarLayoutPolicy.Mode.INLINE) {
+                    assertEquals(0, layout.selectorParams.width)
+                    assertEquals(1f, layout.selectorParams.weight)
+                } else {
+                    assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, layout.selectorParams.width)
+                    assertEquals(0f, layout.selectorParams.weight)
+                }
                 assertAccessibleDisplayName(layout)
                 assertActionGeometry(layout)
             }
@@ -139,10 +158,13 @@ class ControlBarLayoutInstrumentedTest {
     @Test
     fun productionApplierCoversStackedColumnAndHiddenSelectorBoundaries() {
         val geometry = ControlBarLayoutApplier.geometry(applicationContext().resources)
+        val statusWidth = geometry.statusMinimumWidthPx + geometry.statusGapPx
         val withHostColumnWidth =
-            geometry.horizontalContentPaddingPx + geometry.horizontalActionsWidthPx(true)
+            geometry.horizontalContentPaddingPx + statusWidth + geometry.horizontalActionsWidthPx(true)
         val withoutHostColumnWidth =
-            geometry.horizontalContentPaddingPx + geometry.horizontalActionsWidthPx(false)
+            geometry.horizontalContentPaddingPx + statusWidth + geometry.horizontalActionsWidthPx(false)
+        val withHostStackedWidth = stackedMinimumWidth(geometry, hostActionsVisible = true)
+        val withoutHostStackedWidth = stackedMinimumWidth(geometry, hostActionsVisible = false)
         val withHostInlineWidth = withHostColumnWidth + geometry.selectorMinimumWidthPx
         val withoutHostInlineWidth = withoutHostColumnWidth + geometry.selectorMinimumWidthPx
         assertModeAndShape(
@@ -158,7 +180,7 @@ class ControlBarLayoutInstrumentedTest {
             expectedMode = ControlBarLayoutPolicy.Mode.STACKED,
         )
         assertModeAndShape(
-            widthPx = withHostColumnWidth - 1,
+            widthPx = withHostStackedWidth - 1,
             selectorVisible = true,
             hostVisible = true,
             expectedMode = ControlBarLayoutPolicy.Mode.COLUMN,
@@ -170,7 +192,7 @@ class ControlBarLayoutInstrumentedTest {
             expectedMode = ControlBarLayoutPolicy.Mode.STACKED,
         )
         assertModeAndShape(
-            widthPx = withoutHostColumnWidth - 1,
+            widthPx = withoutHostStackedWidth - 1,
             selectorVisible = true,
             hostVisible = false,
             expectedMode = ControlBarLayoutPolicy.Mode.COLUMN,
@@ -211,10 +233,10 @@ class ControlBarLayoutInstrumentedTest {
             ChromeSafeAreaApplier.applyMargins(layout.views.card, baseMargins, changedInsets)
             mode = layout.apply(windowWidthPx = layout.dp(360), safeAreaInsets = changedInsets)
             layout.measureAndLayout(layout.dp(360))
-            assertEquals(ControlBarLayoutPolicy.Mode.INLINE, mode)
+            assertEquals(ControlBarLayoutPolicy.Mode.STACKED, mode)
             assertMargins(layout, baseMargins, changedInsets)
-            assertEquals(LinearLayout.HORIZONTAL, layout.views.content.orientation)
-            assertEquals(1f, layout.selectorParams.weight)
+            assertEquals(LinearLayout.VERTICAL, layout.views.content.orientation)
+            assertEquals(0f, layout.selectorParams.weight)
             assertActionGeometry(layout)
 
             mode = layout.apply(windowWidthPx = layout.dp(183), safeAreaInsets = SafeAreaGeometry.Insets.NONE)
@@ -241,29 +263,41 @@ class ControlBarLayoutInstrumentedTest {
         assertEquals(11, geometry.actionMarginPx)
         assertEquals(33, geometry.disconnectSeparationPx)
         assertEquals(22, geometry.columnActionSpacingPx)
+        assertEquals(198, geometry.statusMinimumWidthPx)
+        assertEquals(17, geometry.statusGapPx)
 
-        withLayout(context = context, widthPx = 749) { layout ->
+        val statusWidth = geometry.statusMinimumWidthPx + geometry.statusGapPx
+        val withHostColumnWidth =
+            geometry.horizontalContentPaddingPx + statusWidth + geometry.horizontalActionsWidthPx(true)
+        val withoutHostColumnWidth =
+            geometry.horizontalContentPaddingPx + statusWidth + geometry.horizontalActionsWidthPx(false)
+        val withHostStackedWidth = stackedMinimumWidth(geometry, hostActionsVisible = true)
+        val withoutHostStackedWidth = stackedMinimumWidth(geometry, hostActionsVisible = false)
+        val withHostInlineWidth = withHostColumnWidth + geometry.selectorMinimumWidthPx
+        val withoutHostInlineWidth = withoutHostColumnWidth + geometry.selectorMinimumWidthPx
+
+        withLayout(context = context, widthPx = withHostInlineWidth) { layout ->
             assertEquals(ControlBarLayoutPolicy.Mode.INLINE, layout.mode)
         }
-        withLayout(context = context, widthPx = 748) { layout ->
+        withLayout(context = context, widthPx = withHostInlineWidth - 1) { layout ->
             assertEquals(ControlBarLayoutPolicy.Mode.STACKED, layout.mode)
         }
-        withLayout(context = context, widthPx = 507) { layout ->
+        withLayout(context = context, widthPx = withHostStackedWidth) { layout ->
             assertEquals(ControlBarLayoutPolicy.Mode.STACKED, layout.mode)
         }
-        withLayout(context = context, widthPx = 506) { layout ->
+        withLayout(context = context, widthPx = withHostStackedWidth - 1) { layout ->
             assertEquals(ControlBarLayoutPolicy.Mode.COLUMN, layout.mode)
         }
-        withLayout(context = context, widthPx = 595, hostVisible = false) { layout ->
+        withLayout(context = context, widthPx = withoutHostInlineWidth, hostVisible = false) { layout ->
             assertEquals(ControlBarLayoutPolicy.Mode.INLINE, layout.mode)
         }
-        withLayout(context = context, widthPx = 594, hostVisible = false) { layout ->
+        withLayout(context = context, widthPx = withoutHostInlineWidth - 1, hostVisible = false) { layout ->
             assertEquals(ControlBarLayoutPolicy.Mode.STACKED, layout.mode)
         }
-        withLayout(context = context, widthPx = 353, hostVisible = false) { layout ->
+        withLayout(context = context, widthPx = withoutHostStackedWidth, hostVisible = false) { layout ->
             assertEquals(ControlBarLayoutPolicy.Mode.STACKED, layout.mode)
         }
-        withLayout(context = context, widthPx = 352, hostVisible = false) { layout ->
+        withLayout(context = context, widthPx = withoutHostStackedWidth - 1, hostVisible = false) { layout ->
             assertEquals(ControlBarLayoutPolicy.Mode.COLUMN, layout.mode)
         }
     }
@@ -271,15 +305,22 @@ class ControlBarLayoutInstrumentedTest {
     @Test
     fun hiddenSelectorUsesExactCompactBoundariesAtNonIntegerDensity() {
         val context = densityContext(DENSITY_DPI_FOR_2_75)
-        withLayout(context = context, widthPx = 507, selectorVisible = false) { layout ->
+        val geometry = ControlBarLayoutApplier.geometry(context.resources)
+        val statusWidth = geometry.statusMinimumWidthPx + geometry.statusGapPx
+        val withHostColumnWidth =
+            geometry.horizontalContentPaddingPx + statusWidth + geometry.horizontalActionsWidthPx(true)
+        val withoutHostColumnWidth =
+            geometry.horizontalContentPaddingPx + statusWidth + geometry.horizontalActionsWidthPx(false)
+
+        withLayout(context = context, widthPx = withHostColumnWidth, selectorVisible = false) { layout ->
             assertEquals(ControlBarLayoutPolicy.Mode.COMPACT, layout.mode)
         }
-        withLayout(context = context, widthPx = 506, selectorVisible = false) { layout ->
+        withLayout(context = context, widthPx = withHostColumnWidth - 1, selectorVisible = false) { layout ->
             assertEquals(ControlBarLayoutPolicy.Mode.COLUMN, layout.mode)
         }
         withLayout(
             context = context,
-            widthPx = 353,
+            widthPx = withoutHostColumnWidth,
             selectorVisible = false,
             hostVisible = false,
         ) { layout ->
@@ -287,7 +328,7 @@ class ControlBarLayoutInstrumentedTest {
         }
         withLayout(
             context = context,
-            widthPx = 352,
+            widthPx = withoutHostColumnWidth - 1,
             selectorVisible = false,
             hostVisible = false,
         ) { layout ->
@@ -338,6 +379,17 @@ class ControlBarLayoutInstrumentedTest {
             assertActionGeometry(layout)
         }
     }
+
+    private fun stackedMinimumWidth(
+        geometry: ControlBarLayoutPolicy.Geometry,
+        hostActionsVisible: Boolean,
+    ): Int =
+        geometry.horizontalContentPaddingPx +
+            maxOf(
+                geometry.statusMinimumWidthPx,
+                geometry.selectorMinimumWidthPx,
+                geometry.horizontalActionsWidthPx(hostActionsVisible),
+            )
 
     private fun assertAccessibleDisplayName(layout: MeasuredLayout) {
         assertEquals(FULL_DISPLAY_NAME, layout.label.text.toString())

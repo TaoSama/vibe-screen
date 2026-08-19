@@ -122,19 +122,19 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                     ConnectionGuidanceFactory.from(
                         java.io.IOException("unexpected USB transport failure"),
                         ConnectionGuidanceContext.adb(54321, AdbTransportKind.UNAVAILABLE),
-                    ).message,
+                    ).formattedMessage(layout.context),
                     ConnectionGuidanceFactory.from(
                         java.net.ConnectException("Connection refused"),
                         ConnectionGuidanceContext.adb(54321, AdbTransportKind.USB),
-                    ).message,
+                    ).formattedMessage(layout.context),
                     ConnectionGuidanceFactory.from(
                         java.io.IOException("unexpected LAN transport failure"),
                         ConnectionGuidanceContext.trustedLan(54321),
-                    ).message,
+                    ).formattedMessage(layout.context),
                     ConnectionGuidanceFactory.from(
                         java.net.SocketTimeoutException("timeout"),
                         ConnectionGuidanceContext.internet(),
-                    ).message,
+                    ).formattedMessage(layout.context),
                 )
             layout.showModeContent(R.id.internetModeContent)
             layout.internetError.visibility = View.VISIBLE
@@ -145,6 +145,38 @@ class ConnectionGuidanceLayoutInstrumentedTest {
                 layout.assertFullyReachableByScroll(layout.internetError)
                 layout.assertHeaderAndActionsSeparated()
             }
+        }
+    }
+
+    @Test
+    fun narrowDisconnectedPanelUsesInlineSettingsButtonWithoutCoveringConnect() {
+        withLayout(widthDp = 361, heightDp = 800) { layout ->
+            layout.showModeContent(R.id.usbModeContent)
+            layout.applyPanel(
+                resources = layout.context.resources,
+                connectionMode = ConnectionMode.USB,
+                subtitleExpanded = false,
+            )
+            layout.inlineSettingsButton.visibility = View.VISIBLE
+            layout.floatingSettingsButton.visibility = View.GONE
+            layout.measureAndLayout()
+
+            assertTrue(layout.context.resources.getBoolean(R.bool.connection_panel_inline_settings_button))
+            assertEquals(View.VISIBLE, layout.inlineSettingsButton.visibility)
+            assertEquals(View.GONE, layout.floatingSettingsButton.visibility)
+            layout.assertFullyReachableByScroll(layout.connectButton)
+            layout.assertFullyReachableByScroll(layout.inlineSettingsButton)
+            assertFalse(
+                "Inline settings button must not overlap the primary connect action",
+                Rect.intersects(layout.boundsInContent(layout.connectButton), layout.boundsInContent(layout.inlineSettingsButton)),
+            )
+        }
+    }
+
+    @Test
+    fun wideLandscapeKeepsFloatingSettingsButtonPolicy() {
+        withLayout(widthDp = 873, heightDp = 393) { layout ->
+            assertFalse(layout.context.resources.getBoolean(R.bool.connection_panel_inline_settings_button))
         }
     }
 
@@ -201,6 +233,9 @@ class ConnectionGuidanceLayoutInstrumentedTest {
         val content = root.findViewById<LinearLayout>(R.id.connectionContent)
         val subtitle = root.findViewById<TextView>(R.id.connectionSubtitle)
         val internetError = root.findViewById<TextView>(R.id.internetErrorText)
+        val connectButton = root.findViewById<View>(R.id.connectButton)
+        val inlineSettingsButton = root.findViewById<View>(R.id.connectionSettingsButton)
+        val floatingSettingsButton = root.findViewById<View>(R.id.settingsButton)
         private val scrollView = root.findViewById<NestedScrollView>(R.id.connectionScroll)
         private val icon = root.findViewById<View>(R.id.connectionIcon)
         private val wordmark = root.findViewById<View>(R.id.connectionWordmark)
@@ -356,7 +391,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
 
         private fun bounds(view: View): Rect = Rect(view.left, view.top, view.right, view.bottom)
 
-        private fun boundsInContent(view: View): Rect =
+        fun boundsInContent(view: View): Rect =
             Rect(0, 0, view.width, view.height).also { rect ->
                 content.offsetDescendantRectToMyCoords(view, rect)
             }
@@ -366,4 +401,7 @@ class ConnectionGuidanceLayoutInstrumentedTest {
 
         private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()
     }
+
+    private fun ConnectionGuidance.formattedMessage(context: Context): String =
+        ConnectionGuidanceTextFormatter.format(context.resources, message)
 }
