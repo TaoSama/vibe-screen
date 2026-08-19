@@ -29,7 +29,7 @@ platform scaffolding under active development.
 | Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264, MediaCodec decode |
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage, with fixed-binary device re-verification still gated on macOS permission for the rebuilt Host |
-| Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. Controller protocol models, Android mapping/state, Android production forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
+| Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. Controller protocol models, Android mapping/state, Android production event forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted |
 | Protocol v1 | Host/client main-session verified on device: capability negotiation, display list/selection, stable physical/virtual round trips, HiDPI capture, keyboard/scroll input, auto-reconnect, client-driven video preferences, and client-invoked focused-window migration/return. Window return and disconnect recovery restore the original Mac frame. Quality/FPS/bitrate changes and AUTO reset renegotiate in place on the Xiaomi 13 with a bumped config epoch, no host restart, and no transport teardown. Cross-platform offline gates pass. A two-hour soak has run with a stable stream, but the host RSS no-growth gate and native-pointer HID confirmation remain open |
@@ -119,10 +119,10 @@ the roadmap destination, not a statement that each item is shipped today:
 - Native Android, HarmonyOS NEXT, and iOS clients.
 
 Current Android real-device evidence comes from a Xiaomi 13 (model 2211133C,
-codename fuxi) running Android 16 over USB, plus evidence from a Nubia P0110
-on the same Android version. The connected Nubia P0110 may be used as an
-Android-device substitute for general USB/LAN streaming, protocol, UI,
-decoder, and reconnect acceptance work; evidence still records the exact
+codename fuxi) running Android 16 over USB, plus evidence from a Nubia
+P0110/pacific on the same Android version. The connected Nubia P0110/pacific
+may be used as an Android-device substitute for general USB/LAN streaming,
+protocol, UI, decoder, and reconnect acceptance work; evidence still records the exact
 manufacturer, model, codename, and OS version, and hardware-specific claims
 remain tied to the device that produced them. On the Xiaomi 13 the streaming
 baseline is verified: stable ~60 FPS, hardware HEVC decode at roughly 6 ms,
@@ -189,8 +189,9 @@ Transport implementations are replaceable:
 
 - USB uses ADB reverse and a low-latency local connection.
 - Trusted LAN uses direct local connectivity and device discovery; current
-  macOS/Android peers protect the admitted TCP session with application records,
-  while legacy plaintext fallback is explicit and separately reported.
+  macOS/Android peers protect the admitted TCP session with per-session
+  AES-256-GCM application records, while legacy plaintext fallback is explicit
+  and separately reported.
 - Internet access uses WebRTC P2P with STUN and falls back to TURN relay only
   when direct traversal fails.
 - Control events use a reliable ordered channel while media favors current
@@ -239,8 +240,8 @@ HiDPI scale, letterboxing, rotation, and safe areas.
 
 ### Phase 0 — Sustainable baseline
 
-**Current status: baseline acceptance passed on the recorded Nubia P0110 test
-device using the legacy compatibility path, and Protocol v1 main-session
+**Current status: baseline acceptance passed on the recorded Nubia P0110/pacific
+test device using the legacy compatibility path, and Protocol v1 main-session
 offline gates pass. The 2026-08-13 main baseline at commit `244c5a2` passed
 GitHub Actions Phase 0
 [run 31710918927](https://github.com/TaoSama/vibe-screen/actions/runs/31710918927),
@@ -454,7 +455,7 @@ The macOS M150 adapter has completed real local offer/answer, ICE and
 bidirectional DataChannel tests through both direct and forced coturn relay
 candidate pairs. Its application record layer is wired to the Keychain-backed
 identity/session lifecycle. On 2026-08-05, source commit
-`597518f948075e396352bc353afcec01a30303f3` recorded one Nubia P0110 device pass
+`597518f948075e396352bc353afcec01a30303f3` recorded one Nubia P0110/pacific device pass
 for the Android M144 adapter, AndroidKeyStore lifecycle, REST signaling client,
 product-session UI, and encrypted DataChannel instrumentation through direct and
 forced local coturn using synthetic Protocol v1 media. This historical result is
@@ -485,7 +486,7 @@ encoder/capture application callback, but this path is verified only through
 offline build and unit/self-tests, not against real capture output. Not proved:
 public Internet, real remote TURN (local loopback and forced local coturn are
 not public-Internet or real-deployment evidence), real
-ScreenCaptureKit-to-Android/Xiaomi 13 decoder continuity, real network
+ScreenCaptureKit-to-Android device decoder continuity, real network
 fluctuation, network handoff, and soak.
 
 Reproduce the local Mac integration checks with:
@@ -603,7 +604,7 @@ network quality may increase it.
 The Android acceptance device can be any currently connected Android handset or
 tablet that meets the runtime requirements and is explicitly identified in the
 evidence. Xiaomi 13 (model 2211133C, codename fuxi) remains the primary named
-evidence source, and Nubia P0110 (codename pacific) is an acceptable substitute
+evidence source, and Nubia P0110/pacific is an acceptable substitute
 for general Android decoding, protocol behavior, input, networking, UI, and
 performance validation. Do not relabel one device as another: device-specific
 evidence and hardware-gated claims, such as native HID, stylus, thermal, panel,
@@ -628,7 +629,7 @@ The viewport/input and window-action records are retained under
 and
 [2026-08-10-xiaomi13-window-actions](docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-10-xiaomi13-window-actions/README.md).
 Earlier Android evidence also comes from Nubia
-P0110, and future P0110 runs may close general Android gates when their
+P0110/pacific, and future P0110/pacific runs may close general Android gates when their
 evidence satisfies the same pass criteria. Final tablet
 selection emphasizes
 an 8–9 inch high-density 90/120 Hz panel, Wi-Fi 6 or newer, stable low-latency
