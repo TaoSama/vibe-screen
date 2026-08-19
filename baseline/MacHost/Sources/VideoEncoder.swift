@@ -49,13 +49,13 @@ final class VideoEncoderInFlightAdmission {
         var invalidated = false
     }
 
-    private let capacity: Int
+    private let maximumCapacity: Int
     private let lock = NSLock()
     private var state = State()
 
     init(capacity: Int) {
         precondition(capacity > 0)
-        self.capacity = capacity
+        self.maximumCapacity = capacity
     }
 
     func submit(_ submission: (Lease) -> OSStatus) -> SubmissionResult {
@@ -65,7 +65,7 @@ final class VideoEncoderInFlightAdmission {
             lock.unlock()
             return .invalidated
         }
-        guard state.activeIdentifiers.count < capacity else {
+        guard state.activeIdentifiers.count < maximumCapacity else {
             lock.unlock()
             return .atCapacity
         }
@@ -93,6 +93,12 @@ final class VideoEncoderInFlightAdmission {
         defer { lock.unlock() }
         return state.activeIdentifiers.count
     }
+
+    /// The configured upper bound on concurrently admitted frames. The
+    /// short-window host memory diagnostic reads this together with
+    /// `inFlightCount` to confirm the VideoToolbox pipeline never exceeds its
+    /// fixed admission budget.
+    var capacity: Int { maximumCapacity }
 
     var capacityLimit: Int { capacity }
 
@@ -269,8 +275,6 @@ class VideoEncoder {
     private let inFlightAdmission = VideoEncoderInFlightAdmission(capacity: 2)
     private let callbackOwner = VideoEncoderCallbackOwner()
 
-    var inFlightCount: Int { inFlightAdmission.inFlightCount }
-    var inFlightCapacity: Int { inFlightAdmission.capacityLimit }
     var inFlightSnapshot: VideoEncoderInFlightAdmission.Snapshot { inFlightAdmission.snapshot }
 
     var hasActiveCompressionSession: Bool {
@@ -278,6 +282,14 @@ class VideoEncoder {
         defer { sessionLock.unlock() }
         return compressionSession != nil
     }
+
+    /// Number of frames currently admitted to VideoToolbox. Bounded by
+    /// `inFlightCapacity`; the host memory diagnostic asserts this invariant
+    /// from the emitted `stream_stats` telemetry.
+    var inFlightCount: Int { inFlightSnapshot.inFlight }
+
+    /// Fixed upper bound on concurrently admitted VideoToolbox frames.
+    var inFlightCapacity: Int { inFlightSnapshot.capacity }
 
     init(width: Int, height: Int, codec: StreamCodec = .hevc, bitrateMbps: Int = 20, quality: String = "ultralow", gamingBoost: Bool = false, frameRate: Int = 60) {
         self.width = width
@@ -595,98 +607,100 @@ enum VideoEncoderAnnexBConverter {
 }
 
 private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallbackRefCon, sourceFrameRefCon, status, _, sampleBuffer) in
-    guard let outputCallbackRefCon else { return }
-    let registry = Unmanaged<VideoEncoderFrameRegistry>
-        .fromOpaque(outputCallbackRefCon)
-        .takeUnretainedValue()
-    guard let claimedFrame = registry.claim(sourceFrameRefCon) else {
-        return
-    }
-    VideoEncoderCallbackLifecycle.process(claimedFrame) { claimedFrame in
-        guard status == noErr,
-              let sampleBuffer = sampleBuffer else {
-            if status != noErr {
-                debugLog("VideoToolbox encode callback failed: \(status)")
+    autoreleasepool {
+        guard let outputCallbackRefCon else { return }
+        let registry = Unmanaged<VideoEncoderFrameRegistry>
+            .fromOpaque(outputCallbackRefCon)
+            .takeUnretainedValue()
+        guard let claimedFrame = registry.claim(sourceFrameRefCon) else {
+            return
+        }
+        VideoEncoderCallbackLifecycle.process(claimedFrame) { claimedFrame in
+            guard status == noErr,
+                  let sampleBuffer = sampleBuffer else {
+                if status != noErr {
+                    debugLog("VideoToolbox encode callback failed: \(status)")
+                }
+                return
             }
-            return
-        }
 
-        guard let encoder = claimedFrame.owner.claimEncoder() else { return }
-        let timestamp = claimedFrame.context.timestamp
-        let sessionEpoch = claimedFrame.context.sessionEpoch
+            guard let encoder = claimedFrame.owner.claimEncoder() else { return }
+            let timestamp = claimedFrame.context.timestamp
+            let sessionEpoch = claimedFrame.context.sessionEpoch
 
-        // Extract encoded data
-        guard let dataBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
+            // Extract encoded data
+            guard let dataBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
 
-        var lengthAtOffset: Int = 0
-        var totalLength: Int = 0
-        var dataPointer: UnsafeMutablePointer<Int8>?
+            var lengthAtOffset: Int = 0
+            var totalLength: Int = 0
+            var dataPointer: UnsafeMutablePointer<Int8>?
 
-        let statusCode = CMBlockBufferGetDataPointer(
-            dataBuffer,
-            atOffset: 0,
-            lengthAtOffsetOut: &lengthAtOffset,
-            totalLengthOut: &totalLength,
-            dataPointerOut: &dataPointer
-        )
+            let statusCode = CMBlockBufferGetDataPointer(
+                dataBuffer,
+                atOffset: 0,
+                lengthAtOffsetOut: &lengthAtOffset,
+                totalLengthOut: &totalLength,
+                dataPointerOut: &dataPointer
+            )
 
-        guard statusCode == kCMBlockBufferNoErr,
-              let dataPointer = dataPointer,
-              totalLength >= 0,
-              lengthAtOffset >= totalLength else {
-            return
-        }
+            guard statusCode == kCMBlockBufferNoErr,
+                  let dataPointer = dataPointer,
+                  totalLength >= 0,
+                  lengthAtOffset >= totalLength else {
+                return
+            }
 
-        // Check if this is a keyframe
-        let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[CFString: Any]]
-        let isKeyframe = !(attachments?.first?[kCMSampleAttachmentKey_NotSync] as? Bool ?? false)
+            // Check if this is a keyframe
+            let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[CFString: Any]]
+            let isKeyframe = !(attachments?.first?[kCMSampleAttachmentKey_NotSync] as? Bool ?? false)
 
-        // Pre-allocate estimated size to reduce reallocations
-        let estimatedSize = totalLength + (isKeyframe ? 256 : 0) + 32
-        var frameData = Data(capacity: estimatedSize)
+            // Pre-allocate estimated size to reduce reallocations
+            let estimatedSize = totalLength + (isKeyframe ? 256 : 0) + 32
+            var frameData = Data(capacity: estimatedSize)
 
-        if isKeyframe {
-            if let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer) {
-                // Prepend parameter sets: VPS/SPS/PPS for HEVC, SPS/PPS for H.264.
-                var parameterSetCount: Int = 0
-                let countStatus: OSStatus
-                if encoder.codec == .hevc {
-                    countStatus = CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(formatDescription, parameterSetIndex: 0, parameterSetPointerOut: nil, parameterSetSizeOut: nil, parameterSetCountOut: &parameterSetCount, nalUnitHeaderLengthOut: nil)
-                } else {
-                    countStatus = CMVideoFormatDescriptionGetH264ParameterSetAtIndex(formatDescription, parameterSetIndex: 0, parameterSetPointerOut: nil, parameterSetSizeOut: nil, parameterSetCountOut: &parameterSetCount, nalUnitHeaderLengthOut: nil)
-                }
-                if countStatus != noErr {
-                    debugLog("Parameter set count query failed: \(countStatus) — keyframe sent without SPS/PPS")
-                    parameterSetCount = 0
-                }
-
-                for i in 0..<parameterSetCount {
-                    var parameterSetPointer: UnsafePointer<UInt8>?
-                    var parameterSetSize: Int = 0
+            if isKeyframe {
+                if let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer) {
+                    // Prepend parameter sets: VPS/SPS/PPS for HEVC, SPS/PPS for H.264.
+                    var parameterSetCount: Int = 0
+                    let countStatus: OSStatus
                     if encoder.codec == .hevc {
-                        CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(formatDescription, parameterSetIndex: i, parameterSetPointerOut: &parameterSetPointer, parameterSetSizeOut: &parameterSetSize, parameterSetCountOut: nil, nalUnitHeaderLengthOut: nil)
+                        countStatus = CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(formatDescription, parameterSetIndex: 0, parameterSetPointerOut: nil, parameterSetSizeOut: nil, parameterSetCountOut: &parameterSetCount, nalUnitHeaderLengthOut: nil)
                     } else {
-                        CMVideoFormatDescriptionGetH264ParameterSetAtIndex(formatDescription, parameterSetIndex: i, parameterSetPointerOut: &parameterSetPointer, parameterSetSizeOut: &parameterSetSize, parameterSetCountOut: nil, nalUnitHeaderLengthOut: nil)
+                        countStatus = CMVideoFormatDescriptionGetH264ParameterSetAtIndex(formatDescription, parameterSetIndex: 0, parameterSetPointerOut: nil, parameterSetSizeOut: nil, parameterSetCountOut: &parameterSetCount, nalUnitHeaderLengthOut: nil)
+                    }
+                    if countStatus != noErr {
+                        debugLog("Parameter set count query failed: \(countStatus) — keyframe sent without SPS/PPS")
+                        parameterSetCount = 0
                     }
 
-                    if let pointer = parameterSetPointer {
-                        frameData.append(contentsOf: nalStartCode)
-                        frameData.append(pointer, count: parameterSetSize)
+                    for i in 0..<parameterSetCount {
+                        var parameterSetPointer: UnsafePointer<UInt8>?
+                        var parameterSetSize: Int = 0
+                        if encoder.codec == .hevc {
+                            CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(formatDescription, parameterSetIndex: i, parameterSetPointerOut: &parameterSetPointer, parameterSetSizeOut: &parameterSetSize, parameterSetCountOut: nil, nalUnitHeaderLengthOut: nil)
+                        } else {
+                            CMVideoFormatDescriptionGetH264ParameterSetAtIndex(formatDescription, parameterSetIndex: i, parameterSetPointerOut: &parameterSetPointer, parameterSetSizeOut: &parameterSetSize, parameterSetCountOut: nil, nalUnitHeaderLengthOut: nil)
+                        }
+
+                        if let pointer = parameterSetPointer {
+                            frameData.append(contentsOf: nalStartCode)
+                            frameData.append(pointer, count: parameterSetSize)
+                        }
                     }
                 }
             }
-        }
 
-        guard VideoEncoderAnnexBConverter.appendLengthPrefixedNALUnits(
-            from: UnsafeRawPointer(dataPointer),
-            lengthAtOffset: lengthAtOffset,
-            totalLength: totalLength,
-            to: &frameData
-        ) else {
-            debugLog("VideoToolbox encode callback produced malformed NAL data")
-            return
-        }
+            guard VideoEncoderAnnexBConverter.appendLengthPrefixedNALUnits(
+                from: UnsafeRawPointer(dataPointer),
+                lengthAtOffset: lengthAtOffset,
+                totalLength: totalLength,
+                to: &frameData
+            ) else {
+                debugLog("VideoToolbox encode callback produced malformed NAL data")
+                return
+            }
 
-        encoder.onEncodedFrame?(frameData, timestamp, isKeyframe, sessionEpoch)
+            encoder.onEncodedFrame?(frameData, timestamp, isKeyframe, sessionEpoch)
+        }
     }
 }

@@ -10,9 +10,11 @@ This directory contains two deliberately separate deployment slices:
 - `docker-compose.yml` and `docker-compose.production.yml` run the experimental
   relay credential service beside coturn.
 
-They are not an integrated public Internet stack. In particular, the Authority
-profiles do not wire signaling, relay, automatic account/session issuance, or
-active revocation of an established PeerConnection/TURN allocation.
+They are not an integrated public Internet stack. Authority-backed signaling and
+relay credential admission can both call the shared Authority service, but these
+profiles still do not provide automatic account/session issuance, public ingress,
+multi-instance routing, or active revocation of an established PeerConnection/TURN
+allocation.
 
 ## Authority local profile
 
@@ -135,7 +137,8 @@ The last command asks the live control plane for a 120-second credential and
 runs `turnutils_uclient` inside the coturn container. It fails unless actual
 authenticated allocations exchange relayed packets. Container health checks
 cover coturn STUN responsiveness and relay-process liveness; `/readyz` is the
-authoritative relay storage readiness check. A network-disabled one-shot init
+authoritative relay storage readiness check and, in `production_authority` mode,
+also requires Authority readiness. A network-disabled one-shot init
 container assigns the named state volume to relay UID/GID 65532 before the
 non-root scratch control-plane container starts.
 
@@ -164,10 +167,14 @@ Linux host:
 
 1. Copy `config/relay.production.example.json` to the ignored
    `config/relay.production.json`. Replace every example hostname and verify
-   its `turn_realm` equals `COTURN_REALM`.
+   its `turn_realm` equals `COTURN_REALM`. Keep
+   `authority_mode=production_authority`, point `authority_url` at the private
+   Authority endpoint, and set `authority_source_id` to a stable identifier for
+   this TURN source.
 2. Provision independent secret files with mode `0600`; distribute the same
-   `turn_secret.txt` to relay and coturn. Store/rotate them through the
-   deployment secret manager, not source control.
+   `turn_secret.txt` to relay and coturn, and provision `authority_token.txt`
+   with the same value Authority exposes as `VIBE_AUTHORITY_RELAY_TOKEN`.
+   Store/rotate them through the deployment secret manager, not source control.
 3. Install the public certificate chain as ignored `tls/fullchain.pem` and its
    private key as `tls/privkey.pem`.
 4. Set `COTURN_REALM` to the certificate DNS hostname and
@@ -212,8 +219,8 @@ precedence over denies.
   secret, so the safe current procedure is to stop new credential issuance,
   wait at most the configured maximum credential TTL, drain allocations,
   replace the shared file on both services, and restart.
-- Revocation stops future credential issuance only. For urgent abuse, also
-  disable the signaling session and drain/terminate matching coturn
+- Authority-backed revocation stops future credential issuance only. For urgent
+  abuse, also disable the signaling session and drain/terminate matching coturn
   allocations; do not wait for credential expiry alone.
 
 ## Abuse, observability, and current limitations
@@ -226,14 +233,17 @@ allocation growth, relay bytes, port exhaustion, and credential rejections.
 
 TURN REST usernames use `<expiry>:<device-id>`, so coturn strips the expiry and
 atomically counts all session/expiry credentials under one device principal.
-`user-quota=12` is therefore a per-device allocation cap, distinct from the
-control plane's product-session limit. Revalidate it against legitimate
-UDP/TCP/TLS ICE allocation counts before changing it. The repository still has
-no coturn-to-`/v1/usage` collector. Therefore the
-control plane's daily-byte and per-device concurrent-session accounting is not
-authoritative for this deployment; coturn's own limits remain the immediate
-enforcement boundary. The control plane is also single-replica/local-state.
-These are production launch blockers, not implied features.
+`user-quota=12` is therefore a per-device allocation cap. In
+`production_authority` mode, relay also asks Authority to admit each
+`device_id/session_id/allocation_id/source_id` tuple before returning that TURN
+credential; revoked or expired Authority sessions and revoked devices fail closed
+before coturn sees a credential. Revalidate `user-quota` against legitimate
+UDP/TCP/TLS ICE allocation counts before changing it. The repository still has no
+coturn-to-`/v1/usage` collector. Therefore the control plane's daily-byte and
+per-device concurrent-session accounting is not authoritative for this deployment;
+coturn's own limits remain the immediate enforcement boundary. The control plane
+is also single-replica/local-state. These are production launch blockers, not
+implied features.
 
 ## Provenance and license
 

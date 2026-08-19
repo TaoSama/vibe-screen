@@ -46,8 +46,14 @@ capabilities, and generated-secret absence from container logs.
 
 This local container gate does not prove production PostgreSQL TLS, managed
 secret delivery, NTP offset monitoring, PITR/restore, public ingress, automatic
-issuance, relay/coturn integration, active revocation, or multi-node behavior.
-Those remain explicit production or end-to-end gates.
+issuance, active coturn allocation disconnect, or multi-node behavior. Those
+remain explicit production or end-to-end gates. When
+`VIBE_AUTHORITY_TEST_DATABASE_URL` points at a disposable PostgreSQL database,
+`services/signaling` also runs a process integration test that starts real
+Authority, signaling, and relay binaries, creates authority-backed signaling
+sessions, obtains authority-admitted relay credentials, invalidates one session,
+revokes the client device at Authority, then proves both signaling role access
+and future relay credential admission fail closed.
 
 Record failures as failures. In particular, an unavailable XCTest/full-Xcode or
 device environment is not a waiver. When production WebRTC/crypto/signaling code
@@ -66,7 +72,7 @@ steps.
 | Transport | direct ICE, forced TURN, IPv4/IPv6, UDP-blocked/TCP-TLS relay, two channel semantics, payload/backlog/frame caps |
 | Recovery | Wi-Fi/cellular/VPN changes, route changes, ICE restart backoff, signaling loss, TURN loss, process restart, old-epoch injection |
 | Adaptation | WebRTC Internet transport only (USB/LAN keep manual client-driven presets). Offline: fast-drop/slow-rise hysteresis with jitter reset, host-only non-finite/zero-bitrate/missing-RTT conservative handling, even dimensions without upscaling, user-baseline upper-bound clamp, latest-proposal-wins queuing, rotation serialization, stale owner/generation rejection, retry after local or peer rejection, host apply encoder/capture + media gate → `VideoConfig` ACK → keyframe/resume, rejection rollback and host-apply/ACK/rollback-timeout fail-closed. Android policy tests cover hysteresis and neutral reset, not those host telemetry edge cases. Not proved: real ScreenCaptureKit→Android decoder continuity, public Internet, real remote TURN, real network fluctuation, handoff, soak |
-| Relay operations | short credential expiry, allocation/peer/bandwidth/byte/concurrency quotas, rate limits, alerts, spend reconciliation |
+| Relay operations | short credential expiry, authority-backed allocation admission before credential issuance, allocation/peer/bandwidth/byte/concurrency quotas, rate limits, alerts, spend reconciliation |
 | Privacy | packet capture, logs/crash/evidence/telemetry scan, retention and deletion drill |
 | Android device E2E | install, pair, direct stream, relay stream, touch/keyboard, network handoff, revoke, reconnect, two-hour soak |
 | Latency | external-camera direct and relay raw samples; never infer glass-to-glass from unsynchronized clocks |

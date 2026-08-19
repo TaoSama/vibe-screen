@@ -417,6 +417,7 @@ class MainActivity : AppCompatActivity() {
             when (attention) {
                 DeviceHealthAttention.UNKNOWN -> R.string.device_health_checking
                 DeviceHealthAttention.NORMAL -> R.string.device_health_ready
+                DeviceHealthAttention.POWER_SAVER -> R.string.device_health_power_saver_warning
                 DeviceHealthAttention.POWER_RECOMMENDED -> R.string.device_health_connect_power
                 DeviceHealthAttention.THERMAL_ELEVATED -> R.string.device_health_warm
                 DeviceHealthAttention.THERMAL_HIGH -> R.string.device_health_hot
@@ -427,6 +428,7 @@ class MainActivity : AppCompatActivity() {
                 when (attention) {
                     DeviceHealthAttention.UNKNOWN -> R.color.on_surface_muted
                     DeviceHealthAttention.NORMAL -> R.color.accent
+                    DeviceHealthAttention.POWER_SAVER,
                     DeviceHealthAttention.POWER_RECOMMENDED,
                     DeviceHealthAttention.THERMAL_ELEVATED,
                     -> R.color.warning

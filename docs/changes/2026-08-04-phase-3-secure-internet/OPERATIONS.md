@@ -31,12 +31,12 @@ snapshot reconciliation. The signaling service now supports a
 `production_authority` mode that delegates session creation, per-request
 role-token authorization, and session invalidation to the authority. Dependency
 or malformed-response failures return `502` without falling back to locally
-minted tokens; authority policy rejections remain denials. The relay/coturn
-control plane is not yet wired to the
-authority, and the repository still has no production-proven coturn machine
-exporter or active-allocation disconnect executor. Therefore this does not
-remove the public-launch prohibition below. See the service README for the
-migration procedure, API contract, and remaining infrastructure gates.
+minted tokens; authority policy rejections remain denials. Relay credential
+admission now delegates to the authority before TURN credential issuance, but
+the repository still has no production-proven coturn machine exporter,
+reconciliation loop, or active-allocation disconnect executor. Therefore this
+does not remove the public-launch prohibition below. See the service README for
+the migration procedure, API contract, and remaining infrastructure gates.
 Do not expose it to the public Internet until those boundaries and the
 remaining production gates below are resolved.
 
@@ -306,7 +306,8 @@ shipped:
 - Mac and Android automatic profile/account/session issuance is not wired to the
   authority.
 - Automatic account and device registration is not wired.
-- The relay/coturn control plane is not wired to the authority.
+- Relay credential admission is wired to the authority; coturn exporter
+  reconciliation and active-allocation disconnect are not production proven.
 - Active PeerConnection and TURN allocations are not actively disconnected on
   authority revocation; signaling invalidation only stops new rendezvous access.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped

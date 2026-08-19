@@ -34,7 +34,7 @@ docker build --build-arg VERSION=0.1.0 -t vibe-relay:0.1.0 .
 ## Configure and run
 
 Copy `config.example.json` to `config.json`, replace the realm and TURN URIs,
-then generate five independent secrets. Never commit them.
+then generate independent secrets. Never commit them.
 
 ```bash
 export VIBE_RELAY_TURN_SECRET="$(openssl rand -base64 48)"
@@ -42,6 +42,8 @@ export VIBE_RELAY_CLIENT_TOKEN="$(openssl rand -base64 48)"
 export VIBE_RELAY_USAGE_TOKEN="$(openssl rand -base64 48)"
 export VIBE_RELAY_METRICS_TOKEN="$(openssl rand -base64 48)"
 export VIBE_RELAY_ADMIN_TOKEN="$(openssl rand -base64 48)"
+# Required only when authority_mode is production_authority:
+export VIBE_RELAY_AUTHORITY_TOKEN="$(openssl rand -base64 48)"
 ./bin/vibe-relay --config config.json
 ```
 
@@ -50,8 +52,12 @@ export VIBE_RELAY_ADMIN_TOKEN="$(openssl rand -base64 48)"
   requests credentials after it has authenticated a paired device.
 - `VIBE_RELAY_USAGE_TOKEN` authenticates only the trusted TURN usage collector.
 - `VIBE_RELAY_METRICS_TOKEN` authenticates only the Prometheus scraper.
-- `VIBE_RELAY_ADMIN_TOKEN` authenticates device-revocation requests. All four
-  API tokens must differ.
+- `VIBE_RELAY_ADMIN_TOKEN` authenticates device-revocation requests. The client,
+  usage, metrics, and admin API tokens must differ.
+- `VIBE_RELAY_AUTHORITY_TOKEN` authenticates relay to `vibe-authority` in
+  `production_authority` mode. It must match Authority's
+  `VIBE_AUTHORITY_RELAY_TOKEN` and remain distinct from every other relay,
+  signaling, admin, metrics, usage, coturn, and TURN secret.
 
 The service refuses to start when a secret is missing or shorter than 32
 characters. State is atomically stored at `state_file` with mode `0600`. Back
@@ -82,16 +88,26 @@ Request a credential (trusted signaling service):
 ```bash
 curl --fail-with-body -H "Authorization: Bearer $VIBE_RELAY_CLIENT_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"device_id":"paired-device-id","session_id":"authorized-session-id","ttl_seconds":600}' \
+  -d '{"device_id":"paired-device-id","session_id":"authorized-session-id","allocation_id":"turn-allocation-id","ttl_seconds":600}' \
   http://127.0.0.1:8090/v1/credentials
 ```
 
+In `local_development` mode, `allocation_id` is optional and the relay uses
+its process-local JSON store for revocation/quota checks. In
+`production_authority` mode, `allocation_id` is required: before returning a
+TURN credential, relay calls Authority's `/v1/relay/admissions` with the
+configured `authority_source_id`, `device_id`, `session_id`, and
+`allocation_id`. Authority failure, malformed response, revoked/unknown device
+or session, quota rejection, or conflicting allocation identity fails closed and
+no credential is returned.
+
 The username is `<unix-expiry>:<device-id>` and the password is the base64
-HMAC-SHA1 required by TURN REST authentication. `session_id` remains in the
-authenticated control-plane request but is excluded from the TURN username.
-After coturn removes the expiry prefix, every credential for a device shares
-one stable `user-quota` principal across sessions and expiries. Device IDs
-cannot contain the `:` separator. SHA-1 is used only for this
+HMAC-SHA1 required by TURN REST authentication. `session_id` and
+`allocation_id` remain in the authenticated control-plane request but are
+excluded from the TURN username. After coturn removes the expiry prefix, every
+credential for a device shares one stable `user-quota` principal across
+sessions and expiries. Device IDs cannot contain the `:` separator. SHA-1 is
+used only for this
 TURN compatibility MAC with a high-entropy server secret; it is not content
 encryption or a password hash.
 
@@ -121,7 +137,8 @@ allocation-disconnect mechanism and reconcile any active-session ledger entry
 left behind by the rejected lifecycle events.
 
 Unauthenticated liveness/readiness endpoints are `/healthz` and `/readyz`;
-readiness verifies that the state directory is writable.
+readiness verifies that the state directory is writable and, in
+`production_authority` mode, that Authority `/readyz` is reachable.
 Prometheus scrapes `/metrics` with the dedicated metrics token. Metrics expose issued and
 rejected requests, a dedicated
 `vibescreen_relay_revoked_device_requests_rejected_total` counter, accepted
@@ -150,7 +167,9 @@ implement SDP exchange, ICE restart, P2P path selection, network handoff, or
 STUN itself. Those remain transport/session responsibilities. The signaling
 service must authenticate the paired device and authorized host/session before
 using its client token; the token intentionally authenticates that service,
-not the arbitrary `device_id` string in a request.
+not the arbitrary `device_id` string in a request. In production, signaling must
+obtain or derive a stable `allocation_id` for the TURN attempt and pass it to
+relay so retries are exactly idempotent at Authority.
 
 This single-process v0.1 service is intended for one control-plane replica. Its
 atomic local ledger prevents duplicate counting across restarts, but it does
@@ -158,10 +177,11 @@ not coordinate quotas across replicas. Before horizontal scaling, replace the
 `UsageStore` behind its narrow interface with a transactional shared store and
 retain the same API/idempotency semantics. Rate limiting is per process and
 per device, so the edge proxy should additionally enforce source-IP and global
-limits. Relay revocation blocks new credentials, but a credential already
-issued remains valid until its short expiry. Immediate removal additionally
-requires blocking the device at signaling policy and disconnecting its TURN
-allocation; rotating the shared TURN secret affects every device.
+limits. Authority-backed relay admission blocks new credentials after device or
+session revocation, but a credential already issued remains valid until its short
+expiry. Immediate removal additionally requires blocking the device at signaling
+policy and disconnecting its TURN allocation; rotating the shared TURN secret
+affects every device.
 
 The `/v1/usage` daily-byte and active-session ledger is not authoritative until
 a trusted coturn collector and reconciliation loop are deployed. It must not be

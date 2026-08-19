@@ -217,6 +217,86 @@ def _heap_class_growth(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     )[:20]
 
 
+def _heap_class_watch_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
+    first_classes: dict[str, dict[str, Any]] | None = None
+    last_classes: dict[str, dict[str, Any]] | None = None
+    for record in records:
+        heap = record.get("heap")
+        if not isinstance(heap, dict):
+            continue
+        classes = heap.get("classes")
+        if not isinstance(classes, list):
+            continue
+        snapshot = {
+            item["name"]: item
+            for item in classes
+            if isinstance(item, dict) and isinstance(item.get("name"), str)
+        }
+        if first_classes is None:
+            first_classes = snapshot
+        last_classes = snapshot
+
+    watched_groups = {
+        "swiftui_observation": (
+            "ObservationRegistrar",
+            "ObservationEntry",
+            "AnyKeyPath",
+            "_SetStorage<Int>",
+        ),
+        "autorelease_pool": ("AutoreleasePool", "NSAutoreleasePool", "@autoreleasepool"),
+        "video_frames": ("FrameContext", "PixelBufferBox", "CVPixelBuffer", "IOSurface"),
+    }
+    empty_group = {
+        "first_count": 0,
+        "last_count": 0,
+        "count_drift": 0,
+        "first_allocated_bytes": 0,
+        "last_allocated_bytes": 0,
+        "allocated_bytes_drift": 0,
+        "matched_classes": [],
+    }
+    if first_classes is None or last_classes is None:
+        return {
+            name: dict(empty_group)
+            for name in sorted(watched_groups)
+        }
+
+    def matches(class_name: str, substrings: tuple[str, ...]) -> bool:
+        lowered = class_name.casefold()
+        return any(substring.casefold() in lowered for substring in substrings)
+
+    summary: dict[str, Any] = {}
+    for group_name, substrings in watched_groups.items():
+        class_names = sorted(
+            {
+                name
+                for name in (*first_classes.keys(), *last_classes.keys())
+                if matches(name, substrings)
+            }
+        )
+        first_count = 0.0
+        last_count = 0.0
+        first_bytes = 0.0
+        last_bytes = 0.0
+        for name in class_names:
+            first = first_classes.get(name, {})
+            last = last_classes.get(name, {})
+            first_count += _number(first.get("count")) or 0
+            last_count += _number(last.get("count")) or 0
+            first_bytes += _number(first.get("allocated_bytes")) or 0
+            last_bytes += _number(last.get("allocated_bytes")) or 0
+        summary[group_name] = {
+            "first_count": first_count,
+            "last_count": last_count,
+            "count_drift": last_count - first_count,
+            "first_allocated_bytes": first_bytes,
+            "last_allocated_bytes": last_bytes,
+            "allocated_bytes_drift": last_bytes - first_bytes,
+            "matched_classes": class_names,
+        }
+    return summary
+
+
 def _analyze_telemetry(
     records: list[dict[str, Any]],
     *,
@@ -276,6 +356,7 @@ def _analyze_telemetry(
                 invalid_fields = True
             else:
                 normalized[key] = value
+        present_optional_fields: set[str] = set()
         for key in optional:
             if key not in attributes:
                 missing_optional_fields.add(key)
@@ -285,7 +366,10 @@ def _analyze_telemetry(
                 missing_optional_fields.add(key)
                 invalid_fields = True
             else:
+                present_optional_fields.add(key)
                 normalized[key] = value
+        if present_optional_fields and present_optional_fields != set(optional):
+            invalid_fields = True
         if invalid_fields:
             invalid_records += 1
             continue
@@ -472,6 +556,7 @@ def analyze_records(
         if len(points) >= 2:
             metrics[f"heap_{field}"] = _trend(points)
     metrics["heap_class_growth"] = _heap_class_growth(records)
+    metrics["heap_watch_summary"] = _heap_class_watch_summary(records)
 
     telemetry = _analyze_telemetry(
         telemetry_records, started_at=started, finished_at=finished

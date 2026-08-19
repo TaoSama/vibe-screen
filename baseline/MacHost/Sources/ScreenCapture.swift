@@ -164,11 +164,17 @@ enum CaptureStreamConfigurationFactory {
 // MARK: - ScreenCapture
 
 class ScreenCapture {
+    struct EncoderStats: Equatable {
+        let inFlight: Int
+        let capacity: Int
+    }
+
     private static let liveConfigurationUpdateTimeoutSeconds: TimeInterval = 3
     private var stream: SCStream?
     private var streamOutput: StreamOutput?
     private var streamDelegate: StreamDelegate?
     private var encoder: VideoEncoder?
+    private let encoderLock = NSLock()
     private var display: SCDisplay?
     private var virtualDisplayID: CGDirectDisplayID?
     private var followsMainDisplay = false
@@ -224,6 +230,26 @@ class ScreenCapture {
     // Encoding pipeline state (captured by frame handler closure)
     private var encodeQueue: DispatchQueue?
 
+    /// Thread-safe snapshot of the live VideoToolbox admission state. The
+    /// short-window host memory diagnostic omits encoder fields when no encoder
+    /// is active instead of emitting a meaningless zero-capacity sample.
+    var encoderStats: EncoderStats? {
+        guard let snapshot = currentEncoder()?.inFlightSnapshot else { return nil }
+        return EncoderStats(inFlight: snapshot.inFlight, capacity: snapshot.capacity)
+    }
+
+    private func currentEncoder() -> VideoEncoder? {
+        encoderLock.lock()
+        defer { encoderLock.unlock() }
+        return encoder
+    }
+
+    private func replaceEncoder(_ newEncoder: VideoEncoder?) {
+        encoderLock.lock()
+        encoder = newEncoder
+        encoderLock.unlock()
+    }
+
     /// Callback when capture method changes (e.g. SCStream → CGDisplayStream fallback)
     var onCaptureMethodChanged: ((String) -> Void)?
     /// Current-display mode follows a replacement Screen Sharing Virtual Display
@@ -238,7 +264,7 @@ class ScreenCapture {
     /// If the encoder hasn't been created yet (request arrived before
     /// startStreaming), the request is stored and applied at encoder init.
     func requestKeyframe() {
-        if let encoder {
+        if let encoder = currentEncoder() {
             encoder.requestKeyframe()
             return
         }
@@ -264,7 +290,8 @@ class ScreenCapture {
 
         requestKeyframe()
 
-        guard let encoder, let cachedBox = latestPixelBuffer.latest() else { return }
+        guard let encoder = currentEncoder(),
+              let cachedBox = latestPixelBuffer.latest() else { return }
 
         let pts = CMTime(
             value: CMTimeValue(DispatchTime.now().uptimeNanoseconds / 1000),
@@ -444,6 +471,7 @@ class ScreenCapture {
         stream = nil
         streamOutput = nil
         streamDelegate = nil
+        replaceEncoder(nil)
         display = nil
         if previousStreamWasStarted {
             do {
@@ -476,7 +504,7 @@ class ScreenCapture {
 
         // Rebuild the encoder at the new source dimensions and rewire it to the
         // same frame sink so a single session keeps receiving media.
-        encoder = newEncoder
+        replaceEncoder(newEncoder)
 
         if followsMainDisplay || CommandLine.arguments.contains("--prefer-cgdisplaystream") {
             if attemptFallbackCapture(stopSCStream: false) {
@@ -497,7 +525,7 @@ class ScreenCapture {
             }
             try await setupStream()
             configureFrameHandler(label: "switch")
-            encoder?.requestKeyframe()
+            currentEncoder()?.requestKeyframe()
             guard let stream else {
                 throw NSError(
                     domain: "ScreenCapture",
@@ -710,13 +738,14 @@ class ScreenCapture {
 
         streamOutput?.onFrameReceived = { [weak self] sampleBuffer in
             guard let self = self else { return }
+            autoreleasepool {
+                let now = DispatchTime.now()
 
-            let now = DispatchTime.now()
+                self.recordSourceFrame(at: now, label: "SCStream")
 
-            self.recordSourceFrame(at: now, label: "SCStream")
-
-            if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
-                self.latestPixelBuffer.store(imageBuffer)
+                if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
+                    self.latestPixelBuffer.store(imageBuffer)
+                }
             }
         }
     }
@@ -757,8 +786,8 @@ class ScreenCapture {
 
         let (width, height) = encodeSize(for: codec)
 
-        encoder = VideoEncoder(width: width, height: height, codec: codec, bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost, frameRate: frameRate)
-        encoder?.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
+        let newEncoder = VideoEncoder(width: width, height: height, codec: codec, bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost, frameRate: frameRate)
+        newEncoder.onEncodedFrame = { [weak frameSink] data, timestamp, isKeyframe, sessionEpoch in
             frameSink?.sendFrame(
                 data,
                 timestamp: timestamp,
@@ -766,6 +795,7 @@ class ScreenCapture {
                 sessionEpoch: sessionEpoch
             )
         }
+        replaceEncoder(newEncoder)
 
         // Apply any keyframe request that arrived before the encoder existed
         let shouldForceInitialKeyframe = keyframeRequestLock.withLock { state -> Bool in
@@ -774,7 +804,7 @@ class ScreenCapture {
             return true
         }
         if shouldForceInitialKeyframe {
-            encoder?.requestKeyframe()
+            newEncoder.requestKeyframe()
         }
 
         // Reset frame monitor state
@@ -863,7 +893,7 @@ class ScreenCapture {
                         self.cgDisplayStream?.stop()
                         self.cgDisplayStream = nil
                         if self.attemptFallbackCapture(stopSCStream: false) {
-                            self.encoder?.requestKeyframe()
+                            self.currentEncoder()?.requestKeyframe()
                             self.startFrameMonitor()
                             return
                         }
@@ -948,10 +978,11 @@ class ScreenCapture {
             timescale: 1_000_000
         )
         encodeQueue?.async { [weak self] in
-            self?.encoder?.encode(
+            guard let self, let encoder = self.currentEncoder() else { return }
+            encoder.encode(
                 pixelBuffer: pixelBuffer.value,
                 presentationTimeStamp: pts,
-                sessionEpoch: self?.currentFrameSink?.currentSessionEpoch ?? 0
+                sessionEpoch: self.currentFrameSink?.currentSessionEpoch ?? 0
             )
         }
     }
@@ -1120,7 +1151,7 @@ class ScreenCapture {
 
                 // Re-attach encoding pipeline using shared handler
                 self.configureFrameHandler(label: "restart")
-                self.encoder?.requestKeyframe()
+                self.currentEncoder()?.requestKeyframe()
 
                 try await self.stream?.startCapture()
                 self.isSCStreamStarted = true
@@ -1254,7 +1285,7 @@ class ScreenCapture {
                             self.virtualDisplayID = replacementID
                             self.onDisplayIDChanged?(replacementID)
                             if self.attemptFallbackCapture(stopSCStream: false) {
-                                self.encoder?.requestKeyframe()
+                                self.currentEncoder()?.requestKeyframe()
                                 self.startFrameMonitor()
                             } else {
                                 self.restartStream()
@@ -1322,7 +1353,7 @@ class ScreenCapture {
         frameRate: Int? = nil,
         reconfigureCaptureSource: Bool = true
     ) -> Bool {
-        guard let encoder else { return false }
+        guard let encoder = currentEncoder() else { return false }
         guard encoder.updateSettings(
             bitrateMbps: bitrateMbps,
             quality: quality,
@@ -1498,7 +1529,8 @@ class ScreenCapture {
                 return
             }
             let pts = CMClockGetTime(CMClockGetHostTimeClock())
-            self.encoder?.encode(
+            guard let encoder = self.currentEncoder() else { return }
+            encoder.encode(
                 pixelBuffer: pixelBuffer,
                 presentationTimeStamp: pts,
                 sessionEpoch: self.currentFrameSink?.currentSessionEpoch ?? 0
@@ -1516,7 +1548,7 @@ class ScreenCapture {
         debugLog("Switching stream codec: \(codec) -> \(newCodec)")
         codec = newCodec
 
-        guard encoder != nil else { return }  // not streaming yet; startStreaming will pick it up
+        guard currentEncoder() != nil else { return }  // not streaming yet; startStreaming will pick it up
 
         stopFrameMonitor()
         framePacingTimer?.cancel()
@@ -1535,7 +1567,7 @@ class ScreenCapture {
             )
         }
         newEncoder.requestKeyframe()
-        encoder = newEncoder
+        replaceEncoder(newEncoder)
 
         let wasUsingCGDisplayStream = fallbackLifecycle.isActive
         if wasUsingCGDisplayStream {
@@ -1585,6 +1617,7 @@ class ScreenCapture {
         stream = nil
         streamOutput = nil
         streamDelegate = nil
+        replaceEncoder(nil)
         display = nil
         if streamWasStarted {
             do {
@@ -1629,6 +1662,8 @@ class StreamOutput: NSObject, SCStreamOutput {
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen else { return }
-        onFrameReceived?(sampleBuffer)
+        autoreleasepool {
+            onFrameReceived?(sampleBuffer)
+        }
     }
 }

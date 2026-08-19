@@ -125,6 +125,12 @@ on one session epoch, and include continuous bounded network-queue depth even
 when no frame is dropped. If VideoToolbox in-flight depth is present, the
 diagnostic also validates it against its advertised capacity.
 
+The diagnostic report includes `metrics.heap_watch_summary`, which aggregates
+first-to-last count and byte drift for the watched SwiftUI Observation,
+autorelease-pool, and video-frame heap classes. This keeps the known Host RSS
+suspects visible as structured evidence even when individual heap rows move in
+or out of the top-growth list.
+
 The report carries a top-level `verdict` with exactly three values:
 
 - `pass`: the complete 10-17 minute window has sufficient samples, all required

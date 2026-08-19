@@ -24,7 +24,8 @@ narrow-window, large-text, and responsive toggle-group cases:
 ## Required device evidence
 
 No target-tablet or long-duration result is recorded by this change. Before
-closing Phase 2, retain evidence for all of the following:
+closing Phase 2, execute [RUNBOOK.md](RUNBOOK.md) and retain evidence under
+[`evidence/`](evidence/README.md) for all of the following:
 
 - exact 8–9 inch tablet model, OS/build, logical window sizes, density, and both
   orientations, including split/freeform resizing where supported;
