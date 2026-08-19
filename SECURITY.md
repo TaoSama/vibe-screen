@@ -12,9 +12,13 @@ owners must enable the channel before accepting a public preview release.
 ## Current boundary
 
 - USB mode inherits ADB authorization; it is not product-level device identity.
-- Trusted LAN uses authenticated but unencrypted TCP and must be limited to a
-  private trusted network. It is separate from Internet mode and must not be
-  presented as end-to-end encrypted.
+- Trusted LAN keeps the QR/token admission gate and now negotiates per-session
+  AES-256-GCM application records for matching current macOS/Android peers.
+  Nonce/replay checks are fail-closed for both control and media records. Old
+  peers can continue only through an explicit plaintext legacy fallback and UI
+  or logs must not describe that fallback as encrypted. Trusted LAN remains a
+  private-network mode, separate from Internet mode, and must not be presented
+  as public-network or TURN-relayed end-to-end encryption evidence.
 - Internet mode includes development-preview Protocol v1 AES-256-GCM application
   records for control and media plus locally verified direct and forced-coturn
   paths. A historical Nubia P0110 run additionally covers Android/macOS
