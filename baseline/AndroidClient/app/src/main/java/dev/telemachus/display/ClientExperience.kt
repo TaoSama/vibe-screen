@@ -526,6 +526,148 @@ enum class HostActionSelectionMode {
     CONFIRM,
 }
 
+internal enum class GestureHostActionTrigger {
+    THREE_FINGER_SWIPE_UP,
+    THREE_FINGER_SWIPE_DOWN,
+}
+
+internal sealed class GestureHostActionMappingAction {
+    data object Default : GestureHostActionMappingAction()
+    data object Deny : GestureHostActionMappingAction()
+    data class InvokeHostAction(val actionId: String) : GestureHostActionMappingAction()
+}
+
+internal data class GestureHostActionMapping(
+    val trigger: GestureHostActionTrigger,
+    val action: GestureHostActionMappingAction,
+)
+
+internal data class GestureHostActionProfile(
+    val mappings: List<GestureHostActionMapping> = emptyList(),
+) {
+    companion object {
+        val DEFAULT = GestureHostActionProfile()
+    }
+}
+
+internal data class GestureHostActionPolicyContext(
+    val customGesturesAllowed: Boolean,
+    val hostActionsAllowed: Boolean,
+    val hostActionsNegotiated: Boolean,
+    val availableHostActionIds: Set<String>,
+)
+
+internal sealed class GestureHostActionDecision {
+    data object Default : GestureHostActionDecision()
+    data object Denied : GestureHostActionDecision()
+    data class InvokeHostAction(val actionId: String) : GestureHostActionDecision()
+}
+
+internal object GestureHostActionPolicy {
+    fun shouldInterceptThreeFingerGestures(profile: GestureHostActionProfile): Boolean =
+        profile.mappings.any { mapping ->
+            when (mapping.action) {
+                GestureHostActionMappingAction.Default -> false
+                GestureHostActionMappingAction.Deny,
+                is GestureHostActionMappingAction.InvokeHostAction,
+                -> true
+            }
+        }
+
+    fun resolve(
+        trigger: GestureHostActionTrigger,
+        profile: GestureHostActionProfile,
+        context: GestureHostActionPolicyContext,
+    ): GestureHostActionDecision {
+        val matches = profile.mappings.filter { it.trigger == trigger }
+        if (matches.size > 1) return GestureHostActionDecision.Denied
+        val mapping = matches.firstOrNull() ?: return GestureHostActionDecision.Default
+        return when (val action = mapping.action) {
+            GestureHostActionMappingAction.Default -> GestureHostActionDecision.Default
+            GestureHostActionMappingAction.Deny -> GestureHostActionDecision.Denied
+            is GestureHostActionMappingAction.InvokeHostAction -> {
+                if (context.customGesturesAllowed &&
+                    context.hostActionsAllowed &&
+                    context.hostActionsNegotiated &&
+                    action.actionId in context.availableHostActionIds
+                ) {
+                    GestureHostActionDecision.InvokeHostAction(action.actionId)
+                } else {
+                    GestureHostActionDecision.Denied
+                }
+            }
+        }
+    }
+}
+
+internal enum class ThreeFingerGesturePhase {
+    BEGIN,
+    MOVE,
+    END,
+    CANCEL,
+    OTHER,
+}
+
+internal data class ThreeFingerGestureSample(
+    val pointerCount: Int,
+    val phase: ThreeFingerGesturePhase,
+    val centroidY: Float,
+    val viewportHeight: Int,
+)
+
+internal class ThreeFingerGestureClassifier(
+    private val minimumSwipeFraction: Float = 0.12f,
+) {
+    private var startCentroidY: Float? = null
+
+    fun consume(sample: ThreeFingerGestureSample): GestureHostActionTrigger? {
+        if (sample.viewportHeight <= 0) {
+            reset()
+            return null
+        }
+        if (sample.pointerCount < THREE_FINGER_COUNT) {
+            if (sample.phase == ThreeFingerGesturePhase.END) reset()
+            return null
+        }
+
+        return when (sample.phase) {
+            ThreeFingerGesturePhase.BEGIN -> {
+                startCentroidY = sample.centroidY
+                null
+            }
+            ThreeFingerGesturePhase.MOVE -> {
+                if (startCentroidY == null) startCentroidY = sample.centroidY
+                null
+            }
+            ThreeFingerGesturePhase.END -> {
+                val startY = startCentroidY ?: sample.centroidY
+                val deltaY = sample.centroidY - startY
+                reset()
+                val threshold = sample.viewportHeight * minimumSwipeFraction
+                when {
+                    deltaY <= -threshold -> GestureHostActionTrigger.THREE_FINGER_SWIPE_UP
+                    deltaY >= threshold -> GestureHostActionTrigger.THREE_FINGER_SWIPE_DOWN
+                    else -> null
+                }
+            }
+            ThreeFingerGesturePhase.CANCEL,
+            ThreeFingerGesturePhase.OTHER,
+            -> {
+                reset()
+                null
+            }
+        }
+    }
+
+    fun reset() {
+        startCentroidY = null
+    }
+
+    private companion object {
+        const val THREE_FINGER_COUNT = 3
+    }
+}
+
 /**
  * Pure, testable logic for the host-action control shown in the control bar.
  * The control is a single compact icon button that opens a dropdown of window
