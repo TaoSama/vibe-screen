@@ -114,6 +114,38 @@
     <!-- Toast shown when the host rejects the window action. -->
     <string name="host_action_rejected">Couldn\u2019t complete that action</string>
     <string name="host_action_rejected_with_reason">Couldn\u2019t complete that action: %1$s</string>
+    <!-- Clipboard control in the streaming control bar. -->
+    <string name="control_clipboard">Clipboard</string>
+    <string name="control_clipboard_pending">Clipboard, Mac content available</string>
+    <string name="clipboard_send_to_mac">Send to Mac</string>
+    <string name="clipboard_get_from_mac">Get from Mac</string>
+    <string name="clipboard_lan_confirm_title">Send over trusted LAN?</string>
+    <string name="clipboard_lan_confirm_message">Clipboard text is authenticated but not encrypted on the trusted-LAN connection. Other devices on the network may be able to observe it.</string>
+    <string name="clipboard_lan_confirm_action">Send</string>
+    <string name="clipboard_lan_receive_confirm_title">Receive over trusted LAN?</string>
+    <string name="clipboard_lan_receive_confirm_message">The Mac clipboard text will be authenticated but not encrypted while it crosses the trusted LAN.</string>
+    <!-- Toast shown after the local clipboard is sent to the Mac. -->
+    <string name="clipboard_sent_to_mac">Sent to Mac</string>
+    <!-- Toast shown after the Mac clipboard is copied to this device. -->
+    <string name="clipboard_copied_from_mac">Copied from Mac</string>
+    <!-- Toast shown when the local clipboard is empty and cannot be sent. -->
+    <string name="clipboard_empty">Nothing to send: the clipboard is empty.</string>
+    <!-- Toast shown when the local clipboard exceeds the host clipboard byte limit. -->
+    <string name="clipboard_too_large">Clipboard is too large to send to the Mac.</string>
+    <!-- Toast shown when the Mac has no clipboard content available to fetch. -->
+    <string name="clipboard_mac_unavailable">No clipboard content available from the Mac.</string>
+    <!-- Toast shown when a Mac clipboard offer arrives and is pending explicit approval. -->
+    <string name="clipboard_pending_from_mac">Mac clipboard available. Tap Get from Mac to copy it.</string>
+    <string name="clipboard_pending_confirmation">Mac clipboard content needs your approval.</string>
+    <string name="clipboard_receive_confirm_title">Copy from Mac?</string>
+    <string name="clipboard_receive_confirm_message">This Mac sent clipboard text directly. Copy it to this device?</string>
+    <string name="clipboard_lan_direct_receive_confirm_message">This Mac sent clipboard text directly over an authenticated but unencrypted trusted-LAN connection. Copy it and replace this device’s clipboard?</string>
+    <string name="clipboard_receive_confirm_action">Copy</string>
+    <string name="clipboard_plain_text_label">Text from Mac</string>
+    <string name="clipboard_send_failed">Couldn\'t send the clipboard to the Mac.</string>
+    <string name="clipboard_receive_failed">Couldn\'t request the Mac clipboard.</string>
+    <string name="clipboard_request_timed_out">The Mac didn\'t provide the clipboard. Try again.</string>
+    <string name="clipboard_write_failed">Couldn\'t copy the Mac clipboard to this device.</string>
     <string name="usb_waiting_description">Keep the USB cable connected and open Vibe Screen on your Mac. This device will connect automatically.</string>
     <string name="wireless_adb_waiting_description">Keep wireless debugging enabled and the Mac\u2019s ADB connection active, then open Vibe Screen on your Mac. This device will connect automatically.</string>
     <string name="adb_transport_waiting_description">Connect a USB data cable or enable wireless debugging, then open Vibe Screen on your Mac. This device will connect automatically.</string>

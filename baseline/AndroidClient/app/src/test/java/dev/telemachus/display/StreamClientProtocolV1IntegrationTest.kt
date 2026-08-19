@@ -5,6 +5,9 @@ import dev.telemachus.display.protocol.ProtocolChannel
 import dev.telemachus.display.protocol.ProtocolV1Framing
 import dev.telemachus.display.protocol.TouchSample
 import dev.vibescreen.protocol.v1.Capability
+import dev.vibescreen.protocol.v1.ClipboardContent
+import dev.vibescreen.protocol.v1.ClipboardOffer
+import dev.vibescreen.protocol.v1.ClipboardRequest
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.Dimensions
 import dev.vibescreen.protocol.v1.DisconnectNotice
@@ -21,6 +24,7 @@ import dev.vibescreen.protocol.v1.ListDisplaysResponse
 import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.ProtocolError
 import dev.vibescreen.protocol.v1.ProtocolErrorCode
+import dev.vibescreen.protocol.v1.ResourceLimits
 import dev.vibescreen.protocol.v1.SessionAccepted
 import dev.vibescreen.protocol.v1.StartDisplayResponse
 import dev.vibescreen.protocol.v1.VideoConfig
@@ -872,14 +876,370 @@ class StreamClientProtocolV1IntegrationTest {
             }
         }
 
+
+    @Test
+    fun clipboardOfferFromClientIsRequestedAndContentServed() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CLIPBOARD)
+            val clientDeviceId = AtomicReference<String>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                            onClientHello = { clientDeviceId.set(it.deviceId) },
+                        )
+                        val offerEnv = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.CLIPBOARD_OFFER, offerEnv.payloadCase)
+                        val offer = offerEnv.clipboardOffer
+                        assertEquals(clientDeviceId.get(), offer.originDeviceId)
+                        assertEquals("text/plain", offer.mimeType)
+                        assertEquals("hello world".length.toLong(), offer.byteLength)
+                        assertEquals(32, offer.sha256.size())
+
+                        write(peer, clipboardRequest(6, offer.changeId))
+
+                        val contentEnv = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.CLIPBOARD_CONTENT, contentEnv.payloadCase)
+                        val content = contentEnv.clipboardContent
+                        assertEquals(offer.changeId, content.changeId)
+                        assertEquals("hello world", content.content.toStringUtf8())
+                        assertEquals(offer.sha256, content.sha256)
+                        write(peer, disconnect(7))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                withTimeout(8_000) {
+                    while (!client.canSendClipboard) kotlinx.coroutines.delay(5)
+                }
+                assertTrue(client.offerClipboard("hello world"))
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
+    fun clipboardOfferFromHostRequiresExplicitClientRequestBeforeContent() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CLIPBOARD)
+            val offerSeen = CountDownLatch(1)
+            val noAutomaticRequestVerified = CountDownLatch(1)
+            val contentSeen = CountDownLatch(1)
+            val offeredChangeId = AtomicReference<ByteArray?>()
+            val receivedContent = AtomicReference<ClipboardContentData?>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        val text = "from-host"
+                        val textBytes = text.toByteArray(Charsets.UTF_8)
+                        val changeId = ByteString.copyFrom(ByteArray(16) { (it + 1).toByte() })
+                        val sha256 = ByteString.copyFrom(sha256(textBytes))
+                        write(
+                            peer,
+                            clipboardOffer(
+                                id = 6,
+                                changeId = changeId,
+                                originDeviceId = TEST_HOST_ID,
+                                byteLength = textBytes.size.toLong(),
+                                sha256 = sha256,
+                            ),
+                        )
+
+                        // The client must not auto-request the content.
+                        peer.soTimeout = 500
+                        val unexpected =
+                            try {
+                                readEnvelope(peer)
+                            } catch (_: SocketTimeoutException) {
+                                null
+                            }
+                        assertNull(unexpected)
+                        noAutomaticRequestVerified.countDown()
+
+                        peer.soTimeout = 8_000
+                        val requestEnv = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.CLIPBOARD_REQUEST, requestEnv.payloadCase)
+                        assertEquals(changeId, requestEnv.clipboardRequest.changeId)
+
+                        write(
+                            peer,
+                            clipboardContent(
+                                id = 7,
+                                changeId = changeId,
+                                originDeviceId = TEST_HOST_ID,
+                                content = textBytes,
+                                sha256 = sha256,
+                            ),
+                        )
+                        write(peer, disconnect(8))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onClipboardOffered = { offer ->
+                offeredChangeId.set(offer.changeId)
+                offerSeen.countDown()
+            }
+            client.onClipboardContentReceived = { content ->
+                receivedContent.set(content)
+                contentSeen.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                assertTrue(offerSeen.await(8, TimeUnit.SECONDS))
+                assertTrue(noAutomaticRequestVerified.await(8, TimeUnit.SECONDS))
+                assertTrue(client.requestClipboard(checkNotNull(offeredChangeId.get())))
+                assertTrue(contentSeen.await(8, TimeUnit.SECONDS))
+                val content = checkNotNull(receivedContent.get())
+                assertFalse(content.pending)
+                assertEquals("from-host", String(content.content, Charsets.UTF_8))
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
+    fun clipboardRequestReturnsFalseForUnknownOfferWithoutWireMessage() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CLIPBOARD)
+            val streaming = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        streaming.countDown()
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                        write(peer, disconnect(6))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                assertTrue(streaming.await(8, TimeUnit.SECONDS))
+                assertTrue(client.canSendClipboard)
+                assertFalse(client.requestClipboard(ByteArray(16) { 0x7F.toByte() }))
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
+    fun clipboardOfferReturnsFalseWhenTextExceedsNegotiatedLimitWithoutWireMessage() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CLIPBOARD)
+            val streaming = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                            maxClipboardBytes = 4L,
+                        )
+                        streaming.countDown()
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                        write(peer, disconnect(6))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                assertTrue(streaming.await(8, TimeUnit.SECONDS))
+                assertTrue(client.canSendClipboard)
+                assertEquals(4L, client.negotiatedMaxClipboardBytes)
+                assertFalse(client.offerClipboard("12345"))
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
+    fun clipboardTimeoutDoesNotCancelApprovalAfterContentWasConsumed() = runBlocking {
+        ServerSocket(0).use { server ->
+            val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CLIPBOARD)
+            val offerSeen = CountDownLatch(1)
+            val contentCallbackEntered = CountDownLatch(1)
+            val releaseContentCallback = CountDownLatch(1)
+            val expiryCompleted = CountDownLatch(1)
+            val allowDisconnect = CountDownLatch(1)
+            val offeredChangeId = AtomicReference<ByteArray?>()
+            val receivedContent = AtomicReference<ClipboardContentData?>()
+            val expired = AtomicReference<Boolean?>()
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = caps,
+                            negotiatedCapabilities = caps,
+                        )
+                        val textBytes = "already-consumed".toByteArray(Charsets.UTF_8)
+                        val changeId = ByteString.copyFrom(ByteArray(16) { (it + 9).toByte() })
+                        val digest = ByteString.copyFrom(sha256(textBytes))
+                        write(
+                            peer,
+                            clipboardOffer(
+                                id = 6,
+                                changeId = changeId,
+                                originDeviceId = TEST_HOST_ID,
+                                byteLength = textBytes.size.toLong(),
+                                sha256 = digest,
+                            ),
+                        )
+                        peer.soTimeout = 8_000
+                        val request = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.CLIPBOARD_REQUEST, request.payloadCase)
+                        assertEquals(changeId, request.clipboardRequest.changeId)
+                        write(
+                            peer,
+                            clipboardContent(
+                                id = 7,
+                                changeId = changeId,
+                                originDeviceId = TEST_HOST_ID,
+                                content = textBytes,
+                                sha256 = digest,
+                            ),
+                        )
+                        assertTrue(allowDisconnect.await(8, TimeUnit.SECONDS))
+                        write(peer, disconnect(8))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            client.onClipboardOffered = { offer ->
+                offeredChangeId.set(offer.changeId)
+                offerSeen.countDown()
+            }
+            client.onClipboardContentReceived = { content ->
+                receivedContent.set(content)
+                contentCallbackEntered.countDown()
+                assertTrue(releaseContentCallback.await(8, TimeUnit.SECONDS))
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                assertTrue(offerSeen.await(8, TimeUnit.SECONDS))
+                val changeId = checkNotNull(offeredChangeId.get())
+                assertTrue(client.requestClipboard(changeId))
+                assertTrue(contentCallbackEntered.await(8, TimeUnit.SECONDS))
+
+                assertTrue(
+                    client.expireClipboardRequest(changeId) { didExpire ->
+                        expired.set(didExpire)
+                        expiryCompleted.countDown()
+                    },
+                )
+                releaseContentCallback.countDown()
+                assertTrue(expiryCompleted.await(8, TimeUnit.SECONDS))
+                assertFalse(checkNotNull(expired.get()))
+                val content = checkNotNull(receivedContent.get())
+                assertFalse(content.pending)
+                assertEquals("already-consumed", String(content.content, Charsets.UTF_8))
+                allowDisconnect.countDown()
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                releaseContentCallback.countDown()
+                allowDisconnect.countDown()
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
+    @Test
+    fun clipboardApisReturnFalseWhenCapabilityNotNegotiated() = runBlocking {
+        ServerSocket(0).use { server ->
+            val streaming = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = emptyList(),
+                            negotiatedCapabilities = emptyList(),
+                        )
+                        streaming.countDown()
+                        peer.soTimeout = 300
+                        readEnvelopeOrNull(peer)
+                        write(peer, disconnect(6))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+            try {
+                assertTrue(streaming.await(8, TimeUnit.SECONDS))
+                assertFalse(client.canSendClipboard)
+                assertFalse(client.offerClipboard("hello"))
+                assertFalse(client.requestClipboard(ByteArray(16)))
+                withTimeout(8_000) { serverJob.await() }
+            } finally {
+                client.disconnect()
+            }
+            withTimeout(8_000) { clientJob.await() }
+            Unit
+        }
+    }
+
     private fun completeHandshake(
         peer: Socket,
         initialRotation: Int,
         hostCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
         negotiatedCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
         expectedClientCapabilities: List<Capability> = DEFAULT_CLIENT_CAPABILITIES,
+        maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
+        onClientHello: (dev.vibescreen.protocol.v1.ClientHello) -> Unit = {},
     ) {
-        beginHandshake(peer, initialRotation, hostCapabilities, negotiatedCapabilities, expectedClientCapabilities)
+        beginHandshake(
+            peer,
+            initialRotation,
+            hostCapabilities,
+            negotiatedCapabilities,
+            expectedClientCapabilities,
+            maxClipboardBytes,
+            onClientHello,
+        )
         val result = readEnvelope(peer)
         assertEquals(Envelope.PayloadCase.VIDEO_CONFIG_RESULT, result.payloadCase)
         assertTrue(result.videoConfigResult.accepted)
@@ -892,16 +1252,19 @@ class StreamClientProtocolV1IntegrationTest {
         hostCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
         negotiatedCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
         expectedClientCapabilities: List<Capability> = DEFAULT_CLIENT_CAPABILITIES,
+        maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
+        onClientHello: (dev.vibescreen.protocol.v1.ClientHello) -> Unit = {},
     ) {
         assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
         peer.getOutputStream().write(byteArrayOf(PROTOCOL_UPGRADE_BYTE.toByte(), 1))
         peer.getOutputStream().flush()
         val clientHello = readEnvelope(peer)
         assertEquals(Envelope.PayloadCase.CLIENT_HELLO, clientHello.payloadCase)
+        onClientHello(clientHello.clientHello)
         assertEquals(expectedClientCapabilities, clientHello.clientHello.capabilitiesList)
         assertEquals(emptyList<Capability>(), clientHello.clientHello.requiredCapabilitiesList)
-        write(peer, hostHello(1, hostCapabilities))
-        write(peer, sessionAccepted(2, negotiatedCapabilities))
+        write(peer, hostHello(1, hostCapabilities, maxClipboardBytes = maxClipboardBytes))
+        write(peer, sessionAccepted(2, negotiatedCapabilities, maxClipboardBytes = maxClipboardBytes))
         assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, readEnvelope(peer).payloadCase)
         write(peer, displayList(3))
         assertEquals(Envelope.PayloadCase.START_DISPLAY_REQUEST, readEnvelope(peer).payloadCase)
@@ -1074,6 +1437,8 @@ class StreamClientProtocolV1IntegrationTest {
     private fun hostHello(
         id: Long,
         advertisedCapabilities: List<Capability>,
+        hostId: String = TEST_HOST_ID,
+        maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
     ): Envelope =
         Envelope.newBuilder()
             .setProtocolVersion(1)
@@ -1081,20 +1446,28 @@ class StreamClientProtocolV1IntegrationTest {
             .setHostHello(
                 HostHello.newBuilder()
                     .setSelectedProtocol(1)
+                    .setHostId(hostId)
                     .addAllCapabilities(advertisedCapabilities)
-                    .addCodecs(Codec.CODEC_HEVC),
+                    .addCodecs(Codec.CODEC_HEVC)
+                    .setResourceLimits(
+                        ResourceLimits.newBuilder().setMaximumClipboardBytes(maxClipboardBytes),
+                    ),
             ).build()
 
     private fun sessionAccepted(
         id: Long,
         negotiatedCapabilities: List<Capability>,
+        maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
     ): Envelope =
         base(id)
             .setSessionAccepted(
                 SessionAccepted.newBuilder()
                     .setSessionId(SESSION_ID)
                     .setSessionEpoch(7)
-                    .addAllNegotiatedCapabilities(negotiatedCapabilities),
+                    .addAllNegotiatedCapabilities(negotiatedCapabilities)
+                    .setNegotiatedResourceLimits(
+                        ResourceLimits.newBuilder().setMaximumClipboardBytes(maxClipboardBytes),
+                    ),
             ).build()
 
     private fun displayList(id: Long): Envelope =
@@ -1162,6 +1535,49 @@ class StreamClientProtocolV1IntegrationTest {
             HostActionResult.newBuilder().setInvocationId(invocationId).setAccepted(accepted),
         ).build()
 
+    private fun clipboardOffer(
+        id: Long,
+        changeId: ByteString,
+        originDeviceId: String,
+        byteLength: Long,
+        sha256: ByteString,
+    ): Envelope =
+        base(id).setClipboardOffer(
+            ClipboardOffer.newBuilder()
+                .setChangeId(changeId)
+                .setOriginDeviceId(originDeviceId)
+                .setMimeType("text/plain")
+                .setByteLength(byteLength)
+                .setSha256(sha256),
+        ).build()
+
+    private fun clipboardRequest(
+        id: Long,
+        changeId: ByteString,
+    ): Envelope =
+        base(id).setClipboardRequest(
+            ClipboardRequest.newBuilder().setChangeId(changeId),
+        ).build()
+
+    private fun clipboardContent(
+        id: Long,
+        changeId: ByteString,
+        originDeviceId: String,
+        content: ByteArray,
+        sha256: ByteString,
+    ): Envelope =
+        base(id).setClipboardContent(
+            ClipboardContent.newBuilder()
+                .setChangeId(changeId)
+                .setOriginDeviceId(originDeviceId)
+                .setMimeType("text/plain")
+                .setContent(ByteString.copyFrom(content))
+                .setSha256(sha256),
+        ).build()
+
+    private fun sha256(bytes: ByteArray): ByteArray =
+        java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+
     private fun hostProtocolError(id: Long): Envelope =
         base(id).setProtocolError(
             ProtocolError
@@ -1189,6 +1605,8 @@ class StreamClientProtocolV1IntegrationTest {
 
     companion object {
         private const val PROTOCOL_UPGRADE_BYTE = 0x0d
+        private const val TEST_HOST_ID = "host-test-device"
+        private const val TEST_MAX_CLIPBOARD_BYTES = 1024L * 1024L
         // Generous await ceiling for the rejected-decoder-configuration path.
         // These integration tests drive a real loopback socket plus coroutine
         // handoffs, whose scheduling is far slower on a shared CI runner than
@@ -1206,6 +1624,8 @@ class StreamClientProtocolV1IntegrationTest {
                 Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,
                 Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
+                Capability.CAPABILITY_CLIPBOARD,
+                Capability.CAPABILITY_MANAGED_CONFIGURATION,
             )
     }
 }

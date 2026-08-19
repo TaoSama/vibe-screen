@@ -33,6 +33,7 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
@@ -115,6 +116,7 @@ class StreamClient(
     private val nextPingSequence = AtomicLong(1L)
     private val pendingOutboundFailure = AtomicReference<SessionFailure?>(null)
     private val pendingDecoderFailure = AtomicReference<SessionFailure?>(null)
+    private val pendingInboundFailure = AtomicReference<SessionFailure?>(null)
     private val pendingVideoConfigurationCommit = AtomicReference<PendingVideoConfigurationCommit?>(null)
     @Volatile private var lanRecordProtectionState = LanRecordProtectionState.NOT_APPLICABLE
     @Volatile private var lanSecureRecordSession: LanSecureRecordSession? = null
@@ -141,6 +143,10 @@ class StreamClient(
     internal var onDisplaysAvailable: ((List<StreamDisplayOption>, selectedId: String) -> Unit)? = null
     internal var onHostActionsAvailable: ((List<HostActionOption>) -> Unit)? = null
     internal var onHostActionResult: ((accepted: Boolean, rejectionReason: String) -> Unit)? = null
+    /** A peer clipboard offer has arrived; the UI may request the content by changeId. */
+    internal var onClipboardOffered: ((offer: ClipboardOfferData) -> Unit)? = null
+    /** Peer clipboard content has arrived. pending=true means no offer/request handshake preceded it. */
+    internal var onClipboardContentReceived: ((content: ClipboardContentData) -> Unit)? = null
     var onStats: ((Double, Double) -> Unit)? = null
     var onReconnectSuggested: ((delayMs: Long) -> Unit)? = null
     var onWriteFailure: ((reason: String) -> Unit)? = null
@@ -257,6 +263,7 @@ class StreamClient(
             stopRequested = false
             pendingOutboundFailure.set(null)
             pendingDecoderFailure.set(null)
+            pendingInboundFailure.set(null)
             try {
                 val candidate = registerInitialTransportCandidate() ?: return@withContext
                 if (terminationDispatcher.isClaimed()) {
@@ -302,11 +309,14 @@ class StreamClient(
                     if (failure != null && !failure.retryable) throw SessionProtocolException(failure)
                     throw IOException("Mac connection closed before display configuration")
                 }
+            } catch (e: SessionProtocolException) {
+                Log.e(TAG, "Session protocol failure", e)
+                completeConnectionEndNow(e.failure)
+                if (!sessionReady && !stopRequested) throw e
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Connection error", e)
                 completeConnectionEndNow(SessionFailure.transport(e.message ?: e.javaClass.simpleName))
                 if (!sessionReady && !stopRequested) {
-                    if (e is SessionProtocolException) throw e
                     val failure = lastTerminationFailure
                     if (failure != null && !failure.retryable) throw SessionProtocolException(failure)
                     if (e.message.orEmpty().contains("before display configuration")) throw e
@@ -339,6 +349,7 @@ class StreamClient(
         stopRequested = false
         pendingOutboundFailure.set(null)
         pendingDecoderFailure.set(null)
+        pendingInboundFailure.set(null)
         val request =
             try {
                 AuthHandshake.encodeRequest(token, deviceName)
@@ -615,10 +626,7 @@ class StreamClient(
                 protocolSession = session
                 nextInputId.set(1L)
                 controllerConnectionAcks.reset()
-                submitOutbound(
-                    kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
-                    command = StreamOutboundCommand.ProtocolBatch { listOf(it.clientHello()) },
-                )
+                writeProtocolEnvelope(output, session.clientHello())
                 diagLog("Protocol v1 upgrade accepted")
             }
             is UpgradeFallbackDecision.UseCurrentLegacyConnection -> {
@@ -1026,14 +1034,17 @@ class StreamClient(
                 pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
                 completeConnectionEndNow(error.failure)
                 Log.e(TAG, "Session protocol failure: ${error.failure.detail}", error)
+                throw error
             } catch (error: ProtocolV1Failure) {
                 terminalFailure = error.toSessionFailure()
                 pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
                 completeConnectionEndNow(checkNotNull(terminalFailure))
                 Log.e(TAG, "Protocol v1 failure: ${error.message}", error)
+                throw SessionProtocolException(checkNotNull(terminalFailure))
             } catch (e: IOException) {
                 terminalFailure =
-                    pendingDecoderFailure.get()
+                    pendingInboundFailure.get()
+                        ?: pendingDecoderFailure.get()
                         ?: SessionFailure.transport(e.message ?: e.javaClass.simpleName)
                 pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
                 completeConnectionEndNow(checkNotNull(terminalFailure))
@@ -1043,8 +1054,8 @@ class StreamClient(
             } finally {
                 completeConnectionEndNow(
                     terminalFailure
+                        ?: pendingInboundFailure.get()
                         ?: pendingDecoderFailure.get()
-                        ?: pendingOutboundFailure.get()
                         ?: SessionFailure.transport("receive loop ended"),
                 )
             }
@@ -1066,7 +1077,7 @@ class StreamClient(
             try {
                 ProtocolV1Framing.read(input, firstChannel)
             } catch (failure: IOException) {
-                throw protocolFailure(
+                throw terminalProtocolFailure(
                     reason = "invalid_frame",
                     source = ProtocolV1Failure.Source.FRAME,
                     cause = failure,
@@ -1078,7 +1089,7 @@ class StreamClient(
                     try {
                         Envelope.parseFrom(frame.payload)
                     } catch (failure: Exception) {
-                        throw protocolFailure(
+                        throw terminalProtocolFailure(
                             reason = "invalid_envelope",
                             source = ProtocolV1Failure.Source.ENVELOPE,
                             cause = failure,
@@ -1111,7 +1122,7 @@ class StreamClient(
                     try {
                         ProtocolV1Framing.decodeVideo(frame.payload)
                     } catch (failure: Exception) {
-                        throw protocolFailure(
+                        throw terminalProtocolFailure(
                             reason = "invalid_media_payload",
                             source = ProtocolV1Failure.Source.MEDIA_PAYLOAD,
                             cause = failure,
@@ -1237,6 +1248,79 @@ class StreamClient(
 
     internal fun sendController(dispatch: ControllerDispatch): Boolean {
         return inputDispatcher.sendController(dispatch)
+    }
+
+    /** True when clipboard transfer is available on the active Protocol v1 session. */
+    val canSendClipboard: Boolean
+        get() = isConnected && wireMode == WireMode.V1 && protocolSession?.canSendClipboard == true
+
+    /** Negotiated clipboard byte limit for the active session; 0 when not negotiated. */
+    val negotiatedMaxClipboardBytes: Long
+        get() = if (wireMode == WireMode.V1) protocolSession?.negotiatedMaxClipboardBytes ?: 0L else 0L
+
+    /**
+     * Offer the given text to the peer as a clipboard transfer.
+     * Returns true when the offer was queued; false when clipboard was not
+     * negotiated, the session is not streaming, or the text exceeds the limit.
+     */
+    fun offerClipboard(text: String): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canSendClipboard) return false
+        val byteCount = text.toByteArray(StandardCharsets.UTF_8).size.toLong()
+        if (byteCount <= 0L || byteCount > session.negotiatedMaxClipboardBytes) return false
+        val submission =
+            submitOutbound(
+                kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                command = StreamOutboundCommand.ProtocolBatch { activeSession ->
+                    activeSession.offerClipboard(text)?.let { listOf(it) } ?: emptyList()
+                },
+            )
+        return isOutboundAdmitted(submission)
+    }
+
+    /**
+     * Request the content for a previously received clipboard offer.
+     * Returns true when the request was queued; false when no matching offer
+     * exists or clipboard was not negotiated.
+     */
+    fun requestClipboard(changeId: ByteArray): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canSendClipboard) return false
+        val id = ByteString.copyFrom(changeId)
+        if (!session.canRequestClipboard(id)) return false
+        val submission =
+            submitOutbound(
+                kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                command = StreamOutboundCommand.ProtocolBatch { activeSession ->
+                    activeSession.requestClipboard(id)?.let { listOf(it) } ?: emptyList()
+                },
+            )
+        return isOutboundAdmitted(submission)
+    }
+
+    /**
+     * Serialize a UI timeout behind the original request so a retry for the
+     * same change ID cannot overtake request-state cleanup.
+     */
+    fun expireClipboardRequest(
+        changeId: ByteArray,
+        completion: (Boolean) -> Unit,
+    ): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canSendClipboard) return false
+        val id = ByteString.copyFrom(changeId)
+        val submission =
+            submitOutbound(
+                kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                command = StreamOutboundCommand.ProtocolBatch { activeSession ->
+                    completion(activeSession.expireClipboardRequest(id))
+                    emptyList()
+                },
+            )
+        return isOutboundAdmitted(submission)
     }
 
     /**
@@ -1399,6 +1483,10 @@ class StreamClient(
         return submission
     }
 
+    private fun isOutboundAdmitted(submission: OutboundCommandScheduler.Submission): Boolean =
+        submission != OutboundCommandScheduler.Submission.TIMED_OUT &&
+            submission != OutboundCommandScheduler.Submission.CLOSED
+
 
     private fun writeOutboundCommand(command: StreamOutboundCommand) {
         val out = transportOwner.activeConnection()?.output ?: throw IOException("session output is closed")
@@ -1521,6 +1609,31 @@ class StreamClient(
                     is ProtocolV1Session.Action.HostActionCompleted -> {
                         onHostActionResult?.invoke(action.accepted, action.rejectionReason)
                     }
+                    is ProtocolV1Session.Action.ClipboardOffered -> {
+                        if (!isCurrentProtocolSession(session, connectionEpoch)) return@forEach
+                        onClipboardOffered?.invoke(
+                            ClipboardOfferData(
+                                changeId = action.changeId.toByteArray(),
+                                originDeviceId = action.originDeviceId,
+                                mimeType = action.mimeType,
+                                byteLength = action.byteLength,
+                                sha256 = action.sha256.toByteArray(),
+                            ),
+                        )
+                    }
+                    is ProtocolV1Session.Action.ClipboardContentReceived -> {
+                        if (!isCurrentProtocolSession(session, connectionEpoch)) return@forEach
+                        onClipboardContentReceived?.invoke(
+                            ClipboardContentData(
+                                changeId = action.changeId.toByteArray(),
+                                originDeviceId = action.originDeviceId,
+                                mimeType = action.mimeType,
+                                content = action.content,
+                                sha256 = action.sha256.toByteArray(),
+                                pending = action.pending,
+                            ),
+                        )
+                    }
                    is ProtocolV1Session.Action.Disconnected -> {
                         pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
                         stopRequested = !action.mayResume
@@ -1562,8 +1675,10 @@ class StreamClient(
                     throw writeFailure
                 }
             }
-            requestConnectionEnd(failure.toSessionFailure())
-            command.completion.completeExceptionally(failure)
+            val sessionFailure = failure.toSessionFailure()
+            pendingInboundFailure.compareAndSet(null, sessionFailure)
+            completeConnectionEndNow(sessionFailure)
+            command.completion.completeExceptionally(SessionProtocolException(sessionFailure))
         } catch (failure: IOException) {
             pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
             requestConnectionEnd(
@@ -1680,6 +1795,8 @@ class StreamClient(
                is ProtocolV1Session.Action.DisplaysAvailable,
                 is ProtocolV1Session.Action.HostActionsAvailable,
                 is ProtocolV1Session.Action.HostActionCompleted,
+                is ProtocolV1Session.Action.ClipboardOffered,
+                is ProtocolV1Session.Action.ClipboardContentReceived,
                -> throw IllegalStateException("Unexpected action while completing decoder configuration")
             }
         }
@@ -1958,7 +2075,19 @@ class StreamClient(
             retryable = false,
             source = source,
             message = "$reason: ${cause.message ?: cause.javaClass.simpleName}",
-        ).also { it.initCause(cause) }
+            cause = cause,
+        )
+
+    private fun terminalProtocolFailure(
+        reason: String,
+        source: ProtocolV1Failure.Source,
+        cause: Throwable,
+    ): SessionProtocolException {
+        val failure = protocolFailure(reason, source, cause).toSessionFailure()
+        pendingInboundFailure.compareAndSet(null, failure)
+        completeConnectionEndNow(failure)
+        return SessionProtocolException(failure)
+    }
 
     private fun diagLog(msg: String) = DiagLog.log("SC", msg)
 

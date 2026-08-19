@@ -318,6 +318,22 @@
                     android:visibility="gone"
                     app:tint="#FFFFFF" />
 
+                <!-- Clipboard collapses unless the host negotiated clipboard
+                     support, so unsupported sessions expose no dead tap area. -->
+                <ImageButton
+                    android:id="@+id/controlClipboardButton"
+                    android:layout_width="@dimen/control_bar_button_size"
+                    android:layout_height="@dimen/control_bar_button_size"
+                    android:layout_marginStart="@dimen/control_bar_button_margin"
+                    android:layout_marginEnd="@dimen/control_bar_button_margin"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/control_clipboard"
+                    android:src="@drawable/ic_clipboard"
+                    android:scaleType="centerInside"
+                    android:padding="12dp"
+                    android:visibility="gone"
+                    app:tint="#FFFFFF" />
+
                 <ImageButton
                     android:id="@+id/controlSettingsButton"
                     android:layout_width="@dimen/control_bar_button_size"

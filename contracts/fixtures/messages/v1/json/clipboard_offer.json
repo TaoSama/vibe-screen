@@ -1,0 +1,14 @@
+{
+  "protocolVersion": 1,
+  "messageId": "24",
+  "sessionId": "AQIDBAUGBwg=",
+  "sessionEpoch": "7",
+  "sentAtMonotonicNs": "1000000024",
+  "clipboardOffer": {
+    "changeId": "AAECAwQFBgcICQoLDA0ODw==",
+    "originDeviceId": "android-golden",
+    "mimeType": "text/plain",
+    "byteLength": "25",
+    "sha256": "DXnm/aDeAkN0knhU87Q4M+brcAox9MPXEVybe9XGygQ="
+  }
+}

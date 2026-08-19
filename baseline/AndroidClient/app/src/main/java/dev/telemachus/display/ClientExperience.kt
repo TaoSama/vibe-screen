@@ -331,6 +331,7 @@ data class ClientSessionCapabilities(
     val nativePointer: Boolean,
     val controller: Boolean,
     val hostActions: Boolean,
+    val clipboard: Boolean,
 ) {
     companion object {
         val LEGACY_TOUCH_ONLY =
@@ -341,6 +342,7 @@ data class ClientSessionCapabilities(
                 nativePointer = false,
                 controller = false,
                 hostActions = false,
+                clipboard = false,
             )
     }
 }
@@ -350,6 +352,7 @@ internal enum class ClientControl {
     KEYBOARD,
     NATIVE_POINTER,
     HOST_ACTIONS,
+    CLIPBOARD,
 }
 
 /** A host display the client can select, surfaced to the UI without protocol imports. */
@@ -403,7 +406,7 @@ internal object DisplayCapsulePolicy {
 
 internal object ControlBarLayoutPolicy {
     enum class Mode { COMPACT, INLINE, STACKED, COLUMN }
-    enum class Action { HOST, SETTINGS, DISCONNECT }
+    enum class Action { HOST, CLIPBOARD, SETTINGS, DISCONNECT }
 
     data class Geometry(
         val horizontalContentPaddingPx: Int,
@@ -426,11 +429,15 @@ internal object ControlBarLayoutPolicy {
             require(statusGapPx >= 0)
         }
 
-        fun horizontalActionsWidthPx(hostActionsVisible: Boolean): Int {
+        fun horizontalActionsWidthPx(
+            hostActionsVisible: Boolean,
+            clipboardVisible: Boolean,
+        ): Int {
             val settingsWidth = buttonSizePx + actionMarginPx * 2
             val disconnectWidth = buttonSizePx + disconnectSeparationPx
             val hostWidth = if (hostActionsVisible) buttonSizePx + actionMarginPx * 2 else 0
-            return hostWidth + settingsWidth + disconnectWidth
+            val clipboardWidth = if (clipboardVisible) buttonSizePx + actionMarginPx * 2 else 0
+            return hostWidth + clipboardWidth + settingsWidth + disconnectWidth
         }
     }
 
@@ -445,9 +452,10 @@ internal object ControlBarLayoutPolicy {
         availableWidthPx: Int,
         displaySelectorVisible: Boolean,
         hostActionsVisible: Boolean,
+        clipboardVisible: Boolean,
         geometry: Geometry,
     ): Mode {
-        val actionWidthPx = geometry.horizontalActionsWidthPx(hostActionsVisible)
+        val actionWidthPx = geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible)
         val statusWidthPx = geometry.statusMinimumWidthPx + geometry.statusGapPx
         if (!displaySelectorVisible) {
             val compactMinimumPx = geometry.horizontalContentPaddingPx + statusWidthPx + actionWidthPx
@@ -481,17 +489,25 @@ internal object ControlBarLayoutPolicy {
         mode: Mode,
         action: Action,
         hostActionsVisible: Boolean,
+        clipboardVisible: Boolean,
         geometry: Geometry,
     ): Margins =
         if (mode == Mode.COLUMN) {
             when (action) {
                 Action.HOST -> Margins(0, 0, 0)
-                Action.SETTINGS -> Margins(0, if (hostActionsVisible) geometry.columnActionSpacingPx else 0, 0)
+                Action.CLIPBOARD ->
+                    Margins(0, if (hostActionsVisible) geometry.columnActionSpacingPx else 0, 0)
+                Action.SETTINGS ->
+                    Margins(
+                        0,
+                        if (hostActionsVisible || clipboardVisible) geometry.columnActionSpacingPx else 0,
+                        0,
+                    )
                 Action.DISCONNECT -> Margins(0, geometry.disconnectSeparationPx, 0)
             }
         } else {
             when (action) {
-                Action.HOST, Action.SETTINGS ->
+                Action.HOST, Action.CLIPBOARD, Action.SETTINGS ->
                     Margins(geometry.actionMarginPx, 0, geometry.actionMarginPx)
                 Action.DISCONNECT -> Margins(geometry.disconnectSeparationPx, 0, 0)
             }
@@ -508,6 +524,7 @@ internal object ClientControlAvailability {
             ClientControl.KEYBOARD -> capabilities.keyboard
             ClientControl.NATIVE_POINTER -> capabilities.nativePointer
             ClientControl.HOST_ACTIONS -> capabilities.hostActions
+            ClientControl.CLIPBOARD -> capabilities.clipboard
         }
 }
 
@@ -706,6 +723,82 @@ internal object HostActionMenuPolicy {
 
     const val ACTION_MOVE_WINDOW = "move-window"
     const val ACTION_RETURN_WINDOWS = "return-windows"
+}
+
+/**
+ * A clipboard offer advertised by the Mac. Stored only as pending metadata; the
+ * actual content is fetched only after the user explicitly approves it via the
+ * "Get from Mac" menu action. This prevents the Mac from silently overwriting
+ * the local clipboard.
+ */
+data class PendingClipboardOffer(
+    val changeId: ByteArray,
+    val originDeviceId: String,
+    val mimeType: String,
+    val byteLength: Long,
+    val sha256: ByteArray,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is PendingClipboardOffer) return false
+        return changeId.contentEquals(other.changeId) &&
+            originDeviceId == other.originDeviceId &&
+            mimeType == other.mimeType &&
+            byteLength == other.byteLength &&
+            sha256.contentEquals(other.sha256)
+    }
+
+    override fun hashCode(): Int {
+        var result = changeId.contentHashCode()
+        result = 31 * result + originDeviceId.hashCode()
+        result = 31 * result + mimeType.hashCode()
+        result = 31 * result + byteLength.hashCode()
+        result = 31 * result + sha256.contentHashCode()
+        return result
+    }
+}
+
+/**
+ * Pure, testable logic for the clipboard control shown in the control bar. The
+ * control is a single compact icon button that opens a dropdown of two actions:
+ * send the local clipboard to the Mac, or fetch the Mac's pending clipboard
+ * offer. It is offered only when clipboard support was negotiated; otherwise
+ * the button collapses so it never adds a dead tap target to the compact
+ * capsule.
+ */
+internal object ClipboardMenuPolicy {
+    /** Default clipboard byte limit when the peer does not advertise one. */
+    const val DEFAULT_CLIPBOARD_BYTES: Long = 1024L * 1024L // 1 MiB
+
+    /** The clipboard button is shown only when clipboard support was negotiated. */
+    fun isAvailable(clipboard: Boolean): Boolean = clipboard
+
+    /**
+     * Whether the local clipboard text can be sent. Empty text is rejected so
+     * the menu never sends a no-op offer to the Mac.
+     */
+    fun canSend(text: String?): Boolean = !text.isNullOrEmpty()
+
+    /**
+     * Whether the local clipboard text fits within the effective clipboard
+     * byte limit. A non-positive limit falls back to [DEFAULT_CLIPBOARD_BYTES]
+     * rather than being treated as unbounded.
+     */
+    fun isWithinSizeLimit(
+        text: String,
+        maximumClipboardBytes: Long,
+    ): Boolean {
+        val peerLimit =
+            if (maximumClipboardBytes > 0L) maximumClipboardBytes else DEFAULT_CLIPBOARD_BYTES
+        val limit = minOf(DEFAULT_CLIPBOARD_BYTES, peerLimit)
+        return text.toByteArray(Charsets.UTF_8).size <= limit
+    }
+
+    /**
+     * Whether a pending Mac clipboard offer can be fetched. The offer must be
+     * present; an absent offer means the Mac has nothing to send.
+     */
+    fun canFetch(offer: PendingClipboardOffer?): Boolean = offer != null
 }
 
 /**

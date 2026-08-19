@@ -58,6 +58,8 @@ class ProtocolV1SessionTest {
                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,
                 Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
+                Capability.CAPABILITY_CLIPBOARD,
+                Capability.CAPABILITY_MANAGED_CONFIGURATION,
            ),
            hello.clientHello.capabilitiesList,
        )

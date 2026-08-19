@@ -14,6 +14,7 @@ internal data class ControlBarViews(
     val displaySelector: View,
     val actions: LinearLayout,
     val hostAction: View,
+    val clipboard: View,
     val settings: View,
     val disconnect: View,
 )
@@ -106,11 +107,13 @@ internal object ControlBarLayoutApplier {
             (windowWidthPx.coerceAtLeast(0) - safeAreaInsets.left - safeAreaInsets.right)
                 .coerceAtLeast(0)
         val hostActionsVisible = views.hostAction.visibility == View.VISIBLE
+        val clipboardVisible = views.clipboard.visibility == View.VISIBLE
         val mode =
             ControlBarLayoutPolicy.mode(
                 availableWidthPx = availableWidthPx,
                 displaySelectorVisible = views.displaySelector.visibility == View.VISIBLE,
                 hostActionsVisible = hostActionsVisible,
+                clipboardVisible = clipboardVisible,
                 geometry = geometry,
         )
         val cardParams = views.card.layoutParams
@@ -173,10 +176,11 @@ internal object ControlBarLayoutApplier {
         }
         listOf(
             views.hostAction to ControlBarLayoutPolicy.Action.HOST,
+            views.clipboard to ControlBarLayoutPolicy.Action.CLIPBOARD,
             views.settings to ControlBarLayoutPolicy.Action.SETTINGS,
             views.disconnect to ControlBarLayoutPolicy.Action.DISCONNECT,
         ).forEach { (view, action) ->
-            val margins = ControlBarLayoutPolicy.actionMargins(mode, action, hostActionsVisible, geometry)
+            val margins = ControlBarLayoutPolicy.actionMargins(mode, action, hostActionsVisible, clipboardVisible, geometry)
             val params = view.layoutParams as LinearLayout.LayoutParams
             params.marginStart = margins.startPx
             params.topMargin = margins.topPx

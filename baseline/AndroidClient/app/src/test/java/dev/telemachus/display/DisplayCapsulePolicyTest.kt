@@ -81,69 +81,75 @@ class ControlBarLayoutPolicyTest {
 
     @Test
     fun `single display keeps a compact capsule`() {
+        val withClipboardMinimum = compactMinimumWidth(geometry, hostActionsVisible = true, clipboardVisible = true)
+        val withoutOptionalMinimum = compactMinimumWidth(geometry, hostActionsVisible = false, clipboardVisible = false)
         assertEquals(
             ControlBarLayoutPolicy.Mode.COMPACT,
-            ControlBarLayoutPolicy.mode(262, false, true, geometry),
+            ControlBarLayoutPolicy.mode(withClipboardMinimum, false, true, true, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COLUMN,
-            ControlBarLayoutPolicy.mode(261, false, true, geometry),
+            ControlBarLayoutPolicy.mode(withClipboardMinimum - 1, false, true, true, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COMPACT,
-            ControlBarLayoutPolicy.mode(206, false, false, geometry),
+            ControlBarLayoutPolicy.mode(withoutOptionalMinimum, false, false, false, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COLUMN,
-            ControlBarLayoutPolicy.mode(205, false, false, geometry),
+            ControlBarLayoutPolicy.mode(withoutOptionalMinimum - 1, false, false, false, geometry),
         )
     }
 
     @Test
-    fun `common phone widths keep all controls visible without truncating actions`() {
+    fun `common phone widths keep all negotiated controls visible without truncating actions`() {
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
-            ControlBarLayoutPolicy.mode(320, true, true, geometry),
+            ControlBarLayoutPolicy.mode(320, true, true, true, geometry),
         )
         assertEquals(
-            ControlBarLayoutPolicy.Mode.INLINE,
-            ControlBarLayoutPolicy.mode(360, true, true, geometry),
+            ControlBarLayoutPolicy.Mode.STACKED,
+            ControlBarLayoutPolicy.mode(360, true, true, true, geometry),
         )
     }
 
     @Test
     fun `selector layout changes exactly at measured pixel boundaries`() {
+        val withClipboardInline = inlineMinimumWidth(geometry, hostActionsVisible = true, clipboardVisible = true)
+        val withClipboardStacked = stackedMinimumWidth(geometry, hostActionsVisible = true, clipboardVisible = true)
+        val withoutOptionalInline = inlineMinimumWidth(geometry, hostActionsVisible = false, clipboardVisible = false)
+        val withoutOptionalStacked = stackedMinimumWidth(geometry, hostActionsVisible = false, clipboardVisible = false)
         assertEquals(
             ControlBarLayoutPolicy.Mode.INLINE,
-            ControlBarLayoutPolicy.mode(350, true, true, geometry),
+            ControlBarLayoutPolicy.mode(withClipboardInline, true, true, true, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
-            ControlBarLayoutPolicy.mode(349, true, true, geometry),
+            ControlBarLayoutPolicy.mode(withClipboardInline - 1, true, true, true, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
-            ControlBarLayoutPolicy.mode(184, true, true, geometry),
+            ControlBarLayoutPolicy.mode(withClipboardStacked, true, true, true, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COLUMN,
-            ControlBarLayoutPolicy.mode(183, true, true, geometry),
+            ControlBarLayoutPolicy.mode(withClipboardStacked - 1, true, true, true, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.INLINE,
-            ControlBarLayoutPolicy.mode(294, true, false, geometry),
+            ControlBarLayoutPolicy.mode(withoutOptionalInline, true, false, false, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
-            ControlBarLayoutPolicy.mode(293, true, false, geometry),
+            ControlBarLayoutPolicy.mode(withoutOptionalInline - 1, true, false, false, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
-            ControlBarLayoutPolicy.mode(128, true, false, geometry),
+            ControlBarLayoutPolicy.mode(withoutOptionalStacked, true, false, false, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COLUMN,
-            ControlBarLayoutPolicy.mode(127, true, false, geometry),
+            ControlBarLayoutPolicy.mode(withoutOptionalStacked - 1, true, false, false, geometry),
         )
     }
 
@@ -160,53 +166,63 @@ class ControlBarLayoutPolicyTest {
                 statusMinimumWidthPx = 198,
                 statusGapPx = 17,
             )
+        val withClipboardInline = inlineMinimumWidth(density275Geometry, hostActionsVisible = true, clipboardVisible = true)
+        val withClipboardStacked =
+            stackedMinimumWidth(density275Geometry, hostActionsVisible = true, clipboardVisible = true)
+        val withoutOptionalInline =
+            inlineMinimumWidth(density275Geometry, hostActionsVisible = false, clipboardVisible = false)
+        val withoutOptionalStacked =
+            stackedMinimumWidth(density275Geometry, hostActionsVisible = false, clipboardVisible = false)
+        val withClipboardCompact = compactMinimumWidth(density275Geometry, hostActionsVisible = true, clipboardVisible = true)
+        val withoutOptionalCompact =
+            compactMinimumWidth(density275Geometry, hostActionsVisible = false, clipboardVisible = false)
         assertEquals(
             ControlBarLayoutPolicy.Mode.INLINE,
-            ControlBarLayoutPolicy.mode(964, true, true, density275Geometry),
+            ControlBarLayoutPolicy.mode(withClipboardInline, true, true, true, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
-            ControlBarLayoutPolicy.mode(963, true, true, density275Geometry),
+            ControlBarLayoutPolicy.mode(withClipboardInline - 1, true, true, true, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
-            ControlBarLayoutPolicy.mode(507, true, true, density275Geometry),
+            ControlBarLayoutPolicy.mode(withClipboardStacked, true, true, true, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COLUMN,
-            ControlBarLayoutPolicy.mode(506, true, true, density275Geometry),
+            ControlBarLayoutPolicy.mode(withClipboardStacked - 1, true, true, true, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.INLINE,
-            ControlBarLayoutPolicy.mode(810, true, false, density275Geometry),
+            ControlBarLayoutPolicy.mode(withoutOptionalInline, true, false, false, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
-            ControlBarLayoutPolicy.mode(809, true, false, density275Geometry),
+            ControlBarLayoutPolicy.mode(withoutOptionalInline - 1, true, false, false, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.STACKED,
-            ControlBarLayoutPolicy.mode(353, true, false, density275Geometry),
+            ControlBarLayoutPolicy.mode(withoutOptionalStacked, true, false, false, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COLUMN,
-            ControlBarLayoutPolicy.mode(352, true, false, density275Geometry),
+            ControlBarLayoutPolicy.mode(withoutOptionalStacked - 1, true, false, false, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COMPACT,
-            ControlBarLayoutPolicy.mode(722, false, true, density275Geometry),
+            ControlBarLayoutPolicy.mode(withClipboardCompact, false, true, true, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COLUMN,
-            ControlBarLayoutPolicy.mode(721, false, true, density275Geometry),
+            ControlBarLayoutPolicy.mode(withClipboardCompact - 1, false, true, true, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COMPACT,
-            ControlBarLayoutPolicy.mode(568, false, false, density275Geometry),
+            ControlBarLayoutPolicy.mode(withoutOptionalCompact, false, false, false, density275Geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Mode.COLUMN,
-            ControlBarLayoutPolicy.mode(567, false, false, density275Geometry),
+            ControlBarLayoutPolicy.mode(withoutOptionalCompact - 1, false, false, false, density275Geometry),
         )
     }
 
@@ -218,6 +234,7 @@ class ControlBarLayoutPolicyTest {
                 ControlBarLayoutPolicy.Mode.COLUMN,
                 ControlBarLayoutPolicy.Action.SETTINGS,
                 hostActionsVisible = true,
+                clipboardVisible = true,
                 geometry = geometry,
             ),
         )
@@ -227,6 +244,7 @@ class ControlBarLayoutPolicyTest {
                 ControlBarLayoutPolicy.Mode.COLUMN,
                 ControlBarLayoutPolicy.Action.DISCONNECT,
                 hostActionsVisible = true,
+                clipboardVisible = true,
                 geometry = geometry,
             ),
         )
@@ -236,6 +254,7 @@ class ControlBarLayoutPolicyTest {
                 ControlBarLayoutPolicy.Mode.INLINE,
                 ControlBarLayoutPolicy.Action.DISCONNECT,
                 hostActionsVisible = true,
+                clipboardVisible = true,
                 geometry = geometry,
             ),
         )
@@ -243,9 +262,10 @@ class ControlBarLayoutPolicyTest {
 
     @Test
     fun `stream status consumes explicit space and stacks before truncating actions`() {
+        val inlineMinimum = inlineMinimumWidth(geometry, hostActionsVisible = true, clipboardVisible = false)
         assertEquals(
             ControlBarLayoutPolicy.Mode.INLINE,
-            ControlBarLayoutPolicy.mode(350, true, true, geometry),
+            ControlBarLayoutPolicy.mode(inlineMinimum, true, true, false, geometry),
         )
         assertEquals(
             ControlBarLayoutPolicy.Margins(0, 0, 6),
@@ -256,6 +276,37 @@ class ControlBarLayoutPolicyTest {
             ControlBarLayoutPolicy.statusMargins(ControlBarLayoutPolicy.Mode.STACKED, geometry),
         )
     }
+
+    private fun compactMinimumWidth(
+        geometry: ControlBarLayoutPolicy.Geometry,
+        hostActionsVisible: Boolean,
+        clipboardVisible: Boolean,
+    ): Int =
+        geometry.horizontalContentPaddingPx +
+            statusWidth(geometry) +
+            geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible)
+
+    private fun inlineMinimumWidth(
+        geometry: ControlBarLayoutPolicy.Geometry,
+        hostActionsVisible: Boolean,
+        clipboardVisible: Boolean,
+    ): Int =
+        compactMinimumWidth(geometry, hostActionsVisible, clipboardVisible) + geometry.selectorMinimumWidthPx
+
+    private fun stackedMinimumWidth(
+        geometry: ControlBarLayoutPolicy.Geometry,
+        hostActionsVisible: Boolean,
+        clipboardVisible: Boolean,
+    ): Int =
+        geometry.horizontalContentPaddingPx +
+            maxOf(
+                geometry.statusMinimumWidthPx,
+                geometry.selectorMinimumWidthPx,
+                geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible),
+            )
+
+    private fun statusWidth(geometry: ControlBarLayoutPolicy.Geometry): Int =
+        geometry.statusMinimumWidthPx + geometry.statusGapPx
 }
 
 class ControlBarAccessibilityPolicyTest {

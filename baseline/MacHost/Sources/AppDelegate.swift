@@ -224,6 +224,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             SessionGameControllerInput(injector: GameControllerInjector(factory: $0))
         }
     private var internetControllerInputRoute: SessionGameControllerInputRoute?
+    /// Owns the status-bar clipboard menu items and the explicit-action
+    /// state machine. Created in setupMenuBar; bound to the active server
+    /// on client connect and unbound on disconnect/teardown.
+    private var clipboardController: ClipboardUIController?
     private var primaryButtonOwner = PrimaryButtonOwnerState()
     let pairedDeviceStore = PairedDeviceStore()
     let windowRecoveryManager = WindowRecoveryManager()
@@ -723,6 +727,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             action: #selector(returnMovedWindowsToMainDisplay),
             keyEquivalent: ""
         ))
+        menu.addItem(NSMenuItem.separator())
+        let shareClipboardItem = NSMenuItem(
+            title: "Share Mac Clipboard",
+            action: nil,
+            keyEquivalent: ""
+        )
+        let receiveClipboardItem = NSMenuItem(
+            title: "Receive Android Clipboard",
+            action: nil,
+            keyEquivalent: ""
+        )
+        menu.addItem(shareClipboardItem)
+        menu.addItem(receiveClipboardItem)
+        clipboardController = ClipboardUIController(
+            pasteboard: NSPasteboardClipboardAdapter(),
+            shareMenuItem: shareClipboardItem,
+            receiveMenuItem: receiveClipboardItem
+        )
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
@@ -2002,17 +2024,73 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     server: configuredServer
                 )
             }
+            let clipboardTransport: ClipboardTransport?
+            switch configuration.connectionMode {
+            case .usb:
+                clipboardTransport = .usb
+            case .wireless:
+                clipboardTransport = .trustedLAN
+            case .internet:
+                // Internet sessions return before constructing StreamingServer.
+                // Keep this nil so future control-flow changes cannot silently
+                // label an Internet clipboard session as USB.
+                clipboardTransport = nil
+            }
+            streamingServer?.onClipboardOfferReceived = {
+                [weak self, weak configuredServer] offer, generation in
+                guard let self, let configuredServer else { return }
+                self.performSessionCallback(
+                    token: startToken,
+                    server: configuredServer,
+                    clientGeneration: generation
+                ) {
+                    self.clipboardController?.handleOffer(offer, generation: generation)
+                }
+            }
+            streamingServer?.onClipboardContentReceived = {
+                [weak self, weak configuredServer] content, generation in
+                guard let self, let configuredServer else { return }
+                self.performSessionCallback(
+                    token: startToken,
+                    server: configuredServer,
+                    clientGeneration: generation
+                ) {
+                    self.clipboardController?.handleContent(content, generation: generation)
+                }
+            }
+            streamingServer?.onClipboardDirectContentReceived = {
+                [weak self, weak configuredServer] content, generation in
+                guard let self, let configuredServer else { return }
+                self.performSessionCallback(
+                    token: startToken,
+                    server: configuredServer,
+                    clientGeneration: generation
+                ) {
+                    self.clipboardController?.handleDirectContent(content, generation: generation)
+                }
+            }
             streamingServer?.onClientConnected = {
                 [weak self, weak configuredServer, weak configuredCapture]
                 clientGeneration in
-                Task { @MainActor in
+                DispatchQueue.main.async { [weak self, weak configuredServer, weak configuredCapture] in
                     guard let self, let configuredServer, let configuredCapture,
                           self.screenCapture === configuredCapture else { return }
+                    let clipboardAvailable = configuredServer.clipboardAvailable
                     self.performSessionCallback(
                             token: startToken,
                             server: configuredServer,
                             clientGeneration: clientGeneration
                     ) {
+                        if let clipboardTransport {
+                            self.clipboardController?.bind(
+                                server: configuredServer,
+                                generation: clientGeneration,
+                                transport: clipboardTransport,
+                                clipboardAvailable: clipboardAvailable
+                            )
+                        } else {
+                            self.clipboardController?.unbind()
+                        }
                         configuredCapture.requestKeyframeOrReplayCachedFrame(force: true)
                         self.unattendedRecoveryAttempt = 0
                         // Clear before the new client's type-11 arrives so a
@@ -2082,6 +2160,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                             clientGeneration: clientGeneration
                     ) {
                         self.cancelSessionInput(releaseDrag: true)
+                        self.clipboardController?.unbind()
                         self.reportWindowRecovery(
                             self.windowRecoveryManager.restoreManagedWindows()
                         )
@@ -3327,6 +3406,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Idempotent cleanup used for both normal shutdown and a failure after any
     /// partial combination of display, capture, listener, or ADB setup.
     private func teardownStreamingComponents() async {
+        clipboardController?.unbind()
         if let teardownTask {
             await teardownTask.value
             return
