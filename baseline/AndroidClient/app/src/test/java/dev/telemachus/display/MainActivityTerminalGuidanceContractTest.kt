@@ -67,33 +67,51 @@ class MainActivityTerminalGuidanceContractTest {
             connect.contains("inlineGuidance?.let(::showUsbConnectionGuidance)"),
         )
         assertTrue(
-            "Terminal guidance must render inline only from the active USB branch",
-            compactDisconnected.contains(
-                "if(mode==ConnectionMode.USB){showUsbConnectionGuidance(guidance)}" +
-                    "else{updateStatus(guidanceStatus(guidance))showError(guidanceMessage(guidance))}",
-            ),
+            "Terminal guidance must route through the mode-specific inline guidance presenter",
+            disconnected.contains("showTerminalConnectionGuidance(mode, guidance)"),
+        )
+        assertFalse(
+            "Terminal guidance must not fall back to the blocking dialog path",
+            compactDisconnected.contains("showError(guidanceMessage(guidance))"),
         )
     }
 
     @Test
-    fun terminalGuidanceDoesNotUseUsbInlinePanelForNonUsbModes() {
-        val disconnected = extractMethod(mainActivitySource(), "private fun applyDisconnectedSessionUi")
-        val compact = disconnected.replace(Regex("\\s+"), "")
+    fun terminalGuidanceUsesModeSpecificInlineSurfaces() {
+        val presenter = extractMethod(mainActivitySource(), "private fun showTerminalConnectionGuidance")
+        val compact = presenter.replace(Regex("\\s+"), "")
 
         assertTrue(
             "Terminal guidance must branch on the current connection mode",
-            compact.contains(
-                "if(mode==ConnectionMode.USB){showUsbConnectionGuidance(guidance)}" +
-                    "else{updateStatus(guidanceStatus(guidance))showError(guidanceMessage(guidance))}",
-            ),
+            compact.contains("when(mode)"),
+        )
+        assertTrue(
+            "USB terminal guidance should use the USB recovery panel",
+            compact.contains("ConnectionMode.USB->showUsbConnectionGuidance(guidance)"),
+        )
+        assertTrue(
+            "LAN terminal guidance should stay inside the Wireless tab repair surface",
+            compact.contains("wirelessController.showConnectionGuidance(guidance)"),
+        )
+        assertTrue(
+            "Internet terminal guidance should stay inside the Internet tab error surface",
+            compact.contains("LiveRegionTextApplier.show(binding.internetErrorText,"),
+        )
+        assertTrue(
+            "Internet terminal guidance should use localized guidance text",
+            compact.contains("guidanceFullMessage(guidance)"),
         )
         assertFalse(
             "The non-USB branch must not show the USB-specific inline panel",
             compact.contains("else{showUsbConnectionGuidance(guidance)}"),
         )
-        assertTrue(
-            "The non-USB branch should retain the previous terminal guidance dialog",
-            compact.contains("else{updateStatus(guidanceStatus(guidance))showError(guidanceMessage(guidance))}"),
+        assertFalse(
+            "Terminal guidance should not fall back to a blocking dialog",
+            compact.contains("showError(guidance.message)"),
+        )
+        assertFalse(
+            "Terminal guidance should not fall back to a localized blocking dialog",
+            compact.contains("showError(guidanceMessage(guidance))"),
         )
     }
 
@@ -194,8 +212,10 @@ class MainActivityTerminalGuidanceContractTest {
         val source = mainActivitySource()
         val connected = extractMethod(source, "private fun showConnectedStreamUi")
         val reveal = extractMethod(source, "private fun revealControlBar")
+        val securityStatus = extractMethod(source, "private fun updateConnectionSecurityStatus")
         val compactConnected = connected.replace(Regex("\\s+"), "")
         val compactReveal = reveal.replace(Regex("\\s+"), "")
+        val compactSecurity = securityStatus.replace(Regex("\\s+"), "")
 
         assertTrue(
             "Newly connected sessions should leave controls visible long enough to find settings and disconnect",
@@ -213,6 +233,14 @@ class MainActivityTerminalGuidanceContractTest {
         assertTrue(
             "Control-bar hide timing should be resolved by the shared accessibility policy",
             compactReveal.contains("ControlBarAccessibilityPolicy.autoHideDelayMs("),
+        )
+        assertTrue(
+            "Streaming UI should update the connection/security indicator before revealing controls",
+            compactConnected.contains("updateConnectionSecurityStatus()"),
+        )
+        assertTrue(
+            "The stats overlay should carry the same connection/security state as the control bar",
+            compactSecurity.contains("binding.securityText.text=getString(R.string.stream_status_overlay_format,label,detail)"),
         )
     }
 

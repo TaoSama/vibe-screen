@@ -198,6 +198,18 @@ class WirelessTabController(
         }
     }
 
+    internal fun showConnectionGuidance(guidance: ConnectionGuidance) {
+        LiveRegionTextApplier.apply(
+            views.repairTitle,
+            ConnectionGuidanceTextFormatter.format(activity.resources, guidance.status),
+        )
+        LiveRegionTextApplier.apply(
+            views.repairMessage,
+            ConnectionGuidanceTextFormatter.format(activity.resources, guidance.message),
+        )
+        transition(State.REPAIR_NEEDED)
+    }
+
     private fun showConnecting(
         title: String,
         subtitle: String,

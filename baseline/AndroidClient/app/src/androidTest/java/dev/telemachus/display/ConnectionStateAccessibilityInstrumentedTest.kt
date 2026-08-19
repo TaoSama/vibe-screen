@@ -5,13 +5,16 @@ import android.R.attr.state_enabled
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.graphics.Typeface
 import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -159,59 +162,39 @@ class ConnectionStateAccessibilityInstrumentedTest {
     }
 
     @Test
-    fun internetSecurityDescriptionExposesExpandAndCollapseActions() {
+    fun internetSecurityDescriptionStaysFullyVisibleWithoutDisclosureActions() {
         val context = configuredContext(widthDp = 361, heightDp = 800)
         withProductionLayout(context) { root ->
             val subtitle = root.findViewById<TextView>(R.id.connectionSubtitle)
             val views = connectionPanelViews(root)
             subtitle.setText(R.string.internet_waiting_description)
-            var expanded = false
-            fun applyDisclosure() {
-                ConnectionPanelLayoutApplier.apply(
-                    resources = context.resources,
-                    views = views,
-                    connectionMode = ConnectionMode.INTERNET,
-                    subtitleExpanded = expanded,
-                )
-            }
-            subtitle.setOnClickListener {
-                expanded = !expanded
-                applyDisclosure()
-            }
 
-            applyDisclosure()
+            ConnectionPanelLayoutApplier.apply(
+                resources = context.resources,
+                views = views,
+                connectionMode = ConnectionMode.INTERNET,
+                subtitleExpanded = false,
+            )
             measureAndLayout(root, context, widthDp = 361, heightDp = 800)
-            assertTrue(subtitle.measuredHeight >= dp(context, 48))
-            assertTrue(subtitle.isClickable)
-            assertTrue(subtitle.isFocusable)
-            val collapsedChevron = subtitle.compoundDrawablesRelative[2]
-            assertTrue(collapsedChevron != null)
-            assertEquals(
-                context.getString(R.string.internet_security_details_collapsed),
-                ViewCompat.getStateDescription(subtitle),
-            )
-            assertAccessibilityAction(
-                subtitle,
-                context.getString(R.string.internet_security_details_expand_action),
-            )
-
-            assertTrue(subtitle.performClick())
-            measureAndLayout(root, context, widthDp = 361, heightDp = 800)
-            val expandedChevron = subtitle.compoundDrawablesRelative[2]
-            assertTrue(expandedChevron != null)
-            assertFalse(collapsedChevron === expandedChevron)
-            assertEquals(
-                context.getString(R.string.internet_security_details_expanded),
-                ViewCompat.getStateDescription(subtitle),
-            )
-            assertAccessibilityAction(
-                subtitle,
-                context.getString(R.string.internet_security_details_collapse_action),
-            )
             assertEquals(
                 context.getString(R.string.internet_waiting_description),
                 subtitle.text.toString(),
             )
+            assertFalse(subtitle.isClickable)
+            assertFalse(subtitle.isFocusable)
+            assertTrue(subtitle.compoundDrawablesRelative[2] == null)
+            assertEquals(Int.MAX_VALUE, subtitle.maxLines)
+            assertTrue(ViewCompat.getStateDescription(subtitle) == null)
+            val node = AccessibilityNodeInfoCompat.obtain()
+            ViewCompat.onInitializeAccessibilityNodeInfo(subtitle, node)
+            assertFalse(
+                node.actionList.any {
+                    it.label == context.getString(R.string.internet_security_details_expand_action) ||
+                        it.label == context.getString(R.string.internet_security_details_collapse_action)
+                },
+            )
+            val textLayout = checkNotNull(subtitle.layout)
+            assertTrue((0 until textLayout.lineCount).all { textLayout.getEllipsisCount(it) == 0 })
 
             ConnectionPanelLayoutApplier.apply(
                 resources = context.resources,
@@ -228,7 +211,7 @@ class ConnectionStateAccessibilityInstrumentedTest {
     }
 
     @Test
-    fun internetSecurityDescriptionResetsAfterModeAndConfigurationChanges() {
+    fun internetSecurityDescriptionStaysVisibleAfterModeAndConfigurationChanges() {
         val context = applicationContext()
         val preferences = PreferencesManager(context)
         val originalMode = preferences.connectionMode
@@ -245,27 +228,18 @@ class ConnectionStateAccessibilityInstrumentedTest {
                         activity.resources.configuration.orientation,
                     )
                     val subtitle = activity.findViewById<TextView>(R.id.connectionSubtitle)
-                    assertEquals(
-                        ConnectionSubtitleDisclosurePolicy.COLLAPSED_MAX_LINES,
-                        subtitle.maxLines,
-                    )
-                    assertTrue(subtitle.performClick())
                     assertEquals(Int.MAX_VALUE, subtitle.maxLines)
+                    assertFalse(subtitle.isClickable)
 
                     val modeToggle = activity.findViewById<MaterialButtonToggleGroup>(R.id.modeToggleGroup)
                     modeToggle.check(R.id.modeWireless)
                     modeToggle.check(R.id.modeInternet)
-                    assertEquals(
-                        ConnectionSubtitleDisclosurePolicy.COLLAPSED_MAX_LINES,
-                        subtitle.maxLines,
-                    )
+                    assertEquals(Int.MAX_VALUE, subtitle.maxLines)
+                    assertFalse(subtitle.isClickable)
 
-                    assertTrue(subtitle.performClick())
                     activity.onConfigurationChanged(Configuration(activity.resources.configuration))
-                    assertEquals(
-                        ConnectionSubtitleDisclosurePolicy.COLLAPSED_MAX_LINES,
-                        subtitle.maxLines,
-                    )
+                    assertEquals(Int.MAX_VALUE, subtitle.maxLines)
+                    assertFalse(subtitle.isClickable)
                 }
             }
         } finally {
@@ -306,7 +280,7 @@ class ConnectionStateAccessibilityInstrumentedTest {
     }
 
     @Test
-    fun productionChecklistReportsEveryTransportLabelAndStatusWithoutColor() {
+    fun productionChecklistReportsEveryTransportLabelAndHighlightsFailures() {
         withProductionLayout { root ->
             val indicator = root.findViewById<View>(R.id.checkDeveloperMode)
             val label = root.findViewById<TextView>(R.id.textDeveloperMode)
@@ -361,6 +335,26 @@ class ConnectionStateAccessibilityInstrumentedTest {
                 ChecklistStatus.CHECKING,
             )
             assertTrue("Unchanged status should not replace the live-region text", unchangedText === label.text)
+
+            ChecklistStatusApplier.apply(
+                context,
+                indicator,
+                label,
+                R.string.mac_server,
+                ChecklistStatus.NOT_READY,
+            )
+            assertEquals(ContextCompat.getColor(context, R.color.warning), label.currentTextColor)
+            assertEquals(Typeface.BOLD, (label.typeface?.style ?: Typeface.NORMAL) and Typeface.BOLD)
+
+            ChecklistStatusApplier.apply(
+                context,
+                indicator,
+                label,
+                R.string.mac_server,
+                ChecklistStatus.READY,
+            )
+            assertEquals(ContextCompat.getColor(context, R.color.on_surface_muted), label.currentTextColor)
+            assertEquals(Typeface.NORMAL, label.typeface?.style ?: Typeface.NORMAL)
         }
     }
 
