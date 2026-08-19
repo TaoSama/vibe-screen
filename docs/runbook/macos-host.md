@@ -290,6 +290,21 @@ controller input. If the physical controller or entitled Host is unavailable,
 record a blocked summary with `vibescreen_evidence.controller_runtime` instead
 of treating the mapper/protocol tests as a pass.
 
+For a fixed-binary touch rerun, collect the read-only preflight before launching
+the opt-in Android gesture driver:
+
+```bash
+make evidence-touch-rerun-preflight \
+  EVIDENCE_SERIAL=<adb-serial> \
+  EVIDENCE_DIR=<evidence-dir> \
+  TOUCH_RERUN_EXPECTED_HOST_SHA256=<fixed-host-binary-sha256>
+```
+
+The preflight must report the expected Host binary SHA-256 and authorized
+Screen Recording plus Accessibility for `dev.telemachus.display`. If it reports
+`blocked`, keep that JSON as the evidence output and do not reset TCC, reset
+Keychain state, clear Android app data, or run a long soak to force the gate.
+
 ### Logs and diagnostics
 
 Runtime logs rotate at 1 MiB and are stored with owner-only permissions:

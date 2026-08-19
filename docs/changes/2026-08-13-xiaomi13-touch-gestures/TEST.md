@@ -84,3 +84,26 @@ authorized for the Host. Because the production touch path rejects input when
 five gestures, including the post-pinch modifier-isolation check, remain
 blocked. See the
 [blocked rerun evidence](evidence/2026-08-16-xiaomi13-fuxi-fixed-binary-blocked/README.md).
+
+Before any future short rerun, collect a read-only preflight so a blocked state
+is recorded without launching the Host, running instrumentation, resetting TCC
+or Keychain state, clearing Android app data, or starting a soak:
+
+```bash
+make evidence-touch-rerun-preflight \
+  EVIDENCE_SERIAL=<adb-serial> \
+  EVIDENCE_DIR=docs/changes/2026-08-13-xiaomi13-touch-gestures/evidence/<date-device-fixed-binary-preflight> \
+  TOUCH_RERUN_EXPECTED_HOST_SHA256=<fixed-host-binary-sha256>
+```
+
+The preflight reads both the current-user and system TCC databases by default,
+because modern macOS releases may store Screen Recording and Accessibility rows
+outside the user database. The output records which database supplied each row.
+
+Proceed to the opt-in gesture driver only when the preflight result is `ready`:
+the installed Host binary hash matches the expected fixed binary, Screen
+Recording and Accessibility are both authorized for `dev.telemachus.display`,
+and the explicit Android device identity is recorded. If any precondition is
+missing, keep the result as blocked evidence. A Nubia P0110/pacific may be used
+as a general Android substitute, but the evidence title, device table, and
+claims must name Nubia P0110/pacific rather than Xiaomi 13/fuxi.
