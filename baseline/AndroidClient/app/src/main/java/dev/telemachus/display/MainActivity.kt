@@ -1079,6 +1079,7 @@ class MainActivity : AppCompatActivity() {
                         point.x,
                         point.y,
                         buttonState = event.buttonState,
+                        actionButton = event.actionButton,
                     )
 
                 MotionEvent.ACTION_BUTTON_RELEASE ->
@@ -1087,6 +1088,7 @@ class MainActivity : AppCompatActivity() {
                         point.x,
                         point.y,
                         buttonState = event.buttonState,
+                        actionButton = event.actionButton,
                     )
 
                 MotionEvent.ACTION_SCROLL ->
@@ -1221,8 +1223,8 @@ class MainActivity : AppCompatActivity() {
                 showUsbConnectionGuidance(
                     ConnectionGuidance(
                         kind = ConnectionFailureKind.UNKNOWN,
-                        status = getString(R.string.connection_issue),
-                        message = getString(R.string.host_address_required),
+                        status = ConnectionGuidanceText(R.string.connection_issue),
+                        message = ConnectionGuidanceText(R.string.host_address_required),
                     ),
                 )
                 return@setOnClickListener
@@ -1240,6 +1242,10 @@ class MainActivity : AppCompatActivity() {
 
         binding.openSourceLicensesButton.setOnClickListener {
             showOpenSourceNotices()
+        }
+
+        binding.connectionSettingsButton.setOnClickListener {
+            showSettingsDialog()
         }
 
         setupInternetUi()
@@ -1279,12 +1285,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun showError(message: String) {
         runOnUiThread {
-            android.app.AlertDialog
-                .Builder(this)
-                .setTitle("Connection Error")
-                .setMessage(message)
-                .setPositiveButton("OK", null)
-                .show()
+            showImmersiveDialog(
+                MaterialAlertDialogBuilder(this)
+                    .setTitle(R.string.connection_error_title)
+                    .setMessage(message)
+                    .setPositiveButton(android.R.string.ok, null),
+            )
         }
     }
 
@@ -1296,17 +1302,26 @@ class MainActivity : AppCompatActivity() {
 
     private fun showUsbConnectionGuidance(guidance: ConnectionGuidance) {
         runOnUiThread {
-            LiveRegionTextApplier.apply(binding.connectionErrorTitle, guidance.status)
-            LiveRegionTextApplier.show(binding.connectionErrorMessage, guidance.message)
+            LiveRegionTextApplier.apply(binding.connectionErrorTitle, guidanceStatus(guidance))
+            LiveRegionTextApplier.show(binding.connectionErrorMessage, guidanceMessage(guidance))
             binding.connectionErrorContainer.visibility = View.VISIBLE
             if (!connectionDetailsVisible) {
                 setConnectionDetailsVisible(true)
             } else {
                 updateChecklist()
             }
-            updateStatus(guidance.status)
+            updateStatus(guidanceStatus(guidance))
         }
     }
+
+    private fun guidanceStatus(guidance: ConnectionGuidance): String =
+        ConnectionGuidanceTextFormatter.format(resources, guidance.status)
+
+    private fun guidanceMessage(guidance: ConnectionGuidance): String =
+        ConnectionGuidanceTextFormatter.format(resources, guidance.message)
+
+    private fun guidanceFullMessage(guidance: ConnectionGuidance): String =
+        getString(R.string.connection_guidance_full_message, guidanceStatus(guidance), guidanceMessage(guidance))
 
     private fun clearUsbConnectionGuidance() {
         if (!::binding.isInitialized) return
@@ -1676,6 +1691,7 @@ class MainActivity : AppCompatActivity() {
         binding.videoViewport.visibility = View.VISIBLE
         binding.disconnectedBackdrop.visibility = View.GONE
         binding.settingsPanel.visibility = View.GONE
+        binding.connectionSettingsButton.visibility = View.GONE
         LiveRegionTextApplier.apply(binding.statusText, connectedStatus)
         // Route settings through the tap-to-reveal control bar instead of a
         // persistent floating button that occludes the video.
@@ -1701,9 +1717,13 @@ class MainActivity : AppCompatActivity() {
         binding.videoViewport.visibility = View.VISIBLE
         binding.disconnectedBackdrop.visibility = View.VISIBLE
         binding.settingsPanel.visibility = View.VISIBLE
-        binding.settingsButton.visibility = View.VISIBLE
-        binding.settingsButton.translationZ = binding.settingsPanel.elevation + 1f
-        binding.settingsButton.bringToFront()
+        val useInlineSettingsButton = resources.getBoolean(R.bool.connection_panel_inline_settings_button)
+        binding.connectionSettingsButton.visibility = if (useInlineSettingsButton) View.VISIBLE else View.GONE
+        binding.settingsButton.visibility = if (useInlineSettingsButton) View.GONE else View.VISIBLE
+        if (!useInlineSettingsButton) {
+            binding.settingsButton.translationZ = binding.settingsPanel.elevation + 1f
+            binding.settingsButton.bringToFront()
+        }
         binding.statusBar.visibility = View.GONE
         binding.connectButton.isEnabled = true
         binding.statusIndicator.setBackgroundResource(R.drawable.status_indicator_waiting)
@@ -2152,6 +2172,19 @@ class MainActivity : AppCompatActivity() {
 
         if (!available) return
 
+        fun announceRequest(kind: VideoPreferenceFeedbackKind) {
+            if (!VideoPreferenceFeedbackPolicy.shouldAnnounceRequest(clientAvailable = available && streamClient != null)) {
+                return
+            }
+            val messageId =
+                when (kind) {
+                    VideoPreferenceFeedbackKind.QUALITY -> R.string.video_quality_request_sent
+                    VideoPreferenceFeedbackKind.FRAME_RATE -> R.string.video_frame_rate_request_sent
+                    VideoPreferenceFeedbackKind.BITRATE -> R.string.video_bitrate_request_sent
+                }
+            Toast.makeText(this, messageId, Toast.LENGTH_SHORT).show()
+        }
+
         qualityGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
             val choice =
@@ -2178,6 +2211,7 @@ class MainActivity : AppCompatActivity() {
                 )
             }
             prefs.videoQuality = choice
+            announceRequest(VideoPreferenceFeedbackKind.QUALITY)
         }
 
         frameRateGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
@@ -2191,6 +2225,7 @@ class MainActivity : AppCompatActivity() {
                 qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
             )
             prefs.videoFrameRate = fps
+            announceRequest(VideoPreferenceFeedbackKind.FRAME_RATE)
         }
 
         bitrateSlider.addOnChangeListener { _, value, _ ->
@@ -2204,11 +2239,12 @@ class MainActivity : AppCompatActivity() {
                     val mbps = slider.value.toInt()
                     // An explicit bitrate wins over the preset intent.
                     streamClient?.setVideoPreferences(
-                        bitrateKbps = mbps * KBPS_PER_MBPS,
+                        bitrateKbps = mbps * ClientVideoBounds.KBPS_PER_MBPS,
                         framesPerSecond = 0,
                         qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
                     )
                     prefs.videoBitrateMbps = mbps
+                    announceRequest(VideoPreferenceFeedbackKind.BITRATE)
                 }
             },
         )
@@ -3194,6 +3230,7 @@ class MainActivity : AppCompatActivity() {
                 if (connected) {
                     nativeInputSessionState.admit(callbackClient, callbackGeneration)
                     if (prefs.connectionMode == ConnectionMode.USB) automaticUsbConnect = true
+                    replaySavedVideoPreferencesIfAvailable(callbackClient, callbackGeneration)
                     hasConnectedThisRun = true
                     isReconnecting = false
                     unsupportedKeyboardNoticeShown = false
@@ -3240,7 +3277,6 @@ class MainActivity : AppCompatActivity() {
                 ) {
                     return@runOnUiThread
                 }
-                lastAppliedVideoPreferenceConfigEpoch = configuration.configEpoch
                 val projection =
                     AppliedVideoPreferenceProjector.project(
                         bitrateKbps = configuration.bitrateKbps,
@@ -3248,6 +3284,16 @@ class MainActivity : AppCompatActivity() {
                     )
                 projection.bitrateMbps?.let { prefs.videoBitrateMbps = it }
                 projection.framesPerSecond?.let { prefs.videoFrameRate = it }
+                if (
+                    VideoPreferenceFeedbackPolicy.shouldAnnounceApplied(
+                        appliesClientVideoPreferences = configuration.appliesClientVideoPreferences,
+                        configEpoch = configuration.configEpoch,
+                        lastAnnouncedConfigEpoch = lastAppliedVideoPreferenceConfigEpoch,
+                    )
+                ) {
+                    Toast.makeText(this, R.string.video_preferences_applied, Toast.LENGTH_SHORT).show()
+                }
+                lastAppliedVideoPreferenceConfigEpoch = configuration.configEpoch
                 mainDiag(
                     "Applied authoritative video preferences " +
                         "epoch=${configuration.configEpoch} " +
@@ -3359,6 +3405,37 @@ class MainActivity : AppCompatActivity() {
                 binding.fpsText.text = String.format(Locale.US, "%.1f", fps)
                 binding.bitrateText.text = String.format(Locale.US, "%.1f Mbps", mbps)
             }
+        }
+    }
+
+    private fun replaySavedVideoPreferencesIfAvailable(
+        callbackClient: StreamClient,
+        callbackGeneration: Long,
+    ) {
+        if (!isCurrentSession(callbackClient, callbackGeneration)) return
+        if (
+            dev.vibescreen.protocol.v1.Capability.CAPABILITY_CLIENT_VIDEO_CONTROL !in
+            callbackClient.negotiatedCapabilities()
+        ) {
+            return
+        }
+        SavedVideoPreferenceReplayer.replayIfAvailable(
+            clientVideoControlAvailable = true,
+            quality = prefs.videoQuality,
+            bitrateMbps = prefs.videoBitrateMbps,
+            framesPerSecond = prefs.videoFrameRate,
+        ) { replay ->
+            callbackClient.setVideoPreferences(
+                bitrateKbps = replay.bitrateKbps,
+                framesPerSecond = replay.framesPerSecond,
+                qualityPreset = replay.qualityPreset,
+                resetQualityToAuto = replay.resetQualityToAuto,
+            )
+            mainDiag(
+                "Replayed saved video preferences " +
+                    "bitrate=${replay.bitrateKbps}kbps fps=${replay.framesPerSecond} " +
+                    "quality=${replay.qualityPreset.name} resetAuto=${replay.resetQualityToAuto}",
+            )
         }
     }
 
@@ -3827,7 +3904,7 @@ class MainActivity : AppCompatActivity() {
             }
         LiveRegionTextApplier.apply(
             binding.internetStateText,
-            getString(R.string.internet_state_format, state.name.lowercase(), routeLabel),
+            getString(R.string.internet_state_format, internetStateLabel(state), routeLabel),
         )
         if (state == InternetProductSessionState.CLOSED || state == InternetProductSessionState.FAILED) {
             isConnected = false
@@ -3838,6 +3915,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun internetStateLabel(state: InternetProductSessionState): String =
+        getString(
+            when (state) {
+                InternetProductSessionState.IDLE -> R.string.internet_state_label_idle
+                InternetProductSessionState.CONNECTING -> R.string.internet_state_label_connecting
+                InternetProductSessionState.NEGOTIATING -> R.string.internet_state_label_negotiating
+                InternetProductSessionState.ACTIVE -> R.string.internet_state_label_active
+                InternetProductSessionState.RECOVERING -> R.string.internet_state_label_recovering
+                InternetProductSessionState.SUSPENDED -> R.string.internet_state_label_suspended
+                InternetProductSessionState.FAILED -> R.string.internet_state_label_failed
+                InternetProductSessionState.CLOSED -> R.string.internet_state_label_closed
+            },
+        )
+
     private fun showInternetFailure(failure: Throwable) {
         if (!::binding.isInitialized) return
         if (internetSession != null) {
@@ -3847,13 +3938,13 @@ class MainActivity : AppCompatActivity() {
         val guidance = ConnectionGuidanceFactory.from(failure, ConnectionGuidanceContext.internet())
         LiveRegionTextApplier.show(
             binding.internetErrorText,
-            guidance.status + ". " + guidance.message,
+            guidanceFullMessage(guidance),
         )
         LiveRegionTextApplier.apply(
             binding.internetStateText,
             getString(
                 R.string.internet_state_format,
-                InternetProductSessionState.FAILED.name.lowercase(),
+                internetStateLabel(InternetProductSessionState.FAILED),
                 getString(R.string.internet_route_pending),
             ),
         )
@@ -4300,8 +4391,8 @@ class MainActivity : AppCompatActivity() {
             if (mode == ConnectionMode.USB) {
                 showUsbConnectionGuidance(guidance)
             } else {
-                updateStatus(guidance.status)
-                showError(guidance.message)
+                updateStatus(guidanceStatus(guidance))
+                showError(guidanceMessage(guidance))
             }
         }
     }
@@ -4447,6 +4538,7 @@ class MainActivity : AppCompatActivity() {
         override fun sendPointer(input: ClientPointerInput): Boolean {
             if (!isCurrentSession(client, generation)) return false
             val buttonMask = NativeInputWire.buttonMask(input.buttonState)
+            val changedButtonMask = NativeInputWire.buttonMask(input.actionButton)
             val admitted =
                 when (input.action) {
                     ClientPointerAction.SCROLL ->
@@ -4455,29 +4547,15 @@ class MainActivity : AppCompatActivity() {
                             deltaY = input.verticalScroll.toDouble(),
                         )
 
-                    ClientPointerAction.MOVE ->
+                    else -> {
+                        val phase = NativeInputWire.pointerPhase(input.action, buttonMask, changedButtonMask) ?: return false
                         client.sendPointer(
-                            phase = InputPhase.INPUT_PHASE_CHANGED,
+                            phase = phase,
                             x = input.x,
                             y = input.y,
                             buttonMask = buttonMask,
                         )
-
-                    ClientPointerAction.BUTTON_PRESS ->
-                        client.sendPointer(
-                            phase = InputPhase.INPUT_PHASE_BEGAN,
-                            x = input.x,
-                            y = input.y,
-                            buttonMask = buttonMask,
-                        )
-
-                    ClientPointerAction.BUTTON_RELEASE ->
-                        client.sendPointer(
-                            phase = InputPhase.INPUT_PHASE_ENDED,
-                            x = input.x,
-                            y = input.y,
-                            buttonMask = buttonMask,
-                        )
+                    }
                 }
             if (admitted && input.action != ClientPointerAction.SCROLL) {
                 nativeInputSessionState.recordPointer(client, generation, input.x, input.y, buttonMask)
@@ -4784,7 +4862,6 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TOUCH_MAPPING_LOG_TAG = "VibeScreenTouchMap"
         private const val EXTRA_AUTO_CONNECT = "auto_connect"
-        private const val KBPS_PER_MBPS = 1_000
         private const val STATE_AUTOMATIC_USB_CONNECT = "automatic_usb_connect"
         private const val ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE"
         private const val EXTRA_USB_CONNECTED = "connected"

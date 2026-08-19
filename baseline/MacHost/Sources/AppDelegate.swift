@@ -2267,10 +2267,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let capture = self?.screenCapture else {
                     return (inFlight: 0, capacity: 0)
                 }
-                return (
-                    inFlight: capture.encoderInFlightCount,
-                    capacity: capture.encoderInFlightCapacity
-                )
+                return capture.encoderInFlightStats
             }
 
             streamingServer?.onServerFailed = {
@@ -4155,7 +4152,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             buttonMask: buttonMask, displayBounds: bounds
         )
         if injected {
-            debugLog("Pointer injected: phase=\(phase) buttons=\(buttonMask)")
+            debugLog("Pointer injected: phase=\(phase) buttons=\(buttonMask) x=\(x) y=\(y)")
         }
         return injected
     }

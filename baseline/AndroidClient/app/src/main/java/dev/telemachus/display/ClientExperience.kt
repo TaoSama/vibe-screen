@@ -65,6 +65,7 @@ enum class VideoQualityChoice(
 
 /** Client video-tuning bounds mirrored from the host's accepted range. */
 object ClientVideoBounds {
+    const val KBPS_PER_MBPS = 1_000
     const val MIN_BITRATE_MBPS = 1
     const val MAX_BITRATE_MBPS = 100
     const val DEFAULT_BITRATE_MBPS = 20
@@ -91,11 +92,89 @@ internal object AppliedVideoPreferenceProjector {
         val bitrateMbps =
             bitrateKbps
                 .takeIf { it > 0 }
-                ?.let { (it + 500) / 1_000 }
+                ?.let { (it + ClientVideoBounds.KBPS_PER_MBPS / 2) / ClientVideoBounds.KBPS_PER_MBPS }
                 ?.coerceIn(ClientVideoBounds.MIN_BITRATE_MBPS, ClientVideoBounds.MAX_BITRATE_MBPS)
         val supportedFrameRate = framesPerSecond.takeIf(ClientVideoBounds.FRAME_RATE_CHOICES::contains)
         return AppliedVideoPreferenceProjection(bitrateMbps, supportedFrameRate)
     }
+}
+
+internal data class SavedVideoPreferenceReplay(
+    val bitrateKbps: Int,
+    val framesPerSecond: Int,
+    val qualityPreset: VideoQualityPreset,
+    val resetQualityToAuto: Boolean = false,
+)
+
+internal object SavedVideoPreferenceReplayPolicy {
+    fun fromSavedPreferences(
+        quality: VideoQualityChoice,
+        bitrateMbps: Int,
+        framesPerSecond: Int,
+    ): SavedVideoPreferenceReplay? {
+        val explicitBitrate =
+            bitrateMbps
+                .takeIf { it != ClientVideoBounds.DEFAULT_BITRATE_MBPS }
+                ?.coerceIn(ClientVideoBounds.MIN_BITRATE_MBPS, ClientVideoBounds.MAX_BITRATE_MBPS)
+                ?.times(ClientVideoBounds.KBPS_PER_MBPS)
+                ?: 0
+        val explicitFrameRate =
+            framesPerSecond.takeIf {
+                it != ClientVideoBounds.DEFAULT_FRAME_RATE && it in ClientVideoBounds.FRAME_RATE_CHOICES
+            } ?: 0
+        return when {
+            quality == VideoQualityChoice.AUTO && explicitBitrate == 0 && explicitFrameRate == 0 -> null
+            quality == VideoQualityChoice.AUTO ->
+                SavedVideoPreferenceReplay(
+                    bitrateKbps = explicitBitrate,
+                    framesPerSecond = explicitFrameRate,
+                    qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+                    resetQualityToAuto = true,
+                )
+            else ->
+                SavedVideoPreferenceReplay(
+                    bitrateKbps = explicitBitrate,
+                    framesPerSecond = explicitFrameRate,
+                    qualityPreset = quality.preset,
+                )
+        }
+    }
+}
+
+internal object SavedVideoPreferenceReplayer {
+    fun replayIfAvailable(
+        clientVideoControlAvailable: Boolean,
+        quality: VideoQualityChoice,
+        bitrateMbps: Int,
+        framesPerSecond: Int,
+        send: (SavedVideoPreferenceReplay) -> Unit,
+    ): Boolean {
+        if (!clientVideoControlAvailable) return false
+        val replay =
+            SavedVideoPreferenceReplayPolicy.fromSavedPreferences(
+                quality = quality,
+                bitrateMbps = bitrateMbps,
+                framesPerSecond = framesPerSecond,
+            ) ?: return false
+        send(replay)
+        return true
+    }
+}
+
+internal enum class VideoPreferenceFeedbackKind {
+    QUALITY,
+    FRAME_RATE,
+    BITRATE,
+}
+
+internal object VideoPreferenceFeedbackPolicy {
+    fun shouldAnnounceRequest(clientAvailable: Boolean): Boolean = clientAvailable
+
+    fun shouldAnnounceApplied(
+        appliesClientVideoPreferences: Boolean,
+        configEpoch: Long,
+        lastAnnouncedConfigEpoch: Long,
+    ): Boolean = appliesClientVideoPreferences && configEpoch > lastAnnouncedConfigEpoch
 }
 
 enum class ClientRotation(

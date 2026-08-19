@@ -27,6 +27,42 @@ private final class WeakReference<Value: AnyObject>: @unchecked Sendable {
     }
 }
 
+final class LatestRetainedSlot<Element>: @unchecked Sendable {
+    final class Box: @unchecked Sendable {
+        let value: Element
+
+        fileprivate init(_ value: Element) {
+            self.value = value
+        }
+    }
+
+    private struct State {
+        var latest: Box?
+    }
+
+    private let lock = OSAllocatedUnfairLock(initialState: State())
+
+    func store(_ value: Element) {
+        lock.withLock { state in
+            state.latest = Box(value)
+        }
+    }
+
+    func latest() -> Box? {
+        lock.withLock { $0.latest }
+    }
+
+    func clear() {
+        lock.withLock { state in
+            state.latest = nil
+        }
+    }
+
+    var retainedCount: Int {
+        lock.withLock { $0.latest == nil ? 0 : 1 }
+    }
+}
+
 enum CaptureReconfigurationAction: Equatable {
     case none
     case updateFrameRate
@@ -153,18 +189,7 @@ class ScreenCapture {
         var sourceFrameCount = 0
     }
 
-    private final class PixelBufferBox: @unchecked Sendable {
-        let value: CVPixelBuffer
-
-        init(_ value: CVPixelBuffer) {
-            self.value = value
-        }
-    }
-
-    private struct PacingState {
-        var latestPixelBuffer: PixelBufferBox?
-    }
-    private let pacingLock = OSAllocatedUnfairLock(initialState: PacingState())
+    private let latestPixelBuffer = LatestRetainedSlot<CVPixelBuffer>()
 
     private struct KeyframeRequestState {
         var pendingEncoderCreationRequest = false
@@ -198,10 +223,15 @@ class ScreenCapture {
 
     // Encoding pipeline state (captured by frame handler closure)
     private var encodeQueue: DispatchQueue?
-    private var lastPixelBuffer: CVPixelBuffer?
 
-    var encoderInFlightCount: Int { encoder?.inFlightCount ?? 0 }
-    var encoderInFlightCapacity: Int { encoder?.inFlightCapacity ?? 0 }
+    var encoderInFlightStats: (inFlight: Int, capacity: Int) {
+        guard let snapshot = encoder?.inFlightSnapshot else {
+            return (inFlight: 0, capacity: 0)
+        }
+        return (inFlight: snapshot.inFlight, capacity: snapshot.capacity)
+    }
+    var encoderInFlightCount: Int { encoderInFlightStats.inFlight }
+    var encoderInFlightCapacity: Int { encoderInFlightStats.capacity }
 
     /// Callback when capture method changes (e.g. SCStream → CGDisplayStream fallback)
     var onCaptureMethodChanged: ((String) -> Void)?
@@ -243,8 +273,7 @@ class ScreenCapture {
 
         requestKeyframe()
 
-        guard let encoder, let cached = lastPixelBuffer else { return }
-        let cachedBox = PixelBufferBox(cached)
+        guard let encoder, let cachedBox = latestPixelBuffer.latest() else { return }
 
         let pts = CMTime(
             value: CMTimeValue(DispatchTime.now().uptimeNanoseconds / 1000),
@@ -412,8 +441,7 @@ class ScreenCapture {
         stopFrameMonitor()
         framePacingTimer?.cancel()
         framePacingTimer = nil
-        pacingLock.withLock { $0.latestPixelBuffer = nil }
-        lastPixelBuffer = nil
+        latestPixelBuffer.clear()
         restartAttempted = false
 
         // Tear down the current capture surface (SCStream or CGDisplayStream)
@@ -697,12 +725,7 @@ class ScreenCapture {
                 self.recordSourceFrame(at: now, label: "SCStream")
 
                 if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
-                    self.lastPixelBuffer = imageBuffer
-                    let boxedBuffer = PixelBufferBox(imageBuffer)
-                    self.pacingLock.withLock { $0.latestPixelBuffer = boxedBuffer }
-                } else if let cached = self.lastPixelBuffer {
-                    let boxedBuffer = PixelBufferBox(cached)
-                    self.pacingLock.withLock { $0.latestPixelBuffer = boxedBuffer }
+                    self.latestPixelBuffer.store(imageBuffer)
                 }
             }
         }
@@ -714,10 +737,9 @@ class ScreenCapture {
     /// gap without ever building a stale-frame queue.
     private func configureFramePacer(on queue: DispatchQueue) {
         encodeQueue = queue
-        lastPixelBuffer = nil
         framePacingTimer?.cancel()
         framePacingTimer = nil
-        pacingLock.withLock { $0.latestPixelBuffer = nil }
+        latestPixelBuffer.clear()
         stateLock.withLock { state in
             state.captureStatsStartTime = nil
             state.sourceFrameCount = 0
@@ -885,7 +907,7 @@ class ScreenCapture {
             if self.followsMainDisplay,
                hasHadFrames,
                elapsed > 1.5,
-               let lastBuffer = self.lastPixelBuffer {
+               let lastBuffer = self.latestPixelBuffer.latest() {
                 // A current-display SCStream can silently stop reporting
                 // changed frames while remaining attached and error-free.
                 // Compare it with a one-shot capture so a genuinely idle
@@ -895,7 +917,7 @@ class ScreenCapture {
             }
 
             if elapsed > 5.0 {
-                if hasHadFrames, let lastBuffer = self.lastPixelBuffer {
+                if hasHadFrames, let lastBuffer = self.latestPixelBuffer.latest() {
                     // Screen is idle — SCStream is healthy but not delivering frames (macOS optimization).
                     // Re-send the last captured frame as a keepalive so the tablet stays connected.
                     self.sendCachedFrameKeepaliveIfNeeded(lastBuffer)
@@ -918,7 +940,7 @@ class ScreenCapture {
         frameMonitorTimer = timer
     }
 
-    private func sendCachedFrameKeepaliveIfNeeded(_ pixelBuffer: CVPixelBuffer) {
+    private func sendCachedFrameKeepaliveIfNeeded(_ pixelBuffer: LatestRetainedSlot<CVPixelBuffer>.Box) {
         let now = DispatchTime.now()
         let shouldSend = stateLock.withLock { state -> Bool in
             if let last = state.lastKeepaliveTime {
@@ -935,10 +957,9 @@ class ScreenCapture {
             value: CMTimeValue(now.uptimeNanoseconds / 1000),
             timescale: 1_000_000
         )
-        let pixelBufferBox = PixelBufferBox(pixelBuffer)
         encodeQueue?.async { [weak self] in
             self?.encoder?.encode(
-                pixelBuffer: pixelBufferBox.value,
+                pixelBuffer: pixelBuffer.value,
                 presentationTimeStamp: pts,
                 sessionEpoch: self?.currentFrameSink?.currentSessionEpoch ?? 0
             )
@@ -949,7 +970,7 @@ class ScreenCapture {
     /// but stale. A one-shot capture goes through an independent code path and
     /// lets us distinguish that failure from ScreenCaptureKit's normal
     /// "no frames for an unchanged desktop" optimization.
-    private func checkCurrentDisplayCaptureHealth(against cachedBuffer: CVPixelBuffer) {
+    private func checkCurrentDisplayCaptureHealth(against cachedBuffer: LatestRetainedSlot<CVPixelBuffer>.Box) {
         guard !isHealthCheckRunning, !isRestarting, let display else { return }
 
         guard #available(macOS 14.0, *) else {
@@ -958,8 +979,6 @@ class ScreenCapture {
         }
 
         isHealthCheckRunning = true
-        let cachedBufferBox = PixelBufferBox(cachedBuffer)
-
         let (width, height) = encodeSize(for: codec)
         let filter = SCContentFilter(display: display, excludingWindows: [])
         let config = SCStreamConfiguration()
@@ -980,23 +999,23 @@ class ScreenCapture {
 
                 if let error {
                     debugLog("Current-display health snapshot failed: \(error.localizedDescription)")
-                    self.sendCachedFrameKeepaliveIfNeeded(cachedBufferBox.value)
+                    self.sendCachedFrameKeepaliveIfNeeded(cachedBuffer)
                     return
                 }
 
                 guard let sampleBuffer,
                       let freshBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
                     debugLog("Current-display health snapshot returned no pixel buffer")
-                    self.sendCachedFrameKeepaliveIfNeeded(cachedBufferBox.value)
+                    self.sendCachedFrameKeepaliveIfNeeded(cachedBuffer)
                     return
                 }
 
                 let difference = Self.sampledLumaDifference(
-                    cachedBufferBox.value,
+                    cachedBuffer.value,
                     freshBuffer
                 )
                 guard difference > 0.5 else {
-                    self.sendCachedFrameKeepaliveIfNeeded(cachedBufferBox.value)
+                    self.sendCachedFrameKeepaliveIfNeeded(cachedBuffer)
                     return
                 }
 
@@ -1229,7 +1248,7 @@ class ScreenCapture {
                               ) else { return }
                         self.framePacingTimer?.cancel()
                         self.framePacingTimer = nil
-                        self.pacingLock.withLock { $0.latestPixelBuffer = nil }
+                        self.latestPixelBuffer.clear()
                         self.cgDisplayStream = nil
                         self.stopFrameMonitor()
                         switch FallbackStoppedPolicy.action(
@@ -1256,7 +1275,7 @@ class ScreenCapture {
                     }
                     return
                 case .clearFrame:
-                    self.pacingLock.withLock { $0.latestPixelBuffer = nil }
+                    self.latestPixelBuffer.clear()
                     return
                 case .ignore:
                     return
@@ -1278,9 +1297,7 @@ class ScreenCapture {
                 )
 
                 guard cvReturn == kCVReturnSuccess, let pb = unmanagedPB?.takeRetainedValue() else { return }
-                self.lastPixelBuffer = pb
-                let boxedBuffer = PixelBufferBox(pb)
-                self.pacingLock.withLock { $0.latestPixelBuffer = boxedBuffer }
+                self.latestPixelBuffer.store(pb)
             }
         ) else {
             debugLog("Failed to create CGDisplayStream — fallback unavailable")
@@ -1487,7 +1504,7 @@ class ScreenCapture {
         )
         pacingTimer.setEventHandler { [weak self] in
             guard let self,
-                  let pixelBuffer = self.pacingLock.withLock({ $0.latestPixelBuffer })?.value else {
+                  let pixelBuffer = self.latestPixelBuffer.latest()?.value else {
                 return
             }
             let pts = CMClockGetTime(CMClockGetHostTimeClock())
@@ -1514,8 +1531,7 @@ class ScreenCapture {
         stopFrameMonitor()
         framePacingTimer?.cancel()
         framePacingTimer = nil
-        pacingLock.withLock { $0.latestPixelBuffer = nil }
-        lastPixelBuffer = nil
+        latestPixelBuffer.clear()
 
         let (width, height) = encodeSize(for: newCodec)
         let frameSink = currentFrameSink
@@ -1553,7 +1569,7 @@ class ScreenCapture {
         stopFrameMonitor()
         framePacingTimer?.cancel()
         framePacingTimer = nil
-        pacingLock.withLock { $0.latestPixelBuffer = nil }
+        latestPixelBuffer.clear()
 
         restartTask?.cancel()
         await restartTask?.value

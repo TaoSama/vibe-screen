@@ -150,6 +150,73 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun savedVideoPreferencesReplayAfterClientVideoControlNegotiation() = runBlocking {
+        ServerSocket(0).use { server ->
+            val configurationRequested = CountDownLatch(1)
+            val connectedLatch = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(
+                                Capability.CAPABILITY_TOUCH,
+                                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
+                            ),
+                            negotiatedCapabilities = listOf(
+                                Capability.CAPABILITY_TOUCH,
+                                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
+                            ),
+                        )
+                        configurationRequested.await(8, TimeUnit.SECONDS)
+                        val replay = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.SET_VIDEO_PREFERENCES, replay.payloadCase)
+                        assertEquals(50_000, replay.setVideoPreferences.bitrateKbps)
+                        assertEquals(30, replay.setVideoPreferences.framesPerSecond)
+                        assertEquals(
+                            dev.vibescreen.protocol.v1.VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
+                            replay.setVideoPreferences.qualityPreset,
+                        )
+                        assertTrue(replay.setVideoPreferences.resetQualityToAuto)
+                        write(peer, disconnect(id = 6))
+                    }
+                }
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.onVideoConfiguration = { _, commit ->
+                commit.accept()
+                configurationRequested.countDown()
+            }
+            client.onConnectionStatus = { connected ->
+                if (connected) {
+                    connectedLatch.countDown()
+                }
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            assertTrue(connectedLatch.await(8, TimeUnit.SECONDS))
+            assertTrue(Capability.CAPABILITY_CLIENT_VIDEO_CONTROL in client.negotiatedCapabilities())
+            SavedVideoPreferenceReplayer.replayIfAvailable(
+                clientVideoControlAvailable = true,
+                quality = VideoQualityChoice.AUTO,
+                bitrateMbps = 50,
+                framesPerSecond = 30,
+            ) { replay ->
+                client.setVideoPreferences(
+                    bitrateKbps = replay.bitrateKbps,
+                    framesPerSecond = replay.framesPerSecond,
+                    qualityPreset = replay.qualityPreset,
+                    resetQualityToAuto = replay.resetQualityToAuto,
+                )
+            }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+        }
+        Unit
+    }
+
+    @Test
     fun controllerForwardingWaitsForConnectedAckBeforeStateResync() = runBlocking {
         ServerSocket(0).use { server ->
             val configurationRequested = CountDownLatch(1)

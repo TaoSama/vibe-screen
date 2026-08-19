@@ -15,24 +15,12 @@ class ConnectionGuidanceTest {
     fun usbErrorsUseTheActiveAdbTransportRecoveryPath() {
         val cases =
             listOf(
-                AdbTransportKind.USB to listOf("USB data cable", "adb reverse tcp:54321 tcp:54321"),
-                AdbTransportKind.WIRELESS to
-                    listOf(
-                        "Wireless debugging",
-                        "adb connect <device-ip>:<wireless-adb-port>",
-                        "adb reverse tcp:54321 tcp:54321",
-                    ),
-                AdbTransportKind.UNAVAILABLE to
-                    listOf(
-                        "Developer options",
-                        "USB data cable",
-                        "Wireless debugging",
-                        "adb connect <device-ip>:<wireless-adb-port>",
-                        "adb reverse tcp:54321 tcp:54321",
-                    ),
+                AdbTransportKind.USB to R.string.connection_guidance_usb_recovery_usb,
+                AdbTransportKind.WIRELESS to R.string.connection_guidance_usb_recovery_wireless_adb,
+                AdbTransportKind.UNAVAILABLE to R.string.connection_guidance_usb_recovery_unavailable,
             )
 
-        cases.forEach { (transport, expectedSteps) ->
+        cases.forEach { (transport, expectedRecoveryResource) ->
             val guidance =
                 ConnectionGuidanceFactory.from(
                     ConnectException("ECONNREFUSED"),
@@ -40,9 +28,9 @@ class ConnectionGuidanceTest {
                 )
 
             assertEquals(ConnectionFailureKind.HOST_NOT_RUNNING, guidance.kind)
-            expectedSteps.forEach { step ->
-                assertTrue("Missing '$step': ${guidance.message}", guidance.message.contains(step))
-            }
+            assertEquals(expectedRecoveryResource, guidance.message.resourceId)
+            assertEquals(text(R.string.connection_guidance_usb_open_mac_prefix), guidance.message.args[0])
+            assertEquals(54321, guidance.message.args[1])
         }
     }
 
@@ -66,43 +54,47 @@ class ConnectionGuidanceTest {
             failures.forEach { (failure, expectedKind) ->
                 val guidance = ConnectionGuidanceFactory.from(failure, context)
                 assertEquals("${context.mode} ${failure.javaClass.simpleName}", expectedKind, guidance.kind)
-                assertTrue(guidance.message.isNotBlank())
-                if (context.mode != ConnectionMode.USB) assertNoAdbReferences(guidance.message)
+                assertTrue(guidance.message.resourceId != 0)
+                if (context.mode != ConnectionMode.USB) assertNoAdbReferences(guidance)
             }
         }
     }
 
     @Test
     fun lanErrorsProvideExecutableTrustedNetworkRecoveryWithoutAdb() {
-        val expectedTermsByFailure =
+        val expectedMessageByFailure =
             listOf(
-                ConnectException("Connection refused") to listOf("LAN mode", "trusted Wi-Fi", "54321", "firewall"),
-                NoRouteToHostException("Network is unreachable") to listOf("trusted Wi-Fi", "VPN", "54321"),
-                SocketTimeoutException("timeout") to listOf("LAN mode", "54321", "firewall"),
-                IOException("unknown") to listOf("LAN mode", "trusted Wi-Fi", "54321", "firewall"),
+                ConnectException("Connection refused") to R.string.connection_guidance_lan_host_unavailable_message,
+                NoRouteToHostException("Network is unreachable") to
+                    R.string.connection_guidance_lan_network_unavailable_message,
+                SocketTimeoutException("timeout") to R.string.connection_guidance_lan_timeout_message,
+                IOException("unknown") to R.string.connection_guidance_lan_unknown_message,
             )
 
-        expectedTermsByFailure.forEach { (failure, terms) ->
-            val message = ConnectionGuidanceFactory.from(failure, ConnectionGuidanceContext.trustedLan(54321)).message
-            assertNoAdbReferences(message)
-            terms.forEach { term -> assertTrue("Missing '$term': $message", message.contains(term)) }
+        expectedMessageByFailure.forEach { (failure, expectedMessageResource) ->
+            val guidance = ConnectionGuidanceFactory.from(failure, ConnectionGuidanceContext.trustedLan(54321))
+            assertEquals(expectedMessageResource, guidance.message.resourceId)
+            assertEquals(54321, guidance.message.args.single())
+            assertNoAdbReferences(guidance)
         }
     }
 
     @Test
     fun internetErrorsProvideExecutableRouteOrLeaseRecoveryWithoutAdb() {
-        val expectedTermsByFailure =
+        val expectedMessageByFailure =
             listOf(
-                ConnectException("Connection refused") to listOf("Internet mode", "fresh session profile"),
-                NoRouteToHostException("Network is unreachable") to listOf("Internet connection", "TURN"),
-                SocketTimeoutException("timeout") to listOf("Direct or TURN", "fresh session profile"),
-                IOException("unknown") to listOf("Internet mode", "fresh session profile"),
+                ConnectException("Connection refused") to R.string.connection_guidance_internet_host_unavailable_message,
+                NoRouteToHostException("Network is unreachable") to
+                    R.string.connection_guidance_internet_network_unavailable_message,
+                SocketTimeoutException("timeout") to R.string.connection_guidance_internet_timeout_message,
+                IOException("unknown") to R.string.connection_guidance_internet_unknown_message,
             )
 
-        expectedTermsByFailure.forEach { (failure, terms) ->
-            val message = ConnectionGuidanceFactory.from(failure, ConnectionGuidanceContext.internet()).message
-            assertNoAdbReferences(message)
-            terms.forEach { term -> assertTrue("Missing '$term': $message", message.contains(term)) }
+        expectedMessageByFailure.forEach { (failure, expectedMessageResource) ->
+            val guidance = ConnectionGuidanceFactory.from(failure, ConnectionGuidanceContext.internet())
+            assertEquals(expectedMessageResource, guidance.message.resourceId)
+            assertTrue(guidance.message.args.isEmpty())
+            assertNoAdbReferences(guidance)
         }
     }
 
@@ -118,8 +110,9 @@ class ConnectionGuidanceTest {
 
         assertTrue(guidanceByMode.all { it == guidanceByMode.first() })
         assertEquals(ConnectionFailureKind.INCOMPATIBLE_SESSION, guidanceByMode.first().kind)
-        assertTrue(guidanceByMode.first().message.contains("Update Vibe Screen"))
-        assertFalse(guidanceByMode.first().message.contains("99"))
+        assertEquals(R.string.connection_guidance_mac_incompatible_title, guidanceByMode.first().status.resourceId)
+        assertEquals(R.string.connection_guidance_mac_incompatible_message, guidanceByMode.first().message.resourceId)
+        assertNoRawArg(guidanceByMode.first(), "99")
     }
 
     @Test
@@ -131,8 +124,9 @@ class ConnectionGuidanceTest {
             )
 
         assertEquals(ConnectionFailureKind.TIMEOUT, guidance.kind)
-        assertTrue(guidance.message.contains("60000"))
-        assertNoAdbReferences(guidance.message)
+        assertEquals(R.string.connection_guidance_lan_timeout_message, guidance.message.resourceId)
+        assertEquals(60000, guidance.message.args.single())
+        assertNoAdbReferences(guidance)
     }
 
     @Test
@@ -156,22 +150,22 @@ class ConnectionGuidanceTest {
         }
 
         val shutdown = ConnectionGuidanceFactory.from(SessionFailure.serverShutdown(), ConnectionGuidanceContext.internet())
-        assertEquals("Session ended", shutdown.status)
-        assertEquals("Mac ended the session", shutdown.message)
+        assertEquals(R.string.connection_guidance_session_ended_title, shutdown.status.resourceId)
+        assertEquals(R.string.connection_guidance_mac_ended_session_message, shutdown.message.resourceId)
 
         val user = ConnectionGuidanceFactory.from(SessionFailure.userRequested(), ConnectionGuidanceContext.internet())
-        assertEquals("Disconnected by user", user.message)
+        assertEquals(R.string.connection_guidance_user_disconnected_message, user.message.resourceId)
 
         val backpressure =
             ConnectionGuidanceFactory.from(
                 SessionFailure(SessionFailureKind.OUTBOUND_BACKPRESSURE, "queue full", retryable = true),
                 ConnectionGuidanceContext.trustedLan(54321),
             )
-        assertEquals("Input stream overloaded", backpressure.status)
+        assertEquals(R.string.connection_guidance_input_overloaded_title, backpressure.status.resourceId)
 
         val codec =
             ConnectionGuidanceFactory.from(SessionFailure.codec("decoder error"), ConnectionGuidanceContext.internet())
-        assertEquals("Video decoder recovery", codec.status)
+        assertEquals(R.string.connection_guidance_video_decoder_recovery_title, codec.status.resourceId)
     }
 
     @Test
@@ -198,24 +192,30 @@ class ConnectionGuidanceTest {
     fun usbAndUnavailableTransportsEachGetTheirOwnRecoveryMatrix() {
         val failures =
             listOf(
-                ConnectException("Connection refused") to ConnectionFailureKind.HOST_NOT_RUNNING,
-                NoRouteToHostException("ENETUNREACH") to ConnectionFailureKind.NETWORK_UNREACHABLE,
-                SocketTimeoutException("connect timeout") to ConnectionFailureKind.TIMEOUT,
-                IOException("before display configuration") to ConnectionFailureKind.HOST_NOT_RUNNING,
+                ConnectException("Connection refused") to
+                    (ConnectionFailureKind.HOST_NOT_RUNNING to R.string.connection_guidance_usb_open_mac_prefix),
+                NoRouteToHostException("ENETUNREACH") to
+                    (ConnectionFailureKind.NETWORK_UNREACHABLE to R.string.connection_guidance_usb_route_unavailable_prefix),
+                SocketTimeoutException("connect timeout") to
+                    (ConnectionFailureKind.TIMEOUT to R.string.connection_guidance_usb_timeout_prefix),
+                IOException("before display configuration") to
+                    (ConnectionFailureKind.HOST_NOT_RUNNING to R.string.connection_guidance_usb_open_mac_prefix),
             )
-        val transports = listOf(AdbTransportKind.USB, AdbTransportKind.UNAVAILABLE)
+        val transports =
+            listOf(
+                AdbTransportKind.USB to R.string.connection_guidance_usb_recovery_usb,
+                AdbTransportKind.UNAVAILABLE to R.string.connection_guidance_usb_recovery_unavailable,
+            )
 
-        transports.forEach { transport ->
-            failures.forEach { (failure, expectedKind) ->
+        transports.forEach { (transport, expectedRecoveryResource) ->
+            failures.forEach { (failure, expected) ->
+                val (expectedKind, expectedPrefixResource) = expected
                 val guidance =
                     ConnectionGuidanceFactory.from(failure, ConnectionGuidanceContext.adb(54321, transport))
                 assertEquals("$transport ${failure.javaClass.simpleName}", expectedKind, guidance.kind)
-                assertTrue(guidance.message.contains("adb reverse tcp:54321 tcp:54321"))
-                if (transport == AdbTransportKind.USB) {
-                    assertTrue(guidance.message.contains("USB data cable"))
-                } else {
-                    assertTrue(guidance.message.contains("Developer options"))
-                }
+                assertEquals(expectedRecoveryResource, guidance.message.resourceId)
+                assertEquals(expectedPrefixResource, (guidance.message.args[0] as ConnectionGuidanceText).resourceId)
+                assertEquals(54321, guidance.message.args[1])
             }
         }
     }
@@ -235,7 +235,7 @@ class ConnectionGuidanceTest {
             val guidance =
                 ConnectionGuidanceFactory.from(throwable, ConnectionGuidanceContext.trustedLan(54321))
             assertEquals(throwable.cause!!.javaClass.simpleName, expectedKind, guidance.kind)
-            assertNoAdbReferences(guidance.message)
+            assertNoAdbReferences(guidance)
         }
     }
 
@@ -248,7 +248,7 @@ class ConnectionGuidanceTest {
             )
 
         assertEquals(ConnectionFailureKind.HOST_NOT_RUNNING, guidance.kind)
-        assertTrue(guidance.message.contains("Open Vibe Screen"))
+        assertEquals(text(R.string.connection_guidance_usb_open_mac_prefix), guidance.message.args[0])
     }
 
     @Test
@@ -265,7 +265,7 @@ class ConnectionGuidanceTest {
             )
 
         assertEquals(ConnectionFailureKind.HOST_NOT_RUNNING, guidance.kind)
-        assertFalse(guidance.message.contains("10.0.0.4"))
+        assertNoRawArg(guidance, "10.0.0.4")
     }
 
     @Test
@@ -300,8 +300,8 @@ class ConnectionGuidanceTest {
             )
 
         cases.forEach { guidance ->
-            assertFalse(guidance.message.contains(secret))
-            assertFalse(guidance.message.contains("Technical detail"))
+            assertNoRawArg(guidance, secret)
+            assertNoRawArg(guidance, "Technical detail")
         }
     }
 
@@ -322,9 +322,58 @@ class ConnectionGuidanceTest {
         assertEquals(60000, lan.port)
     }
 
-    private fun assertNoAdbReferences(message: String) {
-        assertFalse("message must not mention ADB: $message", message.contains("adb", ignoreCase = true))
-        assertFalse("message must not mention USB: $message", message.contains("USB", ignoreCase = true))
-        assertFalse("message must not mention reverse: $message", message.contains("reverse", ignoreCase = true))
+    private fun assertNoAdbReferences(guidance: ConnectionGuidance) {
+        assertFalse("status must not mention ADB", guidance.status.resourceId == R.string.connection_guidance_adb_route_unavailable_title)
+        USB_ONLY_RESOURCES.forEach { resourceId ->
+            assertFalse(
+                "message must not use USB/ADB resource $resourceId: ${guidance.message}",
+                containsResource(guidance.message, resourceId),
+            )
+        }
+    }
+
+    private fun assertNoRawArg(
+        guidance: ConnectionGuidance,
+        rawText: String,
+    ) {
+        assertFalse(containsStringArg(guidance.status, rawText))
+        assertFalse(containsStringArg(guidance.message, rawText))
+    }
+
+    private fun containsResource(
+        text: ConnectionGuidanceText,
+        resourceId: Int,
+    ): Boolean =
+        text.resourceId == resourceId ||
+            text.args.any { arg -> arg is ConnectionGuidanceText && containsResource(arg, resourceId) }
+
+    private fun containsStringArg(
+        text: ConnectionGuidanceText,
+        rawText: String,
+    ): Boolean =
+        text.args.any { arg ->
+            when (arg) {
+                is String -> arg.contains(rawText)
+                is ConnectionGuidanceText -> containsStringArg(arg, rawText)
+                else -> false
+            }
+        }
+
+    private fun text(
+        resourceId: Int,
+        vararg args: Any,
+    ) = ConnectionGuidanceText(resourceId, args.toList())
+
+    private companion object {
+        val USB_ONLY_RESOURCES =
+            setOf(
+                R.string.connection_guidance_usb_open_mac_prefix,
+                R.string.connection_guidance_usb_route_unavailable_prefix,
+                R.string.connection_guidance_usb_timeout_prefix,
+                R.string.connection_guidance_usb_unknown_prefix,
+                R.string.connection_guidance_usb_recovery_usb,
+                R.string.connection_guidance_usb_recovery_wireless_adb,
+                R.string.connection_guidance_usb_recovery_unavailable,
+            )
     }
 }
