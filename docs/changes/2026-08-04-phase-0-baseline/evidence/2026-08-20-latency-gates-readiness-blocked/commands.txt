@@ -1,5 +1,5 @@
-Repository: /Users/luwentao/Workspaces/dotfiles/codex/worktrees/78be/vibe-screen
-Commit: b9d768e55c75f03cd3cb5d20939576bc8d24ff27
+Repository: /Users/luwentao/.codex/worktrees/6755/vibe-screen
+Commit: 8e630ad379fa6b2c5f7e6c9f5453386336e0251b
 Date: 2026-08-20
 
 Readiness scan:
@@ -11,7 +11,9 @@ Readiness scan:
 
 Outcome: no real latency evidence package found. The only raw-camera-like file
 is tools/fixtures/latency/external-camera-valid/raw-camera-placeholder.mov, a
-synthetic fixture explicitly documented as non-acceptance evidence.
+synthetic fixture explicitly documented as non-acceptance evidence. Other
+manifest/sample/summary hits are protocol manifests, soak summaries, generated
+readiness artifacts, or latency fixtures.
 
 Toolchain verification:
 

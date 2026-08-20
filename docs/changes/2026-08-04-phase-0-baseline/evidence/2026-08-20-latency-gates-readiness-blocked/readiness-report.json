@@ -1,0 +1,57 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "run_id": "2026-08-20-latency-gates-readiness-blocked",
+  "kind": "latency_gate_readiness",
+  "status": "blocked",
+  "repository_revision": "8e630ad379fa6b2c5f7e6c9f5453386336e0251b",
+  "checked_at": "2026-08-20",
+  "gate_profiles": [
+    {
+      "profile": "usb-glass-to-glass-sub50",
+      "status": "blocked",
+      "can_close_performance_gate": false,
+      "missing_evidence": [
+        "raw high-frame-rate external-camera recording",
+        "formal latency manifest bound to the raw recording and samples",
+        "at least five annotated USB glass-to-glass samples from the same camera timebase"
+      ]
+    },
+    {
+      "profile": "lan-glass-to-glass-sub80",
+      "status": "blocked",
+      "can_close_performance_gate": false,
+      "missing_evidence": [
+        "raw high-frame-rate external-camera recording",
+        "formal latency manifest bound to the raw recording and samples",
+        "at least five annotated LAN glass-to-glass samples from the same camera timebase"
+      ]
+    },
+    {
+      "profile": "input-p95-sub50",
+      "status": "blocked",
+      "can_close_performance_gate": false,
+      "missing_evidence": [
+        "raw high-frame-rate external-camera input recording or documented synchronized-clock setup",
+        "physical input actuation and visible Mac result samples",
+        "reviewable error budget small enough for the sub-50 ms P95 gate"
+      ]
+    }
+  ],
+  "toolchain_checks": {
+    "unittest": {
+      "command": "PYTHONPATH=tools python3 -m unittest tools.tests.test_latency tools.tests.test_latency_evidence",
+      "exit_code": 0,
+      "tests_run": 41
+    },
+    "fixture_profiles": {
+      "usb_glass_to_glass_pass": "fixture-usb-glass-to-glass-pass-summary.json",
+      "lan_glass_to_glass_fail": "fixture-lan-glass-to-glass-fail-summary.json",
+      "input_p95_pass": "fixture-input-p95-pass-summary.json",
+      "usb_glass_to_glass_insufficient": "fixture-usb-insufficient-summary.json",
+      "telemetry_stage_informational": "fixture-telemetry-stage-summary.json",
+      "formal_valid": "fixture-formal-valid-report.json",
+      "formal_missing_video": "fixture-formal-missing-video-report.json"
+    }
+  },
+  "claim_boundary": "This report is readiness evidence only. Synthetic fixture passes exercise tooling and do not close USB, LAN, or input latency gates."
+}

@@ -7,7 +7,7 @@
     "observed_with_uncertainty_ms": 45.9,
     "profile": "usb-glass-to-glass-sub50",
     "reasons": [
-      "recording.raw_video does not exist: /Users/luwentao/Workspaces/dotfiles/codex/worktrees/78be/vibe-screen/tools/fixtures/latency/external-camera-missing-video/missing-camera-video.mov"
+      "recording.raw_video does not exist: /Users/luwentao/Workspaces/dotfiles/codex/worktrees/6755/vibe-screen/tools/fixtures/latency/external-camera-missing-video/missing-camera-video.mov"
     ],
     "requires_external_hardware": true,
     "sample_count": 5,
