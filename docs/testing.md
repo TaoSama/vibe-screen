@@ -44,7 +44,11 @@ as the device identity and soak artifacts:
   `vibescreen_evidence.latency` summary, device info, and an evidence manifest.
 - Input latency requires either the same external-camera single timebase or a
   documented synchronized-clock setup with an error budget small enough for the
-  sub-50 ms P95 gate. Unsynchronized host/device timestamps are diagnostic only.
+  sub-50 ms P95 gate. The current formal provenance checker validates
+  external-camera packages; any synchronized-clock input claim must carry its
+  own synchronization proof and reviewable error budget rather than using the
+  external-camera manifest path. Unsynchronized host/device timestamps are
+  diagnostic only.
 - Host/client telemetry-stage summaries may be recorded from pipeline, decoder,
   queue, or RTT logs with `--kind telemetry-stage`. They explain where latency
   is spent, but their summary must retain

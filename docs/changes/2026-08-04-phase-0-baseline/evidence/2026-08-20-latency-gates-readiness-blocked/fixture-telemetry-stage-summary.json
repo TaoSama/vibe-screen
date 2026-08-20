@@ -1,0 +1,55 @@
+{
+  "gate": {
+    "can_close_performance_gate": false,
+    "reason": "host/client telemetry measures one clock domain or pipeline stage only; it can diagnose latency sources but cannot prove glass-to-glass or input latency",
+    "requires_external_hardware": false
+  },
+  "kind": "telemetry_stage_latency",
+  "latency_kind": "telemetry-stage",
+  "measurement_method": "host-telemetry",
+  "metrics": {
+    "count": 4,
+    "max": 10.0,
+    "mean": 7.0,
+    "median": 7.0,
+    "min": 4.0,
+    "p95": 9.7
+  },
+  "run_id": "fixture-telemetry",
+  "samples_ms": [
+    6.0,
+    10.0,
+    4.0,
+    8.0
+  ],
+  "schema_version": "vibescreen.evidence/v1",
+  "stages": {
+    "host_capture_to_encode": {
+      "count": 2,
+      "max": 10.0,
+      "mean": 8.0,
+      "median": 8.0,
+      "min": 6.0,
+      "p95": 9.8
+    },
+    "host_encode_to_send": {
+      "count": 2,
+      "max": 8.0,
+      "mean": 6.0,
+      "median": 6.0,
+      "min": 4.0,
+      "p95": 7.8
+    }
+  },
+  "statistics": {
+    "count": 4,
+    "max": 10.0,
+    "mean": 7.0,
+    "median": 7.0,
+    "min": 4.0,
+    "p95": 9.7
+  },
+  "status": "informational",
+  "transport": "usb",
+  "unit": "ms"
+}
