@@ -1,0 +1,10 @@
+52:RequestedLayerState{82274ac com.obric.account/com.obric.account.AccountMainActivity#401 parentId=391}
+116:RequestedLayerState{ed5b3b5 ActivityRecordInputSink dev.telemachus.display/.MainActivity#1561 parentId=1555 z=-2147483648}
+120:RequestedLayerState{Background for e623114 SurfaceView[dev.telemachus.display/dev.telemachus.display.MainActivity]#1569 parentId=1567 relativeParentId=1563 z=-2147483648}
+121:RequestedLayerState{ActivityRecord{252674110 u0 com.obric.account/.AccountMainActivity t305}#391 parentId=384 z=1}
+133:RequestedLayerState{ActivityRecord{12376650 u0 dev.telemachus.display/.MainActivity t349}#1555 parentId=1554}
+134:RequestedLayerState{e623114 SurfaceView[dev.telemachus.display/dev.telemachus.display.MainActivity]#1567 parentId=1566 relativeParentId=1563 z=-2}
+135:RequestedLayerState{Bounds for - dev.telemachus.display/dev.telemachus.display.MainActivity#1566 parentId=1563}
+137:RequestedLayerState{e623114 SurfaceView[dev.telemachus.display/dev.telemachus.display.MainActivity](BLAST)#1568 parentId=1567}
+138:RequestedLayerState{48b4735 dev.telemachus.display/dev.telemachus.display.MainActivity#1562 parentId=1555}
+139:RequestedLayerState{dev.telemachus.display/dev.telemachus.display.MainActivity#1563 parentId=1562}

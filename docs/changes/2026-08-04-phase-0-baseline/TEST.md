@@ -258,6 +258,30 @@ one-time probe before starting the accepted clock.
 Detailed commands, hashes, and artifact locations are recorded in
 [`evidence/device-nubia-p0110-android16/FINAL_ACCEPTANCE.md`](evidence/device-nubia-p0110-android16/FINAL_ACCEPTANCE.md).
 
+## Current-tree Nubia P0110 USB smoke (2026-08-20)
+
+Main commit 0844991ea6ca55905349abb5f57291990454f0ad completed a short
+current-tree USB smoke on the connected Nubia P0110 (pacific) device,
+serial EP0110PZ0B9110300B, Android 16 / SDK 36. The macOS Host and Android
+debug APK were rebuilt from that commit, a stale Host from another worktree was
+recorded and stopped, adb reverse tcp:54321 tcp:54321 was established for the
+P0110 serial, and the current-tree Host listened on 127.0.0.1:54321 as PID
+97995.
+
+The Android client connected over loopback USB, negotiated Protocol v1,
+received a three-display catalog with virtual display 6 selected, configured
+c2.qti.hevc.decoder for 2000x1200, produced first output, and recorded
+short-window 60 FPS decode counters through output #720 with dropped=0.
+A force-stop/cold-start reconnect kept Host PID 97995, established Host
+connection epoch 2, and recorded fresh HEVC output counters through #840 with
+dropped=0. This record is P0110/pacific evidence only; it is not Xiaomi
+13/fuxi evidence and does not close the two-hour soak, host RSS no-growth,
+native pointer HID, physical stylus, controller runtime, external-camera
+latency, rotated host-display, or Accessibility/input gates.
+
+Evidence is retained under
+[evidence/2026-08-20-nubia-p0110-usb-smoke/](evidence/2026-08-20-nubia-p0110-usb-smoke/README.md).
+
 ## Still unproved
 
 - Developer ID signing and notarization;

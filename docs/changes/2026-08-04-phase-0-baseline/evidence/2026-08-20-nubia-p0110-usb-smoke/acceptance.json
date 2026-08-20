@@ -1,0 +1,132 @@
+{
+  "schema": "dev.vibescreen.short-usb-e2e/v1",
+  "result": "pass",
+  "scope": "short_usb_smoke_only",
+  "recorded_at": {
+    "local_date": "2026-08-20",
+    "timezone": "Asia/Shanghai",
+    "utc_offset": "+08:00"
+  },
+  "repository": {
+    "commit": "0844991ea6ca55905349abb5f57291990454f0ad",
+    "base": "origin/main",
+    "branch": "codex/p0110-usb-smoke-evidence"
+  },
+  "device": {
+    "serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "product": "pacific",
+    "android_version": "16",
+    "sdk": 36,
+    "fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+    "display": "1264x2800",
+    "density": 560,
+    "battery_level_percent": 100,
+    "battery_temperature_c": 31.0,
+    "recorded_as_fuxi": false
+  },
+  "artifacts": {
+    "host_path": "baseline/MacHost/.build/release/Vibe Screen",
+    "host_sha256": "89af29b97e314ac510f79128cdd975e810bea33bce2e5062fe3a5db3524411a9",
+    "host_signature": "adhoc",
+    "apk_path": "baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk",
+    "apk_sha256": "987c6ee5bfc05fd4fbaeabf090db95ae78f0f277f530478ce257c292b171fe4b",
+    "package": "dev.telemachus.display",
+    "version_code": 100000,
+    "version_name": "0.0.0"
+  },
+  "usb": {
+    "adb_serial_used_explicitly": true,
+    "other_devices_connected": true,
+    "adb_reverse_54321_present": true,
+    "adb_reverse_entry": "UsbFfs tcp:54321 tcp:54321"
+  },
+  "host": {
+    "stale_host_from_other_worktree_observed": true,
+    "stale_host_pid": 89494,
+    "stale_host_stopped_before_test": true,
+    "current_tree_listener_pid": 97995,
+    "listener": "127.0.0.1:54321",
+    "screen_recording_cgpreflight": "granted",
+    "capture_source": "SCStream",
+    "captured_display": {
+      "id": 6,
+      "name": "Vibe Screen Virtual",
+      "size": "2000x1200"
+    },
+    "encoder": "VideoToolbox H.265 HEVC 35Mbps 60fps ULTRALOW"
+  },
+  "initial_session": {
+    "android_pid": 29380,
+    "host_connection_epoch": 1,
+    "transport": "loopback USB",
+    "protocol": "Protocol v1",
+    "display_catalog_count": 3,
+    "selected_display_id": 6,
+    "video_configuration": "2000x1200 @ 0 degrees epoch=1",
+    "decoder": "c2.qti.hevc.decoder",
+    "first_frame_observed": true,
+    "first_output_frame_observed": true,
+    "latest_retained_output_counter": 720,
+    "decoder_dropped_frames": 0,
+    "settled_host_pipeline_fps_range": "59.6-62.3",
+    "settled_host_pipeline_dropped": 0
+  },
+  "reconnect_session": {
+    "method": "adb force-stop dev.telemachus.display then cold-start MainActivity",
+    "host_pid_before": 97995,
+    "host_pid_after": 97995,
+    "same_host_pid": true,
+    "android_pid_after": 32410,
+    "host_connection_epoch": 2,
+    "protocol": "Protocol v1",
+    "decoder": "c2.qti.hevc.decoder",
+    "first_frame_observed": true,
+    "first_output_frame_observed": true,
+    "latest_retained_output_counter": 840,
+    "decoder_dropped_frames": 0,
+    "settled_host_pipeline_fps_range": "59.7-61.3",
+    "settled_host_pipeline_dropped": 0
+  },
+  "ui_state": {
+    "main_activity_focused": true,
+    "surfaceflinger_surfaceview_observed": true,
+    "screenshot_retained_as_foreground_artifact_only": true
+  },
+  "stages": {
+    "adb_device_identity": "observed",
+    "current_tree_host_built": "passed",
+    "android_apk_built": "passed",
+    "stale_host_cleanup": "observed",
+    "host_screen_recording_permission": "granted",
+    "host_54321_listener": "passed",
+    "adb_reverse_54321": "passed",
+    "apk_install": "passed",
+    "short_usb_e2e": "passed",
+    "protocol_v1_session": "passed",
+    "stream_established": "passed",
+    "hevc_decoder": "passed",
+    "short_reconnect": "passed",
+    "basic_ui_foreground": "observed",
+    "accessibility_input": "not_run",
+    "latency": "not_run",
+    "memory_or_soak": "not_run"
+  },
+  "claims": {
+    "current_tree_short_usb_smoke": true,
+    "real_stream": true,
+    "protocol_v1_interoperability": true,
+    "hevc_hardware_decode": true,
+    "short_reconnect_host_pid_survived": true,
+    "accessibility_or_input": false,
+    "native_hid_mouse": false,
+    "physical_stylus": false,
+    "controller_runtime": false,
+    "external_camera_latency": false,
+    "two_hour_soak": false,
+    "host_rss_no_growth": false,
+    "device_is_fuxi": false
+  }
+}

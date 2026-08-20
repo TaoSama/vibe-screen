@@ -1,0 +1,6 @@
+## final listener state
+command: lsof -nP -iTCP:54321 -sTCP:LISTEN || true
+result: no listener on tcp:54321
+## final app pid
+command: adb -s EP0110PZ0B9110300B shell pidof dev.telemachus.display || true
+result: no dev.telemachus.display pid
