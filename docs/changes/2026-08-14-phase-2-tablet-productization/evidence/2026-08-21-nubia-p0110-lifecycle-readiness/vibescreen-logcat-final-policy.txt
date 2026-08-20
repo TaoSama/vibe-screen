@@ -1,0 +1,102 @@
+--------- beginning of main
+08-21 05:23:23.786 11098 11098 D MA      : device health battery=100 charging=true saver=false thermal=elevated
+08-21 05:23:23.787 11098 11098 D MA      : lifecycle foreground connected=false
+08-21 05:23:23.849 11098 11098 D MA      : surfaceCreated
+08-21 05:23:23.850 11098 11098 D MA      : surfaceChanged: 2800x1264
+08-21 05:23:23.952 11098 19809 E StreamClient: ❌ Connection error
+08-21 05:23:23.952 11098 19809 E StreamClient: java.io.IOException: Protocol upgrade probe closed before a response
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient.negotiateProtocol(StreamClient.kt:633)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient.access$negotiateProtocol(StreamClient.kt:102)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient$connect$2.invokeSuspend(StreamClient.kt:305)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:8)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:4)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient.connect(StreamClient.kt:281)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at dev.telemachus.display.MainActivity$connect$1.invokeSuspend(MainActivity.kt:4696)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+08-21 05:23:23.952 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+08-21 05:23:23.953 11098 19809 D MA      : session ended kind=TRANSPORT_CLOSED retryable=true
+08-21 05:23:23.954 11098 19809 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787261003954,"event":"reconnect_scheduled","delay_ms":440,"session_epoch":1}
+08-21 05:23:23.954 11098 19809 D StreamClient: Disconnected: TRANSPORT_CLOSED: Protocol upgrade probe closed before a response
+08-21 05:23:25.464 11098 19809 E StreamClient: ❌ Connection error
+08-21 05:23:25.464 11098 19809 E StreamClient: java.io.IOException: Protocol upgrade probe closed before a response
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient.negotiateProtocol(StreamClient.kt:633)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient.access$negotiateProtocol(StreamClient.kt:102)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient$connect$2.invokeSuspend(StreamClient.kt:305)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:8)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:4)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient.connect(StreamClient.kt:281)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at dev.telemachus.display.MainActivity$connect$1.invokeSuspend(MainActivity.kt:4696)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+08-21 05:23:25.464 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+08-21 05:23:25.464 11098 19809 D MA      : session ended kind=TRANSPORT_CLOSED retryable=true
+08-21 05:23:25.465 11098 19809 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787261005465,"event":"reconnect_scheduled","delay_ms":542,"session_epoch":2}
+08-21 05:23:25.465 11098 19809 D StreamClient: Disconnected: TRANSPORT_CLOSED: Protocol upgrade probe closed before a response
+08-21 05:23:26.440 11098 11098 D MA      : surfaceDestroyed
+08-21 05:23:26.491 11098 11098 D MA      : lifecycle background connected=false; retries paused
+08-21 05:23:28.268 11098 11098 D MA      : lifecycle foreground connected=false
+08-21 05:23:28.283 11098 11098 D MA      : surfaceCreated
+08-21 05:23:28.283 11098 11098 D MA      : surfaceChanged: 2800x1264
+08-21 05:23:28.422 11098 19809 E StreamClient: ❌ Connection error
+08-21 05:23:28.422 11098 19809 E StreamClient: java.io.IOException: Protocol upgrade probe closed before a response
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient.negotiateProtocol(StreamClient.kt:633)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient.access$negotiateProtocol(StreamClient.kt:102)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient$connect$2.invokeSuspend(StreamClient.kt:305)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:8)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:4)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient.connect(StreamClient.kt:281)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at dev.telemachus.display.MainActivity$connect$1.invokeSuspend(MainActivity.kt:4696)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+08-21 05:23:28.422 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+08-21 05:23:28.422 11098 19809 D MA      : session ended kind=TRANSPORT_CLOSED retryable=true
+08-21 05:23:28.422 11098 19809 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787261008422,"event":"reconnect_scheduled","delay_ms":464,"session_epoch":3}
+08-21 05:23:28.422 11098 19809 D StreamClient: Disconnected: TRANSPORT_CLOSED: Protocol upgrade probe closed before a response
+08-21 05:23:29.939 11098 19809 E StreamClient: ❌ Connection error
+08-21 05:23:29.939 11098 19809 E StreamClient: java.io.IOException: Protocol upgrade probe closed before a response
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient.negotiateProtocol(StreamClient.kt:633)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient.access$negotiateProtocol(StreamClient.kt:102)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient$connect$2.invokeSuspend(StreamClient.kt:305)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:8)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient$connect$2.invoke(Unknown Source:4)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at dev.telemachus.display.StreamClient.connect(StreamClient.kt:281)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at dev.telemachus.display.MainActivity$connect$1.invokeSuspend(MainActivity.kt:4696)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+08-21 05:23:29.939 11098 19809 E StreamClient: 	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+08-21 05:23:29.940 11098 19809 D MA      : session ended kind=TRANSPORT_CLOSED retryable=true
+08-21 05:23:29.941 11098 19809 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787261009941,"event":"reconnect_scheduled","delay_ms":565,"session_epoch":4}
+08-21 05:23:29.941 11098 19809 D StreamClient: Disconnected: TRANSPORT_CLOSED: Protocol upgrade probe closed before a response

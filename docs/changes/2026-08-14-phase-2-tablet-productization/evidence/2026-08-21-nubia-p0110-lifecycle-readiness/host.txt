@@ -1,0 +1,19 @@
+ProductName:		macOS
+ProductVersion:		26.4.1
+BuildVersion:		25E253
+Hardware:
+
+    Hardware Overview:
+
+      Model Name: MacBook Pro
+      Model Identifier: Mac16,8
+      Model Number: Z1FE0008JCH/A
+      Chip: Apple M4 Pro
+      Total Number of Cores: 14 (10 Performance and 4 Efficiency)
+      Memory: 48 GB
+      System Firmware Version: 18000.101.7
+      OS Loader Version: 18000.101.7
+      Serial Number (system): redacted
+      Hardware UUID: redacted
+      Provisioning UDID: redacted
+      Activation Lock Status: Disabled

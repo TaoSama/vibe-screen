@@ -134,3 +134,60 @@ No device soak, physical-tablet run, controlled thermal load, background or
 transport recovery pass, login startup, headless Mac recovery, stylus, or
 hardware-keyboard evidence was produced by this tooling update. All Phase 2
 device gates above remain open.
+
+## 2026-08-21 Nubia P0110 lifecycle readiness result
+
+This follow-up used the attached Nubia P0110/pacific (`EP0110PZ0B9110300B`) as
+an Android phone substitute only. Evidence is under
+[`evidence/2026-08-21-nubia-p0110-lifecycle-readiness`](evidence/2026-08-21-nubia-p0110-lifecycle-readiness/README.md).
+
+Android lifecycle hardening in this change is covered by focused local tests:
+
+- `StreamingWindowStatePolicyTest`: verifies that a connected foreground stream
+  adds both `FLAG_KEEP_SCREEN_ON` and `FLAG_SECURE`, a connected background
+  stream clears only `FLAG_KEEP_SCREEN_ON` while reapplying `FLAG_SECURE`, debug
+  screenshot opt-in affects only foreground capture, and disconnect clears both
+  streaming flags.
+- `MainActivityControllerForwardingContractTest`: verifies that foreground
+  return requests a fresh USB/LAN keyframe and an Internet-session keyframe, that
+  background lifecycle cancellation runs before stop, and that key, touch, and
+  generic-motion input paths are gated by foreground state before transport
+  dispatch.
+
+Validation performed:
+
+- `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.DeviceHealthMonitorTest --tests dev.telemachus.display.MainActivityStatePrimitivesTest --tests dev.telemachus.display.StreamingWindowStatePolicyTest --tests dev.telemachus.display.MainActivityControllerForwardingContractTest assembleDebug assembleDebugAndroidTest`: `BUILD SUCCESSFUL in 10s`.
+- Direct target-device install of the final debug APK with
+  `adb -s EP0110PZ0B9110300B install -r ...`.
+- Direct target-device `SettingsDialogLayoutInstrumentedTest` with
+  `adb -s EP0110PZ0B9110300B shell am instrument`: 7 tests, 0 failures,
+  `OK (7 tests)`.
+- Final debug APK SHA-256:
+  `112ceac607210546dfd8f7a8d4e8f7c0644ef9e67f35e94f7d4de83770d3e1e5`.
+
+Observed short-device evidence:
+
+- Device identity remained nubia P0110, codename `pacific`, Android 16 / SDK 36,
+  1264x2800 at 560 dpi. This must not be relabeled as Xiaomi/fuxi or as tablet
+  evidence.
+- The sustained-use settings card screenshots are retained in
+  `screenshots/sustained-use-portrait.png` and
+  `screenshots/sustained-use-landscape.png`; the final instrumentation run kept
+  the settings layout test at 7/7 passing.
+- Battery snapshots around the final check stayed at 100%, AC powered true, USB
+  powered false, and 34.0 C. Power dumps were collected before and after the
+  lifecycle pass. Thermal dumps were collected before and after; the final pass
+  observed thermal status `1`, which is below the severe/critical states but was
+  not produced by a controlled thermal-load test.
+- App-filtered logcat recorded foreground -> background -> foreground lifecycle
+  transitions and the background line `connected=false; retries paused`.
+- Host transport was blocked: no local listener was present on TCP `54321`, even
+  though `adb reverse` listed `UsbFfs tcp:54321 tcp:54321`. Logcat recorded
+  repeated `Protocol upgrade probe closed before a response`, so no live stream
+  was established.
+
+Still open after this result: real 8-9 inch tablet panel behavior, stand-mounted
+charging stability, controlled thermal-load behavior, live foreground/background
+recovery with fresh keyframe or bounded reconnect, transport interruption
+recovery, login startup, headless Mac recovery, stylus and hardware-keyboard
+workflows, and the eight-hour sample series required by [RUNBOOK.md](RUNBOOK.md).
