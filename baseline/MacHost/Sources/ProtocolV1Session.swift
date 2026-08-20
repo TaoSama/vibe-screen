@@ -1570,6 +1570,9 @@ final class ProtocolV1SessionCoordinator {
         _ status: VSManagedPolicyStatus,
         correlationID: UInt64
     ) -> [ProtocolV1SessionAction] {
+        guard isNegotiated else {
+            return invalidState("ManagedPolicyStatus arrived before session negotiation.", correlationID)
+        }
         guard baseNegotiatedCapabilities.contains(.managedConfiguration) else {
             return unsupportedCapability("Managed policy was not negotiated.", correlationID)
         }

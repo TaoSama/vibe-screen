@@ -315,6 +315,19 @@ enum ProtocolV1SelfTest {
                 return
             }
 
+            let earlyStatusSession = makeSession()
+            var earlyHello = clientHello()
+            earlyHello.clientHello.capabilities.append(.managedConfiguration)
+            _ = earlyStatusSession.handleControl(try earlyHello.serializedData())
+            let earlyStatus = earlyStatusSession.handleControl(try envelope(
+                id: 2,
+                payload: .managedPolicyStatus(ManagedPolicy.unmanaged.protocolStatus)
+            ).serializedData())
+            guard try protocolError(earlyStatus).code == .invalidState else {
+                failures.append("managed policy status before negotiation was not rejected")
+                return
+            }
+
             var denied = ManagedPolicy.unmanaged.protocolStatus
             denied.managed = true
             denied.allowedHosts = ["other-host"]
