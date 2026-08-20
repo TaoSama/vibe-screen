@@ -2,10 +2,13 @@ package signaling
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -13,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -22,6 +26,7 @@ func openSignalingIntegrationStore(t *testing.T, cfg Config) (*PostgresStore, Co
 	if databaseURL == "" {
 		t.Skip("VIBE_SIGNALING_TEST_DATABASE_URL is not set")
 	}
+	databaseURL, schema := signalingIntegrationTestDatabaseURL(t, databaseURL)
 	migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "001_signaling.sql"))
 	if err != nil {
 		t.Fatal(err)
@@ -40,12 +45,106 @@ func openSignalingIntegrationStore(t *testing.T, cfg Config) (*PostgresStore, Co
 	if err != nil {
 		t.Fatal(err)
 	}
+	var currentSchema string
+	if err := store.pool.QueryRow(ctx, "SELECT current_schema()").Scan(&currentSchema); err != nil {
+		store.Close()
+		t.Fatal(err)
+	}
+	if currentSchema != schema {
+		store.Close()
+		t.Fatalf("postgres integration schema = %q, want %q", currentSchema, schema)
+	}
 	if _, err := store.pool.Exec(ctx, "TRUNCATE signaling_waiters,signaling_role_rates,signaling_messages,signaling_sessions RESTART IDENTITY CASCADE"); err != nil {
 		store.Close()
 		t.Fatal(err)
 	}
 	t.Cleanup(store.Close)
 	return store, cfg
+}
+
+func signalingIntegrationTestDatabaseURL(t *testing.T, databaseURL string) (string, string) {
+	t.Helper()
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatalf("parse signaling integration database URL: %v", err)
+	}
+	schema := postgresTestSchemaName(t.Name())
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatalf("open signaling integration database for schema setup: %v", err)
+	}
+	defer pool.Close()
+	if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schema}.Sanitize()+" CASCADE"); err != nil {
+		t.Fatalf("drop stale signaling integration schema: %v", err)
+	}
+	if _, err := pool.Exec(ctx, "CREATE SCHEMA "+pgx.Identifier{schema}.Sanitize()); err != nil {
+		t.Fatalf("create signaling integration schema: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cleanupCancel()
+		cleanupPool, err := pgxpool.NewWithConfig(cleanupCtx, config)
+		if err != nil {
+			t.Fatalf("open signaling integration database for schema cleanup: %v", err)
+		}
+		defer cleanupPool.Close()
+		if _, err := cleanupPool.Exec(cleanupCtx, "DROP SCHEMA IF EXISTS "+pgx.Identifier{schema}.Sanitize()+" CASCADE"); err != nil {
+			t.Fatalf("drop signaling integration schema: %v", err)
+		}
+	})
+
+	isolatedURL, err := databaseURLWithSearchPath(databaseURL, schema)
+	if err != nil {
+		t.Fatalf("prepare isolated signaling integration database URL: %v", err)
+	}
+	return isolatedURL, schema
+}
+
+func databaseURLWithSearchPath(databaseURL, schema string) (string, error) {
+	parsed, err := url.Parse(databaseURL)
+	if err != nil {
+		return "", err
+	}
+	query := parsed.Query()
+	query.Set("search_path", schema)
+	parsed.RawQuery = query.Encode()
+	return parsed.String(), nil
+}
+
+func postgresTestSchemaName(value string) string {
+	const maxIdentifierLength = 63
+	const hashLength = 8
+	const prefix = "signaling_test_"
+	digest := sha256.Sum256([]byte(value))
+	suffix := hex.EncodeToString(digest[:])[:hashLength]
+	baseLimit := maxIdentifierLength - len(prefix) - hashLength - 1
+	base := sanitizePostgresIdentifier(value)
+	if len(base) > baseLimit {
+		base = base[:baseLimit]
+	}
+	return prefix + base + "_" + suffix
+}
+
+func sanitizePostgresIdentifier(value string) string {
+	output := make([]byte, 0, len(value))
+	for index := 0; index < len(value); index++ {
+		character := value[index]
+		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' {
+			output = append(output, character)
+			continue
+		}
+		if character >= 'A' && character <= 'Z' {
+			output = append(output, character+'a'-'A')
+			continue
+		}
+		output = append(output, '_')
+	}
+	if len(output) == 0 || output[0] < 'a' || output[0] > 'z' {
+		output = append([]byte("t_"), output...)
+	}
+	return string(output)
 }
 
 func TestPostgresAuthorityReplayWithoutLocalStateFailsClosed(t *testing.T) {
@@ -352,8 +451,12 @@ func TestPostgresLocalStoreLongPollAndExpiry(t *testing.T) {
 		t.Fatal("long poll did not wake")
 	}
 	waitForPostgresWaiter(t, store, created.SessionID, RoleDevice, 0)
-	if _, err := store.pool.Exec(ctx, "UPDATE signaling_sessions SET expires_at=now()-interval '1 second' WHERE session_id=$1", created.SessionID); err != nil {
+	tag, err := store.pool.Exec(ctx, "UPDATE signaling_sessions SET expires_at=now()-interval '1 second' WHERE session_id=$1", created.SessionID)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if tag.RowsAffected() != 1 {
+		t.Fatalf("expired session update affected %d rows, want 1", tag.RowsAffected())
 	}
 	if _, err := store.Authorize(ctx, created.SessionID, created.HostToken); !errors.Is(err, ErrExpired) && !errors.Is(err, ErrNotFound) {
 		t.Fatalf("authorize after expiry error=%v", err)
@@ -442,8 +545,16 @@ func TestPostgresReadinessMapsStorageError(t *testing.T) {
 	if databaseURL == "" {
 		t.Skip("VIBE_SIGNALING_TEST_DATABASE_URL is not set")
 	}
+	databaseURL, _ = signalingIntegrationTestDatabaseURL(t, databaseURL)
+	migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "001_signaling.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
+	if err := ApplyMigration(ctx, databaseURL, string(migration)); err != nil {
+		t.Fatal(err)
+	}
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		t.Fatal(err)
@@ -452,15 +563,6 @@ func TestPostgresReadinessMapsStorageError(t *testing.T) {
 	if _, err := pool.Exec(ctx, "DROP TABLE IF EXISTS signaling_schema_migrations CASCADE"); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "001_signaling.sql"))
-		if err != nil {
-			t.Fatalf("read migration after missing-schema test: %v", err)
-		}
-		if err := ApplyMigration(context.Background(), databaseURL, string(migration)); err != nil {
-			t.Fatalf("restore signaling migration ledger: %v", err)
-		}
-	})
 	store := &PostgresStore{pool: pool, now: time.Now}
 	if err := store.Ready(ctx); !errors.Is(err, ErrStorage) {
 		t.Fatalf("missing schema error=%v, want ErrStorage", err)
