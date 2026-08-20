@@ -25,7 +25,6 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityManager
-import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.EditText
@@ -937,6 +936,16 @@ class MainActivity : AppCompatActivity() {
         return showImmersiveDialog(dialog)
     }
 
+    private fun showSecureImmersiveDialog(builder: MaterialAlertDialogBuilder): androidx.appcompat.app.AlertDialog {
+        val dialog = builder.create()
+        return showSecureImmersiveDialog(dialog)
+    }
+
+    private fun <T : Dialog> showSecureImmersiveDialog(dialog: T): T {
+        dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        return showImmersiveDialog(dialog)
+    }
+
     private fun <T : Dialog> showImmersiveDialog(dialog: T): T {
         dialog.window?.setFlags(
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
@@ -1453,14 +1462,15 @@ class MainActivity : AppCompatActivity() {
         binding.internetConnectButton.setOnClickListener { connectInternet() }
         binding.internetDisconnectButton.setOnClickListener { disconnect() }
         binding.internetRevokeButton.setOnClickListener {
-            android.app.AlertDialog
-                .Builder(this)
+            showSecureImmersiveDialog(
+                MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.internet_revoke_confirm_title)
                 .setMessage(R.string.internet_revoke_confirm_message)
                 .setNegativeButton(R.string.cancel, null)
                 .setPositiveButton(R.string.internet_revoke_confirm_action) { _, _ ->
                     revokeInternetPairing("user_requested")
-                }.show()
+                },
+            )
         }
         val pendingCleanup = retryPendingInternetRevocationCleanup()
         if (pendingCleanup.isNotEmpty()) {
@@ -1482,11 +1492,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun showInternetProfileImportDialog() {
         if (!allowInternetCredentialMutation()) return
+        val content = layoutInflater.inflate(R.layout.dialog_internet_profile_import, null, false)
         val input =
-            EditText(this).apply {
+            content.findViewById<EditText>(R.id.internetProfileImportInput).apply {
                 hint = getString(R.string.internet_import_hint)
-                minLines = 8
-                maxLines = 16
                 setHorizontallyScrolling(false)
                 inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
                 imeOptions =
@@ -1496,15 +1505,13 @@ class MainActivity : AppCompatActivity() {
                 isSaveEnabled = false
             }
         val dialog =
-            android.app.AlertDialog
-                .Builder(this)
+            MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.internet_import_title)
-                .setView(input)
+                .setView(content)
                 .setNegativeButton(R.string.cancel, null)
                 .setPositiveButton(R.string.internet_import_action, null)
                 .create()
         dialog.setOnShowListener {
-            dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
                     check(allowInternetCredentialMutation()) { "Internet revocation quarantine is active" }
@@ -1524,7 +1531,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        dialog.show()
+        showSecureImmersiveDialog(dialog)
     }
 
     private fun launchInternetScanner() {
@@ -1579,32 +1586,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showInternetPairingCompletionDialog(pending: PendingInternetPairing) {
-        val container =
-            android.widget.LinearLayout(this).apply {
-                orientation = android.widget.LinearLayout.VERTICAL
-                setPadding(32, 12, 32, 0)
-            }
-        val request =
-            TextView(this).apply {
-                text = pending.request.encode()
-                setTextIsSelectable(true)
-                maxLines = 6
-            }
-        val identities =
-            TextView(this).apply {
-                text =
-                    getString(
-                        R.string.internet_pairing_identity_format,
-                        pending.publicMetadata.hostIdentity.deviceId,
-                        pending.publicMetadata.hostIdentity.keyId.take(16),
-                        pending.publicMetadata.deviceIdentity.keyId.take(16),
-                    )
-                setTextIsSelectable(true)
-            }
+        val container = layoutInflater.inflate(R.layout.dialog_internet_pairing_completion, null, false)
+        container.findViewById<TextView>(R.id.internetPairingRequestText).apply {
+            text = pending.request.encode()
+            setTextIsSelectable(true)
+            setHorizontallyScrolling(false)
+        }
+        container.findViewById<TextView>(R.id.internetPairingIdentityText).apply {
+            text =
+                getString(
+                    R.string.internet_pairing_identity_format,
+                    pending.publicMetadata.hostIdentity.deviceId,
+                    pending.publicMetadata.hostIdentity.keyId.take(16),
+                    pending.publicMetadata.deviceIdentity.keyId.take(16),
+                )
+            setTextIsSelectable(true)
+        }
         val acceptance =
-            EditText(this).apply {
+            container.findViewById<EditText>(R.id.internetPairingAcceptanceInput).apply {
                 hint = getString(R.string.internet_pairing_acceptance_hint)
-                minLines = 5
                 inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
                 imeOptions =
                     android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI or
@@ -1612,12 +1612,8 @@ class MainActivity : AppCompatActivity() {
                 importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
                 isSaveEnabled = false
             }
-        container.addView(identities)
-        container.addView(request)
-        container.addView(acceptance)
         val dialog =
-            android.app.AlertDialog
-                .Builder(this)
+            MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.internet_pairing_complete_title)
                 .setMessage(R.string.internet_pairing_complete_message)
                 .setView(container)
@@ -1627,7 +1623,6 @@ class MainActivity : AppCompatActivity() {
                 .setPositiveButton(R.string.internet_pairing_complete_action, null)
                 .create()
         dialog.setOnShowListener {
-            dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
                     val parsed = InternetPairingAcceptance.parse(acceptance.text.toString())
@@ -1673,7 +1668,7 @@ class MainActivity : AppCompatActivity() {
             runCatching { discardPendingInternetPairing(pending) }.onFailure(::showInternetFailure)
         }
         dialog.setCanceledOnTouchOutside(false)
-        dialog.show()
+        showSecureImmersiveDialog(dialog)
     }
 
     private fun discardPendingInternetPairing(

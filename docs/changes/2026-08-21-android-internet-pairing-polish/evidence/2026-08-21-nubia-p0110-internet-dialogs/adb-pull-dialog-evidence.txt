@@ -1,0 +1,1 @@
+adb: error: failed to stat remote object '/sdcard/Android/data/dev.telemachus.display/files/internet-dialog-polish': No such file or directory
