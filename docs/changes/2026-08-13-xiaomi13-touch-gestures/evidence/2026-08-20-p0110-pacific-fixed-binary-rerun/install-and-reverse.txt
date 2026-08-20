@@ -1,0 +1,8 @@
+# install 2026-08-20T12:30:46Z
+Performing Streamed Install
+Success
+Performing Streamed Install
+Success
+instrumentation:dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner (target=dev.telemachus.display)
+54321
+UsbFfs tcp:54321 tcp:54321

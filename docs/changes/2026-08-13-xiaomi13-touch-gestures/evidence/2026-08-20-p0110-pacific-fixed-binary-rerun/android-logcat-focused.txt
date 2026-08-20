@@ -1,0 +1,39 @@
+08-20 20:32:27.680 D/AndroidRuntime( 9376): >>>>>> START com.android.internal.os.RuntimeInit uid 0 <<<<<<
+08-20 20:32:27.692 I/AndroidRuntime( 9376): Using default boot image
+08-20 20:32:27.692 I/AndroidRuntime( 9376): Leaving lock profiling enabled
+08-20 20:32:27.869 D/AndroidRuntime( 9376): Calling main entry com.android.commands.am.Am
+08-20 20:32:28.299 I/AndroidJUnitRunner( 9438): newApplication android.app.Application
+08-20 20:32:28.305 I/AndroidJUnitRunner( 9438): onCreate Bundle[mParcelledData.dataSize=228]
+08-20 20:32:28.305 D/AndroidJUnitRunner( 9438): Use the raw file system for managing file I/O.
+08-20 20:32:28.318 D/AndroidJUnitRunner( 9438): onStart is called.
+08-20 20:32:28.335 I/TestRunner( 9438): started: drivesTouchGestureMatrixWhileConnected(dev.telemachus.display.TouchGestureAcceptanceDriverInstrumentedTest)
+08-20 20:32:55.280 I/TestRunner( 9438): finished: drivesTouchGestureMatrixWhileConnected(dev.telemachus.display.TouchGestureAcceptanceDriverInstrumentedTest)
+08-20 20:32:55.307 I/AndroidRuntime( 9376): VM exiting with result code 0.
+08-20 20:33:16.297 I/AndroidRuntime(11842): VM exiting with result code 0, cleanup skipped.
+08-20 20:33:24.835 D/AndroidRuntime(12328): >>>>>> START com.android.internal.os.RuntimeInit uid 0 <<<<<<
+08-20 20:33:24.849 I/AndroidRuntime(12328): Using default boot image
+08-20 20:33:24.849 I/AndroidRuntime(12328): Leaving lock profiling enabled
+08-20 20:33:25.051 D/AndroidRuntime(12328): Calling main entry com.android.commands.am.Am
+08-20 20:33:25.495 I/AndroidJUnitRunner(12375): newApplication android.app.Application
+08-20 20:33:25.501 I/AndroidJUnitRunner(12375): onCreate Bundle[mParcelledData.dataSize=228]
+08-20 20:33:25.502 D/AndroidJUnitRunner(12375): Use the raw file system for managing file I/O.
+08-20 20:33:25.515 D/AndroidJUnitRunner(12375): onStart is called.
+08-20 20:33:25.530 I/TestRunner(12375): started: drivesTouchGestureMatrixWhileConnected(dev.telemachus.display.TouchGestureAcceptanceDriverInstrumentedTest)
+08-20 20:34:17.063 I/TestRunner(12375): finished: drivesTouchGestureMatrixWhileConnected(dev.telemachus.display.TouchGestureAcceptanceDriverInstrumentedTest)
+08-20 20:34:17.075 I/AndroidRuntime(12328): VM exiting with result code 0.
+08-20 20:34:21.007 I/AndroidRuntime(14352): VM exiting with result code 0, cleanup skipped.
+08-20 20:34:35.346 D/AndroidRuntime(14844): >>>>>> START com.android.internal.os.RuntimeInit uid 0 <<<<<<
+08-20 20:34:35.355 I/AndroidRuntime(14844): Using default boot image
+08-20 20:34:35.355 I/AndroidRuntime(14844): Leaving lock profiling enabled
+08-20 20:34:35.489 D/AndroidRuntime(14844): Calling main entry com.android.commands.am.Am
+08-20 20:34:35.887 I/AndroidJUnitRunner(14869): newApplication android.app.Application
+08-20 20:34:35.894 I/AndroidJUnitRunner(14869): onCreate Bundle[mParcelledData.dataSize=148]
+08-20 20:34:35.894 D/AndroidJUnitRunner(14869): Use the raw file system for managing file I/O.
+08-20 20:34:35.911 D/AndroidJUnitRunner(14869): onStart is called.
+08-20 20:34:36.560 I/AndroidRuntime(14844): VM exiting with result code 0.
+08-20 20:34:37.489 I/AndroidRuntime(15034): VM exiting with result code 0, cleanup skipped.
+08-20 20:35:07.326 D/AndroidRuntime(16081): >>>>>> START com.android.internal.os.RuntimeInit uid 0 <<<<<<
+08-20 20:35:07.345 I/AndroidRuntime(16081): Using default boot image
+08-20 20:35:07.345 I/AndroidRuntime(16081): Leaving lock profiling enabled
+08-20 20:35:07.595 D/AndroidRuntime(16081): Calling main entry com.android.commands.uiautomator.Launcher
+08-20 20:35:08.651 D/AndroidRuntime(16081): Shutting down VM

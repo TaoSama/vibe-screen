@@ -1,0 +1,13 @@
+{
+  "checks": {
+    "drag_observed": true,
+    "instrumentation_ok": true,
+    "pinch_observed": true,
+    "post_pinch_plain_tap_no_command": true,
+    "preflight_ready": true,
+    "right_click_observed": true,
+    "tap_left_down_up_observed": true,
+    "two_finger_scroll_observed": true
+  },
+  "result": "pass"
+}

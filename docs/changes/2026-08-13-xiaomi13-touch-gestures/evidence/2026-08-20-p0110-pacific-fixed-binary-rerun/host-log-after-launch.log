@@ -1,0 +1,36 @@
+2026-08-20T12:31:09Z Failed to set activation policy to regular
+2026-08-20T12:31:09Z Connection mode changed to: usb
+2026-08-20T12:31:09Z checkPermissions — macOS 26.4.1
+2026-08-20T12:31:09Z Screen recording permission granted (CGPreflight)
+2026-08-20T12:31:09Z SCShareableContent verification OK — 2 displays found
+2026-08-20T12:31:10Z 🚀 startServer() invoked. Check permission: true
+2026-08-20T12:31:10Z verifyDisplayRegistered: displayID 8 NOT FOUND in online displays [1, 3]
+2026-08-20T12:31:10Z verifyDisplayRegistered: displayID 8 FOUND in online displays [1, 3, 8]
+2026-08-20T12:31:11Z disableMirrorMode did not complete but display 8 is not mirrored; proceeding with extended capture
+2026-08-20T12:31:12Z 🔌 setupADBReverse() invoked for port 54321...
+2026-08-20T12:31:12Z 📱 Android client launched for automatic USB connection
+2026-08-20T12:31:12Z verifyDisplayRegistered: displayID 8 FOUND in online displays [1, 3, 8]
+2026-08-20T12:31:12Z ScreenCapture init — macOS 26.4.1
+2026-08-20T12:31:12Z SCShareableContent returned 3 displays: [8, 1, 3]
+2026-08-20T12:31:12Z Capturing virtual display: 2000x1200 (ID: 8)
+2026-08-20T12:31:12Z Stream configured: 2000x1200 @ 60fps (with delegate)
+2026-08-20T12:31:12Z TCP server listening on port 54321
+2026-08-20T12:31:12Z VideoToolbox encoder configured (H.265, 50Mbps, 60fps, ULTRALOW)
+2026-08-20T12:31:12Z SCStream capture started — starting frame flow monitor
+2026-08-20T12:31:12Z First frame received from SCStream
+2026-08-20T12:31:12Z Capture method: SCStream
+2026-08-20T12:31:12Z New connection incoming...
+2026-08-20T12:31:12Z Connection state: preparing
+2026-08-20T12:31:12Z Connection state: ready
+2026-08-20T12:31:12Z Client connected via loopback (USB) — skipping auth
+2026-08-20T12:31:12Z Starting input receive loop... (touch=on)
+2026-08-20T12:31:12Z Protocol v1 selected for connection epoch 1
+2026-08-20T12:31:13Z Capture source (SCStream): 54.8fps
+2026-08-20T12:31:14Z New connection incoming...
+2026-08-20T12:31:14Z Connection state: preparing
+2026-08-20T12:31:14Z Connection state: ready
+2026-08-20T12:31:14Z Client connected via loopback (USB) — skipping auth
+2026-08-20T12:31:14Z Starting input receive loop... (touch=on)
+2026-08-20T12:31:14Z Protocol v1 selected for connection epoch 2
+2026-08-20T12:31:14Z Pipeline: 12.5fps, 1.1Mbps, avg frame age: 7.9ms, dropped: 0
+2026-08-20T12:31:14Z Capture source (SCStream): 37.4fps

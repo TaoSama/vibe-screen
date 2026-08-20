@@ -70,23 +70,28 @@ real_analyze = diagnostic.analyze_records
 real_collect = diagnostic.collect
 real_write_json = diagnostic._write_json
 
+def wait_for_signal():
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        time.sleep(0.05)
+
 def gated_analyze(*args, **kwargs):
     if phase == "analysis" and not marker.exists():
         marker.write_text("ready", encoding="utf-8")
-        time.sleep(30)
+        wait_for_signal()
     return real_analyze(*args, **kwargs)
 
 def gated_write_json(path, value):
     if phase == "write" and not marker.exists():
         marker.write_text("ready", encoding="utf-8")
-        time.sleep(30)
+        wait_for_signal()
     return real_write_json(path, value)
 
 def collect_for_test(**kwargs):
     if phase == "sampling":
         def gated_sleep(_seconds):
             marker.write_text("ready", encoding="utf-8")
-            time.sleep(30)
+            wait_for_signal()
         return real_collect(**kwargs, monotonic=lambda: 0.0, sleep=gated_sleep)
     clock = iter((0.0, 600.0, 600.0))
     return real_collect(

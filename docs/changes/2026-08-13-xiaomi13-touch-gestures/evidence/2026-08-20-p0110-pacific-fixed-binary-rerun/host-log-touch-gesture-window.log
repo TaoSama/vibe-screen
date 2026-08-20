@@ -1,0 +1,35 @@
+2026-08-20T12:31:30Z Capture source (SCStream): 36.9fps
+2026-08-20T12:31:31Z Capture source (SCStream): 35.5fps
+2026-08-20T12:31:31Z New connection incoming...
+2026-08-20T12:31:31Z Connection state: preparing
+2026-08-20T12:31:31Z Connection state: ready
+2026-08-20T12:31:31Z Client connected via loopback (USB) — skipping auth
+2026-08-20T12:31:31Z Starting input receive loop... (touch=on)
+2026-08-20T12:31:31Z Protocol v1 selected for connection epoch 3
+2026-08-20T12:31:32Z Pipeline: 28.9fps, 0.7Mbps, avg frame age: 7.5ms, dropped: 0
+2026-08-20T12:31:32Z Capture source (SCStream): 35.8fps
+2026-08-20T12:31:33Z Pipeline: 62.7fps, 1.2Mbps, avg frame age: 7.8ms, dropped: 0
+2026-08-20T12:31:33Z Touch gesture: long press ready
+2026-08-20T12:31:33Z Capture source (SCStream): 44.0fps
+2026-08-20T12:31:33Z Touch gesture: right click injected
+2026-08-20T12:31:34Z Pipeline: 60.0fps, 0.7Mbps, avg frame age: 7.6ms, dropped: 0
+2026-08-20T12:31:34Z Touch gesture: long press ready
+2026-08-20T12:31:34Z Capture source (SCStream): 36.8fps
+2026-08-20T12:31:34Z Touch gesture: drag began
+2026-08-20T12:31:35Z Pipeline: 60.0fps, 0.7Mbps, avg frame age: 7.6ms, dropped: 0
+2026-08-20T12:31:35Z Touch gesture: drag ended
+2026-08-20T12:31:35Z Touch gesture: two-finger scroll began
+2026-08-20T12:31:35Z Capture source (SCStream): 44.0fps
+2026-08-20T12:31:36Z Pipeline: 60.0fps, 0.7Mbps, avg frame age: 7.5ms, dropped: 0
+2026-08-20T12:31:36Z Touch gesture: pinch began
+2026-08-20T12:31:36Z Capture source (SCStream): 38.7fps
+2026-08-20T12:31:37Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 7.5ms, dropped: 0
+2026-08-20T12:31:37Z Capture source (SCStream): 37.0fps
+2026-08-20T12:31:38Z Pipeline: 60.0fps, 0.7Mbps, avg frame age: 7.6ms, dropped: 0
+2026-08-20T12:31:38Z Capture source (SCStream): 43.3fps
+2026-08-20T12:31:39Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 7.6ms, dropped: 0
+2026-08-20T12:31:39Z Capture source (SCStream): 38.4fps
+2026-08-20T12:31:40Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 7.6ms, dropped: 0
+2026-08-20T12:31:41Z Capture source (SCStream): 37.4fps
+2026-08-20T12:31:41Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 7.6ms, dropped: 0
+2026-08-20T12:31:42Z Capture source (SCStream): 38.7fps

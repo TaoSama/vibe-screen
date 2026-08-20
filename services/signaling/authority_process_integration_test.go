@@ -13,10 +13,28 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 )
+
+type synchronizedBuffer struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (b *synchronizedBuffer) Write(contents []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.Write(contents)
+}
+
+func (b *synchronizedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.String()
+}
 
 // authorityProcessTest holds the tokens, addresses, and process handles for a
 // single authority-backed signaling integration run. All secrets are generated
@@ -47,9 +65,9 @@ type authorityProcessTest struct {
 	signalingBinary string
 	relayBinary     string
 
-	authorityLog bytes.Buffer
-	signalingLog bytes.Buffer
-	relayLog     bytes.Buffer
+	authorityLog synchronizedBuffer
+	signalingLog synchronizedBuffer
+	relayLog     synchronizedBuffer
 
 	authorityCmd *exec.Cmd
 	signalingCmd *exec.Cmd
@@ -84,9 +102,9 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 		relayAdminToken:       "relay-admin-token-" + randomSuffix(t),
 		relayTurnSecret:       "relay-turn-secret-" + randomSuffix(t),
 
-		authorityAddress: reserveAddress(t),
-		signalingAddress: reserveAddress(t),
-		relayAddress:     reserveAddress(t),
+		authorityAddress: "127.0.0.1:0",
+		signalingAddress: "127.0.0.1:0",
+		relayAddress:     "127.0.0.1:0",
 	}
 
 	tmpDir := t.TempDir()
@@ -443,6 +461,7 @@ func startAuthority(t *testing.T, run *authorityProcessTest) {
 		t.Fatal(err)
 	}
 	run.authorityCmd = cmd
+	run.authorityAddress = waitForListeningAddress(t, cmd, &run.authorityLog, "authority")
 }
 
 func startSignaling(t *testing.T, run *authorityProcessTest) {
@@ -482,6 +501,7 @@ func startSignaling(t *testing.T, run *authorityProcessTest) {
 		t.Fatal(err)
 	}
 	run.signalingCmd = cmd
+	run.signalingAddress = waitForListeningAddress(t, cmd, &run.signalingLog, "signaling")
 }
 
 func startRelay(t *testing.T, run *authorityProcessTest) {
@@ -521,11 +541,57 @@ func startRelay(t *testing.T, run *authorityProcessTest) {
 		t.Fatal(err)
 	}
 	run.relayCmd = cmd
+	run.relayAddress = waitForListeningAddress(t, cmd, &run.relayLog, "relay")
+}
+
+func waitForListeningAddress(t *testing.T, cmd *exec.Cmd, logBuffer *synchronizedBuffer, name string) string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		logs := logBuffer.String()
+		if address, ok := loggedListeningAddress(logs); ok {
+			return address
+		}
+		if strings.Contains(logs, "listen failed") || strings.Contains(logs, "address already in use") {
+			t.Fatalf("%s failed to bind listener\n%s", name, logs)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("%s did not report a listening address\n%s", name, logBuffer.String())
+	return ""
+}
+
+func loggedListeningAddress(logs string) (string, bool) {
+	for _, line := range strings.Split(logs, "\n") {
+		if address, ok := quotedLogValue(line, "address"); ok {
+			return address, true
+		}
+		for _, field := range strings.Fields(line) {
+			if address, ok := strings.CutPrefix(field, "address="); ok && address != "" {
+				return strings.Trim(address, "\""), true
+			}
+		}
+	}
+	return "", false
+}
+
+func quotedLogValue(line, key string) (string, bool) {
+	needle := fmt.Sprintf("\"%s\":\"", key)
+	start := strings.Index(line, needle)
+	if start < 0 {
+		return "", false
+	}
+	remainder := line[start+len(needle):]
+	end := strings.IndexByte(remainder, '"')
+	if end <= 0 {
+		return "", false
+	}
+	return remainder[:end], true
 }
 
 // stopProcess sends SIGTERM and waits up to 5 seconds for the process to exit.
 // It is safe to call on a nil or already-exited command.
-func stopProcess(t *testing.T, cmd *exec.Cmd, logBuffer *bytes.Buffer, name string) {
+func stopProcess(t *testing.T, cmd *exec.Cmd, logBuffer *synchronizedBuffer, name string) {
 	t.Helper()
 	if cmd == nil || cmd.Process == nil {
 		return

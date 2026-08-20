@@ -1,0 +1,132 @@
+2026-08-20T12:33:25Z Pipeline: 59.9fps, 0.6Mbps, avg frame age: 7.5ms, dropped: 0
+2026-08-20T12:33:26Z Capture source (SCStream): 37.5fps
+2026-08-20T12:33:26Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 7.5ms, dropped: 0
+2026-08-20T12:33:27Z Capture source (SCStream): 38.0fps
+2026-08-20T12:33:27Z New connection incoming...
+2026-08-20T12:33:27Z Connection state: preparing
+2026-08-20T12:33:27Z Connection state: ready
+2026-08-20T12:33:27Z Client connected via loopback (USB) — skipping auth
+2026-08-20T12:33:27Z Starting input receive loop... (touch=on)
+2026-08-20T12:33:27Z Protocol v1 selected for connection epoch 7
+2026-08-20T12:33:27Z Pipeline: 13.4fps, 0.5Mbps, avg frame age: 7.4ms, dropped: 0
+2026-08-20T12:33:28Z Capture source (SCStream): 38.9fps
+2026-08-20T12:33:28Z Pipeline: 63.0fps, 1.7Mbps, avg frame age: 7.7ms, dropped: 0
+2026-08-20T12:33:29Z Capture source (SCStream): 42.4fps
+2026-08-20T12:33:29Z Touch gesture: long press ready
+2026-08-20T12:33:29Z Touch gesture: right click injected
+2026-08-20T12:33:29Z Pipeline: 59.9fps, 0.7Mbps, avg frame age: 7.6ms, dropped: 0
+2026-08-20T12:33:30Z Capture source (SCStream): 42.8fps
+2026-08-20T12:33:30Z Touch gesture: long press ready
+2026-08-20T12:33:30Z Touch gesture: drag began
+2026-08-20T12:33:30Z Pipeline: 60.0fps, 0.7Mbps, avg frame age: 7.5ms, dropped: 0
+2026-08-20T12:33:30Z Touch gesture: drag ended
+2026-08-20T12:33:31Z Touch gesture: two-finger scroll began
+2026-08-20T12:33:31Z Capture source (SCStream): 45.2fps
+2026-08-20T12:33:31Z Pipeline: 60.0fps, 0.7Mbps, avg frame age: 7.6ms, dropped: 0
+2026-08-20T12:33:31Z Touch gesture: pinch began
+2026-08-20T12:33:32Z Capture source (SCStream): 38.5fps
+2026-08-20T12:33:32Z Pipeline: 59.9fps, 0.7Mbps, avg frame age: 8.4ms, dropped: 0
+2026-08-20T12:33:33Z Capture source (SCStream): 39.0fps
+2026-08-20T12:33:33Z Pipeline: 59.6fps, 0.6Mbps, avg frame age: 10.4ms, dropped: 0
+2026-08-20T12:33:34Z Capture source (SCStream): 35.0fps
+2026-08-20T12:33:34Z Pipeline: 59.9fps, 0.6Mbps, avg frame age: 11.4ms, dropped: 0
+2026-08-20T12:33:35Z Capture source (SCStream): 36.6fps
+2026-08-20T12:33:35Z Pipeline: 60.1fps, 0.6Mbps, avg frame age: 9.3ms, dropped: 0
+2026-08-20T12:33:36Z Capture source (SCStream): 36.4fps
+2026-08-20T12:33:36Z Pipeline: 60.2fps, 0.6Mbps, avg frame age: 8.7ms, dropped: 0
+2026-08-20T12:33:37Z Capture source (SCStream): 36.8fps
+2026-08-20T12:33:37Z Connection state: failed(POSIXErrorCode(rawValue: 54): Connection reset by peer)
+2026-08-20T12:33:37Z Connection failed: POSIXErrorCode(rawValue: 54): Connection reset by peer
+2026-08-20T12:33:37Z Pipeline: 60.2fps, 0.6Mbps, avg frame age: 8.3ms, dropped: 0
+2026-08-20T12:33:38Z Capture source (SCStream): 36.0fps
+2026-08-20T12:33:38Z Pipeline: 59.5fps, 0.6Mbps, avg frame age: 9.3ms, dropped: 0
+2026-08-20T12:33:39Z Capture source (SCStream): 36.0fps
+2026-08-20T12:33:39Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 11.7ms, dropped: 0
+2026-08-20T12:33:40Z Runtime display switch: source=selectedDisplay captureID=1 stream=1512x982
+2026-08-20T12:33:40Z VideoToolbox encoder configured (H.265, 50Mbps, 60fps, ULTRALOW)
+2026-08-20T12:33:40Z SCShareableContent returned 3 displays: [8, 1, 3]
+2026-08-20T12:33:40Z Capturing virtual display: 1512x982 (ID: 1)
+2026-08-20T12:33:40Z Stream configured: 1512x982 @ 60fps (with delegate)
+2026-08-20T12:33:40Z First frame received from SCStream
+2026-08-20T12:33:40Z Capture method: SCStream
+2026-08-20T12:33:40Z Display source changed to selectedDisplay — scheduling capture reconfiguration
+2026-08-20T12:33:40Z Pipeline: 56.2fps, 1.1Mbps, avg frame age: 6.4ms, dropped: 1
+2026-08-20T12:33:41Z Capture source (SCStream): 59.2fps
+2026-08-20T12:33:41Z Pipeline: 59.9fps, 0.4Mbps, avg frame age: 5.4ms, dropped: 0
+2026-08-20T12:33:42Z Capture source (SCStream): 57.2fps
+2026-08-20T12:33:42Z Pipeline: 60.0fps, 0.4Mbps, avg frame age: 5.6ms, dropped: 0
+2026-08-20T12:33:43Z Capture source (SCStream): 57.8fps
+2026-08-20T12:33:43Z Pipeline: 59.8fps, 0.4Mbps, avg frame age: 6.6ms, dropped: 0
+2026-08-20T12:33:44Z Capture source (SCStream): 57.8fps
+2026-08-20T12:33:44Z Pipeline: 60.1fps, 0.4Mbps, avg frame age: 5.9ms, dropped: 0
+2026-08-20T12:33:45Z Capture source (SCStream): 56.5fps
+2026-08-20T12:33:45Z Pipeline: 60.2fps, 1.5Mbps, avg frame age: 5.4ms, dropped: 0
+2026-08-20T12:33:46Z Capture source (SCStream): 57.6fps
+2026-08-20T12:33:46Z Pipeline: 60.0fps, 0.5Mbps, avg frame age: 5.2ms, dropped: 0
+2026-08-20T12:33:47Z Capture source (SCStream): 57.5fps
+2026-08-20T12:33:47Z Pipeline: 59.8fps, 0.5Mbps, avg frame age: 5.4ms, dropped: 0
+2026-08-20T12:33:48Z Capture source (SCStream): 58.0fps
+2026-08-20T12:33:48Z Pipeline: 60.1fps, 0.5Mbps, avg frame age: 5.7ms, dropped: 0
+2026-08-20T12:33:49Z Capture source (SCStream): 57.5fps
+2026-08-20T12:33:49Z Pipeline: 60.2fps, 0.5Mbps, avg frame age: 5.7ms, dropped: 0
+2026-08-20T12:33:50Z Capture source (SCStream): 57.0fps
+2026-08-20T12:33:50Z Pipeline: 60.0fps, 0.5Mbps, avg frame age: 6.9ms, dropped: 0
+2026-08-20T12:33:51Z Capture source (SCStream): 57.7fps
+2026-08-20T12:33:51Z Pipeline: 60.0fps, 0.5Mbps, avg frame age: 5.5ms, dropped: 0
+2026-08-20T12:33:52Z Capture source (SCStream): 57.2fps
+2026-08-20T12:33:52Z Pipeline: 60.0fps, 0.7Mbps, avg frame age: 5.7ms, dropped: 0
+2026-08-20T12:33:53Z Capture source (SCStream): 57.8fps
+2026-08-20T12:33:53Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 5.6ms, dropped: 0
+2026-08-20T12:33:54Z Capture source (SCStream): 57.7fps
+2026-08-20T12:33:54Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 5.6ms, dropped: 0
+2026-08-20T12:33:55Z Capture source (SCStream): 57.6fps
+2026-08-20T12:33:55Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 5.7ms, dropped: 0
+2026-08-20T12:33:56Z Capture source (SCStream): 57.5fps
+2026-08-20T12:33:56Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 5.6ms, dropped: 0
+2026-08-20T12:33:57Z Capture source (SCStream): 57.8fps
+2026-08-20T12:33:57Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 5.6ms, dropped: 0
+2026-08-20T12:33:58Z Capture source (SCStream): 57.4fps
+2026-08-20T12:33:58Z Pipeline: 60.0fps, 0.8Mbps, avg frame age: 5.7ms, dropped: 0
+2026-08-20T12:33:59Z Capture source (SCStream): 57.3fps
+2026-08-20T12:33:59Z Pipeline: 60.0fps, 0.7Mbps, avg frame age: 5.6ms, dropped: 0
+2026-08-20T12:34:00Z Capture source (SCStream): 56.8fps
+2026-08-20T12:34:00Z Pipeline: 60.0fps, 0.8Mbps, avg frame age: 5.3ms, dropped: 0
+2026-08-20T12:34:01Z Capture source (SCStream): 57.3fps
+2026-08-20T12:34:01Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 5.2ms, dropped: 0
+2026-08-20T12:34:02Z Capture source (SCStream): 56.9fps
+2026-08-20T12:34:02Z Pipeline: 60.1fps, 0.6Mbps, avg frame age: 5.2ms, dropped: 0
+2026-08-20T12:34:03Z Capture source (SCStream): 57.5fps
+2026-08-20T12:34:04Z Pipeline: 60.0fps, 1.0Mbps, avg frame age: 5.3ms, dropped: 0
+2026-08-20T12:34:04Z Capture source (SCStream): 57.5fps
+2026-08-20T12:34:05Z Pipeline: 60.0fps, 0.5Mbps, avg frame age: 5.3ms, dropped: 0
+2026-08-20T12:34:05Z Capture source (SCStream): 57.5fps
+2026-08-20T12:34:06Z Pipeline: 60.0fps, 0.5Mbps, avg frame age: 5.3ms, dropped: 0
+2026-08-20T12:34:06Z Capture source (SCStream): 57.5fps
+2026-08-20T12:34:07Z Pipeline: 60.0fps, 0.5Mbps, avg frame age: 5.4ms, dropped: 0
+2026-08-20T12:34:07Z Capture source (SCStream): 57.5fps
+2026-08-20T12:34:08Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 5.1ms, dropped: 0
+2026-08-20T12:34:08Z Capture source (SCStream): 56.2fps
+2026-08-20T12:34:09Z Pipeline: 60.0fps, 0.7Mbps, avg frame age: 5.0ms, dropped: 0
+2026-08-20T12:34:09Z Capture source (SCStream): 57.0fps
+2026-08-20T12:34:10Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 5.0ms, dropped: 0
+2026-08-20T12:34:10Z Capture source (SCStream): 56.9fps
+2026-08-20T12:34:11Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 5.0ms, dropped: 0
+2026-08-20T12:34:11Z Capture source (SCStream): 56.9fps
+2026-08-20T12:34:12Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 5.1ms, dropped: 0
+2026-08-20T12:34:12Z Capture source (SCStream): 57.3fps
+2026-08-20T12:34:13Z Pipeline: 60.0fps, 0.7Mbps, avg frame age: 5.4ms, dropped: 0
+2026-08-20T12:34:13Z Capture source (SCStream): 56.9fps
+2026-08-20T12:34:14Z Pipeline: 59.9fps, 0.6Mbps, avg frame age: 5.2ms, dropped: 0
+2026-08-20T12:34:14Z Capture source (SCStream): 57.3fps
+2026-08-20T12:34:15Z Pipeline: 60.1fps, 0.5Mbps, avg frame age: 5.6ms, dropped: 0
+2026-08-20T12:34:15Z Capture source (SCStream): 57.7fps
+2026-08-20T12:34:16Z Pipeline: 60.0fps, 0.5Mbps, avg frame age: 5.2ms, dropped: 0
+2026-08-20T12:34:16Z Capture source (SCStream): 57.7fps
+2026-08-20T12:34:17Z Pipeline: 60.1fps, 0.5Mbps, avg frame age: 5.3ms, dropped: 0
+2026-08-20T12:34:17Z Capture source (SCStream): 57.7fps
+2026-08-20T12:34:17Z Connection mode changed to: wireless
+2026-08-20T12:34:18Z Pipeline: 60.0fps, 0.5Mbps, avg frame age: 5.3ms, dropped: 0
+2026-08-20T12:34:18Z Connection state: cancelled
+2026-08-20T12:34:18Z Connection cancelled
+2026-08-20T12:34:18Z 🚀 startServer() invoked. Check permission: true
+2026-08-20T12:34:18Z Using selected display 1: 1512x982, streaming 1512x982

@@ -1,0 +1,2 @@
+3f9fb90e66f08e208dd5fd2470b82c18915fd58cae3dfead635cf0c9691f6af6  baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+e42e1e304722a01e4b6376a1f596d8e09755bc5536e87c4b12b641caa0230dd2  baseline/AndroidClient/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk

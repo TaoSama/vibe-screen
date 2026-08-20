@@ -85,6 +85,30 @@ five gestures, including the post-pinch modifier-isolation check, remain
 blocked. See the
 [blocked rerun evidence](evidence/2026-08-16-xiaomi13-fuxi-fixed-binary-blocked/README.md).
 
+The 2026-08-20 rerun on the Nubia P0110/pacific Android substitute started from
+`origin/main` commit `b9d768e55c75f03cd3cb5d20939576bc8d24ff27` and used the
+currently installed stable-signed Host binary with SHA-256
+`c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996`. The
+read-only preflight reported `ready`: the installed Host hash matched the
+expected value, Screen Recording and Accessibility were both authorized for
+`dev.telemachus.display`, and the explicit Android identity was recorded as
+nubia P0110 / `pacific` / Android 16 / API 36 / serial
+`EP0110PZ0B9110300B`. The opt-in gesture driver passed three times, including
+the final synchronized event-tap run (`OK (1 test)`, 51.539 seconds). Host logs
+recorded Protocol v1 with `touch=on`, `right click injected`, `drag began`,
+`drag ended`, `two-finger scroll began`, and `pinch began`; the listen-only
+macOS event tap observed left down/up, right down/up, left drag, plain scroll
+with `command=false`, and pinch zoom scroll with `command=true`. The first
+plain click in that final run also recorded `command=false` after the previous
+completed pinch run, covering the fixed-binary modifier-isolation regression.
+See the
+[P0110 rerun evidence](evidence/2026-08-20-p0110-pacific-fixed-binary-rerun/README.md).
+
+This closes the fixed stable-signed binary rerun for a general Android
+substitute device. It does not replace or relabel Xiaomi 13/fuxi evidence, and
+the formal native HID mouse confirmation plus physical-finger/manual UX pass
+remain separate gates.
+
 Before any future short rerun, collect a read-only preflight so a blocked state
 is recorded without launching the Host, running instrumentation, resetting TCC
 or Keychain state, clearing Android app data, or starting a soak:
