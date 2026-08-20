@@ -19,12 +19,15 @@ BUF_VERSION = "v1.72.0"
 BUF_COMMAND = ["go", "run", f"github.com/bufbuild/buf/cmd/buf@{BUF_VERSION}"]
 ENVELOPE_TYPE = "vibescreen.protocol.v1.Envelope"
 MEDIA_HEADER_TYPE = "vibescreen.protocol.v1.MediaPacketHeader"
+FILE_CHUNK_HEADER_TYPE = "vibescreen.protocol.v1.FileChunkHeader"
 CONTROL_CHANNEL = 1
 VIDEO_CHANNEL = 2
+BULK_CHANNEL = 4
 MAXIMUM_FRAME_PAYLOAD_BYTES = 16 * 1024 * 1024
 UPGRADE_OFFER = bytes([0x0D])
 UPGRADE_ACKNOWLEDGEMENT = bytes([0x0D, 0x01])
 ANNEX_B_PAYLOAD = bytes.fromhex("0000000140010c01ff00aa55")
+FILE_CHUNK_PAYLOAD = b"hello"
 
 CONTROL_FIXTURES = (
     "client_hello",
@@ -53,6 +56,11 @@ CONTROL_FIXTURES = (
     "ping",
     "pong",
     "protocol_error",
+    "file_offer",
+    "file_accept",
+    "file_transfer_progress",
+    "file_transfer_cancel",
+    "file_transfer_complete",
 )
 
 
@@ -141,6 +149,12 @@ def generate(output_root: Path) -> None:
     media_header = media_header_path.read_bytes()
     media_packet_path.write_bytes(encode_varint(len(media_header)) + media_header + ANNEX_B_PAYLOAD)
 
+    file_chunk_header_path = output_root / "file_chunk_header.binpb"
+    convert_json(JSON_ROOT / "file_chunk_header.json", FILE_CHUNK_HEADER_TYPE, file_chunk_header_path)
+    file_chunk_path = output_root / "file_chunk.bin"
+    file_chunk_header = file_chunk_header_path.read_bytes()
+    file_chunk_path.write_bytes(encode_varint(len(file_chunk_header)) + file_chunk_header + FILE_CHUNK_PAYLOAD)
+
     offer_path = output_root / "upgrade_offer.bin"
     acknowledgement_path = output_root / "upgrade_acknowledgement.bin"
     offer_path.write_bytes(UPGRADE_OFFER)
@@ -154,6 +168,7 @@ def generate(output_root: Path) -> None:
             "header": "channel:uint8,payload_length:uint32-big-endian",
             "controlChannel": CONTROL_CHANNEL,
             "videoChannel": VIDEO_CHANNEL,
+            "bulkChannel": BULK_CHANNEL,
             "maximumPayloadBytes": MAXIMUM_FRAME_PAYLOAD_BYTES,
             "upgradeOfferHex": UPGRADE_OFFER.hex(),
             "upgradeOfferSha256": sha256(offer_path),
@@ -173,6 +188,19 @@ def generate(output_root: Path) -> None:
             "sha256": sha256(media_packet_path),
             "headerSha256": sha256(media_header_path),
             "expectedHeader": media_source,
+        },
+        "bulkFixture": {
+            "name": "file_chunk",
+            "headerMessageType": FILE_CHUNK_HEADER_TYPE,
+            "source": "json/file_chunk_header.json",
+            "headerBinary": "bin/file_chunk_header.binpb",
+            "binary": "bin/file_chunk.bin",
+            "channel": BULK_CHANNEL,
+            "payloadHex": FILE_CHUNK_PAYLOAD.hex(),
+            "byteLength": file_chunk_path.stat().st_size,
+            "sha256": sha256(file_chunk_path),
+            "headerSha256": sha256(file_chunk_header_path),
+            "expectedHeader": json.loads((JSON_ROOT / "file_chunk_header.json").read_text()),
         },
     }
     (output_root.parent / "manifest.json").write_text(

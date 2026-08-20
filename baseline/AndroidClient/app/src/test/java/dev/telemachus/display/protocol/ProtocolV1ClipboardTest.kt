@@ -622,7 +622,8 @@ class ProtocolV1ClipboardTest {
                 .build()
         val policy = base(10).setManagedPolicyStatus(status).build()
 
-        assertTrue(session.receive(policy).isEmpty())
+        val received = session.receive(policy).single() as ProtocolV1Session.Action.ManagedPolicyReceived
+        assertEquals(status, received.status)
         assertTrue(session.canSendClipboard)
         assertNotNull(session.offerClipboard("still allowed"))
     }
@@ -656,7 +657,8 @@ class ProtocolV1ClipboardTest {
                 .build()
         val policy = base(10).setManagedPolicyStatus(denied).build()
 
-        assertTrue(session.receive(policy).isEmpty())
+        val received = session.receive(policy).single() as ProtocolV1Session.Action.ManagedPolicyReceived
+        assertEquals(denied, received.status)
         assertFalse(session.canSendClipboard)
         assertNull(session.offerClipboard("after deny"))
         assertNull(session.requestClipboard(offered.clipboardOffer.changeId))

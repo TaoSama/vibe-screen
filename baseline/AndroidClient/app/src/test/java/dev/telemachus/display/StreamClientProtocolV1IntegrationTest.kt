@@ -1276,7 +1276,7 @@ class StreamClientProtocolV1IntegrationTest {
         val clientHello = readEnvelope(peer)
         assertEquals(Envelope.PayloadCase.CLIENT_HELLO, clientHello.payloadCase)
         onClientHello(clientHello.clientHello)
-        assertEquals(expectedClientCapabilities, clientHello.clientHello.capabilitiesList)
+        assertEquals(expectedClientCapabilities.toSet(), clientHello.clientHello.capabilitiesList.toSet())
         assertEquals(emptyList<Capability>(), clientHello.clientHello.requiredCapabilitiesList)
         write(peer, hostHello(1, hostCapabilities, maxClipboardBytes = maxClipboardBytes))
         write(peer, sessionAccepted(2, negotiatedCapabilities, maxClipboardBytes = maxClipboardBytes))
@@ -1642,6 +1642,7 @@ class StreamClientProtocolV1IntegrationTest {
                 Capability.CAPABILITY_HOST_ACTIONS,
                 Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
                 Capability.CAPABILITY_CLIPBOARD,
+                Capability.CAPABILITY_FILE_TRANSFER,
                 Capability.CAPABILITY_MANAGED_CONFIGURATION,
             )
     }

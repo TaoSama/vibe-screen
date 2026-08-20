@@ -233,7 +233,12 @@ final class ProtocolV1SessionClipboardTests: XCTestCase {
             id: 4,
             payload: .managedPolicyStatus(denied)
         ).serializedData())
-        XCTAssertTrue(policyActions.isEmpty)
+        XCTAssertEqual(policyActions.count, 1)
+        guard case .remoteManagedPolicyChanged(let effectivePolicy) = policyActions[0] else {
+            return XCTFail("Expected remoteManagedPolicyChanged")
+        }
+        XCTAssertTrue(effectivePolicy.managed)
+        XCTAssertFalse(effectivePolicy.clipboardAllowed)
         XCTAssertFalse(session.hasClipboardCapability)
         XCTAssertTrue(session.shareClipboard(text: "after deny").isEmpty)
         XCTAssertTrue(session.requestClipboardContent(changeID: firstOffer.changeID).isEmpty)

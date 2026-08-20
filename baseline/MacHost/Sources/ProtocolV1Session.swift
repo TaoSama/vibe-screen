@@ -181,7 +181,8 @@ struct ProtocolV1SessionConfiguration {
     static func productionHostCapabilities(
         touchEnabled: Bool,
         controllerAvailable: Bool = false,
-        managedPolicy: ManagedPolicy = .unmanaged
+        managedPolicy: ManagedPolicy = .unmanaged,
+        fileTransferAllowed: Bool = false
     ) -> Set<VSCapability> {
         // Native pointer/keyboard ride the same input toggle as touch: they
         // require Accessibility to actually inject, but the capability is
@@ -199,6 +200,9 @@ struct ProtocolV1SessionConfiguration {
         if managedPolicy.clipboardAllowed { capabilities.insert(.clipboard) }
         if touchEnabled && managedPolicy.hostActionsAllowed { capabilities.insert(.hostActions) }
         if controllerAvailable { capabilities.insert(.controller) }
+        if fileTransferAllowed && managedPolicy.fileTransferAllowed {
+            capabilities.insert(.fileTransfer)
+        }
         return capabilities
     }
 
@@ -222,6 +226,7 @@ struct ProtocolV1SessionConfiguration {
    /// single-display path keeps ListDisplays count == 1.
    var displays: [ProtocolV1DisplayInfo] = []
     var managedPolicy: ManagedPolicy = .unmanaged
+    var fileTransferPolicy: ProtocolV1FileTransferPolicy = .default
 }
 
 enum ProtocolV1SessionPhase: Equatable {
@@ -282,8 +287,15 @@ enum ProtocolV1SessionAction {
     /// offer/request. The server forwards it to the UI as an unsolicited
     /// transfer that still requires explicit local approval.
     case clipboardDirectContent(ValidatedClipboardContent)
-   case peerError(VSProtocolError)
-   case close
+    case fileOffer(VSFileOffer, correlationID: UInt64)
+    case fileAccept(VSFileAccept)
+    case fileTransferProgress(VSFileTransferProgress)
+    case fileTransferCancel(VSFileTransferCancel)
+    case fileTransferComplete(VSFileTransferComplete)
+    case remoteManagedPolicyChanged(VSManagedPolicyStatus)
+    case sendBulk(Data)
+    case peerError(VSProtocolError)
+    case close
 }
 
 final class ProtocolV1SessionCoordinator {
@@ -317,6 +329,8 @@ final class ProtocolV1SessionCoordinator {
     private var pendingVideoPreferencesToken: UInt64 = 0
     private var nextVideoPreferencesToken: UInt64 = 1
     private var managedPolicyResolver: ManagedPolicyResolver
+    private var negotiatedFileTransferPolicy: ProtocolV1FileTransferPolicy
+    private var peerResourceLimits = VSResourceLimits()
     /// Host-action invocations the host is currently running, keyed by the
     /// client's invocation_id and mapped to the request's Envelope message_id.
     /// The result echoes both the invocation_id (in the payload) and the
@@ -348,6 +362,7 @@ final class ProtocolV1SessionCoordinator {
         precondition(configuration.sessionEpoch > 0)
         self.configuration = configuration
         self.managedPolicyResolver = ManagedPolicyResolver(localPolicy: configuration.managedPolicy)
+        self.negotiatedFileTransferPolicy = configuration.fileTransferPolicy
     }
 
     var effectiveManagedPolicy: ManagedPolicy {
@@ -466,6 +481,63 @@ final class ProtocolV1SessionCoordinator {
         }
     }
 
+    func makeFileAccept(_ response: VSFileAccept) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard negotiatedCapabilities.contains(.fileTransfer) else { return [] }
+            return sendActions(payload: .fileAccept(response), correlationID: 0)
+        }
+    }
+
+    func makeFileTransferProgress(transferID: Data, receivedBytes: UInt64) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard negotiatedCapabilities.contains(.fileTransfer) else { return [] }
+            var progress = VSFileTransferProgress()
+            progress.transferID = transferID
+            progress.receivedBytes = receivedBytes
+            return sendActions(payload: .fileTransferProgress(progress), correlationID: 0)
+        }
+    }
+
+    func makeFileTransferComplete(transferID: Data, accepted: Bool, sha256: Data, rejectionReason: String) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard negotiatedCapabilities.contains(.fileTransfer) else { return [] }
+            var result = VSFileTransferComplete()
+            result.transferID = transferID
+            result.accepted = accepted
+            result.sha256 = sha256
+            result.rejectionReason = accepted ? "" : rejectionReason
+            return sendActions(payload: .fileTransferComplete(result), correlationID: 0)
+        }
+    }
+
+    func makeFileTransferCancel(transferID: Data, reasonCode: String) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard negotiatedCapabilities.contains(.fileTransfer) else { return [] }
+            var cancel = VSFileTransferCancel()
+            cancel.transferID = transferID
+            cancel.reasonCode = reasonCode
+            return sendActions(payload: .fileTransferCancel(cancel), correlationID: 0)
+        }
+    }
+
+    func makeFileOffer(_ offer: VSFileOffer) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard isNegotiated, negotiatedCapabilities.contains(.fileTransfer) else { return [] }
+            return sendActions(payload: .fileOffer(offer), correlationID: 0)
+        }
+    }
+
+    func makeBulkFrame(_ payload: Data) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard isNegotiated, negotiatedCapabilities.contains(.fileTransfer) else { return [] }
+            return [.sendBulk(payload)]
+        }
+    }
+
+    func negotiatedFileTransferPolicySnapshot() -> ProtocolV1FileTransferPolicy {
+        withSessionLock { negotiatedFileTransferPolicy }
+    }
+
     /// Completes one native controller CONNECTED delivery. The pending entry
     /// owns the request correlation so callers cannot acknowledge a different
     /// lifecycle, and removal before encoding makes duplicate completions a
@@ -541,12 +613,10 @@ final class ProtocolV1SessionCoordinator {
             hostHello.capabilities = configuration.hostCapabilities.sorted { $0.rawValue < $1.rawValue }
             hostHello.codecs = configuration.supportedCodecs
             // Echo the negotiated resource limits back to the client so both
-            // sides agree on the clipboard byte ceiling. HostHello carries the
+            // sides agree on clipboard/file ceilings. HostHello carries the
             // host's view; SessionAccepted carries the jointly negotiated
-            // value. They are identical for clipboard.
-            var hostLimits = VSResourceLimits()
-            hostLimits.maximumClipboardBytes = UInt64(negotiatedMaximumClipboardBytes)
-            hostHello.resourceLimits = hostLimits
+            // value. They are identical after capability negotiation.
+            hostHello.resourceLimits = negotiatedResourceLimits()
 
             var accepted = VSSessionAccepted()
             accepted.sessionID = configuration.sessionID
@@ -1058,6 +1128,51 @@ final class ProtocolV1SessionCoordinator {
         case .managedPolicyStatus(let status):
             return handleManagedPolicyStatus(status, correlationID: envelope.messageID)
 
+        case .fileOffer(let offer):
+            guard negotiatedCapabilities.contains(.fileTransfer) else {
+                return unsupportedCapability("File transfer was not negotiated.", envelope.messageID)
+            }
+            guard isNegotiated else {
+                return invalidState("FileOffer arrived before session negotiation.", envelope.messageID)
+            }
+            return [.fileOffer(offer, correlationID: envelope.messageID)]
+
+        case .fileAccept(let response):
+            guard negotiatedCapabilities.contains(.fileTransfer) else {
+                return unsupportedCapability("File transfer was not negotiated.", envelope.messageID)
+            }
+            guard !response.transferID.isEmpty else {
+                return invalidState("FileAccept is missing a transfer id.", envelope.messageID)
+            }
+            return [.fileAccept(response)]
+
+        case .fileTransferProgress(let progress):
+            guard negotiatedCapabilities.contains(.fileTransfer) else {
+                return unsupportedCapability("File transfer was not negotiated.", envelope.messageID)
+            }
+            guard !progress.transferID.isEmpty else {
+                return invalidState("FileTransferProgress is missing a transfer id.", envelope.messageID)
+            }
+            return [.fileTransferProgress(progress)]
+
+        case .fileTransferCancel(let cancellation):
+            guard negotiatedCapabilities.contains(.fileTransfer) else {
+                return unsupportedCapability("File transfer was not negotiated.", envelope.messageID)
+            }
+            guard !cancellation.transferID.isEmpty else {
+                return invalidState("FileTransferCancel is missing a transfer id.", envelope.messageID)
+            }
+            return [.fileTransferCancel(cancellation)]
+
+        case .fileTransferComplete(let result):
+            guard negotiatedCapabilities.contains(.fileTransfer) else {
+                return unsupportedCapability("File transfer was not negotiated.", envelope.messageID)
+            }
+            guard !result.transferID.isEmpty else {
+                return invalidState("FileTransferComplete is missing a transfer id.", envelope.messageID)
+            }
+            return [.fileTransferComplete(result)]
+
         case .protocolError(let error):
             phase = .failed
             _ = stylusSequenceState.consumeReset()
@@ -1066,6 +1181,8 @@ final class ProtocolV1SessionCoordinator {
             clipboardCore?.reset()
             remoteManagedClipboardAllowed = true
             managedPolicyResolver.clearRemote()
+            negotiatedFileTransferPolicy = configuration.fileTransferPolicy
+            peerResourceLimits = VSResourceLimits()
             return [.peerError(error), .close]
 
         case .disconnectNotice:
@@ -1076,6 +1193,8 @@ final class ProtocolV1SessionCoordinator {
             clipboardCore?.reset()
             remoteManagedClipboardAllowed = true
             managedPolicyResolver.clearRemote()
+            negotiatedFileTransferPolicy = configuration.fileTransferPolicy
+            peerResourceLimits = VSResourceLimits()
             return [.close]
 
         default:
@@ -1163,6 +1282,15 @@ final class ProtocolV1SessionCoordinator {
     private var isStreaming: Bool {
         if case .streaming = phase { return true }
         return false
+    }
+
+    private var isNegotiated: Bool {
+        switch phase {
+        case .awaitingClientHello, .preparingCodec, .closed, .failed:
+            return false
+        case .awaitingDisplayStart, .awaitingVideoConfig, .streaming:
+            return true
+        }
     }
 
     private func acceptsInputPhase(_ inputPhase: VSInputPhase) -> Bool {
@@ -1319,6 +1447,8 @@ final class ProtocolV1SessionCoordinator {
             baseNegotiatedCapabilities.remove(.usbHidModifierByte)
         }
         self.baseNegotiatedCapabilities = baseNegotiatedCapabilities
+        peerResourceLimits = hello.resourceLimits
+        negotiatedFileTransferPolicy = fileTransferPolicy(for: managedPolicyResolver.effectivePolicy)
         self.negotiatedCapabilities = policyFilteredCapabilities(
             baseNegotiatedCapabilities,
             policy: managedPolicyResolver.effectivePolicy
@@ -1375,10 +1505,18 @@ final class ProtocolV1SessionCoordinator {
         limits.maximumClipboardBytes = negotiatedMaximumClipboardBytes > 0
             ? UInt64(negotiatedMaximumClipboardBytes)
             : ManagedPolicy.defaultMaximumClipboardBytes
-        limits.maximumFileBytes = ManagedPolicy.defaultMaximumFileBytes
-        limits.maximumFileChunkBytes = ManagedPolicy.defaultMaximumFileChunkBytes
+        if negotiatedCapabilities.contains(.fileTransfer) {
+            limits.maximumFileBytes = negotiatedFileTransferPolicy.maximumFileBytes
+            limits.maximumFileChunkBytes = UInt32(clamping: negotiatedFileTransferPolicy.maximumChunkBytes)
+        }
         managedPolicyResolver.effectivePolicy.applyingResourceLimits(to: &limits)
         return limits
+    }
+
+    private func fileTransferPolicy(for policy: ManagedPolicy) -> ProtocolV1FileTransferPolicy {
+        configuration.fileTransferPolicy
+            .negotiated(with: peerResourceLimits)
+            .applying(remote: ProtocolV1RemoteManagedPolicy(status: policy.protocolStatus))
     }
 
     private func policyFilteredCapabilities(
@@ -1650,11 +1788,12 @@ final class ProtocolV1SessionCoordinator {
         if !remoteManagedClipboardAllowed {
             clipboardCore?.reset()
         }
+        negotiatedFileTransferPolicy = fileTransferPolicy(for: effectivePolicy)
         negotiatedCapabilities = policyFilteredCapabilities(baseNegotiatedCapabilities, policy: effectivePolicy)
         if !effectivePolicy.hostActionsAllowed {
             pendingHostActionInvocations.removeAll()
         }
-        return []
+        return [.remoteManagedPolicyChanged(effectivePolicy.protocolStatus)]
     }
 
     private func handleIncomingClipboardOffer(
@@ -1810,15 +1949,6 @@ final class ProtocolV1SessionCoordinator {
         remoteManagedClipboardAllowed = true
         managedPolicyResolver.clearRemote()
         return [.close]
-    }
-
-    private var isNegotiated: Bool {
-        switch phase {
-        case .awaitingDisplayStart, .awaitingVideoConfig, .streaming:
-            return true
-        default:
-            return false
-        }
     }
 
     private func resetControllerState() {
