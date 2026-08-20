@@ -238,6 +238,13 @@ evidence 不证明设备身份，也不关闭 clipboard 真机 gate。
 instrumentation。该 run 仅证明 P0110 上 Android 前台系统剪贴板本地 smoke；Host
 preflight/会话失败使跨端 clipboard 验收停在阻断状态，仍不能关闭 README gate。
 
+PR #157 rebase 到 origin/main cc26a84c829016fa61c721f73a128284fdf64f92 后，
+设备锁缺失且 P0110 在线，但 `python3 scripts/macos_dev_host.py preflight
+--install-path "/Applications/Vibe Screen.app"` 仍因本机 keychain 缺少稳定
+`Vibe Screen Dev` 签名身份而失败，退出码 1。因此本轮未启动 Host listener、未设置
+ADB reverse、未运行 Android app 或跨端剪贴板动作；gate 继续 open。阻断记录见
+[evidence/2026-08-21-cc26a84-host-preflight-blocked/README.md](evidence/2026-08-21-cc26a84-host-preflight-blocked/README.md)。
+
 ## 未验证风险
 
 - 真机 USB 会话中 Android <-> MacHost 双向传输。
