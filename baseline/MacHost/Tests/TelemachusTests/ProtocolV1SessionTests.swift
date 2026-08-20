@@ -1787,7 +1787,7 @@ final class ProtocolV1SessionTests: XCTestCase {
 
     private func containsCodecNegotiated(
         _ actions: [ProtocolV1SessionAction],
-        codec: VSCodec
+        codec: StreamCodec
     ) -> Bool {
         actions.contains { action in
             if case .codecNegotiated(codec) = action { return true }
