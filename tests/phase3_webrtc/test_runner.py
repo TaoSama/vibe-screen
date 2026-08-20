@@ -83,6 +83,7 @@ class RunnerTests(unittest.TestCase):
     def test_signaling_config_is_loopback_and_bounded(self) -> None:
         config = signaling_config(39001)
         self.assertEqual(config["listen_address"], "127.0.0.1:39001")
+        self.assertEqual(config["store_backend"], "memory")
         self.assertLessEqual(config["max_active_sessions"], 8)
         self.assertEqual(
             config["session_ttl_seconds"], config["max_session_ttl_seconds"]
@@ -126,6 +127,121 @@ class RunnerTests(unittest.TestCase):
             traceback_locals(failure),
             ("generated-secret",),
         )
+
+    @mock.patch("scripts.phase3_webrtc.processes.project_and_validate_public_diagnostic")
+    def test_command_projection_failure_reports_only_safe_summary(
+        self,
+        project: mock.Mock,
+    ) -> None:
+        project.side_effect = E2EFailure(
+            "diagnostic projection failed the public privacy scan: endpoint,path"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                run_checked(
+                    ["/bin/sh", "-c", "printf unsafe-secret"],
+                    cwd=Path(directory),
+                    timeout=2,
+                    redact_values=("unsafe-secret",),
+                )
+            except E2EFailure as exception:
+                failure = exception
+            else:
+                self.fail("run_checked unexpectedly accepted a projection failure")
+
+        message = str(failure)
+        self.assertIn("stage=stdout_projection", message)
+        self.assertIn("exception=E2EFailure", message)
+        self.assertIn("detail=privacy_findings", message)
+        self.assertIn("output_bytes=13", message)
+        self.assertIn(hashlib.sha256(b"unsafe-secret").hexdigest(), message)
+        self.assertNotIn("unsafe-secret", message)
+        self.assertNotIn("/Users/alice", message)
+        self.assertIsNone(failure.__cause__)
+        self.assertIsNone(failure.__context__)
+
+    @mock.patch("scripts.phase3_webrtc.processes.project_and_validate_public_diagnostic")
+    def test_failed_command_projection_failure_uses_command_stage(
+        self,
+        project: mock.Mock,
+    ) -> None:
+        project.side_effect = [
+            "safe-output",
+            E2EFailure(
+                "diagnostic projection failed the public privacy scan: endpoint,path"
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                run_checked(
+                    ["/bin/sh", "-c", "printf safe-output; exit 9"],
+                    cwd=Path(directory),
+                    timeout=2,
+                    redact_values=("unsafe-secret",),
+                )
+            except E2EFailure as exception:
+                failure = exception
+            else:
+                self.fail("run_checked unexpectedly accepted a command projection failure")
+
+        message = str(failure)
+        self.assertIn("stage=command_projection", message)
+        self.assertIn("exception=E2EFailure", message)
+        self.assertIn("detail=privacy_findings", message)
+        self.assertIn("output_bytes=11", message)
+        self.assertIn(hashlib.sha256(b"safe-output").hexdigest(), message)
+        self.assertNotIn("unsafe-secret", message)
+        self.assertIsNone(failure.__cause__)
+        self.assertIsNone(failure.__context__)
+
+    @mock.patch("scripts.phase3_webrtc.processes.project_and_validate_public_diagnostic")
+    @mock.patch("scripts.phase3_webrtc.processes.subprocess.run")
+    def test_timeout_command_projection_failure_uses_command_stage(
+        self,
+        run: mock.Mock,
+        project: mock.Mock,
+    ) -> None:
+        timeout_error = subprocess.TimeoutExpired(
+            ["peer", "unsafe-secret"],
+            timeout=5,
+            output="safe-timeout-output",
+            stderr="stderr unsafe-secret",
+        )
+        run.side_effect = timeout_error
+        project.side_effect = [
+            "safe-timeout-output",
+            E2EFailure(
+                "diagnostic projection failed the public privacy scan: endpoint,path"
+            ),
+        ]
+
+        try:
+            run_checked(
+                ["peer", "unsafe-secret"],
+                cwd=ROOT,
+                timeout=5,
+                environment={"TOKEN": "environment-secret"},
+                redact_values=("unsafe-secret", "environment-secret"),
+            )
+        except E2EFailure as exception:
+            failure = exception
+        else:
+            self.fail("run_checked unexpectedly accepted a timeout projection failure")
+
+        message = str(failure)
+        self.assertIn("stage=command_projection", message)
+        self.assertIn("exception=E2EFailure", message)
+        self.assertIn("detail=privacy_findings", message)
+        self.assertIn("output_bytes=19", message)
+        self.assertIn(hashlib.sha256(b"safe-timeout-output").hexdigest(), message)
+        self.assertNotIn("unsafe-secret", message)
+        self.assertNotIn("environment-secret", message)
+        self.assertIsNone(failure.__cause__)
+        self.assertIsNone(failure.__context__)
+        self.assertIsNone(timeout_error.output)
+        self.assertIsNone(timeout_error.stdout)
+        self.assertIsNone(timeout_error.stderr)
+        self.assertIsNone(timeout_error.__traceback__)
 
     @mock.patch("scripts.phase3_webrtc.processes.subprocess.run")
     def test_timeout_clears_raw_exception_and_traceback_locals(

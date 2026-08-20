@@ -131,7 +131,8 @@ def project_public_diagnostic(
     rendered = POSIX_ABSOLUTE_PATH.sub("<redacted-path>", rendered)
     rendered = _redact_host_port_endpoints(rendered)
     rendered = _redact_ip_addresses(rendered)
-    return BARE_FQDN.sub("<redacted-hostname>", rendered)
+    rendered = BARE_FQDN.sub("<redacted-hostname>", rendered)
+    return POSIX_ABSOLUTE_PATH.sub("<redacted-path>", rendered)
 
 
 def project_and_validate_public_diagnostic(
@@ -145,8 +146,12 @@ def project_and_validate_public_diagnostic(
         secret_values=secret_values,
         private_paths=private_paths,
     )
-    if public_diagnostic_findings(projected):
-        raise E2EFailure("diagnostic projection failed the public privacy scan")
+    findings = public_diagnostic_findings(projected)
+    if findings:
+        categories = ",".join(sorted(set(findings)))
+        raise E2EFailure(
+            f"diagnostic projection failed the public privacy scan: {categories}"
+        )
     return projected
 
 

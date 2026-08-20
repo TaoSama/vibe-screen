@@ -191,6 +191,20 @@ class LocalWebRTCPrivacyTests(unittest.TestCase):
                 self.assertTrue(public_diagnostic_findings(endpoint))
                 self.assertEqual(project_public_diagnostic(endpoint), expected)
 
+    def test_projection_remains_closed_after_hostname_redaction(self) -> None:
+        raw = (
+            "dyld[123]: Library not loaded: @rpath/WebRTC.framework/Versions/A/WebRTC\n"
+            "  Referenced from: <ABC> "
+            "/Users/runner/work/vibe-screen/.build/release/Vibe Screen"
+        )
+
+        projected = project_public_diagnostic(raw)
+
+        self.assertEqual(public_diagnostic_findings(projected), [])
+        self.assertEqual(project_public_diagnostic(projected), projected)
+        self.assertNotIn("/Versions/A/WebRTC", projected)
+        self.assertNotIn("/Users/runner", projected)
+
     def test_traceback_projection_truncates_case_insensitively(self) -> None:
         raw = "safe prefix\ntRaCeBaCk (most recent call last):\n/private/path.py"
         projected = project_public_diagnostic(raw)

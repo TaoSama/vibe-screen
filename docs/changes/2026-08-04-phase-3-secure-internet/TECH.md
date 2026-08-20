@@ -134,22 +134,24 @@ deleted according to the operations retention policy.
 
 `services/signaling/` now implements a short-lived authenticated REST/long-poll
 rendezvous for one offer, one answer, and bounded ICE events. Swift and Android
-clients interoperate with that contract in local tests. It is intentionally a
-single-instance in-memory service; restart invalidates all sessions. The issuer
-can also invalidate a session explicitly with an idempotent authenticated
-`DELETE`: role tokens, queued signaling payloads, and long polls become unusable
-immediately, while a request-ID tombstone remains until the original expiry.
+clients interoperate with that contract in local tests. It has an explicit
+process-local `memory` backend for local development and a PostgreSQL `postgres`
+backend for production-authority routing state. The issuer can also invalidate a
+session explicitly with an idempotent authenticated `DELETE`: role tokens, queued
+signaling payloads, and long polls become unusable immediately, while a request-ID
+tombstone remains until the original expiry.
 
 Signaling now has an explicit `production_authority` mode. Session creation,
 each role-token authorization, and invalidation are delegated to the
-PostgreSQL-backed authority, while SDP/ICE routing remains process-local.
-Authority failure, malformed response, or a session-ID collision fails closed
-without local token fallback or state overwrite. A real two-process PostgreSQL
-test covers account/device registration, admission, offer/poll, device
-revocation rejecting both roles, bounded shutdown, and secret-log scanning. A
-signaling restart cannot rebuild lost routing from an authority replay: the old
-request returns `409`, and the owner must issue a fresh request with a larger
-epoch. This is a signaling admission boundary, not automatic product issuance.
+PostgreSQL-backed authority, while SDP/ICE routing is stored in the signaling
+PostgreSQL backend until TTL cleanup. Authority failure, malformed response,
+storage failure, or a session-ID collision fails closed without local token
+fallback or state overwrite. Real PostgreSQL tests cover migration/readiness,
+restart-durable routing, expiry and concurrent capacity; a two-process
+PostgreSQL test covers account/device registration, admission, offer/poll,
+device revocation rejecting both roles, bounded shutdown, and secret-log
+scanning. This is a signaling admission boundary, not automatic product
+issuance.
 
 The service still rejects a second offer. The product transport therefore does
 not attempt to reuse the old rendezvous after a network handoff: it suspends
@@ -305,7 +307,7 @@ semantic change requires a new protocol package/version.
 | Android product session | `MainActivity.kt`, `InternetSessionProfileStore.kt`, Android Internet packages, `io.github.webrtc-sdk:android:144.7559.09` | Internet UI scans the pairing offer, completes the copied request/acceptance flow, imports a strict host-signed short-lived lease, selects direct/forced TURN, drives Protocol v1 video/touch and decoder state, and exposes connect/disconnect/revoke/error/recovery. Lease verification precedes persistence/high-watermark changes; durable session/identity epochs reject stale ciphers and permit monotonic reauthorization after revoke. A fresh-session request or terminal failure invalidates the old transport owner, so late route/connected callbacks cannot restore touch or heartbeat. Credential, pairing and revocation cleanup retain restart-safe retry state. Tokens and pairing/session secrets are AndroidKeyStore-wrapped; sensitive dialogs disable screenshots/autofill, and release cleartext is disabled. The historical Nubia P0110 run is dated 2026-08-05 and bound only to commit `597518f948075e396352bc353afcec01a30303f3`; it covers local UI, direct/forced-coturn Android↔Mac product interop and application AEAD with synthetic Protocol v1 media. It is not current-worktree evidence and must not be extrapolated to later commits, real screen capture, public Internet, rotation, handoff, or soak |
 | Existing LAN security | `WirelessAuth.swift`, `AuthHandshake.kt`, `StreamingServer.swift`, `StreamClient.kt`, LAN secure-record adapters | 32-byte bearer token admission followed by per-session AES-256-GCM application records for current macOS/Android peers. Explicit legacy fallback remains plaintext and must be separately reported; trusted LAN is still private-network only and not Internet E2EE |
 | Relay control/data plane | `services/relay/`, `deploy/phase3/` | Short-term credential control plane and digest-pinned coturn/relay Compose data plane exist. REST usernames map all sessions/expiries for one device to one coturn allocation-quota principal, and production peer ACLs deny private, CGNAT, link-local, ULA and other internal ranges. Relay now has explicit local/production-authority modes: production credential issuance requires `allocation_id`, calls Authority `/v1/relay/admissions`, and fails closed on dependency, revoked session/device, quota, or conflicting allocation identity before returning a TURN credential. Authority closes relay-allocation ledger entries when an account is suspended, a device is revoked, or a signaling admission is invalidated, and later usage/reconciliation updates for revoked, suspended, expired, or closed allocations fail closed without advancing counters. Existing coturn allocations are not terminated by this control-plane action; public deployment, authoritative byte usage, active-allocation disconnect, and multi-node state remain gates |
-| Signaling | `services/signaling/` plus Swift/Kotlin clients and `services/authority/` | Runnable single-instance in-memory routing, explicit local/production-authority modes, fail-closed authority admission and per-request authorization, device-revocation rejection, issuer-only invalidation, and real two-process PostgreSQL tests exist. It remains a one-offer router; Mac/Android automatic profile issuance, shared multi-instance routing, coturn active-allocation disconnect, and active transport disconnect remain gates |
+| Signaling | `services/signaling/` plus Swift/Kotlin clients and `services/authority/` | Runnable memory and PostgreSQL store backends, explicit local/production-authority modes, fail-closed store readiness, fail-closed authority admission and per-request authorization, device-revocation rejection, issuer-only invalidation, restart-durable PostgreSQL routing tests, and real two-process PostgreSQL tests exist. It remains a one-offer router; Mac/Android automatic profile issuance, proven multi-instance routing, relay/coturn authority integration, and active transport disconnect remain gates |
 | Rotation/revocation/replay | Protocol, Go core, platform security and product-session directories | Record replay and old-epoch rejection plus peer-scoped signed local revocation have unit/self-test coverage. Android and macOS retain durable retry state for local secret cleanup; macOS prevents one device's revoke history from overwriting another's epoch floor. Authority-backed process integration now covers session invalidation and device revocation rejecting signaling role access plus future relay credential admission for the same session/device. End-to-end revocation propagation to the peer and active TURN allocation; rotation interoperability; and real reconnect injection remain gates |
 | Adaptive video | `AdaptiveMediaPolicy` (macOS) / `AdaptiveVideoPolicy` (Android), `InternetProductSession` video-config transaction, `InternetAdaptiveVideoPlan` baseline clamp | Fast-drop/slow-rise hysteresis with jitter reset, even dimensions without upscaling, user-baseline upper bounds, latest-proposal-wins queuing, rotation serialization, stale owner/generation rejection, retry after local or peer rejection, host apply encoder/capture + media gate → `VideoConfig` ACK → keyframe/resume, reject rollback, and host-apply/ACK/rollback-timeout fail-closed are implemented and unit/self-tested. The production encoder/capture-application callback (`onAdaptiveProfileRequested`) is wired, but verified only through offline build and unit/self-tests, not real capture output. Real ScreenCaptureKit→Android decoder continuity, public Internet, real remote TURN, real network fluctuation, handoff, and soak remain unproved |
 | Network simulation | `scripts/phase3/network_profile.py`, `tests/phase3/` | Deterministic contract simulation only; explicitly not OS-level impairment, ICE, or TURN evidence |
@@ -340,8 +342,8 @@ These are release blockers, not accepted architecture:
   epoch advance, and rejection of old records.
 - Authority-backed signaling still performs remote authorization for every
   message publish and poll, and serializes creates through one global
-  `authorityCreateMu` to prevent orphan admissions at local capacity. These are
-  fail-closed correctness choices, not evidence of multi-instance throughput.
+  PostgreSQL advisory lock to prevent orphan admissions at store capacity. These
+  are fail-closed correctness choices, not evidence of multi-instance throughput.
   Signaling and authority require NTP clock synchronization, and their maximum
   session TTL settings must agree; expiry validation is not relaxed for skew.
 - The authority enforces one epoch floor per device ID, while the Mac lease

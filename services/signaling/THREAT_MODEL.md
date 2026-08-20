@@ -26,10 +26,10 @@ mandatory even when signaling authentication succeeds.
 | Replay/conflicting retry | Request/message IDs, exact-body idempotency, conflict on mutation, monotonic event sequence | Clients persist retry IDs only for session TTL |
 | Candidate/SDP flood | Body/SDP/candidate/count/message-rate/session/waiter caps | Edge IP/global DDoS and connection limits |
 | Cross-session read | Every poll/write re-authenticates session-scoped token; wrong/unknown is uniform 404 | TLS prevents bearer interception |
-| Signaling content leak | No payload logging or metric labels; memory-only TTL deletion | Operator access control and crash/core-dump policy |
+| Signaling content leak | No payload logging or metric labels; TTL deletion from the configured store | Operator/database access control, backup retention, and crash/core-dump policy |
 | Arbitrary data tunneling | Closed JSON schema permits only offer/answer/candidate/end records | Edge traffic anomaly alerts |
 | Slow request/poll exhaustion | HTTP read/header/write deadlines and per-role waiter cap | Reverse-proxy global concurrency limits |
-| Stale state after restart | Routing state is intentionally not persisted; an old authority admission cannot reconstruct it | Clients establish a fresh rendezvous/session epoch |
+| Stale state after restart | `memory` mode loses routing on restart; `postgres` mode persists short-lived routing rows and idempotency until TTL | Clients still establish a fresh rendezvous/session epoch after invalidation or expiry |
 | Active session invalidation | Authority marks the admission revoked; signaling clears events, wakes polls, and tombstones the request ID until original expiry | Product authority persists device revocation and also terminates product/TURN access |
 | Compromised signaling | Cannot decrypt application E2EE or authenticate peer transcript | Endpoint identity pinning; rotate role credentials |
 | Authority failure or compromise | In `production_authority` mode dependency/protocol failures return `502`, policy rejects stay denied, no local token fallback occurs, and `/readyz` reports unavailable | Deploy authority with HA PostgreSQL, TLS, and PITR; monitor authority latency/error rate |
@@ -42,14 +42,15 @@ mandatory even when signaling authentication succeeds.
   device revocation at the authority immediately rejects both role tokens on
   their next request, but an active PeerConnection or TURN allocation is not
   actively disconnected.
-- The service is single-instance and in-memory. Horizontal replicas do not share
-  state, rate limits, or idempotency. Sticky routing does not make this durable.
+- `memory` mode is single-instance and process-local. PostgreSQL durable routing
+  is implemented for `production_authority`, but horizontal multi-replica
+  operation, global create-rate enforcement, and throughput remain unproved.
 - The global issuer token authenticates only the trusted backend, not a human or
   endpoint. It must never ship in host/mobile clients. The signaling-to-authority
   token is independent and must also never ship to clients.
 - In `production_authority` mode every message publish and poll performs a
   remote authority authorization, and creates are serialized by a global
-  `authorityCreateMu`. This is a fail-closed correctness choice, not a
+  PostgreSQL advisory lock. This is a fail-closed correctness choice, not a
   high-throughput design; multi-instance throughput is not claimed.
 - The monotonic numeric poll cursor is not a capability. A bearer holder can skip
   its own events by advancing it, but cannot access another role/session.
@@ -63,8 +64,12 @@ mandatory even when signaling authentication succeeds.
   not reject duplicate object keys. Clients and the authority must emit canonical
   unique keys; a future protocol version should add duplicate-key rejection
   before accepting untrusted public issuance.
-- Process memory and crash dumps can contain live SDP, ICE candidates, and role
-  tokens until TTL/collection. Disable core dumps and restrict process debugging.
+- Process memory and crash dumps can contain live SDP, ICE candidates,
+  request/session identifiers, and local-mode role tokens until TTL cleanup.
+  PostgreSQL active rows are removed by TTL cleanup, but WAL, snapshots, and
+  backups may retain those values until their separate encrypted retention and
+  purge controls run. Disable core dumps, restrict process/database debugging,
+  encrypt backups, and keep retention short.
 
 ## Security test gates
 
@@ -78,5 +83,6 @@ exchange, device revocation rejecting both role tokens, and log redaction of all
 service/role tokens and SDP. Before an Internet release, additionally
 test TLS policy, proxy parsing, device revocation propagation to active
 PeerConnections/TURN allocations, ICE generations, TURN credential TTL binding,
-multi-instance storage, fuzzed JSON/SDP/candidates, process/core-dump handling,
-and an independent peer-transcript security review.
+multi-instance storage behavior, PostgreSQL backup/deletion handling, fuzzed
+JSON/SDP/candidates, process/core-dump handling, and an independent
+peer-transcript security review.

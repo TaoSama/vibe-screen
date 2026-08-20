@@ -42,6 +42,68 @@ def _raise_sanitized_failure(message: str) -> NoReturn:
     raise E2EFailure(message) from None
 
 
+def _safe_projection_detail(exception: BaseException) -> str | None:
+    prefix = "diagnostic projection failed the public privacy scan: "
+    if isinstance(exception, E2EFailure) and str(exception).startswith(prefix):
+        return "privacy_findings:" + str(exception)[len(prefix) :]
+    return None
+
+
+def _project_command_or_failure(
+    command: list[str],
+    *,
+    cwd: Path,
+    redact_values: tuple[str, ...],
+    diagnostic_private_paths: tuple[Path | str, ...],
+    rendered_output: str,
+) -> tuple[str | None, str | None]:
+    try:
+        rendered_command = project_and_validate_public_diagnostic(
+            " ".join(command),
+            secret_values=redact_values,
+            private_paths=(cwd, Path.home(), *diagnostic_private_paths),
+        )
+        return rendered_command, None
+    except Exception as exception:
+        detail = _safe_projection_detail(exception)
+        exception.__traceback__ = None
+        exception.__cause__ = None
+        exception.__context__ = None
+        return None, _safe_failure_summary(
+            exception,
+            stage="command_projection",
+            output=rendered_output,
+            detail=detail,
+        )
+
+
+def _safe_failure_summary(
+    exception: BaseException,
+    *,
+    stage: str,
+    output: str | bytes | None = None,
+    detail: str | None = None,
+) -> str:
+    if isinstance(output, bytes):
+        rendered_output = output.decode("utf-8", errors="replace")
+    else:
+        rendered_output = output or ""
+    output_bytes = len(rendered_output.encode("utf-8", errors="replace"))
+    output_hash = hashlib.sha256(
+        rendered_output.encode("utf-8", errors="replace")
+    ).hexdigest()
+    summary = (
+        "command execution failed before a safe result was available "
+        f"(stage={stage}, exception={type(exception).__name__}, "
+        f"output_bytes={output_bytes}, output_sha256={output_hash})"
+    )
+    if detail and all(
+        character in "abcdefghijklmnopqrstuvwxyz_,-:" for character in detail
+    ):
+        summary = summary[:-1] + f", detail={detail})"
+    return summary
+
+
 def _perform_run_checked(
     command: list[str],
     *,
@@ -76,18 +138,50 @@ def _perform_run_checked(
             exception.__traceback__ = None
             exception.__cause__ = None
             exception.__context__ = None
-            rendered_output = project_and_validate_public_diagnostic(
-                timeout_output,
-                secret_values=redact_values,
-                private_paths=(cwd, Path.home(), *diagnostic_private_paths),
+            try:
+                rendered_output = project_and_validate_public_diagnostic(
+                    timeout_output,
+                    secret_values=redact_values,
+                    private_paths=(cwd, Path.home(), *diagnostic_private_paths),
+                )
+            except Exception as projection_exception:
+                detail = _safe_projection_detail(projection_exception)
+                projection_exception.__traceback__ = None
+                projection_exception.__cause__ = None
+                projection_exception.__context__ = None
+                return _RunCheckedOutcome(
+                    completed=None,
+                    failure_message=_safe_failure_summary(
+                        projection_exception,
+                        stage="stdout_projection",
+                        output=timeout_output,
+                        detail=detail,
+                    ),
+                )
+            rendered_command, projection_failure = _project_command_or_failure(
+                command,
+                cwd=cwd,
+                redact_values=redact_values,
+                diagnostic_private_paths=diagnostic_private_paths,
+                rendered_output=rendered_output,
             )
-            rendered_command = project_and_validate_public_diagnostic(
-                " ".join(command),
-                secret_values=redact_values,
-                private_paths=(cwd, Path.home(), *diagnostic_private_paths),
-            )
+            if projection_failure is not None:
+                return _RunCheckedOutcome(completed=None, failure_message=projection_failure)
             if diagnostic_path is not None:
-                write_private_text(diagnostic_path, rendered_output)
+                try:
+                    write_private_text(diagnostic_path, rendered_output)
+                except Exception as write_exception:
+                    write_exception.__traceback__ = None
+                    write_exception.__cause__ = None
+                    write_exception.__context__ = None
+                    return _RunCheckedOutcome(
+                        completed=None,
+                        failure_message=_safe_failure_summary(
+                            write_exception,
+                            stage="diagnostic_write",
+                            output=rendered_output,
+                        ),
+                    )
             return _RunCheckedOutcome(
                 completed=None,
                 failure_message=(
@@ -95,19 +189,49 @@ def _perform_run_checked(
                     f"{rendered_command}\n{rendered_output}"
                 ),
             )
-        rendered_output = project_and_validate_public_diagnostic(
-            completed.stdout,
-            secret_values=redact_values,
-            private_paths=(cwd, Path.home(), *diagnostic_private_paths),
-        )
-        if diagnostic_path is not None:
-            write_private_text(diagnostic_path, rendered_output)
-        if completed.returncode != 0:
-            rendered_command = project_and_validate_public_diagnostic(
-                " ".join(command),
+        try:
+            rendered_output = project_and_validate_public_diagnostic(
+                completed.stdout,
                 secret_values=redact_values,
                 private_paths=(cwd, Path.home(), *diagnostic_private_paths),
             )
+        except Exception as exception:
+            detail = _safe_projection_detail(exception)
+            exception.__traceback__ = None
+            exception.__cause__ = None
+            exception.__context__ = None
+            return _RunCheckedOutcome(
+                completed=None,
+                failure_message=_safe_failure_summary(
+                    exception,
+                    stage="stdout_projection",
+                    output=completed.stdout,
+                    detail=detail,
+                ),
+            )
+        if diagnostic_path is not None:
+            try:
+                write_private_text(diagnostic_path, rendered_output)
+            except Exception as exception:
+                exception.__traceback__ = None
+                exception.__cause__ = None
+                exception.__context__ = None
+                return _RunCheckedOutcome(
+                    completed=None,
+                    failure_message=_safe_failure_summary(
+                        exception, stage="diagnostic_write", output=rendered_output
+                    ),
+                )
+        if completed.returncode != 0:
+            rendered_command, projection_failure = _project_command_or_failure(
+                command,
+                cwd=cwd,
+                redact_values=redact_values,
+                diagnostic_private_paths=diagnostic_private_paths,
+                rendered_output=rendered_output,
+            )
+            if projection_failure is not None:
+                return _RunCheckedOutcome(completed=None, failure_message=projection_failure)
             return _RunCheckedOutcome(
                 completed=None,
                 failure_message=(
@@ -122,7 +246,7 @@ def _perform_run_checked(
         exception.__context__ = None
         return _RunCheckedOutcome(
             completed=None,
-            failure_message="command execution failed before a safe result was available",
+            failure_message=_safe_failure_summary(exception, stage="subprocess_run"),
         )
 
 

@@ -103,6 +103,10 @@ the gate source.
 - TURN compromise can deny service, consume quota, or expose metadata;
 - the current signaling issuer and relay client bearers are service authority
   credentials rather than proof that a paired device possesses its signing key;
+- PostgreSQL-backed signaling routing improves restart behavior but adds a
+  short-lived database/WAL/backup exposure surface for SDP, ICE, request IDs, and
+  session metadata; retention, encryption, restore, and deletion drills remain
+  required before public service launch;
 - signaling invalidation cannot itself stop a direct PeerConnection, and relay
   revocation cannot itself terminate an already-issued coturn allocation;
 - WebRTC community binaries are not official Google mobile distributions and

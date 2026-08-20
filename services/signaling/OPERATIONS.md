@@ -11,6 +11,10 @@
 - In `production_authority` mode, configure `authority_url` to the authority
   service and ensure signaling can reach it over HTTPS (or loopback HTTP for
   local development). Signaling fails closed when the authority is unreachable.
+- In `production_authority` mode, set `store_backend` to `postgres`, inject
+  `VIBE_SIGNALING_DATABASE_URL` from a secret manager, run
+  `vibe-signaling --migrate /usr/share/vibe-screen/migrations/001_signaling.sql`
+  before startup, and require `sslmode=verify-full` for non-loopback databases.
 - Run UID/GID 65532, read-only root filesystem, no Linux capabilities, no core
   dumps, and a bounded memory/CPU/process budget.
 - Configure proxy body size at or below `max_request_body_bytes`, request read
@@ -28,8 +32,11 @@ with a route template and apply the organization's approved retention policy.
 ## Health and alerts
 
 `/healthz` means the event loop can answer HTTP. `/readyz` means the process is
-accepting traffic; in `production_authority` mode it also requires the authority
-`/readyz` to succeed. Neither proves peer connectivity, TLS, TURN, or WebRTC.
+accepting traffic and its configured store is ready. For PostgreSQL, readiness
+checks database reachability, schema checksum, required structure, and a bounded
+database/application clock-skew probe; in `production_authority` mode it also
+requires the authority `/readyz` to succeed. Neither proves peer connectivity,
+TLS, TURN, or WebRTC.
 An external synthetic should create a short session, exchange an offer/answer
 and two candidates, then let it expire.
 
@@ -54,9 +61,17 @@ Metrics are process-local and reset at restart. Do not use them as an audit log.
    the authority credential was compromised, rotate the shared value under
    `VIBE_SIGNALING_AUTHORITY_TOKEN` in signaling and
    `VIBE_AUTHORITY_SIGNALING_TOKEN` in authority.
-3. Restart signaling; all in-memory sessions and stolen role tokens disappear.
-4. Review low-cardinality creation/rejection metrics and redacted edge telemetry.
-5. Rotate TURN service credentials separately if the authority could access them.
+3. Invalidate known sessions through the issuer endpoint. In `production_authority`
+   mode, also revoke the affected account or devices in the authority service,
+   or raise their session-epoch floor so unknown attacker-created role tokens can
+   no longer be authorized. If the affected scope cannot be identified, keep
+   signaling externally unreachable and fail closed until the maximum session TTL
+   has elapsed.
+4. In `memory` mode, a restart deletes process-local sessions; in `postgres`
+   mode, the database tombstone/TTL rows remain and must not be manually deleted
+   to mint replacement credentials.
+5. Review low-cardinality creation/rejection metrics and redacted edge telemetry.
+6. Rotate TURN service credentials separately if the authority could access them.
 
 ### Role token or SDP/ICE disclosure
 
@@ -70,23 +85,26 @@ data-plane actions.
 
 ### Memory/capacity exhaustion
 
-Keep readiness false by removing the instance from the proxy, preserve only
-redacted metrics, restart to atomically delete in-memory state, then lower TTL/
-caps or strengthen edge limiting before re-entry. Do not capture a core dump
-containing live SDP, candidates, and tokens.
+Keep readiness false by removing the instance from the proxy and preserve only
+redacted metrics. In `memory` mode, restart to atomically delete process-local
+state; in `postgres` mode, keep the database online for TTL cleanup and lower
+caps or strengthen edge limiting before re-entry. Do not capture a core dump or
+database snapshot containing live SDP, candidates, and tokens.
 
 ## Upgrade, rollback, and compatibility
 
 The HTTP schema is versioned under `/v1`. Additive response fields are allowed;
 removing fields, changing role/state semantics, changing idempotency, or changing
 candidate/SDP framing requires a new API version. Run old and new binaries on
-separate ports and use a synthetic exchange. Because state is not shared, drain
-the old process for at least the configured maximum session TTL or explicitly
-accept client reconnects before stopping it.
+separate ports and use a synthetic exchange. In `memory` mode, drain the old
+process for at least the configured maximum session TTL or explicitly accept
+client reconnects before stopping it. In `postgres` mode, short-lived routing
+rows survive binary restart but still expire at the original TTL.
 
 Rollback is binary/config rollback, not state recovery. Never copy opaque memory
-state between versions. A restart invalidates all sessions by design; clients
-must acquire new role credentials and use a new product session epoch.
+state between versions or rewrite PostgreSQL routing rows. In `memory` mode, a
+restart invalidates all sessions by design; in `postgres` mode, existing rows
+remain valid only until their original TTL or invalidation tombstone.
 
 ## Clock synchronization and expiry
 
@@ -98,22 +116,23 @@ clock skew; fix the clock source instead. The signaling
 be kept consistent so a TTL accepted by signaling is never rejected by the
 authority.
 
-The authority `/readyz` also fail-closes when PostgreSQL `clock_timestamp()`
-cannot be proven within its configured application-clock skew bound. In
-`production_authority` mode, signaling propagates that state through its own
-readiness endpoint after the bounded readiness cache expires. Repair the
-host/database time source or excessive database-probe latency; do not extend
-session TTLs or raise the skew limit to suppress the failure. This comparison
-checks relative consistency only and does not replace external NTP monitoring.
+The authority `/readyz` and the signaling PostgreSQL backend both fail closed
+when PostgreSQL `clock_timestamp()` cannot be proven within their configured
+application-clock skew bound. Repair the host/database time source or excessive
+database-probe latency; do not extend session TTLs or raise the skew limit to
+suppress the failure. This comparison checks relative consistency only and does
+not replace external NTP monitoring.
 
 ## Backup and retention
 
-There is no signaling database to back up. Back up only reviewed configuration,
-deployment manifests, redacted metrics, and immutable binary/image digests. SDP,
-ICE, bearer tokens, request bodies, and session identifiers must not enter logs,
-traces, backups, analytics, or crash reports. Expired state is physically removed
-from the process maps by request-time and periodic cleanup; Go heap reclamation
-does not guarantee immediate byte-level erasure.
+In `memory` mode there is no signaling database to back up. In `postgres` mode,
+the database stores short-lived SDP/ICE routing metadata, request IDs, session
+IDs, tombstones, and local-mode role tokens until TTL cleanup, so backups, WAL,
+snapshots, and support exports require encryption, short retention, restore
+drills, and secret redaction. SDP, ICE, bearer tokens, request bodies, and
+session identifiers must not enter logs, traces, analytics, or crash reports.
+Expired state is physically removed from the store by request-time and periodic
+cleanup; Go heap reclamation does not guarantee immediate byte-level erasure.
 
 ## Production authority open items
 
@@ -126,7 +145,9 @@ does not guarantee immediate byte-level erasure.
   authority revocation.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped
   epoch have different scopes and are not yet unified.
-- Signaling is still single-instance in-memory routing.
-- Per-message remote authorization and the global `authorityCreateMu` create
+- PostgreSQL durable routing is implemented for `production_authority`, but
+  multi-instance operation, global create-rate enforcement, and throughput under
+  multiple replicas remain unproved.
+- Per-message remote authorization and the global PostgreSQL advisory-lock create
   serialization are fail-closed correctness choices, not a high-throughput
   design; do not claim multi-instance throughput.

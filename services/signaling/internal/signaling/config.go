@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ const (
 	issuerTokenEnv    = "VIBE_SIGNALING_ISSUER_TOKEN"
 	metricsTokenEnv   = "VIBE_SIGNALING_METRICS_TOKEN"
 	authorityTokenEnv = "VIBE_SIGNALING_AUTHORITY_TOKEN"
+	databaseURLEnv    = "VIBE_SIGNALING_DATABASE_URL"
 
 	// AuthorityModeLocalDevelopment keeps the historical in-process session
 	// issuance and role-token authorization. It is intended only for local
@@ -25,6 +27,14 @@ const (
 	// service. Any authority failure is fail-closed: the signaling process
 	// never falls back to locally minted tokens.
 	AuthorityModeProductionAuthority = "production_authority"
+
+	// StoreBackendMemory keeps all rendezvous routing in one process and is
+	// intended for local development and deterministic tests.
+	StoreBackendMemory = "memory"
+	// StoreBackendPostgres stores rendezvous routing state in PostgreSQL. It is
+	// required for production_authority mode so production cannot silently fall
+	// back to process-local state after a configuration or database failure.
+	StoreBackendPostgres = "postgres"
 )
 
 type Config struct {
@@ -43,9 +53,11 @@ type Config struct {
 	CleanupIntervalSeconds  int    `json:"cleanup_interval_seconds"`
 	AuthorityMode           string `json:"authority_mode"`
 	AuthorityURL            string `json:"authority_url,omitempty"`
+	StoreBackend            string `json:"store_backend"`
 	IssuerToken             string `json:"-"`
 	MetricsToken            string `json:"-"`
 	AuthorityToken          string `json:"-"`
+	DatabaseURL             string `json:"-"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -71,6 +83,7 @@ func LoadConfig(path string) (Config, error) {
 		{issuerTokenEnv, &cfg.IssuerToken},
 		{metricsTokenEnv, &cfg.MetricsToken},
 		{authorityTokenEnv, &cfg.AuthorityToken},
+		{databaseURLEnv, &cfg.DatabaseURL},
 	}
 	for _, value := range values {
 		loaded, err := loadEnvironmentValue(value.name)
@@ -83,6 +96,20 @@ func LoadConfig(path string) (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func LoadDatabaseURL() (string, error) {
+	value, err := loadEnvironmentValue(databaseURLEnv)
+	if err != nil {
+		return "", err
+	}
+	if value == "" {
+		return "", fmt.Errorf("%s is required", databaseURLEnv)
+	}
+	if err := validateDatabaseURL(value); err != nil {
+		return "", fmt.Errorf("%s: %w", databaseURLEnv, err)
+	}
+	return value, nil
 }
 
 func loadEnvironmentValue(name string) (string, error) {
@@ -109,6 +136,9 @@ func (c Config) Validate() error {
 	}
 	if c.AuthorityMode == "" {
 		missing = append(missing, "authority_mode")
+	}
+	if c.StoreBackend == "" {
+		missing = append(missing, "store_backend")
 	}
 	if c.IssuerToken == "" {
 		missing = append(missing, issuerTokenEnv)
@@ -149,6 +179,24 @@ func (c Config) Validate() error {
 	default:
 		return fmt.Errorf("authority_mode must be %q or %q", AuthorityModeLocalDevelopment, AuthorityModeProductionAuthority)
 	}
+	switch c.StoreBackend {
+	case StoreBackendMemory:
+		if c.DatabaseURL != "" {
+			return errors.New("memory store must not configure a database URL")
+		}
+		if c.AuthorityMode == AuthorityModeProductionAuthority {
+			return errors.New("production_authority mode requires postgres store")
+		}
+	case StoreBackendPostgres:
+		if c.DatabaseURL == "" {
+			return fmt.Errorf("%s is required when store_backend is postgres", databaseURLEnv)
+		}
+		if err := validateDatabaseURL(c.DatabaseURL); err != nil {
+			return fmt.Errorf("database URL: %w", err)
+		}
+	default:
+		return fmt.Errorf("store_backend must be %q or %q", StoreBackendMemory, StoreBackendPostgres)
+	}
 	if c.AuthorityToken != "" && c.AuthorityToken == c.MetricsToken {
 		return errors.New("authority and metrics tokens must be different")
 	}
@@ -166,6 +214,28 @@ func (c Config) Validate() error {
 	if c.MaxCandidatesPerRole <= 0 || c.MaxWaitSeconds <= 0 || c.MaxWaitSeconds > 60 ||
 		c.MaxWaitersPerRole <= 0 || c.CleanupIntervalSeconds <= 0 {
 		return errors.New("candidate, wait, and cleanup limits must be positive; max wait cannot exceed 60 seconds")
+	}
+	return nil
+}
+
+func validateDatabaseURL(value string) error {
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	if parsed.Scheme != "postgres" && parsed.Scheme != "postgresql" {
+		return errors.New("scheme must be postgres or postgresql")
+	}
+	if parsed.Hostname() == "" || parsed.User == nil || parsed.User.Username() == "" ||
+		parsed.Path == "" || parsed.Path == "/" {
+		return errors.New("URL must include user, host, and database name")
+	}
+	sslMode := parsed.Query().Get("sslmode")
+	if isLoopbackHost(parsed.Hostname()) {
+		return nil
+	}
+	if sslMode != "verify-full" {
+		return errors.New("non-loopback PostgreSQL URLs must use sslmode=verify-full")
 	}
 	return nil
 }
