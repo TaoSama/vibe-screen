@@ -1,0 +1,1 @@
+macOS Host preflight did not write this report because it failed before report generation. See host-preflight-command.txt for the captured command output: codesign identity Vibe Screen Dev was not found, and ad-hoc signing is not accepted for this hardware-keyboard gate.

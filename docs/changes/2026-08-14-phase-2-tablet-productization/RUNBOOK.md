@@ -149,10 +149,85 @@ the goal is to prove recovery under disturbance:
 - reboot the Mac and verify login startup or headless Mac mini recovery when that
   gate is in scope.
 
+## Hardware-keyboard workflow
+
+Run the hardware-keyboard workflow as a separate focused pass unless the test
+owner explicitly includes it in a longer tablet run. ADB `input keyevent` may be
+kept as diagnostic dispatch evidence, but it cannot close this gate because it
+does not prove a physical Android-attached keyboard source.
+
+Before touching the Android device, acquire the shared device coordination lock:
+
+```bash
+lock=/tmp/vibe-screen-device-android.lock
+set -o noclobber
+printf 'owner=phase2-hardware-keyboard\npid=%s\nworktree=%s\ncreated_at=%s\n' \
+  "$$" "$(pwd)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$lock"
+```
+
+If the lock already exists, stop and record a blocked evidence directory without
+running ADB. A passing run must use the actual target serial and preserve the
+observed identity as Nubia P0110 / pacific / Android 16 when using
+`EP0110PZ0B9110300B`; do not relabel this device as Xiaomi 13/fuxi or as tablet
+hardware.
+
+Collect these artifacts in `evidence/YYYY-MM-DD-<device>-hardware-keyboard/`:
+
+```bash
+make evidence-device-info EVIDENCE_SERIAL="$ADB_SERIAL" EVIDENCE_DIR="$RUN_DIR"
+adb -s "$ADB_SERIAL" shell dumpsys input > "$RUN_DIR/dumpsys-input.txt"
+adb -s "$ADB_SERIAL" logcat -c
+adb -s "$ADB_SERIAL" reverse tcp:54321 tcp:54321
+```
+
+Also retain a Host preflight record with the listener, signing identity, and
+permission state before starting the run:
+
+```bash
+lsof -nP -iTCP:54321 -sTCP:LISTEN > "$RUN_DIR/host-listener.txt"
+security find-identity -v -p codesigning > "$RUN_DIR/codesign-identities.txt"
+python3 scripts/macos_dev_host.py preflight --report "$RUN_DIR/host-signing-and-permissions.txt"
+```
+
+Do not continue to physical-keyboard input unless the Host listener exists and
+the installed Host is stable-signed with Screen Recording and Accessibility
+ready. Once the stream is active, press keys on the attached keyboard and retain
+Android and Host logs proving:
+
+- the physical keyboard device name and `Sources: ... KEYBOARD` in
+  `dumpsys-input.txt`;
+- Protocol v1 keyboard and USB HID modifier-byte capabilities were negotiated;
+- `MainActivity` or `StreamClient` production forwarding accepted the key
+  events;
+- Host `Key injected: hid=<usage> pressed=<true|false> modifiers=<mask>` lines
+  include paired press/release events;
+- at least one shortcut/modifier combination, such as Control+C, Command+C,
+  Shift+A, or Alt+Tab, reaches the Host;
+- a later plain key has no leaked modifier after the shortcut is released;
+- a visible Mac-side text or shortcut result is captured by screenshot, screen
+  recording, or a retained app log.
+
+Create `hardware-keyboard-observations.json` with explicit boolean observations
+for every required item, then derive the gate summary:
+
+```bash
+make hardware-keyboard-gate EVIDENCE_DIR="$RUN_DIR"
+```
+
+The resulting `hardware-keyboard-summary.json` can close the
+hardware-keyboard workflow gate only when `verdict=pass` and
+`can_close_hardware_keyboard_gate=true`. A blocked or insufficient summary keeps
+the gate open and must explain the missing physical keyboard, Host listener,
+stable signed/TCC Host, logs, or visible Mac result.
+
 ## Pass criteria
 
 - The evidence identifies the real device and host, not only a synthetic layout
   or prior phone run.
+- The hardware-keyboard workflow gate closes only when a physical keyboard
+  attached to the recorded Android device drives the production Protocol v1
+  keyboard path into a stable signed/TCC-ready Host, with Host key-injection logs
+  and visible Mac-side results retained in the same evidence directory.
 - The stream remains usable for eight hours with no unrecovered crash, no
   unbounded reconnect loop, and no stale frame/input acceptance across session
   epochs.
@@ -188,6 +263,11 @@ Each run directory should include at minimum:
   `decoder-telemetry.jsonl`;
 - `screenshots/` for portrait, landscape, power-saver, thermal/load, reconnect,
   and end-of-run states.
+- for hardware-keyboard passes, `hardware-keyboard-observations.json`,
+  `hardware-keyboard-summary.json`, `dumpsys-input.txt`, `android-keyboard.log`,
+  `host-keyboard.log`, `host-listener.txt`, `host-signing-and-permissions.txt`,
+  `codesign-identities.txt`, and a screenshot or recording of the visible Mac
+  result.
 
 Do not mark Phase 2 accepted from this runbook unless the raw evidence exists in
 the directory and the summary explains every failed or skipped gate.

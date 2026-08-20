@@ -1,0 +1,137 @@
+{
+  "adb_input_is_not_physical_keyboard_evidence": true,
+  "artifact_paths": [
+    "device-lock.txt",
+    "host-listener.txt",
+    "codesign-identities.txt",
+    "host-preflight-command.txt",
+    "host-signing-and-permissions.txt"
+  ],
+  "blocking_notes": [
+    "/tmp/vibe-screen-device-android.lock already existed before this run; no ADB commands were executed.",
+    "No macOS Host listener was present on TCP 54321.",
+    "The local keychain reported 0 valid code-signing identities, so stable signed Host/TCC readiness could not be established.",
+    "Physical keyboard attachment was not evaluated because the device lock and Host prerequisites failed first."
+  ],
+  "blocking_reasons": [
+    {
+      "field": "android_device_lock_acquired",
+      "requirement": "exclusively acquire /tmp/vibe-screen-device-android.lock before using the Android device"
+    },
+    {
+      "field": "physical_keyboard_attached",
+      "requirement": "attach and name a real external or hardware Android keyboard"
+    },
+    {
+      "field": "host_listener_observed",
+      "requirement": "record the macOS Host listener for the transport under test"
+    },
+    {
+      "field": "host_stable_signed_tcc_ready",
+      "requirement": "run a stable signed Host with Screen Recording and Accessibility permission ready"
+    }
+  ],
+  "can_close_hardware_keyboard_gate": false,
+  "kind": "phase2_hardware_keyboard_workflow",
+  "missing_requirements": [
+    {
+      "field": "android_device_lock_acquired",
+      "requirement": "exclusively acquire /tmp/vibe-screen-device-android.lock before using the Android device"
+    },
+    {
+      "field": "device_identity_recorded",
+      "requirement": "record Android serial, manufacturer, model, codename, OS/build, SDK, and ABI"
+    },
+    {
+      "field": "device_identity_matches_claim",
+      "requirement": "label the evidence with the observed device identity, without relabeling P0110/pacific as Xiaomi/fuxi"
+    },
+    {
+      "field": "apk_identity_recorded",
+      "requirement": "record APK version/signing identity and install timestamp"
+    },
+    {
+      "field": "physical_keyboard_attached",
+      "requirement": "attach and name a real external or hardware Android keyboard"
+    },
+    {
+      "field": "android_keyboard_source_observed",
+      "requirement": "observe a physical keyboard input source in Android input/log evidence"
+    },
+    {
+      "field": "protocol_keyboard_capability_negotiated",
+      "requirement": "negotiate Protocol v1 keyboard capability on the active session"
+    },
+    {
+      "field": "protocol_usb_hid_modifier_capability_negotiated",
+      "requirement": "negotiate the USB HID modifier-byte capability for standard modifier semantics"
+    },
+    {
+      "field": "android_production_forwarding_observed",
+      "requirement": "observe MainActivity/StreamClient production keyboard forwarding, not only adb input dispatch"
+    },
+    {
+      "field": "host_listener_observed",
+      "requirement": "record the macOS Host listener for the transport under test"
+    },
+    {
+      "field": "host_stable_signed_tcc_ready",
+      "requirement": "run a stable signed Host with Screen Recording and Accessibility permission ready"
+    },
+    {
+      "field": "host_key_injection_observed",
+      "requirement": "retain Host 'Key injected:' CGEvent logs for the keyboard events"
+    },
+    {
+      "field": "key_press_release_observed",
+      "requirement": "prove key-down and key-up semantics for the same HID usage"
+    },
+    {
+      "field": "shortcut_combo_observed",
+      "requirement": "prove at least one shortcut/modifier combination reaches the Host"
+    },
+    {
+      "field": "modifier_release_no_leak_observed",
+      "requirement": "prove modifiers clear after shortcut release and do not leak into a later plain key"
+    },
+    {
+      "field": "visible_mac_result_observed",
+      "requirement": "record the visible Mac-side result of the hardware keyboard workflow"
+    },
+    {
+      "field": "host_logs_retained",
+      "requirement": "retain Host logs covering the keyboard workflow"
+    },
+    {
+      "field": "android_logs_retained",
+      "requirement": "retain Android logs/input snapshots covering the keyboard workflow"
+    }
+  ],
+  "notes": "Target serial for a future run is EP0110PZ0B9110300B and must be recorded as nubia P0110 / pacific / Android 16 when observed. This blocked preflight did not touch the Android device and does not close the Phase 2 hardware-keyboard workflow gate.",
+  "observations": {
+    "android_device_lock_acquired": false,
+    "android_keyboard_source_observed": false,
+    "android_logs_retained": false,
+    "android_production_forwarding_observed": false,
+    "apk_identity_recorded": false,
+    "device_identity_matches_claim": false,
+    "device_identity_recorded": false,
+    "host_key_injection_observed": false,
+    "host_listener_observed": false,
+    "host_logs_retained": false,
+    "host_stable_signed_tcc_ready": false,
+    "key_press_release_observed": false,
+    "modifier_release_no_leak_observed": false,
+    "physical_keyboard_attached": false,
+    "protocol_keyboard_capability_negotiated": false,
+    "protocol_usb_hid_modifier_capability_negotiated": false,
+    "shortcut_combo_observed": false,
+    "visible_mac_result_observed": false
+  },
+  "profile": "phase2-hardware-keyboard-workflow",
+  "required_device_identity": "Record the actual Android device identity; Nubia P0110/pacific/Android 16 evidence must not be relabeled as Xiaomi 13/fuxi.",
+  "requires_physical_keyboard": true,
+  "run_id": "07d6c99e-2277-433f-81ff-c7fbdc8ff850",
+  "schema_version": "vibescreen.evidence/v1",
+  "verdict": "blocked"
+}
