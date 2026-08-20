@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -14,14 +15,18 @@ func TestStoreRejectsQuotaWithoutMutatingState(t *testing.T) {
 	}
 	now := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
 	start := UsageEvent{EventID: "one", DeviceID: "device", SessionID: "session", Kind: "start", EgressBytes: 60}
-	if err := store.Apply(now, start); err != nil {
+	ctx := context.Background()
+	if err := store.Apply(ctx, now, start); err != nil {
 		t.Fatal(err)
 	}
 	tooLarge := UsageEvent{EventID: "two", DeviceID: "device", SessionID: "session", Kind: "update", EgressBytes: 41}
-	if err := store.Apply(now, tooLarge); !errors.Is(err, ErrQuotaExceeded) {
+	if err := store.Apply(ctx, now, tooLarge); !errors.Is(err, ErrQuotaExceeded) {
 		t.Fatalf("error = %v", err)
 	}
-	_, egress, sessions := store.Snapshot(now, "device")
+	_, egress, sessions, err := store.Snapshot(ctx, now, "device")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if egress != 60 || sessions != 1 {
 		t.Fatalf("state mutated after rejection: %d/%d", egress, sessions)
 	}
@@ -33,14 +38,18 @@ func TestStoreResetsDailyUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	dayOne := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
-	if err := store.Apply(dayOne, UsageEvent{EventID: "one", DeviceID: "device", SessionID: "session", Kind: "start", EgressBytes: 100}); err != nil {
+	ctx := context.Background()
+	if err := store.Apply(ctx, dayOne, UsageEvent{EventID: "one", DeviceID: "device", SessionID: "session", Kind: "start", EgressBytes: 100}); err != nil {
 		t.Fatal(err)
 	}
 	dayTwo := dayOne.Add(24 * time.Hour)
-	if err := store.Apply(dayTwo, UsageEvent{EventID: "two", DeviceID: "device", SessionID: "session", Kind: "update", EgressBytes: 10}); err != nil {
+	if err := store.Apply(ctx, dayTwo, UsageEvent{EventID: "two", DeviceID: "device", SessionID: "session", Kind: "update", EgressBytes: 10}); err != nil {
 		t.Fatal(err)
 	}
-	_, egress, sessions := store.Snapshot(dayTwo, "device")
+	_, egress, sessions, err := store.Snapshot(ctx, dayTwo, "device")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if egress != 10 || sessions != 1 {
 		t.Fatalf("day two = %d/%d", egress, sessions)
 	}
@@ -52,14 +61,15 @@ func TestStoreRejectsUsageAfterRevocationWithoutMutatingState(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
-	if err := store.Apply(now, UsageEvent{EventID: "start-before-revoke", DeviceID: "device", SessionID: "session", Kind: "start", EgressBytes: 10}); err != nil {
+	ctx := context.Background()
+	if err := store.Apply(ctx, now, UsageEvent{EventID: "start-before-revoke", DeviceID: "device", SessionID: "session", Kind: "start", EgressBytes: 10}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Revoke("device", now); err != nil {
+	if err := store.Revoke(ctx, "device", now); err != nil {
 		t.Fatal(err)
 	}
 	accepted := UsageEvent{EventID: "start-before-revoke", DeviceID: "device", SessionID: "session", Kind: "start", EgressBytes: 10}
-	if err := store.Apply(now, accepted); !errors.Is(err, ErrDuplicateEvent) {
+	if err := store.Apply(ctx, now, accepted); !errors.Is(err, ErrDuplicateEvent) {
 		t.Fatalf("accepted event retry error = %v", err)
 	}
 
@@ -68,15 +78,18 @@ func TestStoreRejectsUsageAfterRevocationWithoutMutatingState(t *testing.T) {
 		{EventID: "update-after-revoke", DeviceID: "device", SessionID: "session", Kind: "update", EgressBytes: 1},
 		{EventID: "end-after-revoke", DeviceID: "device", SessionID: "session", Kind: "end"},
 	} {
-		if err := store.Apply(now, event); !errors.Is(err, ErrDeviceRevoked) {
+		if err := store.Apply(ctx, now, event); !errors.Is(err, ErrDeviceRevoked) {
 			t.Fatalf("%s error = %v", event.Kind, err)
 		}
 	}
-	if err := store.Apply(now.Add(24*time.Hour), accepted); !errors.Is(err, ErrDeviceRevoked) {
+	if err := store.Apply(ctx, now.Add(24*time.Hour), accepted); !errors.Is(err, ErrDeviceRevoked) {
 		t.Fatalf("prior-day event retry error = %v", err)
 	}
 
-	_, egress, sessions := store.Snapshot(now, "device")
+	_, egress, sessions, err := store.Snapshot(ctx, now, "device")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if egress != 10 || sessions != 1 {
 		t.Fatalf("state mutated after revoked usage: %d/%d", egress, sessions)
 	}

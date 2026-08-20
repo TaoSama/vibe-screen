@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,7 +19,19 @@ var (
 	ErrUnknownSession = errors.New("unknown session")
 	ErrSessionExists  = errors.New("session already exists")
 	ErrDeviceRevoked  = errors.New("device revoked")
+	ErrInvalidEvent   = errors.New("invalid usage event")
+	ErrStorage        = errors.New("storage unavailable")
 )
+
+type Store interface {
+	Apply(context.Context, time.Time, UsageEvent) error
+	Snapshot(context.Context, time.Time, string) (uint64, uint64, int, error)
+	IsRevoked(context.Context, string) (bool, error)
+	Revoke(context.Context, string, time.Time) error
+	Ready(context.Context) error
+	Totals(context.Context, time.Time) (uint64, uint64, int64, error)
+	Close()
+}
 
 type UsageEvent struct {
 	EventID      string `json:"event_id"`
@@ -42,7 +55,7 @@ type persistedState struct {
 	Devices map[string]*deviceUsage `json:"devices"`
 }
 
-type UsageStore struct {
+type FileStore struct {
 	mu           sync.Mutex
 	path         string
 	dailyLimit   uint64
@@ -50,8 +63,10 @@ type UsageStore struct {
 	state        persistedState
 }
 
-func NewUsageStore(path string, dailyLimit uint64, sessionLimit int) (*UsageStore, error) {
-	s := &UsageStore{path: path, dailyLimit: dailyLimit, sessionLimit: sessionLimit, state: persistedState{Devices: make(map[string]*deviceUsage)}}
+type UsageStore = FileStore
+
+func NewUsageStore(path string, dailyLimit uint64, sessionLimit int) (*FileStore, error) {
+	s := &FileStore{path: path, dailyLimit: dailyLimit, sessionLimit: sessionLimit, state: persistedState{Devices: make(map[string]*deviceUsage)}}
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -79,7 +94,7 @@ func NewUsageStore(path string, dailyLimit uint64, sessionLimit int) (*UsageStor
 	return s, nil
 }
 
-func (s *UsageStore) Apply(now time.Time, event UsageEvent) error {
+func (s *FileStore) Apply(_ context.Context, now time.Time, event UsageEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	day := now.UTC().Format(time.DateOnly)
@@ -132,7 +147,7 @@ func (s *UsageStore) Apply(now time.Time, event UsageEvent) error {
 		}
 		delete(usage.Sessions, event.SessionID)
 	default:
-		return fmt.Errorf("unsupported event kind %q", event.Kind)
+		return fmt.Errorf("%w: unsupported event kind %q", ErrInvalidEvent, event.Kind)
 	}
 	usage.IngressBytes += event.IngressBytes
 	usage.EgressBytes += event.EgressBytes
@@ -149,27 +164,27 @@ func (s *UsageStore) Apply(now time.Time, event UsageEvent) error {
 	return nil
 }
 
-func (s *UsageStore) Snapshot(now time.Time, deviceID string) (uint64, uint64, int) {
+func (s *FileStore) Snapshot(_ context.Context, now time.Time, deviceID string) (uint64, uint64, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	usage := s.state.Devices[deviceID]
 	if usage == nil {
-		return 0, 0, 0
+		return 0, 0, 0, nil
 	}
 	if usage.Day != now.UTC().Format(time.DateOnly) {
-		return 0, 0, len(usage.Sessions)
+		return 0, 0, len(usage.Sessions), nil
 	}
-	return usage.IngressBytes, usage.EgressBytes, len(usage.Sessions)
+	return usage.IngressBytes, usage.EgressBytes, len(usage.Sessions), nil
 }
 
-func (s *UsageStore) IsRevoked(deviceID string) bool {
+func (s *FileStore) IsRevoked(_ context.Context, deviceID string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	usage := s.state.Devices[deviceID]
-	return usage != nil && usage.Revoked
+	return usage != nil && usage.Revoked, nil
 }
 
-func (s *UsageStore) Revoke(deviceID string, now time.Time) error {
+func (s *FileStore) Revoke(_ context.Context, deviceID string, now time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	usage := cloneUsage(s.state.Devices[deviceID])
@@ -189,7 +204,7 @@ func (s *UsageStore) Revoke(deviceID string, now time.Time) error {
 	return nil
 }
 
-func (s *UsageStore) Ready() error {
+func (s *FileStore) Ready(_ context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o750); err != nil {
@@ -210,7 +225,7 @@ func (s *UsageStore) Ready() error {
 	return nil
 }
 
-func (s *UsageStore) Totals(now time.Time) (uint64, uint64, int64) {
+func (s *FileStore) Totals(_ context.Context, now time.Time) (uint64, uint64, int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	day := now.UTC().Format(time.DateOnly)
@@ -223,8 +238,10 @@ func (s *UsageStore) Totals(now time.Time) (uint64, uint64, int64) {
 		}
 		active += int64(len(usage.Sessions))
 	}
-	return ingress, egress, active
+	return ingress, egress, active, nil
 }
+
+func (s *FileStore) Close() {}
 
 func cloneUsage(source *deviceUsage) *deviceUsage {
 	if source == nil {
@@ -240,48 +257,48 @@ func cloneUsage(source *deviceUsage) *deviceUsage {
 	return copy
 }
 
-func (s *UsageStore) persistLocked(state persistedState) error {
+func (s *FileStore) persistLocked(state persistedState) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o750); err != nil {
-		return fmt.Errorf("create state directory: %w", err)
+		return fmt.Errorf("%w: create state directory: %v", ErrStorage, err)
 	}
 	contents, err := json.Marshal(state)
 	if err != nil {
-		return fmt.Errorf("encode state: %w", err)
+		return fmt.Errorf("%w: encode state: %v", ErrStorage, err)
 	}
 	temp, err := os.CreateTemp(filepath.Dir(s.path), ".relay-state-*")
 	if err != nil {
-		return fmt.Errorf("create temporary state: %w", err)
+		return fmt.Errorf("%w: create temporary state: %v", ErrStorage, err)
 	}
 	tempName := temp.Name()
 	defer func() { _ = os.Remove(tempName) }()
 	if err := temp.Chmod(0o600); err != nil {
 		_ = temp.Close()
-		return fmt.Errorf("protect state: %w", err)
+		return fmt.Errorf("%w: protect state: %v", ErrStorage, err)
 	}
 	if _, err := temp.Write(contents); err != nil {
 		_ = temp.Close()
-		return fmt.Errorf("write state: %w", err)
+		return fmt.Errorf("%w: write state: %v", ErrStorage, err)
 	}
 	if err := temp.Sync(); err != nil {
 		_ = temp.Close()
-		return fmt.Errorf("sync state: %w", err)
+		return fmt.Errorf("%w: sync state: %v", ErrStorage, err)
 	}
 	if err := temp.Close(); err != nil {
-		return fmt.Errorf("close state: %w", err)
+		return fmt.Errorf("%w: close state: %v", ErrStorage, err)
 	}
 	if err := os.Rename(tempName, s.path); err != nil {
-		return fmt.Errorf("replace state: %w", err)
+		return fmt.Errorf("%w: replace state: %v", ErrStorage, err)
 	}
 	directory, err := os.Open(filepath.Dir(s.path))
 	if err != nil {
-		return fmt.Errorf("open state directory for sync: %w", err)
+		return fmt.Errorf("%w: open state directory for sync: %v", ErrStorage, err)
 	}
 	if err := directory.Sync(); err != nil {
 		_ = directory.Close()
-		return fmt.Errorf("sync state directory: %w", err)
+		return fmt.Errorf("%w: sync state directory: %v", ErrStorage, err)
 	}
 	if err := directory.Close(); err != nil {
-		return fmt.Errorf("close state directory: %w", err)
+		return fmt.Errorf("%w: close state directory: %v", ErrStorage, err)
 	}
 	return nil
 }

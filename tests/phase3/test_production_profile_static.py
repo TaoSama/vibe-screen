@@ -61,7 +61,8 @@ class ProductionProfileStaticTests(unittest.TestCase):
         compose = read(RELAY_PRODUCTION_COMPOSE)
 
         expected_images = {
-            "relay-data-init": r"coturn/coturn:[^\s]+@sha256:[0-9a-f]{64}",
+            "relay-migrate": r"\$\{VIBE_RELAY_IMAGE_REPOSITORY:\?[^}]+}"
+            r"@sha256:\$\{VIBE_RELAY_IMAGE_SHA256:\?[^}]+}",
             "relay": r"\$\{VIBE_RELAY_IMAGE_REPOSITORY:\?[^}]+}"
             r"@sha256:\$\{VIBE_RELAY_IMAGE_SHA256:\?[^}]+}",
             "coturn": r"coturn/coturn:[^\s]+@sha256:[0-9a-f]{64}",

@@ -1,31 +1,31 @@
 name: vibe-screen-phase3-production
 
 services:
-  relay-data-init:
-    image: coturn/coturn:4.7.0-r0@sha256:99bf5bf6ab1c119862d0c3d2dfb2bbf805a86a131492cab18c148be64ae7d978
-    user: "0:0"
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["chown 65532:65532 /data && chmod 0750 /data"]
-    network_mode: none
-    volumes:
-      - relay-data:/data
-    read_only: true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
+  relay-migrate:
+    image: ${VIBE_RELAY_IMAGE_REPOSITORY:?set the vibe-relay image repository}@sha256:${VIBE_RELAY_IMAGE_SHA256:?set the 64-character vibe-relay image digest}
+    restart: "no"
+    network_mode: host
+    command:
+      - --migrate
+      - /usr/share/vibe-screen/migrations/001_relay.sql
+    environment:
+      VIBE_RELAY_DATABASE_URL_FILE: /run/secrets/relay_migration_database_url
+      VIBE_RELAY_DATABASE_TLS_MODE: verify-full
+    secrets:
+      - relay_migration_database_url
     security_opt:
       - no-new-privileges:true
-    restart: "no"
 
   relay:
     image: ${VIBE_RELAY_IMAGE_REPOSITORY:?set the vibe-relay image repository}@sha256:${VIBE_RELAY_IMAGE_SHA256:?set the 64-character vibe-relay image digest}
     restart: unless-stopped
     network_mode: host
     depends_on:
-      relay-data-init:
+      relay-migrate:
         condition: service_completed_successfully
     environment:
+      VIBE_RELAY_DATABASE_URL_FILE: /run/secrets/relay_database_url
+      VIBE_RELAY_DATABASE_TLS_MODE: verify-full
       VIBE_RELAY_TURN_SECRET_FILE: /run/secrets/turn_secret
       VIBE_RELAY_CLIENT_TOKEN_FILE: /run/secrets/client_token
       VIBE_RELAY_USAGE_TOKEN_FILE: /run/secrets/usage_token
@@ -39,14 +39,14 @@ services:
       - metrics_token
       - admin_token
       - authority_token
+      - relay_database_url
     volumes:
       - ./config/relay.production.json:/etc/vibe-relay/config.json:ro
-      - relay-data:/data
     healthcheck:
-      test: ["CMD", "/vibe-relay", "--version"]
+      test: ["CMD", "/vibe-relay", "--healthcheck", "http://127.0.0.1:8090/readyz"]
       interval: 10s
       timeout: 3s
-      retries: 3
+      retries: 5
     security_opt:
       - no-new-privileges:true
 
@@ -93,10 +93,11 @@ secrets:
     file: ./secrets/admin_token.txt
   authority_token:
     file: ./secrets/authority_token.txt
+  relay_migration_database_url:
+    file: ${VIBE_RELAY_MIGRATION_DATABASE_URL_FILE:?set the relay migration database URL secret file}
+  relay_database_url:
+    file: ${VIBE_RELAY_DATABASE_URL_FILE:?set the relay runtime database URL secret file}
   tls_certificate:
     file: ./tls/fullchain.pem
   tls_private_key:
     file: ./tls/privkey.pem
-
-volumes:
-  relay-data:
