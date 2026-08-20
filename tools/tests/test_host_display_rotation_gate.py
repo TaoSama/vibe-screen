@@ -132,6 +132,13 @@ class HostDisplayRotationGateTest(unittest.TestCase):
     def test_gate_result_matches_published_output_schema(self) -> None:
         self.assert_matches_schema(evaluate(complete_document()), GATE_SCHEMA_PATH)
 
+    def test_gate_result_schema_rejects_renamed_metadata_contract(self) -> None:
+        result = evaluate(complete_document())
+        result["required_device_fields"] = ["manufacturer", "renamed_model"]
+
+        with self.assertRaises(AssertionError):
+            self.assert_matches_schema(result, GATE_SCHEMA_PATH)
+
     def test_requires_both_display_kinds(self) -> None:
         document = complete_document()
         document["runs"] = [complete_run("physical")]
@@ -234,20 +241,48 @@ class HostDisplayRotationGateTest(unittest.TestCase):
 
             self.assertEqual(result["artifact_file_check"], True)
             self.assertIn(
-                f"runs[1].artifacts.host_log: retained artifact not found at {missing}",
+                f"runs[1].artifacts.host_log: retained artifact not found at {missing.resolve()}",
                 result["errors"],
             )
 
     def test_artifact_check_rejects_parent_directory_escape(self) -> None:
-        document = complete_document()
-        document["runs"][0]["artifacts"]["host_log"] = "../host.log"
+        with tempfile.TemporaryDirectory() as directory:
+            document = complete_document()
+            document["runs"][0]["artifacts"]["host_log"] = "../host.log"
 
-        result = evaluate(document, evidence_dir=Path("/tmp/evidence"))
+            result = evaluate(document, evidence_dir=Path(directory))
 
-        self.assertIn(
-            "runs[0].artifacts.host_log: must be a relative path inside the evidence directory",
-            result["errors"],
-        )
+            self.assertIn(
+                "runs[0].artifacts.host_log: must be a relative path inside the evidence directory",
+                result["errors"],
+            )
+
+    def test_artifact_check_rejects_symlink_escape(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evidence_dir = root / "evidence"
+            evidence_dir.mkdir()
+            outside = root / "outside.log"
+            outside.write_text("outside evidence\n", encoding="utf-8")
+            document = complete_document()
+            for run in document["runs"]:
+                for artifact in run["artifacts"].values():
+                    path = evidence_dir / artifact
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("retained evidence\n", encoding="utf-8")
+            escaped_link = evidence_dir / document["runs"][0]["artifacts"]["host_log"]
+            escaped_link.unlink()
+            try:
+                escaped_link.symlink_to(outside)
+            except OSError as error:
+                self.skipTest(f"symlink creation unavailable: {error}")
+
+            result = evaluate(document, evidence_dir=evidence_dir)
+
+            self.assertIn(
+                "runs[0].artifacts.host_log: must be a relative path inside the evidence directory",
+                result["errors"],
+            )
 
 
 class HostDisplayRotationGateCliTest(unittest.TestCase):

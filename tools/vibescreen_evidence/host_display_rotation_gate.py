@@ -56,6 +56,7 @@ REQUIRED_ARTIFACTS = (
     "host_log",
     "android_logcat",
 )
+ARTIFACT_BOUNDARY_ERROR = "must be a relative path inside the evidence directory"
 
 
 class HostDisplayRotationGateError(ValueError):
@@ -168,6 +169,7 @@ def _validate_artifact_files(
     artifacts = run.get("artifacts")
     if not isinstance(artifacts, dict):
         return
+    resolved_evidence_dir = evidence_dir.resolve()
     for name in REQUIRED_ARTIFACTS:
         value = artifacts.get(name)
         if not _is_non_empty_string(value):
@@ -175,11 +177,17 @@ def _validate_artifact_files(
         artifact_path = Path(value)
         if artifact_path.is_absolute() or ".." in artifact_path.parts:
             errors.append(
-                f"runs[{run_index}].artifacts.{name}: must be a relative path "
-                "inside the evidence directory"
+                f"runs[{run_index}].artifacts.{name}: {ARTIFACT_BOUNDARY_ERROR}"
             )
             continue
-        resolved = evidence_dir / artifact_path
+        resolved = (resolved_evidence_dir / artifact_path).resolve()
+        try:
+            resolved.relative_to(resolved_evidence_dir)
+        except ValueError:
+            errors.append(
+                f"runs[{run_index}].artifacts.{name}: {ARTIFACT_BOUNDARY_ERROR}"
+            )
+            continue
         if not resolved.is_file():
             errors.append(
                 f"runs[{run_index}].artifacts.{name}: retained artifact not found at {resolved}"
@@ -194,11 +202,19 @@ def _validate_artifact_contents(
     artifacts = run.get("artifacts")
     if not isinstance(artifacts, dict):
         return
+    resolved_evidence_dir = evidence_dir.resolve()
     for name in ("host_log", "android_logcat", "touch_matrix"):
         value = artifacts.get(name)
         if not _is_non_empty_string(value):
             continue
-        path = evidence_dir / Path(value)
+        artifact_path = Path(value)
+        if artifact_path.is_absolute() or ".." in artifact_path.parts:
+            continue
+        path = (resolved_evidence_dir / artifact_path).resolve()
+        try:
+            path.relative_to(resolved_evidence_dir)
+        except ValueError:
+            continue
         if not path.is_file() or path.suffix.lower() not in TEXT_ARTIFACT_EXTENSIONS:
             continue
         try:

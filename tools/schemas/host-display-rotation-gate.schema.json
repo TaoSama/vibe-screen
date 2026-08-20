@@ -32,15 +32,32 @@
     },
     "required_transports": {
       "type": "array",
-      "items": {"enum": ["lan", "usb"]}
+      "items": {"enum": ["lan", "usb"]},
+      "const": ["lan", "usb"]
     },
     "required_device_fields": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1}
+      "items": {"type": "string", "minLength": 1},
+      "const": [
+        "manufacturer",
+        "model",
+        "codename",
+        "android_release",
+        "sdk",
+        "adb_serial"
+      ]
     },
     "required_host_preflight_fields": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1}
+      "items": {"type": "string", "minLength": 1},
+      "const": [
+        "host_signing_identity",
+        "host_bundle_id",
+        "screen_recording_granted",
+        "accessibility_granted",
+        "signing_tcc_match",
+        "host_display_rotation_restoration_plan"
+      ]
     },
     "required_probes": {
       "type": "array",
