@@ -114,11 +114,13 @@ the Host app to quit, and released the Android device lock.
   reverse output.
 - `android-launch.txt`: Android client auto-connect launch result.
 - `touch-gesture-instrumentation*.txt`: opt-in gesture driver outputs.
-- `host-log-touch-gesture-window.log`, `host-log-eventtap-run.log`,
-  `host-log-eventtap-run-2.log`: Host-side Protocol v1, pipeline, and gesture
-  excerpts.
+- `host-log-after-launch.log`, `host-log-touch-gesture-window.log`,
+  `host-log-eventtap-run.log`, and `host-log-eventtap-run-2.log`: Host-side
+  Protocol v1, pipeline, and gesture excerpts.
 - `listen-only-event-tap-2.log`: listen-only macOS CGEvent observations for the
   final synchronized run.
+- `listen-only-event-tap-2.err`: empty stderr capture for the final event-tap
+  run.
 - `android-diag-focused.log` and `android-logcat-focused.txt`: privacy-reduced
   Android diagnostic excerpts.
 - `android-screen-after-rerun.png` and `android-window-after-rerun.xml`: visible
