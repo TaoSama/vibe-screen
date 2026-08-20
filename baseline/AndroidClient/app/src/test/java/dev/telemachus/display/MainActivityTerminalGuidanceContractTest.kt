@@ -335,6 +335,27 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun internetCameraPermissionBlockedShowsInlineGuidanceBeforeOpeningSettings() {
+        val source = mainActivitySource()
+        val setup = extractMethod(source, "private fun setupInternetUi")
+        val blocked = extractMethod(source, "private fun showInternetCameraPermissionBlocked")
+        val compactBlocked = blocked.replace(Regex("\\s+"), "")
+
+        assertTrue(
+            "Internet scan permanent-denial path should leave recovery context in the panel",
+            setup.contains("cameraPerm.isPermanentlyDenied() -> showInternetCameraPermissionBlocked()"),
+        )
+        assertNoDirectInternetErrorTextAssignment(blocked, "showInternetCameraPermissionBlocked")
+        assertUsesLiveRegionShow(blocked, "internetErrorText", "showInternetCameraPermissionBlocked")
+        assertTrue(compactBlocked.contains("R.string.internet_camera_permission_blocked"))
+        assertTrue(
+            "System Settings should open only after the inline recovery message is visible",
+            compactBlocked.indexOf("LiveRegionTextApplier.show(binding.internetErrorText,") <
+                compactBlocked.indexOf("cameraPerm.openAppSettings()"),
+        )
+    }
+
+    @Test
     fun onFreshSessionRequiredInternetErrorTextUsesLiveRegionApplier() {
         val source = mainActivitySource()
         val callback = extractMethod(source, "override fun onFreshSessionRequired")
@@ -351,6 +372,16 @@ class MainActivityTerminalGuidanceContractTest {
         assertFalse(source.contains("internetStateText.text ="))
         // Imported, pairing, session, failure, idle, and revoked states all announce through the helper.
         assertUsesLiveRegion(source, "internetStateText", "MainActivity", minimumCalls = 6)
+    }
+
+    @Test
+    fun internetProfileSummaryUsesLiveRegionApplier() {
+        val source = mainActivitySource()
+        val refresh = extractMethod(source, "private fun refreshInternetProfileUi")
+
+        assertFalse(refresh.contains("internetProfileSummary.setText"))
+        assertFalse(refresh.contains("internetProfileSummary.text ="))
+        assertUsesLiveRegion(refresh, "internetProfileSummary", "refreshInternetProfileUi")
     }
 
     @Test

@@ -802,6 +802,7 @@ class MainActivity : AppCompatActivity() {
                 // reclampFloatingControls(), so the clone preserves them.
                 applySafeAreaToChrome()
                 applyControlBarLayout()
+                applyStatusOverlayLayout()
                 reclampFloatingControls()
                 activeSettingsDialog?.let(::resizeSettingsDialog)
             }
@@ -909,6 +910,7 @@ class MainActivity : AppCompatActivity() {
         connectionSubtitleDisclosure.reset()
         applyConnectionPanelLayout()
         applyControlBarLayout()
+        applyStatusOverlayLayout()
         if (!isConnected && prefs.connectionMode == ConnectionMode.INTERNET) {
             LiveRegionTextApplier.apply(binding.connectionTitle, getString(internetWaitingTitleResource()))
         }
@@ -1042,6 +1044,7 @@ class MainActivity : AppCompatActivity() {
         binding.root.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
             if (right - left != oldRight - oldLeft) {
                 applyControlBarLayout()
+                applyStatusOverlayLayout()
             }
             updateSurfaceViewportLayout()
         }
@@ -1443,7 +1446,7 @@ class MainActivity : AppCompatActivity() {
         binding.internetScanProfileButton.setOnClickListener {
             when {
                 cameraPerm.isGranted() -> launchInternetScanner()
-                cameraPerm.isPermanentlyDenied() -> cameraPerm.openAppSettings()
+                cameraPerm.isPermanentlyDenied() -> showInternetCameraPermissionBlocked()
                 else -> cameraPerm.request(REQ_INTERNET_CAMERA)
             }
         }
@@ -1696,13 +1699,11 @@ class MainActivity : AppCompatActivity() {
         if (!::binding.isInitialized) return
         val profile = internetProfileStore.loadPublicProfile()
         val fingerprint = internetProfileStore.verifiedHostKeyFingerprint()
-        binding.internetProfileSummary.text =
-            if (profile == null) {
-                if (fingerprint == null) {
-                    getString(R.string.internet_profile_missing)
-                } else {
-                    getString(R.string.internet_paired_without_lease, fingerprint)
-                }
+        val summary =
+            if (profile == null && fingerprint == null) {
+                getString(R.string.internet_profile_missing)
+            } else if (profile == null) {
+                getString(R.string.internet_paired_without_lease, fingerprint)
             } else {
                 getString(
                     R.string.internet_profile_format,
@@ -1712,12 +1713,21 @@ class MainActivity : AppCompatActivity() {
                     fingerprint ?: getString(R.string.empty_value),
                 )
             }
+        LiveRegionTextApplier.apply(binding.internetProfileSummary, summary)
         binding.internetConnectButton.isEnabled =
             profile != null &&
                 profile.authoritativeSessionEpoch > requiredFreshInternetEpoch &&
                 internetSession == null
         binding.internetRevokeButton.isEnabled = profile != null || internetProfileStore.hasVerifiedPairing()
         allowInternetCredentialMutation()
+    }
+
+    private fun showInternetCameraPermissionBlocked() {
+        LiveRegionTextApplier.show(
+            binding.internetErrorText,
+            getString(R.string.internet_camera_permission_blocked),
+        )
+        cameraPerm.openAppSettings()
     }
 
     private fun showConnectedStreamUi() {
@@ -2229,6 +2239,20 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun applyStatusOverlayLayout() {
+        val windowWidthPx = binding.root.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        StatusOverlayLayoutApplier.apply(
+            views =
+                StatusOverlayViews(
+                    card = binding.statusBar,
+                    content = binding.statusBarContent,
+                ),
+            resources = resources,
+            windowWidthPx = windowWidthPx,
+            safeAreaInsets = safeAreaInsets,
+        )
+    }
+
     private fun updateConnectionSecurityStatus() {
         val presentation = ConnectionSecurityPresentationPolicy.presentation(prefs.connectionMode)
         val label = getString(presentation.labelResource)
@@ -2247,6 +2271,8 @@ class MainActivity : AppCompatActivity() {
         binding.securityText.text = getString(R.string.stream_status_overlay_format, label, detail)
         binding.securityText.setTextColor(detailColor)
         applyControlBarLayout()
+        applyStatusOverlayLayout()
+        clampOverlayIntoSafeRect()
     }
 
     /**
@@ -2423,12 +2449,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateOverlayVisibility(show: Boolean) {
         if (streamClient != null && show) {
+            applyStatusOverlayLayout()
             binding.statusBar.visibility = View.VISIBLE
             // Restore position when showing
             val x = prefs.overlayX
             val y = prefs.overlayY
             if (x >= 0 && y >= 0) {
                 positionOverlayAt(x, y)
+            } else {
+                clampOverlayIntoSafeRect()
             }
         } else {
             binding.statusBar.visibility = View.GONE

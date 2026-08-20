@@ -38,6 +38,7 @@ class ConnectionStateAccessibilityInstrumentedTest {
                 R.id.connectionTitle,
                 R.id.connectionSubtitle,
                 R.id.statusText,
+                R.id.internetProfileSummary,
                 R.id.internetStateText,
                 R.id.wirelessConnecting,
                 R.id.wirelessFirstTime,

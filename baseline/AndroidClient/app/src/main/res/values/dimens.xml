@@ -51,4 +51,12 @@
     <dimen name="connection_subtitle_disclosure_icon_padding">4dp</dimen>
     <dimen name="connection_progress_margin_bottom">20dp</dimen>
     <dimen name="connection_primary_action_margin_top">12dp</dimen>
+
+    <!-- Floating stats overlay. The overlay stacks into multiple rows on
+         narrow windows so FPS/bitrate/resolution/RTT/link never extend past
+         the safe display edge while streaming. -->
+    <dimen name="status_overlay_content_padding">12dp</dimen>
+    <dimen name="status_overlay_item_gap">16dp</dimen>
+    <dimen name="status_overlay_row_gap">8dp</dimen>
+    <dimen name="status_overlay_column_min_width">96dp</dimen>
 </resources>

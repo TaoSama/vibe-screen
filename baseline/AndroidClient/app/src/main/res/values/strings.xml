@@ -37,6 +37,7 @@
     <string name="scan_fresh_qr">Scan a fresh QR from your Mac to re-pair.</string>
     <string name="camera_permission_required">Camera permission required to scan a QR code</string>
     <string name="camera_permission_settings_instructions">Camera access was blocked. Open Settings → Apps → Vibe Screen → Permissions to allow it.</string>
+    <string name="internet_camera_permission_blocked">Camera access was blocked. Open Settings → Apps → Vibe Screen → Permissions, allow Camera, then return here to scan the Internet profile QR.</string>
     <string name="open_settings">Open Settings</string>
     <string name="display_settings">Display settings</string>
     <string name="viewport">Viewport</string>
