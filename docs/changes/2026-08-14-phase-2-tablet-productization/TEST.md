@@ -350,6 +350,38 @@ No physical 8-9 inch tablet was attached for this follow-up. The Nubia P0110
 remains a general Android substitute only and must not be used to claim Phase 2
 tablet acceptance.
 
+## 2026-08-21 Phase 2 soak evidence runner
+
+This follow-up added `vibescreen_evidence.phase2_tablet_soak` and Makefile
+targets `phase2-tablet-soak-preflight` and `phase2-tablet-soak-run`. The runner
+coordinates the device lock, static Host/device/APK artifacts, Android battery,
+power, thermal and logcat captures, short preflight sampling, formal 8-hour
+sampling, and the exact-window gate derivation when the formal run is allowed to
+start. It writes `phase2-soak-readiness.json` with `result=blocked` whenever the
+setup cannot legitimately close the Phase 2 tablet gate.
+
+Focused validation for this tooling update:
+
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_tablet_soak -v`
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_tablet_soak tools.tests.test_soak tools.tests.test_phase2_tablet_gate tools.tests.test_phase2_tablet_manifest tools.tests.test_device_info tools.tests.test_schemas -v`
+
+The runner tests cover existing-lock behavior without running ADB, preflight
+blocker generation, Android logcat derivative extraction, and atomic lock
+release. Any Nubia P0110/pacific run produced through this runner remains
+Android-substitute readiness only; it is not Xiaomi/fuxi evidence and cannot
+close the 8-9 inch tablet, stand-mounted charging, login/headless recovery, or
+eight-hour sustained-use gates.
+
+A 2-second target-device preflight also ran against the attached Nubia
+P0110/pacific (`adb -s EP0110PZ0B9110300B`) and wrote evidence under
+[`evidence/2026-08-21-nubia-p0110-phase2-soak-preflight`](evidence/2026-08-21-nubia-p0110-phase2-soak-preflight/README.md).
+The command returned exit code `2` by design because the readiness result is
+`blocked`. The runner captured device identity, battery, power, thermal dumps,
+Android PID, raw logcat, derived log filters, and a complete one-sample
+`soak-preflight/summary.json` with `reconnect_count=0`. The recorded blockers
+are: device class is `android_substitute`, no Host PID was provided for RSS
+sampling, and no Host telemetry JSONL path was provided. The gate remains open.
+
 ## 2026-08-23 current-base aggregate owner readiness
 
 This follow-up added a schema-backed `phase2-aggregate-owner` report for the

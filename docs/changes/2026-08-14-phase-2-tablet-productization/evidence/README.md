@@ -131,3 +131,11 @@ The README must name the substitute device, state that it is not an 8-9 inch
 tablet, link any short readiness evidence, and include the exact rerun commands
 for the future physical-tablet pass. The blocked preflight should preserve all
 missing gates rather than editing them out.
+
+The `phase2-tablet-soak-preflight` wrapper may create readiness-only directories
+such as `YYYY-MM-DD-nubia-p0110-phase2-soak-preflight/`. These records include
+`phase2-soak-readiness.json` and usually a `soak-preflight/` subdirectory rather
+than a formal `soak-8h/` result. A readiness result of `blocked` records why the
+gate could not start, such as a phone substitute, missing Host PID, missing Host
+JSONL telemetry, or an existing device lock. It is not evidence that the
+eight-hour gate passed.

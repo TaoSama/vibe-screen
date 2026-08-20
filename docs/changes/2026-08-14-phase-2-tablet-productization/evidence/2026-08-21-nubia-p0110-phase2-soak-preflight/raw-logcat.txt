@@ -1,0 +1,3 @@
+--------- beginning of main
+08-21 05:25:47.590 I/VibeScreenTelemetry(11098): {"schema_version":1,"timestamp_ms":1787261147589,"event":"reconnect_scheduled","delay_ms":588,"session_epoch":94}
+08-21 05:25:49.124 I/VibeScreenTelemetry(11098): {"schema_version":1,"timestamp_ms":1787261149124,"event":"reconnect_scheduled","delay_ms":524,"session_epoch":95}

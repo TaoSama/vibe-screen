@@ -21,6 +21,10 @@ PHASE2_TRANSPORT ?= usb
 PHASE2_VIDEO_PREFERENCES ?=
 PHASE2_HOST_IDENTITY ?=
 PHASE2_HOST_BUILD ?=
+PHASE2_HOST_PID ?=
+PHASE2_HOST_TELEMETRY_JSONL ?=
+PHASE2_HOST_LOG ?=
+PHASE2_APK_PATH ?=
 PHASE2_APK_SHA256 ?=
 PHASE2_RECOVERY_SCENARIOS ?=
 PHASE2_THERMAL_LIMIT_STATUS ?= 2
@@ -38,6 +42,9 @@ PHASE2_LOGIN_HEADLESS ?=
 IOS_ACCEPTANCE_JSON ?= $(EVIDENCE_DIR)/acceptance.json
 IOS_ACCEPTANCE_GATE_JSON ?= $(dir $(IOS_ACCEPTANCE_JSON))ios-device-acceptance-gate.json
 HOST_PID ?=
+PHASE2_SOAK_DURATION ?= 8h
+PHASE2_SOAK_PREFLIGHT_DURATION ?= 2s
+PHASE2_SOAK_INTERVAL ?= 30s
 TOUCH_RERUN_EXPECTED_HOST_SHA256 ?=
 RECONNECT_TIMING_TARGET_DEVICE ?= Nubia P0110 / pacific / Android 16 / EP0110PZ0B9110300B
 RECONNECT_TIMING_BLOCKER_ARGS ?= --blocker "Host/app prerequisites prevented a real Protocol v1 reconnect timing run"
@@ -76,7 +83,7 @@ PHASE3_ANDROID_UI_EVIDENCE ?=
 PHASE3_ANDROID_UI_EVIDENCE_KIND ?= device_screenshot
 PHASE3_ANDROID_UI_NOTE ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-aggregate-owner ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-real-media-continuity phase3-real-media-current-base phase3-internet-release-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial require-host-pid evidence-device-info evidence-usb-live-smoke evidence-touch-rerun-preflight evidence-trusted-lan-preflight evidence-reconnect-timing-blocked evidence-latency-preflight evidence-latency-gate native-pointer-hid-acceptance native-pointer-hid-gate actionable-error-states-gate harmony-readiness harmony-device-gate harmony-current-base-gate soak-30m soak-2h soak-8h host-rss-gate soak-2h-host-rss-gate phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-readiness hardware-keyboard-gate phase2-tablet-preflight phase2-aggregate-owner ios-device-acceptance-gate ios-current-base-manifest ios-current-base-gate macos-hardware-compatibility-gate phase2-tablet-soak-preflight phase2-tablet-soak-run
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -392,6 +399,43 @@ phase2-tablet-manifest: require-evidence-serial
 		--host-build "$(PHASE2_HOST_BUILD)" \
 		--apk-sha256 "$(PHASE2_APK_SHA256)" \
 		-- make soak-8h EVIDENCE_SERIAL=$(EVIDENCE_SERIAL) EVIDENCE_DIR=$(EVIDENCE_DIR) EVIDENCE_HOST_PID=$(EVIDENCE_HOST_PID)
+
+phase2-tablet-soak-preflight phase2-tablet-soak-run: require-evidence-serial
+	@test -n "$(strip $(PHASE2_DEVICE_CLASS))" || (echo "error: set PHASE2_DEVICE_CLASS to physical_8_9_inch_tablet or android_substitute" >&2; exit 2)
+	@test -n "$(strip $(PHASE2_STAND_SETUP))" || (echo "error: set PHASE2_STAND_SETUP" >&2; exit 2)
+	@test -n "$(strip $(PHASE2_CHARGER))" || (echo "error: set PHASE2_CHARGER" >&2; exit 2)
+	@test -n "$(strip $(PHASE2_CABLE_OR_DOCK))" || (echo "error: set PHASE2_CABLE_OR_DOCK" >&2; exit 2)
+	@test -n "$(strip $(PHASE2_VIDEO_PREFERENCES))" || (echo "error: set PHASE2_VIDEO_PREFERENCES" >&2; exit 2)
+	@test -n "$(strip $(PHASE2_HOST_IDENTITY))" || (echo "error: set PHASE2_HOST_IDENTITY" >&2; exit 2)
+	@test -n "$(strip $(PHASE2_HOST_BUILD))" || (echo "error: set PHASE2_HOST_BUILD" >&2; exit 2)
+	@test -n "$(strip $(PHASE2_APK_PATH)$(PHASE2_APK_SHA256))" || (echo "error: set PHASE2_APK_PATH or PHASE2_APK_SHA256" >&2; exit 2)
+	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_soak \
+		--serial $(EVIDENCE_SERIAL) \
+		--output-dir $(EVIDENCE_DIR) \
+		--mode $(@:phase2-tablet-soak-%=%) \
+		--package $(EVIDENCE_PACKAGE) \
+		$(if $(strip $(PHASE2_HOST_PID)),--host-pid $(PHASE2_HOST_PID),) \
+		$(if $(strip $(PHASE2_HOST_TELEMETRY_JSONL)),--host-telemetry-jsonl "$(PHASE2_HOST_TELEMETRY_JSONL)",) \
+		$(if $(strip $(PHASE2_HOST_LOG)),--host-log "$(PHASE2_HOST_LOG)",) \
+		$(if $(strip $(PHASE2_APK_PATH)),--apk "$(PHASE2_APK_PATH)",--apk-sha256 "$(PHASE2_APK_SHA256)") \
+		--device-class $(PHASE2_DEVICE_CLASS) \
+		$(if $(strip $(PHASE2_TABLET_SIZE_INCHES)),--tablet-size-inches "$(PHASE2_TABLET_SIZE_INCHES)",) \
+		--stand-setup "$(PHASE2_STAND_SETUP)" \
+		--charger "$(PHASE2_CHARGER)" \
+		--cable-or-dock "$(PHASE2_CABLE_OR_DOCK)" \
+		$(if $(strip $(PHASE2_AMBIENT_TEMPERATURE_CELSIUS)),--ambient-temperature-celsius $(PHASE2_AMBIENT_TEMPERATURE_CELSIUS),) \
+		--transport $(PHASE2_TRANSPORT) \
+		--video-preferences "$(PHASE2_VIDEO_PREFERENCES)" \
+		--host-identity "$(PHASE2_HOST_IDENTITY)" \
+		--host-build "$(PHASE2_HOST_BUILD)" \
+		--duration $(PHASE2_SOAK_DURATION) \
+		--preflight-duration $(PHASE2_SOAK_PREFLIGHT_DURATION) \
+		--interval $(PHASE2_SOAK_INTERVAL) \
+		--thermal-limit-status $(PHASE2_THERMAL_LIMIT_STATUS) \
+		$(if $(strip $(PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS)),--battery-temperature-limit-celsius $(PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS),) \
+		$(if $(strip $(PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT)),--maximum-net-battery-drain-percent $(PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT),) \
+		$(if $(strip $(PHASE2_RECOVERY_SCENARIOS)),--recovery-scenarios "$(PHASE2_RECOVERY_SCENARIOS)",)
 
 phase2-device-memory-gate:
 	@test -f "$(EVIDENCE_DIR)/phase2-tablet-manifest.json" || (echo "error: create $(EVIDENCE_DIR)/phase2-tablet-manifest.json before phase2-device-memory-gate" >&2; exit 2)
