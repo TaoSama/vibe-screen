@@ -11,11 +11,12 @@ enum InternetProductExternalHostE2E {
         do {
             let values = try Environment(environment)
             let configuration = try values.configuration()
-            let derived = try TrafficKeyDerivation.initial(
+            var derived = try TrafficKeyDerivation.initial(
                 sharedSecret: values.sharedSecret,
                 bootstrapSecret: values.bootstrapSecret,
                 context: configuration.boundTranscriptContext
             )
+            defer { derived.zeroize() }
             guard derived.keyID == values.expectedTrafficKeyID else {
                 throw Failure("traffic-key KAT mismatch")
             }

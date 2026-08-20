@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 final class PlatformSessionKeys: Equatable {
@@ -65,16 +66,22 @@ final class PlatformSessionKeys: Equatable {
         )
     }
 
+    /// Overwrites all eight traffic-key buffers in place using memset_s so
+    /// the compiler cannot elide the store.
+    func zeroize() {
+        hostControl.zeroize()
+        deviceControl.zeroize()
+        hostMedia.zeroize()
+        deviceMedia.zeroize()
+        hostAudio.zeroize()
+        deviceAudio.zeroize()
+        hostBulk.zeroize()
+        deviceBulk.zeroize()
+    }
+
     func close() {
         guard !closed else { return }
-        hostControl.resetBytes(in: hostControl.indices)
-        deviceControl.resetBytes(in: deviceControl.indices)
-        hostMedia.resetBytes(in: hostMedia.indices)
-        deviceMedia.resetBytes(in: deviceMedia.indices)
-        hostAudio.resetBytes(in: hostAudio.indices)
-        deviceAudio.resetBytes(in: deviceAudio.indices)
-        hostBulk.resetBytes(in: hostBulk.indices)
-        deviceBulk.resetBytes(in: deviceBulk.indices)
+        zeroize()
         closed = true
     }
 
@@ -86,6 +93,18 @@ final class PlatformSessionKeys: Equatable {
     }
 
     deinit { close() }
+}
+
+extension Data {
+    /// Overwrites the buffer with zeros using memset_s so the compiler cannot
+    /// elide the store. For uniquely-referenced Data this clears the actual
+    /// backing bytes; shared (COW) buffers are copied first.
+    mutating func zeroize() {
+        guard !isEmpty else { return }
+        _ = withUnsafeMutableBytes { bytes in
+            memset_s(bytes.baseAddress, bytes.count, 0, bytes.count)
+        }
+    }
 }
 
 enum PlatformSecurityChannel: UInt32 {
@@ -121,6 +140,7 @@ enum TrafficPacketCryptography {
         var combined = Data(capacity: nonce.count + ciphertextAndTag.count)
         combined.append(nonce)
         combined.append(ciphertextAndTag)
+        defer { combined.zeroize() }
         let box = try AES.GCM.SealedBox(combined: combined)
         return try AES.GCM.open(box, using: SymmetricKey(data: key), authenticating: authenticatedHeader)
     }
@@ -150,7 +170,7 @@ enum TrafficKeyDerivation {
             throw PlatformSecurityError.invalidInput("Initial key derivation requires a shared secret, 32-byte bootstrap secret, and 32-byte transcript context.")
         }
         var material = hkdf(input: sharedSecret, salt: bootstrapSecret, info: context)
-        defer { material.resetBytes(in: material.indices) }
+        defer { material.zeroize() }
         return split(material: material, context: context, epoch: 1)
     }
 
@@ -169,12 +189,12 @@ enum TrafficKeyDerivation {
                 updateNonce
             ]
         )
-        defer { context.resetBytes(in: context.indices) }
+        defer { context.zeroize() }
         // Preserve rotation compatibility with peers that negotiated only control/media.
         var legacyInput = current.legacyCombined
-        defer { legacyInput.resetBytes(in: legacyInput.indices) }
+        defer { legacyInput.zeroize() }
         var material = hkdf(input: legacyInput, salt: updateNonce, info: context)
-        defer { material.resetBytes(in: material.indices) }
+        defer { material.zeroize() }
         return split(material: material, context: context, epoch: nextEpoch)
     }
 
@@ -195,9 +215,9 @@ enum TrafficKeyDerivation {
         // Keep the v1 key ID stable for control/media-only peers.
         keyIDHasher.update(data: material.prefix(legacyMaterialLength))
         var firstDigest = Data(keyIDHasher.finalize())
-        defer { firstDigest.resetBytes(in: firstDigest.indices) }
+        defer { firstDigest.zeroize() }
         var keyIDDigest = Data(SHA256.hash(data: firstDigest))
-        defer { keyIDDigest.resetBytes(in: keyIDDigest.indices) }
+        defer { keyIDDigest.zeroize() }
         let keyID = keyIDDigest.map { String(format: "%02x", $0) }.joined()
         return PlatformSessionKeys(
             keyID: keyID,
@@ -215,7 +235,7 @@ enum TrafficKeyDerivation {
 
 }
 
-private extension Data {
+extension Data {
     var ownedCopy: Data { withUnsafeBytes { Data($0) } }
 }
 
