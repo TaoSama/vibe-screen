@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase3-real-media-continuity.schema.json",
+  "title": "Vibe Screen Phase 3 real-media continuity preflight result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "created_at",
+    "verdict",
+    "gate_can_close_phase3_release",
+    "conditions",
+    "repository",
+    "device",
+    "inputs",
+    "continuity_summary",
+    "host_observation",
+    "android_observation",
+    "stages",
+    "reasons",
+    "release_gate_effect"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase3_real_media_continuity_preflight"},
+    "created_at": {"type": "string", "format": "date-time", "minLength": 1},
+    "verdict": {"enum": ["pass", "fail", "blocked"]},
+    "gate_can_close_phase3_release": {"const": false},
+    "conditions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "network_path",
+        "host_signing",
+        "screen_recording",
+        "minimum_output_frames",
+        "maximum_dropped_frames"
+      ],
+      "properties": {
+        "network_path": {"enum": ["public_internet", "local_direct", "local_forced_turn", "unknown"]},
+        "host_signing": {"enum": ["identity_signed", "ad_hoc", "unsigned", "unknown"]},
+        "screen_recording": {"enum": ["granted", "blocked", "unknown"]},
+        "minimum_output_frames": {"type": "integer", "minimum": 1},
+        "maximum_dropped_frames": {"type": "integer", "minimum": 0}
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "branch", "dirty"],
+      "properties": {
+        "revision": {"type": ["string", "null"]},
+        "branch": {"type": ["string", "null"]},
+        "dirty": {"type": ["boolean", "null"]}
+      }
+    },
+    "device": {"type": ["object", "null"]},
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "path", "sha256", "bytes"],
+        "properties": {
+          "category": {"enum": ["host_log", "android_log", "device_info"]},
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "bytes": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "continuity_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "media_source",
+        "public_internet_path",
+        "selected_webrtc_route",
+        "protocol_v1_media_epochs",
+        "protocol_v1_session_epoch",
+        "capture_frame_count",
+        "videotoolbox_output_frames",
+        "mediacodec_first_input_frame",
+        "mediacodec_first_output_frame",
+        "continuous_output_frames",
+        "dropped_frames",
+        "decoder_error_count"
+      ],
+      "properties": {
+        "media_source": {"enum": ["real_screencapturekit_or_cgdisplaystream", "synthetic", "absent"]},
+        "public_internet_path": {"type": "boolean"},
+        "selected_webrtc_route": {"type": ["string", "null"]},
+        "protocol_v1_media_epochs": {"type": "array", "items": {"type": "integer"}},
+        "protocol_v1_session_epoch": {"type": ["integer", "null"]},
+        "capture_frame_count": {"type": "integer", "minimum": 0},
+        "videotoolbox_output_frames": {"type": "integer", "minimum": 0},
+        "mediacodec_first_input_frame": {"type": "boolean"},
+        "mediacodec_first_output_frame": {"type": "boolean"},
+        "continuous_output_frames": {"type": "integer", "minimum": 0},
+        "dropped_frames": {"type": "integer", "minimum": 0},
+        "decoder_error_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "host_observation": {"type": "object"},
+    "android_observation": {"type": "object"},
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "observed", "reason"],
+        "properties": {
+          "key": {"type": "string", "minLength": 1},
+          "observed": {"type": "boolean"},
+          "reason": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "reasons": {"type": "array", "items": {"type": "string"}},
+    "release_gate_effect": {"const": "none"},
+    "notes": {"type": "string"}
+  }
+}
