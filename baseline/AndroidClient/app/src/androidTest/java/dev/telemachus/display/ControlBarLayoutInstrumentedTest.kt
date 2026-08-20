@@ -255,6 +255,40 @@ class ControlBarLayoutInstrumentedTest {
     }
 
     @Test
+    fun statsOverlayStacksInsideNarrowSafeWindows() {
+        withLayout(widthDp = 320, applyLayout = false) { layout ->
+            val safeInsets =
+                SafeAreaGeometry.Insets.of(
+                    left = layout.dp(12),
+                    top = 0,
+                    right = layout.dp(12),
+                    bottom = 0,
+                )
+            val mode = layout.applyStatusOverlay(layout.dp(320), safeInsets)
+            layout.measureAndLayout(layout.dp(320))
+
+            assertEquals(StatusOverlayLayoutPolicy.Mode.STACKED, mode)
+            assertEquals(LinearLayout.VERTICAL, layout.statusOverlay.content.orientation)
+            val expectedMaximumWidth = layout.dp(320) - layout.dp(24) - layout.dp(32)
+            assertTrue(layout.statusOverlay.card.measuredWidth <= expectedMaximumWidth)
+            assertTrue(layout.statusOverlay.card.measuredWidth >= expectedMaximumWidth - 1)
+            assertStatusOverlayItemsReadable(layout)
+        }
+    }
+
+    @Test
+    fun statsOverlayKeepsSingleRowWhenAllColumnsFit() {
+        withLayout(widthDp = 900, applyLayout = false) { layout ->
+            val mode = layout.applyStatusOverlay(layout.dp(900), SafeAreaGeometry.Insets.NONE)
+            layout.measureAndLayout(layout.dp(900))
+
+            assertEquals(StatusOverlayLayoutPolicy.Mode.SINGLE_ROW, mode)
+            assertEquals(LinearLayout.HORIZONTAL, layout.statusOverlay.content.orientation)
+            assertStatusOverlayItemsReadable(layout)
+        }
+    }
+
+    @Test
     fun resourceGeometryUsesExactPixelsAtNonIntegerDensityBoundaries() {
         val context = densityContext(DENSITY_DPI_FOR_2_75)
         val geometry = ControlBarLayoutApplier.geometry(context.resources)
@@ -464,6 +498,22 @@ class ControlBarLayoutInstrumentedTest {
         assertEquals(base.bottom + insets.bottom, layout.cardParams.bottomMargin)
     }
 
+    private fun assertStatusOverlayItemsReadable(layout: MeasuredLayout) {
+        val overlayBounds = descendantBounds(layout.root, layout.statusOverlay.card)
+        val content = layout.statusOverlay.content
+        (0 until content.childCount).forEach { index ->
+            val item = content.getChildAt(index)
+            val params = item.layoutParams as LinearLayout.LayoutParams
+            assertEquals(0f, params.weight)
+            assertTrue("Status item $index width", item.measuredWidth >= layout.dp(48))
+            assertTrue("Status item $index height", item.measuredHeight > 0)
+            assertTrue(
+                "Status item $index escaped overlay",
+                overlayBounds.contains(descendantBounds(layout.root, item)),
+            )
+        }
+    }
+
     private fun withLayout(
         context: Context = applicationContext(),
         widthDp: Int? = null,
@@ -488,8 +538,14 @@ class ControlBarLayoutInstrumentedTest {
                 settings = root.findViewById(R.id.controlSettingsButton),
                 disconnect = root.findViewById(R.id.controlDisconnectButton),
             )
+        val statusOverlay =
+            StatusOverlayViews(
+                card = root.findViewById(R.id.statusBar),
+                content = root.findViewById(R.id.statusBarContent),
+            )
         val label = root.findViewById<TextView>(R.id.controlDisplaysLabel)
         views.card.visibility = View.VISIBLE
+        statusOverlay.card.visibility = View.VISIBLE
         views.connectionStatus.visibility = View.VISIBLE
         views.displaySelector.visibility = if (selectorVisible) View.VISIBLE else View.GONE
         views.hostAction.visibility = if (hostVisible) View.VISIBLE else View.GONE
@@ -505,7 +561,7 @@ class ControlBarLayoutInstrumentedTest {
             )
         }
         val resolvedWidth = widthPx ?: dp(themedContext, requireNotNull(widthDp))
-        val layout = MeasuredLayout(themedContext, root, views, label, resolvedWidth)
+        val layout = MeasuredLayout(themedContext, root, views, statusOverlay, label, resolvedWidth)
         if (applyLayout) {
             layout.mode = layout.apply(resolvedWidth, SafeAreaGeometry.Insets.NONE)
             layout.measureAndLayout(resolvedWidth)
@@ -552,6 +608,7 @@ class ControlBarLayoutInstrumentedTest {
         val context: Context,
         val root: ViewGroup,
         val views: ControlBarViews,
+        val statusOverlay: StatusOverlayViews,
         val label: TextView,
         private var windowWidthPx: Int,
     ) {
@@ -576,6 +633,17 @@ class ControlBarLayoutInstrumentedTest {
                 safeAreaInsets = safeAreaInsets,
             ).also { mode = it }
         }
+
+        fun applyStatusOverlay(
+            windowWidthPx: Int,
+            safeAreaInsets: SafeAreaGeometry.Insets,
+        ): StatusOverlayLayoutPolicy.Mode =
+            StatusOverlayLayoutApplier.apply(
+                views = statusOverlay,
+                resources = context.resources,
+                windowWidthPx = windowWidthPx,
+                safeAreaInsets = safeAreaInsets,
+            )
 
         fun measureAndLayout(widthPx: Int = windowWidthPx) {
             root.measure(
