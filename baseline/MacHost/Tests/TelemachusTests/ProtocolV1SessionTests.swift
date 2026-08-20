@@ -507,7 +507,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         guard case .videoConfig(let firstConfig)? = startResponses[1].payload else {
             return XCTFail("Expected first VideoConfig")
         }
-        XCTAssertEqual(firstConfig.colorDescription, HostVideoColorNegotiator.legacySDRColor)
+        assertLegacySDR(firstConfig.colorDescription)
 
         var result = VSVideoConfigResult()
         result.configEpoch = firstConfig.configEpoch
@@ -527,7 +527,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         }
         XCTAssertEqual(fallbackConfig.configEpoch, firstConfig.configEpoch + 1)
         XCTAssertEqual(fallbackConfig.streamID, firstConfig.streamID)
-        XCTAssertEqual(fallbackConfig.colorDescription, HostVideoColorNegotiator.legacySDRColor)
+        assertLegacySDR(fallbackConfig.colorDescription)
     }
 
     func testClientDecodeProfileRejectionWithoutSelectedColorFailsClosed() throws {
@@ -569,7 +569,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         hello.clientHello.videoDecodeCapabilities = [sdrDecodeCapability(codec: .h264)]
 
         let helloActions = session.handleControl(try hello.serializedData())
-        XCTAssertTrue(helloActions.contains { if case .codecNegotiated(.h264) = $0 { true } else { false } })
+        XCTAssertTrue(containsCodecNegotiated(helloActions, codec: .h264))
         let responses = try controlEnvelopes(session.completeCodecNegotiation())
         guard case .hostHello(let hostHello)? = responses.first?.payload else {
             return XCTFail("Expected HostHello")
@@ -585,7 +585,7 @@ final class ProtocolV1SessionTests: XCTestCase {
             return XCTFail("Expected VideoConfig")
         }
         XCTAssertEqual(config.codec, .h264)
-        XCTAssertEqual(config.colorDescription, HostVideoColorNegotiator.legacySDRColor)
+        assertLegacySDR(config.colorDescription)
     }
 
     func testInvalidDisplayAndStaleEpochFailClosed() throws {
@@ -1783,6 +1783,28 @@ final class ProtocolV1SessionTests: XCTestCase {
         capability.bitDepths = [8]
         capability.transferFunctions = [.bt709, .srgb]
         return capability
+    }
+
+    private func containsCodecNegotiated(
+        _ actions: [ProtocolV1SessionAction],
+        codec: VSCodec
+    ) -> Bool {
+        actions.contains { action in
+            if case .codecNegotiated(codec) = action { return true }
+            return false
+        }
+    }
+
+    private func assertLegacySDR(
+        _ color: VSColorDescription,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(color.primaries, .bt709, file: file, line: line)
+        XCTAssertEqual(color.transferFunction, .bt709, file: file, line: line)
+        XCTAssertEqual(color.matrixCoefficients, .bt709, file: file, line: line)
+        XCTAssertFalse(color.fullRange, file: file, line: line)
+        XCTAssertEqual(color.bitDepth, 8, file: file, line: line)
     }
 
     private func envelope(id: UInt64, payload: VSEnvelope.OneOf_Payload) -> VSEnvelope {

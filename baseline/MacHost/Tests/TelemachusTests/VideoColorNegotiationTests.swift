@@ -12,7 +12,7 @@ final class VideoColorNegotiationTests: XCTestCase {
         switch negotiator.evaluate(hdrColor()) {
         case let .fallback(color, reason):
             XCTAssertEqual(reason, HostVideoColorNegotiator.unsupportedHDRFallbackReason)
-            XCTAssertEqual(color, HostVideoColorNegotiator.legacySDRColor)
+            assertLegacySDR(color)
         case .accepted:
             XCTFail("HDR was accepted without CAPABILITY_HDR_VIDEO")
         case .rejected:
@@ -45,15 +45,14 @@ final class VideoColorNegotiationTests: XCTestCase {
             decodeCapabilities: sdrDecodeCapabilities()
         )
 
-        XCTAssertEqual(
-            negotiator.validatedFallback(
-                HostVideoColorNegotiator.legacySDRColor,
-                codec: .hevc,
-                encodedSize: dimensions(),
-                framesPerSecond: 60
-            ),
-            HostVideoColorNegotiator.legacySDRColor
+        let validFallback = negotiator.validatedFallback(
+            legacySDRColor(),
+            codec: .hevc,
+            encodedSize: dimensions(),
+            framesPerSecond: 60
         )
+        XCTAssertNotNil(validFallback)
+        if let validFallback { assertLegacySDR(validFallback) }
         XCTAssertNil(negotiator.validatedFallback(
             hdrColor(),
             codec: .hevc,
@@ -61,7 +60,7 @@ final class VideoColorNegotiationTests: XCTestCase {
             framesPerSecond: 60
         ))
         XCTAssertNil(negotiator.validatedFallback(
-            HostVideoColorNegotiator.legacySDRColor,
+            legacySDRColor(),
             codec: .hevc,
             encodedSize: dimensions(),
             framesPerSecond: 144
@@ -86,6 +85,22 @@ final class VideoColorNegotiationTests: XCTestCase {
         color.matrixCoefficients = .bt2020NonConstant
         color.bitDepth = 10
         return color
+    }
+
+    private func legacySDRColor() -> VSColorDescription {
+        HostVideoColorNegotiator.legacySDRColor
+    }
+
+    private func assertLegacySDR(
+        _ color: VSColorDescription,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(color.primaries, .bt709, file: file, line: line)
+        XCTAssertEqual(color.transferFunction, .bt709, file: file, line: line)
+        XCTAssertEqual(color.matrixCoefficients, .bt709, file: file, line: line)
+        XCTAssertFalse(color.fullRange, file: file, line: line)
+        XCTAssertEqual(color.bitDepth, 8, file: file, line: line)
     }
 
     private func dimensions() -> VSDimensions {
