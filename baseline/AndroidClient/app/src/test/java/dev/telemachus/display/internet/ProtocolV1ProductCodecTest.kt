@@ -32,11 +32,21 @@ class ProtocolV1ProductCodecTest {
         assertEquals("device-1", hello.clientHello.deviceId)
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_END_TO_END_ENCRYPTION))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION))
+        assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_AUDIO_DATA_CHANNEL))
+        assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_BULK_DATA_CHANNEL))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_STYLUS))
         assertTrue(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_TOUCH))
+        assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_AUDIO))
+        assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_CLIPBOARD))
+        assertFalse(hello.clientHello.capabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
         assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_STYLUS))
         assertTrue(!hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_TOUCH))
         assertTrue(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION))
+        assertTrue(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_AUDIO_DATA_CHANNEL))
+        assertTrue(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_BULK_DATA_CHANNEL))
+        assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_AUDIO))
+        assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_CLIPBOARD))
+        assertFalse(hello.clientHello.requiredCapabilitiesList.contains(Capability.CAPABILITY_FILE_TRANSFER))
         assertEquals(
             InternetMediaRecordContract.MAXIMUM_ENCRYPTED_RECORD_BYTES,
             hello.clientHello.resourceLimits.maximumEncryptedMediaRecordBytes,

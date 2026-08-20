@@ -136,6 +136,8 @@ class InternetPairingTest {
                     com.google.gson.JsonArray().apply {
                         add("peer_identity")
                         add("application_e2ee")
+                        add("audio_data_channel")
+                        add("bulk_data_channel")
                         add("control_data_channel")
                         add("media_data_channel")
                     },
@@ -489,7 +491,16 @@ private class Fixture(
             u64(1), u64(1), "host".toByteArray(), "device".toByteArray(),
             canonicalList(listOf("ECDSA_P256_SHA256")), canonicalList(listOf("ECDH_P256")),
             canonicalList(listOf("AES_256_GCM")),
-            canonicalList(listOf("application_e2ee", "control_data_channel", "media_data_channel", "peer_identity")),
+            canonicalList(
+                listOf(
+                    "application_e2ee",
+                    "audio_data_channel",
+                    "bulk_data_channel",
+                    "control_data_channel",
+                    "media_data_channel",
+                    "peer_identity",
+                ),
+            ),
             offerId, challenge, u64(expiresAt),
             *identityParts(hostIdentity), encodePublic(hostEphemeral),
             *identityParts(request.deviceIdentity), request.deviceName.toByteArray(), request.deviceEphemeralPublicKey,

@@ -178,6 +178,8 @@ struct InternetProductProtocolCodec {
         .endToEndEncryption,
         .mediaRecordFragmentation,
         .replayProtection,
+        .audioDataChannel,
+        .bulkDataChannel,
     ]
 
     let sessionID: Data

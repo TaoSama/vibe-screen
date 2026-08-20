@@ -38,6 +38,8 @@ class SecurityContractTest(unittest.TestCase):
         input_source = (PROTO_ROOT / "input.proto").read_text()
         capabilities = enum_values(session_source, "Capability")
         self.assertEqual(27, capabilities["CAPABILITY_USB_HID_MODIFIER_BYTE"])
+        self.assertEqual(28, capabilities["CAPABILITY_AUDIO_DATA_CHANNEL"])
+        self.assertEqual(29, capabilities["CAPABILITY_BULK_DATA_CHANNEL"])
         self.assertEqual(len(capabilities), len(set(capabilities.values())))
         self.assertEqual(
             {

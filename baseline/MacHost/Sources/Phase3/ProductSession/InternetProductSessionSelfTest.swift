@@ -389,6 +389,7 @@ final class ProductDeviceHarness {
             switch channel {
             case .control: try handleControl(payload)
             case .media: try handleMedia(payload)
+            case .audio, .bulk: break
             }
         } catch {
             recordFailure(error.localizedDescription)
@@ -443,12 +444,8 @@ final class ProductDeviceHarness {
         hello.supportedProtocols = range
         hello.deviceID = "local-e2e-device"
         hello.deviceName = "Synthetic Protocol v1 Device"
-        hello.capabilities = [
-            .deviceIdentity, .endToEndEncryption, .mediaRecordFragmentation, .replayProtection, .touch,
-        ]
-        hello.requiredCapabilities = [
-            .deviceIdentity, .endToEndEncryption, .mediaRecordFragmentation, .replayProtection,
-        ]
+        hello.capabilities = Array(InternetProductProtocolCodec.requiredCapabilities) + [.touch]
+        hello.requiredCapabilities = Array(InternetProductProtocolCodec.requiredCapabilities)
         hello.codecs = [.hevc]
         hello.transports = [.internet]
         var limits = VSResourceLimits()

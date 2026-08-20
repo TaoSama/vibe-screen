@@ -1077,27 +1077,35 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertTrue(reason.contains("backlog"))
     }
 
-    func testLegacyClientWithoutMediaRecordNegotiationFailsBeforeHostControls() throws {
-        let harness = try Harness()
-        let authenticating = expectation(description: "authenticating")
-        let failed = expectation(description: "legacy client rejected")
-        harness.session.onStateChanged = { state in
-            if state == .authenticating { authenticating.fulfill() }
-            if case .failed = state { failed.fulfill() }
+    func testLegacyClientMissingRequiredTransportBoundaryFailsBeforeHostControls() throws {
+        for removedCapability in [
+            VSCapability.mediaRecordFragmentation,
+            .audioDataChannel,
+            .bulkDataChannel,
+        ] {
+            let harness = try Harness()
+            let authenticating = expectation(description: "authenticating \(removedCapability)")
+            let failed = expectation(description: "legacy client rejected \(removedCapability)")
+            harness.session.onStateChanged = { state in
+                if state == .authenticating { authenticating.fulfill() }
+                if case .failed = state { failed.fulfill() }
+            }
+
+            try harness.session.start(configuration: harness.configuration)
+            harness.engine.emitConnection(.connected(path: .direct))
+            wait(for: [authenticating], timeout: 1)
+            var legacyHello = harness.clientHello(messageID: 1)
+            legacyHello.clientHello.capabilities.removeAll { $0 == removedCapability }
+            legacyHello.clientHello.requiredCapabilities.removeAll { $0 == removedCapability }
+            if removedCapability == .mediaRecordFragmentation {
+                legacyHello.clientHello.resourceLimits.maximumEncryptedMediaRecordBytes = 0
+            }
+            harness.receiveControl(legacyHello)
+
+            wait(for: [failed], timeout: 1)
+            XCTAssertTrue(harness.engine.sentPlaintext.filter { $0.channel == .control }.isEmpty)
+            XCTAssertTrue(harness.engine.didClose)
         }
-
-        try harness.session.start(configuration: harness.configuration)
-        harness.engine.emitConnection(.connected(path: .direct))
-        wait(for: [authenticating], timeout: 1)
-        var legacyHello = harness.clientHello(messageID: 1)
-        legacyHello.clientHello.capabilities.removeAll { $0 == .mediaRecordFragmentation }
-        legacyHello.clientHello.requiredCapabilities.removeAll { $0 == .mediaRecordFragmentation }
-        legacyHello.clientHello.resourceLimits.maximumEncryptedMediaRecordBytes = 0
-        harness.receiveControl(legacyHello)
-
-        wait(for: [failed], timeout: 1)
-        XCTAssertTrue(harness.engine.sentPlaintext.filter { $0.channel == .control }.isEmpty)
-        XCTAssertTrue(harness.engine.didClose)
     }
 
     func testSecurityFactoryEpochMismatchClosesTemporaryCipherAndReportsCleanupFailure() throws {
@@ -2450,15 +2458,11 @@ private final class Harness {
         hello.supportedProtocols = range
         hello.deviceID = "device-1"
         hello.deviceName = "Android"
-        hello.capabilities = [
-            .deviceIdentity, .endToEndEncryption, .mediaRecordFragmentation, .replayProtection, .touch,
-        ]
+        hello.capabilities = Array(InternetProductProtocolCodec.requiredCapabilities) + [.touch]
         if supportsStylus { hello.capabilities.append(.stylus) }
         if supportsStylusExtended { hello.capabilities.append(.stylusExtended) }
         if supportsController { hello.capabilities.append(.controller) }
-        hello.requiredCapabilities = [
-            .deviceIdentity, .endToEndEncryption, .mediaRecordFragmentation, .replayProtection,
-        ]
+        hello.requiredCapabilities = Array(InternetProductProtocolCodec.requiredCapabilities)
         hello.codecs = [.hevc]
         hello.transports = [.internet]
         var limits = VSResourceLimits()

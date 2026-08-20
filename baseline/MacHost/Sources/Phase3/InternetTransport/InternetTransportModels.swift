@@ -4,6 +4,8 @@ import VibeScreenProtocol
 enum InternetTransportChannel: Equatable {
     case control
     case media
+    case audio
+    case bulk
 
     var dataChannelConfiguration: WebRTCDataChannelConfiguration {
         switch self {
@@ -19,8 +21,24 @@ enum InternetTransportChannel: Equatable {
                 isOrdered: false,
                 maximumRetransmits: 0
             )
+        case .audio:
+            return WebRTCDataChannelConfiguration(
+                label: "vibescreen.audio.v1",
+                isOrdered: false,
+                maximumRetransmits: 0
+            )
+        case .bulk:
+            return WebRTCDataChannelConfiguration(
+                label: "vibescreen.bulk.v1",
+                isOrdered: true,
+                maximumRetransmits: nil
+            )
         }
     }
+}
+
+extension InternetTransportChannel: CaseIterable {
+    static var allCases: [InternetTransportChannel] { [.control, .media, .audio, .bulk] }
 }
 
 struct WebRTCDataChannelConfiguration: Equatable {
@@ -229,6 +247,28 @@ enum InternetMediaRecordContract {
     }
 }
 
+enum InternetAudioRecordContract {
+    static let maximumEncryptedRecordBytes = 256 * 1_024
+    static let applicationAEADRecordOverheadBytes = PlatformSessionPacketCipher.recordOverhead
+    static let maximumPlaintextRecordBytes =
+        maximumEncryptedRecordBytes - applicationAEADRecordOverheadBytes
+
+    static func encryptedRecordBytes(forPlaintextBytes plaintextBytes: Int) -> UInt64 {
+        UInt64(plaintextBytes + applicationAEADRecordOverheadBytes)
+    }
+}
+
+enum InternetBulkRecordContract {
+    static let maximumEncryptedRecordBytes = 4 * 1_024 * 1_024
+    static let applicationAEADRecordOverheadBytes = PlatformSessionPacketCipher.recordOverhead
+    static let maximumPlaintextRecordBytes =
+        maximumEncryptedRecordBytes - applicationAEADRecordOverheadBytes
+
+    static func encryptedRecordBytes(forPlaintextBytes plaintextBytes: Int) -> UInt64 {
+        UInt64(plaintextBytes + applicationAEADRecordOverheadBytes)
+    }
+}
+
 enum EncodedInternetFrameError: Error, Equatable {
     case emptyRecords
     case tooManyRecords(actual: Int, maximum: Int)
@@ -347,6 +387,8 @@ struct InternetTransportLimits: Equatable {
         maximumBufferedControlBytes: 2 * 1_024 * 1_024,
         maximumBufferedControlMessages: 256,
         maximumMediaFrameBytes: 16 * 1_024 * 1_024,
+        maximumBufferedBulkBytes: 4 * 1_024 * 1_024,
+        maximumBufferedBulkMessages: 64,
         maximumRelayBytesPerSession: 10 * 1_024 * 1_024 * 1_024
     )
 
@@ -354,6 +396,8 @@ struct InternetTransportLimits: Equatable {
     let maximumBufferedControlBytes: Int
     let maximumBufferedControlMessages: Int
     let maximumMediaFrameBytes: Int
+    let maximumBufferedBulkBytes: Int
+    let maximumBufferedBulkMessages: Int
     let maximumRelayBytesPerSession: UInt64
 
     init(
@@ -361,12 +405,16 @@ struct InternetTransportLimits: Equatable {
         maximumBufferedControlBytes: Int,
         maximumBufferedControlMessages: Int = 256,
         maximumMediaFrameBytes: Int,
+        maximumBufferedBulkBytes: Int = 4 * 1_024 * 1_024,
+        maximumBufferedBulkMessages: Int = 64,
         maximumRelayBytesPerSession: UInt64
     ) {
         self.maximumControlMessageBytes = maximumControlMessageBytes
         self.maximumBufferedControlBytes = maximumBufferedControlBytes
         self.maximumBufferedControlMessages = maximumBufferedControlMessages
         self.maximumMediaFrameBytes = maximumMediaFrameBytes
+        self.maximumBufferedBulkBytes = maximumBufferedBulkBytes
+        self.maximumBufferedBulkMessages = maximumBufferedBulkMessages
         self.maximumRelayBytesPerSession = maximumRelayBytesPerSession
     }
 }
@@ -376,14 +424,22 @@ struct InternetTransportSnapshot: Equatable {
     let activePath: InternetPathKind?
     let controlBytesSent: UInt64
     let mediaBytesSent: UInt64
+    let audioBytesSent: UInt64
+    let bulkBytesSent: UInt64
     let relayBytesSent: UInt64
     let relayBytesReserved: UInt64
     let droppedMediaFrames: UInt64
+    let droppedAudioRecords: UInt64
     let iceRestartCount: UInt64
     let bufferedControlBytes: Int
     let bufferedControlMessages: Int
+    let bufferedBulkBytes: Int
+    let bufferedBulkMessages: Int
     let mediaInFlight: Bool
     let hasPendingMediaFrame: Bool
+    let audioInFlight: Bool
+    let hasPendingAudioRecord: Bool
+    let bulkInFlight: Bool
 }
 
 enum InternetTransportError: Error, Equatable, LocalizedError {
@@ -393,6 +449,7 @@ enum InternetTransportError: Error, Equatable, LocalizedError {
     case emptyPayload(channel: InternetTransportChannel)
     case payloadTooLarge(channel: InternetTransportChannel, actual: Int, maximum: Int)
     case controlBacklogExceeded(maximumBytes: Int)
+    case bulkBacklogExceeded(maximumBytes: Int)
     case relayBudgetExceeded(maximumBytes: UInt64)
     case sequenceExhausted(String)
     case engineSendFailed(String)
@@ -409,6 +466,8 @@ enum InternetTransportError: Error, Equatable, LocalizedError {
             return "\(channel) payload is \(actual) bytes; maximum is \(maximum)."
         case .controlBacklogExceeded(let maximumBytes):
             return "Reliable control backlog exceeded \(maximumBytes) bytes."
+        case .bulkBacklogExceeded(let maximumBytes):
+            return "Reliable bulk backlog exceeded \(maximumBytes) bytes."
         case .relayBudgetExceeded(let maximumBytes):
             return "TURN relay budget exceeded \(maximumBytes) bytes."
         case .sequenceExhausted(let sequence):

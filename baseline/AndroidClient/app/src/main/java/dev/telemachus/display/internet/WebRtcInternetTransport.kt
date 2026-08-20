@@ -29,17 +29,18 @@ class WebRtcInternetTransport(
 
     @Volatile var onControlMessage: ((ByteArray) -> Unit)? = null
     @Volatile var onMediaPacket: ((ByteArray) -> Unit)? = null
+    @Volatile var onAudioRecord: ((ByteArray) -> Unit)? = null
+    @Volatile var onBulkRecord: ((ByteArray) -> Unit)? = null
 
     fun start() {
         val stateEvent =
             synchronized(lock) {
                 check(!closed) { "Transport is closed" }
                 check(state == InternetTransportState.IDLE) { "Transport has already started" }
-                require(peerEngine.controlSemantics == DataChannelSemantics.RELIABLE_CONTROL) {
-                    "Control channel must be reliable and ordered"
-                }
-                require(peerEngine.mediaSemantics == DataChannelSemantics.LATEST_MEDIA) {
-                    "Media channel must be unordered with no retransmissions"
+                for (kind in WebRtcDataChannelKind.entries) {
+                    require(peerEngine.dataChannelSemantics[kind] == kind.semantics) {
+                        "${kind.name.lowercase()} WebRTC data channel semantics do not match the Protocol v1 contract"
+                    }
                 }
                 transitionLocked(InternetTransportState.CONNECTING)
             }
@@ -66,6 +67,16 @@ class WebRtcInternetTransport(
     fun sendMedia(frame: OutboundMediaFrame): Boolean {
         val canSend = synchronized(lock) { !closed && state.isConnected() }
         return canSend && peerEngine.sendMedia(frame)
+    }
+
+    fun sendAudioRecord(payload: ByteArray): Boolean {
+        val canSend = synchronized(lock) { !closed && state.isConnected() }
+        return canSend && peerEngine.sendAudioRecord(payload)
+    }
+
+    fun sendBulkRecord(payload: ByteArray): Boolean {
+        val canSend = synchronized(lock) { !closed && state.isConnected() }
+        return canSend && peerEngine.sendBulkRecord(payload)
     }
 
     override fun onConnected(route: PeerRoute) {
@@ -122,6 +133,22 @@ class WebRtcInternetTransport(
         payload: ByteArray,
     ) {
         val callback = synchronized(lock) { onMediaPacket.takeIf { acceptsPacketLocked(sessionEpoch) } }
+        callback?.invoke(payload)
+    }
+
+    override fun onAudioRecord(
+        sessionEpoch: Long,
+        payload: ByteArray,
+    ) {
+        val callback = synchronized(lock) { onAudioRecord.takeIf { acceptsPacketLocked(sessionEpoch) } }
+        callback?.invoke(payload)
+    }
+
+    override fun onBulkRecord(
+        sessionEpoch: Long,
+        payload: ByteArray,
+    ) {
+        val callback = synchronized(lock) { onBulkRecord.takeIf { acceptsPacketLocked(sessionEpoch) } }
         callback?.invoke(payload)
     }
 

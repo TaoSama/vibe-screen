@@ -53,12 +53,20 @@ WebRTC/network/key-store implementations.
    the remote identity independently of the signaling channel.
 7. Gather ICE candidates, prefer direct connectivity, and use short-lived TURN
    credentials only when needed.
-8. Open two negotiated channels:
+8. Open the negotiated Protocol v1 DataChannel transport boundary:
    - `vibescreen.control.v1`: ordered, reliable;
-   - `vibescreen.media.v1`: unordered, `maxRetransmits = 0`.
+   - `vibescreen.media.v1`: unordered, `maxRetransmits = 0`;
+   - `vibescreen.audio.v1`: capability-gated raw transport record path,
+     unordered, `maxRetransmits = 0`;
+   - `vibescreen.bulk.v1`: capability-gated raw transport record path,
+     ordered and reliable.
 9. Authenticate the session transcript, establish a new `session_epoch`, then
    send encrypted Protocol v1 traffic. Start media only after configuration is
    accepted and a keyframe is available.
+
+The audio and bulk channels are transport boundaries only in this slice. Audio
+capture/playback, clipboard synchronization, and file-transfer product flows
+remain out of scope for Phase 3.
 
 ## Application E2EE
 
@@ -72,7 +80,7 @@ Key derivation must domain-separate at least:
 
 ```text
 protocol version | session_id | session_epoch | key_epoch |
-sender role | receiver identity | control-or-media
+sender role | receiver identity | control-or-media-or-audio-or-bulk
 ```
 
 Each direction/channel uses a separate sequence counter and key. Nonces must be

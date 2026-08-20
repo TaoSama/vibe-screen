@@ -42,6 +42,24 @@ internal object InternetMediaRecordContract {
             (MAXIMUM_FRAME_BYTES + MAXIMUM_FRAGMENTS_PER_FRAME - 1) / MAXIMUM_FRAGMENTS_PER_FRAME
 }
 
+internal object InternetControlRecordContract {
+    const val MAXIMUM_PLAINTEXT_RECORD_BYTES = 1_048_576
+    const val MAXIMUM_ENCRYPTED_RECORD_BYTES =
+        MAXIMUM_PLAINTEXT_RECORD_BYTES + InternetMediaRecordContract.APPLICATION_AEAD_RECORD_OVERHEAD_BYTES
+}
+
+internal object InternetAudioRecordContract {
+    const val MAXIMUM_ENCRYPTED_RECORD_BYTES = 256 * 1024
+    const val MAXIMUM_PLAINTEXT_RECORD_BYTES =
+        MAXIMUM_ENCRYPTED_RECORD_BYTES - InternetMediaRecordContract.APPLICATION_AEAD_RECORD_OVERHEAD_BYTES
+}
+
+internal object InternetBulkRecordContract {
+    const val MAXIMUM_ENCRYPTED_RECORD_BYTES = 4 * 1024 * 1024
+    const val MAXIMUM_PLAINTEXT_RECORD_BYTES =
+        MAXIMUM_ENCRYPTED_RECORD_BYTES - InternetMediaRecordContract.APPLICATION_AEAD_RECORD_OVERHEAD_BYTES
+}
+
 enum class ProductVideoCodec {
     H264,
     HEVC,
@@ -601,6 +619,8 @@ internal class ProtobufProtocolV1ProductCodec(
                 Capability.CAPABILITY_END_TO_END_ENCRYPTION,
                 Capability.CAPABILITY_MEDIA_RECORD_FRAGMENTATION,
                 Capability.CAPABILITY_REPLAY_PROTECTION,
+                Capability.CAPABILITY_AUDIO_DATA_CHANNEL,
+                Capability.CAPABILITY_BULK_DATA_CHANNEL,
             )
         val REQUIRED_CLIENT_CAPABILITIES =
             OFFERED_CLIENT_CAPABILITIES.filterNot {

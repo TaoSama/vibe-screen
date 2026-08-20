@@ -7,6 +7,8 @@ final class WebRTCInternetTransport {
     var onError: ((InternetTransportError) -> Void)?
     var onControlReceived: ((Data) -> Void)?
     var onMediaReceived: ((Data) -> Void)?
+    var onAudioRecordReceived: ((Data) -> Void)?
+    var onBulkRecordReceived: ((Data) -> Void)?
     var onFreshSessionRecoveryRequired: ((Int) -> Void)?
 
     private final class ControlTransmissionCompletion {
@@ -80,6 +82,53 @@ final class WebRTCInternetTransport {
         }
     }
 
+    private struct BulkTransmission {
+        let identifier: UInt64
+        let payload: Data
+        let generation: UInt64
+        let path: InternetPathKind
+        let engineContext: WebRTCEngineTransmissionContext
+        let relayReservationBytes: UInt64
+    }
+
+    private struct BulkTransmissionQueue {
+        private var storage: [BulkTransmission?] = []
+        private var head = 0
+
+        var count: Int { storage.count - head }
+
+        mutating func append(_ transmission: BulkTransmission) {
+            storage.append(transmission)
+        }
+
+        mutating func popFirst() -> BulkTransmission? {
+            guard head < storage.count else { return nil }
+            let transmission = storage[head]
+            storage[head] = nil
+            head += 1
+            if head >= 64, head * 2 >= storage.count {
+                storage.removeFirst(head)
+                head = 0
+            }
+            return transmission
+        }
+
+        mutating func removeAll() {
+            storage.removeAll(keepingCapacity: true)
+            head = 0
+        }
+
+        func payloadBytes() -> Int {
+            storage[head...].compactMap { $0 }.reduce(0) { $0 + $1.payload.count }
+        }
+
+        func relayReservationBytes() -> UInt64 {
+            storage[head...].compactMap { $0 }.reduce(0) { partial, transmission in
+                partial.addingClamped(transmission.relayReservationBytes)
+            }
+        }
+    }
+
     private struct FailureTransition {
         let failedState: InternetTransportState
         let generation: UInt64
@@ -112,15 +161,30 @@ final class WebRTCInternetTransport {
         var nextMediaTransmissionIdentifier: UInt64 = 0
         var dispatchedMediaTransmissionIdentifiers: Set<UInt64> = []
         var dispatchedMediaRelayReservations: [UInt64: UInt64] = [:]
+        var nextAudioTransmissionIdentifier: UInt64 = 0
+        var dispatchedAudioTransmissionIdentifiers: Set<UInt64> = []
+        var dispatchedAudioRelayReservations: [UInt64: UInt64] = [:]
+        var nextBulkTransmissionIdentifier: UInt64 = 0
+        var dispatchedBulkTransmissionIdentifiers: Set<UInt64> = []
+        var dispatchedBulkRelayReservations: [UInt64: UInt64] = [:]
         var bufferedControlBytes = 0
         var mediaInFlight = false
         var pendingMediaFrame: EncodedInternetFrame?
+        var audioInFlight = false
+        var pendingAudioRecord: Data?
+        var bulkInFlight = false
+        var activeBulkTransmissionIdentifier: UInt64?
+        var bulkQueue = BulkTransmissionQueue()
+        var bufferedBulkBytes = 0
         var waitingForKeyframe = true
         var controlBytesSent: UInt64 = 0
         var mediaBytesSent: UInt64 = 0
+        var audioBytesSent: UInt64 = 0
+        var bulkBytesSent: UInt64 = 0
         var relayBytesSent: UInt64 = 0
         var relayBytesReserved: UInt64 = 0
         var droppedMediaFrames: UInt64 = 0
+        var droppedAudioRecords: UInt64 = 0
         var iceRestartCount: UInt64 = 0
         var recoveryAttemptAwaitingOutcome = false
         var recovery: NetworkRecoveryStateMachine
@@ -258,10 +322,7 @@ final class WebRTCInternetTransport {
         do {
             try engine.start(
                 configuration: configuration,
-                channels: [
-                    InternetTransportChannel.control.dataChannelConfiguration,
-                    InternetTransportChannel.media.dataChannelConfiguration
-                ]
+                channels: InternetTransportChannel.allCases.map(\.dataChannelConfiguration)
             )
         } catch {
             let transportError = (error as? InternetTransportError)
@@ -473,6 +534,151 @@ final class WebRTCInternetTransport {
         return .success(())
     }
 
+    @discardableResult
+    func sendAudioRecord(_ payload: Data) -> Result<Void, InternetTransportError> {
+        guard !payload.isEmpty else {
+            return .failure(.emptyPayload(channel: .audio))
+        }
+        guard payload.count <= InternetAudioRecordContract.maximumPlaintextRecordBytes else {
+            return .failure(.payloadTooLarge(
+                channel: .audio,
+                actual: payload.count,
+                maximum: InternetAudioRecordContract.maximumPlaintextRecordBytes
+            ))
+        }
+
+        var recordToTransmit: Data?
+        var transmissionGeneration: UInt64 = 0
+        let encryptedRecordBytes = InternetAudioRecordContract.encryptedRecordBytes(
+            forPlaintextBytes: payload.count
+        )
+        let admissionError: InternetTransportError? = withSendGate {
+            withLock { state in
+                guard isConnected(state.transportState),
+                      !state.pipelineGenerationExhausted,
+                      let activePath = state.activePath,
+                      let engineContext = state.engineTransmissionContext,
+                      engineContext.path == activePath else { return .notConnected }
+                transmissionGeneration = state.pipelineGeneration
+                guard state.audioInFlight else {
+                    guard reserveRelayBytes(encryptedRecordBytes, state: &state) else {
+                        return .relayBudgetExceeded(maximumBytes: limits.maximumRelayBytesPerSession)
+                    }
+                    state.audioInFlight = true
+                    recordToTransmit = payload
+                    return nil
+                }
+
+                if let pending = state.pendingAudioRecord {
+                    let pendingEncryptedRecordBytes = InternetAudioRecordContract.encryptedRecordBytes(
+                        forPlaintextBytes: pending.count
+                    )
+                    guard reserveRelayBytes(
+                        encryptedRecordBytes,
+                        replacing: pendingEncryptedRecordBytes,
+                        state: &state
+                    ) else {
+                        return .relayBudgetExceeded(maximumBytes: limits.maximumRelayBytesPerSession)
+                    }
+                    state.droppedAudioRecords += 1
+                } else {
+                    guard reserveRelayBytes(encryptedRecordBytes, state: &state) else {
+                        return .relayBudgetExceeded(maximumBytes: limits.maximumRelayBytesPerSession)
+                    }
+                }
+                state.pendingAudioRecord = payload
+                return nil
+            }
+        }
+
+        if let admissionError { return .failure(admissionError) }
+        if let recordToTransmit { transmitAudioRecord(recordToTransmit, generation: transmissionGeneration) }
+        return .success(())
+    }
+
+    @discardableResult
+    func sendBulkRecord(_ payload: Data) -> Result<Void, InternetTransportError> {
+        guard !payload.isEmpty else {
+            return .failure(.emptyPayload(channel: .bulk))
+        }
+        guard payload.count <= InternetBulkRecordContract.maximumPlaintextRecordBytes else {
+            return .failure(.payloadTooLarge(
+                channel: .bulk,
+                actual: payload.count,
+                maximum: InternetBulkRecordContract.maximumPlaintextRecordBytes
+            ))
+        }
+
+        let encryptedPayloadBytes = InternetBulkRecordContract.encryptedRecordBytes(
+            forPlaintextBytes: payload.count
+        )
+        var failureTransition: FailureTransition?
+        var transmission: BulkTransmission?
+        let result: Result<Void, InternetTransportError> = withSendGate {
+            let admissionError: InternetTransportError? = withLock { state in
+                guard isConnected(state.transportState),
+                      !state.pipelineGenerationExhausted,
+                      let activePath = state.activePath,
+                      let engineContext = state.engineTransmissionContext,
+                      engineContext.path == activePath else { return .notConnected }
+                guard state.bufferedBulkBytes + payload.count <= limits.maximumBufferedBulkBytes else {
+                    return .bulkBacklogExceeded(maximumBytes: limits.maximumBufferedBulkBytes)
+                }
+                let bufferedBulkMessages = state.bulkQueue.count + (state.bulkInFlight ? 1 : 0)
+                guard bufferedBulkMessages < limits.maximumBufferedBulkMessages else {
+                    return .bulkBacklogExceeded(maximumBytes: limits.maximumBufferedBulkBytes)
+                }
+                let relayReservationBytes = activePath == .relay ? encryptedPayloadBytes : 0
+                if relayReservationBytes > 0 {
+                    guard relayReservationFits(
+                        sent: state.relayBytesSent,
+                        reserved: state.relayBytesReserved,
+                        additional: relayReservationBytes
+                    ) else {
+                        return .relayBudgetExceeded(maximumBytes: limits.maximumRelayBytesPerSession)
+                    }
+                    state.relayBytesReserved = state.relayBytesReserved.addingClamped(
+                        relayReservationBytes
+                    )
+                }
+                guard state.nextBulkTransmissionIdentifier < UInt64.max else {
+                    return .sequenceExhausted("bulk transmission identifier")
+                }
+                state.nextBulkTransmissionIdentifier += 1
+                let admitted = BulkTransmission(
+                    identifier: state.nextBulkTransmissionIdentifier,
+                    payload: payload,
+                    generation: state.pipelineGeneration,
+                    path: activePath,
+                    engineContext: engineContext,
+                    relayReservationBytes: relayReservationBytes
+                )
+                state.bufferedBulkBytes += payload.count
+                if state.bulkInFlight {
+                    state.bulkQueue.append(admitted)
+                } else {
+                    state.bulkInFlight = true
+                    state.activeBulkTransmissionIdentifier = admitted.identifier
+                    transmission = admitted
+                }
+                return nil
+            }
+
+            if let admissionError {
+                if case .bulkBacklogExceeded = admissionError {
+                    failureTransition = prepareFailureWithinSendGate(admissionError)
+                } else if case .sequenceExhausted = admissionError {
+                    failureTransition = prepareFailureWithinSendGate(admissionError)
+                }
+                return .failure(admissionError)
+            }
+            return .success(())
+        }
+        if let failureTransition { performFailureTransition(failureTransition) }
+        if let transmission { transmitBulk(transmission) }
+        return result
+    }
+
     func close() {
         let closeTransition = {
             engineLifecycleGate.lock()
@@ -502,14 +708,22 @@ final class WebRTCInternetTransport {
                 activePath: $0.activePath,
                 controlBytesSent: $0.controlBytesSent,
                 mediaBytesSent: $0.mediaBytesSent,
+                audioBytesSent: $0.audioBytesSent,
+                bulkBytesSent: $0.bulkBytesSent,
                 relayBytesSent: $0.relayBytesSent,
                 relayBytesReserved: $0.relayBytesReserved,
                 droppedMediaFrames: $0.droppedMediaFrames,
+                droppedAudioRecords: $0.droppedAudioRecords,
                 iceRestartCount: $0.iceRestartCount,
                 bufferedControlBytes: $0.bufferedControlBytes,
                 bufferedControlMessages: $0.controlQueue.count + ($0.controlInFlight ? 1 : 0),
+                bufferedBulkBytes: $0.bufferedBulkBytes,
+                bufferedBulkMessages: $0.bulkQueue.count + ($0.bulkInFlight ? 1 : 0),
                 mediaInFlight: $0.mediaInFlight,
-                hasPendingMediaFrame: $0.pendingMediaFrame != nil
+                hasPendingMediaFrame: $0.pendingMediaFrame != nil,
+                audioInFlight: $0.audioInFlight,
+                hasPendingAudioRecord: $0.pendingAudioRecord != nil,
+                bulkInFlight: $0.bulkInFlight
             )
         }
     }
@@ -651,6 +865,108 @@ final class WebRTCInternetTransport {
             performFailureTransition(failureTransition)
         } else if let next {
             transmitControl(next)
+        }
+    }
+
+    private func transmitBulk(_ transmission: BulkTransmission) {
+        var canSend = false
+        let claimed = withSendGate {
+            withLock { state -> WebRTCEngineTransmissionContext? in
+                guard state.pipelineGeneration == transmission.generation,
+                      state.bulkInFlight,
+                      state.activeBulkTransmissionIdentifier == transmission.identifier,
+                      isConnected(state.transportState),
+                      state.activePath == transmission.path,
+                      state.engineTransmissionContext == transmission.engineContext else {
+                    recoverRejectedBulkSend(transmission, state: &state)
+                    return nil
+                }
+                state.dispatchedBulkTransmissionIdentifiers.insert(transmission.identifier)
+                if transmission.relayReservationBytes > 0 {
+                    state.dispatchedBulkRelayReservations[transmission.identifier] =
+                        transmission.relayReservationBytes
+                }
+                canSend = true
+                return transmission.engineContext
+            }
+        }
+        guard canSend, let engineContext = claimed else { return }
+
+        let completionHandoff = EngineSendCompletionHandoff()
+        engine.send(
+            transmission.payload,
+            channel: .bulk,
+            expectedContext: engineContext
+        ) { [weak self] result in
+            guard let self else { return }
+            if completionHandoff.receive(result) {
+                self.handleBulkCompletion(transmission, result: result)
+            }
+        }
+        let synchronousResult = completionHandoff.markEngineSendReturned()
+        if let synchronousResult {
+            handleBulkCompletion(transmission, result: synchronousResult)
+        }
+    }
+
+    private func handleBulkCompletion(
+        _ transmission: BulkTransmission,
+        result: Result<Void, Error>
+    ) {
+        var next: BulkTransmission?
+        var failureTransition: FailureTransition?
+        withSendGate {
+            var reportedError: InternetTransportError?
+            withLock { state in
+                guard state.dispatchedBulkTransmissionIdentifiers.remove(
+                    transmission.identifier
+                ) != nil else { return }
+                let relayReservationBytes = state.dispatchedBulkRelayReservations
+                    .removeValue(forKey: transmission.identifier) ?? 0
+                state.relayBytesReserved = state.relayBytesReserved.subtractingClamped(
+                    relayReservationBytes
+                )
+                let isCurrent = state.pipelineGeneration == transmission.generation
+                    && state.bulkInFlight
+                    && state.activeBulkTransmissionIdentifier == transmission.identifier
+                if case .success = result {
+                    let (bulkBytesSent, bulkOverflow) = state.bulkBytesSent
+                        .addingReportingOverflow(UInt64(transmission.payload.count))
+                    let (relayBytesSent, relayOverflow) = state.relayBytesSent
+                        .addingReportingOverflow(relayReservationBytes)
+                    guard !bulkOverflow, !relayOverflow else {
+                        reportedError = .sequenceExhausted("transport byte accounting")
+                        return
+                    }
+                    state.bulkBytesSent = bulkBytesSent
+                    state.relayBytesSent = relayBytesSent
+                }
+                guard isCurrent else { return }
+                state.bufferedBulkBytes = max(
+                    0,
+                    state.bufferedBulkBytes - transmission.payload.count
+                )
+                switch result {
+                case .success:
+                    if let queued = state.bulkQueue.popFirst() {
+                        next = queued
+                        state.activeBulkTransmissionIdentifier = next?.identifier
+                    } else {
+                        state.bulkInFlight = false
+                        state.activeBulkTransmissionIdentifier = nil
+                    }
+                case .failure(let error):
+                    reportedError = .engineSendFailed(error.localizedDescription)
+                }
+            }
+            if let reportedError {
+                failureTransition = prepareFailureWithinSendGate(reportedError)
+            }
+        }
+        if let failureTransition {
+            performFailureTransition(failureTransition)
+        } else if let next {
+            transmitBulk(next)
         }
     }
 
@@ -815,6 +1131,129 @@ final class WebRTCInternetTransport {
                     recordIndex: nextRecordIndex,
                     generation: generation
                 )
+            }
+        }
+    }
+
+    private func transmitAudioRecord(_ payload: Data, generation: UInt64) {
+        var rejectedRecovery = RejectedAudioSendRecovery.none
+        var failureTransition: FailureTransition?
+        let transmission = withSendGate {
+            var sequenceError: InternetTransportError?
+            let claimed = withLock { state -> (UInt64, WebRTCEngineTransmissionContext)? in
+                guard state.pipelineGeneration == generation,
+                      !state.pipelineGenerationExhausted,
+                      state.audioInFlight,
+                      isConnected(state.transportState),
+                      let activePath = state.activePath,
+                      let engineContext = state.engineTransmissionContext,
+                      engineContext.path == activePath else {
+                    rejectedRecovery = recoverRejectedAudioSend(
+                        payload,
+                        generation: generation,
+                        state: &state
+                    )
+                    return nil
+                }
+                guard state.nextAudioTransmissionIdentifier < UInt64.max else {
+                    sequenceError = .sequenceExhausted("audio transmission identifier")
+                    return nil
+                }
+                state.nextAudioTransmissionIdentifier += 1
+                let identifier = state.nextAudioTransmissionIdentifier
+                state.dispatchedAudioTransmissionIdentifiers.insert(identifier)
+                if state.activePath == .relay {
+                    state.dispatchedAudioRelayReservations[identifier] =
+                        InternetAudioRecordContract.encryptedRecordBytes(
+                            forPlaintextBytes: payload.count
+                        )
+                }
+                return (identifier, engineContext)
+            }
+            if let sequenceError {
+                failureTransition = prepareFailureWithinSendGate(sequenceError)
+            }
+            return claimed
+        }
+        if let failureTransition {
+            performFailureTransition(failureTransition)
+            return
+        }
+        guard let (transmissionIdentifier, engineContext) = transmission else {
+            if let nextRecord = rejectedRecovery.nextRecord {
+                transmitAudioRecord(nextRecord, generation: generation)
+            }
+            return
+        }
+        engine.send(
+            payload,
+            channel: .audio,
+            expectedContext: engineContext
+        ) { [weak self] result in
+            guard let self else { return }
+            var nextRecord: Data?
+            var reportedError: InternetTransportError?
+            var accountingFailure: InternetTransportError?
+            var completionFailureTransition: FailureTransition?
+            self.withSendGate {
+                self.withLock { state in
+                    guard state.dispatchedAudioTransmissionIdentifiers.remove(
+                        transmissionIdentifier
+                    ) != nil else { return }
+                    let relayReservationBytes = state.dispatchedAudioRelayReservations
+                        .removeValue(forKey: transmissionIdentifier) ?? 0
+                    state.relayBytesReserved = state.relayBytesReserved.subtractingClamped(
+                        relayReservationBytes
+                    )
+                    if case .success = result {
+                        let (audioBytesSent, audioOverflow) = state.audioBytesSent
+                            .addingReportingOverflow(UInt64(payload.count))
+                        let (relayBytesSent, relayOverflow) = state.relayBytesSent
+                            .addingReportingOverflow(relayReservationBytes)
+                        guard !audioOverflow, !relayOverflow else {
+                            accountingFailure = .sequenceExhausted("transport byte accounting")
+                            return
+                        }
+                        state.audioBytesSent = audioBytesSent
+                        state.relayBytesSent = relayBytesSent
+                    }
+                    guard state.pipelineGeneration == generation,
+                          state.audioInFlight else { return }
+                    switch result {
+                    case .success:
+                        if let pending = state.pendingAudioRecord {
+                            nextRecord = pending
+                            state.pendingAudioRecord = nil
+                        } else {
+                            state.audioInFlight = false
+                        }
+                    case .failure(let error):
+                        if let pending = state.pendingAudioRecord {
+                            state.droppedAudioRecords += 1
+                            self.releaseRelayReservation(
+                                for: InternetAudioRecordContract.encryptedRecordBytes(
+                                    forPlaintextBytes: pending.count
+                                ),
+                                state: &state
+                            )
+                        }
+                        state.pendingAudioRecord = nil
+                        state.audioInFlight = false
+                        state.droppedAudioRecords += 1
+                        reportedError = .engineSendFailed(error.localizedDescription)
+                    }
+                }
+                if let accountingFailure {
+                    completionFailureTransition = self.prepareFailureWithinSendGate(accountingFailure)
+                }
+            }
+            if let completionFailureTransition {
+                self.performFailureTransition(completionFailureTransition)
+                return
+            }
+            if let reportedError { self.onError?(reportedError) }
+            if let nextRecord {
+                self.transmitAudioRecord(nextRecord, generation: generation)
             }
         }
     }
@@ -1086,9 +1525,7 @@ final class WebRTCInternetTransport {
     }
 
     private func handleInbound(_ payload: Data, channel: InternetTransportChannel) {
-        let maximum = channel == .control
-            ? limits.maximumControlMessageBytes
-            : limits.maximumMediaFrameBytes
+        let maximum = maximumInboundPlaintextBytes(for: channel)
         var failureTransition: FailureTransition?
         var shouldDeliver = false
         withSendGate {
@@ -1119,7 +1556,22 @@ final class WebRTCInternetTransport {
             switch channel {
             case .control: onControlReceived?(payload)
             case .media: onMediaReceived?(payload)
+            case .audio: onAudioRecordReceived?(payload)
+            case .bulk: onBulkRecordReceived?(payload)
             }
+        }
+    }
+
+    private func maximumInboundPlaintextBytes(for channel: InternetTransportChannel) -> Int {
+        switch channel {
+        case .control:
+            return limits.maximumControlMessageBytes
+        case .media:
+            return limits.maximumMediaFrameBytes
+        case .audio:
+            return InternetAudioRecordContract.maximumPlaintextRecordBytes
+        case .bulk:
+            return InternetBulkRecordContract.maximumPlaintextRecordBytes
         }
     }
 
@@ -1232,15 +1684,25 @@ final class WebRTCInternetTransport {
         if state.mediaInFlight { state.droppedMediaFrames += 1 }
         if state.pendingMediaFrame != nil { state.droppedMediaFrames += 1 }
         state.pendingMediaFrame = nil
+        if state.audioInFlight { state.droppedAudioRecords += 1 }
+        if state.pendingAudioRecord != nil { state.droppedAudioRecords += 1 }
+        state.pendingAudioRecord = nil
+        state.bulkQueue.removeAll()
+        state.bufferedBulkBytes = 0
         state.controlInFlight = false
         state.activeControlTransmissionIdentifier = nil
         state.mediaInFlight = false
+        state.audioInFlight = false
+        state.bulkInFlight = false
+        state.activeBulkTransmissionIdentifier = nil
         state.recoveryAttemptAwaitingOutcome = false
         // The engine port still owns dispatched-send accounting until its
         // exactly-once completion reports whether those network bytes drained.
         state.relayBytesReserved =
             state.dispatchedControlRelayReservations.values.reduce(0, +)
             + state.dispatchedMediaRelayReservations.values.reduce(0, +)
+            + state.dispatchedAudioRelayReservations.values.reduce(0, +)
+            + state.dispatchedBulkRelayReservations.values.reduce(0, +)
         return controlCompletions
     }
 
@@ -1268,6 +1730,27 @@ final class WebRTCInternetTransport {
         state.controlInFlight = false
         state.activeControlTransmissionIdentifier = nil
         return controlCompletions
+    }
+
+    private func recoverRejectedBulkSend(
+        _ transmission: BulkTransmission,
+        state: inout MutableState
+    ) {
+        // A generation change already invalidated the old queue and released its reservations.
+        guard state.pipelineGeneration == transmission.generation,
+              state.bulkInFlight else { return }
+        let queuedPayloadBytes = state.bulkQueue.payloadBytes()
+        let queuedRelayReservationBytes = state.bulkQueue.relayReservationBytes()
+        state.bufferedBulkBytes = max(
+            0,
+            state.bufferedBulkBytes - transmission.payload.count - queuedPayloadBytes
+        )
+        state.relayBytesReserved = state.relayBytesReserved.subtractingClamped(
+            transmission.relayReservationBytes.addingClamped(queuedRelayReservationBytes)
+        )
+        state.bulkQueue.removeAll()
+        state.bulkInFlight = false
+        state.activeBulkTransmissionIdentifier = nil
     }
 
     private func completeControlTransmissions(
@@ -1325,6 +1808,12 @@ final class WebRTCInternetTransport {
         let shouldRequestKeyframe: Bool
     }
 
+    private struct RejectedAudioSendRecovery {
+        static let none = RejectedAudioSendRecovery(nextRecord: nil)
+
+        let nextRecord: Data?
+    }
+
     private func recoverRejectedMediaSend(
         _ frame: EncodedInternetFrame,
         recordIndex: Int,
@@ -1369,6 +1858,44 @@ final class WebRTCInternetTransport {
             nextFrame: nil,
             shouldRequestKeyframe: isConnected(state.transportState)
         )
+    }
+
+    private func recoverRejectedAudioSend(
+        _ payload: Data,
+        generation: UInt64,
+        state: inout MutableState
+    ) -> RejectedAudioSendRecovery {
+        // A generation change already invalidated and released the old pipeline.
+        guard state.pipelineGeneration == generation else { return .none }
+
+        if state.audioInFlight {
+            releaseRelayReservation(
+                for: InternetAudioRecordContract.encryptedRecordBytes(
+                    forPlaintextBytes: payload.count
+                ),
+                state: &state
+            )
+            state.droppedAudioRecords += 1
+        }
+
+        if isConnected(state.transportState), let pending = state.pendingAudioRecord {
+            state.pendingAudioRecord = nil
+            state.audioInFlight = true
+            return RejectedAudioSendRecovery(nextRecord: pending)
+        }
+
+        if let pending = state.pendingAudioRecord {
+            releaseRelayReservation(
+                for: InternetAudioRecordContract.encryptedRecordBytes(
+                    forPlaintextBytes: pending.count
+                ),
+                state: &state
+            )
+            state.droppedAudioRecords += 1
+        }
+        state.pendingAudioRecord = nil
+        state.audioInFlight = false
+        return .none
     }
 
     @discardableResult

@@ -425,6 +425,8 @@ private extension InternetTransportChannel {
         switch self {
         case .control: return .control
         case .media: return .media
+        case .audio: return .audio
+        case .bulk: return .bulk
         }
     }
 

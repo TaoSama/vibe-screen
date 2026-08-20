@@ -92,13 +92,23 @@ final class InternetProductProtocolCodecTests: XCTestCase {
             InternetMediaRecordContract.maximumEncryptedRecordBytes
         ))
         XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.mediaRecordFragmentation))
+        XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.audioDataChannel))
+        XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.bulkDataChannel))
         XCTAssertTrue(hostEnvelope.hostHello.capabilities.contains(.stylus))
+        XCTAssertFalse(hostEnvelope.hostHello.capabilities.contains(.audio))
+        XCTAssertFalse(hostEnvelope.hostHello.capabilities.contains(.clipboard))
+        XCTAssertFalse(hostEnvelope.hostHello.capabilities.contains(.fileTransfer))
         XCTAssertEqual(
             acceptedEnvelope.sessionAccepted.negotiatedResourceLimits.maximumEncryptedMediaRecordBytes,
             UInt32(negotiatedMaximum)
         )
         XCTAssertTrue(acceptedEnvelope.sessionAccepted.negotiatedCapabilities.contains(.mediaRecordFragmentation))
+        XCTAssertTrue(acceptedEnvelope.sessionAccepted.negotiatedCapabilities.contains(.audioDataChannel))
+        XCTAssertTrue(acceptedEnvelope.sessionAccepted.negotiatedCapabilities.contains(.bulkDataChannel))
         XCTAssertTrue(acceptedEnvelope.sessionAccepted.negotiatedCapabilities.contains(.stylus))
+        XCTAssertFalse(acceptedEnvelope.sessionAccepted.negotiatedCapabilities.contains(.audio))
+        XCTAssertFalse(acceptedEnvelope.sessionAccepted.negotiatedCapabilities.contains(.clipboard))
+        XCTAssertFalse(acceptedEnvelope.sessionAccepted.negotiatedCapabilities.contains(.fileTransfer))
 
         let encoded = try codec.mediaFrame(
             payload: Data(repeating: 0x41, count: 256 * 1_024),
