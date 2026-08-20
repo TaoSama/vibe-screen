@@ -1,0 +1,11 @@
+85ec8462e8dc4ce3f32e43dc43abdc3f30635a6144db70d4d292fa7f2abeeff2  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-recheck/README.md
+3a8c7b63d79b104cff513b8b9c4eed4027a39152e4ea88b5a532fcf8dc659a87  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-recheck/commands.txt
+1ccaacbb23043ce4f6baff367240f34a0498be3cfa4fdfc3649954a43b7b87a2  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-recheck/device-info.txt
+a2331d2d6f4adbe6c29838c797fd62710044a633b755030ace8fe11bda17054b  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-recheck/android-network-blocker-sanitized.txt
+f7fe8fe277b9b60fe6d6c9790f466f2e601a444dc9e55387f7ccad6318658a25  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-recheck/mac-lan-preflight.txt
+8bc51aaee3d2ce8786a6387e46897a3daf0ce071affca4f075d49f036ac819e9  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-recheck/host-preflight-console.txt
+fc30ffee4ef594f30ebe412223bc6fa507874da57e032e532ab100eafa602931  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-recheck/android-lan-security-tests.txt
+eb7625c0141b64bf138e90c898a402dc6c820da3c0347a7037111469cd0c31be  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-recheck/make-protocol.txt
+9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-recheck/make-protocol.exit
+1637ecc0d475f874d10a7fc19d33f1e0d441bfaad25b8598f2e0d2cd9d982327  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-recheck/protocol-fixture-check.txt
+9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-recheck/protocol-fixture-check.exit

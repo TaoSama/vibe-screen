@@ -26,6 +26,28 @@ trusted-LAN stream, reconnect, latency, or stability gate.
 
 Evidence: [`evidence/2026-08-20-p0110-lan-smoke/README.md`](evidence/2026-08-20-p0110-lan-smoke/README.md).
 
+## 2026-08-21 recheck
+
+The current `origin/main` worktree was rechecked on the same Nubia P0110 /
+pacific / Android 16 device (`EP0110PZ0B9110300B`). The device identity was
+confirmed, but a real LAN smoke remained blocked before Host launch or pairing:
+`wlan0` reported `NO-CARRIER` and `state DOWN`, `cmd wifi status` reported
+`Wifi is not connected`, `ip route` returned no route, TCP `54321` had no Mac
+listener, and `scripts/macos_dev_host.py preflight` still failed because the
+`Vibe Screen Dev` codesigning identity was absent from the local keychain.
+
+No trusted-LAN socket admission, secure-record negotiation, decoder output,
+reconnect, or latency evidence was observed. The retained artifact bundle is
+[`evidence/2026-08-21-p0110-lan-smoke-recheck/README.md`](evidence/2026-08-21-p0110-lan-smoke-recheck/README.md).
+
+Additional current-source checks for this recheck:
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| `cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.LanSecureRecordAdapterTest --tests dev.telemachus.display.StreamClientWirelessSecurityTest --tests dev.telemachus.display.AuthHandshakeTest` | PASS | Output retained in the 2026-08-21 evidence bundle; covers Android token admission, secure-record negotiation, protected control/media records, and LAN Protocol v1 probe protection. |
+| `make protocol` | PASS | Output retained in the 2026-08-21 evidence bundle; covers Protocol v1 schemas, fixtures, and security contract checks. |
+| `python3 scripts/macos_dev_host.py preflight` | BLOCKED | Stable Host bundle validation cannot proceed without the configured `Vibe Screen Dev` signing identity. |
+
 ## Source-level checks
 
 The current code path was still checked offline so the next device owner has a
