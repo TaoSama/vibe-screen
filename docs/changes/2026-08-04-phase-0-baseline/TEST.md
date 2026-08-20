@@ -298,6 +298,15 @@ readiness evidence only and does not close any external latency gate. Evidence
 is retained under
 [evidence/2026-08-20-latency-gates-readiness-blocked/](evidence/2026-08-20-latency-gates-readiness-blocked/README.md).
 
+On 2026-08-21, origin/main commit
+`cc26a84c829016fa61c721f73a128284fdf64f92` refreshed the same gate boundary
+with the connected Nubia P0110/pacific Android 16 substitute reachable through
+`adb -s EP0110PZ0B9110300B`. The device identity preflight passed, but no
+high-frame-rate external-camera package or synchronized-clock input package was
+available, so `usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, and
+`input-p95-sub50` all remain open. Evidence is retained under
+[evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/](evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/README.md).
+
 ## Still unproved
 
 - Developer ID signing and notarization;

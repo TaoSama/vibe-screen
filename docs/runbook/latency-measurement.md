@@ -102,6 +102,37 @@ The field `max_frame_annotation_uncertainty_ms` is the maximum uncertainty for
 one annotated endpoint frame. The checker applies it to both the start and end
 frames before comparing P95 against the gate threshold.
 
+After collecting raw-camera.mov, samples.csv, and device-info.json, create the
+manifest with the dedicated helper instead of adapting the generic evidence
+manifest tool:
+
+    PYTHONPATH=tools python3 -m vibescreen_evidence.latency_manifest \
+      --evidence-dir latency-run \
+      --latency-kind glass-to-glass \
+      --transport usb \
+      --gate-profile usb-glass-to-glass-sub50 \
+      --raw-video latency-run/raw-camera.mov \
+      --samples latency-run/samples.csv \
+      --samples-format csv \
+      --annotation-method manual-frame-count \
+      --camera-manufacturer "camera vendor" \
+      --camera-model "camera model" \
+      --camera-mode 1080p240 \
+      --camera-frame-rate-fps 240 \
+      --camera-shutter-mode fixed \
+      --operator "operator name" \
+      --annotator "annotator name" \
+      --device-info latency-run/device-info.json \
+      --host-artifact "host binary identity or hash" \
+      --client-artifact "APK identity or hash" \
+      --stimulus "visible Mac-side stimulus" \
+      --start-event-definition "first camera frame where the stimulus is visible" \
+      --end-event-definition "first camera frame where the result is visible" \
+      --lighting "lighting conditions" \
+      --mounting "camera and device mounting" \
+      --max-frame-annotation-uncertainty-ms 4.2 \
+      --notes "run-specific notes"
+
 ## Commands
 
 First summarize the samples with the matching profile:
