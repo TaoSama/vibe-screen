@@ -263,12 +263,13 @@ enum TransportSelfTest {
             hello.capabilities = [.touch, .multiDisplay]
             hello.requiredCapabilities = [.touch]
             hello.codecs = [.hevc]
+            hello.videoDecodeCapabilities = [sdrDecodeCapability(codec: .hevc)]
             hello.transports = [.usb]
             try client.sendEnvelope(envelope(id: 1, payload: .clientHello(hello), scoped: false))
             let hostHello = try client.readEnvelope()
             let accepted = try client.readEnvelope()
             guard case .hostHello(let advertised)? = hostHello.payload,
-                  Set(advertised.capabilities) == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .clipboard, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .usbHidModifierByte],
+                  Set(advertised.capabilities) == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .clipboard, .colorManagement, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .usbHidModifierByte],
                   case .sessionAccepted(let session)? = accepted.payload,
                   session.negotiatedCapabilities == [.touch, .multiDisplay] else {
                 server.stop()
@@ -435,6 +436,7 @@ enum TransportSelfTest {
                     hello.capabilities = [.touch, .multiDisplay]
                     hello.requiredCapabilities = [.touch]
                     hello.codecs = [.hevc]
+                    hello.videoDecodeCapabilities = [sdrDecodeCapability(codec: .hevc)]
                     hello.transports = [.usb]
                     try client.sendEnvelope(envelope(id: 1, payload: .clientHello(hello), scoped: false))
                     guard codecRequested.wait(timeout: .now() + 2) == .success else {
@@ -491,6 +493,17 @@ enum TransportSelfTest {
             }
         }
         return true
+    }
+
+    private static func sdrDecodeCapability(codec: VSCodec) -> VSVideoDecodeCapability {
+        var capability = VSVideoDecodeCapability()
+        capability.codec = codec
+        capability.maximumWidth = 1920
+        capability.maximumHeight = 1080
+        capability.maximumFramesPerSecond = 60
+        capability.bitDepths = [8]
+        capability.transferFunctions = [.bt709]
+        return capability
     }
 
     private static func envelope(

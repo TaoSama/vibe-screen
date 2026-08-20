@@ -224,6 +224,7 @@ class StreamClientProtocolV1IntegrationTest {
     fun controllerForwardingWaitsForConnectedAckBeforeStateResync() = runBlocking {
         ServerSocket(0).use { server ->
             val configurationRequested = CountDownLatch(1)
+            val configurationApplied = CountDownLatch(1)
             val controllerAcked = CountDownLatch(1)
             val client = StreamClient("127.0.0.1", server.localPort, advertiseController = true)
             val serverJob =
@@ -232,11 +233,21 @@ class StreamClientProtocolV1IntegrationTest {
                         completeHandshake(
                             peer,
                             initialRotation = 0,
-                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CONTROLLER),
-                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_CONTROLLER),
+                            hostCapabilities =
+                                listOf(
+                                    Capability.CAPABILITY_TOUCH,
+                                    Capability.CAPABILITY_COLOR_MANAGEMENT,
+                                    Capability.CAPABILITY_CONTROLLER,
+                                ),
+                            negotiatedCapabilities =
+                                listOf(
+                                    Capability.CAPABILITY_TOUCH,
+                                    Capability.CAPABILITY_COLOR_MANAGEMENT,
+                                    Capability.CAPABILITY_CONTROLLER,
+                                ),
                             expectedClientCapabilities = DEFAULT_CLIENT_CAPABILITIES + Capability.CAPABILITY_CONTROLLER,
                         )
-                        configurationRequested.await(8, TimeUnit.SECONDS)
+                        assertTrue(configurationApplied.await(8, TimeUnit.SECONDS))
                         val connected = readEnvelope(peer)
                         assertEquals(Envelope.PayloadCase.CONTROLLER_EVENT, connected.payloadCase)
                         assertEquals(
@@ -265,10 +276,13 @@ class StreamClientProtocolV1IntegrationTest {
                         )
                         write(peer, disconnect(id = 7))
                     }
-                }
+            }
             client.onVideoConfiguration = { _, commit ->
-                configurationRequested.countDown()
                 commit.accept()
+                configurationRequested.countDown()
+            }
+            client.onVideoConfigurationApplied = {
+                configurationApplied.countDown()
             }
             client.onControllerInputAck = { _, accepted, _ ->
                 if (accepted) {
@@ -284,6 +298,7 @@ class StreamClientProtocolV1IntegrationTest {
             val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
 
             assertTrue(configurationRequested.await(8, TimeUnit.SECONDS))
+            assertTrue(configurationApplied.await(8, TimeUnit.SECONDS))
             val admitted =
                 client.sendController(
                     ControllerDispatch(
@@ -1265,6 +1280,7 @@ class StreamClientProtocolV1IntegrationTest {
         assertEquals(emptyList<Capability>(), clientHello.clientHello.requiredCapabilitiesList)
         write(peer, hostHello(1, hostCapabilities, maxClipboardBytes = maxClipboardBytes))
         write(peer, sessionAccepted(2, negotiatedCapabilities, maxClipboardBytes = maxClipboardBytes))
+        assertEquals(2, clientHello.clientHello.videoDecodeCapabilitiesCount)
         assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, readEnvelope(peer).payloadCase)
         write(peer, displayList(3))
         assertEquals(Envelope.PayloadCase.START_DISPLAY_REQUEST, readEnvelope(peer).payloadCase)
@@ -1620,6 +1636,7 @@ class StreamClientProtocolV1IntegrationTest {
                 Capability.CAPABILITY_POINTER,
                 Capability.CAPABILITY_STYLUS,
                 Capability.CAPABILITY_STYLUS_EXTENDED,
+                Capability.CAPABILITY_COLOR_MANAGEMENT,
                 Capability.CAPABILITY_MULTI_DISPLAY,
                 Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,

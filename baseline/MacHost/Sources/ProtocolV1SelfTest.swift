@@ -154,9 +154,9 @@ enum ProtocolV1SelfTest {
     private static func testNegotiationAndMediaGate(failures: inout [String]) {
         do {
             guard ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true)
-                    == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .clipboard, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .usbHidModifierByte],
+                    == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .clipboard, .colorManagement, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .usbHidModifierByte],
                   ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: false)
-                    == [.clipboard, .multiDisplay, .managedConfiguration, .clientVideoControl] else {
+                    == [.clipboard, .colorManagement, .multiDisplay, .managedConfiguration, .clientVideoControl] else {
                 failures.append("production HostHello capabilities are not exact")
                 return
             }
@@ -174,7 +174,7 @@ enum ProtocolV1SelfTest {
             guard helloResponses.count == 2,
                   case .hostHello(let hostHello)? = helloResponses[0].payload,
                   case .sessionAccepted(let accepted)? = helloResponses[1].payload,
-                  Set(hostHello.capabilities) == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .clipboard, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .usbHidModifierByte],
+                  Set(hostHello.capabilities) == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .clipboard, .colorManagement, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .usbHidModifierByte],
                   accepted.sessionID == sessionID,
                   accepted.negotiatedCapabilities == [.touch, .multiDisplay] else {
                 failures.append("ClientHello did not produce HostHello + SessionAccepted")

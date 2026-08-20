@@ -387,6 +387,7 @@ class StreamClientProtocolFailureTest {
                 Capability.CAPABILITY_POINTER,
                 Capability.CAPABILITY_STYLUS,
                 Capability.CAPABILITY_STYLUS_EXTENDED,
+                Capability.CAPABILITY_COLOR_MANAGEMENT,
                 Capability.CAPABILITY_MULTI_DISPLAY,
                 Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,
@@ -397,6 +398,7 @@ class StreamClientProtocolFailureTest {
             envelope.clientHello.capabilitiesList,
         )
         assertEquals(emptyList<Capability>(), envelope.clientHello.requiredCapabilitiesList)
+        assertEquals(2, envelope.clientHello.videoDecodeCapabilitiesCount)
     }
 
     private fun rejection(retryable: Boolean): Envelope =

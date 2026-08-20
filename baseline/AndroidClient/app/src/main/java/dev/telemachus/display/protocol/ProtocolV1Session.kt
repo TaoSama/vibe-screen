@@ -360,6 +360,7 @@ internal class ProtocolV1Session(
     private var negotiatedCapabilities = emptySet<Capability>()
     private var hostCapabilities = emptySet<Capability>()
     private var hostCodecs = emptySet<Codec>()
+    private val decodeCapabilities = VideoColorNegotiation.sdrDecodeCapabilities(codecs)
     // Host actions advertised for the active session, filtered to the fixed ids
     // this client can invoke. Reset whenever a session ends.
     private var availableHostActions = emptyList<HostAction>()
@@ -509,10 +510,10 @@ internal class ProtocolV1Session(
                     ResourceLimits
                         .newBuilder()
                         .setMaximumClients(1)
-                        .setMaximumDisplays(1)
                         .setMaximumVideoStreams(1)
                         .setMaximumClipboardBytes(LOCAL_MAX_CLIPBOARD_BYTES),
-                ).build()
+                ).addAllVideoDecodeCapabilities(decodeCapabilities)
+                .build()
         return envelope().setClientHello(hello).build()
     }
 
@@ -1119,15 +1120,17 @@ internal class ProtocolV1Session(
                 ),
             )
         }
-        val accepted =
+        val protocolAccepted =
             config.streamId == streamId &&
                 config.configEpoch > configEpoch &&
                 config.encodedSize.width in 16..8192 &&
                 config.encodedSize.height in 16..8192 &&
+                config.framesPerSecond in 1..240 &&
+                config.bitrateKbps > 0 &&
                 config.rotationDegrees.toInt() in VALID_ROTATIONS &&
                 config.codec in codecs &&
                 config.codec in hostCodecs
-        if (!accepted) {
+        if (!protocolAccepted) {
             videoPreferencesRequestInFlight = false
             return listOf(
                 Action.Send(
@@ -1136,6 +1139,38 @@ internal class ProtocolV1Session(
                         streamId = config.streamId,
                         accepted = false,
                         rejectionReason = "unsupported_video_config",
+                        correlationId = envelope.messageId,
+                    ),
+                ),
+            )
+        }
+        val colorDecision =
+            VideoColorNegotiation.evaluate(
+                requestedColor = if (config.hasColorDescription()) config.colorDescription else null,
+                negotiatedHdr = Capability.CAPABILITY_HDR_VIDEO in negotiatedCapabilities,
+                decodeCapabilities = decodeCapabilities,
+                codec = config.codec,
+                width = config.encodedSize.width,
+                height = config.encodedSize.height,
+                framesPerSecond = config.framesPerSecond,
+            )
+        if (colorDecision is VideoColorDecision.Fallback || colorDecision is VideoColorDecision.Rejected) {
+            videoPreferencesRequestInFlight = false
+            val selectedColor = (colorDecision as? VideoColorDecision.Fallback)?.selectedColor
+            val reason =
+                when (colorDecision) {
+                    is VideoColorDecision.Fallback -> colorDecision.reason
+                    is VideoColorDecision.Rejected -> colorDecision.reason
+                    VideoColorDecision.Accepted -> error("accepted decision is handled before rejection")
+                }
+            return listOf(
+                Action.Send(
+                    videoConfigResult(
+                        configEpoch = config.configEpoch,
+                        streamId = config.streamId,
+                        accepted = false,
+                        rejectionReason = reason,
+                        selectedColorDescription = selectedColor,
                         correlationId = envelope.messageId,
                     ),
                 ),
@@ -1693,6 +1728,7 @@ internal class ProtocolV1Session(
         streamId: Long,
         accepted: Boolean,
         rejectionReason: String,
+        selectedColorDescription: dev.vibescreen.protocol.v1.ColorDescription? = null,
         correlationId: Long,
     ): Envelope =
         envelope(correlationId = correlationId)
@@ -1702,7 +1738,12 @@ internal class ProtocolV1Session(
                     .setConfigEpoch(configEpoch)
                     .setStreamId(streamId)
                     .setAccepted(accepted)
-                    .setRejectionReason(rejectionReason),
+                    .setRejectionReason(rejectionReason)
+                    .also { builder ->
+                        if (selectedColorDescription != null) {
+                            builder.selectedColorDescription = selectedColorDescription
+                        }
+                    },
             ).build()
 
     private fun unmanagedPolicyStatus(): ManagedPolicyStatus =
@@ -1824,6 +1865,7 @@ internal class ProtocolV1Session(
                 Capability.CAPABILITY_POINTER,
                 Capability.CAPABILITY_STYLUS,
                 Capability.CAPABILITY_STYLUS_EXTENDED,
+                Capability.CAPABILITY_COLOR_MANAGEMENT,
                 Capability.CAPABILITY_MULTI_DISPLAY,
                 Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,
