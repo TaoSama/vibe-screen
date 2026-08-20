@@ -281,7 +281,11 @@ final class StreamingServerLifecycleTests: XCTestCase {
     func testWirelessProtocolUpgradeAcceptsOfferAfterLANRoundTripDelay() throws {
         let port = testPort(offset: 9)
         let token = Data(repeating: 0x91, count: 32)
-        let server = StreamingServer(port: port, mode: .wireless(authToken: token))
+        let server = StreamingServer(
+            port: port,
+            mode: .wireless(authToken: token),
+            protocolUpgradeGraceMillisecondsOverride: 2_000
+        )
         defer { server.stop() }
         try server.start()
 
@@ -294,7 +298,12 @@ final class StreamingServerLifecycleTests: XCTestCase {
 
         let upgraded = expectation(description: "delayed protocol v1 offer accepted")
         try send(Data([ProtocolV1Upgrade.offer]), on: client)
-        XCTAssertEqual(try receiveExactly(2, from: client), ProtocolV1Upgrade.acknowledgement)
+        let acknowledgement = try receiveExactly(2, from: client)
+        XCTAssertEqual(
+            acknowledgement,
+            ProtocolV1Upgrade.acknowledgement,
+            "Expected Protocol v1 ack, got \(hex(acknowledgement))"
+        )
         upgraded.fulfill()
         wait(for: [upgraded], timeout: 2)
     }
@@ -1130,6 +1139,10 @@ final class StreamingServerLifecycleTests: XCTestCase {
         let result = client.buffer.prefix(count)
         client.buffer.removeFirst(count)
         return Data(result)
+    }
+
+    private func hex(_ data: Data) -> String {
+        data.map { String(format: "%02x", $0) }.joined()
     }
 
     private func receiveSecurePlaintext(

@@ -263,6 +263,7 @@ class StreamingServer: EncodedFrameSink {
 
     private let port: UInt16
     private let mode: StreamingServerMode
+    private let protocolUpgradeGraceMillisecondsOverride: Int?
     private var listener: NWListener?
     private var connection: NWConnection?
     var onClientConnected: ((UInt64) -> Void)?
@@ -426,11 +427,13 @@ class StreamingServer: EncodedFrameSink {
         port: UInt16,
         mode: StreamingServerMode = .usb,
         telemetry: TelemetryRecording? = nil,
-        allowPlaintextWirelessLegacyFallback: Bool = false
+        allowPlaintextWirelessLegacyFallback: Bool = false,
+        protocolUpgradeGraceMillisecondsOverride: Int? = nil
     ) {
         self.port = port
         self.mode = mode
         self.allowPlaintextWirelessLegacyFallback = allowPlaintextWirelessLegacyFallback
+        self.protocolUpgradeGraceMillisecondsOverride = protocolUpgradeGraceMillisecondsOverride
         if let telemetry {
             self.telemetry = telemetry
         } else if let path = ProcessInfo.processInfo.environment["VIBE_SCREEN_TELEMETRY_PATH"],
@@ -702,9 +705,10 @@ class StreamingServer: EncodedFrameSink {
         // Give new clients a short chance to opt in before the first frame.
         // Legacy clients send no capability message, so we continue shortly
         // after this window with the old frame type.
-        let upgradeGraceMilliseconds = isWireless
-            ? Self.wirelessProtocolUpgradeGraceMilliseconds
-            : Self.usbProtocolUpgradeGraceMilliseconds
+        let upgradeGraceMilliseconds = protocolUpgradeGraceMillisecondsOverride
+            ?? (isWireless
+                ? Self.wirelessProtocolUpgradeGraceMilliseconds
+                : Self.usbProtocolUpgradeGraceMilliseconds)
         networkQueue.asyncAfter(deadline: .now() + .milliseconds(upgradeGraceMilliseconds)) {
             [weak self, weak conn] in
             guard let self = self, let conn = conn else { return }

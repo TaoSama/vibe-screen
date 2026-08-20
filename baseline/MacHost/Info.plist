@@ -26,5 +26,7 @@
     <string>Vibe Screen needs screen recording access to stream a Mac display to your Android tablet.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Vibe Screen uses the local network when Wireless mode is selected.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Vibe Screen needs microphone access when Mac audio capture is enabled for a connected client.</string>
 </dict>
 </plist>
