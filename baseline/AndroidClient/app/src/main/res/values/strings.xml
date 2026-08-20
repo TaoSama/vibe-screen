@@ -195,6 +195,8 @@
     <string name="internet_error_title">Internet preview error</string>
     <string name="internet_pairing_complete_title">Complete preview pairing</string>
     <string name="internet_pairing_complete_message">Send the signed request below to your Mac, then paste its signed acceptance. The one-time QR credential is cleared on completion or cancel.</string>
+    <string name="internet_pairing_request_label">Signed request to send to Mac</string>
+    <string name="internet_pairing_acceptance_label">Signed acceptance from Mac</string>
     <string name="internet_pairing_acceptance_hint">Paste the signed pairing acceptance from your Mac</string>
     <string name="internet_pairing_complete_action">Complete pairing</string>
     <string name="internet_pairing_complete">Mac identity verified and pairing secrets stored in Android Keystore. Import a fresh session lease to connect.</string>

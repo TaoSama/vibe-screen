@@ -356,6 +356,49 @@ class MainActivityTerminalGuidanceContractTest {
     }
 
     @Test
+    fun internetSensitiveDialogsUseSecureImmersiveMaterialDialogs() {
+        val source = mainActivitySource()
+        val setup = extractMethod(source, "private fun setupInternetUi")
+        val importDialog = extractMethod(source, "private fun showInternetProfileImportDialog")
+        val pairingDialog = extractMethod(source, "private fun showInternetPairingCompletionDialog")
+        val secureDialog = extractMethod(source, "private fun <T : Dialog> showSecureImmersiveDialog")
+        val compactSetup = setup.replace(Regex("\\s+"), "")
+
+        assertFalse("Internet revoke confirmation should not use platform AlertDialog", setup.contains("android.app.AlertDialog"))
+        assertFalse("Internet import should not use platform AlertDialog", importDialog.contains("android.app.AlertDialog.Builder"))
+        assertFalse("Internet pairing should not use platform AlertDialog", pairingDialog.contains("android.app.AlertDialog.Builder"))
+        assertTrue(compactSetup.contains("showSecureImmersiveDialog(MaterialAlertDialogBuilder(this)"))
+        assertTrue(importDialog.contains("MaterialAlertDialogBuilder(this)"))
+        assertTrue(importDialog.contains("showSecureImmersiveDialog(dialog)"))
+        assertTrue(pairingDialog.contains("MaterialAlertDialogBuilder(this)"))
+        assertTrue(pairingDialog.contains("showSecureImmersiveDialog(dialog)"))
+        assertTrue(secureDialog.contains("WindowManager.LayoutParams.FLAG_SECURE"))
+        assertTrue(
+            "FLAG_SECURE should be applied before the dialog is shown",
+            secureDialog.indexOf("addFlags(WindowManager.LayoutParams.FLAG_SECURE)") <
+                secureDialog.indexOf("showImmersiveDialog(dialog)"),
+        )
+    }
+
+    @Test
+    fun internetPairingDialogUsesDedicatedSmallScreenLayout() {
+        val source = mainActivitySource()
+        val pairingDialog = extractMethod(source, "private fun showInternetPairingCompletionDialog")
+        val compactPairingDialog = pairingDialog.replace(Regex("\\s+"), "")
+
+        assertTrue(pairingDialog.contains("R.layout.dialog_internet_pairing_completion"))
+        assertTrue(pairingDialog.contains("R.id.internetPairingRequestText"))
+        assertTrue(pairingDialog.contains("R.id.internetPairingIdentityText"))
+        assertTrue(pairingDialog.contains("R.id.internetPairingAcceptanceInput"))
+        assertFalse("Pairing dialog must not build a raw vertical LinearLayout in code", pairingDialog.contains("android.widget.LinearLayout"))
+        assertTrue(
+            "The one-time request must remain selectable and should not scroll horizontally on phones",
+            compactPairingDialog.contains("setTextIsSelectable(true)") &&
+                compactPairingDialog.contains("setHorizontallyScrolling(false)"),
+        )
+    }
+
+    @Test
     fun onFreshSessionRequiredInternetErrorTextUsesLiveRegionApplier() {
         val source = mainActivitySource()
         val callback = extractMethod(source, "override fun onFreshSessionRequired")

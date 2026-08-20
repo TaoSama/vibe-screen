@@ -1,0 +1,6 @@
+Serial: EP0110PZ0B9110300B
+Manufacturer: nubia
+Model: P0110
+Codename: pacific
+Android release: 16
+API level: 36
