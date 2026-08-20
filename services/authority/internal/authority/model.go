@@ -109,4 +109,5 @@ type ReconcileResult struct {
 	MissingAllocationIDs      []string `json:"missing_allocation_ids"`
 	UnauthorizedAllocationIDs []string `json:"unauthorized_allocation_ids"`
 	ConflictAllocationIDs     []string `json:"conflict_allocation_ids"`
+	RevokedAllocationIDs      []string `json:"revoked_allocation_ids"`
 }

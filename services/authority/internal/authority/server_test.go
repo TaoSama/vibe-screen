@@ -349,7 +349,7 @@ func dailyUsageKey(deviceID string, day time.Time) string {
 }
 
 func (s *memoryStore) Reconcile(ctx context.Context, request ReconcileRequest, grace time.Duration) (ReconcileResult, error) {
-	result := ReconcileResult{MissingAllocationIDs: []string{}, UnauthorizedAllocationIDs: []string{}, ConflictAllocationIDs: []string{}}
+	result := ReconcileResult{MissingAllocationIDs: []string{}, UnauthorizedAllocationIDs: []string{}, ConflictAllocationIDs: []string{}, RevokedAllocationIDs: []string{}}
 	seen := map[string]bool{}
 	for index, usage := range request.Allocations {
 		usage.SourceID = request.SourceID
@@ -384,8 +384,14 @@ func (s *memoryStore) Reconcile(ctx context.Context, request ReconcileRequest, g
 			if errors.Is(err, ErrStaleUsage) {
 				s.mu.Lock()
 				allocation := s.allocations[memoryAllocationKey(usage.SourceID, usage.AllocationID)]
+				closed := allocation != nil && allocation.closed && allocation.request.SourceID == usage.SourceID && allocation.request.DeviceID == usage.DeviceID && allocation.request.SessionID == usage.SessionID
 				ahead := allocation != nil && allocation.request.SourceID == usage.SourceID && allocation.request.DeviceID == usage.DeviceID && allocation.request.SessionID == usage.SessionID && allocation.sequence >= usage.Sequence && allocation.ingress >= usage.IngressBytes && allocation.egress >= usage.EgressBytes
 				s.mu.Unlock()
+				if closed {
+					result.RevokedAllocationIDs = append(result.RevokedAllocationIDs, usage.AllocationID)
+					seen[request.Allocations[index].AllocationID] = true
+					continue
+				}
 				if ahead {
 					result.AlreadyAhead++
 					seen[request.Allocations[index].AllocationID] = true
@@ -397,6 +403,11 @@ func (s *memoryStore) Reconcile(ctx context.Context, request ReconcileRequest, g
 			}
 			if errors.Is(err, ErrConflict) {
 				result.ConflictAllocationIDs = append(result.ConflictAllocationIDs, usage.AllocationID)
+				seen[request.Allocations[index].AllocationID] = true
+				continue
+			}
+			if errors.Is(err, ErrRevoked) {
+				result.RevokedAllocationIDs = append(result.RevokedAllocationIDs, usage.AllocationID)
 				seen[request.Allocations[index].AllocationID] = true
 				continue
 			}
@@ -420,6 +431,7 @@ func (s *memoryStore) Reconcile(ctx context.Context, request ReconcileRequest, g
 	sort.Strings(result.MissingAllocationIDs)
 	sort.Strings(result.UnauthorizedAllocationIDs)
 	sort.Strings(result.ConflictAllocationIDs)
+	sort.Strings(result.RevokedAllocationIDs)
 	return result, nil
 }
 
@@ -1293,7 +1305,7 @@ func TestHTTPRelayCoturnUsageTokensAndRevokedFinalCloseFailClosed(t *testing.T) 
 	request(t, handler, http.MethodPut, "/v1/accounts/account", cfg.AdminToken, "", http.StatusNoContent)
 	request(t, handler, http.MethodPut, "/v1/accounts/account/devices/host", cfg.AdminToken, "", http.StatusNoContent)
 	request(t, handler, http.MethodPut, "/v1/accounts/account/devices/client", cfg.AdminToken, "", http.StatusNoContent)
-	created := request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, `{"request_id":"request","account_id":"account","host_device_id":"host","client_device_id":"client","session_epoch":1,"ttl_seconds":60}`, http.StatusCreated)
+	created := request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, "{\"request_id\":\"request\",\"account_id\":\"account\",\"host_device_id\":\"host\",\"client_device_id\":\"client\",\"session_epoch\":1,\"ttl_seconds\":60}", http.StatusCreated)
 	var admission SignalingAdmission
 	if err := json.Unmarshal(created.Body.Bytes(), &admission); err != nil {
 		t.Fatal(err)
@@ -1315,7 +1327,7 @@ func TestHTTPRelayCoturnUsageTokensAndRevokedFinalCloseFailClosed(t *testing.T) 
 		t.Fatalf("duplicate response=%s", duplicate.Body.String())
 	}
 
-	request(t, handler, http.MethodPost, "/v1/devices/client/revoke", cfg.AdminToken, `{"epoch":1}`, http.StatusNoContent)
+	request(t, handler, http.MethodPost, "/v1/devices/client/revoke", cfg.AdminToken, "{\"epoch\":1}", http.StatusNoContent)
 	finalUsage := usage
 	finalUsage.EventID = "event-2"
 	finalUsage.Sequence = 2
@@ -1325,6 +1337,44 @@ func TestHTTPRelayCoturnUsageTokensAndRevokedFinalCloseFailClosed(t *testing.T) 
 	request(t, handler, http.MethodPost, "/v1/coturn/usage", cfg.CoturnToken, mustJSON(t, finalUsage), http.StatusForbidden)
 	newRelay := mustJSON(t, RelayAdmissionRequest{DeviceID: "client", SessionID: admission.SessionID, AllocationID: "after-revoke", SourceID: "node"})
 	request(t, handler, http.MethodPost, "/v1/relay/admissions", cfg.RelayToken, newRelay, http.StatusForbidden)
+}
+
+func TestHTTPCoturnReconcileReturnsRevokedAllocationsForDisconnect(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 18, 10, 0, 0, 0, time.UTC)
+	current := now
+	server.now = func() time.Time { return current }
+	handler := server.Handler()
+
+	request(t, handler, http.MethodPut, "/v1/accounts/account", cfg.AdminToken, "", http.StatusNoContent)
+	request(t, handler, http.MethodPut, "/v1/accounts/account/devices/host", cfg.AdminToken, "", http.StatusNoContent)
+	request(t, handler, http.MethodPut, "/v1/accounts/account/devices/client", cfg.AdminToken, "", http.StatusNoContent)
+	created := request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, "{\"request_id\":\"request\",\"account_id\":\"account\",\"host_device_id\":\"host\",\"client_device_id\":\"client\",\"session_epoch\":1,\"ttl_seconds\":60}", http.StatusCreated)
+	var admission SignalingAdmission
+	if err := json.Unmarshal(created.Body.Bytes(), &admission); err != nil {
+		t.Fatal(err)
+	}
+
+	relayBody := mustJSON(t, RelayAdmissionRequest{DeviceID: "client", SessionID: admission.SessionID, AllocationID: "allocation", SourceID: "node"})
+	request(t, handler, http.MethodPost, "/v1/relay/admissions", cfg.RelayToken, relayBody, http.StatusNoContent)
+	current = now.Add(time.Second)
+	request(t, handler, http.MethodPost, "/v1/devices/client/revoke", cfg.AdminToken, "{\"epoch\":1}", http.StatusNoContent)
+
+	current = now.Add(3 * time.Second)
+	snapshot := ReconcileRequest{SourceID: "node", ObservedAt: now.Add(2 * time.Second), Allocations: []CoturnUsage{{AllocationID: "allocation", DeviceID: "client", SessionID: admission.SessionID, Sequence: 1, IngressBytes: 10, EgressBytes: 20}}}
+	response := request(t, handler, http.MethodPost, "/v1/coturn/reconcile", cfg.CoturnToken, mustJSON(t, snapshot), http.StatusOK)
+	var result ReconcileResult
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(result.RevokedAllocationIDs, []string{"allocation"}) || result.Applied != 0 {
+		t.Fatalf("reconcile result=%+v, want revoked allocation only", result)
+	}
 }
 
 func TestAuthorityResponsesSetSecurityHeaders(t *testing.T) {

@@ -21,6 +21,8 @@ from scripts.phase3.coturn_reconcile import (  # noqa: E402
     load_snapshot,
     main,
     run_once,
+    run_once_with_retries,
+    run_exporter,
     settings_from_args,
     submit_reconcile,
     validate_result,
@@ -89,6 +91,7 @@ class CoturnReconcileTests(unittest.TestCase):
             "missing_allocation_ids": [],
             "unauthorized_allocation_ids": ["allocation-2"],
             "conflict_allocation_ids": [],
+            "revoked_allocation_ids": [],
         }
         self.assertEqual(validate_result(good)["unauthorized_allocation_ids"], ["allocation-2"])
         ordered = good | {"unauthorized_allocation_ids": ["allocation-2", "allocation-1"]}
@@ -108,6 +111,53 @@ class CoturnReconcileTests(unittest.TestCase):
                     "unauthorized_allocation_ids": ["allocation-2"],
                 }
             )
+
+    @mock.patch("scripts.phase3.coturn_reconcile.subprocess.run")
+    def test_exporter_stdout_is_validated_as_snapshot(self, run: mock.Mock) -> None:
+        run.return_value = mock.Mock(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "source_id": "turn-prod-1",
+                    "observed_at": "2026-08-20T01:02:03Z",
+                    "allocations": [
+                        {
+                            "allocation_id": "allocation-1",
+                            "device_id": "device-1",
+                            "session_id": "session-1",
+                            "sequence": 1,
+                            "ingress_bytes": 10,
+                            "egress_bytes": 20,
+                        }
+                    ],
+                }
+            ),
+            stderr="",
+        )
+        os.environ["SECRET_SHOULD_NOT_LEAK"] = "private"
+        self.addCleanup(lambda: os.environ.pop("SECRET_SHOULD_NOT_LEAK", None))
+        settings = Settings(
+            authority_url="http://127.0.0.1:1",
+            token="x" * 32,
+            exporter_command=(sys.executable, "exporter.py"),
+            request_timeout_seconds=1,
+        )
+        snapshot = run_exporter(settings)
+        self.assertEqual(snapshot["source_id"], "turn-prod-1")
+        self.assertEqual(snapshot["allocations"][0]["closed"], False)
+        self.assertEqual(run.call_args.kwargs["env"].keys() & {"SECRET_SHOULD_NOT_LEAK"}, set())
+
+    @mock.patch("scripts.phase3.coturn_reconcile.subprocess.run")
+    def test_exporter_failure_fails_closed(self, run: mock.Mock) -> None:
+        run.return_value = mock.Mock(returncode=7, stdout="{}", stderr="secret details")
+        settings = Settings(
+            authority_url="http://127.0.0.1:1",
+            token="x" * 32,
+            exporter_command=(sys.executable, "exporter.py"),
+            request_timeout_seconds=1,
+        )
+        with self.assertRaisesRegex(ReconcileError, "exporter failed"):
+            run_exporter(settings)
 
     def test_active_source_allocations_require_disconnect_executor(self) -> None:
         settings = Settings(
@@ -130,6 +180,7 @@ class CoturnReconcileTests(unittest.TestCase):
                     "missing_allocation_ids": [],
                     "unauthorized_allocation_ids": ["allocation-1"],
                     "conflict_allocation_ids": [],
+                    "revoked_allocation_ids": [],
                 },
             )
 
@@ -157,6 +208,7 @@ class CoturnReconcileTests(unittest.TestCase):
                 "missing_allocation_ids": [],
                 "unauthorized_allocation_ids": ["unauthorized-1"],
                 "conflict_allocation_ids": ["conflict-1"],
+                "revoked_allocation_ids": ["revoked-1"],
             },
         )
         self.assertEqual(
@@ -164,11 +216,13 @@ class CoturnReconcileTests(unittest.TestCase):
             [
                 {"allocation_id": "unauthorized-1", "reason": "unauthorized"},
                 {"allocation_id": "conflict-1", "reason": "conflict"},
+                {"allocation_id": "revoked-1", "reason": "revoked"},
             ],
         )
         environments = [call.kwargs["env"] for call in run.mock_calls]
         self.assertEqual(environments[0]["VIBE_COTURN_DISCONNECT_ALLOCATION_ID"], "unauthorized-1")
         self.assertEqual(environments[1]["VIBE_COTURN_DISCONNECT_REASON"], "conflict")
+        self.assertEqual(environments[2]["VIBE_COTURN_DISCONNECT_REASON"], "revoked")
         self.assertNotIn("SECRET_SHOULD_NOT_LEAK", environments[0])
 
     @mock.patch("scripts.phase3.coturn_reconcile.subprocess.run")
@@ -194,6 +248,7 @@ class CoturnReconcileTests(unittest.TestCase):
                     "missing_allocation_ids": [],
                     "unauthorized_allocation_ids": ["allocation-1"],
                     "conflict_allocation_ids": [],
+                    "revoked_allocation_ids": [],
                 },
             )
 
@@ -220,6 +275,7 @@ class CoturnReconcileTests(unittest.TestCase):
                     "missing_allocation_ids": [],
                     "unauthorized_allocation_ids": ["allocation-1"],
                     "conflict_allocation_ids": [],
+                    "revoked_allocation_ids": [],
                 },
             )
 
@@ -296,6 +352,7 @@ class CoturnReconcileTests(unittest.TestCase):
             "missing_allocation_ids": ["allocation-1"],
             "unauthorized_allocation_ids": [],
             "conflict_allocation_ids": [],
+            "revoked_allocation_ids": [],
         }
         settings = Settings(
             authority_url="http://127.0.0.1:1",
@@ -325,6 +382,7 @@ class CoturnReconcileTests(unittest.TestCase):
             "missing_allocation_ids": ["allocation-1"],
             "unauthorized_allocation_ids": [],
             "conflict_allocation_ids": [],
+            "revoked_allocation_ids": [],
         }
         clean_result = first_result | {"missing_allocation_ids": []}
         with mock.patch.dict(os.environ, {"VIBE_AUTHORITY_COTURN_TOKEN": "x" * 32}, clear=True):
@@ -350,17 +408,50 @@ class CoturnReconcileTests(unittest.TestCase):
                     )
         sleep.assert_called_once_with(0.0)
 
+    @mock.patch("scripts.phase3.coturn_reconcile.time.sleep")
+    @mock.patch("scripts.phase3.coturn_reconcile.run_once")
+    def test_retry_attempts_cover_transient_failures(self, run_once_mock: mock.Mock, sleep: mock.Mock) -> None:
+        clean_report = {
+            "status": "ok",
+            "source_id": "turn-prod-1",
+            "observed_at": "2026-08-20T01:02:03Z",
+            "reconcile": {
+                "applied": 0,
+                "duplicate": 0,
+                "already_ahead": 0,
+                "missing_allocation_ids": [],
+                "unauthorized_allocation_ids": [],
+                "conflict_allocation_ids": [],
+                "revoked_allocation_ids": [],
+            },
+            "disconnects": [],
+        }
+        run_once_mock.side_effect = [ReconcileError("temporary authority outage"), clean_report]
+        settings = Settings(
+            authority_url="http://127.0.0.1:1",
+            token="x" * 32,
+            retry_attempts=1,
+            retry_backoff_seconds=0.25,
+        )
+        report = run_once_with_retries(settings)
+        self.assertEqual(report["status"], "ok")
+        self.assertEqual(report["retry_attempts"], 1)
+        sleep.assert_called_once_with(0.25)
+
     def test_settings_rejects_ambiguous_token_sources(self) -> None:
         token_file = Path(self.tempdir.name) / "token.txt"
         token_file.write_text("y" * 32, encoding="utf-8")
         parser = mock.Mock(
             authority_url="http://127.0.0.1:1",
             snapshot=Path("unused"),
+            exporter_command=(),
             coturn_token_env="VIBE_AUTHORITY_COTURN_TOKEN",
             coturn_token_file=token_file,
             disconnect_command=(),
             interval_seconds=0,
             max_iterations=1,
+            retry_attempts=0,
+            retry_backoff_seconds=1,
             request_timeout_seconds=1,
         )
         with mock.patch.dict(os.environ, {"VIBE_AUTHORITY_COTURN_TOKEN": "x" * 32}, clear=True):

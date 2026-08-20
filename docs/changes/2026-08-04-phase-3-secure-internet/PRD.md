@@ -52,9 +52,11 @@ real ScreenCaptureKit content, visible Mac input, carrier/CGNAT, automatic
 handoff, latency, or stability evidence. The services remain single-node
 development implementations. Authority now exposes an admin/operator session
 profile issuance primitive for already registered devices, but Mac/Android
-automatic invocation of that path, cross-service revocation propagation,
-authoritative coturn byte accounting, and a production deployment remain open.
-Trusted-LAN remains separate from Phase 3 Internet
+automatic invocation of that path, cross-service revocation propagation, real
+coturn exporter collection, production scheduled reconciliation,
+active-allocation disconnect execution, authoritative coturn byte accounting,
+and a production deployment remain open. Trusted-LAN remains separate from
+Phase 3 Internet
 transport: current macOS/Android peers protect the token-admitted TCP session
 with per-session application records, while explicit legacy fallback remains
 plaintext and is not Phase 3 security.

@@ -248,14 +248,18 @@ identity is a conflict.
 allocations). Its `observed_at` cannot be in the future, including for an empty
 snapshot. The service applies newer counters and returns ledger allocations missing
 from a source beyond `reconciliation_grace_seconds`. The response separately
-lists `unauthorized_allocation_ids` that exist only at the source or are bound to
-a revoked device/session, and `conflict_allocation_ids` whose identity or
-counters conflict with the ledger; one conflict does not stop processing the rest
-of the snapshot. A revoked device or session is reported as unauthorized rather
-than silently advancing its ledger, giving the caller a concrete allocation ID to
-disconnect. Operators must disconnect unauthorized allocations and close
-ledger-only allocations only after the configured consecutive-snapshot policy in
-their collector.
+lists `unauthorized_allocation_ids` that exist only at the source,
+`conflict_allocation_ids` whose identity or counters conflict with the ledger,
+and `revoked_allocation_ids` for source-observed allocations whose Authority
+ledger has already been closed by account suspension, device revocation,
+signaling invalidation, expiry, or quota policy. One conflict or revoked
+allocation does not stop processing the rest of the snapshot. Revoked allocation
+observations fail closed by refusing to advance counters, while still giving the
+operator's disconnect executor an exact allocation ID to terminate. Allocations
+applied earlier in that request remain committed and replay as duplicates or
+already-ahead entries on retry. Operators must disconnect unauthorized,
+conflicting, and revoked source allocations, and close ledger-only allocations
+only after the configured consecutive-snapshot policy in their collector.
 
 The repository does **not** yet contain a production-proven coturn exporter.
 Launch remains blocked until the pinned coturn build or provider API proves it
@@ -265,12 +269,15 @@ human-oriented coturn logs may run in shadow mode but is not an authoritative
 quota or billing source.
 
 `scripts/phase3/coturn_reconcile.py` is the current operator-side contract for a
-future trusted exporter. It accepts only the structured snapshot shape above,
-submits it to `/v1/coturn/reconcile`, and requires a configured idempotent
-disconnect executor for every unauthorized or conflicting source allocation. A
-missing ledger-only allocation exits non-zero so the caller's consecutive-snapshot
-policy must decide whether to close the ledger record. This helper does not parse
-coturn logs, does not create a durable collector cursor/WAL, and does not prove a
+future trusted exporter. It accepts either the structured snapshot shape above or
+an external `--exporter-command` whose stdout is that same strict JSON object,
+submits it to `/v1/coturn/reconcile`, retries transient failures when explicitly
+configured, and requires a configured idempotent disconnect executor for every
+unauthorized, conflicting, or revoked source allocation. A missing ledger-only
+allocation exits non-zero so the caller's consecutive-snapshot policy must decide
+whether to close the ledger record. This helper does not parse coturn logs, does
+not create a durable collector cursor/WAL, does not install a production
+scheduler, and does not prove a
 production disconnect mechanism.
 
 ## Clock synchronization and TTL consistency
@@ -317,8 +324,8 @@ separate production requirement.
   device is revoked, or a signaling admission is invalidated is implemented;
   later coturn usage for revoked, suspended, expired, or closed allocations
   fails closed without advancing daily counters;
-- collector durable cursor/WAL, node heartbeat, gap detection and two-snapshot
-  close reconciliation;
+- collector durable cursor/WAL, node heartbeat, gap detection, production
+  scheduling, and two-snapshot close reconciliation;
 - mapping from issued allocation IDs to complete coturn REST usernames;
 - active-allocation disconnect executor and outbox delivery;
 - edge authentication, DDoS/rate limiting, audit retention/deletion policy,
@@ -333,8 +340,12 @@ separate production requirement.
   must be registered through the admin API before a signaling admission can be
   created.
 - Relay credential admission is wired to the authority, and the structured
-  reconcile helper is locally tested. The coturn exporter, scheduled
-  reconciliation loop, active-allocation disconnect executor, and production
+  reconcile helper can now call an external exporter command and route
+  unauthorized, conflicting, or revoked source allocations to an external
+  disconnect executor. The repository still has no production implementation for
+  the coturn exporter, scheduled
+  reconciliation loop, or concrete active-allocation disconnect executor, and
+  production
   coturn enforcement remain open.
 - An active PeerConnection or TURN allocation is not actively disconnected when
   a device is revoked or a signaling admission is invalidated; the current
