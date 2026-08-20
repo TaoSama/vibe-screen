@@ -130,6 +130,26 @@ threshold, too few samples, wrong transport, or a threshold miss all return
 nonzero with a JSON report whose verdict is insufficient or fail. Referenced
 files must use package-relative paths and stay inside the evidence directory.
 
+## Synchronized-clock input latency
+
+The synchronized-clock path is only for the `input-p95-sub50` profile. It is
+not accepted for USB or LAN glass-to-glass gates, because those require one
+external camera or optical timebase that sees both the Mac stimulus and the
+Android render result.
+
+Use `--measurement-method synchronized-clock` only when the evidence package
+also contains a reviewable synchronization record: the host and Android clock
+sources, the synchronization procedure, before/after skew checks, drift over
+the measurement window, and a worst-case error budget. The total timing error
+budget must be less than 5 ms, which is 10% of the sub-50 ms P95 input gate, or
+the claim remains `insufficient` even if the raw P95 is below 50 ms.
+
+The current formal provenance checker validates external-camera packages only.
+Until a synchronized-clock manifest schema and checker path exist, a
+synchronized-clock input run must keep its `vibescreen_evidence.latency` summary
+with the synchronization proof and must be reviewed manually before it can be
+used as acceptance evidence.
+
 ## Claim boundary
 
 A pass applies only to the recorded device, transport, build, camera setup, and

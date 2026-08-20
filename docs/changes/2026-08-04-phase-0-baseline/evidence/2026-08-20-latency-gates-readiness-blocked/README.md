@@ -1,7 +1,7 @@
 # 2026-08-20 latency gates readiness: blocked
 
 This record covers the current readiness state for the README external latency
-gates on origin/main commit `b9d768e55c75f03cd3cb5d20939576bc8d24ff27`.
+gates on origin/main commit `8e630ad379fa6b2c5f7e6c9f5453386336e0251b`.
 
 ## Verdict
 
@@ -25,17 +25,19 @@ lock and `adb -s EP0110PZ0B9110300B` when it involves the connected Nubia P0110.
   `tools/vibescreen_evidence/latency_evidence.py` were read with
   `docs/testing.md`, `docs/runbook/latency-measurement.md`, and the README gate
   wording.
-- The standard-library test path passed because `pytest` is not installed in
-  this environment: `PYTHONPATH=tools python3 -m unittest
+- The standard-library test path passed: `PYTHONPATH=tools python3 -m unittest
   tools.tests.test_latency tools.tests.test_latency_evidence` ran 41 tests with
   zero failures.
 - Synthetic fixture reruns confirm the expected fail-closed behavior:
   `pass` exits 0, `fail` and `insufficient` exit nonzero, telemetry-stage output
   remains informational, and the formal checker rejects a package with missing
   raw camera video even when sample rows alone would pass.
-- A file scan found only synthetic latency fixtures under
-  `tools/fixtures/latency/`; no real `manifest.json` plus `raw-camera` plus
-  `samples` package exists under the repository outside fixtures.
+- A file scan found no real external-camera latency package. The only
+  raw-camera-like file is the synthetic fixture
+  `tools/fixtures/latency/external-camera-valid/raw-camera-placeholder.mov`;
+  the other `manifest.json`, `samples.csv`, and `summary.json` hits are
+  protocol manifests, soak summaries, generated readiness artifacts, or latency
+  fixtures.
 
 ## Artifacts
 
@@ -53,6 +55,8 @@ lock and `adb -s EP0110PZ0B9110300B` when it involves the connected Nubia P0110.
 - `fixture-formal-missing-video-report.json` and
   `fixture-formal-missing-video-exit.txt`: formal checker result proving a
   missing raw camera artifact remains `insufficient`.
+- `readiness-report.json`: machine-readable statement that all three external
+  latency gates remain blocked on missing real measurement evidence.
 
 These fixture artifacts are toolchain evidence only. They are not real-device
 latency evidence and must not be used to claim shipped USB, LAN, or input
@@ -91,4 +95,11 @@ enough for the sub-50 ms P95 gate.
   `lan-glass-to-glass-sub80`, or `input-p95-sub50`.
 - Host/client telemetry-stage summaries remain useful diagnostics only; they do
   not replace external-camera or valid synchronized-clock evidence.
+- The synchronized-clock path is currently limited to the `input-p95-sub50`
+  profile, requires a reviewable sub-5 ms total timing error budget, and does
+  not yet have a formal manifest/checker path. It cannot close USB or LAN
+  glass-to-glass gates.
 - Fixture passes remain synthetic and are scoped only to the CLI/toolchain.
+- This refreshed record intentionally does not touch the higher-conflict root
+  README, `docs/testing.md`, or Phase 0 `TEST.md`; those already point to this
+  blocked evidence and keep the gates open.
