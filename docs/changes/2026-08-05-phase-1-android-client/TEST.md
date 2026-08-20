@@ -361,8 +361,10 @@ acknowledgement. Repeating the matrix exposed that pinch's
 Command modifier could leak through the shared CGEvent source into later plain
 pointer events. Pinch now uses a private synthetic-modifier event source, with
 focused isolation coverage, while ordinary pointer events preserve legitimate
-system modifiers. The fixed binary still needs macOS Screen Recording and Accessibility
-approval before its device rerun can close; see
+system modifiers. A later stable-signed fixed-binary rerun on the Nubia
+P0110/pacific Android substitute passed the same opt-in gesture matrix and
+post-pinch modifier-isolation check while keeping the device identity distinct
+from Xiaomi 13/fuxi evidence; see
 [`../2026-08-13-xiaomi13-touch-gestures/TEST.md`](../2026-08-13-xiaomi13-touch-gestures/TEST.md).
 
 ## P0110 Android UI polish smoke

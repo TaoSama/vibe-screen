@@ -1,0 +1,38 @@
+{
+  "files": [
+    "README.md",
+    "SHA256SUMS",
+    "adb-state.txt",
+    "android-diag-focused.log",
+    "android-launch.txt",
+    "android-logcat-focused.txt",
+    "android-screen-after-rerun.png",
+    "android-window-after-rerun.xml",
+    "apk-sha256.txt",
+    "cleanup.txt",
+    "device-identity.txt",
+    "device-lock-after-cleanup.txt",
+    "expected-host-sha256.txt",
+    "host-log-after-launch.log",
+    "host-log-eventtap-run-2.log",
+    "host-log-eventtap-run.log",
+    "host-log-touch-gesture-window.log",
+    "install-and-reverse.txt",
+    "listen-only-event-tap-2.err",
+    "listen-only-event-tap-2.log",
+    "post-cleanup-processes.txt",
+    "privacy-scan.json",
+    "result-summary.json",
+    "touch-gesture-instrumentation-eventtap-run-2.txt",
+    "touch-gesture-instrumentation-eventtap-run.txt",
+    "touch-gesture-instrumentation.txt",
+    "touch-rerun-preflight.json"
+  ],
+  "notes": [
+    "Raw full-system logcat files were not retained in Git; focused excerpts are retained.",
+    "The preflight JSON intentionally records local TCC database paths emitted by the evidence tool.",
+    "ADB endpoint addresses are not included; the retained serial is the required device identity for this acceptance run."
+  ],
+  "result": "reviewed",
+  "schema": "vibescreen.evidence-privacy-scan/v1"
+}

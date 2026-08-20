@@ -1,0 +1,2 @@
+pgrep -x Vibe Screen:
+pgrep -x Telemachus:
