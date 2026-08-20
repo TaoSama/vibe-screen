@@ -10,7 +10,7 @@ YYYY-MM-DD-<device>-phase2-8h/
 ├── host.txt
 ├── build.txt
 ├── apk-sha256.txt
-├── manifest.json
+├── phase2-tablet-manifest.json
 ├── samples.jsonl
 ├── summary.json
 ├── samples.csv              # optional derived conversion; keep raw JSONL
@@ -36,8 +36,14 @@ Collect `device-info.json` with:
 make evidence-device-info EVIDENCE_SERIAL="$ADB_SERIAL" EVIDENCE_DIR="$RUN_DIR"
 ```
 
+Before starting the eight-hour timer, create the Phase 2 manifest with
+`make phase2-tablet-manifest EVIDENCE_DIR="$RUN_DIR" ...` and fill in the
+stand, charger, host build, APK hash, transport, video preferences, thresholds,
+and planned recovery scenarios. The file must validate against
+`tools/schemas/phase2-tablet-manifest.schema.json`.
+
 The artifact must validate against `tools/schemas/device-info.schema.json`;
-`device.txt` and `manifest.json` are supporting records, not substitutes for the
+`device.txt` and `phase2-tablet-manifest.json` are supporting records, not substitutes for the
 schema-backed device identity. `thermal-before.err` and `thermal-after.err` are
 stderr captures created by the runbook commands on every run. Determine thermal
 collection failure from the command status and whether the corresponding dump is
