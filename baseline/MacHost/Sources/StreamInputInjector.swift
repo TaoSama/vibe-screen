@@ -20,6 +20,11 @@ enum StreamInputWire {
     static let modifierRightCommand: UInt32 = 1 << 7
     static let standardModifierByteMask: UInt32 = 0xFF
     static let legacyModifierMask: UInt32 = 0x0F
+    static let pointerButtonMask: UInt32 = buttonPrimary | buttonSecondary
+
+    static func validatesPointerButtonMask(_ mask: UInt32) -> Bool {
+        mask & ~pointerButtonMask == 0
+    }
 
     static func validatesModifierMask(_ mask: UInt32, standardByteNegotiated: Bool) -> Bool {
         mask & ~(standardByteNegotiated ? standardModifierByteMask : legacyModifierMask) == 0
@@ -402,6 +407,8 @@ final class StreamInputInjector {
     private let eventSource: CGEventSource?
     private let stylusEventFactory: StylusEventFactory
     private let stylusEventPoster: (CGEvent) -> Void
+    private let pointerEventPoster: (CGEvent) -> Void
+    private let scrollEventPoster: (CGEvent) -> Void
     private let keyboardEventPoster: (CGEvent) -> Void
     private var pressedButtons: UInt32 = 0
     private var pressedKeyState = PressedKeyState()
@@ -414,6 +421,12 @@ final class StreamInputInjector {
         stylusEventPoster: @escaping (CGEvent) -> Void = {
             $0.post(tap: .cghidEventTap)
         },
+        pointerEventPoster: @escaping (CGEvent) -> Void = {
+            $0.post(tap: .cghidEventTap)
+        },
+        scrollEventPoster: @escaping (CGEvent) -> Void = {
+            $0.post(tap: .cghidEventTap)
+        },
         keyboardEventPoster: @escaping (CGEvent) -> Void = {
             $0.post(tap: .cghidEventTap)
         }
@@ -421,6 +434,8 @@ final class StreamInputInjector {
         self.eventSource = eventSource
         stylusEventFactory = StylusEventFactory(eventSource: eventSource)
         self.stylusEventPoster = stylusEventPoster
+        self.pointerEventPoster = pointerEventPoster
+        self.scrollEventPoster = scrollEventPoster
         self.keyboardEventPoster = keyboardEventPoster
     }
 
@@ -491,7 +506,7 @@ final class StreamInputInjector {
             wheel3: 0
         ) else { return false }
         event.location = lastPointerLocation
-        event.post(tap: .cghidEventTap)
+        scrollEventPoster(event)
         return true
     }
 
@@ -615,7 +630,7 @@ final class StreamInputInjector {
             mouseButton: button
         ) {
             event.setIntegerValueField(.mouseEventClickState, value: 1)
-            event.post(tap: .cghidEventTap)
+            pointerEventPoster(event)
         }
     }
 
@@ -640,7 +655,7 @@ final class StreamInputInjector {
             mouseCursorPosition: location,
             mouseButton: button
         ) {
-            event.post(tap: .cghidEventTap)
+            pointerEventPoster(event)
         }
     }
 }
