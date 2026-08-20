@@ -1,0 +1,11 @@
+## wlan0
+23: wlan0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc mq state DOWN group default qlen 3000
+    link/ether <redacted> brd ff:ff:ff:ff:ff:ff
+
+## cmd wifi status
+Wifi is enabled
+Wifi scanning is always available
+==== ClientModeManager instance: ConcreteClientModeManager{id=623838927 iface=wlan0 role=ROLE_CLIENT_PRIMARY} ====
+Wifi is not connected
+
+## ip route

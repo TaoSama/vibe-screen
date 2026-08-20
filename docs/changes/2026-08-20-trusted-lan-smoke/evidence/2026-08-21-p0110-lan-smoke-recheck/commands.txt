@@ -1,0 +1,33 @@
+# Commands
+
+Working directory: /Users/luwentao/Workspaces/dotfiles/codex/worktrees/39c2/vibe-screen
+Date UTC: 2026-08-20T19:32:05Z
+Branch: codex/lan-trusted-p0110-smoke
+HEAD: cc26a84c829016fa61c721f73a128284fdf64f92
+
+All ADB commands used explicit -s EP0110PZ0B9110300B.
+
+git fetch origin
+git switch -c codex/lan-trusted-p0110-smoke origin/main
+test ! -e /tmp/vibe-screen-device-soak.lock && test ! -e /tmp/vibe-screen-device-android.lock
+adb devices -l
+adb -s EP0110PZ0B9110300B shell getprop ro.serialno
+adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+adb -s EP0110PZ0B9110300B shell getprop ro.build.fingerprint
+adb -s EP0110PZ0B9110300B shell wm size
+adb -s EP0110PZ0B9110300B shell wm density
+adb -s EP0110PZ0B9110300B shell dumpsys battery
+adb -s EP0110PZ0B9110300B shell getprop sys.boot_completed
+adb -s EP0110PZ0B9110300B shell ip addr show wlan0
+adb -s EP0110PZ0B9110300B shell cmd wifi status
+adb -s EP0110PZ0B9110300B shell ip route
+lsof -nP -iTCP:54321 -sTCP:LISTEN
+python3 scripts/macos_dev_host.py preflight
+cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.LanSecureRecordAdapterTest --tests dev.telemachus.display.StreamClientWirelessSecurityTest --tests dev.telemachus.display.AuthHandshakeTest
+make protocol
+python3 contracts/fixtures/messages/v1/generate.py --check
+shasum -a 256 -c docs/changes/2026-08-20-trusted-lan-smoke/evidence/2026-08-21-p0110-lan-smoke-recheck/SHA256SUMS

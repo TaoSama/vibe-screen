@@ -1,0 +1,9 @@
+## macOS network candidate
+en0 status: active
+private LAN endpoint: <redacted-private-endpoint>
+
+The raw interface dump contained private endpoint values and was intentionally
+reduced to the diagnostic state needed by this blocked run.
+
+## tcp/54321 listeners
+No listening process observed.
