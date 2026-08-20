@@ -1,0 +1,7 @@
+# final listener
+
+# final android pid
+32263
+
+# reverse
+UsbFfs tcp:54321 tcp:54321

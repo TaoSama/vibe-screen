@@ -1,0 +1,108 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "nubia_p0110_usb_smoke_readiness",
+  "status": "blocked",
+  "collected_at": "2026-08-20T19:46:53Z",
+  "repository": {
+    "commit": "cc26a84c829016fa61c721f73a128284fdf64f92",
+    "base": "origin/main",
+    "branch": "HEAD (detached)",
+    "worktree": "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/2824/vibe-screen"
+  },
+  "device": {
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": 36,
+    "serial": "EP0110PZ0B9110300B",
+    "recorded_as_fuxi": false,
+    "state": "device",
+    "adb_reverse": "UsbFfs tcp:54321 tcp:54321",
+    "battery_level_percent": 100
+  },
+  "artifacts": {
+    "android_debug_apk_sha256": "316e78f086ec119a466ad5219d41530ad969991147400d48921e0890f6f6b4d6",
+    "installed_host_binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
+    "source_host_binary_sha256": "756c540077d8dbdc963b3b8eb330632c8492c3c8968ee68bd6a524a36b3df86f"
+  },
+  "local_environment": {
+    "xcodebuild_status": "xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance",
+    "codesigning_identities": "0 valid identities found",
+    "installed_host_signature": "Vibe Screen Dev",
+    "installed_host_bundle_id": "dev.telemachus.display",
+    "installed_host_cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
+    "tcc_screen_capture": "allowed in system TCC database",
+    "tcc_accessibility": "allowed in system TCC database"
+  },
+  "host": {
+    "installed_app_pid_after_restart": 66481,
+    "tcp_54321_listener": false,
+    "screen_recording_cgpreflight": true,
+    "start_server_invoked": true,
+    "adb_reverse_setup_invoked_by_host": true,
+    "android_auto_launch_invoked_by_host": true,
+    "terminal_failure": "SCShareableContent returned 0 displays; Virtual display with ID 1 not found after 5 attempts",
+    "source_bound_preflight_status": "failed_before_install_or_rerun",
+    "source_bound_preflight_blocker": "codesign identity 'Vibe Screen Dev' not found in the keychain",
+    "temporary_current_main_check": "performed after restart; failure persisted with SCShareableContent returning zero displays",
+    "display_source_preference_restored_to": "selectedDisplay"
+  },
+  "android_app": {
+    "package": "dev.telemachus.display",
+    "pid_observed": 32263,
+    "smoke_connection_attempted": false,
+    "reason_not_attempted": "Host did not listen on 127.0.0.1:54321"
+  },
+  "controller_refresh_2026_08_21": {
+    "device": "nubia P0110 / pacific / Android 16",
+    "adb_reverse": "passed; UsbFfs tcp:54321 tcp:54321 reported by adb reverse --list",
+    "android_app_foreground": true,
+    "android_app_pid": 11385,
+    "android_current_focus": "dev.telemachus.display/.MainActivity",
+    "host_tcp_54321_listener": false,
+    "host_touch_preflight_exit_code": 2,
+    "host_touch_preflight_blocker": "codesign identity 'Vibe Screen Dev' not found in the keychain",
+    "current_blocker_summary": "USB device-side preconditions are cleared; Host listener and stable Vibe Screen Dev signing/TCC readiness remain blocked."
+  },
+  "coordination": {
+    "lock_path": "/tmp/vibe-screen-device-android.lock",
+    "lock_status_after_cleanup": "released; lockf -t 0 succeeded",
+    "stale_lock_cleaned": true,
+    "stale_lock_processes": [49845, 49848]
+  },
+  "stages": {
+    "device_online": "passed",
+    "adb_reverse": "passed",
+    "source_host_build": "passed",
+    "android_debug_build": "passed",
+    "source_host_preflight": "blocked",
+    "installed_host_restart": "observed",
+    "host_tcp_54321_listener": "blocked",
+    "android_app_running": "observed; latest controller refresh also confirmed app foreground",
+    "usb_connection": "not_run",
+    "first_frame": "not_run",
+    "crash_free_smoke_window": "not_run"
+  },
+  "blocking_reasons": [
+    "The restarted installed Host process did not bind 127.0.0.1:54321.",
+    "Host logs show repeated ScreenCaptureKit display enumeration failure before listener creation: SCShareableContent returned 0 displays and Virtual display with ID 1 not found after 5 attempts.",
+    "The current source-bound stable Host preflight cannot be used because no valid local code-signing identities are available for 'Vibe Screen Dev'."
+  ],
+  "next_commands": [
+    "security find-identity -v -p codesigning | grep '\"Vibe Screen Dev\"'",
+    "python3 scripts/macos_dev_host.py preflight --install-path \"/Applications/Vibe Screen.app\"",
+    "lsof -nP -iTCP:54321 -sTCP:LISTEN",
+    "adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321",
+    "adb -s EP0110PZ0B9110300B shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true"
+  ],
+  "claims": {
+    "nubia_p0110_identity_recorded": true,
+    "device_reachable": true,
+    "adb_reverse_configured": true,
+    "host_listening_on_54321": false,
+    "usb_e2e_smoke_passed": false,
+    "first_frame_observed": false,
+    "xiaomi_fuxi_evidence": false
+  }
+}

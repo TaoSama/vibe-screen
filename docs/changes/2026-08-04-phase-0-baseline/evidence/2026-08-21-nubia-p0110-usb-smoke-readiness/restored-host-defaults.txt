@@ -1,0 +1,11 @@
+restore_at_utc=2026-08-20T19:44:48Z
+# before
+currentMain
+1
+37D8832A-2D66-02CA-B9F7-8F30A301B230
+# action
+defaults write dev.telemachus.display Telemachus_displaySource selectedDisplay
+# after
+selectedDisplay
+1
+37D8832A-2D66-02CA-B9F7-8F30A301B230

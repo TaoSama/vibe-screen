@@ -1,0 +1,4 @@
+released_at_utc=2026-08-20T19:32:33Z
+exit_code=0
+lock_path=/tmp/vibe-screen-device-android.lock
+holder_pid=47298
