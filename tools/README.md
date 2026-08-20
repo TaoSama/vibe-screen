@@ -217,6 +217,32 @@ or thermal status samples are missing:
 make phase2-device-memory-gate EVIDENCE_DIR=.build/evidence
 ```
 
+For an end-to-end readiness check that gathers the same raw inputs and writes an
+explicit blocker record, use the wrapper target. It refuses to run ADB when an
+existing device lock is present, then writes `phase2-soak-readiness.json`,
+`README.md`, static device/Host artifacts, Android log derivatives, and either
+`soak-preflight/` or `soak-8h/` depending on mode:
+
+```sh
+make phase2-tablet-soak-preflight EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_DIR=.build/evidence/phase2-preflight \
+  PHASE2_DEVICE_CLASS=android_substitute \
+  PHASE2_STAND_SETUP="bench substitute phone, no 8-9 inch tablet stand" \
+  PHASE2_CHARGER="recorded charger" \
+  PHASE2_CABLE_OR_DOCK="USB-C data cable" \
+  PHASE2_VIDEO_PREFERENCES="preflight only" \
+  PHASE2_HOST_IDENTITY="Mac model and macOS version" \
+  PHASE2_HOST_BUILD="not a formal signed Host run" \
+  PHASE2_APK_SHA256="readiness-only-no-apk-hash" \
+  PHASE2_SOAK_PREFLIGHT_DURATION=2s \
+  PHASE2_SOAK_INTERVAL=1s
+```
+
+Use `phase2-tablet-soak-run` only after the physical tablet, stand-mounted
+charging setup, signed Host PID, and `VIBE_SCREEN_TELEMETRY_PATH` JSONL are all
+ready. The formal target writes blocked evidence instead of starting the timer
+when any required precondition is missing.
+
 ```sh
 make phase2-tablet-gate EVIDENCE_DIR=.build/evidence
 make phase2-tablet-preflight EVIDENCE_DIR=.build/evidence
