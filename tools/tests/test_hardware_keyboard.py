@@ -67,6 +67,14 @@ class HardwareKeyboardEvidenceTest(unittest.TestCase):
         self.assertTrue(summary["can_close_hardware_keyboard_gate"])
         self.assertEqual(summary["missing_requirements"], [])
 
+    def test_run_id_can_come_from_input_record(self) -> None:
+        record = self.complete_record()
+        record["run_id"] = "fixed-run"
+
+        summary = summarize(record)
+
+        self.assertEqual(summary["run_id"], "fixed-run")
+
     def test_summary_matches_schema_required_fields(self) -> None:
         summary = summarize(self.complete_record())
         schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -87,6 +95,13 @@ class HardwareKeyboardEvidenceTest(unittest.TestCase):
         record["physical_keyboard_attached"] = "yes"
 
         with self.assertRaisesRegex(HardwareKeyboardEvidenceError, "must be true or false"):
+            summarize(record)
+
+    def test_rejects_empty_input_run_id(self) -> None:
+        record = self.complete_record()
+        record["run_id"] = ""
+
+        with self.assertRaisesRegex(HardwareKeyboardEvidenceError, "run_id"):
             summarize(record)
 
 

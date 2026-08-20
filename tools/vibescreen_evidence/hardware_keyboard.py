@@ -119,6 +119,15 @@ def _string_value(record: dict[str, Any], field: str) -> str:
     raise HardwareKeyboardEvidenceError(f"{field} must be a string")
 
 
+def _optional_run_id(record: dict[str, Any]) -> str | None:
+    value = record.get("run_id")
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip():
+        return value
+    raise HardwareKeyboardEvidenceError("run_id must be a non-empty string")
+
+
 def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str, Any]:
     field_values = {field: _bool_value(record, field) for field in BOOLEAN_FIELDS}
     missing = [
@@ -138,7 +147,7 @@ def summarize(record: dict[str, Any], *, run_id: str | None = None) -> dict[str,
 
     return {
         "schema_version": SCHEMA_VERSION,
-        "run_id": run_id or str(uuid.uuid4()),
+        "run_id": run_id or _optional_run_id(record) or str(uuid.uuid4()),
         "kind": "phase2_hardware_keyboard_workflow",
         "profile": GATE_PROFILE,
         "verdict": verdict,

@@ -131,7 +131,7 @@
   "profile": "phase2-hardware-keyboard-workflow",
   "required_device_identity": "Record the actual Android device identity; Nubia P0110/pacific/Android 16 evidence must not be relabeled as Xiaomi 13/fuxi.",
   "requires_physical_keyboard": true,
-  "run_id": "07d6c99e-2277-433f-81ff-c7fbdc8ff850",
+  "run_id": "8ec1ff10-0285-48ef-bf30-f716528ee687",
   "schema_version": "vibescreen.evidence/v1",
   "verdict": "blocked"
 }

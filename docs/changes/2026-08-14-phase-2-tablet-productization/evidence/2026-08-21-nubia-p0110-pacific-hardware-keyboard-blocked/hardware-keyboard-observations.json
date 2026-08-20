@@ -29,6 +29,7 @@
   "physical_keyboard_attached": false,
   "protocol_keyboard_capability_negotiated": false,
   "protocol_usb_hid_modifier_capability_negotiated": false,
+  "run_id": "8ec1ff10-0285-48ef-bf30-f716528ee687",
   "shortcut_combo_observed": false,
   "visible_mac_result_observed": false
 }
