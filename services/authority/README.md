@@ -237,6 +237,15 @@ cumulative counters, close events, boot identity and snapshot support. Parsing
 human-oriented coturn logs may run in shadow mode but is not an authoritative
 quota or billing source.
 
+`scripts/phase3/coturn_reconcile.py` is the current operator-side contract for a
+future trusted exporter. It accepts only the structured snapshot shape above,
+submits it to `/v1/coturn/reconcile`, and requires a configured idempotent
+disconnect executor for every unauthorized or conflicting source allocation. A
+missing ledger-only allocation exits non-zero so the caller's consecutive-snapshot
+policy must decide whether to close the ledger record. This helper does not parse
+coturn logs, does not create a durable collector cursor/WAL, and does not prove a
+production disconnect mechanism.
+
 ## Clock synchronization and TTL consistency
 
 The authority and its callers (signaling, relay) require synchronized clocks
@@ -294,7 +303,10 @@ separate production requirement.
 - Automatic account and device registration is not wired; accounts and devices
   must be registered through the admin API before a signaling admission can be
   created.
-- The relay/coturn control plane is not yet wired to the authority.
+- Relay credential admission is wired to the authority, and the structured
+  reconcile helper is locally tested. The coturn exporter, scheduled
+  reconciliation loop, active-allocation disconnect executor, and production
+  coturn enforcement remain open.
 - An active PeerConnection or TURN allocation is not actively disconnected when
   a device is revoked or a signaling admission is invalidated; the current
   closure is an authority-ledger boundary, not a data-plane kill path.

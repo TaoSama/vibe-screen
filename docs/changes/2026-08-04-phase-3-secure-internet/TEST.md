@@ -61,7 +61,13 @@ invariants: production relay and Authority profiles require digest-pinned images
 secrets are file-backed, relay HTTP remains loopback-only, and the coturn
 production profile retains TLS, quota, bounded relay-port, and private/internal
 peer-deny policy. They do not start a public relay, inspect real secret delivery,
-or prove public reachability.
+or prove public reachability. The same target validates the structured coturn
+snapshot reconciliation helper: strict JSON input, loopback-only plaintext
+Authority URLs, exact token-source selection, and fail-closed external disconnect
+execution when Authority reports unauthorized or conflicting active source
+allocations. That helper test does not prove a production coturn exporter,
+scheduled loop, provider billing reconciliation, or real data-plane allocation
+termination.
 
 Record failures as failures. In particular, an unavailable XCTest/full-Xcode or
 device environment is not a waiver. When production WebRTC/crypto/signaling code
@@ -310,6 +316,12 @@ named by that run:
 - The relay control plane's race suite passed after separating usage and metrics
   credentials, enforcing an exact Bearer scheme, exporting current-day estimated
   cost as a gauge, and syncing the state directory after atomic replacement.
+- `scripts/phase3/coturn_reconcile.py` has focused unit coverage for strict
+  structured snapshot ingestion, sanitized token-source selection, loopback-only
+  plaintext Authority URLs, Authority response validation, and fail-closed
+  handling of unauthorized/conflicting active allocations when no disconnect
+  executor exists or when the executor fails. This is a local contract test, not
+  production coturn exporter or data-plane disconnect evidence.
 - Signaling issuer-only invalidation passed store, HTTP, race and repeated
   real-process tests: invalidation is idempotent, destroys role tokens and queued
   payloads, wakes long polls, and retains only the request-ID tombstone until
