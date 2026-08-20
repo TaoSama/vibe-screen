@@ -195,6 +195,17 @@ and the app private diagnostic log when `run-as` can read it. A result of
 the pen; pressure/tilt/barrel capability in `dumpsys input` is necessary
 evidence, not acceptance.
 
+If a shared device lock exists before the first ADB command, write a blocked
+readiness record instead of probing the device:
+
+    python3 scripts/android_stylus_acceptance.py \
+      --serial DEVICE_SERIAL \
+      --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/YYYY-MM-DD-device-stylus-lock-blocked \
+      --write-blocked-on-lock
+
+That lock-blocked record proves the gate could not start; it does not include
+device capability evidence and cannot close physical-stylus acceptance.
+
 For a passing run, open a non-sensitive macOS drawing app in the streamed display
 and record all of the following in the evidence directory:
 

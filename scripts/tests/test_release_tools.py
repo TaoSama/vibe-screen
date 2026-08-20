@@ -97,10 +97,56 @@ Input Reader State:
         with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "drawing-observation"):
             android_stylus_acceptance.conclusion_status(args, [])
 
+    def test_passing_status_requires_stylus_injection_fields_in_host_log(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host-stylus.log"
+            host_log.write_text("Stylus injected: input=1 pressure=0.5\n", encoding="utf-8")
+            args = argparse.Namespace(
+                observed_physical_drawing=True,
+                drawing_observation="physical stylus produced visible ink",
+                host_log=host_log,
+            )
+
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "contact, tool, buttons, tilt_x, tilt_y"):
+                android_stylus_acceptance.conclusion_status(args, [candidate])
+
+    def test_passing_status_accepts_host_log_with_pressure_and_signed_tilt(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host-stylus.log"
+            host_log.write_text(
+                "Stylus injected: input=1 pointer=7 phase=INPUT_PHASE_CHANGED "
+                "contact=contact tool=pen buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0\n",
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                observed_physical_drawing=True,
+                drawing_observation="physical stylus produced visible ink",
+                host_log=host_log,
+            )
+
+            self.assertEqual("pass", android_stylus_acceptance.conclusion_status(args, [candidate]))
+
     def test_observed_drawing_without_required_capability_stays_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             host_log = Path(temporary_directory) / "host-stylus.log"
-            host_log.write_text("stylus event observed\n", encoding="utf-8")
+            host_log.write_text(
+                "Stylus injected: input=1 contact=contact buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0\n",
+                encoding="utf-8",
+            )
             args = argparse.Namespace(
                 observed_physical_drawing=True,
                 drawing_observation="physical stylus produced visible ink",
@@ -139,6 +185,25 @@ Input Reader State:
         self.assertIn("  - Sources: none", readme)
         self.assertIn("  - Buttons: none", readme)
         self.assertFalse(any(line.endswith(" ") for line in readme.splitlines()))
+
+    def test_render_readme_describes_lock_blocked_without_device_identity(self) -> None:
+        summary = {
+            "status": "blocked_device_coordination_lock",
+            "requested_serial": "EP0110PZ0B9110300B",
+            "device_identity": {},
+            "existing_locks": [{"path": "/tmp/vibe-screen-device-android.lock", "detail": "present"}],
+            "stylus_candidates": [],
+        }
+
+        readme = android_stylus_acceptance.render_readme(summary)
+
+        self.assertIn("ADB was not run. Requested serial: EP0110PZ0B9110300B.", readme)
+        self.assertIn("## Device coordination locks", readme)
+        self.assertIn("/tmp/vibe-screen-device-android.lock", readme)
+        self.assertIn("## Stylus input devices", readme)
+        self.assertIn("No input-device snapshot was collected because ADB was not run.", readme)
+        self.assertNotIn("dumpsys-input.txt", readme)
+        self.assertNotIn("android-diag.log", readme)
 
 
 class HarmonyDeviceGateTests(unittest.TestCase):

@@ -1,0 +1,18 @@
+{
+  "collected_at": "2026-08-20T14:51:48.092865+00:00",
+  "device_identity": {},
+  "diag_log_read_error": "ADB not run because a device coordination lock exists.",
+  "drawing_observation": "",
+  "existing_locks": [
+    {
+      "detail": "",
+      "modified_at": "2026-08-20T14:12:52.217592+00:00",
+      "path": "/tmp/vibe-screen-device-android.lock",
+      "size_bytes": 0
+    }
+  ],
+  "observed_physical_drawing": false,
+  "requested_serial": "EP0110PZ0B9110300B",
+  "status": "blocked_device_coordination_lock",
+  "stylus_candidates": []
+}

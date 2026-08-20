@@ -4281,7 +4281,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             debugLog(
                 "Stylus injected: input=\(inputID) pointer=\(pointerID) "
                     + "phase=\(phase) contact=\(contactState) tool=\(toolKind) "
-                    + "buttons=\(buttonMask) pressure=\(pressure)"
+                    + "buttons=\(buttonMask) pressure=\(pressure) "
+                    + "tiltX=\(tiltXDegrees) tiltY=\(tiltYDegrees)"
             )
         }
         return injected
