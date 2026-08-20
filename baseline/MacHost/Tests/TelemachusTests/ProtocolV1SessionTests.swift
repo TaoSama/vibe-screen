@@ -559,7 +559,7 @@ final class ProtocolV1SessionTests: XCTestCase {
         ).serializedData()))
 
         XCTAssertEqual(failure.code, .invalidState)
-        XCTAssertFalse(session.isStreaming)
+        XCTAssertEqual(session.phase, .failed)
     }
 
     func testClientDecodeCapabilitiesSelectSDRCompatibleCodec() throws {
