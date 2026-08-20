@@ -48,9 +48,7 @@ class ProtocolV1ClipboardTest {
         session.receive(sessionAccepted(3, caps))
         session.receive(displayList(4))
         session.receive(startDisplay(5))
-        val requested =
-            session.receive(videoConfig(6)).single()
-                as ProtocolV1Session.Action.VideoConfigurationRequested
+        val requested = singleVideoConfigurationRequested(session.receive(videoConfig(6)))
         session.completeVideoConfiguration(
             completedConfigEpoch = 3,
             configurationToken = requested.configurationToken,
@@ -550,9 +548,7 @@ class ProtocolV1ClipboardTest {
         session.receive(sessionAccepted(3, caps, acceptedMaxClipboardBytes = 10L))
         session.receive(displayList(4))
         session.receive(startDisplay(5))
-        val requested =
-            session.receive(videoConfig(6)).single()
-                as ProtocolV1Session.Action.VideoConfigurationRequested
+        val requested = singleVideoConfigurationRequested(session.receive(videoConfig(6)))
         session.completeVideoConfiguration(3, requested.configurationToken, true, "")
 
         assertEquals(10L, session.negotiatedMaxClipboardBytes)
@@ -770,6 +766,11 @@ class ProtocolV1ClipboardTest {
     private fun sha256(bytes: ByteArray): ByteArray =
         MessageDigest.getInstance("SHA-256").digest(bytes)
 
+    private fun singleVideoConfigurationRequested(
+        actions: List<ProtocolV1Session.Action>,
+    ): ProtocolV1Session.Action.VideoConfigurationRequested =
+        actions.filterIsInstance<ProtocolV1Session.Action.VideoConfigurationRequested>().single()
+
     private fun clipboardSessionWithoutManagedConfiguration(): ProtocolV1Session {
         val caps = clipboardCapabilities(managedConfiguration = false)
         val session =
@@ -785,9 +786,7 @@ class ProtocolV1ClipboardTest {
         session.receive(sessionAccepted(3, caps))
         session.receive(displayList(4))
         session.receive(startDisplay(5))
-        val requested =
-            session.receive(videoConfig(6)).single()
-                as ProtocolV1Session.Action.VideoConfigurationRequested
+        val requested = singleVideoConfigurationRequested(session.receive(videoConfig(6)))
         session.completeVideoConfiguration(
             completedConfigEpoch = 3,
             configurationToken = requested.configurationToken,
@@ -898,6 +897,9 @@ class ProtocolV1ClipboardTest {
                     .setConfigEpoch(3)
                     .setEncodedSize(Dimensions.newBuilder().setWidth(1920).setHeight(1080))
                     .setRotationDegrees(0)
-                    .setCodec(Codec.CODEC_HEVC),
+                    .setCodec(Codec.CODEC_HEVC)
+                    .setFramesPerSecond(60)
+                    .setBitrateKbps(8_000)
+                    .setColorDescription(VideoColorNegotiation.legacySdrColor),
             ).build()
 }
