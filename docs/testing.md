@@ -44,11 +44,12 @@ as the device identity and soak artifacts:
   `vibescreen_evidence.latency` summary, device info, and an evidence manifest.
 - Input latency requires either the same external-camera single timebase or a
   documented synchronized-clock setup with an error budget small enough for the
-  sub-50 ms P95 gate. The current formal provenance checker validates
-  external-camera packages; any synchronized-clock input claim must carry its
-  own synchronization proof and reviewable error budget rather than using the
-  external-camera manifest path. Unsynchronized host/device timestamps are
-  diagnostic only.
+  sub-50 ms P95 gate. The formal provenance checker validates both
+  external-camera and synchronized-clock input packages; a synchronized-clock
+  claim must carry its own synchronization proof (clock sources, sync
+  procedure, before/after skew, drift, and a total error budget below 5 ms) in
+  the manifest's `synchronization` section. Unsynchronized host/device
+  timestamps are diagnostic only.
 - Host/client telemetry-stage summaries may be recorded from pipeline, decoder,
   queue, or RTT logs with `--kind telemetry-stage`. They explain where latency
   is spent, but their summary must retain
@@ -63,8 +64,8 @@ gate open. The CLI exits `0` only for a profile `pass` and exits nonzero for
 `fail` or `insufficient`. The synthetic examples under
 `tools/fixtures/latency/` are only CLI fixtures for exercising these verdicts;
 they are not real-device evidence.
-For formal external-camera runs, validate the full evidence directory with
-the stricter provenance checker:
+For formal external-camera or synchronized-clock input runs, validate the full
+evidence directory with the stricter provenance checker:
 
 ```bash
 PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vibe-screen.dev/schemas/evidence/v1/latency-evidence.schema.json",
-  "title": "Vibe Screen external-camera latency evidence package v1",
+  "title": "Vibe Screen latency evidence package v1",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -11,8 +11,6 @@
     "transport",
     "measurement_method",
     "gate_profile",
-    "camera",
-    "recording",
     "samples",
     "device",
     "host",
@@ -24,7 +22,7 @@
     "run_id": {"type": "string", "minLength": 1},
     "latency_kind": {"enum": ["glass-to-glass", "input"]},
     "transport": {"enum": ["usb", "lan"]},
-    "measurement_method": {"const": "external-camera"},
+    "measurement_method": {"enum": ["external-camera", "synchronized-clock"]},
     "gate_profile": {
       "enum": ["usb-glass-to-glass-sub50", "lan-glass-to-glass-sub80", "input-p95-sub50"]
     },
@@ -49,6 +47,32 @@
         "recorded_at": {"type": "string", "minLength": 1},
         "operator": {"type": "string", "minLength": 1},
         "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}
+      }
+    },
+    "synchronization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host_clock_source",
+        "device_clock_source",
+        "sync_procedure",
+        "before_skew_ms",
+        "after_skew_ms",
+        "max_drift_ms",
+        "total_error_budget_ms",
+        "input_timestamp_method",
+        "result_timestamp_method"
+      ],
+      "properties": {
+        "host_clock_source": {"type": "string", "minLength": 1},
+        "device_clock_source": {"type": "string", "minLength": 1},
+        "sync_procedure": {"type": "string", "minLength": 1},
+        "before_skew_ms": {"type": "number", "minimum": 0},
+        "after_skew_ms": {"type": "number", "minimum": 0},
+        "max_drift_ms": {"type": "number", "minimum": 0},
+        "total_error_budget_ms": {"type": "number", "minimum": 0, "maximum": 5},
+        "input_timestamp_method": {"type": "string", "minLength": 1},
+        "result_timestamp_method": {"type": "string", "minLength": 1}
       }
     },
     "samples": {
@@ -103,7 +127,6 @@
         "lighting",
         "mounting",
         "clock_domain",
-        "max_frame_annotation_uncertainty_ms",
         "notes"
       ],
       "properties": {
@@ -112,10 +135,47 @@
         "end_event_definition": {"type": "string", "minLength": 1},
         "lighting": {"type": "string", "minLength": 1},
         "mounting": {"type": "string", "minLength": 1},
-        "clock_domain": {"const": "single-external-camera-timebase"},
+        "clock_domain": {
+          "enum": ["single-external-camera-timebase", "synchronized-host-device-clocks"]
+        },
         "max_frame_annotation_uncertainty_ms": {"type": "number", "minimum": 0},
         "notes": {"type": "string", "minLength": 1}
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"measurement_method": {"const": "external-camera"}},
+        "required": ["measurement_method"]
+      },
+      "then": {
+        "required": ["camera", "recording"],
+        "properties": {
+          "measurement_setup": {
+            "properties": {
+              "clock_domain": {"const": "single-external-camera-timebase"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"measurement_method": {"const": "synchronized-clock"}},
+        "required": ["measurement_method"]
+      },
+      "then": {
+        "required": ["synchronization"],
+        "properties": {
+          "latency_kind": {"const": "input"},
+          "measurement_setup": {
+            "properties": {
+              "clock_domain": {"const": "synchronized-host-device-clocks"}
+            }
+          }
+        }
+      }
+    }
+  ]
 }

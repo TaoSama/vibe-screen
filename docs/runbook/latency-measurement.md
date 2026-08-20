@@ -144,11 +144,46 @@ the measurement window, and a worst-case error budget. The total timing error
 budget must be less than 5 ms, which is 10% of the sub-50 ms P95 input gate, or
 the claim remains `insufficient` even if the raw P95 is below 50 ms.
 
-The current formal provenance checker validates external-camera packages only.
-Until a synchronized-clock manifest schema and checker path exist, a
-synchronized-clock input run must keep its `vibescreen_evidence.latency` summary
-with the synchronization proof and must be reviewed manually before it can be
-used as acceptance evidence.
+The formal provenance checker now validates synchronized-clock input packages.
+The manifest must set `measurement_method` to `synchronized-clock`,
+`latency_kind` to `input`, and `measurement_setup.clock_domain` to
+`synchronized-host-device-clocks`. The `camera` and `recording` sections are
+not required; instead, a `synchronization` section must provide:
+
+- `host_clock_source` and `device_clock_source`: the clock domains used on each
+  side.
+- `sync_procedure`: how the two clocks were aligned before the run.
+- `before_skew_ms`, `after_skew_ms`, and `max_drift_ms`: measured skew and
+  drift over the measurement window.
+- `total_error_budget_ms`: the worst-case timing error, which must be less
+  than 5 ms.
+- `input_timestamp_method` and `result_timestamp_method`: how the physical
+  input actuation and the visible Mac result were timestamped.
+
+The checker applies `total_error_budget_ms` directly to the observed P95
+(rather than doubling it, as it does for per-frame camera annotation
+uncertainty). A pass requires `p95 + total_error_budget_ms <= 50 ms`.
+
+Run the summarizer and checker the same way as for external-camera packages:
+
+```bash
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency "$EVIDENCE_DIR/samples.csv" \
+  --kind input \
+  --transport usb \
+  --measurement-method synchronized-clock \
+  --gate-profile input-p95-sub50 \
+  --run-id "$RUN_ID" \
+  --output "$EVIDENCE_DIR/summary.json"
+
+PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
+  "$EVIDENCE_DIR/manifest.json" \
+  --gate-profile input-p95-sub50 \
+  --output "$EVIDENCE_DIR/latency-evidence-report.json"
+```
+
+A valid synchronized-clock fixture lives at
+`tools/fixtures/latency/synchronized-clock-input-valid/`. It exercises the
+checker path and is not real-device evidence.
 
 ## Claim boundary
 
