@@ -426,6 +426,8 @@ public struct VSPointerEvent: Sendable {
   /// Clears the value of `position`. Subsequent reads from it will return its default value.
   public mutating func clearPosition() {self._position = nil}
 
+  /// Bit 0 is primary button and bit 1 is secondary button. All other bits are
+  /// reserved and must be zero.
   public var buttonMask: UInt32 = 0
 
   public var target: VSInputTarget {

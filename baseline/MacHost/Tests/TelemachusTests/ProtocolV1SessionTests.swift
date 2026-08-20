@@ -956,6 +956,68 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertTrue(rejected.containsClose)
     }
 
+    func testPointerAndScrollTargetsAcceptActiveOrEmptyAndRejectWrongTarget() throws {
+        let emptyTargetPointer = try readyPointerSession()
+        var pointer = pointerEvent()
+        pointer.target = VSInputTarget()
+        XCTAssertTrue(emptyTargetPointer.handleControl(
+            try envelope(id: 4, payload: .pointerEvent(pointer)).serializedData()
+        ).containsPointer)
+
+        let activeTargetPointer = try readyPointerSession()
+        var activeTarget = VSInputTarget()
+        activeTarget.displayID = "active-display"
+        activeTarget.streamID = 1
+        pointer.target = activeTarget
+        XCTAssertTrue(activeTargetPointer.handleControl(
+            try envelope(id: 4, payload: .pointerEvent(pointer)).serializedData()
+        ).containsPointer)
+
+        let wrongPointerSession = try readyPointerSession()
+        var wrongTarget = activeTarget
+        wrongTarget.streamID = 2
+        pointer.target = wrongTarget
+        let rejectedPointer = wrongPointerSession.handleControl(
+            try envelope(id: 4, payload: .pointerEvent(pointer)).serializedData()
+        )
+        XCTAssertEqual(try protocolError(from: rejectedPointer).code, .invalidState)
+        XCTAssertTrue(rejectedPointer.containsClose)
+
+        let emptyTargetScroll = try readyPointerSession()
+        var scroll = scrollEvent()
+        scroll.target = VSInputTarget()
+        XCTAssertTrue(emptyTargetScroll.handleControl(
+            try envelope(id: 4, payload: .scrollEvent(scroll)).serializedData()
+        ).containsScroll)
+
+        let activeTargetScroll = try readyPointerSession()
+        scroll.target = activeTarget
+        XCTAssertTrue(activeTargetScroll.handleControl(
+            try envelope(id: 4, payload: .scrollEvent(scroll)).serializedData()
+        ).containsScroll)
+
+        let wrongScrollSession = try readyPointerSession()
+        scroll.target = wrongTarget
+        let rejectedScroll = wrongScrollSession.handleControl(
+            try envelope(id: 4, payload: .scrollEvent(scroll)).serializedData()
+        )
+        XCTAssertEqual(try protocolError(from: rejectedScroll).code, .invalidState)
+        XCTAssertTrue(rejectedScroll.containsClose)
+    }
+
+    func testPointerRejectsUnsupportedButtonMaskBits() throws {
+        let session = try readyPointerSession()
+        var pointer = pointerEvent()
+        pointer.buttonMask = 0b100
+
+        let rejected = session.handleControl(
+            try envelope(id: 4, payload: .pointerEvent(pointer)).serializedData()
+        )
+
+        XCTAssertEqual(try protocolError(from: rejected).code, .invalidState)
+        XCTAssertTrue(rejected.containsClose)
+    }
+
     func testHostActionCatalogIsAdvertisedOnlyWhenNegotiated() throws {
         // A HOST_ACTIONS client learns the catalog right after SessionAccepted.
         let negotiated = makeSession()
@@ -2035,6 +2097,26 @@ final class ProtocolV1SessionTests: XCTestCase {
         return touch
     }
 
+    private func pointerEvent() -> VSPointerEvent {
+        var point = VSNormalizedPoint()
+        point.x = 0.25
+        point.y = 0.75
+        var pointer = VSPointerEvent()
+        pointer.inputID = 2
+        pointer.phase = .changed
+        pointer.position = point
+        pointer.buttonMask = 0
+        return pointer
+    }
+
+    private func scrollEvent() -> VSScrollEvent {
+        var scroll = VSScrollEvent()
+        scroll.inputID = 3
+        scroll.deltaX = 1
+        scroll.deltaY = -2
+        return scroll
+    }
+
     private func stylusEvent() -> VSStylusEvent {
         var point = VSNormalizedPoint()
         point.x = 0.25
@@ -2096,6 +2178,24 @@ final class ProtocolV1SessionTests: XCTestCase {
         if standardModifierByte {
             hello.clientHello.capabilities.append(.usbHidModifierByte)
         }
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        var result = VSVideoConfigResult()
+        result.configEpoch = 1
+        result.streamID = 1
+        result.accepted = true
+        _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(result)).serializedData())
+        return session
+    }
+
+    private func readyPointerSession() throws -> ProtocolV1SessionCoordinator {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities.append(.pointer)
         _ = session.handleControl(try hello.serializedData())
         _ = session.completeCodecNegotiation()
         _ = session.handleControl(try envelope(
@@ -2288,6 +2388,8 @@ final class ProtocolV1SessionTests: XCTestCase {
 private extension Array where Element == ProtocolV1SessionAction {
     var containsConnectionReady: Bool { contains { if case .connectionReady = $0 { true } else { false } } }
     var containsTouch: Bool { contains { if case .touch = $0 { true } else { false } } }
+    var containsPointer: Bool { contains { if case .pointer = $0 { true } else { false } } }
+    var containsScroll: Bool { contains { if case .scroll = $0 { true } else { false } } }
     var containsHeartbeat: Bool { contains { if case .heartbeat = $0 { true } else { false } } }
     var containsClose: Bool { contains { if case .close = $0 { true } else { false } } }
     var containsPeerErrorAndClose: Bool {

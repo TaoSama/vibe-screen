@@ -952,6 +952,8 @@ final class ProtocolV1SessionCoordinator {
             guard acceptsInputPhase(pointer.phase), pointer.hasPosition,
                   (0...1).contains(pointer.position.x),
                   (0...1).contains(pointer.position.y),
+                  inputTargetMatchesActiveStream(pointer.hasTarget ? pointer.target : nil),
+                  StreamInputWire.validatesPointerButtonMask(pointer.buttonMask),
                   pointer.phase != .unspecified else {
                 return invalidState("PointerEvent is invalid or media is not ready.", envelope.messageID)
             }
@@ -966,7 +968,9 @@ final class ProtocolV1SessionCoordinator {
             guard negotiatedCapabilities.contains(.pointer) else {
                 return unsupportedCapability("Pointer scrolling was not negotiated.", envelope.messageID)
             }
-            guard isStreaming else { return invalidState("ScrollEvent arrived before media was ready.", envelope.messageID) }
+            guard isStreaming, inputTargetMatchesActiveStream(scroll.hasTarget ? scroll.target : nil) else {
+                return invalidState("ScrollEvent is invalid or media is not ready.", envelope.messageID)
+            }
             return [.scroll(deltaX: scroll.deltaX, deltaY: scroll.deltaY)]
 
         case .keyEvent(let key):

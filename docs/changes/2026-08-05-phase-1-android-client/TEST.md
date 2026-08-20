@@ -378,3 +378,23 @@ This does not close active-stream, display-switching, video-preference,
 reconnect, or hidden-control-touch-forwarding gates, and it is not Xiaomi 13 /
 fuxi evidence. See
 [`evidence/2026-08-19-p0110-ui-polish-smoke/`](evidence/2026-08-19-p0110-ui-polish-smoke/).
+
+## P0110 native pointer HID follow-up
+
+On 2026-08-20, the connected Nubia P0110 (`EP0110PZ0B9110300B`, `pacific`,
+Android 16 / SDK 36) was checked under `/tmp/vibe-screen-device-android.lock`
+with the native pointer HID acceptance script. The script recorded device
+identity and `dumpsys input`, but found no external Android input device with a
+`MOUSE`, `TOUCHPAD`, or `TRACKBALL` source. It therefore wrote a `blocked`
+evidence bundle and did not wait for pointer movement/click observation.
+
+This does not close the native pointer move/click gate. A passing run still
+requires a real USB or Bluetooth mouse attached to the Android device during an
+active Protocol v1 session, newly appended Host `Pointer injected` logs for
+`changed`, `began`, and `ended`, and a visible Mac pointer/button result.
+Synthetic ADB mouse events remain excluded from gate closure.
+
+Evidence:
+
+- [`evidence/2026-08-18-p0110-native-pointer-hid-blocked/`](evidence/2026-08-18-p0110-native-pointer-hid-blocked/)
+- [`evidence/2026-08-20-p0110-native-pointer-hid/`](evidence/2026-08-20-p0110-native-pointer-hid/)

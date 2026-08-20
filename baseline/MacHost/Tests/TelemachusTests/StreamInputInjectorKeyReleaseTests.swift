@@ -84,6 +84,107 @@ final class StreamInputInjectorKeyReleaseTests: XCTestCase {
         XCTAssertEqual(posted.count, 4)
     }
 
+    func testNativePointerMoveAndPrimaryButtonLifecycleArePosted() throws {
+        var posted: [CGEvent] = []
+        let injector = StreamInputInjector(
+            eventSource: try XCTUnwrap(CGEventSource(stateID: .privateState)),
+            pointerEventPoster: { posted.append($0.copy()!) }
+        )
+        let bounds = CGRect(x: 100, y: 200, width: 800, height: 600)
+
+        XCTAssertTrue(injector.handlePointer(
+            normalizedX: 0.25,
+            normalizedY: 0.5,
+            phase: .changed,
+            buttonMask: 0,
+            displayBounds: bounds
+        ))
+        XCTAssertTrue(injector.handlePointer(
+            normalizedX: 0.25,
+            normalizedY: 0.5,
+            phase: .began,
+            buttonMask: StreamInputWire.buttonPrimary,
+            displayBounds: bounds
+        ))
+        XCTAssertTrue(injector.handlePointer(
+            normalizedX: 0.5,
+            normalizedY: 0.25,
+            phase: .changed,
+            buttonMask: StreamInputWire.buttonPrimary,
+            displayBounds: bounds
+        ))
+        XCTAssertTrue(injector.handlePointer(
+            normalizedX: 0.5,
+            normalizedY: 0.25,
+            phase: .ended,
+            buttonMask: 0,
+            displayBounds: bounds
+        ))
+
+        XCTAssertEqual(posted.map(\.type), [.mouseMoved, .leftMouseDown, .leftMouseDragged, .leftMouseUp, .mouseMoved])
+        XCTAssertEqual(posted.map { $0.getIntegerValueField(.mouseEventButtonNumber) }, [0, 0, 0, 0, 0])
+        XCTAssertEqual(posted[1].getIntegerValueField(.mouseEventClickState), 1)
+        XCTAssertEqual(posted[3].getIntegerValueField(.mouseEventClickState), 1)
+        XCTAssertEqual(posted[0].location, CGPoint(x: 300, y: 500))
+        XCTAssertEqual(posted[2].location, CGPoint(x: 500, y: 350))
+    }
+
+    func testNativePointerSecondaryButtonAndResetReleaseArePosted() throws {
+        var posted: [CGEvent] = []
+        let injector = StreamInputInjector(
+            eventSource: try XCTUnwrap(CGEventSource(stateID: .privateState)),
+            pointerEventPoster: { posted.append($0.copy()!) }
+        )
+        let bounds = CGRect(x: 0, y: 0, width: 400, height: 300)
+
+        XCTAssertTrue(injector.handlePointer(
+            normalizedX: 0.5,
+            normalizedY: 0.5,
+            phase: .began,
+            buttonMask: StreamInputWire.buttonSecondary,
+            displayBounds: bounds
+        ))
+        XCTAssertTrue(injector.handlePointer(
+            normalizedX: 0.75,
+            normalizedY: 0.25,
+            phase: .changed,
+            buttonMask: StreamInputWire.buttonSecondary,
+            displayBounds: bounds
+        ))
+
+        injector.reset()
+        injector.reset()
+
+        XCTAssertEqual(posted.map(\.type), [.rightMouseDown, .rightMouseDragged, .rightMouseUp])
+        XCTAssertEqual(posted.map { $0.getIntegerValueField(.mouseEventButtonNumber) }, [1, 1, 1])
+        XCTAssertEqual(posted[2].location, CGPoint(x: 300, y: 75))
+    }
+
+    func testNativeScrollUsesLastPointerLocationAndIgnoresZeroDelta() throws {
+        var pointerEvents: [CGEvent] = []
+        var scrollEvents: [CGEvent] = []
+        let injector = StreamInputInjector(
+            eventSource: try XCTUnwrap(CGEventSource(stateID: .privateState)),
+            pointerEventPoster: { pointerEvents.append($0.copy()!) },
+            scrollEventPoster: { scrollEvents.append($0.copy()!) }
+        )
+        let bounds = CGRect(x: 10, y: 20, width: 100, height: 200)
+
+        XCTAssertTrue(injector.handlePointer(
+            normalizedX: 0.5,
+            normalizedY: 0.25,
+            phase: .changed,
+            buttonMask: 0,
+            displayBounds: bounds
+        ))
+        XCTAssertFalse(injector.handleScroll(deltaX: 0, deltaY: 0))
+        XCTAssertTrue(injector.handleScroll(deltaX: 4.4, deltaY: -9.6))
+
+        XCTAssertEqual(pointerEvents.map(\.type), [.mouseMoved])
+        XCTAssertEqual(scrollEvents.map(\.type), [.scrollWheel])
+        XCTAssertEqual(scrollEvents[0].location, CGPoint(x: 60, y: 70))
+    }
+
     func testUnsupportedKeyIsNeverTrackedForReset() throws {
         var posted: [CGEvent] = []
         let injector = StreamInputInjector(

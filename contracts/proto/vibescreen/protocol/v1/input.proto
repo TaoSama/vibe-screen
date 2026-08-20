@@ -143,6 +143,8 @@ message PointerEvent {
   uint64 input_id = 1;
   InputPhase phase = 2;
   NormalizedPoint position = 3;
+  // Bit 0 is primary button and bit 1 is secondary button. All other bits are
+  // reserved and must be zero.
   uint32 button_mask = 4;
   InputTarget target = 5;
 }
