@@ -30,6 +30,15 @@ DEVICE_LOCKS = (
 )
 REQUIRED_STYLUS_AXES = ("PRESSURE", "TILT")
 STYLUS_BUTTON_NAMES = ("STYLUS_PRIMARY", "STYLUS_SECONDARY")
+HOST_STYLUS_LOG_PATTERNS = {
+    "stylus_injection": re.compile(r"\bStylus injected:"),
+    "contact": re.compile(r"\bcontact=\S+"),
+    "tool": re.compile(r"\btool=\S+"),
+    "buttons": re.compile(r"\bbuttons=\d+\b"),
+    "pressure": re.compile(r"\bpressure=-?(?:\d+(?:\.\d*)?|\.\d+)\b"),
+    "tilt_x": re.compile(r"\btiltX=-?(?:\d+(?:\.\d*)?|\.\d+)\b"),
+    "tilt_y": re.compile(r"\btiltY=-?(?:\d+(?:\.\d*)?|\.\d+)\b"),
+}
 
 
 class EvidenceError(RuntimeError):
@@ -82,6 +91,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Continue despite a coordination lock. Use only when you own that lock.",
     )
     parser.add_argument(
+        "--write-blocked-on-lock",
+        action="store_true",
+        help="When a device coordination lock exists, write blocked readiness evidence instead of running ADB.",
+    )
+    parser.add_argument(
         "--observed-physical-drawing",
         action="store_true",
         help="Mark acceptance passed only when a human observed a real stylus drawing in a macOS drawing app.",
@@ -129,6 +143,26 @@ def check_device_locks(allow_existing: bool) -> list[str]:
     if existing and not allow_existing:
         raise EvidenceError("device coordination lock exists; no ADB command was run: " + ", ".join(existing))
     return existing
+
+
+def describe_device_locks() -> list[dict[str, object]]:
+    descriptions: list[dict[str, object]] = []
+    for path in DEVICE_LOCKS:
+        if not path.exists():
+            continue
+        try:
+            stat = path.stat()
+            detail = path.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError as error:
+            descriptions.append({"path": str(path), "read_error": str(error)})
+            continue
+        descriptions.append({
+            "path": str(path),
+            "size_bytes": stat.st_size,
+            "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+            "detail": detail,
+        })
+    return descriptions
 
 
 def adb(adb_path: str, serial: str, *arguments: str, timeout: float = 30) -> CommandResult:
@@ -290,10 +324,23 @@ def conclusion_status(args: argparse.Namespace, candidates: Sequence[InputDevice
             raise EvidenceError(f"host log does not exist: {args.host_log}")
         if not has_required_capability:
             return "blocked_no_required_stylus_capability"
+        validate_host_log_for_pass(args.host_log)
         return "pass"
     if has_required_capability:
         return "blocked_physical_stylus_not_observed"
     return "blocked_no_required_stylus_capability"
+
+
+def validate_host_log_for_pass(host_log: Path) -> None:
+    try:
+        text = host_log.read_text(encoding="utf-8")
+    except OSError as error:
+        raise EvidenceError(f"cannot read host log: {host_log}: {error}") from error
+    missing = [name for name, pattern in HOST_STYLUS_LOG_PATTERNS.items() if pattern.search(text) is None]
+    if missing:
+        raise EvidenceError(
+            "host log is missing required stylus evidence fields: " + ", ".join(missing)
+        )
 
 
 def write_evidence(output_dir: Path, args: argparse.Namespace, existing_locks: Sequence[str], identity: dict[str, str], dumpsys_input: str, candidates: Sequence[InputDeviceCapability], diag_log: str, diag_error: str | None, status: str) -> None:
@@ -317,6 +364,23 @@ def write_evidence(output_dir: Path, args: argparse.Namespace, existing_locks: S
     (output_dir / "README.md").write_text(render_readme(summary), encoding="utf-8")
 
 
+def write_lock_blocked_evidence(output_dir: Path, args: argparse.Namespace, locks: Sequence[dict[str, object]]) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    summary = {
+        "status": "blocked_device_coordination_lock",
+        "collected_at": datetime.now(timezone.utc).isoformat(),
+        "requested_serial": args.serial,
+        "device_identity": {},
+        "existing_locks": list(locks),
+        "stylus_candidates": [],
+        "diag_log_read_error": "ADB not run because a device coordination lock exists.",
+        "observed_physical_drawing": False,
+        "drawing_observation": "",
+    }
+    (output_dir / "stylus-evidence.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (output_dir / "README.md").write_text(render_readme(summary), encoding="utf-8")
+
+
 def render_readme(summary: dict[str, object]) -> str:
     identity = summary["device_identity"]
     assert isinstance(identity, dict)
@@ -327,6 +391,8 @@ def render_readme(summary: dict[str, object]) -> str:
         conclusion = "Physical stylus drawing-app confirmation passed for this exact device/run. Keep the raw host and Android logs with this evidence."
     elif status == "blocked_physical_stylus_not_observed":
         conclusion = "Blocked: Android exposes stylus-capable input hardware, but this run did not observe a physical stylus drawing in a macOS drawing app. The README gate stays open."
+    elif status == "blocked_device_coordination_lock":
+        conclusion = "Blocked: an Android device coordination lock existed, so this run did not execute ADB commands or observe physical stylus input. The README gate stays open."
     else:
         conclusion = "Blocked: this device snapshot did not expose the required stylus pressure and tilt capability set, so drawing-app acceptance cannot start from this evidence."
     lines = [
@@ -337,19 +403,39 @@ def render_readme(summary: dict[str, object]) -> str:
         f"- Status: {status}",
         f"- Result: {conclusion}",
         "",
-        "## Device",
-        "",
-        f"- Manufacturer: {identity.get('manufacturer', '')}",
-        f"- Model/device: {identity.get('model', '')} / {identity.get('device', '')}",
-        f"- Android: {identity.get('os_release', '')} / API {identity.get('api_level', '')}",
-        f"- Serial property: {identity.get('serialno', '')}",
-        f"- Fingerprint: {identity.get('fingerprint', '')}",
-        f"- Display: {identity.get('wm_size', '')} / {identity.get('wm_density', '')}",
-        "",
-        "## Stylus input devices",
-        "",
     ]
-    if not candidates:
+    lines.extend(["## Device", ""])
+    if identity:
+        lines.extend([
+            f"- Manufacturer: {identity.get('manufacturer', '')}",
+            f"- Model/device: {identity.get('model', '')} / {identity.get('device', '')}",
+            f"- Android: {identity.get('os_release', '')} / API {identity.get('api_level', '')}",
+            f"- Serial property: {identity.get('serialno', '')}",
+            f"- Fingerprint: {identity.get('fingerprint', '')}",
+            f"- Display: {identity.get('wm_size', '')} / {identity.get('wm_density', '')}",
+            "",
+        ])
+    else:
+        requested_serial = summary.get("requested_serial")
+        if requested_serial:
+            lines.append(f"ADB was not run. Requested serial: {requested_serial}.")
+        else:
+            lines.append("ADB was not run, so no device identity was collected.")
+        lines.append("")
+    existing_locks = summary.get("existing_locks", [])
+    if status == "blocked_device_coordination_lock" and isinstance(existing_locks, list):
+        lines.extend([
+            "## Device coordination locks",
+            "",
+        ])
+        for lock in existing_locks:
+            if isinstance(lock, dict):
+                lines.append(f"- {lock.get('path', '')}: {lock.get('detail') or 'present'}")
+        lines.append("")
+    lines.extend(["## Stylus input devices", ""])
+    if status == "blocked_device_coordination_lock":
+        lines.append("No input-device snapshot was collected because ADB was not run.")
+    elif not candidates:
         lines.append("No stylus candidate appeared in dumpsys input.")
     else:
         for candidate in candidates:
@@ -364,10 +450,15 @@ def render_readme(summary: dict[str, object]) -> str:
         "",
         "## Evidence files",
         "",
-        "- dumpsys-input.txt: raw read-only Android input-device snapshot.",
         "- stylus-evidence.json: structured summary and status.",
-        "- android-diag.log: app private diagnostic log, present only when run-as succeeded.",
         "- host-stylus.log: required only for a passing physical drawing run.",
+    ])
+    if status != "blocked_device_coordination_lock":
+        lines.extend([
+            "- dumpsys-input.txt: raw read-only Android input-device snapshot.",
+            "- android-diag.log: app private diagnostic log, present only when run-as succeeded.",
+        ])
+    lines.extend([
         "",
         "## Gate rule",
         "",
@@ -387,6 +478,17 @@ def format_list(value: object) -> str:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
+        lock_details = describe_device_locks()
+        if lock_details and not args.allow_existing_device_lock:
+            if args.write_blocked_on_lock:
+                output_dir = create_output_dir(args.output_dir, {"model": args.serial, "device": "lock-blocked"})
+                write_lock_blocked_evidence(output_dir, args, lock_details)
+                print(f"blocked_device_coordination_lock: wrote {output_dir}")
+                return 2
+            raise EvidenceError(
+                "device coordination lock exists; no ADB command was run: "
+                + ", ".join(str(lock.get("path", "")) for lock in lock_details)
+            )
         existing_locks = check_device_locks(args.allow_existing_device_lock)
         require_success(run([args.adb, "start-server"], timeout=30))
         require_success(adb(args.adb, args.serial, "get-state"))

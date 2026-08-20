@@ -1,0 +1,47 @@
+Repository: d624cbdd (origin/main at branch creation)
+Branch: codex/stylus-drawing-app-readiness
+Requested Android serial: EP0110PZ0B9110300B
+
+Read-only identity spot check before running the stylus script:
+
+  adb -s EP0110PZ0B9110300B get-state
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+
+Output:
+
+  device
+  nubia
+  P0110
+  pacific
+  16
+  36
+
+Initial stylus evidence attempt:
+
+  python3 scripts/android_stylus_acceptance.py \
+    --serial EP0110PZ0B9110300B \
+    --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-20-nubia-p0110-pacific-stylus-readiness
+
+Output:
+
+  error: device coordination lock exists; no ADB command was run: /tmp/vibe-screen-device-android.lock
+
+Lock-blocked evidence command after adding --write-blocked-on-lock:
+
+  python3 scripts/android_stylus_acceptance.py \
+    --serial EP0110PZ0B9110300B \
+    --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-20-nubia-p0110-pacific-stylus-lock-blocked \
+    --write-blocked-on-lock
+
+Output:
+
+  blocked_device_coordination_lock: wrote docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-20-nubia-p0110-pacific-stylus-lock-blocked
+  exit_code=2
+
+The exit code is expected for a blocked readiness record. No ADB command was run
+by the second script invocation, and the physical-stylus drawing-app gate remains
+open.
