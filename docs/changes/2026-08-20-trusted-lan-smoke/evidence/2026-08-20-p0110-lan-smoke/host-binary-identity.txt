@@ -1,0 +1,16 @@
+--- installed app ---
+Executable=/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+Identifier=dev.telemachus.display
+Format=app bundle with Mach-O thin (arm64)
+CodeDirectory v=20400 size=22575 flags=0x0(none) hashes=695+7 location=embedded
+Signature size=3186
+Signed Time=Aug 15, 2026 at 22:57:00
+Info.plist entries=14
+TeamIdentifier=not set
+Sealed Resources version=2 rules=13 files=10
+Internal requirements count=1 size=100
+c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996  /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+--- current swiftpm binary ---
+df7d2a7cf0b3391cbb62a5d3ed1d252d59838b5b9ec1d5abe845e875b6df18d8  baseline/MacHost/.build/release/Vibe Screen
+Jan  1 08:00:00 1980 11425376 /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+Aug 20 19:15:08 2026 14430616 baseline/MacHost/.build/release/Vibe Screen

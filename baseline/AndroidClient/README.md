@@ -108,8 +108,10 @@ USB reconnect is automatic and keeps retry delays bounded.
 4. On a network handoff or brief host interruption, leave the client open; it
    retries automatically. Use **Forget this Mac** to remove the stored token.
 
-LAN authentication does not encrypt Protocol v1 or legacy video and input
-traffic. Never use this mode on public, guest, or otherwise untrusted Wi-Fi.
+Current Mac and Android peers protect the admitted LAN session with
+per-session AES-256-GCM application records. Explicit legacy fallback remains
+plaintext and must be reported separately if it is ever used. Never use this
+mode on public, guest, or otherwise untrusted Wi-Fi.
 
 ## Permissions and device behavior
 
@@ -245,7 +247,8 @@ The following remain separate release gates: a physical 8–9 inch tablet
 matrix, unlocked-Mac Phase 1 interaction acceptance, controlled stability
 runs, external-camera glass-to-glass latency, physical keyboard/native-mouse
 and stylus interoperability, physical eraser/barrel/hover confirmation, and
-production encryption for LAN traffic.
+real-device trusted-LAN stream/reconnect evidence for the current encrypted
+application-record path.
 
 ## Source and licenses
 

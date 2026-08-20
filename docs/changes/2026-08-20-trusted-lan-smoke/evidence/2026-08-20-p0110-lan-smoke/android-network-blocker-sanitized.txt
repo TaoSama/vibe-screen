@@ -1,0 +1,9 @@
+--- cmd wifi status sanitized ---
+Wifi is enabled
+Wifi scanning is always available
+==== ClientModeManager instance: ConcreteClientModeManager{id=623838927 iface=wlan0 role=ROLE_CLIENT_PRIMARY} ====
+Wifi is not connected
+--- wlan0 inet ---
+--- route summary ---
+--- ping host lan candidate ---
+connect: Network is unreachable

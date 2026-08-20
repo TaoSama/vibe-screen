@@ -24,6 +24,7 @@
 - [Android + macOS clipboard](changes/2026-08-16-android-macos-clipboard/PRD.md)
   - [Technical design](changes/2026-08-16-android-macos-clipboard/TECH.md)
   - [Verification record](changes/2026-08-16-android-macos-clipboard/TEST.md)
+- [Trusted LAN smoke verification](changes/2026-08-20-trusted-lan-smoke/TEST.md)
 - [Phase 4 HarmonyOS NEXT client](changes/2026-08-04-phase-4-harmony/PRD.md)
   - [Technical design](changes/2026-08-04-phase-4-harmony/TECH.md)
   - [Verification record](changes/2026-08-04-phase-4-harmony/TEST.md)

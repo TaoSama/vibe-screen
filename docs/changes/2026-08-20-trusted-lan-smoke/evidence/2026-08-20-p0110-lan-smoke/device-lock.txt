@@ -1,0 +1,3 @@
+Acquired /tmp/vibe-screen-device-android.lock for EP0110PZ0B9110300B at 2026-08-20T11:20:47Z.
+Released /tmp/vibe-screen-device-android.lock after LAN preflight blocker capture at 2026-08-20T11:32:00Z.
+No ADB command was run without -s EP0110PZ0B9110300B while the lock was held.
