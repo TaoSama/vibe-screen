@@ -186,7 +186,8 @@ func (s *memoryStore) InvalidateSignaling(_ context.Context, id string, _ time.T
 func (s *memoryStore) AdmitRelay(_ context.Context, request RelayAdmissionRequest, now time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if existing := s.allocations[request.AllocationID]; existing != nil {
+	allocationKey := memoryAllocationKey(request.SourceID, request.AllocationID)
+	if existing := s.allocations[allocationKey]; existing != nil {
 		if existing.request == request {
 			return nil
 		}
@@ -217,7 +218,7 @@ func (s *memoryStore) AdmitRelay(_ context.Context, request RelayAdmissionReques
 	if active >= s.allocationLimit {
 		return ErrQuotaExceeded
 	}
-	s.allocations[request.AllocationID] = &memoryAllocation{request: request, observed: now}
+	s.allocations[allocationKey] = &memoryAllocation{request: request, observed: now}
 	return nil
 }
 func (s *memoryStore) ApplyCoturnUsage(_ context.Context, usage CoturnUsage) (bool, error) {
@@ -238,7 +239,7 @@ func (s *memoryStore) ApplyCoturnUsage(_ context.Context, usage CoturnUsage) (bo
 		}
 		return true, nil
 	}
-	allocation := s.allocations[usage.AllocationID]
+	allocation := s.allocations[memoryAllocationKey(usage.SourceID, usage.AllocationID)]
 	if allocation == nil {
 		return false, ErrNotFound
 	}
@@ -289,7 +290,7 @@ func (s *memoryStore) Reconcile(ctx context.Context, request ReconcileRequest, g
 			}
 			if errors.Is(err, ErrStaleUsage) {
 				s.mu.Lock()
-				allocation := s.allocations[usage.AllocationID]
+				allocation := s.allocations[memoryAllocationKey(usage.SourceID, usage.AllocationID)]
 				ahead := allocation != nil && allocation.request.SourceID == usage.SourceID && allocation.request.DeviceID == usage.DeviceID && allocation.request.SessionID == usage.SessionID && allocation.sequence >= usage.Sequence && allocation.ingress >= usage.IngressBytes && allocation.egress >= usage.EgressBytes
 				s.mu.Unlock()
 				if ahead {
@@ -317,15 +318,20 @@ func (s *memoryStore) Reconcile(ctx context.Context, request ReconcileRequest, g
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for id, allocation := range s.allocations {
-		if allocation.request.SourceID == request.SourceID && !allocation.closed && allocation.observed.Before(request.ObservedAt.Add(-grace)) && !seen[id] {
-			result.MissingAllocationIDs = append(result.MissingAllocationIDs, id)
+	for _, allocation := range s.allocations {
+		allocationID := allocation.request.AllocationID
+		if allocation.request.SourceID == request.SourceID && !allocation.closed && allocation.observed.Before(request.ObservedAt.Add(-grace)) && !seen[allocationID] {
+			result.MissingAllocationIDs = append(result.MissingAllocationIDs, allocationID)
 		}
 	}
 	sort.Strings(result.MissingAllocationIDs)
 	sort.Strings(result.UnauthorizedAllocationIDs)
 	sort.Strings(result.ConflictAllocationIDs)
 	return result, nil
+}
+
+func memoryAllocationKey(sourceID, allocationID string) string {
+	return sourceID + "\x00" + allocationID
 }
 
 func testAuthorityConfig() Config {
@@ -560,6 +566,7 @@ func TestSignalingEpochCannotRollBack(t *testing.T) {
 	_ = store.EnsureAccount(ctx, "account")
 	_ = store.RegisterDevice(ctx, "account", "host")
 	_ = store.RegisterDevice(ctx, "account", "client")
+	_ = store.RegisterDevice(ctx, "account", "other-host")
 	base := SignalingRequest{RequestID: "newer", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 19, TTLSeconds: 60}
 	if _, err := store.CreateSignaling(ctx, base, time.Now()); err != nil {
 		t.Fatal(err)
@@ -574,6 +581,12 @@ func TestSignalingEpochCannotRollBack(t *testing.T) {
 	base.ClientDeviceID = "other-client"
 	if _, err := store.CreateSignaling(ctx, base, time.Now()); !errors.Is(err, ErrConflict) {
 		t.Fatalf("per-device epoch rollback error=%v", err)
+	}
+	base.RequestID = "other-host-client"
+	base.HostDeviceID = "other-host"
+	base.ClientDeviceID = "client"
+	if _, err := store.CreateSignaling(ctx, base, time.Now()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("client epoch rollback error=%v", err)
 	}
 	base.RequestID = "overflow"
 	base.SessionEpoch = math.MaxInt64 + 1
@@ -610,6 +623,7 @@ func TestRelayAdmissionRequiresActiveBoundSession(t *testing.T) {
 
 func TestRelayAdmissionRetryIsExactlyIdempotent(t *testing.T) {
 	store := newMemoryStore()
+	store.allocationLimit = 2
 	now := time.Now().UTC()
 	session := createMemorySession(t, store, "account", "host", "client", 1, now)
 	request := RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "allocation", SourceID: "node"}
@@ -618,6 +632,11 @@ func TestRelayAdmissionRetryIsExactlyIdempotent(t *testing.T) {
 	}
 	if err := store.AdmitRelay(context.Background(), request, now.Add(time.Second)); err != nil {
 		t.Fatalf("exact retry failed after quota was consumed: %v", err)
+	}
+	otherSource := request
+	otherSource.SourceID = "other-node"
+	if err := store.AdmitRelay(context.Background(), otherSource, now); err != nil {
+		t.Fatalf("same allocation id from another source should be independent: %v", err)
 	}
 	changed := request
 	changed.DeviceID = "host"
@@ -886,6 +905,54 @@ func TestCoturnEventIdentityAndReconcileConflicts(t *testing.T) {
 	}
 }
 
+func TestCoturnUsageAndReconcileStaySourceScoped(t *testing.T) {
+	store := newMemoryStore()
+	store.allocationLimit = 6
+	now := time.Now().UTC()
+	session := createMemorySession(t, store, "account", "host", "client", 1, now)
+	ctx := context.Background()
+	for _, sourceID := range []string{"turn-a", "turn-b"} {
+		for _, allocationID := range []string{"shared", "stale-" + sourceID} {
+			request := RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: allocationID, SourceID: sourceID}
+			if err := store.AdmitRelay(ctx, request, now); err != nil {
+				t.Fatalf("admit %s/%s: %v", sourceID, allocationID, err)
+			}
+		}
+	}
+	for _, usage := range []CoturnUsage{
+		{SourceID: "turn-a", EventID: "event-a", AllocationID: "shared", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 10, EgressBytes: 1, ObservedAt: now.Add(time.Second)},
+		{SourceID: "turn-b", EventID: "event-b", AllocationID: "shared", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 20, EgressBytes: 2, ObservedAt: now.Add(time.Second)},
+	} {
+		if _, err := store.ApplyCoturnUsage(ctx, usage); err != nil {
+			t.Fatalf("usage %s: %v", usage.SourceID, err)
+		}
+	}
+	if got := store.allocations[memoryAllocationKey("turn-a", "shared")].ingress; got != 10 {
+		t.Fatalf("turn-a shared ingress=%d, want 10", got)
+	}
+	if got := store.allocations[memoryAllocationKey("turn-b", "shared")].ingress; got != 20 {
+		t.Fatalf("turn-b shared ingress=%d, want 20", got)
+	}
+	first, err := store.Reconcile(ctx, ReconcileRequest{SourceID: "turn-a", ObservedAt: now.Add(2 * time.Second), Allocations: []CoturnUsage{
+		{AllocationID: "shared", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 11, EgressBytes: 1},
+	}}, 500*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Applied != 1 || !slices.Equal(first.MissingAllocationIDs, []string{"stale-turn-a"}) {
+		t.Fatalf("turn-a reconcile result=%+v", first)
+	}
+	second, err := store.Reconcile(ctx, ReconcileRequest{SourceID: "turn-b", ObservedAt: now.Add(3 * time.Second), Allocations: []CoturnUsage{
+		{AllocationID: "shared", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 21, EgressBytes: 2},
+	}}, 500*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Applied != 1 || !slices.Equal(second.MissingAllocationIDs, []string{"stale-turn-b"}) {
+		t.Fatalf("turn-b reconcile result=%+v", second)
+	}
+}
+
 func TestReconciliationEventIDIsStableAndBounded(t *testing.T) {
 	observedAt := time.Date(1678, 1, 2, 3, 4, 5, 6, time.UTC)
 	allocationID := strings.Repeat("a", 128)
@@ -941,6 +1008,37 @@ func TestHTTPAuthorityStrictlyScopesTokensAndIdempotentSession(t *testing.T) {
 	request(t, handler, http.MethodPost, "/v1/devices/client/revoke", cfg.AdminToken, `{"epoch":1}`, http.StatusNoContent)
 	authorize := `{"role_token":"` + b.ClientToken + `"}`
 	request(t, handler, http.MethodPost, "/v1/signaling/sessions/"+b.SessionID+"/authorize", cfg.SignalingToken, authorize, http.StatusForbidden)
+}
+
+func TestHTTPSuspendAccountRevokesAllSessions(t *testing.T) {
+	store := newMemoryStore()
+	cfg := testAuthorityConfig()
+	server, err := NewServer(cfg, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Handler()
+	request(t, handler, http.MethodPut, "/v1/accounts/account", cfg.AdminToken, "", http.StatusNoContent)
+	for _, deviceID := range []string{"host-one", "client-one", "host-two", "client-two"} {
+		request(t, handler, http.MethodPut, "/v1/accounts/account/devices/"+deviceID, cfg.AdminToken, "", http.StatusNoContent)
+	}
+
+	first := request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, `{"request_id":"request-one","account_id":"account","host_device_id":"host-one","client_device_id":"client-one","session_epoch":1,"ttl_seconds":60}`, http.StatusCreated)
+	second := request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, `{"request_id":"request-two","account_id":"account","host_device_id":"host-two","client_device_id":"client-two","session_epoch":1,"ttl_seconds":60}`, http.StatusCreated)
+	var admissions []SignalingAdmission
+	for _, response := range []*httptest.ResponseRecorder{first, second} {
+		var admission SignalingAdmission
+		if err := json.Unmarshal(response.Body.Bytes(), &admission); err != nil {
+			t.Fatal(err)
+		}
+		admissions = append(admissions, admission)
+	}
+
+	request(t, handler, http.MethodPost, "/v1/accounts/account/suspend", cfg.AdminToken, "{}", http.StatusNoContent)
+	for _, admission := range admissions {
+		authorize := `{"role_token":"` + admission.ClientToken + `"}`
+		request(t, handler, http.MethodPost, "/v1/signaling/sessions/"+admission.SessionID+"/authorize", cfg.SignalingToken, authorize, http.StatusForbidden)
+	}
 }
 
 func TestHTTPRelayCoturnUsageTokensAndRevokedFinalCloseFailClosed(t *testing.T) {

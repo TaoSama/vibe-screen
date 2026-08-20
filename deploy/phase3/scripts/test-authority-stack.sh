@@ -12,7 +12,11 @@ docker compose version >/dev/null
 script_dir=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 deploy_dir=$(CDPATH='' cd -- "$script_dir/.." && pwd)
 compose_file=$deploy_dir/docker-compose.authority.yml
-work_dir=$(mktemp -d "${TMPDIR:-/tmp}/vibe-authority-stack.XXXXXX")
+work_parent=${VIBE_AUTHORITY_STACK_WORK_ROOT:-$deploy_dir/../../.build}
+mkdir -p "$work_parent"
+work_parent=$(CDPATH='' cd -- "$work_parent" && pwd -P)
+work_dir=$(mktemp -d "$work_parent/vibe-authority-stack.XXXXXX")
+work_dir=$(CDPATH='' cd -- "$work_dir" && pwd -P)
 export VIBE_AUTHORITY_SECRETS_DIR=$work_dir/secrets
 export COMPOSE_PROJECT_NAME=vibe-authority-test-$$
 export VIBE_AUTHORITY_PORT=${VIBE_AUTHORITY_PORT:-18091}

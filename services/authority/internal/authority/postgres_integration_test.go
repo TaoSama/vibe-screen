@@ -92,6 +92,63 @@ func TestPostgresDenyWinsAndPersistsRevocation(t *testing.T) {
 	}
 }
 
+func TestPostgresSignalingAdmissionReplayIsDurableAndExact(t *testing.T) {
+	store, cfg := openIntegrationStore(t)
+	ctx := context.Background()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"host", "client"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now().UTC()
+	request := SignalingRequest{RequestID: "durable-request", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 3, TTLSeconds: 60}
+	created, err := store.CreateSignaling(ctx, request, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created.Created {
+		t.Fatal("first admission was not marked created")
+	}
+
+	restarted, err := OpenPostgres(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Close()
+	replayed, err := restarted.CreateSignaling(ctx, request, now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayed.SessionID != created.SessionID || replayed.HostToken != created.HostToken || replayed.ClientToken != created.ClientToken || replayed.Created {
+		t.Fatalf("durable replay changed stable admission fields: replay=%#v created=%#v", replayed, created)
+	}
+	expiresDelta := replayed.ExpiresAt.Sub(created.ExpiresAt)
+	if expiresDelta < 0 {
+		expiresDelta = -expiresDelta
+	}
+	if expiresDelta > time.Microsecond {
+		t.Fatalf("durable replay changed expiry beyond database precision: replay=%s created=%s delta=%s", replayed.ExpiresAt, created.ExpiresAt, expiresDelta)
+	}
+
+	changed := request
+	changed.TTLSeconds = 120
+	if _, err := restarted.CreateSignaling(ctx, changed, now.Add(2*time.Second)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("changed idempotency replay error=%v, want ErrConflict", err)
+	}
+	if _, err := restarted.CreateSignaling(ctx, SignalingRequest{RequestID: "host-rollback", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(3*time.Second)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("durable host epoch floor error=%v, want ErrConflict", err)
+	}
+	if err := restarted.RegisterDevice(ctx, "account", "other-host"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restarted.CreateSignaling(ctx, SignalingRequest{RequestID: "client-rollback", AccountID: "account", HostDeviceID: "other-host", ClientDeviceID: "client", SessionEpoch: 2, TTLSeconds: 60}, now.Add(4*time.Second)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("durable client epoch floor error=%v, want ErrConflict", err)
+	}
+}
+
 func TestPostgresAllocationLimitIsAtomicAcrossConcurrentConnections(t *testing.T) {
 	store, _ := openIntegrationStore(t)
 	ctx := context.Background()
@@ -132,7 +189,7 @@ func TestPostgresAllocationLimitIsAtomicAcrossConcurrentConnections(t *testing.T
 
 func TestPostgresAuthorityReviewContracts(t *testing.T) {
 	store, _ := openIntegrationStore(t)
-	store.allocationLimit = 4
+	store.allocationLimit = 5
 	ctx := context.Background()
 	now := time.Now().UTC()
 	if err := store.EnsureAccount(ctx, "account"); err != nil {
@@ -176,6 +233,11 @@ func TestPostgresAuthorityReviewContracts(t *testing.T) {
 	exactRetry := RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "valid", SourceID: "node"}
 	if err := store.AdmitRelay(ctx, exactRetry, now.Add(time.Second)); err != nil {
 		t.Fatalf("exact relay retry failed: %v", err)
+	}
+	otherSource := exactRetry
+	otherSource.SourceID = "other-node"
+	if err := store.AdmitRelay(ctx, otherSource, now); err != nil {
+		t.Fatalf("same allocation id from another source should be independent: %v", err)
 	}
 	changedRetry := exactRetry
 	changedRetry.DeviceID = "host"
@@ -343,6 +405,69 @@ func TestPostgresRevocationClosesRelayAllocationsForLedgerOnly(t *testing.T) {
 	}
 	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "replacement", SessionID: replacement.SessionID, AllocationID: "replacement-allocation", SourceID: "node"}, now.Add(3*time.Second)); err != nil {
 		t.Fatalf("closed revoked allocation still consumed quota: %v", err)
+	}
+}
+
+func TestPostgresCoturnUsageAndReconcileStaySourceScoped(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	store.allocationLimit = 6
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"host", "client"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	session, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "source-scope", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 1, TTLSeconds: 60}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sourceID := range []string{"turn-a", "turn-b"} {
+		for _, allocationID := range []string{"shared", "stale-" + sourceID} {
+			request := RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: allocationID, SourceID: sourceID}
+			if err := store.AdmitRelay(ctx, request, now); err != nil {
+				t.Fatalf("admit %s/%s: %v", sourceID, allocationID, err)
+			}
+		}
+	}
+	for _, usage := range []CoturnUsage{
+		{SourceID: "turn-a", EventID: "event-a", AllocationID: "shared", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 10, EgressBytes: 1, ObservedAt: now.Add(time.Second)},
+		{SourceID: "turn-b", EventID: "event-b", AllocationID: "shared", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 20, EgressBytes: 2, ObservedAt: now.Add(time.Second)},
+	} {
+		if _, err := store.ApplyCoturnUsage(ctx, usage); err != nil {
+			t.Fatalf("usage %s: %v", usage.SourceID, err)
+		}
+	}
+	var firstIngress, secondIngress int64
+	if err := store.pool.QueryRow(ctx, "SELECT ingress_bytes FROM authority_relay_allocations WHERE source_id='turn-a' AND allocation_id='shared'").Scan(&firstIngress); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pool.QueryRow(ctx, "SELECT ingress_bytes FROM authority_relay_allocations WHERE source_id='turn-b' AND allocation_id='shared'").Scan(&secondIngress); err != nil {
+		t.Fatal(err)
+	}
+	if firstIngress != 10 || secondIngress != 20 {
+		t.Fatalf("shared allocation usage crossed sources: turn-a=%d turn-b=%d", firstIngress, secondIngress)
+	}
+	first, err := store.Reconcile(ctx, ReconcileRequest{SourceID: "turn-a", ObservedAt: now.Add(2 * time.Second), Allocations: []CoturnUsage{
+		{AllocationID: "shared", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 11, EgressBytes: 1},
+	}}, 500*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Applied != 1 || !slices.Equal(first.MissingAllocationIDs, []string{"stale-turn-a"}) {
+		t.Fatalf("turn-a reconcile result=%+v", first)
+	}
+	second, err := store.Reconcile(ctx, ReconcileRequest{SourceID: "turn-b", ObservedAt: now.Add(3 * time.Second), Allocations: []CoturnUsage{
+		{AllocationID: "shared", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 21, EgressBytes: 2},
+	}}, 500*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Applied != 1 || !slices.Equal(second.MissingAllocationIDs, []string{"stale-turn-b"}) {
+		t.Fatalf("turn-b reconcile result=%+v", second)
 	}
 }
 

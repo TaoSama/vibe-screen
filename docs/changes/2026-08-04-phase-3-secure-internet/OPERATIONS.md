@@ -10,9 +10,10 @@ local REST-credential, Allocation, ChannelBind and forced
 WebRTC relay integration used the host-installed coturn 4.16.0 binary; it does
 not prove execution of the pinned container image. This is still not a
 deployable production stack: signaling is single-instance/in-memory, no
-authoritative usage exporter is bundled, Authority is not wired to relay/coturn
-or automatic issuance, and no integrated implementation has run on a public host
-in this environment.
+authoritative usage exporter is bundled, automatic issuance is not wired to
+Authority, the current relay/coturn deployment does not call Authority relay
+admission or coturn usage APIs, and no integrated implementation has run on a
+public host in this environment.
 
 The current `services/relay/` binary is an experimental credential/usage control
 service, not the production shape below. A trusted control-plane bearer requests
@@ -32,11 +33,12 @@ snapshot reconciliation. The signaling service now supports a
 role-token authorization, and session invalidation to the authority. Dependency
 or malformed-response failures return `502` without falling back to locally
 minted tokens; authority policy rejections remain denials. Relay credential
-admission now delegates to the authority before TURN credential issuance, but
-the repository still has no production-proven coturn machine exporter,
-reconciliation loop, or active-allocation disconnect executor. Therefore this
-does not remove the public-launch prohibition below. See the service README for
-the migration procedure, API contract, and remaining infrastructure gates.
+admission now delegates to the authority before TURN credential issuance, and
+Authority owns coturn usage/reconciliation APIs. The repository still has no
+production-proven coturn machine exporter, reconciliation loop, or
+active-allocation disconnect executor. Therefore this does not remove the
+public-launch prohibition below. See the service README for the migration
+procedure, API contract, and remaining infrastructure gates.
 Do not expose it to the public Internet until those boundaries and the
 remaining production gates below are resolved.
 
