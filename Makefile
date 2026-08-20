@@ -20,6 +20,7 @@ PHASE2_THERMAL_LIMIT_STATUS ?= 2
 PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS ?=
 PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT ?=
 TOUCH_RERUN_EXPECTED_HOST_SHA256 ?=
+TOUCH_RERUN_REQUIRE_CURRENT_SOURCE ?= 1
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
@@ -33,7 +34,7 @@ HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
 HARMONY_HOST_COMMIT ?=
 HARMONY_HOST_BUILD_SHA256 ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate hardware-keyboard-gate evidence-usb-live-smoke
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-xctest-preflight baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-host-preflight baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate hardware-keyboard-gate evidence-usb-live-smoke
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -83,7 +84,10 @@ phase3-local-product-e2e:
 baseline-macos-build:
 	cd baseline/MacHost && swift build -c release
 
-baseline-macos-test:
+baseline-macos-xctest-preflight:
+	python3 scripts/macos_dev_host.py xctest-preflight
+
+baseline-macos-test: baseline-macos-xctest-preflight
 	cd baseline/MacHost && swift test
 
 baseline-macos-self-test: baseline-macos-build
@@ -99,8 +103,10 @@ baseline-macos-app:
 baseline-macos-dev-install:
 	python3 scripts/macos_dev_host.py install
 
-baseline-macos-touch-preflight:
+baseline-macos-host-preflight:
 	python3 scripts/macos_dev_host.py preflight
+
+baseline-macos-touch-preflight: baseline-macos-host-preflight
 
 baseline-android-test:
 	cd baseline/AndroidClient && ./gradlew :transport:check testDebugUnitTest
@@ -135,11 +141,11 @@ evidence-usb-live-smoke: require-evidence-serial
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.usb_live_smoke --serial $(EVIDENCE_SERIAL) --package $(EVIDENCE_PACKAGE) --port $(EVIDENCE_PORT) --output $(EVIDENCE_DIR)/usb-live-smoke.json
 
 evidence-touch-rerun-preflight: require-evidence-serial
-	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
 		python3 -m vibescreen_evidence.touch_rerun_preflight \
 		--serial $(EVIDENCE_SERIAL) \
 		$(if $(strip $(TOUCH_RERUN_EXPECTED_HOST_SHA256)),--expected-host-sha256 $(TOUCH_RERUN_EXPECTED_HOST_SHA256),) \
+		$(if $(filter 1 true yes,$(TOUCH_RERUN_REQUIRE_CURRENT_SOURCE)),--source-root . --require-current-source,) \
 		--output $(EVIDENCE_DIR)/touch-rerun-preflight.json
 
 harmony-readiness:

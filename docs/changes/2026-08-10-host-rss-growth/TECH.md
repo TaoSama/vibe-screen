@@ -130,7 +130,9 @@ export EVIDENCE_SERIAL='<lease-controlled-endpoint>'
 export EVIDENCE_DIR='.build/evidence'
 export VIBE_SCREEN_TELEMETRY_PATH="$EVIDENCE_DIR/soak-2h/host-telemetry.jsonl"
 mkdir -p "$EVIDENCE_DIR/soak-2h"
-# 用以上环境启动与当前源码匹配的 Host，建立稳定推流后：
+make baseline-macos-dev-install
+make baseline-macos-host-preflight
+# 归档 .build/dev-macos-host/host-signing-and-permissions.txt 后，启动与当前源码匹配的 Host，建立稳定推流：
 make soak-2h EVIDENCE_SERIAL="$EVIDENCE_SERIAL" EVIDENCE_DIR="$EVIDENCE_DIR"
 PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report \
   --summary "$EVIDENCE_DIR/soak-2h/summary.json" \

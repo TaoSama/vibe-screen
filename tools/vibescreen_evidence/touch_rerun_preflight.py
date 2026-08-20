@@ -31,6 +31,9 @@ AUTHORIZED_TCC_VALUE = 2
 DEFAULT_BUNDLE_PATH = Path("/Applications/Vibe Screen.app")
 USER_TCC_DB = Path.home() / "Library/Application Support/com.apple.TCC/TCC.db"
 SYSTEM_TCC_DB = Path("/Library/Application Support/com.apple.TCC/TCC.db")
+SOURCE_COMMIT_PLIST_KEY = "VibeScreenSourceCommit"
+SOURCE_TREE_PLIST_KEY = "VibeScreenSourceTree"
+SOURCE_DIRTY_PLIST_KEY = "VibeScreenSourceDirty"
 
 
 class TouchRerunPreflightError(RuntimeError):
@@ -43,11 +46,12 @@ class CommandResult:
     stderr: str
 
 
-def _run(command: Sequence[str], *, timeout_seconds: float = 15.0) -> CommandResult:
+def _run(command: Sequence[str], *, timeout_seconds: float = 15.0, cwd: Path | None = None) -> CommandResult:
     try:
         completed = subprocess.run(
             list(command),
             check=False,
+            cwd=cwd,
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
@@ -73,17 +77,32 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _bundle_identifier(bundle_path: Path) -> str:
+def _bundle_info(bundle_path: Path) -> dict[str, Any]:
     info_path = bundle_path / "Contents/Info.plist"
     try:
         with info_path.open("rb") as handle:
             info = plistlib.load(handle)
     except (OSError, plistlib.InvalidFileException) as error:
         raise TouchRerunPreflightError(f"could not read bundle identifier: {error}") from error
+    return info
+
+
+def _bundle_identifier(info: dict[str, Any], info_path: Path) -> str:
     identifier = info.get("CFBundleIdentifier")
     if not isinstance(identifier, str) or not identifier:
         raise TouchRerunPreflightError(f"missing CFBundleIdentifier in {info_path}")
     return identifier
+
+
+def _source_identity(info: dict[str, Any]) -> dict[str, Any]:
+    commit = info.get(SOURCE_COMMIT_PLIST_KEY)
+    tree = info.get(SOURCE_TREE_PLIST_KEY)
+    dirty = info.get(SOURCE_DIRTY_PLIST_KEY)
+    return {
+        "commit": commit if isinstance(commit, str) and commit else None,
+        "tree": tree if isinstance(tree, str) and tree else None,
+        "dirty": dirty if isinstance(dirty, bool) else None,
+    }
 
 
 def _codesign_summary(bundle_path: Path) -> dict[str, Any]:
@@ -101,16 +120,27 @@ def _codesign_summary(bundle_path: Path) -> dict[str, Any]:
 def collect_host_bundle(bundle_path: Path) -> dict[str, Any]:
     if not bundle_path.exists():
         raise TouchRerunPreflightError(f"Host bundle not found: {bundle_path}")
-    identifier = _bundle_identifier(bundle_path)
+    info_path = bundle_path / "Contents/Info.plist"
+    info = _bundle_info(bundle_path)
+    identifier = _bundle_identifier(info, info_path)
     executable = bundle_path / "Contents/MacOS/Vibe Screen"
     if not executable.exists():
         raise TouchRerunPreflightError(f"Host executable not found: {executable}")
     return {
         "bundle_path": str(bundle_path),
         "identifier": identifier,
+        "source": _source_identity(info),
         "binary_sha256": _sha256(executable),
         "codesign": _codesign_summary(bundle_path),
     }
+
+
+def collect_current_source(source_root: Path) -> dict[str, Any]:
+    root = source_root.resolve()
+    commit = _run(["git", "rev-parse", "HEAD"], timeout_seconds=15.0, cwd=root).stdout
+    tree = _run(["git", "rev-parse", "HEAD^{tree}"], timeout_seconds=15.0, cwd=root).stdout
+    status = _run(["git", "status", "--porcelain"], timeout_seconds=15.0, cwd=root).stdout
+    return {"commit": commit, "tree": tree, "dirty": bool(status.strip())}
 
 
 def _query_tcc_db(db_path: Path, bundle_identifier: str) -> dict[str, dict[str, Any]]:
@@ -188,12 +218,29 @@ def _blockers(
     tcc: dict[str, Any],
     android: dict[str, Any] | None,
     expected_host_sha256: str | None,
+    current_source: dict[str, Any] | None,
+    require_current_source: bool,
 ) -> list[str]:
     blockers: list[str] = []
     if expected_host_sha256 and host["binary_sha256"] != expected_host_sha256.lower():
         blockers.append(
             "installed Host binary SHA-256 does not match the expected fixed binary"
         )
+    if require_current_source:
+        host_source = host.get("source") or {}
+        if current_source is None:
+            blockers.append("current repository source identity was not recorded")
+        elif current_source.get("dirty"):
+            blockers.append("repository source root is dirty; current-source Host evidence would be ambiguous")
+        elif not host_source.get("commit") or not host_source.get("tree") or host_source.get("dirty") is None:
+            blockers.append("installed Host bundle does not record its source commit/tree identity")
+        else:
+            if host_source.get("dirty"):
+                blockers.append("installed Host bundle was packaged from a dirty source tree")
+            if host_source.get("commit") != current_source.get("commit"):
+                blockers.append("installed Host bundle source commit does not match current HEAD")
+            if host_source.get("tree") != current_source.get("tree"):
+                blockers.append("installed Host bundle source tree does not match current tree")
     screen = tcc.get("screen_recording")
     if not screen or not screen.get("authorized"):
         blockers.append("Screen Recording is not authorized for the Host bundle identifier")
@@ -213,8 +260,11 @@ def build_document(
     adb_path: str,
     adb_timeout: float,
     expected_host_sha256: str | None,
+    source_root: Path | None,
+    require_current_source: bool,
 ) -> dict[str, Any]:
     host = collect_host_bundle(bundle_path)
+    current_source = collect_current_source(source_root) if source_root is not None else None
     tcc = collect_tcc(tcc_dbs, host["identifier"])
     android = collect_android(serial, adb_path, adb_timeout)
     blockers = _blockers(
@@ -222,6 +272,8 @@ def build_document(
         tcc=tcc,
         android=android,
         expected_host_sha256=expected_host_sha256,
+        current_source=current_source,
+        require_current_source=require_current_source,
     )
     return {
         "schema_version": SCHEMA_VERSION,
@@ -233,6 +285,8 @@ def build_document(
         "tcc": tcc,
         "android_device": android,
         "expected_host_sha256": expected_host_sha256,
+        "current_source": current_source,
+        "current_source_required": require_current_source,
         "safety": {
             "read_only": True,
             "starts_host": False,
@@ -271,6 +325,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--expected-host-sha256")
+    parser.add_argument(
+        "--source-root",
+        type=Path,
+        help="repository root whose current clean HEAD the installed Host must match",
+    )
+    parser.add_argument(
+        "--require-current-source",
+        action="store_true",
+        help="block unless the installed Host records the same clean source commit/tree as --source-root",
+    )
     parser.add_argument("--output", type=Path, help="JSON output file (default: stdout)")
     return parser
 
@@ -283,6 +347,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     expected = arguments.expected_host_sha256
     if expected is not None and not re.fullmatch(r"[0-9a-fA-F]{64}", expected):
         parser.error("--expected-host-sha256 must be a 64-character hex digest")
+    if arguments.require_current_source and arguments.source_root is None:
+        parser.error("--require-current-source requires --source-root")
     try:
         document = build_document(
             bundle_path=arguments.host_bundle,
@@ -291,6 +357,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             adb_path=arguments.adb,
             adb_timeout=arguments.adb_timeout,
             expected_host_sha256=expected.lower() if expected else None,
+            source_root=arguments.source_root,
+            require_current_source=arguments.require_current_source,
         )
         write_json(arguments.output, document)
     except (ADBError, OSError, TouchRerunPreflightError, ValueError) as error:

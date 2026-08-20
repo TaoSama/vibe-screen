@@ -62,8 +62,8 @@ security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
 Do not create multiple certificates with the same name. If more than one
 `Vibe Screen Dev` identity exists, the build fails closed so the certificate
 leaf hash cannot drift accidentally. The local install script writes the current
-identity, certificate SHA-1, CDHash, binary SHA-256, designated requirement, and
-read-only TCC state to:
+identity, certificate SHA-1, CDHash, binary SHA-256, source commit/tree/dirty
+state, designated requirement, and read-only TCC state to:
 
 ```text
 .build/dev-macos-host/host-signing-and-permissions.txt
@@ -90,24 +90,44 @@ Vibe Screen. The app rechecks permission while it is running, but a relaunch is
 the most reliable path after a new grant. Never grant Accessibility to an
 untrusted build: it can synthesize system-wide input.
 
-## Touch-rerun preflight
+## Host-backed device gate preflight
 
-Before running the opt-in Android touch-gesture rerun, install the stable local
-Host and require the preflight to pass:
+Before running a Host-backed Android device gate, install the stable local Host
+and require the preflight to pass:
 
 ```bash
 make baseline-macos-dev-install
-make baseline-macos-touch-preflight
+make baseline-macos-host-preflight
 ```
 
-`baseline-macos-touch-preflight` verifies `/Applications/Vibe Screen.app`, the
+`baseline-macos-host-preflight` verifies `/Applications/Vibe Screen.app`, the
 `dev.telemachus.display` bundle identity, strict codesign validation, a non
-ad-hoc signing identity, the designated requirement, and read-only Screen
-Recording plus Accessibility rows in the user's TCC database. It exits non-zero
-if any check is missing. When blocked, open **System Settings → Privacy &
-Security → Screen & System Audio Recording** and **Accessibility**, grant the
-installed `/Applications/Vibe Screen.app`, quit and reopen Vibe Screen, then run
-the preflight again.
+ad-hoc signing identity, the designated requirement, source commit/tree metadata
+matching the current clean repository HEAD, and read-only Screen Recording plus
+Accessibility rows in the user's and system TCC databases. It exits non-zero if
+any check is missing. A Host bundle built before source metadata was added, a
+Host built from a different commit, or a Host packaged from a dirty tree is
+blocked evidence for current-source Android gate work. When blocked only by
+permissions, open **System Settings → Privacy & Security → Screen & System Audio
+Recording** and **Accessibility**, grant the installed
+`/Applications/Vibe Screen.app`, quit and reopen Vibe Screen, then run the
+preflight again.
+
+`baseline-macos-touch-preflight` remains as a compatibility alias for older
+touch-gesture instructions.
+
+Historical fixed-binary reruns may intentionally check a retained binary SHA
+instead of current source. Make that downgrade explicit in the evidence command:
+
+```bash
+TOUCH_RERUN_REQUIRE_CURRENT_SOURCE=0 \
+TOUCH_RERUN_EXPECTED_HOST_SHA256=<installed-binary-sha256> \
+EVIDENCE_SERIAL=<serial> EVIDENCE_DIR=<evidence-dir> \
+  make evidence-touch-rerun-preflight
+```
+
+That mode can document a historical fixed-binary readiness result, but it must
+not close a gate that requires the current `origin/main` Host.
 
 ## USB quick start
 
@@ -271,6 +291,16 @@ it is ever used.
 - After a macOS update, assume the private virtual-display API may have changed
   until verified on that exact release.
 
+`CGPreflightScreenCaptureAccess()` reporting granted is necessary but not
+sufficient for ScreenCaptureKit. If logs show `Screen recording permission
+granted (CGPreflight)` followed by `SCShareableContent verification OK — 0
+displays found` or `SCShareableContent returned 0 displays`, record the run as a
+ScreenCaptureKit display-inventory blocker and do not claim that the Host is
+listening unless `lsof -nP -iTCP:54321 -sTCP:LISTEN` proves it. Current Main
+Display startup attempts the existing `CGDisplayStream` fallback when
+ScreenCaptureKit cannot enumerate displays, but a pass still requires a real
+listener and rising frame evidence.
+
 ### Touch, native input, or window migration does nothing
 
 Recheck Accessibility permission. Remove and re-add the current app if it was
@@ -324,13 +354,32 @@ other environment details may be sensitive.
 A release build needs Swift 6-compatible Apple tools. XCTest additionally
 requires full Xcode to be selected with `xcode-select`; Command Line Tools
 alone can build the executable but cannot run this package's XCTest suite.
+Run the XCTest toolchain preflight before `swift test` when recording local
+MacHost test evidence. It writes `.build/dev-macos-host/xctest-toolchain.txt`
+and fails closed with the selected developer directory, Swift path/version, and
+`xcodebuild` status when the machine is still using Command Line Tools.
 
 ```bash
 make baseline-macos-build
 make baseline-macos-self-test
+make baseline-macos-xctest-preflight
 make baseline-macos-test
 make baseline-macos-app
 ```
+
+If the preflight reports `/Library/Developer/CommandLineTools`, install full
+Xcode if needed and switch the active developer directory before rerunning the
+test gate:
+
+```bash
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+xcodebuild -version
+make baseline-macos-test
+```
+
+Do not record `make baseline-macos-test` as failed product behavior when this
+preflight blocks first; record it as an XCTest toolchain blocker and keep the
+affected README gate open until the full-Xcode run executes.
 
 `make baseline-macos-app` creates a stable-signed local `.app` by default,
 versioned ZIP, and SHA-256 file under `.build/release-artifacts/`. Set

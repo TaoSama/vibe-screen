@@ -127,6 +127,58 @@ enum HostSelfTest {
         ) != .rebuild(11) {
             failures.append("stopped main-display fallback missed replacement")
         }
+        if !InitialCaptureSetupPolicy.shouldDeferSCStreamSetupFailureToFallback(
+            followsMainDisplay: true,
+            prefersCGDisplayStream: false
+        ) {
+            failures.append("current-main capture did not defer SCStream setup failure to fallback")
+        }
+        if InitialCaptureSetupPolicy.shouldDeferSCStreamSetupFailureToFallback(
+            followsMainDisplay: false,
+            prefersCGDisplayStream: false
+        ) {
+            failures.append("non-main capture deferred SCStream setup failure unexpectedly")
+        }
+        if InitialCaptureSetupPolicy.shouldRetryMissingShareableDisplay(
+            displayCount: 0,
+            followsMainDisplay: true,
+            prefersCGDisplayStream: false
+        ) {
+            failures.append("current-main capture retried empty ScreenCaptureKit inventory before fallback")
+        }
+        if !InitialCaptureSetupPolicy.shouldRetryMissingShareableDisplay(
+            displayCount: 0,
+            followsMainDisplay: false,
+            prefersCGDisplayStream: false
+        ) {
+            failures.append("non-main capture skipped missing-display retry unexpectedly")
+        }
+        if InitialCaptureSetupPolicy.shouldRetryShareableContentFailure(
+            followsMainDisplay: true,
+            prefersCGDisplayStream: false
+        ) {
+            failures.append("current-main capture retried ScreenCaptureKit failure before fallback")
+        }
+        if !InitialCaptureSetupPolicy.shouldRetryShareableContentFailure(
+            followsMainDisplay: false,
+            prefersCGDisplayStream: false
+        ) {
+            failures.append("non-main capture skipped ScreenCaptureKit retry unexpectedly")
+        }
+        if !InitialCaptureSetupPolicy.fallbackHasTimedOutBeforeFirstFrame(
+            isFallbackActive: true,
+            hasReceivedFirstFrame: false,
+            elapsedSeconds: 5.1
+        ) {
+            failures.append("fallback first-frame timeout did not fail closed")
+        }
+        if InitialCaptureSetupPolicy.fallbackHasTimedOutBeforeFirstFrame(
+            isFallbackActive: true,
+            hasReceivedFirstFrame: true,
+            elapsedSeconds: 5.1
+        ) {
+            failures.append("fallback timed out after receiving a frame")
+        }
 
         if ADBDeviceSelectionPolicy.resolveTargetSerial(
             configuredSerial: "target",
@@ -288,7 +340,7 @@ enum HostSelfTest {
             print(
                 "Host self-test: PASS (display identity/catalog, input/window " +
                 "geometry, startup/recovery policy, callback generation, " +
-                "fallback replacement, ADB device selection)"
+                "fallback setup policy/replacement, ADB device selection)"
             )
             return true
         }
