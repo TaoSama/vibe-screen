@@ -18,6 +18,7 @@ import dev.vibescreen.protocol.v1.HostHello
 import dev.vibescreen.protocol.v1.InputAck
 import dev.vibescreen.protocol.v1.InputPhase
 import dev.vibescreen.protocol.v1.ListDisplaysResponse
+import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import dev.vibescreen.protocol.v1.MediaPacketHeader
 import dev.vibescreen.protocol.v1.Ping
 import dev.vibescreen.protocol.v1.ProtocolError
@@ -47,25 +48,25 @@ class ProtocolV1SessionTest {
         assertEquals(1_000L, hello.sentAtMonotonicNs)
         assertEquals(1, hello.clientHello.supportedProtocols.minimum)
         assertEquals(1, hello.clientHello.supportedProtocols.maximum)
-       assertEquals(
-           listOf(
-               Capability.CAPABILITY_TOUCH,
-               Capability.CAPABILITY_KEYBOARD,
-               Capability.CAPABILITY_POINTER,
-               Capability.CAPABILITY_STYLUS,
-               Capability.CAPABILITY_STYLUS_EXTENDED,
-               Capability.CAPABILITY_MULTI_DISPLAY,
-               Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
+        assertEquals(
+            listOf(
+                Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_KEYBOARD,
+                Capability.CAPABILITY_POINTER,
+                Capability.CAPABILITY_STYLUS,
+                Capability.CAPABILITY_STYLUS_EXTENDED,
+                Capability.CAPABILITY_MULTI_DISPLAY,
+                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,
                 Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
                 Capability.CAPABILITY_CLIPBOARD,
                 Capability.CAPABILITY_MANAGED_CONFIGURATION,
-           ),
-           hello.clientHello.capabilitiesList,
-       )
-       assertEquals(emptyList<Capability>(), hello.clientHello.requiredCapabilitiesList)
-       assertEquals(listOf(Codec.CODEC_HEVC, Codec.CODEC_H264), hello.clientHello.codecsList)
-   }
+            ),
+            hello.clientHello.capabilitiesList,
+        )
+        assertEquals(emptyList<Capability>(), hello.clientHello.requiredCapabilitiesList)
+        assertEquals(listOf(Codec.CODEC_HEVC, Codec.CODEC_H264), hello.clientHello.codecsList)
+    }
 
     @Test
     fun hostModifierCapabilityWithoutKeyboardFailsDependencyValidation() {
@@ -86,6 +87,140 @@ class ProtocolV1SessionTest {
             }
         assertEquals(ProtocolV1Failure.Source.PEER_PROTOCOL_VIOLATION, failure.source)
         assertFalse(failure.retryable)
+    }
+
+    @Test
+    fun managedPolicyAppliesDenyWinsAndAllowedHosts() {
+        val local =
+            ProtocolV1Session.ManagedPolicy(
+                isManaged = true,
+                clipboardAllowed = true,
+                fileTransferAllowed = true,
+                audioAllowed = true,
+                wakeAllowed = true,
+                customGesturesAllowed = true,
+                hostActionsAllowed = true,
+                maximumFileBytes = 4_096,
+                allowedHosts = setOf("host", "other"),
+            )
+        val remote =
+            ManagedPolicyStatus
+                .newBuilder()
+                .setManaged(true)
+                .setClipboardAllowed(false)
+                .setFileTransferAllowed(true)
+                .setAudioAllowed(false)
+                .setWakeAllowed(true)
+                .setCustomGesturesAllowed(true)
+                .setHostActionsAllowed(false)
+                .setMaximumFileBytes(1_024)
+                .addAllowedHosts("host")
+                .build()
+
+        val effective = local.applying(ProtocolV1Session.ManagedPolicy.fromStatus(remote))
+
+        assertFalse(effective.clipboardAllowed)
+        assertTrue(effective.fileTransferAllowed)
+        assertFalse(effective.audioAllowed)
+        assertTrue(effective.wakeAllowed)
+        assertTrue(effective.customGesturesAllowed)
+        assertFalse(effective.hostActionsAllowed)
+        assertEquals(1_024, effective.maximumFileBytes)
+        assertEquals(setOf("host"), effective.allowedHosts)
+        assertTrue(effective.allowsHost("host"))
+        assertFalse(effective.allowsHost("other"))
+    }
+
+    @Test
+    fun disjointAllowedHostsDenyAllHosts() {
+        val local =
+            ProtocolV1Session.ManagedPolicy(
+                isManaged = true,
+                clipboardAllowed = true,
+                fileTransferAllowed = true,
+                audioAllowed = true,
+                wakeAllowed = true,
+                customGesturesAllowed = true,
+                hostActionsAllowed = true,
+                maximumFileBytes = 4_096,
+                allowedHosts = setOf("local-host"),
+            )
+        val remote =
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.toStatus()
+                .toBuilder()
+                .setManaged(true)
+                .addAllowedHosts("remote-host")
+                .build()
+
+        val effective = local.applying(ProtocolV1Session.ManagedPolicy.fromStatus(remote))
+
+        assertTrue(effective.allowedHostsRestricted)
+        assertTrue(effective.allowedHosts.isEmpty())
+        assertFalse(effective.allowsHost("local-host"))
+        assertFalse(effective.allowsHost("remote-host"))
+    }
+
+    @Test
+    fun restrictedEmptyAllowedHostsRoundTripsThroughStatus() {
+        val policy =
+            ProtocolV1Session.ManagedPolicy(
+                isManaged = true,
+                clipboardAllowed = true,
+                fileTransferAllowed = true,
+                audioAllowed = true,
+                wakeAllowed = true,
+                customGesturesAllowed = true,
+                hostActionsAllowed = true,
+                maximumFileBytes = 4_096,
+                allowedHosts = emptySet(),
+                allowedHostsRestricted = true,
+            )
+
+        val roundTripped = ProtocolV1Session.ManagedPolicy.fromStatus(policy.toStatus())
+
+        assertTrue(roundTripped.allowedHostsRestricted)
+        assertTrue(roundTripped.allowedHosts.isEmpty())
+        assertFalse(roundTripped.allowsHost("any-host"))
+    }
+
+    @Test
+    fun allowedHostsAreNormalizedBeforeMatchingAndSerializing() {
+        val policy =
+            ProtocolV1Session.ManagedPolicy(
+                isManaged = true,
+                clipboardAllowed = true,
+                fileTransferAllowed = true,
+                audioAllowed = true,
+                wakeAllowed = true,
+                customGesturesAllowed = true,
+                hostActionsAllowed = true,
+                maximumFileBytes = 4_096,
+                allowedHosts = setOf(" Mac.Local ", "REMOTE.local", " "),
+            )
+
+        assertEquals(setOf("mac.local", "remote.local"), policy.allowedHosts)
+        assertTrue(policy.allowsHost("mac.local"))
+        assertTrue(policy.allowsHost(" MAC.LOCAL "))
+        assertFalse(policy.allowsHost("other.local"))
+        assertEquals(listOf("mac.local", "remote.local"), policy.toStatus().allowedHostsList)
+    }
+
+    @Test
+    fun managedRemoteStatusWithUnsetFieldsFailsClosed() {
+        val policy =
+            ProtocolV1Session.ManagedPolicy.fromStatus(
+                ManagedPolicyStatus.newBuilder().setManaged(true).build(),
+            )
+
+        assertTrue(policy.isManaged)
+        assertFalse(policy.clipboardAllowed)
+        assertFalse(policy.fileTransferAllowed)
+        assertFalse(policy.audioAllowed)
+        assertFalse(policy.wakeAllowed)
+        assertFalse(policy.customGesturesAllowed)
+        assertFalse(policy.hostActionsAllowed)
+        assertEquals(0, policy.maximumFileBytes)
+        assertTrue(policy.allowedHosts.isEmpty())
     }
 
     @Test
@@ -612,6 +747,108 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun acceptsSessionAcceptedThatOmitsPolicyFilteredOptionalCapability() {
+        val session = session()
+        session.clientHello()
+        session.receive(
+            hostHello(
+                id = 2,
+                advertisedCapabilities =
+                    listOf(
+                        Capability.CAPABILITY_TOUCH,
+                        Capability.CAPABILITY_HOST_ACTIONS,
+                    ),
+            ),
+        )
+
+        val listRequest =
+            session.receive(sessionAccepted(3, negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH))).single()
+                as ProtocolV1Session.Action.Send
+
+        assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, listRequest.envelope.payloadCase)
+        assertEquals(setOf(Capability.CAPABILITY_TOUCH), session.negotiated)
+        assertFalse(session.canInvokeHostActions)
+    }
+
+    @Test
+    fun managedPolicyStatusIsSentAfterNegotiation() {
+        val session = session(
+            localManagedPolicy =
+                ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(
+                    isManaged = true,
+                    hostActionsAllowed = false,
+                    maximumFileBytes = 2_048,
+                    allowedHosts = setOf("host"),
+                    allowedHostsRestricted = true,
+                ),
+        )
+        session.clientHello()
+        val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MANAGED_CONFIGURATION)
+        session.receive(hostHello(2, advertisedCapabilities = caps))
+
+        val actions = session.receive(sessionAccepted(3, negotiatedCapabilities = caps))
+            .filterIsInstance<ProtocolV1Session.Action.Send>()
+
+        assertEquals(2, actions.size)
+        assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, actions[0].envelope.payloadCase)
+        assertEquals(Envelope.PayloadCase.MANAGED_POLICY_STATUS, actions[1].envelope.payloadCase)
+        val status = actions[1].envelope.managedPolicyStatus
+        assertTrue(status.managed)
+        assertFalse(status.hostActionsAllowed)
+        assertEquals(2_048, status.maximumFileBytes)
+        assertEquals(listOf("host"), status.allowedHostsList)
+        assertTrue(status.allowedHostsRestricted)
+    }
+
+    @Test
+    fun remoteManagedPolicyDenyClearsHostActionsAndBlocksInvoke() {
+        val session = hostActionManagedStreamingSession()
+        session.receive(hostActionCatalog(7))
+        assertTrue(session.canInvokeHostActions)
+        assertEquals(listOf("move-window", "return-windows"), session.hostActions.map { it.id })
+
+        val denied =
+            ManagedPolicyStatus
+                .newBuilder()
+                .setManaged(true)
+                .setClipboardAllowed(true)
+                .setFileTransferAllowed(true)
+                .setAudioAllowed(true)
+                .setWakeAllowed(true)
+                .setCustomGesturesAllowed(true)
+                .setHostActionsAllowed(false)
+                .setMaximumFileBytes(4_096)
+                .addAllowedHosts("host")
+                .build()
+        val actions = session.receive(managedPolicyStatus(8, denied))
+
+        val available = actions.single() as ProtocolV1Session.Action.HostActionsAvailable
+        assertTrue(available.actions.isEmpty())
+        assertTrue(session.hostActions.isEmpty())
+        assertFalse(Capability.CAPABILITY_HOST_ACTIONS in session.negotiated)
+        assertFalse(session.canInvokeHostActions)
+        assertNull(session.invokeHostAction("move-window", ByteString.copyFrom(byteArrayOf(1))))
+    }
+
+    @Test
+    fun remoteManagedPolicyAllowedHostsMismatchFailsClosed() {
+        val session = session()
+        session.clientHello()
+        val caps = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MANAGED_CONFIGURATION)
+        session.receive(hostHello(2, advertisedCapabilities = caps))
+        session.receive(sessionAccepted(3, negotiatedCapabilities = caps))
+
+        val restricted =
+            ProtocolV1Session.ManagedPolicy.UNMANAGED.toStatus()
+                .toBuilder()
+                .setManaged(true)
+                .addAllowedHosts("different-host")
+                .build()
+
+        assertInvalidPeerMessage { session.receive(managedPolicyStatus(4, restricted)) }
+    }
+
+    @Test
     fun rejectsSessionAcceptedWithCapabilityHostDidNotAdvertise() {
         val session = session()
         session.clientHello()
@@ -625,6 +862,41 @@ class ProtocolV1SessionTest {
         val session = session()
         session.clientHello()
         session.receive(hostHello(2))
+
+        assertInvalidPeerMessage {
+            session.receive(sessionAccepted(3, negotiatedCapabilities = emptyList()))
+        }
+    }
+
+    @Test
+    fun acceptsSessionAcceptedThatOmitsCapabilityAfterDependencyPruning() {
+        val session = session()
+        session.clientHello()
+        session.receive(
+            hostHello(
+                id = 2,
+                advertisedCapabilities = listOf(Capability.CAPABILITY_STYLUS_EXTENDED),
+            ),
+        )
+
+        val listRequest =
+            session.receive(sessionAccepted(3, negotiatedCapabilities = emptyList())).single()
+                as ProtocolV1Session.Action.Send
+
+        assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, listRequest.envelope.payloadCase)
+        assertTrue(session.negotiated.isEmpty())
+    }
+
+    @Test
+    fun rejectsSessionAcceptedThatOmitsMutuallyAdvertisedKeyboard() {
+        val session = session()
+        session.clientHello()
+        session.receive(
+            hostHello(
+                id = 2,
+                advertisedCapabilities = listOf(Capability.CAPABILITY_KEYBOARD),
+            ),
+        )
 
         assertInvalidPeerMessage {
             session.receive(sessionAccepted(3, negotiatedCapabilities = emptyList()))
@@ -1343,6 +1615,26 @@ class ProtocolV1SessionTest {
             )
         }
 
+    private fun hostActionManagedStreamingSession(): ProtocolV1Session {
+        val caps = hostActionCaps + Capability.CAPABILITY_MANAGED_CONFIGURATION
+        return session().also {
+            it.clientHello()
+            it.receive(hostHello(2, advertisedCapabilities = caps))
+            it.receive(sessionAccepted(3, negotiatedCapabilities = caps))
+            it.receive(displayList(4))
+            it.receive(startDisplay(5))
+            val requested =
+                it.receive(videoConfig(6)).single()
+                    as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        }
+    }
+
     private fun videoControlStreamingSession(): ProtocolV1Session =
         session().also {
             it.clientHello()
@@ -1379,12 +1671,15 @@ class ProtocolV1SessionTest {
             )
         }
 
-    private fun session(): ProtocolV1Session =
+    private fun session(
+        localManagedPolicy: ProtocolV1Session.ManagedPolicy = ProtocolV1Session.ManagedPolicy.UNMANAGED,
+    ): ProtocolV1Session =
         ProtocolV1Session(
             deviceId = "android-test",
             deviceName = "Test Android",
             transport = TransportKind.TRANSPORT_KIND_USB,
             codecs = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
+            localManagedPolicy = localManagedPolicy,
             nowNs = { 1_000L },
         )
 
@@ -1415,9 +1710,15 @@ class ProtocolV1SessionTest {
                 HostHello
                     .newBuilder()
                     .setSelectedProtocol(1)
+                    .setHostId("host")
                     .addAllCapabilities(advertisedCapabilities)
                     .addAllCodecs(advertisedCodecs),
             ).build()
+
+    private fun managedPolicyStatus(
+        id: Long,
+        status: ManagedPolicyStatus,
+    ): Envelope = base(id).setManagedPolicyStatus(status).build()
 
     private fun sessionAccepted(
         id: Long,

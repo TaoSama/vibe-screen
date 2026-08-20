@@ -91,6 +91,26 @@ final class ManagedPolicyTests: XCTestCase {
         XCTAssertEqual(policy.maximumFileBytes, 4_096)
     }
 
+    func testAllowedHostsAreNormalizedBeforeMatchingAndSerializing() {
+        let policy = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: 4_096,
+            allowedHosts: [" Mac.Local ", "REMOTE.local", " " ]
+        )
+
+        XCTAssertEqual(policy.allowedHosts, ["mac.local", "remote.local"])
+        XCTAssertTrue(policy.allows(host: "mac.local"))
+        XCTAssertTrue(policy.allows(host: " MAC.LOCAL "))
+        XCTAssertFalse(policy.allows(host: "other.local"))
+        XCTAssertEqual(policy.protocolStatus.allowedHosts, ["mac.local", "remote.local"])
+    }
+
     // MARK: - Resolver updates
 
     func testResolverRestoresAllowAfterRemoteDeny() {
@@ -162,6 +182,50 @@ final class ManagedPolicyTests: XCTestCase {
 
         XCTAssertFalse(resolver.effectivePolicy.clipboardAllowed)
         XCTAssertEqual(resolver.effectivePolicy.maximumFileBytes, 256)
+    }
+
+    func testDisjointAllowedHostsDenyAllHosts() {
+        let local = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: 1_024,
+            allowedHosts: ["local-host"]
+        )
+        var remote = permissiveRemoteStatus()
+        remote.allowedHosts = ["remote-host"]
+
+        let effective = local.applying(remote: ManagedPolicy(remoteStatus: remote))
+
+        XCTAssertTrue(effective.allowedHostsRestricted)
+        XCTAssertTrue(effective.allowedHosts.isEmpty)
+        XCTAssertFalse(effective.allows(host: "local-host"))
+        XCTAssertFalse(effective.allows(host: "remote-host"))
+    }
+
+    func testRestrictedEmptyAllowedHostsRoundTripsThroughStatus() {
+        let policy = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: 1_024,
+            allowedHosts: [],
+            allowedHostsRestricted: true
+        )
+
+        let roundTripped = ManagedPolicy(remoteStatus: policy.protocolStatus)
+
+        XCTAssertTrue(roundTripped.allowedHostsRestricted)
+        XCTAssertTrue(roundTripped.allowedHosts.isEmpty)
+        XCTAssertFalse(roundTripped.allows(host: "any-host"))
     }
 
     func testResolverUnmanagedRemoteDoesNotRestrictLocal() {

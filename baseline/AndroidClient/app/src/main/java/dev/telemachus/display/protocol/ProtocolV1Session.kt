@@ -70,6 +70,7 @@ internal class ProtocolV1Session(
     private val transport: TransportKind,
     private val codecs: List<Codec>,
     private val advertiseController: Boolean = false,
+    localManagedPolicy: ManagedPolicy = ManagedPolicy.UNMANAGED,
     private val nowNs: () -> Long = System::nanoTime,
 ) {
     sealed class Action {
@@ -178,6 +179,147 @@ internal class ProtocolV1Session(
         val isVirtual: Boolean,
     )
 
+    class ManagedPolicy(
+        val isManaged: Boolean,
+        val clipboardAllowed: Boolean,
+        val fileTransferAllowed: Boolean,
+        val audioAllowed: Boolean,
+        val wakeAllowed: Boolean,
+        val customGesturesAllowed: Boolean,
+        val hostActionsAllowed: Boolean,
+        val maximumFileBytes: Long,
+        allowedHosts: Set<String>,
+        allowedHostsRestricted: Boolean? = null,
+    ) {
+        val allowedHosts = allowedHosts.mapNotNull { normalizeHost(it) }.toSet()
+        val allowedHostsRestricted = allowedHostsRestricted ?: this.allowedHosts.isNotEmpty()
+
+        fun applying(remote: ManagedPolicy): ManagedPolicy {
+            if (!remote.isManaged) return this
+            val restricted = allowedHostsRestricted || remote.allowedHostsRestricted
+            val hosts =
+                when {
+                    allowedHostsRestricted && remote.allowedHostsRestricted -> allowedHosts.intersect(remote.allowedHosts)
+                    allowedHostsRestricted -> allowedHosts
+                    remote.allowedHostsRestricted -> remote.allowedHosts
+                    else -> emptySet()
+                }
+            return ManagedPolicy(
+                isManaged = true,
+                clipboardAllowed = clipboardAllowed && remote.clipboardAllowed,
+                fileTransferAllowed = fileTransferAllowed && remote.fileTransferAllowed,
+                audioAllowed = audioAllowed && remote.audioAllowed,
+                wakeAllowed = wakeAllowed && remote.wakeAllowed,
+                customGesturesAllowed = customGesturesAllowed && remote.customGesturesAllowed,
+                hostActionsAllowed = hostActionsAllowed && remote.hostActionsAllowed,
+                maximumFileBytes = minOf(maximumFileBytes, remote.maximumFileBytes),
+                allowedHosts = hosts,
+                allowedHostsRestricted = restricted,
+            )
+        }
+
+        fun allowsHost(hostId: String): Boolean {
+            val normalized = normalizeHost(hostId)
+            return !allowedHostsRestricted || (normalized != null && normalized in allowedHosts)
+        }
+
+        fun copy(
+            isManaged: Boolean = this.isManaged,
+            clipboardAllowed: Boolean = this.clipboardAllowed,
+            fileTransferAllowed: Boolean = this.fileTransferAllowed,
+            audioAllowed: Boolean = this.audioAllowed,
+            wakeAllowed: Boolean = this.wakeAllowed,
+            customGesturesAllowed: Boolean = this.customGesturesAllowed,
+            hostActionsAllowed: Boolean = this.hostActionsAllowed,
+            maximumFileBytes: Long = this.maximumFileBytes,
+            allowedHosts: Set<String> = this.allowedHosts,
+            allowedHostsRestricted: Boolean = this.allowedHostsRestricted,
+        ): ManagedPolicy =
+            ManagedPolicy(
+                isManaged = isManaged,
+                clipboardAllowed = clipboardAllowed,
+                fileTransferAllowed = fileTransferAllowed,
+                audioAllowed = audioAllowed,
+                wakeAllowed = wakeAllowed,
+                customGesturesAllowed = customGesturesAllowed,
+                hostActionsAllowed = hostActionsAllowed,
+                maximumFileBytes = maximumFileBytes,
+                allowedHosts = allowedHosts,
+                allowedHostsRestricted = allowedHostsRestricted,
+            )
+
+        fun toStatus(): ManagedPolicyStatus =
+            ManagedPolicyStatus
+                .newBuilder()
+                .setManaged(isManaged)
+                .setClipboardAllowed(clipboardAllowed)
+                .setFileTransferAllowed(fileTransferAllowed)
+                .setAudioAllowed(audioAllowed)
+                .setWakeAllowed(wakeAllowed)
+                .setCustomGesturesAllowed(customGesturesAllowed)
+                .setHostActionsAllowed(hostActionsAllowed)
+                .setMaximumFileBytes(maximumFileBytes)
+                .addAllAllowedHosts(allowedHosts.sorted())
+                .setAllowedHostsRestricted(allowedHostsRestricted)
+                .build()
+
+        companion object {
+            const val DEFAULT_MAXIMUM_FILE_BYTES = 512L * 1_024L * 1_024L
+            val UNMANAGED =
+                ManagedPolicy(
+                    isManaged = false,
+                    clipboardAllowed = true,
+                    fileTransferAllowed = true,
+                    audioAllowed = true,
+                    wakeAllowed = true,
+                    customGesturesAllowed = true,
+                    hostActionsAllowed = true,
+                    maximumFileBytes = DEFAULT_MAXIMUM_FILE_BYTES,
+                    allowedHosts = emptySet(),
+                    allowedHostsRestricted = false,
+                )
+
+            fun fromStatus(status: ManagedPolicyStatus): ManagedPolicy {
+                if (!status.managed) return UNMANAGED
+                val hosts = status.allowedHostsList.mapNotNull { normalizeHost(it) }.toSet()
+                return ManagedPolicy(
+                    isManaged = true,
+                    clipboardAllowed = status.clipboardAllowed,
+                    fileTransferAllowed = status.fileTransferAllowed,
+                    audioAllowed = status.audioAllowed,
+                    wakeAllowed = status.wakeAllowed,
+                    customGesturesAllowed = status.customGesturesAllowed,
+                    hostActionsAllowed = status.hostActionsAllowed,
+                    maximumFileBytes = status.maximumFileBytes,
+                    allowedHosts = hosts,
+                    allowedHostsRestricted = status.allowedHostsRestricted || hosts.isNotEmpty(),
+                )
+            }
+
+            private fun normalizeHost(hostId: String): String? {
+                val trimmed = hostId.trim()
+                return trimmed.ifEmpty { null }?.lowercase()
+            }
+        }
+    }
+
+    private class ManagedPolicyResolver(
+        private val localPolicy: ManagedPolicy,
+    ) {
+        private var remotePolicy: ManagedPolicy? = null
+
+        val effectivePolicy: ManagedPolicy
+            get() = remotePolicy?.let { localPolicy.applying(it) } ?: localPolicy
+
+        fun setRemote(policy: ManagedPolicy?) {
+            remotePolicy = policy
+        }
+
+        fun clearRemote() {
+            remotePolicy = null
+        }
+    }
+
     private enum class State {
         AWAITING_HOST_HELLO,
         AWAITING_SESSION,
@@ -194,6 +336,7 @@ internal class ProtocolV1Session(
     private var lastInboundMessageId = 0L
     private var sessionId = ByteString.EMPTY
     private var sessionEpoch = 0L
+    private var hostId = ""
     private var streamId = 0L
     private var configEpoch = 0L
     private var retiredConfigEpoch = 0L
@@ -213,6 +356,7 @@ internal class ProtocolV1Session(
     private var displayHeight = 0
     private var displayGeometryPublished = false
     private var availableDisplays = emptyList<DisplayOption>()
+    private var baseNegotiatedCapabilities = emptySet<Capability>()
     private var negotiatedCapabilities = emptySet<Capability>()
     private var hostCapabilities = emptySet<Capability>()
     private var hostCodecs = emptySet<Codec>()
@@ -224,9 +368,8 @@ internal class ProtocolV1Session(
     // evicted when full. A result must match a tracked id, so the host cannot
     // forge an unsolicited success/failure that the UI would surface.
     private val pendingHostActionInvocations = ArrayDeque<ByteString>()
+    private val managedPolicyResolver = ManagedPolicyResolver(localManagedPolicy)
 
-    // Host identity advertised in HostHello; remote clipboard origin must match it.
-    private var hostId = ""
     // Host-advertised clipboard byte limit from HostHello.resource_limits.
     private var hostMaxClipboardBytes = 0L
     // Effective negotiated limit: min(local, hostHello if >0, accepted if >0).
@@ -251,11 +394,11 @@ internal class ProtocolV1Session(
     private val secureRandom = SecureRandom()
 
     private val advertisedCapabilities =
-        if (advertiseController) {
+        (if (advertiseController) {
             BASE_ADVERTISED_CAPABILITIES + Capability.CAPABILITY_CONTROLLER
         } else {
             BASE_ADVERTISED_CAPABILITIES
-        }
+        }).filteredBy(localManagedPolicy)
     private val requiredCapabilities = emptySet<Capability>()
 
     val activeSessionEpoch: Long
@@ -315,7 +458,10 @@ internal class ProtocolV1Session(
     /** Whether host actions were negotiated and the session is streaming. */
     val canInvokeHostActions: Boolean
         @Synchronized
-        get() = state == State.STREAMING && Capability.CAPABILITY_HOST_ACTIONS in negotiatedCapabilities
+        get() =
+            state == State.STREAMING &&
+                Capability.CAPABILITY_HOST_ACTIONS in negotiatedCapabilities &&
+                managedPolicyResolver.effectivePolicy.hostActionsAllowed
 
     /** Whether clipboard transfer was negotiated and media is streaming. */
     val canSendClipboard: Boolean
@@ -401,6 +547,7 @@ internal class ProtocolV1Session(
             Envelope.PayloadCase.INPUT_ACK -> onInputAck(envelope)
             Envelope.PayloadCase.HOST_ACTION_CATALOG -> onHostActionCatalog(envelope)
             Envelope.PayloadCase.HOST_ACTION_RESULT -> onHostActionResult(envelope)
+            Envelope.PayloadCase.MANAGED_POLICY_STATUS -> onManagedPolicyStatus(envelope.managedPolicyStatus)
             Envelope.PayloadCase.DISCONNECT_NOTICE -> {
                 pendingVideoConfiguration = null
                 pendingVideoPreferences = null
@@ -409,6 +556,7 @@ internal class ProtocolV1Session(
                 pendingHostActionInvocations.clear()
                 clearClipboardState()
                 remoteManagedClipboardAllowed = true
+                managedPolicyResolver.clearRemote()
                 state = State.CLOSED
                 listOf(
                     Action.Disconnected(
@@ -420,10 +568,10 @@ internal class ProtocolV1Session(
             Envelope.PayloadCase.CLIPBOARD_OFFER -> onClipboardOffer(envelope)
             Envelope.PayloadCase.CLIPBOARD_REQUEST -> onClipboardRequest(envelope)
             Envelope.PayloadCase.CLIPBOARD_CONTENT -> onClipboardContent(envelope)
-            Envelope.PayloadCase.MANAGED_POLICY_STATUS -> onManagedPolicyStatus(envelope.managedPolicyStatus)
             Envelope.PayloadCase.PROTOCOL_ERROR -> {
                 clearClipboardState()
                 remoteManagedClipboardAllowed = true
+                managedPolicyResolver.clearRemote()
                 val error = envelope.protocolError
                 throw ProtocolV1Failure(
                     reason = error.code.name,
@@ -580,6 +728,7 @@ internal class ProtocolV1Session(
     ): Envelope? {
         if (state != State.STREAMING) return null
         if (Capability.CAPABILITY_HOST_ACTIONS !in negotiatedCapabilities) return null
+        if (!managedPolicyResolver.effectivePolicy.hostActionsAllowed) return null
         if (invocationId.isEmpty) return null
         if (availableHostActions.none { it.id == actionId }) return null
         // Track the id so only a matching, solicited result can drive the UI.
@@ -845,6 +994,7 @@ internal class ProtocolV1Session(
         val hello = envelope.hostHello
         if (hello.selectedProtocol != VERSION) throw protocolFailure("Unsupported selected protocol ${hello.selectedProtocol}")
         hostCapabilities = hello.capabilitiesList.toSet()
+        hostId = hello.hostId
         hostCodecs = hello.codecsList.toSet()
         if (Capability.CAPABILITY_USB_HID_MODIFIER_BYTE in hostCapabilities &&
             Capability.CAPABILITY_KEYBOARD !in hostCapabilities
@@ -876,13 +1026,20 @@ internal class ProtocolV1Session(
         if (!negotiated.containsAll(requiredCapabilities)) {
             throw protocolFailure("Required capabilities were not negotiated")
         }
-        val expectedCapabilities = advertisedCapabilities.intersect(hostCapabilities)
-        if (negotiated != expectedCapabilities) {
-            throw protocolFailure("Negotiated capabilities are not the peer intersection")
+        val peerIntersection = advertisedCapabilities
+            .intersect(hostCapabilities)
+            .withCapabilityDependenciesApplied()
+        if (!peerIntersection.containsAll(negotiated)) {
+            throw protocolFailure("Negotiated capabilities include capabilities not advertised by both peers")
+        }
+        val omittedNonPolicyCapabilities = (peerIntersection - negotiated) - POLICY_FILTERABLE_CAPABILITIES
+        if (omittedNonPolicyCapabilities.isNotEmpty()) {
+            throw protocolFailure("Negotiated capabilities omitted required peer intersection: $omittedNonPolicyCapabilities")
         }
         sessionId = accepted.sessionId
         sessionEpoch = accepted.sessionEpoch
-        negotiatedCapabilities = negotiated
+        baseNegotiatedCapabilities = negotiated
+        negotiatedCapabilities = baseNegotiatedCapabilities.filteredBy(managedPolicyResolver.effectivePolicy)
         remoteManagedClipboardAllowed = true
         val acceptedMax = accepted.negotiatedResourceLimits.maximumClipboardBytes
         negotiatedMaxClipboardBytesValue =
@@ -891,15 +1048,15 @@ internal class ProtocolV1Session(
                 if (hostMaxClipboardBytes > 0L) hostMaxClipboardBytes else LOCAL_MAX_CLIPBOARD_BYTES,
                 if (acceptedMax > 0L) acceptedMax else LOCAL_MAX_CLIPBOARD_BYTES,
             )
-        if (Capability.CAPABILITY_CLIPBOARD in negotiated && hostId.isBlank()) {
+        if (Capability.CAPABILITY_CLIPBOARD in baseNegotiatedCapabilities && hostId.isBlank()) {
             throw protocolFailure("Host id is required when clipboard capability is negotiated")
         }
         state = State.ACTIVE
         val actions = mutableListOf<Action>()
-        if (Capability.CAPABILITY_MANAGED_CONFIGURATION in negotiatedCapabilities) {
-            actions += Action.Send(envelope().setManagedPolicyStatus(unmanagedPolicyStatus()).build())
-        }
         actions += Action.Send(envelope().setListDisplaysRequest(ListDisplaysRequest.getDefaultInstance()).build())
+        if (Capability.CAPABILITY_MANAGED_CONFIGURATION in negotiatedCapabilities) {
+            actions += Action.Send(envelope().setManagedPolicyStatus(managedPolicyResolver.effectivePolicy.toStatus()).build())
+        }
         return actions
     }
 
@@ -1133,6 +1290,10 @@ internal class ProtocolV1Session(
         if (Capability.CAPABILITY_HOST_ACTIONS !in negotiatedCapabilities) {
             throw protocolFailure("HostActionCatalog without negotiated host actions")
         }
+        if (!managedPolicyResolver.effectivePolicy.hostActionsAllowed) {
+            availableHostActions = emptyList()
+            return listOf(Action.HostActionsAvailable(emptyList()))
+        }
         val actions =
             envelope.hostActionCatalog.actionsList
                 .asSequence()
@@ -1154,6 +1315,10 @@ internal class ProtocolV1Session(
         if (!isNegotiated()) throw protocolFailure("HostActionResult in state $state")
         if (Capability.CAPABILITY_HOST_ACTIONS !in negotiatedCapabilities) {
             throw protocolFailure("HostActionResult without negotiated host actions")
+        }
+        if (!managedPolicyResolver.effectivePolicy.hostActionsAllowed) {
+            pendingHostActionInvocations.clear()
+            return emptyList()
         }
         val result = envelope.hostActionResult
         if (result.invocationId.isEmpty) throw protocolFailure("HostActionResult missing invocation id")
@@ -1245,16 +1410,6 @@ internal class ProtocolV1Session(
         if (requestedClipboardChangeId != changeId) return false
         requestedClipboardChangeId = null
         return true
-    }
-
-    private fun onManagedPolicyStatus(status: ManagedPolicyStatus): List<Action> {
-        if (!isNegotiated()) throw protocolFailure("ManagedPolicyStatus arrived before session negotiation")
-        if (Capability.CAPABILITY_MANAGED_CONFIGURATION !in negotiatedCapabilities) {
-            throw protocolFailure("ManagedPolicyStatus without negotiated managed configuration")
-        }
-        remoteManagedClipboardAllowed = !status.managed || status.clipboardAllowed
-        if (!remoteManagedClipboardAllowed) clearClipboardState()
-        return emptyList()
     }
 
     private fun onClipboardOffer(envelope: Envelope): List<Action> {
@@ -1486,6 +1641,35 @@ internal class ProtocolV1Session(
     private fun sha256Digest(bytes: ByteArray): ByteArray =
         MessageDigest.getInstance("SHA-256").digest(bytes)
 
+    private fun onManagedPolicyStatus(status: ManagedPolicyStatus): List<Action> {
+        if (!isNegotiated()) throw protocolFailure("ManagedPolicyStatus in state $state")
+        if (Capability.CAPABILITY_MANAGED_CONFIGURATION !in baseNegotiatedCapabilities) {
+            throw protocolFailure("ManagedPolicyStatus without negotiated managed configuration")
+        }
+        managedPolicyResolver.setRemote(ManagedPolicy.fromStatus(status))
+        val effective = managedPolicyResolver.effectivePolicy
+        remoteManagedClipboardAllowed = effective.clipboardAllowed
+        if (!remoteManagedClipboardAllowed) clearClipboardState()
+        if (!effective.allowsHost(hostId = hostId)) {
+            throw protocolFailure("Managed policy does not allow this host")
+        }
+        val hadHostActionState =
+            Capability.CAPABILITY_HOST_ACTIONS in negotiatedCapabilities ||
+                availableHostActions.isNotEmpty() ||
+                pendingHostActionInvocations.isNotEmpty()
+        negotiatedCapabilities = baseNegotiatedCapabilities.filteredBy(effective)
+        if (!effective.hostActionsAllowed) {
+            availableHostActions = emptyList()
+            pendingHostActionInvocations.clear()
+            return if (hadHostActionState) {
+                listOf(Action.HostActionsAvailable(emptyList()))
+            } else {
+                emptyList()
+            }
+        }
+        return emptyList()
+    }
+
     private fun toDisplayOption(display: dev.vibescreen.protocol.v1.DisplayDescriptor): DisplayOption {
         if (display.displayId.isBlank() ||
             !display.hasLogicalSize() ||
@@ -1657,6 +1841,25 @@ internal class ProtocolV1Session(
         // Only these fixed ids are surfaced; unknown catalog entries are ignored
         // so the client never offers an action it cannot present or invoke.
         private val KNOWN_HOST_ACTION_IDS = setOf(ACTION_MOVE_WINDOW, ACTION_RETURN_WINDOWS)
+        private val POLICY_FILTERABLE_CAPABILITIES =
+            setOf(
+                Capability.CAPABILITY_CLIPBOARD,
+                Capability.CAPABILITY_FILE_TRANSFER,
+                Capability.CAPABILITY_AUDIO,
+                Capability.CAPABILITY_WAKE_HOST,
+                Capability.CAPABILITY_HOST_ACTIONS,
+            )
+
+        private fun Set<Capability>.withCapabilityDependenciesApplied(): Set<Capability> {
+            val capabilities = toMutableSet()
+            if (Capability.CAPABILITY_STYLUS !in capabilities) {
+                capabilities.remove(Capability.CAPABILITY_STYLUS_EXTENDED)
+            }
+            if (Capability.CAPABILITY_KEYBOARD !in capabilities) {
+                capabilities.remove(Capability.CAPABILITY_USB_HID_MODIFIER_BYTE)
+            }
+            return capabilities
+        }
 
         // Bound the surfaced actions and in-flight invocations so a misbehaving
         // host or caller cannot grow either without limit.
@@ -1670,5 +1873,17 @@ internal class ProtocolV1Session(
         private const val MAX_CLIPBOARD_SEEN_IDS = 128
         private const val MAX_CLIPBOARD_FEEDBACK_HISTORY = 128
         private const val CLIPBOARD_MIME_TEXT_PLAIN = "text/plain"
+
+        private fun Set<Capability>.filteredBy(policy: ManagedPolicy): Set<Capability> =
+            filterTo(mutableSetOf()) { capability ->
+                when (capability) {
+                    Capability.CAPABILITY_CLIPBOARD -> policy.clipboardAllowed
+                    Capability.CAPABILITY_FILE_TRANSFER -> policy.fileTransferAllowed
+                    Capability.CAPABILITY_AUDIO -> policy.audioAllowed
+                    Capability.CAPABILITY_WAKE_HOST -> policy.wakeAllowed
+                    Capability.CAPABILITY_HOST_ACTIONS -> policy.hostActionsAllowed
+                    else -> true
+                }
+            }
     }
 }

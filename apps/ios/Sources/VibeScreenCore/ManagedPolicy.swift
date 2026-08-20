@@ -13,6 +13,7 @@ public struct ManagedPolicy: Equatable, Sendable {
     public let hostActionsAllowed: Bool
     public let maximumFileBytes: UInt64
     public let allowedHosts: Set<String>
+    public let allowedHostsRestricted: Bool
 
     public static let unmanaged = ManagedPolicy(
         isManaged: false,
@@ -23,7 +24,8 @@ public struct ManagedPolicy: Equatable, Sendable {
         customGesturesAllowed: true,
         hostActionsAllowed: true,
         maximumFileBytes: defaultMaximumFileBytes,
-        allowedHosts: []
+        allowedHosts: [],
+        allowedHostsRestricted: false
     )
 
     public init(
@@ -35,8 +37,10 @@ public struct ManagedPolicy: Equatable, Sendable {
         customGesturesAllowed: Bool,
         hostActionsAllowed: Bool,
         maximumFileBytes: UInt64,
-        allowedHosts: Set<String>
+        allowedHosts: Set<String>,
+        allowedHostsRestricted: Bool? = nil
     ) {
+        let normalizedHosts = Self.normalizedHosts(allowedHosts)
         self.isManaged = isManaged
         self.clipboardAllowed = clipboardAllowed
         self.fileTransferAllowed = fileTransferAllowed
@@ -45,7 +49,8 @@ public struct ManagedPolicy: Equatable, Sendable {
         self.customGesturesAllowed = customGesturesAllowed
         self.hostActionsAllowed = hostActionsAllowed
         self.maximumFileBytes = maximumFileBytes
-        self.allowedHosts = allowedHosts
+        self.allowedHosts = normalizedHosts
+        self.allowedHostsRestricted = allowedHostsRestricted ?? !normalizedHosts.isEmpty
     }
 
     public init(managedConfiguration: [String: Any]?) throws {
@@ -72,7 +77,7 @@ public struct ManagedPolicy: Equatable, Sendable {
             guard let strings = value as? [String] else {
                 throw ManagedPolicyError.invalidType(Keys.allowedHosts)
             }
-            hosts = Set(strings.filter { !$0.isEmpty })
+            hosts = Set(strings.filter { !Self.isBlankHost($0) })
         } else {
             hosts = []
         }
@@ -102,6 +107,7 @@ public struct ManagedPolicy: Equatable, Sendable {
             self = .unmanaged
             return
         }
+        let hosts = Set(remoteStatus.allowedHosts.filter { !Self.isBlankHost($0) })
         self.init(
             isManaged: true,
             clipboardAllowed: remoteStatus.clipboardAllowed,
@@ -111,7 +117,8 @@ public struct ManagedPolicy: Equatable, Sendable {
             customGesturesAllowed: remoteStatus.customGesturesAllowed,
             hostActionsAllowed: remoteStatus.hostActionsAllowed,
             maximumFileBytes: remoteStatus.maximumFileBytes,
-            allowedHosts: []
+            allowedHosts: hosts,
+            allowedHostsRestricted: remoteStatus.allowedHostsRestricted || !hosts.isEmpty
         )
     }
 
@@ -125,6 +132,8 @@ public struct ManagedPolicy: Equatable, Sendable {
         status.customGesturesAllowed = customGesturesAllowed
         status.hostActionsAllowed = hostActionsAllowed
         status.maximumFileBytes = maximumFileBytes
+        status.allowedHosts = allowedHosts.sorted()
+        status.allowedHostsRestricted = allowedHostsRestricted
         return status
     }
 
@@ -133,6 +142,14 @@ public struct ManagedPolicy: Equatable, Sendable {
         // managed flag) imposes no restrictions, so it must not tighten any
         // local policy field (e.g. it must not lower maximumFileBytes).
         guard remote.isManaged else { return self }
+        let restricted = allowedHostsRestricted || remote.allowedHostsRestricted
+        let hosts: Set<String>
+        switch (allowedHostsRestricted, remote.allowedHostsRestricted) {
+        case (true, true): hosts = allowedHosts.intersection(remote.allowedHosts)
+        case (true, false): hosts = allowedHosts
+        case (false, true): hosts = remote.allowedHosts
+        case (false, false): hosts = []
+        }
         return ManagedPolicy(
             isManaged: isManaged || remote.isManaged,
             clipboardAllowed: clipboardAllowed && remote.clipboardAllowed,
@@ -142,9 +159,27 @@ public struct ManagedPolicy: Equatable, Sendable {
             customGesturesAllowed: customGesturesAllowed && remote.customGesturesAllowed,
             hostActionsAllowed: hostActionsAllowed && remote.hostActionsAllowed,
             maximumFileBytes: min(maximumFileBytes, remote.maximumFileBytes),
-            allowedHosts: allowedHosts.isEmpty ? remote.allowedHosts :
-                (remote.allowedHosts.isEmpty ? allowedHosts : allowedHosts.intersection(remote.allowedHosts))
+            allowedHosts: hosts,
+            allowedHostsRestricted: restricted
         )
+    }
+
+    public func allows(host: String) -> Bool {
+        guard let normalized = Self.normalizedHost(host) else { return !allowedHostsRestricted }
+        return !allowedHostsRestricted || allowedHosts.contains(normalized)
+    }
+
+    private static func normalizedHosts(_ hosts: Set<String>) -> Set<String> {
+        Set(hosts.compactMap(normalizedHost))
+    }
+
+    private static func isBlankHost(_ host: String) -> Bool {
+        normalizedHost(host) == nil
+    }
+
+    private static func normalizedHost(_ host: String) -> String? {
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed.lowercased()
     }
 
     private enum Keys {

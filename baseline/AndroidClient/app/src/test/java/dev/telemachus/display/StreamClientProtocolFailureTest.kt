@@ -380,22 +380,22 @@ class StreamClientProtocolFailureTest {
     private fun assertProductionClientHello(payload: ByteArray) {
         val envelope = Envelope.parseFrom(payload)
         assertEquals(Envelope.PayloadCase.CLIENT_HELLO, envelope.payloadCase)
-       assertEquals(
-           listOf(
-               Capability.CAPABILITY_TOUCH,
-               Capability.CAPABILITY_KEYBOARD,
-               Capability.CAPABILITY_POINTER,
-               Capability.CAPABILITY_STYLUS,
-               Capability.CAPABILITY_STYLUS_EXTENDED,
-               Capability.CAPABILITY_MULTI_DISPLAY,
-               Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
+        assertEquals(
+            listOf(
+                Capability.CAPABILITY_TOUCH,
+                Capability.CAPABILITY_KEYBOARD,
+                Capability.CAPABILITY_POINTER,
+                Capability.CAPABILITY_STYLUS,
+                Capability.CAPABILITY_STYLUS_EXTENDED,
+                Capability.CAPABILITY_MULTI_DISPLAY,
+                Capability.CAPABILITY_CLIENT_VIDEO_CONTROL,
                 Capability.CAPABILITY_HOST_ACTIONS,
                 Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
                 Capability.CAPABILITY_CLIPBOARD,
                 Capability.CAPABILITY_MANAGED_CONFIGURATION,
-           ),
-           envelope.clientHello.capabilitiesList,
-       )
+            ),
+            envelope.clientHello.capabilitiesList,
+        )
         assertEquals(emptyList<Capability>(), envelope.clientHello.requiredCapabilitiesList)
     }
 
