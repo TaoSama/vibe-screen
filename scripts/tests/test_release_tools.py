@@ -44,7 +44,7 @@ class AndroidStylusAcceptanceTests(unittest.TestCase):
 Input Reader State:
   Device 5: goodix_stylus_input
     Descriptor: abc123
-    Sources: 0x00005002 TOUCHSCREEN STYLUS
+    Sources: 0x00001002 TOUCHSCREEN
     Motion Ranges:
       Motion Range: X source=0x00001002 min=0.0 max=1440.0 flat=0.0 fuzz=0.0 resolution=0.0
       Motion Range: Y source=0x00001002 min=0.0 max=2880.0 flat=0.0 fuzz=0.0 resolution=0.0
@@ -74,8 +74,10 @@ Input Reader State:
         self.assertEqual(2, len(candidates))
         self.assertEqual("goodix_stylus_input", candidates[0].name)
         self.assertTrue(candidates[0].required_axes_present)
+        self.assertFalse(candidates[0].pass_eligible)
         self.assertEqual(("STYLUS_PRIMARY", "STYLUS_SECONDARY"), candidates[0].buttons)
         self.assertEqual(("ORIENTATION", "PRESSURE", "TILT"), candidates[1].axes)
+        self.assertTrue(candidates[1].pass_eligible)
 
     def test_capability_without_physical_observation_stays_blocked(self) -> None:
         args = argparse.Namespace(observed_physical_drawing=False, drawing_observation="", host_log=None)
@@ -91,6 +93,54 @@ Input Reader State:
             "blocked_physical_stylus_not_observed",
             android_stylus_acceptance.conclusion_status(args, [candidate]),
         )
+
+    def test_required_axes_without_stylus_source_cannot_pass(self) -> None:
+        args = argparse.Namespace(observed_physical_drawing=False, drawing_observation="", host_log=None)
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=(),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+
+        self.assertEqual(
+            "blocked_no_required_stylus_capability",
+            android_stylus_acceptance.conclusion_status(args, [candidate]),
+        )
+
+    def test_appended_diag_log_rejects_rotated_or_rewritten_logs(self) -> None:
+        self.assertEqual(
+            "\nnew stylus line",
+            android_stylus_acceptance.appended_diag_log("old line", "old line\nnew stylus line"),
+        )
+        self.assertEqual("new complete log", android_stylus_acceptance.appended_diag_log("", "new complete log"))
+        with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "changed or rotated"):
+            android_stylus_acceptance.appended_diag_log("old line", "different log")
+
+    def test_read_new_host_log_rejects_replaced_truncated_or_oversized_log(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host.log"
+            host_log.write_text("old host line\n", encoding="utf-8")
+            cursor = android_stylus_acceptance.host_log_cursor(host_log)
+
+            host_log.write_text("old host line\nnew host line\n", encoding="utf-8")
+            self.assertEqual("new host line\n", android_stylus_acceptance.read_new_host_log(host_log, cursor, 1024))
+
+            host_log.write_text("short", encoding="utf-8")
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "truncated"):
+                android_stylus_acceptance.read_new_host_log(host_log, cursor, 1024)
+
+            replacement = Path(temporary_directory) / "replacement.log"
+            replacement.write_text("old host line\nnew host line\n", encoding="utf-8")
+            replacement.replace(host_log)
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "identity changed"):
+                android_stylus_acceptance.read_new_host_log(host_log, cursor, 1024)
+
+            refreshed_cursor = android_stylus_acceptance.host_log_cursor(host_log)
+            host_log.write_text("old host line\nnew host line\nexcess\n", encoding="utf-8")
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "above limit"):
+                android_stylus_acceptance.read_new_host_log(host_log, refreshed_cursor, 1)
 
     def test_passing_status_requires_host_log_and_observation(self) -> None:
         args = argparse.Namespace(observed_physical_drawing=True, drawing_observation="", host_log=None)
@@ -114,8 +164,87 @@ Input Reader State:
                 host_log=host_log,
             )
 
-            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "contact, tool, buttons, tilt_x, tilt_y"):
-                android_stylus_acceptance.conclusion_status(args, [candidate])
+            diag_log = (
+                "Stylus forwarded: transport=stream samples=1 extended=true "
+                "rawSource=0x5002 rawAction=2 rawTools=[stylus] "
+                "phase=INPUT_PHASE_CHANGED contact=CONTACT tool=PEN "
+                "buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0"
+            )
+
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "single stylus injection line"):
+                android_stylus_acceptance.conclusion_status(
+                    args,
+                    [candidate],
+                    diag_log,
+                    host_log_excerpt="Stylus injected: input=1 pressure=0.5",
+                )
+
+    def test_passing_status_ignores_preexisting_host_log_without_new_excerpt(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host-stylus.log"
+            host_log.write_text(
+                "Stylus injected: input=1 pointer=7 phase=INPUT_PHASE_CHANGED "
+                "contact=contact tool=pen buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0\n",
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                observed_physical_drawing=True,
+                drawing_observation="physical stylus produced visible ink",
+                host_log=host_log,
+            )
+            diag_log = (
+                "Stylus forwarded: transport=stream samples=1 extended=true "
+                "rawSource=0x5002 rawAction=2 rawTools=[stylus] "
+                "phase=INPUT_PHASE_CHANGED contact=CONTACT tool=PEN "
+                "buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0"
+            )
+
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "new Host stylus log excerpt"):
+                android_stylus_acceptance.conclusion_status(args, [candidate], diag_log)
+
+    def test_passing_status_requires_android_diag_stylus_forwarding_fields(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host-stylus.log"
+            host_log.write_text(
+                "Stylus injected: input=1 pointer=7 phase=INPUT_PHASE_CHANGED "
+                "contact=contact tool=pen buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0\n",
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                observed_physical_drawing=True,
+                drawing_observation="physical stylus produced visible ink",
+                host_log=host_log,
+            )
+
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "Android diag log"):
+                android_stylus_acceptance.conclusion_status(args, [candidate], "")
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "single stylus forwarding line"):
+                android_stylus_acceptance.conclusion_status(
+                    args,
+                    [candidate],
+                    "Stylus forwarded: transport=stream samples=1 extended=false pressure=0.625 tiltX=45.0 tiltY=-45.0",
+                )
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "single stylus forwarding line"):
+                android_stylus_acceptance.conclusion_status(
+                    args,
+                    [candidate],
+                    "Stylus forwarded: transport=stream samples=1 extended=false rawSource=0x1002 rawAction=2 rawTools=[finger] "
+                    "phase=INPUT_PHASE_CHANGED contact=CONTACT tool=PEN buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0",
+                )
 
     def test_passing_status_accepts_host_log_with_pressure_and_signed_tilt(self) -> None:
         candidate = android_stylus_acceptance.InputDeviceCapability(
@@ -138,7 +267,128 @@ Input Reader State:
                 host_log=host_log,
             )
 
-            self.assertEqual("pass", android_stylus_acceptance.conclusion_status(args, [candidate]))
+            diag_log = (
+                "Stylus forwarded: transport=stream samples=1 extended=true "
+                "rawSource=0x5002 rawAction=2 rawTools=[stylus] "
+                "phase=INPUT_PHASE_CHANGED contact=CONTACT tool=PEN "
+                "buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0"
+            )
+
+            host_log_excerpt = host_log.read_text(encoding="utf-8")
+            self.assertEqual(
+                "pass",
+                android_stylus_acceptance.conclusion_status(
+                    args,
+                    [candidate],
+                    diag_log,
+                    host_log_excerpt=host_log_excerpt,
+                ),
+            )
+
+    def test_passing_status_rejects_hover_only_host_log(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host-stylus.log"
+            host_log.write_text(
+                "Stylus injected: input=1 pointer=7 phase=INPUT_PHASE_CHANGED "
+                "contact=PROXIMITY tool=pen buttons=0 pressure=0 tiltX=45.0 tiltY=-45.0\n",
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                observed_physical_drawing=True,
+                drawing_observation="physical stylus produced visible ink",
+                host_log=host_log,
+            )
+            diag_log = (
+                "Stylus forwarded: transport=stream samples=1 extended=true "
+                "rawSource=0x5002 rawAction=2 rawTools=[stylus] "
+                "phase=INPUT_PHASE_CHANGED contact=CONTACT tool=PEN "
+                "buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0"
+            )
+
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "contact, non-zero pressure"):
+                android_stylus_acceptance.conclusion_status(
+                    args,
+                    [candidate],
+                    diag_log,
+                    host_log_excerpt=host_log.read_text(encoding="utf-8"),
+                )
+
+    def test_passing_status_rejects_host_log_without_phase(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host-stylus.log"
+            host_log.write_text(
+                "Stylus injected: input=1 pointer=7 "
+                "contact=contact tool=pen buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0\n",
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                observed_physical_drawing=True,
+                drawing_observation="physical stylus produced visible ink",
+                host_log=host_log,
+            )
+            diag_log = (
+                "Stylus forwarded: transport=stream samples=1 extended=true "
+                "rawSource=0x5002 rawAction=2 rawTools=[stylus] "
+                "phase=INPUT_PHASE_CHANGED contact=CONTACT tool=PEN "
+                "buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0"
+            )
+
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "contact, non-zero pressure"):
+                android_stylus_acceptance.conclusion_status(
+                    args,
+                    [candidate],
+                    diag_log,
+                    host_log_excerpt=host_log.read_text(encoding="utf-8"),
+                )
+
+    def test_passing_status_rejects_hover_only_android_diag(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            host_log = Path(temporary_directory) / "host-stylus.log"
+            host_log.write_text(
+                "Stylus injected: input=1 pointer=7 phase=INPUT_PHASE_CHANGED "
+                "contact=contact tool=pen buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0\n",
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                observed_physical_drawing=True,
+                drawing_observation="physical stylus produced visible ink",
+                host_log=host_log,
+            )
+            diag_log = (
+                "Stylus forwarded: transport=stream samples=1 extended=true "
+                "rawSource=0x5002 rawAction=7 rawTools=[stylus] "
+                "phase=INPUT_PHASE_CHANGED contact=PROXIMITY tool=PEN "
+                "buttons=0 pressure=0 tiltX=45.0 tiltY=-45.0"
+            )
+
+            with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "contact, non-zero pressure"):
+                android_stylus_acceptance.conclusion_status(
+                    args,
+                    [candidate],
+                    diag_log,
+                    host_log_excerpt=host_log.read_text(encoding="utf-8"),
+                )
 
     def test_observed_drawing_without_required_capability_stays_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -184,6 +434,7 @@ Input Reader State:
 
         self.assertIn("  - Sources: none", readme)
         self.assertIn("  - Buttons: none", readme)
+        self.assertIn("  - Pass eligible: no", readme)
         self.assertFalse(any(line.endswith(" ") for line in readme.splitlines()))
 
     def test_render_readme_describes_lock_blocked_without_device_identity(self) -> None:

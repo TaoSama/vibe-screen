@@ -31,33 +31,75 @@ Evidence:
   readiness record; no ADB commands were run and no physical stylus event was
   observed.
 
+## 2026-08-21 P0110 preflight result
+
+The target Android device was rechecked with explicit `adb -s DEVICE_SERIAL ...`
+commands under the short device lock
+`/tmp/vibe-screen-device-android.lock`. The device identified as nubia P0110 /
+pacific / Android 16 / SDK 36. The read-only `dumpsys input` snapshot exposes
+`goodix_stylus_input`; one candidate has pressure/tilt axes but no parsed
+source, and one candidate is pass-eligible for capability preflight because it
+declares `KEYBOARD | TOUCHSCREEN | STYLUS` plus pressure, orientation, tilt, X,
+and Y axes. No physical stylus drawing was performed, no Host stylus injection
+log was supplied, and the app diagnostic log contains no same-session
+`Stylus forwarded:` samples, so the drawing-app gate remains blocked.
+
+Evidence:
+
+- `evidence/2026-08-21-nubia-p0110-pacific-stylus-preflight-failclosed/`:
+  current fail-closed script output; status is
+  `blocked_physical_stylus_not_observed` with one pass-eligible capability
+  candidate but no physical drawing observation.
+
 ## Tooling change
 
 `scripts/android_stylus_acceptance.py` now writes lock-blocked evidence with
 `--write-blocked-on-lock`, and its passing path validates that the supplied Host
 log contains a stylus injection plus contact, button, pressure, and signed tilt
-fields. The Host `Stylus injected:` debug line now includes `tiltX` and `tiltY`
-so the pass criteria can be checked from retained logs.
+fields. It also requires a pass-eligible Android input-device candidate with the
+`STYLUS` source and pressure/tilt axes, plus app diagnostic log entries showing
+same-session `Stylus forwarded:` samples with sample count, extended-stylus
+state, phase, contact state, tool kind, buttons, pressure, and signed tilt. The
+Host `Stylus injected:` debug line already includes `tiltX` and `tiltY`, and
+the Android stream and Internet forwarding paths now emit matching diagnostic
+summaries only after outbound stylus samples are admitted.
 
 ## Verification
 
 ```bash
 python3 -m unittest scripts.tests.test_release_tools.AndroidStylusAcceptanceTests
+python3 scripts/android_stylus_acceptance.py \
+  --serial DEVICE_SERIAL \
+  --output-dir docs/changes/2026-08-19-physical-stylus-acceptance/evidence/2026-08-21-nubia-p0110-pacific-stylus-preflight-failclosed \
+  --allow-existing-device-lock
 cd baseline/AndroidClient
 ./gradlew --no-daemon testDebugUnitTest \
+  --tests dev.telemachus.display.StreamInputDispatcherTest \
   --tests dev.telemachus.display.StylusInputMapperTest \
   --tests dev.telemachus.display.protocol.ProtocolV1SessionTest.stylusRequiresNegotiationAndValidTerminalPressure
 cd ../MacHost
 swift build
+swift test --filter StylusEventFactoryTests
 cd ../..
 git diff --check
 ```
 
 Results:
 
-- Android stylus evidence tool unit tests: 8 tests passed.
-- Android focused stylus mapper/protocol tests: Gradle `BUILD SUCCESSFUL`.
+- Android stylus evidence tool unit tests: 16 tests passed after the 2026-08-21
+  fail-closed tightening, hover-only pass rejection coverage, and Host phase
+  requirement coverage.
+- P0110 read-only preflight: `blocked_physical_stylus_not_observed` on nubia
+  P0110 / pacific / Android 16 / SDK 36, with one pass-eligible
+  `goodix_stylus_input` capability candidate but no physical drawing
+  observation, no Host stylus log, and no same-session `Stylus forwarded:`
+  samples.
+- Android focused stylus dispatcher/mapper/protocol tests: Gradle
+  `BUILD SUCCESSFUL`.
 - MacHost compile check: SwiftPM `Build complete`.
+- MacHost focused XCTest command was attempted, but this local toolchain cannot
+  compile the test target because `XCTest` is unavailable (`no such module
+  'XCTest'` before `StylusEventFactoryTests` executed).
 - Whitespace check: `git diff --check` passed.
 
 No general docs verifier target was found in `Makefile`, `scripts`, `tools`, or
