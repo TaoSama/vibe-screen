@@ -1,13 +1,9 @@
 ## macOS network candidate
-en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
-	options=6460<TSO4,TSO6,CHANNEL_IO,PARTIAL_CSUM,ZEROINVERT_CSUM>
-	ether <redacted>
-	inet6 fe80::cf2:1993:75f2:4708%en0 prefixlen 64 secured scopeid 0xf 
-	inet 100.72.239.103 netmask 0xfffff800 broadcast 100.72.239.255
-	inet6 fdbd:ff1:ce00:c4d:103f:895a:dbff:c148 prefixlen 64 autoconf secured 
-	inet6 fdbd:ff1:ce00:c4d::d8f prefixlen 64 dynamic 
-	nd6 options=201<PERFORMNUD,DAD>
-	media: autoselect
-	status: active
+en0 status: active
+private LAN endpoint: <redacted-private-endpoint>
+
+The raw interface dump contained private endpoint values and was intentionally
+reduced to the diagnostic state needed by this blocked run.
 
 ## tcp/54321 listeners
+No listening process observed.
