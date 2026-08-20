@@ -575,6 +575,25 @@ not public-Internet or real-deployment evidence), real
 ScreenCaptureKit-to-Android device decoder continuity, real network
 fluctuation, network handoff, and soak.
 
+Current Phase 3 release-gate gaps are tracked as explicit open evidence rows:
+
+| Gate | Current missing proof | Minimum acceptable evidence |
+| --- | --- | --- |
+| Public Internet direct path | No real public-network direct WebRTC candidate pair | A clean-source Mac/Android run over non-local Internet showing a selected `direct(...)` candidate pair and decoded stream |
+| Remote TURN relay path | No deployed remote TURN path; local coturn is loopback-only | A forced relay run through a real remote TURN deployment showing selected `relay(...)` candidate pair, service identity, and redacted allocation logs |
+| Real capture to Android media | No ScreenCaptureKit/CGDisplayStream frames encoded through Internet WebRTC into Android MediaCodec | Correlated host capture/VideoToolbox counters, Protocol v1 media epochs, Android MediaCodec first output, FPS/drops, and artifact hashes |
+| Network handoff recovery | No Wi-Fi/cellular/VPN handoff on the Internet path | Handoff event log with ICE restart or fresh session, increased session epoch, stale-epoch rejection, recovered streaming, and recovery duration |
+| Cross-service revocation | Active PeerConnection/TURN allocation termination is not production-proven | Signed revocation evidence showing signaling denial, active session disconnect, TURN allocation disconnect, and direct/relay reconnect rejection |
+| Packet-capture confidentiality | No public-path direct/relay packet capture review | Redacted capture notes proving no plaintext media, input, credentials, or full secrets across direct and relay paths |
+| External-camera latency | No direct/relay Internet glass-to-glass samples | External-camera method, raw samples, p95 direct/relay results, and error-budget notes |
+| Two-hour mixed-route soak | No Internet soak with route changes | Two-hour direct+relay+network-change run with bounded queue/RSS/latency, nonce-reuse check, relay bytes, thermal/battery, and privacy scan |
+
+Use `scripts/phase3/release_gate_manifest.py --print-matrix` to emit the current
+open matrix and `scripts/phase3/release_gate_manifest.py <manifest.json>` to
+fail closed on future curated evidence that omits these necessary fields. This
+schema is only a preflight for release evidence; passing it still requires human
+review of the raw artifacts and does not itself close the Phase 3 release gate.
+
 Reproduce the local Mac integration checks with:
 
 ```bash
