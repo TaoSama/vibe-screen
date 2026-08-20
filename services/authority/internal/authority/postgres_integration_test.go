@@ -615,11 +615,15 @@ func TestPostgresRevocationRejectsExistingAllocationUsage(t *testing.T) {
 		{AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 11, EgressBytes: 21},
 		{AllocationID: "after-revoked", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 99},
 	}}, time.Minute)
-	if !errors.Is(err, ErrRevoked) {
-		t.Fatalf("reconcile after device revoke error=%v, want ErrRevoked", err)
+	if err != nil {
+		t.Fatalf("reconcile after device revoke error=%v", err)
 	}
-	if result.Applied != 1 || result.AlreadyAhead != 1 || result.Duplicate != 0 || len(result.MissingAllocationIDs) != 0 {
-		t.Fatalf("partial reconcile result before fail-closed stop=%+v", result)
+	if result.Applied != 1 || result.AlreadyAhead != 0 || result.Duplicate != 0 || len(result.MissingAllocationIDs) != 0 || len(result.ConflictAllocationIDs) != 0 || len(result.UnauthorizedAllocationIDs) != 0 {
+		t.Fatalf("reconcile result before revoked assertions=%+v", result)
+	}
+	wantRevoked := []string{"after-revoked", "allocation", "already-applied"}
+	if !slices.Equal(result.RevokedAllocationIDs, wantRevoked) {
+		t.Fatalf("revoked allocation ids=%v, want %v", result.RevokedAllocationIDs, wantRevoked)
 	}
 	var ingress, egress string
 	if err := store.pool.QueryRow(ctx, "SELECT ingress_bytes::text,egress_bytes::text FROM authority_relay_daily_usage WHERE device_id=$1", "client").Scan(&ingress, &egress); err != nil {
