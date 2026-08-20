@@ -15,9 +15,9 @@ struct HostVideoColorNegotiator {
 
     func evaluate(
         _ requested: VSColorDescription,
-        codec: VSCodec? = nil,
-        encodedSize: VSDimensions? = nil,
-        framesPerSecond: UInt32? = nil
+        codec: VSCodec,
+        encodedSize: VSDimensions,
+        framesPerSecond: UInt32
     ) -> HostVideoColorDecision {
         let color = Self.normalized(requested)
         let supportsLegacySDR = supports(
@@ -85,17 +85,16 @@ struct HostVideoColorNegotiator {
 
     private func supports(
         _ color: VSColorDescription,
-        codec: VSCodec? = nil,
-        encodedSize: VSDimensions? = nil,
-        framesPerSecond: UInt32? = nil
+        codec: VSCodec,
+        encodedSize: VSDimensions,
+        framesPerSecond: UInt32
     ) -> Bool {
         decodeCapabilities.isEmpty || decodeCapabilities.contains(where: { capability in
             let transfer = color.transferFunction == .unspecified ? .bt709 : color.transferFunction
-            let sizeMatches = encodedSize.map { size in
-                size.width <= capability.maximumWidth && size.height <= capability.maximumHeight
-            } ?? true
-            let frameRateMatches = framesPerSecond.map { $0 <= capability.maximumFramesPerSecond } ?? true
-            return (codec == nil || capability.codec == codec)
+            let sizeMatches = encodedSize.width <= capability.maximumWidth
+                && encodedSize.height <= capability.maximumHeight
+            let frameRateMatches = framesPerSecond <= capability.maximumFramesPerSecond
+            return capability.codec == codec
                 && sizeMatches
                 && frameRateMatches
                 && capability.bitDepths.contains(color.bitDepth == 0 ? 8 : color.bitDepth)

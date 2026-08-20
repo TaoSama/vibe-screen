@@ -9,7 +9,12 @@ final class VideoColorNegotiationTests: XCTestCase {
             decodeCapabilities: sdrDecodeCapabilities()
         )
 
-        switch negotiator.evaluate(hdrColor()) {
+        switch negotiator.evaluate(
+            hdrColor(),
+            codec: .hevc,
+            encodedSize: dimensions(),
+            framesPerSecond: 60
+        ) {
         case let .fallback(color, reason):
             XCTAssertEqual(reason, HostVideoColorNegotiator.unsupportedHDRFallbackReason)
             assertLegacySDR(color)
