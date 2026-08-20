@@ -1724,8 +1724,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         do {
             let size = configuration.resolutionSize(rotation: settings.rotation)
-            let captureDisplayID: CGDirectDisplayID
-            let streamSize: (width: Int, height: Int)
+            var captureDisplayID: CGDirectDisplayID
+            var streamSize: (width: Int, height: Int)
 
             switch configuration.displaySource {
             case .extended:
@@ -1896,6 +1896,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 followsMainDisplay: configuration.displaySource == .currentMain
             )
             try requireCurrentStart(startToken, intentIsCurrent: intentIsCurrent)
+            if configuration.displaySource == .currentMain,
+               let resolvedDisplayID = screenCapture?.activeCaptureDisplayID,
+               resolvedDisplayID != captureDisplayID {
+                debugLog(
+                    "Current-main capture adopted display \(resolvedDisplayID) instead of requested \(captureDisplayID)"
+                )
+                captureDisplayID = resolvedDisplayID
+                activeDisplayID = resolvedDisplayID
+                streamSize = Self.aspectFitStreamSize(
+                    sourceWidth: CGDisplayPixelsWide(resolvedDisplayID),
+                    sourceHeight: CGDisplayPixelsHigh(resolvedDisplayID),
+                    maximumWidth: size.width,
+                    maximumHeight: size.height
+                )
+            }
 
             if configuration.connectionMode == .internet {
                 try await startInternetProductSession(

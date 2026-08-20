@@ -706,6 +706,45 @@ final class Phase1HostCapabilityTests: XCTestCase {
         )
     }
 
+    func testCurrentMainCaptureResolvesReplacementBeforeEmptyCatalogFallback() {
+        let evaluation = ScreenCapture.ShareableDisplayEvaluation.evaluate(
+            shareableDisplayIDs: [],
+            requestedDisplayID: 10,
+            followsMainDisplay: true,
+            currentMainDisplayID: 11,
+            currentMainPixelSize: (width: 1920, height: 1080)
+        )
+        XCTAssertEqual(evaluation.captureDisplayID, 11)
+        XCTAssertEqual(evaluation.readiness, .fallbackToCurrentMain)
+    }
+
+    func testCurrentMainCaptureResolvesReplacementBeforeNonEmptyCatalogReadiness() {
+        let evaluation = ScreenCapture.ShareableDisplayEvaluation.evaluate(
+            shareableDisplayIDs: [11],
+            requestedDisplayID: 10,
+            followsMainDisplay: true,
+            currentMainDisplayID: 11,
+            currentMainPixelSize: (width: 1920, height: 1080)
+        )
+        XCTAssertEqual(evaluation.captureDisplayID, 11)
+        XCTAssertEqual(evaluation.readiness, .ready)
+    }
+
+    func testExplicitDisplayCaptureDoesNotResolveToCurrentMainReplacement() {
+        let evaluation = ScreenCapture.ShareableDisplayEvaluation.evaluate(
+            shareableDisplayIDs: [11],
+            requestedDisplayID: 10,
+            followsMainDisplay: false,
+            currentMainDisplayID: 11,
+            currentMainPixelSize: (width: 1920, height: 1080)
+        )
+        XCTAssertEqual(evaluation.captureDisplayID, 10)
+        XCTAssertEqual(
+            evaluation.readiness,
+            .unavailable("Display 10 was not returned by ScreenCaptureKit.")
+        )
+    }
+
     func testEmptyShareableDisplayCatalogFailsClosedWithoutUsableMainDisplay() {
         XCTAssertEqual(
             ScreenCapture.ShareableDisplayReadiness.evaluate(

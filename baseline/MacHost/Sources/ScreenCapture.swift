@@ -204,6 +204,33 @@ class ScreenCapture {
         }
     }
 
+    struct ShareableDisplayEvaluation: Equatable {
+        let captureDisplayID: CGDirectDisplayID
+        let readiness: ShareableDisplayReadiness
+
+        static func evaluate(
+            shareableDisplayIDs: [CGDirectDisplayID],
+            requestedDisplayID: CGDirectDisplayID,
+            followsMainDisplay: Bool,
+            currentMainDisplayID: CGDirectDisplayID,
+            currentMainPixelSize: (width: Int, height: Int)
+        ) -> ShareableDisplayEvaluation {
+            let captureDisplayID = followsMainDisplay && currentMainDisplayID != 0
+                ? currentMainDisplayID
+                : requestedDisplayID
+            return ShareableDisplayEvaluation(
+                captureDisplayID: captureDisplayID,
+                readiness: ShareableDisplayReadiness.evaluate(
+                    shareableDisplayIDs: shareableDisplayIDs,
+                    requestedDisplayID: captureDisplayID,
+                    followsMainDisplay: followsMainDisplay,
+                    currentMainDisplayID: currentMainDisplayID,
+                    currentMainPixelSize: currentMainPixelSize
+                )
+            )
+        }
+    }
+
     enum MissingConfiguredStreamReadiness: Equatable {
         case fallbackToCurrentMain
         case unavailable(String)
@@ -368,6 +395,8 @@ class ScreenCapture {
         guard let id = virtualDisplayID else { return display?.height ?? 0 }
         return ScreenCapture.physicalSize(for: id).height
     }
+
+    var activeCaptureDisplayID: CGDirectDisplayID? { virtualDisplayID }
 
     /// Codec for the current encode session. Switching restarts the stream.
     private(set) var codec: StreamCodec = .hevc
@@ -635,10 +664,11 @@ class ScreenCapture {
     // MARK: - Display setup
 
     private func setupDisplay() async throws {
-        guard let virtualDisplayID = virtualDisplayID else {
+        guard let initialDisplayID = virtualDisplayID else {
             throw NSError(domain: "ScreenCapture", code: 1,
                 userInfo: [NSLocalizedDescriptionKey: "Virtual display ID not set"])
         }
+        var captureDisplayID = initialDisplayID
 
         for attempt in 1...5 {
             let content: SCShareableContent
@@ -657,19 +687,28 @@ class ScreenCapture {
 
             let shareableDisplayIDs = content.displays.map { $0.displayID }
             let currentMainDisplayID = CGMainDisplayID()
-            switch ShareableDisplayReadiness.evaluate(
+            let evaluation = ShareableDisplayEvaluation.evaluate(
                 shareableDisplayIDs: shareableDisplayIDs,
-                requestedDisplayID: virtualDisplayID,
+                requestedDisplayID: captureDisplayID,
                 followsMainDisplay: followsMainDisplay,
                 currentMainDisplayID: currentMainDisplayID,
                 currentMainPixelSize: ScreenCapture.physicalSize(for: currentMainDisplayID)
-            ) {
+            )
+            if evaluation.captureDisplayID != captureDisplayID {
+                debugLog(
+                    "Current-main capture resolved display \(captureDisplayID) → \(evaluation.captureDisplayID)"
+                )
+                captureDisplayID = evaluation.captureDisplayID
+                self.virtualDisplayID = captureDisplayID
+                onDisplayIDChanged?(captureDisplayID)
+            }
+            switch evaluation.readiness {
             case .ready:
                 break
             case .fallbackToCurrentMain:
                 display = nil
                 debugLog(
-                    "ScreenCaptureKit returned no displays; deferring current-main capture to CGDisplayStream fallback for display \(virtualDisplayID)"
+                    "ScreenCaptureKit returned no displays; deferring current-main capture to CGDisplayStream fallback for display \(captureDisplayID)"
                 )
                 return
             case .unavailable(let reason):
@@ -685,20 +724,20 @@ class ScreenCapture {
                 )
             }
 
-            if let virtualDisplay = content.displays.first(where: { $0.displayID == virtualDisplayID }) {
+            if let virtualDisplay = content.displays.first(where: { $0.displayID == captureDisplayID }) {
                 display = virtualDisplay
-                debugLog("Capturing virtual display: \(virtualDisplay.width)x\(virtualDisplay.height) (ID: \(virtualDisplayID))")
+                debugLog("Capturing virtual display: \(virtualDisplay.width)x\(virtualDisplay.height) (ID: \(captureDisplayID))")
                 return
             }
 
             if attempt < 5 {
-                debugLog("Virtual display \(virtualDisplayID) not found in attempt \(attempt), retrying...")
+                debugLog("Virtual display \(captureDisplayID) not found in attempt \(attempt), retrying...")
                 try await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
 
         throw NSError(domain: "ScreenCapture", code: 2,
-            userInfo: [NSLocalizedDescriptionKey: "Display \(virtualDisplayID) was not returned by ScreenCaptureKit after 5 attempts"])
+            userInfo: [NSLocalizedDescriptionKey: "Display \(captureDisplayID) was not returned by ScreenCaptureKit after 5 attempts"])
     }
 
     // MARK: - Stream setup
