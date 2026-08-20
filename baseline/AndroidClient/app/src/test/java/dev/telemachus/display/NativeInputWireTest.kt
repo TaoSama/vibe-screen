@@ -20,6 +20,24 @@ class NativeInputWireTest {
     }
 
     @Test
+    fun mouseLikeSourceNamesMatchPhysicalPointerGateSources() {
+        assertEquals(listOf("MOUSE"), NativeInputWire.mouseLikeSourceNames(android.view.InputDevice.SOURCE_MOUSE))
+        assertEquals(
+            listOf("MOUSE_RELATIVE"),
+            NativeInputWire.mouseLikeSourceNames(android.view.InputDevice.SOURCE_MOUSE_RELATIVE),
+        )
+        assertEquals(listOf("TOUCHPAD"), NativeInputWire.mouseLikeSourceNames(android.view.InputDevice.SOURCE_TOUCHPAD))
+        assertEquals(listOf("TRACKBALL"), NativeInputWire.mouseLikeSourceNames(android.view.InputDevice.SOURCE_TRACKBALL))
+        assertEquals(
+            listOf("MOUSE", "TOUCHPAD"),
+            NativeInputWire.mouseLikeSourceNames(
+                android.view.InputDevice.SOURCE_MOUSE or android.view.InputDevice.SOURCE_TOUCHPAD,
+            ),
+        )
+        assertEquals(emptyList<String>(), NativeInputWire.mouseLikeSourceNames(android.view.InputDevice.SOURCE_TOUCHSCREEN))
+    }
+
+    @Test
     fun pointerPhasePreservesRemainingButtonsOnPartialRelease() {
         assertEquals(
             InputPhase.INPUT_PHASE_BEGAN,

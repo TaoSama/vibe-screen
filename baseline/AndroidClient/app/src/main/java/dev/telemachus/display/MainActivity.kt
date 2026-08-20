@@ -1131,7 +1131,16 @@ class MainActivity : AppCompatActivity() {
             }
         if (nativePointerInput != null) {
             when (ClientInputDispatch(currentSessionBinding()).sendPointer(nativePointerInput)) {
-                ClientInputDispatchResult.SENT -> return true
+                ClientInputDispatchResult.SENT -> {
+                    mainDiag(
+                        "native pointer forwarded action=${nativePointerInput.action} " +
+                            "source=${NativeInputWire.mouseLikeSourceNames(event.source).joinToString("+").ifEmpty { "OTHER" }} " +
+                            "buttonState=${event.buttonState} actionButton=${event.actionButton} " +
+                            "wireButtons=${NativeInputWire.buttonMask(event.buttonState)} " +
+                            "x=${nativePointerInput.x} y=${nativePointerInput.y}",
+                    )
+                    return true
+                }
                 ClientInputDispatchResult.REJECTED -> {
                     mainDiag("negotiated pointer sink rejected ${nativePointerInput.action}")
                     return true

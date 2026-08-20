@@ -1,5 +1,6 @@
 package dev.telemachus.display
 
+import android.view.InputDevice
 import android.view.MotionEvent
 import dev.vibescreen.protocol.v1.InputPhase
 
@@ -34,6 +35,16 @@ internal object NativeInputWire {
         return mask
     }
 
+    fun mouseLikeSourceNames(androidSource: Int): List<String> =
+        buildList {
+            if (androidSource hasSource InputDevice.SOURCE_MOUSE) add("MOUSE")
+            if (androidSource hasSource InputDevice.SOURCE_MOUSE_RELATIVE) add("MOUSE_RELATIVE")
+            if (androidSource hasSource InputDevice.SOURCE_TOUCHPAD) add("TOUCHPAD")
+            if (androidSource hasSource InputDevice.SOURCE_TRACKBALL) add("TRACKBALL")
+        }
+
+    fun isMouseLikeSource(androidSource: Int): Boolean = mouseLikeSourceNames(androidSource).isNotEmpty()
+
     /**
      * Maps Android button transitions onto the Host's absolute button-mask
      * contract. Android reports the absolute post-transition button state
@@ -59,6 +70,8 @@ internal object NativeInputWire {
                 }
             ClientPointerAction.SCROLL -> null
         }
+
+    private infix fun Int.hasSource(source: Int): Boolean = this and source == source
 
     /** Translates protocol-neutral key modifiers into wire modifier bits. */
     fun modifierMask(modifiers: Set<ClientKeyModifier>): Int {

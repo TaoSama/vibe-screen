@@ -24,7 +24,7 @@ button press, or release delivery to the foreground streaming view.
   the acceptance events required for a future pass; this record did not observe
   Host-log-only pointer injection or a visible Mac pointer/button result.
 - `dumpsys-input.txt`: raw Android input-device snapshot showing no external
-  `MOUSE`, `TOUCHPAD`, or `TRACKBALL` source.
+  `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL` source.
 
 ## Re-run
 
@@ -35,10 +35,15 @@ Protocol v1 Vibe Screen session, then run:
 python3 scripts/native_pointer_hid_acceptance.py \
   --serial EP0110PZ0B9110300B \
   --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
+  --visible-result-note "Mac cursor moved and the primary click focused <target app>" \
   --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/$(date -u +%F)-p0110-native-pointer-hid
 ```
 
-A pass requires newly appended Host log lines for pointer `changed`, `began`,
-and `ended` injection plus a visible Mac pointer/button result. This record is
-blocked, not a Host-log-only pass, does not close the native pointer HID gate,
-and must remain scoped to the device identity above.
+A pass requires Android `native pointer forwarded` logcat lines for `MOVE`,
+`BUTTON_PRESS`, and `BUTTON_RELEASE` from the attached mouse-like source, newly
+appended Host log lines for pointer `changed`, `began`, and `ended` injection,
+and a visible Mac pointer/button result. The rerun writes the bounded Android
+logcat window to `android-logcat-native-pointer.txt` and the bounded Host log
+window to `host-log-appended.txt`. This record is blocked, not a Host-log-only
+pass, does not close the native pointer HID gate, and must remain scoped to the
+device identity above.
