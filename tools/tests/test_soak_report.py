@@ -153,6 +153,10 @@ class SoakReportTest(unittest.TestCase):
         self.assertEqual(report["window"]["telemetry_records_excluded"], 2)
         self.assertEqual(report["metrics"]["stream"]["fps"]["mean"], 60.0)
         self.assertEqual(
+            report["metrics"]["samples"]["gaps"]["maximum_interval_seconds"],
+            60.0,
+        )
+        self.assertEqual(
             report["metrics"]["stream"]["average_frame_age_ms"]["mean"], 6.0
         )
         self.assertEqual(

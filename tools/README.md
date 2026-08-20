@@ -96,6 +96,23 @@ evidence is `insufficient` and exits nonzero. A pass means the recorded window
 did not show practically significant growth, not that longer or different
 workloads cannot leak.
 
+For the Phase 2 tablet productization eight-hour soak, derive the exact-window
+report and then evaluate the tablet gate:
+
+```sh
+make phase2-tablet-gate EVIDENCE_DIR=.build/evidence
+```
+
+The gate consumes `.build/evidence/soak-8h/exact-window-report.json` and writes
+`.build/evidence/soak-8h/phase2-tablet-gate.json`. A `pass` requires an
+error-free eight-hour exact window with sufficient samples, continuous stream
+stats and heartbeats, no session disconnects, no reported frame drops, bounded
+client and host memory growth, and battery/thermal readings below the Phase 2
+thresholds. `fail` means the evidence is complete but a productization threshold
+was violated; `insufficient` means the evidence cannot close the gate. The
+command does not replace the raw physical-tablet, stand-mounted charging, login,
+headless, and background-recovery artifacts required by the Phase 2 runbook.
+
 ### Short Host memory regression gate
 
 Use the bounded short diagnostic as a 10-17 minute regression gate before

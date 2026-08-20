@@ -380,6 +380,11 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
             "errors": source_errors,
         },
         "metrics": {
+            "samples": {
+                "gaps": _maximum_gaps(
+                    [timestamp for timestamp, _ in exact_samples], started, finished
+                ),
+            },
             "stream": {
                 "fps": _statistics(stream_values.get("fps", []), "stream.fps"),
                 "average_frame_age_ms": _statistics(
