@@ -348,6 +348,63 @@ final class AudioCaptureTests: XCTestCase {
         XCTAssertEqual(source.stopCount, 1)
     }
 
+    func testStreamIgnoresZeroFrameCaptureWithoutFailing() throws {
+        let source = FakeAudioCaptureSource()
+        let stream = MacHostAudioStream(captureSource: source, maximumQueuedPackets: 4)
+        let packetIgnored = expectation(description: "zero-frame capture ignored")
+        packetIgnored.isInverted = true
+        let errorIgnored = expectation(description: "zero-frame capture does not fail")
+        errorIgnored.isInverted = true
+
+        try stream.start(
+            config: makeConfig(framesPerPacket: 1),
+            sessionEpoch: 5,
+            onPacket: { _ in packetIgnored.fulfill() },
+            onError: { _ in errorIgnored.fulfill() }
+        )
+
+        source.emit(frameCount: 0, pcmS16LE: Data(), timestamp: 10)
+        wait(for: [packetIgnored, errorIgnored], timeout: 0.2)
+
+        XCTAssertTrue(stream.isRunning)
+        XCTAssertEqual(source.stopCount, 0)
+        stream.stop()
+    }
+
+    func testStaleCaptureErrorDoesNotStopActiveGeneration() throws {
+        let source = FakeAudioCaptureSource()
+        let stream = MacHostAudioStream(captureSource: source, maximumQueuedPackets: 4)
+        let staleErrorIgnored = expectation(description: "stale error ignored")
+        staleErrorIgnored.isInverted = true
+        let activePacketDelivered = expectation(description: "active packet delivered")
+        let lock = NSLock()
+        var delivered: [UInt64] = []
+
+        try stream.start(
+            config: makeConfig(configEpoch: 1, framesPerPacket: 1),
+            sessionEpoch: 5,
+            onPacket: { _ in XCTFail("unexpected first-generation packet") },
+            onError: { _ in staleErrorIgnored.fulfill() }
+        )
+        let staleErrorCallback = try XCTUnwrap(source.currentErrorCallback())
+
+        try stream.reconfigure(config: makeConfig(configEpoch: 2, framesPerPacket: 1), sessionEpoch: 6) { packet in
+            lock.withAudioTestLock { delivered.append(packet.header.configEpoch) }
+            activePacketDelivered.fulfill()
+        }
+        XCTAssertEqual(source.stopCount, 1)
+
+        staleErrorCallback(MacHostAudioError.invalidFrameCount(0))
+        wait(for: [staleErrorIgnored], timeout: 0.2)
+
+        XCTAssertTrue(stream.isRunning)
+        XCTAssertEqual(source.stopCount, 1)
+        source.emit(frameCount: 1, pcmS16LE: Data([1, 0, 2, 0]), timestamp: 20)
+        wait(for: [activePacketDelivered], timeout: 1)
+        XCTAssertEqual(lock.withAudioTestLock { delivered }, [2])
+        stream.stop()
+    }
+
     private func makeConfig(
         streamID: UInt64 = 1,
         configEpoch: UInt64 = 1,
@@ -419,6 +476,10 @@ private final class FakeAudioCaptureSource: MacHostAudioCaptureSource, @unchecke
     func emit(error: Error) {
         let callback = lock.withAudioTestLock { onError }
         callback?(error)
+    }
+
+    func currentErrorCallback() -> (@Sendable (Error) -> Void)? {
+        lock.withAudioTestLock { onError }
     }
 }
 

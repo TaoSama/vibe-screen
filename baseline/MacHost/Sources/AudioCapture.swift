@@ -22,6 +22,7 @@ final class AVAudioEnginePCMSource: MacHostAudioCaptureSource, @unchecked Sendab
         onBuffer: @escaping @Sendable (MacHostAudioCaptureBuffer) -> Void,
         onError: @escaping @Sendable (Error) -> Void
     ) throws {
+        try Self.requireMicrophoneAuthorization()
         try lock.withAudioLock {
             guard engine == nil else { throw MacHostAudioError.alreadyRunning }
             let engine = AVAudioEngine()
@@ -49,8 +50,9 @@ final class AVAudioEnginePCMSource: MacHostAudioCaptureSource, @unchecked Sendab
                 format: inputFormat
             ) { buffer, time in
                 do {
-                    let capture = try conversionState.captureBuffer(from: buffer, time: time)
-                    onBuffer(capture)
+                    if let capture = try conversionState.captureBuffer(from: buffer, time: time) {
+                        onBuffer(capture)
+                    }
                 } catch {
                     onError(error)
                 }
@@ -79,6 +81,47 @@ final class AVAudioEnginePCMSource: MacHostAudioCaptureSource, @unchecked Sendab
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
     }
+
+    private static func requireMicrophoneAuthorization() throws {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            return
+        case .notDetermined:
+            let semaphore = DispatchSemaphore(value: 0)
+            let result = MicrophoneAuthorizationResult()
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                result.complete(granted: granted)
+                semaphore.signal()
+            }
+            semaphore.wait()
+            guard result.isGranted else {
+                throw MacHostAudioError.captureStartFailed(
+                    "Microphone access is required for Mac audio capture. Enable it in System Settings > Privacy & Security > Microphone."
+                )
+            }
+        case .denied, .restricted:
+            throw MacHostAudioError.captureStartFailed(
+                "Microphone access is required for Mac audio capture. Enable it in System Settings > Privacy & Security > Microphone."
+            )
+        @unknown default:
+            throw MacHostAudioError.captureStartFailed(
+                "Microphone authorization status is unavailable."
+            )
+        }
+    }
+}
+
+private final class MicrophoneAuthorizationResult: @unchecked Sendable {
+    private let lock = NSLock()
+    private var granted = false
+
+    func complete(granted: Bool) {
+        lock.withAudioLock { self.granted = granted }
+    }
+
+    var isGranted: Bool {
+        lock.withAudioLock { granted }
+    }
 }
 
 private final class AVAudioPCMConversionState: @unchecked Sendable {
@@ -101,7 +144,7 @@ private final class AVAudioPCMConversionState: @unchecked Sendable {
     func captureBuffer(
         from buffer: AVAudioPCMBuffer,
         time: AVAudioTime
-    ) throws -> MacHostAudioCaptureBuffer {
+    ) throws -> MacHostAudioCaptureBuffer? {
         try lock.withAudioLock {
             guard active else { throw MacHostAudioError.notRunning }
             let ratio = outputFormat.sampleRate / max(buffer.format.sampleRate, 1)
@@ -127,7 +170,7 @@ private final class AVAudioPCMConversionState: @unchecked Sendable {
             if let conversionError { throw conversionError }
 
             let frameCount = UInt32(converted.frameLength)
-            guard frameCount > 0 else { throw MacHostAudioError.invalidFrameCount(frameCount) }
+            guard frameCount > 0 else { return nil }
             let expectedBytes = Int(frameCount) * streamFormat.bytesPerFrame
             let audioBuffer = converted.audioBufferList.pointee.mBuffers
             guard let source = audioBuffer.mData,
@@ -249,6 +292,7 @@ final class MacHostAudioStream: @unchecked Sendable {
     }
 
     private func ingest(_ capture: MacHostAudioCaptureBuffer, generation: UInt64) {
+        guard capture.frameCount > 0 else { return }
         let shouldScheduleDrain = lock.withAudioLock { () -> Bool in
             guard var state = runningState, state.generation == generation else { return false }
             state.pendingCaptures.append(capture)
@@ -315,8 +359,9 @@ final class MacHostAudioStream: @unchecked Sendable {
             self.generation &+= 1
             return state.errorHandler
         }
+        guard let errorHandler else { return }
         captureSource.stop()
-        errorHandler?(error)
+        errorHandler(error)
     }
 }
 

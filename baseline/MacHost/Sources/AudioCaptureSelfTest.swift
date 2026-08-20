@@ -11,9 +11,11 @@ enum AudioCaptureSelfTest {
         testStopDuringPacketDelivery(failures: &failures)
         testReconfigureLifecycle(failures: &failures)
         testCaptureErrorForwarding(failures: &failures)
+        testZeroFrameCaptureIgnored(failures: &failures)
+        testStaleCaptureErrorIgnored(failures: &failures)
 
         if failures.isEmpty {
-            print("Audio capture self-test: PASS (config, packetization, decode failures, bounded queue, stop delivery, lifecycle, error forwarding)")
+            print("Audio capture self-test: PASS (config, packetization, decode failures, bounded queue, stop delivery, lifecycle, error forwarding, empty capture, stale error isolation)")
             return true
         }
         print("Audio capture self-test: FAIL (\(failures.joined(separator: "; "))) ")
@@ -235,6 +237,76 @@ enum AudioCaptureSelfTest {
         }
     }
 
+    private static func testZeroFrameCaptureIgnored(failures: inout [String]) {
+        let source = ManualAudioCaptureSource()
+        let stream = MacHostAudioStream(captureSource: source, maximumQueuedPackets: 4)
+        let delivered = LockedAudioSelfTestPackets()
+        do {
+            try stream.start(
+                config: makeConfig(framesPerPacket: 1),
+                sessionEpoch: 5,
+                onPacket: { _ in delivered.append(99) },
+                onError: { _ in delivered.append(42) }
+            )
+            source.emit(frameCount: 0, pcmS16LE: Data(), timestamp: 1)
+            Thread.sleep(forTimeInterval: 0.05)
+            guard delivered.snapshot().isEmpty, stream.isRunning, source.stopCount == 0 else {
+                failures.append(
+                    "zero-frame capture mismatch values=\(delivered.snapshot()) running=\(stream.isRunning) stop=\(source.stopCount)"
+                )
+                stream.stop()
+                return
+            }
+            stream.stop()
+        } catch {
+            stream.stop()
+            failures.append("zero-frame capture failed: \(error)")
+        }
+    }
+
+    private static func testStaleCaptureErrorIgnored(failures: inout [String]) {
+        let source = ManualAudioCaptureSource()
+        let stream = MacHostAudioStream(captureSource: source, maximumQueuedPackets: 4)
+        let delivered = LockedAudioSelfTestPackets()
+        do {
+            try stream.start(
+                config: makeConfig(configEpoch: 1, framesPerPacket: 1),
+                sessionEpoch: 5,
+                onPacket: { _ in delivered.append(99) },
+                onError: { _ in delivered.append(42) }
+            )
+            guard let staleErrorCallback = source.currentErrorCallback() else {
+                failures.append("stale capture error callback was unavailable")
+                stream.stop()
+                return
+            }
+            try stream.reconfigure(
+                config: makeConfig(configEpoch: 2, framesPerPacket: 1),
+                sessionEpoch: 6,
+                onPacket: { packet in delivered.append(packet.header.configEpoch) },
+                onError: { _ in delivered.append(24) }
+            )
+
+            staleErrorCallback(MacHostAudioError.invalidFrameCount(0))
+            source.emit(frameCount: 1, pcmS16LE: Data([1, 0, 2, 0]), timestamp: 1)
+            guard delivered.waitForCount(1, timeoutSeconds: 2) else {
+                failures.append("active generation did not deliver after stale capture error")
+                stream.stop()
+                return
+            }
+            stream.stop()
+            guard delivered.snapshot() == [2], source.stopCount == 2 else {
+                failures.append(
+                    "stale capture error mismatch values=\(delivered.snapshot()) running=\(stream.isRunning) stop=\(source.stopCount)"
+                )
+                return
+            }
+        } catch {
+            stream.stop()
+            failures.append("stale capture error isolation failed: \(error)")
+        }
+    }
+
     private static func makeConfig(
         streamID: UInt64 = 1,
         configEpoch: UInt64 = 1,
@@ -304,6 +376,10 @@ private final class ManualAudioCaptureSource: MacHostAudioCaptureSource, @unchec
     func emit(error: Error) {
         let callback = lock.withAudioSelfTestLock { onError }
         callback?(error)
+    }
+
+    func currentErrorCallback() -> (@Sendable (Error) -> Void)? {
+        lock.withAudioSelfTestLock { onError }
     }
 }
 
