@@ -71,6 +71,26 @@ wait_for_status() {
   return 1
 }
 
+wait_for_service_healthy() {
+  local service=$1
+  for _ in {1..60}; do
+    local container status health
+    container=$(compose ps --quiet "$service" 2>/dev/null || true)
+    if [[ -n "$container" ]]; then
+      status=$(docker inspect --format '{{.State.Status}}' "$container" 2>/dev/null || true)
+      health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$container" 2>/dev/null || true)
+      if [[ "$status" == running && "$health" == healthy ]]; then
+        return 0
+      fi
+    fi
+    sleep 0.5
+  done
+  echo "timed out waiting for $service to become healthy" >&2
+  compose ps >&2
+  compose logs --no-color "$service" >&2
+  return 1
+}
+
 request() {
   local method=$1 endpoint=$2 token=$3 body=${4:-}
   local args=(--fail-with-body --silent --show-error --request "$method" \
@@ -79,6 +99,21 @@ request() {
     args+=(--header 'Content-Type: application/json' --data "$body")
   fi
   curl "${args[@]}" "$base_url$endpoint"
+}
+
+expect_session_role() {
+  local session_id=$1 token=$2 role_token_body=$3 expected_role=$4 context=$5
+  local response role
+  for _ in {1..20}; do
+    response=$(request POST "/v1/signaling/sessions/$session_id/authorize" "$token" "$role_token_body" 2>/dev/null || true)
+    role=$(jq -r 'select(type == "object") | .role // empty' <<<"$response" 2>/dev/null || true)
+    if [[ "$role" == "$expected_role" ]]; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "session rejected during $context; response: ${response:-<empty>}" >&2
+  return 1
 }
 
 compose config --quiet
@@ -113,11 +148,11 @@ session=$(request POST /v1/signaling/sessions "$signaling_token" \
 session_id=$(jq -er '.session_id' <<<"$session")
 client_token=$(jq -er '.client_token' <<<"$session")
 authorize_body=$(jq -nc --arg token "$client_token" '{role_token:$token}')
-test "$(request POST "/v1/signaling/sessions/$session_id/authorize" "$signaling_token" "$authorize_body" | jq -r .role)" = client
+expect_session_role "$session_id" "$signaling_token" "$authorize_body" client "initial authorization"
 
 compose restart authority
 wait_for_status /readyz 200
-test "$(request POST "/v1/signaling/sessions/$session_id/authorize" "$signaling_token" "$authorize_body" | jq -r .role)" = client
+expect_session_role "$session_id" "$signaling_token" "$authorize_body" client "authority restart"
 
 compose stop postgres
 wait_for_status /healthz 200
@@ -128,10 +163,10 @@ write_status=$(curl --silent --output /dev/null --write-out '%{http_code}' --max
 test "$write_status" = 503
 
 compose start postgres
-compose up --detach --wait postgres
+wait_for_service_healthy postgres
 compose restart authority
 wait_for_status /readyz 200
-test "$(request POST "/v1/signaling/sessions/$session_id/authorize" "$signaling_token" "$authorize_body" | jq -r .role)" = client
+expect_session_role "$session_id" "$signaling_token" "$authorize_body" client "PostgreSQL restart"
 
 inspect=$(docker inspect "$(compose ps --quiet authority)")
 jq -e '.[0].Config.User == "65532:65532" and .[0].HostConfig.ReadonlyRootfs == true and (.[0].HostConfig.CapDrop | index("ALL")) != null' <<<"$inspect" >/dev/null

@@ -12,6 +12,7 @@ RELAY_README = ROOT / "services/relay/README.md"
 SIGNALING_README = ROOT / "services/signaling/README.md"
 DEPLOY_README = ROOT / "deploy/phase3/README.md"
 AUTHORITY_PRODUCTION_COMPOSE = ROOT / "deploy/phase3/docker-compose.authority.production.yml"
+AUTHORITY_STACK_TEST = ROOT / "deploy/phase3/scripts/test-authority-stack.sh"
 
 
 class AuthorityProductionGateTests(unittest.TestCase):
@@ -94,6 +95,17 @@ class AuthorityProductionGateTests(unittest.TestCase):
         for variable in required_secret_vars:
             with self.subTest(variable=variable):
                 self.assertIn("$" + "{" + variable + ":?set ", text)
+
+    def test_authority_stack_restart_waits_on_restarted_postgres_container(self) -> None:
+        script = AUTHORITY_STACK_TEST.read_text(encoding="utf-8")
+
+        self.assertIn("wait_for_service_healthy()", script)
+        self.assertIn("expect_session_role()", script)
+        self.assertIn("compose start postgres", script)
+        self.assertIn("wait_for_service_healthy postgres", script)
+        self.assertEqual(script.count("compose up --detach --wait postgres"), 1)
+        self.assertIn("session rejected during $context", script)
+        self.assertIn("PostgreSQL restart", script)
 
 
 if __name__ == "__main__":
