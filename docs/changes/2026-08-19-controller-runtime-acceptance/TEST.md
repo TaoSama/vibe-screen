@@ -26,6 +26,17 @@ creating a virtual gamepad. The evidence summary is therefore intentionally
 
 - [blocked-local/controller-runtime-summary.json](evidence/blocked-local/controller-runtime-summary.json)
 - [blocked-local/controller-runtime-observations.json](evidence/blocked-local/controller-runtime-observations.json)
+- [2026-08-20-p0110-controller-runtime-readiness/controller-runtime-summary.json](evidence/2026-08-20-p0110-controller-runtime-readiness/controller-runtime-summary.json)
+- [2026-08-20-p0110-controller-runtime-readiness/controller-runtime-readiness.json](evidence/2026-08-20-p0110-controller-runtime-readiness/controller-runtime-readiness.json)
+
+The 2026-08-20 P0110 readiness run was collected under the shared Android device
+lock with `adb -s EP0110PZ0B9110300B`. It recorded the connected Nubia P0110
+identity and installed APK metadata, but `dumpsys input` did not expose a
+physical `SOURCE_GAMEPAD` or `SOURCE_JOYSTICK` device. The running
+`/Applications/Vibe Screen.app` was signed without an Apple team identifier and
+without the `com.apple.developer.hid.virtual.device` entitlement, and the Host
+log still reported controller forwarding unavailable for that reason. The gate
+therefore remains blocked.
 
 Recreate the summary with:
 
@@ -36,6 +47,14 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime \
   --output docs/changes/2026-08-19-controller-runtime-acceptance/evidence/blocked-local/controller-runtime-summary.json
 ```
 
+For hardware/signing readiness, collect a current-device bundle with:
+
+    python3 scripts/controller_runtime_readiness.py \
+      --serial "$ADB_SERIAL" \
+      --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
+      --host-app "/path/to/Vibe Screen.app" \
+      --evidence-dir docs/changes/2026-08-19-controller-runtime-acceptance/evidence/$(date -u +%F)-controller-runtime-readiness
+
 ## Offline verification
 
 The source/documentation update was verified with the local offline gates listed
@@ -44,4 +63,3 @@ The Android and evidence-tool checks passed. MacHost release build passed. MacHo
 XCTest remained blocked in this local environment because `xcode-select` points to
 Command Line Tools and SwiftPM cannot import `XCTest`; this does not prove or
 disprove controller runtime acceptance.
-

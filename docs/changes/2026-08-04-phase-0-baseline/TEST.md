@@ -304,7 +304,8 @@ is retained under
 - real-window restore after disconnect on device;
 - a host-RSS-stable two-hour no-growth run (the two-hour Xiaomi 13 soak ran but
   host RSS grew about 18.3 MB), native-pointer HID move/click with a physical
-  mouse, and external USB/LAN glass-to-glass plus input latency.
+  mouse, controller runtime acceptance with a physical Android controller and
+  entitled Host, and external USB/LAN glass-to-glass plus input latency.
 
 Private `CGVirtualDisplay` creation/capture and HiDPI, graceful mirror-mode
 fallback, keyboard/scroll input, and Protocol v1 real-device interoperability

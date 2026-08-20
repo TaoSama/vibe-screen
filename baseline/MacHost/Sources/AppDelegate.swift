@@ -1933,6 +1933,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             streamingServer?.controllerAvailable = gameControllerRuntime.factory != nil
             if let reason = gameControllerRuntime.unavailableReason {
                 debugLog("Controller forwarding unavailable: \(reason)")
+            } else {
+                debugLog("Controller forwarding available: virtual gamepad runtime probe succeeded")
             }
             if configuration.connectionMode == .wireless {
                 streamingServer?.onWirelessClientPaired = {

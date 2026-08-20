@@ -1,0 +1,39 @@
+git fetch origin
+git stash push --include-untracked -m controller-runtime-readiness-wip
+git rebase origin/main
+git stash pop
+git rev-parse HEAD origin/main
+python3 -m py_compile scripts/controller_runtime_readiness.py scripts/tests/test_controller_runtime_readiness.py
+PYTHONPATH=tools python3 -m unittest tools.tests.test_controller_runtime scripts.tests.test_controller_runtime_readiness scripts.tests.test_native_pointer_hid_acceptance
+PYTHONPATH=. python3 -m unittest contracts.tests.test_controller_reference contracts.tests.test_protocol_fixtures contracts.tests.test_security_contract
+cd baseline/MacHost && swift build && cd ../..
+cd baseline/MacHost && swift test --filter "GameControllerStateMachineTests|GameControllerInjectorTests|GameControllerHIDReportTests|IOKitVirtualGamepadDeviceTests|GameControllerRuntimeAvailabilityTests|ProtocolV1SessionTests/testController"
+xcode-select -p
+python3 - <<'PY'
+import fcntl, pathlib, subprocess, sys
+lock_path = pathlib.Path("/tmp/vibe-screen-device-android.lock")
+evidence_dir = pathlib.Path("docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-20-p0110-controller-runtime-readiness")
+with lock_path.open("w") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    cmd = [
+        sys.executable,
+        "scripts/controller_runtime_readiness.py",
+        "--serial",
+        "EP0110PZ0B9110300B",
+        "--host-log",
+        str(pathlib.Path.home() / "Library/Logs/Telemachus/telemachus.log"),
+        "--host-app",
+        "/Applications/Vibe Screen.app",
+        "--evidence-dir",
+        str(evidence_dir),
+        "--run-id",
+        "2026-08-20-p0110-controller-runtime-readiness",
+    ]
+    completed = subprocess.run(cmd, text=True)
+    sys.exit(completed.returncode)
+PY
+PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-20-p0110-controller-runtime-readiness/controller-runtime-observations.json --run-id 2026-08-20-p0110-controller-runtime-readiness >/tmp/controller-runtime-summary-check.json
+cmp -s /tmp/controller-runtime-summary-check.json docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-20-p0110-controller-runtime-readiness/controller-runtime-summary.json
+git diff --check
+( cd docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-20-p0110-controller-runtime-readiness && shasum -a 256 README.md adb-devices.txt controller-runtime-observations.json controller-runtime-readiness.json controller-runtime-summary.json device-info.json dumpsys-input.txt dumpsys-package.txt host-codesign.txt host-controller-availability.txt commands.txt verification.txt > SHA256SUMS )
+( cd docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-20-p0110-controller-runtime-readiness && shasum -a 256 -c SHA256SUMS )

@@ -156,3 +156,15 @@ supported latency evidence formats and gate semantics.
 Use `PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime --help`
 for the controller runtime gate summary. The tool treats missing physical
 controller or entitled Host runtime observations as `blocked`, not `pass`.
+
+Use the read-only readiness collector before attempting the interactive gate so
+missing hardware, APK identity, Host signing, entitlement, or Host availability
+is recorded as structured evidence instead of a handwritten note:
+
+```bash
+python3 scripts/controller_runtime_readiness.py \
+  --serial "$ADB_SERIAL" \
+  --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
+  --host-app "/path/to/Vibe Screen.app" \
+  --evidence-dir docs/changes/2026-08-19-controller-runtime-acceptance/evidence/$(date -u +%F)-controller-runtime-readiness
+```

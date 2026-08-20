@@ -1,0 +1,1 @@
+2026-08-20T10:00:28Z Controller forwarding unavailable: use an Apple identity-signed build with the approved virtual HID entitlement; unsigned and ad-hoc builds cannot create virtual controllers
