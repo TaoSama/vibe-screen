@@ -2162,7 +2162,7 @@ class StreamingServer: EncodedFrameSink {
         for payload in bulkPayloads {
             do {
                 let bytes = try ProtocolV1TransportFrame(channel: .bulk, payload: payload).encoded()
-                conn.send(content: bytes, completion: .contentProcessed { [weak self] error in
+                sendSessionBytes(bytes, channel: .bulk, on: conn, completion: .contentProcessed { [weak self] error in
                     if let error {
                         self?.recordTelemetry(
                             "control_send_failed",
@@ -2534,8 +2534,7 @@ class StreamingServer: EncodedFrameSink {
                 let followUp = self.protocolV1Session?.completeWakeHost(
                     requestID: request.requestID,
                     accepted: result.accepted,
-                    rejectionReason: result.reason,
-                    correlationID: correlationID
+                    rejectionReason: result.reason
                 ) ?? []
                 if !followUp.isEmpty {
                     self.applyProtocolV1Actions(followUp, connection: conn, generation: generation)

@@ -1692,8 +1692,7 @@ enum ProtocolV1SelfTest {
             let completion = session.completeWakeHost(
                 requestID: Data([0x31]),
                 accepted: false,
-                rejectionReason: "wake_host_policy_denied",
-                correlationID: 4
+                rejectionReason: "wake_host_policy_denied"
             )
             let completionResponses = try responseEnvelopes(completion)
             guard completionResponses.count == 1,
@@ -1703,6 +1702,34 @@ enum ProtocolV1SelfTest {
                   result.rejectionReason == "wake_host_policy_denied",
                   completionResponses[0].correlationID == 4 else {
                 failures.append("completeWakeHost did not emit a session-scoped WakeHostResult echoing the request and correlation id")
+                return
+            }
+            guard session.completeWakeHost(
+                requestID: Data([0x31]),
+                accepted: false,
+                rejectionReason: "wake_host_policy_denied"
+            ).isEmpty else {
+                failures.append("A duplicate completeWakeHost was not ignored")
+                return
+            }
+
+            let acceptedSession = try readyWakeHostSessionForSelfTest()
+            _ = acceptedSession.handleControl(try envelope(
+                id: 4,
+                payload: .wakeHostRequest(wakeRequest)
+            ).serializedData())
+            let acceptedResponses = try responseEnvelopes(acceptedSession.completeWakeHost(
+                requestID: Data([0x31]),
+                accepted: true,
+                rejectionReason: "ignored"
+            ))
+            guard acceptedResponses.count == 1,
+                  case .wakeHostResult(let acceptedResult)? = acceptedResponses[0].payload,
+                  acceptedResult.requestID == Data([0x31]),
+                  acceptedResult.accepted,
+                  acceptedResult.rejectionReason.isEmpty,
+                  acceptedResponses[0].correlationID == 4 else {
+                failures.append("completeWakeHost did not emit one accepted WakeHostResult")
                 return
             }
 

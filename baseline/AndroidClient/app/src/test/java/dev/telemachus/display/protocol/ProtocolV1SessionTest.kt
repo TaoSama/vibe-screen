@@ -1335,6 +1335,42 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun completeWakeHostEchoesRequestCorrelationAndDefaultRejectedReason() {
+        val session = wakeHostStreamingSession()
+        val requestId = ByteString.copyFrom(byteArrayOf(0x55))
+
+        val response = session.completeWakeHost(
+            requestId = requestId,
+            accepted = false,
+            rejectionReason = "",
+            correlationId = 17,
+        )!!
+
+        assertEquals(Envelope.PayloadCase.WAKE_HOST_RESULT, response.payloadCase)
+        assertEquals(17L, response.correlationId)
+        assertEquals(requestId, response.wakeHostResult.requestId)
+        assertFalse(response.wakeHostResult.accepted)
+        assertEquals("wake_host_rejected", response.wakeHostResult.rejectionReason)
+    }
+
+    @Test
+    fun requestWakeHostBoundsPendingResultsAndRequiresHostIdentity() {
+        val blankHostSession = wakeHostStreamingSession(hostId = "")
+        val mac = ByteString.copyFrom(byteArrayOf(1, 2, 3, 4, 5, 6))
+        assertNull(blankHostSession.requestWakeHost(ByteString.copyFrom(byteArrayOf(0x01)), mac))
+
+        val session = wakeHostStreamingSession()
+        val requestIds = (0 until 17).map { ByteString.copyFrom(byteArrayOf(it.toByte())) }
+        requestIds.forEach { requestId -> assertNotNull(session.requestWakeHost(requestId, mac)) }
+
+        assertTrue(session.receive(wakeHostResult(20, requestIds.first(), accepted = true)).isEmpty())
+        val newest = session.receive(wakeHostResult(21, requestIds.last(), accepted = true)).single()
+            as ProtocolV1Session.Action.WakeHostCompleted
+        assertEquals(requestIds.last(), newest.requestId)
+        assertTrue(newest.accepted)
+    }
+
+    @Test
     fun wakeHostRequestRequiresNegotiatedCapabilityStreamingAndHostMatch() {
         val ungated = streamingSession()
         assertInvalidPeerMessage { ungated.receive(wakeHostRequest(7, hostId = "mac-host")) }
@@ -1938,17 +1974,17 @@ class ProtocolV1SessionTest {
     private val wakeHostCaps =
         listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_WAKE_HOST)
 
-    private fun wakeHostSessionThroughDisplayStart(): ProtocolV1Session =
+    private fun wakeHostSessionThroughDisplayStart(hostId: String = "mac-host"): ProtocolV1Session =
         session(wakeAllowed = true).also {
             it.clientHello()
-            it.receive(hostHello(2, advertisedCapabilities = wakeHostCaps, hostId = "mac-host"))
+            it.receive(hostHello(2, advertisedCapabilities = wakeHostCaps, hostId = hostId))
             it.receive(sessionAccepted(3, negotiatedCapabilities = wakeHostCaps))
             it.receive(displayList(4))
             it.receive(startDisplay(5))
         }
 
-    private fun wakeHostStreamingSession(): ProtocolV1Session =
-        wakeHostSessionThroughDisplayStart().also {
+    private fun wakeHostStreamingSession(hostId: String = "mac-host"): ProtocolV1Session =
+        wakeHostSessionThroughDisplayStart(hostId = hostId).also {
             val requested =
                 it.receive(videoConfig(6)).single()
                     as ProtocolV1Session.Action.VideoConfigurationRequested
@@ -2046,7 +2082,7 @@ class ProtocolV1SessionTest {
         id: Long,
         advertisedCodecs: List<Codec> = listOf(Codec.CODEC_HEVC, Codec.CODEC_H264),
         advertisedCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
-        hostId: String = "",
+        hostId: String = "host",
     ): Envelope =
         Envelope
             .newBuilder()
@@ -2056,7 +2092,7 @@ class ProtocolV1SessionTest {
                 HostHello
                     .newBuilder()
                     .setSelectedProtocol(1)
-                    .setHostId(hostId.ifBlank { "host" })
+                    .setHostId(hostId)
                     .addAllCapabilities(advertisedCapabilities)
                     .addAllCodecs(advertisedCodecs),
             ).build()

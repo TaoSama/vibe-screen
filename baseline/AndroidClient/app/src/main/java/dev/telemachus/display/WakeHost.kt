@@ -54,6 +54,8 @@ class UdpWakeHostPacketSender(
     private val broadcastAddress: String = "255.255.255.255",
     private val port: Int = 9,
 ) : WakeHostPacketSender {
+    private val address: InetAddress = InetAddress.getByName(broadcastAddress)
+
     init {
         require(port in 1..65535) { "port must be 1..65535" }
     }
@@ -64,7 +66,7 @@ class UdpWakeHostPacketSender(
             val payload = DatagramPacket(
                 packet,
                 packet.size,
-                InetAddress.getByName(broadcastAddress),
+                address,
                 port,
             )
             socket.send(payload)

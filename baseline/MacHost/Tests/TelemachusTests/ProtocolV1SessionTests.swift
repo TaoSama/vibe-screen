@@ -1239,11 +1239,14 @@ final class ProtocolV1SessionTests: XCTestCase {
 
     func testWakeHostCompletionEchoesRequestAndCorrelation() throws {
         let session = try readyWakeHostSession()
+        _ = session.handleControl(try envelope(
+            id: 4,
+            payload: .wakeHostRequest(wakeHostRequest())
+        ).serializedData())
         let responses = try controlEnvelopes(session.completeWakeHost(
             requestID: Data([0x31]),
             accepted: false,
-            rejectionReason: "wake_host_policy_denied",
-            correlationID: 4
+            rejectionReason: "wake_host_policy_denied"
         ))
 
         XCTAssertEqual(responses.count, 1)
@@ -1258,17 +1261,59 @@ final class ProtocolV1SessionTests: XCTestCase {
 
     func testWakeHostCompletionDefaultsRejectedReason() throws {
         let session = try readyWakeHostSession()
+        _ = session.handleControl(try envelope(
+            id: 4,
+            payload: .wakeHostRequest(wakeHostRequest())
+        ).serializedData())
         let responses = try controlEnvelopes(session.completeWakeHost(
             requestID: Data([0x31]),
             accepted: false,
-            rejectionReason: "",
-            correlationID: 4
+            rejectionReason: ""
         ))
 
         guard case .wakeHostResult(let result)? = responses.first?.payload else {
             return XCTFail("Expected WakeHostResult")
         }
         XCTAssertEqual(result.rejectionReason, "wake_host_rejected")
+    }
+
+    func testWakeHostCompletionConsumesTrackedRequestAndAcceptedReasonIsEmpty() throws {
+        let session = try readyWakeHostSession()
+        _ = session.handleControl(try envelope(
+            id: 4,
+            payload: .wakeHostRequest(wakeHostRequest())
+        ).serializedData())
+
+        let responses = try controlEnvelopes(session.completeWakeHost(
+            requestID: Data([0x31]),
+            accepted: true,
+            rejectionReason: "ignored"
+        ))
+
+        XCTAssertEqual(responses.count, 1)
+        XCTAssertEqual(responses.first?.correlationID, 4)
+        guard case .wakeHostResult(let result)? = responses.first?.payload else {
+            return XCTFail("Expected WakeHostResult")
+        }
+        XCTAssertTrue(result.accepted)
+        XCTAssertEqual(result.rejectionReason, "")
+        XCTAssertTrue(session.completeWakeHost(
+            requestID: Data([0x31]),
+            accepted: true,
+            rejectionReason: ""
+        ).isEmpty)
+    }
+
+    func testWakeHostCapabilityAdvertisementHonorsManagedPolicy() {
+        var policy = ManagedPolicy.unmanaged
+        policy.wakeAllowed = false
+        let capabilities = ProtocolV1SessionConfiguration.productionHostCapabilities(
+            touchEnabled: true,
+            managedPolicy: policy,
+            wakeHostAvailable: true
+        )
+
+        XCTAssertFalse(capabilities.contains(.wakeHost))
     }
 
     func testProductionHostCapabilitiesIncludeControllerOnlyWhenAvailable() {

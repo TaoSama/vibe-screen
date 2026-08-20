@@ -1973,12 +1973,12 @@ internal class ProtocolV1Session(
             targetMacAddress = targetMacAddress,
             secureOnPassword = secureOnPassword,
             hostId = hostId,
-            deviceId = deviceId,
-            keyId = keyId,
-            issuedAtUnixSeconds = issuedAtUnixSeconds,
-            expiresAtUnixSeconds = expiresAtUnixSeconds,
-            nonce = nonce,
-            signature = signature,
+            deviceId = this@toContext.deviceId,
+            keyId = this@toContext.keyId,
+            issuedAtUnixSeconds = this@toContext.issuedAtUnixSeconds,
+            expiresAtUnixSeconds = this@toContext.expiresAtUnixSeconds,
+            nonce = this@toContext.nonce,
+            signature = this@toContext.signature,
         )
 
     private fun toDisplayOption(display: dev.vibescreen.protocol.v1.DisplayDescriptor): DisplayOption {
