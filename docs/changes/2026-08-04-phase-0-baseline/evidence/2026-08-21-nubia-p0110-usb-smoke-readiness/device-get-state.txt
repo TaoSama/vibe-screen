@@ -1,0 +1,3 @@
+$ adb -s EP0110PZ0B9110300B get-state
+device
+exit=0

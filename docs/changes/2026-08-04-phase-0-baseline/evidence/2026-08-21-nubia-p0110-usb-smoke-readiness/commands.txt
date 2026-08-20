@@ -1,0 +1,15 @@
+
+## 2026-08-20T19:30:25Z
+$ adb -s EP0110PZ0B9110300B devices -l > /Users/luwentao/Workspaces/dotfiles/codex/worktrees/2824/vibe-screen/docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-nubia-p0110-usb-smoke-readiness/adb-devices.txt 2>&1
+
+## 2026-08-20T19:30:25Z
+$ adb -s EP0110PZ0B9110300B get-state > /Users/luwentao/Workspaces/dotfiles/codex/worktrees/2824/vibe-screen/docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-nubia-p0110-usb-smoke-readiness/device-get-state.txt 2>&1
+
+## 2026-08-20T19:32:32Z
+$ adb -s EP0110PZ0B9110300B devices -l
+
+## 2026-08-20T19:32:32Z
+$ adb -s EP0110PZ0B9110300B get-state
+
+## 2026-08-20T19:32:32Z
+$ adb -s EP0110PZ0B9110300B device identity snapshot

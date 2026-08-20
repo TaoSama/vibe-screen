@@ -1,0 +1,14 @@
+lock_acquired_at_utc=2026-08-20T19:46:52Z
+# host listener on 54321
+lsof_exit=1
+# host processes
+66481     1 S          05:39 /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+host_process_exit=0
+# adb reverse
+UsbFfs tcp:54321 tcp:54321
+
+adb_reverse_exit=0
+# android app pid
+32263
+android_pid_exit=0
+lock_released_at_utc=2026-08-20T19:46:53Z
