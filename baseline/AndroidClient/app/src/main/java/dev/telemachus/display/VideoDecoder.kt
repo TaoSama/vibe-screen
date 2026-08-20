@@ -41,6 +41,7 @@ class VideoDecoder(
     private var lastStatsTime = System.currentTimeMillis()
     private var inputFrameCount = 0L
     private var outputFrameCount = 0L
+    private var firstOutputFrameSessionEpoch = 0L
 
     // Decoder pipeline latency (input enqueue -> output buffer available),
     // accumulated over ~60 frames then logged. High values indicate the codec
@@ -565,8 +566,17 @@ class VideoDecoder(
                 return
             }
             outputFrameCount++
-            if (outputFrameCount == 1L) {
-                diagLog("First output frame! size=${info.size}, flags=${info.flags}")
+            if (firstOutputFrameSessionEpoch != outputEpoch) {
+                firstOutputFrameSessionEpoch = outputEpoch
+                diagLog("First output frame! size=${info.size}, flags=${info.flags}, session_epoch=$outputEpoch")
+                emitTelemetry(
+                    "first_output_frame",
+                    mapOf(
+                        "session_epoch" to outputEpoch,
+                        "size" to info.size,
+                        "flags" to info.flags,
+                    ),
+                )
             }
 
             // Decoder latency: time from queueInputBuffer (where we encoded

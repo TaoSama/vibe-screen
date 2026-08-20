@@ -36,6 +36,29 @@ For every device run, record:
 - Host PID and a complete post-disconnect connection sequence;
 - per-minute Host/Android memory, temperature, and frame samples during soak.
 
+For the Phase 1 reconnect-within-three-seconds gate, keep a dedicated
+`reconnect-timing-observations.json` plus `reconnect-timing-summary.json` beside
+the raw Host log, Android logcat, private Android diag log, ADB reverse state,
+and device/build metadata. The timing window starts at the recorded disruption
+timestamp and ends at the Android decoder's first output frame after a fresh
+Protocol v1 recovery. A Host accept line, Android retry loop, Activity
+lifecycle callback, or first received encoded frame alone is not sufficient.
+The full gate requires all three disruption scenarios: client kill,
+ADB reverse removal/restoration, and trusted-LAN network interruption. Evaluate
+the record with:
+
+```bash
+PYTHONPATH=tools python3 -m vibescreen_evidence.reconnect_timing \\
+  "$EVIDENCE_DIR/reconnect-timing-observations.json" \\
+  --output "$EVIDENCE_DIR/reconnect-timing-summary.json"
+```
+
+Use `--require-disruption client-kill` or another single scenario only for an
+incremental partial run; that cannot close the full README timing gate. If Host
+signing, TCC, port `54321`, ADB, or LAN conditions block the run, write a
+blocked summary with `--blocked` or `make evidence-reconnect-timing-blocked`
+instead of upgrading an older reconnect smoke to a timing pass.
+
 For performance-gate runs, keep latency evidence in the same evidence directory
 as the device identity and soak artifacts:
 

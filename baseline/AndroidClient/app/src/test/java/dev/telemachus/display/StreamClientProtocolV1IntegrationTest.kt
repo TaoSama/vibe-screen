@@ -127,6 +127,28 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun firstFrameTelemetryIsEmittedOncePerProtocolSession() = runBlocking {
+        ServerSocket(0).use { server ->
+            val telemetryEvents = Collections.synchronizedList(mutableListOf<Pair<String, Map<String, Any?>>>() )
+
+            runSingleFrameSession(server, telemetryEvents, configEpoch = 3, frameIds = listOf(1, 2))
+            runSingleFrameSession(server, telemetryEvents, configEpoch = 4, frameIds = listOf(1))
+
+            val firstFrameEvents =
+                synchronized(telemetryEvents) {
+                    telemetryEvents.filter { it.first == "first_frame_received" }
+                }
+            assertEquals(2, firstFrameEvents.size)
+            assertEquals(listOf(3L, 4L), firstFrameEvents.map { it.second["config_epoch"] })
+            val sessionEpochs = firstFrameEvents.map { it.second["session_epoch"] as Long }
+            assertTrue(sessionEpochs[0] > 0L)
+            assertEquals(sessionEpochs[0] + 1L, sessionEpochs[1])
+            assertTrue(firstFrameEvents.all { it.second["keyframe"] == true })
+            assertTrue(firstFrameEvents.all { it.second["metadata"] == true })
+        }
+    }
+
+    @Test
     fun disconnectBeforeDecoderCompletionSendsNoAck() = runBlocking {
         ServerSocket(0).use { server ->
             val configurationRequested = CountDownLatch(1)
@@ -1662,6 +1684,7 @@ class StreamClientProtocolV1IntegrationTest {
         maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
         maxFileBytes: Long = 0L,
         maxFileChunkBytes: Int = 0,
+        videoConfigEpoch: Long = 3,
         onClientHello: (dev.vibescreen.protocol.v1.ClientHello) -> Unit = {},
     ) {
         beginHandshake(
@@ -1673,6 +1696,7 @@ class StreamClientProtocolV1IntegrationTest {
             maxClipboardBytes,
             maxFileBytes,
             maxFileChunkBytes,
+            videoConfigEpoch,
             onClientHello,
         )
         val result = readEnvelope(peer)
@@ -1690,6 +1714,7 @@ class StreamClientProtocolV1IntegrationTest {
         maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
         maxFileBytes: Long = 0L,
         maxFileChunkBytes: Int = 0,
+        videoConfigEpoch: Long = 3,
         onClientHello: (dev.vibescreen.protocol.v1.ClientHello) -> Unit = {},
     ) {
         assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
@@ -1725,7 +1750,7 @@ class StreamClientProtocolV1IntegrationTest {
         write(peer, displayList(3))
         assertEquals(Envelope.PayloadCase.START_DISPLAY_REQUEST, readEnvelope(peer).payloadCase)
         write(peer, startDisplay(4))
-        write(peer, videoConfig(5, initialRotation))
+        write(peer, videoConfig(5, initialRotation, configEpoch = videoConfigEpoch))
     }
 
     private suspend fun assertRejectedDecoderConfiguration(
@@ -1768,6 +1793,37 @@ class StreamClientProtocolV1IntegrationTest {
         onVideoConfiguration = { _, commit ->
             commit.accept()
         }
+    }
+
+    private suspend fun runSingleFrameSession(
+        server: ServerSocket,
+        telemetryEvents: MutableList<Pair<String, Map<String, Any?>>>,
+        configEpoch: Long,
+        frameIds: List<Long>,
+    ) = kotlinx.coroutines.coroutineScope {
+        val client = StreamClient("127.0.0.1", server.localPort)
+        val framesDelivered = CountDownLatch(frameIds.size)
+        client.onTelemetryEvent = { event, fields -> telemetryEvents += event to fields }
+        client.onVideoConfiguration = { _, commit -> commit.accept() }
+        client.onFrameReceived = { buffer, _, _, _, _, _ ->
+            client.releaseBuffer(buffer)
+            framesDelivered.countDown()
+        }
+        val serverJob =
+            async(Dispatchers.IO) {
+                server.accept().use { peer ->
+                    completeHandshake(peer, initialRotation = 0, videoConfigEpoch = configEpoch)
+                    frameIds.forEach { frameId ->
+                        writeVideo(peer, configEpoch = configEpoch, frameId = frameId, keyframe = true)
+                    }
+                    assertTrue(framesDelivered.await(8, TimeUnit.SECONDS))
+                    write(peer, disconnect(6))
+                }
+            }
+        val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+        withTimeout(8_000) { serverJob.await() }
+        client.disconnect()
+        withTimeout(8_000) { clientJob.await() }
     }
 
     private fun StreamVideoConfigurationCommit.accept() {
