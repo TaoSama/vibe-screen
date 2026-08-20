@@ -2,6 +2,8 @@ package dev.telemachus.display
 
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -16,9 +18,12 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.slider.Slider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
+import java.io.FileOutputStream
 import kotlin.math.roundToInt
 
 @RunWith(AndroidJUnit4::class)
@@ -96,6 +101,21 @@ class SettingsDialogLayoutInstrumentedTest {
     }
 
     @Test
+    fun capturesSustainedUseStatusEvidenceImages() {
+        listOf("portrait" to (600 to 960), "landscape" to (960 to 600)).forEach { (name, dimensions) ->
+            val (widthDp, heightDp) = dimensions
+            withLayout(screenWidthDp = widthDp, screenHeightDp = heightDp) { layout ->
+                renderNominalDeviceHealth(layout)
+                layout.measureAndLayout()
+                assertAllTextReadable(layout.root)
+                val screenshot = captureRoot(layout)
+                assertTrue("$name screenshot exists", screenshot.isFile)
+                assertTrue("$name screenshot is non-empty", screenshot.length() > 0L)
+            }
+        }
+    }
+
+    @Test
     fun positionTargetsAndOpacitySliderMeetAccessibilityContract() {
         withLayout(screenWidthDp = 320) { layout ->
             val minimumTarget = layout.dp(48)
@@ -133,6 +153,45 @@ class SettingsDialogLayoutInstrumentedTest {
             assertTrue(group.isSelectionRequired)
             assertEquals(0, listenerCalls)
         }
+    }
+
+    private fun renderNominalDeviceHealth(layout: MeasuredLayout) {
+        val resources = layout.context.resources
+        layout.root.findViewById<TextView>(R.id.deviceHealthStatus).apply {
+            setText(R.string.device_health_ready)
+        }
+        layout.root.findViewById<TextView>(R.id.deviceHealthSummary).apply {
+            text =
+                resources.getString(
+                    R.string.device_health_summary,
+                    resources.getString(R.string.device_health_battery, 100),
+                    resources.getString(R.string.device_health_charging),
+                    resources.getString(R.string.device_health_power_saver_off),
+                    resources.getString(R.string.device_health_thermal_nominal),
+                )
+        }
+    }
+
+    private fun captureRoot(layout: MeasuredLayout): File {
+        assertNotNull(layout.root.background)
+        val bitmap = Bitmap.createBitmap(layout.root.width, layout.root.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        layout.root.draw(canvas)
+        val externalFilesDir = layout.context.getExternalFilesDir(null)
+        assertNotNull("external files directory is available", externalFilesDir)
+        val output = File(externalFilesDir, "phase2-readiness")
+        assertTrue("phase2 readiness directory exists", output.isDirectory || output.mkdirs())
+        val orientation =
+            if (layout.root.width > layout.root.height) {
+                "landscape"
+            } else {
+                "portrait"
+            }
+        val screenshot = File(output, "sustained-use-$orientation.png")
+        FileOutputStream(screenshot).use { stream ->
+            assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream))
+        }
+        return screenshot
     }
 
     private fun assertAllTextButtonsReadable(layout: MeasuredLayout) {

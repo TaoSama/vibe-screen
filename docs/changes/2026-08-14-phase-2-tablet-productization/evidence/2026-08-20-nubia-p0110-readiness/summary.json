@@ -1,0 +1,36 @@
+{
+  "schema_version": "phase2-readiness-v1",
+  "collected_at_utc": "2026-08-20T12:25:08Z",
+  "base_commit_sha": "18a6ea70d0fbf6bc187f5a7242424ad3e88cf5ee",
+  "source_state": "base commit plus the working-tree instrumentation screenshot helper added by this change",
+  "device": {
+    "serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": 36,
+    "physical_size": "1264x2800",
+    "physical_density": 560
+  },
+  "apk_sha256": "cebbaacfb7bc26a4fbdfee61a272b2f35247c8692b306afec0b6b99f3ffacfba",
+  "results": {
+    "device_info_collected": true,
+    "platform_battery_level_percent": 100,
+    "platform_ac_powered": true,
+    "platform_power_saver_enabled": false,
+    "platform_thermal_status": 0,
+    "target_device_settings_layout_tests": 7,
+    "target_device_settings_layout_failures": 0,
+    "sustained_use_screenshot_test_exit_code": 0,
+    "full_settings_layout_test_exit_code": 0,
+    "am_start_reverify_exit_code": 0,
+    "native_screenshot_rotation": "portrait buffer; physical-landscape capture matched portrait because user_rotation stayed 0"
+  },
+  "limitations": {
+    "device_class_claim": "phone substitute only; not 8-9 inch tablet evidence",
+    "duration_claim": "short readiness check only; not eight-hour soak evidence",
+    "thermal_claim": "idle thermal status sample only; not controlled thermal-load evidence",
+    "power_claim": "instantaneous AC-powered battery sample only; not stand-mounted charging stability evidence"
+  }
+}

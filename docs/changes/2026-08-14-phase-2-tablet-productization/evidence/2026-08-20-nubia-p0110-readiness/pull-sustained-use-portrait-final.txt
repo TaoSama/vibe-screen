@@ -1,0 +1,1 @@
+/sdcard/Android/data/dev.telemachus.display/files/phase2-readiness/sustained-use-portrait.png: 1 file pulled, 0 skipped. 18.2 MB/s (217443 bytes in 0.011s)
