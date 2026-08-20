@@ -403,7 +403,7 @@ those release gates remain open. Xiaomi 13 (2211133C) acceptance also remains op
   or successful-session reconnect was produced. This environment block does not
   change any open Phase 3 release gate.
 
-- A 2026-08-20 local readiness run on clean `origin/main` commit
+- A 2026-08-20 local readiness run on clean main commit
   `18a6ea70d0fbf6bc187f5a7242424ad3e88cf5ee` is archived under
   [`evidence/2026-08-20-local-phase3-readiness/`](evidence/2026-08-20-local-phase3-readiness/README.md).
   It passed `make protocol`, `make phase3-test`,
@@ -411,12 +411,12 @@ those release gates remain open. Xiaomi 13 (2211133C) acceptance also remains op
   `make phase3-authority-container-test`,
   `services/relay/integration/test-turn-rest.sh`, and
   `services/relay/integration/test-turn-peer-acl.sh`. The local product E2E
-  public summaries are bound to the current commit and source fingerprint, prove
+  public summaries are bound to that commit and source fingerprint, prove
   direct UDP plus forced local coturn relay candidate-pair selection through the
   real signaling process and production macOS WebRTC adapter, and explicitly
   record `local_loopback_only`, `synthetic_protocol_v1_device`,
   `no_android_device_or_ui`, `no_real_screen_capture`, and
-  `no_public_internet_path`. This current-source readiness record does not close
+  `no_public_internet_path`. This dated readiness record does not close
   the Android device, public-Internet, real-capture, handoff, latency, or soak
   release gates.
 

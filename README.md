@@ -454,10 +454,10 @@ pairing-scoped transaction, the cross-process security tests are stabilized
 against pipe-buffer deadlocks, and the Android decoder-config publish now fails
 closed when it cannot publish. These are offline-verified source changes; the
 release gates below are unchanged.
-Main commit `18a6ea70` now has a local readiness record for the same release
-boundary: protocol checks, Phase 3 security/service/static tests, local
+A 2026-08-20 local readiness record at commit `18a6ea70` covers the same
+release boundary: protocol checks, Phase 3 security/service/static tests, local
 Authority container gating, relay coturn data-plane scripts, and direct plus
-forced-local-coturn synthetic product E2E all passed on the current source. The
+forced-local-coturn synthetic product E2E all passed on that source. The
 synthetic E2E record is explicitly loopback-only, uses a synthetic Protocol v1
 peer, and records no Android UI, real screen capture, or public Internet path;
 the release gates below remain unchanged.
@@ -526,7 +526,7 @@ The previous curated Android interop pass remains withdrawn because its source
 commit and raw evidence were unavailable. The separate 2026-08-05
 reachable-source record retains raw host/device/UI, service and per-ADB
 lease-gate evidence with a privacy scan, without extending its result to current
-code. Current-source local readiness evidence is recorded under
+code. Dated local readiness evidence is recorded under
 [`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness/README.md).
 Automatic account/session-authority issuance, real
 encoded ScreenCaptureKit output through the device, automatic fresh-session

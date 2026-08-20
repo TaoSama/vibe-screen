@@ -9,7 +9,7 @@ the repository source fingerprint remains bound to source inputs only.
 ## Result
 
 **PASS for the local readiness subset only.** The following commands completed
-successfully on the current tree:
+successfully in that run:
 
 - `make protocol`
 - `make phase3-test`
@@ -65,7 +65,7 @@ e5d3ae474f8d1ce9eb3a8197e22edee4ab040970fa73f275bb9f5008a107178b  make-protocol.
 
 ## What this proves
 
-- The latest main source passed protocol format, lint, build, breaking, and
+- That source snapshot passed protocol format, lint, build, breaking, and
   protocol fixture tests.
 - Phase 3 Go security, signaling, relay and authority verification passed, along
   with the Phase 3 Python static, privacy, source-evidence, production-profile,
