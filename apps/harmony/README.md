@@ -148,6 +148,13 @@ for data handling and [UPGRADE.md](UPGRADE.md) for install/migration policy.
 
 ## Known gates
 
+Some gates are implementation gaps, not merely missing lab time. The HUKS
+cryptography provider, secure-pairing controller/UI integration, authenticated
+transport record layer, and Mac Host resume interoperability must exist before
+MatePad evidence can close the corresponding security and resume gates. The
+portable checks below only keep the source boundaries honest while that work is
+incomplete.
+
 - DevEco clean sync, ArkTS/API checker, debug/release HAP, and signature proof;
 - confirmation of the commercial SDK AVCodecKit declarations and buffer APIs;
 - Asset Store CRUD, XComponent surface, and H.264/HEVC hardware decode on device;
