@@ -18,6 +18,16 @@ final class ProtocolV1SessionTests: XCTestCase {
         )
     }
 
+    func testProductionHostCapabilitiesIncludeWakeHostOnlyWhenAvailable() {
+        XCTAssertFalse(
+            ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).contains(.wakeHost)
+        )
+        XCTAssertTrue(ProtocolV1SessionConfiguration.productionHostCapabilities(
+            touchEnabled: true,
+            wakeHostAvailable: true
+        ).contains(.wakeHost))
+    }
+
     func testManagedPolicyAppliesDenyWinsAndAllowedHosts() {
         let local = ManagedPolicy(
             isManaged: true,
@@ -1174,6 +1184,147 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(session.phase, .failed)
     }
 
+    func testWakeHostRequestRequiresNegotiatedCapabilityStreamingAndHostMatch() throws {
+        let ungated = try readySession()
+        var request = wakeHostRequest(hostID: "host")
+        XCTAssertEqual(
+            try protocolError(from: ungated.handleControl(
+                try envelope(id: 4, payload: .wakeHostRequest(request)).serializedData()
+            )).code,
+            .unsupportedCapability
+        )
+
+        let preStream = makeWakeHostSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .wakeHost]
+        _ = preStream.handleControl(try hello.serializedData())
+        _ = preStream.completeCodecNegotiation()
+        XCTAssertEqual(
+            try protocolError(from: preStream.handleControl(
+                try envelope(id: 2, payload: .wakeHostRequest(request)).serializedData()
+            )).code,
+            .invalidState
+        )
+
+        let session = try readyWakeHostSession()
+        let actions = session.handleControl(try envelope(id: 4, payload: .wakeHostRequest(request)).serializedData())
+        XCTAssertTrue(actions.contains { action in
+            if case .wakeHost(let context, let correlationID) = action {
+                return context.requestID == Data([0x31])
+                    && context.targetMACAddress == Data([1, 2, 3, 4, 5, 6])
+                    && context.hostID == "host"
+                    && correlationID == 4
+            }
+            return false
+        })
+
+        request.hostID = ""
+        let missingHostSession = try readyWakeHostSession()
+        XCTAssertEqual(
+            try protocolError(from: missingHostSession.handleControl(
+                try envelope(id: 5, payload: .wakeHostRequest(request)).serializedData()
+            )).code,
+            .invalidState
+        )
+
+        request.hostID = "other-host"
+        let mismatchSession = try readyWakeHostSession()
+        XCTAssertEqual(
+            try protocolError(from: mismatchSession.handleControl(
+                try envelope(id: 6, payload: .wakeHostRequest(request)).serializedData()
+            )).code,
+            .invalidState
+        )
+    }
+
+    func testWakeHostCompletionEchoesRequestAndCorrelation() throws {
+        let session = try readyWakeHostSession()
+        _ = session.handleControl(try envelope(
+            id: 4,
+            payload: .wakeHostRequest(wakeHostRequest())
+        ).serializedData())
+        let responses = try controlEnvelopes(session.completeWakeHost(
+            requestID: Data([0x31]),
+            accepted: false,
+            rejectionReason: "wake_host_policy_denied"
+        ))
+
+        XCTAssertEqual(responses.count, 1)
+        XCTAssertEqual(responses.first?.correlationID, 4)
+        guard case .wakeHostResult(let result)? = responses.first?.payload else {
+            return XCTFail("Expected WakeHostResult")
+        }
+        XCTAssertEqual(result.requestID, Data([0x31]))
+        XCTAssertFalse(result.accepted)
+        XCTAssertEqual(result.rejectionReason, "wake_host_policy_denied")
+    }
+
+    func testWakeHostCompletionDefaultsRejectedReason() throws {
+        let session = try readyWakeHostSession()
+        _ = session.handleControl(try envelope(
+            id: 4,
+            payload: .wakeHostRequest(wakeHostRequest())
+        ).serializedData())
+        let responses = try controlEnvelopes(session.completeWakeHost(
+            requestID: Data([0x31]),
+            accepted: false,
+            rejectionReason: ""
+        ))
+
+        guard case .wakeHostResult(let result)? = responses.first?.payload else {
+            return XCTFail("Expected WakeHostResult")
+        }
+        XCTAssertEqual(result.rejectionReason, "wake_host_rejected")
+    }
+
+    func testWakeHostCompletionConsumesTrackedRequestAndAcceptedReasonIsEmpty() throws {
+        let session = try readyWakeHostSession()
+        _ = session.handleControl(try envelope(
+            id: 4,
+            payload: .wakeHostRequest(wakeHostRequest())
+        ).serializedData())
+
+        let responses = try controlEnvelopes(session.completeWakeHost(
+            requestID: Data([0x31]),
+            accepted: true,
+            rejectionReason: "ignored"
+        ))
+
+        XCTAssertEqual(responses.count, 1)
+        XCTAssertEqual(responses.first?.correlationID, 4)
+        guard case .wakeHostResult(let result)? = responses.first?.payload else {
+            return XCTFail("Expected WakeHostResult")
+        }
+        XCTAssertTrue(result.accepted)
+        XCTAssertEqual(result.rejectionReason, "")
+        XCTAssertTrue(session.completeWakeHost(
+            requestID: Data([0x31]),
+            accepted: true,
+            rejectionReason: ""
+        ).isEmpty)
+    }
+
+    func testWakeHostCapabilityAdvertisementHonorsManagedPolicy() {
+        let policy = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: false,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: []
+        )
+        let capabilities = ProtocolV1SessionConfiguration.productionHostCapabilities(
+            touchEnabled: true,
+            managedPolicy: policy,
+            wakeHostAvailable: true
+        )
+
+        XCTAssertFalse(capabilities.contains(.wakeHost))
+    }
+
     func testProductionHostCapabilitiesIncludeControllerOnlyWhenAvailable() {
         let withoutController = ProtocolV1SessionConfiguration.productionHostCapabilities(
             touchEnabled: true,
@@ -1729,6 +1880,29 @@ final class ProtocolV1SessionTests: XCTestCase {
         ))
     }
 
+    private func makeWakeHostSession() -> ProtocolV1SessionCoordinator {
+        ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
+            sessionID: sessionID,
+            sessionEpoch: sessionEpoch,
+            displayWidth: 1920,
+            displayHeight: 1080,
+            rotation: 90,
+            framesPerSecond: 60,
+            bitrateKbps: 20_000,
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                wakeHostAvailable: true
+            ),
+            requiredClientCapabilities: [.touch],
+            supportedCodecs: [.hevc, .h264],
+            hostID: "host",
+            hostName: "Mac",
+            displayID: "active-display",
+            displayName: "Display",
+            displayIsVirtual: true
+        ))
+    }
+
     private func makeMultiDisplaySession() -> ProtocolV1SessionCoordinator {
         ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
             sessionID: sessionID,
@@ -1838,6 +2012,14 @@ final class ProtocolV1SessionTests: XCTestCase {
         var request = VSStartDisplayRequest()
         request.mode = .existing
         request.sourceDisplayID = sourceDisplayID
+        return request
+    }
+
+    private func wakeHostRequest(hostID: String = "host") -> VSWakeHostRequest {
+        var request = VSWakeHostRequest()
+        request.requestID = Data([0x31])
+        request.targetMacAddress = Data([1, 2, 3, 4, 5, 6])
+        request.hostID = hostID
         return request
     }
 
@@ -1991,6 +2173,24 @@ final class ProtocolV1SessionTests: XCTestCase {
         let session = makeSession()
         var hello = clientHello()
         hello.clientHello.capabilities = [.touch, .multiDisplay, .hostActions]
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        var result = VSVideoConfigResult()
+        result.configEpoch = 1
+        result.streamID = 1
+        result.accepted = true
+        _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(result)).serializedData())
+        return session
+    }
+
+    private func readyWakeHostSession() throws -> ProtocolV1SessionCoordinator {
+        let session = makeWakeHostSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .wakeHost]
         _ = session.handleControl(try hello.serializedData())
         _ = session.completeCodecNegotiation()
         _ = session.handleControl(try envelope(

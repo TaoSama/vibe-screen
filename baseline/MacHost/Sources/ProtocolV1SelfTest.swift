@@ -26,6 +26,7 @@ enum ProtocolV1SelfTest {
         testModifierCompatibility(failures: &failures)
         testClientVideoPreferences(failures: &failures)
         testHostActions(failures: &failures)
+        testWakeHost(failures: &failures)
         if failures.isEmpty {
             print("Protocol v1 self-test: PASS (framing, golden, negotiation, display/video gate, epoch, targeted input, heartbeat, graceful disconnect, error, media)")
             return true
@@ -1529,6 +1530,239 @@ enum ProtocolV1SelfTest {
         }
     }
 
+    private static func testWakeHost(failures: inout [String]) {
+        do {
+            // Decision layer: default authorizer denies wake (fail closed).
+            let request = WakeHostRequestContext(
+                requestID: Data([0x31]),
+                targetMACAddress: Data([1, 2, 3, 4, 5, 6]),
+                secureOnPassword: Data(),
+                hostID: "host",
+                deviceID: "device",
+                keyID: "",
+                issuedAtUnixSeconds: 0,
+                expiresAtUnixSeconds: 0,
+                nonce: Data(),
+                signature: Data()
+            )
+            do {
+                _ = try WakeHostDecision.magicPacket(for: request)
+                failures.append("WakeHostDecision did not fail closed with the default deny authorizer")
+                return
+            } catch WakeHostRequestError.policyDenied {
+                // expected
+            } catch {
+                throw error
+            }
+
+            // An explicit allow authorizer produces a well-formed magic packet.
+            let allowed = try WakeHostDecision.magicPacket(
+                for: request,
+                authorizer: StaticWakeHostAuthorizer(wakeAllowed: true)
+            )
+            guard allowed.count == WakeHostPacketBuilder.baseMagicPacketByteCount,
+                  allowed.prefix(6) == Data(repeating: 0xff, count: 6) else {
+                failures.append("WakeHostDecision allowed packet did not match the magic-packet header/length")
+                return
+            }
+            for index in 0..<16 {
+                let start = 6 + index * 6
+                if allowed[start..<(start + 6)] != request.targetMACAddress {
+                    failures.append("WakeHostDecision allowed packet did not repeat the target MAC at slot \(index)")
+                    return
+                }
+            }
+
+            do {
+                try UDPWakeHostPacketSender(port: 0).sendWakeHostPacket(allowed)
+                failures.append("UDPWakeHostPacketSender accepted port 0")
+                return
+            } catch WakeHostPacketSenderError.invalidPort {
+                // expected
+            } catch {
+                throw error
+            }
+
+            // Invalid MAC addresses are rejected before the policy is consulted.
+            let invalidLength = WakeHostRequestContext(
+                requestID: Data([0x31]),
+                targetMACAddress: Data([1, 2, 3]),
+                secureOnPassword: Data(),
+                hostID: "host",
+                deviceID: "device",
+                keyID: "",
+                issuedAtUnixSeconds: 0,
+                expiresAtUnixSeconds: 0,
+                nonce: Data(),
+                signature: Data()
+            )
+            do {
+                _ = try WakeHostDecision.magicPacket(
+                    for: invalidLength,
+                    authorizer: StaticWakeHostAuthorizer(wakeAllowed: true)
+                )
+                failures.append("WakeHostDecision accepted an invalid-length MAC")
+                return
+            } catch WakeHostRequestError.invalidMACAddress {
+                // expected
+            } catch {
+                throw error
+            }
+
+            // An empty request id is rejected before the policy is consulted.
+            let emptyID = WakeHostRequestContext(
+                requestID: Data(),
+                targetMACAddress: Data([1, 2, 3, 4, 5, 6]),
+                secureOnPassword: Data(),
+                hostID: "host",
+                deviceID: "device",
+                keyID: "",
+                issuedAtUnixSeconds: 0,
+                expiresAtUnixSeconds: 0,
+                nonce: Data(),
+                signature: Data()
+            )
+            do {
+                _ = try WakeHostDecision.magicPacket(
+                    for: emptyID,
+                    authorizer: StaticWakeHostAuthorizer(wakeAllowed: true)
+                )
+                failures.append("WakeHostDecision accepted an empty request id")
+                return
+            } catch WakeHostRequestError.invalidRequestID {
+                // expected
+            } catch {
+                throw error
+            }
+
+            // Protocol layer: a client that did not negotiate WAKE_HOST is
+            // rejected with unsupportedCapability and never receives a result.
+            let ungated = try readySession(clientCapabilities: [.touch, .multiDisplay])
+            var wakeRequest = VSWakeHostRequest()
+            wakeRequest.requestID = Data([0x31])
+            wakeRequest.targetMacAddress = Data([1, 2, 3, 4, 5, 6])
+            wakeRequest.hostID = "host"
+            let ungatedError = try protocolError(ungated.handleControl(try envelope(
+                id: 4,
+                payload: .wakeHostRequest(wakeRequest)
+            ).serializedData()))
+            guard ungatedError.code == .unsupportedCapability else {
+                failures.append("WakeHostRequest without the capability was not rejected as unsupported")
+                return
+            }
+
+            // A valid WakeHostRequest on a streaming, capability-negotiated
+            // session is forwarded as a wakeHost intent carrying the request
+            // context and the request correlation id.
+            let session = makeWakeHostSession()
+            var wakeHello = clientHelloEnvelope()
+            wakeHello.clientHello.capabilities = [.touch, .multiDisplay, .wakeHost]
+            _ = session.handleControl(try wakeHello.serializedData())
+            _ = session.completeCodecNegotiation()
+            _ = session.handleControl(try envelope(
+                id: 2,
+                payload: .startDisplayRequest(displayRequest())
+            ).serializedData())
+            try acceptVideoConfig(session, configEpoch: 1, streamID: 1, messageID: 3)
+            let actions = session.handleControl(try envelope(
+                id: 4,
+                payload: .wakeHostRequest(wakeRequest)
+            ).serializedData())
+            let wakeIntents = actions.compactMap { action -> (WakeHostRequestContext, UInt64)? in
+                if case .wakeHost(let context, let correlationID) = action {
+                    return (context, correlationID)
+                }
+                return nil
+            }
+            guard wakeIntents.count == 1,
+                  wakeIntents[0].0.requestID == Data([0x31]),
+                  wakeIntents[0].0.targetMACAddress == Data([1, 2, 3, 4, 5, 6]),
+                  wakeIntents[0].0.hostID == "host",
+                  wakeIntents[0].1 == 4 else {
+                failures.append("WakeHostRequest did not forward exactly one wakeHost intent with the expected context")
+                return
+            }
+
+            // completeWakeHost echoes the request id and correlation id in a
+            // WakeHostResult and carries the rejection reason on failure. Run
+            // this before the host-mismatch rejection below, because that
+            // rejection transitions the session to .failed and completeWakeHost
+            // only delivers results while the session is streaming or
+            // renegotiating video.
+            let completion = session.completeWakeHost(
+                requestID: Data([0x31]),
+                accepted: false,
+                rejectionReason: "wake_host_policy_denied"
+            )
+            let completionResponses = try responseEnvelopes(completion)
+            guard completionResponses.count == 1,
+                  case .wakeHostResult(let result)? = completionResponses[0].payload,
+                  result.requestID == Data([0x31]),
+                  result.accepted == false,
+                  result.rejectionReason == "wake_host_policy_denied",
+                  completionResponses[0].correlationID == 4 else {
+                failures.append("completeWakeHost did not emit a session-scoped WakeHostResult echoing the request and correlation id")
+                return
+            }
+            guard session.completeWakeHost(
+                requestID: Data([0x31]),
+                accepted: false,
+                rejectionReason: "wake_host_policy_denied"
+            ).isEmpty else {
+                failures.append("A duplicate completeWakeHost was not ignored")
+                return
+            }
+
+            let acceptedSession = try readyWakeHostSessionForSelfTest()
+            _ = acceptedSession.handleControl(try envelope(
+                id: 4,
+                payload: .wakeHostRequest(wakeRequest)
+            ).serializedData())
+            let acceptedResponses = try responseEnvelopes(acceptedSession.completeWakeHost(
+                requestID: Data([0x31]),
+                accepted: true,
+                rejectionReason: "ignored"
+            ))
+            guard acceptedResponses.count == 1,
+                  case .wakeHostResult(let acceptedResult)? = acceptedResponses[0].payload,
+                  acceptedResult.requestID == Data([0x31]),
+                  acceptedResult.accepted,
+                  acceptedResult.rejectionReason.isEmpty,
+                  acceptedResponses[0].correlationID == 4 else {
+                failures.append("completeWakeHost did not emit one accepted WakeHostResult")
+                return
+            }
+
+            var missingHostRequest = wakeRequest
+            missingHostRequest.hostID = ""
+            let missingHostSession = try readyWakeHostSessionForSelfTest()
+            let missingHostError = try protocolError(missingHostSession.handleControl(try envelope(
+                id: 5,
+                payload: .wakeHostRequest(missingHostRequest)
+            ).serializedData()))
+            guard missingHostError.code == .invalidState else {
+                failures.append("WakeHostRequest without a host id was not rejected with invalidState")
+                return
+            }
+
+            // A request that targets a different host id is rejected with
+            // invalidState so a cross-host wake never acts on this session.
+            var mismatchRequest = wakeRequest
+            mismatchRequest.hostID = "other-host"
+            let mismatchSession = try readyWakeHostSessionForSelfTest()
+            let hostMismatchError = try protocolError(mismatchSession.handleControl(try envelope(
+                id: 6,
+                payload: .wakeHostRequest(mismatchRequest)
+            ).serializedData()))
+            guard hostMismatchError.code == .invalidState else {
+                failures.append("WakeHostRequest targeting a different host was not rejected with invalidState")
+                return
+            }
+        } catch {
+            failures.append("wake host self-test failed: \(error)")
+        }
+    }
+
     private static func makeTouchEvent() -> VSTouchEvent {
         var point = VSNormalizedPoint()
         point.x = 0.25
@@ -1539,6 +1773,43 @@ enum ProtocolV1SelfTest {
         touch.phase = .began
         touch.position = point
         return touch
+    }
+
+    private static func readyWakeHostSessionForSelfTest() throws -> ProtocolV1SessionCoordinator {
+        let session = makeWakeHostSession()
+        var hello = clientHelloEnvelope()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .wakeHost]
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(displayRequest())
+        ).serializedData())
+        try acceptVideoConfig(session, configEpoch: 1, streamID: 1, messageID: 3)
+        return session
+    }
+
+    private static func makeWakeHostSession() -> ProtocolV1SessionCoordinator {
+        ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
+            sessionID: sessionID,
+            sessionEpoch: sessionEpoch,
+            displayWidth: 1920,
+            displayHeight: 1080,
+            rotation: 90,
+            framesPerSecond: 60,
+            bitrateKbps: 20_000,
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                wakeHostAvailable: true
+            ),
+            requiredClientCapabilities: [.touch],
+            supportedCodecs: [.hevc, .h264],
+            hostID: "host",
+            hostName: "Mac",
+            displayID: "active-display",
+            displayName: "Display",
+            displayIsVirtual: true
+        ))
     }
 
     private static func makeSession() -> ProtocolV1SessionCoordinator {

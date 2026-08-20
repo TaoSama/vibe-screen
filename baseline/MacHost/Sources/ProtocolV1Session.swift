@@ -182,7 +182,8 @@ struct ProtocolV1SessionConfiguration {
         touchEnabled: Bool,
         controllerAvailable: Bool = false,
         managedPolicy: ManagedPolicy = .unmanaged,
-        fileTransferAllowed: Bool = false
+        fileTransferAllowed: Bool = false,
+        wakeHostAvailable: Bool = false
     ) -> Set<VSCapability> {
         // Native pointer/keyboard ride the same input toggle as touch: they
         // require Accessibility to actually inject, but the capability is
@@ -203,6 +204,7 @@ struct ProtocolV1SessionConfiguration {
         if fileTransferAllowed && managedPolicy.fileTransferAllowed {
             capabilities.insert(.fileTransfer)
         }
+        if wakeHostAvailable && managedPolicy.wakeAllowed { capabilities.insert(.wakeHost) }
         return capabilities
     }
 
@@ -294,6 +296,7 @@ enum ProtocolV1SessionAction {
     case fileTransferComplete(VSFileTransferComplete)
     case remoteManagedPolicyChanged(VSManagedPolicyStatus)
     case sendBulk(Data)
+    case wakeHost(request: WakeHostRequestContext, correlationID: UInt64)
     case peerError(VSProtocolError)
     case close
 }
@@ -338,6 +341,7 @@ final class ProtocolV1SessionCoordinator {
     /// unknown completion is a safe no-op. Bounded by
     /// maximumPendingHostActionInvocations.
     private var pendingHostActionInvocations: [Data: UInt64] = [:]
+    private var pendingWakeHostRequests: [Data: UInt64] = [:]
 
     /// The remote peer's device identity captured from ClientHello. Every
     /// incoming clipboard offer/content must carry this exact, non-empty
@@ -536,6 +540,28 @@ final class ProtocolV1SessionCoordinator {
 
     func negotiatedFileTransferPolicySnapshot() -> ProtocolV1FileTransferPolicy {
         withSessionLock { negotiatedFileTransferPolicy }
+    }
+
+    func completeWakeHost(
+        requestID: Data,
+        accepted: Bool,
+        rejectionReason: String
+    ) -> [ProtocolV1SessionAction] {
+        withSessionLock {
+            guard negotiatedCapabilities.contains(.wakeHost) else { return [] }
+            guard let requestMessageID = pendingWakeHostRequests.removeValue(forKey: requestID) else { return [] }
+            switch phase {
+            case .streaming, .awaitingVideoConfig:
+                break
+            default:
+                return []
+            }
+            var result = VSWakeHostResult()
+            result.requestID = requestID
+            result.accepted = accepted
+            result.rejectionReason = accepted ? "" : (rejectionReason.isEmpty ? "wake_host_rejected" : rejectionReason)
+            return sendActions(payload: .wakeHostResult(result), correlationID: requestMessageID)
+        }
     }
 
     /// Completes one native controller CONNECTED delivery. The pending entry
@@ -1173,11 +1199,33 @@ final class ProtocolV1SessionCoordinator {
             }
             return [.fileTransferComplete(result)]
 
+        case .wakeHostRequest(let request):
+            guard negotiatedCapabilities.contains(.wakeHost) else {
+                return unsupportedCapability("Wake host was not negotiated.", envelope.messageID)
+            }
+            guard case .streaming = phase else {
+                return invalidState("WakeHostRequest arrived before media was streaming.", envelope.messageID)
+            }
+            let context = WakeHostRequestContext(request)
+            guard !context.requestID.isEmpty else {
+                return invalidState("WakeHostRequest is missing a request id.", envelope.messageID)
+            }
+            guard !context.hostID.isEmpty, context.hostID == configuration.hostID else {
+                return invalidState("WakeHostRequest targets a different host.", envelope.messageID)
+            }
+            guard pendingWakeHostRequests[context.requestID] == nil else { return [] }
+            guard pendingWakeHostRequests.count < Self.maximumPendingWakeHostRequests else {
+                return invalidState("Too many wake-host requests are awaiting confirmation.", envelope.messageID)
+            }
+            pendingWakeHostRequests[context.requestID] = envelope.messageID
+            return [.wakeHost(request: context, correlationID: envelope.messageID)]
+
         case .protocolError(let error):
             phase = .failed
             _ = stylusSequenceState.consumeReset()
             resetControllerState()
             pendingHostActionInvocations.removeAll()
+            pendingWakeHostRequests.removeAll()
             clipboardCore?.reset()
             remoteManagedClipboardAllowed = true
             managedPolicyResolver.clearRemote()
@@ -1190,6 +1238,7 @@ final class ProtocolV1SessionCoordinator {
             _ = stylusSequenceState.consumeReset()
             resetControllerState()
             pendingHostActionInvocations.removeAll()
+            pendingWakeHostRequests.removeAll()
             clipboardCore?.reset()
             remoteManagedClipboardAllowed = true
             managedPolicyResolver.clearRemote()
@@ -1271,6 +1320,7 @@ final class ProtocolV1SessionCoordinator {
     /// rejected with invalidState and the protocol session fails closed. The
     /// window actions are effectively serial in practice, so a small cap is ample.
     private static let maximumPendingHostActionInvocations = 16
+    private static let maximumPendingWakeHostRequests = 16
 
     // Bounds the host applies to a client SetVideoPreferences request. The
     // client can express intent but never drive the encoder outside this range.
@@ -1793,6 +1843,9 @@ final class ProtocolV1SessionCoordinator {
         if !effectivePolicy.hostActionsAllowed {
             pendingHostActionInvocations.removeAll()
         }
+        if !effectivePolicy.wakeAllowed {
+            pendingWakeHostRequests.removeAll()
+        }
         return [.remoteManagedPolicyChanged(effectivePolicy.protocolStatus)]
     }
 
@@ -1908,6 +1961,7 @@ final class ProtocolV1SessionCoordinator {
         _ = stylusSequenceState.consumeReset()
         resetControllerState()
         pendingHostActionInvocations.removeAll()
+        pendingWakeHostRequests.removeAll()
         clipboardCore?.reset()
         remoteManagedClipboardAllowed = true
         managedPolicyResolver.clearRemote()
@@ -1945,6 +1999,8 @@ final class ProtocolV1SessionCoordinator {
         phase = .failed
         _ = stylusSequenceState.consumeReset()
         resetControllerState()
+        pendingHostActionInvocations.removeAll()
+        pendingWakeHostRequests.removeAll()
         clipboardCore?.reset()
         remoteManagedClipboardAllowed = true
         managedPolicyResolver.clearRemote()

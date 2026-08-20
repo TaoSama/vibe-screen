@@ -107,7 +107,10 @@ class StreamClient(
     private val videoConfigurationCommitTimeoutMs: Long = VIDEO_CONFIGURATION_COMMIT_TIMEOUT_MS,
     private val videoConfigurationTimeoutExecutor: ScheduledExecutorService = VIDEO_CONFIGURATION_TIMEOUT_EXECUTOR,
     private val terminationExecutor: Executor = SESSION_TERMINATION_EXECUTOR,
+    private val wakeHostExecutor: Executor = WAKE_HOST_EXECUTOR,
     private val advertiseController: Boolean = false,
+    private val wakeHostPolicy: WakeHostPolicy = WakeHostPolicy.DENY,
+    private val wakeHostPacketSender: WakeHostPacketSender = UdpWakeHostPacketSender(),
 ) {
     internal val actualPort: Int = port
     private val transportOwner = StreamTransportOwner<SocketStreamTransportConnection>()
@@ -135,15 +138,16 @@ class StreamClient(
     private val outgoingFileTransfers = mutableMapOf<ByteString, OutgoingFileTransfer>()
     private var remoteManagedPolicy = RemoteManagedPolicy.UNMANAGED
     private val fileTransferPolicy = FileTransferPolicy()
+    private val pendingInboundWakeHostRequests = ArrayDeque<ByteString>()
     @Volatile private var lastV1PingSequence = 0L
     @Volatile private var lastV1PingSentNs = 0L
     private val controllerConnectionAcks = ControllerConnectionAckTracker()
 
     private val heartbeat = HeartbeatMonitor(HEARTBEAT_TIMEOUT_MS)
     private val reconnectBackoff = ReconnectBackoff()
-    // Per-invocation ids for host actions must be unpredictable so a result
-    // cannot be spoofed by replaying a guessed id.
-    private val hostActionRandom = SecureRandom()
+    // Protocol request ids must be unpredictable so a result cannot be spoofed
+    // by replaying a guessed id.
+    private val protocolRequestRandom = SecureRandom()
 
     // Callback includes actual frame size (may differ from buffer.size due to pooling),
     // receive timestamp, and whether the frame can restart HEVC decoding.
@@ -163,6 +167,7 @@ class StreamClient(
     internal var onFileOffer: ((dev.vibescreen.protocol.v1.FileOffer) -> Boolean)? = null
     internal var onIncomingFileCompleted: ((CompletedIncomingFile) -> Unit)? = null
     internal var onFileTransferResult: ((accepted: Boolean, reason: String) -> Unit)? = null
+    internal var onWakeHostResult: ((accepted: Boolean, rejectionReason: String) -> Unit)? = null
     var onStats: ((Double, Double) -> Unit)? = null
     var onReconnectSuggested: ((delayMs: Long) -> Unit)? = null
     var onWriteFailure: ((reason: String) -> Unit)? = null
@@ -671,6 +676,7 @@ class StreamClient(
                 },
             advertiseController = advertiseController,
             fileTransferPolicy = fileTransferPolicy,
+            wakeHostPolicy = wakeHostPolicy,
         ).also {
             incomingFileTransfers.set(
                 IncomingFileTransferManager(
@@ -685,7 +691,8 @@ class StreamClient(
         }
 
     private fun fileTransferStagingDirectory(): File {
-        val root = context?.cacheDir ?: File(System.getProperty("java.io.tmpdir"))
+        val tmpDir = System.getProperty("java.io.tmpdir") ?: "."
+        val root = context?.cacheDir ?: File(tmpDir)
         return File(root, "vibescreen-file-transfer")
     }
 
@@ -1413,13 +1420,40 @@ class StreamClient(
         if (!isConnected || wireMode != WireMode.V1) return
         val session = protocolSession ?: return
         if (!session.canInvokeHostActions) return
-        val invocationId = ByteString.copyFrom(ByteArray(HOST_ACTION_INVOCATION_ID_BYTES).also(hostActionRandom::nextBytes))
+        val invocationId = ByteString.copyFrom(ByteArray(HOST_ACTION_INVOCATION_ID_BYTES).also(protocolRequestRandom::nextBytes))
         submitOutbound(
             kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
             command = StreamOutboundCommand.ProtocolBatch { activeSession ->
                 activeSession.invokeHostAction(actionId, invocationId)?.let { listOf(it) } ?: emptyList()
             },
         )
+    }
+
+    fun requestWakeHost(
+        targetMacAddress: ByteString,
+        secureOnPassword: ByteString = ByteString.EMPTY,
+    ): Boolean {
+        val requestId = ByteString.copyFrom(ByteArray(WAKE_HOST_REQUEST_ID_BYTES).also(protocolRequestRandom::nextBytes))
+        return requestWakeHost(requestId, targetMacAddress, secureOnPassword)
+    }
+
+    internal fun requestWakeHost(
+        requestId: ByteString,
+        targetMacAddress: ByteString,
+        secureOnPassword: ByteString = ByteString.EMPTY,
+    ): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canRequestWakeHost) return false
+        val submission =
+            submitOutbound(
+                kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                command = StreamOutboundCommand.ProtocolBatch { activeSession ->
+                    activeSession.requestWakeHost(requestId, targetMacAddress, secureOnPassword)?.let { listOf(it) }
+                        ?: emptyList()
+                },
+            )
+        return isOutboundAdmitted(submission)
     }
 
     /**
@@ -1595,12 +1629,16 @@ class StreamClient(
 
             is StreamOutboundCommand.ProtocolSendBulk ->
                 ProtocolV1Framing.write(out, ProtocolChannel.BULK, command.chunk.toFrame())
+
+            is StreamOutboundCommand.ProtocolWakeHostCompletion ->
+                processWakeHostCompletion(out, command)
         }
         if (command !is StreamOutboundCommand.ProtocolBatch &&
             command !is StreamOutboundCommand.ProtocolReceive &&
             command !is StreamOutboundCommand.ProtocolBulk &&
             command !is StreamOutboundCommand.ProtocolSendBulk &&
-            command !is StreamOutboundCommand.ProtocolVideoConfigurationCompletion
+            command !is StreamOutboundCommand.ProtocolVideoConfigurationCompletion &&
+            command !is StreamOutboundCommand.ProtocolWakeHostCompletion
         ) {
             out.flush()
         }
@@ -1747,6 +1785,16 @@ class StreamClient(
                         outgoingFileTransfers.remove(action.result.transferId)?.cancel()
                         onFileTransferResult?.invoke(action.result.accepted, action.result.rejectionReason)
                     }
+                    is ProtocolV1Session.Action.WakeHost -> {
+                        dispatchWakeHostRequest(
+                            session = session,
+                            connectionGeneration = connectionEpoch,
+                            action = action,
+                        )
+                    }
+                    is ProtocolV1Session.Action.WakeHostCompleted -> {
+                        onWakeHostResult?.invoke(action.accepted, action.rejectionReason)
+                    }
                    is ProtocolV1Session.Action.Disconnected -> {
                         pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
                         stopRequested = !action.mayResume
@@ -1870,6 +1918,101 @@ class StreamClient(
         }
     }
 
+    private fun performWakeHostRequest(request: WakeHostRequestContext): Pair<Boolean, String> =
+        try {
+            val packet = WakeHostDecision.magicPacket(request, wakeHostPolicy)
+            wakeHostPacketSender.send(packet)
+            true to ""
+        } catch (failure: WakeHostRequestException) {
+            false to
+                when (failure.failure) {
+                    WakeHostRequestFailure.INVALID_REQUEST_ID -> "invalid_request_id"
+                    WakeHostRequestFailure.INVALID_MAC_ADDRESS -> "invalid_mac_address"
+                    WakeHostRequestFailure.INVALID_SECURE_ON_PASSWORD -> "invalid_secure_on_password"
+                    WakeHostRequestFailure.POLICY_DENIED -> "wake_host_policy_denied"
+                }
+        } catch (failure: Exception) {
+            Log.w(TAG, "WakeHost packet send failed with ${failure.javaClass.simpleName}", failure)
+            false to "wake_packet_send_failed"
+        }
+
+    private fun dispatchWakeHostRequest(
+        session: ProtocolV1Session,
+        connectionGeneration: Long,
+        action: ProtocolV1Session.Action.WakeHost,
+    ) {
+        if (!trackInboundWakeHostRequest(action.request.requestId)) {
+            submitOutbound(
+                kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                command = StreamOutboundCommand.ProtocolWakeHostCompletion(
+                    session = session,
+                    connectionGeneration = connectionGeneration,
+                    requestId = action.request.requestId,
+                    accepted = false,
+                    rejectionReason = "too_many_pending_wake_host_requests",
+                    correlationId = action.correlationId,
+                ),
+                timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
+            )
+            return
+        }
+        wakeHostExecutor.execute {
+            val (accepted, reason) = performWakeHostRequest(action.request)
+            val submission =
+                submitOutbound(
+                    kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                    command = StreamOutboundCommand.ProtocolWakeHostCompletion(
+                        session = session,
+                        connectionGeneration = connectionGeneration,
+                        requestId = action.request.requestId,
+                        accepted = accepted,
+                        rejectionReason = reason,
+                        correlationId = action.correlationId,
+                    ),
+                    timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
+                )
+            if (!isOutboundAdmitted(submission)) {
+                releaseInboundWakeHostRequest(action.request.requestId)
+                requestConnectionEnd(
+                    SessionFailure.protocol(
+                        SessionFailureKind.OUTBOUND_BACKPRESSURE,
+                        "WakeHost completion queue unavailable: $submission",
+                    ),
+                )
+            }
+        }
+    }
+
+    @Synchronized
+    private fun trackInboundWakeHostRequest(requestId: ByteString): Boolean {
+        if (pendingInboundWakeHostRequests.contains(requestId)) return false
+        if (pendingInboundWakeHostRequests.size >= MAX_PENDING_INBOUND_WAKE_HOST_REQUESTS) return false
+        pendingInboundWakeHostRequests.addLast(requestId)
+        return true
+    }
+
+    @Synchronized
+    private fun releaseInboundWakeHostRequest(requestId: ByteString) {
+        pendingInboundWakeHostRequests.remove(requestId)
+    }
+
+    private fun processWakeHostCompletion(
+        out: java.io.DataOutputStream,
+        command: StreamOutboundCommand.ProtocolWakeHostCompletion,
+    ) {
+        try {
+            if (!isCurrentProtocolSession(command.session, command.connectionGeneration)) return
+            command.session.completeWakeHost(
+                requestId = command.requestId,
+                accepted = command.accepted,
+                rejectionReason = command.rejectionReason,
+                correlationId = command.correlationId,
+            )?.let { writeProtocolEnvelope(out, it) }
+        } finally {
+            releaseInboundWakeHostRequest(command.requestId)
+        }
+    }
+
     private fun beginVideoConfiguration(
         session: ProtocolV1Session,
         configurationToken: Long,
@@ -1962,7 +2105,7 @@ class StreamClient(
                is ProtocolV1Session.Action.VideoConfigurationRequested,
                is ProtocolV1Session.Action.PongReceived,
                is ProtocolV1Session.Action.ControllerInputAck,
-               is ProtocolV1Session.Action.Disconnected,
+                is ProtocolV1Session.Action.Disconnected,
                 is ProtocolV1Session.Action.DisplaysAvailable,
                 is ProtocolV1Session.Action.HostActionsAvailable,
                 is ProtocolV1Session.Action.HostActionCompleted,
@@ -1974,6 +2117,8 @@ class StreamClient(
                 is ProtocolV1Session.Action.FileProgressReceived,
                 is ProtocolV1Session.Action.FileCancelReceived,
                 is ProtocolV1Session.Action.FileCompleteReceived,
+                is ProtocolV1Session.Action.WakeHost,
+                is ProtocolV1Session.Action.WakeHostCompleted,
                -> throw IllegalStateException("Unexpected action while completing decoder configuration")
             }
         }
@@ -2253,6 +2398,7 @@ class StreamClient(
         outgoingFileTransfers.values.forEach { it.cancel() }
         outgoingFileTransfers.clear()
         remoteManagedPolicy = RemoteManagedPolicy.UNMANAGED
+        pendingInboundWakeHostRequests.clear()
         controllerConnectionAcks.reset()
         pendingLegacyFirstByte = null
         lanSecureRecordSession?.close()
@@ -2560,6 +2706,8 @@ class StreamClient(
         private const val UNASSIGNED_ATTEMPT_GENERATION = 0L
         private const val AUTH_RESPONSE_BYTES = 5
         private const val HOST_ACTION_INVOCATION_ID_BYTES = 16
+        private const val WAKE_HOST_REQUEST_ID_BYTES = 16
+        private const val MAX_PENDING_INBOUND_WAKE_HOST_REQUESTS = 16
         private const val HEARTBEAT_POLL_INTERVAL_MS = 1_000
         private const val HEARTBEAT_TIMEOUT_MS = 3_500L
         private const val MIN_DISPLAY_DIMENSION = 16
@@ -2591,6 +2739,10 @@ class StreamClient(
         private val SESSION_TERMINATION_EXECUTOR =
             Executors.newSingleThreadExecutor { runnable ->
                 Thread(runnable, "VibeSessionTerminator").apply { isDaemon = true }
+            }
+        private val WAKE_HOST_EXECUTOR =
+            Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "VibeWakeHostSender").apply { isDaemon = true }
             }
 
         private enum class WireMode { LEGACY, V1 }
