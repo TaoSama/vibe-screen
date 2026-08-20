@@ -55,6 +55,14 @@ e5d3ae474f8d1ce9eb3a8197e22edee4ab040970fa73f275bb9f5008a107178b  make-protocol.
 5d02b3b3c48c45f22b76010fd277d07fad999b7fbf2d4e006dde4491945cfa45  relay-turn-peer-acl.log
 ```
 
+## Evidence layout
+
+- `README.md`: this human-readable local readiness summary.
+- `privacy-scan.json`: deterministic scan proving the committed evidence files
+  contain no unredacted network endpoints, hardware identifiers, credential
+  material, URLs, or user absolute paths.
+- `SHA256SUMS`: integrity binding for every archived file except itself.
+
 ## What this proves
 
 - The latest main source passed protocol format, lint, build, breaking, and
