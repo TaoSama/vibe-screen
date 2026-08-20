@@ -49,3 +49,9 @@ def test_advanced_channel_gate_limits_match_record_contracts() -> None:
     assert "maximumBulkBacklogBytes = 4 * 1024 * 1024" in android_gate
     assert "maximumAudioBacklogBytes: 1024 * 1_024" in swift_gate
     assert "maximumBulkBacklogBytes: 4 * 1024 * 1024" in swift_gate
+
+
+if __name__ == "__main__":
+    test_advanced_channel_gate_exists_on_android_and_macos()
+    test_advanced_channel_gate_is_limited_to_audio_and_bulk_channels()
+    test_advanced_channel_gate_limits_match_record_contracts()
