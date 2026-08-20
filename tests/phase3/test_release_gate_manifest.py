@@ -82,6 +82,25 @@ def passing_manifest() -> dict[str, object]:
             "network_handoff_recovery": gate_defaults
             | {
                 "handoff_count": 2,
+                "controlled_impairment": True,
+                "impairment_tool": "linux-netns-tc",
+                "impairment_profile": {
+                    "latency_ms": 95,
+                    "jitter_ms": 20,
+                    "loss_percent": 2.0,
+                    "bandwidth_kbps": 6000,
+                },
+                "route_before": "direct",
+                "route_after": "relay",
+                "fresh_session_requested": True,
+                "ice_restart_attempted": True,
+                "old_session_closed": True,
+                "initial_session_epoch": 7,
+                "recovered_session_epoch": 8,
+                "stream_pause_detected": True,
+                "stream_resume_detected": True,
+                "recovery_started_at_monotonic_ms": 1000,
+                "recovery_completed_at_monotonic_ms": 5200,
                 "session_epoch_advanced": True,
                 "stale_epoch_rejected": True,
                 "recovered_streaming": True,
@@ -113,6 +132,16 @@ def passing_manifest() -> dict[str, object]:
             | {
                 "duration_seconds": 7200,
                 "routes": ["direct", "relay"],
+                "controlled_impairment": True,
+                "impairment_tool": "linux-netns-tc",
+                "impairment_profile": {
+                    "latency_ms": 120,
+                    "jitter_ms": 35,
+                    "loss_percent": 2.0,
+                    "bandwidth_kbps": 10000,
+                },
+                "route_before": "direct",
+                "route_after": "relay",
                 "network_change_count": 3,
                 "bounded_queues": True,
                 "bounded_memory": True,
@@ -129,6 +158,14 @@ class ReleaseGateManifestTests(unittest.TestCase):
         self.assertEqual({item["gate"] for item in matrix}, EXPECTED_GATE_NAMES)
         self.assertEqual({rule.name for rule in GATE_RULES}, EXPECTED_GATE_NAMES)
         self.assertTrue(all(item["current_status"] == "open" for item in matrix))
+        by_gate = {item["gate"]: set(item["required_fields"]) for item in matrix}
+        self.assertIn(
+            "first_android_output_observed",
+            by_gate["real_screencapturekit_to_android_media"],
+        )
+        self.assertIn("recovery_seconds", by_gate["network_handoff_recovery"])
+        self.assertIn("controlled_impairment", by_gate["network_handoff_recovery"])
+        self.assertIn("no_steady_latency_growth", by_gate["two_hour_mixed_route_soak"])
 
     def test_complete_manifest_passes_with_existing_evidence_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -202,7 +239,30 @@ class ReleaseGateManifestTests(unittest.TestCase):
 
         self.assertIn("gates.remote_turn_relay_path.remote_turn_deployment: expected true", errors)
         self.assertIn("gates.remote_turn_relay_path.local_coturn_only: expected false", errors)
-        self.assertIn("gates.remote_turn_relay_path.selected_candidate_pair: expected relay candidate pair", errors)
+        self.assertIn(
+            "gates.remote_turn_relay_path.selected_candidate_pair: expected relay candidate pair",
+            errors,
+        )
+        self.assertIn(
+            "gates.remote_turn_relay_path.selected_candidate_pair: relay gate requires relay local and remote candidates",
+            errors,
+        )
+
+    def test_candidate_pair_format_is_validated(self) -> None:
+        manifest = passing_manifest()
+        gate = manifest["gates"]["public_internet_direct_path"]  # type: ignore[index]
+        gate["selected_candidate_pair"] = "direct(local=host,remote=bogus,protocol=quic)"
+
+        errors = validate_manifest(manifest)
+
+        self.assertIn(
+            "gates.public_internet_direct_path.selected_candidate_pair.remote: unsupported candidate type bogus",
+            errors,
+        )
+        self.assertIn(
+            "gates.public_internet_direct_path.selected_candidate_pair.protocol: unsupported candidate transport quic",
+            errors,
+        )
 
     def test_latency_gate_requires_existing_external_camera_sample_floor(self) -> None:
         manifest = passing_manifest()
@@ -212,6 +272,60 @@ class ReleaseGateManifestTests(unittest.TestCase):
         self.assertIn(
             "gates.external_camera_latency.sample_count: expected >= 5",
             validate_manifest(manifest),
+        )
+
+    def test_handoff_gate_requires_fresh_session_timeline(self) -> None:
+        manifest = passing_manifest()
+        gate = manifest["gates"]["network_handoff_recovery"]  # type: ignore[index]
+        gate["recovered_session_epoch"] = 7
+        gate["old_session_closed"] = False
+        gate["recovery_completed_at_monotonic_ms"] = 999
+
+        errors = validate_manifest(manifest)
+
+        self.assertIn(
+            "gates.network_handoff_recovery.old_session_closed: expected true",
+            errors,
+        )
+        self.assertIn(
+            "gates.network_handoff_recovery.recovered_session_epoch: expected > initial_session_epoch",
+            errors,
+        )
+        self.assertIn(
+            "gates.network_handoff_recovery.recovery_completed_at_monotonic_ms: expected > recovery_started_at_monotonic_ms",
+            errors,
+        )
+
+    def test_deterministic_network_profile_cannot_close_real_network_gate(self) -> None:
+        manifest = passing_manifest()
+        gate = manifest["gates"]["network_handoff_recovery"]  # type: ignore[index]
+        gate["impairment_tool"] = "scripts/phase3/network_profile.py"
+
+        self.assertIn(
+            "gates.network_handoff_recovery.impairment_tool: deterministic simulator cannot close a release gate",
+            validate_manifest(manifest),
+        )
+
+    def test_soak_gate_requires_controlled_network_conditions(self) -> None:
+        manifest = passing_manifest()
+        gate = manifest["gates"]["two_hour_mixed_route_soak"]  # type: ignore[index]
+        gate["controlled_impairment"] = False
+        gate["route_after"] = "unknown"
+        gate["impairment_profile"]["bandwidth_kbps"] = 0  # type: ignore[index]
+
+        errors = validate_manifest(manifest)
+
+        self.assertIn(
+            "gates.two_hour_mixed_route_soak.controlled_impairment: expected true",
+            errors,
+        )
+        self.assertIn(
+            "gates.two_hour_mixed_route_soak.route_after: expected direct or relay",
+            errors,
+        )
+        self.assertIn(
+            "gates.two_hour_mixed_route_soak.impairment_profile.bandwidth_kbps: expected positive number",
+            errors,
         )
 
     def test_nubia_evidence_cannot_claim_xiaomi_identity(self) -> None:

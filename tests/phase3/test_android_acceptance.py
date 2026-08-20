@@ -24,6 +24,7 @@ from scripts.phase3.android_internet_acceptance import (
     _coordination_locks,
     _device_identity,
     _extract_session_epoch,
+    _optional_pattern_assertions,
     _read_new_host_evidence,
     _require_device_lease_authorized,
     _require_pattern,
@@ -334,6 +335,41 @@ class AndroidAcceptanceTests(unittest.TestCase):
         _require_session_epoch_advance(first, reconnect)
         with self.assertRaisesRegex(AcceptanceError, "did not advance"):
             _require_session_epoch_advance(reconnect, reconnect)
+
+    def test_optional_recovery_patterns_are_explicitly_reported(self) -> None:
+        observation = (
+            "fresh session requested\n"
+            "ice restart started\n"
+            "old session closed\n"
+            "stale epoch rejected\n"
+        )
+
+        assertions = _optional_pattern_assertions(
+            observation,
+            {
+                "fresh_session_requested": r"fresh session requested",
+                "ice_restart_attempted": r"ice restart started",
+                "old_session_closed": r"old session closed",
+                "stale_epoch_rejected": None,
+            },
+        )
+
+        self.assertEqual(
+            assertions,
+            {
+                "fresh_session_requested": "passed",
+                "ice_restart_attempted": "passed",
+                "old_session_closed": "passed",
+                "stale_epoch_rejected": "not_requested",
+            },
+        )
+
+    def test_optional_recovery_pattern_fails_closed_when_requested(self) -> None:
+        with self.assertRaisesRegex(AcceptanceError, "missing required fresh session requested"):
+            _optional_pattern_assertions(
+                "ordinary reconnect only",
+                {"fresh_session_requested": r"fresh session requested"},
+            )
 
     def test_json_evidence_is_private_and_does_not_leave_temporary_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

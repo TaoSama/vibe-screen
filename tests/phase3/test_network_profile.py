@@ -17,6 +17,10 @@ class NetworkProfileTests(unittest.TestCase):
     def test_handoff_preserves_control_and_bounds_media(self) -> None:
         segments = load_segments("healthy", Path(__file__).parent / "profiles" / "handoff.json")
         result = simulate(segments, seed=17, media_queue_capacity=2)
+        self.assertEqual(result.evidence_scope, "deterministic_contract_simulation_only")
+        self.assertIn("not_webrtc_ice_or_turn_evidence", result.evidence_limitations)
+        self.assertEqual(result.route_sequence, ["wifi", "transition", "cellular"])
+        self.assertEqual(result.segments[1]["name"], "handoff-outage")
         self.assertEqual(result.control_sent, result.control_delivered)
         self.assertTrue(result.control_ordered)
         self.assertLessEqual(result.max_media_queue_depth, 2)
@@ -33,6 +37,16 @@ class NetworkProfileTests(unittest.TestCase):
         result = simulate(DEFAULT_PROFILES["healthy"], seed=20260804)
         self.assertEqual(result.media_queue_drops, 0)
         self.assertGreater(result.media_delivered / result.media_sent, 0.95)
+
+    def test_built_in_profiles_cover_network_gate_scenarios(self) -> None:
+        self.assertIn("moderate", DEFAULT_PROFILES)
+        self.assertIn("bandwidth-step", DEFAULT_PROFILES)
+        self.assertIn("handoff", DEFAULT_PROFILES)
+        self.assertIn("relay-loss", DEFAULT_PROFILES)
+        step = simulate(DEFAULT_PROFILES["bandwidth-step"], seed=20260804)
+        relay_loss = simulate(DEFAULT_PROFILES["relay-loss"], seed=20260804)
+        self.assertEqual(step.route_sequence, ["wifi"])
+        self.assertEqual(relay_loss.route_sequence, ["relay", "relay-outage", "relay"])
 
     def test_weak_link_prefers_recent_media(self) -> None:
         result = simulate(DEFAULT_PROFILES["weak"], seed=20260804)

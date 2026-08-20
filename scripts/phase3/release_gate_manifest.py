@@ -21,6 +21,12 @@ from typing import Any, Callable, Mapping, Sequence
 SCHEMA = "dev.vibescreen.phase3-release-gate-manifest/v1"
 HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 HEX_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+CANDIDATE_PAIR_PATTERN = re.compile(
+    r"^(direct|relay)\(local=([a-z0-9_-]+),remote=([a-z0-9_-]+),"
+    r"protocol=([a-z0-9_-]+)\)$"
+)
+SUPPORTED_CANDIDATE_TYPES = {"host", "srflx", "prflx", "relay"}
+SUPPORTED_CANDIDATE_PROTOCOLS = {"udp", "tcp", "tls"}
 
 
 class ManifestError(ValueError):
@@ -40,6 +46,24 @@ class GateRule:
 
 
 COMMON_GATE_REQUIRED_FIELDS = ("synthetic_media", "local_loopback_only")
+REQUIRED_NETWORK_CONDITION_FIELDS = (
+    "controlled_impairment",
+    "impairment_tool",
+    "impairment_profile",
+    "route_before",
+    "route_after",
+)
+REQUIRED_FRESH_SESSION_FIELDS = (
+    "fresh_session_requested",
+    "ice_restart_attempted",
+    "old_session_closed",
+    "initial_session_epoch",
+    "recovered_session_epoch",
+    "stream_pause_detected",
+    "stream_resume_detected",
+    "recovery_started_at_monotonic_ms",
+    "recovery_completed_at_monotonic_ms",
+)
 
 
 def _as_mapping(value: Any, path: str, errors: list[str]) -> Mapping[str, Any]:
@@ -82,9 +106,94 @@ def _require_minimum_number(value: Any, path: str, minimum: float, errors: list[
     return observed
 
 
+def _require_nonnegative_number(value: Any, path: str, errors: list[str]) -> float | None:
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+        errors.append(f"{path}: expected non-negative number")
+        return None
+    return float(value)
+
+
+def _require_integer_at_least(value: Any, path: str, minimum: int, errors: list[str]) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        errors.append(f"{path}: expected integer >= {minimum}")
+        return 0
+    if value < minimum:
+        errors.append(f"{path}: expected integer >= {minimum}")
+    return value
+
+
 def _require_not_local_only(gate: Mapping[str, Any], path: str, errors: list[str]) -> None:
     _require_bool(gate.get("synthetic_media", False), f"{path}.synthetic_media", False, errors)
     _require_bool(gate.get("local_loopback_only", False), f"{path}.local_loopback_only", False, errors)
+
+
+def _validate_network_conditions(gate: Mapping[str, Any], path: str, errors: list[str]) -> None:
+    _require_bool(gate.get("controlled_impairment"), f"{path}.controlled_impairment", True, errors)
+    tool = _require_nonempty_string(gate.get("impairment_tool"), f"{path}.impairment_tool", errors)
+    if tool and tool in {"scripts/phase3/network_profile.py", "deterministic_contract_simulation"}:
+        errors.append(f"{path}.impairment_tool: deterministic simulator cannot close a release gate")
+    profile = _as_mapping(gate.get("impairment_profile"), f"{path}.impairment_profile", errors)
+    if profile:
+        for field in ("latency_ms", "jitter_ms", "loss_percent"):
+            _require_nonnegative_number(profile.get(field), f"{path}.impairment_profile.{field}", errors)
+        _require_positive_number(profile.get("bandwidth_kbps"), f"{path}.impairment_profile.bandwidth_kbps", errors)
+    route_before = _require_nonempty_string(gate.get("route_before"), f"{path}.route_before", errors)
+    route_after = _require_nonempty_string(gate.get("route_after"), f"{path}.route_after", errors)
+    if route_before and route_before not in {"direct", "relay"}:
+        errors.append(f"{path}.route_before: expected direct or relay")
+    if route_after and route_after not in {"direct", "relay"}:
+        errors.append(f"{path}.route_after: expected direct or relay")
+
+
+def _validate_candidate_pair(
+    value: str,
+    path: str,
+    expected_route: str,
+    errors: list[str],
+) -> None:
+    match = CANDIDATE_PAIR_PATTERN.fullmatch(value)
+    if match is None:
+        errors.append(f"{path}: expected route(local=type,remote=type,protocol=transport)")
+        return
+    route, local_candidate, remote_candidate, protocol = match.groups()
+    if route != expected_route:
+        errors.append(f"{path}: expected {expected_route} candidate pair")
+    for label, candidate in (("local", local_candidate), ("remote", remote_candidate)):
+        if candidate not in SUPPORTED_CANDIDATE_TYPES:
+            errors.append(f"{path}.{label}: unsupported candidate type {candidate}")
+    if protocol not in SUPPORTED_CANDIDATE_PROTOCOLS:
+        errors.append(f"{path}.protocol: unsupported candidate transport {protocol}")
+    if expected_route == "direct" and "relay" in {local_candidate, remote_candidate}:
+        errors.append(f"{path}: direct gate cannot include relay candidates")
+    if expected_route == "relay" and (local_candidate, remote_candidate) != ("relay", "relay"):
+        errors.append(f"{path}: relay gate requires relay local and remote candidates")
+
+
+def _validate_fresh_session_recovery(gate: Mapping[str, Any], path: str, errors: list[str]) -> None:
+    for field in (
+        "fresh_session_requested",
+        "ice_restart_attempted",
+        "old_session_closed",
+        "stream_pause_detected",
+        "stream_resume_detected",
+    ):
+        _require_bool(gate.get(field), f"{path}.{field}", True, errors)
+    initial_epoch = _require_integer_at_least(gate.get("initial_session_epoch"), f"{path}.initial_session_epoch", 0, errors)
+    recovered_epoch = _require_integer_at_least(gate.get("recovered_session_epoch"), f"{path}.recovered_session_epoch", 1, errors)
+    if recovered_epoch <= initial_epoch:
+        errors.append(f"{path}.recovered_session_epoch: expected > initial_session_epoch")
+    started = _require_nonnegative_number(
+        gate.get("recovery_started_at_monotonic_ms"),
+        f"{path}.recovery_started_at_monotonic_ms",
+        errors,
+    )
+    completed = _require_nonnegative_number(
+        gate.get("recovery_completed_at_monotonic_ms"),
+        f"{path}.recovery_completed_at_monotonic_ms",
+        errors,
+    )
+    if started is not None and completed is not None and completed <= started:
+        errors.append(f"{path}.recovery_completed_at_monotonic_ms: expected > recovery_started_at_monotonic_ms")
 
 
 def _validate_direct_path(gate: Mapping[str, Any], path: str) -> list[str]:
@@ -94,8 +203,8 @@ def _validate_direct_path(gate: Mapping[str, Any], path: str) -> list[str]:
     if gate.get("route") != "direct":
         errors.append(f"{path}.route: expected direct")
     selected_pair = _require_nonempty_string(gate.get("selected_candidate_pair"), f"{path}.selected_candidate_pair", errors)
-    if selected_pair and not selected_pair.startswith("direct("):
-        errors.append(f"{path}.selected_candidate_pair: expected direct candidate pair")
+    if selected_pair:
+        _validate_candidate_pair(selected_pair, f"{path}.selected_candidate_pair", "direct", errors)
     return errors
 
 
@@ -108,8 +217,8 @@ def _validate_turn_path(gate: Mapping[str, Any], path: str) -> list[str]:
     if gate.get("route") != "relay":
         errors.append(f"{path}.route: expected relay")
     selected_pair = _require_nonempty_string(gate.get("selected_candidate_pair"), f"{path}.selected_candidate_pair", errors)
-    if selected_pair and not selected_pair.startswith("relay("):
-        errors.append(f"{path}.selected_candidate_pair: expected relay candidate pair")
+    if selected_pair:
+        _validate_candidate_pair(selected_pair, f"{path}.selected_candidate_pair", "relay", errors)
     return errors
 
 
@@ -129,6 +238,8 @@ def _validate_real_media(gate: Mapping[str, Any], path: str) -> list[str]:
 def _validate_handoff(gate: Mapping[str, Any], path: str) -> list[str]:
     errors: list[str] = []
     _require_not_local_only(gate, path, errors)
+    _validate_network_conditions(gate, path, errors)
+    _validate_fresh_session_recovery(gate, path, errors)
     _require_minimum_number(gate.get("handoff_count"), f"{path}.handoff_count", 1, errors)
     _require_bool(gate.get("session_epoch_advanced"), f"{path}.session_epoch_advanced", True, errors)
     _require_bool(gate.get("stale_epoch_rejected"), f"{path}.stale_epoch_rejected", True, errors)
@@ -145,6 +256,7 @@ def _validate_handoff(gate: Mapping[str, Any], path: str) -> list[str]:
 def _validate_soak(gate: Mapping[str, Any], path: str) -> list[str]:
     errors: list[str] = []
     _require_not_local_only(gate, path, errors)
+    _validate_network_conditions(gate, path, errors)
     _require_minimum_number(gate.get("duration_seconds"), f"{path}.duration_seconds", 7200, errors)
     routes = {item for item in _as_list(gate.get("routes"), f"{path}.routes", errors) if isinstance(item, str)}
     if not {"direct", "relay"}.issubset(routes):
@@ -200,14 +312,29 @@ GATE_RULES: tuple[GateRule, ...] = (
         "real_screencapturekit_to_android_media",
         "Real macOS capture/encoder output reaches Android MediaCodec.",
         COMMON_GATE_REQUIRED_FIELDS
-        + ("capture_source", "android_decoder", "screen_capture_frames", "encoded_frames", "android_decoded_frames"),
+        + (
+            "capture_source",
+            "android_decoder",
+            "screen_capture_frames",
+            "encoded_frames",
+            "android_decoded_frames",
+            "first_android_output_observed",
+        ),
         _validate_real_media,
     ),
     GateRule(
         "network_handoff_recovery",
         "A real Wi-Fi/cellular/VPN handoff recovers with a fresh epoch.",
         COMMON_GATE_REQUIRED_FIELDS
-        + ("handoff_count", "session_epoch_advanced", "stale_epoch_rejected", "recovered_streaming"),
+        + REQUIRED_NETWORK_CONDITION_FIELDS
+        + REQUIRED_FRESH_SESSION_FIELDS
+        + (
+            "handoff_count",
+            "session_epoch_advanced",
+            "stale_epoch_rejected",
+            "recovered_streaming",
+            "recovery_seconds",
+        ),
         _validate_handoff,
     ),
     GateRule(
@@ -238,7 +365,16 @@ GATE_RULES: tuple[GateRule, ...] = (
         "two_hour_mixed_route_soak",
         "Two-hour mixed direct/relay/network-change soak remains bounded.",
         COMMON_GATE_REQUIRED_FIELDS
-        + ("duration_seconds", "routes", "network_change_count", "bounded_queues", "bounded_memory", "no_nonce_reuse"),
+        + REQUIRED_NETWORK_CONDITION_FIELDS
+        + (
+            "duration_seconds",
+            "routes",
+            "network_change_count",
+            "bounded_queues",
+            "bounded_memory",
+            "no_nonce_reuse",
+            "no_steady_latency_growth",
+        ),
         _validate_soak,
     ),
 )
