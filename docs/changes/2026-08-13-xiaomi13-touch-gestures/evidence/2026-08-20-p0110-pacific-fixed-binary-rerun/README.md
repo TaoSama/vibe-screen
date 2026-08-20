@@ -66,8 +66,11 @@ synchronized pass.
 The Host log also recorded `Protocol v1 selected for connection epoch 7`,
 `Starting input receive loop... (touch=on)`, and repeated `Pipeline` samples
 near 60 FPS with zero drops during the gesture window. One connection reset was
-the expected instrumentation Activity lifecycle teardown after the driver
-completed; it occurred after the gesture evidence had been recorded.
+the expected instrumentation Activity lifecycle teardown after the gesture
+driver completed; it occurred after the gesture evidence had been recorded. The
+later `Runtime display switch` line retained in `host-log-eventtap-run-2.log`
+occurred after the synchronized touch gate window and is unrelated to this touch
+rerun gate.
 
 ## Commands
 
