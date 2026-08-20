@@ -261,7 +261,7 @@
       "sha256": "44b74b9081b7d9be9339979af0bdbcdec12a866bba0241e0fa6efc9fc5c409be"
     },
     {
-      "bytes": 315,
+      "bytes": 2294,
       "categories_checked": [
         "network_endpoint",
         "hardware_identifier",
@@ -271,7 +271,7 @@
       ],
       "path": "result-summary.json",
       "result": "pass",
-      "sha256": "ea70dd9ef8862c591805d37bdc8ddb86b52e99abbd7fe40c5d5a09432878cf3b"
+      "sha256": "9cb972c6ca81b89ad28788797741903c5b7bf3bfb67051e909959a4bdb1f9d8e"
     },
     {
       "bytes": 844,

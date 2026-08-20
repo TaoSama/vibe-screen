@@ -10,8 +10,11 @@ from unittest.mock import patch
 from vibescreen_evidence.touch_rerun_preflight import (
     ACCESSIBILITY_SERVICE,
     SCREEN_CAPTURE_SERVICE,
+    build_blocked_error_document,
     collect_tcc,
+    USER_TCC_DB,
     write_json,
+    _public_path,
     _blockers,
 )
 
@@ -89,6 +92,16 @@ class TouchRerunPreflightTests(unittest.TestCase):
         self.assertEqual(tcc["missing_db_paths"], [str(missing_db)])
         self.assertTrue(tcc["screen_recording"]["authorized"])
 
+    def test_public_path_redacts_user_home(self) -> None:
+        self.assertEqual(
+            _public_path(USER_TCC_DB),
+            "<user-home>/Library/Application Support/com.apple.TCC/TCC.db",
+        )
+        self.assertEqual(
+            _public_path(Path("/Library/Application Support/com.apple.TCC/TCC.db")),
+            "/Library/Application Support/com.apple.TCC/TCC.db",
+        )
+
     def test_blockers_require_expected_fixed_binary_permissions_and_device(self) -> None:
         blockers = _blockers(
             host={"binary_sha256": "old"},
@@ -110,6 +123,41 @@ class TouchRerunPreflightTests(unittest.TestCase):
         )
         self.assertIn("no explicit Android device serial was recorded", blockers)
 
+    def test_blockers_require_expected_android_identity_when_supplied(self) -> None:
+        blockers = _blockers(
+            host={"binary_sha256": "abc"},
+            tcc={
+                "screen_recording": {"authorized": True},
+                "accessibility": {"authorized": True},
+            },
+            android={
+                "manufacturer": "Xiaomi",
+                "model": "2211133C",
+                "device": "fuxi",
+                "android_release": "16",
+                "sdk": 36,
+            },
+            expected_host_sha256="abc",
+            expected_android_manufacturer="nubia",
+            expected_android_model="P0110",
+            expected_android_device="pacific",
+            expected_android_release="16",
+            expected_android_sdk=36,
+        )
+
+        self.assertIn(
+            "Android device manufacturer does not match expected value 'nubia' (actual 'Xiaomi')",
+            blockers,
+        )
+        self.assertIn(
+            "Android device model does not match expected value 'P0110' (actual '2211133C')",
+            blockers,
+        )
+        self.assertIn(
+            "Android device device does not match expected value 'pacific' (actual 'fuxi')",
+            blockers,
+        )
+
     def test_no_blockers_when_preconditions_are_present(self) -> None:
         blockers = _blockers(
             host={"binary_sha256": "abc"},
@@ -122,6 +170,48 @@ class TouchRerunPreflightTests(unittest.TestCase):
         )
 
         self.assertEqual(blockers, [])
+
+    def test_no_blockers_when_expected_android_identity_matches(self) -> None:
+        blockers = _blockers(
+            host={"binary_sha256": "abc"},
+            tcc={
+                "screen_recording": {"authorized": True},
+                "accessibility": {"authorized": True},
+            },
+            android={
+                "manufacturer": "nubia",
+                "model": "P0110",
+                "device": "pacific",
+                "android_release": "16",
+                "sdk": 36,
+            },
+            expected_host_sha256="abc",
+            expected_android_manufacturer="nubia",
+            expected_android_model="P0110",
+            expected_android_device="pacific",
+            expected_android_release="16",
+            expected_android_sdk=36,
+        )
+
+        self.assertEqual(blockers, [])
+
+    def test_blocked_error_document_is_safe_to_archive(self) -> None:
+        document = build_blocked_error_document(
+            RuntimeError("missing Host"),
+            expected_host_sha256="abc",
+            expected_android_manufacturer="nubia",
+            expected_android_model="P0110",
+            expected_android_device="pacific",
+            expected_android_release="16",
+            expected_android_sdk=36,
+        )
+
+        self.assertEqual(document["result"], "blocked")
+        self.assertIn("missing Host", document["blockers"][0])
+        self.assertEqual(document["expected_host_sha256"], "abc")
+        self.assertEqual(document["expected_android_device"]["model"], "P0110")
+        self.assertTrue(document["safety"]["read_only"])
+        self.assertFalse(document["safety"]["runs_instrumentation"])
 
     def test_atomic_json_write(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

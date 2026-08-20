@@ -1,0 +1,126 @@
+# host restart 2026-08-20T22:50:33Z
+89030 /Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen
+WeChat    41951 luwentao  270u  IPv4 0xb96b7325547b57aa      0t0  TCP 127.0.0.1:14022 (LISTEN)
+qemu-syst 62144 luwentao   45u  IPv4 0x662596ad016fb967      0t0  TCP 127.0.0.1:5554 (LISTEN)
+qemu-syst 62144 luwentao   46u  IPv6 0xa80784cf9a690c96      0t0  TCP [::1]:5554 (LISTEN)
+qemu-syst 62144 luwentao   63u  IPv6 0x890c54625e03f9bc      0t0  TCP *:8554 (LISTEN)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:20:41Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z TCP server listening on port 55432
+2026-08-20T22:21:06Z Server failed: POSIXErrorCode(rawValue: 48): Address already in use
+2026-08-20T22:21:06Z New connection incoming...
+2026-08-20T22:21:06Z Connection state: preparing
+2026-08-20T22:21:06Z Connection state: ready
+2026-08-20T22:21:06Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:21:06Z Starting input receive loop... (touch=on)
+2026-08-20T22:21:06Z Rejected malformed touch input
+2026-08-20T22:21:06Z Client supports video frame metadata
+2026-08-20T22:21:06Z Client connected - sending display config first
+2026-08-20T22:21:06Z Sent display config: 2000x1124 @ 0°
+2026-08-20T22:21:06Z Connection ready for frames (metadata=on, codec=hevc)
+2026-08-20T22:21:06Z Connection state: failed(POSIXErrorCode(rawValue: 54): Connection reset by peer)
+2026-08-20T22:21:06Z Connection failed: POSIXErrorCode(rawValue: 54): Connection reset by peer
+2026-08-20T22:21:06Z Connection state: cancelled
+2026-08-20T22:21:06Z Connection cancelled
+2026-08-20T22:21:06Z TCP server listening on port 55433
+2026-08-20T22:21:06Z New connection incoming...
+2026-08-20T22:21:06Z Connection state: preparing
+2026-08-20T22:21:06Z Connection state: ready
+2026-08-20T22:21:06Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:21:06Z Starting input receive loop... (touch=on)
+2026-08-20T22:21:06Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:21:06Z Connection state: cancelled
+2026-08-20T22:21:06Z Connection cancelled
+2026-08-20T22:21:06Z TCP server listening on port 55434
+2026-08-20T22:21:06Z New connection incoming...
+2026-08-20T22:21:06Z Connection state: preparing
+2026-08-20T22:21:06Z Connection state: ready
+2026-08-20T22:21:06Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:21:06Z Starting input receive loop... (touch=on)
+2026-08-20T22:21:06Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:21:06Z Connection state: cancelled
+2026-08-20T22:21:06Z Connection cancelled
+2026-08-20T22:21:06Z TCP server listening on port 55435
+2026-08-20T22:21:06Z New connection incoming...
+2026-08-20T22:21:06Z Connection state: preparing
+2026-08-20T22:21:06Z Connection state: ready
+2026-08-20T22:21:06Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:21:06Z Starting input receive loop... (touch=on)
+2026-08-20T22:21:06Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:21:06Z Connection state: cancelled
+2026-08-20T22:21:06Z Connection cancelled
+2026-08-20T22:21:06Z TCP server listening on port 55436
+2026-08-20T22:21:06Z New connection incoming...
+2026-08-20T22:21:06Z Connection state: preparing
+2026-08-20T22:21:06Z Connection state: ready
+2026-08-20T22:21:06Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:21:06Z Starting input receive loop... (touch=on)
+2026-08-20T22:21:06Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:21:06Z Connection state: cancelled
+2026-08-20T22:21:06Z Connection cancelled
+2026-08-20T22:21:06Z TCP server listening on port 55437
+2026-08-20T22:21:06Z New connection incoming...
+2026-08-20T22:21:06Z Connection state: preparing
+2026-08-20T22:21:06Z Connection state: ready
+2026-08-20T22:21:06Z Client connected via loopback (USB) — skipping auth
+2026-08-20T22:21:06Z Starting input receive loop... (touch=on)
+2026-08-20T22:21:06Z Protocol v1 selected for connection epoch 1
+2026-08-20T22:21:06Z VideoToolbox encoder configured (H.264, 20Mbps, 60fps, MEDIUM)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (35Mbps, 60fps, HIGH)
+2026-08-20T22:21:06Z VideoToolbox encoder updated in place (12Mbps, 30fps, LOW)
+2026-08-20T22:50:36Z Failed to set activation policy to regular
+2026-08-20T22:50:36Z Connection mode changed to: usb
+2026-08-20T22:50:36Z checkPermissions — macOS 26.4.1
+2026-08-20T22:50:36Z Screen recording permission granted (CGPreflight)
+2026-08-20T22:50:36Z SCShareableContent verification OK — 0 displays found
+2026-08-20T22:50:37Z 🚀 startServer() invoked. Check permission: true
+2026-08-20T22:50:37Z Using selected display 1: 1512x982, streaming 1512x982
+2026-08-20T22:50:37Z 🔌 setupADBReverse() invoked for port 54321...
+2026-08-20T22:50:37Z 📱 Android client launched for automatic USB connection
+2026-08-20T22:50:37Z ScreenCapture init — macOS 26.4.1
+2026-08-20T22:50:37Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:37Z Virtual display 1 not found in attempt 1, retrying...
+2026-08-20T22:50:38Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:38Z Virtual display 1 not found in attempt 2, retrying...
+2026-08-20T22:50:40Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:40Z Virtual display 1 not found in attempt 3, retrying...
+2026-08-20T22:50:41Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:41Z Virtual display 1 not found in attempt 4, retrying...
+2026-08-20T22:50:42Z SCShareableContent returned 0 displays: []
+2026-08-20T22:50:42Z Unattended startup failed: Virtual display with ID 1 not found after 5 attempts
+2026-08-20T22:50:42Z Scheduling unattended host recovery in 1s

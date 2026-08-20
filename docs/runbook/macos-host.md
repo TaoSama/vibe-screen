@@ -299,13 +299,22 @@ the opt-in Android gesture driver:
 make evidence-touch-rerun-preflight \
   EVIDENCE_SERIAL=<adb-serial> \
   EVIDENCE_DIR=<evidence-dir> \
-  TOUCH_RERUN_EXPECTED_HOST_SHA256=<fixed-host-binary-sha256>
+  TOUCH_RERUN_EXPECTED_HOST_SHA256=<fixed-host-binary-sha256> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MANUFACTURER=<manufacturer> \
+  TOUCH_RERUN_EXPECTED_ANDROID_MODEL=<model> \
+  TOUCH_RERUN_EXPECTED_ANDROID_DEVICE=<codename> \
+  TOUCH_RERUN_EXPECTED_ANDROID_RELEASE=<android-release> \
+  TOUCH_RERUN_EXPECTED_ANDROID_SDK=<api-level>
 ```
 
 The preflight must report the expected Host binary SHA-256 and authorized
 Screen Recording plus Accessibility for `dev.telemachus.display`. If it reports
 `blocked`, keep that JSON as the evidence output and do not reset TCC, reset
 Keychain state, clear Android app data, or run a long soak to force the gate.
+After a rerun, use `make evidence-touch-rerun-summary EVIDENCE_DIR=<evidence-dir>`
+with the same expected Android identity variables to verify that the retained
+preflight, instrumentation, Host log, and listen-only event-tap log can close the
+touch rerun gate.
 
 ### Logs and diagnostics
 
