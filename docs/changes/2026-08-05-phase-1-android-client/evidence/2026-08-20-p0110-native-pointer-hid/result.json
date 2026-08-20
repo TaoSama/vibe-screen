@@ -1,5 +1,6 @@
 {
   "status": "blocked",
+  "gate_closed": false,
   "reason": "No external Android input device with MOUSE, TOUCHPAD, or TRACKBALL source is currently attached.",
   "created_at": "2026-08-20T11:04:35Z",
   "observation_seconds": 0.0,
@@ -26,5 +27,9 @@
     "press",
     "release"
   ],
-  "observed_pointer_events": []
+  "observed_pointer_events": [],
+  "visual_result": {
+    "status": "not_observed",
+    "reason": "No physical external mouse was attached to the Android device, so there was no visible Mac pointer or button result to capture."
+  }
 }

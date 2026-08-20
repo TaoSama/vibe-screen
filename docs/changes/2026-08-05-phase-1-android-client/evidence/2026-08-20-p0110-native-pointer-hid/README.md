@@ -20,7 +20,9 @@ button press, or release delivery to the foreground streaming view.
 ## Artifacts
 
 - `result.json`: structured device identity, required pointer events, and
-  blocked result.
+  blocked result. The normalized `move`, `press`, and `release` keys describe
+  the acceptance events required for a future pass; this record did not observe
+  Host-log-only pointer injection or a visible Mac pointer/button result.
 - `dumpsys-input.txt`: raw Android input-device snapshot showing no external
   `MOUSE`, `TOUCHPAD`, or `TRACKBALL` source.
 
@@ -37,6 +39,6 @@ python3 scripts/native_pointer_hid_acceptance.py \
 ```
 
 A pass requires newly appended Host log lines for pointer `changed`, `began`,
-and `ended` injection plus a visible Mac pointer/button result. This blocked
-record does not close the native pointer HID gate and must remain scoped to the
-device identity above.
+and `ended` injection plus a visible Mac pointer/button result. This record is
+blocked, not a Host-log-only pass, does not close the native pointer HID gate,
+and must remain scoped to the device identity above.
