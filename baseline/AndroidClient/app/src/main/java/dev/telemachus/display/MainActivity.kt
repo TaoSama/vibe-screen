@@ -53,9 +53,11 @@ import dev.telemachus.display.internet.InternetProductRevocationCoordinator
 import dev.telemachus.display.internet.InternetProductSessionState
 import dev.telemachus.display.internet.InternetProductRevocationStore
 import dev.telemachus.display.internet.InternetSessionProfileStore
+import dev.telemachus.display.internet.InternetControllerSendQueue
 import dev.telemachus.display.internet.InternetVideoDecoderLifecycle
 import dev.telemachus.display.internet.PeerRoute
 import dev.telemachus.display.internet.PendingRevocationBarrierException
+import dev.telemachus.display.internet.ProductControllerEvent
 import dev.telemachus.display.internet.ProductInputPhase
 import dev.telemachus.display.internet.ProductStylusEvent
 import dev.vibescreen.protocol.v1.InputPhase
@@ -174,10 +176,10 @@ class MainActivity : AppCompatActivity() {
     private var pendingInternetPairing: PendingInternetPairing? = null
     private var pendingInternetPairingIdentity: PendingPairingIdentityAlias? = null
     @Volatile private var internetGeneration = 0L
-    private val nextInternetInputId = AtomicLong(0)
+    private val internetInputIds = SessionInputIdSequence()
     private val nextStreamStylusTrackingId = AtomicLong(0)
     private val activeInternetInputIds = mutableMapOf<Int, Long>()
-    private val internetStylusInputIds = StylusInputIdTracker { nextInternetInputId.incrementAndGet() }
+    private val internetStylusInputIds = StylusInputIdTracker(internetInputIds::next)
     private val streamStylusInputIds = StylusInputIdTracker { nextStreamStylusTrackingId.incrementAndGet() }
     private val internetStylusGestureRouter = StylusGestureRouter()
     private val streamStylusGestureRouter = StylusGestureRouter()
@@ -199,6 +201,7 @@ class MainActivity : AppCompatActivity() {
     private val nativeInputSessionState = NativeInputSessionState<StreamClient>()
     private val nativeInputReleaseCoordinator = NativeInputReleaseCoordinator(nativeInputSessionState)
     private val streamControllerSessionState = ControllerSessionState()
+    private val internetControllerSessionState = ControllerSessionState()
     private var activeSessionGeneration = 0L
     private var unsupportedKeyboardNoticeShown = false
     private val inputHandler = Handler(Looper.getMainLooper())
@@ -476,12 +479,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (!isInForeground || !isConnected || event.isSystemKey()) return super.dispatchKeyEvent(event)
+        if (!isInForeground || event.isSystemKey()) return super.dispatchKeyEvent(event)
         ControllerInputMapper.keyChange(event)?.let { change ->
-            val dispatch = streamControllerSessionState.applyKey(change)
-            if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller key")) return true
-            if (ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)) return true
+            val active = isConnected || prefs.connectionMode == ConnectionMode.INTERNET && internetSession != null
+            if (active && !event.isSystemKey()) {
+                val state = activeControllerSessionState()
+                val dispatch = state.applyKey(change)
+                if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller key")) return true
+                if (ControllerInputConsumptionPolicy.shouldConsume(active, isSystemKey = false)) return true
+            }
         }
+        if (!isConnected || event.isSystemKey()) return super.dispatchKeyEvent(event)
         val clientEvent =
             AndroidKeyInputMapper.map(
                 keyCode = event.keyCode,
@@ -1071,6 +1079,11 @@ class MainActivity : AppCompatActivity() {
         if (!isInForeground) return false
         if (prefs.connectionMode == ConnectionMode.INTERNET) {
             val session = internetSession ?: return false
+            ControllerInputMapper.snapshot(event)?.let { snapshot ->
+                val dispatch = internetControllerSessionState.applyMotion(snapshot)
+                if (dispatch != null && sendStreamControllerDispatch(dispatch, "controller motion")) return true
+                return ControllerInputConsumptionPolicy.shouldConsume(isConnected = true, isSystemKey = false)
+            }
             return handleInternetStylus(view, event, session, extendedOnly = true)
         }
         if (!isConnected) return false
@@ -1208,6 +1221,9 @@ class MainActivity : AppCompatActivity() {
         dispatch: ControllerDispatch,
         source: String,
     ): Boolean {
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            return sendInternetControllerDispatch(dispatch, source)
+        }
         val result = ClientInputDispatch(currentSessionBinding()).sendController(ClientControllerInput(dispatch))
         return when (result) {
             ClientInputDispatchResult.SENT -> true
@@ -1221,6 +1237,30 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    private fun sendInternetControllerDispatch(
+        dispatch: ControllerDispatch,
+        source: String,
+        targetSession: InternetProductSession? = internetSession,
+    ): Boolean {
+        val session = targetSession ?: return false
+        val events = dispatch.samples.map { sample -> ProductControllerEvent(internetInputIds.next(), sample) }
+        val delivery =
+            when (dispatch.delivery) {
+                ControllerDelivery.ANALOG -> InternetControllerSendQueue.Delivery.ANALOG
+                ControllerDelivery.STRUCTURAL -> InternetControllerSendQueue.Delivery.FULL_STATE_STRUCTURAL
+            }
+        val accepted = session.sendController(events, delivery)
+        if (!accepted) mainDiag("internet controller sink rejected $source")
+        return accepted
+    }
+
+    private fun activeControllerSessionState(): ControllerSessionState =
+        if (prefs.connectionMode == ConnectionMode.INTERNET) {
+            internetControllerSessionState
+        } else {
+            streamControllerSessionState
+        }
 
     private fun finishPendingRightClick() {
         val release = pendingRightClickRelease ?: return
@@ -3857,6 +3897,7 @@ class MainActivity : AppCompatActivity() {
         connectionAttemptInProgress = true
         internetRoute = null
         internetSessionEpoch = lease.authoritativeSessionEpoch
+        resetInternetInputStateForNewSession()
         val generation = ++internetGeneration
         internetVideoDecoderLifecycle?.invalidate()
         internetVideoDecoderLifecycle = null
@@ -3912,6 +3953,7 @@ class MainActivity : AppCompatActivity() {
                                 StreamCodec.H264 -> ProductVideoCodec.H264
                             }
                         },
+                advertiseController = true,
             )
         val callbacks =
             object : InternetProductSessionCallbacks {
@@ -3942,6 +3984,16 @@ class MainActivity : AppCompatActivity() {
                     videoDecoderLifecycle.onVideoConfiguration(configuration, effect, completion)
                 }
 
+                override fun onVideoConfigurationApplied(configuration: ProductVideoConfiguration) {
+                    if (!isCurrentInternetSession()) return
+                    runOnUiThread {
+                        if (!isCurrentInternetSession()) return@runOnUiThread
+                        internetControllerSessionState.resynchronize()?.let { dispatch ->
+                            sendInternetControllerDispatch(dispatch, "internet controller video configuration")
+                        }
+                    }
+                }
+
                 override fun onVideoFrame(frame: ProductVideoFrame) {
                     if (!isCurrentInternetSession() || frame.sessionEpoch != internetSessionEpoch) return
                     videoDecoder?.decode(
@@ -3951,6 +4003,23 @@ class MainActivity : AppCompatActivity() {
                         frame.keyframe,
                         frame.sessionEpoch,
                     )
+                }
+
+                override fun onInputAck(
+                    inputId: Long,
+                    controllerId: String?,
+                    controllerEpoch: Long?,
+                    accepted: Boolean,
+                    rejectionReason: String,
+                ) {
+                    if (!isCurrentInternetSession()) return
+                    if (!accepted && controllerId != null && controllerEpoch != null) {
+                        internetControllerSessionState.rejectConnection(controllerId, controllerEpoch)
+                        mainDiag(
+                            "internet controller input rejected input_id=$inputId " +
+                                "controller=$controllerId epoch=$controllerEpoch reason=$rejectionReason",
+                        )
+                    }
                 }
 
                 override fun onFreshSessionRequired(reason: String) {
@@ -4382,10 +4451,7 @@ class MainActivity : AppCompatActivity() {
         videoDecoder = null
         connectionAttemptInProgress = false
         internetRoute = null
-        activeInternetInputIds.clear()
-        internetStylusInputIds.clear()
-        internetStylusGestureRouter.reset()
-        internetStylusContactRouter.reset()
+        resetInternetInputStateForNewSession()
         internetVideoConfiguration = null
         displayWidth = 0
         displayHeight = 0
@@ -4988,8 +5054,24 @@ class MainActivity : AppCompatActivity() {
         ) {
             streamStylusContactRouter.reset()
             internetStylusContactRouter.reset()
+            if (internet != null) {
+                internetControllerSessionState.takeRelease()?.let { release ->
+                    if (!sendInternetControllerDispatch(release, "internet controller release", internet)) {
+                        mainDiag("internet controller release was rejected")
+                    }
+                }
+            }
             completeNativeInputBoundary(client, generation, pointerPhase, afterRelease)
         }
+    }
+
+    private fun resetInternetInputStateForNewSession() {
+        activeInternetInputIds.clear()
+        internetStylusInputIds.clear()
+        internetStylusGestureRouter.reset()
+        internetStylusContactRouter.reset()
+        internetControllerSessionState.resetForNewSession()
+        internetInputIds.resetForNewSession()
     }
 
     private fun completeNativeInputBoundary(
@@ -5089,7 +5171,7 @@ class MainActivity : AppCompatActivity() {
             val pointerId = event.getPointerId(index)
             val inputId =
                 when (phase) {
-                    ProductInputPhase.BEGAN -> nextInternetInputId.incrementAndGet().also { activeInternetInputIds[pointerId] = it }
+                    ProductInputPhase.BEGAN -> internetInputIds.next().also { activeInternetInputIds[pointerId] = it }
                     else -> activeInternetInputIds[pointerId] ?: return
                 }
             val point =
