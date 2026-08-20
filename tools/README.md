@@ -73,7 +73,8 @@ endpoint default:
 export ADB_ENDPOINT='<lease-controlled-endpoint>'
 make evidence-device-info EVIDENCE_SERIAL="$ADB_ENDPOINT"
 make soak-30m EVIDENCE_SERIAL="$ADB_ENDPOINT"
-make soak-2h EVIDENCE_SERIAL="$ADB_ENDPOINT"
+make soak-2h EVIDENCE_SERIAL="$ADB_ENDPOINT" HOST_PID="$HOST_PID"
+make host-rss-gate EVIDENCE_DIR=.build/evidence
 make soak-8h EVIDENCE_SERIAL="$ADB_ENDPOINT"
 ```
 
@@ -121,7 +122,12 @@ Start the host with `VIBE_SCREEN_TELEMETRY_PATH` pointing at the target's
 `host-telemetry.jsonl` before the formal Makefile soak. The preset targets
 require at least one `stream_stats` event and require the Android process to be
 alive in every sample, so an idle collector cannot be reported as a stable
-stream.
+stream. Pass `HOST_PID` when the run needs Host RSS samples; the Phase 1
+two-hour no-growth gate depends on `host.rss_kb` in `samples.jsonl`. Use
+`make soak-2h-host-rss-gate EVIDENCE_SERIAL="$ADB_ENDPOINT"
+HOST_PID="$HOST_PID"` for the formal Host RSS run and gate evaluation. That
+target fails before the two-hour run when `HOST_PID` is unset, so missing Host
+RSS samples cannot be mistaken for evaluable evidence.
 
 For custom sampling, run `python3 -m vibescreen_evidence.soak --help` with
 `PYTHONPATH=tools`. Disconnect and reconnect hooks receive
@@ -148,11 +154,12 @@ tool deliberately does not turn them into a no-leak verdict.
 For the Phase 1 two-hour Host RSS gate, run the separate fail-closed evaluator:
 
 ```sh
-PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate \
-  --summary .build/evidence/soak-2h/summary.json \
-  --samples .build/evidence/soak-2h/samples.jsonl \
-  --output .build/evidence/soak-2h/host-rss-gate.json
+make host-rss-gate EVIDENCE_DIR=.build/evidence
 ```
+
+This derives `.build/evidence/soak-2h/exact-window-report.json` first, then
+writes `.build/evidence/soak-2h/host-rss-gate.json`. It exits zero only when
+`host_rss_gate` reports `pass`.
 
 The evaluator requires an error-free source soak of at least 7,056 seconds,
 230 Host RSS samples, 115 second-half samples, samples within 90 seconds of
