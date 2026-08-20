@@ -30,6 +30,7 @@ type PostgresStore struct {
 	messagesPerMinute int
 	maxCandidates     int
 	maxWaiters        int
+	notificationSlots chan struct{}
 	now               func() time.Time
 }
 
@@ -60,6 +61,7 @@ func OpenPostgresStore(ctx context.Context, cfg Config, authority *AuthorityClie
 		messagesPerMinute: cfg.MessagesPerMinute,
 		maxCandidates:     cfg.MaxCandidatesPerRole,
 		maxWaiters:        cfg.MaxWaitersPerRole,
+		notificationSlots: make(chan struct{}, notificationSlotLimit(pool.Stat().MaxConns())),
 		now:               time.Now,
 	}
 	if err := store.Ready(ctx); err != nil {
@@ -502,7 +504,11 @@ func (s *PostgresStore) AddMessageAuthorized(ctx context.Context, sessionID stri
 
 func (s *PostgresStore) PollAuthorized(ctx context.Context, sessionID string, role Role, after uint64, wait bool) ([]Event, uint64, error) {
 	waiting := false
+	var listener *postgresNotificationListener
 	defer func() {
+		if listener != nil {
+			listener.close()
+		}
 		if waiting {
 			releaseCtx, cancel := context.WithTimeout(context.Background(), postgresBackgroundTimeout)
 			defer cancel()
@@ -523,9 +529,19 @@ func (s *PostgresStore) PollAuthorized(ctx context.Context, sessionID string, ro
 		if !waiting {
 			waiting = true
 		}
+		if listener == nil {
+			var err error
+			listener, err = s.openNotificationListener(ctx)
+			if err != nil {
+				return nil, after, storageError("open signaling notification listener", err)
+			}
+		}
 		waitCtx, cancel := context.WithTimeout(ctx, postgresNotifyTimeout)
-		_ = s.waitForNotification(waitCtx, sessionID)
+		waitErr := listener.wait(waitCtx, sessionID)
 		cancel()
+		if waitErr != nil && !errors.Is(waitErr, context.DeadlineExceeded) && ctx.Err() == nil {
+			return nil, after, storageError("wait for signaling notification", waitErr)
+		}
 		if err := ctx.Err(); err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				return []Event{}, after, nil
@@ -808,22 +824,41 @@ func (s *PostgresStore) releaseWaiter(ctx context.Context, sessionID string, rol
 	return err
 }
 
-func (s *PostgresStore) waitForNotification(ctx context.Context, sessionID string) error {
+type postgresNotificationListener struct {
+	connection *pgxpool.Conn
+	release    func()
+}
+
+func (s *PostgresStore) openNotificationListener(ctx context.Context) (*postgresNotificationListener, error) {
+	if s.notificationSlots != nil {
+		select {
+		case s.notificationSlots <- struct{}{}:
+			// Slot is released by postgresNotificationListener.close.
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+			return nil, ErrTooManyWaiters
+		}
+	}
 	connection, err := s.pool.Acquire(ctx)
 	if err != nil {
-		return err
+		s.releaseNotificationSlot()
+		return nil, err
 	}
-	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		_, _ = connection.Exec(cleanupCtx, "UNLISTEN signaling_events")
-		connection.Release()
-	}()
 	if _, err := connection.Exec(ctx, "LISTEN signaling_events"); err != nil {
-		return err
+		connection.Release()
+		s.releaseNotificationSlot()
+		return nil, err
 	}
+	return &postgresNotificationListener{
+		connection: connection,
+		release:    s.releaseNotificationSlot,
+	}, nil
+}
+
+func (l *postgresNotificationListener) wait(ctx context.Context, sessionID string) error {
 	for {
-		notification, err := connection.Conn().WaitForNotification(ctx)
+		notification, err := l.connection.Conn().WaitForNotification(ctx)
 		if err != nil {
 			return err
 		}
@@ -831,6 +866,27 @@ func (s *PostgresStore) waitForNotification(ctx context.Context, sessionID strin
 			return nil
 		}
 	}
+}
+
+func (l *postgresNotificationListener) close() {
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, _ = l.connection.Exec(cleanupCtx, "UNLISTEN signaling_events")
+	l.connection.Release()
+	l.release()
+}
+
+func (s *PostgresStore) releaseNotificationSlot() {
+	if s.notificationSlots != nil {
+		<-s.notificationSlots
+	}
+}
+
+func notificationSlotLimit(maxConns int32) int {
+	if maxConns <= 1 {
+		return 0
+	}
+	return int(maxConns - 1)
 }
 
 func (s *PostgresStore) enforceCapacityTx(ctx context.Context, tx pgx.Tx) error {

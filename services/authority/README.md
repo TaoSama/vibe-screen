@@ -47,7 +47,7 @@ checksum before applying it.
 
 ## Container and Compose
 
-`Dockerfile` uses the pinned Go 1.24.13 Alpine build image, verifies
+`Dockerfile` uses the pinned Go 1.25.5 Alpine build image, verifies
 the locked modules, and copies only the static binary, CA bundle, container
 config, and versioned migration into a `scratch` runtime. The runtime
 uses UID/GID 65532. Its health check calls the binary's strict
@@ -300,9 +300,9 @@ separate production requirement.
   closure is an authority-ledger boundary, not a data-plane kill path.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped
   epoch operate in different scopes and are not yet unified.
-- Signaling remains single-instance in-memory routing; per-message remote
-  authorization and the global create serialization are fail-closed correctness
-  choices, not a high-throughput design.
+- Signaling supports PostgreSQL-backed durable routing state. Multi-instance
+  throughput remains an open production gate. Per-message remote authorization
+  remains a fail-closed correctness choice rather than a high-throughput design.
 
 Until these gates pass, this is a runnable backend slice, not evidence of a
 production Internet deployment.

@@ -27,7 +27,8 @@ independently.
 
 ## Build and run
 
-Requirements: Go 1.23 or newer. The tested local toolchain is Go 1.24.13.
+Requirements: Go 1.25.0 or newer. The tested local toolchain is Go 1.25.0;
+the container build uses Go 1.25.5.
 
 ```bash
 cd services/signaling
@@ -253,7 +254,7 @@ logged.
 
 ## Container
 
-The Dockerfile uses an immutable Go 1.24.13 Alpine build image and a `scratch`
+The Dockerfile uses an immutable Go 1.25.5 Alpine build image and a `scratch`
 runtime. The final image contains only a static binary and runs as UID/GID
 65532. Mount the config read-only and inject secrets:
 

@@ -42,6 +42,41 @@ def _raise_sanitized_failure(message: str) -> NoReturn:
     raise E2EFailure(message) from None
 
 
+def _safe_projection_detail(exception: BaseException) -> str | None:
+    prefix = "diagnostic projection failed the public privacy scan: "
+    if isinstance(exception, E2EFailure) and str(exception).startswith(prefix):
+        return "privacy_findings:" + str(exception)[len(prefix) :]
+    return None
+
+
+def _project_command_or_failure(
+    command: list[str],
+    *,
+    cwd: Path,
+    redact_values: tuple[str, ...],
+    diagnostic_private_paths: tuple[Path | str, ...],
+    rendered_output: str,
+) -> tuple[str | None, str | None]:
+    try:
+        rendered_command = project_and_validate_public_diagnostic(
+            " ".join(command),
+            secret_values=redact_values,
+            private_paths=(cwd, Path.home(), *diagnostic_private_paths),
+        )
+        return rendered_command, None
+    except Exception as exception:
+        detail = _safe_projection_detail(exception)
+        exception.__traceback__ = None
+        exception.__cause__ = None
+        exception.__context__ = None
+        return None, _safe_failure_summary(
+            exception,
+            stage="command_projection",
+            output=rendered_output,
+            detail=detail,
+        )
+
+
 def _safe_failure_summary(
     exception: BaseException,
     *,
@@ -110,14 +145,7 @@ def _perform_run_checked(
                     private_paths=(cwd, Path.home(), *diagnostic_private_paths),
                 )
             except Exception as projection_exception:
-                detail = None
-                prefix = "diagnostic projection failed the public privacy scan: "
-                if isinstance(projection_exception, E2EFailure) and str(
-                    projection_exception
-                ).startswith(prefix):
-                    detail = "privacy_findings:" + str(projection_exception)[
-                        len(prefix) :
-                    ]
+                detail = _safe_projection_detail(projection_exception)
                 projection_exception.__traceback__ = None
                 projection_exception.__cause__ = None
                 projection_exception.__context__ = None
@@ -130,11 +158,15 @@ def _perform_run_checked(
                         detail=detail,
                     ),
                 )
-            rendered_command = project_and_validate_public_diagnostic(
-                " ".join(command),
-                secret_values=redact_values,
-                private_paths=(cwd, Path.home(), *diagnostic_private_paths),
+            rendered_command, projection_failure = _project_command_or_failure(
+                command,
+                cwd=cwd,
+                redact_values=redact_values,
+                diagnostic_private_paths=diagnostic_private_paths,
+                rendered_output=rendered_output,
             )
+            if projection_failure is not None:
+                return _RunCheckedOutcome(completed=None, failure_message=projection_failure)
             if diagnostic_path is not None:
                 try:
                     write_private_text(diagnostic_path, rendered_output)
@@ -164,10 +196,7 @@ def _perform_run_checked(
                 private_paths=(cwd, Path.home(), *diagnostic_private_paths),
             )
         except Exception as exception:
-            detail = None
-            prefix = "diagnostic projection failed the public privacy scan: "
-            if isinstance(exception, E2EFailure) and str(exception).startswith(prefix):
-                detail = "privacy_findings:" + str(exception)[len(prefix):]
+            detail = _safe_projection_detail(exception)
             exception.__traceback__ = None
             exception.__cause__ = None
             exception.__context__ = None
@@ -194,11 +223,15 @@ def _perform_run_checked(
                     ),
                 )
         if completed.returncode != 0:
-            rendered_command = project_and_validate_public_diagnostic(
-                " ".join(command),
-                secret_values=redact_values,
-                private_paths=(cwd, Path.home(), *diagnostic_private_paths),
+            rendered_command, projection_failure = _project_command_or_failure(
+                command,
+                cwd=cwd,
+                redact_values=redact_values,
+                diagnostic_private_paths=diagnostic_private_paths,
+                rendered_output=rendered_output,
             )
+            if projection_failure is not None:
+                return _RunCheckedOutcome(completed=None, failure_message=projection_failure)
             return _RunCheckedOutcome(
                 completed=None,
                 failure_message=(
