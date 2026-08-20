@@ -1,0 +1,65 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "host_display_rotation_readiness",
+  "status": "blocked",
+  "created_at_utc": "2026-08-20T12:27:45Z",
+  "repository": {
+    "head": "b9d768e55c75f03cd3cb5d20939576bc8d24ff27",
+    "origin_main": "b9d768e55c75f03cd3cb5d20939576bc8d24ff27",
+    "worktree_state": "detached HEAD; clean before evidence write"
+  },
+  "device": {
+    "adb_serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "device": "pacific",
+    "android_release": "16",
+    "sdk": 36,
+    "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+    "display_size": "1264x2800",
+    "display_density": "560",
+    "battery_level_percent": 100,
+    "boot_completed": true,
+    "adb_state": "device",
+    "adb_reverse": "UsbFfs tcp:54321 tcp:54321"
+  },
+  "local_environment": {
+    "macos_version": "26.4.1",
+    "macos_build": "25E253",
+    "xcodebuild_status": "blocked: active developer directory is /Library/Developer/CommandLineTools, not full Xcode",
+    "codesigning_identities": 0,
+    "installed_host_path": "/Applications/Vibe Screen.app",
+    "installed_host_bundle_id": "dev.telemachus.display",
+    "installed_host_authority": "Vibe Screen Dev",
+    "installed_host_cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
+    "host_preflight": "blocked: codesign identity Vibe Screen Dev not found in the keychain; ad-hoc signing is refused for local device reruns",
+    "tcc_rows_for_dev_telemachus_display": [],
+    "host_listener_54321": "none observed during final readiness check",
+    "android_package_dev_telemachus_display": "not installed"
+  },
+  "coordination": {
+    "lock_path": "/tmp/vibe-screen-device-android.lock",
+    "lock_status": "occupied during final readiness check",
+    "lock_contents": "owner=codex-touch-fixed-binary-readiness\npid=29081\ncwd=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/9b47/vibe-screen\ncreated_at=2026-08-20T12:27:45Z",
+    "exclusive_device_run_started": false
+  },
+  "blocking_reasons": [
+    "The Android device coordination lock was occupied before any acceptance run could start.",
+    "Current origin/main Host could not be rebuilt/preflighted with a stable signing identity because no valid codesigning identities are visible in this keychain.",
+    "Ad-hoc Host signing is intentionally refused for local device reruns because it invalidates macOS Screen Recording/Accessibility grants.",
+    "Read-only TCC query found no Screen Recording or Accessibility rows for dev.telemachus.display.",
+    "The target device does not currently have dev.telemachus.display installed, so no matching current-main Android client session exists.",
+    "No automated script exists to perform the real macOS physical and virtual display rotation actions; retained physical and virtual rotated-display artifacts still need to be collected before the offline gate can pass."
+  ],
+  "acceptance_claim": "blocked_only_no_rotated_host_display_acceptance",
+  "next_commands": [
+    "security find-identity -v -p codesigning | grep Vibe Screen Dev",
+    "make baseline-macos-dev-install",
+    "python3 scripts/macos_dev_host.py preflight --install-path '/Applications/Vibe Screen.app'",
+    "make baseline-android-apk",
+    "adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321",
+    "adb -s EP0110PZ0B9110300B install -r -t baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk",
+    "adb -s EP0110PZ0B9110300B shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true",
+    "python3 -m tools.vibescreen_evidence.host_display_rotation_gate docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation.json --output docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation-gate.json"
+  ]
+}

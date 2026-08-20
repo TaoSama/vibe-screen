@@ -398,3 +398,29 @@ Evidence:
 
 - [`evidence/2026-08-18-p0110-native-pointer-hid-blocked/`](evidence/2026-08-18-p0110-native-pointer-hid-blocked/)
 - [`evidence/2026-08-20-p0110-native-pointer-hid/`](evidence/2026-08-20-p0110-native-pointer-hid/)
+
+## P0110 rotated host-display readiness follow-up
+
+On 2026-08-20, the connected Nubia P0110 (EP0110PZ0B9110300B, pacific,
+Android 16 / SDK 36) was checked for the rotated physical/virtual host-display
+acceptance gate. The target device was online, and origin/main was current at
+b9d768e55c75f03cd3cb5d20939576bc8d24ff27, but no real-device acceptance run
+was started.
+
+The final readiness check found /tmp/vibe-screen-device-android.lock occupied
+by another P0110 task. The current-main Host also could not pass the stable
+signed Host preflight because no valid codesigning identity was visible in the
+keychain, ad-hoc signing is refused for local device reruns, and a read-only TCC
+query returned no Screen Recording or Accessibility rows for
+dev.telemachus.display. The target Android package was not installed on the
+P0110 at readiness time.
+
+The retained host-display-rotation.json therefore contains no completed
+physical or virtual display run, and the offline gate output is status=failed
+with missing physical and virtual rotated host-display evidence. This remains a
+blocked/readiness record only; the rotated host-display acceptance gate is still
+open.
+
+Evidence:
+
+- [`evidence/2026-08-20-p0110-host-display-rotation-blocked/`](evidence/2026-08-20-p0110-host-display-rotation-blocked/)
