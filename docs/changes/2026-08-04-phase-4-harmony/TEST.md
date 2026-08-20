@@ -113,6 +113,32 @@ HUKS-backed secure pairing, Host interoperability on a HarmonyOS device, or
 MatePad behavior. Controller-specific input still needs the MatePad Mini
 acceptance matrix before being claimed as device-verified.
 
+## 2026-08-20 HarmonyOS device-gate manifest validator
+
+The MatePad Mini runbook now requires a redacted `harmony-device-gates.json`
+manifest beside the raw evidence. The validator is intentionally stricter than
+the portable source checks: a passing manifest must bind the clean repository
+commit/tree, DevEco/Harmony SDK and HDC versions, a signed release HAP and
+signature hash, MatePad Mini HarmonyOS identity, Protocol v1 Host build, and
+explicit pass evidence for every remaining real-device gate. Android platform
+records, non-MatePad device records, missing HAP/signing hashes, dirty source
+state, and blocked gates fail closed.
+
+```text
+python3 scripts/harmony_device_gate.py --template
+  PASS: prints a redaction-safe manifest template only
+make harmony-device-gate EVIDENCE_DIR=/path/to/evidence
+  PASS only when /path/to/evidence/harmony-device-gates.json has every required
+  real-device gate marked pass with evidence references
+python3 scripts/harmony_device_gate.py --allow-blocked /path/to/evidence/harmony-device-gates.json
+  STRUCTURE-ONLY: may document blocked readiness, but is not acceptance evidence
+```
+
+This validator does not run DevEco, install a HAP, pair a device, decode media,
+or interoperate with the Host. It exists to keep those external observations
+complete and correctly scoped once a MatePad Mini and signing environment are
+available.
+
 ## Clean cross-repository gates
 
 The following commands ran against the tested commit/tree above:

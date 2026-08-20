@@ -16,6 +16,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from webrtc_m150_notices import NOTICE_RELATIVE_PATH, validate_notice_bundle
 import generate_webrtc_m150_notices
+import harmony_device_gate
 import package_macos
 import prepare_release
 import android_stylus_acceptance
@@ -138,6 +139,113 @@ Input Reader State:
         self.assertIn("  - Sources: none", readme)
         self.assertIn("  - Buttons: none", readme)
         self.assertFalse(any(line.endswith(" ") for line in readme.splitlines()))
+
+
+class HarmonyDeviceGateTests(unittest.TestCase):
+    def passing_manifest(self) -> dict[str, object]:
+        manifest = harmony_device_gate.template_manifest()
+        manifest["repository"] = {
+            "commit": "a" * 40,
+            "tree": "b" * 40,
+            "status": "clean",
+        }
+        manifest["artifact"] = {
+            "bundle_name": "dev.vibescreen.harmony",
+            "version_name": "0.1.0",
+            "hap_sha256": "1" * 64,
+            "signature_certificate_sha256": "2" * 64,
+            "sha256sums_sha256": "3" * 64,
+        }
+        manifest["device"] = {
+            "platform": "HarmonyOS NEXT",
+            "manufacturer": "Huawei",
+            "model": "MatePad Mini",
+            "product": "MatePad Mini",
+            "os_build": "HarmonyOS NEXT build 1",
+            "hdc_target": "redacted-hdc-target",
+            "serial_hash": "4" * 64,
+        }
+        manifest["host"] = {
+            "commit": "c" * 40,
+            "build_sha256": "5" * 64,
+            "protocol": "Protocol v1",
+        }
+        manifest["gates"] = [
+            {"id": gate_id, "status": "pass", "evidence": [f"evidence/{gate_id}.txt"]}
+            for gate_id in harmony_device_gate.REQUIRED_GATE_IDS
+        ]
+        return manifest
+
+    def test_harmony_device_manifest_passes_when_all_real_device_gates_are_present(self) -> None:
+        self.assertEqual(harmony_device_gate.validate_manifest(self.passing_manifest()), [])
+
+    def test_harmony_device_manifest_rejects_android_substitute(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["device"] = {
+            "platform": "Android",
+            "manufacturer": "nubia",
+            "model": "P0110",
+            "product": "pacific",
+            "os_build": "Android 16",
+            "hdc_target": "not-applicable",
+            "serial_hash": "4" * 64,
+        }
+
+        with self.assertRaisesRegex(harmony_device_gate.ManifestError, "Android evidence"):
+            harmony_device_gate.validate_manifest(manifest)
+
+    def test_harmony_device_manifest_rejects_blocked_gate_unless_readiness_mode(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["gates"][0]["status"] = "blocked"
+
+        with self.assertRaisesRegex(harmony_device_gate.ManifestError, "deveco_sdk_and_api_checker: blocked"):
+            harmony_device_gate.validate_manifest(manifest)
+        self.assertEqual(
+            harmony_device_gate.validate_manifest(manifest, allow_blocked=True),
+            ["deveco_sdk_and_api_checker: blocked"],
+        )
+
+    def test_harmony_device_template_is_readiness_only(self) -> None:
+        manifest = harmony_device_gate.template_manifest()
+
+        with self.assertRaisesRegex(harmony_device_gate.ManifestError, "placeholder zero value"):
+            harmony_device_gate.validate_manifest(manifest)
+        warnings = harmony_device_gate.validate_manifest(manifest, allow_blocked=True)
+        self.assertEqual(len(warnings), len(harmony_device_gate.REQUIRED_GATE_IDS))
+
+    def test_harmony_device_cli_allow_blocked_never_prints_acceptance_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            manifest_path = Path(temporary_directory) / "harmony-device-gates.json"
+            manifest_path.write_text(json.dumps(self.passing_manifest()), encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(REPOSITORY_ROOT / "scripts/harmony_device_gate.py"),
+                    "--allow-blocked",
+                    str(manifest_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+        self.assertIn("not acceptance evidence", result.stdout)
+        self.assertNotIn("passes all required real-device gates", result.stdout)
+
+    def test_harmony_device_manifest_requires_signed_artifact_hashes(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["artifact"]["hap_sha256"] = "not-a-hash"
+
+        with self.assertRaisesRegex(harmony_device_gate.ManifestError, "artifact.hap_sha256"):
+            harmony_device_gate.validate_manifest(manifest)
+
+    def test_harmony_device_gate_make_target_uses_manifest_validator(self) -> None:
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+
+        self.assertIn("harmony-device-gate", makefile)
+        self.assertIn("scripts/harmony_device_gate.py", makefile)
+        self.assertIn("$(EVIDENCE_DIR)/harmony-device-gates.json", makefile)
 
 
 class ArchiveArtifactTests(unittest.TestCase):

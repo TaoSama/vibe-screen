@@ -2,6 +2,20 @@
 
 Never substitute Android results for this runbook.
 
+Keep a redacted structured manifest beside the raw evidence and validate it
+before claiming the HarmonyOS gate is closed:
+
+```bash
+python3 scripts/harmony_device_gate.py --template > /tmp/harmony-device-gates.json
+# Fill every field from the exact DevEco build, signed HAP, MatePad Mini,
+# Protocol v1 Mac host, logs, metrics, and external-camera evidence.
+python3 scripts/harmony_device_gate.py /path/to/evidence/harmony-device-gates.json
+```
+
+For a readiness or blocked dry run, `--allow-blocked` may validate the manifest
+shape, but the resulting output is not acceptance evidence and must not close
+the README gate.
+
 1. Record repository commit, DevEco/Harmony SDK versions, `hdc -v`, HAP SHA-256,
    tablet model, OS build, free storage, battery, thermal state, and network.
 2. Run `pnpm verify` and `make release`; verify the signed HAP and
@@ -26,3 +40,5 @@ Never substitute Android results for this runbook.
 
 Store raw evidence under an ignored local directory or attach it to the release;
 do not commit device identifiers, pairing credentials, or private network data.
+The committed evidence summary, if any, should reference only redacted artifact
+paths or reviewed release attachments.
