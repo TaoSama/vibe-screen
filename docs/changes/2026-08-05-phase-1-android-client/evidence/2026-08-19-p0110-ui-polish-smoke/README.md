@@ -40,7 +40,7 @@ weak UI smoke evidence rather than a full interaction acceptance run.
 ## Local validation
 
 ```bash
-cd baseline/AndroidClient
+cd "$REPO/baseline/AndroidClient"
 ./gradlew :app:testDebugUnitTest \
   --tests dev.telemachus.display.DisplayCapsulePolicyTest \
   --tests dev.telemachus.display.ControlBarAccessibilityPolicyTest \
@@ -48,11 +48,11 @@ cd baseline/AndroidClient
 ./gradlew :app:assembleDebug
 cd ../..
 git diff --check
-adb -s EP0110PZ0B9110300B install -r -t baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
-adb -s EP0110PZ0B9110300B shell am start -W -S -n dev.telemachus.display/.MainActivity --ez auto_connect false
-adb -s EP0110PZ0B9110300B exec-out screencap -p > initial.png
-adb -s EP0110PZ0B9110300B shell input tap 632 170
-adb -s EP0110PZ0B9110300B exec-out screencap -p > after-top-tap.png
+"$ANDROID_HOME/platform-tools/adb" -s "$ADB_SERIAL" install -r -t baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+"$ANDROID_HOME/platform-tools/adb" -s "$ADB_SERIAL" shell am start -W -S -n dev.telemachus.display/.MainActivity --ez auto_connect false
+"$ANDROID_HOME/platform-tools/adb" -s "$ADB_SERIAL" exec-out screencap -p > initial.png
+"$ANDROID_HOME/platform-tools/adb" -s "$ADB_SERIAL" shell input tap 632 170
+"$ANDROID_HOME/platform-tools/adb" -s "$ADB_SERIAL" exec-out screencap -p > after-top-tap.png
 ```
 
 ## Not proved
