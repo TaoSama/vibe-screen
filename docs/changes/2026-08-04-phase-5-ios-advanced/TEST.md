@@ -202,6 +202,9 @@ The following remain unproved until their dedicated gates produce evidence:
 - iOS app/Simulator/device end-to-end host connection, decoded video, touch,
   and disconnect/reconnect (the macOS Core loopback proves only the transport
   and Protocol v1 boundary listed above);
+- iOS trusted-LAN encrypted-session behavior; the current loopback exercises
+  explicit plaintext legacy fallback only and is not AES-256-GCM secure-record
+  LAN evidence;
 - cross-client golden bytes against the Android application;
 - AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
   file picker/export, UDP broadcast, and managed App Configuration injection;
@@ -224,6 +227,10 @@ envelopes, codec choice, stream/epoch telemetry, touch acknowledgement,
 network interruption, reconnect duration, and any owner-requested bounded
 memory/latency series. Raw logs belong under this change directory's
 `evidence/` subdirectory or an external release bundle after privacy review.
+Every committed run summary must include sanitized `acceptance.json`,
+`ios-device-acceptance-gate.json`, a hash manifest, and the privacy-reviewed
+artifact list. The gate is read-only and fails closed: open or blocked evidence
+returns `insufficient`, while Android-substituted evidence returns `fail`.
 
 While the Phase 0 soak owns the controlled endpoint (redacted as
 `$ADB_ENDPOINT`), Phase 5 performs only

@@ -27,6 +27,22 @@ Run the tests without installing third-party packages:
 PYTHONPATH=tools python3 -m unittest discover -s tools/tests -v
 ```
 
+## iOS device acceptance gate
+
+The iOS gate validates a sanitized `acceptance.json` after a separately
+scheduled iPhone/iPad run. It is intentionally read-only: it does not invoke
+Xcode, start the Host, connect to LAN, use ADB, or operate a device. A `pass`
+requires both iPhone and iPad hardware records, complete signing/install,
+Protocol v1 session, H.264 and HEVC VideoToolbox, input, reconnect, and audio
+playback gates, plus retained local artifacts for every gate. Open or blocked
+readiness records return `insufficient`; Android artifacts or identities return
+`fail`.
+
+```sh
+make ios-device-acceptance-gate \
+  IOS_ACCEPTANCE_JSON=docs/changes/2026-08-04-phase-5-ios-advanced/evidence/YYYY-MM-DD-ios-device/acceptance.json
+```
+
 ## Device and soak evidence
 
 The repository-level entry points require an explicit lease-controlled ADB

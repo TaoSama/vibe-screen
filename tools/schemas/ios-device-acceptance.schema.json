@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/ios-device-acceptance.schema.json",
+  "title": "Vibe Screen iOS device acceptance evidence v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "kind",
+    "platform",
+    "status",
+    "repository",
+    "host",
+    "xcode",
+    "trusted_lan",
+    "signing",
+    "devices",
+    "gates",
+    "android_evidence_used_for_ios_gates"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "ios_device_acceptance"},
+    "platform": {"const": "ios"},
+    "status": {"enum": ["open", "blocked", "complete", "failed"]},
+    "repository": {
+      "type": "object",
+      "required": ["commit", "branch", "dirty"],
+      "properties": {
+        "commit": {"type": "string", "minLength": 1},
+        "branch": {"type": "string", "minLength": 1},
+        "dirty": {"type": "boolean"}
+      }
+    },
+    "host": {
+      "type": "object",
+      "required": ["commit", "macos_version", "permissions_changed_by_run"],
+      "properties": {
+        "commit": {"type": "string", "minLength": 1},
+        "macos_version": {"type": "string", "minLength": 1},
+        "permissions_changed_by_run": {"type": "boolean"}
+      }
+    },
+    "xcode": {
+      "type": "object",
+      "required": ["version", "selected_developer_dir", "ios_sdk"],
+      "properties": {
+        "version": {"type": "string", "minLength": 1},
+        "selected_developer_dir": {"type": "string", "minLength": 1},
+        "ios_sdk": {"type": "string", "minLength": 1}
+      }
+    },
+    "trusted_lan": {
+      "type": "object",
+      "required": ["mode", "encrypted_lan_claimed"],
+      "properties": {
+        "mode": {"const": "explicit_plaintext_legacy_fallback"},
+        "encrypted_lan_claimed": {"const": false}
+      }
+    },
+    "signing": {
+      "type": "object",
+      "required": [
+        "status",
+        "bundle_id",
+        "team_id_redacted",
+        "certificate_common_name_redacted",
+        "provisioning_profile_uuid_redacted",
+        "archive_sha256"
+      ],
+      "properties": {
+        "status": {"enum": ["open", "blocked", "complete", "failed"]},
+        "bundle_id": {"type": "string", "minLength": 1},
+        "team_id_redacted": {"type": "boolean"},
+        "certificate_common_name_redacted": {"type": "boolean"},
+        "provisioning_profile_uuid_redacted": {"type": "boolean"},
+        "archive_sha256": {"type": "string", "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"}
+      }
+    },
+    "devices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "role",
+          "product_name",
+          "hardware_model",
+          "os_version",
+          "build_number",
+          "install_status"
+        ],
+        "properties": {
+          "role": {"enum": ["iphone", "ipad"]},
+          "product_name": {"type": "string", "minLength": 1},
+          "hardware_model": {"type": "string", "minLength": 1},
+          "os_version": {"type": "string", "minLength": 1},
+          "build_number": {"type": "string", "minLength": 1},
+          "install_status": {"enum": ["open", "blocked", "complete", "failed"]}
+        }
+      }
+    },
+    "gates": {"type": "object"},
+    "android_evidence_used_for_ios_gates": {"const": false},
+    "notes": {"type": "array", "items": {"type": "string"}}
+  }
+}

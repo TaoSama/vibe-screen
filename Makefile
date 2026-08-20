@@ -20,6 +20,8 @@ PHASE2_RECOVERY_SCENARIOS ?=
 PHASE2_THERMAL_LIMIT_STATUS ?= 2
 PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS ?=
 PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT ?=
+IOS_ACCEPTANCE_JSON ?= $(EVIDENCE_DIR)/acceptance.json
+IOS_ACCEPTANCE_GATE_JSON ?= $(dir $(IOS_ACCEPTANCE_JSON))ios-device-acceptance-gate.json
 TOUCH_RERUN_EXPECTED_HOST_SHA256 ?=
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
@@ -34,7 +36,7 @@ HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
 HARMONY_HOST_COMMIT ?=
 HARMONY_HOST_BUILD_SHA256 ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate evidence-usb-live-smoke
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-device-memory-gate phase2-tablet-gate hardware-keyboard-gate evidence-usb-live-smoke ios-device-acceptance-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -157,6 +159,13 @@ harmony-readiness:
 harmony-device-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS device evidence directory" >&2; exit 2)
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_device_gate.py "$(EVIDENCE_DIR)/harmony-device-gates.json"
+
+ios-device-acceptance-gate:
+	@test -f "$(IOS_ACCEPTANCE_JSON)" || (echo "error: set IOS_ACCEPTANCE_JSON to a sanitized iOS acceptance.json" >&2; exit 2)
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.ios_device_acceptance_gate \
+		--acceptance "$(IOS_ACCEPTANCE_JSON)" \
+		--evidence-root "$$(dirname "$(IOS_ACCEPTANCE_JSON)")" \
+		--output "$(IOS_ACCEPTANCE_GATE_JSON)"
 
 soak-30m soak-2h soak-8h: require-evidence-serial
 	mkdir -p $(EVIDENCE_DIR)/$@
