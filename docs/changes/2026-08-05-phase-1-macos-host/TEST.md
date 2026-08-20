@@ -95,12 +95,40 @@ not prove private display creation/capture, actual mirroring, Accessibility or
 CGEvent effects, login-item approval, hot-plug, headless reboot, device input,
 latency, or sustained memory behavior.
 
+## Login/headless readiness snapshot (2026-08-21)
+
+The repository now has a read-only local readiness command for the login
+startup, headless Mac mini, and unattended recovery integration gates:
+
+    make baseline-macos-startup-readiness
+
+It records installed Host signing, TCC Screen Recording/Accessibility rows,
+startup defaults, Launch at Login state, current display inventory, and recent
+Host startup/recovery markers into text and JSON reports. It does not register
+login items, reboot, launch or stop the Host, reset TCC, grant permissions,
+modify Keychain, or contact an Android device.
+
+On 2026-08-21 the command produced a blocked readiness snapshot under
+evidence/2026-08-21-login-headless-readiness-blocked/. The installed Host was
+stable-signed, and onboarding and startup defaults were ready. Readiness
+remained blocked because the read-only TCC database check could not verify
+Screen Recording or Accessibility from this shell, the read-only Login Items
+dump timed out, and no active CoreGraphics display was visible to the diagnostic
+subprocess. Display inventory was present through
+`system_profiler`, but that inventory remains diagnostic only and does not
+prove ScreenCaptureKit capture after a headless reboot. The captured Host log
+segment showed auto-start was deferred until onboarding and Screen Recording
+were complete. This is blocker diagnostics only: it was not a controlled
+acceptance run and does not close the unattended recovery gate.
+
 ## Remaining gates
 
 - private normal/HiDPI extension creation and first captured frame;
 - true mirror state before start and cleared state after stop;
 - AX migration/restore of a disposable real window, including display removal;
 - Launch at Login approval plus logout/login relaunch;
+- headless Mac mini reboot with a usable physical, dummy, or Screen Sharing
+  display after login;
 - selected-display hot-plug while streaming;
 - Android touch/reconnect/keyboard/native-mouse checks after the device lease
   is released (keyboard/native mouse also require a future transport entry);

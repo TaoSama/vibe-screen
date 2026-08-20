@@ -1,0 +1,83 @@
+macOS login/headless readiness
+--------------------------------
+Generated: 2026-08-21T05:28:53.189819+00:00
+Result: BLOCKED
+Scope: read-only login startup, headless display, and unattended recovery readiness
+
+Blocking issues
+---------------
+- cannot verify TCC permissions read-only: /Users/luwentao/Library/Application Support/com.apple.TCC/TCC.db: command timed out after 5s; /Library/Application Support/com.apple.TCC/TCC.db: command timed out after 5s
+- Launch at Login is not verified enabled: unverified
+- no active display is visible to the current WindowServer session
+
+Warnings
+--------
+(none)
+
+Installed Host
+--------------
+Path: /Applications/Vibe Screen.app
+Identifier: dev.telemachus.display
+Identity: Vibe Screen Dev
+Certificate SHA-1: 9AAE572BF6D764E3436A6109197D345B5A87998C
+CDHash: 2fe65fd5cd69c80249140da3f139cfa68037c5c2
+Binary SHA-256: c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996
+Ad-hoc: False
+
+Permissions
+-----------
+Database: /Users/luwentao/Library/Application Support/com.apple.TCC/TCC.db; /Library/Application Support/com.apple.TCC/TCC.db
+Screen Recording allowed: False
+Accessibility allowed: False
+Read warning: /Users/luwentao/Library/Application Support/com.apple.TCC/TCC.db: command timed out after 5s; /Library/Application Support/com.apple.TCC/TCC.db: command timed out after 5s
+
+Startup settings
+----------------
+Defaults domain readable: True
+autoStartStreamingOnLaunch: True
+startupMode: usb
+hasCompletedOnboarding: True
+displaySource: selectedDisplay
+selectedDisplayUUID: 37D8832A-2D66-02CA-B9F7-8F30A301B230
+selectedDisplayID: 1
+Defaults used: none
+
+Launch at Login
+---------------
+State: unverified
+Detail: command timed out after 15s
+
+Display inventory
+-----------------
+Readable: True
+Display count: 2
+Active CoreGraphics display count: 0
+- {'id': '1', 'name': 'Color LCD', 'main': '1', 'logical': '1512 x 982 @ 120.00Hz', 'physical': '3024 x 1964', 'source': 'system_profiler'}
+- {'id': '3', 'name': 'DELL U2723QE', 'main': '0', 'logical': '1920 x 1080 @ 60.00Hz', 'physical': '3840 x 2160', 'source': 'system_profiler'}
+
+Recent Host startup/recovery markers
+------------------------------------
+Log path: /Users/luwentao/Library/Logs/Telemachus/telemachus.log
+Readable: True
+- 2026-08-21T04:45:59Z Auto-start deferred until onboarding and Screen Recording are complete
+
+This readiness report does not prove
+------------------------------------
+- macOS launched Vibe Screen after logout/login or reboot
+- a headless Mac mini exposes a capturable display after reboot
+- system_profiler display inventory proves ScreenCaptureKit can capture that display
+- USB or LAN streaming rendered on an Android client
+- unattended recovery succeeded or exhausted during a real listener/capture/display failure
+
+Recommended next evidence
+-------------------------
+- run this readiness command again after Launch at Login can be read and at least one display is visible
+- capture a reboot or logout/login launch log without manually launching Vibe Screen
+- record the intended headless display setup and first successful capture after login
+- force one listener, capture, or selected-display failure during unattended operation and preserve bounded retry logs
+
+Safety
+------
+This command is read-only. It does not register login items, reboot, launch or
+stop Vibe Screen, reset TCC, grant permissions, modify Keychain, or contact an
+Android device.

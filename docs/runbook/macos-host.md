@@ -183,6 +183,20 @@ If macOS reports that the login item requires approval, open **System Settings
 → General → Login Items** and approve Vibe Screen. Registration alone is not
 treated as proof that login launch is active.
 
+Before scheduling a reboot or headless pass, collect the read-only readiness
+snapshot:
+
+    make baseline-macos-startup-readiness
+
+The command writes .build/dev-macos-host/login-headless-readiness.txt and
+.build/dev-macos-host/login-headless-readiness.json. It checks the installed
+bundle identity/signature, Screen Recording and Accessibility TCC rows, startup
+defaults, Launch at Login state, current display inventory, and recent Host
+startup/recovery log markers. Exit code 2 means the run is blocked and should
+be kept as evidence. A passing readiness snapshot is still only a preflight: it
+does not prove login launch after reboot, headless capture, Android rendering,
+or recovery from a controlled listener/capture/display failure.
+
 ### Acceptance gate matrix
 
 Use this matrix when turning the login-startup/headless path from source-level

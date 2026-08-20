@@ -1,0 +1,29 @@
+git fetch origin --prune
+git rebase origin/main
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_macos_dev_host -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -v
+python3 -m compileall -q scripts/macos_dev_host.py scripts/tests/test_macos_dev_host.py
+python3 scripts/macos_dev_host.py readiness --report docs/changes/2026-08-05-phase-1-macos-host/evidence/2026-08-21-login-headless-readiness-blocked/login-headless-readiness.txt --json-report docs/changes/2026-08-05-phase-1-macos-host/evidence/2026-08-21-login-headless-readiness-blocked/login-headless-readiness.json
+make baseline-macos-startup-readiness
+python3 -m json.tool docs/changes/2026-08-05-phase-1-macos-host/evidence/2026-08-21-login-headless-readiness-blocked/login-headless-readiness.json >/dev/null
+shasum -a 256 -c docs/changes/2026-08-05-phase-1-macos-host/evidence/2026-08-21-login-headless-readiness-blocked/SHA256SUMS
+make baseline-macos-self-test
+git diff --check origin/main...HEAD
+
+Observed readiness exit code: 2 after origin/main rebase.
+Observed make baseline-macos-startup-readiness exit code: 2, matching the
+blocked readiness result.
+Observed PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_macos_dev_host -v exit code: 0.
+Observed PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -v exit code: 0.
+Observed python3 -m compileall -q scripts/macos_dev_host.py scripts/tests/test_macos_dev_host.py exit code: 0.
+Observed python3 -m json.tool .../login-headless-readiness.json exit code: 0.
+Observed shasum -a 256 -c .../SHA256SUMS exit code: 0 after refreshing checksums.
+Observed make baseline-macos-self-test exit code: 1 in this shell because
+--transport-self-test could not complete its Protocol v1 ready lifecycle while
+127.0.0.1:55433 was already bound by an external ssh process. The Host
+self-test substep passed; the port-bound transport substep was not used to
+close any login/headless readiness gate.
+Observed git diff --check origin/main...HEAD exit code: 0.
+
+The readiness command is read-only and did not modify TCC, Keychain, login
+items, user defaults, the installed app, or Android device state.

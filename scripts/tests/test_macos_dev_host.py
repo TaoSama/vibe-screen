@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import plistlib
+import json
 import sqlite3
 import subprocess
 import sys
@@ -242,6 +243,285 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
             expected_sign_identity="Vibe Screen Dev",
         )
 
+    def test_defaults_parser_extracts_startup_settings_and_defaults(self) -> None:
+        defaults_output = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Telemachus_autoStartStreamingOnLaunch</key>
+    <true/>
+    <key>Telemachus_connectionMode</key>
+    <string>wireless</string>
+    <key>Telemachus_displaySource</key>
+    <string>selectedDisplay</string>
+    <key>Telemachus_hasCompletedOnboarding</key>
+    <true/>
+    <key>Telemachus_selectedDisplayID</key>
+    <integer>123</integer>
+    <key>Telemachus_selectedDisplayUUID</key>
+    <string>display-uuid</string>
+</dict>
+</plist>
+"""
+
+        with mock.patch.object(macos_dev_host, "run_best_effort", return_value=(0, defaults_output)):
+            settings = macos_dev_host.read_startup_settings()
+
+        self.assertTrue(settings.readable)
+        self.assertTrue(settings.auto_start_streaming_on_launch)
+        self.assertEqual(settings.startup_mode, "wireless")
+        self.assertTrue(settings.has_completed_onboarding)
+        self.assertEqual(settings.display_source, "selectedDisplay")
+        self.assertEqual(settings.selected_display_uuid, "display-uuid")
+        self.assertEqual(settings.selected_display_id, 123)
+        self.assertIn("startupMode=usb", settings.defaults_used)
+
+    def test_login_item_parser_reports_enabled_and_requires_approval(self) -> None:
+        enabled = macos_dev_host.parse_login_item_state(
+            """
+            bundle id: dev.telemachus.display
+            app url: file:///Applications/Vibe%20Screen.app/
+            enabled
+            """
+        )
+        approval = macos_dev_host.parse_login_item_state(
+            """
+            bundle id: dev.telemachus.display
+            requires approval in system settings
+            """
+        )
+
+        self.assertEqual(enabled.state, "enabled")
+        self.assertTrue(enabled.matched)
+        self.assertEqual(approval.state, "requires_approval")
+
+    def test_display_readiness_keeps_system_profiler_as_diagnostic_only(self) -> None:
+        profiler_payload = json.dumps(
+            {
+                "SPDisplaysDataType": [
+                    {
+                        "spdisplays_ndrvs": [
+                            {
+                                "_name": "Color LCD",
+                                "_spdisplays_displayID": "1",
+                                "_spdisplays_resolution": "1512 x 982 @ 120.00Hz",
+                                "_spdisplays_pixels": "3024 x 1964",
+                                "spdisplays_main": "spdisplays_yes",
+                                "spdisplays_online": "spdisplays_yes",
+                            }
+                        ]
+                    }
+                ]
+            }
+        )
+
+        with mock.patch.object(
+            macos_dev_host,
+            "run_best_effort",
+            side_effect=[(0, ""), (0, profiler_payload)],
+        ):
+            displays = macos_dev_host.read_display_readiness()
+
+        self.assertTrue(displays.readable)
+        self.assertEqual(displays.display_count, 1)
+        self.assertEqual(displays.active_display_count, 0)
+        self.assertEqual(displays.displays[0]["source"], "system_profiler")
+
+    def test_readiness_payload_blocks_when_only_system_profiler_displays_exist(self) -> None:
+        payload = macos_dev_host.build_readiness_payload(
+            metadata=self.metadata(),
+            permissions=macos_dev_host.PermissionStatus(
+                database_path=Path("TCC.db"),
+                readable=True,
+                rows=(
+                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                ),
+            ),
+            signing_errors=[],
+            settings=macos_dev_host.HostStartupSettings(
+                domain="dev.telemachus.display",
+                readable=True,
+                auto_start_streaming_on_launch=True,
+                startup_mode="usb",
+                has_completed_onboarding=True,
+                display_source="currentMain",
+                selected_display_uuid=None,
+                selected_display_id=None,
+                stored_keys=(),
+                defaults_used=(),
+            ),
+            login_item=macos_dev_host.LoginItemReadiness(
+                state="enabled",
+                matched=True,
+                detail="enabled",
+                evidence=("enabled",),
+            ),
+            displays=macos_dev_host.HostDisplayReadiness(
+                readable=True,
+                display_count=1,
+                displays=({"id": "1", "source": "system_profiler"},),
+                active_display_count=0,
+            ),
+            logs=macos_dev_host.LogReadiness(
+                path="telemachus.log",
+                readable=True,
+                markers=("Auto-start deferred until onboarding and Screen Recording are complete",),
+            ),
+        )
+
+        self.assertEqual(payload["result"], "blocked")
+        self.assertEqual(payload["display_inventory"]["display_count"], 1)
+        self.assertEqual(payload["display_inventory"]["active_display_count"], 0)
+        self.assertIn("no active display is visible", "\n".join(payload["blockers"]))
+
+    def test_readiness_payload_keeps_integration_gates_open_when_ready(self) -> None:
+        payload = macos_dev_host.build_readiness_payload(
+            metadata=self.metadata(),
+            permissions=macos_dev_host.PermissionStatus(
+                database_path=Path("TCC.db"),
+                readable=True,
+                rows=(
+                    macos_dev_host.TCCRow("kTCCServiceScreenCapture", "dev.telemachus.display", 0, 2, 4, 1),
+                    macos_dev_host.TCCRow("kTCCServiceAccessibility", "dev.telemachus.display", 0, 2, 4, 2),
+                ),
+            ),
+            signing_errors=[],
+            settings=macos_dev_host.HostStartupSettings(
+                domain="dev.telemachus.display",
+                readable=True,
+                auto_start_streaming_on_launch=True,
+                startup_mode="usb",
+                has_completed_onboarding=True,
+                display_source="currentMain",
+                selected_display_uuid=None,
+                selected_display_id=None,
+                stored_keys=(),
+                defaults_used=(),
+            ),
+            login_item=macos_dev_host.LoginItemReadiness(
+                state="enabled",
+                matched=True,
+                detail="enabled",
+                evidence=("enabled",),
+            ),
+            displays=macos_dev_host.HostDisplayReadiness(
+                readable=True,
+                display_count=1,
+                displays=({"id": "1", "main": "1", "logical": "1512x982", "physical": "3024x1964"},),
+            ),
+            logs=macos_dev_host.LogReadiness(
+                path="telemachus.log",
+                readable=True,
+                markers=("Auto-start deferred until onboarding and Screen Recording are complete",),
+            ),
+        )
+
+        self.assertEqual(payload["result"], "ready")
+        self.assertEqual(payload["warnings"], [])
+        self.assertIn("macOS launched Vibe Screen after logout/login or reboot", payload["does_not_prove"])
+        self.assertIn("headless Mac mini exposes a capturable display", "\n".join(payload["does_not_prove"]))
+        self.assertIn("capture a reboot or logout/login launch log", "\n".join(payload["recommended_next_evidence"]))
+
+    def test_readiness_payload_reports_missing_login_onboarding_display_and_log_blockers(self) -> None:
+        payload = macos_dev_host.build_readiness_payload(
+            metadata=self.metadata(),
+            permissions=macos_dev_host.PermissionStatus(database_path=Path("TCC.db"), readable=True, rows=()),
+            signing_errors=["Screen Recording is not authorized for the installed Host"],
+            settings=macos_dev_host.HostStartupSettings(
+                domain="dev.telemachus.display",
+                readable=True,
+                auto_start_streaming_on_launch=False,
+                startup_mode="internet",
+                has_completed_onboarding=False,
+                display_source="currentMain",
+                selected_display_uuid=None,
+                selected_display_id=None,
+                stored_keys=(),
+                defaults_used=(),
+            ),
+            login_item=macos_dev_host.LoginItemReadiness(
+                state="requires_approval",
+                matched=True,
+                detail="approval required",
+                evidence=("requires approval",),
+            ),
+            displays=macos_dev_host.HostDisplayReadiness(readable=True, display_count=0, displays=()),
+            logs=macos_dev_host.LogReadiness(path="missing.log", readable=False, markers=(), error="Host log not found"),
+        )
+
+        blockers = "\n".join(payload["blockers"])
+        self.assertEqual(payload["result"], "blocked")
+        self.assertIn("Screen Recording is not authorized", blockers)
+        self.assertIn("Launch at Login is not verified enabled", blockers)
+        self.assertIn("Start streaming automatically is disabled", blockers)
+        self.assertIn("startupMode is 'internet'", blockers)
+        self.assertIn("onboarding has not completed", blockers)
+        self.assertIn("no active display", blockers)
+        self.assertIn("Host log not found", "\n".join(payload["warnings"]))
+
+    def test_readiness_command_writes_text_and_json_and_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            args = mock.Mock(
+                install_path=macos_dev_host.DEFAULT_INSTALL_PATH,
+                sign_identity="Vibe Screen Dev",
+                tcc_db=Path("TCC.db"),
+                report=root / "readiness.txt",
+                json_report=root / "readiness.json",
+                log_path=Path("missing.log"),
+            )
+            with (
+                mock.patch.object(macos_dev_host.package_macos, "resolve_sign_identity"),
+                mock.patch.object(
+                    macos_dev_host,
+                    "metadata_and_permissions",
+                    return_value=(
+                        self.metadata(),
+                        macos_dev_host.PermissionStatus(Path("TCC.db"), (), True),
+                        ["Screen Recording is not authorized for the installed Host"],
+                    ),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "read_startup_settings",
+                    return_value=macos_dev_host.HostStartupSettings(
+                        domain="dev.telemachus.display",
+                        readable=True,
+                        auto_start_streaming_on_launch=True,
+                        startup_mode="usb",
+                        has_completed_onboarding=True,
+                        display_source="currentMain",
+                        selected_display_uuid=None,
+                        selected_display_id=None,
+                        stored_keys=(),
+                        defaults_used=(),
+                    ),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "read_login_item_readiness",
+                    return_value=macos_dev_host.LoginItemReadiness("enabled", True, "enabled", ()),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "read_display_readiness",
+                    return_value=macos_dev_host.HostDisplayReadiness(True, 1, ({"id": "1"},)),
+                ),
+                mock.patch.object(
+                    macos_dev_host,
+                    "summarize_host_log",
+                    return_value=macos_dev_host.LogReadiness("missing.log", True, ()),
+                ),
+                redirect_stdout(StringIO()),
+                redirect_stderr(StringIO()),
+            ):
+                result = macos_dev_host.readiness_command(args)
+
+            self.assertEqual(result, 2)
+            self.assertIn("Result: BLOCKED", args.report.read_text(encoding="utf-8"))
+            self.assertIn('"result": "blocked"', args.json_report.read_text(encoding="utf-8"))
+
     @staticmethod
     def metadata(
         *,
@@ -329,6 +609,20 @@ class MacOSDevHostTCCTests(unittest.TestCase):
 
         self.assertFalse(status.readable)
         self.assertIn("TCC database not found", status.error or "")
+
+    def test_query_tcc_database_fails_closed_when_read_times_out(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "TCC.db"
+            database_path.write_bytes(b"not queried in this test")
+            with mock.patch.object(
+                macos_dev_host,
+                "run_best_effort",
+                return_value=(124, "command timed out after 5s"),
+            ):
+                status = macos_dev_host.query_tcc_database("dev.telemachus.display", database_path)
+
+        self.assertFalse(status.readable)
+        self.assertIn("timed out", status.error or "")
 
     def test_query_tcc_rows_reports_partial_read_failures(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
