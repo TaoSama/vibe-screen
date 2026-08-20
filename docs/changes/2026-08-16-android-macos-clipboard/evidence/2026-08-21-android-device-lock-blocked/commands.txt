@@ -1,0 +1,52 @@
+Branch and source state:
+
+  git fetch origin --prune
+  git switch -C codex/android-clipboard-e2e-evidence origin/main
+  git rev-parse --short HEAD
+
+Observed output:
+
+  34bd6a14
+
+Pre-PR sync:
+
+  git fetch origin --prune
+  git rebase origin/main
+  git rev-parse --short HEAD^
+
+Observed output:
+
+  9e6174ef
+
+Device lock preflight:
+
+  LOCK=/tmp/vibe-screen-device-android.lock
+  if [ -e "$LOCK" ]; then
+    echo "LOCK_EXISTS"
+    ls -l "$LOCK"
+    cat "$LOCK" || true
+    exit 2
+  fi
+  printf "task=android-clipboard-e2e\nbranch=codex/android-clipboard-e2e-evidence\npid=$$\ncreated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\n" > "$LOCK"
+  chmod 600 "$LOCK"
+
+Observed output:
+
+  LOCK_EXISTS
+  -rw-r--r--@ 1 luwentao  wheel  0 Aug 21 00:32 /tmp/vibe-screen-device-android.lock
+
+Lock metadata check:
+
+  date -u +%Y-%m-%dT%H:%M:%SZ
+  ls -ld /tmp/vibe-screen-device-android.lock
+  stat -f "%Sp %Su %Sg %z %Sm" /tmp/vibe-screen-device-android.lock
+
+Observed output:
+
+  2026-08-20T16:36:41Z
+  -rw-r--r--@ 1 luwentao  wheel  0 Aug 21 00:32 /tmp/vibe-screen-device-android.lock
+  -rw-r--r-- luwentao wheel 0 Aug 21 00:32:20 2026
+
+ADB commands run:
+
+  none. The existing device lock blocked all ADB access.

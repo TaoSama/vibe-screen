@@ -1,0 +1,40 @@
+{
+  "schema": "dev.vibescreen.clipboard-device-evidence/v1",
+  "date_utc": "2026-08-20",
+  "branch": "codex/android-clipboard-e2e-evidence",
+  "baseline_commit": "9e6174ef",
+  "head_commit": "recorded in PR after commit amend",
+  "scope": "Android ClipboardManager <-> macOS NSPasteboard Protocol v1 device E2E",
+  "verdict": "blocked",
+  "can_close_gate": false,
+  "blocker": {
+    "kind": "android_device_lock_exists",
+    "path": "/tmp/vibe-screen-device-android.lock",
+    "observed_owner_metadata": "empty file",
+    "adb_commands_run": 0
+  },
+  "device_identity": {
+    "verified": false,
+    "expected_device": "Nubia P0110 / pacific / Android 16",
+    "reason": "ADB identity commands are forbidden until the Android device lock is acquired"
+  },
+  "tests": [
+    {
+      "command": "cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest --tests dev.telemachus.display.ClipboardApprovalStateTest",
+      "result": "passed",
+      "summary": "BUILD SUCCESSFUL in 28s"
+    },
+    {
+      "command": "cd baseline/MacHost && swift test --scratch-path /tmp/vibe-screen-mac-host-swift-clipboard-3c7e --filter Clipboard",
+      "result": "blocked",
+      "summary": "failed before test execution with error: no such module 'XCTest'"
+    }
+  ],
+  "unproven": [
+    "real Android ClipboardManager read/write",
+    "real macOS NSPasteboard read/write",
+    "USB or trusted-LAN two-direction clipboard transfer",
+    "TalkBack announcement behavior",
+    "long-session clipboard state stability"
+  ]
+}

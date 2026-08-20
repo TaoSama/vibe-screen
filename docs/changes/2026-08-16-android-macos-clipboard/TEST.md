@@ -15,6 +15,39 @@ MacHost 可执行自测。它不证明真实 Android `ClipboardManager`、真实
 
 ## 已运行
 
+### 2026-08-21 复核
+
+本轮从 origin/main 建立 codex/android-clipboard-e2e-evidence 分支，并在提交前
+rebase 到最新 origin/main 9e6174ef；复核 Android 与 MacHost
+clipboard 代码路径后确认：Android ClipboardManager 与 macOS
+NSPasteboard 的生产边界已接入显式用户动作和 Protocol v1 会话，但仓库仍缺
+真实 USB/LAN 双向系统剪贴板端到端证据。
+
+新增 [RUNBOOK.md](RUNBOOK.md) 作为后续短真机验收步骤，要求记录设备身份、
+Protocol v1 clipboard 能力协商、Android -> Mac 与 Mac -> Android 两个方向的
+唯一 marker、Android logcat/diag、Host clipboard 日志和人工可见读回结果。
+
+设备短测在任何 ADB 命令前被锁阻断：/tmp/vibe-screen-device-android.lock
+已存在且为空，因此未读取设备身份、未安装 APK、未改 ADB reverse、未启动 Host
+或客户端，未生成 Nubia P0110/pacific Android 16 真机证据。阻断记录保存在
+[evidence/2026-08-21-android-device-lock-blocked/README.md](evidence/2026-08-21-android-device-lock-blocked/README.md)。
+
+本轮复跑：
+
+    cd baseline/AndroidClient
+    ./gradlew --no-daemon testDebugUnitTest \
+      --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest \
+      --tests dev.telemachus.display.ClipboardApprovalStateTest
+
+结果：BUILD SUCCESSFUL in 28s。
+
+    cd baseline/MacHost
+    swift test --scratch-path /tmp/vibe-screen-mac-host-swift-clipboard-3c7e \
+      --filter Clipboard
+
+结果：仍在编译测试 target 时失败：error: no such module 'XCTest'。该结果与下方
+XCTest 环境门禁一致，不是 clipboard XCTest 断言失败。
+
 ### Android clipboard 聚焦覆盖
 
 命令：
@@ -159,6 +192,10 @@ Xcode / CI 环境执行后才能声称通过。
 ## 执行约束
 
 本轮没有启动模拟器、连接真机、执行 USB/LAN 互操作或生成设备验收记录。
+
+2026-08-21 复核也没有执行 ADB：Android 设备协调锁已存在，按
+docs/runbook/android-client.md 规则必须在任何设备操作前停止。该 blocked
+evidence 不证明设备身份，也不关闭 clipboard 真机 gate。
 
 ## 未验证风险
 
