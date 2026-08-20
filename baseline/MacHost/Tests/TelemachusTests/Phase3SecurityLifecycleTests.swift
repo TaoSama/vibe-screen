@@ -1227,6 +1227,36 @@ final class Phase3SecurityLifecycleTests: XCTestCase {
         )
     }
 
+
+    func testAdvancedChannelsUseIndependentKeysSequencesAndReplayWindows() throws {
+        let pair = try PlatformSessionPacketCipher.selfTestPair(
+            sessionIdentifier: "phase5-channel-isolation",
+            sharedSecret: Data(repeating: 0x21, count: 32),
+            bootstrapSecret: Data(repeating: 0x22, count: 32),
+            transcriptContext: Data(repeating: 0x23, count: 32),
+            sessionEpoch: 9
+        )
+        let otherPair = try PlatformSessionPacketCipher.selfTestPair(
+            sessionIdentifier: "phase5-other-session",
+            sharedSecret: Data(repeating: 0x21, count: 32),
+            bootstrapSecret: Data(repeating: 0x22, count: 32),
+            transcriptContext: Data(repeating: 0x23, count: 32),
+            sessionEpoch: 10
+        )
+        let audioOne = try pair.host.sealAdvanced(Data([1]), channel: .audio)
+        let audioTwo = try pair.host.sealAdvanced(Data([2]), channel: .audio)
+        let bulkOne = try pair.host.sealAdvanced(Data([3]), channel: .bulk)
+        let bulkTwo = try pair.host.sealAdvanced(Data([4]), channel: .bulk)
+
+        XCTAssertNil(pair.device.openAdvanced(audioOne, channel: .bulk))
+        XCTAssertEqual(pair.device.openAdvanced(audioTwo, channel: .audio), Data([2]))
+        XCTAssertEqual(pair.device.openAdvanced(audioOne, channel: .audio), Data([1]))
+        XCTAssertEqual(pair.device.openAdvanced(bulkTwo, channel: .bulk), Data([4]))
+        XCTAssertNil(pair.device.openAdvanced(bulkOne, channel: .bulk))
+        XCTAssertNil(pair.device.openAdvanced(audioTwo, channel: .audio))
+        XCTAssertNil(otherPair.device.openAdvanced(bulkTwo, channel: .bulk))
+    }
+
     func testOldCipherFailsClosedForSealAndOpenAfterDurableEpochAdvance() throws {
         let store = MemorySecurityStateStore()
         let lifecycle = SecurityLifecycle(store: store)
