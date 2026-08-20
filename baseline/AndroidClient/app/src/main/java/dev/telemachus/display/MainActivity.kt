@@ -15,6 +15,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.InputDevice
 import android.view.KeyEvent
@@ -1912,7 +1913,7 @@ class MainActivity : AppCompatActivity() {
             )
         if (!selectable) return
         val displays = availableDisplays
-        val popup = PopupMenu(this, binding.controlDisplaysButton)
+        val popup = PopupMenu(this, binding.displayCapsuleGroup)
         val menu = popup.menu
         menu.setGroupCheckable(0, true, true)
         displays.forEachIndexed { index, option ->
@@ -1955,7 +1956,7 @@ class MainActivity : AppCompatActivity() {
         popup.setOnDismissListener {
             revealControlBar()
         }
-        popup.show()
+        showControlPopupMenu(popup)
     }
 
     /**
@@ -2016,7 +2017,7 @@ class MainActivity : AppCompatActivity() {
         ) {
             return
         }
-        val popup = PopupMenu(this, binding.controlClipboardButton)
+        val popup = PopupMenu(this, binding.controlClipboardButton, Gravity.NO_GRAVITY)
         popup.menu.add(0, CLIPBOARD_MENU_SEND, 0, R.string.clipboard_send_to_mac).isEnabled = true
         popup.menu
             .add(0, CLIPBOARD_MENU_RECEIVE, 1, R.string.clipboard_get_from_mac)
@@ -2030,7 +2031,7 @@ class MainActivity : AppCompatActivity() {
         }
         controlBarHandler.removeCallbacks(controlBarHideRunnable)
         popup.setOnDismissListener { revealControlBar() }
-        popup.show()
+        showControlPopupMenu(popup)
     }
 
     private fun beginSendLocalClipboard(
@@ -2042,7 +2043,7 @@ class MainActivity : AppCompatActivity() {
             showImmersiveDialog(
                 MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.clipboard_lan_confirm_title)
-                    .setMessage(R.string.clipboard_lan_confirm_message)
+                    .setMessage(LanClipboardProtectionMessagePolicy.sendMessage(client.currentLanProtectionState))
                     .setPositiveButton(R.string.clipboard_lan_confirm_action) { _, _ ->
                         sendLocalClipboard(client, generation)
                     }
@@ -2125,7 +2126,7 @@ class MainActivity : AppCompatActivity() {
         showImmersiveDialog(
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.clipboard_lan_receive_confirm_title)
-                .setMessage(R.string.clipboard_lan_receive_confirm_message)
+                .setMessage(LanClipboardProtectionMessagePolicy.receiveMessage(client.currentLanProtectionState))
                 .setPositiveButton(R.string.clipboard_receive_confirm_action) { _, _ ->
                     receiveRemoteClipboard(client, generation)
                 }
@@ -2144,7 +2145,7 @@ class MainActivity : AppCompatActivity() {
                 .setTitle(R.string.clipboard_receive_confirm_title)
                 .setMessage(
                     if (prefs.connectionMode == ConnectionMode.WIRELESS) {
-                        R.string.clipboard_lan_direct_receive_confirm_message
+                        LanClipboardProtectionMessagePolicy.directReceiveMessage(client.currentLanProtectionState)
                     } else {
                         R.string.clipboard_receive_confirm_message
                     },
@@ -2253,8 +2254,15 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun updateConnectionSecurityStatus() {
-        val presentation = ConnectionSecurityPresentationPolicy.presentation(prefs.connectionMode)
+    private fun updateConnectionSecurityStatus(
+        lanProtectionState: LanRecordProtectionState = streamClient?.currentLanProtectionState
+            ?: LanRecordProtectionState.NOT_APPLICABLE,
+    ) {
+        val presentation =
+            ConnectionSecurityPresentationPolicy.presentation(
+                mode = prefs.connectionMode,
+                lanProtectionState = lanProtectionState,
+            )
         val label = getString(presentation.labelResource)
         val detail = getString(presentation.detailResource)
         val detailColor =
@@ -2290,7 +2298,7 @@ class MainActivity : AppCompatActivity() {
         if (!available) return
         val moveDefault = getString(R.string.host_action_move_window)
         val returnDefault = getString(R.string.host_action_return_windows)
-        val popup = PopupMenu(this, binding.controlHostActionsButton)
+        val popup = PopupMenu(this, binding.controlHostActionsButton, Gravity.NO_GRAVITY)
         val menu = popup.menu
         actions.forEachIndexed { index, option ->
             menu.add(0, index, index, HostActionMenuPolicy.menuLabel(option, moveDefault, returnDefault))
@@ -2307,6 +2315,11 @@ class MainActivity : AppCompatActivity() {
         popup.setOnDismissListener {
             revealControlBar()
         }
+        showControlPopupMenu(popup)
+    }
+
+    private fun showControlPopupMenu(popup: PopupMenu) {
+        popup.gravity = Gravity.END
         popup.show()
     }
 
@@ -2508,6 +2521,18 @@ class MainActivity : AppCompatActivity() {
 
         if (!available) return
 
+        var suppressQualityListener = false
+
+        fun syncQualityAutoForExplicitVideoSetting() {
+            if (prefs.videoQuality == VideoQualityChoice.AUTO) return
+            suppressQualityListener = true
+            qualityButtons[VideoQualityChoice.AUTO]?.let { autoButton ->
+                qualityGroup.check(autoButton.id)
+            }
+            suppressQualityListener = false
+            prefs.videoQuality = VideoQualityChoice.AUTO
+        }
+
         fun announceRequest(kind: VideoPreferenceFeedbackKind) {
             if (!VideoPreferenceFeedbackPolicy.shouldAnnounceRequest(clientAvailable = available && streamClient != null)) {
                 return
@@ -2522,6 +2547,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         qualityGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (suppressQualityListener) return@addOnButtonCheckedListener
             if (!isChecked) return@addOnButtonCheckedListener
             val choice =
                 qualityButtons.entries.firstOrNull { it.value.id == checkedId }?.key
@@ -2560,6 +2586,7 @@ class MainActivity : AppCompatActivity() {
                 framesPerSecond = fps,
                 qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
             )
+            syncQualityAutoForExplicitVideoSetting()
             prefs.videoFrameRate = fps
             announceRequest(VideoPreferenceFeedbackKind.FRAME_RATE)
         }
@@ -2579,6 +2606,7 @@ class MainActivity : AppCompatActivity() {
                         framesPerSecond = 0,
                         qualityPreset = VideoQualityPreset.VIDEO_QUALITY_PRESET_UNSPECIFIED,
                     )
+                    syncQualityAutoForExplicitVideoSetting()
                     prefs.videoBitrateMbps = mbps
                     announceRequest(VideoPreferenceFeedbackKind.BITRATE)
                 }
