@@ -1,0 +1,111 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "kind": "host_rss_readiness",
+  "status": "blocked",
+  "created_at_utc": "2026-08-20T16:45:00Z",
+  "accepted_for_short_diagnostic": false,
+  "accepted_for_two_hour_gate": false,
+  "repository": {
+    "worktree": "/Users/luwentao/Workspaces/dotfiles/codex/worktrees/1287/vibe-screen",
+    "branch": "codex/host-rss-readiness",
+    "head": "be9381179a7f5b6a9ea5e97d6a77ad486a026ca7",
+    "origin_main": "be9381179a7f5b6a9ea5e97d6a77ad486a026ca7",
+    "main_worktree_modified": false
+  },
+  "device": {
+    "adb_serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "brand": "nubia",
+    "model": "P0110",
+    "device": "pacific",
+    "android_release": "16",
+    "sdk": 36,
+    "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+    "display_size": "1264x2800",
+    "display_density": "560",
+    "boot_completed": true,
+    "battery_level_percent": 100,
+    "battery_temperature_c": 33.0,
+    "adb_state": "device",
+    "adb_reverse": "UsbFfs tcp:54321 tcp:54321"
+  },
+  "coordination": {
+    "lock_path": "/tmp/vibe-screen-device-android.lock",
+    "lock_acquired_for_read_only_check": true,
+    "lock_released": true,
+    "exclusive_stream_run_started": false
+  },
+  "host": {
+    "current_source_binary_path": "baseline/MacHost/.build/release/Vibe Screen",
+    "current_source_binary_sha256": "2e65cf79f8a84d5739b8f92c331cf8eea1b03a121f8a1e7ec3dae603fc4863d1",
+    "installed_app_path": "/Applications/Vibe Screen.app",
+    "installed_binary_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
+    "installed_bundle_id": "dev.telemachus.display",
+    "installed_signing_authority": "Vibe Screen Dev",
+    "installed_cdhash": "2fe65fd5cd69c80249140da3f139cfa68037c5c2",
+    "installed_matches_current_source": false,
+    "codesigning_identities_visible": 0,
+    "preflight_status": "blocked",
+    "preflight_blocker": "codesign identity Vibe Screen Dev not found in the keychain; ad-hoc signing is refused for local device reruns",
+    "system_tcc_screen_capture_allowed": true,
+    "system_tcc_accessibility_allowed": true,
+    "user_tcc_rows_found": false,
+    "full_xcode_available": false,
+    "xcodebuild_status": "blocked: active developer directory is /Library/Developer/CommandLineTools, not full Xcode"
+  },
+  "android_apk": {
+    "current_source_debug_apk": "baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk",
+    "current_source_debug_apk_sha256": "55768692252a81b3fd6c074cd3fe82c5abf5f0fca2963f1deb13014a9e8e0fcc",
+    "installed_package": "dev.telemachus.display",
+    "installed_version_code": 100000,
+    "installed_version_name": "0.0.0",
+    "installed_last_update_time": "2026-08-20 20:39:22",
+    "reinstalled_during_this_run": false
+  },
+  "blocking_reasons": [
+    "The current-source Host cannot be installed with the required stable Vibe Screen Dev signing identity because no valid codesigning identities are visible in this keychain.",
+    "The installed /Applications/Vibe Screen.app is TCC-authorized but its executable SHA-256 differs from the current-source build, so it cannot produce current-source Host RSS gate evidence.",
+    "Ad-hoc signing is intentionally refused for local device reruns because it changes the code-signing identity used by macOS privacy authorization.",
+    "Full Xcode is not active, so local XCTest coverage is unavailable in this environment. SwiftPM build and executable self-tests remain available."
+  ],
+  "makefile_readiness_fix": {
+    "status": "implemented",
+    "summary": "soak-30m, soak-2h, and soak-8h now accept optional HOST_PID and pass it to vibescreen_evidence.soak as --host-pid; host-rss-gate derives the exact-window report and evaluates host_rss_gate for an existing 2h evidence package; soak-2h-host-rss-gate fails fast when HOST_PID is unset before a formal run.",
+    "dry_run_command": "make -n soak-2h EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence HOST_PID=12345",
+    "dry_run_observed_host_pid_argument": "--host-pid 12345",
+    "formal_gate_target": "make host-rss-gate EVIDENCE_DIR=.build/evidence",
+    "combined_formal_run_target": "make soak-2h-host-rss-gate EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence HOST_PID=$HOST_PID"
+  },
+  "verification": [
+    {"command": "git fetch origin --prune", "status": "passed"},
+    {"command": "git checkout -B codex/host-rss-readiness origin/main", "status": "passed"},
+    {"command": "git rebase origin/main after origin/main advanced to 0bf426dc657d2068f82cb93d897d89226b3c0524", "status": "passed", "details": "Makefile conflict resolved by preserving Phase 2 tablet manifest entries from main and Host RSS HOST_PID gate entries from this branch."},
+    {"command": "git rebase origin/main after origin/main advanced to be9381179a7f5b6a9ea5e97d6a77ad486a026ca7", "status": "passed", "details": "No conflicts."},
+    {"command": "make baseline-macos-build", "status": "passed"},
+    {"command": "make baseline-macos-self-test", "status": "passed"},
+    {"command": "make baseline-android-apk", "status": "passed"},
+    {"command": "make protocol", "status": "passed", "details": "36 contract tests OK"},
+    {"command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest discover -s tools/tests -v", "status": "passed", "details": "191 tests OK"},
+    {"command": "make -n soak-2h EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence HOST_PID=12345", "status": "passed", "details": "dry-run includes --host-pid 12345"},
+    {"command": "make -n host-rss-gate EVIDENCE_DIR=.build/evidence", "status": "passed", "details": "dry-run derives exact-window report and runs host_rss_gate"},
+    {"command": "make -n soak-2h-host-rss-gate EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence HOST_PID=12345", "status": "passed", "details": "dry-run chains soak-2h and host-rss-gate"},
+    {"command": "make soak-2h-host-rss-gate EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence", "status": "passed", "details": "exits before the two-hour run when HOST_PID is unset"},
+    {"command": "git diff --check", "status": "passed"}
+  ],
+  "non_claims": [
+    "No formal two-hour soak was run.",
+    "No host_memory_diagnostic short window was run.",
+    "No current-source Host stream was established.",
+    "This is Nubia P0110/pacific evidence only and is not Xiaomi/fuxi evidence.",
+    "The Host RSS no-growth gate remains open."
+  ],
+  "next_commands": [
+    "security find-identity -v -p codesigning | grep '\"Vibe Screen Dev\"'",
+    "make baseline-macos-dev-install",
+    "python3 scripts/macos_dev_host.py preflight --install-path '/Applications/Vibe Screen.app'",
+    "export VIBE_SCREEN_TELEMETRY_PATH=.build/evidence/memory-short/host-telemetry.jsonl",
+    "PYTHONPATH=tools python3 -m vibescreen_evidence.host_memory_diagnostic --host-pid '$HOST_PID' --duration-seconds 900 --interval-seconds 30 --telemetry-jsonl .build/evidence/memory-short/host-telemetry.jsonl --samples .build/evidence/memory-short/samples.jsonl --output .build/evidence/memory-short/diagnostic.json",
+    "make soak-2h EVIDENCE_SERIAL=EP0110PZ0B9110300B EVIDENCE_DIR=.build/evidence HOST_PID='$HOST_PID'",
+    "PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate --summary .build/evidence/soak-2h/summary.json --samples .build/evidence/soak-2h/samples.jsonl --output .build/evidence/soak-2h/host-rss-gate.json"
+  ]
+}
