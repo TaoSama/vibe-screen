@@ -1305,8 +1305,17 @@ final class ProtocolV1SessionTests: XCTestCase {
     }
 
     func testWakeHostCapabilityAdvertisementHonorsManagedPolicy() {
-        var policy = ManagedPolicy.unmanaged
-        policy.wakeAllowed = false
+        let policy = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: false,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: []
+        )
         let capabilities = ProtocolV1SessionConfiguration.productionHostCapabilities(
             touchEnabled: true,
             managedPolicy: policy,
