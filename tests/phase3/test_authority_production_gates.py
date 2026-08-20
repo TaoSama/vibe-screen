@@ -7,6 +7,10 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 README = ROOT / "README.md"
 OPERATIONS = ROOT / "docs/changes/2026-08-04-phase-3-secure-internet/OPERATIONS.md"
+AUTHORITY_README = ROOT / "services/authority/README.md"
+RELAY_README = ROOT / "services/relay/README.md"
+SIGNALING_README = ROOT / "services/signaling/README.md"
+DEPLOY_README = ROOT / "deploy/phase3/README.md"
 AUTHORITY_PRODUCTION_COMPOSE = ROOT / "deploy/phase3/docker-compose.authority.production.yml"
 
 
@@ -21,7 +25,8 @@ class AuthorityProductionGateTests(unittest.TestCase):
             "remain release gates rather than shipped\nfeatures",
             "Relay credential admission is wired to Authority",
             "accepted coturn usage into the control-plane daily-byte ledger",
-            "production end-to-end enforcement remain release gates",
+            "structured\ncoturn reconcile helper can fail closed",
+            "production end-to-end enforcement\nremain release gates",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
@@ -31,12 +36,38 @@ class AuthorityProductionGateTests(unittest.TestCase):
 
         self.assertIn("Relay credential\nadmission now delegates to the authority", text)
         self.assertIn("Authority owns coturn usage/reconciliation APIs", text)
+        self.assertIn("structured reconcile\n  helper is locally tested", text)
         self.assertIn(
-            "Relay credential admission is wired to the authority; coturn exporter\n"
-            "  reconciliation and active-allocation disconnect are not production proven",
+            "coturn exporter, scheduled reconciliation loop,\n"
+            "  and active-allocation disconnect are not production proven",
             text,
         )
+        self.assertIn("does not remove the public-launch prohibition", text)
         self.assertIn("Do not expose it to the public Internet", text)
+
+    def test_service_readmes_keep_phase3_release_boundaries_open(self) -> None:
+        authority = AUTHORITY_README.read_text(encoding="utf-8")
+        relay = RELAY_README.read_text(encoding="utf-8")
+        signaling = SIGNALING_README.read_text(encoding="utf-8")
+        deploy = DEPLOY_README.read_text(encoding="utf-8")
+
+        self.assertIn("does **not** yet contain a production-proven coturn exporter", authority)
+        self.assertIn("does not prove a" + "\n" + "production disconnect mechanism", authority)
+        self.assertIn("coturn exporter, scheduled" + "\n" + "  reconciliation loop", authority)
+        self.assertIn("active-allocation disconnect executor", authority)
+        self.assertIn("production" + "\n" + "  coturn enforcement remain open", authority)
+
+        self.assertIn("not authoritative until" + "\n" + "a trusted coturn collector", relay)
+        self.assertIn("contract helper only", relay)
+        self.assertIn("production exporter, durable" + "\n" + "collector loop", relay)
+        self.assertIn("concrete coturn allocation" + "\n" + "termination", relay)
+
+        self.assertIn("coturn exporter," + "\n" + "  reconciliation loop", signaling)
+        self.assertIn("active-allocation disconnect path are not production" + "\n" + "  proven", signaling)
+        self.assertIn("not actively disconnected", signaling)
+
+        self.assertIn("does not prove production TLS", deploy)
+        self.assertIn("public ingress, or multi-node" + "\n" + "behavior", deploy)
 
     def test_authority_production_compose_fails_closed_without_deployment_inputs(self) -> None:
         text = AUTHORITY_PRODUCTION_COMPOSE.read_text(encoding="utf-8")

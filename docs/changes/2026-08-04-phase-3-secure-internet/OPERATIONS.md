@@ -36,11 +36,14 @@ failures return `502` without falling back to locally minted tokens; signaling
 storage failures return `503`; authority policy rejections remain denials.
 Relay credential
 admission now delegates to the authority before TURN credential issuance, and
-Authority owns coturn usage/reconciliation APIs. The repository
-still has no production-proven coturn machine exporter, reconciliation loop, or
-active-allocation disconnect executor. Therefore this does not remove the
-public-launch prohibition below. See the service README for the migration
-procedure, API contract, and remaining infrastructure gates.
+Authority owns coturn usage/reconciliation APIs. The repository also includes
+`scripts/phase3/coturn_reconcile.py`, a bounded helper that submits a trusted
+structured coturn allocation snapshot to Authority and invokes an external
+disconnect executor for unauthorized or conflicting active source allocations.
+The helper is not a production-proven coturn machine exporter, scheduled
+reconciliation loop, or concrete data-plane disconnect implementation. Therefore
+this does not remove the public-launch prohibition below. See the service README
+for the migration procedure, API contract, and remaining infrastructure gates.
 Do not expose it to the public Internet until those boundaries and the
 remaining production gates below are resolved.
 
@@ -309,8 +312,9 @@ shipped:
 - Mac and Android automatic profile/account/session issuance is not wired to the
   authority.
 - Automatic account and device registration is not wired.
-- Relay credential admission is wired to the authority; coturn exporter
-  reconciliation and active-allocation disconnect are not production proven.
+- Relay credential admission is wired to the authority; the structured reconcile
+  helper is locally tested, but coturn exporter, scheduled reconciliation loop,
+  and active-allocation disconnect are not production proven.
 - Active PeerConnection and TURN allocations are not actively disconnected on
   authority revocation; signaling invalidation only stops new rendezvous access.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped

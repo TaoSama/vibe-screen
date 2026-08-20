@@ -51,6 +51,15 @@ class RelayProductionProfileStaticTests(unittest.TestCase):
         self.assertIn("--healthcheck", compose)
         self.assertIn("http://127.0.0.1:8090/readyz", compose)
 
+    def test_relay_production_profile_does_not_claim_coturn_reconcile_worker(self):
+        compose = COMPOSE.read_text()
+        self.assertNotIn("coturn-reconcile", compose)
+        self.assertNotIn("coturn_reconcile.py", compose)
+        self.assertNotRegex(
+            compose,
+            re.compile(r"(?m)^  (collector|exporter|reconciler):$"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

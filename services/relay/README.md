@@ -207,6 +207,12 @@ The `/v1/usage` daily-byte and active-session ledger is not authoritative until
 a trusted coturn collector and reconciliation loop are deployed. It must not be
 used as the real-time allocation security boundary; coturn's stable-device
 `user-quota` remains that boundary in the current deployment.
+For Authority-backed deployments, `scripts/phase3/coturn_reconcile.py` can submit
+a trusted structured snapshot to Authority and require an external disconnect
+executor for unauthorized or conflicting active source allocations. It is a local
+contract helper only; deployments still need a production exporter, durable
+collector loop, provider/billing reconciliation, and concrete coturn allocation
+termination before the release gate closes.
 
 ## Threat model
 
