@@ -3,7 +3,7 @@ c98373c1abef78070f6beef6b4ae4fbf3de348dac280195c7f93441920584af9  ./adb-state.tx
 9060601e6abab35ff1e95cba4918bd39aa3449f436b2bf12cb3ca46194c1f587  ./android-launch.txt
 ad0798dfbc1e87034896415aa6b16c89ef80532f30081bb144a55455491c3e5f  ./android-logcat-focused.txt
 149160d30934af3bad5395012fdac7d51c34104dad8066fdbfd47b9690652c48  ./android-screen-after-rerun.png
-677b63de46bdba6bfe443fe57bb3fa727d79c28b8f3aa2b1823339e67f2b5537  ./android-window-after-rerun.xml
+3842b8c23986d14130cf9eb5beb0ffcb83aabefdbe8cdbac8ea1213180710b7f  ./android-window-after-rerun.xml
 2221dee760c0b9eba0389175b03e56b37f8279c9be36f60c9ef80ae73e359e6e  ./apk-sha256.txt
 cea7afd54942d9654207d04d2de30500f29b7bf5a2c8dd0fc96b6f918a8ac0cf  ./cleanup.txt
 da9f3ad7bfcdc07e8809a2830cec520c88019e779e70f95ed3fb1c7a0f6e191e  ./device-identity.txt
@@ -17,9 +17,9 @@ baca522032441a60e24643acf2ebc6d283889e0a80065ef9149fc69671fbc6cb  ./install-and-
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./listen-only-event-tap-2.err
 ad776925a045561192eef1ae455559e6bdb8622d331ad31f10b3eda6836d66b6  ./listen-only-event-tap-2.log
 44b74b9081b7d9be9339979af0bdbcdec12a866bba0241e0fa6efc9fc5c409be  ./post-cleanup-processes.txt
-3146cfeb50b2cb160756798d7d624c8a737065517644ad92fb5d2f507b66b302  ./README.md
+83127223b4e6f1bb8d057aa3753cd8171d5e425908b13251aa4b59ad2098e1ce  ./README.md
 ea70dd9ef8862c591805d37bdc8ddb86b52e99abbd7fe40c5d5a09432878cf3b  ./result-summary.json
 8385b6c55f069367275af0491c52692ba37c592fa8915c5445acaf414ea6033c  ./touch-gesture-instrumentation-eventtap-run-2.txt
 c38f16dcbc9da74da53d550be7d708d2f15a0623d8cdc7631a83e2bc45470d65  ./touch-gesture-instrumentation-eventtap-run.txt
 2e7392c08c750db8e9fe6fd44c8ee80f8081f930897c1108a98169e883784447  ./touch-gesture-instrumentation.txt
-6fe7e6dd181c00c5dcdaab7fe6fcd278a8fdf7f820f0f5adf3c61042a4a782d3  ./touch-rerun-preflight.json
+807e770a1824f7d9148599ecf2104276d37d4abaa1dea68bdd9ebb4ef61a2ce1  ./touch-rerun-preflight.json

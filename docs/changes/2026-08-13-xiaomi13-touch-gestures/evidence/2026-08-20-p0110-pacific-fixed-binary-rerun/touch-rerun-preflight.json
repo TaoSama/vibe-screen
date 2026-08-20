@@ -51,7 +51,7 @@
     },
     "bundle_identifier": "dev.telemachus.display",
     "db_paths": [
-      "/Users/luwentao/Library/Application Support/com.apple.TCC/TCC.db",
+      "<user-home>/Library/Application Support/com.apple.TCC/TCC.db",
       "/Library/Application Support/com.apple.TCC/TCC.db"
     ],
     "missing_db_paths": [],

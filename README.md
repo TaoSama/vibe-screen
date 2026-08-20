@@ -28,7 +28,7 @@ platform scaffolding under active development.
 | USB transport | ADB reverse on TCP port `54321`; real-device stream verified |
 | Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264, MediaCodec decode |
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
-| Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage. A stable-signed fixed-binary rerun has now passed on the Nubia P0110/pacific Android substitute, with the device identity kept distinct from Xiaomi 13/fuxi evidence |
+| Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right-click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage. A stable-signed fixed-binary rerun has now passed on the Nubia P0110/pacific Android substitute, with the device identity kept distinct from Xiaomi 13/fuxi evidence |
 | Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. Controller protocol models, Android mapping/state, Android production event forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
 | Recovery | Client and ADB TCP reconnect paths verified on the recorded test device |
 | LAN | Experimental trusted-network mode; current macOS/Android peers negotiate per-session AES-256-GCM application records with nonce/replay protection for control and media. Old peers require an explicit plaintext legacy fallback and must not be reported as encrypted |
@@ -380,7 +380,7 @@ attached to the phone, since synthetic adb pointer motion does not deliver as a
 hover event.
 
 An opt-in Xiaomi 13 instrumentation pass also drove the production touch path
-for tap, long-press right click, long-press drag, two-finger scroll, and pinch.
+for tap, long-press right-click, long-press drag, two-finger scroll, and pinch.
 It reproduced a shared-`CGEventSource` bug where pinch's Command modifier leaked
 into later ordinary pointer events. Pinch now uses a private synthetic-modifier
 event source, preserving legitimate physical modifiers on ordinary pointer
@@ -388,7 +388,7 @@ events, with focused isolation coverage. A stable-signed fixed-binary rerun on
 the Nubia P0110/pacific Android substitute passed the same opt-in gesture
 matrix with Host gesture logs and listen-only macOS event-tap evidence for
 tap, right click, drag, plain scroll, Command-modified pinch zoom, and
-post-pinch plain-input modifier isolation; this does not relabel the result as
+post-pinch plain-tap modifier isolation; this does not relabel the result as
 Xiaomi 13/fuxi evidence. See the
 [touch-gesture verification record](docs/changes/2026-08-13-xiaomi13-touch-gestures/TEST.md).
 

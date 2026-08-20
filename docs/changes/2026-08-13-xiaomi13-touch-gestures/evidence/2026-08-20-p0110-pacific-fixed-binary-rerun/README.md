@@ -57,11 +57,11 @@ synchronized pass.
 | Gesture | Result | Retained evidence |
 | --- | --- | --- |
 | Tap | PASS | `listen-only-event-tap-2.log` recorded `leftMouseDown` and `leftMouseUp` with `command=false`. |
-| Long-press right click | PASS | Host log recorded `Touch gesture: right click injected`; event tap recorded `rightMouseDown` and `rightMouseUp` with `command=false`. |
+| Long-press right-click | PASS | Host log recorded `Touch gesture: right click injected`; event tap recorded `rightMouseDown` and `rightMouseUp` with `command=false`. |
 | Long-press drag | PASS | Host log recorded `Touch gesture: drag began` and `Touch gesture: drag ended`; event tap recorded `leftMouseDragged` with `command=false`. |
 | Two-finger scroll | PASS | Host log recorded `Touch gesture: two-finger scroll began`; event tap recorded `scrollWheel command=false wheel1=20`. |
 | Pinch | PASS | Host log recorded `Touch gesture: pinch began`; event tap recorded `scrollWheel command=true wheel1=9`. |
-| Post-pinch plain input isolation | PASS | The next observed plain tap after the previous completed pinch run recorded `leftMouseDown command=false` and `leftMouseUp command=false`. |
+| Post-pinch plain tap isolation | PASS | The next observed plain tap after the previous completed pinch run recorded `leftMouseDown command=false` and `leftMouseUp command=false`. |
 
 The Host log also recorded `Protocol v1 selected for connection epoch 7`,
 `Starting input receive loop... (touch=on)`, and repeated `Pipeline` samples
@@ -88,9 +88,9 @@ cd baseline/AndroidClient
 ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
 
 adb -s EP0110PZ0B9110300B install -r -t \
-  baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+  app/build/outputs/apk/debug/app-debug.apk
 adb -s EP0110PZ0B9110300B install -r -t \
-  baseline/AndroidClient/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+  app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321
 adb -s EP0110PZ0B9110300B shell am start -S -W \
   -n dev.telemachus.display/.MainActivity \
