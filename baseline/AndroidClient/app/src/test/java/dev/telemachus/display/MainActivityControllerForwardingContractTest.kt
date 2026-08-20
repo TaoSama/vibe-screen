@@ -1,0 +1,201 @@
+package dev.telemachus.display
+
+import java.io.File
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class MainActivityControllerForwardingContractTest {
+    @Test
+    fun controllerKeyEventsEnterProductionDispatchBeforeKeyboardFallback() {
+        val source = mainActivitySource()
+        val dispatchKeyEvent = extractMethod(source, "override fun dispatchKeyEvent")
+
+        assertContains(dispatchKeyEvent, "if (!isConnected || event.isSystemKey()) return super.dispatchKeyEvent(event)")
+        assertContains(dispatchKeyEvent, "ControllerInputMapper.keyChange(event)?.let { change ->")
+        assertContains(dispatchKeyEvent, "streamControllerSessionState.applyKey(change)")
+        assertContains(dispatchKeyEvent, "sendStreamControllerDispatch(dispatch,")
+        assertContains(dispatchKeyEvent, "controller key")
+        assertContains(dispatchKeyEvent, "ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)")
+        assertBefore(dispatchKeyEvent, "ControllerInputMapper.keyChange(event)", "AndroidKeyInputMapper.map(")
+    }
+
+    @Test
+    fun controllerMotionEventsEnterProductionDispatchBeforeStylusAndPointerFallbacks() {
+        val source = mainActivitySource()
+        val genericMotion = extractMethod(source, "private fun handleGenericMotion")
+
+        assertContains(source, "binding.inputViewport.setOnGenericMotionListener { view, event ->")
+        assertContains(source, "handleGenericMotion(view, event)")
+        assertContains(genericMotion, "if (!isConnected) return false")
+        assertContains(genericMotion, "ControllerInputMapper.snapshot(event)?.let { snapshot ->")
+        assertContains(genericMotion, "streamControllerSessionState.applyMotion(snapshot)")
+        assertContains(genericMotion, "sendStreamControllerDispatch(dispatch,")
+        assertContains(genericMotion, "controller motion")
+        assertContains(genericMotion, "ControllerInputConsumptionPolicy.shouldConsume(isConnected, isSystemKey = false)")
+        assertBefore(genericMotion, "ControllerInputMapper.snapshot(event)", "StylusInputMapper.snapshot(event)")
+        assertBefore(genericMotion, "ControllerInputMapper.snapshot(event)", "ClientPointerInput(")
+    }
+
+    @Test
+    fun controllerDispatchUsesNegotiatedSessionBindingAndStreamClientSink() {
+        val source = mainActivitySource()
+        val dispatch = extractMethod(source, "private fun sendStreamControllerDispatch")
+        val sink = extractClass(source, "private inner class StreamClientInputSink")
+
+        assertContains(dispatch, "ClientInputDispatch(currentSessionBinding()).sendController(ClientControllerInput(dispatch))")
+        assertContains(dispatch, "ClientInputDispatchResult.SENT -> true")
+        assertContains(dispatch, "ClientInputDispatchResult.REJECTED ->")
+        assertContains(dispatch, "ClientInputDispatchResult.UNSUPPORTED ->")
+        assertContains(sink, "override fun sendController(input: ClientControllerInput): Boolean")
+        assertContains(sink, "if (!isCurrentSession(client, generation)) return false")
+        assertContains(sink, "return client.sendController(input.dispatch)")
+    }
+
+    @Test
+    fun negotiatedControllerCapabilityPromotesSinkAndUsbLanClientsAdvertiseController() {
+        val source = mainActivitySource()
+        val displaysCallback = extractCallback(source, "callbackClient.onDisplaysAvailable = displays@")
+        val usbConnect = extractMethod(source, "private fun connect(")
+        val wirelessConnect = extractMethod(source, "private fun connectWireless(")
+        val streamClient = streamClientSource()
+
+        assertContains(displaysCallback, "dev.vibescreen.protocol.v1.Capability.CAPABILITY_CONTROLLER in negotiated")
+        assertContains(displaysCallback, "controller = controller")
+        assertContains(displaysCallback, "if (keyboard || nativePointer || controller)")
+        assertContains(displaysCallback, "StreamClientInputSink(callbackClient, callbackGeneration)")
+        assertContains(usbConnect, "StreamClient(host, port, applicationContext, advertiseController = true)")
+        assertContains(wirelessConnect, "StreamClient(host, port, applicationContext, advertiseController = true)")
+        assertContains(streamClient, "advertiseController = advertiseController")
+    }
+
+    @Test
+    fun streamTeardownSendsControllerNeutralReleaseBeforeNativeInputRelease() {
+        val source = mainActivitySource()
+        val releaseBoundary = extractMethod(source, "private fun completeNativeInputBoundary")
+
+        assertContains(releaseBoundary, "streamControllerSessionState.takeRelease()?.let { release ->")
+        assertContains(releaseBoundary, "sendStreamControllerDispatch(release,")
+        assertContains(releaseBoundary, "controller release")
+        assertContains(releaseBoundary, "nativeInputReleaseCoordinator.completeBoundary(")
+        assertBefore(releaseBoundary, "streamControllerSessionState.takeRelease()", "nativeInputReleaseCoordinator.completeBoundary(")
+    }
+
+    private fun assertContains(
+        source: String,
+        target: String,
+    ) {
+        assertTrue("Missing '$target'", source.contains(target))
+    }
+
+    private fun assertBefore(
+        source: String,
+        first: String,
+        second: String,
+    ) {
+        val firstIndex = source.indexOf(first)
+        val secondIndex = source.indexOf(second)
+        assertTrue("Missing '$first'", firstIndex >= 0)
+        assertTrue("Missing '$second'", secondIndex >= 0)
+        assertTrue("Expected '$first' before '$second'", firstIndex < secondIndex)
+    }
+
+    private fun extractMethod(
+        source: String,
+        signature: String,
+    ): String {
+        val start = source.indexOf(signature)
+        require(start >= 0) { "Method not found: $signature" }
+        return extractBracedBlock(source, start, signature)
+    }
+
+    private fun extractClass(
+        source: String,
+        signature: String,
+    ): String {
+        val start = source.indexOf(signature)
+        require(start >= 0) { "Class not found: $signature" }
+        return extractBracedBlock(source, start, signature)
+    }
+
+    private fun extractCallback(
+        source: String,
+        startMarker: String,
+    ): String {
+        val start = source.indexOf(startMarker)
+        require(start >= 0) { "Callback not found: $startMarker" }
+        return extractBracedBlock(source, start, startMarker)
+    }
+
+    private fun extractBracedBlock(
+        source: String,
+        start: Int,
+        label: String,
+    ): String {
+        var i = start
+        var braceDepth = 0
+        var inString = false
+        var escaped = false
+        var methodStarted = false
+        while (i < source.length) {
+            val current = source[i]
+            when {
+                inString -> {
+                    if (escaped) {
+                        escaped = false
+                    } else if (current == '\\') {
+                        escaped = true
+                    } else if (current == '"') {
+                        inString = false
+                    }
+                    i++
+                }
+                current == '"' -> {
+                    inString = true
+                    i++
+                }
+                current == '{' -> {
+                    methodStarted = true
+                    braceDepth++
+                    i++
+                }
+                current == '}' -> {
+                    braceDepth--
+                    if (methodStarted && braceDepth == 0) return source.substring(start, i + 1)
+                    i++
+                }
+                else -> i++
+            }
+        }
+        error("Closing brace not found for $label")
+    }
+
+    private fun mainActivitySource(): String = source(MAIN_ACTIVITY_PATHS)
+
+    private fun streamClientSource(): String = source(STREAM_CLIENT_PATHS)
+
+    private fun source(paths: List<String>): String {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
+        repeat(8) {
+            paths
+                .map(current::resolve)
+                .firstOrNull(File::isFile)
+                ?.let { return it.readText() }
+            current = current.parentFile?.canonicalFile ?: current
+        }
+        error(paths.first() + " not found from " + System.getProperty("user.dir"))
+    }
+
+    private companion object {
+        val MAIN_ACTIVITY_PATHS =
+            listOf(
+                "app/src/main/java/dev/telemachus/display/MainActivity.kt",
+                "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+            )
+
+        val STREAM_CLIENT_PATHS =
+            listOf(
+                "app/src/main/java/dev/telemachus/display/StreamClient.kt",
+                "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamClient.kt",
+            )
+    }
+}
