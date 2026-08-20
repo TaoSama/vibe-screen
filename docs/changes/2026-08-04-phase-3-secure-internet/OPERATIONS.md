@@ -33,9 +33,10 @@ snapshot reconciliation. The signaling service now supports a
 role-token authorization, and session invalidation to the authority, with
 PostgreSQL-backed routing state in production. Dependency or malformed-response
 failures return `502` without falling back to locally minted tokens; signaling
-storage failures return `503`; authority policy rejections remain denials. Relay
-credential admission now delegates to the authority before TURN credential
-issuance, and Authority owns coturn usage/reconciliation APIs. The repository
+storage failures return `503`; authority policy rejections remain denials.
+Relay credential
+admission now delegates to the authority before TURN credential issuance, and
+Authority owns coturn usage/reconciliation APIs. The repository
 still has no production-proven coturn machine exporter, reconciliation loop, or
 active-allocation disconnect executor. Therefore this does not remove the
 public-launch prohibition below. See the service README for the migration
