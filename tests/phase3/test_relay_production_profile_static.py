@@ -55,9 +55,11 @@ class RelayProductionProfileStaticTests(unittest.TestCase):
         compose = COMPOSE.read_text()
         self.assertNotIn("coturn-reconcile", compose)
         self.assertNotIn("coturn_reconcile.py", compose)
+        self.assertNotIn("coturn-exporter", compose)
+        self.assertNotIn("coturn-disconnect", compose)
         self.assertNotRegex(
             compose,
-            re.compile(r"(?m)^  (collector|exporter|reconciler):$"),
+            re.compile(r"(?m)^  (collector|exporter|reconciler|disconnect-executor):$"),
         )
 
 

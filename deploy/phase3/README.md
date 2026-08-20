@@ -264,9 +264,11 @@ atomically counts all session/expiry credentials under one device principal.
 credential; revoked or expired Authority sessions and revoked devices fail closed
 before coturn sees a credential. Revalidate `user-quota` against legitimate
 UDP/TCP/TLS ICE allocation counts before changing it. The repository still has
-no coturn-to-`/v1/usage` collector. Therefore the control plane's daily-byte and
-per-device concurrent-session accounting is not authoritative for this
-deployment; coturn's own limits remain the immediate enforcement boundary.
+no coturn-to-`/v1/usage` collector, no production scheduler for the bounded
+reconciliation loop, and no concrete active-allocation disconnect executor.
+Therefore the control plane's daily-byte and per-device concurrent-session
+accounting is not authoritative for this deployment; coturn's own limits remain
+the immediate enforcement boundary.
 Postgres removes the previous local-state blocker for multiple relay
 control-plane processes, but it does not provide TURN usage collection, billing
 reconciliation, production database backups, NTP monitoring, or multi-region

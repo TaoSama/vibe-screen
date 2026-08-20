@@ -585,7 +585,7 @@ func revokeDeviceForRelayQuotaExceeded(ctx context.Context, tx pgx.Tx, deviceID 
 }
 
 func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest, grace time.Duration) (ReconcileResult, error) {
-	result := ReconcileResult{MissingAllocationIDs: []string{}, UnauthorizedAllocationIDs: []string{}, ConflictAllocationIDs: []string{}}
+	result := ReconcileResult{MissingAllocationIDs: []string{}, UnauthorizedAllocationIDs: []string{}, ConflictAllocationIDs: []string{}, RevokedAllocationIDs: []string{}}
 	seen := make(map[string]bool, len(request.Allocations))
 	for index, usage := range request.Allocations {
 		usage.SourceID = request.SourceID
@@ -600,7 +600,13 @@ func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest,
 			if errors.Is(err, ErrStaleUsage) {
 				var sourceID, deviceID, sessionID string
 				var sequence, ingress, egress int64
-				queryErr := s.pool.QueryRow(ctx, `SELECT source_id,device_id,session_id,observed_sequence,ingress_bytes,egress_bytes FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2`, usage.SourceID, usage.AllocationID).Scan(&sourceID, &deviceID, &sessionID, &sequence, &ingress, &egress)
+				var closedAt *time.Time
+				queryErr := s.pool.QueryRow(ctx, `SELECT source_id,device_id,session_id,observed_sequence,ingress_bytes,egress_bytes,closed_at FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2`, usage.SourceID, usage.AllocationID).Scan(&sourceID, &deviceID, &sessionID, &sequence, &ingress, &egress, &closedAt)
+				if queryErr == nil && closedAt != nil && sourceID == usage.SourceID && deviceID == usage.DeviceID && sessionID == usage.SessionID {
+					result.RevokedAllocationIDs = append(result.RevokedAllocationIDs, usage.AllocationID)
+					seen[request.Allocations[index].AllocationID] = true
+					continue
+				}
 				if queryErr == nil && sourceID == usage.SourceID && deviceID == usage.DeviceID && sessionID == usage.SessionID && uint64(sequence) >= usage.Sequence && uint64(ingress) >= usage.IngressBytes && uint64(egress) >= usage.EgressBytes {
 					result.AlreadyAhead++
 					seen[request.Allocations[index].AllocationID] = true
@@ -615,6 +621,11 @@ func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest,
 				seen[request.Allocations[index].AllocationID] = true
 				continue
 			}
+			if errors.Is(err, ErrRevoked) {
+				result.RevokedAllocationIDs = append(result.RevokedAllocationIDs, usage.AllocationID)
+				seen[request.Allocations[index].AllocationID] = true
+				continue
+			}
 			return result, err
 		}
 		if duplicate {
@@ -626,6 +637,7 @@ func (s *PostgresStore) Reconcile(ctx context.Context, request ReconcileRequest,
 	}
 	sort.Strings(result.UnauthorizedAllocationIDs)
 	sort.Strings(result.ConflictAllocationIDs)
+	sort.Strings(result.RevokedAllocationIDs)
 	rows, err := s.pool.Query(ctx, `SELECT allocation_id FROM authority_relay_allocations WHERE source_id=$1 AND closed_at IS NULL AND last_observed_at<$2 ORDER BY allocation_id`, request.SourceID, request.ObservedAt.Add(-grace))
 	if err != nil {
 		return result, storageError("reconcile allocations", err)
