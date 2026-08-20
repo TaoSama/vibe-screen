@@ -1,0 +1,25 @@
+# Command ledger for 2026-08-21 Phase 3 real-media continuity blocked preflight
+
+git fetch origin main --prune
+git switch -c codex/phase3-real-media-continuity origin/main
+
+# No ADB command was run for this derived preflight. The task-specific device
+# serial requirement remains applicable to future device commands:
+# adb -s <lease-controlled-serial> ...
+
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_real_media_continuity \
+  --host-log docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-18-nubia-p0110-current-main-real-media-blocked/host-permission-window.log \
+  --android-log docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-18-nubia-p0110-current-main-real-media-blocked/android-blocked-window.log \
+  --device-info docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-nubia-p0110-real-media-continuity-blocked/device-info.json \
+  --network-path unknown \
+  --host-signing identity_signed \
+  --screen-recording blocked \
+  --output docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-nubia-p0110-real-media-continuity-blocked/real-media-continuity.json
+
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/evidence_privacy.py \
+  --evidence-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-nubia-p0110-real-media-continuity-blocked
+
+(
+  cd docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-nubia-p0110-real-media-continuity-blocked
+  find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256
+) > docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-nubia-p0110-real-media-continuity-blocked/SHA256SUMS
