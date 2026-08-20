@@ -282,13 +282,29 @@ latency, rotated host-display, or Accessibility/input gates.
 Evidence is retained under
 [evidence/2026-08-20-nubia-p0110-usb-smoke/](evidence/2026-08-20-nubia-p0110-usb-smoke/README.md).
 
+## External latency readiness check (2026-08-20)
+
+Main commit `b9d768e55c75f03cd3cb5d20939576bc8d24ff27` completed a latency
+toolchain/readiness check for the README external gate profiles
+`usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, and
+`input-p95-sub50`. The standard-library test path ran 41 latency tests with
+zero failures, and CLI fixture reruns confirmed pass, fail, insufficient,
+telemetry-stage informational, and formal provenance-checker behavior.
+
+The repository scan found no high-frame-rate external-camera package with a
+formal latency manifest, raw camera recording, and sample annotations outside
+the synthetic `tools/fixtures/latency/` data. Therefore this record is blocked
+readiness evidence only and does not close any external latency gate. Evidence
+is retained under
+[evidence/2026-08-20-latency-gates-readiness-blocked/](evidence/2026-08-20-latency-gates-readiness-blocked/README.md).
+
 ## Still unproved
 
 - Developer ID signing and notarization;
 - real-window restore after disconnect on device;
 - a host-RSS-stable two-hour no-growth run (the two-hour Xiaomi 13 soak ran but
   host RSS grew about 18.3 MB), native-pointer HID move/click with a physical
-  mouse, and external glass-to-glass/input latency.
+  mouse, and external USB/LAN glass-to-glass plus input latency.
 
 Private `CGVirtualDisplay` creation/capture and HiDPI, graceful mirror-mode
 fallback, keyboard/scroll input, and Protocol v1 real-device interoperability

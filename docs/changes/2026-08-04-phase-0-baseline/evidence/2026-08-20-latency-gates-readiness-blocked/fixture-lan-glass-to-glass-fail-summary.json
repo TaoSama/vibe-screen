@@ -1,0 +1,49 @@
+{
+  "gate": {
+    "can_close_performance_gate": true,
+    "metric": "p95",
+    "min_sample_count": 5,
+    "observed_ms": 95.19999999999999,
+    "profile": "lan-glass-to-glass-sub80",
+    "reason": "all samples were measured on one external-camera timebase",
+    "reasons": [
+      "p95 95.200 ms exceeds threshold 80.000 ms"
+    ],
+    "requires_external_hardware": true,
+    "sample_count": 5,
+    "threshold_ms": 80.0,
+    "verdict": "fail"
+  },
+  "kind": "glass_to_glass",
+  "latency_kind": "glass-to-glass",
+  "measurement_method": "external-camera",
+  "metrics": {
+    "count": 5,
+    "max": 100.0,
+    "mean": 78.4,
+    "median": 74.0,
+    "min": 70.0,
+    "p95": 95.19999999999999
+  },
+  "run_id": "fixture-lan-fail",
+  "samples_ms": [
+    70.0,
+    72.0,
+    74.0,
+    76.0,
+    100.0
+  ],
+  "schema_version": "vibescreen.evidence/v1",
+  "statistics": {
+    "count": 5,
+    "max": 100.0,
+    "mean": 78.4,
+    "median": 74.0,
+    "min": 70.0,
+    "p95": 95.19999999999999
+  },
+  "status": "complete",
+  "transport": "lan",
+  "unit": "ms",
+  "verdict": "fail"
+}

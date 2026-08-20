@@ -1,0 +1,46 @@
+{
+  "gate": {
+    "can_close_performance_gate": true,
+    "metric": "p95",
+    "min_sample_count": 5,
+    "observed_ms": 17.7,
+    "profile": "usb-glass-to-glass-sub50",
+    "reason": "all samples were measured on one external-camera timebase",
+    "reasons": [
+      "only 2 samples provided; at least 5 are required"
+    ],
+    "requires_external_hardware": true,
+    "sample_count": 2,
+    "threshold_ms": 50.0,
+    "verdict": "insufficient"
+  },
+  "kind": "glass_to_glass",
+  "latency_kind": "glass-to-glass",
+  "measurement_method": "external-camera",
+  "metrics": {
+    "count": 2,
+    "max": 18.0,
+    "mean": 15.0,
+    "median": 15.0,
+    "min": 12.0,
+    "p95": 17.7
+  },
+  "run_id": "fixture-usb-insufficient",
+  "samples_ms": [
+    12.0,
+    18.0
+  ],
+  "schema_version": "vibescreen.evidence/v1",
+  "statistics": {
+    "count": 2,
+    "max": 18.0,
+    "mean": 15.0,
+    "median": 15.0,
+    "min": 12.0,
+    "p95": 17.7
+  },
+  "status": "complete",
+  "transport": "usb",
+  "unit": "ms",
+  "verdict": "insufficient"
+}

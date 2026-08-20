@@ -1,0 +1,47 @@
+{
+  "gate": {
+    "can_close_performance_gate": true,
+    "metric": "p95",
+    "min_sample_count": 5,
+    "observed_ms": 44.166666666666664,
+    "profile": "input-p95-sub50",
+    "reason": "input samples use an accepted single timebase",
+    "reasons": [],
+    "requires_external_hardware": true,
+    "sample_count": 5,
+    "threshold_ms": 50.0,
+    "verdict": "pass"
+  },
+  "kind": "input_latency",
+  "latency_kind": "input",
+  "measurement_method": "external-camera",
+  "metrics": {
+    "count": 5,
+    "max": 45.833333333333336,
+    "mean": 36.66666666666667,
+    "median": 37.5,
+    "min": 29.166666666666668,
+    "p95": 44.166666666666664
+  },
+  "run_id": "fixture-input-pass",
+  "samples_ms": [
+    29.166666666666668,
+    33.333333333333336,
+    37.5,
+    37.5,
+    45.833333333333336
+  ],
+  "schema_version": "vibescreen.evidence/v1",
+  "statistics": {
+    "count": 5,
+    "max": 45.833333333333336,
+    "mean": 36.66666666666667,
+    "median": 37.5,
+    "min": 29.166666666666668,
+    "p95": 44.166666666666664
+  },
+  "status": "complete",
+  "transport": "usb",
+  "unit": "ms",
+  "verdict": "pass"
+}

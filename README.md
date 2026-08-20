@@ -404,11 +404,15 @@ fixed-binary device rerun remains open; see the
 Initial targets are stable 1920×1080 or 1920×1200 at 60 FPS, sub-50 ms USB
 glass-to-glass latency, sub-80 ms on a healthy LAN, sub-50 ms P95 input latency,
 reconnection within three seconds, and no latency or memory growth over a
-two-hour run. These latency gates are evaluated from external-camera or
-synchronized-clock evidence by `tools/vibescreen_evidence/latency.py` with the
-`usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, and `input-p95-sub50`
-gate profiles; host and client telemetry are diagnostic only and cannot close
-these gates.
+two-hour run. USB and LAN glass-to-glass latency gates require external-camera
+evidence, while the input-latency gate requires external-camera evidence or a
+documented synchronized-clock setup with a reviewable error budget. The gate
+profiles are `usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, and
+`input-p95-sub50`; host and client telemetry are diagnostic only and cannot
+close these gates. As of the 2026-08-20 readiness check, the latency toolchain
+passes its fixture gates but no real external-camera package is available in
+the repository, so all three external latency gates remain open; see
+[the blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-20-latency-gates-readiness-blocked/README.md).
 
 ### Phase 2 — Tablet productization
 

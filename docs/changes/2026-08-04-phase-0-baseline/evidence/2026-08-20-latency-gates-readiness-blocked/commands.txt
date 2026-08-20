@@ -1,0 +1,75 @@
+Repository: /Users/luwentao/Workspaces/dotfiles/codex/worktrees/78be/vibe-screen
+Commit: b9d768e55c75f03cd3cb5d20939576bc8d24ff27
+Date: 2026-08-20
+
+Readiness scan:
+
+  find . -path ./.git -prune -o -type f \
+    \( -iname "*.mov" -o -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.avi" -o -iname "*.mkv" \
+       -o -iname "raw-camera*" -o -iname "manifest.json" -o -iname "samples.csv" \
+       -o -iname "samples.json" -o -iname "summary.json" -o -iname "latency-evidence-report.json" \) -print | sort
+
+Outcome: no real latency evidence package found. The only raw-camera-like file
+is tools/fixtures/latency/external-camera-valid/raw-camera-placeholder.mov, a
+synthetic fixture explicitly documented as non-acceptance evidence.
+
+Toolchain verification:
+
+  PYTHONPATH=tools python3 -m unittest tools.tests.test_latency tools.tests.test_latency_evidence
+
+Outcome: 41 tests ran, 0 failures.
+
+Fixture reruns:
+
+  PYTHONPATH=tools python3 -m vibescreen_evidence.latency \
+    tools/fixtures/latency/usb-glass-to-glass-pass.csv \
+    --kind glass-to-glass --transport usb --measurement-method external-camera \
+    --gate-profile usb-glass-to-glass-sub50 --run-id fixture-usb-pass \
+    --output fixture-usb-glass-to-glass-pass-summary.json
+
+Outcome: exit 0, verdict pass. Synthetic fixture only.
+
+  PYTHONPATH=tools python3 -m vibescreen_evidence.latency \
+    tools/fixtures/latency/lan-glass-to-glass-fail.csv \
+    --kind glass-to-glass --transport lan --measurement-method external-camera \
+    --gate-profile lan-glass-to-glass-sub80 --run-id fixture-lan-fail \
+    --output fixture-lan-glass-to-glass-fail-summary.json
+
+Outcome: exit 1, verdict fail.
+
+  PYTHONPATH=tools python3 -m vibescreen_evidence.latency \
+    tools/fixtures/latency/input-latency-pass.json --input-format json \
+    --kind input --transport usb --measurement-method external-camera \
+    --gate-profile input-p95-sub50 --run-id fixture-input-pass \
+    --output fixture-input-p95-pass-summary.json
+
+Outcome: exit 0, verdict pass. Synthetic fixture only.
+
+  PYTHONPATH=tools python3 -m vibescreen_evidence.latency \
+    tools/fixtures/latency/usb-glass-to-glass-insufficient.csv \
+    --kind glass-to-glass --transport usb --measurement-method external-camera \
+    --gate-profile usb-glass-to-glass-sub50 --run-id fixture-usb-insufficient \
+    --output fixture-usb-insufficient-summary.json
+
+Outcome: exit 1, verdict insufficient.
+
+  PYTHONPATH=tools python3 -m vibescreen_evidence.latency \
+    tools/fixtures/latency/telemetry-stage-informational.csv \
+    --kind telemetry-stage --transport usb --measurement-method host-telemetry \
+    --run-id fixture-telemetry --output fixture-telemetry-stage-summary.json
+
+Outcome: exit 0, status informational, gate.can_close_performance_gate=false.
+
+  PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
+    tools/fixtures/latency/external-camera-valid/manifest.json \
+    --gate-profile usb-glass-to-glass-sub50 \
+    --output fixture-formal-valid-report.json
+
+Outcome: exit 0, verdict pass. Synthetic fixture only.
+
+  PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
+    tools/fixtures/latency/external-camera-missing-video/manifest.json \
+    --gate-profile usb-glass-to-glass-sub50 \
+    --output fixture-formal-missing-video-report.json
+
+Outcome: exit 1, verdict insufficient because recording.raw_video is missing.
