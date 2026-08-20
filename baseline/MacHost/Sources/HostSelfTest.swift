@@ -194,6 +194,47 @@ enum HostSelfTest {
         ) != 11 {
             failures.append("display UUID did not resolve its current ID")
         }
+        if ScreenCapture.ShareableDisplayReadiness.evaluate(
+            shareableDisplayIDs: [],
+            requestedDisplayID: 10,
+            followsMainDisplay: true,
+            currentMainDisplayID: 10,
+            currentMainPixelSize: (width: 1920, height: 1080)
+        ) != .fallbackToCurrentMain {
+            failures.append("empty ScreenCaptureKit catalog did not fall back to current-main capture")
+        }
+        if ScreenCapture.ShareableDisplayReadiness.evaluate(
+            shareableDisplayIDs: [],
+            requestedDisplayID: 10,
+            followsMainDisplay: true,
+            currentMainDisplayID: 0,
+            currentMainPixelSize: (width: 0, height: 0)
+        ) != .unavailable(
+            "ScreenCaptureKit returned no capturable displays, and CoreGraphics does not expose a usable current main display. Unlock the Mac session and attach a physical, dummy, or Screen Sharing display."
+        ) {
+            failures.append("empty ScreenCaptureKit catalog did not fail closed without a usable main display")
+        }
+        if ScreenCapture.ShareableDisplayReadiness.evaluate(
+            shareableDisplayIDs: [],
+            requestedDisplayID: 10,
+            followsMainDisplay: false,
+            currentMainDisplayID: 10,
+            currentMainPixelSize: (width: 1920, height: 1080)
+        ) != .unavailable(
+            "ScreenCaptureKit returned no capturable displays. Unlock the Mac session and attach a physical, dummy, or Screen Sharing display."
+        ) {
+            failures.append("empty ScreenCaptureKit catalog did not fail closed for non-main capture")
+        }
+        if ScreenCapture.MissingConfiguredStreamReadiness.evaluate(
+            followsMainDisplay: true
+        ) != .fallbackToCurrentMain {
+            failures.append("missing configured SCStream did not fall back for current-main capture")
+        }
+        if ScreenCapture.MissingConfiguredStreamReadiness.evaluate(
+            followsMainDisplay: false
+        ) != .unavailable("Capture stream was not configured.") {
+            failures.append("missing configured SCStream did not fail closed for non-main capture")
+        }
         for display in displays {
             let mode = CGDisplayCopyDisplayMode(display.id)
             print(

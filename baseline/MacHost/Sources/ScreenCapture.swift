@@ -164,6 +164,58 @@ enum CaptureStreamConfigurationFactory {
 // MARK: - ScreenCapture
 
 class ScreenCapture {
+    enum ShareableDisplayReadiness: Equatable {
+        case ready
+        case fallbackToCurrentMain
+        case unavailable(String)
+
+        static func evaluate(
+            shareableDisplayIDs: [CGDirectDisplayID],
+            requestedDisplayID: CGDirectDisplayID,
+            followsMainDisplay: Bool,
+            currentMainDisplayID: CGDirectDisplayID,
+            currentMainPixelSize: (width: Int, height: Int)
+        ) -> ShareableDisplayReadiness {
+            if shareableDisplayIDs.contains(requestedDisplayID) {
+                return .ready
+            }
+
+            guard shareableDisplayIDs.isEmpty else {
+                return .unavailable(
+                    "Display \(requestedDisplayID) was not returned by ScreenCaptureKit."
+                )
+            }
+
+            guard followsMainDisplay else {
+                return .unavailable(
+                    "ScreenCaptureKit returned no capturable displays. Unlock the Mac session and attach a physical, dummy, or Screen Sharing display."
+                )
+            }
+
+            guard currentMainDisplayID != 0,
+                  currentMainPixelSize.width > 0,
+                  currentMainPixelSize.height > 0 else {
+                return .unavailable(
+                    "ScreenCaptureKit returned no capturable displays, and CoreGraphics does not expose a usable current main display. Unlock the Mac session and attach a physical, dummy, or Screen Sharing display."
+                )
+            }
+
+            return .fallbackToCurrentMain
+        }
+    }
+
+    enum MissingConfiguredStreamReadiness: Equatable {
+        case fallbackToCurrentMain
+        case unavailable(String)
+
+        static func evaluate(followsMainDisplay: Bool) -> MissingConfiguredStreamReadiness {
+            guard followsMainDisplay else {
+                return .unavailable("Capture stream was not configured.")
+            }
+            return .fallbackToCurrentMain
+        }
+    }
+
     struct EncoderStats: Equatable {
         let inFlight: Int
         let capacity: Int
@@ -603,6 +655,36 @@ class ScreenCapture {
 
             debugLog("SCShareableContent returned \(content.displays.count) displays: \(content.displays.map { $0.displayID })")
 
+            let shareableDisplayIDs = content.displays.map { $0.displayID }
+            let currentMainDisplayID = CGMainDisplayID()
+            switch ShareableDisplayReadiness.evaluate(
+                shareableDisplayIDs: shareableDisplayIDs,
+                requestedDisplayID: virtualDisplayID,
+                followsMainDisplay: followsMainDisplay,
+                currentMainDisplayID: currentMainDisplayID,
+                currentMainPixelSize: ScreenCapture.physicalSize(for: currentMainDisplayID)
+            ) {
+            case .ready:
+                break
+            case .fallbackToCurrentMain:
+                display = nil
+                debugLog(
+                    "ScreenCaptureKit returned no displays; deferring current-main capture to CGDisplayStream fallback for display \(virtualDisplayID)"
+                )
+                return
+            case .unavailable(let reason):
+                if attempt < 5 {
+                    debugLog("\(reason) Attempt \(attempt), retrying...")
+                    try await Task.sleep(nanoseconds: 1_000_000_000)
+                    continue
+                }
+                throw NSError(
+                    domain: "ScreenCapture",
+                    code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: reason]
+                )
+            }
+
             if let virtualDisplay = content.displays.first(where: { $0.displayID == virtualDisplayID }) {
                 display = virtualDisplay
                 debugLog("Capturing virtual display: \(virtualDisplay.width)x\(virtualDisplay.height) (ID: \(virtualDisplayID))")
@@ -616,12 +698,17 @@ class ScreenCapture {
         }
 
         throw NSError(domain: "ScreenCapture", code: 2,
-            userInfo: [NSLocalizedDescriptionKey: "Virtual display with ID \(virtualDisplayID) not found after 5 attempts"])
+            userInfo: [NSLocalizedDescriptionKey: "Display \(virtualDisplayID) was not returned by ScreenCaptureKit after 5 attempts"])
     }
 
     // MARK: - Stream setup
 
     private func setupStream() async throws {
+        if display == nil, virtualDisplayID != nil, followsMainDisplay {
+            debugLog("SCStream setup skipped; current-main capture will use CGDisplayStream fallback")
+            return
+        }
+
         guard let display = display, virtualDisplayID != nil else {
             throw NSError(domain: "ScreenCapture", code: 2,
                 userInfo: [NSLocalizedDescriptionKey: "Display not initialized"])
@@ -687,6 +774,37 @@ class ScreenCapture {
 
         stream = scStream
         debugLog("Stream configured: \(width)x\(height) @ \(fps)fps (with delegate)")
+    }
+
+    @discardableResult
+    private func startCurrentMainFallbackIfStreamMissing(
+        reason: String,
+        requestsKeyframe: Bool
+    ) throws -> Bool {
+        guard stream == nil else { return false }
+        switch MissingConfiguredStreamReadiness.evaluate(
+            followsMainDisplay: followsMainDisplay
+        ) {
+        case .fallbackToCurrentMain:
+            break
+        case .unavailable:
+            return false
+        }
+        debugLog(reason)
+        guard attemptFallbackCapture(stopSCStream: false) else {
+            throw NSError(
+                domain: "ScreenCapture",
+                code: 11,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "No capturable current main display is available. Unlock the Mac session and attach a physical, dummy, or Screen Sharing display."
+                ]
+            )
+        }
+        if requestsKeyframe {
+            currentEncoder()?.requestKeyframe()
+        }
+        startFrameMonitor()
+        return true
     }
 
     // MARK: - Shared frame handler (used by both startStreaming and restartStream)
@@ -827,6 +945,12 @@ class ScreenCapture {
 
         do {
             guard let stream else {
+                if try startCurrentMainFallbackIfStreamMissing(
+                    reason: "SCStream was not configured for current-main capture — attempting CGDisplayStream fallback",
+                    requestsKeyframe: false
+                ) {
+                    return
+                }
                 throw NSError(
                     domain: "ScreenCapture",
                     code: 11,
@@ -1148,12 +1272,27 @@ class ScreenCapture {
                 try await self.setupStream()
                 try Task.checkCancellation()
                 guard !self.isStopping else { return }
+                if try self.startCurrentMainFallbackIfStreamMissing(
+                    reason: "SCStream was not configured during restart for current-main capture — attempting CGDisplayStream fallback",
+                    requestsKeyframe: true
+                ) {
+                    return
+                }
 
                 // Re-attach encoding pipeline using shared handler
                 self.configureFrameHandler(label: "restart")
                 self.currentEncoder()?.requestKeyframe()
 
-                try await self.stream?.startCapture()
+                guard let stream = self.stream else {
+                    throw NSError(
+                        domain: "ScreenCapture",
+                        code: 11,
+                        userInfo: [
+                            NSLocalizedDescriptionKey: "Restarted capture stream was not configured."
+                        ]
+                    )
+                }
+                try await stream.startCapture()
                 self.isSCStreamStarted = true
                 try Task.checkCancellation()
                 guard !self.isStopping else { return }
@@ -1323,8 +1462,7 @@ class ScreenCapture {
         ) else {
             debugLog("Failed to create CGDisplayStream — fallback unavailable")
             invalidateFallbackCapture()
-            framePacingTimer?.cancel()
-            framePacingTimer = nil
+            clearFramePacer()
             return false
         }
 
@@ -1337,10 +1475,14 @@ class ScreenCapture {
         } else {
             debugLog("CGDisplayStream.start() failed: \(startResult)")
             invalidateFallbackCapture()
-            framePacingTimer?.cancel()
-            framePacingTimer = nil
+            clearFramePacer()
             return false
         }
+    }
+
+    private func clearFramePacer() {
+        framePacingTimer?.cancel()
+        framePacingTimer = nil
     }
 
     // MARK: - Settings update

@@ -1455,7 +1455,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if version.majorVersion >= 26 {
                 do {
                     let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-                    debugLog("SCShareableContent verification OK — \(content.displays.count) displays found")
+                    if content.displays.isEmpty {
+                        debugLog(
+                            "WARNING: CGPreflight OK but ScreenCaptureKit returned no displays; " +
+                            "unlock the Mac session or attach a physical, dummy, or Screen Sharing display"
+                        )
+                    } else {
+                        debugLog("SCShareableContent verification OK — \(content.displays.count) displays found")
+                    }
                 } catch {
                     debugLog("WARNING: CGPreflight OK but SCShareableContent failed on macOS 26: \(error.localizedDescription)")
                     debugLog("CGDisplayStream fallback will likely activate at capture time")
