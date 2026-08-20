@@ -192,11 +192,11 @@ claiming Xiaomi/fuxi identity fail closed.
     "tree_status": "clean"
   },
   "device": {
-    "manufacturer": "Xiaomi or Nubia",
-    "model": "2211133C or P0110",
-    "codename": "fuxi or pacific",
-    "os_version": "Android 16",
-    "evidence_role": "primary_xiaomi_13 or general_android_substitute"
+    "manufacturer": "<exact observed manufacturer>",
+    "model": "<exact observed model>",
+    "codename": "<exact observed codename>",
+    "os_version": "<exact observed Android version>",
+    "evidence_role": "<evidence role for this exact observed device>"
   },
   "artifacts": {
     "mac_host_sha256": "<sha256>",
