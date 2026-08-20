@@ -165,15 +165,21 @@ public struct ManagedPolicy: Equatable, Sendable {
     }
 
     public func allows(host: String) -> Bool {
-        !allowedHostsRestricted || allowedHosts.contains(host)
+        guard let normalized = Self.normalizedHost(host) else { return !allowedHostsRestricted }
+        return !allowedHostsRestricted || allowedHosts.contains(normalized)
     }
 
     private static func normalizedHosts(_ hosts: Set<String>) -> Set<String> {
-        Set(hosts.filter { !isBlankHost($0) })
+        Set(hosts.compactMap(normalizedHost))
     }
 
     private static func isBlankHost(_ host: String) -> Bool {
-        host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        normalizedHost(host) == nil
+    }
+
+    private static func normalizedHost(_ host: String) -> String? {
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed.lowercased()
     }
 
     private enum Keys {

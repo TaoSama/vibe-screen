@@ -126,15 +126,21 @@ struct ManagedPolicy: Equatable {
     }
 
     func allows(hostID: String) -> Bool {
-        !allowedHostsRestricted || allowedHosts.contains(hostID)
+        guard let normalized = Self.normalizedHost(hostID) else { return !allowedHostsRestricted }
+        return !allowedHostsRestricted || allowedHosts.contains(normalized)
     }
 
     private static func normalizedHosts(_ hosts: Set<String>) -> Set<String> {
-        Set(hosts.filter { !isBlankHost($0) })
+        Set(hosts.compactMap(normalizedHost))
     }
 
     private static func isBlankHost(_ host: String) -> Bool {
-        host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        normalizedHost(host) == nil
+    }
+
+    private static func normalizedHost(_ host: String) -> String? {
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed.lowercased()
     }
 
     static let advertisedCapabilities: Set<VSCapability> = [.managedConfiguration]

@@ -91,6 +91,26 @@ final class ManagedPolicyTests: XCTestCase {
         XCTAssertEqual(policy.maximumFileBytes, 4_096)
     }
 
+    func testAllowedHostsAreNormalizedBeforeMatchingAndSerializing() {
+        let policy = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: 4_096,
+            allowedHosts: [" Mac.Local ", "REMOTE.local", " " ]
+        )
+
+        XCTAssertEqual(policy.allowedHosts, ["mac.local", "remote.local"])
+        XCTAssertTrue(policy.allows(host: "mac.local"))
+        XCTAssertTrue(policy.allows(host: " MAC.LOCAL "))
+        XCTAssertFalse(policy.allows(host: "other.local"))
+        XCTAssertEqual(policy.protocolStatus.allowedHosts, ["mac.local", "remote.local"])
+    }
+
     // MARK: - Resolver updates
 
     func testResolverRestoresAllowAfterRemoteDeny() {

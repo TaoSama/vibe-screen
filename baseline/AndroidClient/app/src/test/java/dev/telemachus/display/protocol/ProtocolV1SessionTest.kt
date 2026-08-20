@@ -184,6 +184,28 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun allowedHostsAreNormalizedBeforeMatchingAndSerializing() {
+        val policy =
+            ProtocolV1Session.ManagedPolicy(
+                isManaged = true,
+                clipboardAllowed = true,
+                fileTransferAllowed = true,
+                audioAllowed = true,
+                wakeAllowed = true,
+                customGesturesAllowed = true,
+                hostActionsAllowed = true,
+                maximumFileBytes = 4_096,
+                allowedHosts = setOf(" Mac.Local ", "REMOTE.local", " "),
+            )
+
+        assertEquals(setOf("mac.local", "remote.local"), policy.allowedHosts)
+        assertTrue(policy.allowsHost("mac.local"))
+        assertTrue(policy.allowsHost(" MAC.LOCAL "))
+        assertFalse(policy.allowsHost("other.local"))
+        assertEquals(listOf("mac.local", "remote.local"), policy.toStatus().allowedHostsList)
+    }
+
+    @Test
     fun managedRemoteStatusWithUnsetFieldsFailsClosed() {
         val policy =
             ProtocolV1Session.ManagedPolicy.fromStatus(
@@ -757,6 +779,7 @@ class ProtocolV1SessionTest {
                     hostActionsAllowed = false,
                     maximumFileBytes = 2_048,
                     allowedHosts = setOf("host"),
+                    allowedHostsRestricted = true,
                 ),
         )
         session.clientHello()
@@ -774,6 +797,7 @@ class ProtocolV1SessionTest {
         assertFalse(status.hostActionsAllowed)
         assertEquals(2_048, status.maximumFileBytes)
         assertEquals(listOf("host"), status.allowedHostsList)
+        assertTrue(status.allowedHostsRestricted)
     }
 
     @Test

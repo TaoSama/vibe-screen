@@ -179,7 +179,7 @@ internal class ProtocolV1Session(
         val isVirtual: Boolean,
     )
 
-    data class ManagedPolicy(
+    class ManagedPolicy(
         val isManaged: Boolean,
         val clipboardAllowed: Boolean,
         val fileTransferAllowed: Boolean,
@@ -188,9 +188,12 @@ internal class ProtocolV1Session(
         val customGesturesAllowed: Boolean,
         val hostActionsAllowed: Boolean,
         val maximumFileBytes: Long,
-        val allowedHosts: Set<String>,
-        val allowedHostsRestricted: Boolean = allowedHosts.isNotEmpty(),
+        allowedHosts: Set<String>,
+        allowedHostsRestricted: Boolean? = null,
     ) {
+        val allowedHosts = allowedHosts.mapNotNull { normalizeHost(it) }.toSet()
+        val allowedHostsRestricted = allowedHostsRestricted ?: this.allowedHosts.isNotEmpty()
+
         fun applying(remote: ManagedPolicy): ManagedPolicy {
             if (!remote.isManaged) return this
             val restricted = allowedHostsRestricted || remote.allowedHostsRestricted
@@ -215,7 +218,35 @@ internal class ProtocolV1Session(
             )
         }
 
-        fun allowsHost(hostId: String): Boolean = !allowedHostsRestricted || hostId in allowedHosts
+        fun allowsHost(hostId: String): Boolean {
+            val normalized = normalizeHost(hostId)
+            return !allowedHostsRestricted || (normalized != null && normalized in allowedHosts)
+        }
+
+        fun copy(
+            isManaged: Boolean = this.isManaged,
+            clipboardAllowed: Boolean = this.clipboardAllowed,
+            fileTransferAllowed: Boolean = this.fileTransferAllowed,
+            audioAllowed: Boolean = this.audioAllowed,
+            wakeAllowed: Boolean = this.wakeAllowed,
+            customGesturesAllowed: Boolean = this.customGesturesAllowed,
+            hostActionsAllowed: Boolean = this.hostActionsAllowed,
+            maximumFileBytes: Long = this.maximumFileBytes,
+            allowedHosts: Set<String> = this.allowedHosts,
+            allowedHostsRestricted: Boolean = this.allowedHostsRestricted,
+        ): ManagedPolicy =
+            ManagedPolicy(
+                isManaged = isManaged,
+                clipboardAllowed = clipboardAllowed,
+                fileTransferAllowed = fileTransferAllowed,
+                audioAllowed = audioAllowed,
+                wakeAllowed = wakeAllowed,
+                customGesturesAllowed = customGesturesAllowed,
+                hostActionsAllowed = hostActionsAllowed,
+                maximumFileBytes = maximumFileBytes,
+                allowedHosts = allowedHosts,
+                allowedHostsRestricted = allowedHostsRestricted,
+            )
 
         fun toStatus(): ManagedPolicyStatus =
             ManagedPolicyStatus
@@ -250,7 +281,7 @@ internal class ProtocolV1Session(
 
             fun fromStatus(status: ManagedPolicyStatus): ManagedPolicy {
                 if (!status.managed) return UNMANAGED
-                val hosts = status.allowedHostsList.filter { it.isNotBlank() }.toSet()
+                val hosts = status.allowedHostsList.mapNotNull { normalizeHost(it) }.toSet()
                 return ManagedPolicy(
                     isManaged = true,
                     clipboardAllowed = status.clipboardAllowed,
@@ -263,6 +294,11 @@ internal class ProtocolV1Session(
                     allowedHosts = hosts,
                     allowedHostsRestricted = status.allowedHostsRestricted || hosts.isNotEmpty(),
                 )
+            }
+
+            private fun normalizeHost(hostId: String): String? {
+                val trimmed = hostId.trim()
+                return trimmed.ifEmpty { null }?.lowercase()
             }
         }
     }

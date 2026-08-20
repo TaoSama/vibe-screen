@@ -97,6 +97,26 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertFalse(roundTripped.allows(hostID: "any-host"))
     }
 
+    func testAllowedHostsAreNormalizedBeforeMatchingAndSerializing() {
+        let policy = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: 4_096,
+            allowedHosts: [" Mac.Local ", "REMOTE.local", " " ]
+        )
+
+        XCTAssertEqual(policy.allowedHosts, ["mac.local", "remote.local"])
+        XCTAssertTrue(policy.allows(hostID: "mac.local"))
+        XCTAssertTrue(policy.allows(hostID: " MAC.LOCAL "))
+        XCTAssertFalse(policy.allows(hostID: "other.local"))
+        XCTAssertEqual(policy.protocolStatus.allowedHosts, ["mac.local", "remote.local"])
+    }
+
     func testManagedRemoteStatusWithUnsetFieldsFailsClosed() {
         var status = VSManagedPolicyStatus()
         status.managed = true
