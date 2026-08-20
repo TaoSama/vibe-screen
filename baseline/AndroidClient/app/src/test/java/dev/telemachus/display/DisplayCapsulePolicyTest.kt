@@ -413,12 +413,14 @@ class ControlRevealGesturePolicyTest {
         assertTrue(
             ControlRevealGesturePolicy.shouldConsumeActiveRevealOnlyGesture(
                 revealOnlyGestureActive = true,
+                directTouch = true,
                 phase = StreamTouchPhase.BEGIN,
             ),
         )
         assertTrue(
             ControlRevealGesturePolicy.shouldConsumeActiveRevealOnlyGesture(
                 revealOnlyGestureActive = true,
+                directTouch = true,
                 phase = StreamTouchPhase.UPDATE,
             ),
         )
@@ -461,6 +463,14 @@ class ControlRevealGesturePolicyTest {
         assertFalse(
             ControlRevealGesturePolicy.shouldConsumeActiveRevealOnlyGesture(
                 revealOnlyGestureActive = false,
+                directTouch = false,
+                phase = StreamTouchPhase.UPDATE,
+            ),
+        )
+        assertFalse(
+            ControlRevealGesturePolicy.shouldConsumeActiveRevealOnlyGesture(
+                revealOnlyGestureActive = true,
+                directTouch = false,
                 phase = StreamTouchPhase.UPDATE,
             ),
         )

@@ -5137,11 +5137,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun consumeHiddenControlRevealGesture(event: MotionEvent): Boolean {
         val phase = event.streamTouchPhase()
+        val directTouch = event.isDirectTouchGesture()
         if (
             ControlRevealGesturePolicy.shouldStartRevealOnlyGesture(
                 connected = isConnected,
                 controlBarVisible = binding.controlBar.visibility == View.VISIBLE,
-                directTouch = event.isDirectTouchGesture(),
+                directTouch = directTouch,
                 inRevealHotZone = event.isInControlRevealHotZone(),
                 phase = phase,
             )
@@ -5152,9 +5153,10 @@ class MainActivity : AppCompatActivity() {
         val consume =
             ControlRevealGesturePolicy.shouldConsumeActiveRevealOnlyGesture(
                 revealOnlyGestureActive = revealOnlyTouchGestureActive,
+                directTouch = directTouch,
                 phase = phase,
             )
-        if (ControlRevealGesturePolicy.endsGesture(phase)) {
+        if (!directTouch || ControlRevealGesturePolicy.endsGesture(phase)) {
             revealOnlyTouchGestureActive = false
         }
         return consume

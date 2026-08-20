@@ -57,8 +57,9 @@ internal object ControlRevealGesturePolicy {
 
     fun shouldConsumeActiveRevealOnlyGesture(
         revealOnlyGestureActive: Boolean,
+        directTouch: Boolean,
         phase: StreamTouchPhase,
-    ): Boolean = revealOnlyGestureActive && phase != StreamTouchPhase.OTHER
+    ): Boolean = revealOnlyGestureActive && directTouch && phase != StreamTouchPhase.OTHER
 
     fun endsGesture(phase: StreamTouchPhase): Boolean = phase == StreamTouchPhase.END || phase == StreamTouchPhase.CANCEL
 }
