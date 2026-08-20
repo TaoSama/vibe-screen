@@ -50,6 +50,7 @@ protocol-tests:
 
 phase3-test: phase3-go-test
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/release_gate_manifest.py --print-matrix >/dev/null
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/network_recovery_blocked_evidence.py --output-dir .build/phase3-network-recovery-blocked-smoke >/dev/null
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase3 -p 'test_*.py' -v
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase3_webrtc -p 'test_*.py' -v
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/phase3/evidence_privacy.py --evidence-dir docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-05-nubia-p0110-internet --check

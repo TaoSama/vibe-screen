@@ -237,6 +237,20 @@ def _require_session_epoch_advance(initial_epoch: int, reconnect_epoch: int) -> 
         )
 
 
+def _optional_pattern_assertions(
+    observation: str,
+    patterns: dict[str, str | None],
+) -> dict[str, str]:
+    assertions: dict[str, str] = {}
+    for label, pattern in patterns.items():
+        if pattern is None:
+            assertions[label] = "not_requested"
+            continue
+        _require_pattern(label.replace("_", " "), pattern, observation)
+        assertions[label] = "passed"
+    return assertions
+
+
 def _capture_host_evidence_cursor(path: Path) -> HostEvidenceCursor:
     try:
         status = path.stat()
@@ -356,6 +370,7 @@ def _run_acceptance(
             time.sleep(args.connect_wait)
 
     launch_and_connect()
+    first_stream_observed_at = time.monotonic()
     first_observation = _observe(adb, args.package)
     _require_pattern("streaming", args.streaming_pattern, first_observation)
     first_session_epoch = _extract_session_epoch("initial", args.session_epoch_pattern, first_observation)
@@ -384,7 +399,9 @@ def _run_acceptance(
     adb.device(["shell", "am", "force-stop", args.package])
     adb.device(["logcat", "-c"])
     time.sleep(args.disconnect_wait)
+    reconnect_started_at = time.monotonic()
     launch_and_connect()
+    reconnect_observed_at = time.monotonic()
     reconnect_observation = _observe(adb, args.package)
     _require_pattern("reconnect", args.reconnect_pattern, reconnect_observation)
     _require_pattern("post-reconnect streaming", args.streaming_pattern, reconnect_observation)
@@ -394,6 +411,15 @@ def _run_acceptance(
         reconnect_observation,
     )
     _require_session_epoch_advance(first_session_epoch, reconnect_session_epoch)
+    recovery_assertions = _optional_pattern_assertions(
+        reconnect_observation,
+        {
+            "fresh_session_requested": args.fresh_session_pattern,
+            "ice_restart_attempted": args.ice_restart_pattern,
+            "old_session_closed": args.old_session_closed_pattern,
+            "stale_epoch_rejected": args.stale_epoch_rejected_pattern,
+        },
+    )
 
     soak_started = time.monotonic()
     soak_samples: list[dict[str, Any]] = []
@@ -419,10 +445,22 @@ def _run_acceptance(
             "host_input_acknowledgement": "passed",
             "reconnect": "passed",
             "session_epoch_advanced": "passed",
+            **recovery_assertions,
         },
         "session_epochs": {
             "initial": first_session_epoch,
             "reconnect": reconnect_session_epoch,
+        },
+        "recovery": {
+            "first_stream_observed_at_monotonic_ms": round(first_stream_observed_at * 1000),
+            "reconnect_started_at_monotonic_ms": round(reconnect_started_at * 1000),
+            "reconnect_stream_observed_at_monotonic_ms": round(reconnect_observed_at * 1000),
+            "elapsed_seconds": round(reconnect_observed_at - reconnect_started_at, 3),
+        },
+        "network": {
+            "topology": args.network_topology,
+            "route": args.route,
+            "impairment_profile": args.impairment_profile,
         },
         "host_input_evidence": {
             "appended_bytes": len(host_input_evidence),
@@ -493,6 +531,13 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="regex with named group 'epoch', matched independently before and after reconnect",
     )
+    parser.add_argument("--fresh-session-pattern", help="regex proving the old connection requested a fresh product session")
+    parser.add_argument("--ice-restart-pattern", help="regex proving an ICE restart attempt or explicit fresh-session recovery path")
+    parser.add_argument("--old-session-closed-pattern", help="regex proving the old transport/session owner closed before resumed traffic")
+    parser.add_argument("--stale-epoch-rejected-pattern", help="regex proving old-session or stale-epoch traffic was rejected")
+    parser.add_argument("--network-topology", default="unspecified", help="sanitized topology label such as public-internet, controlled-router, or local-lab")
+    parser.add_argument("--route", choices=("direct", "relay", "mixed", "unknown"), default="unknown")
+    parser.add_argument("--impairment-profile", default="none", help="sanitized impairment label or profile name used during this run")
     parser.add_argument("--evidence", type=Path, required=True, help="JSON output; keep generated evidence outside Git by default")
     parser.add_argument("--launch-wait", type=float, default=2)
     parser.add_argument("--connect-wait", type=float, default=8)
