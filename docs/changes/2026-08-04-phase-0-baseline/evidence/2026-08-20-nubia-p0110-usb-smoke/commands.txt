@@ -1,0 +1,14 @@
+# command ledger
+date: 2026-08-20T17:58:40+08:00
+repo: 0844991ea6ca55905349abb5f57291990454f0ad
+branch: codex/p0110-usb-smoke-evidence
+device serial: EP0110PZ0B9110300B
+
+## PR #129 guard files
+{"baseRefName":"main","files":[{"path":"baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamClient.kt","additions":123,"deletions":6,"changeType":"MODIFIED"},{"path":"baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamOutboundCommand.kt","additions":11,"deletions":1,"changeType":"MODIFIED"},{"path":"baseline/AndroidClient/app/src/main/java/dev/telemachus/display/WakeHost.kt","additions":117,"deletions":0,"changeType":"ADDED"},{"path":"baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/ProtocolV1Session.kt","additions":131,"deletions":6,"changeType":"MODIFIED"},{"path":"baseline/AndroidClient/app/src/test/java/dev/telemachus/display/WakeHostTest.kt","additions":81,"deletions":0,"changeType":"ADDED"},{"path":"baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/ProtocolV1SessionTest.kt","additions":119,"deletions":1,"changeType":"MODIFIED"},{"path":"baseline/MacHost/Sources/ProtocolV1SelfTest.swift","additions":244,"deletions":0,"changeType":"MODIFIED"},{"path":"baseline/MacHost/Sources/ProtocolV1Session.swift","additions":41,"deletions":1,"changeType":"MODIFIED"},{"path":"baseline/MacHost/Sources/StreamingServer.swift","additions":76,"deletions":1,"changeType":"MODIFIED"},{"path":"baseline/MacHost/Sources/WakeHost.swift","additions":161,"deletions":0,"changeType":"ADDED"},{"path":"baseline/MacHost/Tests/TelemachusTests/ProtocolV1SessionTests.swift","additions":146,"deletions":0,"changeType":"MODIFIED"},{"path":"baseline/MacHost/Tests/TelemachusTests/WakeHostTests.swift","additions":154,"deletions":0,"changeType":"ADDED"}],"headRefName":"codex/wake-host-request","state":"OPEN","title":"feat(protocol): add wake host request handling","url":"https://github.com/TaoSama/vibe-screen/pull/129"}
+
+## PR #129 guard result
+base comparison: 3ff86f22909f12ed81339a0ff7b8d518712e3655...HEAD
+changed path command: git diff --name-only 3ff86f22909f12ed81339a0ff7b8d518712e3655...HEAD | sort
+guard comparison command: comm -12 /tmp/pr143_changed_paths.txt /tmp/pr129_guard_paths.txt
+intersection: empty

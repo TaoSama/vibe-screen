@@ -1,0 +1,779 @@
+1:2026-08-20T09:50:13Z Capture source (SCStream): 40.3fps
+2:2026-08-20T09:50:14Z Capture source (SCStream): 40.0fps
+3:2026-08-20T09:50:15Z Capture source (SCStream): 38.4fps
+4:2026-08-20T09:50:16Z Capture source (SCStream): 38.0fps
+5:2026-08-20T09:50:17Z Capture source (SCStream): 40.3fps
+6:2026-08-20T09:50:18Z Capture source (SCStream): 37.4fps
+7:2026-08-20T09:50:19Z Capture source (SCStream): 36.8fps
+8:2026-08-20T09:50:20Z Capture source (SCStream): 35.8fps
+9:2026-08-20T09:50:21Z Capture source (SCStream): 39.0fps
+10:2026-08-20T09:50:22Z Capture source (SCStream): 38.4fps
+11:2026-08-20T09:50:23Z Capture source (SCStream): 37.0fps
+12:2026-08-20T09:50:24Z Capture source (SCStream): 39.8fps
+13:2026-08-20T09:50:25Z Capture source (SCStream): 38.5fps
+14:2026-08-20T09:50:26Z Capture source (SCStream): 35.4fps
+15:2026-08-20T09:50:27Z Capture source (SCStream): 37.0fps
+16:2026-08-20T09:50:28Z Capture source (SCStream): 38.4fps
+17:2026-08-20T09:50:29Z Capture source (SCStream): 36.4fps
+18:2026-08-20T09:50:30Z Capture source (SCStream): 38.6fps
+19:2026-08-20T09:50:31Z Capture source (SCStream): 40.3fps
+20:2026-08-20T09:50:32Z Capture source (SCStream): 40.0fps
+21:2026-08-20T09:50:33Z Capture source (SCStream): 37.4fps
+22:2026-08-20T09:50:34Z Capture source (SCStream): 42.0fps
+23:2026-08-20T09:50:35Z Capture source (SCStream): 36.4fps
+24:2026-08-20T09:50:36Z Capture source (SCStream): 39.0fps
+25:2026-08-20T09:50:37Z Capture source (SCStream): 37.5fps
+26:2026-08-20T09:50:38Z Capture source (SCStream): 37.4fps
+27:2026-08-20T09:50:39Z Capture source (SCStream): 39.0fps
+28:2026-08-20T09:50:40Z Capture source (SCStream): 38.3fps
+29:2026-08-20T09:50:41Z Capture source (SCStream): 39.3fps
+30:2026-08-20T09:50:42Z Capture source (SCStream): 35.4fps
+31:2026-08-20T09:50:43Z Capture source (SCStream): 40.3fps
+32:2026-08-20T09:50:44Z Capture source (SCStream): 37.3fps
+33:2026-08-20T09:50:45Z Capture source (SCStream): 38.4fps
+34:2026-08-20T09:50:46Z Capture source (SCStream): 36.4fps
+35:2026-08-20T09:50:47Z Capture source (SCStream): 37.0fps
+36:2026-08-20T09:50:48Z Capture source (SCStream): 39.3fps
+37:2026-08-20T09:50:49Z Capture source (SCStream): 36.4fps
+38:2026-08-20T09:50:50Z Capture source (SCStream): 40.3fps
+39:2026-08-20T09:50:51Z Capture source (SCStream): 37.8fps
+40:2026-08-20T09:50:52Z Capture source (SCStream): 38.3fps
+41:2026-08-20T09:50:53Z Capture source (SCStream): 40.3fps
+42:2026-08-20T09:50:54Z Capture source (SCStream): 38.3fps
+43:2026-08-20T09:50:55Z Capture source (SCStream): 41.3fps
+44:2026-08-20T09:50:56Z Capture source (SCStream): 37.4fps
+45:2026-08-20T09:50:57Z Capture source (SCStream): 37.4fps
+46:2026-08-20T09:50:58Z Capture source (SCStream): 38.0fps
+47:2026-08-20T09:51:00Z Capture source (SCStream): 37.8fps
+48:2026-08-20T09:51:01Z Capture source (SCStream): 38.7fps
+49:2026-08-20T09:51:02Z Capture source (SCStream): 40.6fps
+50:2026-08-20T09:51:03Z Capture source (SCStream): 36.4fps
+51:2026-08-20T09:51:04Z Capture source (SCStream): 38.4fps
+52:2026-08-20T09:51:05Z Capture source (SCStream): 39.0fps
+53:2026-08-20T09:51:06Z Capture source (SCStream): 37.4fps
+54:2026-08-20T09:51:07Z Capture source (SCStream): 39.3fps
+55:2026-08-20T09:51:08Z Capture source (SCStream): 39.4fps
+56:2026-08-20T09:51:09Z Capture source (SCStream): 38.4fps
+57:2026-08-20T09:51:10Z Capture source (SCStream): 37.4fps
+58:2026-08-20T09:51:11Z Capture source (SCStream): 35.4fps
+59:2026-08-20T09:51:12Z Capture source (SCStream): 37.0fps
+60:2026-08-20T09:51:13Z Capture source (SCStream): 37.4fps
+61:2026-08-20T09:51:14Z Capture source (SCStream): 39.7fps
+62:2026-08-20T09:51:15Z Capture source (SCStream): 38.4fps
+63:2026-08-20T09:51:16Z Capture source (SCStream): 37.4fps
+64:2026-08-20T09:51:17Z Capture source (SCStream): 41.3fps
+65:2026-08-20T09:51:18Z Capture source (SCStream): 36.4fps
+66:2026-08-20T09:51:19Z Capture source (SCStream): 38.8fps
+67:2026-08-20T09:51:20Z Capture source (SCStream): 37.9fps
+68:2026-08-20T09:51:21Z Capture source (SCStream): 36.0fps
+69:2026-08-20T09:51:22Z Capture source (SCStream): 36.0fps
+70:2026-08-20T09:51:23Z Capture source (SCStream): 40.3fps
+71:2026-08-20T09:51:24Z Capture source (SCStream): 39.3fps
+72:2026-08-20T09:51:25Z Capture source (SCStream): 37.0fps
+73:2026-08-20T09:51:26Z Capture source (SCStream): 39.7fps
+74:2026-08-20T09:51:27Z Capture source (SCStream): 37.0fps
+75:2026-08-20T09:51:28Z Capture source (SCStream): 39.3fps
+76:2026-08-20T09:51:29Z Capture source (SCStream): 37.8fps
+77:2026-08-20T09:51:30Z Capture source (SCStream): 39.3fps
+78:2026-08-20T09:51:31Z Capture source (SCStream): 39.0fps
+79:2026-08-20T09:51:32Z Capture source (SCStream): 40.4fps
+80:2026-08-20T09:51:33Z Capture source (SCStream): 37.4fps
+81:2026-08-20T09:51:34Z Capture source (SCStream): 37.0fps
+82:2026-08-20T09:51:35Z Capture source (SCStream): 40.3fps
+83:2026-08-20T09:51:36Z Capture source (SCStream): 41.0fps
+84:2026-08-20T09:51:37Z Capture source (SCStream): 40.9fps
+85:2026-08-20T09:51:38Z Capture source (SCStream): 36.8fps
+86:2026-08-20T09:51:39Z Capture source (SCStream): 40.0fps
+87:2026-08-20T09:51:40Z Capture source (SCStream): 38.4fps
+88:2026-08-20T09:51:41Z Capture source (SCStream): 36.4fps
+89:2026-08-20T09:51:42Z Capture source (SCStream): 38.0fps
+90:2026-08-20T09:51:43Z Capture source (SCStream): 36.0fps
+91:2026-08-20T09:51:44Z Capture source (SCStream): 36.4fps
+92:2026-08-20T09:51:45Z Capture source (SCStream): 38.0fps
+93:2026-08-20T09:51:46Z Capture source (SCStream): 38.0fps
+94:2026-08-20T09:51:47Z Capture source (SCStream): 39.0fps
+95:2026-08-20T09:51:48Z Capture source (SCStream): 38.4fps
+96:2026-08-20T09:51:49Z Capture source (SCStream): 36.4fps
+97:2026-08-20T09:51:50Z Capture source (SCStream): 38.0fps
+98:2026-08-20T09:51:51Z Capture source (SCStream): 39.3fps
+99:2026-08-20T09:51:52Z Capture source (SCStream): 41.3fps
+100:2026-08-20T09:51:53Z Capture source (SCStream): 39.4fps
+101:2026-08-20T09:51:54Z Capture source (SCStream): 38.0fps
+102:2026-08-20T09:51:55Z Capture source (SCStream): 40.3fps
+103:2026-08-20T09:51:56Z Capture source (SCStream): 38.4fps
+104:2026-08-20T09:51:57Z Capture source (SCStream): 37.3fps
+105:2026-08-20T09:51:58Z Capture source (SCStream): 37.4fps
+106:2026-08-20T09:51:59Z Capture source (SCStream): 40.8fps
+107:2026-08-20T09:52:00Z Capture source (SCStream): 38.4fps
+108:2026-08-20T09:52:01Z Capture source (SCStream): 37.4fps
+109:2026-08-20T09:52:02Z Capture source (SCStream): 38.2fps
+110:2026-08-20T09:52:03Z Capture source (SCStream): 39.5fps
+111:2026-08-20T09:52:04Z Capture source (SCStream): 38.9fps
+112:2026-08-20T09:52:05Z Capture source (SCStream): 35.5fps
+113:2026-08-20T09:52:06Z Capture source (SCStream): 37.0fps
+114:2026-08-20T09:52:07Z Capture source (SCStream): 39.0fps
+115:2026-08-20T09:52:08Z Capture source (SCStream): 34.5fps
+116:2026-08-20T09:52:09Z Capture source (SCStream): 38.4fps
+117:2026-08-20T09:52:10Z Capture source (SCStream): 38.6fps
+118:2026-08-20T09:52:11Z Capture source (SCStream): 39.8fps
+119:2026-08-20T09:52:12Z Capture source (SCStream): 39.3fps
+120:2026-08-20T09:52:13Z Capture source (SCStream): 38.4fps
+121:2026-08-20T09:52:14Z Capture source (SCStream): 40.3fps
+122:2026-08-20T09:52:15Z Capture source (SCStream): 41.3fps
+123:2026-08-20T09:52:16Z Capture source (SCStream): 40.8fps
+124:2026-08-20T09:52:17Z Capture source (SCStream): 38.9fps
+125:2026-08-20T09:52:19Z Capture source (SCStream): 39.4fps
+126:2026-08-20T09:52:20Z Capture source (SCStream): 36.9fps
+127:2026-08-20T09:52:21Z Capture source (SCStream): 37.4fps
+128:2026-08-20T09:52:22Z Capture source (SCStream): 37.8fps
+129:2026-08-20T09:52:23Z Capture source (SCStream): 36.8fps
+130:2026-08-20T09:52:24Z Capture source (SCStream): 36.0fps
+131:2026-08-20T09:52:25Z Capture source (SCStream): 37.0fps
+132:2026-08-20T09:52:26Z Capture source (SCStream): 37.4fps
+133:2026-08-20T09:52:27Z Capture source (SCStream): 37.4fps
+134:2026-08-20T09:52:28Z Capture source (SCStream): 39.3fps
+135:2026-08-20T09:52:29Z Capture source (SCStream): 38.7fps
+136:2026-08-20T09:52:30Z Capture source (SCStream): 38.0fps
+137:2026-08-20T09:52:31Z Capture source (SCStream): 40.0fps
+138:2026-08-20T09:52:32Z Capture source (SCStream): 37.0fps
+139:2026-08-20T09:52:33Z Capture source (SCStream): 39.3fps
+140:2026-08-20T09:52:34Z Capture source (SCStream): 40.3fps
+141:2026-08-20T09:52:35Z Capture source (SCStream): 41.7fps
+142:2026-08-20T09:52:36Z Capture source (SCStream): 38.0fps
+143:2026-08-20T09:52:37Z Capture source (SCStream): 37.4fps
+144:2026-08-20T09:52:38Z Capture source (SCStream): 36.4fps
+145:2026-08-20T09:52:39Z Capture source (SCStream): 38.3fps
+146:2026-08-20T09:52:40Z Capture source (SCStream): 33.9fps
+147:2026-08-20T09:52:41Z Capture source (SCStream): 35.4fps
+148:2026-08-20T09:52:42Z Capture source (SCStream): 36.4fps
+149:2026-08-20T09:52:43Z Capture source (SCStream): 37.0fps
+150:2026-08-20T09:52:44Z Capture source (SCStream): 38.4fps
+151:2026-08-20T09:52:45Z Capture source (SCStream): 34.4fps
+152:2026-08-20T09:52:46Z Capture source (SCStream): 36.8fps
+153:2026-08-20T09:52:47Z Capture source (SCStream): 37.4fps
+154:2026-08-20T09:52:48Z Capture source (SCStream): 38.0fps
+155:2026-08-20T09:52:49Z Capture source (SCStream): 39.0fps
+156:2026-08-20T09:52:50Z Capture source (SCStream): 38.7fps
+157:2026-08-20T09:52:51Z Capture source (SCStream): 40.3fps
+158:2026-08-20T09:52:52Z Capture source (SCStream): 38.3fps
+159:2026-08-20T09:52:53Z Capture source (SCStream): 36.4fps
+160:2026-08-20T09:52:54Z Capture source (SCStream): 38.4fps
+161:2026-08-20T09:52:55Z Capture source (SCStream): 39.3fps
+162:2026-08-20T09:52:56Z Capture source (SCStream): 38.9fps
+163:2026-08-20T09:52:57Z Capture source (SCStream): 39.4fps
+164:2026-08-20T09:52:58Z Capture source (SCStream): 37.8fps
+165:2026-08-20T09:52:59Z Capture source (SCStream): 35.4fps
+166:2026-08-20T09:53:00Z Capture source (SCStream): 35.4fps
+167:2026-08-20T09:53:01Z Capture source (SCStream): 38.7fps
+168:2026-08-20T09:53:02Z Capture source (SCStream): 37.0fps
+169:2026-08-20T09:53:03Z Capture source (SCStream): 34.5fps
+170:2026-08-20T09:53:04Z Capture source (SCStream): 36.4fps
+171:2026-08-20T09:53:05Z Capture source (SCStream): 38.3fps
+172:2026-08-20T09:53:06Z Capture source (SCStream): 35.0fps
+173:2026-08-20T09:53:07Z Capture source (SCStream): 37.4fps
+174:2026-08-20T09:53:08Z Capture source (SCStream): 36.4fps
+175:2026-08-20T09:53:09Z Capture source (SCStream): 34.4fps
+176:2026-08-20T09:53:10Z Capture source (SCStream): 40.7fps
+177:2026-08-20T09:53:11Z Capture source (SCStream): 37.4fps
+178:2026-08-20T09:53:12Z Capture source (SCStream): 39.3fps
+179:2026-08-20T09:53:13Z Capture source (SCStream): 35.5fps
+180:2026-08-20T09:53:14Z Capture source (SCStream): 37.0fps
+181:2026-08-20T09:53:15Z Capture source (SCStream): 34.0fps
+182:2026-08-20T09:53:16Z Capture source (SCStream): 34.4fps
+183:2026-08-20T09:53:17Z Capture source (SCStream): 35.4fps
+184:2026-08-20T09:53:18Z Capture source (SCStream): 34.5fps
+185:2026-08-20T09:53:19Z Capture source (SCStream): 33.4fps
+186:2026-08-20T09:53:20Z Capture source (SCStream): 33.0fps
+187:2026-08-20T09:53:21Z Capture source (SCStream): 32.4fps
+188:2026-08-20T09:53:22Z Capture source (SCStream): 31.9fps
+189:2026-08-20T09:53:24Z Capture source (SCStream): 34.4fps
+190:2026-08-20T09:53:25Z Capture source (SCStream): 33.5fps
+191:2026-08-20T09:53:26Z Capture source (SCStream): 33.0fps
+192:2026-08-20T09:53:27Z Capture source (SCStream): 34.0fps
+193:2026-08-20T09:53:28Z Capture source (SCStream): 32.5fps
+194:2026-08-20T09:53:29Z Capture source (SCStream): 35.0fps
+195:2026-08-20T09:53:30Z Capture source (SCStream): 43.3fps
+196:2026-08-20T09:53:31Z Capture source (SCStream): 42.4fps
+197:2026-08-20T09:53:32Z Capture source (SCStream): 42.0fps
+198:2026-08-20T09:53:33Z Capture source (SCStream): 40.4fps
+199:2026-08-20T09:53:34Z Capture source (SCStream): 43.3fps
+200:2026-08-20T09:53:35Z Capture source (SCStream): 41.0fps
+201:2026-08-20T09:53:36Z Capture source (SCStream): 43.3fps
+202:2026-08-20T09:53:37Z Capture source (SCStream): 38.4fps
+203:2026-08-20T09:53:38Z Capture source (SCStream): 39.0fps
+204:2026-08-20T09:53:39Z Capture source (SCStream): 37.3fps
+205:2026-08-20T09:53:40Z Capture source (SCStream): 36.4fps
+206:2026-08-20T09:53:41Z Capture source (SCStream): 36.4fps
+207:2026-08-20T09:53:42Z Capture source (SCStream): 40.3fps
+208:2026-08-20T09:53:43Z Capture source (SCStream): 39.7fps
+209:2026-08-20T09:53:44Z Capture source (SCStream): 36.0fps
+210:2026-08-20T09:53:45Z Capture source (SCStream): 38.4fps
+211:2026-08-20T09:53:46Z Capture source (SCStream): 41.3fps
+212:2026-08-20T09:53:47Z Capture source (SCStream): 40.0fps
+213:2026-08-20T09:53:48Z Capture source (SCStream): 37.4fps
+214:2026-08-20T09:53:49Z Capture source (SCStream): 37.0fps
+215:2026-08-20T09:53:50Z Capture source (SCStream): 38.0fps
+216:2026-08-20T09:53:51Z Capture source (SCStream): 38.4fps
+217:2026-08-20T09:53:52Z Capture source (SCStream): 37.4fps
+218:2026-08-20T09:53:53Z Capture source (SCStream): 38.0fps
+219:2026-08-20T09:53:54Z Capture source (SCStream): 36.3fps
+220:2026-08-20T09:53:55Z Capture source (SCStream): 38.4fps
+221:2026-08-20T09:53:56Z Capture source (SCStream): 38.0fps
+222:2026-08-20T09:53:57Z Capture source (SCStream): 38.0fps
+223:2026-08-20T09:53:58Z Capture source (SCStream): 41.0fps
+224:2026-08-20T09:53:59Z Capture source (SCStream): 38.4fps
+225:2026-08-20T09:54:00Z Capture source (SCStream): 38.0fps
+226:2026-08-20T09:54:01Z Capture source (SCStream): 41.3fps
+227:2026-08-20T09:54:02Z Capture source (SCStream): 38.0fps
+228:2026-08-20T09:54:03Z Capture source (SCStream): 38.0fps
+229:2026-08-20T09:54:04Z Capture source (SCStream): 36.8fps
+230:2026-08-20T09:54:05Z Capture source (SCStream): 37.4fps
+231:2026-08-20T09:54:06Z Capture source (SCStream): 40.6fps
+232:2026-08-20T09:54:07Z Capture source (SCStream): 37.4fps
+233:2026-08-20T09:54:08Z Capture source (SCStream): 39.0fps
+234:2026-08-20T09:54:09Z Capture source (SCStream): 36.8fps
+235:2026-08-20T09:54:10Z Capture source (SCStream): 39.2fps
+236:2026-08-20T09:54:11Z Capture source (SCStream): 35.8fps
+237:2026-08-20T09:54:12Z Capture source (SCStream): 37.5fps
+238:2026-08-20T09:54:13Z Capture source (SCStream): 37.4fps
+239:2026-08-20T09:54:14Z Capture source (SCStream): 38.4fps
+240:2026-08-20T09:54:15Z Capture source (SCStream): 38.0fps
+241:2026-08-20T09:54:16Z Capture source (SCStream): 40.0fps
+242:2026-08-20T09:54:17Z Capture source (SCStream): 38.4fps
+243:2026-08-20T09:54:18Z Capture source (SCStream): 39.3fps
+244:2026-08-20T09:54:19Z Capture source (SCStream): 40.3fps
+245:2026-08-20T09:54:20Z Capture source (SCStream): 38.0fps
+246:2026-08-20T09:54:21Z Capture source (SCStream): 38.4fps
+247:2026-08-20T09:54:22Z Capture source (SCStream): 36.8fps
+248:2026-08-20T09:54:23Z Capture source (SCStream): 34.9fps
+249:2026-08-20T09:54:24Z Capture source (SCStream): 36.4fps
+250:2026-08-20T09:54:25Z Capture source (SCStream): 39.3fps
+251:2026-08-20T09:54:26Z Capture source (SCStream): 39.3fps
+252:2026-08-20T09:54:27Z Capture source (SCStream): 40.3fps
+253:2026-08-20T09:54:28Z Capture source (SCStream): 38.3fps
+254:2026-08-20T09:54:29Z Capture source (SCStream): 40.7fps
+255:2026-08-20T09:54:30Z Capture source (SCStream): 41.3fps
+256:2026-08-20T09:54:31Z Capture source (SCStream): 39.4fps
+257:2026-08-20T09:54:32Z Capture source (SCStream): 38.4fps
+258:2026-08-20T09:54:33Z Capture source (SCStream): 37.4fps
+259:2026-08-20T09:54:34Z Capture source (SCStream): 36.4fps
+260:2026-08-20T09:54:35Z Capture source (SCStream): 39.4fps
+261:2026-08-20T09:54:36Z Capture source (SCStream): 40.9fps
+262:2026-08-20T09:54:38Z Capture source (SCStream): 39.8fps
+263:2026-08-20T09:54:39Z Capture source (SCStream): 38.4fps
+264:2026-08-20T09:54:40Z Capture source (SCStream): 39.8fps
+265:2026-08-20T09:54:41Z Capture source (SCStream): 42.8fps
+266:2026-08-20T09:54:42Z Capture source (SCStream): 38.3fps
+267:2026-08-20T09:54:43Z Capture source (SCStream): 41.6fps
+268:2026-08-20T09:54:44Z Capture source (SCStream): 41.8fps
+269:2026-08-20T09:54:45Z Capture source (SCStream): 42.3fps
+270:2026-08-20T09:54:46Z Capture source (SCStream): 38.5fps
+271:2026-08-20T09:54:47Z Capture source (SCStream): 39.4fps
+272:2026-08-20T09:54:48Z Capture source (SCStream): 42.0fps
+273:2026-08-20T09:54:49Z Capture source (SCStream): 40.7fps
+274:2026-08-20T09:54:50Z Capture source (SCStream): 42.0fps
+275:2026-08-20T09:54:51Z Capture source (SCStream): 43.0fps
+276:2026-08-20T09:54:52Z Capture source (SCStream): 39.4fps
+277:2026-08-20T09:54:53Z Capture source (SCStream): 39.4fps
+278:2026-08-20T09:54:54Z Capture source (SCStream): 40.3fps
+279:2026-08-20T09:54:55Z Capture source (SCStream): 40.3fps
+280:2026-08-20T09:54:56Z Capture source (SCStream): 40.0fps
+281:2026-08-20T09:54:57Z Capture source (SCStream): 41.3fps
+282:2026-08-20T09:54:58Z Capture source (SCStream): 41.6fps
+283:2026-08-20T09:54:59Z Capture source (SCStream): 40.3fps
+284:2026-08-20T09:55:00Z Capture source (SCStream): 38.3fps
+285:2026-08-20T09:55:01Z Capture source (SCStream): 39.3fps
+286:2026-08-20T09:55:02Z Capture source (SCStream): 40.4fps
+287:2026-08-20T09:55:03Z Capture source (SCStream): 42.0fps
+288:2026-08-20T09:55:04Z Capture source (SCStream): 39.4fps
+289:2026-08-20T09:55:05Z Capture source (SCStream): 39.0fps
+290:2026-08-20T09:55:06Z Capture source (SCStream): 39.3fps
+291:2026-08-20T09:55:07Z Capture source (SCStream): 37.4fps
+292:2026-08-20T09:55:08Z Capture source (SCStream): 40.0fps
+293:2026-08-20T09:55:09Z Capture source (SCStream): 41.3fps
+294:2026-08-20T09:55:10Z Capture source (SCStream): 41.0fps
+295:2026-08-20T09:55:11Z Capture source (SCStream): 38.7fps
+296:2026-08-20T09:55:12Z Capture source (SCStream): 38.3fps
+297:2026-08-20T09:55:13Z Capture source (SCStream): 38.4fps
+298:2026-08-20T09:55:14Z Capture source (SCStream): 39.3fps
+299:2026-08-20T09:55:15Z Capture source (SCStream): 38.4fps
+300:2026-08-20T09:55:16Z Capture source (SCStream): 41.3fps
+301:2026-08-20T09:55:17Z Capture source (SCStream): 40.0fps
+302:2026-08-20T09:55:18Z Capture source (SCStream): 39.2fps
+303:2026-08-20T09:55:19Z Capture source (SCStream): 40.4fps
+304:2026-08-20T09:55:20Z Capture source (SCStream): 39.3fps
+305:2026-08-20T09:55:21Z Capture source (SCStream): 40.0fps
+306:2026-08-20T09:55:22Z Capture source (SCStream): 39.4fps
+307:2026-08-20T09:55:23Z Capture source (SCStream): 42.0fps
+308:2026-08-20T09:55:24Z Capture source (SCStream): 41.3fps
+309:2026-08-20T09:55:25Z Capture source (SCStream): 38.4fps
+310:2026-08-20T09:55:26Z Capture source (SCStream): 38.0fps
+311:2026-08-20T09:55:27Z Capture source (SCStream): 38.4fps
+312:2026-08-20T09:55:28Z Capture source (SCStream): 41.0fps
+313:2026-08-20T09:55:29Z Capture source (SCStream): 40.3fps
+314:2026-08-20T09:55:30Z Capture source (SCStream): 39.7fps
+315:2026-08-20T09:55:31Z Capture source (SCStream): 42.9fps
+316:2026-08-20T09:55:32Z Capture source (SCStream): 40.4fps
+317:2026-08-20T09:55:33Z Capture source (SCStream): 37.8fps
+318:2026-08-20T09:55:34Z Capture source (SCStream): 39.9fps
+319:2026-08-20T09:55:35Z Capture source (SCStream): 41.3fps
+320:2026-08-20T09:55:36Z Capture source (SCStream): 40.7fps
+321:2026-08-20T09:55:37Z Capture source (SCStream): 40.0fps
+322:2026-08-20T09:55:38Z Capture source (SCStream): 39.3fps
+323:2026-08-20T09:55:39Z Capture source (SCStream): 38.3fps
+324:2026-08-20T09:55:40Z Capture source (SCStream): 41.3fps
+325:2026-08-20T09:55:41Z Capture source (SCStream): 38.0fps
+326:2026-08-20T09:55:42Z Capture source (SCStream): 38.4fps
+327:2026-08-20T09:55:43Z Capture source (SCStream): 39.0fps
+328:2026-08-20T09:55:44Z Capture source (SCStream): 41.3fps
+329:2026-08-20T09:55:45Z Capture source (SCStream): 40.3fps
+330:2026-08-20T09:55:46Z Capture source (SCStream): 41.2fps
+331:2026-08-20T09:55:47Z Capture source (SCStream): 39.4fps
+332:2026-08-20T09:55:48Z Capture source (SCStream): 40.3fps
+333:2026-08-20T09:55:50Z Capture source (SCStream): 38.8fps
+334:2026-08-20T09:55:51Z Capture source (SCStream): 41.3fps
+335:2026-08-20T09:55:52Z Capture source (SCStream): 37.9fps
+336:2026-08-20T09:55:53Z Capture source (SCStream): 38.0fps
+337:2026-08-20T09:55:54Z Capture source (SCStream): 38.4fps
+338:2026-08-20T09:55:55Z Capture source (SCStream): 37.3fps
+339:2026-08-20T09:55:56Z Capture source (SCStream): 39.9fps
+340:2026-08-20T09:55:57Z Capture source (SCStream): 40.5fps
+341:2026-08-20T09:55:58Z Capture source (SCStream): 39.8fps
+342:2026-08-20T09:55:59Z Capture source (SCStream): 43.0fps
+343:2026-08-20T09:56:00Z Capture source (SCStream): 39.7fps
+344:2026-08-20T09:56:01Z Capture source (SCStream): 38.3fps
+345:2026-08-20T09:56:02Z Capture source (SCStream): 37.9fps
+346:2026-08-20T09:56:03Z Capture source (SCStream): 34.4fps
+347:2026-08-20T09:56:04Z Capture source (SCStream): 36.4fps
+348:2026-08-20T09:56:05Z Capture source (SCStream): 33.4fps
+349:2026-08-20T09:56:06Z Capture source (SCStream): 33.4fps
+350:2026-08-20T09:56:07Z Capture source (SCStream): 35.4fps
+351:2026-08-20T09:56:08Z Capture source (SCStream): 34.0fps
+352:2026-08-20T09:56:09Z Capture source (SCStream): 34.4fps
+353:2026-08-20T09:56:10Z Capture source (SCStream): 38.0fps
+354:2026-08-20T09:56:11Z Capture source (SCStream): 36.4fps
+355:2026-08-20T09:56:12Z Capture source (SCStream): 36.4fps
+356:2026-08-20T09:56:13Z Capture source (SCStream): 39.9fps
+357:2026-08-20T09:56:14Z Capture source (SCStream): 37.4fps
+358:2026-08-20T09:56:15Z Capture source (SCStream): 42.0fps
+359:2026-08-20T09:56:16Z Capture source (SCStream): 40.3fps
+360:2026-08-20T09:56:17Z Capture source (SCStream): 39.7fps
+361:2026-08-20T09:56:18Z Capture source (SCStream): 42.3fps
+362:2026-08-20T09:56:19Z Capture source (SCStream): 38.4fps
+363:2026-08-20T09:56:20Z Capture source (SCStream): 34.4fps
+364:2026-08-20T09:56:21Z Capture source (SCStream): 34.4fps
+365:2026-08-20T09:56:22Z Capture source (SCStream): 32.9fps
+366:2026-08-20T09:56:23Z Capture source (SCStream): 33.4fps
+367:2026-08-20T09:56:24Z Capture source (SCStream): 33.4fps
+368:2026-08-20T09:56:25Z Capture source (SCStream): 36.4fps
+369:2026-08-20T09:56:26Z Capture source (SCStream): 36.0fps
+370:2026-08-20T09:56:27Z Capture source (SCStream): 34.4fps
+371:2026-08-20T09:56:28Z Capture source (SCStream): 34.9fps
+372:2026-08-20T09:56:29Z Capture source (SCStream): 36.9fps
+373:2026-08-20T09:56:30Z Capture source (SCStream): 40.0fps
+374:2026-08-20T09:56:31Z Capture source (SCStream): 38.4fps
+375:2026-08-20T09:56:32Z Capture source (SCStream): 41.0fps
+376:2026-08-20T09:56:33Z Capture source (SCStream): 42.3fps
+377:2026-08-20T09:56:34Z Capture source (SCStream): 40.3fps
+378:2026-08-20T09:56:35Z Capture source (SCStream): 33.7fps
+379:2026-08-20T09:56:36Z Capture source (SCStream): 42.4fps
+380:2026-08-20T09:56:37Z Capture source (SCStream): 44.0fps
+381:2026-08-20T09:56:38Z Capture source (SCStream): 41.0fps
+382:2026-08-20T09:56:39Z Capture source (SCStream): 42.6fps
+383:2026-08-20T09:56:40Z Capture source (SCStream): 38.4fps
+384:2026-08-20T09:56:41Z Capture source (SCStream): 37.0fps
+385:2026-08-20T09:56:42Z Capture source (SCStream): 36.4fps
+386:2026-08-20T09:56:43Z Capture source (SCStream): 34.0fps
+387:2026-08-20T09:56:44Z Capture source (SCStream): 32.9fps
+388:2026-08-20T09:56:45Z Capture source (SCStream): 34.0fps
+389:2026-08-20T09:56:46Z Capture source (SCStream): 34.4fps
+390:2026-08-20T09:56:47Z Capture source (SCStream): 34.0fps
+391:2026-08-20T09:56:48Z Capture source (SCStream): 38.3fps
+392:2026-08-20T09:56:49Z Capture source (SCStream): 39.0fps
+393:2026-08-20T09:56:50Z Capture source (SCStream): 37.0fps
+394:2026-08-20T09:56:51Z Capture source (SCStream): 39.8fps
+395:2026-08-20T09:56:52Z Capture source (SCStream): 42.3fps
+396:2026-08-20T09:56:53Z Capture source (SCStream): 42.0fps
+397:2026-08-20T09:56:54Z Capture source (SCStream): 42.3fps
+398:2026-08-20T09:56:55Z Capture source (SCStream): 40.3fps
+399:2026-08-20T09:56:56Z Capture source (SCStream): 39.0fps
+400:2026-08-20T09:56:57Z Capture source (SCStream): 37.4fps
+401:2026-08-20T09:56:58Z Capture source (SCStream): 37.4fps
+402:2026-08-20T09:56:59Z Capture source (SCStream): 39.3fps
+403:2026-08-20T09:57:01Z Capture source (SCStream): 41.6fps
+404:2026-08-20T09:57:02Z Capture source (SCStream): 37.4fps
+405:2026-08-20T09:57:03Z Capture source (SCStream): 36.4fps
+406:2026-08-20T09:57:04Z Capture source (SCStream): 38.4fps
+407:2026-08-20T09:57:05Z Capture source (SCStream): 38.2fps
+408:2026-08-20T09:57:06Z Capture source (SCStream): 37.9fps
+409:2026-08-20T09:57:07Z Capture source (SCStream): 37.4fps
+410:2026-08-20T09:57:08Z Capture source (SCStream): 37.0fps
+411:2026-08-20T09:57:09Z Capture source (SCStream): 38.7fps
+412:2026-08-20T09:57:10Z Capture source (SCStream): 38.4fps
+413:2026-08-20T09:57:11Z Capture source (SCStream): 39.7fps
+414:2026-08-20T09:57:12Z Capture source (SCStream): 39.4fps
+415:2026-08-20T09:57:13Z Capture source (SCStream): 39.4fps
+416:2026-08-20T09:57:14Z Capture source (SCStream): 40.3fps
+417:2026-08-20T09:57:15Z Capture source (SCStream): 36.4fps
+418:2026-08-20T09:57:16Z Capture source (SCStream): 38.4fps
+419:2026-08-20T09:57:17Z Capture source (SCStream): 37.0fps
+420:2026-08-20T09:57:18Z Capture source (SCStream): 40.0fps
+421:2026-08-20T09:57:19Z Capture source (SCStream): 39.0fps
+422:2026-08-20T09:57:20Z Capture source (SCStream): 38.0fps
+423:2026-08-20T09:57:21Z Capture source (SCStream): 39.7fps
+424:2026-08-20T09:57:22Z Capture source (SCStream): 36.8fps
+425:2026-08-20T09:57:23Z Capture source (SCStream): 39.0fps
+426:2026-08-20T09:57:24Z Capture source (SCStream): 38.4fps
+427:2026-08-20T09:57:25Z Capture source (SCStream): 39.4fps
+428:2026-08-20T09:57:26Z Capture source (SCStream): 39.9fps
+429:2026-08-20T09:57:27Z Capture source (SCStream): 37.4fps
+430:2026-08-20T09:57:28Z Capture source (SCStream): 39.0fps
+431:2026-08-20T09:57:29Z Capture source (SCStream): 41.3fps
+432:2026-08-20T09:57:30Z Capture source (SCStream): 39.4fps
+433:2026-08-20T09:57:31Z Capture source (SCStream): 38.0fps
+434:2026-08-20T09:57:32Z Capture source (SCStream): 38.9fps
+435:2026-08-20T09:57:33Z Capture source (SCStream): 39.4fps
+436:2026-08-20T09:57:34Z Capture source (SCStream): 41.3fps
+437:2026-08-20T09:57:35Z Capture source (SCStream): 39.3fps
+438:2026-08-20T09:57:36Z Capture source (SCStream): 40.9fps
+439:2026-08-20T09:57:37Z Capture source (SCStream): 37.4fps
+440:2026-08-20T09:57:38Z Capture source (SCStream): 36.4fps
+441:2026-08-20T09:57:39Z Capture source (SCStream): 39.3fps
+442:2026-08-20T09:57:40Z Capture source (SCStream): 39.3fps
+443:2026-08-20T09:57:41Z Capture source (SCStream): 37.9fps
+444:2026-08-20T09:57:42Z Capture source (SCStream): 40.4fps
+445:2026-08-20T09:57:43Z Capture source (SCStream): 38.4fps
+446:2026-08-20T09:57:44Z Capture source (SCStream): 40.3fps
+447:2026-08-20T09:57:45Z Capture source (SCStream): 38.4fps
+448:2026-08-20T09:57:46Z Capture source (SCStream): 40.0fps
+449:2026-08-20T09:57:47Z Capture source (SCStream): 37.4fps
+450:2026-08-20T09:57:48Z Capture source (SCStream): 38.0fps
+451:2026-08-20T09:57:49Z Capture source (SCStream): 39.3fps
+452:2026-08-20T09:57:50Z Capture source (SCStream): 38.3fps
+453:2026-08-20T09:57:51Z Capture source (SCStream): 39.7fps
+454:2026-08-20T09:57:52Z Capture source (SCStream): 41.0fps
+455:2026-08-20T09:57:53Z Capture source (SCStream): 38.4fps
+456:2026-08-20T09:57:54Z Capture source (SCStream): 37.0fps
+457:2026-08-20T09:57:55Z Capture source (SCStream): 37.4fps
+458:2026-08-20T09:57:56Z Capture source (SCStream): 40.3fps
+459:2026-08-20T09:57:57Z Capture source (SCStream): 38.5fps
+460:2026-08-20T09:57:58Z Capture source (SCStream): 36.4fps
+461:2026-08-20T09:57:59Z Capture source (SCStream): 36.5fps
+462:2026-08-20T09:58:00Z Capture source (SCStream): 38.9fps
+463:2026-08-20T09:58:01Z Capture source (SCStream): 38.5fps
+464:2026-08-20T09:58:02Z Capture source (SCStream): 41.6fps
+465:2026-08-20T09:58:03Z Capture source (SCStream): 44.3fps
+466:2026-08-20T09:58:04Z Capture source (SCStream): 42.0fps
+467:2026-08-20T09:58:05Z Capture source (SCStream): 40.8fps
+468:2026-08-20T09:58:06Z Capture source (SCStream): 39.5fps
+469:2026-08-20T09:58:07Z Capture source (SCStream): 40.0fps
+470:2026-08-20T09:58:08Z Capture source (SCStream): 37.4fps
+471:2026-08-20T09:58:09Z Capture source (SCStream): 37.4fps
+472:2026-08-20T09:58:10Z Capture source (SCStream): 36.0fps
+473:2026-08-20T09:58:11Z Capture source (SCStream): 40.3fps
+474:2026-08-20T09:58:12Z Capture source (SCStream): 39.4fps
+475:2026-08-20T09:58:14Z Capture source (SCStream): 37.4fps
+476:2026-08-20T09:58:15Z Capture source (SCStream): 39.0fps
+477:2026-08-20T09:58:16Z Capture source (SCStream): 39.3fps
+478:2026-08-20T09:58:17Z Capture source (SCStream): 38.4fps
+479:2026-08-20T09:58:18Z Capture source (SCStream): 37.8fps
+480:2026-08-20T09:58:19Z Capture source (SCStream): 42.3fps
+481:2026-08-20T09:58:20Z Capture source (SCStream): 36.4fps
+482:2026-08-20T09:58:21Z Capture source (SCStream): 41.0fps
+483:2026-08-20T09:58:22Z Capture source (SCStream): 41.0fps
+484:2026-08-20T09:58:23Z Capture source (SCStream): 42.3fps
+485:2026-08-20T09:58:24Z Capture source (SCStream): 38.0fps
+486:2026-08-20T09:58:25Z Capture source (SCStream): 37.4fps
+487:2026-08-20T09:58:26Z Capture source (SCStream): 39.3fps
+488:2026-08-20T09:58:27Z Capture source (SCStream): 38.4fps
+489:2026-08-20T09:58:28Z Capture source (SCStream): 40.3fps
+490:2026-08-20T09:58:29Z Capture source (SCStream): 40.9fps
+491:2026-08-20T09:58:30Z Capture source (SCStream): 38.6fps
+492:2026-08-20T09:58:31Z Capture source (SCStream): 39.9fps
+493:2026-08-20T09:58:32Z Capture source (SCStream): 38.7fps
+494:2026-08-20T09:58:33Z Capture source (SCStream): 37.4fps
+495:2026-08-20T09:58:34Z Capture source (SCStream): 37.3fps
+496:2026-08-20T09:58:35Z Capture source (SCStream): 37.8fps
+497:2026-08-20T09:58:36Z Capture source (SCStream): 40.3fps
+498:2026-08-20T09:58:37Z Capture source (SCStream): 39.4fps
+499:2026-08-20T09:58:38Z Capture source (SCStream): 40.3fps
+500:2026-08-20T09:58:39Z Capture source (SCStream): 40.9fps
+501:2026-08-20T09:58:40Z Capture source (SCStream): 40.4fps
+502:2026-08-20T09:58:41Z Capture source (SCStream): 38.4fps
+503:2026-08-20T09:58:42Z Capture source (SCStream): 40.3fps
+504:2026-08-20T09:58:43Z Capture source (SCStream): 37.4fps
+505:2026-08-20T09:58:44Z Capture source (SCStream): 37.8fps
+506:2026-08-20T09:58:45Z Capture source (SCStream): 38.0fps
+507:2026-08-20T09:58:46Z Capture source (SCStream): 36.4fps
+508:2026-08-20T09:58:47Z Capture source (SCStream): 39.3fps
+509:2026-08-20T09:58:48Z Capture source (SCStream): 41.0fps
+510:2026-08-20T09:58:49Z Capture source (SCStream): 40.4fps
+511:2026-08-20T09:58:50Z Capture source (SCStream): 43.0fps
+512:2026-08-20T09:58:51Z Capture source (SCStream): 39.3fps
+513:2026-08-20T09:58:52Z Capture source (SCStream): 41.0fps
+514:2026-08-20T09:58:53Z Capture source (SCStream): 38.0fps
+515:2026-08-20T09:58:54Z Capture source (SCStream): 38.4fps
+516:2026-08-20T09:58:55Z Capture source (SCStream): 41.3fps
+517:2026-08-20T09:58:56Z Capture source (SCStream): 38.0fps
+518:2026-08-20T09:58:57Z Capture source (SCStream): 39.4fps
+519:2026-08-20T09:58:58Z Capture source (SCStream): 41.0fps
+520:2026-08-20T09:58:59Z Capture source (SCStream): 36.0fps
+521:2026-08-20T09:59:00Z Capture source (SCStream): 37.8fps
+522:2026-08-20T09:59:01Z Capture source (SCStream): 37.4fps
+523:2026-08-20T09:59:02Z Capture source (SCStream): 38.7fps
+524:2026-08-20T09:59:03Z Capture source (SCStream): 37.9fps
+525:2026-08-20T09:59:04Z Capture source (SCStream): 37.8fps
+526:2026-08-20T09:59:05Z Capture source (SCStream): 39.3fps
+527:2026-08-20T09:59:06Z Capture source (SCStream): 39.4fps
+528:2026-08-20T09:59:07Z Capture source (SCStream): 41.3fps
+529:2026-08-20T09:59:08Z Capture source (SCStream): 39.3fps
+530:2026-08-20T09:59:09Z Capture source (SCStream): 39.7fps
+531:2026-08-20T09:59:10Z Capture source (SCStream): 41.3fps
+532:2026-08-20T09:59:11Z Capture source (SCStream): 37.8fps
+533:2026-08-20T09:59:12Z Capture source (SCStream): 37.9fps
+534:2026-08-20T09:59:13Z Capture source (SCStream): 41.4fps
+535:2026-08-20T09:59:14Z Capture source (SCStream): 38.4fps
+536:2026-08-20T09:59:15Z Capture source (SCStream): 38.4fps
+537:2026-08-20T09:59:16Z Capture source (SCStream): 38.3fps
+538:2026-08-20T09:59:17Z Capture source (SCStream): 37.4fps
+539:2026-08-20T09:59:18Z Capture source (SCStream): 39.7fps
+540:2026-08-20T09:59:19Z Capture source (SCStream): 37.4fps
+541:2026-08-20T09:59:20Z Capture source (SCStream): 40.3fps
+542:2026-08-20T09:59:21Z Capture source (SCStream): 41.0fps
+543:2026-08-20T09:59:23Z Capture source (SCStream): 39.3fps
+544:2026-08-20T09:59:24Z Capture source (SCStream): 39.0fps
+545:2026-08-20T09:59:25Z Capture source (SCStream): 37.3fps
+546:2026-08-20T09:59:26Z Capture source (SCStream): 40.4fps
+547:2026-08-20T09:59:27Z Capture source (SCStream): 41.4fps
+548:2026-08-20T09:59:28Z Capture source (SCStream): 38.9fps
+549:2026-08-20T09:59:29Z Capture source (SCStream): 38.4fps
+550:2026-08-20T09:59:30Z Capture source (SCStream): 37.9fps
+551:2026-08-20T09:59:31Z Capture source (SCStream): 39.8fps
+552:2026-08-20T09:59:32Z Capture source (SCStream): 38.0fps
+553:2026-08-20T09:59:33Z Capture source (SCStream): 37.4fps
+554:2026-08-20T09:59:34Z Capture source (SCStream): 38.0fps
+555:2026-08-20T09:59:35Z Capture source (SCStream): 38.4fps
+556:2026-08-20T09:59:36Z Capture source (SCStream): 36.4fps
+557:2026-08-20T09:59:37Z Capture source (SCStream): 40.4fps
+558:2026-08-20T09:59:38Z Capture source (SCStream): 38.0fps
+559:2026-08-20T09:59:39Z Capture source (SCStream): 38.4fps
+560:2026-08-20T09:59:40Z Capture source (SCStream): 37.4fps
+561:2026-08-20T09:59:41Z Capture source (SCStream): 39.3fps
+562:2026-08-20T09:59:42Z Capture source (SCStream): 36.4fps
+563:2026-08-20T09:59:43Z Capture source (SCStream): 36.0fps
+564:2026-08-20T09:59:44Z Capture source (SCStream): 38.4fps
+565:2026-08-20T09:59:45Z Capture source (SCStream): 39.3fps
+566:2026-08-20T09:59:46Z Capture source (SCStream): 38.0fps
+567:2026-08-20T09:59:47Z Capture source (SCStream): 36.9fps
+568:2026-08-20T09:59:48Z Capture source (SCStream): 38.4fps
+569:2026-08-20T09:59:49Z Capture source (SCStream): 39.3fps
+574:2026-08-20T10:00:26Z Screen recording permission granted (CGPreflight)
+575:2026-08-20T10:00:26Z SCShareableContent verification OK — 2 displays found
+577:2026-08-20T10:00:26Z verifyDisplayRegistered: displayID 6 NOT FOUND in online displays [1, 3]
+578:2026-08-20T10:00:26Z verifyDisplayRegistered: displayID 6 FOUND in online displays [1, 3, 6]
+579:2026-08-20T10:00:27Z disableMirrorMode did not complete but display 6 is not mirrored; proceeding with extended capture
+582:2026-08-20T10:00:28Z verifyDisplayRegistered: displayID 6 FOUND in online displays [1, 3, 6]
+584:2026-08-20T10:00:28Z SCShareableContent returned 3 displays: [6, 1, 3]
+585:2026-08-20T10:00:28Z Capturing virtual display: 2000x1200 (ID: 6)
+588:2026-08-20T10:00:28Z TCP server listening on port 54321
+589:2026-08-20T10:00:28Z VideoToolbox encoder configured (H.265, 35Mbps, 60fps, ULTRALOW)
+591:2026-08-20T10:00:28Z First frame received from SCStream
+593:2026-08-20T10:00:29Z Capture source (SCStream): 56.4fps
+594:2026-08-20T10:00:30Z Capture source (SCStream): 37.4fps
+595:2026-08-20T10:00:31Z Capture source (SCStream): 39.0fps
+596:2026-08-20T10:00:32Z Capture source (SCStream): 36.4fps
+597:2026-08-20T10:00:33Z Capture source (SCStream): 38.0fps
+598:2026-08-20T10:00:35Z Capture source (SCStream): 40.3fps
+599:2026-08-20T10:00:36Z Capture source (SCStream): 36.0fps
+600:2026-08-20T10:00:37Z Capture source (SCStream): 35.4fps
+601:2026-08-20T10:00:38Z Capture source (SCStream): 39.0fps
+602:2026-08-20T10:00:39Z Capture source (SCStream): 36.9fps
+603:2026-08-20T10:00:40Z Capture source (SCStream): 36.4fps
+604:2026-08-20T10:00:41Z Capture source (SCStream): 38.0fps
+605:2026-08-20T10:00:42Z Capture source (SCStream): 35.5fps
+606:2026-08-20T10:00:43Z Capture source (SCStream): 40.0fps
+607:2026-08-20T10:00:44Z Capture source (SCStream): 37.4fps
+608:2026-08-20T10:00:45Z Capture source (SCStream): 36.4fps
+609:2026-08-20T10:00:46Z Capture source (SCStream): 35.8fps
+610:2026-08-20T10:00:47Z Capture source (SCStream): 39.3fps
+611:2026-08-20T10:00:48Z Capture source (SCStream): 37.4fps
+612:2026-08-20T10:00:49Z Capture source (SCStream): 37.2fps
+613:2026-08-20T10:00:50Z Capture source (SCStream): 35.9fps
+614:2026-08-20T10:00:51Z Capture source (SCStream): 34.0fps
+615:2026-08-20T10:00:52Z Capture source (SCStream): 37.0fps
+616:2026-08-20T10:00:53Z Capture source (SCStream): 37.8fps
+617:2026-08-20T10:00:54Z Capture source (SCStream): 38.4fps
+618:2026-08-20T10:00:55Z Capture source (SCStream): 40.3fps
+619:2026-08-20T10:00:56Z Capture source (SCStream): 38.4fps
+620:2026-08-20T10:00:57Z Capture source (SCStream): 40.0fps
+624:2026-08-20T10:00:58Z Client connected via loopback (USB) — skipping auth
+626:2026-08-20T10:00:58Z Protocol v1 selected for connection epoch 1
+627:2026-08-20T10:00:58Z Pipeline: 0.0fps, 0.0Mbps, avg frame age: 9.8ms, dropped: 1
+628:2026-08-20T10:00:58Z Capture source (SCStream): 38.0fps
+629:2026-08-20T10:00:59Z Pipeline: 62.3fps, 1.6Mbps, avg frame age: 12.3ms, dropped: 0
+630:2026-08-20T10:00:59Z Capture source (SCStream): 39.0fps
+631:2026-08-20T10:01:00Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 11.2ms, dropped: 0
+632:2026-08-20T10:01:00Z Capture source (SCStream): 36.4fps
+633:2026-08-20T10:01:01Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 10.2ms, dropped: 0
+634:2026-08-20T10:01:01Z Capture source (SCStream): 36.4fps
+635:2026-08-20T10:01:02Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 11.4ms, dropped: 0
+636:2026-08-20T10:01:02Z Capture source (SCStream): 37.4fps
+637:2026-08-20T10:01:03Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 10.3ms, dropped: 0
+638:2026-08-20T10:01:03Z Capture source (SCStream): 34.8fps
+639:2026-08-20T10:01:04Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 11.4ms, dropped: 0
+640:2026-08-20T10:01:04Z Capture source (SCStream): 37.4fps
+641:2026-08-20T10:01:05Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 10.9ms, dropped: 0
+642:2026-08-20T10:01:05Z Capture source (SCStream): 36.8fps
+643:2026-08-20T10:01:06Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 10.1ms, dropped: 0
+644:2026-08-20T10:01:06Z Capture source (SCStream): 37.7fps
+645:2026-08-20T10:01:07Z Pipeline: 59.8fps, 0.6Mbps, avg frame age: 11.7ms, dropped: 0
+646:2026-08-20T10:01:07Z Capture source (SCStream): 37.0fps
+647:2026-08-20T10:01:08Z Pipeline: 59.6fps, 0.6Mbps, avg frame age: 11.3ms, dropped: 0
+648:2026-08-20T10:01:08Z Capture source (SCStream): 36.8fps
+649:2026-08-20T10:01:09Z Pipeline: 60.4fps, 0.6Mbps, avg frame age: 8.4ms, dropped: 0
+650:2026-08-20T10:01:09Z Capture source (SCStream): 37.0fps
+651:2026-08-20T10:01:10Z Pipeline: 59.6fps, 0.6Mbps, avg frame age: 10.6ms, dropped: 0
+652:2026-08-20T10:01:10Z Capture source (SCStream): 36.8fps
+653:2026-08-20T10:01:11Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 10.3ms, dropped: 0
+654:2026-08-20T10:01:11Z Capture source (SCStream): 40.0fps
+655:2026-08-20T10:01:12Z Pipeline: 60.1fps, 0.6Mbps, avg frame age: 11.4ms, dropped: 0
+656:2026-08-20T10:01:12Z Capture source (SCStream): 36.4fps
+657:2026-08-20T10:01:13Z Pipeline: 59.9fps, 0.6Mbps, avg frame age: 10.9ms, dropped: 0
+658:2026-08-20T10:01:13Z Capture source (SCStream): 38.0fps
+659:2026-08-20T10:01:14Z Pipeline: 60.4fps, 0.6Mbps, avg frame age: 10.1ms, dropped: 0
+660:2026-08-20T10:01:14Z Capture source (SCStream): 38.4fps
+661:2026-08-20T10:01:15Z Pipeline: 59.7fps, 0.6Mbps, avg frame age: 11.4ms, dropped: 0
+662:2026-08-20T10:01:15Z Capture source (SCStream): 38.4fps
+663:2026-08-20T10:01:16Z Pipeline: 59.9fps, 0.6Mbps, avg frame age: 10.7ms, dropped: 0
+664:2026-08-20T10:01:16Z Capture source (SCStream): 38.0fps
+665:2026-08-20T10:01:17Z Pipeline: 60.4fps, 0.6Mbps, avg frame age: 12.2ms, dropped: 0
+666:2026-08-20T10:01:17Z Capture source (SCStream): 37.4fps
+667:2026-08-20T10:01:18Z Pipeline: 59.6fps, 0.6Mbps, avg frame age: 10.8ms, dropped: 0
+668:2026-08-20T10:01:18Z Capture source (SCStream): 40.0fps
+669:2026-08-20T10:01:19Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 10.3ms, dropped: 0
+670:2026-08-20T10:01:19Z Capture source (SCStream): 37.4fps
+671:2026-08-20T10:01:20Z Pipeline: 59.9fps, 0.6Mbps, avg frame age: 12.4ms, dropped: 0
+672:2026-08-20T10:01:20Z Capture source (SCStream): 36.8fps
+673:2026-08-20T10:01:21Z Pipeline: 60.3fps, 0.6Mbps, avg frame age: 11.1ms, dropped: 0
+674:2026-08-20T10:01:21Z Capture source (SCStream): 38.7fps
+675:2026-08-20T10:01:22Z Pipeline: 60.3fps, 0.6Mbps, avg frame age: 11.5ms, dropped: 0
+676:2026-08-20T10:01:22Z Capture source (SCStream): 33.9fps
+677:2026-08-20T10:01:23Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 10.4ms, dropped: 0
+678:2026-08-20T10:01:23Z Capture source (SCStream): 35.0fps
+679:2026-08-20T10:01:24Z Pipeline: 59.6fps, 0.6Mbps, avg frame age: 10.8ms, dropped: 0
+680:2026-08-20T10:01:24Z Capture source (SCStream): 36.0fps
+681:2026-08-20T10:01:25Z Pipeline: 59.8fps, 0.6Mbps, avg frame age: 11.2ms, dropped: 0
+682:2026-08-20T10:01:25Z Capture source (SCStream): 37.4fps
+683:2026-08-20T10:01:26Z Pipeline: 60.6fps, 0.6Mbps, avg frame age: 10.1ms, dropped: 0
+684:2026-08-20T10:01:26Z Capture source (SCStream): 34.0fps
+685:2026-08-20T10:01:27Z Pipeline: 59.8fps, 0.6Mbps, avg frame age: 10.0ms, dropped: 0
+686:2026-08-20T10:01:27Z Capture source (SCStream): 35.8fps
+687:2026-08-20T10:01:28Z Pipeline: 59.9fps, 0.6Mbps, avg frame age: 10.2ms, dropped: 0
+688:2026-08-20T10:01:28Z Capture source (SCStream): 36.4fps
+689:2026-08-20T10:01:29Z Pipeline: 60.1fps, 0.6Mbps, avg frame age: 10.0ms, dropped: 0
+690:2026-08-20T10:01:29Z Capture source (SCStream): 38.4fps
+691:2026-08-20T10:01:30Z Pipeline: 60.1fps, 0.6Mbps, avg frame age: 10.8ms, dropped: 0
+692:2026-08-20T10:01:30Z Capture source (SCStream): 39.3fps
+693:2026-08-20T10:01:31Z Pipeline: 59.8fps, 0.6Mbps, avg frame age: 10.1ms, dropped: 0
+694:2026-08-20T10:01:31Z Capture source (SCStream): 38.4fps
+695:2026-08-20T10:01:32Z Pipeline: 59.9fps, 0.6Mbps, avg frame age: 10.8ms, dropped: 0
+696:2026-08-20T10:01:32Z Capture source (SCStream): 37.4fps
+697:2026-08-20T10:01:33Z Pipeline: 60.3fps, 0.6Mbps, avg frame age: 10.3ms, dropped: 0
+698:2026-08-20T10:01:33Z Capture source (SCStream): 39.3fps
+699:2026-08-20T10:01:34Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 9.4ms, dropped: 0
+700:2026-08-20T10:01:34Z Capture source (SCStream): 40.3fps
+701:2026-08-20T10:01:35Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 9.5ms, dropped: 0
+702:2026-08-20T10:01:35Z Capture source (SCStream): 42.0fps
+703:2026-08-20T10:01:36Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 11.3ms, dropped: 0
+704:2026-08-20T10:01:36Z Capture source (SCStream): 39.3fps
+705:2026-08-20T10:01:37Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 10.5ms, dropped: 0
+706:2026-08-20T10:01:37Z Capture source (SCStream): 37.8fps
+707:2026-08-20T10:01:38Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 10.6ms, dropped: 0
+708:2026-08-20T10:01:38Z Capture source (SCStream): 36.4fps
+709:2026-08-20T10:01:39Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 10.8ms, dropped: 0
+710:2026-08-20T10:01:39Z Capture source (SCStream): 38.3fps
+711:2026-08-20T10:01:40Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 9.4ms, dropped: 0
+712:2026-08-20T10:01:41Z Capture source (SCStream): 40.3fps
+713:2026-08-20T10:01:41Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 10.3ms, dropped: 0
+714:2026-08-20T10:01:42Z Capture source (SCStream): 37.4fps
+715:2026-08-20T10:01:42Z Pipeline: 59.9fps, 0.6Mbps, avg frame age: 10.5ms, dropped: 0
+716:2026-08-20T10:01:43Z Capture source (SCStream): 38.3fps
+717:2026-08-20T10:01:43Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 12.0ms, dropped: 0
+718:2026-08-20T10:01:44Z Capture source (SCStream): 36.9fps
+719:2026-08-20T10:01:44Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 10.7ms, dropped: 0
+720:2026-08-20T10:01:45Z Capture source (SCStream): 36.9fps
+721:2026-08-20T10:01:45Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 10.1ms, dropped: 0
+722:2026-08-20T10:01:46Z Capture source (SCStream): 37.9fps
+723:2026-08-20T10:01:46Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 8.5ms, dropped: 0
+724:2026-08-20T10:01:47Z Capture source (SCStream): 40.5fps
+725:2026-08-20T10:01:47Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 10.2ms, dropped: 0
+726:2026-08-20T10:01:48Z Capture source (SCStream): 37.4fps
+727:2026-08-20T10:01:48Z Pipeline: 60.0fps, 0.6Mbps, avg frame age: 10.0ms, dropped: 0
+728:2026-08-20T10:01:49Z Capture source (SCStream): 40.7fps
+729:2026-08-20T10:01:49Z Pipeline: 60.0fps, 0.7Mbps, avg frame age: 7.6ms, dropped: 0
+730:2026-08-20T10:01:50Z Capture source (SCStream): 50.9fps
+731:2026-08-20T10:01:50Z Pipeline: 60.1fps, 1.3Mbps, avg frame age: 9.9ms, dropped: 0
+732:2026-08-20T10:01:51Z Capture source (SCStream): 47.2fps
+733:2026-08-20T10:01:51Z Pipeline: 60.0fps, 1.6Mbps, avg frame age: 10.7ms, dropped: 0
+734:2026-08-20T10:01:52Z Capture source (SCStream): 44.8fps
+735:2026-08-20T10:01:52Z Pipeline: 60.0fps, 1.6Mbps, avg frame age: 9.8ms, dropped: 0
+736:2026-08-20T10:01:53Z Capture source (SCStream): 43.4fps
+737:2026-08-20T10:01:53Z Pipeline: 60.0fps, 1.6Mbps, avg frame age: 9.8ms, dropped: 0
+738:2026-08-20T10:01:54Z Capture source (SCStream): 43.2fps
+739:2026-08-20T10:01:54Z Pipeline: 60.1fps, 2.0Mbps, avg frame age: 9.7ms, dropped: 0
+740:2026-08-20T10:01:55Z Capture source (SCStream): 44.0fps
+741:2026-08-20T10:01:55Z Pipeline: 59.9fps, 1.6Mbps, avg frame age: 10.8ms, dropped: 0
+742:2026-08-20T10:01:56Z Capture source (SCStream): 44.9fps
+743:2026-08-20T10:01:56Z Pipeline: 60.1fps, 1.6Mbps, avg frame age: 10.7ms, dropped: 0
+744:2026-08-20T10:01:57Z Capture source (SCStream): 44.7fps
+745:2026-08-20T10:01:57Z Pipeline: 60.0fps, 1.6Mbps, avg frame age: 10.9ms, dropped: 0
+746:2026-08-20T10:01:58Z Capture source (SCStream): 44.9fps
+747:2026-08-20T10:01:58Z Pipeline: 60.1fps, 1.6Mbps, avg frame age: 10.2ms, dropped: 0
+748:2026-08-20T10:01:59Z Capture source (SCStream): 45.0fps
+749:2026-08-20T10:01:59Z Pipeline: 59.9fps, 1.6Mbps, avg frame age: 9.4ms, dropped: 0
+750:2026-08-20T10:02:00Z Capture source (SCStream): 44.3fps
+751:2026-08-20T10:02:00Z Pipeline: 60.1fps, 1.6Mbps, avg frame age: 10.7ms, dropped: 0
+752:2026-08-20T10:02:01Z Capture source (SCStream): 45.2fps
+753:2026-08-20T10:02:01Z Pipeline: 59.6fps, 1.6Mbps, avg frame age: 8.7ms, dropped: 0
+754:2026-08-20T10:02:02Z Capture source (SCStream): 43.4fps
+755:2026-08-20T10:02:02Z Pipeline: 60.3fps, 1.6Mbps, avg frame age: 10.7ms, dropped: 0
+756:2026-08-20T10:02:03Z Capture source (SCStream): 43.9fps
+757:2026-08-20T10:02:03Z Pipeline: 60.1fps, 1.6Mbps, avg frame age: 10.1ms, dropped: 0
+758:2026-08-20T10:02:04Z Capture source (SCStream): 44.3fps
+759:2026-08-20T10:02:04Z Pipeline: 59.8fps, 1.6Mbps, avg frame age: 9.4ms, dropped: 0
+760:2026-08-20T10:02:05Z Capture source (SCStream): 43.9fps
+761:2026-08-20T10:02:06Z Capture source (SCStream): 44.4fps
+762:2026-08-20T10:02:07Z Capture source (SCStream): 43.2fps
+766:2026-08-20T10:02:07Z Client connected via loopback (USB) — skipping auth
+768:2026-08-20T10:02:07Z Protocol v1 selected for connection epoch 2
+769:2026-08-20T10:02:07Z Pipeline: 0.4fps, 0.2Mbps, avg frame age: 12.0ms, dropped: 1
+770:2026-08-20T10:02:08Z Capture source (SCStream): 43.3fps
+771:2026-08-20T10:02:08Z Pipeline: 61.3fps, 2.6Mbps, avg frame age: 10.0ms, dropped: 0
+772:2026-08-20T10:02:09Z Capture source (SCStream): 43.3fps
+773:2026-08-20T10:02:09Z Pipeline: 60.1fps, 1.7Mbps, avg frame age: 10.0ms, dropped: 0
+774:2026-08-20T10:02:10Z Capture source (SCStream): 43.1fps
+775:2026-08-20T10:02:10Z Pipeline: 59.8fps, 1.7Mbps, avg frame age: 10.8ms, dropped: 0
+776:2026-08-20T10:02:11Z Capture source (SCStream): 43.4fps
+777:2026-08-20T10:02:11Z Pipeline: 60.0fps, 1.7Mbps, avg frame age: 9.5ms, dropped: 0
+778:2026-08-20T10:02:12Z Capture source (SCStream): 43.0fps
+779:2026-08-20T10:02:12Z Pipeline: 60.1fps, 1.7Mbps, avg frame age: 11.3ms, dropped: 0
+780:2026-08-20T10:02:13Z Capture source (SCStream): 44.6fps
+781:2026-08-20T10:02:13Z Pipeline: 60.2fps, 1.7Mbps, avg frame age: 10.2ms, dropped: 0
+782:2026-08-20T10:02:14Z Capture source (SCStream): 45.1fps
+783:2026-08-20T10:02:14Z Pipeline: 59.7fps, 1.7Mbps, avg frame age: 10.7ms, dropped: 0
+784:2026-08-20T10:02:15Z Capture source (SCStream): 45.0fps
+785:2026-08-20T10:02:15Z Pipeline: 59.8fps, 1.7Mbps, avg frame age: 11.0ms, dropped: 0
+786:2026-08-20T10:02:15Z Connection state: failed(POSIXErrorCode(rawValue: 54): Connection reset by peer)
+787:2026-08-20T10:02:15Z Connection failed: POSIXErrorCode(rawValue: 54): Connection reset by peer
+788:2026-08-20T10:02:16Z Capture source (SCStream): 45.3fps
+789:2026-08-20T10:02:16Z Pipeline: 60.4fps, 1.6Mbps, avg frame age: 9.4ms, dropped: 0
+790:2026-08-20T10:02:17Z Capture source (SCStream): 45.0fps
+791:2026-08-20T10:02:17Z Pipeline: 59.9fps, 1.7Mbps, avg frame age: 9.9ms, dropped: 0
+792:2026-08-20T10:02:18Z Capture source (SCStream): 44.7fps
+793:2026-08-20T10:02:18Z Pipeline: 59.9fps, 1.7Mbps, avg frame age: 10.0ms, dropped: 0
+794:2026-08-20T10:02:19Z Capture source (SCStream): 45.0fps
+795:2026-08-20T10:02:19Z Pipeline: 59.7fps, 1.7Mbps, avg frame age: 11.1ms, dropped: 0
+796:2026-08-20T10:02:20Z Capture source (SCStream): 44.2fps
+797:2026-08-20T10:02:20Z Pipeline: 60.5fps, 1.7Mbps, avg frame age: 8.7ms, dropped: 0
+798:2026-08-20T10:02:21Z Capture source (SCStream): 44.4fps
+799:2026-08-20T10:02:21Z Pipeline: 59.8fps, 1.7Mbps, avg frame age: 9.2ms, dropped: 0

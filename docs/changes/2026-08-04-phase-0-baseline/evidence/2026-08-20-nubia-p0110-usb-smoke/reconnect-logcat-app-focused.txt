@@ -1,0 +1,113 @@
+40:08-20 18:02:05.380 32410 32410 D ActivityMetrics: notifyActivityStartEvent: isBegin=true currentTime=1787220125380 activityName=dev.telemachus.display.MainActivity
+62:08-20 18:02:05.397 32410 32410 D ActivityMetrics: notifyPerformStartEvent: isBegin=true currentTime=1787220125397 activityName=dev.telemachus.display.MainActivity
+96:08-20 18:02:05.520 32410 32410 D ActivityMetrics: notifyPerformStartEvent: isBegin=false currentTime=1787220125520 activityName=dev.telemachus.display.MainActivity
+97:08-20 18:02:05.520 32410 32410 D ActivityMetrics: notifyActivityStartEvent: isBegin=false currentTime=1787220125520 activityName=dev.telemachus.display.MainActivity
+98:08-20 18:02:05.522 32410 32410 D MA      : device health battery=100 charging=true saver=false thermal=nominal
+99:08-20 18:02:05.522 32410 32410 D MA      : lifecycle foreground connected=false
+100:08-20 18:02:05.523 32410 32410 D ActivityMetrics: notifyActivityResumeEvent: isBegin=true currentTime=1787220125523 activity=dev.telemachus.display.MainActivity@f29976b
+101:08-20 18:02:05.523 32410 32410 D ActivityMetrics: notifyPerformResumeEvent: isBegin=true currentTime=1787220125523 activityName=dev.telemachus.display.MainActivity
+103:08-20 18:02:05.523 32410 32410 D ActivityMetrics: notifyPerformResumeEvent: isBegin=false currentTime=1787220125523 activityName=dev.telemachus.display.MainActivity
+108:08-20 18:02:05.534 32410 32410 D ActivityMetrics: notifyActivityResumeEvent: isBegin=false currentTime=1787220125534 activity=dev.telemachus.display.MainActivity@f29976b
+114:08-20 18:02:05.561 32410 32410 I ExtViewRootImplImpl: setScaleInfo, ViewRootImpl[dev.telemachus.display/dev.telemachus.display.MainActivity] scaleChanged=false, byServer=false, isHwui=true, isHwuiChanged=true
+120:08-20 18:02:05.570 32410 32410 D MA      : surfaceCreated
+121:08-20 18:02:05.570 32410 32410 D MA      : surfaceChanged: 1264x2800
+123:08-20 18:02:05.573 32410 32410 D ActivityMetrics: traverse: activity=dev.telemachus.display.MainActivity@f29976b target VRI=android.view.ViewRootImpl@88a546e
+126:08-20 18:02:05.573 32410 32410 D ActivityMetrics: traverse: activity=dev.telemachus.display.MainActivity@f29976b target VRI=android.view.ViewRootImpl@88a546e
+128:08-20 18:02:05.573 32410 32410 D ActivityMetrics: notifyWaitRenderThread! target:dev.telemachus.display.MainActivity@f29976b activityName:dev.telemachus.display.MainActivity VRI=android.view.ViewRootImpl@88a546e
+130:08-20 18:02:05.584 32410 32410 D ActivityMetrics: traverse: activity=dev.telemachus.display.MainActivity@f29976b target VRI=android.view.ViewRootImpl@88a546e
+134:08-20 18:02:05.595 32410 32410 D ActivityMetrics: traverse: activity=dev.telemachus.display.MainActivity@f29976b target VRI=android.view.ViewRootImpl@88a546e
+136:08-20 18:02:05.595 32410 32410 D ActivityMetrics: notifyWaitRenderThread! target:dev.telemachus.display.MainActivity@f29976b activityName:dev.telemachus.display.MainActivity VRI=android.view.ViewRootImpl@88a546e
+138:08-20 18:02:05.595 32410 32410 D ActivityMetrics: traverse: activity=dev.telemachus.display.MainActivity@f29976b target VRI=android.view.ViewRootImpl@88a546e
+140:08-20 18:02:05.595 32410 32410 D ActivityMetrics: finishFirstDraw! target:dev.telemachus.display.MainActivity@f29976b activityName:dev.telemachus.display.MainActivity VRI=android.view.ViewRootImpl@88a546e
+147:08-20 18:02:05.596 32410 32410 D ActivityMetrics: ---      action:MAKE_APPLICATION   ts:1787220125367 1787220125368 cost:1
+149:08-20 18:02:05.596 32410 32410 D ActivityMetrics: ---      action:THREAD_MAIN   ts:1787220125238 1787220125250 cost:12
+150:08-20 18:02:05.596 32410 32410 D ActivityMetrics: ---   finishDrawActivity:dev.telemachus.display.MainActivity
+152:08-20 18:02:05.596 32410 32410 D ActivityMetrics: ---   activityName:dev.telemachus.display.MainActivity actionSize:7
+162:08-20 18:02:05.600 32410 32410 I ExtViewRootImplImpl: setScaleInfo, ViewRootImpl[dev.telemachus.display/dev.telemachus.display.MainActivity] scaleChanged=true(from 1.0 to 1.0), byServer=true, isHwui=true, isHwuiChanged=false
+167:08-20 18:02:05.606 32410 32410 I ExtViewRootImplImpl: setScaleInfo, ViewRootImpl[dev.telemachus.display/dev.telemachus.display.MainActivity] scaleChanged=false, byServer=false, isHwui=true, isHwuiChanged=false
+174:08-20 18:02:05.617 32410 32410 D VRITracker: focusEnter -> dev.telemachus.display/dev.telemachus.display.MainActivity
+176:08-20 18:02:05.623 32410 32410 V ImeFocusController: onWindowFocus: com.android.internal.policy.DecorView{1c42f5b V.E...... R......D 0,0-1264,2800}[MainActivity] softInputMode=STATE_UNSPECIFIED|ADJUST_PAN|IS_FORWARD_NAVIGATION
+177:08-20 18:02:05.623 32410 32410 D InputMethodManager: onViewFocusChangedInternal, view=com.android.internal.policy.DecorView{1c42f5b V.E...... R......D 0,0-1264,2800}[MainActivity],focus=false,windowFocus=true,window=android.view.ViewRootImpl$W@fdb5202,displayId=0,temporaryDetach=false,hasImeFocus=true
+179:08-20 18:02:05.623 32410 32410 V InputMethodManager: checkFocus: view=null next=com.android.internal.policy.DecorView{1c42f5b V.E...... R......D 0,0-1264,2800}[MainActivity] force=true package=<none>
+180:08-20 18:02:05.623 32410 32410 D AiWritingController: onImeServerViewChange view: com.android.internal.policy.DecorView{1c42f5b V.E...... R......D 0,0-1264,2800}[MainActivity] mRequestAiPanelStartView: null
+181:08-20 18:02:05.623 32410 32410 V InputMethodManager: Starting input: view=com.android.internal.policy.DecorView{1c42f5b V.E...... R......D 0,0-1264,2800}[MainActivity],focus=false,windowFocus=true,window=android.view.ViewRootImpl$W@fdb5202,displayId=0,temporaryDetach=false,hasImeFocus=true reason=WINDOW_FOCUS_GAIN
+183:08-20 18:02:05.623 32410 32410 D AiWritingController: onAdjustEditorInfo mRequestAiPanelStartView : null editorView: com.android.internal.policy.DecorView{1c42f5b V.E...... R......D 0,0-1264,2800 aid=0}[MainActivity] requestShowAiPanel: false editableByAi: false editable: false aiWriting: false restartAiWriting: false
+184:08-20 18:02:05.623 32410 32410 V InputMethodManager: START INPUT: view=com.android.internal.policy.DecorView{1c42f5b V.E...... R......D 0,0-1264,2800 aid=0}[MainActivity],focus=false,windowFocus=true,window=android.view.ViewRootImpl$W@fdb5202,displayId=0,temporaryDetach=false,hasImeFocus=true ic=null editorInfo=android.view.inputmethod.EditorInfo@f3eb294 startInputFlags=VIEW_HAS_FOCUS|INITIAL_CONNECTION imeRequestedVisible=false
+190:08-20 18:02:05.628 32410 32410 V InputMethodManager: Starting input: view=com.android.internal.policy.DecorView{1c42f5b V.E...... R......D 0,0-1264,2800 aid=0}[MainActivity],focus=false,windowFocus=true,window=android.view.ViewRootImpl$W@fdb5202,displayId=0,temporaryDetach=false,hasImeFocus=true reason=BOUND_TO_IMMS
+192:08-20 18:02:05.628 32410 32410 D AiWritingController: onAdjustEditorInfo mRequestAiPanelStartView : null editorView: com.android.internal.policy.DecorView{1c42f5b V.E...... R......D 0,0-1264,2800 aid=0}[MainActivity] requestShowAiPanel: false editableByAi: false editable: false aiWriting: false restartAiWriting: false
+193:08-20 18:02:05.628 32410 32410 V InputMethodManager: Starting input: finished by someone else. view=com.android.internal.policy.DecorView{1c42f5b V.E...... R......D 0,0-1264,2800 aid=0}[MainActivity],focus=false,windowFocus=true,window=android.view.ViewRootImpl$W@fdb5202,displayId=0,temporaryDetach=false,hasImeFocus=true servedView=com.android.internal.policy.DecorView{1c42f5b V.E...... R......D 0,0-1264,2800 aid=0}[MainActivity],focus=false,windowFocus=true,window=android.view.ViewRootImpl$W@fdb5202,displayId=0,temporaryDetach=false,hasImeFocus=true mServedConnecting=false
+247:08-20 18:02:05.755 32410  4747 D SC      : Protocol v1 upgrade accepted
+248:08-20 18:02:05.755 32410  4747 D SC      : Connected to 127.0.0.1:54321
+249:08-20 18:02:05.755 32410  4747 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787220125755,"event":"connection_opened","host":"127.0.0.1","port":54321,"session_epoch":1}
+251:08-20 18:02:05.763 32410 32410 D MA      : onHostActionsAvailable: move-window, return-windows
+255:08-20 18:02:05.773 32410 32410 D MA      : onDisplaysAvailable: count=3 selected=6 negotiated=[CAPABILITY_TOUCH, CAPABILITY_KEYBOARD, CAPABILITY_POINTER, CAPABILITY_STYLUS, CAPABILITY_CLIPBOARD, CAPABILITY_FILE_TRANSFER, CAPABILITY_COLOR_MANAGEMENT, CAPABILITY_MULTI_DISPLAY, CAPABILITY_HOST_ACTIONS, CAPABILITY_MANAGED_CONFIGURATION, CAPABILITY_CLIENT_VIDEO_CONTROL, CAPABILITY_STYLUS_EXTENDED, CAPABILITY_USB_HID_MODIFIER_BYTE] displays=6:Vibe Screen Virtual (扩展屏):2000x1200:primary=false, 1:Built-in Retina Display:1512x982:primary=true, 3:DELL U2723QE:1920x1080:primary=false
+256:08-20 18:02:05.773 32410 32410 D MA      : session binding promoted: displaySelection=true keyboard=true nativePointer=true controller=false hostActions=true clipboard=true
+258:08-20 18:02:05.780 32410 32410 D MA      : onVideoConfiguration: 2000x1200 @ 0° epoch=1
+259:08-20 18:02:05.781 32410 32410 D MA      : Video config arrived, initializing decoder 2000x1200
+260:08-20 18:02:05.781 32410 32410 D MA      : initializeDecoder called, surface=Surface(name=null mNativeObject=-5476376613998202624)/@0xd9c94b5, valid=true, encoded=2000x1200
+261:08-20 18:02:05.784 32410  4763 D VD      : setupDecoder: 2000x1200, decoder=c2.qti.hevc.decoder
+263:08-20 18:02:05.787 32410  4773 D CCodec  : allocate(c2.qti.hevc.decoder)
+268:08-20 18:02:05.795 32410  4773 I CCodec  : Created component [c2.qti.hevc.decoder] for [c2.qti.hevc.decoder]
+321:08-20 18:02:05.819 32410  4769 I MediaCodec: [c2.qti.hevc.decoder] setting surface generation to 33187841
+324:08-20 18:02:05.820 32410  4773 D CCodec  : [c2.qti.hevc.decoder] buffers are bound to CCodec for this session
+375:08-20 18:02:05.823 32410  4763 D VD      : Configured with full low-latency
+377:08-20 18:02:05.824 32410  4763 D VD      : Surface frame rate requested: 120.00001Hz fixed-source
+379:08-20 18:02:05.833 32410  4773 D CCodecBufferChannel: [c2.qti.hevc.decoder#586] Query input allocators returned 0 params => BAD_INDEX (6)
+380:08-20 18:02:05.833 32410  4773 D C2Store : debug.c2.use_dmabufheaps set, forcing DMABUF Heaps
+381:08-20 18:02:05.833 32410  4773 D C2Store : Using DMABUF Heaps
+382:08-20 18:02:05.834 32410  4773 D CCodecBufferChannel: [c2.qti.hevc.decoder#586] Created input block pool with allocatorID 16 => poolID 17 - OK (0)
+383:08-20 18:02:05.834 32410  4773 D CCodecBufferChannel: [c2.qti.hevc.decoder#586] start: max output delay 21
+384:08-20 18:02:05.835 32410  4773 D CCodecBufferChannel: [c2.qti.hevc.decoder#586] Query output allocators returned 0 params => BAD_INDEX (6)
+385:08-20 18:02:05.835 32410  4773 D CCodecBufferChannel: [c2.qti.hevc.decoder#586] Query output surface allocator returned 0 params => BAD_INDEX (6)
+387:08-20 18:02:05.836 32410  4773 I CCodecBufferChannel: [c2.qti.hevc.decoder#586] Created output block pool with allocatorID 18 => poolID 32 - OK
+388:08-20 18:02:05.836 32410  4773 D CCodecBufferChannel: [c2.qti.hevc.decoder#586] Configured output block pool ids 32 => OK
+396:08-20 18:02:05.837 32410  4773 D CCodecBufferChannel: [c2.qti.hevc.decoder#586] start: updating output delay 4
+398:08-20 18:02:05.842 32410  4769 D CypressMediaAnalyticsHelper: onCodecStart  isSurfaceToScreen 1  bufferqueuename:e623114 SurfaceView[dev.telemachus.display/dev.telemachus.display.MainActivity]#1(BLAST Consumer)1
+400:08-20 18:02:05.842 32410  4763 D VD      : Decoder started: 2000x1200 @ 120.00001Hz, surface=Surface(name=null mNativeObject=-5476376613998202624)/@0xd9c94b5, valid=true
+401:08-20 18:02:05.844 32410 32410 D MA      : Decoder configuration committed 2000x1200 epoch=1
+403:08-20 18:02:05.847 32410 32410 D MA      : onDisplayGeometry: 2000x1200 @ 0°
+405:08-20 18:02:05.871 32410  4747 D VD      : First frame: size=62215, header=[00 00 00 01 40 01 0c 01 ff ff 01 60 00 00 03 00], keyframe=true, surface=Surface(name=null mNativeObject=-5476376613998202624)/@0xd9c94b5, valid=true
+406:08-20 18:02:05.872 32410 32410 I ExtViewRootImplImpl: setScaleInfo, ViewRootImpl[dev.telemachus.display/dev.telemachus.display.MainActivity] scaleChanged=false, byServer=false, isHwui=true, isHwuiChanged=false
+407:08-20 18:02:05.872 32410 32410 D MA      : surfaceChanged: 1264x758
+409:08-20 18:02:05.874 32410 32410 V InputMethodManager: checkFocus: view=com.android.internal.policy.DecorView{1c42f5b V.E...... R......D 0,0-1264,2800 aid=0}[MainActivity] next=android.view.View{9b3d0c2 VFED..C.. .F...... 0,0-1264,758 #7f08011c app:id/inputViewport} force=false package=dev.telemachus.display
+411:08-20 18:02:05.874 32410 32410 V InputMethodManager: Starting input: view=android.view.View{9b3d0c2 VFED..C.. .F...... 0,0-1264,758 #7f08011c app:id/inputViewport},focus=true,windowFocus=true,window=android.view.ViewRootImpl$W@fdb5202,displayId=0,temporaryDetach=false,hasImeFocus=true reason=SCHEDULED_CHECK_FOCUS
+419:08-20 18:02:05.879 32410 32410 I ExtViewRootImplImpl: setScaleInfo, ViewRootImpl[dev.telemachus.display/dev.telemachus.display.MainActivity] scaleChanged=false, byServer=false, isHwui=true, isHwuiChanged=false
+421:08-20 18:02:05.879 32410 32410 D MA      : surfaceChanged: 1264x758
+432:08-20 18:02:05.880 32410 32410 W View    : requestLayout() improperly called by android.view.SurfaceView{e623114 V.E...... ......ID 0,0-1264,758 #7f08021e app:id/surfaceView} during layout: running second layout pass
+434:08-20 18:02:05.881 32410 32410 D MA      : surfaceChanged: 2106x1264
+436:08-20 18:02:05.882 32410  4773 D CCodecBufferChannel: [c2.qti.hevc.decoder#586] onWorkDone: updating output delay 13
+437:08-20 18:02:05.882 32410  4773 I CCodecBufferChannel: [c2.qti.hevc.decoder#586] onWorkDone: updating max output delay 20
+443:08-20 18:02:05.896 32410  4641 D CCodecBufferChannel: [c2.qti.hevc.decoder#586] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+453:08-20 18:02:05.903 32410  4773 D CCodecBuffers: [c2.qti.hevc.decoder#586:2D-Output] popFromStashAndRegister: at 506793541631us, output format changed to AMessage(what = 0x00000000) = {
+480:08-20 18:02:05.904 32410  4786 D VD      : Output format changed: {crop-right=1999, max-height=4320, sar-width=1, color-format=2130708361, mime=video/raw, hdr-static-info=java.nio.HeapByteBuffer[pos=0 lim=25 cap=25], priority=0, color-standard=1, feature-secure-playback=0, color-transfer=3, sar-height=1, hdr10-plus-info=java.nio.HeapByteBuffer[pos=0 lim=0 cap=0], crop-bottom=1199, max-width=8192, crop-left=0, width=2000, color-range=1, crop-top=0, rotation-degrees=0, frame-rate=1, height=1200}
+481:08-20 18:02:05.904 32410  4786 D VD      : First output frame! size=1, flags=1
+483:08-20 18:02:05.917 32410 32410 D VRITracker: focusLeave <- dev.telemachus.display/dev.telemachus.display.MainActivity, stayDuration: 300
+489:08-20 18:02:05.956 32410 32410 D VRITracker: focusEnter -> dev.telemachus.display/dev.telemachus.display.MainActivity
+508:08-20 18:02:06.834 32410  4747 D VD      : Decode stats: input=60, output=59, dropped=0, availBufs=10
+509:08-20 18:02:06.840 32410  4786 D VD      : Output #60: decoder latency avg=5.9ms max=34.1ms over 60 samples, input bufs avail=10, dropped=0
+514:08-20 18:02:07.835 32410  4747 D VD      : Decode stats: input=120, output=119, dropped=0, availBufs=10
+515:08-20 18:02:07.844 32410  4786 D VD      : Output #120: decoder latency avg=6.1ms max=10.3ms over 60 samples, input bufs avail=10, dropped=0
+520:08-20 18:02:08.838 32410  4747 D VD      : Decode stats: input=180, output=179, dropped=0, availBufs=10
+521:08-20 18:02:08.842 32410  4786 D VD      : Output #180: decoder latency avg=5.4ms max=12.7ms over 60 samples, input bufs avail=10, dropped=0
+526:08-20 18:02:09.827 32410  4747 D VD      : Decode stats: input=240, output=239, dropped=0, availBufs=10
+527:08-20 18:02:09.831 32410  4786 D VD      : Output #240: decoder latency avg=5.4ms max=11.0ms over 60 samples, input bufs avail=10, dropped=0
+532:08-20 18:02:10.833 32410  4747 D VD      : Decode stats: input=300, output=299, dropped=0, availBufs=10
+533:08-20 18:02:10.840 32410  4786 D VD      : Output #300: decoder latency avg=6.1ms max=10.0ms over 60 samples, input bufs avail=10, dropped=0
+538:08-20 18:02:11.831 32410  4747 D VD      : Decode stats: input=360, output=359, dropped=0, availBufs=10
+539:08-20 18:02:11.838 32410  4786 D VD      : Output #360: decoder latency avg=6.3ms max=10.4ms over 60 samples, input bufs avail=10, dropped=0
+543:08-20 18:02:12.836 32410  4747 D VD      : Decode stats: input=420, output=419, dropped=0, availBufs=10
+544:08-20 18:02:12.843 32410  4786 D VD      : Output #420: decoder latency avg=6.0ms max=11.1ms over 60 samples, input bufs avail=10, dropped=0
+548:08-20 18:02:13.831 32410  4747 D VD      : Decode stats: input=480, output=479, dropped=0, availBufs=10
+549:08-20 18:02:13.836 32410  4786 D VD      : Output #480: decoder latency avg=5.7ms max=10.3ms over 60 samples, input bufs avail=10, dropped=0
+552:08-20 18:02:14.834 32410  4747 D VD      : Decode stats: input=540, output=539, dropped=0, availBufs=10
+553:08-20 18:02:14.843 32410  4786 D VD      : Output #540: decoder latency avg=6.3ms max=10.8ms over 60 samples, input bufs avail=10, dropped=0
+558:08-20 18:02:15.831 32410  4747 D VD      : Decode stats: input=600, output=599, dropped=0, availBufs=10
+559:08-20 18:02:15.839 32410  4786 D VD      : Output #600: decoder latency avg=6.5ms max=11.0ms over 60 samples, input bufs avail=10, dropped=0
+564:08-20 18:02:16.834 32410  4747 D VD      : Decode stats: input=660, output=659, dropped=0, availBufs=10
+565:08-20 18:02:16.839 32410  4786 D VD      : Output #660: decoder latency avg=6.3ms max=9.2ms over 60 samples, input bufs avail=10, dropped=0
+570:08-20 18:02:17.829 32410  4747 D VD      : Decode stats: input=720, output=719, dropped=0, availBufs=10
+571:08-20 18:02:17.836 32410  4786 D VD      : Output #720: decoder latency avg=6.3ms max=9.6ms over 60 samples, input bufs avail=10, dropped=0
+577:08-20 18:02:18.829 32410  4747 D VD      : Decode stats: input=780, output=779, dropped=0, availBufs=10
+578:08-20 18:02:18.836 32410  4786 D VD      : Output #780: decoder latency avg=6.5ms max=15.1ms over 60 samples, input bufs avail=10, dropped=0
+584:08-20 18:02:19.826 32410  4747 D VD      : Decode stats: input=840, output=839, dropped=0, availBufs=10
+585:08-20 18:02:19.832 32410  4786 D VD      : Output #840: decoder latency avg=6.4ms max=11.0ms over 60 samples, input bufs avail=10, dropped=0

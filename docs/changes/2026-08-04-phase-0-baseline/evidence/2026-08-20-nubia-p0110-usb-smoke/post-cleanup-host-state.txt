@@ -1,0 +1,6 @@
+## current port owner after cleanup
+command: lsof -nP -iTCP:54321 -sTCP:LISTEN || true
+result: no listener on tcp:54321
+## matching processes after cleanup
+command: ps aux | rg "[.]build/release/Vibe Screen|Vibe Screen" || true
+result: no matching Host process from this smoke run
