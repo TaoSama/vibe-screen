@@ -1,0 +1,8 @@
+--- current package ---
+    pkg=Package{fbd4c23 dev.telemachus.display}
+    versionCode=100000 minSdk=26 targetSdk=34
+    versionName=0.0.0
+    lastUpdateTime=2026-08-20 18:00:55
+      firstInstallTime=2026-08-19 21:31:16
+--- current apk sha256 ---
+506128133b5ec69260bbdf12126101a3c626d269e53e26d385b3de83d8ad98bc  baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk

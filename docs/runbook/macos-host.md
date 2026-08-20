@@ -258,8 +258,10 @@ lsof -nP -iTCP:54321 -sTCP:LISTEN
 
 Quit the conflicting process or choose another port in both host and client.
 USB mode binds loopback only. Wireless mode listens on the LAN and must be used
-only on a trusted private network; the video/input session is not end-to-end
-encrypted in this baseline.
+only on a trusted private network. Current macOS and Android peers protect the
+token-admitted LAN session with per-session AES-256-GCM application records;
+explicit legacy fallback remains plaintext and must be called out separately if
+it is ever used.
 
 ### Capture is black, frozen, or unavailable
 

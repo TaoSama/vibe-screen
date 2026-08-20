@@ -123,10 +123,10 @@
     <string name="clipboard_send_to_mac">Send to Mac</string>
     <string name="clipboard_get_from_mac">Get from Mac</string>
     <string name="clipboard_lan_confirm_title">Send over trusted LAN?</string>
-    <string name="clipboard_lan_confirm_message">Clipboard text is authenticated but not encrypted on the trusted-LAN connection. Other devices on the network may be able to observe it.</string>
+    <string name="clipboard_lan_confirm_message">Clipboard text will use trusted-LAN encrypted application records. Use this only on a trusted private network.</string>
     <string name="clipboard_lan_confirm_action">Send</string>
     <string name="clipboard_lan_receive_confirm_title">Receive over trusted LAN?</string>
-    <string name="clipboard_lan_receive_confirm_message">The Mac clipboard text will be authenticated but not encrypted while it crosses the trusted LAN.</string>
+    <string name="clipboard_lan_receive_confirm_message">The Mac clipboard text will use trusted-LAN encrypted application records. Use this only on a trusted private network.</string>
     <!-- Toast shown after the local clipboard is sent to the Mac. -->
     <string name="clipboard_sent_to_mac">Sent to Mac</string>
     <!-- Toast shown after the Mac clipboard is copied to this device. -->
@@ -142,7 +142,7 @@
     <string name="clipboard_pending_confirmation">Mac clipboard content needs your approval.</string>
     <string name="clipboard_receive_confirm_title">Copy from Mac?</string>
     <string name="clipboard_receive_confirm_message">This Mac sent clipboard text directly. Copy it to this device?</string>
-    <string name="clipboard_lan_direct_receive_confirm_message">This Mac sent clipboard text directly over an authenticated but unencrypted trusted-LAN connection. Copy it and replace this device’s clipboard?</string>
+    <string name="clipboard_lan_direct_receive_confirm_message">This Mac sent clipboard text directly over trusted-LAN encrypted application records. Copy it and replace this device’s clipboard?</string>
     <string name="clipboard_receive_confirm_action">Copy</string>
     <string name="clipboard_plain_text_label">Text from Mac</string>
     <string name="clipboard_send_failed">Couldn\'t send the clipboard to the Mac.</string>

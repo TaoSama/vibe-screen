@@ -3,8 +3,8 @@ import Foundation
 import VibeScreenProtocol
 
 /// The transport the active clipboard session is running over. Drives whether
-/// the UI surfaces the "authenticated but not encrypted" warning before any
-/// clipboard read or write.
+/// the UI surfaces the trusted-private-network warning before any clipboard
+/// read or write.
 enum ClipboardTransport {
     case usb
     case trustedLAN
@@ -162,7 +162,7 @@ final class ClipboardUIController: NSObject {
     /// from any other generation are dropped.
     private var boundGeneration: UInt64 = 0
     /// The transport the active session runs over. Controls whether the
-    /// "authenticated but not encrypted" warning is shown.
+    /// trusted-private-network warning is shown.
     private var transport: ClipboardTransport = .usb
     /// True after the user has approved a receive request and the request
     /// was successfully sent. The receive menu stays disabled until the
@@ -299,15 +299,15 @@ final class ClipboardUIController: NSObject {
             )
             return
         }
-        // USB clipboard control messages ride an authenticated local
-        // connection; trusted-LAN messages are authenticated but not
-        // encrypted, so the user must explicitly accept that risk.
+        // USB clipboard control messages ride a local connection. Trusted-LAN
+        // messages use encrypted application records, but clipboard data still
+        // needs explicit private-network confirmation.
         if transport == .trustedLAN {
             let confirmed = alertPresenter.presentConfirmation(
                 title: "Share Mac Clipboard?",
                 message: """
                 The clipboard text will be sent to the connected device over the trusted LAN. \
-                LAN clipboard control messages are authenticated but not encrypted.
+                Current macOS and Android peers use encrypted application records, but this is still intended only for a trusted private network.
                 """,
                 confirmButtonTitle: "Share"
             )
@@ -330,14 +330,14 @@ final class ClipboardUIController: NSObject {
         case .offer(let metadata):
             // The user explicitly requested the content; send the request and
             // wait for the matching `clipboardContent` action to write it.
-            // On trusted LAN the request itself is authenticated but not
-            // encrypted, so surface that before sending.
+            // On trusted LAN the request itself uses encrypted application
+            // records, but still requires the private-network confirmation.
             if transport == .trustedLAN {
                 let confirmed = alertPresenter.presentConfirmation(
                     title: "Receive Android Clipboard?",
                     message: """
                     A request for the offered clipboard content will be sent over the trusted LAN. \
-                    LAN clipboard control messages are authenticated but not encrypted.
+                    Current macOS and Android peers use encrypted application records, but this is still intended only for a trusted private network.
                     """,
                     confirmButtonTitle: "Receive"
                 )
@@ -363,13 +363,13 @@ final class ClipboardUIController: NSObject {
             }
         case .directContent(let content):
             // The content already arrived; the user is now approving the
-            // pasteboard overwrite. On trusted LAN the content was delivered
-            // authenticated but not encrypted.
+            // pasteboard overwrite. Trusted-LAN direct content used encrypted
+            // application records, but still requires explicit user approval.
             let message: String
             if transport == .trustedLAN {
                 message = """
                 The device sent clipboard content directly. Overwriting the Mac clipboard cannot be undone. \
-                The content was delivered over the trusted LAN: authenticated but not encrypted.
+                The content was delivered over trusted LAN encrypted application records, which are intended only for a trusted private network.
                 """
             } else {
                 message = "The device sent clipboard content directly. Overwrite the Mac clipboard?"

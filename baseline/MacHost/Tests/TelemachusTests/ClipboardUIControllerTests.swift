@@ -536,12 +536,12 @@ final class ClipboardUIControllerTests: XCTestCase {
 
         perform(share, on: controller)
         XCTAssertTrue(server.sharedTexts.isEmpty)
-        XCTAssertTrue(alerts.confirmations.last?.message.contains("authenticated but not encrypted") == true)
+        XCTAssertTrue(alerts.confirmations.last?.message.contains("encrypted application records") == true)
 
         controller.handleOffer(offerMetadata(), generation: 1)
         perform(receive, on: controller)
         XCTAssertTrue(server.sentRequests.isEmpty)
-        XCTAssertTrue(alerts.confirmations.last?.message.contains("authenticated but not encrypted") == true)
+        XCTAssertTrue(alerts.confirmations.last?.message.contains("encrypted application records") == true)
     }
 
     func testCapabilitySnapshotDisablesControlsWithoutReadingPasteboard() {
