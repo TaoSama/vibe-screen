@@ -255,8 +255,8 @@ These iOS and HarmonyOS jobs do not constitute real-device evidence. A historica
 An earlier 2026-08-06 CI run on `4c2e908fe31af4c187684991301e163371444eab`
 recorded a 202-test MacHost suite; the count has since grown as tests were
 added. Protocol v1 real-device interoperability is now verified on a Xiaomi 13,
-but a valid two-hour host RSS no-growth run and native-pointer HID confirmation
-remain open gates.**
+but a valid two-hour host RSS no-growth run, native-pointer HID confirmation,
+and controller runtime acceptance remain open gates.**
 
 On 2026-08-08 a Xiaomi 13 (model 2211133C, codename fuxi, Android 16, USB)
 recorded the first Xiaomi 13 streaming evidence: a stale-Surface

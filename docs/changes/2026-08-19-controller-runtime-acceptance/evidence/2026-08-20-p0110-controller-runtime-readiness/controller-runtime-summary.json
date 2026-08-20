@@ -1,0 +1,96 @@
+{
+  "artifact_paths": [
+    "README.md",
+    "docs/testing.md",
+    "docs/runbook/android-client.md",
+    "docs/runbook/macos-host.md",
+    "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/MainActivity.kt",
+    "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/ControllerInputMapper.kt",
+    "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/StreamInputDispatcher.kt",
+    "baseline/MacHost/Sources/GameControllerVirtualHID.swift",
+    "baseline/MacHost/Sources/GameControllerInput.swift"
+  ],
+  "blocking_reasons": [
+    {
+      "field": "physical_controller_attached",
+      "requirement": "attach and name a physical Android controller"
+    },
+    {
+      "field": "host_identity_signed",
+      "requirement": "run an Apple identity-signed Host build, not ad-hoc"
+    },
+    {
+      "field": "host_virtual_hid_entitlement_present",
+      "requirement": "include the approved virtual HID entitlement"
+    },
+    {
+      "field": "host_virtual_gamepad_available",
+      "requirement": "record Host virtual-gamepad runtime availability"
+    }
+  ],
+  "can_close_runtime_gate": false,
+  "kind": "controller_runtime_acceptance",
+  "missing_requirements": [
+    {
+      "field": "physical_controller_attached",
+      "requirement": "attach and name a physical Android controller"
+    },
+    {
+      "field": "android_controller_source_observed",
+      "requirement": "observe SOURCE_GAMEPAD or SOURCE_JOYSTICK in Android logs"
+    },
+    {
+      "field": "protocol_controller_capability_negotiated",
+      "requirement": "negotiate Protocol v1 controller capability"
+    },
+    {
+      "field": "android_production_forwarding_observed",
+      "requirement": "observe MainActivity/StreamClient production controller forwarding"
+    },
+    {
+      "field": "controller_connected_state_disconnected_observed",
+      "requirement": "record connected, state, and disconnected samples"
+    },
+    {
+      "field": "host_identity_signed",
+      "requirement": "run an Apple identity-signed Host build, not ad-hoc"
+    },
+    {
+      "field": "host_virtual_hid_entitlement_present",
+      "requirement": "include the approved virtual HID entitlement"
+    },
+    {
+      "field": "host_virtual_gamepad_available",
+      "requirement": "record Host virtual-gamepad runtime availability"
+    },
+    {
+      "field": "mac_side_controller_response_observed",
+      "requirement": "observe the virtual controller in a Mac-side target"
+    },
+    {
+      "field": "neutral_release_on_disconnect_observed",
+      "requirement": "record neutral release on disconnect"
+    }
+  ],
+  "notes": "No physical Android gamepad/joystick source is visible in dumpsys input. Latest Host controller availability line: 2026-08-20T10:00:28Z Controller forwarding unavailable: use an Apple identity-signed build with the approved virtual HID entitlement; unsigned and ad-hoc builds cannot create virtual controllers This is readiness evidence only; a pass still requires live controller samples, Protocol v1 controller negotiation, Mac-side response, and neutral release on disconnect.",
+  "observations": {
+    "android_controller_source_observed": false,
+    "android_production_forwarding_observed": false,
+    "apk_identity_recorded": true,
+    "controller_connected_state_disconnected_observed": false,
+    "device_identity_recorded": true,
+    "host_identity_signed": false,
+    "host_virtual_gamepad_available": false,
+    "host_virtual_hid_entitlement_present": false,
+    "mac_side_controller_response_observed": false,
+    "neutral_release_on_disconnect_observed": false,
+    "physical_controller_attached": false,
+    "protocol_controller_capability_negotiated": false
+  },
+  "profile": "controller-runtime-acceptance",
+  "requires_entitled_host": true,
+  "requires_external_hardware": true,
+  "run_id": "2026-08-20-p0110-controller-runtime-readiness",
+  "schema_version": "vibescreen.evidence/v1",
+  "verdict": "blocked"
+}

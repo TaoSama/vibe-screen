@@ -1,0 +1,147 @@
+Activity Resolver Table:
+  Non-Data Actions:
+      android.intent.action.MAIN:
+        7b5fa31 dev.telemachus.display/.MainActivity filter d9ca516
+          Action: "android.intent.action.MAIN"
+          Category: "android.intent.category.LAUNCHER"
+
+Receiver Resolver Table:
+  Non-Data Actions:
+      androidx.profileinstaller.action.SAVE_PROFILE:
+        b032e97 dev.telemachus.display/androidx.profileinstaller.ProfileInstallReceiver filter 635fca2
+          Action: "androidx.profileinstaller.action.SAVE_PROFILE"
+      androidx.profileinstaller.action.INSTALL_PROFILE:
+        b032e97 dev.telemachus.display/androidx.profileinstaller.ProfileInstallReceiver filter 8570884
+          Action: "androidx.profileinstaller.action.INSTALL_PROFILE"
+      androidx.profileinstaller.action.SKIP_FILE:
+        b032e97 dev.telemachus.display/androidx.profileinstaller.ProfileInstallReceiver filter bbf086d
+          Action: "androidx.profileinstaller.action.SKIP_FILE"
+      androidx.profileinstaller.action.BENCHMARK_OPERATION:
+        b032e97 dev.telemachus.display/androidx.profileinstaller.ProfileInstallReceiver filter f421d33
+          Action: "androidx.profileinstaller.action.BENCHMARK_OPERATION"
+
+Domain verification status:
+
+Permissions:
+  Permission [dev.telemachus.display.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION] (a4a91a4):
+    sourcePackage=dev.telemachus.display
+    uid=10239 gids=[] type=0 prot=signature
+    perm=PermissionInfo{2f82b0d dev.telemachus.display.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION}
+    flags=0x0
+
+Registered ContentProviders:
+  dev.telemachus.display/androidx.startup.InitializationProvider:
+    Provider{9d67ac2 dev.telemachus.display/androidx.startup.InitializationProvider}
+
+ContentProvider Authorities:
+  [dev.telemachus.display.androidx-startup]:
+    Provider{9d67ac2 dev.telemachus.display/androidx.startup.InitializationProvider}
+      applicationInfo=ApplicationInfo{dc590d3 dev.telemachus.display}
+
+Key Set Manager:
+  [dev.telemachus.display]
+      Signing KeySets: 33
+
+Packages:
+  Package [dev.telemachus.display] (d4f9ab4):
+    appId=10239
+    pkg=Package{5712410 dev.telemachus.display}
+    codePath=/data/app/~~P5wU4uR177A6HqR2ibp1qA==/dev.telemachus.display-lYxALFc7AQgjGw6XVh8LLQ==
+    resourcePath=/data/app/~~P5wU4uR177A6HqR2ibp1qA==/dev.telemachus.display-lYxALFc7AQgjGw6XVh8LLQ==
+    legacyNativeLibraryDir=/data/app/~~P5wU4uR177A6HqR2ibp1qA==/dev.telemachus.display-lYxALFc7AQgjGw6XVh8LLQ==/lib
+    extractNativeLibs=false
+    primaryCpuAbi=arm64-v8a
+    secondaryCpuAbi=null
+    cpuAbiOverride=null
+    versionCode=100000 minSdk=26 targetSdk=34
+    minExtensionVersions=[]
+    versionName=0.0.0
+    hiddenApiEnforcementPolicy=2
+    usesNonSdkApi=false
+    splits=[base]
+    apkSigningVersion=2
+    flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]
+    privateFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    forceQueryable=false
+    pageSizeCompat=0
+    scannedAsStoppedSystemApp=false
+    supportsScreens=[small, medium, large, xlarge, resizeable, anyDensity]
+    timeStamp=2026-08-21 01:19:39
+    lastUpdateTime=2026-08-21 01:19:39
+    installerPackageName=null
+    installerPackageUid=-1
+    initiatingPackageName=com.android.shell
+    originatingPackageName=null
+    packageSource=1
+    appMetadataFilePath=null
+    appMetadataSource=0
+    signatures=PackageSignatures{e896b09 version:2, signatures:[2088cf51], past signatures:[]}
+    installPermissionsFixed=false
+    pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]
+    privatePkgFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    apexModuleName=null
+    declared permissions:
+      dev.telemachus.display.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: prot=signature
+    requested permissions:
+      com.android.permission.GET_INSTALLED_APPS
+      android.permission.CHANGE_NETWORK_STATE
+      dev.telemachus.display.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+      android.permission.INTERNET
+      android.permission.ACCESS_NETWORK_STATE
+      android.permission.CAMERA
+    install permissions:
+      android.permission.CHANGE_NETWORK_STATE: granted=true
+      dev.telemachus.display.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.INTERNET: granted=true
+      android.permission.ACCESS_NETWORK_STATE: granted=true
+    User 0: ceDataInode=488927 deDataInode=489089 installed=true hidden=false suspended=false distractionFlags=0 stopped=false notLaunched=false enabled=0 instant=false virtual=false quarantined=false
+      installReason=0
+      dataDir=/data/user/0/dev.telemachus.display
+      firstInstallTime=2026-08-21 01:10:54
+      uninstallReason=0
+      overlay paths:
+        /product/overlay/ObricDefaultTheme/ObricDefaultThemeOverlay.apk
+        /product/overlay/NavigationBarModeGestural/NavigationBarModeGesturalOverlay.apk
+        /data/resource-cache/com.android.systemui-neutral-Tx5K.frro
+        /data/resource-cache/com.android.systemui-accent-hyqS.frro
+        /data/resource-cache/com.android.systemui-dynamic-yTxd.frro
+      legacy overlay paths:
+        /product/overlay/ObricDefaultTheme/ObricDefaultThemeOverlay.apk
+        /product/overlay/NavigationBarModeGestural/NavigationBarModeGesturalOverlay.apk
+      gids=[3003]
+      runtime permissions:
+        com.android.permission.GET_INSTALLED_APPS: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.CAMERA: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+
+Queries:
+  system apps queryable: false
+  queries via forceQueryable:
+  queries via package name:
+    dev.telemachus.display:
+      dev.telemachus.display.test
+    dev.telemachus.display.test:
+      dev.telemachus.display
+  queries via component:
+    com.android.settings.intelligence:
+      dev.telemachus.display
+    com.openomni.bot.debug:
+      dev.telemachus.display
+    com.tencent.mm:
+      dev.telemachus.display
+  queryable via interaction:
+    User 0:
+      [com.android.dynsystem,com.obric.processservice,com.obric.ai.plugin,com.android.settings,android,com.android.keychain,com.bytedance.os.mermaid,com.wapi.wapicertmanage,com.obric.aon,com.modemdebug.sconf,com.android.providers.settings,com.android.DeviceAsWebcam,com.android.server.telecom,com.qti.diagservices,com.android.location.fused,com.qti.snapdragon.qdcm_ff,com.obric.matrix,com.obric.feedback,com.obric.cloudservice,com.qualcomm.qti.xrvd.service,com.android.inputdevices,com.obric.updater,vendor.qti.frameworks.utils,com.android.vpndialogs,com.obric.nodisturb,com.tencent.soter.soterserver,com.obric.cae,com.bytedance.mmi,com.android.localtransport]:
+        dev.telemachus.display
+      com.bytedance.android.doubaoime:
+        dev.telemachus.display
+  queryable via uses-library:
+
+Dexopt state:
+  [dev.telemachus.display]
+    path: /data/app/~~P5wU4uR177A6HqR2ibp1qA==/dev.telemachus.display-lYxALFc7AQgjGw6XVh8LLQ==/base.apk
+      arm64: [status=run-from-apk] [reason=unknown] [primary-abi]
+        [location is error]
+
+Compiler stats:
+  [dev.telemachus.display]
+    (No recorded stats)

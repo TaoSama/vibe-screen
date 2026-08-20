@@ -1,0 +1,30 @@
+Verification performed from branch codex/controller-runtime-readiness rebased on origin/main commit 0bf426dc657d2068f82cb93d897d89226b3c0524. The readiness bundle remains blocked/readiness evidence after the rebase.
+
+Passed:
+
+- python3 -m py_compile scripts/controller_runtime_readiness.py scripts/tests/test_controller_runtime_readiness.py
+- PYTHONPATH=tools python3 -m unittest tools.tests.test_controller_runtime scripts.tests.test_controller_runtime_readiness scripts.tests.test_native_pointer_hid_acceptance
+  - Ran 19 tests: OK
+- PYTHONPATH=. python3 -m unittest contracts.tests.test_controller_reference contracts.tests.test_protocol_fixtures contracts.tests.test_security_contract
+  - Ran 32 tests in 54.435s: OK
+- cd baseline/AndroidClient && ./gradlew :app:testDebugUnitTest --tests "dev.telemachus.display.ControllerInputMapperTest" --tests "dev.telemachus.display.ControllerSessionFeedbackTest" --tests "dev.telemachus.display.StreamInputDispatcherTest" --tests "dev.telemachus.display.StreamClientProtocolV1IntegrationTest" --tests "dev.telemachus.display.MainActivityControllerForwardingContractTest" --tests "dev.telemachus.display.protocol.ProtocolV1SessionTest"
+  - BUILD SUCCESSFUL in 560ms.
+- cd baseline/MacHost && swift build
+  - Build complete in 3.65s.
+- PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-20-p0110-controller-runtime-readiness/controller-runtime-observations.json --run-id 2026-08-20-p0110-controller-runtime-readiness >/tmp/controller-runtime-summary-check.json && cmp -s /tmp/controller-runtime-summary-check.json docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-20-p0110-controller-runtime-readiness/controller-runtime-summary.json
+  - summary comparison exit code 0.
+- git diff --check
+  - exit code 0.
+- cd docs/changes/2026-08-19-controller-runtime-acceptance/evidence/2026-08-20-p0110-controller-runtime-readiness && shasum -a 256 -c SHA256SUMS
+  - all listed artifacts OK.
+
+Blocked:
+
+- cd baseline/MacHost && swift test --filter "GameControllerStateMachineTests|GameControllerInjectorTests|GameControllerHIDReportTests|IOKitVirtualGamepadDeviceTests|GameControllerRuntimeAvailabilityTests|ProtocolV1SessionTests/testController"
+  - failed locally before executing tests with no such module 'XCTest'. This matches the existing local limitation where xcode-select points to /Library/Developer/CommandLineTools rather than full Xcode.
+
+Device readiness result:
+
+- Controller readiness collection was run under /tmp/vibe-screen-device-android.lock with adb -s EP0110PZ0B9110300B.
+- The script returned exit code 2 by design because the evidence verdict is blocked.
+- Blocking reasons: no physical Android controller source, Host is not Apple identity-signed, Host lacks com.apple.developer.hid.virtual.device, and Host virtual gamepad availability is false.
