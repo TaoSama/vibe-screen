@@ -1,0 +1,8 @@
+base_commit=18a6ea70d0fbf6bc187f5a7242424ad3e88cf5ee
+source_state=base commit plus the working-tree instrumentation screenshot helper added by this change
+branch=codex/phase2-nubia-readiness-evidence
+initial_collection_date_utc=2026-08-20T12:25:08Z
+final_instrumentation_date_utc=2026-08-20T12:39:00Z
+serial=EP0110PZ0B9110300B
+apk=baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+apk_sha256=cebbaacfb7bc26a4fbdfee61a272b2f35247c8692b306afec0b6b99f3ffacfba

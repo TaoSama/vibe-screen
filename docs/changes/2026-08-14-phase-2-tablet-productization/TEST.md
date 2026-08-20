@@ -14,11 +14,25 @@ cd baseline/AndroidClient
 Run the settings layout instrumentation separately when a device is available.
 The test constrains the dialog to the production 85% screen-height viewport and
 covers 600x960dp portrait and 960x600dp landscape in addition to the existing
-narrow-window, large-text, and responsive toggle-group cases:
+narrow-window, large-text, and responsive toggle-group cases. It also includes
+an evidence-image test that renders the sustained-use card for portrait and
+landscape review:
 
 ```bash
 ./gradlew --no-daemon connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=dev.telemachus.display.SettingsDialogLayoutInstrumentedTest
+```
+
+When more than one Android device is attached, bind the evidence run to the
+intended device with explicit `adb -s` installs and instrumentation so emulator
+results are not confused with the physical-device record:
+
+```bash
+adb -s "$ADB_SERIAL" install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s "$ADB_SERIAL" install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s "$ADB_SERIAL" shell am instrument -w -r \
+  -e class 'dev.telemachus.display.SettingsDialogLayoutInstrumentedTest' \
+  dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 ## Required device evidence
@@ -61,3 +75,39 @@ wall-clock time in aggregate.
 No physical-tablet check, thermal load, or soak was run. The result proves the
 focused policy/lifecycle behavior and settings layout under the tested Android
 runtime and synthetic configurations only.
+
+## 2026-08-20 Nubia P0110 readiness result
+
+This follow-up used the attached Nubia P0110/pacific (`EP0110PZ0B9110300B`) as
+an Android phone substitute only. It must not be relabeled as 8-9 inch tablet
+evidence and it does not replace the required eight-hour run. Evidence is under
+[`evidence/2026-08-20-nubia-p0110-readiness`](evidence/2026-08-20-nubia-p0110-readiness/README.md).
+
+- `DeviceHealthMonitorTest` plus `assembleDebug`: `BUILD SUCCESSFUL in 35s`.
+- `assembleDebugAndroidTest`: `BUILD SUCCESSFUL in 9s`.
+- Target-device `SettingsDialogLayoutInstrumentedTest`: 7 tests, 0 failures,
+  `OK (7 tests)` from direct `adb -s EP0110PZ0B9110300B shell am instrument`.
+- Sustained-use screenshot test: 1 test, 0 failures, `OK (1 test)` from direct
+  `adb -s EP0110PZ0B9110300B shell am instrument`.
+- The run captured the device identity, `wm size`/density, battery, power, and
+  thermal dumps. The short sample read 100% battery, AC powered, power saver
+  disabled, and thermal status `0`.
+- The screenshot artifacts
+  `screenshots/sustained-use-portrait.png` and
+  `screenshots/sustained-use-landscape.png` show the settings sustained-use card
+  rendered from the instrumentation path.
+- The native screen captures are named `screenshots/portrait.png` and
+  `screenshots/portrait-physical-landscape.png` because `user_rotation` remained
+  `0`; the physical-landscape capture produced the same portrait Android buffer
+  and must not be treated as a real system-landscape screenshot.
+- An initial launch attempt recorded `Error type 3`; the app launch was
+  reverified afterward under the same device lock, and `am-start-reverify.txt`
+  records `Starting: Intent { cmp=dev.telemachus.display/.MainActivity }` with
+  exit code `0` in `am-start-reverify-status.txt`.
+
+Still open after this result: real 8-9 inch tablet panel behavior, split or
+freeform resizing on target hardware, stand-mounted charging stability,
+controlled thermal-load behavior, background/foreground recovery, transport
+interruption recovery, login startup, headless Mac recovery, stylus and hardware
+keyboard workflows, and the eight-hour sample series required by
+[RUNBOOK.md](RUNBOOK.md).

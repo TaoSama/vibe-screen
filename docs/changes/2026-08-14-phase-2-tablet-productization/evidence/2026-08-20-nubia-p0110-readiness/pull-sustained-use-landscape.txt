@@ -1,0 +1,1 @@
+/sdcard/Android/data/dev.telemachus.display/files/phase2-readiness/sustained-use-landscape.png: 1 file pulled, 0 skipped. 16.3 MB/s (140341 bytes in 0.008s)
