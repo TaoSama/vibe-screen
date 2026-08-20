@@ -1,8 +1,9 @@
 # Android + macOS Clipboard Device Acceptance Runbook
 
-This runbook closes only the Android ClipboardManager <-> macOS NSPasteboard
-Protocol v1 clipboard gate. It is a short interactive USB or trusted-LAN check,
-not a soak, latency, or accessibility pass.
+This runbook is the acceptance procedure for the Android ClipboardManager <->
+macOS NSPasteboard Protocol v1 clipboard gate. A run closes only that clipboard
+gate when it satisfies the pass criteria below; it is a short interactive USB or
+trusted-LAN check, not a soak, latency, or accessibility pass.
 
 ## Preconditions
 

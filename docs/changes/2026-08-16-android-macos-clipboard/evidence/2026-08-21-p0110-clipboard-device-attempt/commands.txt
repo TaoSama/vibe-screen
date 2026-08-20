@@ -1,0 +1,94 @@
+# Commands
+
+Date: 2026-08-20 UTC / 2026-08-21 Asia/Shanghai
+Worktree: /Users/luwentao/.codex/worktrees/3c7e/vibe-screen
+Branch: codex/android-clipboard-e2e-evidence
+Baseline after rebase: origin/main 8e630ad379fa6b2c5f7e6c9f5453386336e0251b
+
+## Stale lock check and reacquire
+
+    test -e /tmp/vibe-screen-device-android.lock
+    cat /tmp/vibe-screen-device-android.lock
+    ps -p 88456 -o pid,stat,command
+    lsof /tmp/vibe-screen-device-android.lock
+
+Observed: the file existed, pid 88456 did not exist, and lsof reported no
+holder. The stale file was removed, then a new exclusive flock lease was
+created:
+
+    task=android-clipboard-e2e
+    branch=codex/android-clipboard-e2e-evidence
+    pid=60011
+    created_at=Thu Aug 20 18:15:30 2026Z
+    serial=EP0110PZ0B9110300B
+    lock_method=perl_flock_exclusive_background_holder
+
+## Sync
+
+    git fetch origin --prune
+    git rebase origin/main
+
+Result: branch was up to date after the earlier rebase; merge-base with
+origin/main is 8e630ad379fa6b2c5f7e6c9f5453386336e0251b.
+
+## Device identity
+
+    adb devices -l
+    adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+    adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+    adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+    adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+    adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+    adb -s EP0110PZ0B9110300B shell getprop ro.build.fingerprint
+
+Result: Nubia P0110 / pacific / Android 16 / SDK 36. See
+device-info-final.txt.
+
+## Host preflight
+
+    python3 scripts/macos_dev_host.py preflight --install-path "/Applications/Vibe Screen.app"
+
+Result: failed before a current-branch Host E2E run because the local keychain
+lacks the stable Vibe Screen Dev signing identity. See host-preflight-after-rebase.txt.
+
+## Android focused validation
+
+    cd baseline/AndroidClient
+    ./gradlew --no-daemon testDebugUnitTest \
+      --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest \
+      --tests dev.telemachus.display.ClipboardApprovalStateTest
+
+Result: BUILD SUCCESSFUL in 4s. See android-unit-clipboard-final.txt.
+
+    cd baseline/AndroidClient
+    ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+
+Result: BUILD SUCCESSFUL in 4s. See android-assemble-debug-final.txt.
+
+    cd baseline/AndroidClient
+    adb -s EP0110PZ0B9110300B install -r -t app/build/outputs/apk/debug/app-debug.apk
+    adb -s EP0110PZ0B9110300B install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+Result: both installs reported Success.
+
+    adb -s EP0110PZ0B9110300B shell am instrument -w \
+      -e class dev.telemachus.display.ClipboardManagerInstrumentedTest \
+      dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+
+Result: OK (1 test), marker vs-clipboard-device-1787249745010.
+
+## Mac clipboard XCTest
+
+    cd baseline/MacHost
+    swift test --scratch-path /tmp/vibe-screen-mac-host-swift-clipboard-3c7e \
+      --filter Clipboard
+
+Result: blocked before test execution with error: no such module 'XCTest'. See
+mac-swift-test-clipboard-after-rebase.txt.
+
+## Cleanup
+
+    adb -s EP0110PZ0B9110300B shell am force-stop dev.telemachus.display
+
+The Android app was stopped after the focused instrumentation run. The device
+lock is released after final verification for this task.

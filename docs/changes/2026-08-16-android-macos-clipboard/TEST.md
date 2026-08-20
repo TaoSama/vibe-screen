@@ -1,24 +1,25 @@
 # Android + macOS 剪贴板验证记录
 
-Status: 本地离线门禁完成；Mac XCTest 受本机 SDK 环境阻断；无真机、USB/LAN
-端到端或发布证据
-Date: 2026-08-19
-Baseline: `origin/main` at `0a66aeb2` plus this PR branch's local clipboard
-commit, salvaged from `e989a1c833b85c4732c137b428504252f8c62d7e`
+Status: 本地离线门禁完成；P0110 真机 Android 系统剪贴板 smoke 通过；Mac
+XCTest 受本机 SDK 环境阻断；Android <-> macOS 系统剪贴板端到端 gate 仍 open
+Date: 2026-08-21
+Baseline: `origin/main` at `8e630ad3` plus this PR branch's local clipboard
+evidence commits
 
 ## 证据边界
 
-本记录只证明当前本地候选的源代码、JVM 单元/回环集成测试、协议 fixture 和
-MacHost 可执行自测。它不证明真实 Android `ClipboardManager`、真实 macOS
-`NSPasteboard`、TalkBack、USB 线缆、可信 LAN、真机互操作或发布状态。模拟器、
-离线和自测结果不得转述为真机证据。
+本记录证明当前本地候选的源代码、JVM 单元/回环集成测试、协议 fixture、
+MacHost 可执行自测，以及一次 Nubia P0110/pacific/Android 16 前台 Activity 内的
+Android `ClipboardManager` 读写 smoke。它不证明真实 macOS `NSPasteboard`、
+TalkBack、USB/LAN 双向系统剪贴板互操作或发布状态。模拟器、离线、自测和
+Android 本机 smoke 结果不得转述为 Android <-> Mac clipboard E2E 证据。
 
 ## 已运行
 
 ### 2026-08-21 复核
 
 本轮从 origin/main 建立 codex/android-clipboard-e2e-evidence 分支，并在提交前
-rebase 到最新 origin/main 9e6174ef；复核 Android 与 MacHost
+rebase 到最新 origin/main 8e630ad3；复核 Android 与 MacHost
 clipboard 代码路径后确认：Android ClipboardManager 与 macOS
 NSPasteboard 的生产边界已接入显式用户动作和 Protocol v1 会话，但仓库仍缺
 真实 USB/LAN 双向系统剪贴板端到端证据。
@@ -41,6 +42,44 @@ Protocol v1 clipboard 能力协商、Android -> Mac 与 Mac -> Android 两个方
 
 结果：BUILD SUCCESSFUL in 28s。
 
+在用户确认 /tmp/vibe-screen-device-android.lock 是 stale 空文件并删除后，本轮用
+flock(LOCK_EX|LOCK_NB) 重新获取 /tmp/vibe-screen-device-android.lock，最终锁记录
+pid=60011、serial=EP0110PZ0B9110300B。随后读取设备身份并确认目标设备为：
+
+- manufacturer: nubia
+- model: P0110
+- codename/device: pacific
+- Android release: 16
+- SDK: 36
+- fingerprint: nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys
+
+新增真机 Android 本地系统剪贴板 smoke：
+
+```bash
+cd baseline/AndroidClient
+./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+adb -s EP0110PZ0B9110300B install -r -t app/build/outputs/apk/debug/app-debug.apk
+adb -s EP0110PZ0B9110300B install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s EP0110PZ0B9110300B shell am instrument -w \
+  -e class dev.telemachus.display.ClipboardManagerInstrumentedTest \
+  dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+结果：OK (1 test)。Logcat 记录
+ClipboardDeviceTest: clipboard_manager_roundtrip marker=vs-clipboard-device-1787249745010。
+该测试只证明前台 Android Activity 可以通过系统 ClipboardManager 写入并读回
+唯一 marker；它不经过 Protocol v1、不经过 MacHost、不读取或写入 macOS
+NSPasteboard，不能关闭 Android <-> Mac clipboard E2E gate。
+
+USB E2E 前置仍被 Host 侧阻断。python3 scripts/macos_dev_host.py preflight
+--install-path "/Applications/Vibe Screen.app" 失败于本机 keychain 缺少稳定签名身份
+Vibe Screen Dev；当前已安装的 /Applications/Vibe Screen.app 不是本分支重新安装的
+稳定签名 Host，且早期 Android 连接日志出现 Protocol upgrade probe closed before a
+response。本轮没有观察到同一 Protocol v1 会话中的 clipboardAvailable=true、
+Offer/Request/Content、pbcopy/pbpaste 或人工双向 marker 读回。因此 Android
+ClipboardManager <-> macOS NSPasteboard 真机 gate 保持 open。证据保存在
+[evidence/2026-08-21-p0110-clipboard-device-attempt/README.md](evidence/2026-08-21-p0110-clipboard-device-attempt/README.md)。
+
     cd baseline/MacHost
     swift test --scratch-path /tmp/vibe-screen-mac-host-swift-clipboard-3c7e \
       --filter Clipboard
@@ -59,7 +98,7 @@ cd baseline/AndroidClient
   --tests dev.telemachus.display.ClipboardApprovalStateTest
 ```
 
-结果：post-rebase `BUILD SUCCESSFUL in 8s`。覆盖包括能力/上限协商、非 streaming 发送
+结果：post-rebase `BUILD SUCCESSFUL in 4s`。覆盖包括能力/上限协商、非 streaming 发送
 拒绝、严格 UTF-8、16/32 字节字段、origin、Offer -> Request -> Content、
 direct Content、duplicate/unknown Request、10 秒超时后的 exact 清理与同 Offer
 重试、A Request -> B Offer -> A 迟到 direct 不覆盖 B、同 ID 超时 handoff
@@ -191,11 +230,13 @@ Xcode / CI 环境执行后才能声称通过。
 
 ## 执行约束
 
-本轮没有启动模拟器、连接真机、执行 USB/LAN 互操作或生成设备验收记录。
-
-2026-08-21 复核也没有执行 ADB：Android 设备协调锁已存在，按
+首次 2026-08-21 复核没有执行 ADB：Android 设备协调锁已存在，按
 docs/runbook/android-client.md 规则必须在任何设备操作前停止。该 blocked
 evidence 不证明设备身份，也不关闭 clipboard 真机 gate。
+
+后续 2026-08-21 P0110 attempt 在重新获取排它锁后执行了 ADB、安装和 focused
+instrumentation。该 run 仅证明 P0110 上 Android 前台系统剪贴板本地 smoke；Host
+preflight/会话失败使跨端 clipboard 验收停在阻断状态，仍不能关闭 README gate。
 
 ## 未验证风险
 

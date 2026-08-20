@@ -1,0 +1,69 @@
+{
+  "schema": "dev.vibescreen.clipboard-device-evidence/v1",
+  "date_utc": "2026-08-20",
+  "branch": "codex/android-clipboard-e2e-evidence",
+  "baseline_commit": "8e630ad3",
+  "source_head_at_collection": "e2ae4749496986afc8c2d575d01eb101851f48b3",
+  "scope": "Android ClipboardManager <-> macOS NSPasteboard Protocol v1 device E2E",
+  "verdict": "blocked_cross_device_e2e",
+  "can_close_gate": false,
+  "device_identity": {
+    "verified": true,
+    "serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": "36",
+    "fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys"
+  },
+  "device_lock": {
+    "path": "/tmp/vibe-screen-device-android.lock",
+    "method": "perl_flock_exclusive_background_holder",
+    "pid": 60011,
+    "stale_lock_checked_before_reacquire": true
+  },
+  "passed": [
+    {
+      "kind": "android_unit_tests",
+      "command": "cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest --tests dev.telemachus.display.ClipboardApprovalStateTest",
+      "result": "BUILD SUCCESSFUL in 4s"
+    },
+    {
+      "kind": "android_build_and_install",
+      "command": "cd baseline/AndroidClient && ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest && adb -s EP0110PZ0B9110300B install -r -t app/build/outputs/apk/debug/app-debug.apk && adb -s EP0110PZ0B9110300B install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
+      "result": "BUILD SUCCESSFUL in 4s; both installs reported Success"
+    },
+    {
+      "kind": "android_system_clipboard_smoke",
+      "command": "adb -s EP0110PZ0B9110300B shell am instrument -w -e class dev.telemachus.display.ClipboardManagerInstrumentedTest dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner",
+      "result": "OK (1 test)",
+      "marker": "vs-clipboard-device-1787249745010",
+      "scope_note": "foreground Android Activity writes and reads Android ClipboardManager locally; no MacHost or Protocol v1 clipboard exchange"
+    }
+  ],
+  "blockers": [
+    {
+      "kind": "macos_host_stable_signing_identity_missing",
+      "evidence_file": "host-preflight-after-rebase.txt",
+      "summary": "scripts/macos_dev_host.py preflight failed because codesign identity Vibe Screen Dev is not available in the local keychain"
+    },
+    {
+      "kind": "no_current_branch_protocol_v1_clipboard_session",
+      "summary": "No same-session evidence of clipboardAvailable=true, Offer/Request/Content, pbcopy/pbpaste, or two-direction marker readback was collected"
+    },
+    {
+      "kind": "macos_xctest_unavailable_locally",
+      "evidence_file": "mac-swift-test-clipboard-after-rebase.txt",
+      "summary": "swift test --filter Clipboard failed before test execution with error: no such module 'XCTest'"
+    }
+  ],
+  "unproven": [
+    "real Android -> Mac clipboard transfer",
+    "real Mac -> Android clipboard transfer",
+    "macOS NSPasteboard read/write through the current Host build",
+    "trusted-LAN clipboard warning and approval behavior",
+    "TalkBack announcement behavior",
+    "long-session clipboard state stability"
+  ]
+}

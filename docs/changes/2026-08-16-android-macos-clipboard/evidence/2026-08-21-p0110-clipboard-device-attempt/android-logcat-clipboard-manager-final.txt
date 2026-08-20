@@ -1,0 +1,2 @@
+--------- beginning of main
+08-21 02:15:46.060  9010  9010 I ClipboardDeviceTest: clipboard_manager_roundtrip marker=vs-clipboard-device-1787249745010
