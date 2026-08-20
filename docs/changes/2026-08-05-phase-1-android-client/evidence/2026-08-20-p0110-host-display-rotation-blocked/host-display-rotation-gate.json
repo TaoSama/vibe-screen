@@ -1,0 +1,31 @@
+{
+  "covered_display_kinds": [],
+  "errors": [
+    "runs: must be a non-empty array",
+    "runs: missing rotated physical host-display evidence",
+    "runs: missing rotated virtual host-display evidence"
+  ],
+  "kind": "host_display_rotation_acceptance",
+  "required_artifacts": [
+    "device_identity",
+    "host_display_snapshot_before",
+    "host_display_snapshot_rotated",
+    "android_screenshot",
+    "touch_matrix",
+    "host_log",
+    "android_logcat"
+  ],
+  "required_display_kinds": [
+    "physical",
+    "virtual"
+  ],
+  "required_probes": [
+    "visual_source_orientation",
+    "input_mapping",
+    "stable_stream",
+    "no_session_teardown",
+    "restored_original_host_rotation"
+  ],
+  "schema_version": "vibescreen.evidence/v1",
+  "status": "failed"
+}

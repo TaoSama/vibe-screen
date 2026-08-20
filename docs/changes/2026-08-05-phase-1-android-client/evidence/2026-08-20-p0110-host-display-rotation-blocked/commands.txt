@@ -1,0 +1,84 @@
+Repository and sync checks
+
+  git fetch origin main --prune
+  git status --short --branch
+  git rev-parse HEAD
+  git rev-parse origin/main
+
+Observed result:
+
+  HEAD was detached at b9d768e55c75f03cd3cb5d20939576bc8d24ff27.
+  origin/main resolved to b9d768e55c75f03cd3cb5d20939576bc8d24ff27.
+  The worktree had no source diff before this evidence directory was written.
+
+Device readiness checks
+
+  adb devices -l
+  adb -s EP0110PZ0B9110300B get-state
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+  adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+  adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+  adb -s EP0110PZ0B9110300B shell getprop ro.build.fingerprint
+  adb -s EP0110PZ0B9110300B shell wm size
+  adb -s EP0110PZ0B9110300B shell wm density
+  adb -s EP0110PZ0B9110300B reverse --list
+  adb -s EP0110PZ0B9110300B shell dumpsys package dev.telemachus.display
+
+Observed result:
+
+  EP0110PZ0B9110300B was online as product pacific, model P0110, device pacific.
+  get-state returned device.
+  Identity was nubia / P0110 / pacific / Android 16 / SDK 36.
+  Fingerprint was nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys.
+  Display was Physical size: 1264x2800, Physical density: 560.
+  ADB reverse listed UsbFfs tcp:54321 tcp:54321.
+  Package lookup returned Unable to find package: dev.telemachus.display.
+
+Lock and Host readiness checks
+
+  ls -l /tmp/vibe-screen-device-android.lock /tmp/vibe-screen-device-soak.lock
+  sed -n '1,20p' /tmp/vibe-screen-device-android.lock
+  python3 scripts/macos_dev_host.py preflight --install-path "/Applications/Vibe Screen.app"
+  python3 scripts/macos_dev_host.py preflight --sign-identity - --install-path "/Applications/Vibe Screen.app"
+  security find-identity -v -p codesigning
+  lsof -nP -iTCP:54321 -sTCP:LISTEN
+  sqlite3 "$HOME/Library/Application Support/com.apple.TCC/TCC.db" "SELECT service, client, client_type, auth_value, auth_reason, last_modified FROM access WHERE client='dev.telemachus.display' AND client_type=0 AND service IN ('kTCCServiceScreenCapture','kTCCServiceScreenRecording','kTCCServiceAccessibility') ORDER BY service,last_modified;"
+
+Observed result:
+
+  Initial lock check found no android or soak lock.
+  Final lock check found /tmp/vibe-screen-device-android.lock occupied:
+    owner=codex-touch-fixed-binary-readiness
+    pid=29081
+    cwd=/Users/luwentao/Workspaces/dotfiles/codex/worktrees/9b47/vibe-screen
+    created_at=2026-08-20T12:27:45Z
+  Stable Host preflight failed because codesign identity 'Vibe Screen Dev' was not found.
+  Ad-hoc preflight was refused for local device reruns.
+  security find-identity reported 0 valid identities found.
+  No Host listener was observed on TCP 54321 during the final readiness check.
+  The TCC query returned no rows for dev.telemachus.display.
+
+Display readiness check
+
+  system_profiler SPDisplaysDataType
+
+Observed result:
+
+  macOS 26.4.1 / build 25E253 reported built-in Color LCD online and DELL U2723QE online.
+  The DELL U2723QE entry reported Rotation: Supported.
+
+Offline gate command
+
+  PYTHONPATH=tools python3 -m tools.vibescreen_evidence.host_display_rotation_gate \
+    docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-20-p0110-host-display-rotation-blocked/host-display-rotation.json \
+    --output docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-20-p0110-host-display-rotation-blocked/host-display-rotation-gate.json
+
+Observed result:
+
+  exit=1
+  errors:
+    runs: must be a non-empty array
+    runs: missing rotated physical host-display evidence
+    runs: missing rotated virtual host-display evidence
