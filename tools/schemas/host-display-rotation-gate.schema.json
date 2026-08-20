@@ -10,8 +10,12 @@
     "status",
     "covered_display_kinds",
     "required_display_kinds",
+    "required_transports",
+    "required_device_fields",
+    "required_host_preflight_fields",
     "required_probes",
     "required_artifacts",
+    "artifact_file_check",
     "errors"
   ],
   "properties": {
@@ -26,6 +30,18 @@
       "type": "array",
       "items": {"enum": ["physical", "virtual"]}
     },
+    "required_transports": {
+      "type": "array",
+      "items": {"enum": ["lan", "usb"]}
+    },
+    "required_device_fields": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "required_host_preflight_fields": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
     "required_probes": {
       "type": "array",
       "items": {"type": "string", "minLength": 1}
@@ -34,6 +50,7 @@
       "type": "array",
       "items": {"type": "string", "minLength": 1}
     },
+    "artifact_file_check": {"type": "boolean"},
     "errors": {"type": "array", "items": {"type": "string"}}
   }
 }

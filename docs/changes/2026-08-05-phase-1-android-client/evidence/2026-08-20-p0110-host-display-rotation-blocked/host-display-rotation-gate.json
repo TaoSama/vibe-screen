@@ -1,4 +1,5 @@
 {
+  "artifact_file_check": true,
   "covered_display_kinds": [],
   "errors": [
     "runs: must be a non-empty array",
@@ -15,9 +16,25 @@
     "host_log",
     "android_logcat"
   ],
+  "required_device_fields": [
+    "manufacturer",
+    "model",
+    "codename",
+    "android_release",
+    "sdk",
+    "adb_serial"
+  ],
   "required_display_kinds": [
     "physical",
     "virtual"
+  ],
+  "required_host_preflight_fields": [
+    "host_signing_identity",
+    "host_bundle_id",
+    "screen_recording_granted",
+    "accessibility_granted",
+    "signing_tcc_match",
+    "host_display_rotation_restoration_plan"
   ],
   "required_probes": [
     "visual_source_orientation",
@@ -25,6 +42,10 @@
     "stable_stream",
     "no_session_teardown",
     "restored_original_host_rotation"
+  ],
+  "required_transports": [
+    "lan",
+    "usb"
   ],
   "schema_version": "vibescreen.evidence/v1",
   "status": "failed"

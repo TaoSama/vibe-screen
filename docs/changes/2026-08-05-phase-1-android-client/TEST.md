@@ -231,14 +231,23 @@ that records both display kinds:
    90/180/270 matrix as host-display rotation evidence.
 4. Record retained artifacts for device identity, before/rotated host display
    snapshots, Android screenshot, touch matrix, Host log, and Android logcat.
+5. Record the Host signing/TCC preflight for the exact installed Host bundle.
+   The gate depends on a stable non-ad-hoc signing identity, matching bundle
+   identifier, Screen Recording grant, Accessibility grant, and a restoration
+   plan for the original macOS display rotation.
 
-Summarize the retained evidence in a JSON file and run the offline gate. This
-command validates the record only; it does not rotate displays, start the Host,
-touch ADB, or perform device actions:
+The detailed operator checklist is in
+[`docs/runbook/host-display-rotation-acceptance.md`](../../runbook/host-display-rotation-acceptance.md).
+
+Summarize the retained evidence in a JSON file matching
+[`tools/schemas/host-display-rotation-evidence.schema.json`](../../../tools/schemas/host-display-rotation-evidence.schema.json)
+and run the offline gate. This command validates the record only; it does not
+rotate displays, start the Host, touch ADB, or perform device actions:
 
 ```bash
-python3 -m tools.vibescreen_evidence.host_display_rotation_gate \
+PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate \
   docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation.json \
+  --check-artifacts \
   --output docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation-gate.json
 ```
 
@@ -253,6 +262,22 @@ Minimum summary shape:
       "display_kind": "physical",
       "display_id": "<macOS display id/name>",
       "transport": "usb",
+      "device": {
+        "manufacturer": "nubia",
+        "model": "P0110",
+        "codename": "pacific",
+        "android_release": "16",
+        "sdk": 36,
+        "adb_serial": "<serial>"
+      },
+      "host_preflight": {
+        "host_signing_identity": "Vibe Screen Dev",
+        "host_bundle_id": "dev.telemachus.display",
+        "screen_recording_granted": true,
+        "accessibility_granted": true,
+        "signing_tcc_match": true,
+        "host_display_rotation_restoration_plan": true
+      },
       "host_rotation_degrees": 90,
       "original_host_rotation_degrees": 0,
       "client_rotation_degrees": 0,
@@ -280,6 +305,22 @@ Minimum summary shape:
       "display_kind": "virtual",
       "display_id": "<macOS virtual display id/name>",
       "transport": "usb",
+      "device": {
+        "manufacturer": "nubia",
+        "model": "P0110",
+        "codename": "pacific",
+        "android_release": "16",
+        "sdk": 36,
+        "adb_serial": "<serial>"
+      },
+      "host_preflight": {
+        "host_signing_identity": "Vibe Screen Dev",
+        "host_bundle_id": "dev.telemachus.display",
+        "screen_recording_granted": true,
+        "accessibility_granted": true,
+        "signing_tcc_match": true,
+        "host_display_rotation_restoration_plan": true
+      },
       "host_rotation_degrees": 90,
       "original_host_rotation_degrees": 0,
       "client_rotation_degrees": 0,

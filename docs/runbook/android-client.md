@@ -89,19 +89,22 @@ device orientation.
 To close the rotated host-display gate, run a fresh Protocol v1 real-device
 pass for both an existing physical Mac display and a virtual display after the
 host display itself is rotated to 90°, 180°, or 270°. For each display kind,
-record the original and rotated host-display snapshots, Android visual result,
-corner/center touch matrix, Host log, Android logcat, stable stream/no-teardown
-result, and proof that the original macOS rotation was restored. The existing
-client-local Follow Mac/90°/180°/270° matrix with `hostRotation=0` is not host
-display rotation evidence.
+record the explicit device identity, Host signing/TCC preflight for the exact
+installed Host bundle, original and rotated host-display snapshots, Android
+visual result, corner/center touch matrix, Host log, Android logcat, stable
+stream/no-teardown result, and proof that the original macOS rotation was
+restored. The existing client-local Follow Mac/90°/180°/270° matrix with
+`hostRotation=0` is not host display rotation evidence. The detailed operator
+checklist is in `docs/runbook/host-display-rotation-acceptance.md`.
 
 After collecting those artifacts, summarize them in `host-display-rotation.json`
 and run the offline evidence-summary gate. The gate only validates the retained
 record; it does not rotate displays, start the Host, or touch ADB:
 
 ```bash
-python3 -m tools.vibescreen_evidence.host_display_rotation_gate \
+PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate \
   docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation.json \
+  --check-artifacts \
   --output docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation-gate.json
 ```
 
