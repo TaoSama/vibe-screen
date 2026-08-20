@@ -1617,11 +1617,19 @@ internal class ProtocolV1Session(
         if (!effective.allowsHost(hostId = hostId)) {
             throw protocolFailure("Managed policy does not allow this host")
         }
+        val hadHostActionState =
+            Capability.CAPABILITY_HOST_ACTIONS in negotiatedCapabilities ||
+                availableHostActions.isNotEmpty() ||
+                pendingHostActionInvocations.isNotEmpty()
         negotiatedCapabilities = baseNegotiatedCapabilities.filteredBy(effective)
         if (!effective.hostActionsAllowed) {
             availableHostActions = emptyList()
             pendingHostActionInvocations.clear()
-            return listOf(Action.HostActionsAvailable(emptyList()))
+            return if (hadHostActionState) {
+                listOf(Action.HostActionsAvailable(emptyList()))
+            } else {
+                emptyList()
+            }
         }
         return emptyList()
     }
