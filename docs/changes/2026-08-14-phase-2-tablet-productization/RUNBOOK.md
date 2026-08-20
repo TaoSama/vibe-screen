@@ -21,6 +21,10 @@ and keep raw logs even when the run fails.
 - Verify the Android settings sustained-use card against platform state before
   the soak: `dumpsys battery`, `dumpsys power`, and thermal status must match
   the visible battery, charging, power-saver, and thermal labels.
+- Create `phase2-tablet-manifest.json` before starting the timer so the run has
+  a run ID plus predeclared identity, setup, scenario, and threshold metadata.
+  This manifest is preparation evidence only; it cannot close the gate without
+  the raw eight-hour artifacts and final gate report.
 
 ## Baseline device checks
 
@@ -36,6 +40,28 @@ adb shell dumpsys power > adb-power-before.txt
 adb shell dumpsys thermalservice > thermal-before.txt 2> thermal-before.err
 adb shell dumpsys SurfaceFlinger --latency-clear || true
 adb shell pidof dev.telemachus.display > android-pid.txt
+```
+
+Then write the Phase 2 manifest from the evidence root. Use
+`PHASE2_DEVICE_CLASS=android_substitute` for a Nubia P0110/pacific/Android 16
+or another phone substitute; do not label a substitute as Xiaomi 13/fuxi or as
+8-9 inch tablet evidence.
+
+```bash
+make phase2-tablet-manifest \
+  EVIDENCE_DIR="$RUN_DIR" \
+  EVIDENCE_SERIAL="$ADB_SERIAL" \
+  PHASE2_DEVICE_CLASS=physical_8_9_inch_tablet \
+  PHASE2_TABLET_SIZE_INCHES="8.8" \
+  PHASE2_STAND_SETUP="<stand orientation and mounting description>" \
+  PHASE2_CHARGER="<charger model and rating>" \
+  PHASE2_CABLE_OR_DOCK="<data cable or dock identity>" \
+  PHASE2_AMBIENT_TEMPERATURE_CELSIUS="<room temperature>" \
+  PHASE2_VIDEO_PREFERENCES="<quality/FPS/bitrate settings>" \
+  PHASE2_HOST_IDENTITY="<Mac model and macOS version>" \
+  PHASE2_HOST_BUILD="<host build command, signing identity, and SHA>" \
+  PHASE2_APK_SHA256="<debug or release APK SHA-256>" \
+  PHASE2_RECOVERY_SCENARIOS="background_foreground,transport_reconnect"
 ```
 
 If `dumpsys thermalservice` fails or writes an empty dump, keep
@@ -76,8 +102,8 @@ A directory named `phase2-8h` closes the sustained-use gate only when
 `summary.json` records `duration_seconds >= 28800`, `interval_seconds <= 60`,
 and zero missing sample gaps over the measured interval. The run README must
 include the exact collection commands, links to `samples.jsonl`,
-`summary.json`, `manifest.json`, and raw logs, plus the measured duration,
-cadence, and first-failure fields.
+`summary.json`, `phase2-tablet-manifest.json`, and raw logs, plus the measured
+duration, cadence, and first-failure fields.
 
 The run fails immediately if the app crashes, the host crashes, the stream does
 not recover after a required interruption, stale frames or stale input are
@@ -134,7 +160,8 @@ Each run directory should include at minimum:
 - `device-info.json` collected by `make evidence-device-info` and valid against
   `tools/schemas/device-info.schema.json`;
 - `device.txt`, `host.txt`, `apk-sha256.txt`, `build.txt`, and
-  `manifest.json`;
+  `phase2-tablet-manifest.json` valid against
+  `tools/schemas/phase2-tablet-manifest.schema.json`;
 - `samples.jsonl` and `summary.json` for the eight-hour series, plus optional
   derived `samples.csv` when spreadsheet inspection is useful;
 - `adb-battery-before.txt`, `adb-battery-after.txt`, `adb-power-before.txt`,

@@ -434,8 +434,11 @@ and rejects callbacks after stop; 600dp portrait/landscape layout coverage keeps
 the status readable in small-tablet and resized-window configurations. This is an
 offline product slice, not thermal or power acceptance: 8–9 inch hardware,
 stand-mounted charging, background/foreground recovery, and the eight-hour run
-remain device gates. Login startup and headless Mac mini acceptance also remain
-open. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
+remain device gates. The evidence tooling now includes a Phase 2 tablet
+manifest to declare the device identity, stand/charging setup, thresholds, and
+planned recovery scenarios before a future run; it does not replace the raw
+physical-device artifacts or close the gate. Login startup and headless Mac mini
+acceptance also remain open. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
 and the [tablet acceptance runbook](docs/changes/2026-08-14-phase-2-tablet-productization/RUNBOOK.md).
 
 ### Phase 3 — Secure Internet access

@@ -111,3 +111,26 @@ controlled thermal-load behavior, background/foreground recovery, transport
 interruption recovery, login startup, headless Mac recovery, stylus and hardware
 keyboard workflows, and the eight-hour sample series required by
 [RUNBOOK.md](RUNBOOK.md).
+
+## 2026-08-21 Phase 2 evidence manifest readiness
+
+This follow-up added a schema-backed `phase2-tablet-manifest.json` preparation
+record for future eight-hour runs. It binds the run to `device-info.json`, the
+declared device class, stand/charger/cable setup, host/APK identity, transport,
+video preferences, pass/fail thresholds, and planned recovery scenarios before
+the timer starts. It also maps the ADB `ro.product.device` value to the manifest
+`codename` field so Nubia P0110/pacific and Xiaomi/fuxi evidence keep their real
+device identity.
+
+Validation performed for this tooling-only update:
+
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_tablet_manifest tools.tests.test_device_info tools.tests.test_schemas -v`
+- `make phase2-tablet-manifest EVIDENCE_DIR=.build/phase2-manifest-smoke ...`
+  using the retained P0110 readiness `device-info.json`; the generated manifest
+  recorded `manufacturer=nubia`, `model=P0110`, `codename=pacific`,
+  `android_release=16`, and `device_class=android_substitute`.
+
+No device soak, physical-tablet run, controlled thermal load, background or
+transport recovery pass, login startup, headless Mac recovery, stylus, or
+hardware-keyboard evidence was produced by this tooling update. All Phase 2
+device gates above remain open.

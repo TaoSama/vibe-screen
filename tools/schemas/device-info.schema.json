@@ -13,7 +13,7 @@
     "adb_version": {"type": "string", "minLength": 1},
     "device": {
       "type": "object",
-      "required": ["adb_serial", "device_serial", "manufacturer", "model", "android_release", "sdk", "build_fingerprint", "abi"]
+      "required": ["adb_serial", "device_serial", "manufacturer", "model", "device", "android_release", "sdk", "build_fingerprint", "abi"]
     },
     "packages": {
       "type": "array",
@@ -29,4 +29,3 @@
     }
   }
 }
-

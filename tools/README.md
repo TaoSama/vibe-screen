@@ -99,6 +99,27 @@ workloads cannot leak.
 For the Phase 2 tablet productization eight-hour soak, derive the exact-window
 report and then evaluate the tablet gate:
 
+Before the timer starts, create a Phase 2 manifest that predeclares the physical
+setup, device class, host/APK identity, thresholds, and planned recovery
+scenarios:
+
+```sh
+make phase2-tablet-manifest EVIDENCE_SERIAL="$ADB_SERIAL" EVIDENCE_DIR=.build/evidence \
+  PHASE2_DEVICE_CLASS=physical_8_9_inch_tablet \
+  PHASE2_STAND_SETUP="desktop stand, portrait" \
+  PHASE2_CHARGER="vendor USB-C charger" \
+  PHASE2_CABLE_OR_DOCK="USB-C data cable" \
+  PHASE2_VIDEO_PREFERENCES="Balanced, 60 FPS, AUTO bitrate" \
+  PHASE2_HOST_IDENTITY="Mac model and macOS version" \
+  PHASE2_HOST_BUILD="host build command, signing identity, and SHA" \
+  PHASE2_APK_SHA256="debug or release APK SHA-256"
+```
+
+Use `PHASE2_DEVICE_CLASS=android_substitute` for Nubia P0110/pacific/Android 16
+or another phone substitute. That records useful readiness data, but it cannot
+close the 8-9 inch tablet gate and must not be relabeled as Xiaomi/fuxi
+evidence.
+
 ```sh
 make phase2-tablet-gate EVIDENCE_DIR=.build/evidence
 ```

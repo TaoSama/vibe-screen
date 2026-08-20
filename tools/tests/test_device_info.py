@@ -22,7 +22,17 @@ class FakeClient:
         return "Android Debug Bridge version 1.0.41"
 
     def identity(self):
-        return {"adb_serial": self.serial, "model": "test-device"}
+        return {
+            "adb_serial": self.serial,
+            "device_serial": "test-serial",
+            "manufacturer": "test-maker",
+            "model": "test-device",
+            "device": "test-codename",
+            "android_release": "16",
+            "sdk": 36,
+            "build_fingerprint": "test/fingerprint",
+            "abi": "arm64-v8a",
+        }
 
     def shell(self, *arguments):
         self.arguments = arguments

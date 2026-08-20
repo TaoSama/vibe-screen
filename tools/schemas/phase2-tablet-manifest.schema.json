@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase2-tablet-manifest.schema.json",
+  "title": "Vibe Screen Phase 2 tablet sustained-use manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "run_id",
+    "created_at",
+    "command",
+    "repository",
+    "device",
+    "physical_setup",
+    "host",
+    "android_artifact",
+    "session",
+    "thresholds",
+    "recovery_scenarios",
+    "required_gates",
+    "required_artifacts",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase2_tablet_sustained_use_manifest"},
+    "run_id": {"type": "string", "format": "uuid"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "command": {"type": "array", "items": {"type": "string"}},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "dirty", "status_porcelain"],
+      "properties": {
+        "revision": {"type": "string", "minLength": 1},
+        "dirty": {"type": "boolean"},
+        "status_porcelain": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "device_class"],
+      "properties": {
+        "identity": {
+          "type": "object",
+          "required": ["adb_serial", "device_serial", "manufacturer", "model", "codename", "android_release", "sdk", "build_fingerprint", "abi"],
+          "properties": {
+            "adb_serial": {"type": "string", "minLength": 1},
+            "device_serial": {"type": "string", "minLength": 1},
+            "manufacturer": {"type": "string", "minLength": 1},
+            "model": {"type": "string", "minLength": 1},
+            "codename": {"type": "string", "minLength": 1},
+            "android_release": {"type": "string", "minLength": 1},
+            "sdk": {"type": ["integer", "string"]},
+            "build_fingerprint": {"type": "string", "minLength": 1},
+            "abi": {"type": "string", "minLength": 1}
+          }
+        },
+        "device_class": {"enum": ["physical_8_9_inch_tablet", "android_substitute"]},
+        "tablet_size_inches": {"type": ["string", "null"]}
+      }
+    },
+    "physical_setup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stand_setup", "charger", "cable_or_dock", "ambient_temperature_celsius"],
+      "properties": {
+        "stand_setup": {"type": "string", "minLength": 1},
+        "charger": {"type": "string", "minLength": 1},
+        "cable_or_dock": {"type": "string", "minLength": 1},
+        "ambient_temperature_celsius": {"type": ["number", "null"]}
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "build"],
+      "properties": {
+        "identity": {"type": "string", "minLength": 1},
+        "build": {"type": "string", "minLength": 1}
+      }
+    },
+    "android_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["apk_sha256"],
+      "properties": {
+        "apk_sha256": {"type": "string", "minLength": 1}
+      }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transport", "video_preferences", "duration_seconds", "sample_interval_seconds"],
+      "properties": {
+        "transport": {"enum": ["usb", "lan"]},
+        "video_preferences": {"type": "string", "minLength": 1},
+        "duration_seconds": {"type": "integer", "minimum": 28800},
+        "sample_interval_seconds": {"type": "integer", "minimum": 1, "maximum": 60}
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "thermal_limit_status",
+        "battery_temperature_limit_celsius",
+        "maximum_net_battery_drain_percent"
+      ],
+      "properties": {
+        "thermal_limit_status": {"type": "integer", "minimum": 0},
+        "battery_temperature_limit_celsius": {"type": ["number", "null"]},
+        "maximum_net_battery_drain_percent": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "recovery_scenarios": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "required_gates": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "required_artifacts": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "limitations": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "notes": {"type": ["string", "null"]}
+  }
+}
