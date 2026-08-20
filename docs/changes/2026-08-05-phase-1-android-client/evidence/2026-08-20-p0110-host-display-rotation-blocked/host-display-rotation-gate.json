@@ -2,6 +2,7 @@
   "artifact_file_check": true,
   "covered_display_kinds": [],
   "errors": [
+    "evidence.runs: must contain at least 1 item(s)",
     "runs: must be a non-empty array",
     "runs: missing rotated physical host-display evidence",
     "runs: missing rotated virtual host-display evidence"

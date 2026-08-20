@@ -56,13 +56,13 @@ def complete_run(display_kind: str, rotation: int = 90) -> dict:
             "restored_original_host_rotation": True,
         },
         "artifacts": {
-            "device_identity": "device-and-artifact-identity.txt",
-            "host_display_snapshot_before": "host-display-before.txt",
-            "host_display_snapshot_rotated": "host-display-rotated.txt",
-            "android_screenshot": "android-rotated-host-display.png",
-            "touch_matrix": "touch-matrix.txt",
-            "host_log": "host.log",
-            "android_logcat": "logcat.txt",
+            "device_identity": f"{display_kind}-device-and-artifact-identity.txt",
+            "host_display_snapshot_before": f"{display_kind}-host-display-before.txt",
+            "host_display_snapshot_rotated": f"{display_kind}-host-display-rotated.txt",
+            "android_screenshot": f"{display_kind}-android-rotated-host-display.png",
+            "touch_matrix": f"{display_kind}-touch-matrix.txt",
+            "host_log": f"{display_kind}-host.log",
+            "android_logcat": f"{display_kind}-logcat.txt",
         },
     }
 
@@ -163,6 +163,47 @@ class HostDisplayRotationGateTest(unittest.TestCase):
         )
         self.assertIn(
             "runs[0].host_rotation_combined_with_client_transform: must be false",
+            result["errors"],
+        )
+
+    def test_rejects_unknown_nested_input_schema_property(self) -> None:
+        document = complete_document()
+        document["runs"][0]["unexpected"] = True
+
+        result = evaluate(document)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertIn(
+            "evidence.runs[0].unexpected: is not allowed by schema",
+            result["errors"],
+        )
+
+    def test_requires_distinct_display_evidence(self) -> None:
+        document = complete_document()
+        document["runs"][1]["display_id"] = document["runs"][0]["display_id"]
+        document["runs"][1]["artifacts"]["host_display_snapshot_before"] = document[
+            "runs"
+        ][0]["artifacts"]["host_display_snapshot_before"]
+        document["runs"][1]["artifacts"]["host_display_snapshot_rotated"] = document[
+            "runs"
+        ][0]["artifacts"]["host_display_snapshot_rotated"]
+
+        result = evaluate(document)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertIn(
+            "runs[1].display_id: must differ from runs[0].display_id "
+            "for distinct physical and virtual evidence",
+            result["errors"],
+        )
+        self.assertIn(
+            "runs[1].artifacts.host_display_snapshot_before: must differ from "
+            "runs[0].artifacts.host_display_snapshot_before",
+            result["errors"],
+        )
+        self.assertIn(
+            "runs[1].artifacts.host_display_snapshot_rotated: must differ from "
+            "runs[0].artifacts.host_display_snapshot_rotated",
             result["errors"],
         )
 

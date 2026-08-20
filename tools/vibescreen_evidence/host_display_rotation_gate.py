@@ -47,6 +47,11 @@ REQUIRED_PROBES = (
     "restored_original_host_rotation",
 )
 TEXT_ARTIFACT_EXTENSIONS = frozenset((".json", ".log", ".md", ".txt", ".xml"))
+EVIDENCE_SCHEMA_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "schemas"
+    / "host-display-rotation-evidence.schema.json"
+)
 REQUIRED_ARTIFACTS = (
     "device_identity",
     "host_display_snapshot_before",
@@ -94,6 +99,109 @@ def _is_valid_rotation(value: Any) -> bool:
         and not isinstance(value, bool)
         and value in VALID_ROTATIONS
     )
+
+
+def _json_type_matches(value: Any, expected_type: str) -> bool:
+    if expected_type == "object":
+        return isinstance(value, dict)
+    if expected_type == "array":
+        return isinstance(value, list)
+    if expected_type == "string":
+        return isinstance(value, str)
+    if expected_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "boolean":
+        return isinstance(value, bool)
+    return True
+
+
+def _describe_json_type(expected_type: str) -> str:
+    if expected_type == "object":
+        return "an object"
+    if expected_type == "array":
+        return "an array"
+    if expected_type == "string":
+        return "a string"
+    if expected_type == "integer":
+        return "an integer"
+    if expected_type == "boolean":
+        return "a boolean"
+    return expected_type
+
+
+def _validate_schema_node(
+    value: Any, schema: dict[str, Any], root: dict[str, Any], path: str
+) -> list[str]:
+    if "$ref" in schema:
+        reference = schema["$ref"]
+        if not isinstance(reference, str) or not reference.startswith("#/$defs/"):
+            return [f"{path}: unsupported schema reference"]
+        definition = root.get("$defs", {}).get(reference.removeprefix("#/$defs/"))
+        if not isinstance(definition, dict):
+            return [f"{path}: unresolved schema reference {reference}"]
+        return _validate_schema_node(value, definition, root, path)
+
+    errors: list[str] = []
+    if "const" in schema and value != schema["const"]:
+        errors.append(f"{path}: must be {schema['const']}")
+    if "enum" in schema and value not in schema["enum"]:
+        allowed = ", ".join(str(item) for item in schema["enum"])
+        errors.append(f"{path}: must be one of {allowed}")
+
+    expected_type = schema.get("type")
+    if isinstance(expected_type, str) and not _json_type_matches(value, expected_type):
+        errors.append(f"{path}: must be {_describe_json_type(expected_type)}")
+        return errors
+
+    if expected_type == "object":
+        assert isinstance(value, dict)
+        properties = schema.get("properties")
+        if not isinstance(properties, dict):
+            properties = {}
+        required = schema.get("required")
+        if isinstance(required, list):
+            for field in required:
+                if isinstance(field, str) and field not in value:
+                    errors.append(f"{path}.{field}: is required")
+        if schema.get("additionalProperties") is False:
+            for field in sorted(set(value) - set(properties)):
+                errors.append(f"{path}.{field}: is not allowed by schema")
+        for field, child_schema in properties.items():
+            if field in value and isinstance(child_schema, dict):
+                errors.extend(
+                    _validate_schema_node(value[field], child_schema, root, f"{path}.{field}")
+                )
+    elif expected_type == "array":
+        assert isinstance(value, list)
+        min_items = schema.get("minItems")
+        if isinstance(min_items, int) and len(value) < min_items:
+            errors.append(f"{path}: must contain at least {min_items} item(s)")
+        item_schema = schema.get("items")
+        if isinstance(item_schema, dict):
+            for index, item in enumerate(value):
+                errors.extend(_validate_schema_node(item, item_schema, root, f"{path}[{index}]"))
+    elif expected_type == "string":
+        assert isinstance(value, str)
+        min_length = schema.get("minLength")
+        if isinstance(min_length, int) and len(value) < min_length:
+            errors.append(f"{path}: must be a non-empty string")
+    elif expected_type == "integer":
+        assert isinstance(value, int) and not isinstance(value, bool)
+        minimum = schema.get("minimum")
+        if isinstance(minimum, int) and value < minimum:
+            errors.append(f"{path}: must be at least {minimum}")
+
+    return errors
+
+
+def _validate_evidence_schema(document: dict[str, Any]) -> list[str]:
+    try:
+        schema = json.loads(EVIDENCE_SCHEMA_PATH.read_text(encoding="utf-8"))
+    except OSError as error:
+        raise HostDisplayRotationGateError(
+            f"could not read host display rotation evidence schema: {error}"
+        ) from error
+    return _validate_schema_node(document, schema, schema, "evidence")
 
 
 def _append_missing_string(
@@ -230,6 +338,59 @@ def _validate_artifact_contents(
             )
 
 
+def _validate_distinct_display_evidence(
+    runs: list[Any], errors: list[str]
+) -> None:
+    evidence_by_kind: dict[str, list[tuple[int, str, str, str]]] = {
+        "physical": [],
+        "virtual": [],
+    }
+    for index, run in enumerate(runs):
+        if not isinstance(run, dict):
+            continue
+        display_kind = run.get("display_kind")
+        if display_kind not in DISPLAY_KINDS:
+            continue
+        artifacts = run.get("artifacts")
+        if not isinstance(artifacts, dict):
+            continue
+        display_id = run.get("display_id")
+        before_snapshot = artifacts.get("host_display_snapshot_before")
+        rotated_snapshot = artifacts.get("host_display_snapshot_rotated")
+        if not (
+            _is_non_empty_string(display_id)
+            and _is_non_empty_string(before_snapshot)
+            and _is_non_empty_string(rotated_snapshot)
+        ):
+            continue
+        evidence_by_kind[display_kind].append((
+            index,
+            display_id,
+            before_snapshot,
+            rotated_snapshot,
+        ))
+
+    for physical in evidence_by_kind["physical"]:
+        physical_index, physical_display_id, physical_before, physical_rotated = physical
+        for virtual in evidence_by_kind["virtual"]:
+            virtual_index, virtual_display_id, virtual_before, virtual_rotated = virtual
+            if physical_display_id == virtual_display_id:
+                errors.append(
+                    f"runs[{virtual_index}].display_id: must differ from "
+                    f"runs[{physical_index}].display_id for distinct physical and virtual evidence"
+                )
+            if physical_before == virtual_before:
+                errors.append(
+                    f"runs[{virtual_index}].artifacts.host_display_snapshot_before: "
+                    f"must differ from runs[{physical_index}].artifacts.host_display_snapshot_before"
+                )
+            if physical_rotated == virtual_rotated:
+                errors.append(
+                    f"runs[{virtual_index}].artifacts.host_display_snapshot_rotated: "
+                    f"must differ from runs[{physical_index}].artifacts.host_display_snapshot_rotated"
+                )
+
+
 def _validate_probes(run: dict[str, Any], run_index: int, errors: list[str]) -> None:
     probes = run.get("probes")
     if not isinstance(probes, dict):
@@ -309,7 +470,7 @@ def _validate_run(
 def evaluate(
     document: dict[str, Any], evidence_dir: Path | None = None
 ) -> dict[str, Any]:
-    errors: list[str] = []
+    errors: list[str] = _validate_evidence_schema(document)
     if document.get("schema_version") != SCHEMA_VERSION:
         errors.append(f"schema_version: must be {SCHEMA_VERSION}")
     if document.get("kind") != KIND:
@@ -324,6 +485,7 @@ def evaluate(
             display_kind = _validate_run(run, index, errors, evidence_dir)
             if display_kind is not None:
                 seen_display_kinds.add(display_kind)
+        _validate_distinct_display_evidence(runs, errors)
 
     missing_kinds = sorted(DISPLAY_KINDS - seen_display_kinds)
     for display_kind in missing_kinds:

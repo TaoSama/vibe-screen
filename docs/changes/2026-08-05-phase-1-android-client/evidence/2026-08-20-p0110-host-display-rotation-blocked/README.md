@@ -54,10 +54,10 @@ older installed app as the current origin/main Host.
 
 The retained host-display-rotation.json intentionally contains no completed
 physical or virtual run. Running the offline gate produced
-host-display-rotation-gate.json with status=failed and errors for missing
+host-display-rotation-gate.json with status=failed and errors including missing
 rotated physical and virtual host-display evidence.
-At 2026-08-20T18:41:28Z the gate output was regenerated with the stricter
-readiness fields; the verdict remains failed/open.
+At 2026-08-20T23:43:45Z the gate output was regenerated with the stricter
+readiness fields and input-schema checks; the verdict remains failed/open.
 
 This record does not rotate any macOS display, does not launch or install the
 Android app, does not start the Host, and does not send input to the device
