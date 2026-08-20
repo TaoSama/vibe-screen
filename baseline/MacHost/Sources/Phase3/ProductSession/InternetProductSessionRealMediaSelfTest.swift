@@ -205,8 +205,10 @@ enum InternetProductSessionRealMediaSelfTest {
             range.minimum = 1
             range.maximum = 1
             hello.supportedProtocols = range
-            hello.capabilities = Array(InternetProductProtocolCodec.requiredCapabilities)
-            hello.requiredCapabilities = Array(InternetProductProtocolCodec.requiredCapabilities)
+            hello.capabilities = Array(InternetProductProtocolCodec.requiredCapabilities).sorted {
+                $0.rawValue < $1.rawValue
+            }
+            hello.requiredCapabilities = hello.capabilities
             hello.codecs = [.hevc]
             var limits = VSResourceLimits()
             limits.maximumEncryptedMediaRecordBytes = UInt32(
