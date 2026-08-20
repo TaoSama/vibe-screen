@@ -274,8 +274,16 @@ def _validate_evidence_files(
         if candidate.is_absolute() or ".." in candidate.parts:
             errors.append(f"{path}.evidence_files[{index}]: expected repository-relative file path")
             continue
-        if evidence_root is not None and not (evidence_root / candidate).is_file():
-            errors.append(f"{path}.evidence_files[{index}]: file does not exist under evidence root")
+        if evidence_root is not None:
+            root = evidence_root.resolve()
+            resolved_candidate = (root / candidate).resolve()
+            try:
+                resolved_candidate.relative_to(root)
+            except ValueError:
+                errors.append(f"{path}.evidence_files[{index}]: expected file under evidence root")
+                continue
+            if not resolved_candidate.is_file():
+                errors.append(f"{path}.evidence_files[{index}]: file does not exist under evidence root")
 
 
 def _validate_device_identity(document: Mapping[str, Any], errors: list[str]) -> None:
