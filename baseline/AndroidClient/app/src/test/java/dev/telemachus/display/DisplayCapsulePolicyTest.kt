@@ -64,6 +64,26 @@ class DisplayCapsulePolicyTest {
         val displays = listOf(option("a", "  Studio Display Ultra Wide 5K  "))
         assertEquals("Studio Display Ultra Wide 5K", DisplayCapsulePolicy.capsuleLabel(displays, "a"))
     }
+
+    @Test
+    fun menuKindDistinguishesPrimaryVirtualBuiltInAndExternalDisplays() {
+        assertEquals(
+            DisplayCapsulePolicy.DisplayKind.PRIMARY,
+            DisplayCapsulePolicy.displayKind(option("main", "Studio Display", primary = true)),
+        )
+        assertEquals(
+            DisplayCapsulePolicy.DisplayKind.VIRTUAL,
+            DisplayCapsulePolicy.displayKind(option("virtual", "Vibe Screen", primary = true, virtual = true)),
+        )
+        assertEquals(
+            DisplayCapsulePolicy.DisplayKind.BUILT_IN,
+            DisplayCapsulePolicy.displayKind(option("built", "Built-in Retina Display")),
+        )
+        assertEquals(
+            DisplayCapsulePolicy.DisplayKind.EXTERNAL,
+            DisplayCapsulePolicy.displayKind(option("external", "Studio Display")),
+        )
+    }
 }
 
 class ControlBarLayoutPolicyTest {
@@ -373,6 +393,85 @@ class ControlBarAccessibilityPolicyTest {
             ControlBarAccessibilityPolicy.shouldExposeRevealAction(
                 connected = false,
                 controlBarVisible = false,
+            ),
+        )
+    }
+}
+
+class ControlRevealGesturePolicyTest {
+    @Test
+    fun hiddenControlsConsumeOnlyTheFirstDirectTouchInsideTheRevealHotZone() {
+        assertTrue(
+            ControlRevealGesturePolicy.shouldStartRevealOnlyGesture(
+                connected = true,
+                controlBarVisible = false,
+                directTouch = true,
+                inRevealHotZone = true,
+                phase = StreamTouchPhase.BEGIN,
+            ),
+        )
+        assertTrue(
+            ControlRevealGesturePolicy.shouldConsumeActiveRevealOnlyGesture(
+                revealOnlyGestureActive = true,
+                directTouch = true,
+                phase = StreamTouchPhase.BEGIN,
+            ),
+        )
+        assertTrue(
+            ControlRevealGesturePolicy.shouldConsumeActiveRevealOnlyGesture(
+                revealOnlyGestureActive = true,
+                directTouch = true,
+                phase = StreamTouchPhase.UPDATE,
+            ),
+        )
+        assertTrue(ControlRevealGesturePolicy.endsGesture(StreamTouchPhase.END))
+    }
+
+    @Test
+    fun streamBodyTouchesAndVisibleControlsContinueThroughToTheMac() {
+        assertFalse(
+            ControlRevealGesturePolicy.shouldStartRevealOnlyGesture(
+                connected = true,
+                controlBarVisible = false,
+                directTouch = true,
+                inRevealHotZone = false,
+                phase = StreamTouchPhase.BEGIN,
+            ),
+        )
+        assertFalse(
+            ControlRevealGesturePolicy.shouldStartRevealOnlyGesture(
+                connected = true,
+                controlBarVisible = true,
+                directTouch = true,
+                inRevealHotZone = true,
+                phase = StreamTouchPhase.BEGIN,
+            ),
+        )
+    }
+
+    @Test
+    fun stylusAndPointerGesturesAreNeverConvertedToRevealOnlyGestures() {
+        assertFalse(
+            ControlRevealGesturePolicy.shouldStartRevealOnlyGesture(
+                connected = true,
+                controlBarVisible = false,
+                directTouch = false,
+                inRevealHotZone = true,
+                phase = StreamTouchPhase.BEGIN,
+            ),
+        )
+        assertFalse(
+            ControlRevealGesturePolicy.shouldConsumeActiveRevealOnlyGesture(
+                revealOnlyGestureActive = false,
+                directTouch = false,
+                phase = StreamTouchPhase.UPDATE,
+            ),
+        )
+        assertFalse(
+            ControlRevealGesturePolicy.shouldConsumeActiveRevealOnlyGesture(
+                revealOnlyGestureActive = true,
+                directTouch = false,
+                phase = StreamTouchPhase.UPDATE,
             ),
         )
     }

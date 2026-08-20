@@ -364,3 +364,17 @@ focused isolation coverage, while ordinary pointer events preserve legitimate
 system modifiers. The fixed binary still needs macOS Screen Recording and Accessibility
 approval before its device rerun can close; see
 [`../2026-08-13-xiaomi13-touch-gestures/TEST.md`](../2026-08-13-xiaomi13-touch-gestures/TEST.md).
+
+## P0110 Android UI polish smoke
+
+On 2026-08-20, PR #141 installed and launched on the connected Nubia P0110
+(`pacific`, Android 16 / SDK 36). Screenshots were retained before and after
+an ADB tap near the top control-reveal region. The screenshots are non-blank
+`1264x2800` PNGs and differ by 1913 pixels in an absolute-error image
+comparison, proving only a small rendered-state change during a device smoke
+check.
+
+This does not close active-stream, display-switching, video-preference,
+reconnect, or hidden-control-touch-forwarding gates, and it is not Xiaomi 13 /
+fuxi evidence. See
+[`evidence/2026-08-19-p0110-ui-polish-smoke/`](evidence/2026-08-19-p0110-ui-polish-smoke/).

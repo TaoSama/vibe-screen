@@ -32,6 +32,38 @@ internal object ControlBarAccessibilityPolicy {
     ): Boolean = connected && !controlBarVisible
 }
 
+internal enum class StreamTouchPhase {
+    BEGIN,
+    UPDATE,
+    END,
+    CANCEL,
+    OTHER,
+}
+
+/**
+ * Keeps the hidden control bar tap-to-reveal gesture from leaking through as an
+ * accidental Mac click. Stylus and pointer input bypass this policy so a
+ * drawing stroke or external pointer action is never consumed just because the
+ * transient chrome was hidden.
+ */
+internal object ControlRevealGesturePolicy {
+    fun shouldStartRevealOnlyGesture(
+        connected: Boolean,
+        controlBarVisible: Boolean,
+        directTouch: Boolean,
+        inRevealHotZone: Boolean,
+        phase: StreamTouchPhase,
+    ): Boolean = connected && !controlBarVisible && directTouch && inRevealHotZone && phase == StreamTouchPhase.BEGIN
+
+    fun shouldConsumeActiveRevealOnlyGesture(
+        revealOnlyGestureActive: Boolean,
+        directTouch: Boolean,
+        phase: StreamTouchPhase,
+    ): Boolean = revealOnlyGestureActive && directTouch && phase != StreamTouchPhase.OTHER
+
+    fun endsGesture(phase: StreamTouchPhase): Boolean = phase == StreamTouchPhase.END || phase == StreamTouchPhase.CANCEL
+}
+
 internal object ConnectionSecurityPresentationPolicy {
     data class Presentation(
         val labelResource: Int,
@@ -373,6 +405,13 @@ data class StreamDisplayOption(
  * selectability be unit-tested without inflating any Android view.
  */
 internal object DisplayCapsulePolicy {
+    enum class DisplayKind {
+        PRIMARY,
+        VIRTUAL,
+        BUILT_IN,
+        EXTERNAL,
+    }
+
     /** Display selection is offered only when negotiated and there is a choice. */
     fun isSelectable(
         displaySelection: Boolean,
@@ -402,6 +441,15 @@ internal object DisplayCapsulePolicy {
                 ?: return ""
         return active.name.trim()
     }
+
+    fun displayKind(option: StreamDisplayOption): DisplayKind =
+        when {
+            option.isVirtual -> DisplayKind.VIRTUAL
+            option.isPrimary -> DisplayKind.PRIMARY
+            option.name.contains("built", ignoreCase = true) -> DisplayKind.BUILT_IN
+            option.name.contains("internal", ignoreCase = true) -> DisplayKind.BUILT_IN
+            else -> DisplayKind.EXTERNAL
+        }
 }
 
 internal object ControlBarLayoutPolicy {

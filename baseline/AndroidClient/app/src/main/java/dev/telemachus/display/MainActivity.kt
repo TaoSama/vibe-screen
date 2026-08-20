@@ -262,6 +262,7 @@ class MainActivity : AppCompatActivity() {
     private var selectedDisplayId = ""
     private var availableHostActions = emptyList<HostActionOption>()
     private val clipboardApprovalState = ClipboardApprovalState<StreamClient>()
+    private var revealOnlyTouchGestureActive = false
     private val autoConnectRunnable =
         Runnable {
             if (automaticUsbConnect && isInForeground && !isConnected && !connectionAttemptInProgress) {
@@ -1906,10 +1907,11 @@ class MainActivity : AppCompatActivity() {
         menu.setGroupCheckable(0, true, true)
         displays.forEachIndexed { index, option ->
             val kindTag =
-                if (option.isVirtual) {
-                    getString(R.string.display_option_virtual)
-                } else {
-                    getString(R.string.display_option_builtin)
+                when (DisplayCapsulePolicy.displayKind(option)) {
+                    DisplayCapsulePolicy.DisplayKind.PRIMARY -> getString(R.string.display_option_primary)
+                    DisplayCapsulePolicy.DisplayKind.VIRTUAL -> getString(R.string.display_option_virtual)
+                    DisplayCapsulePolicy.DisplayKind.BUILT_IN -> getString(R.string.display_option_builtin)
+                    DisplayCapsulePolicy.DisplayKind.EXTERNAL -> getString(R.string.display_option_external)
                 }
             val item =
                 menu.add(
@@ -4720,6 +4722,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyDisconnectedSessionUi() {
         isConnected = false
+        revealOnlyTouchGestureActive = false
         streamStylusGestureRouter.reset()
         streamStylusContactRouter.reset()
         streamStylusInputIds.clear()
@@ -4798,6 +4801,7 @@ class MainActivity : AppCompatActivity() {
         view: View,
         event: MotionEvent,
     ) {
+        if (consumeHiddenControlRevealGesture(event)) return
         if (prefs.connectionMode == ConnectionMode.INTERNET) {
             handleInternetTouch(view, event)
             return
@@ -5129,6 +5133,65 @@ class MainActivity : AppCompatActivity() {
         if (event.actionMasked == MotionEvent.ACTION_CANCEL) internetStylusInputIds.clear()
         if (event.actionMasked == MotionEvent.ACTION_DOWN) revealControlBar()
         return true
+    }
+
+    private fun consumeHiddenControlRevealGesture(event: MotionEvent): Boolean {
+        val phase = event.streamTouchPhase()
+        val directTouch = event.isDirectTouchGesture()
+        if (
+            ControlRevealGesturePolicy.shouldStartRevealOnlyGesture(
+                connected = isConnected,
+                controlBarVisible = binding.controlBar.visibility == View.VISIBLE,
+                directTouch = directTouch,
+                inRevealHotZone = event.isInControlRevealHotZone(),
+                phase = phase,
+            )
+        ) {
+            revealOnlyTouchGestureActive = true
+            revealControlBar()
+        }
+        val consume =
+            ControlRevealGesturePolicy.shouldConsumeActiveRevealOnlyGesture(
+                revealOnlyGestureActive = revealOnlyTouchGestureActive,
+                directTouch = directTouch,
+                phase = phase,
+            )
+        if (!directTouch || ControlRevealGesturePolicy.endsGesture(phase)) {
+            revealOnlyTouchGestureActive = false
+        }
+        return consume
+    }
+
+    private fun MotionEvent.streamTouchPhase(): StreamTouchPhase =
+        when (actionMasked) {
+            MotionEvent.ACTION_DOWN -> StreamTouchPhase.BEGIN
+            MotionEvent.ACTION_MOVE,
+            MotionEvent.ACTION_POINTER_DOWN,
+            MotionEvent.ACTION_POINTER_UP,
+            -> StreamTouchPhase.UPDATE
+            MotionEvent.ACTION_UP -> StreamTouchPhase.END
+            MotionEvent.ACTION_CANCEL -> StreamTouchPhase.CANCEL
+            else -> StreamTouchPhase.OTHER
+        }
+
+    private fun MotionEvent.isDirectTouchGesture(): Boolean =
+        (source and InputDevice.SOURCE_TOUCHSCREEN) == InputDevice.SOURCE_TOUCHSCREEN &&
+            (0 until pointerCount).all { index ->
+                when (getToolType(index)) {
+                    MotionEvent.TOOL_TYPE_FINGER,
+                    MotionEvent.TOOL_TYPE_UNKNOWN,
+                    -> true
+                    else -> false
+                }
+            }
+
+    private fun MotionEvent.isInControlRevealHotZone(): Boolean {
+        val controlBarHeight =
+            binding.controlBar.height.takeIf { it > 0 }
+                ?: resources.getDimensionPixelSize(R.dimen.display_capsule_min_height)
+        val topInset = safeAreaInsets.top + resources.getDimensionPixelSize(R.dimen.control_bar_margin_top)
+        val hotZoneBottom = topInset + controlBarHeight + resources.getDimensionPixelSize(R.dimen.control_bar_margin_top)
+        return y <= hotZoneBottom
     }
 
     private fun InputPhase.toProductInputPhase(): ProductInputPhase =
