@@ -441,13 +441,18 @@ the status readable in small-tablet and resized-window configurations. This is a
 offline product slice, not thermal or power acceptance: 8–9 inch hardware,
 stand-mounted charging, background/foreground recovery, and the eight-hour run
 remain device gates. The evidence tooling now includes a Phase 2 tablet
-manifest, a package-aware tablet gate, and an independent fail-closed
-device-memory verifier for Android PSS, Host RSS, charging/full-state, and
-thermal-status coverage during the 8h soak. The verifier rejects phone
-substitutes such as Nubia P0110/pacific and reports insufficient evidence when
-the physical tablet, Host PID/RSS, Android PSS, charging, thermal, or
-eight-hour data is missing; no current evidence closes that gate. Login startup
-and headless Mac mini acceptance also remain open. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
+manifest to declare device identity, stand/charging setup, thresholds, memory
+sampling, and planned recovery scenarios before a future run; a package-aware
+tablet gate; an independent fail-closed device-memory verifier for Android PSS,
+Host RSS, charging/full-state, and thermal-status coverage during the 8h soak;
+and a bundle preflight that checks physical 8-9 inch tablet identity,
+portrait/landscape UI screenshots, physical stylus, hardware keyboard, recovery,
+thermal/power, and eight-hour soak artifacts. These tools reject phone
+substitutes such as Nubia P0110/pacific/Android 16 for formal tablet acceptance
+and report missing evidence as blocked or insufficient. Stand-mounted charging
+stability, controlled thermal-load behavior, power stability, login startup,
+headless Mac mini acceptance, and the physical 8-9 inch tablet run all remain
+open. See the [Phase 2 productization slice](docs/changes/2026-08-14-phase-2-tablet-productization/PRD.md)
 and the [tablet acceptance runbook](docs/changes/2026-08-14-phase-2-tablet-productization/RUNBOOK.md).
 
 ### Phase 3 — Secure Internet access

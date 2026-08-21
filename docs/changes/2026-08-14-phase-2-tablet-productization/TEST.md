@@ -243,3 +243,64 @@ phone substitute, a 30-second placeholder window, no Host PID, no Host RSS
 series, no charging/full-state series, and no thermal-status series. No new
 physical-tablet run or eight-hour soak was performed, so the Phase 2
 device-memory gate remains open.
+
+No ADB command or new Android device run was performed for this update. The
+readiness smoke uses the retained Nubia P0110/pacific Android 16 identity as
+`android_substitute`, and the gate correctly blocks it from becoming formal
+physical 8-9 inch tablet evidence. Stand-mounted charging stability, controlled
+thermal-load behavior, power stability, background/transport recovery, login
+startup, headless Mac recovery, and the eight-hour physical-tablet sample series
+remain open.
+
+## 2026-08-21 Phase 2 acceptance preflight readiness
+
+This follow-up added a fail-closed `phase2-tablet-preflight` verifier for the
+whole evidence bundle. It is intentionally separate from `phase2-tablet-gate`:
+the existing gate evaluates the eight-hour telemetry window, while the preflight
+checks that the bundle also contains physical 8-9 inch tablet identity, real
+portrait/landscape tablet UI screenshots, physical stylus evidence, hardware
+keyboard evidence, recovery evidence, thermal/power raw logs, and the derived
+eight-hour gate.
+
+The retained Nubia P0110/pacific readiness directory was rechecked as blocked
+evidence only:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_manifest \
+  --output docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-20-nubia-p0110-readiness/phase2-tablet-manifest.json \
+  --device-info docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-20-nubia-p0110-readiness/device-info.json \
+  --device-class android_substitute \
+  --stand-setup "bench phone stand; not 8-9 inch tablet hardware" \
+  --charger "AC powered device state from retained P0110 readiness evidence" \
+  --cable-or-dock "USB-C data cable used for P0110 readiness collection" \
+  --transport usb \
+  --video-preferences "Balanced 60 FPS readiness placeholder; no eight-hour stream" \
+  --allow-missing-host-pid \
+  --battery-temperature-limit-celsius 45 \
+  --maximum-net-battery-drain-percent 0 \
+  --recovery-scenarios "blocked_no_physical_tablet" \
+  --host-identity "local Mac host used for retained readiness evidence" \
+  --host-build "no formal signed Phase 2 tablet host build; readiness evidence only" \
+  --apk-sha256 "cebbaacfb7bc26a4fbdfee61a272b2f35247c8692b306afec0b6b99f3ffacfba" \
+  -- make soak-8h \
+    EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+    EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-20-nubia-p0110-readiness
+make phase2-tablet-preflight \
+  EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-20-nubia-p0110-readiness
+```
+
+The `make phase2-tablet-preflight` invocation exited nonzero as expected and
+wrote `evidence/2026-08-20-nubia-p0110-readiness/phase2-tablet-preflight.json`
+with `verdict=blocked` because the manifest records
+`device_class=android_substitute`. The same report preserves the missing gates:
+no physical stylus pass, no hardware-keyboard pass, no eight-hour soak gate, no
+real tablet orientation/touch-mapping pass, no stand-mounted thermal/power pass,
+and no recovery evidence.
+
+Validation performed for this tooling/documentation update:
+
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_phase2_tablet_preflight tools.tests.test_phase2_tablet_gate tools.tests.test_phase2_tablet_manifest tools.tests.test_schemas -v`
+
+No physical 8-9 inch tablet was attached for this follow-up. The Nubia P0110
+remains a general Android substitute only and must not be used to claim Phase 2
+tablet acceptance.

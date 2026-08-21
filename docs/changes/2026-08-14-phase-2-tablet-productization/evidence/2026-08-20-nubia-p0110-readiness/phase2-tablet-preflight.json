@@ -1,0 +1,131 @@
+{
+  "device_class": "android_substitute",
+  "evidence_dir": "docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-20-nubia-p0110-readiness",
+  "gates": [
+    {
+      "evidence": [
+        "phase2-tablet-manifest.json",
+        "device-info.json"
+      ],
+      "name": "physical_8_9_inch_tablet",
+      "reasons": [
+        "device_class is 'android_substitute'; Phase 2 tablet acceptance requires 'physical_8_9_inch_tablet'"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "README.md",
+        "phase2-tablet-manifest.json",
+        "device-info.json",
+        "device.txt",
+        "build.txt",
+        "adb-battery-before.txt",
+        "adb-battery-after.txt",
+        "adb-power-before.txt",
+        "adb-power-after.txt",
+        "thermal-before.txt",
+        "thermal-after.txt",
+        "thermal-before.err",
+        "thermal-after.err",
+        "summary.json"
+      ],
+      "name": "raw_evidence_bundle",
+      "reasons": [
+        "missing or empty required artifact: host.txt",
+        "missing or empty required artifact: apk-sha256.txt",
+        "missing or empty required artifact: raw-logcat.txt",
+        "missing or empty required artifact: host.log",
+        "missing or empty required artifact: reconnects.log",
+        "missing or empty required artifact: frame-drops.log",
+        "missing or empty required artifact: decoder-telemetry.jsonl",
+        "missing or empty required artifact: soak-8h/samples.jsonl",
+        "missing or empty required artifact: soak-8h/host-telemetry.jsonl"
+      ],
+      "status": "missing"
+    },
+    {
+      "evidence": [
+        "screenshots/sustained-use-portrait.png",
+        "screenshots/sustained-use-landscape.png"
+      ],
+      "name": "portrait_landscape_ui",
+      "reasons": [
+        "missing orientation-evidence.json for rotation and touch-mapping confirmation"
+      ],
+      "status": "missing"
+    },
+    {
+      "evidence": [],
+      "name": "physical_stylus",
+      "reasons": [
+        "missing stylus evidence"
+      ],
+      "status": "missing"
+    },
+    {
+      "evidence": [],
+      "name": "hardware_keyboard",
+      "reasons": [
+        "missing hardware keyboard evidence"
+      ],
+      "status": "missing"
+    },
+    {
+      "evidence": [],
+      "name": "eight_hour_sustained_stream",
+      "reasons": [
+        "missing Phase 2 tablet soak gate"
+      ],
+      "status": "missing"
+    },
+    {
+      "evidence": [
+        "adb-battery-before.txt",
+        "adb-battery-after.txt",
+        "adb-power-before.txt",
+        "adb-power-after.txt",
+        "thermal-before.txt",
+        "thermal-after.txt",
+        "thermal-before.err",
+        "thermal-after.err"
+      ],
+      "name": "thermal_power_stand_charging",
+      "reasons": [
+        "Phase 2 tablet soak gate must pass before thermal/power sampling can pass"
+      ],
+      "status": "missing"
+    },
+    {
+      "evidence": [],
+      "name": "recovery",
+      "reasons": [
+        "missing recovery evidence"
+      ],
+      "status": "missing"
+    }
+  ],
+  "generated_at": "2026-08-21T23:39:47.898452+00:00",
+  "interpretation": "A pass means this evidence bundle contains the required physical 8-9 inch tablet, portrait/landscape UI, stylus, hardware keyboard, recovery, thermal/power, and eight-hour soak artifacts. A blocked verdict means the run cannot close Phase 2 because the available device or setup is not the required tablet hardware.",
+  "kind": "phase2_tablet_acceptance_preflight",
+  "reasons": [
+    "physical_8_9_inch_tablet: device_class is 'android_substitute'; Phase 2 tablet acceptance requires 'physical_8_9_inch_tablet'",
+    "raw_evidence_bundle: missing or empty required artifact: host.txt",
+    "raw_evidence_bundle: missing or empty required artifact: apk-sha256.txt",
+    "raw_evidence_bundle: missing or empty required artifact: raw-logcat.txt",
+    "raw_evidence_bundle: missing or empty required artifact: host.log",
+    "raw_evidence_bundle: missing or empty required artifact: reconnects.log",
+    "raw_evidence_bundle: missing or empty required artifact: frame-drops.log",
+    "raw_evidence_bundle: missing or empty required artifact: decoder-telemetry.jsonl",
+    "raw_evidence_bundle: missing or empty required artifact: soak-8h/samples.jsonl",
+    "raw_evidence_bundle: missing or empty required artifact: soak-8h/host-telemetry.jsonl",
+    "portrait_landscape_ui: missing orientation-evidence.json for rotation and touch-mapping confirmation",
+    "physical_stylus: missing stylus evidence",
+    "hardware_keyboard: missing hardware keyboard evidence",
+    "eight_hour_sustained_stream: missing Phase 2 tablet soak gate",
+    "thermal_power_stand_charging: Phase 2 tablet soak gate must pass before thermal/power sampling can pass",
+    "recovery: missing recovery evidence"
+  ],
+  "schema_version": "vibescreen.evidence/v1",
+  "verdict": "blocked"
+}
