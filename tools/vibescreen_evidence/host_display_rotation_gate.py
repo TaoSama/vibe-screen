@@ -299,6 +299,16 @@ def _validate_artifact_files(
             errors.append(
                 f"runs[{run_index}].artifacts.{name}: retained artifact not found at {resolved}"
             )
+            continue
+        try:
+            if resolved.stat().st_size == 0:
+                errors.append(
+                    f"runs[{run_index}].artifacts.{name}: retained artifact is empty"
+                )
+        except OSError as error:
+            errors.append(
+                f"runs[{run_index}].artifacts.{name}: could not inspect retained artifact: {error}"
+            )
 
 
 def _validate_artifact_contents(
@@ -331,7 +341,7 @@ def _validate_artifact_contents(
                 f"runs[{run_index}].artifacts.{name}: could not read retained artifact: {error}"
             )
             continue
-        if not text.strip():
+        if text and not text.strip():
             errors.append(
                 f"runs[{run_index}].artifacts.{name}: retained artifact is empty"
             )

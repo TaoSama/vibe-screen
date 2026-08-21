@@ -358,6 +358,33 @@ class HostDisplayRotationGateTest(unittest.TestCase):
                 result["errors"],
             )
 
+    def test_artifact_check_rejects_empty_required_artifacts(self) -> None:
+        cases = (
+            "device_identity",
+            "host_display_snapshot_before",
+            "host_display_snapshot_rotated",
+            "android_screenshot",
+        )
+        for artifact_name in cases:
+            with self.subTest(artifact_name=artifact_name):
+                with tempfile.TemporaryDirectory() as directory:
+                    evidence_dir = Path(directory)
+                    document = complete_document()
+                    for run in document["runs"]:
+                        for artifact in run["artifacts"].values():
+                            path = evidence_dir / artifact
+                            path.parent.mkdir(parents=True, exist_ok=True)
+                            path.write_text("retained evidence\n", encoding="utf-8")
+                    empty_path = evidence_dir / document["runs"][0]["artifacts"][artifact_name]
+                    empty_path.write_bytes(b"")
+
+                    result = evaluate(document, evidence_dir=evidence_dir)
+
+                    self.assertIn(
+                        f"runs[0].artifacts.{artifact_name}: retained artifact is empty",
+                        result["errors"],
+                    )
+
 
 class HostDisplayRotationGateCliTest(unittest.TestCase):
     def run_cli(self, *arguments: str) -> subprocess.CompletedProcess[str]:
