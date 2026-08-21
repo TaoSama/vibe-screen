@@ -338,6 +338,12 @@ def _validate_required_metadata(manifest: dict[str, Any]) -> list[str]:
                             f"synchronization.{field} must be less than or equal to "
                             "synchronization.total_error_budget_ms"
                         )
+                if len(sync_components) == 3 and sum(sync_components.values()) > budget_ms:
+                    errors.append(
+                        "synchronization.before_skew_ms + synchronization.after_skew_ms + "
+                        "synchronization.max_drift_ms must be less than or equal to "
+                        "synchronization.total_error_budget_ms"
+                    )
 
     return errors
 

@@ -2,7 +2,9 @@
 
 This record refreshes the README external latency gates on origin/main commit
 `cc26a84c829016fa61c721f73a128284fdf64f92` with the connected Android
-acceptance substitute available as `adb -s EP0110PZ0B9110300B`.
+acceptance substitute recorded as `nubia-p0110-pacific-device-1`. The preflight
+was collected on 2026-08-20 UTC and published under the 2026-08-21 evidence
+directory.
 
 ## Verdict
 
@@ -27,14 +29,16 @@ The connected Android device reported:
 - Model: `P0110`
 - Codename/product: `pacific`
 - OS: Android `16`, SDK `36`
-- ADB serial: `EP0110PZ0B9110300B`
+- Evidence device id: `nubia-p0110-pacific-device-1`
 
-The device check used the required explicit serial form:
+The device check used the required explicit serial form; committed records redact
+the raw ADB serial and use the pseudonymous device id through `$ADB_SERIAL`:
 
 ```bash
-adb -s EP0110PZ0B9110300B get-state
+ADB_SERIAL=nubia-p0110-pacific-device-1
+adb -s "$ADB_SERIAL" get-state
 PYTHONPATH=tools python3 -m vibescreen_evidence.device_info \
-  --serial EP0110PZ0B9110300B \
+  --serial "$ADB_SERIAL" \
   --no-connect \
   --output docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/device-info.json
 ```

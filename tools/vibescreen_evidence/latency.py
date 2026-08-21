@@ -273,7 +273,7 @@ def summarize(
         gate_summary = {
             "can_close_performance_gate": True,
             "requires_external_hardware": True,
-            "reason": "input samples use an accepted single timebase and require physical input",
+            "reason": "input samples require physical input and use external-camera or calibrated synchronized clocks",
         }
         status = "complete"
     else:

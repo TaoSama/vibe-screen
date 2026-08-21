@@ -320,6 +320,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         output = args.output
         if not output.is_absolute():
             output = args.evidence_dir / output
+        if output.resolve().parent != args.evidence_dir.resolve():
+            raise LatencyManifestError(
+                "output must be directly inside the evidence directory"
+            )
         manifest = manifest_from_args(args)
         _write_json(output, manifest)
     except (LatencyManifestError, OSError, ValueError) as error:

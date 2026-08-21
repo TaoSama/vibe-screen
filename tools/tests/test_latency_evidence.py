@@ -267,6 +267,26 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             report["gate"]["reasons"],
         )
 
+    def test_schema_requires_external_camera_annotation_uncertainty(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self.copy_valid_package(root)
+            setup = manifest["measurement_setup"]
+            assert isinstance(setup, dict)
+            del setup["max_frame_annotation_uncertainty_ms"]
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_USB_GLASS_TO_GLASS_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "manifest.measurement_setup.max_frame_annotation_uncertainty_ms is required",
+            report["gate"]["reasons"],
+        )
+
     def test_schema_rejects_unknown_manifest_properties(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -409,6 +429,10 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             "synchronized-clock measurement_method requires samples.annotation_method direct-latency-ms",
             report["gate"]["reasons"],
         )
+        self.assertIn(
+            "manifest.samples.annotation_method must be direct-latency-ms",
+            report["gate"]["reasons"],
+        )
 
     def test_synchronized_clock_components_must_fit_total_budget(self) -> None:
         for field in ("before_skew_ms", "after_skew_ms", "max_drift_ms"):
@@ -433,6 +457,31 @@ class LatencyEvidenceReportTest(unittest.TestCase):
                     "synchronization.total_error_budget_ms",
                     report["gate"]["reasons"],
                 )
+
+    def test_synchronized_clock_component_sum_must_fit_total_budget(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = FIXTURE_DIR / "synchronized-clock-input-valid"
+            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest["synchronization"]["before_skew_ms"] = 1.4
+            manifest["synchronization"]["after_skew_ms"] = 1.4
+            manifest["synchronization"]["max_drift_ms"] = 1.3
+            manifest["synchronization"]["total_error_budget_ms"] = 4.0
+            (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "synchronization.before_skew_ms + synchronization.after_skew_ms + "
+            "synchronization.max_drift_ms must be less than or equal to "
+            "synchronization.total_error_budget_ms",
+            report["gate"]["reasons"],
+        )
 
     def test_synchronized_clock_budget_applied_to_threshold(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

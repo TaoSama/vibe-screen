@@ -2,7 +2,7 @@
   "checked_at": "2026-08-20T19:38:41Z",
   "claim_boundary": "This preflight records readiness and blockers only. It does not close USB, LAN, or input latency gates.",
   "device": {
-    "adb_serial": "EP0110PZ0B9110300B",
+    "adb_serial": "nubia-p0110-pacific-device-1",
     "codename": "pacific",
     "manufacturer": "nubia",
     "model": "P0110",
@@ -46,8 +46,8 @@
   "run_id": "2026-08-21-nubia-p0110-latency-preflight-blocked",
   "safe_smoke": {
     "adb_state": "device",
-    "adb_state_command": "adb -s EP0110PZ0B9110300B get-state",
-    "device_info_command": "PYTHONPATH=tools python3 -m vibescreen_evidence.device_info --serial EP0110PZ0B9110300B --no-connect --output docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/device-info.json"
+    "adb_state_command": "adb -s $ADB_SERIAL get-state",
+    "device_info_command": "PYTHONPATH=tools python3 -m vibescreen_evidence.device_info --serial $ADB_SERIAL --no-connect --output docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-nubia-p0110-latency-preflight-blocked/device-info.json"
   },
   "schema_version": "vibescreen.evidence/v1",
   "status": "blocked"

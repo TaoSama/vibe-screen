@@ -153,6 +153,7 @@
         "required": ["camera", "recording"],
         "properties": {
           "measurement_setup": {
+            "required": ["max_frame_annotation_uncertainty_ms"],
             "properties": {
               "clock_domain": {"const": "single-external-camera-timebase"}
             }
@@ -169,6 +170,11 @@
         "required": ["synchronization"],
         "properties": {
           "latency_kind": {"const": "input"},
+          "samples": {
+            "properties": {
+              "annotation_method": {"const": "direct-latency-ms"}
+            }
+          },
           "measurement_setup": {
             "properties": {
               "clock_domain": {"const": "synchronized-host-device-clocks"}

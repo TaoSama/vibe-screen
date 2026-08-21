@@ -135,6 +135,77 @@ class LatencyManifestBuilderTest(unittest.TestCase):
 
 
 class LatencyManifestCliTest(unittest.TestCase):
+    def run_cli(self, *arguments: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, "-m", MODULE, *arguments],
+            cwd=REPOSITORY_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def valid_cli_args(self, root: Path, raw_video: Path, samples: Path) -> list[str]:
+        return [
+            "--evidence-dir",
+            str(root),
+            "--run-id",
+            "cli-latency-manifest",
+            "--latency-kind",
+            "glass-to-glass",
+            "--transport",
+            "usb",
+            "--gate-profile",
+            GATE_USB_GLASS_TO_GLASS_SUB50,
+            "--raw-video",
+            str(raw_video),
+            "--samples",
+            str(samples),
+            "--samples-format",
+            "csv",
+            "--annotation-method",
+            "manual-frame-count",
+            "--camera-manufacturer",
+            "Fixture Camera Co",
+            "--camera-model",
+            "Synthetic 240",
+            "--camera-mode",
+            "1080p240",
+            "--camera-frame-rate-fps",
+            "240",
+            "--camera-shutter-mode",
+            "fixed",
+            "--recorded-at",
+            "2026-08-21T00:00:00Z",
+            "--operator",
+            "fixture",
+            "--annotator",
+            "fixture",
+            "--host-model",
+            "Fixture Mac",
+            "--macos-version",
+            "fixture",
+            "--repository-revision",
+            "fixture-revision",
+            "--host-artifact",
+            "fixture-host",
+            "--client-artifact",
+            "fixture-client",
+            "--stimulus",
+            "mac display flash visible to the camera",
+            "--start-event-definition",
+            "first camera frame where the Mac stimulus changes",
+            "--end-event-definition",
+            "first camera frame where the Android render shows the same change",
+            "--lighting",
+            "stable indoor light",
+            "--mounting",
+            "fixed tripod framing both screens",
+            "--max-frame-annotation-uncertainty-ms",
+            "4.2",
+            "--notes",
+            "Synthetic test package only.",
+        ]
+
     def test_cli_writes_schema_compatible_manifest_from_device_info(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -154,76 +225,10 @@ class LatencyManifestCliTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    MODULE,
-                    "--evidence-dir",
-                    str(root),
-                    "--run-id",
-                    "cli-latency-manifest",
-                    "--latency-kind",
-                    "glass-to-glass",
-                    "--transport",
-                    "usb",
-                    "--gate-profile",
-                    GATE_USB_GLASS_TO_GLASS_SUB50,
-                    "--raw-video",
-                    str(raw_video),
-                    "--samples",
-                    str(samples),
-                    "--samples-format",
-                    "csv",
-                    "--annotation-method",
-                    "manual-frame-count",
-                    "--camera-manufacturer",
-                    "Fixture Camera Co",
-                    "--camera-model",
-                    "Synthetic 240",
-                    "--camera-mode",
-                    "1080p240",
-                    "--camera-frame-rate-fps",
-                    "240",
-                    "--camera-shutter-mode",
-                    "fixed",
-                    "--recorded-at",
-                    "2026-08-21T00:00:00Z",
-                    "--operator",
-                    "fixture",
-                    "--annotator",
-                    "fixture",
-                    "--device-info",
-                    str(device_info),
-                    "--host-model",
-                    "Fixture Mac",
-                    "--macos-version",
-                    "fixture",
-                    "--repository-revision",
-                    "fixture-revision",
-                    "--host-artifact",
-                    "fixture-host",
-                    "--client-artifact",
-                    "fixture-client",
-                    "--stimulus",
-                    "mac display flash visible to the camera",
-                    "--start-event-definition",
-                    "first camera frame where the Mac stimulus changes",
-                    "--end-event-definition",
-                    "first camera frame where the Android render shows the same change",
-                    "--lighting",
-                    "stable indoor light",
-                    "--mounting",
-                    "fixed tripod framing both screens",
-                    "--max-frame-annotation-uncertainty-ms",
-                    "4.2",
-                    "--notes",
-                    "Synthetic test package only.",
-                ],
-                cwd=REPOSITORY_ROOT,
-                capture_output=True,
-                text=True,
-                check=False,
+            result = self.run_cli(
+                *self.valid_cli_args(root, raw_video, samples),
+                "--device-info",
+                str(device_info),
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -236,6 +241,36 @@ class LatencyManifestCliTest(unittest.TestCase):
         self.assertEqual(manifest["device"]["manufacturer"], "nubia")
         self.assertEqual(manifest["device"]["codename"], "pacific")
         self.assertEqual(report["verdict"], "pass")
+
+    def test_cli_rejects_output_outside_evidence_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "package"
+            root.mkdir()
+            raw_video, samples = _write_fixture_files(root)
+            output = Path(directory) / "manifest.json"
+
+            result = self.run_cli(
+                *self.valid_cli_args(root, raw_video, samples),
+                "--output",
+                str(output),
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("output must be directly inside the evidence directory", result.stderr)
+
+    def test_cli_rejects_nested_output_inside_evidence_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_video, samples = _write_fixture_files(root)
+
+            result = self.run_cli(
+                *self.valid_cli_args(root, raw_video, samples),
+                "--output",
+                "nested/manifest.json",
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("output must be directly inside the evidence directory", result.stderr)
 
 
 if __name__ == "__main__":
