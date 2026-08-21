@@ -153,7 +153,7 @@ negotiation and the host log line for the received event.
 | Input | Required evidence |
 | --- | --- |
 | physical keyboard key / shortcut | Android `KeyEvent` source and key code, mapped USB HID usage, host key injection, visible Mac text/shortcut result, and key-up release |
-| physical mouse hover or move | Android `MotionEvent` from `SOURCE_MOUSE`, host `PointerEvent` with `INPUT_PHASE_CHANGED`, visible Mac pointer movement, and no fallback touch gesture claim |
+| physical mouse hover or move | Android `MotionEvent` from `SOURCE_MOUSE`, `SOURCE_MOUSE_RELATIVE`, `SOURCE_TOUCHPAD`, or `SOURCE_TRACKBALL`, host `PointerEvent` with `INPUT_PHASE_CHANGED`, visible Mac pointer movement, and no fallback touch gesture claim |
 | physical mouse primary click | button press and release with `BUTTON_PRIMARY`, host pointer begin/end events, visible Mac click result, and button-up release before disconnect |
 | physical mouse wheel | Android `ACTION_SCROLL` with `AXIS_VSCROLL` or `AXIS_HSCROLL`, host scroll injection, and visible Mac scroll result |
 | physical stylus | Android stylus source/tool kind plus pressure/tilt/barrel/hover fields as applicable, negotiated stylus capability, host tablet event construction, and drawing-app result |
@@ -166,6 +166,24 @@ pointer gate remains open without a physical mouse or equivalent Android HID
 pointer. Controller production forwarding is wired and covered offline, but
 runtime acceptance still needs a physical controller and an entitled Host; JVM
 mapper tests and constructed Protocol v1 envelopes prove serialization only.
+For the native pointer HID mouse gate, connect a real USB or Bluetooth mouse
+before starting the observation window and run:
+
+```bash
+python3 scripts/native_pointer_hid_acceptance.py \
+  --serial "$ADB_SERIAL" \
+  --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
+  --visible-result-note "Mac cursor moved and the primary click focused <target app>" \
+  --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/$(date -u +%F)-p0110-native-pointer-hid
+```
+
+The script records `dumpsys input`, Android `MA` logcat for the observation
+window, and the newly appended Host log segment. A pass requires Android
+`native pointer forwarded` lines for `MOVE`, `BUTTON_PRESS`, and
+`BUTTON_RELEASE` from `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL`,
+plus Host `Pointer injected` lines for `changed`, `began`, and `ended`. Missing
+hardware is `blocked`; missing Android logs, Host logs, or the visible-result
+note is `failed`, not a pass.
 Summarize a run, including blocked runs, with:
 
 ```bash

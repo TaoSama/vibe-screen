@@ -74,6 +74,22 @@ final class InternetProductProtocolCodecTests: XCTestCase {
         XCTAssertEqual(packet.header.codec, .hevc)
     }
 
+    func testInternetProductVideoConfigurationRejectsAV1UntilEncoderExists() {
+        let configuration = InternetProductVideoConfiguration(
+            codec: .av1,
+            width: 1920,
+            height: 1080,
+            framesPerSecond: 60,
+            bitrateKbps: 20_000,
+            streamID: 7,
+            configEpoch: 9
+        )
+
+        XCTAssertThrowsError(try configuration.validate()) { error in
+            XCTAssertEqual(error as? InternetProductProtocolError, .unsupportedCodec)
+        }
+    }
+
     func testHandshakeNegotiatesFragmentationCapabilityAndEncryptedRecordLimit() throws {
         var codec = try makeCodec(negotiate: false)
         let negotiatedMaximum = InternetMediaRecordContract.minimumNegotiatedEncryptedRecordBytes

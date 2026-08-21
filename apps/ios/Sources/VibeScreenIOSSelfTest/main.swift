@@ -564,6 +564,14 @@ func testBackpressureAndCodecParsing() throws {
         Data([0x67, 1]),
         Data([0x68, 2]),
     ], "H.264 parameter-set extraction")
+    try require(VideoDecoder.parameterSets(codec: .av1, from: accessUnit).isEmpty, "AV1 parameter sets must not be inferred from Annex-B NAL units")
+    let decoder = VideoDecoder { _, _ in }
+    do {
+        try decoder.configure(codec: .av1, parameterSets: [])
+        throw SelfTestError.failed("AV1 decoder configuration was accepted without an implementation")
+    } catch VideoDecoderError.unsupportedCodec(.av1) {
+        // Expected.
+    }
     try require(AnnexB.lengthPrefixedSample(from: accessUnit) == Data([
         0, 0, 0, 2, 0x67, 1,
         0, 0, 0, 2, 0x68, 2,

@@ -26,7 +26,7 @@ platform scaffolding under active development.
 | --- | --- |
 | macOS host + Android client | Builds and runs from source |
 | USB transport | ADB reverse on TCP port `54321`; real-device stream verified |
-| Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264, MediaCodec decode |
+| Video | ScreenCaptureKit/CGDisplayStream, VideoToolbox HEVC/H.264, MediaCodec decode. AV1 is protocol-enumerated and fail-closed in offline codec-admission tests, but no AV1 real-stream Host/device acceptance is recorded |
 | Display | Physical-display selection, private-API HiDPI virtual extended display (4000x2400 physical / 2000x1200 logical), in-place display switching, and screen mirroring (with graceful fallback to direct main-display capture) verified on device |
 | Touch | Android touch forwarding to macOS Accessibility/CGEvent verified. Tap, long-press right-click, long-press drag, two-finger scroll, and pinch reached the real Host path in an opt-in Xiaomi 13 acceptance run; that run exposed a shared-CGEventSource modifier leak, now fixed with an isolated synthetic-modifier source and focused test coverage. A stable-signed fixed-binary rerun has now passed on the Nubia P0110/pacific Android substitute, with the device identity kept distinct from Xiaomi 13/fuxi evidence |
 | Input (keyboard/mouse/peripheral) | Touch, touch-derived pointer, keyboard, and mouse-wheel scroll forwarding to macOS CGEvent verified on device; native mouse pointer move/click is wired end to end but pending a physical-HID-mouse confirmation. Protocol v1 stylus pressure, signed two-axis tilt, eraser, two barrel buttons, and hover are independently capability-gated across USB, LAN, and Internet, with old-peer touch fallback and mixed finger/stylus routing. Controller protocol models, Android mapping/state, Android production event forwarding, Host state machines, and Mac virtual-gamepad injection are offline-tested; controller runtime acceptance still requires a physical Android controller plus an identity-signed Host build with the approved virtual HID entitlement, observed Host availability, visible Mac-side controller response, and neutral release on disconnect. Physical-stylus drawing-app confirmation, controller runtime acceptance, and other peripherals remain open |
@@ -149,8 +149,11 @@ boundaries:
   existing displays, and restores windows after disconnection.
 - ScreenCaptureKit captures a selected display, with a compatibility fallback
   where required.
-- VideoToolbox provides hardware HEVC and H.264 encoding, with AV1 added when
-  supported by host and client hardware.
+- VideoToolbox provides hardware HEVC and H.264 encoding. AV1 remains planned:
+  Protocol v1 reserves CODEC_AV1, and offline admission tests require
+  fail-closed or H.264/HEVC fallback unless both peers expose real AV1 support,
+  but the current Host does not advertise AV1 and no AV1 real-stream device
+  acceptance is recorded.
 - CGEvent and Accessibility provide the macOS keyboard, pointer, touch-derived
   gesture, and stylus input adapters. Protocol v1 wires keyboard, native
   pointer/scroll, pen and eraser pressure/tilt, barrel buttons, hover/proximity
@@ -600,7 +603,8 @@ network quality may increase it.
 
 - A native SwiftUI + VideoToolbox iPhone/iPad foundation now lives in
   [`apps/ios`](apps/ios/README.md): generated Protocol v1 bindings, capability
-  negotiation, multi-display routing, H.264/HEVC decode, PCM audio, explicit
+  negotiation, multi-display routing, H.264/HEVC decode, AV1 fail-closed
+  validation, PCM audio, explicit
   clipboard, bounded verified files, epoch filtering, native touch plus
   hardware-keyboard/hover-pointer UI, and bounded trusted-LAN reconnect are
   implemented and core-self-tested.
