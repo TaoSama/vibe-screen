@@ -145,6 +145,7 @@ class StreamClient(
 
     private val heartbeat = HeartbeatMonitor(HEARTBEAT_TIMEOUT_MS)
     private val reconnectBackoff = ReconnectBackoff()
+    private val protocolActionDispatcher = StreamProtocolActionDispatcher(StreamProtocolActionSink())
     // Protocol request ids must be unpredictable so a result cannot be spoofed
     // by replaying a guessed id.
     private val protocolRequestRandom = SecureRandom()
@@ -1651,172 +1652,13 @@ class StreamClient(
         val session = checkNotNull(protocolSession) { "Protocol v1 session is closed" }
         try {
             val actions = session.receive(command.envelope)
-            actions.forEach { action ->
-                when (action) {
-                    is ProtocolV1Session.Action.Send -> writeProtocolEnvelope(out, action.envelope)
-                    is ProtocolV1Session.Action.DisplaysAvailable -> {
-                        val options =
-                            action.displays.map {
-                                StreamDisplayOption(
-                                    it.id,
-                                    it.name,
-                                    it.width,
-                                    it.height,
-                                    it.isPrimary,
-                                    it.isVirtual,
-                                )
-                            }
-                        onDisplaysAvailable?.invoke(options, action.selectedId)
-                    }
-                    is ProtocolV1Session.Action.VideoConfigurationRequested -> {
-                        streamCodecIsHevc = action.codec == Codec.CODEC_HEVC
-                        codecNegotiated = true
-                        onCodecSelected?.invoke(streamCodecIsHevc)
-                        beginVideoConfiguration(
-                            session = session,
-                            configurationToken = action.configurationToken,
-                            configuration = StreamVideoConfiguration(
-                                encodedWidth = action.width,
-                                encodedHeight = action.height,
-                                rotation = action.rotation,
-                                configEpoch = action.configEpoch,
-                                bitrateKbps = action.bitrateKbps,
-                                framesPerSecond = action.framesPerSecond,
-                            ),
-                        )
-                    }
-                    is ProtocolV1Session.Action.VideoConfigurationCommitted,
-                    is ProtocolV1Session.Action.VideoConfigurationRejected,
-                    -> throw IllegalStateException("Unexpected decoder completion action during protocol receive")
-                    is ProtocolV1Session.Action.DisplayGeometryChanged -> {
-                        onDisplayGeometry?.invoke(
-                            StreamDisplayGeometry(
-                                logicalWidth = action.width,
-                                logicalHeight = action.height,
-                                rotation = action.rotation,
-                            ),
-                        )
-                    }
-                   is ProtocolV1Session.Action.PongReceived -> {
-                       if (action.sequence == lastV1PingSequence && lastV1PingSentNs > 0L) {
-                           onLatencyMeasured?.invoke((System.nanoTime() - lastV1PingSentNs) / 1_000_000.0)
-                       }
-                   }
-                    is ProtocolV1Session.Action.ControllerInputAck -> {
-                        controllerConnectionAcks.acknowledge(action.inputId)?.let { connection ->
-                            onControllerInputAck?.invoke(connection, action.accepted, action.rejectionReason)
-                        }
-                    }
-                    is ProtocolV1Session.Action.HostActionsAvailable -> {
-                        val options =
-                            action.actions.map {
-                                HostActionOption(it.id, it.localizedName, it.requiresConfirmation)
-                            }
-                        onHostActionsAvailable?.invoke(options)
-                    }
-                    is ProtocolV1Session.Action.HostActionCompleted -> {
-                        onHostActionResult?.invoke(action.accepted, action.rejectionReason)
-                    }
-                    is ProtocolV1Session.Action.ClipboardOffered -> {
-                        if (!isCurrentProtocolSession(session, connectionEpoch)) return@forEach
-                        onClipboardOffered?.invoke(
-                            ClipboardOfferData(
-                                changeId = action.changeId.toByteArray(),
-                                originDeviceId = action.originDeviceId,
-                                mimeType = action.mimeType,
-                                byteLength = action.byteLength,
-                                sha256 = action.sha256.toByteArray(),
-                            ),
-                        )
-                    }
-                    is ProtocolV1Session.Action.ClipboardContentReceived -> {
-                        if (!isCurrentProtocolSession(session, connectionEpoch)) return@forEach
-                        onClipboardContentReceived?.invoke(
-                            ClipboardContentData(
-                                changeId = action.changeId.toByteArray(),
-                                originDeviceId = action.originDeviceId,
-                                mimeType = action.mimeType,
-                                content = action.content,
-                                sha256 = action.sha256.toByteArray(),
-                                pending = action.pending,
-                            ),
-                        )
-                    }
-                    is ProtocolV1Session.Action.ManagedPolicyReceived -> {
-                        remoteManagedPolicy = RemoteManagedPolicy(action.status)
-                    }
-                    is ProtocolV1Session.Action.FileOfferReceived -> {
-                        val manager = checkNotNull(incomingFileTransfers.get()) { "Incoming file manager is closed" }
-                        val response =
-                            try {
-                                manager.accept(
-                                    action.offer,
-                                    remotePolicy = remoteManagedPolicy,
-                                    negotiatedPolicy = session.negotiatedFilePolicy,
-                                    sessionEpoch = session.activeSessionEpoch,
-                                )
-                            } catch (failure: FileTransferException) {
-                                rejectedFileAccept(action.offer.transferId, failure.reasonCode)
-                            }
-                        session.fileAccept(response)?.let { writeProtocolEnvelope(out, it) }
-                    }
-                    is ProtocolV1Session.Action.FileAcceptReceived -> {
-                        if (action.response.accepted) {
-                            outgoingFileTransfers[action.response.transferId]?.let { transfer ->
-                                transfer.applyAcceptedMaximumChunkBytes(action.response.maximumChunkBytes)
-                                sendNextOutgoingFileChunk(out, session, transfer)
-                            }
-                        } else {
-                            outgoingFileTransfers.remove(action.response.transferId)?.cancel()
-                            onFileTransferResult?.invoke(false, action.response.rejectionReason)
-                        }
-                    }
-                    is ProtocolV1Session.Action.FileProgressReceived -> {
-                        outgoingFileTransfers[action.progress.transferId]?.let { transfer ->
-                            sendNextOutgoingFileChunk(out, session, transfer)
-                        }
-                    }
-                    is ProtocolV1Session.Action.FileCancelReceived -> {
-                        incomingFileTransfers.get()?.cancel(action.cancellation.transferId)
-                        outgoingFileTransfers.remove(action.cancellation.transferId)?.cancel()
-                        onFileTransferResult?.invoke(false, action.cancellation.reasonCode)
-                    }
-                    is ProtocolV1Session.Action.FileCompleteReceived -> {
-                        outgoingFileTransfers.remove(action.result.transferId)?.cancel()
-                        onFileTransferResult?.invoke(action.result.accepted, action.result.rejectionReason)
-                    }
-                    is ProtocolV1Session.Action.WakeHost -> {
-                        dispatchWakeHostRequest(
-                            session = session,
-                            connectionGeneration = connectionEpoch,
-                            action = action,
-                        )
-                    }
-                    is ProtocolV1Session.Action.WakeHostCompleted -> {
-                        onWakeHostResult?.invoke(action.accepted, action.rejectionReason)
-                    }
-                   is ProtocolV1Session.Action.Disconnected -> {
-                        pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
-                        stopRequested = !action.mayResume
-                        val failure =
-                            if (action.mayResume) {
-                                SessionFailure.transport("Host ended Protocol v1 session and allowed resume")
-                            } else if (action.reasonCode == "host_shutdown") {
-                                SessionFailure.serverShutdown()
-                            } else {
-                                SessionFailure(
-                                    kind = SessionFailureKind.HOST_PROTOCOL_ERROR,
-                                    detail = "Host ended Protocol v1 session: ${action.reasonCode}",
-                                    retryable = false,
-                                )
-                            }
-                        requestConnectionEnd(failure)
-                        command.completion.completeExceptionally(SessionProtocolException(failure))
-                        return
-                    }
+            when (val result = protocolActionDispatcher.dispatchReceivedActions(out, session, connectionEpoch, actions)) {
+                StreamProtocolActionDispatcher.ReceiveResult.Completed -> command.completion.complete(Unit)
+                is StreamProtocolActionDispatcher.ReceiveResult.Disconnected -> {
+                    command.completion.completeExceptionally(SessionProtocolException(result.failure))
+                    return
                 }
             }
-            command.completion.complete(Unit)
         } catch (failure: ProtocolV1Failure) {
             pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
             if (failure.source == ProtocolV1Failure.Source.PEER_PROTOCOL_VIOLATION &&
@@ -1857,6 +1699,264 @@ class StreamClient(
             )
             command.completion.completeExceptionally(failure)
             throw failure
+        }
+    }
+
+    private inner class StreamProtocolActionSink : StreamProtocolActionDispatcher.Sink {
+        override fun writeProtocolEnvelope(
+            out: java.io.DataOutputStream,
+            envelope: Envelope,
+        ) = this@StreamClient.writeProtocolEnvelope(out, envelope)
+
+        override fun onDisplaysAvailable(
+            displays: List<ProtocolV1Session.DisplayOption>,
+            selectedId: String,
+        ) {
+            val options =
+                displays.map {
+                    StreamDisplayOption(
+                        it.id,
+                        it.name,
+                        it.width,
+                        it.height,
+                        it.isPrimary,
+                        it.isVirtual,
+                    )
+                }
+            onDisplaysAvailable?.invoke(options, selectedId)
+        }
+
+        override fun onVideoConfigurationRequested(
+            session: ProtocolV1Session,
+            configurationToken: Long,
+            codec: Codec,
+            width: Int,
+            height: Int,
+            rotation: Int,
+            configEpoch: Long,
+            bitrateKbps: Int,
+            framesPerSecond: Int,
+        ) {
+            streamCodecIsHevc = codec == Codec.CODEC_HEVC
+            codecNegotiated = true
+            onCodecSelected?.invoke(streamCodecIsHevc)
+            beginVideoConfiguration(
+                session = session,
+                configurationToken = configurationToken,
+                configuration = StreamVideoConfiguration(
+                    encodedWidth = width,
+                    encodedHeight = height,
+                    rotation = rotation,
+                    configEpoch = configEpoch,
+                    bitrateKbps = bitrateKbps,
+                    framesPerSecond = framesPerSecond,
+                ),
+            )
+        }
+
+        override fun onVideoConfigurationRejectedBeforeResponse(reason: String) {
+            // Publish the local codec reason before the rejection ACK can make the
+            // peer close its socket. If EOF races the async termination request,
+            // the receive loop must still report CODEC_CONFIGURATION.
+            pendingDecoderFailure.compareAndSet(null, SessionFailure.codec(reason))
+        }
+
+        override fun onVideoConfigurationCommitted(appliesClientVideoPreferences: Boolean) {
+            if (!sessionReady) {
+                sessionReady = true
+                reconnectBackoff.reset()
+                onConnectionStatus?.invoke(true)
+            }
+        }
+
+        override fun onDisplayGeometryChanged(
+            width: Int,
+            height: Int,
+            rotation: Int,
+        ) {
+            onDisplayGeometry?.invoke(
+                StreamDisplayGeometry(
+                    logicalWidth = width,
+                    logicalHeight = height,
+                    rotation = rotation,
+                ),
+            )
+        }
+
+        override fun onPongReceived(sequence: Long) {
+            if (sequence == lastV1PingSequence && lastV1PingSentNs > 0L) {
+                onLatencyMeasured?.invoke((System.nanoTime() - lastV1PingSentNs) / 1_000_000.0)
+            }
+        }
+
+        override fun onControllerInputAck(
+            inputId: Long,
+            accepted: Boolean,
+            rejectionReason: String,
+        ) {
+            controllerConnectionAcks.acknowledge(inputId)?.let { connection ->
+                onControllerInputAck?.invoke(connection, accepted, rejectionReason)
+            }
+        }
+
+        override fun onHostActionsAvailable(actions: List<ProtocolV1Session.HostAction>) {
+            val options = actions.map { HostActionOption(it.id, it.localizedName, it.requiresConfirmation) }
+            onHostActionsAvailable?.invoke(options)
+        }
+
+        override fun onHostActionCompleted(
+            accepted: Boolean,
+            rejectionReason: String,
+        ) {
+            onHostActionResult?.invoke(accepted, rejectionReason)
+        }
+
+        override fun onClipboardOffered(
+            session: ProtocolV1Session,
+            connectionGeneration: Long,
+            changeId: ByteString,
+            originDeviceId: String,
+            mimeType: String,
+            byteLength: Long,
+            sha256: ByteString,
+        ) {
+            if (!isCurrentProtocolSession(session, connectionGeneration)) return
+            onClipboardOffered?.invoke(
+                ClipboardOfferData(
+                    changeId = changeId.toByteArray(),
+                    originDeviceId = originDeviceId,
+                    mimeType = mimeType,
+                    byteLength = byteLength,
+                    sha256 = sha256.toByteArray(),
+                ),
+            )
+        }
+
+        override fun onClipboardContentReceived(
+            session: ProtocolV1Session,
+            connectionGeneration: Long,
+            changeId: ByteString,
+            originDeviceId: String,
+            mimeType: String,
+            content: ByteArray,
+            sha256: ByteString,
+            pending: Boolean,
+        ) {
+            if (!isCurrentProtocolSession(session, connectionGeneration)) return
+            onClipboardContentReceived?.invoke(
+                ClipboardContentData(
+                    changeId = changeId.toByteArray(),
+                    originDeviceId = originDeviceId,
+                    mimeType = mimeType,
+                    content = content,
+                    sha256 = sha256.toByteArray(),
+                    pending = pending,
+                ),
+            )
+        }
+
+        override fun onManagedPolicyReceived(status: dev.vibescreen.protocol.v1.ManagedPolicyStatus) {
+            remoteManagedPolicy = RemoteManagedPolicy(status)
+        }
+
+        override fun onFileOfferReceived(
+            out: java.io.DataOutputStream,
+            session: ProtocolV1Session,
+            offer: dev.vibescreen.protocol.v1.FileOffer,
+        ) {
+            val manager = checkNotNull(incomingFileTransfers.get()) { "Incoming file manager is closed" }
+            val response =
+                try {
+                    manager.accept(
+                        offer,
+                        remotePolicy = remoteManagedPolicy,
+                        negotiatedPolicy = session.negotiatedFilePolicy,
+                        sessionEpoch = session.activeSessionEpoch,
+                    )
+                } catch (failure: FileTransferException) {
+                    rejectedFileAccept(offer.transferId, failure.reasonCode)
+                }
+            session.fileAccept(response)?.let { writeProtocolEnvelope(out, it) }
+        }
+
+        override fun onFileAcceptReceived(
+            out: java.io.DataOutputStream,
+            session: ProtocolV1Session,
+            response: FileAccept,
+        ) {
+            if (response.accepted) {
+                outgoingFileTransfers[response.transferId]?.let { transfer ->
+                    transfer.applyAcceptedMaximumChunkBytes(response.maximumChunkBytes)
+                    sendNextOutgoingFileChunk(out, session, transfer)
+                }
+            } else {
+                outgoingFileTransfers.remove(response.transferId)?.cancel()
+                onFileTransferResult?.invoke(false, response.rejectionReason)
+            }
+        }
+
+        override fun onFileProgressReceived(
+            out: java.io.DataOutputStream,
+            session: ProtocolV1Session,
+            progress: dev.vibescreen.protocol.v1.FileTransferProgress,
+        ) {
+            outgoingFileTransfers[progress.transferId]?.let { transfer ->
+                sendNextOutgoingFileChunk(out, session, transfer)
+            }
+        }
+
+        override fun onFileCancelReceived(cancellation: dev.vibescreen.protocol.v1.FileTransferCancel) {
+            incomingFileTransfers.get()?.cancel(cancellation.transferId)
+            outgoingFileTransfers.remove(cancellation.transferId)?.cancel()
+            onFileTransferResult?.invoke(false, cancellation.reasonCode)
+        }
+
+        override fun onFileCompleteReceived(result: dev.vibescreen.protocol.v1.FileTransferComplete) {
+            outgoingFileTransfers.remove(result.transferId)?.cancel()
+            onFileTransferResult?.invoke(result.accepted, result.rejectionReason)
+        }
+
+        override fun onWakeHostRequested(
+            session: ProtocolV1Session,
+            connectionGeneration: Long,
+            request: WakeHostRequestContext,
+            correlationId: Long,
+        ) {
+            dispatchWakeHostRequest(
+                session = session,
+                connectionGeneration = connectionGeneration,
+                request = request,
+                correlationId = correlationId,
+            )
+        }
+
+        override fun onWakeHostCompleted(
+            accepted: Boolean,
+            rejectionReason: String,
+        ) {
+            onWakeHostResult?.invoke(accepted, rejectionReason)
+        }
+
+        override fun onDisconnected(
+            reasonCode: String,
+            mayResume: Boolean,
+        ): SessionFailure {
+            pendingVideoConfigurationCommit.getAndSet(null)?.cancel()
+            stopRequested = !mayResume
+            val failure =
+                if (mayResume) {
+                    SessionFailure.transport("Host ended Protocol v1 session and allowed resume")
+                } else if (reasonCode == "host_shutdown") {
+                    SessionFailure.serverShutdown()
+                } else {
+                    SessionFailure(
+                        kind = SessionFailureKind.HOST_PROTOCOL_ERROR,
+                        detail = "Host ended Protocol v1 session: $reasonCode",
+                        retryable = false,
+                    )
+                }
+            requestConnectionEnd(failure)
+            return failure
         }
     }
 
@@ -1939,40 +2039,41 @@ class StreamClient(
     private fun dispatchWakeHostRequest(
         session: ProtocolV1Session,
         connectionGeneration: Long,
-        action: ProtocolV1Session.Action.WakeHost,
+        request: WakeHostRequestContext,
+        correlationId: Long,
     ) {
-        if (!trackInboundWakeHostRequest(action.request.requestId)) {
+        if (!trackInboundWakeHostRequest(request.requestId)) {
             submitOutbound(
                 kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
                 command = StreamOutboundCommand.ProtocolWakeHostCompletion(
                     session = session,
                     connectionGeneration = connectionGeneration,
-                    requestId = action.request.requestId,
+                    requestId = request.requestId,
                     accepted = false,
                     rejectionReason = "too_many_pending_wake_host_requests",
-                    correlationId = action.correlationId,
+                    correlationId = correlationId,
                 ),
                 timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
             )
             return
         }
         wakeHostExecutor.execute {
-            val (accepted, reason) = performWakeHostRequest(action.request)
+            val (accepted, reason) = performWakeHostRequest(request)
             val submission =
                 submitOutbound(
                     kind = OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
                     command = StreamOutboundCommand.ProtocolWakeHostCompletion(
                         session = session,
                         connectionGeneration = connectionGeneration,
-                        requestId = action.request.requestId,
+                        requestId = request.requestId,
                         accepted = accepted,
                         rejectionReason = reason,
-                        correlationId = action.correlationId,
+                        correlationId = correlationId,
                     ),
                     timeoutMillis = PROTOCOL_ACTION_TIMEOUT_MS,
                 )
             if (!isOutboundAdmitted(submission)) {
-                releaseInboundWakeHostRequest(action.request.requestId)
+                releaseInboundWakeHostRequest(request.requestId)
                 requestConnectionEnd(
                     SessionFailure.protocol(
                         SessionFailureKind.OUTBOUND_BACKPRESSURE,
@@ -2068,69 +2169,16 @@ class StreamClient(
             )
             return
         }
-        val rejectedReason =
-            actions
-                .filterIsInstance<ProtocolV1Session.Action.VideoConfigurationRejected>()
-                .singleOrNull()
-                ?.reason
-        val rejectedFailure = rejectedReason?.let(SessionFailure::codec)
-        // Publish the local codec reason before the rejection ACK can make the
-        // peer close its socket. If EOF races the async termination request,
-        // the receive loop must still report CODEC_CONFIGURATION.
-        rejectedFailure?.let { pendingDecoderFailure.compareAndSet(null, it) }
-        var configurationCommitted = false
-        var appliesClientVideoPreferences = false
-        actions.forEach { action ->
-            when (action) {
-                is ProtocolV1Session.Action.Send -> writeProtocolEnvelope(out, action.envelope)
-                is ProtocolV1Session.Action.VideoConfigurationCommitted -> {
-                    configurationCommitted = true
-                    appliesClientVideoPreferences = action.appliesClientVideoPreferences
-                    if (!sessionReady) {
-                        sessionReady = true
-                        reconnectBackoff.reset()
-                        onConnectionStatus?.invoke(true)
-                    }
-                }
-                is ProtocolV1Session.Action.VideoConfigurationRejected -> Unit
-                is ProtocolV1Session.Action.DisplayGeometryChanged -> {
-                    onDisplayGeometry?.invoke(
-                        StreamDisplayGeometry(
-                            logicalWidth = action.width,
-                            logicalHeight = action.height,
-                            rotation = action.rotation,
-                        ),
-                    )
-                }
-               is ProtocolV1Session.Action.VideoConfigurationRequested,
-               is ProtocolV1Session.Action.PongReceived,
-               is ProtocolV1Session.Action.ControllerInputAck,
-                is ProtocolV1Session.Action.Disconnected,
-                is ProtocolV1Session.Action.DisplaysAvailable,
-                is ProtocolV1Session.Action.HostActionsAvailable,
-                is ProtocolV1Session.Action.HostActionCompleted,
-                is ProtocolV1Session.Action.ClipboardOffered,
-                is ProtocolV1Session.Action.ClipboardContentReceived,
-                is ProtocolV1Session.Action.ManagedPolicyReceived,
-                is ProtocolV1Session.Action.FileOfferReceived,
-                is ProtocolV1Session.Action.FileAcceptReceived,
-                is ProtocolV1Session.Action.FileProgressReceived,
-                is ProtocolV1Session.Action.FileCancelReceived,
-                is ProtocolV1Session.Action.FileCompleteReceived,
-                is ProtocolV1Session.Action.WakeHost,
-                is ProtocolV1Session.Action.WakeHostCompleted,
-               -> throw IllegalStateException("Unexpected action while completing decoder configuration")
-            }
-        }
+        val result = protocolActionDispatcher.dispatchVideoConfigurationCompletionActions(out, actions)
         out.flush()
-        if (configurationCommitted && isCurrentProtocolSession(pending.session, pending.connectionGeneration)) {
+        if (result.configurationCommitted && isCurrentProtocolSession(pending.session, pending.connectionGeneration)) {
             onVideoConfigurationApplied?.invoke(
                 pending.configuration.copy(
-                    appliesClientVideoPreferences = appliesClientVideoPreferences,
+                    appliesClientVideoPreferences = result.appliesClientVideoPreferences,
                 ),
             )
         }
-        rejectedFailure?.let(::requestConnectionEnd)
+        result.rejectionReason?.let { requestConnectionEnd(SessionFailure.codec(it)) }
     }
 
     private fun isCurrentProtocolSession(
