@@ -139,20 +139,3 @@ than a formal `soak-8h/` result. A readiness result of `blocked` records why the
 gate could not start, such as a phone substitute, missing Host PID, missing Host
 JSONL telemetry, or an existing device lock. It is not evidence that the
 eight-hour gate passed.
-
-Hardware-keyboard workflow evidence uses a focused gate summary alongside any
-tablet or substitute-device records. A passing directory must include
-`hardware-keyboard-observations.json`, `hardware-keyboard-summary.json`,
-`dumpsys-input.txt`, Android production forwarding logs, Host `Key injected:`
-logs, Host listener/signing/TCC preflight records, and a screenshot or recording
-of the visible Mac result. Generate the summary with:
-
-```bash
-make hardware-keyboard-gate EVIDENCE_DIR="$RUN_DIR"
-```
-
-The summary closes the hardware-keyboard workflow gate only when
-`verdict=pass` and `can_close_hardware_keyboard_gate=true`. A blocked record may
-be kept here when the Android device lock, physical keyboard, Host listener, or
-stable signed/TCC Host prerequisite is missing; blocked evidence must not run
-ADB when the shared Android lock is already held.
