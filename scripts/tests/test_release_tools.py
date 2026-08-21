@@ -207,6 +207,20 @@ Input Reader State:
 
 
 class HarmonyDeviceGateTests(unittest.TestCase):
+    def gate_manifest(self, gate_id: str, status: str) -> dict[str, object]:
+        gate: dict[str, object] = {
+            "id": gate_id,
+            "status": status,
+            "evidence": [f"evidence/{gate_id}.txt"],
+        }
+        if gate_id == "huks_backed_secure_pairing":
+            gate["secure_pairing_manifest"] = {
+                "schema": harmony_device_gate.SECURE_PAIRING_MANIFEST_SCHEMA,
+                "path": "harmony-secure-pairing.json",
+                "status": status,
+            }
+        return gate
+
     def passing_manifest(self) -> dict[str, object]:
         manifest = harmony_device_gate.template_manifest()
         manifest["repository"] = {
@@ -236,7 +250,7 @@ class HarmonyDeviceGateTests(unittest.TestCase):
             "protocol": "Protocol v1",
         }
         manifest["gates"] = [
-            {"id": gate_id, "status": "pass", "evidence": [f"evidence/{gate_id}.txt"]}
+            self.gate_manifest(gate_id, "pass")
             for gate_id in harmony_device_gate.REQUIRED_GATE_IDS
         ]
         return manifest

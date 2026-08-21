@@ -9,6 +9,18 @@ const KEY_DOMAIN: string = 'vibescreen/pairing-session-keys/v1';
 const CREDENTIAL_AAD: Uint8Array = utf8('vibescreen/device-credential/v1');
 const HEX_PATTERN: RegExp = /^[0-9a-f]{64}$/;
 const PAIRING_ID_PATTERN: RegExp = /^[0-9a-f]{32}$/;
+const HARMONY_HUKS_BACKEND: string = 'harmony_huks_v1';
+const HUKS_SIGNING_KEY_STORAGE: string = 'huks_non_exportable_p256';
+const HUKS_CREDENTIAL_STORAGE: string = 'asset_store_huks_bound_v1';
+
+export interface SecurePairingProfile {
+  backend: string;
+  signingKeyStorage: string;
+  credentialStorage: string;
+  privateKeyExportable: boolean;
+  persistentIdentity: boolean;
+  authorityDeviceId: string;
+}
 
 export interface PairingEphemeralKey {
   publicKey: Uint8Array;
@@ -22,6 +34,7 @@ export interface PairingSigningIdentity {
 }
 
 export interface PairingCrypto {
+  securityProfile(): SecurePairingProfile;
   identity(): PairingSigningIdentity;
   ephemeral(): PairingEphemeralKey;
   sha256(value: Uint8Array): Uint8Array;
@@ -34,6 +47,7 @@ export interface PairingCrypto {
 export interface PairingCompletion {
   credential: Uint8Array;
   deviceId: string;
+  securityProfile: SecurePairingProfile;
   hostIdentity: DeviceIdentity;
   sessionKeyId: string;
   sessionKeyEpoch: bigint;
@@ -43,7 +57,7 @@ export class PendingPairing {
   private consumed: boolean = false;
 
   constructor(private offer: PairingOffer, readonly request: PairingRequest, private ephemeralKey: PairingEphemeralKey,
-    private crypto: PairingCrypto) {}
+    private crypto: PairingCrypto, private securityProfile: SecurePairingProfile) {}
 
   complete(result: PairingResult, nowUnixSeconds: bigint): PairingCompletion {
     if (this.consumed) throw new Error('Pairing offer was already consumed');
@@ -82,7 +96,8 @@ export class PendingPairing {
         credentialKey.fill(0);
       }
       if (credential.length !== 32) throw new Error('Invalid decrypted device credential');
-      return { credential, deviceId: this.request.deviceId, hostIdentity: cloneIdentity(this.offer.hostIdentity), sessionKeyId: result.sessionKeyId,
+      return { credential, deviceId: this.request.deviceId, securityProfile: cloneSecurityProfile(this.securityProfile),
+        hostIdentity: cloneIdentity(this.offer.hostIdentity), sessionKeyId: result.sessionKeyId,
         sessionKeyEpoch: result.sessionKeyEpoch };
     } finally {
       shared?.fill(0); keyMaterial?.fill(0);
@@ -101,9 +116,13 @@ export class PairingClient {
   constructor(private crypto: PairingCrypto) {}
 
   begin(offerValue: PairingOffer, deviceName: string, nowUnixSeconds: bigint): PendingPairing {
+    const securityProfile: SecurePairingProfile = requireHarmonyHuksProfile(this.crypto.securityProfile());
     const offer: PairingOffer = cloneOffer(offerValue); validateOffer(this.crypto, offer, nowUnixSeconds);
     if (utf8(deviceName).length < 1 || utf8(deviceName).length > 256) throw new Error('Invalid device name');
     const signing: PairingSigningIdentity = this.crypto.identity(); validateIdentity(this.crypto, signing.publicIdentity);
+    if (securityProfile.authorityDeviceId !== signing.publicIdentity.deviceId) {
+      throw new Error('Harmony HUKS authority device identity mismatch');
+    }
     const ephemeral: PairingEphemeralKey = this.crypto.ephemeral();
     try {
       if (ephemeral.publicKey.length !== 65) throw new Error('Invalid device ephemeral key');
@@ -117,7 +136,7 @@ export class PairingClient {
       request.bootstrapMac = this.crypto.hmacSha256(offer.oneTimeCredential,
         transcript(this.crypto, BOOTSTRAP_DOMAIN, [...parts, request.proof.signature]));
       if (request.bootstrapMac.length !== 32) throw new Error('Invalid bootstrap MAC');
-      return new PendingPairing(offer, request, ephemeral, this.crypto);
+      return new PendingPairing(offer, request, ephemeral, this.crypto, securityProfile);
     } catch (error) {
       ephemeral.destroy(); offer.oneTimeCredential.fill(0); throw error;
     }
@@ -129,6 +148,7 @@ export interface StoredCredential {
   pairingId: string;
   deviceId: string;
   hostIdentity: DeviceIdentity;
+  securityProfile: SecurePairingProfile;
   credential: Uint8Array;
   sessionKeyId: string;
   sessionKeyEpoch: bigint;
@@ -181,7 +201,8 @@ export class CredentialLifecycle {
         if (installationOwner !== this.generation || !PAIRING_ID_PATTERN.test(pairingId)) {
           throw new Error('Stale pairing completion');
         }
-        const next: StoredCredential = { version: 1, pairingId, deviceId: completion.deviceId,
+        const next: StoredCredential = { version: 2, pairingId, deviceId: completion.deviceId,
+          securityProfile: requireHarmonyHuksProfile(completion.securityProfile),
           hostIdentity: cloneIdentity(completion.hostIdentity), credential: completion.credential.slice(),
           sessionKeyId: completion.sessionKeyId, sessionKeyEpoch: completion.sessionKeyEpoch,
           highestControlSequence: 0n, revoked: false, revocationReason: '' };
@@ -299,10 +320,26 @@ function cloneOffer(value: PairingOffer): PairingOffer { return { ...value, offe
   hostIdentity: cloneIdentity(value.hostIdentity), challenge: value.challenge.slice(), ephemeralPublicKey: value.ephemeralPublicKey.slice(),
   signatureAlgorithms: [...value.signatureAlgorithms], keyAgreementAlgorithms: [...value.keyAgreementAlgorithms],
   aeadAlgorithms: [...value.aeadAlgorithms] }; }
+function cloneSecurityProfile(value: SecurePairingProfile): SecurePairingProfile { return { ...value }; }
+function requireHarmonyHuksProfile(value: SecurePairingProfile): SecurePairingProfile {
+  if (value === undefined || value === null) {
+    throw new Error('Harmony secure pairing requires HUKS-backed non-exportable identity and credential storage');
+  }
+  if (typeof value.backend !== 'string' || value.backend !== HARMONY_HUKS_BACKEND ||
+    typeof value.signingKeyStorage !== 'string' || value.signingKeyStorage !== HUKS_SIGNING_KEY_STORAGE ||
+    typeof value.credentialStorage !== 'string' || value.credentialStorage !== HUKS_CREDENTIAL_STORAGE ||
+    value.privateKeyExportable !== false || value.persistentIdentity !== true ||
+    typeof value.authorityDeviceId !== 'string' ||
+    value.authorityDeviceId.length === 0) {
+    throw new Error('Harmony secure pairing requires HUKS-backed non-exportable identity and credential storage');
+  }
+  return cloneSecurityProfile(value);
+}
 function cloneRecord(value: StoredCredential): StoredCredential { return { ...value, hostIdentity: cloneIdentity(value.hostIdentity),
-  credential: value.credential.slice() }; }
+  securityProfile: cloneSecurityProfile(value.securityProfile), credential: value.credential.slice() }; }
 function validateStoredCredential(value: StoredCredential): void {
-  if (value.version !== 1 || !PAIRING_ID_PATTERN.test(value.pairingId) || value.deviceId.length === 0 ||
+  if (value.version !== 2 || !PAIRING_ID_PATTERN.test(value.pairingId) || value.deviceId.length === 0 ||
+    value.securityProfile === undefined || requireHarmonyHuksProfile(value.securityProfile).authorityDeviceId !== value.deviceId ||
     value.hostIdentity.deviceId.length === 0 || !HEX_PATTERN.test(value.hostIdentity.keyId) ||
     value.hostIdentity.keyEpoch <= 0n || value.hostIdentity.signatureAlgorithm !== SignatureAlgorithm.ECDSA_P256_SHA256 ||
     value.hostIdentity.signingPublicKey.length !== 65 ||

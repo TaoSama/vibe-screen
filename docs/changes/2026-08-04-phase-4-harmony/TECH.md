@@ -135,21 +135,33 @@ identifier and a versioned host/port/offer record are stored. Address-link
 credentials are never persisted. A separate alias stores a versioned security
 record containing pinned host identity, a verified 32-byte credential, session
 key metadata and durable control-replay high-water, or a credential-free
-revocation tombstone. Corrupt or unknown records fail closed.
+revocation tombstone. That record is now version 2 and must carry a Harmony
+HUKS profile: `backend=harmony_huks_v1`,
+`signingKeyStorage=huks_non_exportable_p256`,
+`credentialStorage=asset_store_huks_bound_v1`, `privateKeyExportable=false`,
+`persistentIdentity=true`, and an Authority device ID equal to the signed
+device identity. Version-1 security records, missing profiles, exported/private
+test keys, and Authority-device mismatches fail closed instead of being
+silently migrated. Corrupt or unknown records fail closed.
 
 The portable pairing client implements protobuf PairingOffer/PairingRequest/
 PairingResult fields, fixed algorithm/size/expiry checks, length-prefixed
 domain-separated transcripts, bootstrap MAC, host-proof verification,
 ECDH/HKDF credential-key derivation, AES-GCM credential opening, and unconditional
-single-use cleanup. Credential installation checks its immutable generation
-before and after persistence. Replay high-water is persisted before admission;
-revocation advances the generation and persists its tombstone before subsequent
-authorization can succeed.
+single-use cleanup. A PairingRequest cannot be produced unless the platform
+provider first proves the HUKS profile above. Credential installation checks its
+immutable generation before and after persistence. Replay high-water is
+persisted before admission; revocation advances the generation and persists its
+tombstone before subsequent authorization can succeed. Internet session
+admission must use Signaling in `production_authority` mode and Authority as
+the durable device/session epoch source; a local issuer fallback is not a
+secure-pairing acceptance path.
 
 This core is not reached by the trusted-LAN address importer. A HUKS-backed
 non-exportable key/cryptography provider, controller/UI exchange, authenticated
-record layer, and compatible Mac Host remain required. Existing TCP stays
-plaintext, and unauthenticated DeviceRevoked is deliberately not admitted.
+record layer, production Authority/Signaling deployment, and compatible Mac Host
+remain required. Existing TCP stays plaintext, and unauthenticated DeviceRevoked
+is deliberately not admitted.
 
 Alias operations are serialized. Existing records use `asset.update`; missing
 records use `asset.add`, so an update failure never deletes the prior host or

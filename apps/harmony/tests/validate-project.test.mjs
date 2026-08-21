@@ -296,6 +296,25 @@ test('semantic validator rejects removal of atomic Asset Store update wiring', (
   assert(validateFixture(fixture).some((failure) => failure.includes('PairingStore.upsert() must call asset.update()')));
 });
 
+test('semantic validator rejects weakening Harmony HUKS pairing profile checks', (t) => {
+  const fixture = projectFixture(t);
+  const securityPath = resolve(fixture.fixtureHarmony, 'entry/src/main/ets/core/security/PairingSecurity.ts');
+  writeFileSync(securityPath, readFileSync(securityPath, 'utf8')
+    .replace('const securityProfile: SecurePairingProfile = requireHarmonyHuksProfile(this.crypto.securityProfile());',
+      'const securityProfile: SecurePairingProfile = this.crypto.securityProfile();'));
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('PairingClient.begin() must call requireHarmonyHuksProfile()')));
+});
+
+test('semantic validator rejects legacy security-record persistence', (t) => {
+  const fixture = projectFixture(t);
+  const storePath = resolve(fixture.fixtureHarmony, 'entry/src/main/ets/platform/PairingStore.ets');
+  writeFileSync(storePath, readFileSync(storePath, 'utf8')
+    .replace('const SECURITY_RECORD_VERSION: number = 2;', 'const SECURITY_RECORD_VERSION: number = 1;'));
+  assert(validateFixture(fixture).some((failure) =>
+    failure.includes('secure pairing records must persist the version-2 HUKS profile')));
+});
+
 test('semantic validator rejects removal of the bounded control backlog', (t) => {
   const fixture = projectFixture(t);
   const writerPath = resolve(fixture.fixtureHarmony,

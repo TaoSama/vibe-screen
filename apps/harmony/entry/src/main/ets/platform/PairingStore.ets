@@ -7,6 +7,7 @@ const HOST_ALIAS: Uint8Array = new util.TextEncoder().encode('vibescreen.trusted
 const IDENTITY_ALIAS: Uint8Array = new util.TextEncoder().encode('vibescreen.client-identity.v1');
 const SECURITY_ALIAS: Uint8Array = new util.TextEncoder().encode('vibescreen.pairing-security.v1');
 const RECORD_VERSION: number = 1;
+const SECURITY_RECORD_VERSION: number = 2;
 const CLIENT_ID_PATTERN: RegExp = /^harmony-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export interface PairingTarget { host: string; port: number; offerId: string; oneTimeCredential: string; }
@@ -16,8 +17,13 @@ interface DecodedClientIdentity { clientId: string; legacy: boolean; }
 interface StoredIdentityRecord {
   deviceId: string; keyId: string; keyEpoch: string; signatureAlgorithm: number; signingPublicKeyHex: string;
 }
+interface StoredSecurityProfileRecord {
+  backend: string; signingKeyStorage: string; credentialStorage: string; privateKeyExportable: boolean;
+  persistentIdentity: boolean; authorityDeviceId: string;
+}
 interface StoredCredentialRecord {
   version: number; pairingId: string; deviceId: string; hostIdentity: StoredIdentityRecord; credentialHex: string;
+  securityProfile: StoredSecurityProfileRecord;
   sessionKeyId: string; sessionKeyEpoch: string; highestControlSequence: string; revoked: boolean; revocationReason: string;
 }
 
@@ -102,16 +108,25 @@ export class PairingStore implements CredentialStore {
       if (secret === undefined) return undefined;
       try {
         const raw = JSON.parse(new util.TextDecoder().decode(secret)) as Partial<StoredCredentialRecord>;
-        if (raw.version !== RECORD_VERSION || typeof raw.pairingId !== 'string' || typeof raw.deviceId !== 'string' ||
+        if (raw.version !== SECURITY_RECORD_VERSION || typeof raw.pairingId !== 'string' || typeof raw.deviceId !== 'string' ||
           raw.hostIdentity === undefined || typeof raw.credentialHex !== 'string' || typeof raw.sessionKeyId !== 'string' ||
           typeof raw.sessionKeyEpoch !== 'string' || typeof raw.highestControlSequence !== 'string' ||
-          typeof raw.revoked !== 'boolean' || typeof raw.revocationReason !== 'string') throw new Error('unsupported_security_record');
+          raw.securityProfile === undefined || typeof raw.revoked !== 'boolean' || typeof raw.revocationReason !== 'string') throw new Error('unsupported_security_record');
         const identity: StoredIdentityRecord = raw.hostIdentity as StoredIdentityRecord;
         if (typeof identity.deviceId !== 'string' || typeof identity.keyId !== 'string' || typeof identity.keyEpoch !== 'string' ||
           typeof identity.signatureAlgorithm !== 'number' || typeof identity.signingPublicKeyHex !== 'string') {
           throw new Error('unsupported_security_identity');
         }
-        return { version: RECORD_VERSION, pairingId: raw.pairingId, deviceId: raw.deviceId,
+        const profile: StoredSecurityProfileRecord = raw.securityProfile as StoredSecurityProfileRecord;
+        if (typeof profile.backend !== 'string' || typeof profile.signingKeyStorage !== 'string' ||
+          typeof profile.credentialStorage !== 'string' || typeof profile.privateKeyExportable !== 'boolean' ||
+          typeof profile.persistentIdentity !== 'boolean' || typeof profile.authorityDeviceId !== 'string') {
+          throw new Error('unsupported_security_profile');
+        }
+        return { version: SECURITY_RECORD_VERSION, pairingId: raw.pairingId, deviceId: raw.deviceId,
+          securityProfile: { backend: profile.backend, signingKeyStorage: profile.signingKeyStorage,
+            credentialStorage: profile.credentialStorage, privateKeyExportable: profile.privateKeyExportable,
+            persistentIdentity: profile.persistentIdentity, authorityDeviceId: profile.authorityDeviceId },
           hostIdentity: { deviceId: identity.deviceId, keyId: identity.keyId, keyEpoch: BigInt(identity.keyEpoch),
             signatureAlgorithm: identity.signatureAlgorithm as SignatureAlgorithm,
             signingPublicKey: this.decodeHex(identity.signingPublicKeyHex) },
@@ -126,10 +141,11 @@ export class PairingStore implements CredentialStore {
 
   async save(record: StoredCredential): Promise<void> {
     const identity: DeviceIdentity = record.hostIdentity;
-    const encoded: StoredCredentialRecord = { version: RECORD_VERSION, pairingId: record.pairingId,
+    const encoded: StoredCredentialRecord = { version: SECURITY_RECORD_VERSION, pairingId: record.pairingId,
       deviceId: record.deviceId, hostIdentity: { deviceId: identity.deviceId, keyId: identity.keyId,
         keyEpoch: identity.keyEpoch.toString(), signatureAlgorithm: identity.signatureAlgorithm,
         signingPublicKeyHex: this.encodeHex(identity.signingPublicKey) }, credentialHex: this.encodeHex(record.credential),
+      securityProfile: { ...record.securityProfile },
       sessionKeyId: record.sessionKeyId, sessionKeyEpoch: record.sessionKeyEpoch.toString(),
       highestControlSequence: record.highestControlSequence.toString(), revoked: record.revoked,
       revocationReason: record.revocationReason };

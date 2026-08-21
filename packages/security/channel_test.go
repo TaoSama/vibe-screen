@@ -97,6 +97,13 @@ func TestSecureChannelSeparatesDirectionChannelAndEpoch(t *testing.T) {
 	if _, err := wrongEpoch.Open(packet); !errors.Is(err, ErrInvalidPacket) {
 		t.Fatalf("expected old epoch rejection, got %v", err)
 	}
+	rotatedKeys := keys
+	rotatedKeys.KeyEpoch++
+	rotatedKeys.KeyID = "test-key-rotated"
+	wrongKeyEpoch := mustChannel(t, rotatedKeys, ChannelControl, SenderHost)
+	if _, err := wrongKeyEpoch.Open(packet); !errors.Is(err, ErrInvalidPacket) {
+		t.Fatalf("expected old key epoch rejection, got %v", err)
+	}
 }
 
 func TestSecureChannelReplayWindowAllowsReorderingAndRejectsStale(t *testing.T) {
