@@ -1321,6 +1321,10 @@ class StreamClient(
     val canSendClipboard: Boolean
         get() = isConnected && wireMode == WireMode.V1 && protocolSession?.canSendClipboard == true
 
+    /** True when file transfer is available on the active Protocol v1 session. */
+    val canTransferFiles: Boolean
+        get() = isConnected && wireMode == WireMode.V1 && protocolSession?.canTransferFiles == true
+
     /** Negotiated clipboard byte limit for the active session; 0 when not negotiated. */
     val negotiatedMaxClipboardBytes: Long
         get() = if (wireMode == WireMode.V1) protocolSession?.negotiatedMaxClipboardBytes ?: 0L else 0L
@@ -1741,6 +1745,9 @@ class StreamClient(
                     }
                     is ProtocolV1Session.Action.ManagedPolicyReceived -> {
                         remoteManagedPolicy = RemoteManagedPolicy(action.status)
+                        if (!remoteManagedPolicy.fileTransferAllowed) {
+                            cancelActiveFileTransfers()
+                        }
                     }
                     is ProtocolV1Session.Action.FileOfferReceived -> {
                         val manager = checkNotNull(incomingFileTransfers.get()) { "Incoming file manager is closed" }
@@ -1863,7 +1870,7 @@ class StreamClient(
     ) {
         val session = checkNotNull(protocolSession) { "Protocol v1 session is closed" }
         val manager = incomingFileTransfers.get()
-        if (manager == null) {
+        if (!session.canTransferFiles || manager == null) {
             session.fileCancel(command.chunk.header.transferId, "policy_denied")?.let { writeProtocolEnvelope(out, it) }
             command.completion.complete(Unit)
             return
@@ -2296,8 +2303,10 @@ class StreamClient(
         requestConnectionEnd(SessionFailure.codec(reason))
     }
 
-    fun offerFile(file: File, mimeType: String = "application/octet-stream") {
-        if (!isConnected || wireMode != WireMode.V1) return
+    fun offerFile(file: File, mimeType: String = "application/octet-stream"): Boolean {
+        if (!isConnected || wireMode != WireMode.V1) return false
+        val session = protocolSession ?: return false
+        if (!session.canTransferFiles) return false
         val transfer =
             try {
                 OutgoingFileTransfer(
@@ -2308,7 +2317,7 @@ class StreamClient(
                 )
             } catch (failure: FileTransferException) {
                 onFileTransferResult?.invoke(false, failure.reasonCode)
-                return
+                return false
             }
         val submission = submitOutbound(
             kind = OutboundCommandScheduler.Kind.FILE_TRANSFER,
@@ -2328,7 +2337,9 @@ class StreamClient(
         ) {
             transfer.cancel()
             onFileTransferResult?.invoke(false, "outbound_backpressure")
+            return false
         }
+        return true
     }
 
     private fun requestConnectionEnd(failure: SessionFailure) {
@@ -2392,8 +2403,7 @@ class StreamClient(
         }
         protocolSession = null
         incomingFileTransfers.getAndSet(null)?.cancelAll()
-        outgoingFileTransfers.values.forEach { it.cancel() }
-        outgoingFileTransfers.clear()
+        cancelActiveFileTransfers()
         remoteManagedPolicy = RemoteManagedPolicy.UNMANAGED
         pendingInboundWakeHostRequests.clear()
         controllerConnectionAcks.reset()
@@ -2402,6 +2412,12 @@ class StreamClient(
         lanSecureRecordSession = null
         lanRecordProtectionState = LanRecordProtectionState.NOT_APPLICABLE
         nextOutboundChannel = dev.telemachus.display.internet.SessionChannel.CONTROL
+    }
+
+    private fun cancelActiveFileTransfers() {
+        incomingFileTransfers.get()?.cancelAll()
+        outgoingFileTransfers.values.forEach { it.cancel() }
+        outgoingFileTransfers.clear()
     }
 
     private fun cleanupCandidateTransport(

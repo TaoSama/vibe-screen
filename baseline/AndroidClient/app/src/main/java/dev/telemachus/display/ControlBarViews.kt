@@ -15,6 +15,7 @@ internal data class ControlBarViews(
     val actions: LinearLayout,
     val hostAction: View,
     val clipboard: View,
+    val fileTransfer: View,
     val settings: View,
     val disconnect: View,
 )
@@ -108,6 +109,7 @@ internal object ControlBarLayoutApplier {
                 .coerceAtLeast(0)
         val hostActionsVisible = views.hostAction.visibility == View.VISIBLE
         val clipboardVisible = views.clipboard.visibility == View.VISIBLE
+        val fileTransferVisible = views.fileTransfer.visibility == View.VISIBLE
         val mode =
             ControlBarLayoutPolicy.mode(
                 availableWidthPx = availableWidthPx,
@@ -115,6 +117,7 @@ internal object ControlBarLayoutApplier {
                 hostActionsVisible = hostActionsVisible,
                 clipboardVisible = clipboardVisible,
                 geometry = geometry,
+                fileTransferVisible = fileTransferVisible,
         )
         val cardParams = views.card.layoutParams
         val statusParams = views.connectionStatus.layoutParams as LinearLayout.LayoutParams
@@ -177,10 +180,19 @@ internal object ControlBarLayoutApplier {
         listOf(
             views.hostAction to ControlBarLayoutPolicy.Action.HOST,
             views.clipboard to ControlBarLayoutPolicy.Action.CLIPBOARD,
+            views.fileTransfer to ControlBarLayoutPolicy.Action.FILE_TRANSFER,
             views.settings to ControlBarLayoutPolicy.Action.SETTINGS,
             views.disconnect to ControlBarLayoutPolicy.Action.DISCONNECT,
         ).forEach { (view, action) ->
-            val margins = ControlBarLayoutPolicy.actionMargins(mode, action, hostActionsVisible, clipboardVisible, geometry)
+            val margins =
+                ControlBarLayoutPolicy.actionMargins(
+                    mode,
+                    action,
+                    hostActionsVisible,
+                    clipboardVisible,
+                    geometry,
+                    fileTransferVisible = fileTransferVisible,
+                )
             val params = view.layoutParams as LinearLayout.LayoutParams
             params.marginStart = margins.startPx
             params.topMargin = margins.topPx

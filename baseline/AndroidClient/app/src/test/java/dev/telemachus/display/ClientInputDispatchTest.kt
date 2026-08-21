@@ -78,6 +78,7 @@ class ClientInputDispatchTest {
                 controller = true,
                 hostActions = false,
                 clipboard = false,
+                fileTransfer = false,
            )
     }
 }
