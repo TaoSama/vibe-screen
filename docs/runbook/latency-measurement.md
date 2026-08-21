@@ -20,6 +20,31 @@ contact or HID actuation visible to the camera, and the end event the first
 visible Mac-side result. Keep input claims scoped to real physical input; ADB
 or synthetic events are mapper diagnostics, not input-latency evidence.
 
+## Capture procedure
+
+Before the run, lock the camera exposure, focus, shutter mode, frame rate, and
+white balance so frame boundaries stay readable across the full sample window.
+Mount the camera, Mac display, and Android device so both endpoint events are in
+one stable frame; do not hand-hold the camera or move either display after the
+first calibration clip. Record `adb -s EP0110PZ0B9110300B shell getprop` or the
+equivalent device-info helper output next to the run, and keep the device label
+as Nubia P0110/pacific/Android 16 when that serial is used.
+
+For USB glass-to-glass, start the macOS host and Android client over ADB reverse,
+then record at least five visible Mac stimulus transitions and their matching
+Android render results in one raw camera file. For LAN glass-to-glass, remove
+the ADB reverse dependency, confirm the LAN session is active, and repeat the
+same visible transition sampling with the LAN gate profile. For input latency,
+record real physical touch, stylus, keyboard, or mouse actuation and the first
+visible Mac-side result; do not use ADB-generated input as the start event.
+
+Annotate `samples.csv` from the raw recording only after capture. Use the first
+frame where the start event is visible and the first frame where the result is
+visible; if either boundary is ambiguous, record the worst-case endpoint
+uncertainty in the manifest. Keep failed, insufficient, and interrupted runs in
+their own evidence directories so the blocked reason is auditable rather than
+silently replaced by a later attempt.
+
 ## Evidence directory
 
 Store each run in an immutable directory with these files:
@@ -153,13 +178,14 @@ Then validate the formal evidence package:
       --output latency-run/latency-evidence-report.json
 
 For LAN glass-to-glass, use `--transport lan` with `lan-glass-to-glass-sub80`.
-For input latency, use `--kind input` with `input-p95-sub50`. The checker exits 0 only
-when the profile verdict is pass and required external-camera provenance is
-complete. Missing raw video, mismatched manifest fields, changed sample
-annotations, frame-rate mismatches, annotation uncertainty that crosses the
-threshold, too few samples, wrong transport, or a threshold miss all return
-nonzero with a JSON report whose verdict is insufficient or fail. Referenced
-files must use package-relative paths and stay inside the evidence directory.
+For input latency, use `--kind input` with `input-p95-sub50`. The checker exits
+0 only when the profile verdict is pass and the required external-camera or
+synchronized-clock provenance is complete. Missing raw video, mismatched
+manifest fields, changed sample annotations, frame-rate mismatches, annotation
+uncertainty or clock error budget that crosses the threshold, too few samples,
+wrong transport, or a threshold miss all return nonzero with a JSON report whose
+verdict is insufficient or fail. Referenced files must use package-relative
+paths and stay inside the evidence directory.
 
 ## Synchronized-clock input latency
 
@@ -174,6 +200,14 @@ sources, the synchronization procedure, before/after skew checks, drift over
 the measurement window, and a worst-case error budget. The total timing error
 budget must be less than 5 ms, which is 10% of the sub-50 ms P95 input gate, or
 the claim remains `insufficient` even if the raw P95 is below 50 ms.
+
+A synchronized-clock input run still needs a real physical input event and a
+visible Mac-side result. Before sampling, record a before-skew measurement,
+perform the synchronization procedure, record an after-skew measurement, and
+repeat a drift check after the sample window. The manifest's total error budget
+must conservatively cover the remaining skew, drift, timestamp capture
+resolution, and trigger-detection uncertainty; if any component is guessed or
+omitted, the run remains blocked.
 
 The formal provenance checker now validates synchronized-clock input packages.
 The manifest generator can build this path with `--measurement-method

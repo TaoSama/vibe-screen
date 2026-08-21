@@ -294,7 +294,7 @@ create the manifest with the dedicated helper:
       --notes "run-specific notes"
 
 For a formal gate claim, validate the whole evidence directory with the stricter
-external-camera provenance checker:
+latency provenance checker:
 
 ```sh
 PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
@@ -304,10 +304,13 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
 ```
 
 The manifest follows `tools/schemas/latency-evidence.schema.json` and must bind
-the run ID, transport, profile, raw camera recording, sample file, camera mode,
-device identity, build identity, and annotation method. The checker exits `0`
-only when the profile verdict is `pass` and provenance is complete; missing raw
-video or mismatched metadata stays `insufficient`. The step-by-step method is in
+the run ID, transport, profile, sample file, device identity, build identity,
+and annotation method. External-camera packages also bind the raw camera
+recording and camera mode; synchronized-clock input packages bind the clock
+sources, skew, drift, timestamp methods, and sub-5 ms total error budget. The
+checker exits `0` only when the profile verdict is `pass` and provenance is
+complete; missing raw video, mismatched metadata, or incomplete synchronization
+proof stays `insufficient`. The step-by-step method is in
 `docs/runbook/latency-measurement.md`.
 
 For telemetry-stage diagnostics, prepare rows with `stage,latency_ms` and mark
