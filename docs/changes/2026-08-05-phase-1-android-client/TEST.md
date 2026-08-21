@@ -383,12 +383,13 @@ fuxi evidence. See
 
 ## P0110 native pointer HID follow-up
 
-On 2026-08-20, the connected Nubia P0110 (`EP0110PZ0B9110300B`, `pacific`,
-Android 16 / SDK 36) was checked under `/tmp/vibe-screen-device-android.lock`
+On 2026-08-20, the connected Nubia P0110 (`pacific`, Android 16 / SDK 36)
+was checked under `/tmp/vibe-screen-device-android.lock`
 with the native pointer HID acceptance script. The script recorded device
-identity and `dumpsys input`, but found no external Android input device with a
-`MOUSE`, `TOUCHPAD`, or `TRACKBALL` source. It therefore wrote a `blocked`
-evidence bundle and did not wait for pointer movement/click observation.
+identity and `dumpsys input`, but found no external Android input device with
+a `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL` source. It therefore
+wrote a `blocked` evidence bundle and did not wait for pointer movement/click
+observation.
 
 This does not close the native pointer move/click gate. A passing run still
 requires a real USB or Bluetooth mouse attached to the Android device during an
@@ -401,10 +402,33 @@ Evidence:
 - [`evidence/2026-08-18-p0110-native-pointer-hid-blocked/`](evidence/2026-08-18-p0110-native-pointer-hid-blocked/)
 - [`evidence/2026-08-20-p0110-native-pointer-hid/`](evidence/2026-08-20-p0110-native-pointer-hid/)
 
+## P0110 native pointer HID readiness follow-up
+
+On 2026-08-21, the connected Nubia P0110 (`pacific`, Android 16 / SDK 36)
+was checked again with the stricter native pointer HID
+acceptance script. The script records `dumpsys input`, bounded Android `MA`
+logcat, and the newly appended Host log window, and it requires all three
+evidence layers before returning pass: Android `native pointer forwarded` lines
+for `MOVE`, `BUTTON_PRESS`, and `BUTTON_RELEASE` from `MOUSE`,
+`MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL`; Host `Pointer injected` lines for
+`changed`, `began`, and `ended`; and an operator note describing the visible Mac
+pointer/click result.
+
+The connected P0110 was online, but no external Android input device with a
+`MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL` source was attached. The
+script therefore returned `blocked` (`exit_code=2`) and wrote empty Android/Host
+observation windows rather than fabricating runtime evidence. This does not
+close the native pointer move/click gate, and the result remains P0110/pacific
+evidence, not Xiaomi 13/fuxi evidence.
+
+Evidence:
+
+- [`evidence/2026-08-21-p0110-native-pointer-hid-readiness/`](evidence/2026-08-21-p0110-native-pointer-hid-readiness/)
+
 ## P0110 rotated host-display readiness follow-up
 
-On 2026-08-20, the connected Nubia P0110 (EP0110PZ0B9110300B, pacific,
-Android 16 / SDK 36) was checked for the rotated physical/virtual host-display
+On 2026-08-20, the connected Nubia P0110 (pacific, Android 16 / SDK 36)
+was checked for the rotated physical/virtual host-display
 acceptance gate. The target device was online, and origin/main was current at
 b9d768e55c75f03cd3cb5d20939576bc8d24ff27, but no real-device acceptance run
 was started.

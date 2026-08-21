@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.MotionEvent
 import android.view.InputDevice
@@ -201,6 +202,7 @@ class MainActivity : AppCompatActivity() {
     private val streamControllerSessionState = ControllerSessionState()
     private var activeSessionGeneration = 0L
     private var unsupportedKeyboardNoticeShown = false
+    private var nextNativePointerMoveDiagAtMs = 0L
     private val inputHandler = Handler(Looper.getMainLooper())
     private var pendingRightClickRelease: Runnable? = null
     private lateinit var deviceHealthMonitor: AndroidDeviceHealthMonitor
@@ -1131,7 +1133,10 @@ class MainActivity : AppCompatActivity() {
             }
         if (nativePointerInput != null) {
             when (ClientInputDispatch(currentSessionBinding()).sendPointer(nativePointerInput)) {
-                ClientInputDispatchResult.SENT -> return true
+                ClientInputDispatchResult.SENT -> {
+                    logNativePointerForwarded(event, nativePointerInput)
+                    return true
+                }
                 ClientInputDispatchResult.REJECTED -> {
                     mainDiag("negotiated pointer sink rejected ${nativePointerInput.action}")
                     return true
@@ -1179,6 +1184,28 @@ class MainActivity : AppCompatActivity() {
             gesture.endSecond.x,
             gesture.endSecond.y,
         )
+        return true
+    }
+
+    private fun logNativePointerForwarded(
+        event: MotionEvent,
+        nativePointerInput: ClientPointerInput,
+    ) {
+        if (!shouldLogNativePointerForward(nativePointerInput.action)) return
+        mainDiag(
+            "native pointer forwarded action=${nativePointerInput.action} " +
+                "source=${NativeInputWire.mouseLikeSourceNames(event.source, event.device?.sources).joinToString("+").ifEmpty { "OTHER" }} " +
+                "buttonState=${event.buttonState} actionButton=${event.actionButton} " +
+                "wireButtons=${NativeInputWire.buttonMask(event.buttonState)} " +
+                "x=${nativePointerInput.x} y=${nativePointerInput.y}",
+        )
+    }
+
+    private fun shouldLogNativePointerForward(action: ClientPointerAction): Boolean {
+        if (action != ClientPointerAction.MOVE) return true
+        val now = SystemClock.elapsedRealtime()
+        if (now < nextNativePointerMoveDiagAtMs) return false
+        nextNativePointerMoveDiagAtMs = now + NATIVE_POINTER_MOVE_DIAG_INTERVAL_MS
         return true
     }
 
@@ -5336,6 +5363,7 @@ class MainActivity : AppCompatActivity() {
         private const val LEGACY_SCROLL_POINTER_COUNT = 2
         private const val MAX_FORWARDED_POINTERS = 2
         private const val LEGACY_RIGHT_CLICK_HOLD_MS = 650L
+        private const val NATIVE_POINTER_MOVE_DIAG_INTERVAL_MS = 250L
         private const val FOREGROUND_RECONNECT_DELAY_MS = 150L
         private const val FOREGROUND_KEYFRAME_REASON = "client returned to foreground"
         private const val CLIPBOARD_MENU_SEND = 1
