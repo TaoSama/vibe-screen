@@ -33,10 +33,12 @@ import dev.vibescreen.protocol.v1.ResourceLimits
 import dev.vibescreen.protocol.v1.SessionAccepted
 import dev.vibescreen.protocol.v1.StartDisplayResponse
 import dev.vibescreen.protocol.v1.VideoConfig
+import dev.vibescreen.protocol.v1.WakeHostRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -979,6 +981,118 @@ class StreamClientProtocolV1IntegrationTest {
                 Unit
             }
         }
+
+    @Test
+    fun signedWakeHostRequestSendsMagicPacketAndRejectsReplay() = runBlocking {
+        ServerSocket(0).use { server ->
+            val secret = ByteArray(32) { it.toByte() }
+            val requestId = ByteString.copyFrom(byteArrayOf(0x51))
+            val targetMac = ByteString.copyFrom(byteArrayOf(1, 2, 3, 4, 5, 6))
+            val sentPackets = Collections.synchronizedList(mutableListOf<ByteArray>())
+            val sender = WakeHostPacketSender { packet -> sentPackets += packet }
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        var clientDeviceId = ""
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_WAKE_HOST),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_WAKE_HOST),
+                            expectedClientCapabilities = DEFAULT_CLIENT_CAPABILITIES + Capability.CAPABILITY_WAKE_HOST,
+                            onClientHello = { clientDeviceId = it.deviceId },
+                        )
+                        val wakeRequest = signedWakeHostRequest(
+                            id = 6,
+                            requestId = requestId,
+                            targetMac = targetMac,
+                            clientDeviceId = clientDeviceId,
+                            secret = secret,
+                        )
+                        write(peer, wakeRequest)
+                        val accepted = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.WAKE_HOST_RESULT, accepted.payloadCase)
+                        assertEquals(requestId, accepted.wakeHostResult.requestId)
+                        assertTrue(accepted.wakeHostResult.accepted)
+                        assertEquals("", accepted.wakeHostResult.rejectionReason)
+
+                        write(peer, wakeRequest.toBuilder().setMessageId(7).build())
+                        val replay = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.WAKE_HOST_RESULT, replay.payloadCase)
+                        assertEquals(requestId, replay.wakeHostResult.requestId)
+                        assertFalse(replay.wakeHostResult.accepted)
+                        assertEquals("wake_host_replay", replay.wakeHostResult.rejectionReason)
+                        write(peer, disconnect(8))
+                    }
+                }
+            val client =
+                StreamClient(
+                    host = "127.0.0.1",
+                    port = server.localPort,
+                    wakeHostPolicy = SharedSecretWakeHostPolicy(secret.copyOf(), nowUnixSeconds = { 1_010L }),
+                    wakeHostPacketSender = sender,
+                    wakeHostExecutor = Executor { it.run() },
+                )
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertEquals(1, sentPackets.size)
+            assertArrayEquals(WakeHostMagicPacket.build(targetMac), sentPackets.single())
+        }
+    }
+
+    @Test
+    fun unsignedWakeHostRequestFailsClosedWithoutSendingPacket() = runBlocking {
+        ServerSocket(0).use { server ->
+            val sentPackets = Collections.synchronizedList(mutableListOf<ByteArray>())
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        var clientDeviceId = ""
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_WAKE_HOST),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_WAKE_HOST),
+                            expectedClientCapabilities = DEFAULT_CLIENT_CAPABILITIES + Capability.CAPABILITY_WAKE_HOST,
+                            onClientHello = { clientDeviceId = it.deviceId },
+                        )
+                        write(
+                            peer,
+                            base(6)
+                                .setWakeHostRequest(
+                                    WakeHostRequest.newBuilder()
+                                        .setRequestId(ByteString.copyFrom(byteArrayOf(0x52)))
+                                        .setTargetMacAddress(ByteString.copyFrom(byteArrayOf(1, 2, 3, 4, 5, 6)))
+                                        .setHostId(TEST_HOST_ID)
+                                        .setDeviceId(clientDeviceId),
+                                ).build(),
+                        )
+                        val result = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.WAKE_HOST_RESULT, result.payloadCase)
+                        assertFalse(result.wakeHostResult.accepted)
+                        assertEquals("wake_host_unauthorized", result.wakeHostResult.rejectionReason)
+                        write(peer, disconnect(7))
+                    }
+                }
+            val client =
+                StreamClient(
+                    host = "127.0.0.1",
+                    port = server.localPort,
+                    wakeHostPolicy = SharedSecretWakeHostPolicy(ByteArray(32) { it.toByte() }, nowUnixSeconds = { 1_010L }),
+                    wakeHostPacketSender = WakeHostPacketSender { packet -> sentPackets += packet },
+                    wakeHostExecutor = Executor { it.run() },
+                )
+            client.acceptVideoConfigurations()
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertTrue(sentPackets.isEmpty())
+        }
+    }
 
 
     @Test
@@ -2092,6 +2206,45 @@ class StreamClientProtocolV1IntegrationTest {
         base(id).setHostActionResult(
             HostActionResult.newBuilder().setInvocationId(invocationId).setAccepted(accepted),
         ).build()
+
+    private fun signedWakeHostRequest(
+        id: Long,
+        requestId: ByteString,
+        targetMac: ByteString,
+        clientDeviceId: String,
+        secret: ByteArray,
+    ): Envelope {
+        val keyId = WakeHostProof.keyId(secret)
+        val nonce = ByteString.copyFrom(ByteArray(WakeHostProof.MINIMUM_NONCE_BYTES) { (0xa0 + it).toByte() })
+        val issuedAt = 1_000L
+        val expiresAt = 1_060L
+        val signature =
+            WakeHostProof.signature(
+                requestId = requestId,
+                targetMacAddress = targetMac,
+                secureOnPassword = ByteString.EMPTY,
+                hostId = TEST_HOST_ID,
+                deviceId = clientDeviceId,
+                keyId = keyId,
+                issuedAtUnixSeconds = issuedAt,
+                expiresAtUnixSeconds = expiresAt,
+                nonce = nonce,
+                secret = secret,
+            )
+        return base(id)
+            .setWakeHostRequest(
+                WakeHostRequest.newBuilder()
+                    .setRequestId(requestId)
+                    .setTargetMacAddress(targetMac)
+                    .setHostId(TEST_HOST_ID)
+                    .setDeviceId(clientDeviceId)
+                    .setKeyId(keyId)
+                    .setIssuedAtUnixSeconds(issuedAt)
+                    .setExpiresAtUnixSeconds(expiresAt)
+                    .setNonce(nonce)
+                    .setSignature(signature),
+            ).build()
+    }
 
     private fun clipboardOffer(
         id: Long,

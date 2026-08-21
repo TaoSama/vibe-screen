@@ -50,7 +50,10 @@ stream limits/routes, PCM validation and reorder, clipboard explicit-action
 and feedback/digest rejection, managed deny-wins policy, safe filenames,
 sequential chunks, file limits/final SHA-256/cleanup, HDR10→SDR config-epoch
 fallback, gesture persistence/catalog enforcement, the 102-byte WOL vector,
-and every advanced Envelope branch used by the client.
+WakeHost device-identity binding, and every advanced Envelope branch used by
+the client. Focused macOS/Android tests cover the shared HMAC golden vector,
+replay and unauthorized rejection, broadcast-target validation, and the
+Android Protocol v1 action path to a captured magic-packet sender.
 Trusted-LAN additions cover strict pairing/auth/upgrade codecs, transport
 startup disconnect and Task-cancellation completion, host control message
 ordering/session-epoch validation, Ping/Pong correlation, and the client
@@ -263,7 +266,8 @@ The following remain unproved until their dedicated gates produce evidence:
   LAN evidence;
 - cross-client golden bytes against the Android application;
 - AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
-  file picker/export, UDP broadcast, and managed App Configuration injection;
+  file picker/export, real sleeping-host Wake-on-LAN over router/NIC firmware
+  paths, and managed App Configuration injection;
 - host-side multi-client/display, audio capture, clipboard/file handlers,
   color retry, actions, and wake helper;
 - audio capture/playback, clipboard, and file-transfer product flows over
