@@ -238,8 +238,8 @@ and record all of the following in the evidence directory:
   only the new Host log bytes appended while the operator draws;
 - Android diag log entries from the same connected session with
   `Stylus forwarded:` plus sample count, extended-stylus negotiation state,
-  raw Android `MotionEvent` source, raw tool type, phase, contact state, tool
-  kind, buttons, pressure, and signed `tiltX` / `tiltY`;
+  raw Android `MotionEvent` source, raw action, raw tool type, phase, contact
+  state, tool kind, buttons, pressure, and signed `tiltX` / `tiltY`;
 - host log excerpts showing stylus injection with pressure and signed two-axis
   tilt, plus barrel/proximity fields when exercised;
 - a written observation or external-camera note that the drawing app received a

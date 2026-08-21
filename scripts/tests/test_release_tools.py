@@ -142,10 +142,80 @@ Input Reader State:
             with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "above limit"):
                 android_stylus_acceptance.read_new_host_log(host_log, refreshed_cursor, 1)
 
+    def test_host_log_cursor_reports_stat_errors_as_evidence_errors(self) -> None:
+        host_log = mock.Mock(spec=Path)
+        host_log.stat.side_effect = OSError("permission denied")
+
+        with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "cannot stat host log"):
+            android_stylus_acceptance.host_log_cursor(host_log)
+
+    def test_main_reports_missing_host_log_before_adb_for_observed_drawing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output_dir = Path(temporary_directory) / "evidence"
+            with mock.patch.object(android_stylus_acceptance, "describe_device_locks", return_value=[]):
+                with mock.patch.object(android_stylus_acceptance, "check_device_locks", return_value=[]):
+                    with mock.patch.object(android_stylus_acceptance, "adb") as adb_mock:
+                        with mock.patch.object(sys, "stderr") as stderr:
+                            result = android_stylus_acceptance.main([
+                                "--adb",
+                                "adb",
+                                "--serial",
+                                "DEVICE_SERIAL",
+                                "--observed-physical-drawing",
+                                "--drawing-observation",
+                                "physical stylus produced visible ink",
+                                "--output-dir",
+                                str(output_dir),
+                            ])
+
+        self.assertEqual(2, result)
+        adb_mock.assert_not_called()
+        self.assertIn("error: --host-log is required", "".join(call.args[0] for call in stderr.write.call_args_list))
+
     def test_passing_status_requires_host_log_and_observation(self) -> None:
         args = argparse.Namespace(observed_physical_drawing=True, drawing_observation="", host_log=None)
         with self.assertRaisesRegex(android_stylus_acceptance.EvidenceError, "drawing-observation"):
             android_stylus_acceptance.conclusion_status(args, [])
+
+    def test_write_evidence_records_host_log_name_without_absolute_path(self) -> None:
+        candidate = android_stylus_acceptance.InputDeviceCapability(
+            name="goodix_stylus_input",
+            descriptor="abc123",
+            sources=("STYLUS",),
+            axes=("PRESSURE", "TILT"),
+            buttons=(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            output_dir = root / "evidence"
+            host_log = root / "Users" / "operator" / "Library" / "Logs" / "Telemachus" / "telemachus.log"
+            host_log.parent.mkdir(parents=True)
+            host_log.write_text("old host line\n", encoding="utf-8")
+            args = argparse.Namespace(
+                host_log=host_log,
+                observed_physical_drawing=True,
+                observe_seconds=0,
+                drawing_observation="physical stylus produced visible ink",
+            )
+
+            android_stylus_acceptance.write_evidence(
+                output_dir,
+                args,
+                [],
+                {},
+                "Input Reader State:\n",
+                [candidate],
+                "",
+                None,
+                "Stylus injected: input=1 pointer=7 phase=INPUT_PHASE_CHANGED contact=contact tool=pen buttons=0 pressure=0.625 tiltX=45.0 tiltY=-45.0\n",
+                "pass",
+            )
+
+            summary = json.loads((output_dir / "stylus-evidence.json").read_text(encoding="utf-8"))
+
+        self.assertEqual("telemachus.log", summary["host_log_name"])
+        self.assertNotIn("host_log", summary)
+        self.assertNotIn("operator", json.dumps(summary))
 
     def test_passing_status_requires_stylus_injection_fields_in_host_log(self) -> None:
         candidate = android_stylus_acceptance.InputDeviceCapability(

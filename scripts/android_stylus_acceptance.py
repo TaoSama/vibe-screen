@@ -364,6 +364,8 @@ def host_log_cursor(path: Path) -> HostLogCursor:
         return HostLogCursor(device=stat.st_dev, inode=stat.st_ino, offset=stat.st_size)
     except FileNotFoundError as error:
         raise EvidenceError(f"host log does not exist: {path}") from error
+    except OSError as error:
+        raise EvidenceError(f"cannot stat host log {path}: {error}") from error
 
 
 def read_new_host_log(path: Path, cursor: HostLogCursor, max_bytes: int) -> str:
@@ -388,12 +390,9 @@ def read_new_host_log(path: Path, cursor: HostLogCursor, max_bytes: int) -> str:
 def wait_for_physical_drawing(args: argparse.Namespace, host_cursor: HostLogCursor | None) -> str:
     if not args.observed_physical_drawing:
         return ""
-    if args.observe_seconds < 0:
-        raise EvidenceError("--observe-seconds must be non-negative")
-    if args.max_host_log_bytes <= 0:
-        raise EvidenceError("--max-host-log-bytes must be positive")
-    assert args.host_log is not None
-    assert host_cursor is not None
+    validate_observed_drawing_inputs(args)
+    if host_cursor is None:
+        raise EvidenceError("host log cursor is required with --observed-physical-drawing")
     if args.observe_seconds > 0:
         print(
             "Draw in the macOS test app using the physical Android stylus. "
@@ -419,6 +418,21 @@ def slug(value: str) -> str:
     return result or "unknown"
 
 
+def validate_observed_drawing_inputs(args: argparse.Namespace) -> None:
+    if not args.observed_physical_drawing:
+        return
+    if not args.drawing_observation.strip():
+        raise EvidenceError("--drawing-observation is required with --observed-physical-drawing")
+    if args.host_log is None:
+        raise EvidenceError("--host-log is required with --observed-physical-drawing")
+    if not args.host_log.exists():
+        raise EvidenceError(f"host log does not exist: {args.host_log}")
+    if getattr(args, "observe_seconds", DEFAULT_OBSERVATION_SECONDS) < 0:
+        raise EvidenceError("--observe-seconds must be non-negative")
+    if getattr(args, "max_host_log_bytes", 1) <= 0:
+        raise EvidenceError("--max-host-log-bytes must be positive")
+
+
 def conclusion_status(
     args: argparse.Namespace,
     candidates: Sequence[InputDeviceCapability],
@@ -428,12 +442,7 @@ def conclusion_status(
 ) -> str:
     has_required_capability = any(candidate.pass_eligible for candidate in candidates)
     if args.observed_physical_drawing:
-        if not args.drawing_observation.strip():
-            raise EvidenceError("--drawing-observation is required with --observed-physical-drawing")
-        if not args.host_log:
-            raise EvidenceError("--host-log is required with --observed-physical-drawing")
-        if not args.host_log.exists():
-            raise EvidenceError(f"host log does not exist: {args.host_log}")
+        validate_observed_drawing_inputs(args)
         if not has_required_capability:
             return "blocked_no_required_stylus_capability"
         validate_android_diag_for_pass(diag_log, diag_error)
@@ -513,7 +522,7 @@ def write_evidence(
         "stylus_candidates": [candidate.__dict__ for candidate in candidates],
         "pass_eligible_stylus_candidates": [candidate.__dict__ for candidate in candidates if candidate.pass_eligible],
         "diag_log_read_error": diag_error,
-        "host_log": str(args.host_log) if args.host_log else None,
+        "host_log_name": args.host_log.name if args.host_log else None,
         "host_log_appended_bytes": len(host_log_excerpt.encode("utf-8")) if host_log_excerpt else 0,
         "host_log_appended_sha256": hashlib.sha256(host_log_excerpt.encode("utf-8")).hexdigest(),
         "observation_seconds": float(args.observe_seconds) if args.observed_physical_drawing else 0.0,
@@ -535,7 +544,7 @@ def write_lock_blocked_evidence(output_dir: Path, args: argparse.Namespace, lock
         "stylus_candidates": [],
         "pass_eligible_stylus_candidates": [],
         "diag_log_read_error": "ADB not run because a device coordination lock exists.",
-        "host_log": str(args.host_log) if args.host_log else None,
+        "host_log_name": args.host_log.name if args.host_log else None,
         "host_log_appended_bytes": 0,
         "host_log_appended_sha256": hashlib.sha256(b"").hexdigest(),
         "observation_seconds": 0.0,
@@ -662,6 +671,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + ", ".join(str(lock.get("path", "")) for lock in lock_details)
             )
         existing_locks = check_device_locks(args.allow_existing_device_lock)
+        validate_observed_drawing_inputs(args)
         require_success(adb(args.adb, args.serial, "start-server", timeout=30))
         require_success(adb(args.adb, args.serial, "get-state"))
         identity = collect_device_identity(args.adb, args.serial)

@@ -16,9 +16,9 @@
   "existing_locks": [
     "/tmp/vibe-screen-device-android.lock"
   ],
-  "host_log": null,
   "host_log_appended_bytes": 0,
   "host_log_appended_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "host_log_name": null,
   "observation_seconds": 0.0,
   "observed_physical_drawing": false,
   "pass_eligible_stylus_candidates": [

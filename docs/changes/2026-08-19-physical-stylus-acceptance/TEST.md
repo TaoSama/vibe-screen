@@ -54,9 +54,11 @@ Evidence:
 ## Tooling change
 
 `scripts/android_stylus_acceptance.py` now writes lock-blocked evidence with
-`--write-blocked-on-lock`, and its passing path validates that the supplied Host
-log contains a stylus injection plus contact, button, pressure, and signed tilt
-fields. It also requires a pass-eligible Android input-device candidate with the
+`--write-blocked-on-lock`, and its passing path validates only Host log bytes
+appended during the drawing observation window. The appended Host line must
+contain a stylus injection plus non-terminal phase, contact, tool, button,
+pressure, and signed tilt fields. It also requires a pass-eligible Android
+input-device candidate with the
 `STYLUS` source and pressure/tilt axes, plus app diagnostic log entries showing
 same-session `Stylus forwarded:` samples with sample count, extended-stylus
 state, phase, contact state, tool kind, buttons, pressure, and signed tilt. The
