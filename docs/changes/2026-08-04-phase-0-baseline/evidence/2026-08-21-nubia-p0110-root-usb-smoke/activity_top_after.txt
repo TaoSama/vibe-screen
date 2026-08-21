@@ -1,4 +1,4 @@
-$ bash -lc adb -s EP0110PZ0B9110300B shell dumpsys activity top | head -160
+$ bash -lc 'adb -s EP0110PZ0B9110300B shell dumpsys activity top | head -160'
 TASK null id=299 userId=0 displayId=0(type=INTERNAL)
   ACTIVITY com.android.launcher3/com.obric.feature.ObricLauncher 59ac455 pid=5289 userId=0 uid=10169 displayId=0(type=INTERNAL)
     Local Activity a0fa192 State:

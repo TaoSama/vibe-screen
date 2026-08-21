@@ -22,7 +22,7 @@ d4b63c132f242d0b4623e38f962d8b4e9d1fb068a7378f0e8ba0e28886ea6f42  ./latest-contr
 8e6ffe3b6a18caa2303fc546d9d5d89a968c057fb3f29aa6c1810880a3cb33c4  ./latest-host-touch-preflight.txt
 da5d55a7c0c3c8c0ddce1383b9d06247b371fcb5e01a778110e129fd0c242820  ./live-state-after-stale-lock.txt
 c428f90d3fea33b42c2ea8c3debabb212f3cc185dc6000ba38fcf095f84006d2  ./readiness.json
-1fa0a11222694c34b2f074cac8a187998f88a44fc2514e68b0c50f91cf28dc93  ./README.md
+e9f08adca4ee462d1202402aad50bb10c0f580b72134d9b21ad91f76a36424f0  ./README.md
 43aa2a2ec93e76171463dc14ffa0c020942bf7e33b1c0c1c4e0f385ebe10ba57  ./restored-host-defaults.txt
 86dfe69d76bcaf627aaf181e767ae8b9663524dc42a0d6b61c8d491d87fc0fa7  ./stale-lock-cleanup.txt
 e7891e908b69a8bbf16f77b04ccb15b3b59cbb01da313e388065834c80a0f71d  ./tcc-dev-telemachus-display.txt
