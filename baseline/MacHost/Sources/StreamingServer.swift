@@ -1496,6 +1496,10 @@ class StreamingServer: EncodedFrameSink {
                 return
             }
             let generation = self.activeConnectionGeneration
+            guard session.canTransferFiles else {
+                transfer.cancel()
+                return
+            }
             guard self.protocolV1OutgoingFiles.isEmpty else {
                 transfer.cancel()
                 self.applyProtocolV1Actions(
@@ -2066,7 +2070,7 @@ class StreamingServer: EncodedFrameSink {
         } catch {
             return session.rejectMalformedTransport("Invalid file transfer bulk frame: \(error)")
         }
-        guard let incomingFiles = protocolV1IncomingFiles else {
+        guard session.canTransferFiles, let incomingFiles = protocolV1IncomingFiles else {
             return session.makeFileTransferCancel(
                 transferID: chunk.header.transferID,
                 reasonCode: ProtocolV1FileTransferError.policyDenied.reasonCode
@@ -2411,6 +2415,9 @@ class StreamingServer: EncodedFrameSink {
                 protocolV1OutgoingFiles.removeValue(forKey: result.transferID)?.cancel()
             case .remoteManagedPolicyChanged(let status):
                 protocolV1RemoteManagedPolicy = ProtocolV1RemoteManagedPolicy(status: status)
+                if !protocolV1RemoteManagedPolicy.fileTransferAllowed {
+                    cancelProtocolV1ActiveFileTransfers()
+                }
             case .wakeHost(let request, let correlationID):
                 dispatchWakeHostRequest(
                     request,
@@ -3178,6 +3185,7 @@ class StreamingServer: EncodedFrameSink {
         protocolV1Framer = ProtocolV1Framer()
         protocolV1Session = nil
         protocolV1TouchAggregator.reset()
+        clearProtocolV1FileTransfers()
         if activeConnectionGeneration == generation {
             activeConnectionGeneration &+= 1
         }
@@ -3218,6 +3226,19 @@ class StreamingServer: EncodedFrameSink {
         connectionReady = false
         activeConnectionIsWireless = false
         completion?()
+    }
+
+    private func clearProtocolV1FileTransfers() {
+        cancelProtocolV1ActiveFileTransfers()
+        protocolV1IncomingFiles = nil
+    }
+
+    private func cancelProtocolV1ActiveFileTransfers() {
+        protocolV1IncomingFiles?.cancelAll()
+        protocolV1PendingIncomingFileApprovals.removeAll()
+        protocolV1ApprovedIncomingFileOffers.removeAll()
+        protocolV1OutgoingFiles.values.forEach { $0.cancel() }
+        protocolV1OutgoingFiles.removeAll()
     }
 }
 

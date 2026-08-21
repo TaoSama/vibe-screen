@@ -364,6 +364,7 @@ data class ClientSessionCapabilities(
     val controller: Boolean,
     val hostActions: Boolean,
     val clipboard: Boolean,
+    val fileTransfer: Boolean,
 ) {
     companion object {
         val LEGACY_TOUCH_ONLY =
@@ -375,6 +376,7 @@ data class ClientSessionCapabilities(
                 controller = false,
                 hostActions = false,
                 clipboard = false,
+                fileTransfer = false,
             )
     }
 }
@@ -385,6 +387,7 @@ internal enum class ClientControl {
     NATIVE_POINTER,
     HOST_ACTIONS,
     CLIPBOARD,
+    FILE_TRANSFER,
 }
 
 /** A host display the client can select, surfaced to the UI without protocol imports. */
@@ -454,7 +457,7 @@ internal object DisplayCapsulePolicy {
 
 internal object ControlBarLayoutPolicy {
     enum class Mode { COMPACT, INLINE, STACKED, COLUMN }
-    enum class Action { HOST, CLIPBOARD, SETTINGS, DISCONNECT }
+    enum class Action { HOST, CLIPBOARD, FILE_TRANSFER, SETTINGS, DISCONNECT }
 
     data class Geometry(
         val horizontalContentPaddingPx: Int,
@@ -480,12 +483,14 @@ internal object ControlBarLayoutPolicy {
         fun horizontalActionsWidthPx(
             hostActionsVisible: Boolean,
             clipboardVisible: Boolean,
+            fileTransferVisible: Boolean = false,
         ): Int {
             val settingsWidth = buttonSizePx + actionMarginPx * 2
             val disconnectWidth = buttonSizePx + disconnectSeparationPx
             val hostWidth = if (hostActionsVisible) buttonSizePx + actionMarginPx * 2 else 0
             val clipboardWidth = if (clipboardVisible) buttonSizePx + actionMarginPx * 2 else 0
-            return hostWidth + clipboardWidth + settingsWidth + disconnectWidth
+            val fileTransferWidth = if (fileTransferVisible) buttonSizePx + actionMarginPx * 2 else 0
+            return hostWidth + clipboardWidth + fileTransferWidth + settingsWidth + disconnectWidth
         }
     }
 
@@ -502,8 +507,9 @@ internal object ControlBarLayoutPolicy {
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
         geometry: Geometry,
+        fileTransferVisible: Boolean = false,
     ): Mode {
-        val actionWidthPx = geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible)
+        val actionWidthPx = geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible, fileTransferVisible)
         val statusWidthPx = geometry.statusMinimumWidthPx + geometry.statusGapPx
         if (!displaySelectorVisible) {
             val compactMinimumPx = geometry.horizontalContentPaddingPx + statusWidthPx + actionWidthPx
@@ -539,23 +545,34 @@ internal object ControlBarLayoutPolicy {
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
         geometry: Geometry,
+        fileTransferVisible: Boolean = false,
     ): Margins =
         if (mode == Mode.COLUMN) {
             when (action) {
                 Action.HOST -> Margins(0, 0, 0)
                 Action.CLIPBOARD ->
                     Margins(0, if (hostActionsVisible) geometry.columnActionSpacingPx else 0, 0)
-                Action.SETTINGS ->
+                Action.FILE_TRANSFER ->
                     Margins(
                         0,
                         if (hostActionsVisible || clipboardVisible) geometry.columnActionSpacingPx else 0,
+                        0,
+                    )
+                Action.SETTINGS ->
+                    Margins(
+                        0,
+                        if (hostActionsVisible || clipboardVisible || fileTransferVisible) {
+                            geometry.columnActionSpacingPx
+                        } else {
+                            0
+                        },
                         0,
                     )
                 Action.DISCONNECT -> Margins(0, geometry.disconnectSeparationPx, 0)
             }
         } else {
             when (action) {
-                Action.HOST, Action.CLIPBOARD, Action.SETTINGS ->
+                Action.HOST, Action.CLIPBOARD, Action.FILE_TRANSFER, Action.SETTINGS ->
                     Margins(geometry.actionMarginPx, 0, geometry.actionMarginPx)
                 Action.DISCONNECT -> Margins(geometry.disconnectSeparationPx, 0, 0)
             }
@@ -573,6 +590,7 @@ internal object ClientControlAvailability {
             ClientControl.NATIVE_POINTER -> capabilities.nativePointer
             ClientControl.HOST_ACTIONS -> capabilities.hostActions
             ClientControl.CLIPBOARD -> capabilities.clipboard
+            ClientControl.FILE_TRANSFER -> capabilities.fileTransfer
         }
 }
 

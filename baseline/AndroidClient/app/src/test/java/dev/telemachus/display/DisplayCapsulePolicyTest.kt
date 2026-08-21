@@ -259,6 +259,17 @@ class ControlBarLayoutPolicyTest {
             ),
         )
         assertEquals(
+            ControlBarLayoutPolicy.Margins(0, 8, 0),
+            ControlBarLayoutPolicy.actionMargins(
+                ControlBarLayoutPolicy.Mode.COLUMN,
+                ControlBarLayoutPolicy.Action.FILE_TRANSFER,
+                hostActionsVisible = false,
+                clipboardVisible = true,
+                geometry = geometry,
+                fileTransferVisible = true,
+            ),
+        )
+        assertEquals(
             ControlBarLayoutPolicy.Margins(0, 12, 0),
             ControlBarLayoutPolicy.actionMargins(
                 ControlBarLayoutPolicy.Mode.COLUMN,
@@ -276,6 +287,41 @@ class ControlBarLayoutPolicyTest {
                 hostActionsVisible = true,
                 clipboardVisible = true,
                 geometry = geometry,
+            ),
+        )
+    }
+
+    @Test
+    fun `file transfer control consumes action width only when visible`() {
+        val withoutFileTransfer = compactMinimumWidth(geometry, hostActionsVisible = true, clipboardVisible = true)
+        val withFileTransfer =
+            compactMinimumWidth(
+                geometry,
+                hostActionsVisible = true,
+                clipboardVisible = true,
+                fileTransferVisible = true,
+            )
+        assertEquals(geometry.buttonSizePx + geometry.actionMarginPx * 2, withFileTransfer - withoutFileTransfer)
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.COMPACT,
+            ControlBarLayoutPolicy.mode(
+                withFileTransfer,
+                displaySelectorVisible = false,
+                hostActionsVisible = true,
+                clipboardVisible = true,
+                geometry = geometry,
+                fileTransferVisible = true,
+            ),
+        )
+        assertEquals(
+            ControlBarLayoutPolicy.Mode.COLUMN,
+            ControlBarLayoutPolicy.mode(
+                withFileTransfer - 1,
+                displaySelectorVisible = false,
+                hostActionsVisible = true,
+                clipboardVisible = true,
+                geometry = geometry,
+                fileTransferVisible = true,
             ),
         )
     }
@@ -301,28 +347,32 @@ class ControlBarLayoutPolicyTest {
         geometry: ControlBarLayoutPolicy.Geometry,
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
+        fileTransferVisible: Boolean = false,
     ): Int =
         geometry.horizontalContentPaddingPx +
             statusWidth(geometry) +
-            geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible)
+            geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible, fileTransferVisible)
 
     private fun inlineMinimumWidth(
         geometry: ControlBarLayoutPolicy.Geometry,
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
+        fileTransferVisible: Boolean = false,
     ): Int =
-        compactMinimumWidth(geometry, hostActionsVisible, clipboardVisible) + geometry.selectorMinimumWidthPx
+        compactMinimumWidth(geometry, hostActionsVisible, clipboardVisible, fileTransferVisible) +
+            geometry.selectorMinimumWidthPx
 
     private fun stackedMinimumWidth(
         geometry: ControlBarLayoutPolicy.Geometry,
         hostActionsVisible: Boolean,
         clipboardVisible: Boolean,
+        fileTransferVisible: Boolean = false,
     ): Int =
         geometry.horizontalContentPaddingPx +
             maxOf(
                 geometry.statusMinimumWidthPx,
                 geometry.selectorMinimumWidthPx,
-                geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible),
+                geometry.horizontalActionsWidthPx(hostActionsVisible, clipboardVisible, fileTransferVisible),
             )
 
     private fun statusWidth(geometry: ControlBarLayoutPolicy.Geometry): Int =

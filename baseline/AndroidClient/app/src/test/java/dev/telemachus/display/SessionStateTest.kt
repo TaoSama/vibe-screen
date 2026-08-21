@@ -63,9 +63,10 @@ class SessionStateTest {
                        displaySelection = true,
                        keyboard = true,
                        nativePointer = true,
-                       controller = true,
+                        controller = true,
                         hostActions = false,
                         clipboard = false,
+                        fileTransfer = false,
                    ),
                 inputSink = AcceptingInputSink,
             )
