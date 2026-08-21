@@ -28,6 +28,7 @@ import dev.vibescreen.protocol.v1.ListDisplaysRequest
 import dev.vibescreen.protocol.v1.ManagedPolicyStatus
 import dev.vibescreen.protocol.v1.NormalizedPoint
 import dev.vibescreen.protocol.v1.Ping
+import dev.vibescreen.protocol.v1.PeripheralEvent
 import dev.vibescreen.protocol.v1.PointerEvent
 import dev.vibescreen.protocol.v1.Pong
 import dev.vibescreen.protocol.v1.ProtocolError
@@ -79,6 +80,7 @@ internal class ProtocolV1Session(
     private val transport: TransportKind,
     private val codecs: List<Codec>,
     private val advertiseController: Boolean = false,
+    private val advertisePeripheralInputFramework: Boolean = false,
     localManagedPolicy: ManagedPolicy = ManagedPolicy.UNMANAGED,
     private val fileTransferPolicy: FileTransferPolicy = FileTransferPolicy(),
     private val wakeHostPolicy: WakeHostPolicy = WakeHostPolicy.DENY,
@@ -447,6 +449,7 @@ internal class ProtocolV1Session(
         buildSet {
             addAll(BASE_ADVERTISED_CAPABILITIES)
             if (advertiseController) add(Capability.CAPABILITY_CONTROLLER)
+            if (advertisePeripheralInputFramework) add(Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK)
             if (fileTransferPolicy.allowed) add(Capability.CAPABILITY_FILE_TRANSFER)
             if (wakeHostPolicy.wakeAllowed) {
                 add(Capability.CAPABILITY_WAKE_HOST)
@@ -502,6 +505,10 @@ internal class ProtocolV1Session(
     val canSendController: Boolean
         @Synchronized
         get() = state == State.STREAMING && Capability.CAPABILITY_CONTROLLER in negotiatedCapabilities
+
+    val canSendPeripheral: Boolean
+        @Synchronized
+        get() = state == State.STREAMING && Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK in negotiatedCapabilities
 
     /** Host actions the client may invoke, empty until a catalog arrives. */
     val hostActions: List<HostAction>
@@ -662,8 +669,11 @@ internal class ProtocolV1Session(
 
     private fun onInputAck(envelope: Envelope): List<Action> {
         if (!isNegotiated()) throw protocolFailure("InputAck arrived before session negotiation")
-        if (Capability.CAPABILITY_CONTROLLER !in negotiatedCapabilities) {
-            throw protocolFailure("InputAck arrived without negotiated controller input")
+        val expectsInputAck =
+            Capability.CAPABILITY_CONTROLLER in negotiatedCapabilities ||
+                Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK in negotiatedCapabilities
+        if (!expectsInputAck) {
+            throw protocolFailure("InputAck arrived without negotiated acknowledged input")
         }
         val acknowledgement = envelope.inputAck
         if (acknowledgement.inputId <= 0L) throw protocolFailure("InputAck input_id must be positive")
@@ -1080,6 +1090,36 @@ internal class ProtocolV1Session(
                 .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
                 .build()
         return envelope().setControllerEvent(event).build()
+    }
+
+    @Synchronized
+    fun peripheral(
+        inputId: Long,
+        peripheralKind: String,
+        payload: ByteArray,
+    ): Envelope {
+        check(state == State.STREAMING)
+        check(Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK in negotiatedCapabilities) {
+            "Peripheral input framework was not negotiated"
+        }
+        require(inputId > 0) { "inputId must be positive" }
+        require(peripheralKind.isNotBlank()) { "peripheralKind must not be blank" }
+        val kindBytes = peripheralKind.toByteArray(StandardCharsets.UTF_8)
+        require(kindBytes.size in 1..MAX_PERIPHERAL_KIND_BYTES) {
+            "peripheralKind must encode to 1-$MAX_PERIPHERAL_KIND_BYTES UTF-8 bytes"
+        }
+        require(payload.size <= MAX_PERIPHERAL_PAYLOAD_BYTES) {
+            "peripheral payload must not exceed $MAX_PERIPHERAL_PAYLOAD_BYTES bytes"
+        }
+        val event =
+            PeripheralEvent
+                .newBuilder()
+                .setInputId(inputId)
+                .setPeripheralKind(peripheralKind)
+                .setPayload(ByteString.copyFrom(payload))
+                .setTarget(InputTarget.newBuilder().setDisplayId(displayId).setStreamId(streamId))
+                .build()
+        return envelope().setPeripheralEvent(event).build()
     }
 
     @Synchronized
@@ -2120,6 +2160,8 @@ internal class ProtocolV1Session(
 
     companion object {
         private const val STYLUS_BUTTON_MASK = 0b11
+        const val MAX_PERIPHERAL_KIND_BYTES = 128
+        const val MAX_PERIPHERAL_PAYLOAD_BYTES = 64 * 1024
         const val VERSION = 1
         private val VALID_ROTATIONS = setOf(0, 90, 180, 270)
         private val BASE_ADVERTISED_CAPABILITIES =

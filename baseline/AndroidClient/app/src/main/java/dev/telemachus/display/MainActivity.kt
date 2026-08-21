@@ -3661,7 +3661,9 @@ class MainActivity : AppCompatActivity() {
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_HOST_ACTIONS in negotiated
                 val clipboard =
                     dev.vibescreen.protocol.v1.Capability.CAPABILITY_CLIPBOARD in negotiated
-                if (displaySelection || keyboard || nativePointer || controller || hostActions || clipboard) {
+                val peripheralInputFramework =
+                    dev.vibescreen.protocol.v1.Capability.CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK in negotiated
+                if (displaySelection || keyboard || nativePointer || controller || hostActions || clipboard || peripheralInputFramework) {
                     val capabilities =
                         ClientSessionCapabilities.LEGACY_TOUCH_ONLY.copy(
                             displaySelection = displaySelection,
@@ -3670,9 +3672,10 @@ class MainActivity : AppCompatActivity() {
                             controller = controller,
                             hostActions = hostActions,
                             clipboard = clipboard,
+                            peripheralInputFramework = peripheralInputFramework,
                         )
                     val sink =
-                        if (keyboard || nativePointer || controller) {
+                        if (keyboard || nativePointer || controller || peripheralInputFramework) {
                             StreamClientInputSink(callbackClient, callbackGeneration)
                         } else {
                             null
@@ -3690,7 +3693,8 @@ class MainActivity : AppCompatActivity() {
                     mainDiag(
                         "session binding promoted: displaySelection=$displaySelection " +
                             "keyboard=$keyboard nativePointer=$nativePointer " +
-                            "controller=$controller hostActions=$hostActions clipboard=$clipboard",
+                            "controller=$controller hostActions=$hostActions clipboard=$clipboard " +
+                            "peripheralInputFramework=$peripheralInputFramework",
                     )
                 }
                 populateDisplayCapsule(options, selectedId)
@@ -4967,6 +4971,11 @@ class MainActivity : AppCompatActivity() {
         override fun sendController(input: ClientControllerInput): Boolean {
             if (!isCurrentSession(client, generation)) return false
             return client.sendController(input.dispatch)
+        }
+
+        override fun sendPeripheral(input: ClientPeripheralInput): Boolean {
+            if (!isCurrentSession(client, generation)) return false
+            return client.sendPeripheral(input.peripheralKind, input.payload)
         }
     }
 

@@ -364,6 +364,7 @@ data class ClientSessionCapabilities(
     val controller: Boolean,
     val hostActions: Boolean,
     val clipboard: Boolean,
+    val peripheralInputFramework: Boolean = false,
 ) {
     companion object {
         val LEGACY_TOUCH_ONLY =
@@ -375,6 +376,7 @@ data class ClientSessionCapabilities(
                 controller = false,
                 hostActions = false,
                 clipboard = false,
+                peripheralInputFramework = false,
             )
     }
 }

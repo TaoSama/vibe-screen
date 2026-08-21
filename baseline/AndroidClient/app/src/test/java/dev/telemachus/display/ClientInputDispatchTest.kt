@@ -12,6 +12,7 @@ class ClientInputDispatchTest {
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendKey(key(pressed = true)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPointer(pointer(ClientPointerAction.SCROLL)))
         assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendController(controller()))
+        assertEquals(ClientInputDispatchResult.UNSUPPORTED, dispatch.sendPeripheral(peripheral()))
     }
 
     @Test
@@ -31,6 +32,11 @@ class ClientInputDispatchTest {
 
                 override fun sendController(input: ClientControllerInput): Boolean {
                     received += input.dispatch.delivery.name
+                    return true
+                }
+
+                override fun sendPeripheral(input: ClientPeripheralInput): Boolean {
+                    received += "peripheral:${input.peripheralKind}"
                     return true
                 }
             }
@@ -56,6 +62,36 @@ class ClientInputDispatchTest {
         }
     }
 
+    @Test
+    fun `peripheral capability cannot be enabled without a sink`() {
+        val capabilities =
+            ClientSessionCapabilities.LEGACY_TOUCH_ONLY.copy(peripheralInputFramework = true)
+        assertThrows(IllegalArgumentException::class.java) {
+            ClientSessionBinding(capabilities)
+        }
+    }
+
+    @Test
+    fun `negotiated peripheral sends through sink`() {
+        val received = mutableListOf<String>()
+        val sink =
+            object : ClientSessionInputSink {
+                override fun sendKey(input: ClientKeyInput) = false
+                override fun sendPointer(input: ClientPointerInput) = false
+                override fun sendController(input: ClientControllerInput) = false
+                override fun sendPeripheral(input: ClientPeripheralInput): Boolean {
+                    received += input.peripheralKind
+                    return true
+                }
+            }
+        val capabilities =
+            ClientSessionCapabilities.LEGACY_TOUCH_ONLY.copy(peripheralInputFramework = true)
+        val dispatch = ClientInputDispatch(ClientSessionBinding(capabilities, sink))
+
+        assertEquals(ClientInputDispatchResult.SENT, dispatch.sendPeripheral(peripheral()))
+        assertEquals(listOf("test-kind"), received)
+    }
+
     private fun key(pressed: Boolean) = ClientKeyInput(usbHidUsage = 0x04, pressed, emptySet(), 0)
 
     private fun pointer(action: ClientPointerAction) = ClientPointerInput(action, 0.5f, 0.5f)
@@ -67,6 +103,8 @@ class ClientInputDispatchTest {
                 delivery = ControllerDelivery.STRUCTURAL,
             ),
         )
+
+    private fun peripheral() = ClientPeripheralInput("test-kind", byteArrayOf(1, 2, 3))
 
     private companion object {
         val NEGOTIATED_INPUT =

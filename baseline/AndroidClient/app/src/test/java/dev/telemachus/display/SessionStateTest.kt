@@ -104,5 +104,7 @@ class SessionStateTest {
         override fun sendPointer(input: ClientPointerInput) = true
 
         override fun sendController(input: ClientControllerInput) = true
+
+        override fun sendPeripheral(input: ClientPeripheralInput) = true
     }
 }

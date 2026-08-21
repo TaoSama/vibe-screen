@@ -14,6 +14,7 @@ internal data class StreamInputSessionState(
     val canSendStylus: Boolean = false,
     val canSendExtendedStylus: Boolean = false,
     val canSendController: Boolean = false,
+    val canSendPeripheral: Boolean = false,
 )
 
 internal class StreamInputDispatcher(
@@ -306,6 +307,30 @@ internal class StreamInputDispatcher(
                         }
                         activeSession.controller(inputId = inputId, sample = sample)
                     }
+                },
+                0,
+            )
+        return submission.wasAdmitted()
+    }
+
+    fun sendPeripheral(
+        peripheralKind: String,
+        payload: ByteArray,
+    ): Boolean {
+        val current = state()
+        if (!current.connected || !current.protocolV1 || !current.canSendPeripheral) return false
+        if (peripheralKind.isBlank()) return false
+        val submission =
+            submitOutbound(
+                OutboundCommandScheduler.Kind.STRUCTURAL_TOUCH,
+                StreamOutboundCommand.ProtocolBatch { activeSession ->
+                    listOf(
+                        activeSession.peripheral(
+                            inputId = nextInputId.getAndIncrement(),
+                            peripheralKind = peripheralKind,
+                            payload = payload,
+                        ),
+                    )
                 },
                 0,
             )

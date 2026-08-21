@@ -16,6 +16,9 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertFalse(
             ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).contains(.hdrVideo)
         )
+        XCTAssertFalse(
+            ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).contains(.peripheralInputFramework)
+        )
     }
 
     func testProductionHostCapabilitiesIncludeWakeHostOnlyWhenAvailable() {
@@ -1418,6 +1421,76 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertEqual(try protocolError(from: actions).code, .unsupportedCapability)
     }
 
+    func testPeripheralEventRequiresNegotiatedCapability() throws {
+        let session = try readySession()
+        let actions = session.handleControl(
+            try envelope(id: 4, payload: .peripheralEvent(peripheralEvent())).serializedData()
+        )
+        XCTAssertEqual(try protocolError(from: actions).code, .unsupportedCapability)
+    }
+
+    func testPeripheralEventFailsClosedAfterNegotiation() throws {
+        let session = try readyPeripheralSession()
+        let actions = session.handleControl(
+            try envelope(id: 4, payload: .peripheralEvent(peripheralEvent())).serializedData()
+        )
+        XCTAssertFalse(actions.contains { action in
+            if case .touch = action { return true }
+            if case .stylus = action { return true }
+            if case .pointer = action { return true }
+            if case .scroll = action { return true }
+            if case .key = action { return true }
+            if case .controller = action { return true }
+            return false
+        })
+        let acknowledgementEnvelope = try XCTUnwrap(controlEnvelopes(actions).first)
+        guard case .inputAck(let acknowledgement)? = acknowledgementEnvelope.payload else {
+            return XCTFail("Expected PeripheralEvent InputAck")
+        }
+        XCTAssertEqual(acknowledgement.inputID, 1)
+        XCTAssertFalse(acknowledgement.accepted)
+        XCTAssertEqual(acknowledgement.rejectionReason, "unsupported_peripheral_kind")
+        XCTAssertEqual(acknowledgementEnvelope.correlationID, 4)
+        XCTAssertEqual(acknowledgementEnvelope.sessionID, sessionID)
+        XCTAssertEqual(acknowledgementEnvelope.sessionEpoch, sessionEpoch)
+    }
+
+    func testPeripheralEventRejectsOversizedPayloadBeforePlaceholderAck() throws {
+        let session = try readyPeripheralSession()
+        var event = peripheralEvent()
+        event.payload = Data(repeating: 0xAA, count: 64 * 1_024 + 1)
+        let actions = session.handleControl(
+            try envelope(id: 4, payload: .peripheralEvent(event)).serializedData()
+        )
+
+        XCTAssertEqual(try protocolError(from: actions).code, .invalidState)
+    }
+
+    func testPeripheralEventRejectsOversizedKindBeforePlaceholderAck() throws {
+        let session = try readyPeripheralSession()
+        var event = peripheralEvent()
+        event.peripheralKind = String(repeating: "a", count: 129)
+        let actions = session.handleControl(
+            try envelope(id: 4, payload: .peripheralEvent(event)).serializedData()
+        )
+
+        XCTAssertEqual(try protocolError(from: actions).code, .invalidState)
+    }
+
+    func testPeripheralEventRejectsInactiveTargetBeforePlaceholderAck() throws {
+        let session = try readyPeripheralSession()
+        var target = VSInputTarget()
+        target.displayID = "other-display"
+        target.streamID = 1
+        var event = peripheralEvent()
+        event.target = target
+        let actions = session.handleControl(
+            try envelope(id: 4, payload: .peripheralEvent(event)).serializedData()
+        )
+
+        XCTAssertEqual(try protocolError(from: actions).code, .invalidState)
+    }
+
     func testControllerLifecycleRoutesConnectedStateDisconnected() throws {
         let session = try readyControllerSession()
 
@@ -1942,6 +2015,29 @@ final class ProtocolV1SessionTests: XCTestCase {
         ))
     }
 
+    private func makePeripheralSession() -> ProtocolV1SessionCoordinator {
+        ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
+            sessionID: sessionID,
+            sessionEpoch: sessionEpoch,
+            displayWidth: 1920,
+            displayHeight: 1080,
+            rotation: 90,
+            framesPerSecond: 60,
+            bitrateKbps: 20_000,
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                peripheralInputFrameworkAvailable: true
+            ),
+            requiredClientCapabilities: [.touch],
+            supportedCodecs: [.hevc, .h264],
+            hostID: "host",
+            hostName: "Mac",
+            displayID: "active-display",
+            displayName: "Display",
+            displayIsVirtual: true
+        ))
+    }
+
     private func makeWakeHostSession() -> ProtocolV1SessionCoordinator {
         ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
             sessionID: sessionID,
@@ -2141,6 +2237,18 @@ final class ProtocolV1SessionTests: XCTestCase {
         return event
     }
 
+    private func peripheralEvent() -> VSPeripheralEvent {
+        var target = VSInputTarget()
+        target.displayID = "active-display"
+        target.streamID = 1
+        var event = VSPeripheralEvent()
+        event.inputID = 1
+        event.peripheralKind = "generic-placeholder"
+        event.payload = Data([0x01, 0x02])
+        event.target = target
+        return event
+    }
+
     private func controllerState(_ event: VSControllerEvent) -> GameControllerState {
         GameControllerState(
             buttonMask: event.buttonMask,
@@ -2309,6 +2417,24 @@ final class ProtocolV1SessionTests: XCTestCase {
         let session = makeControllerSession()
         var hello = clientHello()
         hello.clientHello.capabilities = [.touch, .multiDisplay, .controller]
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        var result = VSVideoConfigResult()
+        result.configEpoch = 1
+        result.streamID = 1
+        result.accepted = true
+        _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(result)).serializedData())
+        return session
+    }
+
+    private func readyPeripheralSession() throws -> ProtocolV1SessionCoordinator {
+        let session = makePeripheralSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .peripheralInputFramework]
         _ = session.handleControl(try hello.serializedData())
         _ = session.completeCodecNegotiation()
         _ = session.handleControl(try envelope(

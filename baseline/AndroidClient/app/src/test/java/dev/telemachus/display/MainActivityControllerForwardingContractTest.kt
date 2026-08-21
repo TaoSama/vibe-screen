@@ -101,7 +101,7 @@ class MainActivityControllerForwardingContractTest {
 
         assertContains(displaysCallback, "dev.vibescreen.protocol.v1.Capability.CAPABILITY_CONTROLLER in negotiated")
         assertContains(displaysCallback, "controller = controller")
-        assertContains(displaysCallback, "if (keyboard || nativePointer || controller)")
+        assertContains(displaysCallback, "if (keyboard || nativePointer || controller || peripheralInputFramework)")
         assertContains(displaysCallback, "StreamClientInputSink(callbackClient, callbackGeneration)")
         assertContains(usbConnect, "StreamClient(host, port, applicationContext, advertiseController = true)")
         assertContains(wirelessConnect, "StreamClient(host, port, applicationContext, advertiseController = true)")

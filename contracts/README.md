@@ -93,3 +93,10 @@ interpretation. Capability `27` selects the standard USB HID modifier byte
 (`Shift=0x01`, `Control=0x02`, `Alt=0x04`, `GUI=0x08`). New clients collapse
 right-side modifiers to the equivalent left-side legacy bit; new hosts reject
 legacy high-nibble bits rather than guessing their meaning.
+
+`PeripheralEvent` is an additive admission boundary, not a hardware support
+claim. Capability `30` (`CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK`) only allows a
+peer to send a bounded generic peripheral envelope after negotiation. Receivers
+must reject unsupported kinds with `InputAck(accepted=false,
+rejection_reason="unsupported_peripheral_kind")` instead of falling through to
+native input handling.

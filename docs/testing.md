@@ -131,6 +131,14 @@ it must not be relabeled as Xiaomi 13/fuxi.
   controller input in a Mac-side test target, and neutral release on
   disconnect. Offline HID report, Android mapper, session, and protocol tests
   do not prove the OS accepted a virtual gamepad.
+- Generic peripheral-input framework claims are offline-only unless tied to a
+  named physical peripheral and a concrete implementation. Capability
+  `peripheral-input-framework` / `CAPABILITY_PERIPHERAL_INPUT_FRAMEWORK` only
+  admits bounded `PeripheralEvent` messages; the current Host placeholder must
+  fail closed with `unsupported_peripheral_kind` and cannot close any physical
+  peripheral gate. A future gate needs the exact peripheral name, Android input
+  source, negotiated capability, Host native handling logs, and visible Mac
+  result for that hardware path.
 - Client/process or ADB TCP interruption produces a fresh connected session
   while the Host PID survives.
 - A sustained stream keeps live PIDs and rising frames throughout, with no fatal
