@@ -157,6 +157,27 @@ class SecurityContractTest(unittest.TestCase):
         self.assertEqual({"header": 1, "ciphertext": 2}, message_fields(source, "EncryptedControlPacket"))
         self.assertEqual({"header": 1, "ciphertext": 2}, message_fields(source, "EncryptedMediaPacket"))
 
+    def test_wake_host_request_auth_fields_are_stable(self) -> None:
+        advanced_source = (PROTO_ROOT / "advanced.proto").read_text()
+        envelope_source = (PROTO_ROOT / "envelope.proto").read_text()
+        self.assertEqual(
+            {
+                "request_id": 1,
+                "target_mac_address": 2,
+                "secure_on_password": 3,
+                "host_id": 4,
+                "device_id": 5,
+                "key_id": 6,
+                "issued_at_unix_seconds": 7,
+                "expires_at_unix_seconds": 8,
+                "nonce": 9,
+                "signature": 10,
+            },
+            message_fields(advanced_source, "WakeHostRequest"),
+        )
+        self.assertEqual(113, message_fields(envelope_source, "Envelope")["wake_host_request"])
+        self.assertEqual(114, message_fields(envelope_source, "Envelope")["wake_host_result"])
+
     def test_stylus_event_is_an_additive_input_payload(self) -> None:
         input_source = (PROTO_ROOT / "input.proto").read_text()
         envelope_source = (PROTO_ROOT / "envelope.proto").read_text()

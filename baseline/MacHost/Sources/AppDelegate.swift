@@ -1948,7 +1948,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             streamingServer = StreamingServer(
                 port: settings.port,
-                mode: serverMode
+                mode: serverMode,
+                wakeHostAuthorizer: wakeHostAuthorizer(),
+                protocolV1HostID: settings.internetHostDeviceID
             )
             let configuredServer = streamingServer
             streamingServer?.touchEnabled = settings.touchEnabled
@@ -2658,6 +2660,61 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             keyEpoch: settings.internetPeerKeyEpoch,
             signingPublicKey: signingKey
         )
+    }
+
+    private func wakeHostAuthorizer() -> any WakeHostAuthorizing {
+        guard internetPairingMetadataIsComplete else {
+            debugLog("Wake host unavailable: no complete paired-device identity.")
+            return DenyWakeHostAuthorizer()
+        }
+        do {
+            let peerIdentity = try pinnedInternetPeerIdentity()
+            let secretNames = try PairedDeviceSecretNames.persistedPairing(
+                sharedSecret: settings.internetSharedSecretName,
+                bootstrapSecret: settings.internetBootstrapSecretName
+            )
+            guard let pairingIdentifier = secretNames.pairingIdentifier else {
+                throw PlatformSecurityError.persistenceFailure(
+                    "The paired wake-host security owner is unknown. Pair again."
+                )
+            }
+            let persisted = try KeychainSecurityStateStore(
+                peerID: PairedDeviceSecurityScope.identifier(peerIdentity)
+            ).validatePairingBinding(pairingIdentifier: pairingIdentifier)
+            guard !persisted.revoked else {
+                throw PlatformSecurityError.persistenceFailure(
+                    "The paired wake-host identity has been revoked. Pair again."
+                )
+            }
+            guard let identityBindingName = secretNames.identityBinding,
+                  let peerIdentityBindingName = secretNames.peerIdentityBinding,
+                  let encodedHostBinding = try KeychainSecretStore().load(name: identityBindingName),
+                  let encodedPeerBinding = try KeychainSecretStore().load(name: peerIdentityBindingName) else {
+                throw PlatformSecurityError.persistenceFailure(
+                    "The paired wake-host identity bindings are missing. Pair again."
+                )
+            }
+            let hostBinding = try PairedHostIdentityBinding.decode(encodedHostBinding)
+            let peerBinding = try PairedPeerIdentityBinding.decode(encodedPeerBinding)
+            try hostBinding.requireTarget(
+                deviceID: settings.internetHostDeviceID,
+                keyEpoch: PlatformPublicIdentity.initialKeyEpoch
+            )
+            _ = try KeychainDeviceIdentityStore().loadVerifiedExisting(binding: hostBinding)
+            guard peerBinding.identity == peerIdentity else {
+                throw PlatformSecurityError.persistenceFailure(
+                    "The paired wake-host peer identity no longer matches settings. Pair again."
+                )
+            }
+            return PairingBoundWakeHostAuthorizer(
+                hostIdentity: hostBinding.publicIdentity,
+                peerIdentity: peerBinding.identity,
+                nonceStore: MemoryWakeHostNonceStore()
+            )
+        } catch {
+            debugLog("Wake host unavailable: \(error.localizedDescription)")
+            return DenyWakeHostAuthorizer()
+        }
     }
 
     private func installInternetSessionCallbacks(

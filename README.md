@@ -624,7 +624,10 @@ network quality may increase it.
 - The [Phase 5 design](docs/changes/2026-08-04-phase-5-ios-advanced/TECH.md)
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
-  Wake-on-LAN, and deny-wins managed configuration.
+  authenticated Wake-on-LAN request gating, and deny-wins managed
+  configuration. Wake-host authorization is now offline-covered for paired
+  identity proofs, expiry, nonce replay, and session binding, but real sleeping
+  Mac/WOL network acceptance remains open.
 - The unsigned app has built successfully with the iOS Simulator SDK in CI.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
   interoperability commit. Signing, iPhone/iPad installation, hardware

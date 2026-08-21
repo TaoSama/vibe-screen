@@ -5,6 +5,7 @@ import dev.telemachus.display.ControllerAxes
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.StaticWakeHostPolicy
+import dev.telemachus.display.WakeHostProof
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.ColorDescription
@@ -1317,12 +1318,18 @@ class ProtocolV1SessionTest {
         val requestId = ByteString.copyFrom(byteArrayOf(0x44))
         val mac = ByteString.copyFrom(byteArrayOf(1, 2, 3, 4, 5, 6))
 
-        val request = session.requestWakeHost(requestId, mac)!!
+        val proof = wakeHostProof()
+        val request = session.requestWakeHost(requestId, mac, proof = proof)!!
         assertEquals(Envelope.PayloadCase.WAKE_HOST_REQUEST, request.payloadCase)
         assertEquals(requestId, request.wakeHostRequest.requestId)
         assertEquals(mac, request.wakeHostRequest.targetMacAddress)
         assertEquals("mac-host", request.wakeHostRequest.hostId)
-        assertEquals("android-test", request.wakeHostRequest.deviceId)
+        assertEquals(proof.deviceId, request.wakeHostRequest.deviceId)
+        assertEquals(proof.keyId, request.wakeHostRequest.keyId)
+        assertEquals(proof.issuedAtUnixSeconds, request.wakeHostRequest.issuedAtUnixSeconds)
+        assertEquals(proof.expiresAtUnixSeconds, request.wakeHostRequest.expiresAtUnixSeconds)
+        assertEquals(proof.nonce, request.wakeHostRequest.nonce)
+        assertEquals(proof.signature, request.wakeHostRequest.signature)
         assertTrue(session.receive(wakeHostResult(7, ByteString.copyFrom(byteArrayOf(0x45)), accepted = true)).isEmpty())
 
         val completed =
@@ -1357,11 +1364,23 @@ class ProtocolV1SessionTest {
     fun requestWakeHostBoundsPendingResultsAndRequiresHostIdentity() {
         val blankHostSession = wakeHostStreamingSession(hostId = "")
         val mac = ByteString.copyFrom(byteArrayOf(1, 2, 3, 4, 5, 6))
-        assertNull(blankHostSession.requestWakeHost(ByteString.copyFrom(byteArrayOf(0x01)), mac))
+        val proof = wakeHostProof()
+        assertNull(blankHostSession.requestWakeHost(ByteString.copyFrom(byteArrayOf(0x01)), mac, proof = proof))
+        assertNull(wakeHostStreamingSession().requestWakeHost(ByteString.copyFrom(byteArrayOf(0x02)), mac))
+        assertNull(
+            wakeHostStreamingSession().requestWakeHost(
+                ByteString.copyFrom(byteArrayOf(0x03)),
+                mac,
+                proof = proof.copy(nonce = ByteString.copyFrom(byteArrayOf(0x01))),
+            ),
+        )
 
         val session = wakeHostStreamingSession()
         val requestIds = (0 until 17).map { ByteString.copyFrom(byteArrayOf(it.toByte())) }
-        requestIds.forEach { requestId -> assertNotNull(session.requestWakeHost(requestId, mac)) }
+        requestIds.forEach { requestId ->
+            val nonce = ByteString.copyFrom(byteArrayOf(0x01) + requestId.toByteArray() + ByteArray(14))
+            assertNotNull(session.requestWakeHost(requestId, mac, proof = proof.copy(nonce = nonce)))
+        }
 
         assertTrue(session.receive(wakeHostResult(20, requestIds.first(), accepted = true)).isEmpty())
         val newest = session.receive(wakeHostResult(21, requestIds.last(), accepted = true)).single()
@@ -1385,6 +1404,11 @@ class ProtocolV1SessionTest {
                 as ProtocolV1Session.Action.WakeHost
         assertEquals(ByteString.copyFrom(byteArrayOf(0x31)), action.request.requestId)
         assertEquals(7L, action.correlationId)
+        assertEquals(wakeHostProof().nonce, action.request.nonce)
+        assertEquals(SESSION_ID, action.request.sessionId)
+        assertEquals(7L, action.request.sessionEpoch)
+
+        assertInvalidPeerMessage { wakeHostStreamingSession().receive(wakeHostRequest(8, hostId = "mac-host", includeProof = false)) }
         assertInvalidPeerMessage { wakeHostStreamingSession().receive(wakeHostRequest(8, hostId = "")) }
 
         assertInvalidPeerMessage { wakeHostStreamingSession().receive(wakeHostRequest(8, hostId = "other-host")) }
@@ -2106,15 +2130,38 @@ class ProtocolV1SessionTest {
         id: Long,
         requestId: ByteString = ByteString.copyFrom(byteArrayOf(0x31)),
         hostId: String = "",
+        includeProof: Boolean = true,
     ): Envelope =
-        base(id)
-            .setWakeHostRequest(
-                WakeHostRequest
-                    .newBuilder()
-                    .setRequestId(requestId)
-                    .setTargetMacAddress(ByteString.copyFrom(byteArrayOf(1, 2, 3, 4, 5, 6)))
-                    .setHostId(hostId),
-            ).build()
+        base(id).setWakeHostRequest(
+            WakeHostRequest
+                .newBuilder()
+                .setRequestId(requestId)
+                .setTargetMacAddress(ByteString.copyFrom(byteArrayOf(1, 2, 3, 4, 5, 6)))
+                .setHostId(hostId)
+                .apply {
+                    if (includeProof) {
+                        setDeviceId("paired-device")
+                        setKeyId("paired-key")
+                        setIssuedAtUnixSeconds(900)
+                        setExpiresAtUnixSeconds(1_100)
+                        setNonce(wakeHostNonce())
+                        setSignature(ByteString.copyFrom(byteArrayOf(0x30, 0x44)))
+                    }
+                },
+        ).build()
+
+    private fun wakeHostProof(): WakeHostProof =
+        WakeHostProof(
+            deviceId = "paired-device",
+            keyId = "paired-key",
+            issuedAtUnixSeconds = 900,
+            expiresAtUnixSeconds = 1_100,
+            nonce = wakeHostNonce(),
+            signature = ByteString.copyFrom(byteArrayOf(0x30, 0x44)),
+        )
+
+    private fun wakeHostNonce(): ByteString =
+        ByteString.copyFrom(byteArrayOf(0x01, 0x02, 0x03, 0x04) + ByteArray(12))
 
     private fun wakeHostResult(
         id: Long,

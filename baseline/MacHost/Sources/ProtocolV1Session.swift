@@ -1210,12 +1210,19 @@ final class ProtocolV1SessionCoordinator {
             guard case .streaming = phase else {
                 return invalidState("WakeHostRequest arrived before media was streaming.", envelope.messageID)
             }
-            let context = WakeHostRequestContext(request)
+            let context = WakeHostRequestContext(
+                request,
+                sessionID: envelope.sessionID,
+                sessionEpoch: envelope.sessionEpoch
+            )
             guard !context.requestID.isEmpty else {
                 return invalidState("WakeHostRequest is missing a request id.", envelope.messageID)
             }
             guard !context.hostID.isEmpty, context.hostID == configuration.hostID else {
                 return invalidState("WakeHostRequest targets a different host.", envelope.messageID)
+            }
+            guard context.hasProofFields else {
+                return invalidState("WakeHostRequest is missing paired proof fields.", envelope.messageID)
             }
             guard pendingWakeHostRequests[context.requestID] == nil else { return [] }
             guard pendingWakeHostRequests.count < Self.maximumPendingWakeHostRequests else {

@@ -50,7 +50,8 @@ stream limits/routes, PCM validation and reorder, clipboard explicit-action
 and feedback/digest rejection, managed deny-wins policy, safe filenames,
 sequential chunks, file limits/final SHA-256/cleanup, HDR10→SDR config-epoch
 fallback, gesture persistence/catalog enforcement, the 102-byte WOL vector,
-and every advanced Envelope branch used by the client.
+wake-host proof-field gating with session-bound context, and every advanced
+Envelope branch used by the client.
 Trusted-LAN additions cover strict pairing/auth/upgrade codecs, transport
 startup disconnect and Task-cancellation completion, host control message
 ordering/session-epoch validation, Ping/Pong correlation, and the client
@@ -229,3 +230,9 @@ read-only `getprop`, `logcat`, `dumpsys`, or `ps` queries and does not change
 ADB, application, or session state. Any later Android Protocol v1 fixture run
 must be coordinated by Phase 0. Android evidence is never an iOS build,
 decode, UI, or device result.
+
+The 2026-08-21 wake-host request slice adds offline Host and Android coverage
+for paired proof construction, host/peer identity binding, proof expiry, nonce
+replay, and session-id/session-epoch binding. The real sleeping Mac and
+Wake-on-LAN network acceptance gate remains blocked; see
+`docs/changes/2026-08-21-wake-host-request/`.
