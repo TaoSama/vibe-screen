@@ -108,8 +108,9 @@ Evidence requirements:
 - E6: Transient network interruption and heartbeat timeout cases with reconnect
   attempt timestamps, final state, no stale-epoch render, and measured reconnect
   duration.
-- E7: PCM S16LE negotiation, AVAudioEngine start, audible playback
-  confirmation, queue depth, underrun/error logs, and audio policy state.
+- E7: PCM S16LE negotiation, `--audio-playback-self-test` PASS on the signed
+  app build, AVAudioEngine start, audible playback confirmation, queue depth,
+  underrun/overrun/error logs, audio route, and audio policy state.
 
 Fail-closed rules:
 
@@ -123,8 +124,9 @@ Fail-closed rules:
   input behavior.
 - F6: Manual relaunch, auth/protocol validation failure, or missing epoch
   telemetry leaves reconnect open.
-- F7: Core PCM parser tests or host-side audio capture plans do not prove iOS
-  playback.
+- F7: Core PCM parser tests, playback-queue self-tests, Simulator-only
+  AVAudioEngine checks, or host-side audio capture plans do not prove audible
+  iOS playback.
 
 README Phase 5 also keeps HDR output, host-side advanced adapters, audio/bulk
 product flows over Internet DataChannels, and advanced real-device behavior
@@ -164,9 +166,14 @@ ordinary VideoToolbox decode readiness, and offline self-tests do not close it.
 8. Exercise reconnect by toggling the trusted LAN path and by allowing the
    heartbeat miss budget to expire. Record attempt count, backoff timestamps,
    final state, reconnect duration, and proof that stale epochs were rejected.
-9. Exercise PCM S16LE playback. Record negotiated audio config, packet epochs,
-   queue depth, AVAudioEngine state, audible output confirmation, and any
-   underrun or format rejection.
+9. Exercise PCM S16LE playback. First launch the same signed build with
+   `--audio-playback-self-test` and record the PASS/FAIL line plus scheduled,
+   played, queued, queue-empty, late-completion, overrun, and stop counters.
+   Then connect to an audio-capable host path and record negotiated audio
+   config, packet epochs, queue depth, AVAudioEngine state, output route,
+   audible output confirmation from a listener or external recorder, and any
+   underrun, overrun, or format rejection. If no audio-capable host path or
+   audible capture environment is present, mark E7 blocked rather than passed.
 10. If the acceptance owner requests a bounded stability sample, record a
     30-minute memory, latency, dropped-frame, thermal, and power series. Do not
     start a longer soak from this runbook without explicit owner approval.
@@ -306,7 +313,27 @@ gate.
     "videotoolbox_hevc": { "status": "open", "evidence": [] },
     "input": { "status": "open", "evidence": [] },
     "reconnect": { "status": "open", "evidence": [] },
-    "audio_playback": { "status": "open", "evidence": [] }
+    "audio_playback": {
+      "status": "open",
+      "playback_self_test": {
+        "status": "open",
+        "result_line": "",
+        "scheduled_buffers": 0,
+        "played_buffers": 0,
+        "queued_buffers": 0,
+        "queue_empty": 0,
+        "late_completions": 0,
+        "overruns": 0,
+        "stops": 0
+      },
+      "audible_confirmation": {
+        "status": "open",
+        "method": "",
+        "audio_route": "",
+        "capture_artifacts": []
+      },
+      "evidence": []
+    }
   },
   "broader_gates": {
     "hdr_output": { "status": "open", "evidence": [], "runbook": "docs/runbook/hdr-color-acceptance.md" },

@@ -1,0 +1,61 @@
+$ git fetch origin --prune
+exit 0
+
+$ git rebase origin/main
+Successfully rebased and updated refs/heads/codex/ios-audio-pcm-verifier.
+
+$ git rev-parse origin/main
+f46163524fe757e7021a4333b3370af00ec651f1
+
+$ xcode-select -p
+/Library/Developer/CommandLineTools
+
+$ xcodebuild -version
+xcode-select: error: tool xcodebuild requires Xcode, but active developer directory /Library/Developer/CommandLineTools is a command line tools instance
+
+$ xcodebuild -showsdks
+xcode-select: error: tool xcodebuild requires Xcode, but active developer directory /Library/Developer/CommandLineTools is a command line tools instance
+
+$ xcrun xctrace list devices
+xcrun: error: unable to find utility "xctrace", not a developer tool or in PATH
+
+$ TMPDIR=$PWD/.build/tmp swift build --package-path apps/ios --configuration release
+Build complete! (63.78s)
+
+$ TMPDIR=$PWD/.build/tmp apps/ios/.build/release/vibescreen-ios-selftest
+RUN: framing
+RUN: protocol/session
+RUN: codec/backoff
+RUN: multi-display/audio
+RUN: clipboard/file/policy
+RUN: HDR/gesture/wake/advanced-proto
+RUN: trusted-LAN startup codecs
+RUN: owner/media/heartbeat generation gates
+PASS: Phase 5A-5D core and trusted-LAN Protocol v1 startup
+
+$ TMPDIR=$PWD/.build/tmp apps/ios/Scripts/verify-generated-protocol.sh
+generated macOS and iOS Protocol v1 bindings are current
+
+$ TMPDIR=$PWD/.build/tmp make protocol
+Ran 37 tests in 111.148s
+OK
+
+$ plutil -lint apps/ios/VibeScreen.xcodeproj/project.pbxproj
+apps/ios/VibeScreen.xcodeproj/project.pbxproj: OK
+
+$ xmllint --noout apps/ios/VibeScreen.xcodeproj/xcshareddata/xcschemes/VibeScreen.xcscheme
+exit 0
+
+$ swiftc -frontend -parse apps/ios/VibeScreenApp/*.swift
+exit 0
+
+$ git diff --check
+exit 0
+
+$ swift test --package-path apps/ios --configuration release
+error: no such module 'XCTest'
+
+$ make protocol
+initial attempt failed before completing when Python and Go could not create
+temporary directories under the system temp volume: No space left on device.
+Rerun with TMPDIR=$PWD/.build/tmp passed as shown above.

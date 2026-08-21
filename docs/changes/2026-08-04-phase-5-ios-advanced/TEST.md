@@ -1,11 +1,61 @@
 # Phase 5 verification record
 
-Date: 2026-08-05
+Date: 2026-08-05; updated 2026-08-25 for iOS PCM playback verifier
 Host: macOS 26.4.1, Apple silicon  
 Swift: 6.3.1  
 Selected developer directory: `/Library/Developer/CommandLineTools`
 
 ## Passed
+
+2026-08-25 local Command Line Tools run from rebased branch
+`codex/ios-audio-pcm-verifier` added and verified the core playback queue
+policy used by the iOS AVFoundation adapter against current `origin/main`
+`f46163524`:
+
+```bash
+swift build --package-path apps/ios --configuration release
+apps/ios/.build/release/vibescreen-ios-selftest
+apps/ios/Scripts/verify-generated-protocol.sh
+make protocol
+plutil -lint apps/ios/VibeScreen.xcodeproj/project.pbxproj
+xmllint --noout apps/ios/VibeScreen.xcodeproj/xcshareddata/xcschemes/VibeScreen.xcscheme
+swiftc -frontend -parse apps/ios/VibeScreenApp/*.swift
+git diff --check
+```
+
+Observed local result:
+
+```text
+swift build: Build complete!
+vibescreen-ios-selftest: PASS: Phase 5A-5D core and trusted-LAN Protocol v1 startup
+verify-generated-protocol.sh: generated macOS and iOS Protocol v1 bindings are current
+make protocol: Ran 37 tests ... OK
+project.pbxproj: OK
+xmllint: exit 0
+swiftc parse app sources: exit 0
+git diff --check: exit 0
+```
+
+An initial `make protocol` attempt failed before completing because the system
+temporary volume had no free space for Python/Go temporary directories. After
+cleaning only this worktree's regenerable SwiftPM build products and rerunning
+with `TMPDIR=$PWD/.build/tmp`, the same command passed. The host still cannot
+run XCTest or the app-level AVFoundation verifier because only Command Line
+Tools are selected:
+
+```text
+swift test --package-path apps/ios --configuration release
+error: no such module 'XCTest'
+
+xcodebuild -version
+xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance
+
+xcrun xctrace list devices
+xcrun: error: unable to find utility "xctrace", not a developer tool or in PATH
+```
+
+The blocked environment record is retained at
+`docs/changes/2026-08-21-ios-audio-playback-verification/evidence/2026-08-25-ios-audio-playback-current-base-blocked/`.
 
 ```bash
 swift package --package-path apps/ios resolve
@@ -46,18 +96,30 @@ Command Line Tools installation cannot import XCTest; this suite is therefore
 a required full-Xcode GitHub gate rather than local XCTest evidence.
 
 The self-test additionally covers multi-client epoch replacement, per-client
-stream limits/routes, PCM validation and reorder, clipboard explicit-action
-and feedback/digest rejection, managed deny-wins policy, safe filenames,
-sequential chunks, file limits/final SHA-256/cleanup, 10-bit BT.2020/PQ to SDR
-config-epoch fallback, gesture persistence/catalog enforcement, the 102-byte WOL vector,
-WakeHost device-identity binding, and every advanced Envelope branch used by
-the client. Focused macOS/Android tests cover the shared HMAC golden vector,
-replay and unauthorized rejection, broadcast-target validation, and the
-Android Protocol v1 action path to a captured magic-packet sender.
+stream limits/routes, PCM validation and reorder, bounded playback queue
+policy, overrun/drop accounting, queue-empty accounting, late-completion
+accounting, stop/restart reset, clipboard explicit-action and feedback/digest
+rejection, managed deny-wins policy, safe filenames, sequential chunks, file
+limits/final SHA-256/cleanup, 10-bit BT.2020/PQ to SDR config-epoch fallback,
+gesture persistence/catalog enforcement, the 102-byte WOL vector, WakeHost
+device-identity binding, and every advanced Envelope branch used by the client.
+Focused macOS/Android tests cover the shared HMAC golden vector, replay and
+unauthorized rejection, broadcast-target validation, and the Android Protocol v1
+action path to a captured magic-packet sender.
 Trusted-LAN additions cover strict pairing/auth/upgrade codecs, transport
 startup disconnect and Task-cancellation completion, host control message
 ordering/session-epoch validation, Ping/Pong correlation, and the client
 disconnect envelope factory.
+
+The app target adds a focused `AVAudioSession`/`AVAudioEngine` verifier through
+`VibeScreenAppUITests/testAudioPlaybackSelfTestSchedulesPCMAndRestarts`. The
+test launches the app with `--audio-playback-self-test`, configures PCM S16LE,
+schedules synthetic audio through `AVAudioPlayerNode`, observes bounded queue
+overrun/drop behavior, reports queue-empty and late-completion counters, stops,
+restarts on a newer config epoch, and waits for
+`AUDIO_PLAYBACK_SELF_TEST=PASS` in the UI. This closes only the executable
+playback-path check when run by full Xcode on a Simulator or signed device; it
+does not prove audible iPhone/iPad output without external audio confirmation.
 
 Project metadata also passes:
 
@@ -357,10 +419,11 @@ The following remain unproved until their dedicated gates produce evidence:
   explicit plaintext legacy fallback only and is not AES-256-GCM secure-record
   LAN evidence;
 - cross-client golden bytes against the Android application;
-- AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
-  file picker/export, real sleeping-host Wake-on-LAN over router/NIC firmware
-  paths, and managed App Configuration injection. The WakeHost current-base
-  evidence owner is #199 after rebasing onto #225 and must use
+- AVAudioEngine path execution beyond the launch-argument verifier, audible
+  iPhone/iPad output, UIPasteboard prompts/writes, security-scoped file
+  picker/export, real sleeping-host Wake-on-LAN over router/NIC firmware paths,
+  and managed App Configuration injection. The WakeHost current-base evidence
+  owner is #199 after rebasing onto #225 and must use
   `make wake-host-current-base-gate` to keep this gate blocked until hardware
   evidence exists;
 - host-side multi-client/display, audio capture, clipboard/file handlers,

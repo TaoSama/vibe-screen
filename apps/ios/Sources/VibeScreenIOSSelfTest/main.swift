@@ -761,6 +761,63 @@ func testAudioPlaybackSessionFailClosed() throws {
     )
 }
 
+func testAudioPlaybackQueuePolicy() throws {
+    var config = VSAudioConfig()
+    config.streamID = 7
+    config.configEpoch = 2
+    config.codec = .pcmS16Le
+    config.sampleRateHz = 48_000
+    config.channelCount = 2
+    config.framesPerPacket = 4
+    let format = try PCMStreamFormat(config: config)
+    let payload = Data(repeating: 0x01, count: format.bytesPerPacket)
+
+    func packet(sequence: UInt64, framesPerPacket: UInt32? = nil) throws -> AudioPacket {
+        var header = VSAudioPacketHeader()
+        header.streamID = 7
+        header.sessionEpoch = 9
+        header.configEpoch = 2
+        header.sequence = sequence
+        header.frameCount = framesPerPacket ?? format.framesPerPacket
+        header.payloadLength = UInt32(payload.count)
+        let bytes = try header.serializedData()
+        return try AudioPacket(serializedFrame: encodeVarint(bytes.count) + bytes + payload)
+    }
+
+    var queue = AudioPlaybackQueueState(policy: AudioPlaybackQueuePolicy(maximumScheduledBuffers: 2))
+    do {
+        _ = try queue.schedule(packet(sequence: 0), format: format)
+        throw SelfTestError.failed("audio playback queue scheduled while stopped")
+    } catch AudioPlaybackQueueError.notConfigured { }
+
+    queue.configure(format: format)
+    try require(try queue.schedule(packet(sequence: 0), format: format) == .scheduled, "audio playback schedule")
+    try require(try queue.schedule(packet(sequence: 1), format: format) == .scheduled, "audio playback second schedule")
+    try require(
+        try queue.schedule(packet(sequence: 2), format: format) == .overrunDropped,
+        "audio playback overrun drop"
+    )
+    try require(queue.snapshot.scheduledBufferCount == 2, "audio playback queue count")
+    try require(queue.snapshot.overrunDropCount == 1, "audio playback overrun counter")
+    queue.completeScheduledBuffer()
+    try require(queue.snapshot.playedBufferTotal == 1, "audio playback completion counter")
+    queue.completeScheduledBuffer()
+    try require(queue.snapshot.queueEmptyCount == 1, "audio playback queue-empty counter")
+    queue.completeScheduledBuffer()
+    try require(queue.snapshot.queueEmptyCount == 1, "audio playback queue-empty counter changed on late completion")
+    try require(queue.snapshot.lateCompletionCount == 1, "audio playback late completion counter")
+
+    do {
+        _ = try queue.schedule(packet(sequence: 3, framesPerPacket: format.framesPerPacket + 1), format: format)
+        throw SelfTestError.failed("audio playback accepted wrong PCM frame count")
+    } catch AudioPlaybackQueueError.invalidPCMByteCount { }
+
+    queue.stop()
+    try require(!queue.snapshot.isConfigured && queue.snapshot.scheduledBufferCount == 0, "audio playback stop reset")
+    queue.configure(format: format)
+    try require(try queue.schedule(packet(sequence: 4), format: format) == .scheduled, "audio playback restart schedule")
+}
+
 func testClipboardAndManagedPolicy() throws {
     let managed = try ManagedPolicy(managedConfiguration: [
         "ClipboardAllowed": true,
@@ -1297,6 +1354,7 @@ do {
     try testMultiDisplaySessions()
     try testAudioQueue()
     try testAudioPlaybackSessionFailClosed()
+    try testAudioPlaybackQueuePolicy()
     FileHandle.standardError.write(Data("RUN: clipboard/file/policy\n".utf8))
     try testClipboardAndManagedPolicy()
     try testFileTransfer()
