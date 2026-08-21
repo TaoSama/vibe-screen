@@ -168,3 +168,21 @@ python3 scripts/controller_runtime_readiness.py \
   --host-app "/path/to/Vibe Screen.app" \
   --evidence-dir docs/changes/2026-08-19-controller-runtime-acceptance/evidence/$(date -u +%F)-controller-runtime-readiness
 ```
+
+For HarmonyOS HAP lifecycle readiness, collect the environment and device
+pre-state before claiming build/sign/install progress. Missing DevEco, HDC,
+signing material, HAP output, or lifecycle observations intentionally returns a
+blocked or insufficient result and writes evidence instead of passing:
+
+```bash
+make harmony-hap-readiness \
+  HARMONY_HAP_READINESS_DIR=docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness \
+  HARMONY_HDC_TARGET="$HDC_TARGET"
+python3 scripts/harmony_device_gate.py --allow-blocked \
+  docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness/harmony-device-gates.json
+```
+
+Android acceptance devices still use explicit ADB serials, for example
+`adb -s EP0110PZ0B9110300B ...` for the Nubia P0110 / pacific / Android 16 /
+SDK 36 device. That Android evidence must not be used as HarmonyOS or MatePad
+Mini evidence.

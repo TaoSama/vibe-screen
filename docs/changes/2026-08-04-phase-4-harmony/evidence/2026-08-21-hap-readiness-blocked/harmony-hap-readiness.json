@@ -1,0 +1,360 @@
+{
+  "artifact": {
+    "exists": false,
+    "hap_path": "apps/harmony/dist/0.1.0/vibe-screen-harmony-0.1.0.hap",
+    "sha256": "",
+    "sha256sums_path": "apps/harmony/dist/0.1.0/SHA256SUMS",
+    "sha256sums_sha256": "",
+    "signature_entries": [],
+    "size_bytes": 0,
+    "zip_readable": false
+  },
+  "created_at": "2026-08-21T05:22:51Z",
+  "device": {
+    "hdc_target": "",
+    "list_targets": "redacted-hdc-target-37a84ad404bc not\n# no HDC target listed\n",
+    "manufacturer": "",
+    "model": "",
+    "os_build": "",
+    "package_prestate": "",
+    "package_prestate_recorded": false,
+    "product": "",
+    "serial_hash": "",
+    "target_selected": false
+  },
+  "lifecycle": [
+    {
+      "detail": "no lifecycle observation manifest supplied",
+      "evidence": [],
+      "name": "install",
+      "status": "insufficient"
+    },
+    {
+      "detail": "no lifecycle observation manifest supplied",
+      "evidence": [],
+      "name": "upgrade",
+      "status": "insufficient"
+    },
+    {
+      "detail": "no lifecycle observation manifest supplied",
+      "evidence": [],
+      "name": "rollback",
+      "status": "insufficient"
+    },
+    {
+      "detail": "no lifecycle observation manifest supplied",
+      "evidence": [],
+      "name": "uninstall_cleanup",
+      "status": "insufficient"
+    }
+  ],
+  "observations": [
+    {
+      "detail": "M  Makefile\nM  README.md\nM  apps/harmony/README.md\nM  docs/changes/2026-08-04-phase-4-harmony/TEST.md\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/README.md\nA  docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/harmony-device-gates.json\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/harmony-hap-readiness-summary.json\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/harmony-hap-readiness.json\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/hdc-targets.txt\nA  docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/package-prestate.txt\nM  docs/runbook/harmony-matepad-mini.md\nM  docs/testing.md\nM  scripts/harmony_device_gate.py\nA  scripts/harmony_hap_readiness.py\nA  scripts/tests/test_harmony_hap_readiness.py\nM  scripts/tests/test_release_tools.py\nAM tools/vibescreen_evidence/harmony_hap_readiness.py",
+      "evidence": [],
+      "field": "repository_clean",
+      "requirement": "clean git source state",
+      "status": "blocked"
+    },
+    {
+      "detail": "",
+      "evidence": [],
+      "field": "deveco_studio_available",
+      "requirement": "DevEco Studio installed or version recorded",
+      "status": "blocked"
+    },
+    {
+      "detail": "project compatibleSdkVersion=5.0.0(12)",
+      "evidence": [],
+      "field": "harmony_sdk_api_recorded",
+      "requirement": "HarmonyOS SDK API 12+ version recorded",
+      "status": "blocked"
+    },
+    {
+      "detail": "ohpm not found",
+      "evidence": [],
+      "field": "ohpm_available",
+      "requirement": "DevEco-managed ohpm is executable",
+      "status": "blocked"
+    },
+    {
+      "detail": "hvigor not found",
+      "evidence": [],
+      "field": "hvigor_available",
+      "requirement": "DevEco-managed hvigor/hvigorw is executable",
+      "status": "blocked"
+    },
+    {
+      "detail": "hdc not found",
+      "evidence": [],
+      "field": "hdc_available",
+      "requirement": "Harmony Device Connector is executable",
+      "status": "blocked"
+    },
+    {
+      "detail": "build not requested",
+      "evidence": [],
+      "field": "release_build_completed",
+      "requirement": "make release completed in apps/harmony",
+      "status": "insufficient"
+    },
+    {
+      "detail": "signingConfigs is empty",
+      "evidence": [],
+      "field": "signing_config_present",
+      "requirement": "non-empty Harmony signingConfigs present",
+      "status": "blocked"
+    },
+    {
+      "detail": "HAP missing",
+      "evidence": [],
+      "field": "signed_hap_present",
+      "requirement": "signed release HAP archive with signature entries",
+      "status": "blocked"
+    },
+    {
+      "detail": "pass --signature-certificate or --signature-certificate-sha256",
+      "evidence": [],
+      "field": "signature_certificate_recorded",
+      "requirement": "signing certificate SHA-256 recorded without private key material",
+      "status": "insufficient"
+    },
+    {
+      "detail": "redacted-hdc-target-37a84ad404bc not\n# no HDC target listed",
+      "evidence": [],
+      "field": "hdc_target_selected",
+      "requirement": "exactly one HarmonyOS target selected or --hdc-target matched",
+      "status": "blocked"
+    },
+    {
+      "detail": "HDC target unavailable",
+      "evidence": [],
+      "field": "matepad_mini_identity_recorded",
+      "requirement": "HarmonyOS MatePad Mini device identity recorded",
+      "status": "blocked"
+    },
+    {
+      "detail": "HDC target unavailable",
+      "evidence": [],
+      "field": "package_prestate_recorded",
+      "requirement": "package state captured before install/upgrade/rollback/uninstall",
+      "status": "blocked"
+    },
+    {
+      "detail": "no lifecycle observation manifest supplied",
+      "evidence": [],
+      "field": "install_evidence_recorded",
+      "requirement": "reviewed HDC/hilog/device evidence for install",
+      "status": "insufficient"
+    },
+    {
+      "detail": "no lifecycle observation manifest supplied",
+      "evidence": [],
+      "field": "upgrade_evidence_recorded",
+      "requirement": "reviewed HDC/hilog/device evidence for upgrade",
+      "status": "insufficient"
+    },
+    {
+      "detail": "no lifecycle observation manifest supplied",
+      "evidence": [],
+      "field": "rollback_evidence_recorded",
+      "requirement": "reviewed HDC/hilog/device evidence for rollback",
+      "status": "insufficient"
+    },
+    {
+      "detail": "no lifecycle observation manifest supplied",
+      "evidence": [],
+      "field": "uninstall_cleanup_evidence_recorded",
+      "requirement": "reviewed HDC/hilog/device evidence for uninstall cleanup",
+      "status": "insufficient"
+    }
+  ],
+  "repository": {
+    "commit": "22da26816465257b4a09f95de47be8567e448b74",
+    "porcelain": "M  Makefile\nM  README.md\nM  apps/harmony/README.md\nM  docs/changes/2026-08-04-phase-4-harmony/TEST.md\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/README.md\nA  docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/harmony-device-gates.json\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/harmony-hap-readiness-summary.json\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/harmony-hap-readiness.json\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/hdc-targets.txt\nA  docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/package-prestate.txt\nM  docs/runbook/harmony-matepad-mini.md\nM  docs/testing.md\nM  scripts/harmony_device_gate.py\nA  scripts/harmony_hap_readiness.py\nA  scripts/tests/test_harmony_hap_readiness.py\nM  scripts/tests/test_release_tools.py\nAM tools/vibescreen_evidence/harmony_hap_readiness.py\n",
+    "status": "dirty",
+    "tree": "a50bfe2961cd404dc42a5ce716dcf3066230fa52"
+  },
+  "run_id": "2026-08-21-hap-readiness-blocked",
+  "schema": "dev.vibescreen.harmony-hap-readiness/v1",
+  "signing": {
+    "build_profile": "apps/harmony/build-profile.json5",
+    "detail": "signingConfigs is empty",
+    "signature_certificate_sha256": "",
+    "signing_config_present": false,
+    "signing_material_paths": []
+  },
+  "summary": {
+    "can_close_hap_lifecycle_readiness": false,
+    "missing_requirements": [
+      {
+        "detail": "M  Makefile\nM  README.md\nM  apps/harmony/README.md\nM  docs/changes/2026-08-04-phase-4-harmony/TEST.md\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/README.md\nA  docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/harmony-device-gates.json\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/harmony-hap-readiness-summary.json\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/harmony-hap-readiness.json\nAM docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/hdc-targets.txt\nA  docs/changes/2026-08-04-phase-4-harmony/evidence/2026-08-21-hap-readiness-blocked/package-prestate.txt\nM  docs/runbook/harmony-matepad-mini.md\nM  docs/testing.md\nM  scripts/harmony_device_gate.py\nA  scripts/harmony_hap_readiness.py\nA  scripts/tests/test_harmony_hap_readiness.py\nM  scripts/tests/test_release_tools.py\nAM tools/vibescreen_evidence/harmony_hap_readiness.py",
+        "evidence": [],
+        "field": "repository_clean",
+        "requirement": "clean git source state",
+        "status": "blocked"
+      },
+      {
+        "detail": "",
+        "evidence": [],
+        "field": "deveco_studio_available",
+        "requirement": "DevEco Studio installed or version recorded",
+        "status": "blocked"
+      },
+      {
+        "detail": "project compatibleSdkVersion=5.0.0(12)",
+        "evidence": [],
+        "field": "harmony_sdk_api_recorded",
+        "requirement": "HarmonyOS SDK API 12+ version recorded",
+        "status": "blocked"
+      },
+      {
+        "detail": "ohpm not found",
+        "evidence": [],
+        "field": "ohpm_available",
+        "requirement": "DevEco-managed ohpm is executable",
+        "status": "blocked"
+      },
+      {
+        "detail": "hvigor not found",
+        "evidence": [],
+        "field": "hvigor_available",
+        "requirement": "DevEco-managed hvigor/hvigorw is executable",
+        "status": "blocked"
+      },
+      {
+        "detail": "hdc not found",
+        "evidence": [],
+        "field": "hdc_available",
+        "requirement": "Harmony Device Connector is executable",
+        "status": "blocked"
+      },
+      {
+        "detail": "build not requested",
+        "evidence": [],
+        "field": "release_build_completed",
+        "requirement": "make release completed in apps/harmony",
+        "status": "insufficient"
+      },
+      {
+        "detail": "signingConfigs is empty",
+        "evidence": [],
+        "field": "signing_config_present",
+        "requirement": "non-empty Harmony signingConfigs present",
+        "status": "blocked"
+      },
+      {
+        "detail": "HAP missing",
+        "evidence": [],
+        "field": "signed_hap_present",
+        "requirement": "signed release HAP archive with signature entries",
+        "status": "blocked"
+      },
+      {
+        "detail": "pass --signature-certificate or --signature-certificate-sha256",
+        "evidence": [],
+        "field": "signature_certificate_recorded",
+        "requirement": "signing certificate SHA-256 recorded without private key material",
+        "status": "insufficient"
+      },
+      {
+        "detail": "redacted-hdc-target-37a84ad404bc not\n# no HDC target listed",
+        "evidence": [],
+        "field": "hdc_target_selected",
+        "requirement": "exactly one HarmonyOS target selected or --hdc-target matched",
+        "status": "blocked"
+      },
+      {
+        "detail": "HDC target unavailable",
+        "evidence": [],
+        "field": "matepad_mini_identity_recorded",
+        "requirement": "HarmonyOS MatePad Mini device identity recorded",
+        "status": "blocked"
+      },
+      {
+        "detail": "HDC target unavailable",
+        "evidence": [],
+        "field": "package_prestate_recorded",
+        "requirement": "package state captured before install/upgrade/rollback/uninstall",
+        "status": "blocked"
+      },
+      {
+        "detail": "no lifecycle observation manifest supplied",
+        "evidence": [],
+        "field": "install_evidence_recorded",
+        "requirement": "reviewed HDC/hilog/device evidence for install",
+        "status": "insufficient"
+      },
+      {
+        "detail": "no lifecycle observation manifest supplied",
+        "evidence": [],
+        "field": "upgrade_evidence_recorded",
+        "requirement": "reviewed HDC/hilog/device evidence for upgrade",
+        "status": "insufficient"
+      },
+      {
+        "detail": "no lifecycle observation manifest supplied",
+        "evidence": [],
+        "field": "rollback_evidence_recorded",
+        "requirement": "reviewed HDC/hilog/device evidence for rollback",
+        "status": "insufficient"
+      },
+      {
+        "detail": "no lifecycle observation manifest supplied",
+        "evidence": [],
+        "field": "uninstall_cleanup_evidence_recorded",
+        "requirement": "reviewed HDC/hilog/device evidence for uninstall cleanup",
+        "status": "insufficient"
+      }
+    ],
+    "observed_fields": {
+      "deveco_studio_available": "blocked",
+      "harmony_sdk_api_recorded": "blocked",
+      "hdc_available": "blocked",
+      "hdc_target_selected": "blocked",
+      "hvigor_available": "blocked",
+      "install_evidence_recorded": "insufficient",
+      "matepad_mini_identity_recorded": "blocked",
+      "ohpm_available": "blocked",
+      "package_prestate_recorded": "blocked",
+      "release_build_completed": "insufficient",
+      "repository_clean": "blocked",
+      "rollback_evidence_recorded": "insufficient",
+      "signature_certificate_recorded": "insufficient",
+      "signed_hap_present": "blocked",
+      "signing_config_present": "blocked",
+      "uninstall_cleanup_evidence_recorded": "insufficient",
+      "upgrade_evidence_recorded": "insufficient"
+    },
+    "run_id": "2026-08-21-hap-readiness-blocked",
+    "verdict": "blocked"
+  },
+  "toolchain": {
+    "deveco_studio_path": "",
+    "deveco_studio_version": "",
+    "harmony_sdk_api": "",
+    "harmony_sdk_path": "",
+    "hdc": {
+      "available": false,
+      "name": "hdc",
+      "path": "",
+      "returncode": null,
+      "version": ""
+    },
+    "hvigor": {
+      "available": false,
+      "name": "hvigor",
+      "path": "",
+      "returncode": null,
+      "version": ""
+    },
+    "ohpm": {
+      "available": false,
+      "name": "ohpm",
+      "path": "",
+      "returncode": null,
+      "version": ""
+    },
+    "project_compatible_sdk": "5.0.0(12)"
+  }
+}

@@ -580,6 +580,11 @@ network quality may increase it.
   record, so the repository does not claim ArkTS compilation, a HAP, signing,
   installation, hardware decode, HUKS-backed secure pairing, authenticated
   transport, resume-capable Host interoperability, or real-device behavior.
+  A fail-closed HAP lifecycle readiness collector now records the local DevEco
+  SDK, signing/HAP artifact state, HDC target, package pre-state, and install,
+  upgrade, rollback, and uninstall-cleanup observation references; when any of
+  those prerequisites are absent it writes blocked/insufficient evidence rather
+  than closing the HarmonyOS gate.
 - The [Phase 4 verification record](docs/changes/2026-08-04-phase-4-harmony/TEST.md)
   tracks the remaining DevEco, host-interoperability, and MatePad Mini gates.
 - HarmonyOS device acceptance must follow the
