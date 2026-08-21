@@ -204,6 +204,26 @@ CDHash=e4ac7dab68720d647550f2e031f40070ab291e8b
         metadata_mock.assert_not_called()
         tcc_mock.assert_not_called()
 
+    def test_local_device_identity_error_removes_ad_hoc_recovery_hint(self) -> None:
+        missing_identity = (
+            "codesign identity 'Vibe Screen Dev' not found in the keychain. "
+            "Create the 'Vibe Screen Dev' self-signed identity (or set "
+            "$VIBE_SCREEN_SIGN_IDENTITY to an existing identity), or pass "
+            "'--sign-identity -' for an ad-hoc build."
+        )
+        with mock.patch.object(
+            macos_dev_host.package_macos,
+            "resolve_sign_identity",
+            side_effect=SystemExit(missing_identity),
+        ):
+            with self.assertRaises(SystemExit) as raised:
+                macos_dev_host.resolve_local_device_sign_identity("Vibe Screen Dev")
+
+        message = str(raised.exception)
+        self.assertIn("Vibe Screen Dev", message)
+        self.assertIn("For local device reruns, do not use ad-hoc signing", message)
+        self.assertNotIn("pass '--sign-identity -'", message)
+
     def test_collect_signing_metadata_reports_codesign_failure_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             app = Path(temporary_directory) / "Vibe Screen.app"
