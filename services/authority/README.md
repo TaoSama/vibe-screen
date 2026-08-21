@@ -221,30 +221,46 @@ conflict.
 allocations). Its `observed_at` cannot be in the future, including for an empty
 snapshot. The service applies newer counters and returns ledger allocations missing
 from a source beyond `reconciliation_grace_seconds`. The response separately
-lists `unauthorized_allocation_ids` that exist only at the source and
-`conflict_allocation_ids` whose identity or counters conflict with the ledger;
-one conflict does not stop processing the rest of the snapshot. A revoked device
-or session fails the snapshot closed rather than silently advancing its ledger;
-allocations applied earlier in that request remain committed and replay as
-duplicates or already-ahead entries on retry. Operators must disconnect
-unauthorized allocations and close ledger-only allocations only after the
-configured consecutive-snapshot policy in their collector.
+lists `unauthorized_allocation_ids` that exist only at the source,
+`conflict_allocation_ids` whose identity or counters conflict with the ledger,
+and `revoked_allocation_ids` for source-observed allocations whose Authority
+ledger has already been closed by account suspension, device revocation,
+signaling invalidation, expiry, or quota policy. One conflict or revoked
+allocation does not stop processing the rest of the snapshot. Revoked allocation
+observations fail closed by refusing to advance counters, while still giving the
+operator's disconnect executor an exact allocation ID to terminate. Allocations
+applied earlier in that request remain committed and replay as duplicates or
+already-ahead entries on retry. Operators must disconnect unauthorized,
+conflicting, and revoked source allocations, and close ledger-only allocations
+only after the configured consecutive-snapshot policy in their collector.
 
-The repository does **not** yet contain a production-proven coturn exporter.
-Launch remains blocked until the pinned coturn build or provider API proves it
-exports a stable allocation ID, the complete REST username mapping, monotonic
-cumulative counters, close events, boot identity and snapshot support. Parsing
+The repository now contains a minimal coturn CLI exporter and disconnect
+executor in `scripts/phase3/coturn_cli_control.py`. It intentionally requires a
+trusted allocation registry written by relay credential issuance because coturn's
+TURN REST username is `<expiry>:<device-id>` and is not the Authority
+`allocation_id`. Missing registry entries, duplicate or ambiguous username
+bindings, coturn CLI auth failure, malformed `ps` output, and disconnect command
+failures all fail closed. Launch remains blocked until the pinned coturn build or
+provider API is exercised in the target environment and proves complete REST
+username mapping, monotonic cumulative counters, close events, boot identity,
+snapshot support, and precise `cs <session-id>` termination. Parsing arbitrary
 human-oriented coturn logs may run in shadow mode but is not an authoritative
 quota or billing source.
 
-`scripts/phase3/coturn_reconcile.py` is the current operator-side contract for a
-future trusted exporter. It accepts only the structured snapshot shape above,
-submits it to `/v1/coturn/reconcile`, and requires a configured idempotent
-disconnect executor for every unauthorized or conflicting source allocation. A
-missing ledger-only allocation exits non-zero so the caller's consecutive-snapshot
-policy must decide whether to close the ledger record. This helper does not parse
-coturn logs, does not create a durable collector cursor/WAL, and does not prove a
-production disconnect mechanism.
+`scripts/phase3/coturn_reconcile.py` is the operator-side reconciliation helper.
+It accepts either the structured snapshot shape above or an external
+`--exporter-command` whose stdout is that same strict JSON object, submits it to
+`/v1/coturn/reconcile`, retries transient failures when explicitly configured,
+and requires a configured idempotent disconnect executor for every unauthorized,
+conflicting, or revoked source allocation. The production Compose profile wires
+that helper to the coturn CLI exporter/disconnect command in a bounded worker
+loop. A missing ledger-only allocation exits non-zero so a future durable
+collector policy must decide whether to close the ledger record after consecutive
+snapshots. If relay admission succeeds but the local allocation registry cannot
+be written, relay fails closed by returning no TURN credential; the Authority
+ledger entry is then a ledger-only allocation that still requires that future
+close policy. The current worker has no durable WAL or multi-node scheduler
+proof.
 
 ## Clock synchronization and TTL consistency
 
@@ -289,10 +305,11 @@ separate production requirement.
   device is revoked, or a signaling admission is invalidated is implemented;
   later coturn usage for revoked, suspended, expired, or closed allocations
   fails closed without advancing daily counters;
-- collector durable cursor/WAL, node heartbeat, gap detection and two-snapshot
-  close reconciliation;
-- mapping from issued allocation IDs to complete coturn REST usernames;
-- active-allocation disconnect executor and outbox delivery;
+- collector durable cursor/WAL, node heartbeat, gap detection, durable multi-node
+  scheduling, and two-snapshot close reconciliation;
+- production validation of the relay-written allocation registry that maps issued
+  allocation IDs to complete coturn REST usernames and coturn session IDs;
+- active-allocation disconnect outbox delivery and provider-level confirmation;
 - edge authentication, DDoS/rate limiting, audit retention/deletion policy,
   dashboards, cost reconciliation and public-region canaries.
 
@@ -303,13 +320,15 @@ separate production requirement.
 - Automatic account and device registration is not wired; accounts and devices
   must be registered through the admin API before a signaling admission can be
   created.
-- Relay credential admission is wired to the authority, and the structured
-  reconcile helper is locally tested. The coturn exporter, scheduled
-  reconciliation loop, active-allocation disconnect executor, and production
-  coturn enforcement remain open.
-- An active PeerConnection or TURN allocation is not actively disconnected when
-  a device is revoked or a signaling admission is invalidated; the current
-  closure is an authority-ledger boundary, not a data-plane kill path.
+- Relay credential admission is wired to the authority, writes the allocation
+  registry consumed by the coturn CLI exporter/disconnect command, and the
+  production Compose profile runs a bounded reconciliation worker. The worker is
+  not yet production-proven, has no durable multi-node scheduler/WAL, and does
+  not close provider billing, public deployment, or coturn enforcement gates.
+- The coturn CLI executor can terminate mapped TURN sessions observed through
+  the local coturn CLI, but no public deployment has proved that every active
+  PeerConnection or TURN allocation is terminated after device or session
+  revocation; the end-to-end data-plane kill gate remains open.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped
   epoch operate in different scopes and are not yet unified.
 - Signaling supports PostgreSQL-backed durable routing state. Multi-instance

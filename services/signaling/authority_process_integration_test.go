@@ -42,6 +42,7 @@ func (b *synchronizedBuffer) String() string {
 type authorityProcessTest struct {
 	authorityDatabaseURL string
 	signalingDatabaseURL string
+	relayRegistryFile    string
 
 	authorityAdminToken     string
 	authoritySignalingToken string
@@ -73,6 +74,8 @@ type authorityProcessTest struct {
 	signalingCmd *exec.Cmd
 	relayCmd     *exec.Cmd
 }
+
+const relayAuthoritySourceID = "turn-integration-1"
 
 func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -111,6 +114,7 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 	run.authorityBinary = filepath.Join(tmpDir, "vibe-authority")
 	run.signalingBinary = filepath.Join(tmpDir, "vibe-signaling")
 	run.relayBinary = filepath.Join(tmpDir, "vibe-relay")
+	run.relayRegistryFile = filepath.Join(tmpDir, "relay-allocation-registry.json")
 
 	buildAuthority(t, run.authorityBinary)
 	buildSignaling(t, run.signalingBinary)
@@ -214,6 +218,7 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 	// reserve capacity for this signaling session/device/allocation tuple.
 	credentialBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-before-session-invalidate"}`, clientDeviceID, firstSession.SessionID)
 	assertCredential(credentialBody)
+	assertRelayRegistryContains(t, run.relayRegistryFile, relayAuthoritySourceID, "allocation-before-session-invalidate", clientDeviceID, firstSession.SessionID)
 
 	// Session-only invalidation must also propagate to relay admission. The
 	// device is still registered and not revoked, so this proves the authority
@@ -253,8 +258,9 @@ func TestAuthorityProcessSessionRevocationFailClosed(t *testing.T) {
 	if secondSession.SessionID == "" || secondSession.HostToken == "" || secondSession.DeviceToken == "" {
 		t.Fatalf("incomplete second session response: %#v", secondSession)
 	}
-	secondCredentialBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-before-device-revoke"}`, clientDeviceID, secondSession.SessionID)
+	secondCredentialBody := fmt.Sprintf(`{"device_id":%q,"session_id":%q,"allocation_id":"allocation-before-device-revoke","ttl_seconds":120}`, clientDeviceID, secondSession.SessionID)
 	assertCredential(secondCredentialBody)
+	assertRelayRegistryContains(t, run.relayRegistryFile, relayAuthoritySourceID, "allocation-before-device-revoke", clientDeviceID, secondSession.SessionID)
 
 	// Revoke the client device through the authority admin API. The session
 	// epoch is the revocation epoch; the authority marks every session that
@@ -349,6 +355,42 @@ func resetSignalingDatabase(t *testing.T, databaseURL string) {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("reset signaling integration database: %v\n%s", err, output)
 	}
+}
+
+func assertRelayRegistryContains(t *testing.T, path, sourceID, allocationID, deviceID, sessionID string) {
+	t.Helper()
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read relay allocation registry: %v", err)
+	}
+	var registry struct {
+		SourceID    string `json:"source_id"`
+		Allocations []struct {
+			AllocationID string `json:"allocation_id"`
+			DeviceID     string `json:"device_id"`
+			SessionID    string `json:"session_id"`
+			Username     string `json:"username"`
+		} `json:"allocations"`
+	}
+	if err := json.Unmarshal(contents, &registry); err != nil {
+		t.Fatalf("decode relay allocation registry: %v\n%s", err, contents)
+	}
+	if registry.SourceID != sourceID {
+		t.Fatalf("relay registry source_id=%q want %q", registry.SourceID, sourceID)
+	}
+	for _, allocation := range registry.Allocations {
+		if allocation.AllocationID != allocationID {
+			continue
+		}
+		if allocation.DeviceID != deviceID || allocation.SessionID != sessionID {
+			t.Fatalf("relay registry allocation mismatch: %#v", allocation)
+		}
+		if !strings.HasSuffix(allocation.Username, ":"+deviceID) {
+			t.Fatalf("relay registry username %q does not bind device %q", allocation.Username, deviceID)
+		}
+		return
+	}
+	t.Fatalf("relay registry missing allocation_id %q in %s", allocationID, contents)
 }
 
 func buildAuthority(t *testing.T, binaryPath string) {
@@ -521,8 +563,9 @@ func startRelay(t *testing.T, run *authorityProcessTest) {
   "state_file": %q,
   "authority_mode": "production_authority",
   "authority_url": "http://%s",
-  "authority_source_id": "turn-integration-1"
-}`, run.relayAddress, filepath.Join(t.TempDir(), "relay-state.json"), run.authorityAddress)
+  "authority_source_id": %q,
+  "allocation_registry_file": %q
+}`, run.relayAddress, filepath.Join(t.TempDir(), "relay-state.json"), run.authorityAddress, relayAuthoritySourceID, run.relayRegistryFile)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}

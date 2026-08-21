@@ -62,12 +62,14 @@ secrets are file-backed, relay HTTP remains loopback-only, and the coturn
 production profile retains TLS, quota, bounded relay-port, and private/internal
 peer-deny policy. They do not start a public relay, inspect real secret delivery,
 or prove public reachability. The same target validates the structured coturn
-snapshot reconciliation helper: strict JSON input, loopback-only plaintext
-Authority URLs, exact token-source selection, and fail-closed external disconnect
-execution when Authority reports unauthorized or conflicting active source
-allocations. That helper test does not prove a production coturn exporter,
-scheduled loop, provider billing reconciliation, or real data-plane allocation
-termination.
+snapshot reconciliation and coturn CLI control path: strict JSON input, optional
+external exporter stdout validation, loopback-only plaintext Authority URLs, exact
+token-source selection, bounded failure retry, registry-backed coturn `ps`
+parsing, monotonic sequence state, CLI password file handling, and fail-closed
+external disconnect execution when Authority reports unauthorized, conflicting,
+or revoked active source allocations. These local tests do not prove public
+coturn deployment, durable production scheduling/WAL, provider billing
+reconciliation, or real data-plane disconnect evidence.
 
 Record failures as failures. In particular, an unavailable XCTest/full-Xcode or
 device environment is not a waiver. When production WebRTC/crypto/signaling code
@@ -86,7 +88,7 @@ steps.
 | Transport | direct ICE, forced TURN, IPv4/IPv6, UDP-blocked/TCP-TLS relay, control/media/audio/bulk channel semantics, payload/backlog/frame caps |
 | Recovery | Wi-Fi/cellular/VPN changes, route changes, ICE restart backoff, signaling loss, TURN loss, process restart, old-epoch injection |
 | Adaptation | WebRTC Internet transport only (USB/LAN keep manual client-driven presets). Offline: fast-drop/slow-rise hysteresis with jitter reset, host-only non-finite/zero-bitrate/missing-RTT conservative handling, even dimensions without upscaling, user-baseline upper-bound clamp, latest-proposal-wins queuing, rotation serialization, stale owner/generation rejection, retry after local or peer rejection, host apply encoder/capture + media gate → `VideoConfig` ACK → keyframe/resume, rejection rollback and host-apply/ACK/rollback-timeout fail-closed. Android policy tests cover hysteresis and neutral reset, not those host telemetry edge cases. Not proved: real ScreenCaptureKit→Android decoder continuity, public Internet, real remote TURN, real network fluctuation, handoff, soak |
-| Relay operations | short credential expiry, authority-backed allocation admission before credential issuance, allocation/peer/bandwidth/byte/concurrency quotas, rate limits, alerts, spend reconciliation |
+| Relay operations | short credential expiry, authority-backed allocation admission before credential issuance, allocation/peer/bandwidth/byte/concurrency quotas, rate limits, alerts, non-authoritative Authority snapshot reconciliation, and separate provider billing reconciliation |
 | Privacy | packet capture, logs/crash/evidence/telemetry scan, retention and deletion drill |
 | Android device E2E | install, pair, direct stream, relay stream, touch/keyboard, network handoff, revoke, reconnect, two-hour soak |
 | Latency | external-camera direct and relay raw samples; never infer glass-to-glass from unsynchronized clocks |
@@ -317,11 +319,17 @@ named by that run:
   credentials, enforcing an exact Bearer scheme, exporting current-day estimated
   cost as a gauge, and syncing the state directory after atomic replacement.
 - `scripts/phase3/coturn_reconcile.py` has focused unit coverage for strict
-  structured snapshot ingestion, sanitized token-source selection, loopback-only
-  plaintext Authority URLs, Authority response validation, and fail-closed
-  handling of unauthorized/conflicting active allocations when no disconnect
-  executor exists or when the executor fails. This is a local contract test, not
-  production coturn exporter or data-plane disconnect evidence.
+  structured snapshot ingestion, external exporter-command stdout validation,
+  sanitized token-source selection, loopback-only plaintext Authority URLs,
+  Authority response validation, bounded retry after transient failure, and
+  fail-closed handling of unauthorized/conflicting/revoked active allocations
+  when no disconnect executor exists or when the executor fails.
+  `scripts/phase3/coturn_cli_control.py` adds focused coverage for registry
+  validation, coturn CLI `ps` parsing, snapshot export, monotonic sequence state,
+  CLI password secret loading, and mapped `cs <session-id>` execution. This is a
+  local script/static test boundary, not public coturn deployment, durable
+  production scheduling/WAL, provider billing reconciliation, or real data-plane
+  disconnect evidence.
 - Signaling issuer-only invalidation passed store, HTTP, race and repeated
   real-process tests: invalidation is idempotent, destroys role tokens and queued
   payloads, wakes long polls, and retains only the request-ID tombstone until

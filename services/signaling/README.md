@@ -344,12 +344,14 @@ slice, not accepted production behavior:
 - Automatic account and device registration is not wired; accounts and devices
   must be registered through the authority admin API before a session can be
   created.
-- Relay credential admission is wired to the authority, but the coturn exporter,
-  reconciliation loop, and active-allocation disconnect path are not production
-  proven.
-- An active PeerConnection or TURN allocation is not actively disconnected when
-  a session is revoked at the authority; signaling invalidation only stops new
-  rendezvous access.
+- Relay credential admission is wired to the authority, relay records admitted
+  allocation mappings for the coturn CLI exporter, and the production Compose
+  profile runs a bounded reconciliation/disconnect worker. That worker is not
+  production-proven, and durable multi-node scheduling/WAL remains open.
+- An active PeerConnection is not actively disconnected when a session is revoked
+  at the authority; signaling invalidation only stops new rendezvous access. A
+  mapped TURN allocation can be killed by the coturn CLI executor, but the
+  end-to-end production revocation path remains unproved.
 - The authority's per-device `session_epoch` floor and the Mac pairing-scoped
   epoch operate in different scopes; their interaction is not yet unified.
 - PostgreSQL durable routing is implemented for `production_authority`, but

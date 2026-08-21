@@ -49,6 +49,7 @@ type Config struct {
 	AuthorityMode                   string   `json:"authority_mode,omitempty"`
 	AuthorityURL                    string   `json:"authority_url,omitempty"`
 	AuthoritySourceID               string   `json:"authority_source_id,omitempty"`
+	AllocationRegistryFile          string   `json:"allocation_registry_file,omitempty"`
 	MaximumDatabaseClockSkewSeconds int64    `json:"maximum_database_clock_skew_seconds,omitempty"`
 
 	TurnSecret     string `json:"-"`
@@ -210,6 +211,9 @@ func (c Config) Validate() error {
 		if c.AuthoritySourceID == "" {
 			missing = append(missing, "authority_source_id")
 		}
+		if c.AllocationRegistryFile == "" {
+			missing = append(missing, "allocation_registry_file")
+		}
 		if c.AuthorityToken == "" {
 			missing = append(missing, authorityTokenEnv)
 		}
@@ -237,8 +241,8 @@ func (c Config) Validate() error {
 	if mode != AuthorityModeLocal && mode != AuthorityModeProd {
 		return fmt.Errorf("unsupported authority_mode %q", c.AuthorityMode)
 	}
-	if mode == AuthorityModeLocal && (c.AuthorityURL != "" || c.AuthoritySourceID != "") {
-		return errors.New("authority_url and authority_source_id require production_authority mode")
+	if mode == AuthorityModeLocal && (c.AuthorityURL != "" || c.AuthoritySourceID != "" || c.AllocationRegistryFile != "") {
+		return errors.New("authority_url, authority_source_id, and allocation_registry_file require production_authority mode")
 	}
 	if mode == AuthorityModeProd && !validIdentifier(c.AuthoritySourceID) {
 		return errors.New("authority_source_id must be a valid identifier")

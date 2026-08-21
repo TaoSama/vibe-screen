@@ -3,6 +3,7 @@ set -eu
 
 config_file=${COTURN_CONFIG_FILE:-/etc/vibe-coturn/local.conf}
 secret_file=${VIBE_RELAY_TURN_SECRET_FILE:-/run/secrets/turn_secret}
+cli_password_file=${COTURN_CLI_PASSWORD_FILE:-/run/secrets/coturn_cli_password}
 runtime_config=/tmp/vibe-turnserver.conf
 
 if [ ! -r "$config_file" ]; then
@@ -23,6 +24,25 @@ fi
 umask 077
 cp "$config_file" "$runtime_config"
 printf '\nstatic-auth-secret=%s\n' "$turn_secret" >> "$runtime_config"
+
+if grep -Eq '^[[:space:]]*cli([[:space:]]*|#.*)?$' "$runtime_config"; then
+  if [ ! -r "$cli_password_file" ]; then
+    echo "coturn CLI password is required when CLI is enabled: $cli_password_file" >&2
+    exit 1
+  fi
+  cli_password=$(tr -d '\r\n' < "$cli_password_file")
+  if [ "${#cli_password}" -lt 32 ]; then
+    echo "coturn CLI password must contain at least 32 characters" >&2
+    exit 1
+  fi
+  case "$cli_password" in
+    *[!A-Za-z0-9_.:@%+=,-]* | "")
+      echo "coturn CLI password must be printable ASCII without shell metacharacters" >&2
+      exit 1
+      ;;
+  esac
+  printf 'cli-password=%s\n' "$cli_password" >> "$runtime_config"
+fi
 
 if [ -n "${COTURN_EXTERNAL_IP:-}" ]; then
   case "$COTURN_EXTERNAL_IP" in

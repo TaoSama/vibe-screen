@@ -51,8 +51,11 @@ extrapolated to this working tree or later commits. It is not public-Internet,
 real ScreenCaptureKit content, visible Mac input, carrier/CGNAT, automatic
 handoff, latency, or stability evidence. The services remain single-node
 development implementations; automatic authority issuance, cross-service
-revocation propagation, authoritative coturn byte accounting, and a production
-deployment remain open. Trusted-LAN remains separate from Phase 3 Internet
+revocation propagation, public coturn exporter execution, durable production
+scheduled reconciliation, provider-confirmed active-allocation disconnect,
+authoritative coturn byte accounting, and a production deployment remain open.
+Trusted-LAN remains
+separate from Phase 3 Internet
 transport: current macOS/Android peers protect the token-admitted TCP session
 with per-session application records, while explicit legacy fallback remains
 plaintext and is not Phase 3 security.

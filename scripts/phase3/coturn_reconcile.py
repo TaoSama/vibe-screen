@@ -3,8 +3,9 @@
 
 This helper is the production-side contract between a coturn allocation exporter
 and vibe-authority. It intentionally does not parse human-oriented coturn logs or
-claim to be the exporter. A deployment supplies a structured snapshot, and this
-process reconciles it with Authority. Unauthorized or conflicting active source
+claim to be the exporter. A deployment supplies a structured snapshot file or an
+external exporter command that prints the same JSON shape, and this process
+reconciles it with Authority. Unauthorized, conflicting, or revoked active source
 allocations are fail-closed: they require a configured external disconnect
 executor and any executor failure makes the run fail.
 """
@@ -15,9 +16,11 @@ import argparse
 from dataclasses import dataclass
 from datetime import datetime
 import json
+import math
 import os
 from pathlib import Path
 import re
+import selectors
 import subprocess
 import sys
 import time
@@ -27,8 +30,15 @@ from urllib import error, parse, request
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 MAX_SIGNED_INT64 = (1 << 63) - 1
 MAX_ALLOCATIONS = 10_000
+MAX_SNAPSHOT_BYTES = 256 * 1024
 MAX_RESPONSE_BYTES = 64 * 1024
 DEFAULT_TOKEN_ENV = "VIBE_AUTHORITY_COTURN_TOKEN"
+CHILD_ENV_ALLOWLIST = (
+    "VIBE_COTURN_ALLOCATION_REGISTRY",
+    "VIBE_COTURN_CLI_PASSWORD_FILE",
+    "VIBE_COTURN_SEQUENCE_STATE",
+    "VIBE_COTURN_SOURCE_ID",
+)
 
 SNAPSHOT_FIELDS = frozenset({"source_id", "observed_at", "allocations"})
 ALLOCATION_FIELDS = frozenset(
@@ -50,6 +60,7 @@ RESULT_FIELDS = frozenset(
         "missing_allocation_ids",
         "unauthorized_allocation_ids",
         "conflict_allocation_ids",
+        "revoked_allocation_ids",
     }
 )
 
@@ -62,11 +73,14 @@ class ReconcileError(RuntimeError):
 class Settings:
     authority_url: str
     token: str
-    snapshot: Path
-    disconnect_command: tuple[str, ...]
-    interval_seconds: float
-    max_iterations: int
-    request_timeout_seconds: float
+    snapshot: Path | None = None
+    exporter_command: tuple[str, ...] = ()
+    disconnect_command: tuple[str, ...] = ()
+    interval_seconds: float = 0.0
+    max_iterations: int = 1
+    retry_attempts: int = 0
+    retry_backoff_seconds: float = 1.0
+    request_timeout_seconds: float = 10.0
 
 
 class NoRedirectHandler(request.HTTPRedirectHandler):
@@ -129,6 +143,10 @@ def load_snapshot(path: Path) -> dict[str, Any]:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ReconcileError(f"cannot read snapshot: {exc}") from exc
+    return validate_snapshot(raw)
+
+
+def validate_snapshot(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         _fail("snapshot must be a JSON object")
     extra = set(raw) - SNAPSHOT_FIELDS
@@ -178,6 +196,119 @@ def load_snapshot(path: Path) -> dict[str, Any]:
             }
         )
     return {"source_id": source_id, "observed_at": observed_at, "allocations": normalized_allocations}
+
+
+def run_exporter(settings: Settings) -> dict[str, Any]:
+    if not settings.exporter_command:
+        _fail("--snapshot or --exporter-command is required")
+    stdout = _run_exporter_command(settings)
+    try:
+        decoded = json.loads(stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ReconcileError("coturn exporter returned invalid JSON") from exc
+    return validate_snapshot(decoded)
+
+
+def _run_exporter_command(settings: Settings) -> bytes:
+    try:
+        process = subprocess.Popen(
+            settings.exporter_command,
+            env=_minimal_process_env(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as exc:
+        raise ReconcileError(f"coturn exporter could not start: {exc}") from exc
+    stdout = _read_limited_stdout(
+        process,
+        byte_limit=MAX_SNAPSHOT_BYTES,
+        timeout_seconds=settings.request_timeout_seconds,
+        timeout_message="coturn exporter timed out",
+        overflow_message="coturn exporter snapshot exceeded maximum size",
+    )
+    if process.returncode != 0:
+        _fail(f"coturn exporter failed: exit {process.returncode}")
+    return stdout
+
+
+def _read_limited_stdout(
+    process: subprocess.Popen[bytes],
+    *,
+    byte_limit: int,
+    timeout_seconds: float,
+    timeout_message: str,
+    overflow_message: str,
+) -> bytes:
+    if process.stdout is None:
+        _terminate_process(process)
+        _fail("process stdout was not captured")
+    output = bytearray()
+    deadline = time.monotonic() + timeout_seconds
+    selector = selectors.DefaultSelector()
+    os.set_blocking(process.stdout.fileno(), False)
+    selector.register(process.stdout, selectors.EVENT_READ)
+    try:
+        while True:
+            now = time.monotonic()
+            if now >= deadline:
+                _terminate_process(process)
+                _fail(timeout_message)
+            remaining = min(0.1, deadline - now)
+            events = selector.select(remaining)
+            if events:
+                if _drain_process_stdout(process, output, byte_limit, overflow_message):
+                    _wait_for_process(process, deadline, timeout_message)
+                    return bytes(output)
+            if process.poll() is not None:
+                _drain_process_stdout(process, output, byte_limit, overflow_message)
+                return bytes(output)
+    finally:
+        selector.close()
+        process.stdout.close()
+
+
+def _drain_process_stdout(
+    process: subprocess.Popen[bytes],
+    output: bytearray,
+    byte_limit: int,
+    overflow_message: str,
+) -> bool:
+    if process.stdout is None:
+        _fail("process stdout was not captured")
+    while True:
+        try:
+            chunk = os.read(process.stdout.fileno(), 8192)
+        except BlockingIOError:
+            return False
+        if not chunk:
+            return True
+        output.extend(chunk)
+        if len(output) > byte_limit:
+            _terminate_process(process)
+            _fail(overflow_message)
+
+
+def _terminate_process(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is None:
+        process.kill()
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
+def _wait_for_process(process: subprocess.Popen[bytes], deadline: float, timeout_message: str) -> None:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        _terminate_process(process)
+        _fail(timeout_message)
+    try:
+        process.wait(timeout=remaining)
+    except subprocess.TimeoutExpired:
+        _terminate_process(process)
+        _fail(timeout_message)
 
 
 def _load_token(env_name: str, token_file: Path | None) -> str:
@@ -253,6 +384,7 @@ def validate_result(value: Any) -> dict[str, Any]:
         "missing_allocation_ids",
         "unauthorized_allocation_ids",
         "conflict_allocation_ids",
+        "revoked_allocation_ids",
     ):
         values = value.get(field)
         if not isinstance(values, list):
@@ -268,17 +400,26 @@ def validate_result(value: Any) -> dict[str, Any]:
         result["missing_allocation_ids"]
         + result["unauthorized_allocation_ids"]
         + result["conflict_allocation_ids"]
+        + result["revoked_allocation_ids"]
     )
     if len(set(all_result_ids)) != len(all_result_ids):
         _fail("authority reconcile response contains allocation ids in multiple result categories")
     return result
 
 
-def _minimal_executor_env(source_id: str, allocation_id: str, reason: str) -> dict[str, str]:
+def _minimal_process_env() -> dict[str, str]:
     env: dict[str, str] = {}
     for key in ("PATH", "LANG", "LC_ALL"):
         if key in os.environ:
             env[key] = os.environ[key]
+    for key in CHILD_ENV_ALLOWLIST:
+        if key in os.environ:
+            env[key] = os.environ[key]
+    return env
+
+
+def _minimal_executor_env(source_id: str, allocation_id: str, reason: str) -> dict[str, str]:
+    env = _minimal_process_env()
     env.update(
         {
             "VIBE_COTURN_DISCONNECT_SOURCE_ID": source_id,
@@ -297,6 +438,7 @@ def disconnect_required_allocations(
     for reason, field in (
         ("unauthorized", "unauthorized_allocation_ids"),
         ("conflict", "conflict_allocation_ids"),
+        ("revoked", "revoked_allocation_ids"),
     ):
         required.extend((reason, allocation_id) for allocation_id in result[field])
     if required and not settings.disconnect_command:
@@ -307,9 +449,8 @@ def disconnect_required_allocations(
                 settings.disconnect_command,
                 env=_minimal_executor_env(source_id, allocation_id, reason),
                 stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 timeout=settings.request_timeout_seconds,
                 check=False,
             )
@@ -330,7 +471,7 @@ def disconnect_required_allocations(
 
 
 def run_once(settings: Settings) -> dict[str, Any]:
-    snapshot = load_snapshot(settings.snapshot)
+    snapshot = load_snapshot(settings.snapshot) if settings.snapshot is not None else run_exporter(settings)
     result = submit_reconcile(settings, snapshot)
     disconnects = disconnect_required_allocations(settings, snapshot["source_id"], result)
     status = "ok"
@@ -347,16 +488,33 @@ def run_once(settings: Settings) -> dict[str, Any]:
     }
 
 
+def run_once_with_retries(settings: Settings) -> dict[str, Any]:
+    last_error: ReconcileError | None = None
+    for attempt in range(settings.retry_attempts + 1):
+        try:
+            report = run_once(settings)
+            if attempt:
+                report["retry_attempts"] = attempt
+            return report
+        except ReconcileError as exc:
+            last_error = exc
+            if attempt >= settings.retry_attempts:
+                break
+            time.sleep(settings.retry_backoff_seconds)
+    assert last_error is not None
+    raise last_error
+
+
 def _non_negative_float(value: str) -> float:
     parsed = float(value)
-    if parsed < 0:
+    if not math.isfinite(parsed) or parsed < 0:
         raise argparse.ArgumentTypeError("must be non-negative")
     return parsed
 
 
 def _positive_float(value: str) -> float:
     parsed = float(value)
-    if parsed <= 0:
+    if not math.isfinite(parsed) or parsed <= 0:
         raise argparse.ArgumentTypeError("must be positive")
     return parsed
 
@@ -371,27 +529,39 @@ def _positive_int(value: str) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--authority-url", required=True, help="Authority base URL; https unless loopback http")
-    parser.add_argument("--snapshot", required=True, type=Path, help="trusted structured coturn snapshot JSON")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--snapshot", type=Path, help="trusted structured coturn snapshot JSON")
+    source.add_argument("--exporter-command", nargs="+", default=(), help="external coturn exporter that writes one structured snapshot JSON object to stdout")
     parser.add_argument("--coturn-token-env", default=DEFAULT_TOKEN_ENV, help="environment variable containing the Authority coturn bearer token")
     parser.add_argument("--coturn-token-file", type=Path, help="file containing the Authority coturn bearer token")
     parser.add_argument("--request-timeout-seconds", type=_positive_float, default=10.0)
     parser.add_argument("--interval-seconds", type=_non_negative_float, default=0.0, help="sleep between repeated reconcile iterations")
     parser.add_argument("--max-iterations", type=_positive_int, default=1, help="bounded loop iteration count")
+    parser.add_argument("--retry-attempts", type=int, default=0, help="retry failed exporter/reconcile/disconnect attempts before failing closed")
+    parser.add_argument("--retry-backoff-seconds", type=_non_negative_float, default=1.0, help="sleep before a retry attempt")
     parser.add_argument("--disconnect-command", nargs=argparse.REMAINDER, default=(), help="external idempotent active-allocation disconnect executor; use after all other flags")
     return parser
 
 
 def settings_from_args(args: argparse.Namespace) -> Settings:
+    exporter_command = tuple(args.exporter_command)
+    if exporter_command and exporter_command[0] == "--":
+        exporter_command = exporter_command[1:]
     command = tuple(args.disconnect_command)
     if command and command[0] == "--":
         command = command[1:]
+    if args.retry_attempts < 0:
+        _fail("--retry-attempts must be non-negative")
     return Settings(
         authority_url=args.authority_url,
         token=_load_token(args.coturn_token_env, args.coturn_token_file),
         snapshot=args.snapshot,
+        exporter_command=exporter_command,
         disconnect_command=command,
         interval_seconds=args.interval_seconds,
         max_iterations=args.max_iterations,
+        retry_attempts=args.retry_attempts,
+        retry_backoff_seconds=args.retry_backoff_seconds,
         request_timeout_seconds=args.request_timeout_seconds,
     )
 
@@ -402,7 +572,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         last_report: dict[str, Any] | None = None
         saw_missing_allocation = False
         for iteration in range(settings.max_iterations):
-            last_report = run_once(settings)
+            last_report = run_once_with_retries(settings)
             if last_report["status"] == "needs_ledger_close":
                 saw_missing_allocation = True
             print(json.dumps(last_report, sort_keys=True), flush=True)

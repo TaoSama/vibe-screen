@@ -408,6 +408,62 @@ func TestPostgresRevocationClosesRelayAllocationsForLedgerOnly(t *testing.T) {
 	}
 }
 
+func TestPostgresReconcileDoesNotReportSourceClosedAllocationsAsRevoked(t *testing.T) {
+	store, _ := openIntegrationStore(t)
+	store.allocationLimit = 2
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := store.EnsureAccount(ctx, "account"); err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"host", "client"} {
+		if err := store.RegisterDevice(ctx, "account", deviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	session, err := store.CreateSignaling(ctx, SignalingRequest{RequestID: "source-close", AccountID: "account", HostDeviceID: "host", ClientDeviceID: "client", SessionEpoch: 1, TTLSeconds: 60}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AdmitRelay(ctx, RelayAdmissionRequest{DeviceID: "client", SessionID: session.SessionID, AllocationID: "source-closed", SourceID: "node"}, now); err != nil {
+		t.Fatal(err)
+	}
+	closed := CoturnUsage{SourceID: "node", EventID: "source-close", AllocationID: "source-closed", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 10, EgressBytes: 20, ObservedAt: now.Add(time.Second), Closed: true}
+	if _, err := store.ApplyCoturnUsage(ctx, closed); err != nil {
+		t.Fatal(err)
+	}
+	var reason *string
+	if err := store.pool.QueryRow(ctx, `SELECT closure_reason FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2`, "node", "source-closed").Scan(&reason); err != nil {
+		t.Fatal(err)
+	}
+	if reason == nil || *reason != allocationClosedBySource {
+		t.Fatalf("closure_reason=%v, want %s", reason, allocationClosedBySource)
+	}
+	result, err := store.Reconcile(ctx, ReconcileRequest{SourceID: "node", ObservedAt: now.Add(2 * time.Second), Allocations: []CoturnUsage{{AllocationID: "source-closed", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 10, EgressBytes: 20}}}, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AlreadyAhead != 1 || len(result.RevokedAllocationIDs) != 0 || len(result.ConflictAllocationIDs) != 0 {
+		t.Fatalf("source-closed reconcile result=%+v, want already ahead without revoked/conflict", result)
+	}
+	result, err = store.Reconcile(ctx, ReconcileRequest{SourceID: "node", ObservedAt: now.Add(3 * time.Second), Allocations: []CoturnUsage{{AllocationID: "source-closed", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 11, EgressBytes: 21}}}, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(result.ConflictAllocationIDs, []string{"source-closed"}) || len(result.RevokedAllocationIDs) != 0 {
+		t.Fatalf("source-closed advanced reconcile result=%+v, want conflict without revoked", result)
+	}
+	if err := store.RevokeDevice(ctx, "client", 1, now.Add(4*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pool.QueryRow(ctx, `SELECT closure_reason FROM authority_relay_allocations WHERE source_id=$1 AND allocation_id=$2`, "node", "source-closed").Scan(&reason); err != nil {
+		t.Fatal(err)
+	}
+	if reason == nil || *reason != allocationClosedBySource {
+		t.Fatalf("source-closed allocation reason changed to %v after later revoke", reason)
+	}
+}
+
 func TestPostgresCoturnUsageAndReconcileStaySourceScoped(t *testing.T) {
 	store, _ := openIntegrationStore(t)
 	store.allocationLimit = 6
@@ -615,11 +671,15 @@ func TestPostgresRevocationRejectsExistingAllocationUsage(t *testing.T) {
 		{AllocationID: "allocation", DeviceID: "client", SessionID: session.SessionID, Sequence: 2, IngressBytes: 11, EgressBytes: 21},
 		{AllocationID: "after-revoked", DeviceID: "client", SessionID: session.SessionID, Sequence: 1, IngressBytes: 99},
 	}}, time.Minute)
-	if !errors.Is(err, ErrRevoked) {
-		t.Fatalf("reconcile after device revoke error=%v, want ErrRevoked", err)
+	if err != nil {
+		t.Fatalf("reconcile after device revoke error=%v", err)
 	}
-	if result.Applied != 1 || result.AlreadyAhead != 1 || result.Duplicate != 0 || len(result.MissingAllocationIDs) != 0 {
-		t.Fatalf("partial reconcile result before fail-closed stop=%+v", result)
+	if result.Applied != 1 || result.AlreadyAhead != 0 || result.Duplicate != 0 || len(result.MissingAllocationIDs) != 0 || len(result.ConflictAllocationIDs) != 0 || len(result.UnauthorizedAllocationIDs) != 0 {
+		t.Fatalf("reconcile result before revoked assertions=%+v", result)
+	}
+	wantRevoked := []string{"after-revoked", "allocation", "already-applied"}
+	if !slices.Equal(result.RevokedAllocationIDs, wantRevoked) {
+		t.Fatalf("revoked allocation ids=%v, want %v", result.RevokedAllocationIDs, wantRevoked)
 	}
 	var ingress, egress string
 	if err := store.pool.QueryRow(ctx, "SELECT ingress_bytes::text,egress_bytes::text FROM authority_relay_daily_usage WHERE device_id=$1", "client").Scan(&ingress, &egress); err != nil {

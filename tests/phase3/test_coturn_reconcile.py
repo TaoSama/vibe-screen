@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -14,16 +15,21 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.phase3.coturn_reconcile import (  # noqa: E402
     ReconcileError,
+    MAX_SNAPSHOT_BYTES,
     MAX_RESPONSE_BYTES,
     NoRedirectHandler,
     Settings,
+    build_parser,
     disconnect_required_allocations,
     load_snapshot,
     main,
     run_once,
+    run_once_with_retries,
+    run_exporter,
     settings_from_args,
     submit_reconcile,
     validate_result,
+    _minimal_process_env,
 )
 
 
@@ -89,6 +95,7 @@ class CoturnReconcileTests(unittest.TestCase):
             "missing_allocation_ids": [],
             "unauthorized_allocation_ids": ["allocation-2"],
             "conflict_allocation_ids": [],
+            "revoked_allocation_ids": [],
         }
         self.assertEqual(validate_result(good)["unauthorized_allocation_ids"], ["allocation-2"])
         ordered = good | {"unauthorized_allocation_ids": ["allocation-2", "allocation-1"]}
@@ -108,6 +115,81 @@ class CoturnReconcileTests(unittest.TestCase):
                     "unauthorized_allocation_ids": ["allocation-2"],
                 }
             )
+
+    def test_exporter_stdout_is_validated_as_snapshot(self) -> None:
+        payload = {
+            "source_id": "turn-prod-1",
+            "observed_at": "2026-08-20T01:02:03Z",
+            "allocations": [
+                {
+                    "allocation_id": "allocation-1",
+                    "device_id": "device-1",
+                    "session_id": "session-1",
+                    "sequence": 1,
+                    "ingress_bytes": 10,
+                    "egress_bytes": 20,
+                }
+            ],
+        }
+        command = (
+            sys.executable,
+            "-c",
+            "import json, os, sys; "
+            "sys.exit(23) if 'SECRET_SHOULD_NOT_LEAK' in os.environ else None; "
+            f"print(json.dumps({payload!r}))",
+        )
+        os.environ["SECRET_SHOULD_NOT_LEAK"] = "private"
+        self.addCleanup(lambda: os.environ.pop("SECRET_SHOULD_NOT_LEAK", None))
+        settings = Settings(
+            authority_url="http://127.0.0.1:1",
+            token="x" * 32,
+            exporter_command=command,
+            request_timeout_seconds=1,
+        )
+        snapshot = run_exporter(settings)
+        self.assertEqual(snapshot["source_id"], "turn-prod-1")
+        self.assertEqual(snapshot["allocations"][0]["closed"], False)
+
+    def test_exporter_failure_fails_closed(self) -> None:
+        settings = Settings(
+            authority_url="http://127.0.0.1:1",
+            token="x" * 32,
+            exporter_command=(sys.executable, "-c", "import sys; sys.exit(7)"),
+            request_timeout_seconds=1,
+        )
+        with self.assertRaisesRegex(ReconcileError, "exporter failed"):
+            run_exporter(settings)
+
+    def test_exporter_rejects_stdout_over_max_snapshot_bytes(self) -> None:
+        settings = Settings(
+            authority_url="http://127.0.0.1:1",
+            token="x" * 32,
+            exporter_command=(
+                sys.executable,
+                "-c",
+                f"import sys; sys.stdout.buffer.write(b'x' * {MAX_SNAPSHOT_BYTES + 1}); sys.stdout.flush()",
+            ),
+            request_timeout_seconds=5,
+        )
+        with self.assertRaisesRegex(ReconcileError, "snapshot exceeded maximum size"):
+            run_exporter(settings)
+
+    def test_exporter_discards_stderr_without_blocking_or_buffering(self) -> None:
+        payload = {"source_id": "turn-prod-1", "observed_at": "2026-08-20T01:02:03Z", "allocations": []}
+        settings = Settings(
+            authority_url="http://127.0.0.1:1",
+            token="x" * 32,
+            exporter_command=(
+                sys.executable,
+                "-c",
+                "import json, sys; "
+                f"sys.stderr.buffer.write(b'x' * {MAX_SNAPSHOT_BYTES * 2}); "
+                "sys.stderr.flush(); "
+                f"print(json.dumps({payload!r}))",
+            ),
+            request_timeout_seconds=5,
+        )
+        self.assertEqual(run_exporter(settings)["source_id"], "turn-prod-1")
 
     def test_active_source_allocations_require_disconnect_executor(self) -> None:
         settings = Settings(
@@ -130,6 +212,7 @@ class CoturnReconcileTests(unittest.TestCase):
                     "missing_allocation_ids": [],
                     "unauthorized_allocation_ids": ["allocation-1"],
                     "conflict_allocation_ids": [],
+                    "revoked_allocation_ids": [],
                 },
             )
 
@@ -157,6 +240,7 @@ class CoturnReconcileTests(unittest.TestCase):
                 "missing_allocation_ids": [],
                 "unauthorized_allocation_ids": ["unauthorized-1"],
                 "conflict_allocation_ids": ["conflict-1"],
+                "revoked_allocation_ids": ["revoked-1"],
             },
         )
         self.assertEqual(
@@ -164,12 +248,17 @@ class CoturnReconcileTests(unittest.TestCase):
             [
                 {"allocation_id": "unauthorized-1", "reason": "unauthorized"},
                 {"allocation_id": "conflict-1", "reason": "conflict"},
+                {"allocation_id": "revoked-1", "reason": "revoked"},
             ],
         )
         environments = [call.kwargs["env"] for call in run.mock_calls]
         self.assertEqual(environments[0]["VIBE_COTURN_DISCONNECT_ALLOCATION_ID"], "unauthorized-1")
         self.assertEqual(environments[1]["VIBE_COTURN_DISCONNECT_REASON"], "conflict")
+        self.assertEqual(environments[2]["VIBE_COTURN_DISCONNECT_REASON"], "revoked")
         self.assertNotIn("SECRET_SHOULD_NOT_LEAK", environments[0])
+        for call in run.mock_calls:
+            self.assertIs(call.kwargs["stdout"], subprocess.DEVNULL)
+            self.assertIs(call.kwargs["stderr"], subprocess.DEVNULL)
 
     @mock.patch("scripts.phase3.coturn_reconcile.subprocess.run")
     def test_disconnect_executor_failure_fails_closed(self, run: mock.Mock) -> None:
@@ -194,6 +283,7 @@ class CoturnReconcileTests(unittest.TestCase):
                     "missing_allocation_ids": [],
                     "unauthorized_allocation_ids": ["allocation-1"],
                     "conflict_allocation_ids": [],
+                    "revoked_allocation_ids": [],
                 },
             )
 
@@ -220,6 +310,7 @@ class CoturnReconcileTests(unittest.TestCase):
                     "missing_allocation_ids": [],
                     "unauthorized_allocation_ids": ["allocation-1"],
                     "conflict_allocation_ids": [],
+                    "revoked_allocation_ids": [],
                 },
             )
 
@@ -296,6 +387,7 @@ class CoturnReconcileTests(unittest.TestCase):
             "missing_allocation_ids": ["allocation-1"],
             "unauthorized_allocation_ids": [],
             "conflict_allocation_ids": [],
+            "revoked_allocation_ids": [],
         }
         settings = Settings(
             authority_url="http://127.0.0.1:1",
@@ -325,6 +417,7 @@ class CoturnReconcileTests(unittest.TestCase):
             "missing_allocation_ids": ["allocation-1"],
             "unauthorized_allocation_ids": [],
             "conflict_allocation_ids": [],
+            "revoked_allocation_ids": [],
         }
         clean_result = first_result | {"missing_allocation_ids": []}
         with mock.patch.dict(os.environ, {"VIBE_AUTHORITY_COTURN_TOKEN": "x" * 32}, clear=True):
@@ -350,22 +443,85 @@ class CoturnReconcileTests(unittest.TestCase):
                     )
         sleep.assert_called_once_with(0.0)
 
+    @mock.patch("scripts.phase3.coturn_reconcile.time.sleep")
+    @mock.patch("scripts.phase3.coturn_reconcile.run_once")
+    def test_retry_attempts_cover_transient_failures(self, run_once_mock: mock.Mock, sleep: mock.Mock) -> None:
+        clean_report = {
+            "status": "ok",
+            "source_id": "turn-prod-1",
+            "observed_at": "2026-08-20T01:02:03Z",
+            "reconcile": {
+                "applied": 0,
+                "duplicate": 0,
+                "already_ahead": 0,
+                "missing_allocation_ids": [],
+                "unauthorized_allocation_ids": [],
+                "conflict_allocation_ids": [],
+                "revoked_allocation_ids": [],
+            },
+            "disconnects": [],
+        }
+        run_once_mock.side_effect = [ReconcileError("temporary authority outage"), clean_report]
+        settings = Settings(
+            authority_url="http://127.0.0.1:1",
+            token="x" * 32,
+            retry_attempts=1,
+            retry_backoff_seconds=0.25,
+        )
+        report = run_once_with_retries(settings)
+        self.assertEqual(report["status"], "ok")
+        self.assertEqual(report["retry_attempts"], 1)
+        sleep.assert_called_once_with(0.25)
+
     def test_settings_rejects_ambiguous_token_sources(self) -> None:
         token_file = Path(self.tempdir.name) / "token.txt"
         token_file.write_text("y" * 32, encoding="utf-8")
         parser = mock.Mock(
             authority_url="http://127.0.0.1:1",
             snapshot=Path("unused"),
+            exporter_command=(),
             coturn_token_env="VIBE_AUTHORITY_COTURN_TOKEN",
             coturn_token_file=token_file,
             disconnect_command=(),
             interval_seconds=0,
             max_iterations=1,
+            retry_attempts=0,
+            retry_backoff_seconds=1,
             request_timeout_seconds=1,
         )
         with mock.patch.dict(os.environ, {"VIBE_AUTHORITY_COTURN_TOKEN": "x" * 32}, clear=True):
             with self.assertRaisesRegex(ReconcileError, "cannot both be set"):
                 settings_from_args(parser)
+
+    def test_child_environment_carries_only_safe_coturn_paths(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "PATH": "/bin",
+                "VIBE_AUTHORITY_COTURN_TOKEN": "secret-token-value-that-must-not-leak",
+                "VIBE_COTURN_CLI_PASSWORD": "secret-password-that-must-not-leak",
+                "VIBE_COTURN_CLI_PASSWORD_FILE": "/run/secrets/coturn_cli_password",
+                "VIBE_COTURN_ALLOCATION_REGISTRY": "/etc/vibe-coturn/allocation-registry.json",
+                "VIBE_COTURN_SEQUENCE_STATE": "/var/lib/vibe-coturn/reconcile-sequence.json",
+                "VIBE_COTURN_SOURCE_ID": "turn-prod-1",
+            },
+            clear=True,
+        ):
+            env = _minimal_process_env()
+        self.assertEqual(env["PATH"], "/bin")
+        self.assertEqual(env["VIBE_COTURN_CLI_PASSWORD_FILE"], "/run/secrets/coturn_cli_password")
+        self.assertEqual(env["VIBE_COTURN_SOURCE_ID"], "turn-prod-1")
+        self.assertNotIn("VIBE_AUTHORITY_COTURN_TOKEN", env)
+        self.assertNotIn("VIBE_COTURN_CLI_PASSWORD", env)
+
+    def test_float_arguments_reject_nan_and_infinity(self) -> None:
+        base = ["--authority-url", "http://127.0.0.1:1", "--snapshot", "snapshot.json"]
+        for flag in ("--request-timeout-seconds", "--interval-seconds", "--retry-backoff-seconds"):
+            for value in ("nan", "inf", "-inf"):
+                with self.subTest(flag=flag, value=value):
+                    with mock.patch("sys.stderr"):
+                        with self.assertRaises(SystemExit):
+                            build_parser().parse_args(base + [flag, value])
 
 
 if __name__ == "__main__":

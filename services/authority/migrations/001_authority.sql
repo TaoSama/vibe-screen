@@ -60,9 +60,14 @@ CREATE TABLE authority_relay_allocations (
     admitted_at timestamptz NOT NULL,
     last_observed_at timestamptz NOT NULL,
     closed_at timestamptz,
+    closure_reason text,
     PRIMARY KEY (source_id, allocation_id),
     CONSTRAINT authority_relay_allocations_session_fk FOREIGN KEY (session_id)
-        REFERENCES authority_signaling_sessions(session_id)
+        REFERENCES authority_signaling_sessions(session_id),
+    CONSTRAINT authority_relay_allocations_closure_reason_check CHECK (
+        (closed_at IS NULL AND closure_reason IS NULL)
+        OR (closed_at IS NOT NULL AND closure_reason IN ('source_closed', 'account_suspended', 'device_revoked', 'signaling_invalidated', 'relay_quota_exceeded'))
+    )
 );
 CREATE INDEX IF NOT EXISTS authority_relay_active_device_idx
     ON authority_relay_allocations (device_id)
