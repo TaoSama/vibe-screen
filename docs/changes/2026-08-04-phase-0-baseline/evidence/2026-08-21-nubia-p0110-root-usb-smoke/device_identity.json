@@ -1,0 +1,8 @@
+{
+  "serial": "EP0110PZ0B9110300B",
+  "ro.product.manufacturer": "nubia",
+  "ro.product.model": "P0110",
+  "ro.product.device": "pacific",
+  "ro.build.version.release": "16",
+  "ro.build.version.sdk": "36"
+}

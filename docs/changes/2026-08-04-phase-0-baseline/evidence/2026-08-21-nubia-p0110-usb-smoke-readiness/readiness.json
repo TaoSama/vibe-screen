@@ -1,7 +1,7 @@
 {
   "schema_version": "vibescreen.evidence/v1",
   "kind": "nubia_p0110_usb_smoke_readiness",
-  "status": "blocked",
+  "status": "superseded_by_short_smoke",
   "collected_at": "2026-08-20T19:46:53Z",
   "repository": {
     "commit": "cc26a84c829016fa61c721f73a128284fdf64f92",
@@ -63,7 +63,29 @@
     "host_tcp_54321_listener": false,
     "host_touch_preflight_exit_code": 2,
     "host_touch_preflight_blocker": "codesign identity 'Vibe Screen Dev' not found in the keychain",
-    "current_blocker_summary": "USB device-side preconditions are cleared; Host listener and stable Vibe Screen Dev signing/TCC readiness remain blocked."
+    "historical_blocker_summary": "At this controller refresh, USB device-side preconditions were cleared but Host listener and stable Vibe Screen Dev signing/TCC readiness remained blocked. The later 2026-08-21 22:35 short-smoke follow-up superseded the Host listener and connection-start part of this blocker."
+  },
+  "short_smoke_followup_2026_08_21_2235": {
+    "evidence_dir": "../2026-08-21-nubia-p0110-root-usb-smoke",
+    "device": "nubia P0110 / pacific / Android 16",
+    "adb_reverse": "passed; UsbFfs tcp:54321 tcp:54321",
+    "host_pid": 92943,
+    "host_tcp_54321_listener": true,
+    "android_app_pid": 22447,
+    "established_observed_seconds": [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60],
+    "stream_stats_count": 9,
+    "fps_range": "56.97-60.22",
+    "mbps_range": "0.36-0.37",
+    "decoder_dropped_frames": 0,
+    "fatal_or_androidruntime_crash_observed": false,
+    "current_status_summary": "Host listener and USB stream-start blockers were cleared for a 60-second short smoke; full acceptance gates remain open.",
+    "limits": [
+      "not a long soak",
+      "not an end-to-end latency gate",
+      "not an input or Accessibility gate",
+      "not a UI foreground/lifecycle pass; activity_top_after.txt and screen.png show the Nubia launcher foreground while the app streamed in the background",
+      "not Xiaomi 13/fuxi evidence"
+    ]
   },
   "coordination": {
     "lock_path": "/tmp/vibe-screen-device-android.lock",
@@ -78,11 +100,11 @@
     "android_debug_build": "passed",
     "source_host_preflight": "blocked",
     "installed_host_restart": "observed",
-    "host_tcp_54321_listener": "blocked",
+    "host_tcp_54321_listener": "blocked_in_this_record; passed in 2026-08-21 22:35 short-smoke follow-up",
     "android_app_running": "observed; latest controller refresh also confirmed app foreground",
-    "usb_connection": "not_run",
-    "first_frame": "not_run",
-    "crash_free_smoke_window": "not_run"
+    "usb_connection": "not_run_in_this_record; observed in 2026-08-21 22:35 short-smoke follow-up",
+    "first_frame": "not_run_in_this_record; decoder telemetry observed in 2026-08-21 22:35 short-smoke follow-up",
+    "crash_free_smoke_window": "not_run_in_this_record; no FATAL or AndroidRuntime crash observed in 2026-08-21 22:35 short-smoke follow-up"
   },
   "blocking_reasons": [
     "The restarted installed Host process did not bind 127.0.0.1:54321.",
@@ -105,6 +127,7 @@
     "host_listening_on_54321": false,
     "usb_e2e_smoke_passed": false,
     "first_frame_observed": false,
+    "superseded_by_2026_08_21_2235_short_smoke": true,
     "xiaomi_fuxi_evidence": false
   }
 }

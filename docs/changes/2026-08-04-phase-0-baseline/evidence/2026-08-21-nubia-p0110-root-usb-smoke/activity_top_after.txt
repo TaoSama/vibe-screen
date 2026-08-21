@@ -1,0 +1,161 @@
+$ bash -lc adb -s EP0110PZ0B9110300B shell dumpsys activity top | head -160
+TASK null id=299 userId=0 displayId=0(type=INTERNAL)
+  ACTIVITY com.android.launcher3/com.obric.feature.ObricLauncher 59ac455 pid=5289 userId=0 uid=10169 displayId=0(type=INTERNAL)
+    Local Activity a0fa192 State:
+      mResumed=false mStopped=true mFinished=false
+      mIsInMultiWindowMode=false mIsInPictureInPictureMode=false
+      mChangingConfigurations=false
+      mCurrentConfig={1.0 ?mcc0mnc [zh_CN] ldltr sw361dp w361dp h800dp 560dpi nrml long hdr widecg port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1264, 2800) mAppBounds=Rect(0, 0 - 1264, 2800) mMaxBounds=Rect(0, 0 - 1264, 2800) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=home mAlwaysOnTop=undefined mRotation=ROTATION_0} s.3 fontWeightAdjustment=0}
+      mLoadersStarted=true
+      FragmentManager misc state:
+        mHost=android.app.Activity$HostCallbacks@a97be50
+        mContainer=android.app.Activity$HostCallbacks@a97be50
+        mCurState=3 mStateSaved=true mDestroyed=false
+    ViewRoot:
+      mAdded=true
+      mRemoved=false
+      mStopped=true
+      mPausedForTransition=false
+      mConsumeBatchedInputScheduled=false
+      mConsumeBatchedInputImmediatelyScheduled=false
+      mPendingInputEventCount=0
+      mProcessInputEventsScheduled=false
+      mTraversalScheduled=false
+      mReportNextDraw=false
+      mLastPerformTraversalsFailedReason=view_not_visible
+      mLastReportedMergedConfiguration={mGlobalConfig={1.0 ?mcc0mnc [zh_CN] ldltr sw361dp w361dp h800dp 560dpi nrml long hdr widecg port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1264, 2800) mAppBounds=Rect(0, 0 - 1264, 2800) mMaxBounds=Rect(0, 0 - 1264, 2800) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.6 fontWeightAdjustment=0} mOverrideConfig={1.0 ?mcc0mnc [zh_CN] ldltr sw361dp w361dp h800dp 560dpi nrml long hdr widecg port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1264, 2800) mAppBounds=Rect(0, 0 - 1264, 2800) mMaxBounds=Rect(0, 0 - 1264, 2800) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=home mAlwaysOnTop=undefined mRotation=ROTATION_0} s.3 fontWeightAdjustment=0}}
+      mLastConfigurationFromResources={1.0 ?mcc0mnc [zh_CN] ldltr sw361dp w361dp h800dp 560dpi nrml long hdr widecg port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1264, 2800) mAppBounds=Rect(0, 0 - 1264, 2800) mMaxBounds=Rect(0, 0 - 1264, 2800) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=home mAlwaysOnTop=undefined mRotation=ROTATION_0} s.3 fontWeightAdjustment=0}
+      mLastReportedActivityWindowInfo=ActivityWindowInfo{isEmbedded=false, taskBounds=Rect(0, 0 - 1264, 2800), taskFragmentBounds=Rect(0, 0 - 1264, 2800)}
+      mIsAmbientMode=false
+      mUnbufferedInputSource=0
+      mAttachInfo=       AttachInfo:
+        mHasWindowFocus=false
+        mWindowVisibility=8
+        mInTouchMode=true
+        mUnbufferedDispatchRequested=false
+      mLastConsumeBatchedInputTime=2026-08-21 15:20:09.054
+      mLastBatchedInputPendingTime=2026-08-21 15:20:09.046
+      android.view.ViewRootImpl$NativePreImeInputStage: mQueueLength=0
+      android.view.ViewRootImpl$ImeInputStage: mQueueLength=0
+      android.view.ViewRootImpl$NativePostImeInputStage: mQueueLength=0
+      android.view.ViewRootImpl$WindowInputEventReceiver
+       mInputChannel: d80e9b7 com.android.launcher3/com.obric.feature.ObricLauncher
+       mSeqMap: {}
+       mReceiverPtr:
+        mInputConsumer:
+          mResampleTouch = true
+          mChannel = d80e9b7 com.android.launcher3/com.obric.feature.ObricLauncher
+          mMsgDeferred: false
+          Batches:
+              <empty>
+          mSeqChains:
+              <empty>
+          mConsumeTimes:
+              <empty>
+          mLastRecvInputSeq=8434
+          mLastRecvInputTime=2026-08-21 22:34:46.815
+          mLastSendFinishSeq=8434
+          mLastSendInputFinishTime=2026-08-21 22:34:46.816
+
+        mBatchedInputEventPending: false
+        mOutboundQueue:
+          <empty>
+
+    Choreographer:
+      mFrameScheduled=false
+      mLastFrameTime=609555989 (60060 ms ago)
+      mLastInputCallback=2026-08-21 22:34:48.320
+    InsetsController:
+        InsetsState
+          mDisplayFrame=Rect(0, 0 - 1264, 2800)
+          mDisplayCutout=DisplayCutout{insets=Rect(0, 140 - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0} boundingRect={Bounds=[Rect(0, 0 - 0, 0), Rect(599, 46 - 665, 140), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0)]} cutoutPathParserInfo={CutoutPathParserInfo{displayWidth=1264 displayHeight=2800 physicalDisplayWidth=1264 physicalDisplayHeight=2800 density={3.5} cutoutSpec={M -33,46 L -33,112 L 33,112 L 33,46 Z} rotation={0} scale={1.0} physicalPixelDisplaySizeRatio={1.0}}} sideOverrides={}}
+          mRoundedCorners=RoundedCorners{[RoundedCorner{position=TopLeft, radius=147, center=Point(147, 147)}, RoundedCorner{position=TopRight, radius=147, center=Point(1117, 147)}, RoundedCorner{position=BottomRight, radius=147, center=Point(1117, 2653)}, RoundedCorner{position=BottomLeft, radius=147, center=Point(147, 2653)}]}
+          mRoundedCornerFrame=Rect(0, 0 - 1264, 2800)
+          mPrivacyIndicatorBounds=PrivacyIndicatorBounds {static bounds=Rect(900, 0 - 1180, 140) rotation=0}
+          mDisplayShape=DisplayShape{ spec=1406003047 displayWidth=1264 displayHeight=2800 physicalPixelDisplaySizeRatio=1.0 rotation=0 offsetX=0 offsetY=0 scale=1.0}
+            InsetsSource id=3 type=ime frame=[0,0][0,0] visible=false flags= sideHint=NONE boundingRects=null
+            InsetsSource id=27 type=displayCutout frame=[0,0][1264,140] visible=true flags= sideHint=TOP boundingRects=null
+            InsetsSource id=24a50001 type=navigationBars frame=[0,2744][1264,2800] visible=true flags=SUPPRESS_SCRIM sideHint=BOTTOM boundingRects=null
+            InsetsSource id=24a50004 type=systemGestures frame=[0,0][70,2800] visible=true flags= sideHint=LEFT boundingRects=null
+            InsetsSource id=24a50005 type=mandatorySystemGestures frame=[0,2716][1264,2800] visible=true flags= sideHint=BOTTOM boundingRects=null
+            InsetsSource id=24a50006 type=tappableElement frame=[0,0][0,0] visible=true flags= sideHint=NONE boundingRects=null
+            InsetsSource id=24a50024 type=systemGestures frame=[1194,0][1264,2800] visible=true flags= sideHint=RIGHT boundingRects=null
+            InsetsSource id=65490000 type=statusBars frame=[0,0][1264,140] visible=true flags= sideHint=TOP boundingRects=null
+            InsetsSource id=65490005 type=mandatorySystemGestures frame=[0,0][1264,182] visible=true flags= sideHint=TOP boundingRects=null
+            InsetsSource id=65490006 type=tappableElement frame=[0,0][1264,140] visible=true flags= sideHint=TOP boundingRects=null
+        mIsPredictiveBackImeHideAnimInProgress=false
+    WindowOnBackDispatcher:
+        Top Callback: com.android.launcher3.uioverrides.QuickstepLauncher$3@50c11b6
+        Callbacks:
+          Callback: android.app.Activity$$ExternalSyntheticLambda0@86fdf57 Priority=-1
+          Callback: com.android.launcher3.uioverrides.QuickstepLauncher$3@50c11b6 Priority=0
+    ImeBackAnimationController:
+        mLastProgress=0.0
+        mTriggerBack=false
+        mIsPreCommitAnimationInProgress=false
+        mStartRootScrollY=0
+        isBackAnimationAllowed=true
+        isAdjustPan=false
+        isHideAnimationInProgress=false
+    View Hierarchy:
+      com.android.internal.policy.DecorView{f7166e9 I.E...... R......D 0,0-1264,2800 aid=0}[ObricLauncher]
+        android.widget.LinearLayout{a0e2370 V.E...... .......D 0,0-1264,2800}
+          android.view.ViewStub{c7b96c6 G.E...... ......I. 0,0-0,0 #10201ed android:id/action_mode_bar_stub}
+          android.widget.FrameLayout{a8371b3 V.E...... .......D 0,0-1264,2800 #1020002 android:id/content}
+            com.android.launcher3.LauncherRootView{1f8ca44 V.E...... ......ID 0,0-1264,2800 #7f0a0300 app:id/launcher}
+              com.android.launcher3.dragndrop.DragLayer{dd322 V.E...... .......D 0,0-1264,2800 #7f0a01ea app:id/drag_layer}
+                com.android.launcher3.views.AccessibilityActionsView{1d9ff6e V.E...... ........ 0,140-1264,2744}
+                com.android.launcher3.views.ScrimView{2b9760f V.ED..... ......ID 0,0-1264,2800 #7f0a00fc app:id/background_scrim_view}
+                com.obric.feature.ObricWorkspace{9a4b318 V.ED..... .......D 0,0-1264,2800 #7f0a0652 app:id/workspace}
+                  com.android.launcher3.CellLayout{332e627 V.ED..... ......ID 4,146-1260,2330}
+                    com.android.launcher3.ShortcutAndWidgetContainer{6cec7b8 V.E...... ......ID 38,48-1218,2156}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{612b194 VFED..CL. ......ID 0,1404-295,1755 #21}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{488e43d VFED..CL. ......ID 295,1404-590,1755 #7}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{801f432 VFED..CL. ......ID 590,1404-885,1755 #8}
+                      com.android.launcher3.folder.FolderIcon{5335300 VFE...CL. ........ 885,1404-1180,1755 #9}
+                        com.obric.feature.blur.FolderBg{1e86583 V.E...... ........ 0,0-274,351 #7f0a0237 app:id/folder_bg}
+                        com.obric.feature.blur.FolderPreviewItemView{bee163 V.E...... ........ 0,0-274,351 #7f0a042c app:id/preview}
+                        com.android.launcher3.views.DoubleShadowBubbleTextView{f845160 V.ED..... ........ 21,269-274,351 #7f0a023b app:id/folder_icon_name}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{c248739 VFED..CL. ......ID 0,1755-295,2106 #15}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{bd7217e VFED..CL. ......ID 295,1755-590,2106 #16}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{c41d6df VFED..CL. ......ID 590,1755-885,2106 #17}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{6fa9f2c VFED..CL. ......ID 885,1755-1180,2106 #18}
+                      com.obric.feature.widget.ObricAppWidgetHostView{285feb VFE....L. R.....ID 21,49-1159,702 #6}
+                        com.obric.feature.view.ObricTimeWidgetView{8d536de VFE...C.. ......ID 0,0-1138,653}
+                          com.obric.feature.view.TimeWidgetWeatherView{3417c30 V.E...... ......ID 0,147-1138,232 #7f0a0618 app:id/weather_view}
+                            android.widget.LinearLayout{c621619 V.E...... ......ID 300,0-876,85}
+                              com.obric.feature.view.TextClock{4cce62e VFED..C.. ......ID 0,0-373,85 #7f0a01b8 app:id/date_text}
+                              android.widget.LinearLayout{1a0c7af V.E...... .......D 387,0-558,85}
+                                com.obric.feature.view.BackgroundBlurImageView{ef435cf VFED..C.. ......ID 0,7-70,77 #7f0a0614 app:id/weather_icon}
+                                com.obric.feature.view.WallpaperBackgroundBlurTextView{37a2b5c VFED..C.. ........ 77,0-171,85 #7f0a0617 app:id/weather_temperature}
+                          com.obric.feature.view.TextClock{745373a V.ED..... ......ID 169,183-968,628 #7f0a0588 app:id/time_text}
+                  com.android.launcher3.CellLayout{7f610d4 V.ED..... .......D 1298,146-2554,2330}
+                    com.android.launcher3.ShortcutAndWidgetContainer{7354991 V.E...... .......D 38,48-1218,2156}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{d3d5df5 VFED..CL. ......ID 0,702-295,1053 #1a}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{63fd78a VFED..CL. ......ID 295,702-590,1053 #1b}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{b9701fb VFED..CL. ......ID 590,702-885,1053 #1c}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{5088218 VFED..CL. ......ID 885,702-1180,1053 #1d}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{2d2e471 VFED..CL. ......ID 0,1053-295,1404 #1e}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{5cbe256 VFED..CL. ......ID 295,1053-590,1404 #1f}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{b49c2d7 VFED..CL. ......ID 590,1053-885,1404 #4}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{10fa7c4 VFED..CL. ......ID 885,1053-1180,1404 #20}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{e6056ad VFED..CL. ......ID 0,1404-295,1755 #22}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{3bcde2 VFED..CL. ......ID 885,1404-1180,1755 #26}
+                      com.obric.feature.widget.ObricAppWidgetHostView{6d4cbe1 VFE....L. R.....ID 21,49-1159,702 #19}
+                        com.android.launcher3.views.DoubleShadowBubbleTextView{7625824 VFED..... ........ 460,572-677,629}
+                        android.widget.LinearLayout{2ffe542 V.E...... ......ID 0,52-1138,600}
+                          android.widget.TextView{b92af8d V.ED..... ........ 424,112-714,188 #7f0903dc app:id/title}
+                          android.widget.TextView{1dae953 V.ED..... ........ 212,209-926,266 #7f09039a app:id/subtitle}
+                          android.widget.ImageButton{67ed290 VFED..C.. ......ID 380,350-758,462 #7f0900ba app:id/button_enable}
+                  com.android.launcher3.CellLayout{4ddf27d V.ED..... .......D 2592,146-3848,2330}
+                    com.android.launcher3.ShortcutAndWidgetContainer{357223b V.E...... .......D 38,48-1218,2156}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{e750ca VFED..CL. ......ID 295,351-590,702 #27}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{d29bd58 VFED..CL. ......ID 0,702-295,1053 #28}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{c869eb1 VFED..CL. ......ID 590,702-885,1053 #29}
+                      com.android.launcher3.views.DoubleShadowBubbleTextView{791af96 VFED..CL. ......ID 885,702-1180,1053 #31}
+                com.obric.feature.view.ObricHotseat{67088a5 V.ED..... .......D 0,2369-1264,2800 #7f0a0295 app:id/hotseat}
+                  com.obric.feature.view.HotseatShortcutAndWidgetContainer{98a069c V.E...... .......D 2,70-1262,368}
+                    com.android.launcher3.views.DoubleShadowBubbleTextView{3ddbdc3 VFED..CL. ......ID 42,0-337,298 #2}
+                    com.android.launcher3.views.DoubleShadowBubbleTextView{95c3979 VFED..CL. ......ID 337,0-632,298 #1}
+                    com.android.launcher3.views.DoubleShadowBubbleTextView{5d4731f VFED..CL. ......ID 632,0-927,298 #3}
+                    com.android.launcher3.views.DoubleShadowBubbleTextView{cddf435 VFED..CL. ......ID 927,0-1222,298 #5}
