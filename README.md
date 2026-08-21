@@ -286,11 +286,11 @@ Implementation status and evidence are tracked in the
 [Phase 0 change docs](docs/changes/2026-08-04-phase-0-baseline/PRD.md).
 
 Android TCP connection ownership is now enforced by a standalone JVM transport
-module with dependency-direction and resource-lifecycle contract tests. This is
-one implemented boundary, not completion of Phase 0 module ownership:
-`StreamClient` still combines transport composition with local product-session
-behavior, and the remaining protocol, session, media, input, and UI boundaries
-are still being extracted.
+module with dependency-direction and resource-lifecycle contract tests.
+`StreamClient` now delegates local product-session lifecycle state to a focused
+boundary owner with offline contract coverage. This is still not completion of
+Phase 0 module ownership: the remaining protocol, session, media, input, and UI
+boundaries are still being extracted.
 
 - Fork and build SideScreen as the initial codebase.
 - Evaluate and port the relevant Telemachus reliability improvements.
