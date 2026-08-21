@@ -1,0 +1,102 @@
+{
+  "schema": "dev.vibescreen.clipboard-device-evidence/v1",
+  "date_utc": "2026-08-21",
+  "branch": "codex/android-clipboard-e2e-evidence",
+  "baseline_commit": "9dfc7caa975f1e2b851302d7cee72a55ade0429e",
+  "source_head_at_collection": "fb3538def306bc9ccc8d0aebb767af174f7257df",
+  "scope": "Android ClipboardManager <-> macOS NSPasteboard Protocol v1 device E2E",
+  "transport": "USB via adb reverse tcp:54321 tcp:54321",
+  "verdict": "blocked_before_clipboard_transfer",
+  "can_close_gate": false,
+  "device_identity": {
+    "verified": true,
+    "serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "codename": "pacific",
+    "android_release": "16",
+    "sdk": "36",
+    "fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+    "scope_note": "Nubia P0110/pacific Android handset evidence only; not Xiaomi 13/fuxi and not tablet evidence"
+  },
+  "device_lock": {
+    "path": "/tmp/vibe-screen-device-android.lock",
+    "method": "python_fcntl_exclusive_sleep_holder",
+    "pid": 16127,
+    "acquired_at": "2026-08-21T17:10:32+0800"
+  },
+  "markers": {
+    "android_to_mac": "vs-android-to-mac-1787303772",
+    "mac_to_android": "vs-mac-to-android-1787303772"
+  },
+  "observed": [
+    {
+      "kind": "android_build_and_install",
+      "command": "cd baseline/AndroidClient && ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest; cd ../.. && adb -s EP0110PZ0B9110300B install -r -t baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk && adb -s EP0110PZ0B9110300B install -r -t baseline/AndroidClient/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
+      "result": "Gradle build succeeded; both installs reported Success"
+    },
+    {
+      "kind": "android_clipboard_marker_setup",
+      "command": "adb -s EP0110PZ0B9110300B shell am instrument -w -e class dev.telemachus.display.ClipboardManagerInstrumentedTest#setForegroundClipboardFromInstrumentationArgument -e clipboard_marker vs-android-to-mac-1787303772 dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner",
+      "result": "OK (1 test)",
+      "scope_note": "Foreground Android Activity wrote the marker to Android ClipboardManager; no MacHost or Protocol v1 clipboard transfer"
+    },
+    {
+      "kind": "live_usb_protocol_v1_stream",
+      "evidence_files": [
+        "session-preflight.txt",
+        "android-diag-clipboard.txt",
+        "host-clipboard.log"
+      ],
+      "result": "Host listener and adb reverse were available; Android diagnostics recorded Protocol v1 upgrade accepted; Host log recorded Protocol v1 selected for loopback USB connection epochs"
+    },
+    {
+      "kind": "capability_gate_failed",
+      "evidence_file": "android-diag-clipboard.txt",
+      "result": "Negotiated capabilities omitted CAPABILITY_CLIPBOARD and Android recorded session binding promoted with clipboard=false"
+    },
+    {
+      "kind": "android_ui_clipboard_control_absent",
+      "evidence_file": "android-window-after-reveal-tap.xml",
+      "result": "Control bar contained Window actions, Settings, and Disconnect, with no controlClipboardButton"
+    }
+  ],
+  "blockers": [
+    {
+      "kind": "clipboard_capability_not_negotiated",
+      "summary": "The live USB Protocol v1 session promoted displaySelection, keyboard, nativePointer, and hostActions, but clipboard=false; production clipboard controls remained hidden"
+    },
+    {
+      "kind": "installed_host_not_current_branch_clipboard_ui_build",
+      "evidence_file": "host-binary-identity.txt",
+      "summary": "Installed /Applications/Vibe Screen.app binary hash differed from the current release binary; the live Host could not be accepted as current-branch clipboard UI evidence"
+    },
+    {
+      "kind": "current_branch_host_stable_signing_identity_missing",
+      "evidence_file": "mac-host-preflight-current.txt",
+      "summary": "scripts/macos_dev_host.py preflight failed because the local keychain lacks the Vibe Screen Dev signing identity required for stable permission-preserving device acceptance"
+    },
+    {
+      "kind": "mac_status_menu_automation_not_permission_ready",
+      "evidence_file": "mac-ui-automation-preflight.txt",
+      "summary": "Wailmer reported Accessibility and screenshots permissions not granted and no menu-bar surface; cliclick also reported missing Accessibility privileges"
+    }
+  ],
+  "not_attempted_after_blocker": [
+    "Android -> Mac Send to Mac / Receive Android Clipboard",
+    "Mac -> Android Share Mac Clipboard / Get from Mac",
+    "pbpaste verification for the Android marker",
+    "Android clipboard verification for the Mac marker"
+  ],
+  "unproven": [
+    "same-session clipboardAvailable=true / clipboard=true negotiation",
+    "real Android -> Mac clipboard transfer",
+    "real Mac -> Android clipboard transfer",
+    "matching clipboard change IDs for Offer/Request/Content",
+    "macOS NSPasteboard read/write through the current Host build",
+    "trusted-LAN clipboard warning and approval behavior",
+    "TalkBack announcement behavior",
+    "long-session clipboard state stability"
+  ],
+  "required_next_step": "Install or provide a current-branch, stable-signed /Applications/Vibe Screen.app with Screen Recording and Accessibility grants, verify CAPABILITY_CLIPBOARD and Android clipboard=true in the same Protocol v1 session, then rerun both explicit user-action marker transfers."
+}

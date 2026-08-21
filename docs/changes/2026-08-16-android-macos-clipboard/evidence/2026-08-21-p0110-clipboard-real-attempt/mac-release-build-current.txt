@@ -1,0 +1,34 @@
+Fetching https://github.com/apple/swift-protobuf.git from cache
+warning: 'swift-protobuf': skipping cache due to an error: The file “maintenance.lock” doesn’t exist.
+[1/53460] Fetching swift-protobuf
+Fetched https://github.com/apple/swift-protobuf.git from cache (32.71s)
+Fetching https://github.com/stasel/WebRTC.git from cache
+Fetched https://github.com/stasel/WebRTC.git from cache (2.30s)
+Computing version for https://github.com/stasel/WebRTC.git
+Computed https://github.com/stasel/WebRTC.git at 150.0.0 (2.34s)
+Creating working copy for https://github.com/apple/swift-protobuf.git
+Working copy of https://github.com/apple/swift-protobuf.git resolved at c6fe6442e6a64250495669325044052e113e990c
+Creating working copy for https://github.com/stasel/WebRTC.git
+Working copy of https://github.com/stasel/WebRTC.git resolved at 150.0.0
+Fetching binary artifact https://github.com/apple/swift-protobuf/releases/download/protoc-artifactbundle-v32.1/protoc-32.1.artifactbundle.zip from cache
+Fetching binary artifact https://github.com/stasel/WebRTC/releases/download/150.0.0/WebRTC-M150.xcframework.zip from cache
+Fetched https://github.com/apple/swift-protobuf/releases/download/protoc-artifactbundle-v32.1/protoc-32.1.artifactbundle.zip from cache (1.11s)
+Fetched https://github.com/stasel/WebRTC/releases/download/150.0.0/WebRTC-M150.xcframework.zip from cache (1.82s)
+[1/1] Compiling plugin SwiftProtobufPlugin
+Building for production...
+[1/10] Write sources
+[4/10] Copying PrivacyInfo.xcprivacy
+[5/10] Copying ThirdParty
+[6/10] Copying WebRTC.framework
+[7/10] Write swift-version--1AB21518FC5DEDBE.txt
+[9/11] Compiling SwiftProtobuf AnyMessageStorage.swift
+[10/12] Compiling VibeScreenProtocol advanced.pb.swift
+[11/13] Compiling Telemachus AppDelegate.swift
+[11/13] Write Objects.LinkFileList
+[12/13] Linking Vibe Screen
+Build complete! (133.57s)
+[0/1] Planning build
+[1/1] Compiling plugin SwiftProtobufPlugin
+Building for production...
+[1/3] Write swift-version--1AB21518FC5DEDBE.txt
+Build complete! (0.66s)

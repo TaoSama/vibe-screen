@@ -1,0 +1,59 @@
+start=2026-08-21T17:10:47+08:00
+workdir=/Users/luwentao/Workspaces/vibe-screen/.claude/worktrees/clipboard-device-gate-pr157
+branch=codex/android-clipboard-e2e-evidence
+head=fb3538def306bc9ccc8d0aebb767af174f7257df
+origin_main=9dfc7caa975f1e2b851302d7cee72a55ade0429e
+lock_file=/tmp/vibe-screen-device-android.lock
+task=pr157-clipboard-e2e-real-attempt
+branch=codex/android-clipboard-e2e-evidence
+serial=EP0110PZ0B9110300B
+pid=16127
+acquired_at=2026-08-21T17:10:32+0800
+lock_method=python_fcntl_exclusive_sleep_holder
+
+## build/install before real E2E
+$ cd baseline/AndroidClient && ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+$ adb -s EP0110PZ0B9110300B install -r -t baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+$ adb -s EP0110PZ0B9110300B install -r -t baseline/AndroidClient/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+## marker setup and app launch
+android_marker=vs-android-to-mac-1787303772
+mac_marker=vs-mac-to-android-1787303772
+$ adb -s EP0110PZ0B9110300B shell am instrument -w -e class dev.telemachus.display.ClipboardManagerInstrumentedTest#setForegroundClipboardFromInstrumentationArgument -e clipboard_marker vs-android-to-mac-1787303772 dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+$ adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321
+$ adb -s EP0110PZ0B9110300B shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true
+$ adb -s EP0110PZ0B9110300B exec-out screencap -p > android-screen-after-no-clipboard-capability.png
+$ adb -s EP0110PZ0B9110300B shell uiautomator dump /sdcard/pr157_after.xml
+$ adb -s EP0110PZ0B9110300B pull /sdcard/pr157_after.xml android-window-after-no-clipboard-capability.xml
+$ adb -s EP0110PZ0B9110300B logcat -d -v time ... > android-logcat-after-no-clipboard-capability.txt
+$ adb -s EP0110PZ0B9110300B exec-out run-as dev.telemachus.display ... > android-diag-clipboard.txt
+$ grep -E ... ~/Library/Logs/Telemachus/telemachus.log > host-clipboard.log
+$ wailmer computer capabilities --json > mac-ui-automation-preflight.txt
+$ wailmer computer permissions --json >> mac-ui-automation-preflight.txt
+$ wailmer computer get-app-state --app dev.telemachus.display --restore-window --json >> mac-ui-automation-preflight.txt
+$ cliclick p >> mac-ui-automation-preflight.txt
+$ adb -s EP0110PZ0B9110300B shell input tap 1400 632
+$ adb -s EP0110PZ0B9110300B exec-out screencap -p > android-screen-after-reveal-tap.png
+$ adb -s EP0110PZ0B9110300B shell uiautomator dump /sdcard/pr157_reveal.xml
+$ adb -s EP0110PZ0B9110300B pull /sdcard/pr157_reveal.xml android-window-after-reveal-tap.xml
+
+## post-evidence focused validation
+$ cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest --tests dev.telemachus.display.ClipboardApprovalStateTest
+$ cd baseline/AndroidClient && ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+$ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_protocol_fixtures -v
+$ make evidence-tools-test
+$ adb -s EP0110PZ0B9110300B install -r -t baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+$ adb -s EP0110PZ0B9110300B install -r -t baseline/AndroidClient/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+$ adb -s EP0110PZ0B9110300B shell am instrument -w -e class dev.telemachus.display.ClipboardManagerInstrumentedTest dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+$ adb -s EP0110PZ0B9110300B shell am instrument -w -e class dev.telemachus.display.ClipboardManagerInstrumentedTest#setForegroundClipboardFromInstrumentationArgument -e clipboard_marker vs-clipboard-validate-1787304865625 dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+$ adb -s EP0110PZ0B9110300B shell am instrument -w -e class dev.telemachus.display.ClipboardManagerInstrumentedTest#assertForegroundClipboardMatchesInstrumentationArgument -e clipboard_marker vs-clipboard-validate-1787304865625 dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+$ python3 -m json.tool docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-21-android-device-lock-blocked/clipboard-evidence.json >/dev/null
+$ python3 -m json.tool docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-21-p0110-clipboard-device-attempt/clipboard-evidence.json >/dev/null
+$ python3 -m json.tool docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-21-p0110-clipboard-real-attempt/clipboard-evidence.json >/dev/null
+$ git diff --check origin/main...HEAD
+$ git diff --check
+
+## lock release
+$ kill 16127
+$ lsof /tmp/vibe-screen-device-android.lock || true
+# no lsof holder output after release; lock file metadata remains on disk

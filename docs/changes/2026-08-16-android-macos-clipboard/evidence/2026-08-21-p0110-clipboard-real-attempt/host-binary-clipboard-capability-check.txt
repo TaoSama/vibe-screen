@@ -1,0 +1,12 @@
+# installed app strings
+CAPABILITY_CLIPBOARD
+maximumClipboardBytes
+# current release binary strings
+CAPABILITY_CLIPBOARD
+maximumClipboardBytes
+Share Mac Clipboard
+Receive Android Clipboard
+Receive Android Clipboard?
+Receive Android Clipboard (
+Share Mac Clipboard?
+Clipboard was not negotiated.

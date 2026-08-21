@@ -17,6 +17,124 @@ Android 本机 smoke 结果不得转述为 Android <-> Mac clipboard E2E 证据�
 
 ## 已运行
 
+### 2026-08-21 P0110 live USB E2E attempt
+
+After the user confirmed the shared Android device was online, PR #157 was
+checked again against current `origin/main`
+`9dfc7caa975f1e2b851302d7cee72a55ade0429e`; the branch was already up to date
+and rebase had no conflicts. This run acquired `/tmp/vibe-screen-device-android.lock`
+for serial `EP0110PZ0B9110300B` and used explicit `adb -s EP0110PZ0B9110300B`
+commands for device operations. The device identity was recorded as nubia /
+P0110 / pacific / Android 16 / SDK 36. This is handset substitute evidence only,
+not Xiaomi 13/fuxi evidence and not tablet evidence.
+
+Run evidence:
+
+- [evidence/2026-08-21-p0110-clipboard-real-attempt/README.md](evidence/2026-08-21-p0110-clipboard-real-attempt/README.md)
+- [evidence/2026-08-21-p0110-clipboard-real-attempt/clipboard-evidence.json](evidence/2026-08-21-p0110-clipboard-real-attempt/clipboard-evidence.json)
+- [evidence/2026-08-21-p0110-clipboard-real-attempt/observations.md](evidence/2026-08-21-p0110-clipboard-real-attempt/observations.md)
+
+Commands and observed results:
+
+```bash
+cd baseline/AndroidClient
+./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+adb -s EP0110PZ0B9110300B install -r -t app/build/outputs/apk/debug/app-debug.apk
+adb -s EP0110PZ0B9110300B install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s EP0110PZ0B9110300B shell am instrument -w \
+  -e class dev.telemachus.display.ClipboardManagerInstrumentedTest#setForegroundClipboardFromInstrumentationArgument \
+  -e clipboard_marker vs-android-to-mac-1787303772 \
+  dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+adb -s EP0110PZ0B9110300B reverse tcp:54321 tcp:54321
+adb -s EP0110PZ0B9110300B shell am start -S -W \
+  -n dev.telemachus.display/.MainActivity \
+  --ez auto_connect true
+adb -s EP0110PZ0B9110300B exec-out screencap -p \
+  > android-screen-after-no-clipboard-capability.png
+adb -s EP0110PZ0B9110300B shell uiautomator dump /sdcard/pr157_after.xml
+adb -s EP0110PZ0B9110300B pull /sdcard/pr157_after.xml \
+  android-window-after-no-clipboard-capability.xml
+adb -s EP0110PZ0B9110300B logcat -d -v time ... \
+  > android-logcat-after-no-clipboard-capability.txt
+adb -s EP0110PZ0B9110300B exec-out run-as dev.telemachus.display ... \
+  > android-diag-clipboard.txt
+adb -s EP0110PZ0B9110300B shell input tap 1400 632
+adb -s EP0110PZ0B9110300B exec-out screencap -p \
+  > android-screen-after-reveal-tap.png
+adb -s EP0110PZ0B9110300B shell uiautomator dump /sdcard/pr157_reveal.xml
+adb -s EP0110PZ0B9110300B pull /sdcard/pr157_reveal.xml \
+  android-window-after-reveal-tap.xml
+```
+
+The instrumentation marker setup returned `OK (1 test)` for
+`vs-android-to-mac-1787303772`. The app then reached USB Protocol v1 streaming,
+with Host logs showing `Client connected via loopback (USB)` and `Protocol v1
+selected`; however Android diagnostics recorded no clipboard negotiation:
+
+```text
+SC: Protocol v1 upgrade accepted
+MA: onDisplaysAvailable: ... negotiated=[CAPABILITY_TOUCH, CAPABILITY_KEYBOARD,
+  CAPABILITY_POINTER, CAPABILITY_STYLUS, CAPABILITY_MULTI_DISPLAY,
+  CAPABILITY_HOST_ACTIONS, CAPABILITY_CLIENT_VIDEO_CONTROL,
+  CAPABILITY_STYLUS_EXTENDED] ...
+MA: session binding promoted: displaySelection=true keyboard=true
+  nativePointer=true controller=false hostActions=true clipboard=false
+```
+
+After revealing the Android control bar, the UI hierarchy contained
+`Window actions`, `Settings`, and `Disconnect`, but no `controlClipboardButton`.
+Because the production clipboard path is intentionally hidden unless the same
+session negotiates clipboard capability, no Android -> Mac or Mac -> Android
+system clipboard transfer was attempted after this precondition failed.
+
+The installed `/Applications/Vibe Screen.app` binary also did not match the
+current locally built release binary, and `python3 scripts/macos_dev_host.py
+preflight --install-path "/Applications/Vibe Screen.app"` failed because the
+local keychain lacks the stable `Vibe Screen Dev` signing identity. Ad-hoc
+signing was not used as substitute evidence because it changes the code-signing
+identity and can invalidate macOS Screen Recording/Accessibility grants.
+
+Result: Android ClipboardManager <-> macOS NSPasteboard E2E gate remains open.
+The concrete next step is to install or provide a current-branch, stable-signed
+Host with Screen Recording and Accessibility grants, verify
+`CAPABILITY_CLIPBOARD` / Android `clipboard=true` in the same Protocol v1
+session, then rerun the two explicit user-action marker transfers.
+
+Post-evidence focused validation for this update:
+
+```bash
+cd baseline/AndroidClient
+./gradlew --no-daemon testDebugUnitTest \
+  --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest \
+  --tests dev.telemachus.display.ClipboardApprovalStateTest
+./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+cd ../..
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_protocol_fixtures -v
+make evidence-tools-test
+adb -s EP0110PZ0B9110300B install -r -t baseline/AndroidClient/app/build/outputs/apk/debug/app-debug.apk
+adb -s EP0110PZ0B9110300B install -r -t baseline/AndroidClient/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s EP0110PZ0B9110300B shell am instrument -w \
+  -e class dev.telemachus.display.ClipboardManagerInstrumentedTest \
+  dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+adb -s EP0110PZ0B9110300B shell am instrument -w \
+  -e class dev.telemachus.display.ClipboardManagerInstrumentedTest#setForegroundClipboardFromInstrumentationArgument \
+  -e clipboard_marker vs-clipboard-validate-1787304865625 \
+  dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+adb -s EP0110PZ0B9110300B shell am instrument -w \
+  -e class dev.telemachus.display.ClipboardManagerInstrumentedTest#assertForegroundClipboardMatchesInstrumentationArgument \
+  -e clipboard_marker vs-clipboard-validate-1787304865625 \
+  dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Results: Android focused clipboard JVM tests `BUILD SUCCESSFUL in 6s`; Android
+debug/app androidTest build `BUILD SUCCESSFUL in 10s`; protocol fixture tests
+`Ran 16 tests in 75.887s OK`; evidence tools `Ran 205 tests in 7.353s OK`;
+device installs reported `Success`; instrumentation full class returned
+`OK (3 tests)`; explicit marker set and assert commands each returned
+`OK (1 test)` for `vs-clipboard-validate-1787304865625`. These checks validate
+the focused offline and Android-local scope only; they do not close the
+cross-device clipboard gate.
+
 ### 2026-08-21 latest-main refresh
 
 PR #157 was rebased again onto current `origin/main`
