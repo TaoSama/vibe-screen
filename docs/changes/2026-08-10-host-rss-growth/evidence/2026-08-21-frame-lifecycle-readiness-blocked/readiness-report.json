@@ -1,0 +1,118 @@
+{
+  "schema_version": "vibescreen.evidence/v1",
+  "run_id": "2026-08-21-frame-lifecycle-readiness-blocked",
+  "kind": "host_rss_frame_lifecycle_readiness",
+  "status": "blocked",
+  "base_revision": "e8fbed466581c4d20e59801e7d7c0a03af04ad51",
+  "branch": "codex/host-rss-no-growth-fix",
+  "checked_at": "2026-08-22",
+  "source_readiness": {
+    "frame_pacer_teardown_unified": true,
+    "formal_soak_targets_accept_host_pid": true,
+    "formal_host_rss_gate_make_targets_added": true,
+    "latest_retained_slot_release_tests_added": true,
+    "encoder_registry_release_test_added": true,
+    "frame_hot_path_autorelease_pools_added": true,
+    "historical_frame_and_callback_fixes_already_in_main": true
+  },
+  "toolchain_checks": {
+    "macos_build": {
+      "command": "cd baseline/MacHost && swift build",
+      "exit_code": 0
+    },
+    "macos_release_self_tests": {
+      "command": "make baseline-macos-self-test",
+      "exit_code": 0,
+      "tests": [
+        "host-self-test",
+        "transport-self-test",
+        "reliability-self-test",
+        "protocol-v1-self-test",
+        "video-encoder-self-test"
+      ]
+    },
+    "host_rss_python_tests": {
+      "command": "PYTHONPATH=tools python3 -m unittest tools.tests.test_host_rss_gate tools.tests.test_host_memory_diagnostic",
+      "exit_code": 0,
+      "tests_run": 62
+    },
+    "evidence_tools_test": {
+      "command": "make evidence-tools-test",
+      "exit_code": 0,
+      "tests_run": 219
+    },
+    "diff_check": {
+      "command": "git diff --check",
+      "exit_code": 0
+    },
+    "formal_make_target_dry_run": {
+      "command": "make -n soak-2h-host-rss-gate EVIDENCE_SERIAL=EP0110PZ0B9110300B HOST_PID=12345 EVIDENCE_DIR=.build/evidence/host-rss-dry-run",
+      "exit_code": 0,
+      "assertion": "Dry-run expands to soak --host-pid 12345 followed by soak_report and host_rss_gate over the soak-2h artifacts."
+    },
+    "swift_xctest": {
+      "command": "cd baseline/MacHost && swift test --filter \"VideoEncoderInFlightAdmissionTests|LatestRetainedSlotTests\"",
+      "exit_code": 1,
+      "blocked_reason": "Full Xcode/XCTest is unavailable; xcode-select points to /Library/Developer/CommandLineTools, xcrun --find xctest fails, no /Applications/Xcode*.app/Contents/Developer path exists, and the test target fails to import XCTest."
+    },
+    "host_signing_tcc_preflight": {
+      "command": "python3 scripts/macos_dev_host.py preflight --report .build/evidence/host-rss-2026-08-22/host-preflight-output.txt",
+      "exit_code": 1,
+      "blocked_reason": "Configured codesigning identity `Vibe Screen Dev` is missing from the local keychain, so no stable-signed current-source Host can be installed or verified for TCC-backed device evidence."
+    },
+    "host_binary_match": {
+      "worktree_release_sha256": "d323aa516a2da025febbe2924732f00db88a8f2c3f269506b3470fc6d87a64cf",
+      "installed_app_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996",
+      "matches_current_source": false
+    },
+    "android_lock_check": {
+      "path": "/tmp/vibe-screen-device-android.lock",
+      "present": false
+    }
+  },
+  "android_device": {
+    "serial": "EP0110PZ0B9110300B",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "device": "pacific",
+    "android_release": "16",
+    "sdk": "36",
+    "claim_boundary": "General Android substitute only; this is not Xiaomi 13/fuxi evidence."
+  },
+  "formal_gate": {
+    "name": "host_rss_gate",
+    "status": "blocked",
+    "can_close_host_rss_no_growth_gate": false,
+    "missing_evidence": [
+      "full Xcode/XCTest execution of the focused frame lifecycle tests",
+      "stable-signed current-source Host bundle with matching binary hash",
+      "Screen Recording/Accessibility-authorized Host app session from this source revision",
+      "complete two-hour soak summary.json",
+      "complete two-hour samples.jsonl",
+      "matching host-telemetry.jsonl",
+      "host-rss-gate.json with verdict pass"
+    ]
+  },
+  "claim_boundary": "This record proves source readiness and fail-closed tooling only. It does not close the Phase 0 Host RSS no-growth gate.",
+  "pr_audit": {
+    "195": {
+      "branch": "codex/host-rss-no-growth-fix",
+      "head_before_rebase": "ca4a0cdb1ee0a150fb277ee613af310d36f89574",
+      "state": "open_draft",
+      "merge_state_before_rebase": "DIRTY",
+      "role": "production frame lifecycle fix"
+    },
+    "222": {
+      "branch": "codex/host-rss-root-cause-fix",
+      "head": "afb4938806e2388d58bc088c0e54f33c808e72c4",
+      "state": "open_draft",
+      "role": "diagnostic telemetry"
+    },
+    "158": {
+      "branch": "codex/host-rss-readiness",
+      "head": "ff84fd8dffe7e3a7851d0b60e451e12968ff78c6",
+      "state": "open",
+      "role": "blocked gate tooling and evidence"
+    }
+  }
+}

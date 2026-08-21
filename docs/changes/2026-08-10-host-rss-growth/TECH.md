@@ -51,6 +51,16 @@ registry 在回调或 teardown 时逐项 claim/drain；网络侧只保留一个 
 retained 路径。`ScreenCapture` 的 `lastPixelBuffer`、`encoder` 和
 `currentFrameSink` 仍存在跨线程正确性风险，但这些引用数量有界，当前证据没有把
 它们与历史持续 RSS 斜率建立因果关系，因此不把猜测性并发重构混入内存候选。
+2026-08-21 的跟进分支没有照搬历史分支的大范围重排，而是把
+`ScreenCapture` 的 frame-pacer teardown 收敛到单一路径：停止、切换显示、切换
+codec、fallback 失败和 fallback terminal 都会取消 pacing timer、丢弃旧
+`encodeQueue` 引用并清空 latest pixel buffer。同时，CGDisplayStream fallback
+回调与 frame-pacer encode 回调现在都有显式 `autoreleasepool`，与
+ScreenCaptureKit/VideoToolbox 现有回调释放策略一致，避免高频帧路径上的
+临时 Objective-C/CoreFoundation 对象只能等到线程外层池回收。新增离线覆盖证明 latest-retained
+slot 替换/清理会释放旧对象，且 encoder registry drain 会释放被 callback
+registry retain 的 `FrameContext`。该变更仍只能证明帧所有权边界更可审计，不能
+替代真实两小时复跑。
 
 为避免再次只凭 RSS 猜测，现提供 10-17 分钟的
 `vibescreen_evidence.host_memory_diagnostic` 作为独立短窗回归门禁。它联合
@@ -116,8 +126,10 @@ generation/epoch 键控的表，以及保留 CMSampleBuffer、CVPixelBuffer 或 
   后半程出现 +117.0 KiB/min 的迟发上升；不得据此宣称正式 no-growth 通过。
 - 后续单次真机稳定性验证保持在 30 分钟以内；正式两小时门禁继续开放。
 - 当前短窗回归门禁仅完成离线工具与阈值验证，尚无基于本分支源码的 Xiaomi 13
-  10-17 分钟短窗实测证据；本次变更未引入新的生产内存修复，正式两小时 Host RSS
-  no-growth 门禁仍需 `host_rss_gate` 独立输出 `pass` 方可关闭。
+  10-17 分钟短窗实测证据；2026-08-21 的 frame lifecycle 跟进只收紧
+  capture/encoder 所有权边界并补离线覆盖，正式两小时 Host RSS no-growth 门禁
+  仍需 `host_rss_gate` 独立输出 `pass` 方可关闭。blocked 记录见
+  [`evidence/2026-08-21-frame-lifecycle-readiness-blocked/README.md`](evidence/2026-08-21-frame-lifecycle-readiness-blocked/README.md)。
 - 短窗诊断报告现在把 watched heap 类按 `swiftui_observation`、`autorelease_pool`
   和 `video_frames` 聚合为 `metrics.heap_watch_summary`，让下一次短窗实测能直接
   对比已知 SwiftUI Observation 增长候选与有界视频帧候选，而不用人工从
@@ -130,18 +142,15 @@ export EVIDENCE_SERIAL='<lease-controlled-endpoint>'
 export EVIDENCE_DIR='.build/evidence'
 export VIBE_SCREEN_TELEMETRY_PATH="$EVIDENCE_DIR/soak-2h/host-telemetry.jsonl"
 mkdir -p "$EVIDENCE_DIR/soak-2h"
-# 用以上环境启动与当前源码匹配的 Host，建立稳定推流后：
-make soak-2h EVIDENCE_SERIAL="$EVIDENCE_SERIAL" EVIDENCE_DIR="$EVIDENCE_DIR"
-PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report \
-  --summary "$EVIDENCE_DIR/soak-2h/summary.json" \
-  --samples "$EVIDENCE_DIR/soak-2h/samples.jsonl" \
-  --host-telemetry "$EVIDENCE_DIR/soak-2h/host-telemetry.jsonl" \
-  --output "$EVIDENCE_DIR/soak-2h/exact-window-report.json"
-PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate \
-  --summary "$EVIDENCE_DIR/soak-2h/summary.json" \
-  --samples "$EVIDENCE_DIR/soak-2h/samples.jsonl" \
-  --output "$EVIDENCE_DIR/soak-2h/host-rss-gate.json"
+# 用以上环境启动与当前源码匹配的 Host，建立稳定推流后，记录该进程 PID：
+export HOST_PID='<running-host-pid>'
+make soak-2h EVIDENCE_SERIAL="$EVIDENCE_SERIAL" EVIDENCE_DIR="$EVIDENCE_DIR" HOST_PID="$HOST_PID"
+make host-rss-gate EVIDENCE_DIR="$EVIDENCE_DIR"
 ```
+
+也可用 `make soak-2h-host-rss-gate EVIDENCE_SERIAL="$EVIDENCE_SERIAL"
+EVIDENCE_DIR="$EVIDENCE_DIR" HOST_PID="$HOST_PID"` 串联正式两小时采集和门禁判定；
+该目标会在 `HOST_PID` 缺失时立即失败，避免产生缺少 `host.rss_kb` 的不可关闭证据。
 
 只有来源 summary 为 `complete` 且无错误、流/客户端指标有效，并且
 `host_rss_gate` 独立输出 `pass` 时才能关闭门禁。短诊断、30 分钟前缀或 partial
