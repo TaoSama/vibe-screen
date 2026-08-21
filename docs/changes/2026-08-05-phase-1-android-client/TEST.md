@@ -383,8 +383,8 @@ fuxi evidence. See
 
 ## P0110 native pointer HID follow-up
 
-On 2026-08-20, the connected Nubia P0110 (`EP0110PZ0B9110300B`, `pacific`,
-Android 16 / SDK 36) was checked under `/tmp/vibe-screen-device-android.lock`
+On 2026-08-20, the connected Nubia P0110 (`pacific`, Android 16 / SDK 36)
+was checked under `/tmp/vibe-screen-device-android.lock`
 with the native pointer HID acceptance script. The script recorded device
 identity and `dumpsys input`, but found no external Android input device with
 a `MOUSE`, `MOUSE_RELATIVE`, `TOUCHPAD`, or `TRACKBALL` source. It therefore
@@ -404,8 +404,8 @@ Evidence:
 
 ## P0110 native pointer HID readiness follow-up
 
-On 2026-08-21, the connected Nubia P0110 (`EP0110PZ0B9110300B`, `pacific`,
-Android 16 / SDK 36) was checked again with the stricter native pointer HID
+On 2026-08-21, the connected Nubia P0110 (`pacific`, Android 16 / SDK 36)
+was checked again with the stricter native pointer HID
 acceptance script. The script records `dumpsys input`, bounded Android `MA`
 logcat, and the newly appended Host log window, and it requires all three
 evidence layers before returning pass: Android `native pointer forwarded` lines
@@ -427,8 +427,8 @@ Evidence:
 
 ## P0110 rotated host-display readiness follow-up
 
-On 2026-08-20, the connected Nubia P0110 (EP0110PZ0B9110300B, pacific,
-Android 16 / SDK 36) was checked for the rotated physical/virtual host-display
+On 2026-08-20, the connected Nubia P0110 (pacific, Android 16 / SDK 36)
+was checked for the rotated physical/virtual host-display
 acceptance gate. The target device was online, and origin/main was current at
 b9d768e55c75f03cd3cb5d20939576bc8d24ff27, but no real-device acceptance run
 was started.

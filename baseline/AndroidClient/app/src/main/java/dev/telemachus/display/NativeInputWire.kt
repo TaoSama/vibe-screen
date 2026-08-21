@@ -43,6 +43,11 @@ internal object NativeInputWire {
             if (androidSource hasSource InputDevice.SOURCE_TRACKBALL) add("TRACKBALL")
         }
 
+    fun mouseLikeSourceNames(
+        eventSource: Int,
+        inputDeviceSources: Int?,
+    ): List<String> = mouseLikeSourceNames(inputDeviceSources ?: eventSource)
+
     fun isMouseLikeSource(androidSource: Int): Boolean = mouseLikeSourceNames(androidSource).isNotEmpty()
 
     /**

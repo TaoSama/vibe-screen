@@ -2,7 +2,7 @@
 
 Created: 2026-08-20T11:04:35Z
 Reason: No external Android input device with MOUSE, TOUCHPAD, or TRACKBALL source is currently attached.
-Device: nubia P0110 / pacific / Android 16 / serial EP0110PZ0B9110300B
+Device: nubia P0110 / pacific / Android 16 / serial redacted-pacific-serial
 External mouse devices: 0
 Observed pointer events: none
 
@@ -10,7 +10,7 @@ Observed pointer events: none
 
 This was a hardware preflight for the native pointer HID mouse gate on the
 connected Nubia P0110 (`pacific`) running Android 16. It was run under the
-Android device lock and used only `adb -s EP0110PZ0B9110300B`.
+Android device lock and used only the selected P0110 ADB serial.
 
 The run did not attempt synthetic `adb shell input mouse` motion. Synthetic ADB
 input can exercise parts of Android dispatch, but it cannot close the README
@@ -28,12 +28,12 @@ button press, or release delivery to the foreground streaming view.
 
 ## Re-run
 
-Attach a real USB or Bluetooth mouse to `EP0110PZ0B9110300B`, start a matching
+Attach a real USB or Bluetooth mouse to the P0110, start a matching
 Protocol v1 Vibe Screen session, then run:
 
 ```bash
 python3 scripts/native_pointer_hid_acceptance.py \
-  --serial EP0110PZ0B9110300B \
+  --serial "$ADB_SERIAL" \
   --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
   --visible-result-note "Mac cursor moved and the primary click focused <target app>" \
   --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/$(date -u +%F)-p0110-native-pointer-hid

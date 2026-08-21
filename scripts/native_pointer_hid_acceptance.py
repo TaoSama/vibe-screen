@@ -21,6 +21,7 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -80,6 +81,22 @@ class InputDeviceSummary:
 
 
 @dataclass(frozen=True)
+class RedactedDeviceIdentity:
+    serial: str
+    endpoint: str
+    manufacturer: str
+    model: str
+    device: str
+    android_release: str
+    sdk: str
+    fingerprint_sha256: str
+    display_size: str
+    display_density: str
+    battery_summary: str
+    boot_completed: str
+
+
+@dataclass(frozen=True)
 class HostLogCursor:
     device: int
     inode: int
@@ -92,7 +109,7 @@ class AcceptanceResult:
     reason: str
     created_at: str
     observation_seconds: float
-    device: DeviceIdentity
+    device: RedactedDeviceIdentity
     external_mouse_devices: list[InputDeviceSummary]
     host_log: str
     host_log_appended_bytes: int
@@ -103,6 +120,23 @@ class AcceptanceResult:
     observed_host_pointer_events: list[str]
     observed_android_pointer_events: list[str]
     visible_mac_result: str
+
+
+def redacted_device_identity(identity: DeviceIdentity) -> RedactedDeviceIdentity:
+    return RedactedDeviceIdentity(
+        serial=f"redacted-{identity.device}-serial",
+        endpoint=f"redacted adb endpoint product:{identity.device} model:{identity.model} device:{identity.device}",
+        manufacturer=identity.manufacturer,
+        model=identity.model,
+        device=identity.device,
+        android_release=identity.android_release,
+        sdk=identity.sdk,
+        fingerprint_sha256="redacted-build-fingerprint-sha256",
+        display_size=identity.display_size,
+        display_density=identity.display_density,
+        battery_summary=identity.battery_summary,
+        boot_completed=identity.boot_completed,
+    )
 
 
 def run_command(command: Sequence[str], *, timeout: float = 15.0) -> CommandResult:
@@ -246,10 +280,12 @@ class LogcatCapture:
     def __init__(self, serial: str, max_bytes: int) -> None:
         self.serial = serial
         self.max_bytes = max_bytes
+        self.marker = f"vibescreen-native-pointer-start-{uuid.uuid4().hex}"
         self.start_time = ""
 
     def __enter__(self) -> "LogcatCapture":
         self.start_time = adb_shell(self.serial, "date", "+%m-%d %H:%M:%S.000", timeout=5.0)
+        adb(self.serial, ["shell", "log", "-t", ANDROID_LOGCAT_TAG, self.marker], timeout=5.0)
         return self
 
     def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
@@ -261,10 +297,17 @@ class LogcatCapture:
             ["logcat", "-d", "-v", "time", "-T", self.start_time, "-s", f"{ANDROID_LOGCAT_TAG}:D", "*:S"],
             timeout=10.0,
         )
-        data = result.stdout.encode("utf-8", errors="replace")
+        data = self.after_marker(result.stdout).encode("utf-8", errors="replace")
         if len(data) > self.max_bytes:
             raise AcceptanceError(f"android logcat captured {len(data)} bytes, above limit {self.max_bytes}")
         return data
+
+    def after_marker(self, logcat_text: str) -> str:
+        lines = logcat_text.splitlines()
+        marker_index = next((index for index, line in enumerate(lines) if self.marker in line), None)
+        if marker_index is None:
+            raise AcceptanceError("android logcat marker was not found in captured observation window")
+        return evidence_text("\n".join(lines[marker_index + 1 :]))
 
 
 def utc_timestamp() -> str:
@@ -306,6 +349,7 @@ def write_result(path: Path, result: AcceptanceResult, dumpsys_input: str) -> No
         "- `host-log-appended.txt`: bounded Host log window for pointer injection.",
         "",
         "This evidence must remain scoped to the exact device identity above.",
+        "Persistent device identifiers and local workstation paths are redacted in `result.json`; raw device inventory remains in `dumpsys-input.txt`.",
     ]
     (path / "README.md").write_text("\n".join(summary) + "\n", encoding="utf-8")
 
@@ -384,9 +428,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 reason="No external Android input device with MOUSE, MOUSE_RELATIVE, TOUCHPAD, or TRACKBALL source is currently attached.",
                 created_at=created_at,
                 observation_seconds=0.0,
-                device=identity,
+                device=redacted_device_identity(identity),
                 external_mouse_devices=[],
-                host_log=str(args.host_log),
+                host_log="host-log-appended.txt",
                 host_log_appended_bytes=0,
                 host_log_appended_sha256=hashlib.sha256(b"").hexdigest(),
                 android_logcat_bytes=0,
@@ -437,9 +481,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             reason=reason,
             created_at=created_at,
             observation_seconds=0.0 if args.no_wait else float(args.observe_seconds),
-            device=identity,
+            device=redacted_device_identity(identity),
             external_mouse_devices=mouse_devices,
-            host_log=str(args.host_log),
+            host_log="host-log-appended.txt",
             host_log_appended_bytes=len(appended_log),
             host_log_appended_sha256=hashlib.sha256(appended_log).hexdigest(),
             android_logcat_bytes=len(android_logcat),

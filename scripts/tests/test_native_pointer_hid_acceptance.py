@@ -76,6 +76,60 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             "UniqueId:\nConfigurationFile:\nLast line\n",
         )
 
+    def test_redacted_device_identity_keeps_public_device_shape_only(self) -> None:
+        redacted = acceptance.redacted_device_identity(
+            acceptance.DeviceIdentity(
+                serial="EP0110PZ0B9110300B",
+                endpoint="EP0110PZ0B9110300B device usb:1-1 product:pacific model:P0110 device:pacific",
+                manufacturer="nubia",
+                model="P0110",
+                device="pacific",
+                android_release="16",
+                sdk="36",
+                fingerprint_sha256="1" * 64,
+                display_size="Physical size: 1264x2800",
+                display_density="Physical density: 480",
+                battery_summary="level: 88",
+                boot_completed="1",
+            )
+        )
+
+        self.assertEqual(redacted.serial, "redacted-pacific-serial")
+        self.assertEqual(redacted.endpoint, "redacted adb endpoint product:pacific model:P0110 device:pacific")
+        self.assertEqual(redacted.fingerprint_sha256, "redacted-build-fingerprint-sha256")
+
+    def test_logcat_capture_marks_an_exclusive_boundary(self) -> None:
+        with mock.patch.object(acceptance, "adb_shell", return_value="08-21 12:00:00.000") as adb_shell, \
+            mock.patch.object(acceptance, "adb") as adb:
+            capture = acceptance.LogcatCapture("SERIAL", max_bytes=1000)
+            capture.marker = "marker-123"
+            adb.return_value = acceptance.CommandResult(
+                ["adb"],
+                0,
+                "08-21 12:00:00.000 D MA      : stale before marker\n"
+                "08-21 12:00:00.000 I MA      : marker-123\n"
+                "08-21 12:00:00.001 D MA      : native pointer forwarded action=MOVE source=MOUSE x=0.5 y=0.5\n",
+                "",
+            )
+
+            with capture:
+                data = capture.stop()
+
+        adb_shell.assert_called_once_with("SERIAL", "date", "+%m-%d %H:%M:%S.000", timeout=5.0)
+        self.assertEqual(
+            adb.mock_calls[0],
+            mock.call("SERIAL", ["shell", "log", "-t", acceptance.ANDROID_LOGCAT_TAG, "marker-123"], timeout=5.0),
+        )
+        self.assertIn(b"native pointer forwarded action=MOVE", data)
+        self.assertNotIn(b"stale before marker", data)
+
+    def test_logcat_capture_requires_marker(self) -> None:
+        capture = acceptance.LogcatCapture("SERIAL", max_bytes=1000)
+        capture.marker = "missing-marker"
+
+        with self.assertRaisesRegex(acceptance.AcceptanceError, "marker"):
+            capture.after_marker("08-21 12:00:00.000 D MA      : stale before marker\n")
+
     def test_read_new_host_log_rejects_truncation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             log = Path(temporary_directory) / "host.log"
@@ -152,6 +206,9 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             self.assertEqual(result["device"]["manufacturer"], "nubia")
             self.assertEqual(result["device"]["model"], "P0110")
             self.assertEqual(result["device"]["device"], "pacific")
+            self.assertEqual(result["device"]["serial"], "redacted-pacific-serial")
+            self.assertEqual(result["device"]["fingerprint_sha256"], "redacted-build-fingerprint-sha256")
+            self.assertEqual(result["host_log"], "host-log-appended.txt")
             self.assertEqual(result["external_mouse_devices"], [])
             self.assertIn("No external Android input device", result["reason"])
             self.assertTrue((evidence_dir / "dumpsys-input.txt").exists())

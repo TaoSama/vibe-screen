@@ -38,6 +38,24 @@ class NativeInputWireTest {
     }
 
     @Test
+    fun mouseLikeSourceNamesPreferInputDeviceSourceMaskWhenAvailable() {
+        assertEquals(
+            listOf("MOUSE", "TOUCHPAD"),
+            NativeInputWire.mouseLikeSourceNames(
+                eventSource = android.view.InputDevice.SOURCE_MOUSE,
+                inputDeviceSources = android.view.InputDevice.SOURCE_MOUSE or android.view.InputDevice.SOURCE_TOUCHPAD,
+            ),
+        )
+        assertEquals(
+            listOf("MOUSE"),
+            NativeInputWire.mouseLikeSourceNames(
+                eventSource = android.view.InputDevice.SOURCE_MOUSE,
+                inputDeviceSources = null,
+            ),
+        )
+    }
+
+    @Test
     fun pointerPhasePreservesRemainingButtonsOnPartialRelease() {
         assertEquals(
             InputPhase.INPUT_PHASE_BEGAN,

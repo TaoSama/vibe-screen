@@ -166,13 +166,12 @@ pointer gate remains open without a physical mouse or equivalent Android HID
 pointer. Controller production forwarding is wired and covered offline, but
 runtime acceptance still needs a physical controller and an entitled Host; JVM
 mapper tests and constructed Protocol v1 envelopes prove serialization only.
-For the native pointer HID mouse gate on the Nubia P0110 (`EP0110PZ0B9110300B`),
-connect a real USB or Bluetooth mouse before starting the observation window and
-run:
+For the native pointer HID mouse gate, connect a real USB or Bluetooth mouse
+before starting the observation window and run:
 
 ```bash
 python3 scripts/native_pointer_hid_acceptance.py \
-  --serial EP0110PZ0B9110300B \
+  --serial "$ADB_SERIAL" \
   --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
   --visible-result-note "Mac cursor moved and the primary click focused <target app>" \
   --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/$(date -u +%F)-p0110-native-pointer-hid
