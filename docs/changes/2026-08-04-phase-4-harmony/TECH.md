@@ -118,15 +118,14 @@ still unwritten.
 Wheel/trackpad axis delivery and the complete physical-key map remain gates
 rather than claims. Protocol v1 now defines `CAPABILITY_CONTROLLER = 26` and a
 lifecycle-scoped `ControllerEvent` wire contract, and the Harmony portable
-protocol model now mirrors `Capability.CONTROLLER = 26`. The production client
-does not advertise that capability and has no `ControllerEvent` encoder,
-controller lifecycle implementation, or platform routing. The receiver-side
-contract requires synthesizing the same all-zero neutral state for the button
-mask, stick axes, triggers, and hat axes before discarding an active controller
-on disconnect, session teardown, ownership takeover, or transport loss. Harmony
-does not implement that rule, and its portable checks do not prove it.
-DevEco/API-checker, HAP, and device evidence for that path are also absent, so
-controller-specific input remains a gate rather than a claim.
+protocol model now mirrors `Capability.CONTROLLER = 26`. The production source
+advertises that capability, encodes `ControllerEvent`, waits for accepted
+`InputAck` before admitting controller state, validates lifecycle bounds, and
+sends all-zero neutral `DISCONNECTED` releases before active controller teardown
+or resume. The platform controller route is still a source boundary rather than
+a device result: DevEco/API-checker, HAP, Host interoperability, and MatePad
+evidence for that path remain absent, so controller-specific input remains a
+device acceptance gate rather than a shipped claim.
 
 ## Pairing, privacy, and upgrades
 
