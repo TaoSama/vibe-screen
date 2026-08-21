@@ -972,6 +972,10 @@ final class InternetProductSessionTests: XCTestCase {
     func testRecoveringStateCallbackCanSynchronouslyInstallFreshSession() throws {
         let harness = try Harness(
             engineCount: 2,
+            engineRecoveryDispositions: [
+                .peerReplacementStarted,
+                .requiresFreshSession("fresh signaling session required"),
+            ],
             freshSessionRecoveryPolicy: NetworkRecoveryPolicy(maximumAttempts: 2)
         )
         let replacement = try XCTUnwrap(harness.replacementEngine)
