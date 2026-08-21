@@ -139,6 +139,48 @@ or interoperate with the Host. It exists to keep those external observations
 complete and correctly scoped once a MatePad Mini and signing environment are
 available.
 
+## 2026-08-21 HAP lifecycle readiness collector
+
+`scripts/harmony_hap_readiness.py` records the local HAP build/sign/install
+readiness state before a MatePad Mini run. It captures clean repository identity,
+DevEco Studio and Harmony SDK API declarations, OHPM/Hvigor/HDC versions,
+signing configuration and public certificate hash, signed HAP and `SHA256SUMS`
+hashes, HDC target selection, package pre-state, and reviewer-supplied evidence
+references for install, in-place upgrade, rollback behavior, and uninstall
+cleanup. It writes both `harmony-hap-readiness.json` and a generated
+`harmony-device-gates.json` for the stricter gate validator.
+
+```bash
+make harmony-hap-readiness \
+  HARMONY_HAP_READINESS_DIR=docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness \
+  HARMONY_HDC_TARGET="$HDC_TARGET"
+python3 scripts/harmony_device_gate.py \
+  docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness/harmony-device-gates.json
+python3 scripts/harmony_device_gate.py --allow-blocked \
+  docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness/harmony-device-gates.json
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.tests.test_harmony_hap_readiness -v
+```
+
+Expected result: blocked or insufficient until DevEco, signing, HAP output, HDC
+target, and lifecycle evidence are present. The strict gate validator must fail
+on blocked readiness evidence; `--allow-blocked` validates only the blocked
+readiness structure without closing the gate. The unit test covers pass,
+blocked, fail, and insufficient readiness paths.
+
+The collector is not a substitute for DevEco, HAP installation, or MatePad
+behavior. A generated manifest may close only the HAP lifecycle subset when the
+summary reports `can_close_hap_lifecycle_readiness=true`; the full Phase 4 gate
+still requires every `harmony-device-gates.json` entry to pass without
+`--allow-blocked`.
+
+The 2026-08-21 local run is recorded at
+[`evidence/2026-08-21-hap-readiness-blocked`](evidence/2026-08-21-hap-readiness-blocked/README.md).
+It is blocked: DevEco Studio, OHPM, Hvigor, HDC, signing configuration, public
+certificate hash, signed HAP output, MatePad Mini identity, package pre-state,
+and install/upgrade/rollback/uninstall-cleanup observations were not present in
+this environment. The generated `harmony-device-gates.json` validates only with
+`--allow-blocked` and is not acceptance evidence.
+
 ## Clean cross-repository gates
 
 The following commands ran against the tested commit/tree above:

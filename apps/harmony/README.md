@@ -69,6 +69,32 @@ carry the repository MIT license and Harmony runtime notice; `make release`
 also copies the root license/notices beside the HAP and includes them in the
 checksum manifest.
 
+Before running the interactive device matrix, collect a fail-closed lifecycle
+readiness bundle from the exact local environment:
+
+```bash
+make harmony-hap-readiness \
+  HARMONY_HAP_READINESS_DIR=docs/changes/2026-08-04-phase-4-harmony/evidence/$(date -u +%F)-hap-readiness \
+  HARMONY_HDC_TARGET="$HDC_TARGET"
+```
+
+Use `HARMONY_HAP_READINESS_FLAGS='--run-build --signature-certificate
+/path/to/release.cer --harmony-sdk-api "API 12"'` when the DevEco CLI and
+public signing certificate are available. The collector writes
+`harmony-hap-readiness.json`, `harmony-device-gates.json`, HDC target output,
+package pre-state, and a README. Missing DevEco, OHPM/Hvigor/HDC, signing
+material, HAP output, MatePad target, or lifecycle observations returns a
+non-zero blocked/insufficient status and is evidence of what remains blocked,
+not a pass.
+Do not pass or commit private signing keys; record only a public certificate or
+precomputed public-certificate SHA-256.
+
+After manually installing, upgrading, rolling back, and uninstalling on the
+HarmonyOS target, pass a lifecycle observation JSON with non-empty evidence
+references for `install`, `upgrade`, `rollback`, and `uninstall_cleanup`; then
+validate the generated `harmony-device-gates.json` without `--allow-blocked`
+only if every Phase 4 real-device gate is independently recorded as pass.
+
 ## Run in trusted-LAN development mode
 
 1. Start the Protocol v1 Mac host on TCP port `54321`.
@@ -156,6 +182,8 @@ portable checks below only keep the source boundaries honest while that work is
 incomplete.
 
 - DevEco clean sync, ArkTS/API checker, debug/release HAP, and signature proof;
+- signed HAP install/launch, in-place upgrade retention, rollback behavior, and
+  uninstall cleanup recorded on the HarmonyOS target;
 - confirmation of the commercial SDK AVCodecKit declarations and buffer APIs;
 - Asset Store CRUD, XComponent surface, and H.264/HEVC hardware decode on device;
 - HUKS-backed P-256/HMAC/HKDF/AES-GCM provider, secure-pairing controller/UI,
