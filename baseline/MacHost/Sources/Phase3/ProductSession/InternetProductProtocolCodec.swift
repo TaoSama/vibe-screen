@@ -75,7 +75,7 @@ struct InternetProductVideoConfiguration: Equatable {
     }
 
     func validate() throws {
-        guard codec == .h264 || codec == .hevc,
+        guard VideoCodecAdmissionPolicy.streamCodec(for: codec) != nil,
               width > 0, height > 0,
               framesPerSecond > 0, bitrateKbps > 0,
               streamID > 0, configEpoch > 0,

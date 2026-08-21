@@ -604,6 +604,33 @@ final class ProtocolV1SessionTests: XCTestCase {
         assertLegacySDR(config.colorDescription)
     }
 
+    func testAV1OfferFallsBackToLocallyEncodableCodec() throws {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .colorManagement, .multiDisplay]
+        hello.clientHello.codecs = [.av1, .hevc, .h264]
+        hello.clientHello.videoDecodeCapabilities = [
+            sdrDecodeCapability(codec: .av1),
+            sdrDecodeCapability(codec: .hevc),
+            sdrDecodeCapability(codec: .h264),
+        ]
+
+        let helloActions = session.handleControl(try hello.serializedData())
+        XCTAssertTrue(containsCodecNegotiated(helloActions, codec: .hevc))
+    }
+
+    func testAV1OnlyOfferFailsClosedUntilHostEncoderExists() throws {
+        let session = makeSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .colorManagement, .multiDisplay]
+        hello.clientHello.codecs = [.av1]
+        hello.clientHello.videoDecodeCapabilities = [sdrDecodeCapability(codec: .av1)]
+
+        let error = try protocolError(from: session.handleControl(try hello.serializedData()))
+        XCTAssertEqual(error.code, .unsupportedCapability)
+        XCTAssertEqual(error.message, "Host and client have no common locally encodable SDR video codec.")
+    }
+
     func testInvalidDisplayAndStaleEpochFailClosed() throws {
         let invalidDisplay = makeSession()
         _ = invalidDisplay.handleControl(try clientHello().serializedData())

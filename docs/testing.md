@@ -102,16 +102,20 @@ foregrounded on the streaming view. Then run:
 python3 scripts/native_pointer_hid_acceptance.py \
   --serial "$ADB_SERIAL" \
   --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
+  --visible-result-note "Mac cursor moved and the primary click focused <target app>" \
   --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/$(date -u +%F)-p0110-native-pointer-hid
 ```
 
 While the script waits, move the physical mouse over the Android stream, then
-left-click and release. A pass requires newly appended Host log lines for native
-pointer `changed`, `began`, and `ended` injection. If no external Android input
-device with a mouse, touchpad, or trackball source is present, the script exits
-with code `2` and writes a `blocked` evidence bundle instead of fabricating a
-device result. Evidence from a Nubia P0110 must remain labeled P0110/pacific;
-it must not be relabeled as Xiaomi 13/fuxi.
+left-click and release. A pass requires all three evidence layers from the same
+observation window: Android `MA` logcat lines showing forwarded native pointer
+`MOVE`, `BUTTON_PRESS`, and `BUTTON_RELEASE` from a mouse-like source; newly
+appended Host log lines for native pointer `changed`, `began`, and `ended`
+injection; and an operator-visible Mac result note. If no external Android input
+device with a mouse, relative mouse, touchpad, or trackball source is present,
+the script exits with code `2` and writes a `blocked` evidence bundle instead of
+fabricating a device result. Evidence from a Nubia P0110 must remain labeled
+P0110/pacific; it must not be relabeled as Xiaomi 13/fuxi.
 
 ## Pass criteria
 
