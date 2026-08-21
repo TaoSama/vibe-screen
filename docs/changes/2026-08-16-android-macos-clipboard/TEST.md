@@ -4,7 +4,7 @@ Status: 本地离线门禁完成；P0110 真机 Android 系统剪贴板 smoke �
 XCTest 受本机 SDK 环境阻断；Android <-> macOS 系统剪贴板端到端 gate 仍 open
 Date: 2026-08-21
 Current PR #157 rescue baseline: `origin/main` at
-`c5add121d4ebebaa0083db64551a81ec7899696e` plus this PR branch's
+`9dfc7caa975f1e2b851302d7cee72a55ade0429e` plus this PR branch's
 clipboard runbook/evidence commits
 
 ## 证据边界
@@ -20,10 +20,12 @@ Android 本机 smoke 结果不得转述为 Android <-> Mac clipboard E2E 证据�
 ### 2026-08-21 latest-main refresh
 
 PR #157 was rebased again onto current `origin/main`
-`22da26816465257b4a09f95de47be8567e448b74`
-(`test: record P0110 phase2 lifecycle readiness (#177)`) after main advanced.
-The rebase was clean, with no conflicts and no new device evidence. The
-Android ClipboardManager <-> macOS NSPasteboard device gate remains open.
+`9dfc7caa975f1e2b851302d7cee72a55ade0429e`
+(`Add Phase 2 tablet power gate readiness checks (#183)`) after main advanced.
+The rebase was clean, with no conflicts. A fresh P0110 Android-local
+ClipboardManager smoke was rerun after this rebase, but no new cross-device
+clipboard evidence was produced. The Android ClipboardManager <-> macOS
+NSPasteboard device gate remains open.
 
 Re-run checks for this refresh:
 
@@ -37,12 +39,28 @@ make evidence-tools-test
 git diff --check origin/main...HEAD
 python3 -m json.tool docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-21-android-device-lock-blocked/clipboard-evidence.json >/dev/null
 python3 -m json.tool docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-21-p0110-clipboard-device-attempt/clipboard-evidence.json >/dev/null
+adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+cd baseline/AndroidClient
+./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+adb -s EP0110PZ0B9110300B install -r -t app/build/outputs/apk/debug/app-debug.apk
+adb -s EP0110PZ0B9110300B install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s EP0110PZ0B9110300B shell am instrument -w \
+  -e class dev.telemachus.display.ClipboardManagerInstrumentedTest \
+  dev.telemachus.display.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
-结果：Android focused clipboard JVM tests `BUILD SUCCESSFUL in 20s`；protocol
-fixture tests `Ran 16 tests in 133.644s OK`；evidence tools
-`Ran 198 tests in 7.604s OK`；diff whitespace and both retained JSON evidence
-files passed.
+结果：Android focused clipboard JVM tests `BUILD SUCCESSFUL in 6s`；protocol
+fixture tests `Ran 16 tests in 58.467s OK`；evidence tools
+`Ran 205 tests in 2.940s OK`；diff whitespace and both retained JSON evidence
+files passed. The device smoke used serial `EP0110PZ0B9110300B` and recorded
+nubia / P0110 / pacific / Android 16 / SDK 36; the instrumentation result was
+`OK (1 test)` with logcat marker `vs-clipboard-device-1787301144191`. This
+still proves only foreground Android-local ClipboardManager read/write, not
+Protocol v1 or macOS NSPasteboard interoperability.
 
 ### 2026-08-21 PR #157 rescue rebase
 
