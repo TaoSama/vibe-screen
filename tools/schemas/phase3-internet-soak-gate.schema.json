@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/phase3-internet-soak-gate.schema.json",
+  "title": "Vibe Screen Phase 3 public Internet soak gate v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "kind", "derivation_status", "verdict", "thresholds", "inputs", "criteria", "reasons", "required_artifacts", "interpretation"],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "phase3_internet_soak_gate"},
+    "created_at": {"type": "string"},
+    "derivation_status": {"enum": ["complete", "failed"]},
+    "verdict": {"enum": ["pass", "fail", "blocked"]},
+    "thresholds": {"type": "object"},
+    "inputs": {"type": "object"},
+    "criteria": {"type": "object"},
+    "reasons": {"type": "array", "items": {"type": "string"}},
+    "required_artifacts": {"type": "array", "items": {"type": "string"}},
+    "interpretation": {"type": "string"}
+  }
+}
