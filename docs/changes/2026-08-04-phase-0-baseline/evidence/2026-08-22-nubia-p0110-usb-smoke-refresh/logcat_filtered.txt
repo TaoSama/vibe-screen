@@ -1,0 +1,42 @@
+$ adb -s EP0110PZ0B9110300B logcat -c
+sleep 20
+$ adb -s EP0110PZ0B9110300B logcat -d --pid 27526 | grep -E VibeScreenTelemetry|Decode stats|AndroidRuntime|FATAL|E/|error|fail|disconnect
+08-22 02:11:21.710 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335881710,"event":"stream_stats","session_epoch":2,"fps":59.58291956305859,"mbps":0.3684131082423039}
+08-22 02:11:21.774 27526  1763 D VD      : Decode stats: input=20100, output=20099, dropped=0, availBufs=10
+08-22 02:11:22.711 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335882710,"event":"stream_stats","session_epoch":2,"fps":57.0,"mbps":0.365232}
+08-22 02:11:22.887 27526  1763 D VD      : Decode stats: input=20160, output=20158, dropped=0, availBufs=10
+08-22 02:11:23.720 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335883720,"event":"stream_stats","session_epoch":2,"fps":57.4826560951437,"mbps":0.3638771060455897}
+08-22 02:11:23.876 27526  1763 D VD      : Decode stats: input=20220, output=20219, dropped=0, availBufs=10
+08-22 02:11:24.722 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335884721,"event":"stream_stats","session_epoch":2,"fps":58.88223552894212,"mbps":0.36833532934131735}
+08-22 02:11:24.884 27526  1763 D VD      : Decode stats: input=20280, output=20279, dropped=0, availBufs=10
+08-22 02:11:25.728 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335885727,"event":"stream_stats","session_epoch":2,"fps":59.642147117296226,"mbps":0.368779324055666}
+08-22 02:11:25.893 27526  1763 D VD      : Decode stats: input=20340, output=20339, dropped=0, availBufs=10
+08-22 02:11:26.739 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335886739,"event":"stream_stats","session_epoch":2,"fps":60.276679841897234,"mbps":0.3684901185770751}
+08-22 02:11:26.892 27526  1763 D VD      : Decode stats: input=20400, output=20399, dropped=0, availBufs=10
+08-22 02:11:27.755 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335887754,"event":"stream_stats","session_epoch":2,"fps":60.09852216748769,"mbps":0.3674009852216749}
+08-22 02:11:27.889 27526  1763 D VD      : Decode stats: input=20460, output=20459, dropped=0, availBufs=10
+08-22 02:11:29.057 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335889057,"event":"stream_stats","session_epoch":2,"fps":39.14044512663085,"mbps":0.27145970836531086}
+08-22 02:11:29.324 27526  1763 D VD      : Decode stats: input=20520, output=20519, dropped=0, availBufs=10
+08-22 02:11:30.062 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335890062,"event":"stream_stats","session_epoch":2,"fps":60.69651741293532,"mbps":0.3710567164179105}
+08-22 02:11:30.326 27526  1763 D VD      : Decode stats: input=20580, output=20579, dropped=0, availBufs=10
+08-22 02:11:31.062 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335891062,"event":"stream_stats","session_epoch":2,"fps":59.0,"mbps":0.369072}
+08-22 02:11:31.343 27526  1763 D VD      : Decode stats: input=20640, output=20639, dropped=0, availBufs=10
+08-22 02:11:32.077 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335892077,"event":"stream_stats","session_epoch":2,"fps":60.09852216748769,"mbps":0.3674009852216749}
+08-22 02:11:32.343 27526  1763 D VD      : Decode stats: input=20700, output=20699, dropped=0, availBufs=10
+08-22 02:11:33.079 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335893079,"event":"stream_stats","session_epoch":2,"fps":59.880239520958085,"mbps":0.37025149700598803}
+08-22 02:11:33.339 27526  1763 D VD      : Decode stats: input=20760, output=20759, dropped=0, availBufs=10
+08-22 02:11:34.079 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335894079,"event":"stream_stats","session_epoch":2,"fps":58.0,"mbps":0.367152}
+08-22 02:11:34.374 27526  1763 D VD      : Decode stats: input=20820, output=20819, dropped=0, availBufs=10
+08-22 02:11:35.087 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335895087,"event":"stream_stats","session_epoch":2,"fps":60.51587301587302,"mbps":0.3699523809523809}
+08-22 02:11:35.385 27526  1763 D VD      : Decode stats: input=20880, output=20879, dropped=0, availBufs=10
+08-22 02:11:36.092 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335896092,"event":"stream_stats","session_epoch":2,"fps":57.711442786069654,"mbps":0.3653253731343284}
+08-22 02:11:36.408 27526  1763 D VD      : Decode stats: input=20940, output=20939, dropped=0, availBufs=10
+08-22 02:11:37.097 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335897097,"event":"stream_stats","session_epoch":2,"fps":59.7609561752988,"mbps":0.36951394422310757}
+08-22 02:11:37.415 27526  1763 D VD      : Decode stats: input=21000, output=20999, dropped=0, availBufs=10
+08-22 02:11:38.096 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335898096,"event":"stream_stats","session_epoch":2,"fps":60.0,"mbps":0.370992}
+08-22 02:11:38.408 27526  1763 D VD      : Decode stats: input=21060, output=21059, dropped=0, availBufs=10
+08-22 02:11:39.108 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335899108,"event":"stream_stats","session_epoch":2,"fps":60.396039603960396,"mbps":0.369219801980198}
+08-22 02:11:39.436 27526  1763 D VD      : Decode stats: input=21120, output=21119, dropped=0, availBufs=10
+08-22 02:11:40.124 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335900124,"event":"stream_stats","session_epoch":2,"fps":58.01376597836775,"mbps":0.36290265486725665}
+08-22 02:11:40.450 27526  1763 D VD      : Decode stats: input=21180, output=21179, dropped=0, availBufs=10
+08-22 02:11:41.125 27526  1763 I VibeScreenTelemetry: {"schema_version":1,"timestamp_ms":1787335901125,"event":"stream_stats","session_epoch":2,"fps":59.880239520958085,"mbps":0.37025149700598803}

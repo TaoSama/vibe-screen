@@ -1,0 +1,47 @@
+{
+  "outdir": "docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-22-nubia-p0110-usb-smoke-refresh",
+  "repository_head_at_collection": "321eb3918026184a1b26ba8509ddee5f2d99878f",
+  "base_commit": "baaec28a2a47bd9c2ff38a32eaacdbf1880f1e38",
+  "installed_binary_provenance_revalidated": false,
+  "collected_at_local": "2026-08-22T02:11:21+08:00",
+  "observation_window_seconds": 20,
+  "device": {
+    "serial": "EP0110PZ0B9110300B",
+    "ro.product.manufacturer": "nubia",
+    "ro.product.model": "P0110",
+    "ro.product.device": "pacific",
+    "ro.build.version.release": "16",
+    "ro.build.version.sdk": "36"
+  },
+  "host": {
+    "pid": 92943,
+    "listener": "127.0.0.1:54321",
+    "established_connection_observed": true
+  },
+  "android_app": {
+    "package": "dev.telemachus.display",
+    "activity": "dev.telemachus.display/.MainActivity",
+    "pid": 27526,
+    "foreground_observed": true
+  },
+  "telemetry": {
+    "stream_stats_count": 20,
+    "fps_min": 39.14044512663085,
+    "fps_max": 60.69651741293532,
+    "mbps_min": 0.27145970836531086,
+    "mbps_max": 0.3710567164179105,
+    "decode_stats_count": 19,
+    "decoder_input_min": 20100,
+    "decoder_input_max": 21180,
+    "decoder_output_min": 20099,
+    "decoder_output_max": 21179,
+    "decoder_dropped_frames": 0
+  },
+  "limits": {
+    "short_stream_refresh_only": true,
+    "latency_gate_closed": false,
+    "host_rss_no_growth_gate_closed": false,
+    "input_gate_closed": false,
+    "long_soak_gate_closed": false
+  }
+}

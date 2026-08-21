@@ -282,6 +282,20 @@ latency, rotated host-display, or Accessibility/input gates.
 Evidence is retained under
 [evidence/2026-08-20-nubia-p0110-usb-smoke/](evidence/2026-08-20-nubia-p0110-usb-smoke/README.md).
 
+A 2026-08-22 lock-coordinated refresh was collected while this PR worktree was
+rebased to `321eb3918026184a1b26ba8509ddee5f2d99878f` on top of
+`origin/main` `baaec28a2a47bd9c2ff38a32eaacdbf1880f1e38`. The installed
+Host/App binary provenance was not revalidated in this refresh. The connected
+Nubia P0110/pacific Android 16 device produced a 20-second current-window USB
+stream sample after clearing logcat. The app PID-scoped logcat window recorded
+20 `stream_stats` events, 19 decoder-stat samples, `dropped=0`, no
+AndroidRuntime/FATAL crash, and an empty `/data/tombstones` listing. The Host
+still listened on 127.0.0.1:54321 and the host-side loopback socket remained
+ESTABLISHED. This refresh is only short USB stream evidence and does not close
+the soak, host RSS no-growth, input, LAN/Internet, external latency, or
+headless Mac gates. Evidence is retained under
+[evidence/2026-08-22-nubia-p0110-usb-smoke-refresh/](evidence/2026-08-22-nubia-p0110-usb-smoke-refresh/README.md).
+
 ## External latency readiness check (2026-08-20)
 
 Main commit `b9d768e55c75f03cd3cb5d20939576bc8d24ff27` completed a latency
