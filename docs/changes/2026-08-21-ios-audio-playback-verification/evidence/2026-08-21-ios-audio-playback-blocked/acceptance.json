@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "platform": "ios",
+  "status": "blocked",
+  "repository": {
+    "base_commit_before_local_changes": "22da2681",
+    "branch": "codex/ios-audio-pcm-verifier",
+    "dirty_at_capture": true
+  },
+  "environment": {
+    "selected_developer_dir": "/Library/Developer/CommandLineTools",
+    "full_xcode_available": false,
+    "xcodebuild_available": false,
+    "xctrace_available": false,
+    "iphone_or_ipad_device_available": false,
+    "external_audible_capture_available": false,
+    "audio_capable_host_path_exercised": false
+  },
+  "implemented_verifier": {
+    "core_playback_queue_policy": "implemented",
+    "app_launch_argument": "--audio-playback-self-test",
+    "avfoundation_components": [
+      "AVAudioSession",
+      "AVAudioEngine",
+      "AVAudioPlayerNode"
+    ],
+    "expected_result_prefix": "AUDIO_PLAYBACK_SELF_TEST=PASS"
+  },
+  "gates": {
+    "offline_pcm_format_and_queue": {
+      "status": "implemented",
+      "counters": [
+        "scheduled_buffers",
+        "played_buffers",
+        "queue_empty",
+        "late_completions",
+        "overrun_drops",
+        "stops"
+      ],
+      "evidence": [
+        "swift build --package-path apps/ios --configuration release",
+        "swift test --package-path apps/ios --configuration release",
+        "apps/ios/.build/release/vibescreen-ios-selftest"
+      ]
+    },
+    "av_audio_engine_path": {
+      "status": "blocked",
+      "reason": "Requires full Xcode plus iOS Simulator or signed iPhone/iPad launch."
+    },
+    "audible_playback": {
+      "status": "blocked",
+      "reason": "Requires signed iPhone/iPad run, audio-capable host path, output-route record, and external audible confirmation."
+    }
+  },
+  "android_evidence_used_for_ios_gates": false,
+  "notes": [
+    "This record does not claim real audible iPhone/iPad playback."
+  ]
+}

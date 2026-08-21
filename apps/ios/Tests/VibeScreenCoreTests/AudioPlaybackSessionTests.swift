@@ -158,6 +158,85 @@ final class AudioPlaybackSessionTests: XCTestCase {
         XCTAssertFalse(AudioStreamError.nonIncreasingConfigEpoch(previous: 2, received: 2).isDroppableMediaPacketError)
         XCTAssertFalse(AudioStreamError.unsupportedCodec(.aacLc).isDroppableMediaPacketError)
     }
+
+    func testPlaybackQueueTracksOverrunQueueEmptyAndRestart() throws {
+        let config = audioConfig(configEpoch: 2)
+        let format = try PCMStreamFormat(config: config)
+        var queue = AudioPlaybackQueueState(policy: AudioPlaybackQueuePolicy(maximumScheduledBuffers: 2))
+
+        XCTAssertThrowsError(try queue.schedule(
+            packet(sequence: 0, sessionEpoch: 9, configEpoch: 2, format: format),
+            format: format
+        )) { error in
+            XCTAssertEqual(error as? AudioPlaybackQueueError, .notConfigured)
+        }
+
+        queue.configure(format: format)
+        XCTAssertEqual(try queue.schedule(
+            packet(sequence: 0, sessionEpoch: 9, configEpoch: 2, format: format),
+            format: format
+        ), .scheduled)
+        XCTAssertEqual(try queue.schedule(
+            packet(sequence: 1, sessionEpoch: 9, configEpoch: 2, format: format),
+            format: format
+        ), .scheduled)
+        XCTAssertEqual(try queue.schedule(
+            packet(sequence: 2, sessionEpoch: 9, configEpoch: 2, format: format),
+            format: format
+        ), .overrunDropped)
+        XCTAssertEqual(queue.snapshot.scheduledBufferCount, 2)
+        XCTAssertEqual(queue.snapshot.scheduledBufferTotal, 2)
+        XCTAssertEqual(queue.snapshot.overrunDropCount, 1)
+
+        queue.completeScheduledBuffer()
+        XCTAssertEqual(queue.snapshot.scheduledBufferCount, 1)
+        XCTAssertEqual(queue.snapshot.playedBufferTotal, 1)
+        XCTAssertEqual(queue.snapshot.queueEmptyCount, 0)
+
+        queue.completeScheduledBuffer()
+        XCTAssertEqual(queue.snapshot.scheduledBufferCount, 0)
+        XCTAssertEqual(queue.snapshot.playedBufferTotal, 2)
+        XCTAssertEqual(queue.snapshot.queueEmptyCount, 1)
+
+        queue.completeScheduledBuffer()
+        XCTAssertEqual(queue.snapshot.queueEmptyCount, 1)
+        XCTAssertEqual(queue.snapshot.lateCompletionCount, 1)
+
+        queue.stop()
+        XCTAssertFalse(queue.snapshot.isConfigured)
+        XCTAssertEqual(queue.snapshot.stopCount, 1)
+        queue.configure(format: format)
+        XCTAssertTrue(queue.snapshot.isConfigured)
+        XCTAssertEqual(queue.snapshot.scheduledBufferCount, 0)
+        XCTAssertEqual(try queue.schedule(
+            packet(sequence: 3, sessionEpoch: 9, configEpoch: 2, format: format),
+            format: format
+        ), .scheduled)
+    }
+
+    func testPlaybackQueueRejectsWrongPCMShapeWithoutAdvancingCounters() throws {
+        let config = audioConfig(configEpoch: 2)
+        let format = try PCMStreamFormat(config: config)
+        var queue = AudioPlaybackQueueState(policy: AudioPlaybackQueuePolicy(maximumScheduledBuffers: 2))
+        var header = VSAudioPacketHeader()
+        header.streamID = config.streamID
+        header.sessionEpoch = 9
+        header.configEpoch = config.configEpoch
+        header.sequence = 0
+        header.frameCount = format.framesPerPacket + 1
+        let payload = Data(repeating: 0x01, count: format.bytesPerPacket)
+        header.payloadLength = UInt32(payload.count)
+        let headerBytes = try header.serializedData()
+        let malformed = try AudioPacket(serializedFrame: encodeVarint(headerBytes.count) + headerBytes + payload)
+
+        queue.configure(format: format)
+
+        XCTAssertThrowsError(try queue.schedule(malformed, format: format)) { error in
+            XCTAssertEqual(error as? AudioPlaybackQueueError, .invalidPCMByteCount)
+        }
+        XCTAssertEqual(queue.snapshot.scheduledBufferTotal, 0)
+        XCTAssertEqual(queue.snapshot.overrunDropCount, 0)
+    }
 }
 
 private func audioConfig(configEpoch: UInt64) -> VSAudioConfig {

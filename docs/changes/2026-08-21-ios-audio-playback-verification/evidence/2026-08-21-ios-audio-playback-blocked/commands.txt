@@ -1,0 +1,43 @@
+$ git fetch origin main --prune
+From github.com:TaoSama/vibe-screen
+ * branch              main       -> FETCH_HEAD
+
+$ git switch -c codex/ios-audio-pcm-verifier origin/main
+Switched to a new branch codex/ios-audio-pcm-verifier
+branch codex/ios-audio-pcm-verifier set up to track origin/main.
+
+$ xcode-select -p
+/Library/Developer/CommandLineTools
+
+$ xcodebuild -version
+xcode-select: error: tool xcodebuild requires Xcode, but active developer directory /Library/Developer/CommandLineTools is a command line tools instance
+
+$ xcodebuild -showsdks
+xcode-select: error: tool xcodebuild requires Xcode, but active developer directory /Library/Developer/CommandLineTools is a command line tools instance
+
+$ xcrun xctrace list devices
+xcrun: error: unable to find utility "xctrace", not a developer tool or in PATH
+
+$ swift build --package-path apps/ios --configuration release
+Build complete!
+
+$ apps/ios/.build/release/vibescreen-ios-selftest
+RUN: framing
+RUN: protocol/session
+RUN: codec/backoff
+RUN: multi-display/audio
+RUN: clipboard/file/policy
+RUN: HDR/gesture/wake/advanced-proto
+RUN: trusted-LAN startup codecs
+RUN: owner/media/heartbeat generation gates
+PASS: Phase 5A-5D core and trusted-LAN Protocol v1 startup
+
+$ apps/ios/Scripts/verify-generated-protocol.sh
+generated macOS and iOS Protocol v1 bindings are current
+
+$ make protocol
+Ran 36 tests in 229.277s
+OK
+
+$ swift test --package-path apps/ios --configuration release
+error: no such module 'XCTest'
