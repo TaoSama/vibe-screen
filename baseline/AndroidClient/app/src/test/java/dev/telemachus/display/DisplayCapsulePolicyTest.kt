@@ -33,6 +33,15 @@ class DisplayCapsulePolicyTest {
     }
 
     @Test
+    fun `pending selection keeps capsule visible but disables new selection`() {
+        val displays = listOf(option("a"), option("b"))
+
+        assertTrue(DisplayCapsulePolicy.isSelectable(displaySelection = true, displays = displays))
+        assertFalse(DisplayCapsulePolicy.isEnabled(displaySelection = true, displays = displays, pendingDisplayId = "b"))
+        assertTrue(DisplayCapsulePolicy.isEnabled(displaySelection = true, displays = displays, pendingDisplayId = null))
+    }
+
+    @Test
     fun `active option resolves by selected id`() {
         val displays = listOf(option("a", "Built-in"), option("b", "Sidecar"))
         assertEquals("Sidecar", DisplayCapsulePolicy.activeOption(displays, "b")?.name)
@@ -43,6 +52,15 @@ class DisplayCapsulePolicyTest {
     fun `label prefers selected display`() {
         val displays = listOf(option("a", "Built-in"), option("b", "Sidecar"))
         assertEquals("Sidecar", DisplayCapsulePolicy.capsuleLabel(displays, "b"))
+    }
+
+    @Test
+    fun `pending option resolves without changing the active label`() {
+        val displays = listOf(option("a", "Built-in"), option("b", "Sidecar"))
+
+        assertEquals("Built-in", DisplayCapsulePolicy.capsuleLabel(displays, "a"))
+        assertEquals("Sidecar", DisplayCapsulePolicy.pendingOption(displays, "b")?.name)
+        assertNull(DisplayCapsulePolicy.pendingOption(displays, "missing"))
     }
 
     @Test

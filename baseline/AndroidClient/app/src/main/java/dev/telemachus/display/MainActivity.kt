@@ -264,6 +264,7 @@ class MainActivity : AppCompatActivity() {
         AccessibilityManager.TouchExplorationStateChangeListener(::reconcileTouchExplorationState)
     private var availableDisplays = emptyList<StreamDisplayOption>()
     private var selectedDisplayId = ""
+    private var pendingDisplaySelectionId: String? = null
     private var availableHostActions = emptyList<HostActionOption>()
     private val clipboardApprovalState = ClipboardApprovalState<StreamClient>()
     private var revealOnlyTouchGestureActive = false
@@ -1951,10 +1952,41 @@ class MainActivity : AppCompatActivity() {
     ) {
         availableDisplays = displays
         selectedDisplayId = selectedId
+        pendingDisplaySelectionId = null
         // Collapse the whole display picker on single-display or un-negotiated
         // sessions so the resting capsule stays a minimal, low-misfire target.
         refreshDisplayCapsuleLabel()
         applyControlBarLayout()
+    }
+
+    private fun markDisplaySelectionPending(
+        selectedId: String,
+        pendingId: String,
+    ) {
+        if (pendingId == selectedId || availableDisplays.none { it.id == pendingId }) return
+        selectedDisplayId = selectedId
+        pendingDisplaySelectionId = pendingId
+        refreshDisplayCapsuleLabel()
+    }
+
+    private fun confirmDisplaySelection(selectedId: String) {
+        selectedDisplayId = selectedId
+        pendingDisplaySelectionId = null
+        refreshDisplayCapsuleLabel()
+    }
+
+    private fun rejectDisplaySelection(
+        selectedId: String,
+        rejectedId: String,
+        reason: String,
+    ) {
+        selectedDisplayId = selectedId
+        pendingDisplaySelectionId = null
+        refreshDisplayCapsuleLabel()
+        val active = DisplayCapsulePolicy.capsuleLabel(availableDisplays, selectedDisplayId)
+            .ifEmpty { getString(R.string.display_capsule_placeholder) }
+        Toast.makeText(this, getString(R.string.display_switch_request_failed, active), Toast.LENGTH_SHORT).show()
+        mainDiag("capsule selectDisplay rejected target=$rejectedId active=$selectedId reason=$reason")
     }
 
     /**
@@ -1970,6 +2002,7 @@ class MainActivity : AppCompatActivity() {
             displaySelection = currentSessionBinding().capabilities.displaySelection,
             displays = availableDisplays,
             selectedId = selectedDisplayId,
+            pendingDisplayId = pendingDisplaySelectionId,
         )
     }
 
@@ -1985,7 +2018,7 @@ class MainActivity : AppCompatActivity() {
                 currentSessionBinding().capabilities.displaySelection,
                 availableDisplays,
             )
-        if (!selectable) return
+        if (!selectable || pendingDisplaySelectionId != null) return
         val displays = availableDisplays
         val popup = PopupMenu(this, binding.controlDisplaysButton)
         val menu = popup.menu
@@ -2016,9 +2049,13 @@ class MainActivity : AppCompatActivity() {
             val option = displays.getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
             if (option.id != selectedDisplayId) {
                 mainDiag("capsule selectDisplay target=${option.id} from=$selectedDisplayId")
-                streamClient?.selectDisplay(option.id)
-                selectedDisplayId = option.id
-                refreshDisplayCapsuleLabel()
+                val previousDisplayId = selectedDisplayId
+                if (streamClient?.selectDisplay(option.id) == true) {
+                    markDisplaySelectionPending(previousDisplayId, option.id)
+                    Toast.makeText(this, R.string.display_switch_request_sent, Toast.LENGTH_SHORT).show()
+                } else {
+                    rejectDisplaySelection(previousDisplayId, option.id, "request_not_sent")
+                }
             }
             true
         }
@@ -3772,6 +3809,32 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        callbackClient.onDisplaySelectionPending = displayPending@{ selectedId, pendingId ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@displayPending
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                mainDiag("display selection pending target=$pendingId active=$selectedId")
+                markDisplaySelectionPending(selectedId, pendingId)
+            }
+        }
+
+        callbackClient.onDisplaySelectionConfirmed = displayConfirmed@{ selectedId ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@displayConfirmed
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                mainDiag("display selection confirmed active=$selectedId")
+                confirmDisplaySelection(selectedId)
+            }
+        }
+
+        callbackClient.onDisplaySelectionRejected = displayRejected@{ selectedId, rejectedId, reason ->
+            if (!isCurrentSession(callbackClient, callbackGeneration)) return@displayRejected
+            runOnUiThread {
+                if (!isCurrentSession(callbackClient, callbackGeneration)) return@runOnUiThread
+                rejectDisplaySelection(selectedId, rejectedId, reason)
+            }
+        }
+
         callbackClient.onHostActionsAvailable = hostActions@{ actions ->
             if (!isCurrentSession(callbackClient, callbackGeneration)) return@hostActions
             runOnUiThread {
@@ -4863,6 +4926,7 @@ class MainActivity : AppCompatActivity() {
         TooltipCompat.setTooltipText(binding.controlClipboardButton, getText(R.string.control_clipboard))
         availableDisplays = emptyList()
         selectedDisplayId = ""
+        pendingDisplaySelectionId = null
         DisplayCapsuleViewBinder.bind(
             resources = resources,
             selector = binding.displayCapsuleGroup,

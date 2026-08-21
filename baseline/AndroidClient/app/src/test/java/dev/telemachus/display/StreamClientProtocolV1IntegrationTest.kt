@@ -781,6 +781,214 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun runtimeDisplaySelectionReportsPendingUntilDecoderCommitsSelection() = runBlocking {
+        ServerSocket(0).use { server ->
+            val serverReady = CountDownLatch(1)
+            val clientReady = CountDownLatch(1)
+            val selectionRequested = CountDownLatch(1)
+            val allowConfirmation = CountDownLatch(1)
+            val switchConfigurationRequested = CountDownLatch(1)
+            val allowDecoderCommit = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY),
+                            displayList = twoDisplayList(3),
+                        )
+                        serverReady.countDown()
+                        val request = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.START_DISPLAY_REQUEST, request.payloadCase)
+                        assertEquals("display-2", request.startDisplayRequest.sourceDisplayId)
+                        selectionRequested.countDown()
+                        allowConfirmation.await(8, TimeUnit.SECONDS)
+                        write(peer, startDisplayFor(id = 6, displayId = "display-2"))
+                        write(peer, videoConfig(id = 7, rotation = 0, configEpoch = 4))
+                        assertTrue(readEnvelope(peer).videoConfigResult.accepted)
+                        assertEquals(Envelope.PayloadCase.REQUEST_KEYFRAME, readEnvelope(peer).payloadCase)
+                        write(peer, disconnect(id = 8))
+                    }
+                }
+            val pending = CountDownLatch(1)
+            val confirmed = CountDownLatch(1)
+            val pendingEvents = Collections.synchronizedList(mutableListOf<Pair<String, String>>())
+            val confirmedEvents = Collections.synchronizedList(mutableListOf<String>())
+            val configurationCount = AtomicInteger(0)
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.onVideoConfiguration = { _, commit ->
+                if (configurationCount.incrementAndGet() == 1) {
+                    commit.accept()
+                } else {
+                    switchConfigurationRequested.countDown()
+                    assertTrue(allowDecoderCommit.await(8, TimeUnit.SECONDS))
+                    commit.accept()
+                }
+            }
+            client.onConnectionStatus = { connected -> if (connected) clientReady.countDown() }
+            client.onDisplaySelectionPending = { selectedId, pendingId ->
+                pendingEvents += selectedId to pendingId
+                pending.countDown()
+            }
+            client.onDisplaySelectionConfirmed = { selectedId ->
+                confirmedEvents += selectedId
+                confirmed.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            assertTrue(serverReady.await(8, TimeUnit.SECONDS))
+            assertTrue(clientReady.await(8, TimeUnit.SECONDS))
+            assertTrue(client.selectDisplay("display-2"))
+            assertTrue(selectionRequested.await(8, TimeUnit.SECONDS))
+            assertTrue(pending.await(8, TimeUnit.SECONDS))
+            assertEquals(listOf("display-main" to "display-2"), pendingEvents.toList())
+            assertFalse(confirmed.await(250, TimeUnit.MILLISECONDS))
+
+            allowConfirmation.countDown()
+            assertTrue(switchConfigurationRequested.await(8, TimeUnit.SECONDS))
+            assertFalse(confirmed.await(250, TimeUnit.MILLISECONDS))
+            allowDecoderCommit.countDown()
+            assertTrue(confirmed.await(8, TimeUnit.SECONDS))
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertEquals(listOf("display-2"), confirmedEvents.toList())
+        }
+    }
+
+    @Test
+    fun runtimeDisplaySelectionDecoderRejectionReportsRollback() = runBlocking {
+        ServerSocket(0).use { server ->
+            val serverReady = CountDownLatch(1)
+            val clientReady = CountDownLatch(1)
+            val selectionRequested = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY),
+                            displayList = twoDisplayList(3),
+                        )
+                        serverReady.countDown()
+                        val request = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.START_DISPLAY_REQUEST, request.payloadCase)
+                        assertEquals("display-2", request.startDisplayRequest.sourceDisplayId)
+                        selectionRequested.countDown()
+                        write(peer, startDisplayFor(id = 6, displayId = "display-2"))
+                        write(peer, videoConfig(id = 7, rotation = 0, configEpoch = 4))
+                        assertFalse(readEnvelope(peer).videoConfigResult.accepted)
+                    }
+                }
+            val pending = CountDownLatch(1)
+            val rejected = CountDownLatch(1)
+            val rejectedEvents = Collections.synchronizedList(mutableListOf<Triple<String, String, String>>())
+            val failures = Collections.synchronizedList(mutableListOf<SessionFailureKind>())
+            val configurationCount = AtomicInteger(0)
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.onVideoConfiguration = { _, commit ->
+                if (configurationCount.incrementAndGet() == 1) {
+                    commit.accept()
+                } else {
+                    assertTrue(commit.tryPublish { true })
+                    commit.complete(StreamVideoConfigurationDecision.reject("decoder_rejected"))
+                }
+            }
+            client.onConnectionStatus = { connected -> if (connected) clientReady.countDown() }
+            client.onDisplaySelectionPending = { _, _ -> pending.countDown() }
+            client.onDisplaySelectionRejected = { selectedId, rejectedId, reason ->
+                rejectedEvents += Triple(selectedId, rejectedId, reason)
+                rejected.countDown()
+            }
+            client.onSessionEnded = { failure -> failures += failure.kind }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            assertTrue(serverReady.await(8, TimeUnit.SECONDS))
+            assertTrue(clientReady.await(8, TimeUnit.SECONDS))
+            assertTrue(client.selectDisplay("display-2"))
+            assertTrue(selectionRequested.await(8, TimeUnit.SECONDS))
+            assertTrue(pending.await(8, TimeUnit.SECONDS))
+            assertTrue(rejected.await(8, TimeUnit.SECONDS))
+
+            withTimeout(8_000) { serverJob.await() }
+            withTimeout(8_000) { clientJob.await() }
+            assertEquals(listOf(Triple("display-main", "display-2", "decoder_rejected")), rejectedEvents.toList())
+            assertEquals(listOf(SessionFailureKind.CODEC_CONFIGURATION), failures.toList())
+        }
+    }
+
+    @Test
+    fun runtimeDisplaySelectionRejectionReportsRollbackWithoutDisconnecting() = runBlocking {
+        ServerSocket(0).use { server ->
+            val serverReady = CountDownLatch(1)
+            val clientReady = CountDownLatch(1)
+            val selectionRequested = CountDownLatch(1)
+            val serverJob =
+                async(Dispatchers.IO) {
+                    server.accept().use { peer ->
+                        completeHandshake(
+                            peer,
+                            initialRotation = 0,
+                            hostCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY),
+                            negotiatedCapabilities = listOf(Capability.CAPABILITY_TOUCH, Capability.CAPABILITY_MULTI_DISPLAY),
+                            displayList = twoDisplayList(3),
+                        )
+                        serverReady.countDown()
+                        val request = readEnvelope(peer)
+                        assertEquals(Envelope.PayloadCase.START_DISPLAY_REQUEST, request.payloadCase)
+                        assertEquals("display-2", request.startDisplayRequest.sourceDisplayId)
+                        selectionRequested.countDown()
+                        write(
+                            peer,
+                            base(6)
+                                .setStartDisplayResponse(
+                                    StartDisplayResponse
+                                        .newBuilder()
+                                        .setAccepted(false)
+                                        .setRejectionReason("display_unavailable"),
+                                ).build(),
+                        )
+                        peer.soTimeout = 300
+                        assertNull(readEnvelopeOrNull(peer))
+                        write(peer, disconnect(id = 7))
+                    }
+                }
+            val rejected = CountDownLatch(1)
+            val ended = CountDownLatch(1)
+            val rejectedEvents = Collections.synchronizedList(mutableListOf<Triple<String, String, String>>())
+            val failures = Collections.synchronizedList(mutableListOf<SessionFailureKind>())
+            val client = StreamClient("127.0.0.1", server.localPort)
+            client.onVideoConfiguration = { _, commit -> commit.accept() }
+            client.onConnectionStatus = { connected -> if (connected) clientReady.countDown() }
+            client.onDisplaySelectionRejected = { selectedId, rejectedId, reason ->
+                rejectedEvents += Triple(selectedId, rejectedId, reason)
+                rejected.countDown()
+            }
+            client.onSessionEnded = { failure ->
+                failures += failure.kind
+                ended.countDown()
+            }
+            val clientJob = async(Dispatchers.IO) { runCatching { client.connect() } }
+
+            assertTrue(serverReady.await(8, TimeUnit.SECONDS))
+            assertTrue(clientReady.await(8, TimeUnit.SECONDS))
+            assertTrue(client.selectDisplay("display-2"))
+            assertTrue(selectionRequested.await(8, TimeUnit.SECONDS))
+            assertTrue(rejected.await(8, TimeUnit.SECONDS))
+
+            withTimeout(8_000) { serverJob.await() }
+            assertTrue(ended.await(8, TimeUnit.SECONDS))
+            withTimeout(8_000) { clientJob.await() }
+            assertEquals(listOf(Triple("display-main", "display-2", "display_unavailable")), rejectedEvents.toList())
+            assertEquals(listOf(SessionFailureKind.SERVER_SHUTDOWN), failures.toList())
+        }
+    }
+
+    @Test
     fun displayOnlyHostCompletesStreamingAndTouchStaysOffWire() = runBlocking {
         ServerSocket(0).use { server ->
             val streaming = CountDownLatch(1)
@@ -1244,6 +1452,7 @@ class StreamClientProtocolV1IntegrationTest {
         negotiatedCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
         expectedClientCapabilities: List<Capability> = DEFAULT_CLIENT_CAPABILITIES,
         maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
+        displayList: Envelope = displayList(3),
         onClientHello: (dev.vibescreen.protocol.v1.ClientHello) -> Unit = {},
     ) {
         beginHandshake(
@@ -1253,6 +1462,7 @@ class StreamClientProtocolV1IntegrationTest {
             negotiatedCapabilities,
             expectedClientCapabilities,
             maxClipboardBytes,
+            displayList,
             onClientHello,
         )
         val result = readEnvelope(peer)
@@ -1268,6 +1478,7 @@ class StreamClientProtocolV1IntegrationTest {
         negotiatedCapabilities: List<Capability> = listOf(Capability.CAPABILITY_TOUCH),
         expectedClientCapabilities: List<Capability> = DEFAULT_CLIENT_CAPABILITIES,
         maxClipboardBytes: Long = TEST_MAX_CLIPBOARD_BYTES,
+        displayList: Envelope = displayList(3),
         onClientHello: (dev.vibescreen.protocol.v1.ClientHello) -> Unit = {},
     ) {
         assertEquals(PROTOCOL_UPGRADE_BYTE, peer.getInputStream().read())
@@ -1282,7 +1493,7 @@ class StreamClientProtocolV1IntegrationTest {
         write(peer, sessionAccepted(2, negotiatedCapabilities, maxClipboardBytes = maxClipboardBytes))
         assertEquals(2, clientHello.clientHello.videoDecodeCapabilitiesCount)
         assertEquals(Envelope.PayloadCase.LIST_DISPLAYS_REQUEST, readEnvelope(peer).payloadCase)
-        write(peer, displayList(3))
+        write(peer, displayList)
         assertEquals(Envelope.PayloadCase.START_DISPLAY_REQUEST, readEnvelope(peer).payloadCase)
         write(peer, startDisplay(4))
         write(peer, videoConfig(5, initialRotation))
@@ -1491,9 +1702,49 @@ class StreamClientProtocolV1IntegrationTest {
             ListDisplaysResponse.newBuilder().addDisplays(display()),
         ).build()
 
+    private fun twoDisplayList(id: Long): Envelope =
+        base(id).setListDisplaysResponse(
+            ListDisplaysResponse
+                .newBuilder()
+                .addDisplays(
+                    display(
+                        displayId = "display-main",
+                        name = "Built-in",
+                        logicalWidth = 1920,
+                        logicalHeight = 1080,
+                    ),
+                ).addDisplays(
+                    display(
+                        displayId = "display-2",
+                        name = "Side",
+                        logicalWidth = 2560,
+                        logicalHeight = 1440,
+                    ),
+                ),
+        ).build()
+
     private fun startDisplay(id: Long): Envelope =
         base(id).setStartDisplayResponse(
             StartDisplayResponse.newBuilder().setAccepted(true).setDisplay(display()).setStreamId(42),
+        ).build()
+
+    private fun startDisplayFor(
+        id: Long,
+        displayId: String,
+    ): Envelope =
+        base(id).setStartDisplayResponse(
+            StartDisplayResponse
+                .newBuilder()
+                .setAccepted(true)
+                .setDisplay(
+                    display(
+                        displayId = displayId,
+                        name = displayId,
+                        logicalWidth = 2560,
+                        logicalHeight = 1440,
+                    ),
+                )
+                .setStreamId(42),
         ).build()
 
     private fun videoConfig(
@@ -1606,9 +1857,12 @@ class StreamClientProtocolV1IntegrationTest {
     private fun display(
         logicalWidth: Int = 1920,
         logicalHeight: Int = 1080,
+        displayId: String = "display-main",
+        name: String = "",
     ): DisplayDescriptor =
         DisplayDescriptor.newBuilder()
-            .setDisplayId("display-main")
+            .setDisplayId(displayId)
+            .setName(name)
             .setLogicalSize(Dimensions.newBuilder().setWidth(logicalWidth).setHeight(logicalHeight))
             .build()
 

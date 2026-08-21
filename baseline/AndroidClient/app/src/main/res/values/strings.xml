@@ -102,6 +102,12 @@
     <string name="display_option_primary">Primary</string>
     <!-- Accessibility label for the dropdown selector; %1$s is the active display name. -->
     <string name="control_displays_current">Choose display, currently %1$s</string>
+    <!-- Compact label while the host is applying a requested display switch; %1$s is the requested display name. -->
+    <string name="display_capsule_switching">Switching to %1$s…</string>
+    <!-- Accessibility label while waiting for host confirmation; %1$s is the active display, %2$s is the requested display. -->
+    <string name="control_displays_switching">Choose display unavailable, currently %1$s, switching to %2$s</string>
+    <string name="display_switch_request_sent">Switching display…</string>
+    <string name="display_switch_request_failed">Couldn’t request that display. Still on %1$s.</string>
     <!-- Fallback capsule label before any display name is known. -->
     <string name="display_capsule_placeholder">Display</string>
     <!-- Host window-action control (move focused window to this device / return moved windows). -->
