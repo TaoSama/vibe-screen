@@ -69,6 +69,45 @@ shaping. Any later `pf`, Network Link Conditioner, or remote Linux `tc` driver
 must default to dry-run, require an explicit interface/target, and restore the
 previous state in a `finally`/trap path.
 
+## Public Internet remote TURN evidence
+
+Use the public Internet targets only with production deployment inputs. They
+fail closed when the environment contains only local loopback services, checked-in
+examples, missing TLS material, missing runtime secrets, or no independently
+reachable remote TURN peer.
+
+```bash
+make phase3-public-internet-preflight
+make phase3-remote-turn-verifier
+make phase3-internet-manifest
+make phase3-internet-soak
+```
+
+`phase3-public-internet-preflight` writes `preflight.json`. It validates the
+ignored production relay config, production coturn policy, file-backed TURN REST
+secret, TLS certificate chain, TLS private key, public coturn external address,
+and Authority plus relay readiness. A missing prerequisite is a BLOCKED result.
+Set `PHASE3_PUBLIC_INTERNET_ALLOW_BLOCKED=1` only when intentionally archiving
+that blocked state.
+
+`phase3-remote-turn-verifier` requires the preflight to pass. It asks the relay
+control plane for a short-lived credential, rejects local or placeholder TURN
+hosts, runs `turnutils_uclient` against a caller-provided public peer, and
+requires positive sent and received relay message counts. The report stores
+hashes for endpoint, peer, session, device, and credential identities.
+
+`phase3-internet-manifest` records the planned public evidence boundary and
+required artifacts without raw endpoints or device identifiers. Use a stable
+Authority source identifier through `PHASE3_PUBLIC_INTERNET_AUTHORITY_SOURCE_ID`;
+do not reuse a per-session TURN allocation ID for that field.
+
+`phase3-internet-soak` requires a passed preflight, passed remote TURN verifier,
+and private two-hour summary. The private summary must include both direct and
+relay route samples, at least one network handoff, `nonce_reuse_detected` set to
+false, and RSS, queue, loss, RTT, FPS, bitrate, relay-byte, ICE-restart, drop,
+thermal, and battery metric families. Without those inputs it writes only
+BLOCKED evidence when explicitly allowed.
+
 ## Security coverage boundary
 
 The vectors exercise duplicate control packets, independent control/media

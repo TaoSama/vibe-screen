@@ -505,6 +505,14 @@ public Internet, real remote TURN (local loopback and forced local coturn are
 not public-Internet or real-deployment evidence), real
 ScreenCaptureKit-to-Android device decoder continuity, real network
 fluctuation, network handoff, and soak.
+Fail-closed public-Internet evidence tooling is now present: the remote TURN
+preflight requires production relay configuration, PostgreSQL-backed Authority
+admission, public TURN DNS, TURN TLS, runtime secrets, and live readiness
+probes; the remote TURN verifier requires a passed preflight plus relayed packet
+exchange through a real remote peer; the Internet soak runner requires both of
+those reports and a private two-hour mixed-route summary. Missing production
+deployment material therefore produces BLOCKED evidence rather than reusing the
+local loopback or forced-local-coturn paths.
 
 Reproduce the local Mac integration checks with:
 
@@ -540,6 +548,11 @@ reachable-source record retains raw host/device/UI, service and per-ADB
 lease-gate evidence with a privacy scan, without extending its result to current
 code. Dated local readiness evidence is recorded under
 [`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-20-local-phase3-readiness/README.md).
+The current workspace public-Internet/remote-TURN preflight is recorded as
+BLOCKED under
+[`docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-public-internet-remote-turn-blocked`](docs/changes/2026-08-04-phase-3-secure-internet/evidence/2026-08-21-public-internet-remote-turn-blocked/README.md)
+because the public deployment config, TLS material, runtime secrets, readiness
+endpoints, remote TURN peer, and private soak summary are unavailable here.
 Automatic account/session-authority issuance, real
 encoded ScreenCaptureKit output through the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
