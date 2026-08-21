@@ -325,6 +325,41 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun internetMediaAssemblerPreservesAnnexBHevcFramesForDecoderCallback() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks = ProductCallbacks()
+        val session = session(peer, monitor, callbacks)
+        activateWithVideo(session, peer, monitor)
+
+        val keyframePayload = byteArrayOf(0, 0, 0, 1, 0x40, 0, 0, 0, 1, 0x26, 0x01)
+        val deltaPayload = byteArrayOf(0, 0, 0, 1, 0x02, 0x7f, 0x55)
+
+        peer.media(media(frameId = 100, keyframe = true, payload = keyframePayload))
+        peer.media(media(frameId = 101, keyframe = false, payload = deltaPayload))
+
+        assertEquals(2, callbacks.frames.size)
+        callbacks.frames[0].also { frame ->
+            assertTrue(frame.keyframe)
+            assertEquals(ProductVideoCodec.HEVC, frame.codec)
+            assertEquals(7L, frame.sessionEpoch)
+            assertEquals(3L, frame.configEpoch)
+            assertEquals(5L, frame.streamId)
+            assertEquals(10_000L, frame.captureTimestampNs)
+            assertArrayEquals(keyframePayload, frame.payload)
+        }
+        callbacks.frames[1].also { frame ->
+            assertFalse(frame.keyframe)
+            assertEquals(ProductVideoCodec.HEVC, frame.codec)
+            assertEquals(7L, frame.sessionEpoch)
+            assertEquals(3L, frame.configEpoch)
+            assertEquals(5L, frame.streamId)
+            assertEquals(10_100L, frame.captureTimestampNs)
+            assertArrayEquals(deltaPayload, frame.payload)
+        }
+    }
+
+    @Test
     fun controllerOptInNegotiatesTheCapabilityAdvertisedByThisCodecInstance() {
         val peer = ProductFakePeerEngine()
         val callbacks = ProductCallbacks()

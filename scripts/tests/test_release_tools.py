@@ -863,8 +863,9 @@ class PrepareReleaseTests(unittest.TestCase):
             "phase3-local-product-e2e:",
             "phase3-local-product-e2e is deprecated; use "
             "phase3-local-synthetic-product-e2e",
-            "synthetic Protocol v1 harness only; no Android device or "
-            "ScreenCaptureKit capture",
+            "synthetic Protocol v1 harness with real VideoToolbox HEVC "
+            "payloads only; no Android device, ScreenCaptureKit capture, "
+            "or MediaCodec decode",
             "$(MAKE) phase3-local-synthetic-product-e2e",
             f"PHASE3_COTURN_COMPATIBLE_VERSIONS := {makefile_coturn_versions}",
             "--mode direct --slice product",
@@ -873,6 +874,7 @@ class PrepareReleaseTests(unittest.TestCase):
             '--output "$(PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR)"',
             "@jq -e 'select(",
             '.product_session.device == "synthetic Protocol v1 harness"',
+            '.product_session.media_source == "videotoolbox-hevc"',
             ".product_session.capture_or_stream_server_started == false",
             '.coturn.forced_libwebrtc_relay == "pass"',
         ):
