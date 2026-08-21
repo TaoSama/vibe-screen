@@ -301,7 +301,7 @@ class ControlBarLayoutPolicyTest {
                 clipboardVisible = true,
                 fileTransferVisible = true,
             )
-        assertEquals(48, withFileTransfer - withoutFileTransfer)
+        assertEquals(geometry.buttonSizePx + geometry.actionMarginPx * 2, withFileTransfer - withoutFileTransfer)
         assertEquals(
             ControlBarLayoutPolicy.Mode.COMPACT,
             ControlBarLayoutPolicy.mode(
