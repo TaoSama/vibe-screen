@@ -27,3 +27,21 @@ jobs:
         run: pnpm --dir apps/harmony install --frozen-lockfile
       - name: Run canonical portable verification
         run: pnpm --dir apps/harmony verify
+      - name: Validate HarmonyOS readiness and device-gate tooling contracts
+        run: |
+          set +e
+          python3 scripts/harmony_readiness.py --output /tmp/harmony-readiness.json
+          status=$?
+          set -e
+          test "$status" = "2"
+          python3 - <<'PY'
+          import json
+          with open("/tmp/harmony-readiness.json", encoding="utf-8") as handle:
+              report = json.load(handle)
+          assert report["schema_version"] == "vibescreen.evidence/v1"
+          assert report["kind"] == "harmony_readiness_preflight"
+          assert report["verdict"] == "blocked"
+          assert report["blocking_reasons"]
+          PY
+          python3 scripts/harmony_device_gate.py --template > /tmp/harmony-device-gates.json
+          python3 scripts/harmony_device_gate.py --allow-blocked /tmp/harmony-device-gates.json
