@@ -1,8 +1,9 @@
 # 2026-08-21 Nubia P0110 root USB smoke
 
 This evidence record covers a short root-orchestrated USB smoke on the connected
-Nubia P0110 (pacific) device, serial EP0110PZ0B9110300B, running Android 16 /
-SDK 36. It is P0110/pacific evidence only; it is not Xiaomi 13/fuxi evidence.
+Nubia P0110 (pacific) device, running Android 16 / SDK 36. It is
+P0110/pacific evidence only; it is not Xiaomi 13/fuxi evidence. The exact
+device serial is retained in the raw evidence files.
 
 ## Verdict
 
@@ -20,14 +21,14 @@ stylus, controller runtime, LAN, Internet, login-startup, or headless Mac gates.
 
 ## Recorded facts
 
-- Device identity: nubia P0110, codename/product pacific, Android 16, SDK 36,
-  serial EP0110PZ0B9110300B.
+- Device identity: nubia P0110, codename/product pacific, Android 16, SDK 36;
+  the exact serial is retained in the raw evidence files.
 - ADB reverse: UsbFfs tcp:54321 tcp:54321 before the run.
 - Host listener: /Applications/Vibe Screen.app PID 92943 listening on
   127.0.0.1:54321 before the client launch.
-- Android launch: adb -s EP0110PZ0B9110300B shell am start -n
-  dev.telemachus.display/.MainActivity started the Activity; app PID 22447 was
-  observed.
+- Android launch: the documented command for
+  `dev.telemachus.display/.MainActivity` started the Activity; app PID 22447
+  was observed.
 - USB stream connection: established_after_5s.txt through
   established_after_60s.txt all show adb PID 11477 connected to Host PID 92943
   over 127.0.0.1:54321.
@@ -79,13 +80,17 @@ stylus, controller runtime, LAN, Internet, login-startup, or headless Mac gates.
 
 Use the same device identity and keep every adb command explicit:
 
-    export DEVICE_SERIAL=EP0110PZ0B9110300B
+    set -euo pipefail
+    export DEVICE_SERIAL=<DEVICE_SERIAL>
+    HOST_PID="$(lsof -nP -iTCP@127.0.0.1:54321 -sTCP:LISTEN -t | head -1)"
+    test -n "$HOST_PID"
+    lsof -nP -a -p "$HOST_PID" -iTCP@127.0.0.1:54321 -sTCP:LISTEN
     adb -s "$DEVICE_SERIAL" reverse tcp:54321 tcp:54321
-    lsof -nP -iTCP@127.0.0.1:54321 -sTCP:LISTEN
+    adb -s "$DEVICE_SERIAL" logcat -c
     adb -s "$DEVICE_SERIAL" shell am start -n dev.telemachus.display/.MainActivity
     for second in 5 10 15 20 25 30 35 40 45 50 55 60; do
       sleep 5
-      lsof -nP -iTCP:54321 | grep ESTABLISHED
+      lsof -nP -a -p "$HOST_PID" -iTCP@127.0.0.1:54321 -sTCP:ESTABLISHED
     done
     adb -s "$DEVICE_SERIAL" logcat -d | grep -E 'VibeScreenTelemetry|Decode stats|AndroidRuntime|FATAL'
 

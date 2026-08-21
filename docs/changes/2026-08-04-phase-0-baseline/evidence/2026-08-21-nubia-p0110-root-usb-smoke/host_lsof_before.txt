@@ -1,4 +1,4 @@
-$ bash -lc lsof -nP -iTCP:54321 | head -80
+$ bash -lc 'lsof -nP -iTCP:54321 | head -80'
 COMMAND     PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
 Vibe\x20S 92943 luwentao    7u  IPv4 0xae6002c4c974911a      0t0  TCP 127.0.0.1:54321 (LISTEN)
 Vibe\x20S 92943 luwentao    8u  IPv4 0x76b74def0ce56e3c      0t0  TCP 127.0.0.1:54321->127.0.0.1:57649 (CLOSED)

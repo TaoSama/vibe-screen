@@ -1,8 +1,9 @@
 # 2026-08-21 Nubia P0110 USB smoke readiness
 
 This record covers a readiness attempt for the connected Nubia P0110
-(pacific) device, serial EP0110PZ0B9110300B, running Android 16 / SDK 36. It
-is P0110/pacific evidence only; it is not Xiaomi 13/fuxi evidence.
+(pacific) device, running Android 16 / SDK 36. It is P0110/pacific evidence
+only; it is not Xiaomi 13/fuxi evidence. The exact device serial is retained
+in the raw evidence files.
 
 ## Verdict
 
@@ -145,12 +146,19 @@ UI/lifecycle caveats.
 Use the same device identity and serial, and keep every adb command explicit:
 
     cd <WORKTREE_ROOT>
+    set -euo pipefail
     export DEVICE_SERIAL=<DEVICE_SERIAL>
     security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
     python3 scripts/macos_dev_host.py preflight --install-path "/Applications/Vibe Screen.app"
     osascript -e 'quit app "Vibe Screen"' || true
     open "/Applications/Vibe Screen.app"
-    timeout 30 bash -lc 'until lsof -nP -iTCP@127.0.0.1:54321 -sTCP:LISTEN; do sleep 1; done'
+    for attempt in $(seq 1 30); do
+      if lsof -nP -iTCP@127.0.0.1:54321 -sTCP:LISTEN; then
+        break
+      fi
+      sleep 1
+    done
+    lsof -nP -iTCP@127.0.0.1:54321 -sTCP:LISTEN
     adb -s "$DEVICE_SERIAL" reverse tcp:54321 tcp:54321
     adb -s "$DEVICE_SERIAL" shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true
 
