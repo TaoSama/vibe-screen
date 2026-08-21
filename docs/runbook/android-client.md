@@ -149,7 +149,10 @@ write a blocked summary instead of reclassifying ordinary reconnect logs:
 
 ```bash
 make evidence-reconnect-timing-blocked \
-  EVIDENCE_DIR="$EVIDENCE_DIR"
+  EVIDENCE_DIR="$EVIDENCE_DIR" \
+  RECONNECT_TIMING_BLOCKER_ARGS='--blocker "Vibe Screen Dev signing identity is unavailable in the current keychain" --blocker "Host is not listening on 127.0.0.1:54321 in this worktree"' \
+  RECONNECT_TIMING_ARTIFACT_ARGS='--artifact "docs/changes/<change>/evidence/<run>/host-54321-listener.txt" --artifact "docs/changes/<change>/evidence/<run>/macos-dev-host-preflight.txt"' \
+  RECONNECT_TIMING_NOTES_ARG='--notes "Blocked readiness record only; no real Protocol v1 reconnect timing attempt was run."'
 ```
 
 ### Rotated host-display acceptance

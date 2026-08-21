@@ -23,6 +23,10 @@ PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT ?=
 IOS_ACCEPTANCE_JSON ?= $(EVIDENCE_DIR)/acceptance.json
 IOS_ACCEPTANCE_GATE_JSON ?= $(dir $(IOS_ACCEPTANCE_JSON))ios-device-acceptance-gate.json
 TOUCH_RERUN_EXPECTED_HOST_SHA256 ?=
+RECONNECT_TIMING_TARGET_DEVICE ?= Nubia P0110 / pacific / Android 16 / EP0110PZ0B9110300B
+RECONNECT_TIMING_BLOCKER_ARGS ?= --blocker "Host/app prerequisites prevented a real Protocol v1 reconnect timing run"
+RECONNECT_TIMING_ARTIFACT_ARGS ?=
+RECONNECT_TIMING_NOTES_ARG ?=
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
@@ -150,8 +154,10 @@ evidence-reconnect-timing-blocked:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools \
 		python3 -m vibescreen_evidence.reconnect_timing \
 		--blocked \
-		--target-device "Nubia P0110 / pacific / Android 16 / EP0110PZ0B9110300B" \
-		--blocker "Host/app prerequisites prevented a real Protocol v1 reconnect timing run" \
+		--target-device "$(RECONNECT_TIMING_TARGET_DEVICE)" \
+		$(RECONNECT_TIMING_BLOCKER_ARGS) \
+		$(RECONNECT_TIMING_ARTIFACT_ARGS) \
+		$(RECONNECT_TIMING_NOTES_ARG) \
 		--output $(EVIDENCE_DIR)/reconnect-timing-summary.json || test $$? -eq 3
 
 harmony-readiness:

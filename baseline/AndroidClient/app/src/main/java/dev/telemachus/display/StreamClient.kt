@@ -1185,7 +1185,20 @@ class StreamClient(
                         mapOf(
                             "reason" to mediaDisposition.name.lowercase(),
                             "config_epoch" to payload.header.configEpoch,
-                            "session_epoch" to connectionEpoch,
+                            "session_epoch" to payload.header.sessionEpoch,
+                        ),
+                    )
+                    return
+                }
+                val frameEpoch = connectionEpoch
+                if (!isCurrentProtocolSession(session, frameEpoch)) {
+                    releaseBuffer(payload.annexB)
+                    emitTelemetry(
+                        "frame_dropped",
+                        mapOf(
+                            "reason" to "stale_session_epoch",
+                            "frame_epoch" to frameEpoch,
+                            "current_epoch" to SESSION_EPOCHS.currentEpoch(),
                         ),
                     )
                     return
@@ -1196,7 +1209,7 @@ class StreamClient(
                     frameSize = payload.annexB.size,
                     isKeyframe = payload.header.keyframe,
                     hasMetadata = true,
-                    sessionEpoch = connectionEpoch,
+                    sessionEpoch = frameEpoch,
                     configEpoch = payload.header.configEpoch,
                 )
                 val callback = onFrameReceived
@@ -1208,7 +1221,7 @@ class StreamClient(
                         payload.annexB.size,
                         receiveTimestamp,
                         payload.header.keyframe,
-                        connectionEpoch,
+                        frameEpoch,
                         payload.header.configEpoch,
                     )
                 }

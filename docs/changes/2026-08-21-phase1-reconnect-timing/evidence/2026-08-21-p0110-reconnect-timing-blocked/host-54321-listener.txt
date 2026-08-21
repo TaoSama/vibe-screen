@@ -1,1 +1,6 @@
-2026-08-20T21:21:19Z
+timestamp=2026-08-21T04:09:30Z
+command=lsof -nP -iTCP:54321 -sTCP:LISTEN
+exit_status=1
+stdout=
+stderr=
+result=no process was listening on TCP 54321 in this worktree

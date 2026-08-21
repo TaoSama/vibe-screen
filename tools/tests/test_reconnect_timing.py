@@ -33,7 +33,9 @@ def complete_attempt(disruption: str = DISRUPTION_CLIENT_KILL, transport: str = 
             "disruption_started_ms": 10_000,
             "protocol_v1_accepted_ms": 10_600,
             "first_frame_ms": 10_780,
+            "first_frame_session_epoch": 1,
             "first_output_frame_ms": 10_830,
+            "first_output_frame_session_epoch": 1,
         },
     }
     if disruption == DISRUPTION_ADB_REVERSE:
@@ -108,6 +110,29 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
         self.assertEqual(summary["verdict"], "insufficient")
         self.assertIn("missing first_output_frame_ms", summary["attempts"][0]["reasons"])
 
+    def test_missing_session_epoch_markers_are_insufficient(self) -> None:
+        attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
+        del attempt["events"]["first_frame_session_epoch"]
+        del attempt["events"]["first_output_frame_session_epoch"]
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn("missing first_frame_session_epoch", summary["attempts"][0]["reasons"])
+        self.assertIn("missing first_output_frame_session_epoch", summary["attempts"][0]["reasons"])
+
+    def test_mismatched_session_epoch_markers_are_insufficient(self) -> None:
+        attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
+        attempt["events"]["first_output_frame_session_epoch"] = 2
+
+        summary = summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+        self.assertEqual(summary["verdict"], "insufficient")
+        self.assertIn(
+            "first_output_frame_session_epoch does not match android_session_epoch",
+            summary["attempts"][0]["reasons"],
+        )
+
     def test_slow_first_output_frame_fails(self) -> None:
         attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
         attempt["events"]["first_output_frame_ms"] = 13_100
@@ -134,6 +159,14 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
 
         self.assertEqual(summary["verdict"], "insufficient")
         self.assertIn("adb_reverse_restored", summary["attempts"][0]["reasons"][0])
+
+    def test_adb_reverse_attempt_requires_usb_transport(self) -> None:
+        with self.assertRaisesRegex(ReconnectTimingEvidenceError, "requires usb transport"):
+            summarize({"attempts": [complete_attempt(DISRUPTION_ADB_REVERSE, "lan")]})
+
+    def test_lan_attempt_requires_lan_transport(self) -> None:
+        with self.assertRaisesRegex(ReconnectTimingEvidenceError, "requires lan transport"):
+            summarize({"attempts": [complete_attempt(DISRUPTION_LAN_NETWORK, "usb")]})
 
     def test_lan_attempt_blocks_without_secure_record_markers(self) -> None:
         attempt = complete_attempt(DISRUPTION_LAN_NETWORK, "lan")
@@ -217,8 +250,8 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
                         "[10600] SC: Protocol v1 upgrade accepted",
                         '[10600] VibeScreenTelemetry: {"event":"connection_opened","session_epoch":1}',
                         "[10700] MA: onVideoConfiguration: 2000x1200 @ 0° epoch=1",
-                        "[10800] VD: First frame: size=1, keyframe=true",
-                        "[10850] VD: First output frame! size=1, flags=1",
+                        "[10800] VD: First frame: size=1, keyframe=true, session_epoch=1, config_epoch=1",
+                        "[10850] VD: First output frame! size=1, flags=1, session_epoch=1",
                     ]
                 ),
                 encoding="utf-8",
@@ -249,6 +282,17 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
     def test_rejects_unknown_disruption(self) -> None:
         with self.assertRaisesRegex(ReconnectTimingEvidenceError, "attempt disruption"):
             summarize({"attempts": [{"disruption": "ordinary-log", "transport": "usb"}]})
+
+    def test_rejects_boolean_timestamps(self) -> None:
+        attempt = complete_attempt(DISRUPTION_CLIENT_KILL, "usb")
+        attempt["events"]["first_output_frame_ms"] = True
+
+        with self.assertRaisesRegex(ReconnectTimingEvidenceError, "first_output_frame_ms"):
+            summarize({"attempts": [attempt]}, required_disruptions=[DISRUPTION_CLIENT_KILL])
+
+    def test_rejects_non_finite_threshold(self) -> None:
+        with self.assertRaisesRegex(ReconnectTimingEvidenceError, "threshold_ms"):
+            summarize({"attempts": [complete_attempt()]}, threshold_ms=float("nan"))
 
 
 class ReconnectTimingCliTest(unittest.TestCase):

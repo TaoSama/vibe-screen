@@ -149,6 +149,75 @@ class StreamClientProtocolV1IntegrationTest {
     }
 
     @Test
+    fun staleProtocolV1FrameAfterNewSessionIsDroppedBeforeFirstFrameTelemetry() = runBlocking {
+        ServerSocket(0).use { oldServer ->
+            ServerSocket(0).use { newServer ->
+                val oldReadyForFrame = CountDownLatch(1)
+                val sendOldFrame = CountDownLatch(1)
+                val oldFrameDropped = CountDownLatch(1)
+                val oldFrameDelivered = CountDownLatch(1)
+                val newStreaming = CountDownLatch(1)
+                val telemetryEvents = Collections.synchronizedList(mutableListOf<Pair<String, Map<String, Any?>>>() )
+                val oldServerJob =
+                    async(Dispatchers.IO) {
+                        oldServer.accept().use { peer ->
+                            completeHandshake(peer, initialRotation = 0, videoConfigEpoch = 3)
+                            oldReadyForFrame.countDown()
+                            assertTrue(sendOldFrame.await(8, TimeUnit.SECONDS))
+                            writeVideo(peer, configEpoch = 3, frameId = 1, keyframe = true)
+                            peer.soTimeout = 300
+                            readEnvelopeOrNull(peer)
+                        }
+                    }
+                val newServerJob =
+                    async(Dispatchers.IO) {
+                        newServer.accept().use { peer ->
+                            completeHandshake(peer, initialRotation = 0, videoConfigEpoch = 4)
+                            newStreaming.countDown()
+                            write(peer, disconnect(6))
+                        }
+                    }
+                val oldClient = StreamClient("127.0.0.1", oldServer.localPort)
+                oldClient.onTelemetryEvent = { event, fields ->
+                    telemetryEvents += event to fields
+                    if (event == "frame_dropped" && fields["reason"] == "stale_session_epoch") {
+                        oldFrameDropped.countDown()
+                    }
+                }
+                oldClient.onVideoConfiguration = { _, commit -> commit.accept() }
+                oldClient.onFrameReceived = { buffer, _, _, _, _, _ ->
+                    oldClient.releaseBuffer(buffer)
+                    oldFrameDelivered.countDown()
+                }
+                val oldClientJob = async(Dispatchers.IO) { runCatching { oldClient.connect() } }
+
+                assertTrue(oldReadyForFrame.await(8, TimeUnit.SECONDS))
+                val newClient = StreamClient("127.0.0.1", newServer.localPort)
+                newClient.acceptVideoConfigurations()
+                val newClientJob = async(Dispatchers.IO) { runCatching { newClient.connect() } }
+                assertTrue(newStreaming.await(8, TimeUnit.SECONDS))
+
+                sendOldFrame.countDown()
+                assertTrue(oldFrameDropped.await(8, TimeUnit.SECONDS))
+                assertFalse(oldFrameDelivered.await(250, TimeUnit.MILLISECONDS))
+
+                oldClient.disconnect()
+                newClient.disconnect()
+                withTimeout(8_000) { oldServerJob.await() }
+                withTimeout(8_000) { newServerJob.await() }
+                withTimeout(8_000) { oldClientJob.await() }
+                withTimeout(8_000) { newClientJob.await() }
+
+                val firstFrameEvents =
+                    synchronized(telemetryEvents) {
+                        telemetryEvents.filter { it.first == "first_frame_received" }
+                    }
+                assertTrue(firstFrameEvents.none { it.second["config_epoch"] == 3L })
+            }
+        }
+    }
+
+    @Test
     fun disconnectBeforeDecoderCompletionSendsNoAck() = runBlocking {
         ServerSocket(0).use { server ->
             val configurationRequested = CountDownLatch(1)
