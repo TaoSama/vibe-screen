@@ -25,8 +25,14 @@ PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
 PHASE3_TURNSERVER ?= $(shell command -v turnserver 2>/dev/null)
 PHASE3_WEBRTC_E2E_SCHEMA := dev.vibescreen.phase3-webrtc-e2e/v1
 PHASE3_COTURN_COMPATIBLE_VERSIONS := 4.15.0 4.16.0 4.17.0
+HARMONY_HDC_TARGET ?=
+HARMONY_HAP ?=
+HARMONY_SHA256SUMS ?=
+HARMONY_SIGNATURE_CERTIFICATE_SHA256 ?=
+HARMONY_HOST_COMMIT ?=
+HARMONY_HOST_BUILD_SHA256 ?=
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-readiness harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -130,6 +136,17 @@ evidence-touch-rerun-preflight: require-evidence-serial
 		--serial $(EVIDENCE_SERIAL) \
 		$(if $(strip $(TOUCH_RERUN_EXPECTED_HOST_SHA256)),--expected-host-sha256 $(TOUCH_RERUN_EXPECTED_HOST_SHA256),) \
 		--output $(EVIDENCE_DIR)/touch-rerun-preflight.json
+
+harmony-readiness:
+	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS readiness evidence directory" >&2; exit 2)
+	mkdir -p $(EVIDENCE_DIR)
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/harmony_readiness.py --output "$(EVIDENCE_DIR)/harmony-readiness.json" \
+		$(if $(strip $(HARMONY_HDC_TARGET)),--target "$(HARMONY_HDC_TARGET)",) \
+		$(if $(strip $(HARMONY_HAP)),--hap "$(HARMONY_HAP)",) \
+		$(if $(strip $(HARMONY_SHA256SUMS)),--sha256sums "$(HARMONY_SHA256SUMS)",) \
+		$(if $(strip $(HARMONY_SIGNATURE_CERTIFICATE_SHA256)),--signature-certificate-sha256 "$(HARMONY_SIGNATURE_CERTIFICATE_SHA256)",) \
+		$(if $(strip $(HARMONY_HOST_COMMIT)),--host-commit "$(HARMONY_HOST_COMMIT)",) \
+		$(if $(strip $(HARMONY_HOST_BUILD_SHA256)),--host-build-sha256 "$(HARMONY_HOST_BUILD_SHA256)",)
 
 harmony-device-gate:
 	@test -n "$(strip $(EVIDENCE_DIR))" || (echo "error: set EVIDENCE_DIR to a HarmonyOS device evidence directory" >&2; exit 2)
