@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import plistlib
+import queue
 import sqlite3
 import subprocess
 import sys
@@ -467,6 +468,128 @@ class MacOSDevHostTCCTests(unittest.TestCase):
         self.assertEqual(status.rows[0].auth_value, 2)
         self.assertIsNone(status.rows[0].auth_reason)
         self.assertIsNone(status.rows[0].last_modified)
+
+    def test_query_tcc_database_times_out_instead_of_hanging(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "TCC.db"
+            database_path.write_bytes(b"placeholder")
+            queues = []
+
+            class FakeQueue:
+                def __init__(self):
+                    self.closed = False
+                    self.joined = False
+
+                def get(self, timeout=None):
+                    raise queue.Empty
+
+                def close(self):
+                    self.closed = True
+
+                def join_thread(self):
+                    self.joined = True
+
+            class FakeProcess:
+                exitcode = None
+
+                def __init__(self, target, args):
+                    self.terminated = False
+                    self.killed = False
+
+                def start(self):
+                    return None
+
+                def join(self, timeout=None):
+                    return None
+
+                def is_alive(self):
+                    return not self.terminated and not self.killed
+
+                def terminate(self):
+                    self.terminated = True
+
+                def kill(self):
+                    self.killed = True
+
+            class FakeContext:
+                def Queue(self, maxsize=0):
+                    result = FakeQueue()
+                    queues.append(result)
+                    return result
+
+                Process = FakeProcess
+
+            with mock.patch.object(macos_dev_host.multiprocessing, "get_context", return_value=FakeContext()):
+                status = macos_dev_host.query_tcc_database(
+                    "dev.telemachus.display",
+                    database_path,
+                    timeout_seconds=0.01,
+                )
+
+        self.assertFalse(status.readable)
+        self.assertIn("timed out", status.error or "")
+        self.assertTrue(queues[0].closed)
+        self.assertTrue(queues[0].joined)
+
+    def test_query_tcc_database_reports_exited_without_result(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "TCC.db"
+            database_path.write_bytes(b"placeholder")
+
+            class FakeQueue:
+                def get(self, timeout=None):
+                    raise queue.Empty
+
+                def close(self):
+                    return None
+
+                def join_thread(self):
+                    return None
+
+            class FakeProcess:
+                exitcode = 0
+
+                def __init__(self, target, args):
+                    pass
+
+                def start(self):
+                    return None
+
+                def join(self, timeout=None):
+                    return None
+
+                def is_alive(self):
+                    return False
+
+            class FakeContext:
+                def Queue(self, maxsize=0):
+                    return FakeQueue()
+
+                Process = FakeProcess
+
+            with mock.patch.object(macos_dev_host.multiprocessing, "get_context", return_value=FakeContext()):
+                status = macos_dev_host.query_tcc_database(
+                    "dev.telemachus.display",
+                    database_path,
+                    timeout_seconds=0.01,
+                )
+
+        self.assertFalse(status.readable)
+        self.assertIn("exited without a result (exit 0)", status.error or "")
+
+    def test_query_tcc_database_preserves_worker_exception_detail(self) -> None:
+        queue_instance = mock.Mock()
+        with mock.patch.object(
+            macos_dev_host,
+            "_query_tcc_database_direct",
+            side_effect=RuntimeError("simulated worker failure"),
+        ):
+            macos_dev_host._query_tcc_database_worker(queue_instance, "dev.telemachus.display", Path("TCC.db"))
+
+        queue_instance.put.assert_called_once()
+        status, payload = queue_instance.put.call_args.args[0]
+        self.assertEqual(status, "error")
+        self.assertIn("RuntimeError('simulated worker failure')", payload)
 
     @staticmethod
     def write_tcc_database(path: Path, rows: list[tuple[str, str, int, int, int, int]]) -> None:

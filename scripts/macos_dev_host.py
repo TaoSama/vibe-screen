@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import multiprocessing
 import os
 import plistlib
+import queue
 import re
 import shutil
 import sqlite3
@@ -24,6 +26,7 @@ DEFAULT_INSTALL_PATH = Path("/Applications") / f"{APP_NAME}.app"
 DEFAULT_OUTPUT_DIR = package_macos.REPOSITORY_ROOT / ".build" / "dev-macos-host"
 DEFAULT_REPORT_PATH = DEFAULT_OUTPUT_DIR / "host-signing-and-permissions.txt"
 SYSTEM_TCC_DATABASE = Path("/Library/Application Support/com.apple.TCC/TCC.db")
+TCC_QUERY_TIMEOUT_SECONDS = 5.0
 EXPECTED_BUNDLE_ID = "dev.telemachus.display"
 SCREEN_CAPTURE_SERVICES = ("kTCCServiceScreenCapture", "kTCCServiceScreenRecording")
 ACCESSIBILITY_SERVICE = "kTCCServiceAccessibility"
@@ -249,9 +252,65 @@ def query_tcc_rows(bundle_id: str, database_paths: Path | tuple[Path, ...]) -> P
     return PermissionStatus(database_path=label, rows=(), readable=False, error="; ".join(errors))
 
 
-def query_tcc_database(bundle_id: str, database_path: Path) -> PermissionStatus:
+def query_tcc_database(bundle_id: str, database_path: Path, *, timeout_seconds: float = TCC_QUERY_TIMEOUT_SECONDS) -> PermissionStatus:
     if not database_path.exists():
         return PermissionStatus(database_path=str(database_path), rows=(), readable=False, error="TCC database not found")
+    context = _tcc_query_context()
+    result_queue = context.Queue(maxsize=1)
+    process = context.Process(target=_query_tcc_database_worker, args=(result_queue, bundle_id, database_path))
+    try:
+        process.start()
+        process.join(timeout_seconds)
+        if process.is_alive():
+            process.terminate()
+            process.join(1.0)
+            if process.is_alive():
+                process.kill()
+                process.join()
+            return PermissionStatus(
+                database_path=str(database_path),
+                rows=(),
+                readable=False,
+                error=f"TCC database query timed out after {timeout_seconds:g}s",
+            )
+        try:
+            status, payload = result_queue.get(timeout=1.0)
+        except queue.Empty:
+            exitcode = process.exitcode if process.exitcode is not None else "unknown"
+            return PermissionStatus(
+                database_path=str(database_path),
+                rows=(),
+                readable=False,
+                error=f"TCC database query exited without a result (exit {exitcode})",
+            )
+        if status == "ok":
+            return payload
+        return PermissionStatus(
+            database_path=str(database_path),
+            rows=(),
+            readable=False,
+            error=str(payload),
+        )
+    finally:
+        result_queue.close()
+        result_queue.join_thread()
+
+
+def _tcc_query_context() -> multiprocessing.context.BaseContext:
+    try:
+        return multiprocessing.get_context("fork")
+    except ValueError:
+        return multiprocessing.get_context()
+
+
+def _query_tcc_database_worker(result_queue: multiprocessing.Queue, bundle_id: str, database_path: Path) -> None:
+    try:
+        result_queue.put(("ok", _query_tcc_database_direct(bundle_id, database_path)))
+    except Exception as error:
+        result_queue.put(("error", repr(error)))
+
+
+def _query_tcc_database_direct(bundle_id: str, database_path: Path) -> PermissionStatus:
     try:
         connection = sqlite3.connect(f"{database_path.resolve().as_uri()}?mode=ro", uri=True)
         try:

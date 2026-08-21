@@ -1,20 +1,24 @@
 from __future__ import annotations
 
 import json
+import queue
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from vibescreen_evidence import touch_rerun_preflight
 from vibescreen_evidence.touch_rerun_preflight import (
     ACCESSIBILITY_SERVICE,
     SCREEN_CAPTURE_SERVICE,
     build_blocked_error_document,
     collect_tcc,
     USER_TCC_DB,
+    TouchRerunPreflightError,
     write_json,
     _public_path,
+    _query_tcc_db,
     _blockers,
 )
 
@@ -91,6 +95,146 @@ class TouchRerunPreflightTests(unittest.TestCase):
 
         self.assertEqual(tcc["missing_db_paths"], [str(missing_db)])
         self.assertTrue(tcc["screen_recording"]["authorized"])
+
+    def test_tcc_query_times_out_instead_of_hanging(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "TCC.db"
+            db_path.write_bytes(b"placeholder")
+            queues = []
+
+            class FakeQueue:
+                def __init__(self):
+                    self.closed = False
+                    self.joined = False
+
+                def get(self, timeout=None):
+                    raise queue.Empty
+
+                def close(self):
+                    self.closed = True
+
+                def join_thread(self):
+                    self.joined = True
+
+            class FakeProcess:
+                exitcode = None
+
+                def __init__(self, target, args):
+                    self.terminated = False
+                    self.killed = False
+
+                def start(self):
+                    return None
+
+                def join(self, timeout=None):
+                    return None
+
+                def is_alive(self):
+                    return not self.terminated and not self.killed
+
+                def terminate(self):
+                    self.terminated = True
+
+                def kill(self):
+                    self.killed = True
+
+            class FakeContext:
+                def Queue(self, maxsize=0):
+                    result = FakeQueue()
+                    queues.append(result)
+                    return result
+
+                Process = FakeProcess
+
+            with patch(
+                "vibescreen_evidence.touch_rerun_preflight.multiprocessing.get_context",
+                return_value=FakeContext(),
+            ):
+                with self.assertRaisesRegex(TouchRerunPreflightError, "timed out"):
+                    _query_tcc_db(db_path, "dev.telemachus.display", timeout_seconds=0.01)
+            self.assertTrue(queues[0].closed)
+            self.assertTrue(queues[0].joined)
+
+    def test_tcc_query_reports_exited_without_result(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "TCC.db"
+            db_path.write_bytes(b"placeholder")
+
+            class FakeQueue:
+                def get(self, timeout=None):
+                    raise queue.Empty
+
+                def close(self):
+                    return None
+
+                def join_thread(self):
+                    return None
+
+            class FakeProcess:
+                exitcode = 0
+
+                def __init__(self, target, args):
+                    pass
+
+                def start(self):
+                    return None
+
+                def join(self, timeout=None):
+                    return None
+
+                def is_alive(self):
+                    return False
+
+            class FakeContext:
+                def Queue(self, maxsize=0):
+                    return FakeQueue()
+
+                Process = FakeProcess
+
+            with patch(
+                "vibescreen_evidence.touch_rerun_preflight.multiprocessing.get_context",
+                return_value=FakeContext(),
+            ):
+                with self.assertRaisesRegex(TouchRerunPreflightError, "exited without a result \(exit 0\)"):
+                    _query_tcc_db(db_path, "dev.telemachus.display", timeout_seconds=0.01)
+
+    def test_tcc_worker_preserves_unexpected_exception_detail(self) -> None:
+        queue_instance = unittest.mock.Mock()
+        with patch(
+            "vibescreen_evidence.touch_rerun_preflight._query_tcc_db_direct",
+            side_effect=RuntimeError("simulated worker failure"),
+        ):
+            touch_rerun_preflight._query_tcc_db_worker(queue_instance, Path("TCC.db"), "dev.telemachus.display")
+
+        queue_instance.put.assert_called_once()
+        status, payload = queue_instance.put.call_args.args[0]
+        self.assertEqual(status, "error")
+        self.assertIn("RuntimeError('simulated worker failure')", payload)
+
+    def test_tcc_query_context_falls_back_when_fork_is_unavailable(self) -> None:
+        fallback_context = object()
+        with patch(
+            "vibescreen_evidence.touch_rerun_preflight.multiprocessing.get_context",
+            side_effect=[ValueError("no fork"), fallback_context],
+        ) as get_context:
+            self.assertIs(touch_rerun_preflight._tcc_query_context(), fallback_context)
+
+        self.assertEqual(get_context.call_count, 2)
+
+    def test_main_writes_blocked_document_for_unexpected_exception(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "touch-rerun-preflight.json"
+            with patch(
+                "vibescreen_evidence.touch_rerun_preflight.build_document",
+                side_effect=RuntimeError("unexpected failure"),
+            ):
+                result = touch_rerun_preflight.main(["--output", str(output)])
+
+            document = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 1)
+        self.assertEqual(document["result"], "blocked")
+        self.assertIn("unexpected failure", document["blockers"][0])
 
     def test_public_path_redacts_user_home(self) -> None:
         self.assertEqual(

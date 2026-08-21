@@ -11,7 +11,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import multiprocessing
 import plistlib
+import queue
 import re
 import sqlite3
 import subprocess
@@ -31,6 +33,7 @@ AUTHORIZED_TCC_VALUE = 2
 DEFAULT_BUNDLE_PATH = Path("/Applications/Vibe Screen.app")
 USER_TCC_DB = Path.home() / "Library/Application Support/com.apple.TCC/TCC.db"
 SYSTEM_TCC_DB = Path("/Library/Application Support/com.apple.TCC/TCC.db")
+TCC_QUERY_TIMEOUT_SECONDS = 5.0
 
 
 class TouchRerunPreflightError(RuntimeError):
@@ -121,9 +124,52 @@ def collect_host_bundle(bundle_path: Path) -> dict[str, Any]:
     }
 
 
-def _query_tcc_db(db_path: Path, bundle_identifier: str) -> dict[str, dict[str, Any]]:
+def _query_tcc_db(db_path: Path, bundle_identifier: str, *, timeout_seconds: float = TCC_QUERY_TIMEOUT_SECONDS) -> dict[str, dict[str, Any]]:
     if not db_path.exists():
         return {}
+    context = _tcc_query_context()
+    result_queue = context.Queue(maxsize=1)
+    process = context.Process(target=_query_tcc_db_worker, args=(result_queue, db_path, bundle_identifier))
+    try:
+        process.start()
+        process.join(timeout_seconds)
+        if process.is_alive():
+            process.terminate()
+            process.join(1.0)
+            if process.is_alive():
+                process.kill()
+                process.join()
+            raise TouchRerunPreflightError(f"TCC database query timed out after {timeout_seconds:g}s")
+        try:
+            status, payload = result_queue.get(timeout=1.0)
+        except queue.Empty as error:
+            exitcode = process.exitcode if process.exitcode is not None else "unknown"
+            raise TouchRerunPreflightError(
+                f"TCC database query exited without a result (exit {exitcode})"
+            ) from error
+        if status == "ok":
+            return payload
+        raise TouchRerunPreflightError(str(payload))
+    finally:
+        result_queue.close()
+        result_queue.join_thread()
+
+
+def _tcc_query_context() -> multiprocessing.context.BaseContext:
+    try:
+        return multiprocessing.get_context("fork")
+    except ValueError:
+        return multiprocessing.get_context()
+
+
+def _query_tcc_db_worker(result_queue: multiprocessing.Queue, db_path: Path, bundle_identifier: str) -> None:
+    try:
+        result_queue.put(("ok", _query_tcc_db_direct(db_path, bundle_identifier)))
+    except Exception as error:
+        result_queue.put(("error", repr(error)))
+
+
+def _query_tcc_db_direct(db_path: Path, bundle_identifier: str) -> dict[str, dict[str, Any]]:
     try:
         connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     except sqlite3.Error as error:
@@ -388,7 +434,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             expected_android_sdk=arguments.expected_android_sdk,
         )
         write_json(arguments.output, document)
-    except (ADBError, OSError, TouchRerunPreflightError, ValueError) as error:
+    except Exception as error:
         if arguments.output is not None:
             write_json(
                 arguments.output,
