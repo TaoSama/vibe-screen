@@ -22,11 +22,31 @@ TOUCH_RERUN_EXPECTED_HOST_SHA256 ?=
 PHASE3_LOCAL_SYNTHETIC_E2E_DIR ?= .build/phase3-local-synthetic-product-e2e
 PHASE3_LOCAL_SYNTHETIC_E2E_PUBLIC_DIR ?= $(PHASE3_LOCAL_SYNTHETIC_E2E_DIR)/public
 PHASE3_LOCAL_SYNTHETIC_E2E_TIMEOUT_SECONDS ?= 90
+PHASE3_INTERNET_SOAK_DIR ?= .build/phase3-internet-soak
+PHASE3_INTERNET_TURN_URI ?=
+PHASE3_INTERNET_TURN_URIS ?= $(PHASE3_INTERNET_TURN_URI)
+PHASE3_INTERNET_SIGNALING_ORIGIN ?=
+PHASE3_INTERNET_RELAY_ORIGIN ?=
+PHASE3_INTERNET_AUTHORITY_SOURCE_ID ?=
+PHASE3_INTERNET_REMOTE_PEER ?=
+PHASE3_INTERNET_TLS_CERTIFICATE_SHA256 ?=
+PHASE3_INTERNET_TURN_SECRET_SOURCE ?= secret_manager
+PHASE3_INTERNET_DEPLOYMENT_READINESS ?=
+PHASE3_INTERNET_PLANNED_HANDOFFS ?=
+PHASE3_INTERNET_HOST_BUILD ?=
+PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256 ?=
+PHASE3_INTERNET_REMOTE_TURN_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/remote-turn-verifier.json
+PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/media-continuity.json
+PHASE3_INTERNET_NETWORK_HANDOFF_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/network-handoff.json
+PHASE3_INTERNET_REVOCATION_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/revocation-propagation.json
+PHASE3_INTERNET_SOAK_REPORT ?= $(PHASE3_INTERNET_SOAK_DIR)/soak-exact-window-report.json
+PHASE3_INTERNET_ALLOW_BLOCKED ?=
+PHASE3_INTERNET_BLOCKED_REASON ?= missing public deployment, TLS/secret material, remote peer, media continuity, handoff, revocation, or two-hour mixed-route soak evidence
 PHASE3_TURNSERVER ?= $(shell command -v turnserver 2>/dev/null)
 PHASE3_WEBRTC_E2E_SCHEMA := dev.vibescreen.phase3-webrtc-e2e/v1
 PHASE3_COTURN_COMPATIBLE_VERSIONS := 4.15.0 4.16.0 4.17.0
 
-.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate
+.PHONY: protocol protocol-tests phase3-test phase3-go-test phase3-authority-container-test phase3-local-synthetic-product-e2e phase3-local-synthetic-public-artifacts-check phase3-local-product-e2e phase3-internet-soak-manifest phase3-internet-soak-gate baseline-macos-build baseline-macos-test baseline-macos-self-test baseline-macos-app baseline-macos-dev-install baseline-macos-touch-preflight baseline-android-test baseline-android-transport-boundary baseline-android-check baseline-android-apk baseline-android-dependency-audit evidence-tools-test release-tools-test require-evidence-serial evidence-device-info evidence-touch-rerun-preflight harmony-device-gate soak-30m soak-2h soak-8h phase2-tablet-manifest phase2-tablet-gate
 
 protocol:
 	cd contracts && $(BUF) format --diff --exit-code
@@ -72,6 +92,47 @@ phase3-local-synthetic-public-artifacts-check:
 phase3-local-product-e2e:
 	@printf '%s\n' 'warning: phase3-local-product-e2e is deprecated; use phase3-local-synthetic-product-e2e (synthetic Protocol v1 harness only; no Android device or ScreenCaptureKit capture).' >&2
 	@$(MAKE) phase3-local-synthetic-product-e2e
+
+phase3-internet-soak-manifest:
+	@test -n "$(strip $(PHASE3_INTERNET_TURN_URIS))" || (echo "error: set PHASE3_INTERNET_TURN_URIS" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_SIGNALING_ORIGIN))" || (echo "error: set PHASE3_INTERNET_SIGNALING_ORIGIN" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_RELAY_ORIGIN))" || (echo "error: set PHASE3_INTERNET_RELAY_ORIGIN" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_AUTHORITY_SOURCE_ID))" || (echo "error: set PHASE3_INTERNET_AUTHORITY_SOURCE_ID" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_REMOTE_PEER))" || (echo "error: set PHASE3_INTERNET_REMOTE_PEER" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_TLS_CERTIFICATE_SHA256))" || (echo "error: set PHASE3_INTERNET_TLS_CERTIFICATE_SHA256" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_DEPLOYMENT_READINESS))" || (echo "error: set PHASE3_INTERNET_DEPLOYMENT_READINESS" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_PLANNED_HANDOFFS))" || (echo "error: set PHASE3_INTERNET_PLANNED_HANDOFFS" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_HOST_BUILD))" || (echo "error: set PHASE3_INTERNET_HOST_BUILD" >&2; exit 2)
+	@test -n "$(strip $(PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256))" || (echo "error: set PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256" >&2; exit 2)
+	mkdir -p "$(PHASE3_INTERNET_SOAK_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_internet_soak manifest \
+		--output "$(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-manifest.json" \
+		--repo . \
+		$(foreach uri,$(PHASE3_INTERNET_TURN_URIS),--turn-uri "$(uri)" ) \
+		--signaling-origin "$(PHASE3_INTERNET_SIGNALING_ORIGIN)" \
+		--relay-origin "$(PHASE3_INTERNET_RELAY_ORIGIN)" \
+		--authority-source-id "$(PHASE3_INTERNET_AUTHORITY_SOURCE_ID)" \
+		--remote-peer "$(PHASE3_INTERNET_REMOTE_PEER)" \
+		--tls-certificate-sha256 "$(PHASE3_INTERNET_TLS_CERTIFICATE_SHA256)" \
+		--turn-secret-source "$(PHASE3_INTERNET_TURN_SECRET_SOURCE)" \
+		--deployment-readiness "$(PHASE3_INTERNET_DEPLOYMENT_READINESS)" \
+		--planned-handoffs "$(PHASE3_INTERNET_PLANNED_HANDOFFS)" \
+		--host-build "$(PHASE3_INTERNET_HOST_BUILD)" \
+		--android-artifact-sha256 "$(PHASE3_INTERNET_ANDROID_ARTIFACT_SHA256)" \
+		-- make phase3-internet-soak-gate
+
+phase3-internet-soak-gate:
+	mkdir -p "$(PHASE3_INTERNET_SOAK_DIR)"
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase3_internet_soak gate \
+		--output "$(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-gate.json" \
+		$(if $(wildcard $(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-manifest.json),--manifest "$(PHASE3_INTERNET_SOAK_DIR)/phase3-internet-soak-manifest.json",) \
+		$(if $(wildcard $(PHASE3_INTERNET_REMOTE_TURN_REPORT)),--remote-turn "$(PHASE3_INTERNET_REMOTE_TURN_REPORT)",) \
+		$(if $(wildcard $(PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT)),--media-continuity "$(PHASE3_INTERNET_MEDIA_CONTINUITY_REPORT)",) \
+		$(if $(wildcard $(PHASE3_INTERNET_NETWORK_HANDOFF_REPORT)),--network-handoff "$(PHASE3_INTERNET_NETWORK_HANDOFF_REPORT)",) \
+		$(if $(wildcard $(PHASE3_INTERNET_REVOCATION_REPORT)),--revocation "$(PHASE3_INTERNET_REVOCATION_REPORT)",) \
+		$(if $(wildcard $(PHASE3_INTERNET_SOAK_REPORT)),--soak-report "$(PHASE3_INTERNET_SOAK_REPORT)",) \
+		--blocked-reason "$(PHASE3_INTERNET_BLOCKED_REASON)" \
+		$(if $(strip $(PHASE3_INTERNET_ALLOW_BLOCKED)),--allow-blocked,)
 
 baseline-macos-build:
 	cd baseline/MacHost && swift build -c release

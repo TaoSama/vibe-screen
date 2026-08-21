@@ -1,0 +1,48 @@
+{
+  "artifacts": [
+    {
+      "bytes": 2213,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "README.md",
+      "result": "pass",
+      "sha256": "d14efb05c6e0c98836daef6e3c8eeb4f7fed3316ce1a940daf51ce2c1c9c226e"
+    },
+    {
+      "bytes": 3470,
+      "categories_checked": [
+        "network_endpoint",
+        "hardware_identifier",
+        "credential_material",
+        "url",
+        "user_absolute_path"
+      ],
+      "path": "phase3-internet-soak-gate.json",
+      "result": "pass",
+      "sha256": "19d01c7a02ab0c9b907dda44e48f3e64c351d9c15f70e0d5a581387677834d58"
+    }
+  ],
+  "categories": [
+    "network_endpoint",
+    "hardware_identifier",
+    "credential_material",
+    "url",
+    "user_absolute_path"
+  ],
+  "result": "pass",
+  "rule_version": "2026-08-06.4",
+  "schema": "dev.vibescreen.evidence-privacy-scan/v1",
+  "scope": {
+    "excluded_derived_files": [
+      "SHA256SUMS",
+      "privacy-scan.json"
+    ],
+    "root": "."
+  },
+  "violations": []
+}

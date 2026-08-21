@@ -74,6 +74,32 @@ device environment is not a waiver. When production WebRTC/crypto/signaling code
 is added, add deterministic Make targets rather than relying on undocumented IDE
 steps.
 
+## Public Internet soak gate
+
+The complete Internet soak gate is evaluated by
+`python3 -m vibescreen_evidence.phase3_internet_soak gate` or the Make target
+`phase3-internet-soak-gate`. It is a composition verifier, not a runner. It
+consumes these privacy-reviewed inputs from one evidence directory:
+
+- `phase3-internet-soak-manifest.json`, created before the run from production
+  TURN/signaling/relay/Authority/TLS/secret-source/remote-peer inputs;
+- `remote-turn-verifier.json`, proving public remote TURN packet exchange;
+- `media-continuity.json`, proving real ScreenCaptureKit-to-Android decoder
+  continuity;
+- `network-handoff.json`, proving fresh-session handoff recovery, stale media
+  rejection, and no plaintext fallback;
+- `revocation-propagation.json`, proving active coturn allocation disconnect,
+  stale credential rejection, and zero post-revocation relayed packets;
+- `soak-exact-window-report.json`, proving a clean two-hour mixed direct/relay
+  window with route samples, nonce-reuse absence, and RSS, queue, loss, RTT, FPS,
+  bitrate, relay-byte, ICE-restart, drop, thermal, and battery metric families.
+
+Exit code `0` means `pass`. Exit code `3` means blocked evidence unless
+`--allow-blocked` is set for archiving a blocked result. Exit code `2` means a
+complete input proves unsafe behavior, such as plaintext fallback or raw secret
+material in a report. Local loopback, forced local coturn, synthetic Protocol v1,
+or partial Android UI evidence must not be renamed into any of these files.
+
 ## Test matrix
 
 | Layer | Required evidence |

@@ -218,6 +218,15 @@ and database clock skew to be inside the configured bound. A database outage or
 schema drift leaves `/healthz` at 200 while `/readyz`, credential issuance,
 usage writes, revocation, and metrics fail closed with 503.
 
+After production readiness passes, record the public Internet soak boundary from
+the source revision under test with `make phase3-internet-soak-manifest`, then
+evaluate it with `make phase3-internet-soak-gate` after the remote TURN, media
+continuity, network handoff, revocation propagation, and two-hour soak summaries
+have been privacy reviewed. The gate rejects local-only TURN, missing TLS or
+secret-source declarations, absent readiness probes, missing remote peers, and
+partial report families as `blocked`; it never converts this production profile
+or the local Compose profile into public Internet evidence by itself.
+
 `production.conf` enables UDP/TCP TURN, TLS on 5349, TLS 1.2+, fingerprints,
 short nonces, stable per-device and total allocation quotas, a 20 MB/s
 allocation cap, and a bounded relay range. Its CREATE_PERMISSION policy denies
