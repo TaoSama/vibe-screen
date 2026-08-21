@@ -114,11 +114,12 @@ USB evidence run.
 
 Use the same device identity and serial, and keep every adb command explicit:
 
-    cd `<WORKTREE_ROOT>`
-    export DEVICE_SERIAL=`<DEVICE_SERIAL>`
+    cd <WORKTREE_ROOT>
+    export DEVICE_SERIAL=<DEVICE_SERIAL>
     security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
     python3 scripts/macos_dev_host.py preflight --install-path "/Applications/Vibe Screen.app"
-    open -a "/Applications/Vibe Screen.app"
+    osascript -e 'quit app "Vibe Screen"' || true
+    open "/Applications/Vibe Screen.app"
     timeout 30 bash -lc 'until lsof -nP -iTCP@127.0.0.1:54321 -sTCP:LISTEN; do sleep 1; done'
     adb -s "$DEVICE_SERIAL" reverse tcp:54321 tcp:54321
     adb -s "$DEVICE_SERIAL" shell am start -S -W -n dev.telemachus.display/.MainActivity --ez auto_connect true
