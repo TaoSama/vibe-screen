@@ -473,6 +473,12 @@ forced-local-coturn synthetic product E2E all passed on that source. The
 synthetic E2E record is explicitly loopback-only, uses a synthetic Protocol v1
 peer, and records no Android UI, real screen capture, or public Internet path;
 the release gates below remain unchanged.
+The current worktree strengthens the local product E2E media payload from fixed
+synthetic strings to real VideoToolbox-generated HEVC keyframe and delta frames
+over the production WebRTC media DataChannel, still with a synthetic Protocol
+v1 peer and synthetic pixel-buffer input. That check does not start
+ScreenCaptureKit or CGDisplayStream and is not Android MediaCodec, visible UI,
+or public-Internet evidence.
 
 The macOS M150 adapter has completed real local offer/answer, ICE and
 bidirectional DataChannel tests through both direct and forced coturn relay
@@ -517,6 +523,7 @@ Reproduce the local Mac integration checks with:
 ```bash
 cd baseline/MacHost
 swift build -c release
+".build/release/Vibe Screen" --phase3-real-media-self-test
 ".build/release/Vibe Screen" --phase3-internet-self-test
 ".build/release/Vibe Screen" --phase3-webrtc-loopback-self-test
 cd ../..
