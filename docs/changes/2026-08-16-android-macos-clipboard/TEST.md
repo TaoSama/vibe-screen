@@ -3,8 +3,9 @@
 Status: 本地离线门禁完成；P0110 真机 Android 系统剪贴板 smoke 通过；Mac
 XCTest 受本机 SDK 环境阻断；Android <-> macOS 系统剪贴板端到端 gate 仍 open
 Date: 2026-08-21
-Baseline: `origin/main` at `8e630ad3` plus this PR branch's local clipboard
-evidence commits
+Current PR #157 rescue baseline: `origin/main` at
+`c5add121d4ebebaa0083db64551a81ec7899696e` plus this PR branch's
+clipboard runbook/evidence commits
 
 ## 证据边界
 
@@ -15,6 +16,60 @@ TalkBack、USB/LAN 双向系统剪贴板互操作或发布状态。模拟器、�
 Android 本机 smoke 结果不得转述为 Android <-> Mac clipboard E2E 证据。
 
 ## 已运行
+
+### 2026-08-21 PR #157 rescue rebase
+
+PR #157 was rebased cleanly onto current `origin/main`
+`c5add121d4ebebaa0083db64551a81ec7899696e`
+(`Handle empty ScreenCaptureKit display catalog (#170)`). This only refreshes
+the documentation branch base; it does not add new device E2E evidence and does
+not close the Android ClipboardManager <-> macOS NSPasteboard gate. The
+historical P0110 evidence below remains bounded to the source head and baseline
+recorded in that evidence directory.
+
+本轮复核通过：
+
+```bash
+cd baseline/AndroidClient
+./gradlew --no-daemon testDebugUnitTest \
+  --tests dev.telemachus.display.protocol.ProtocolV1ClipboardTest \
+  --tests dev.telemachus.display.ClipboardApprovalStateTest
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_protocol_fixtures -v
+make evidence-tools-test
+git diff --check origin/main...HEAD
+python3 -m json.tool docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-21-android-device-lock-blocked/clipboard-evidence.json >/dev/null
+python3 -m json.tool docs/changes/2026-08-16-android-macos-clipboard/evidence/2026-08-21-p0110-clipboard-device-attempt/clipboard-evidence.json >/dev/null
+```
+
+结果：Android focused clipboard JVM tests `BUILD SUCCESSFUL in 1m 36s`；
+protocol fixture tests `Ran 16 tests in 98.654s OK`；evidence tools
+`Ran 198 tests in 20.886s OK`；diff whitespace and both retained JSON evidence
+files passed.
+
+MacHost local checks were intentionally fail-closed where environment
+preconditions were missing:
+
+- `python3 scripts/macos_dev_host.py preflight --install-path
+  "/Applications/Vibe Screen.app"` failed with exit code 1 because the local
+  keychain still lacks the stable `Vibe Screen Dev` signing identity. No Host
+  listener, ADB reverse, Android app launch, or clipboard E2E action was run
+  after this precondition failed.
+- `make baseline-macos-self-test` built the release Host and `--host-self-test`
+  passed, but `--transport-self-test` failed locally with
+  `POSIXErrorCode(rawValue: 48): Address already in use`; the remaining
+  individual `--reliability-self-test`, `--protocol-v1-self-test`, and
+  `--video-encoder-self-test` passed when run separately.
+- A controlled local `swift test --filter Clipboard` retry did not produce a
+  reportable pass in this Command Line Tools environment before it was stopped;
+  prior retained evidence already records the local XCTest blocker as
+  `error: no such module 'XCTest'`. CI must provide the authoritative Mac
+  XCTest result.
+
+During this rescue pass, another local process was observed collecting ADB
+network state for a separate P0110 LAN smoke task, so this task did not acquire
+the Android device or rerun device E2E. The retained P0110 smoke remains only
+Android-local ClipboardManager evidence and must not be relabeled as Xiaomi
+13/fuxi or as cross-device clipboard proof.
 
 ### 2026-08-21 复核
 
