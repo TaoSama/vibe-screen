@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -14,9 +15,11 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.phase3.coturn_reconcile import (  # noqa: E402
     ReconcileError,
+    MAX_SNAPSHOT_BYTES,
     MAX_RESPONSE_BYTES,
     NoRedirectHandler,
     Settings,
+    build_parser,
     disconnect_required_allocations,
     load_snapshot,
     main,
@@ -112,52 +115,80 @@ class CoturnReconcileTests(unittest.TestCase):
                 }
             )
 
-    @mock.patch("scripts.phase3.coturn_reconcile.subprocess.run")
-    def test_exporter_stdout_is_validated_as_snapshot(self, run: mock.Mock) -> None:
-        run.return_value = mock.Mock(
-            returncode=0,
-            stdout=json.dumps(
+    def test_exporter_stdout_is_validated_as_snapshot(self) -> None:
+        payload = {
+            "source_id": "turn-prod-1",
+            "observed_at": "2026-08-20T01:02:03Z",
+            "allocations": [
                 {
-                    "source_id": "turn-prod-1",
-                    "observed_at": "2026-08-20T01:02:03Z",
-                    "allocations": [
-                        {
-                            "allocation_id": "allocation-1",
-                            "device_id": "device-1",
-                            "session_id": "session-1",
-                            "sequence": 1,
-                            "ingress_bytes": 10,
-                            "egress_bytes": 20,
-                        }
-                    ],
+                    "allocation_id": "allocation-1",
+                    "device_id": "device-1",
+                    "session_id": "session-1",
+                    "sequence": 1,
+                    "ingress_bytes": 10,
+                    "egress_bytes": 20,
                 }
-            ),
-            stderr="",
+            ],
+        }
+        command = (
+            sys.executable,
+            "-c",
+            "import json, os, sys; "
+            "sys.exit(23) if 'SECRET_SHOULD_NOT_LEAK' in os.environ else None; "
+            f"print(json.dumps({payload!r}))",
         )
         os.environ["SECRET_SHOULD_NOT_LEAK"] = "private"
         self.addCleanup(lambda: os.environ.pop("SECRET_SHOULD_NOT_LEAK", None))
         settings = Settings(
             authority_url="http://127.0.0.1:1",
             token="x" * 32,
-            exporter_command=(sys.executable, "exporter.py"),
+            exporter_command=command,
             request_timeout_seconds=1,
         )
         snapshot = run_exporter(settings)
         self.assertEqual(snapshot["source_id"], "turn-prod-1")
         self.assertEqual(snapshot["allocations"][0]["closed"], False)
-        self.assertEqual(run.call_args.kwargs["env"].keys() & {"SECRET_SHOULD_NOT_LEAK"}, set())
 
-    @mock.patch("scripts.phase3.coturn_reconcile.subprocess.run")
-    def test_exporter_failure_fails_closed(self, run: mock.Mock) -> None:
-        run.return_value = mock.Mock(returncode=7, stdout="{}", stderr="secret details")
+    def test_exporter_failure_fails_closed(self) -> None:
         settings = Settings(
             authority_url="http://127.0.0.1:1",
             token="x" * 32,
-            exporter_command=(sys.executable, "exporter.py"),
+            exporter_command=(sys.executable, "-c", "import sys; sys.exit(7)"),
             request_timeout_seconds=1,
         )
         with self.assertRaisesRegex(ReconcileError, "exporter failed"):
             run_exporter(settings)
+
+    def test_exporter_rejects_stdout_over_max_snapshot_bytes(self) -> None:
+        settings = Settings(
+            authority_url="http://127.0.0.1:1",
+            token="x" * 32,
+            exporter_command=(
+                sys.executable,
+                "-c",
+                f"import sys; sys.stdout.buffer.write(b'x' * {MAX_SNAPSHOT_BYTES + 1}); sys.stdout.flush()",
+            ),
+            request_timeout_seconds=5,
+        )
+        with self.assertRaisesRegex(ReconcileError, "snapshot exceeded maximum size"):
+            run_exporter(settings)
+
+    def test_exporter_discards_stderr_without_blocking_or_buffering(self) -> None:
+        payload = {"source_id": "turn-prod-1", "observed_at": "2026-08-20T01:02:03Z", "allocations": []}
+        settings = Settings(
+            authority_url="http://127.0.0.1:1",
+            token="x" * 32,
+            exporter_command=(
+                sys.executable,
+                "-c",
+                "import json, sys; "
+                f"sys.stderr.buffer.write(b'x' * {MAX_SNAPSHOT_BYTES * 2}); "
+                "sys.stderr.flush(); "
+                f"print(json.dumps({payload!r}))",
+            ),
+            request_timeout_seconds=5,
+        )
+        self.assertEqual(run_exporter(settings)["source_id"], "turn-prod-1")
 
     def test_active_source_allocations_require_disconnect_executor(self) -> None:
         settings = Settings(
@@ -224,6 +255,9 @@ class CoturnReconcileTests(unittest.TestCase):
         self.assertEqual(environments[1]["VIBE_COTURN_DISCONNECT_REASON"], "conflict")
         self.assertEqual(environments[2]["VIBE_COTURN_DISCONNECT_REASON"], "revoked")
         self.assertNotIn("SECRET_SHOULD_NOT_LEAK", environments[0])
+        for call in run.mock_calls:
+            self.assertIs(call.kwargs["stdout"], subprocess.DEVNULL)
+            self.assertIs(call.kwargs["stderr"], subprocess.DEVNULL)
 
     @mock.patch("scripts.phase3.coturn_reconcile.subprocess.run")
     def test_disconnect_executor_failure_fails_closed(self, run: mock.Mock) -> None:
@@ -457,6 +491,15 @@ class CoturnReconcileTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"VIBE_AUTHORITY_COTURN_TOKEN": "x" * 32}, clear=True):
             with self.assertRaisesRegex(ReconcileError, "cannot both be set"):
                 settings_from_args(parser)
+
+    def test_float_arguments_reject_nan_and_infinity(self) -> None:
+        base = ["--authority-url", "http://127.0.0.1:1", "--snapshot", "snapshot.json"]
+        for flag in ("--request-timeout-seconds", "--interval-seconds", "--retry-backoff-seconds"):
+            for value in ("nan", "inf", "-inf"):
+                with self.subTest(flag=flag, value=value):
+                    with mock.patch("sys.stderr"):
+                        with self.assertRaises(SystemExit):
+                            build_parser().parse_args(base + [flag, value])
 
 
 if __name__ == "__main__":
