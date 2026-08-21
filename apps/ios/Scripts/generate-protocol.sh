@@ -12,6 +12,7 @@ git clone --quiet https://github.com/apple/swift-protobuf.git "$temporary_dir/sw
 git -C "$temporary_dir/swift-protobuf" checkout --quiet "$swift_protobuf_revision"
 swift build \
   --package-path "$temporary_dir/swift-protobuf" \
+  --cache-path "$temporary_dir/swiftpm-cache" \
   --configuration release \
   --product protoc-gen-swift
 
