@@ -194,8 +194,8 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
                     "[10600] SC: Protocol v1 upgrade accepted",
                     '[10600] VibeScreenTelemetry: {"event":"connection_opened","session_epoch":4}',
                     "[10700] MA: onVideoConfiguration: 2000x1200 @ 0° epoch=9",
-                    "[10800] VD: First frame: size=1, keyframe=true",
-                    "[10850] VD: First output frame! size=1, flags=1",
+                    "[10800] VD: First frame: size=1, keyframe=true, session_epoch=4, config_epoch=9",
+                    "[10850] VD: First output frame! size=1, flags=1, session_epoch=4",
                 ]
             ),
             after_ms=10_000,
@@ -204,6 +204,8 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
         self.assertEqual(events["protocol_v1_accepted_ms"], 10_600)
         self.assertEqual(events["android_session_epoch"], 4)
         self.assertEqual(events["config_epoch"], 9)
+        self.assertEqual(events["first_frame_session_epoch"], 4)
+        self.assertEqual(events["first_output_frame_session_epoch"], 4)
         self.assertEqual(events["first_output_frame_ms"], 10_850)
 
     def test_parses_android_logcat_telemetry_after_disruption_start(self) -> None:
@@ -222,6 +224,8 @@ class ReconnectTimingSummaryTest(unittest.TestCase):
         self.assertEqual(events["android_session_epoch"], 4)
         self.assertEqual(events["config_epoch"], 9)
         self.assertEqual(events["first_frame_ms"], 10_800)
+        self.assertEqual(events["first_frame_session_epoch"], 4)
+        self.assertEqual(events["first_output_frame_session_epoch"], 4)
         self.assertEqual(events["first_output_frame_ms"], 10_850)
 
     def test_logcat_connection_and_first_frame_without_decoder_output_do_not_pass(self) -> None:

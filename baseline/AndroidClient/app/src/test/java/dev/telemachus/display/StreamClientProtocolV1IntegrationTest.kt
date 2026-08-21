@@ -129,7 +129,7 @@ class StreamClientProtocolV1IntegrationTest {
     @Test
     fun firstFrameTelemetryIsEmittedOncePerProtocolSession() = runBlocking {
         ServerSocket(0).use { server ->
-            val telemetryEvents = Collections.synchronizedList(mutableListOf<Pair<String, Map<String, Any?>>>() )
+            val telemetryEvents = Collections.synchronizedList(mutableListOf<Pair<String, Map<String, Any?>>>())
 
             runSingleFrameSession(server, telemetryEvents, configEpoch = 3, frameIds = listOf(1, 2))
             runSingleFrameSession(server, telemetryEvents, configEpoch = 4, frameIds = listOf(1))
@@ -157,7 +157,7 @@ class StreamClientProtocolV1IntegrationTest {
                 val oldFrameDropped = CountDownLatch(1)
                 val oldFrameDelivered = CountDownLatch(1)
                 val newStreaming = CountDownLatch(1)
-                val telemetryEvents = Collections.synchronizedList(mutableListOf<Pair<String, Map<String, Any?>>>() )
+                val telemetryEvents = Collections.synchronizedList(mutableListOf<Pair<String, Map<String, Any?>>>())
                 val oldServerJob =
                     async(Dispatchers.IO) {
                         oldServer.accept().use { peer ->
