@@ -32,7 +32,8 @@ class TouchGestureAcceptanceDriverInstrumentedTest {
             arguments.getString(OPT_IN_ARGUMENT, "false").toBoolean(),
         )
 
-        ActivityScenario.launch<MainActivity>(autoConnectIntent()).use { scenario ->
+        val scenario = ActivityScenario.launch<MainActivity>(autoConnectIntent())
+        try {
             val inputView = waitForStreamingInput(scenario)
             val centerX = inputView.width * 0.50f
             val centerY = inputView.height * 0.55f
@@ -70,6 +71,8 @@ class TouchGestureAcceptanceDriverInstrumentedTest {
                 secondEnd = Point(centerX + 170f, centerY),
             )
             SystemClock.sleep(HOST_FLUSH_MS)
+        } finally {
+            closeScenarioBestEffort(scenario)
         }
     }
 
@@ -81,7 +84,8 @@ class TouchGestureAcceptanceDriverInstrumentedTest {
             arguments.getString(NATIVE_OPT_IN_ARGUMENT, "false").toBoolean(),
         )
 
-        ActivityScenario.launch<MainActivity>(autoConnectIntent()).use { scenario ->
+        val scenario = ActivityScenario.launch<MainActivity>(autoConnectIntent())
+        try {
             val inputView = waitForProtocolV1Input(scenario)
             val centerX = inputView.width * 0.50f
             val centerY = inputView.height * 0.55f
@@ -104,6 +108,8 @@ class TouchGestureAcceptanceDriverInstrumentedTest {
             dispatchSinglePointer(inputView, centerX, centerY, holdMillis = LONG_PRESS_HOLD_MS)
             SystemClock.sleep(HOST_FLUSH_MS)
             Log.d(LOG_TAG, "native_sequence_end")
+        } finally {
+            closeScenarioBestEffort(scenario)
         }
     }
 
@@ -115,7 +121,8 @@ class TouchGestureAcceptanceDriverInstrumentedTest {
             arguments.getString(DIRECT_OPT_IN_ARGUMENT, "false").toBoolean(),
         )
 
-        ActivityScenario.launch<MainActivity>(autoConnectIntent()).use { scenario ->
+        val scenario = ActivityScenario.launch<MainActivity>(autoConnectIntent())
+        try {
             waitForProtocolV1Input(scenario)
             SystemClock.sleep(POST_PROTOCOL_READY_SETTLE_MS)
             scenario.onActivity { activity ->
@@ -155,6 +162,8 @@ class TouchGestureAcceptanceDriverInstrumentedTest {
                 assertTrue("Direct Protocol v1 pointer move was not admitted: ${before.description}", pointerMove)
             }
             SystemClock.sleep(DIRECT_SEND_OBSERVE_MS)
+        } finally {
+            closeScenarioBestEffort(scenario)
         }
     }
 
@@ -216,6 +225,10 @@ class TouchGestureAcceptanceDriverInstrumentedTest {
             canSendPointer = booleanField("canSendPointer"),
             canSendKeyboard = booleanField("canSendKeyboard"),
         )
+    }
+
+    private fun closeScenarioBestEffort(scenario: ActivityScenario<MainActivity>) {
+        scenario.onActivity { activity -> activity.finishAndRemoveTask() }
     }
 
     private fun currentStreamClient(activity: MainActivity): StreamClient =
