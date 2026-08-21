@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/real-device-gate.schema.json",
+  "title": "Vibe Screen Android real-device gate readiness v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "kind",
+    "collected_at",
+    "result",
+    "blockers",
+    "insufficiencies",
+    "repository",
+    "locks",
+    "android_device",
+    "host_preflight",
+    "host_listener",
+    "transport",
+    "android_app",
+    "stream",
+    "requested_gates",
+    "safety",
+    "interpretation"
+  ],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "android_real_device_gate_readiness"},
+    "collected_at": {"type": "string", "format": "date-time"},
+    "result": {"enum": ["ready", "blocked", "insufficient"]},
+    "blockers": {"type": "array", "items": {"type": "string"}},
+    "insufficiencies": {"type": "array", "items": {"type": "string"}},
+    "repository": {"type": "object"},
+    "locks": {"type": "array", "items": {"type": "string"}},
+    "expected_device": {"type": "object"},
+    "android_device": {"type": ["object", "null"]},
+    "host_preflight": {"type": "object"},
+    "host_listener": {"type": "object"},
+    "transport": {"type": "object"},
+    "android_app": {"type": ["object", "null"]},
+    "stream": {"type": "object"},
+    "short_soak": {"type": ["object", "null"]},
+    "requested_gates": {"type": "object"},
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "read_only",
+        "starts_host",
+        "creates_adb_reverse",
+        "launches_android_app",
+        "samples_device",
+        "modifies_tcc",
+        "modifies_keychain",
+        "modifies_android_app_data"
+      ],
+      "properties": {
+        "read_only": {"type": "boolean"},
+        "starts_host": {"const": false},
+        "creates_adb_reverse": {"type": "boolean"},
+        "launches_android_app": {"type": "boolean"},
+        "samples_device": {"type": "boolean"},
+        "modifies_tcc": {"const": false},
+        "modifies_keychain": {"const": false},
+        "modifies_android_app_data": {"const": false}
+      }
+    },
+    "interpretation": {"type": "string", "minLength": 1}
+  }
+}
