@@ -1,0 +1,68 @@
+{
+  "accepted_for_gate": false,
+  "adb": {
+    "explicit_serial_used": true,
+    "reverse": "UsbFfs tcp:54321 tcp:54321"
+  },
+  "artifacts": {
+    "current_worktree_debug_apk_present": false,
+    "current_worktree_release_host_present": false,
+    "installed_host_executable_sha256": "c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996"
+  },
+  "blocking_conditions": [
+    "macOS console session locked",
+    "Screen Recording permission for dev.telemachus.display was reset during preflight",
+    "no evidence-grade current-source Host pre-warm with VIBE_SCREEN_TELEMETRY_PATH",
+    "no valid local codesigning identity available for rebuilding a TCC-stable current-source Host"
+  ],
+  "device": {
+    "adb_serial": "EP0110PZ0B9110300B",
+    "android_release": "16",
+    "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+    "device": "pacific",
+    "manufacturer": "nubia",
+    "model": "P0110",
+    "sdk": 36
+  },
+  "formal_duration_seconds": 0,
+  "formal_runner_started": false,
+  "host": {
+    "installed_app_authority": "Vibe Screen Dev",
+    "installed_app_bundle_identifier": "dev.telemachus.display",
+    "installed_app_path": "/Applications/Vibe Screen.app",
+    "installed_host_pid": 92943,
+    "installed_host_port_54321_listening": true,
+    "macos_build": "25E253",
+    "macos_product_version": "26.4.1",
+    "session_locked": true
+  },
+  "kind": "host_rss_2h_rerun_blocked_before_start",
+  "locks": {
+    "android_lock_exists": false,
+    "android_test_lock_exists": true,
+    "soak_lock_exists": false
+  },
+  "non_claims": [
+    "not a Host RSS stability result",
+    "not a ScreenCaptureKit capture or HEVC stream result",
+    "not Xiaomi 13/fuxi evidence",
+    "does not close the README Host RSS no-growth gate"
+  ],
+  "open_pr_context": {
+    "158": "adds HOST_PID Makefile path and previous readiness blocker; not merged at preflight",
+    "195": "draft Host RSS lifecycle readiness changes; no completed 2h gate run",
+    "222": "draft Host RSS telemetry instrumentation; no completed 2h gate run",
+    "233": "draft generic Host signing/TCC preflight; no completed 2h gate run"
+  },
+  "recorded_at": "2026-08-21T18:32:32Z",
+  "repository": {
+    "branch": "codex/host-rss-2h-rerun-blocked",
+    "commit": "baaec28a2a47bd9c2ff38a32eaacdbf1880f1e38",
+    "remote": "git@github.com:TaoSama/vibe-screen.git",
+    "upstream": "origin/main"
+  },
+  "required_next_action": "Unlock the Mac, re-grant Screen Recording to the exact Host binary, start a current-source Host with VIBE_SCREEN_TELEMETRY_PATH, establish a stable Nubia P0110 USB HEVC stream, then run vibescreen_evidence.soak with --host-pid followed by soak_report and host_rss_gate.",
+  "schema_version": "vibescreen.evidence/v1",
+  "status": "blocked",
+  "two_hour_gate_closed": false
+}

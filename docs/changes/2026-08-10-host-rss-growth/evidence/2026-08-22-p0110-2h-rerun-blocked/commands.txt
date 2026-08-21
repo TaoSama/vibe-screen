@@ -1,0 +1,121 @@
+# command ledger
+local recorded time: 2026-08-22T02:32:32+0800
+utc recorded time: 2026-08-21T18:32:32Z
+repo: baaec28a2a47bd9c2ff38a32eaacdbf1880f1e38
+branch: codex/host-rss-2h-rerun-blocked
+adb endpoint: [redacted-controlled-endpoint]
+
+## Repository and main freshness
+git fetch origin --prune
+git rev-parse HEAD
+git rev-parse origin/main
+git merge-base --is-ancestor origin/main HEAD
+
+result:
+HEAD == origin/main == baaec28a2a47bd9c2ff38a32eaacdbf1880f1e38
+origin_main_ancestor_of_head=0
+
+## Official tools present
+rg --files | rg '(^|/)(AGENTS|CLAUDE)\.md$|host_rss|rss|soak|2026-08-10-host-rss|2026-08-04-phase-0-baseline'
+
+relevant results:
+tools/vibescreen_evidence/host_rss_gate.py
+tools/vibescreen_evidence/soak.py
+tools/vibescreen_evidence/soak_report.py
+tools/vibescreen_evidence/host_memory_diagnostic.py
+tools/tests/test_host_rss_gate.py
+tools/tests/test_soak.py
+tools/tests/test_soak_report.py
+docs/changes/2026-08-10-host-rss-growth/TECH.md
+docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/
+
+## Relevant open PRs inspected
+gh pr list --repo TaoSama/vibe-screen --state open --limit 50 --json number,title,headRefName,baseRefName,isDraft,updatedAt,url,author
+gh pr view 158 --repo TaoSama/vibe-screen --json number,title,body,headRefName,isDraft,files,url
+gh pr view 195 --repo TaoSama/vibe-screen --json number,title,body,headRefName,isDraft,files,url
+gh pr view 222 --repo TaoSama/vibe-screen --json number,title,body,headRefName,isDraft,files,url
+gh pr view 233 --repo TaoSama/vibe-screen --json number,title,body,headRefName,isDraft,files,url
+
+summary:
+#158 records a Host RSS readiness blocker and adds a HOST_PID Makefile path,
+but is not merged into origin/main. #195 and #222 are Host RSS lifecycle /
+telemetry draft PRs and do not contain a completed two-hour gate run. #233
+records a generic signing identity blocker. No open PR contains a completed
+current-source two-hour host_rss_gate pass.
+
+## Device lock preflight
+ls -l /tmp/vibe-screen-device-android.lock /tmp/vibe-screen-device-soak.lock /tmp/vibe-screen-device-android-test.lock 2>&1 || true
+
+result:
+ls: /tmp/vibe-screen-device-android.lock: No such file or directory
+ls: /tmp/vibe-screen-device-soak.lock: No such file or directory
+-rw-r--r--@ 1 luwentao wheel 18 Aug 21 21:38 /tmp/vibe-screen-device-android-test.lock
+
+## Device identity and running package
+adb -s EP0110PZ0B9110300B devices -l
+adb -s EP0110PZ0B9110300B shell getprop ro.product.manufacturer
+adb -s EP0110PZ0B9110300B shell getprop ro.product.model
+adb -s EP0110PZ0B9110300B shell getprop ro.product.device
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.release
+adb -s EP0110PZ0B9110300B shell getprop ro.build.version.sdk
+adb -s EP0110PZ0B9110300B shell getprop ro.build.fingerprint
+adb -s EP0110PZ0B9110300B shell pidof dev.telemachus.display || true
+adb -s EP0110PZ0B9110300B reverse --list || true
+
+result:
+EP0110PZ0B9110300B device usb:1-1 product:pacific model:P0110 device:pacific transport_id:1
+nubia
+P0110
+pacific
+16
+36
+nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys
+27526
+UsbFfs tcp:54321 tcp:54321
+
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.device_info \
+  --serial EP0110PZ0B9110300B \
+  --package dev.telemachus.display \
+  --output /tmp/vibe-screen-device-info-preflight.json
+
+## Host, TCC, and build-artifact preflight
+pgrep -af "Vibe Screen|Telemachus|MacHost" || true
+ps -p 92943 -o pid=,ppid=,etime=,rss=,command=
+lsof -nP -iTCP:54321 2>/dev/null || true
+ioreg -n Root -d1 -a | plutil -p - 2>/dev/null | rg "CGSSession(ScreenIsLocked|OnConsoleKey|UserNameKey)" || true
+security find-identity -p codesigning -v
+shasum -a 256 "/Applications/Vibe Screen.app/Contents/MacOS/Vibe Screen"
+codesign -dv --verbose=4 "/Applications/Vibe Screen.app" 2>&1 | sed -n '1,80p'
+log show --last 20m --predicate 'subsystem == "com.apple.TCC" AND eventMessage CONTAINS[c] "Screen"' --style compact 2>/dev/null | tail -80 || true
+
+key results:
+CGSSessionScreenIsLocked => true
+security find-identity: 0 valid identities found
+installed Host SHA-256: c06424f8580de669db86b7e2efc19adb922d14414ef2cde749fae5ad20ec3996
+installed Host bundle identifier: dev.telemachus.display
+installed Host authority: Vibe Screen Dev
+TCC log: Delete kTCCServiceScreenCapture identifier=dev.telemachus.display at 2026-08-22 02:27:27 local time
+
+## Evidence tools verification
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_host_rss_gate tools.tests.test_soak tools.tests.test_soak_report -v
+
+result:
+Ran 27 tests in 0.902s
+OK
+
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.host_rss_gate \
+  --summary docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/summary.json \
+  --samples docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-09-xiaomi-fuxi-soak2h-v2/samples.jsonl \
+  --output /tmp/vibe-screen-historical-host-rss-gate.json
+
+result:
+exit_code=1
+verdict=insufficient
+reasons include source summary not complete/error-free plus failing OLS,
+Theil-Sen, second-half drift, and full-window drift criteria.
+
+## Formal run decision
+The formal two-hour runner was not started. A valid run requires an unlocked
+macOS console, a TCC-authorized exact Host binary started with
+VIBE_SCREEN_TELEMETRY_PATH, a stable visible HEVC stream, and host RSS sampling
+via --host-pid.
