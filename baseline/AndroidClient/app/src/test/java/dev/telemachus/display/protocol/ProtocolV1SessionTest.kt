@@ -299,6 +299,27 @@ class ProtocolV1SessionTest {
     }
 
     @Test
+    fun hostActionCatalogReplacementCanClearPreviouslyInvokableActions() {
+        val session = hostActionStreamingSession()
+        session.receive(hostActionCatalog(7))
+        val firstInvocation = ByteString.copyFrom(byteArrayOf(1, 2, 3))
+        assertNotNull(session.invokeHostAction("move-window", firstInvocation))
+
+        val unknownOnly =
+            listOf(
+                HostActionDescriptor.newBuilder().setActionId("custom-action").build(),
+                HostActionDescriptor.newBuilder().setActionId("future-action").build(),
+            )
+        val cleared =
+            session.receive(hostActionCatalog(8, unknownOnly)).single()
+                as ProtocolV1Session.Action.HostActionsAvailable
+
+        assertTrue(cleared.actions.isEmpty())
+        assertTrue(session.hostActions.isEmpty())
+        assertNull(session.invokeHostAction("move-window", ByteString.copyFrom(byteArrayOf(4, 5, 6))))
+    }
+
+    @Test
     fun invokeHostActionSendsInvokeAndResultIsCorrelated() {
         val session = hostActionStreamingSession()
         session.receive(hostActionCatalog(7))

@@ -21,6 +21,30 @@ class HostActionMenuPolicyTest {
     }
 
     @Test
+    fun `button ignores unknown-only action catalogs`() {
+        val actions = listOf(option("custom-action"), option("future-action"))
+
+        assertFalse(HostActionMenuPolicy.isAvailable(hostActions = true, actions = actions))
+        assertEquals(emptyList<HostActionOption>(), HostActionMenuPolicy.supportedActions(actions))
+    }
+
+    @Test
+    fun `supported actions filter unknown ids and keep first duplicate`() {
+        val actions =
+            listOf(
+                option("custom-action"),
+                option("move-window", name = "First"),
+                option("move-window", name = "Second"),
+                option("return-windows"),
+            )
+
+        val supported = HostActionMenuPolicy.supportedActions(actions)
+
+        assertEquals(listOf("move-window", "return-windows"), supported.map { it.id })
+        assertEquals("First", supported.first().name)
+    }
+
+    @Test
     fun `menu label prefers the host localized name`() {
         val label =
             HostActionMenuPolicy.menuLabel(

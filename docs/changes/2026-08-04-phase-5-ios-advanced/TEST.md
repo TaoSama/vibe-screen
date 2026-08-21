@@ -188,6 +188,71 @@ tests because the selected Command Line Tools SwiftPM environment could not
 import `XCTest`; the full-Xcode CI gate remains responsible for Mac XCTest
 execution.
 
+## Gesture-to-action mapping offline boundary
+
+On 2026-08-21 the gesture-to-action mapping boundary was tightened and
+verified offline from an isolated Codex worktree. The local passed commands
+were:
+
+```bash
+git diff --check
+make protocol
+cd baseline/MacHost && swift build
+cd ../.. && make baseline-macos-self-test
+cd baseline/AndroidClient && ./gradlew --no-daemon testDebugUnitTest --tests 'dev.telemachus.display.HostActionMenuPolicyTest' --tests 'dev.telemachus.display.GestureHostActionPolicyTest' --tests 'dev.telemachus.display.protocol.ProtocolV1SessionTest'
+swift run --package-path apps/ios vibescreen-ios-selftest
+```
+
+Observed result:
+
+```text
+Protocol fixture/security tests: 36 tests, OK
+MacHost swift build: Build complete
+Host self-test: PASS
+Transport self-test: PASS
+Reliability self-test: PASS
+Protocol v1 self-test: PASS
+video encoder self-test passed
+Android targeted unit tests: BUILD SUCCESSFUL
+iOS portable self-test: PASS
+Android lintDebug assembleDebug: BUILD SUCCESSFUL
+git diff --check: pass
+```
+
+A local XCTest attempt was also made for the iOS unit target:
+
+```bash
+swift test --package-path apps/ios --filter GestureMappingTests
+```
+
+It failed before executing tests because the selected Command Line Tools
+SwiftPM environment could not import `XCTest`; this matches the existing local
+XCTest limitation and leaves the full-Xcode CI gate responsible for executing
+`GestureMappingTests`. The same `XCTest` import limitation blocked a local
+MacHost `swift test --filter
+ProtocolV1SessionTests/testHostActionCatalogIsSuppressedByLocalManagedPolicy`
+attempt before test execution; the equivalent policy-denied catalog assertion is
+therefore also carried by the portable `--protocol-v1-self-test` run above.
+
+The source-level boundary is:
+
+- Host exposes `HostActionCatalog` only when `CAPABILITY_HOST_ACTIONS` is both
+  negotiated and allowed by local managed policy.
+- Host rejects unknown `HostActionInvoke`, unnegotiated/disabled capability,
+  pre-stream invocation, mismatched display/stream targets, missing invocation
+  IDs, and pending-invocation overflow.
+- Android and iOS keep gesture definitions local and send only
+  `HostActionInvoke` records for whitelisted, catalogued action IDs. Unknown
+  catalog entries are filtered before local gesture/menu policy sees them.
+- Android ignores replayed/unsolicited `HostActionResult` records without a
+  matching pending invocation.
+
+This is not real gesture acceptance evidence. No signed iPhone/iPad device run,
+fresh Android gesture run, physical accessory run, TCC-confirmed macOS input
+run, or public-Internet path was executed for this slice; those gates remain
+open. The blocked record is under
+`evidence/2026-08-21-gesture-action-mapping-blocked/`.
+
 ## Environment gates and unproved behavior
 
 For the original local run, `xcode-select -p` returned Command Line Tools.
@@ -206,7 +271,8 @@ The following remain unproved until their dedicated gates produce evidence:
 - AVAudioEngine audible output, UIPasteboard prompts/writes, security-scoped
   file picker/export, UDP broadcast, and managed App Configuration injection;
 - host-side multi-client/display, audio capture, clipboard/file handlers,
-  color retry, actions, and wake helper;
+  color retry, advanced action variants beyond the finite baseline catalog,
+  real-device gesture execution, and wake helper;
 - audio/bulk WebRTC DataChannel integration, admission/backlog limits, and
   real-network E2E behavior. The Android/macOS record-layer key, nonce, replay,
   and fixed-vector checks are offline evidence only;

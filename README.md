@@ -645,6 +645,13 @@ network quality may increase it.
   carries additive Protocol v1 fields and client implementations for multiple
   clients/displays, HDR-to-SDR fallback, gesture-to-action mapping,
   Wake-on-LAN, and deny-wins managed configuration.
+- Gesture-to-action mapping is now fail-closed at the offline protocol boundary:
+  the MacHost exposes only a negotiated, managed-policy-gated finite action
+  catalog, Android and iOS keep gesture definitions local and send only
+  `HostActionInvoke`, and unknown, unadvertised, or stale-session invocations
+  are rejected or ignored. This is Host/Android/iOS unit and self-test evidence
+  only; no fresh signed iOS-device or Android real-device gesture-action run is
+  claimed.
 - The unsigned app has built successfully with the iOS Simulator SDK in CI.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
   interoperability commit. Signing, iPhone/iPad installation, hardware

@@ -1038,10 +1038,22 @@ func testHDRGesturesAndWake() throws {
     let encoded = try JSONEncoder().encode(profile)
     try require(try JSONDecoder().decode(GestureProfile.self, from: encoded) == profile, "gesture persistence")
     _ = try profile.validated(availableHostActions: ["move-window"], policy: .unmanaged)
+    try require(
+        HostActionCatalogPolicy.supportedActionIDs(from: ["future-action", "move-window", "move-window"]) == ["move-window"],
+        "host action catalog whitelist"
+    )
     do {
         _ = try profile.validated(availableHostActions: [], policy: .unmanaged)
         throw SelfTestError.failed("unknown host action accepted")
     } catch GestureMappingError.unavailableHostAction { }
+    var hostActionsDeniedStatus = ManagedPolicy.unmanaged.protocolStatus
+    hostActionsDeniedStatus.managed = true
+    hostActionsDeniedStatus.hostActionsAllowed = false
+    let hostActionsDenied = ManagedPolicy(remoteStatus: hostActionsDeniedStatus)
+    do {
+        _ = try profile.validated(availableHostActions: ["move-window"], policy: hostActionsDenied)
+        throw SelfTestError.failed("host action policy deny accepted")
+    } catch GestureMappingError.policyDenied { }
 
     let packet = try WakeOnLAN.magicPacket(
         macAddress: "00:11:22:33:44:55",

@@ -1993,11 +1993,11 @@ class MainActivity : AppCompatActivity() {
      * menu is built lazily in showHostActionsMenu() from the stored list.
      */
     private fun populateHostActions(actions: List<HostActionOption>) {
-        availableHostActions = actions
+        availableHostActions = HostActionMenuPolicy.supportedActions(actions)
         val available =
             HostActionMenuPolicy.isAvailable(
                 currentSessionBinding().capabilities.hostActions,
-                actions,
+                availableHostActions,
             )
         binding.controlHostActionsButton.visibility = if (available) View.VISIBLE else View.GONE
         binding.controlHostActionsButton.isEnabled = available
