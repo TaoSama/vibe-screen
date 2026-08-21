@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS signaling_role_rates (
     PRIMARY KEY (session_id, role)
 );
 
+-- Upgrade deploy order: drain or stop instances that still use the legacy
+-- signaling_waiters counter schema, apply this migration, then start instances
+-- that use signaling_waiter_leases.
 DROP TABLE IF EXISTS signaling_waiters;
 
 CREATE TABLE IF NOT EXISTS signaling_waiter_leases (

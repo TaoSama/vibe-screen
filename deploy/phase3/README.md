@@ -123,7 +123,10 @@ Authority endpoint, and keep `authority_mode=production_authority` with
 
 Provide `VIBE_SIGNALING_IMAGE_REPOSITORY` and
 `VIBE_SIGNALING_IMAGE_SHA256`, independent migration/runtime PostgreSQL URL
-secret files, and independent issuer, metrics, and Authority client token files:
+secret files, and independent issuer, metrics, and Authority client token files.
+The migration and runtime PostgreSQL URLs may use different credentials, but
+they must target the same PostgreSQL database and schema so the migration job
+creates the exact schema used by runtime readiness and traffic.
 
 ```bash
 export VIBE_SIGNALING_IMAGE_REPOSITORY=registry.example.com/vibe-signaling

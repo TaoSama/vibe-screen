@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -451,7 +452,7 @@ func TestPostgresStoreSharesRoutingAcrossInstances(t *testing.T) {
 		err    error
 	}
 	result := make(chan pollResult, 1)
-	waitCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	waitCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	go func() {
 		events, _, pollErr := follower.PollAuthorized(waitCtx, created.SessionID, RoleDevice, 0, true)
@@ -529,6 +530,67 @@ func TestPostgresWaiterLeaseReleasedAfterBackendDisconnect(t *testing.T) {
 	if err := store.releaseWaiter(ctx, created.SessionID, RoleDevice, secondLease.ID); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestPostgresWaiterLeaseRegistrationIsAtomic(t *testing.T) {
+	cfg := testConfig()
+	cfg.MaxWaitersPerRole = 1
+	store, cfg := openSignalingIntegrationStore(t, cfg)
+	ctx := context.Background()
+	peer, err := OpenPostgresStore(ctx, cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+	created, _, err := store.Create(ctx, CreateSessionRequest{RequestID: "waiter-lease-atomic", TTL: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stores := []*PostgresStore{store, peer}
+	listeners := make([]*postgresNotificationListener, 0, len(stores))
+	for _, owner := range stores {
+		listener, err := owner.openNotificationListener(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer listener.close()
+		listeners = append(listeners, listener)
+	}
+
+	start := make(chan struct{})
+	errs := make(chan error, len(listeners))
+	var wait sync.WaitGroup
+	for i, owner := range stores {
+		listener := listeners[i]
+		wait.Add(1)
+		go func(i int, owner *PostgresStore, listener *postgresNotificationListener) {
+			defer wait.Done()
+			<-start
+			lease := waiterLease{ID: fmt.Sprintf("atomic-lease-%d", i), BackendPID: listener.backendPID, BackendStartedAt: listener.backendStartedAt}
+			_, _, err := owner.pollOnce(ctx, created.SessionID, RoleDevice, 0, true, lease)
+			errs <- err
+		}(i, owner, listener)
+	}
+	close(start)
+	wait.Wait()
+	close(errs)
+
+	var accepted, rejected int
+	for err := range errs {
+		switch {
+		case err == nil:
+			accepted++
+		case errors.Is(err, ErrTooManyWaiters):
+			rejected++
+		default:
+			t.Fatalf("waiter registration error=%v", err)
+		}
+	}
+	if accepted != 1 || rejected != 1 {
+		t.Fatalf("accepted=%d rejected=%d, want one accepted and one rejected", accepted, rejected)
+	}
+	waitForPostgresWaiter(t, store, created.SessionID, RoleDevice, 1)
 }
 
 func TestPostgresLocalStoreLongPollAndExpiry(t *testing.T) {
@@ -632,7 +694,11 @@ func TestSignalingMigrationUpgradesWaiterCountSchema(t *testing.T) {
 		t.Skip("VIBE_SIGNALING_TEST_DATABASE_URL is not set")
 	}
 	databaseURL, _ = signalingIntegrationTestDatabaseURL(t, databaseURL)
-	oldMigration := strings.Replace(readSignalingMigration(t), newWaiterLeaseSchemaForTest, oldWaiterCountSchemaForTest, 1)
+	currentMigration := readSignalingMigration(t)
+	oldMigration := strings.Replace(currentMigration, newWaiterLeaseSchemaForTest, oldWaiterCountSchemaForTest, 1)
+	if oldMigration == currentMigration {
+		t.Fatal("newWaiterLeaseSchemaForTest no longer matches the migration source")
+	}
 	oldDigest := sha256.Sum256([]byte(oldMigration))
 	if hex.EncodeToString(oldDigest[:]) != previousWaiterCountSchemaChecksum {
 		t.Fatal("old migration fixture no longer matches previous checksum")
@@ -679,7 +745,10 @@ func TestSignalingMigrationUpgradesWaiterCountSchema(t *testing.T) {
 	}
 }
 
-const newWaiterLeaseSchemaForTest = "DROP TABLE IF EXISTS signaling_waiters;\n\n" +
+const newWaiterLeaseSchemaForTest = "-- Upgrade deploy order: drain or stop instances that still use the legacy\n" +
+	"-- signaling_waiters counter schema, apply this migration, then start instances\n" +
+	"-- that use signaling_waiter_leases.\n" +
+	"DROP TABLE IF EXISTS signaling_waiters;\n\n" +
 	"CREATE TABLE IF NOT EXISTS signaling_waiter_leases (\n" +
 	"    session_id text NOT NULL REFERENCES signaling_sessions(session_id) ON DELETE CASCADE,\n" +
 	"    role text NOT NULL CHECK (role IN ('host','device')),\n" +

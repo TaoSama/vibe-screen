@@ -16,7 +16,7 @@ import (
 
 const (
 	requiredSignalingSchemaVersion  int64 = 1
-	requiredSignalingSchemaChecksum       = "ec37efb1b97858309ebca3c6a3782b7bc14ba0079df6d9a8fc513fe93960824b"
+	requiredSignalingSchemaChecksum       = "abcef4848672c58e22efe996d924ddc8d5126c9668021b7d5fb83bf76af66129"
 	authorityReservationPrefix            = "pending-authority-"
 	postgresNotifyTimeout                 = 250 * time.Millisecond
 	postgresBackgroundTimeout             = 10 * time.Second
@@ -584,6 +584,9 @@ func (s *PostgresStore) pollOnce(ctx context.Context, sessionID string, role Rol
 		if err != nil || next > after || !acquireWaiter {
 			return err
 		}
+		if err := s.lockWaiterRegistrationTx(ctx, tx, sessionID, role); err != nil {
+			return err
+		}
 		waiters, err := s.waitersTx(ctx, tx, sessionID, role, lease.ID)
 		if err != nil {
 			return err
@@ -832,6 +835,11 @@ func (s *PostgresStore) waitersTx(ctx context.Context, tx pgx.Tx, sessionID stri
 	}
 	err := tx.QueryRow(ctx, "SELECT COUNT(*) FROM signaling_waiter_leases WHERE session_id=$1 AND role=$2 AND lease_id<>$3", sessionID, role, leaseID).Scan(&waiters)
 	return waiters, err
+}
+
+func (s *PostgresStore) lockWaiterRegistrationTx(ctx context.Context, tx pgx.Tx, sessionID string, role Role) error {
+	_, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", sessionID, string(role))
+	return err
 }
 
 func (s *PostgresStore) releaseWaiter(ctx context.Context, sessionID string, role Role, leaseID string) error {
