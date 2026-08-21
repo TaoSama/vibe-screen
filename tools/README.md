@@ -168,7 +168,13 @@ The command samples RSS, `footprint` physical footprint and VM categories, and
 disturbance. Host `stream_stats` must cover the same wall-clock window, remain
 on one session epoch, and include continuous bounded network-queue depth even
 when no frame is dropped. If VideoToolbox in-flight depth is present, the
-diagnostic also validates it against its advertised capacity.
+diagnostic also validates it against its advertised capacity. Current Host
+builds additionally include `frame_registry_count` plus the capture-side
+`latest_pixel_buffer_retained`/`latest_pixel_buffer_capacity` pair, letting the
+same short-window report fail closed if retained VideoToolbox callback contexts
+or the latest pixel-buffer cache exceed their fixed bounds. Older telemetry
+without these optional pairs remains readable, but a partially present pair is
+treated as insufficient input.
 
 The diagnostic report includes `metrics.heap_watch_summary`, which aggregates
 first-to-last count and byte drift for the watched SwiftUI Observation,
@@ -181,13 +187,13 @@ The report carries a top-level `verdict` with exactly three values:
 - `pass`: the complete 10-17 minute window has sufficient samples, all required
   memory signals stay within the short-window stability thresholds, and stream
   telemetry plus bounded network queues stay healthy. Optional VideoToolbox
-  in-flight telemetry, when present, must also stay within capacity. This is a
-  short-window regression result only and cannot replace or close the formal
-  two-hour `host_rss_gate`.
+  in-flight, frame-registry, and latest pixel-buffer telemetry, when present,
+  must also stay within capacity. This is a short-window regression result only
+  and cannot replace or close the formal two-hour `host_rss_gate`.
 - `fail`: the window attributes `retained_growth` or `allocator_high_water`, or
   the production stream reports a queue over capacity, an invalid or changing
-  queue capacity, optional VideoToolbox in-flight over capacity, or
-  non-positive FPS.
+  queue capacity, optional VideoToolbox in-flight/frame-registry over capacity,
+  latest pixel-buffer retention over capacity, or non-positive FPS.
 - `insufficient`: sampling, tooling, parsing, or stream telemetry coverage is
   incomplete, or the memory signals conflict and do not support a stable or
   growth attribution.
@@ -204,7 +210,8 @@ Durations are restricted to 10-17 minutes so the final heap snapshot and report
 remain within a 20-minute command budget. The diagnostic never invokes
 `memory_pressure`, changes TCC, or accesses Keychain. Any tool error, missing
 metric, missing stream telemetry coverage, session-epoch change, queue depth
-above its advertised capacity, or present encoder in-flight depth above capacity
+above its advertised capacity, present encoder in-flight or frame-registry
+depth above capacity, or present latest pixel-buffer retention above capacity
 fails closed: the `verdict` becomes `insufficient` or `fail` and the
 `attribution` stays `inconclusive`. The existing deterministic VideoEncoder and
 mailbox tests remain the authoritative checks for the two-frame VideoToolbox

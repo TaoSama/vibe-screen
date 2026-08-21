@@ -132,6 +132,9 @@ def telemetry(
     capacity: int = 2,
     encoder_in_flight: int = 1,
     encoder_capacity: int = 2,
+    frame_registry_count: int = 1,
+    latest_pixel_buffer_retained: int = 1,
+    latest_pixel_buffer_capacity: int = 1,
 ) -> list[dict]:
     return [
         {
@@ -146,6 +149,9 @@ def telemetry(
                 "queue_capacity": capacity,
                 "encoder_in_flight": encoder_in_flight,
                 "encoder_in_flight_capacity": encoder_capacity,
+                "frame_registry_count": frame_registry_count,
+                "latest_pixel_buffer_retained": latest_pixel_buffer_retained,
+                "latest_pixel_buffer_capacity": latest_pixel_buffer_capacity,
             },
         }
         for offset in range(0, 601, 5)
@@ -553,11 +559,42 @@ class HostMemoryAnalysisTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "fail")
         self.assertIn("in-flight count exceeded", result["telemetry"]["anomalies"][-1])
 
+    def test_latest_pixel_buffer_overage_fails_even_when_attribution_inconclusive(self):
+        result = analyze_records(
+            memory_records("retained"),
+            telemetry(latest_pixel_buffer_retained=2),
+            started_at=timestamp(STARTED),
+            finished_at=timestamp(FINISHED),
+        )
+
+        self.assertEqual(result["attribution"], "inconclusive")
+        self.assertEqual(result["verdict"], "fail")
+        self.assertEqual(result["telemetry"]["maximum_latest_pixel_buffer_retained"], 2.0)
+        self.assertEqual(result["telemetry"]["latest_pixel_buffer_capacity"], 1.0)
+        self.assertIn(
+            "latest pixel buffer retention exceeded",
+            result["telemetry"]["anomalies"][-1],
+        )
+
+    def test_frame_registry_count_overage_fails_even_when_attribution_inconclusive(self):
+        result = analyze_records(
+            memory_records("retained"),
+            telemetry(frame_registry_count=3),
+            started_at=timestamp(STARTED),
+            finished_at=timestamp(FINISHED),
+        )
+
+        self.assertEqual(result["attribution"], "inconclusive")
+        self.assertEqual(result["verdict"], "fail")
+        self.assertEqual(result["telemetry"]["maximum_frame_registry_count"], 3.0)
+        self.assertIn("frame registry count exceeded", result["telemetry"]["anomalies"][-1])
+
     def test_stream_telemetry_treats_encoder_in_flight_fields_as_optional(self):
         incomplete = telemetry()
         for record in incomplete:
             record["attributes"].pop("encoder_in_flight")
             record["attributes"].pop("encoder_in_flight_capacity")
+            record["attributes"].pop("frame_registry_count")
 
         result = analyze_records(
             memory_records("retained"),
@@ -576,10 +613,109 @@ class HostMemoryAnalysisTests(unittest.TestCase):
             "encoder_in_flight_capacity",
             result["telemetry"]["missing_optional_fields"],
         )
+        self.assertIn(
+            "frame_registry_count",
+            result["telemetry"]["missing_optional_fields"],
+        )
+        self.assertTrue(result["sufficiency"]["stream_telemetry"])
+
+    def test_stream_telemetry_treats_legacy_encoder_pair_without_registry_as_complete(self):
+        incomplete = telemetry()
+        for record in incomplete:
+            record["attributes"].pop("frame_registry_count")
+
+        result = analyze_records(
+            memory_records("retained"),
+            incomplete,
+            started_at=timestamp(STARTED),
+            finished_at=timestamp(FINISHED),
+        )
+
+        self.assertEqual(result["attribution"], "retained_growth")
+        self.assertEqual(result["verdict"], "fail")
+        self.assertIn(
+            "frame_registry_count",
+            result["telemetry"]["missing_optional_fields"],
+        )
+        self.assertEqual(result["telemetry"]["maximum_encoder_in_flight"], 1.0)
+        self.assertEqual(result["telemetry"]["encoder_in_flight_capacity"], 2.0)
+        self.assertTrue(result["sufficiency"]["stream_telemetry"])
+
+    def test_stream_telemetry_treats_latest_pixel_buffer_fields_as_optional(self):
+        incomplete = telemetry()
+        for record in incomplete:
+            record["attributes"].pop("latest_pixel_buffer_retained")
+            record["attributes"].pop("latest_pixel_buffer_capacity")
+
+        result = analyze_records(
+            memory_records("retained"),
+            incomplete,
+            started_at=timestamp(STARTED),
+            finished_at=timestamp(FINISHED),
+        )
+
+        self.assertEqual(result["attribution"], "retained_growth")
+        self.assertEqual(result["verdict"], "fail")
+        self.assertIn(
+            "latest_pixel_buffer_retained",
+            result["telemetry"]["missing_optional_fields"],
+        )
+        self.assertIn(
+            "latest_pixel_buffer_capacity",
+            result["telemetry"]["missing_optional_fields"],
+        )
         self.assertTrue(result["sufficiency"]["stream_telemetry"])
 
     def test_stream_telemetry_requires_encoder_in_flight_pair_when_present(self):
         for missing in ("encoder_in_flight", "encoder_in_flight_capacity"):
+            with self.subTest(missing=missing):
+                incomplete = telemetry()
+                incomplete[10]["attributes"].pop(missing)
+
+                result = analyze_records(
+                    memory_records("retained"),
+                    incomplete,
+                    started_at=timestamp(STARTED),
+                    finished_at=timestamp(FINISHED),
+                )
+
+                self.assertEqual(result["attribution"], "inconclusive")
+                self.assertEqual(result["verdict"], "insufficient")
+                self.assertEqual(result["telemetry"]["invalid_record_count"], 1)
+                self.assertEqual(result["telemetry"]["stream_stats_count"], 120)
+                self.assertIn(
+                    missing,
+                    result["telemetry"]["missing_optional_fields"],
+                )
+                self.assertFalse(result["sufficiency"]["stream_telemetry"])
+
+    def test_stream_telemetry_requires_encoder_capacity_when_registry_count_present(self):
+        incomplete = telemetry()
+        incomplete[10]["attributes"].pop("encoder_in_flight_capacity")
+        incomplete[10]["attributes"].pop("encoder_in_flight")
+
+        result = analyze_records(
+            memory_records("retained"),
+            incomplete,
+            started_at=timestamp(STARTED),
+            finished_at=timestamp(FINISHED),
+        )
+
+        self.assertEqual(result["attribution"], "inconclusive")
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertEqual(result["telemetry"]["invalid_record_count"], 1)
+        self.assertEqual(result["telemetry"]["stream_stats_count"], 120)
+        self.assertIn(
+            "encoder_in_flight_capacity",
+            result["telemetry"]["missing_optional_fields"],
+        )
+        self.assertFalse(result["sufficiency"]["stream_telemetry"])
+
+    def test_stream_telemetry_requires_latest_pixel_buffer_pair_when_present(self):
+        for missing in (
+            "latest_pixel_buffer_retained",
+            "latest_pixel_buffer_capacity",
+        ):
             with self.subTest(missing=missing):
                 incomplete = telemetry()
                 incomplete[10]["attributes"].pop(missing)
@@ -786,7 +922,13 @@ class HostMemoryAnalysisTests(unittest.TestCase):
         self.assertEqual(result["telemetry"]["maximum_queue_depth"], 1.0)
         self.assertEqual(
             result["telemetry"]["missing_optional_fields"],
-            ["encoder_in_flight", "encoder_in_flight_capacity"],
+            [
+                "encoder_in_flight",
+                "encoder_in_flight_capacity",
+                "frame_registry_count",
+                "latest_pixel_buffer_capacity",
+                "latest_pixel_buffer_retained",
+            ],
         )
 
     def test_invalid_present_optional_field_rejects_record(self):

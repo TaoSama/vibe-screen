@@ -35,7 +35,7 @@ private enum TelemachusLog {
                     try? FileManager.default.removeItem(at: rotatedURL)
                     try? FileManager.default.moveItem(at: url, to: rotatedURL)
                 }
-                let timestamp = ISO8601DateFormatter().string(from: Date())
+                let timestamp = TelemetryTimestamp.string(from: Date())
                 let data = Data("\(timestamp) \(message)\n".utf8)
                 if !FileManager.default.fileExists(atPath: url.path) {
                     FileManager.default.createFile(
@@ -2368,8 +2368,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             streamingServer?.encoderStatsProvider = { [weak configuredCapture] in
                 configuredCapture?.encoderStats.map { stats in
-                    (inFlight: stats.inFlight, capacity: stats.capacity)
+                    (
+                        inFlight: stats.inFlight,
+                        capacity: stats.capacity,
+                        frameRegistryCount: stats.frameRegistryCount
+                    )
                 }
+            }
+            streamingServer?.frameLifecycleStatsProvider = { [weak configuredCapture] in
+                guard let stats = configuredCapture?.frameLifecycleStats else { return nil }
+                return StreamFrameLifecycleStats(
+                    latestPixelBufferRetained: stats.latestPixelBufferRetained,
+                    latestPixelBufferCapacity: stats.latestPixelBufferCapacity,
+                    fallbackCaptureActive: stats.fallbackCaptureActive,
+                    encoderPresent: stats.encoderPresent
+                )
             }
 
             streamingServer?.onServerFailed = {
