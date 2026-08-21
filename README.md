@@ -452,9 +452,10 @@ and the [tablet acceptance runbook](docs/changes/2026-08-14-phase-2-tablet-produ
 **Current status: runnable development-preview product slice and UI; not a
 stable Internet release.** The macOS and Android apps expose manual pairing,
 short-lived session-profile import, direct/forced-TURN selection, product-session
-state and recovery errors. The repository also includes authenticated signaling,
-a coturn credential/quota control plane and pinned Compose data plane, and
-production libwebrtc adapters. Control uses a reliable ordered DataChannel;
+state and recovery errors. The repository also includes authenticated signaling
+with explicit memory/PostgreSQL store backends, a coturn credential/quota control
+plane and pinned Compose data plane, and production libwebrtc adapters.
+Control uses a reliable ordered DataChannel;
 media uses an unordered zero-retransmit channel with bounded latest-frame policy.
 Protocol v1 AES-256-GCM records protect both channels above WebRTC so a TURN
 relay handles only ciphertext.
@@ -557,13 +558,16 @@ Automatic account/session-authority issuance, real
 encoded ScreenCaptureKit output through the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
 revocation propagation and soak remain release gates rather than shipped
-features. Signaling and relay stores are currently single-node implementations.
-Relay credential admission is wired to Authority, and Authority can debit
-accepted coturn usage into the control-plane daily-byte ledger. The structured
-coturn reconcile helper can fail closed when active source allocations require a
-disconnect executor, but the coturn exporter, production reconciliation loop,
-active-allocation disconnect executor, and production end-to-end enforcement
-remain release gates.
+features. Signaling now has a PostgreSQL-backed routing store with local
+cross-instance contract coverage, and relay has a PostgreSQL control-plane store
+for shared quota, revocation, active-session, and event-idempotency state. These
+do not prove a production multi-replica rollout, public ingress, multi-region
+consistency, or high-throughput/global rate-limit behavior. Relay credential
+admission is wired to Authority, and Authority can debit accepted coturn usage
+into the control-plane daily-byte ledger. The structured coturn reconcile helper
+can fail closed when active source allocations require a disconnect executor, but
+the coturn exporter, production reconciliation loop, active-allocation disconnect
+executor, and production end-to-end enforcement remain release gates.
 
 The target is roughly 80–150 ms on healthy Internet paths; relay distance and
 network quality may increase it.

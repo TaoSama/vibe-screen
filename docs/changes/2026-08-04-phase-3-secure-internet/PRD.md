@@ -49,13 +49,16 @@ Protocol v1 control, authenticated touch records, and synthetic media. That
 record proves only the dated source/device combination and must not be
 extrapolated to this working tree or later commits. It is not public-Internet,
 real ScreenCaptureKit content, visible Mac input, carrier/CGNAT, automatic
-handoff, latency, or stability evidence. The services remain single-node
-development implementations; automatic authority issuance, cross-service
-revocation propagation, authoritative coturn byte accounting, and a production
-deployment remain open. Trusted-LAN remains separate from Phase 3 Internet
-transport: current macOS/Android peers protect the token-admitted TCP session
-with per-session application records, while explicit legacy fallback remains
-plaintext and is not Phase 3 security.
+handoff, latency, or stability evidence. Signaling and relay now have
+PostgreSQL-backed stores that remove their process-local state blockers for a
+production-shaped deployment, with local tests covering the shared store
+contracts; production multi-replica rollout, public ingress, global rate limits,
+automatic authority issuance, cross-service revocation propagation,
+authoritative coturn byte accounting, and a production deployment remain open.
+Trusted-LAN remains separate from Phase 3 Internet transport: current
+macOS/Android peers protect the token-admitted TCP session with per-session
+application records, while explicit legacy fallback remains plaintext and is not
+Phase 3 security.
 
 As of 2026-08-06, main commit
 `4c2e908fe31af4c187684991301e163371444eab` had passed Phase 0

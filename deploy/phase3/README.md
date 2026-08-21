@@ -7,14 +7,17 @@ This directory contains two deliberately separate deployment slices:
 - `docker-compose.authority.production.yml` is a production-shaped Authority
   profile that requires an external PostgreSQL, immutable image digest, and
   runtime secret files.
-- `docker-compose.yml` and `docker-compose.production.yml` run the experimental
-  relay credential service beside coturn.
+- `docker-compose.yml` runs the experimental local relay credential service
+  beside coturn.
+- `docker-compose.production.yml` is a production-shaped signaling plus relay
+  profile. It requires external PostgreSQL for both services, immutable image
+  digests, and runtime secret files.
 
 They are not an integrated public Internet stack. Authority-backed signaling and
 relay credential admission can both call the shared Authority service, but these
 profiles still do not provide automatic account/session issuance, public ingress,
-multi-instance routing, or active revocation of an established PeerConnection/TURN
-allocation.
+public multi-replica rollout, or active revocation of an established
+PeerConnection/TURN allocation.
 
 ## Authority local profile
 
@@ -108,6 +111,37 @@ PostgreSQL migration, readiness, admission/authorization, Authority restart
 persistence, database-outage failure, runtime hardening, and secret-log scan. It
 does not prove production TLS, NTP, backup/restore, public ingress, or multi-node
 behavior.
+
+## Signaling production-shaped profile
+
+Copy `config/signaling.production.example.json` to the ignored
+`config/signaling.production.json`, review every limit, and point
+`authority_url` at the private Authority endpoint. The production example uses
+`authority_mode=production_authority` and `store_backend=postgres`; do not change
+it to the memory backend outside local self-tests, because production-authority
+mode requires durable routing state instead of process-local role-token state.
+
+The signaling migration and runtime processes use separate database URL secret
+files. The migration URL should use a short-lived DDL role and the runtime URL a
+least-privilege DML role. The service validates non-loopback PostgreSQL URLs
+directly and requires `sslmode=verify-full`; signaling does not have a separate
+database TLS-mode environment override. Keep the DB clock synchronized with
+Authority and alert on clock offset, because expiry and tombstone checks fail
+closed when store readiness cannot prove the schema and clock bound.
+
+Provision distinct issuer, metrics, and Authority-token secret files. The issuer
+token belongs only to the trusted session issuer, the metrics token only to the
+collector, and the Authority token must match Authority's signaling-admission
+secret. Do not ship these values to macOS or Android clients. Signaling has no
+built-in HTTP TLS; the production example binds `127.0.0.1:8088` and must sit
+behind an authenticated private TLS 1.2+ proxy or service mesh.
+
+The PostgreSQL backend is covered by local integration tests for restart-durable
+routing, expiry, capacity, LISTEN/NOTIFY wakeups, invalidation tombstones, and
+two store instances sharing one routing ledger. This removes the process-local
+store blocker for a production-shaped deployment, but it does not prove public
+ingress, production multi-replica rollout behavior, global create-rate limiting,
+or high-throughput operation.
 
 ## Relay data plane
 
@@ -204,11 +238,19 @@ export VIBE_RELAY_IMAGE_REPOSITORY=registry.example.com/vibe-relay
 export VIBE_RELAY_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 export VIBE_RELAY_MIGRATION_DATABASE_URL_FILE=/run/secrets/relay-migration-url
 export VIBE_RELAY_DATABASE_URL_FILE=/run/secrets/relay-runtime-url
+export VIBE_SIGNALING_IMAGE_REPOSITORY=registry.example.com/vibe-signaling
+export VIBE_SIGNALING_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+export VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE=/run/secrets/signaling-migration-url
+export VIBE_SIGNALING_DATABASE_URL_FILE=/run/secrets/signaling-runtime-url
+export VIBE_SIGNALING_ISSUER_TOKEN_FILE=/run/secrets/signaling-issuer-token
+export VIBE_SIGNALING_METRICS_TOKEN_FILE=/run/secrets/signaling-metrics-token
+export VIBE_SIGNALING_AUTHORITY_TOKEN_FILE=/run/secrets/signaling-authority-token
 docker compose -f docker-compose.production.yml config --quiet
-docker compose -f docker-compose.production.yml pull relay coturn
+docker compose -f docker-compose.production.yml pull signaling relay coturn
 docker compose -f docker-compose.production.yml up -d --wait
+curl --fail http://127.0.0.1:8088/readyz
 curl --fail http://127.0.0.1:8090/readyz
-docker compose -f docker-compose.production.yml logs --since=10m relay coturn
+docker compose -f docker-compose.production.yml logs --since=10m signaling relay coturn
 ```
 
 The `relay-migrate` job applies `001_relay.sql` behind an advisory lock and a
