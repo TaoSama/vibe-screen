@@ -412,10 +412,10 @@ evidence, while the input-latency gate requires external-camera evidence or a
 documented synchronized-clock setup with a reviewable error budget. The gate
 profiles are `usb-glass-to-glass-sub50`, `lan-glass-to-glass-sub80`, and
 `input-p95-sub50`; host and client telemetry are diagnostic only and cannot
-close these gates. As of the 2026-08-20 readiness check, the latency toolchain
-passes its fixture gates but no real external-camera package is available in
-the repository, so all three external latency gates remain open; see
-[the blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-20-latency-gates-readiness-blocked/README.md).
+close these gates. As of the 2026-08-21 fail-closed preflight, the latency
+toolchain passes its fixture gates but no real external-camera package is
+available in the repository, so all three external latency gates remain open;
+see [the blocked readiness record](docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-p0110-latency-gates-preflight-blocked/README.md).
 
 ### Phase 2 — Tablet productization
 

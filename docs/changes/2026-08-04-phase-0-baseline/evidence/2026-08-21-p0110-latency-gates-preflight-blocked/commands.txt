@@ -1,0 +1,15 @@
+cp docs/changes/2026-08-05-phase-1-android-client/evidence/2026-08-20-p0110-host-display-rotation-blocked/device-info.json docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-p0110-latency-gates-preflight-blocked/device-info.json
+
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.latency_preflight \
+  --input docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-p0110-latency-gates-preflight-blocked/preflight-input.json \
+  --device-info docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-p0110-latency-gates-preflight-blocked/device-info.json \
+  --repo . \
+  --checked-at 2026-08-21 \
+  --output docs/changes/2026-08-04-phase-0-baseline/evidence/2026-08-21-p0110-latency-gates-preflight-blocked/latency-preflight.json
+exit: 2
+
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m unittest tools.tests.test_latency tools.tests.test_latency_evidence tools.tests.test_latency_preflight tools.tests.test_schemas -v
+exit: 0
+
+make evidence-tools-test
+exit: 0

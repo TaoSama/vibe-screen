@@ -265,10 +265,26 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
 
 The manifest follows `tools/schemas/latency-evidence.schema.json` and must bind
 the run ID, transport, profile, raw camera recording, sample file, camera mode,
-device identity, build identity, and annotation method. The checker exits `0`
-only when the profile verdict is `pass` and provenance is complete; missing raw
-video or mismatched metadata stays `insufficient`. The step-by-step method is in
-`docs/runbook/latency-measurement.md`.
+device identity, build identity, annotation method, and the profile-specific
+artifact named in `gate_artifacts`: `usb_connection` for USB glass-to-glass,
+`lan_network_preflight` for LAN glass-to-glass, and `input_actuation_record`
+for input latency. The checker exits `0` only when the profile verdict is
+`pass` and provenance is complete; missing raw video, missing transport/input
+artifacts, or mismatched metadata stays `insufficient`. The step-by-step method
+is in `docs/runbook/latency-measurement.md`.
+
+Before attempting a formal run, record readiness with the fail-closed preflight:
+
+```sh
+make evidence-latency-preflight \
+  EVIDENCE_DIR=.build/evidence/latency-readiness \
+  LATENCY_DEVICE_INFO=.build/evidence/latency-readiness/device-info.json \
+  LATENCY_PREFLIGHT_INPUT=latency-readiness-input.json
+```
+
+The preflight writes `latency-preflight.json` and exits `2` while any required
+camera, manifest, sample, USB, LAN, or physical-input prerequisite is missing.
+It is readiness evidence only and never closes a performance gate.
 
 For telemetry-stage diagnostics, prepare rows with `stage,latency_ms` and mark
 the clock domain explicitly:

@@ -74,7 +74,21 @@ PYTHONPATH=tools python3 -m vibescreen_evidence.latency_evidence \
 
 See [External-camera latency measurement](runbook/latency-measurement.md). The
 checker requires the raw camera file, sample annotations, device/build metadata,
-and matching gate profile before it can return `pass`.
+matching gate profile, and the profile-specific retained artifact before it can
+return `pass`: `gate_artifacts.usb_connection` for USB glass-to-glass,
+`gate_artifacts.lan_network_preflight` for LAN glass-to-glass, and
+`gate_artifacts.input_actuation_record` for input latency. If those materials
+are not available yet, run the fail-closed readiness preflight instead:
+
+```bash
+make evidence-latency-preflight \
+  EVIDENCE_DIR=docs/changes/2026-08-04-phase-0-baseline/evidence/<date-device-latency-preflight-blocked> \
+  LATENCY_DEVICE_INFO=docs/changes/2026-08-04-phase-0-baseline/evidence/<date-device-latency-preflight-blocked>/device-info.json \
+  LATENCY_PREFLIGHT_INPUT=docs/changes/2026-08-04-phase-0-baseline/evidence/<date-device-latency-preflight-blocked>/preflight-input.json
+```
+
+A blocked latency preflight exits `2`, writes `latency-preflight.json`, and
+keeps all performance gates open with per-profile missing requirements.
 
 The current Phase 0 evidence is recorded in
 `docs/changes/2026-08-04-phase-0-baseline/TEST.md`. Any connected Android
