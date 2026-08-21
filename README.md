@@ -574,9 +574,9 @@ network quality may increase it.
   barrel buttons cannot be losslessly downgraded and are suppressed when the
   extended capability is not negotiated. The portable Harmony core now also
   advertises CAPABILITY_CONTROLLER, encodes ControllerEvent field 66, waits for
-  Host InputAck acceptance before sending controller state, and releases active
-  controllers through all-zero neutral DISCONNECTED events before teardown or
-  resume. No DevEco SDK was available for this
+  Host InputAck acceptance before sending controller state, validates lifecycle
+  bounds, and releases active controllers through all-zero neutral DISCONNECTED
+  events before teardown or resume. No DevEco SDK was available for this
   record, so the repository does not claim ArkTS compilation, a HAP, signing,
   installation, hardware decode, HUKS-backed secure pairing, authenticated
   transport, resume-capable Host interoperability, or real-device behavior.
