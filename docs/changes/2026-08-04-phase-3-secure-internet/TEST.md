@@ -811,8 +811,10 @@ named by that run:
 - `services/signaling make verify`: format, vet, race tests and a real child-process
   offer/answer/candidate exchange passed; PostgreSQL store tests additionally
   cover migration/readiness, restart-durable routing, expiry, long-poll wakeup,
-  waiter caps, and concurrent capacity when `VIBE_SIGNALING_TEST_DATABASE_URL` is
-  set. Its container was not built because Docker is unavailable.
+  waiter caps, concurrent capacity, cross-instance routing through one shared
+  PostgreSQL ledger, LISTEN/NOTIFY wakeup across store instances, and
+  invalidation tombstones when `VIBE_SIGNALING_TEST_DATABASE_URL` is set. Its
+  container was not built because Docker is unavailable.
 - macOS production WebRTC loopback and a real local signaling-process self-test
   passed for SDP/ICE and both data channels. The binary links M150 WebRTC.
 - A fresh local M150 loopback rerun passed with direct UDP, bidirectional reliable

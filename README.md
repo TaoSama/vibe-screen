@@ -538,9 +538,10 @@ and the [tablet acceptance runbook](docs/changes/2026-08-14-phase-2-tablet-produ
 **Current status: runnable development-preview product slice and UI; not a
 stable Internet release.** The macOS and Android apps expose manual pairing,
 short-lived session-profile import, direct/forced-TURN selection, product-session
-state and recovery errors. The repository also includes authenticated signaling,
-a coturn credential/quota control plane and pinned Compose data plane, and
-production libwebrtc adapters. Control uses a reliable ordered DataChannel;
+state and recovery errors. The repository also includes authenticated signaling
+with explicit memory/PostgreSQL store backends, a coturn credential/quota control
+plane and pinned Compose data plane, and production libwebrtc adapters.
+Control uses a reliable ordered DataChannel;
 media uses an unordered zero-retransmit channel with bounded latest-frame policy.
 Protocol v1 AES-256-GCM records protect both channels above WebRTC so a TURN
 relay handles only ciphertext.
@@ -742,12 +743,13 @@ scan request/acceptance, real encoded ScreenCaptureKit output through the
 device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
 revocation propagation and soak remain release gates rather than shipped
-features. Signaling and relay stores now use shared PostgreSQL state for
-multi-instance correctness paths; signaling long-poll waiter slots are backed by
-connection-scoped database leases so a replacement instance can reclaim a slot
-after the failed instance loses its PostgreSQL backend. Multi-instance
-throughput, cross-replica rate limiting, load-balancer behavior, and
-multi-region consistency remain unproved. Relay credential admission is wired to Authority,
+features. Signaling now has a PostgreSQL-backed routing store with local
+cross-instance contract coverage. Signaling and relay stores now use shared
+PostgreSQL state for multi-instance correctness paths; signaling long-poll
+waiter slots are backed by connection-scoped database leases so a replacement
+instance can reclaim a slot after the failed instance loses its PostgreSQL
+backend. These do not prove a production multi-replica rollout, cross-replica
+rate limiting, load-balancer behavior, or multi-region consistency. Relay credential admission is wired to Authority,
 relay non-duplicate usage admission is also checked by Authority, and Authority
 can debit accepted coturn usage into the control-plane daily-byte ledger.
 The structured coturn exporter, bounded reconciliation loop, and local

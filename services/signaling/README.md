@@ -389,6 +389,8 @@ slice, not accepted production behavior:
   after an instance loses its database backend. Multi-instance throughput, public
   ingress behavior, and rolling deployment behavior are still not proven.
   `session_creates_per_minute` remains a process-local cap.
+  Local integration tests cover two store instances sharing routing, long-poll
+  wakeups, and invalidation tombstones.
 - Per-message remote authorization against the authority and the global
   PostgreSQL advisory lock serialization of creates are deliberate fail-closed
   correctness choices, not a high-throughput design. Do not claim multi-instance
