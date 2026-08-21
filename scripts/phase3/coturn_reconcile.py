@@ -16,9 +16,11 @@ import argparse
 from dataclasses import dataclass
 from datetime import datetime
 import json
+import math
 import os
 from pathlib import Path
 import re
+import selectors
 import subprocess
 import sys
 import time
@@ -193,30 +195,114 @@ def validate_snapshot(raw: Any) -> dict[str, Any]:
 def run_exporter(settings: Settings) -> dict[str, Any]:
     if not settings.exporter_command:
         _fail("--snapshot or --exporter-command is required")
+    stdout = _run_exporter_command(settings)
     try:
-        completed = subprocess.run(
+        decoded = json.loads(stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ReconcileError("coturn exporter returned invalid JSON") from exc
+    return validate_snapshot(decoded)
+
+
+def _run_exporter_command(settings: Settings) -> bytes:
+    try:
+        process = subprocess.Popen(
             settings.exporter_command,
             env=_minimal_process_env(),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=settings.request_timeout_seconds,
-            check=False,
+            stderr=subprocess.DEVNULL,
         )
-    except subprocess.TimeoutExpired as exc:
-        raise ReconcileError("coturn exporter timed out") from exc
     except OSError as exc:
         raise ReconcileError(f"coturn exporter could not start: {exc}") from exc
-    if completed.returncode != 0:
-        _fail(f"coturn exporter failed: exit {completed.returncode}")
-    if len(completed.stdout.encode("utf-8")) > MAX_SNAPSHOT_BYTES:
-        _fail("coturn exporter snapshot exceeded maximum size")
+    stdout = _read_limited_stdout(
+        process,
+        byte_limit=MAX_SNAPSHOT_BYTES,
+        timeout_seconds=settings.request_timeout_seconds,
+        timeout_message="coturn exporter timed out",
+        overflow_message="coturn exporter snapshot exceeded maximum size",
+    )
+    if process.returncode != 0:
+        _fail(f"coturn exporter failed: exit {process.returncode}")
+    return stdout
+
+
+def _read_limited_stdout(
+    process: subprocess.Popen[bytes],
+    *,
+    byte_limit: int,
+    timeout_seconds: float,
+    timeout_message: str,
+    overflow_message: str,
+) -> bytes:
+    if process.stdout is None:
+        _terminate_process(process)
+        _fail("process stdout was not captured")
+    output = bytearray()
+    deadline = time.monotonic() + timeout_seconds
+    selector = selectors.DefaultSelector()
+    os.set_blocking(process.stdout.fileno(), False)
+    selector.register(process.stdout, selectors.EVENT_READ)
     try:
-        decoded = json.loads(completed.stdout)
-    except json.JSONDecodeError as exc:
-        raise ReconcileError("coturn exporter returned invalid JSON") from exc
-    return validate_snapshot(decoded)
+        while True:
+            now = time.monotonic()
+            if now >= deadline:
+                _terminate_process(process)
+                _fail(timeout_message)
+            remaining = min(0.1, deadline - now)
+            events = selector.select(remaining)
+            if events:
+                if _drain_process_stdout(process, output, byte_limit, overflow_message):
+                    _wait_for_process(process, deadline, timeout_message)
+                    return bytes(output)
+            if process.poll() is not None:
+                _drain_process_stdout(process, output, byte_limit, overflow_message)
+                return bytes(output)
+    finally:
+        selector.close()
+        process.stdout.close()
+
+
+def _drain_process_stdout(
+    process: subprocess.Popen[bytes],
+    output: bytearray,
+    byte_limit: int,
+    overflow_message: str,
+) -> bool:
+    if process.stdout is None:
+        _fail("process stdout was not captured")
+    while True:
+        try:
+            chunk = os.read(process.stdout.fileno(), 8192)
+        except BlockingIOError:
+            return False
+        if not chunk:
+            return True
+        output.extend(chunk)
+        if len(output) > byte_limit:
+            _terminate_process(process)
+            _fail(overflow_message)
+
+
+def _terminate_process(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is None:
+        process.kill()
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
+def _wait_for_process(process: subprocess.Popen[bytes], deadline: float, timeout_message: str) -> None:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        _terminate_process(process)
+        _fail(timeout_message)
+    try:
+        process.wait(timeout=remaining)
+    except subprocess.TimeoutExpired:
+        _terminate_process(process)
+        _fail(timeout_message)
 
 
 def _load_token(env_name: str, token_file: Path | None) -> str:
@@ -354,9 +440,8 @@ def disconnect_required_allocations(
                 settings.disconnect_command,
                 env=_minimal_executor_env(source_id, allocation_id, reason),
                 stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 timeout=settings.request_timeout_seconds,
                 check=False,
             )
@@ -413,14 +498,14 @@ def run_once_with_retries(settings: Settings) -> dict[str, Any]:
 
 def _non_negative_float(value: str) -> float:
     parsed = float(value)
-    if parsed < 0:
+    if not math.isfinite(parsed) or parsed < 0:
         raise argparse.ArgumentTypeError("must be non-negative")
     return parsed
 
 
 def _positive_float(value: str) -> float:
     parsed = float(value)
-    if parsed <= 0:
+    if not math.isfinite(parsed) or parsed <= 0:
         raise argparse.ArgumentTypeError("must be positive")
     return parsed
 
