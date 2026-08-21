@@ -256,6 +256,9 @@ class InternetPairingURL private constructor(
     }
 
     companion object {
+        private const val MAX_URL_BYTES = 16_384
+        private const val URL_PREFIX = "vibescreen://pair?v=1&o="
+
         fun create(
             offerId: ByteArray,
             oneTimeCredential: ByteArray,
@@ -276,6 +279,8 @@ class InternetPairingURL private constructor(
             )
 
         fun parse(value: String): InternetPairingURL {
+            require(value.toByteArray(StandardCharsets.UTF_8).size <= MAX_URL_BYTES) { "Pairing URL is too large" }
+            require(value.startsWith(URL_PREFIX) && '#' !in value && '%' !in value && '+' !in value) { "Unsupported pairing URL" }
             val uri = runCatching { URI(value) }.getOrElse { throw IllegalArgumentException("Malformed pairing URL", it) }
             require(
                 uri.scheme == "vibescreen" && uri.host == "pair" && uri.path.isEmpty() &&
@@ -284,7 +289,9 @@ class InternetPairingURL private constructor(
             val parameters = parseQuery(uri.rawQuery ?: "")
             require(parameters.keys == setOf("v", "o") && parameters.getValue("v").single() == "1") { "Unsupported pairing URL version" }
             require(parameters.values.all { it.size == 1 }) { "Pairing URL contains duplicate parameters" }
-            val payload = decodeBase64Url(parameters.getValue("o").single())
+            val encodedOffer = parameters.getValue("o").single()
+            require(isBase64Url(encodedOffer)) { "Invalid pairing URL payload" }
+            val payload = decodeBase64Url(encodedOffer)
             val json = runCatching { JsonParser.parseString(String(payload, StandardCharsets.UTF_8)).asJsonObject }
                 .getOrElse { throw IllegalArgumentException("Pairing URL payload is invalid", it) }
             return InternetPairingURL(InternetPairingOffer.fromJson(json))
@@ -292,6 +299,10 @@ class InternetPairingURL private constructor(
 
         private fun parseQuery(query: String): Map<String, List<String>> =
             query.split('&').filter(String::isNotEmpty).groupBy({ it.substringBefore('=') }, { it.substringAfter('=', "") })
+
+        private fun isBase64Url(value: String): Boolean =
+            value.isNotEmpty() &&
+                value.all { it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' || it == '-' || it == '_' }
     }
 }
 

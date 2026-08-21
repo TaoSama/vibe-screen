@@ -206,6 +206,45 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
 
         XCTAssertEqual(payload.leaseDeviceKeyID, keyID)
     }
+
+    func testUnsignedLeaseRequiresBoundedExpiryAndIssuerRewritesIt() throws {
+        let service = "dev.vibescreen.lease-expiry-tests.\(UUID().uuidString)"
+        let identityStore = KeychainDeviceIdentityStore(service: service)
+        let identity = try identityStore.createIfMissing(deviceID: "lease-host")
+        let secretStore = LeaseMemorySecretStore()
+        let stateStore = LeaseMemoryStateStore()
+        try persistBinding(
+            identity.publicIdentity,
+            pairingIdentifier: "pairing-authority-test",
+            store: secretStore
+        )
+        addTeardownBlock {
+            try identityStore.delete(deviceID: "lease-host", keyEpoch: 1)
+        }
+
+        XCTAssertThrowsError(
+            try InternetSessionLeaseCodec.decodeUnsigned(
+                try unsignedLease(epoch: 1, expiresAt: nil)
+            )
+        )
+        XCTAssertThrowsError(
+            try InternetSessionLeaseCodec.decodeUnsigned(
+                try unsignedLease(epoch: 1, expiresAt: UInt64(Int64.max))
+            )
+        )
+
+        let signed = try InternetSessionLeaseIssuer.issue(
+            unsignedJSON: try unsignedLease(epoch: 99, expiresAt: 4_102_444_800),
+            now: { Date(timeIntervalSince1970: 2_000_000_000) },
+            validFor: 120,
+            identityStore: identityStore,
+            secretStore: secretStore,
+            stateStoreFactory: { _ in stateStore }
+        )
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: signed) as? [String: Any])
+        XCTAssertEqual((root["expires_at"] as? NSNumber)?.uint64Value, 2_000_000_120)
+    }
+
     func testAuthorityIgnoresCallerEpochAndReservesMonotonicEpochAcrossRestartAndConcurrency() throws {
         let service = "dev.vibescreen.lease-tests.\(UUID().uuidString)"
         let identityStore = KeychainDeviceIdentityStore(service: service)
@@ -406,9 +445,10 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
     private func unsignedLease(
         epoch: UInt64,
         pairingIdentifier: String = "pairing-authority-test",
-        pinnedHostID: String = "lease-host"
+        pinnedHostID: String = "lease-host",
+        expiresAt: UInt64? = 4_102_444_800
     ) throws -> Data {
-        let root: [String: Any] = [
+        var root: [String: Any] = [
             "version": 1,
             "pairing_id": pairingIdentifier,
             "pinned_host_id": pinnedHostID,
@@ -429,6 +469,7 @@ final class InternetSessionLeaseIssuerTests: XCTestCase {
             ]],
             "allow_insecure_for_testing": false
         ]
+        if let expiresAt { root["expires_at"] = expiresAt }
         return try JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])
     }
 

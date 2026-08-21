@@ -205,6 +205,30 @@ final class InternetPairingTests: XCTestCase {
         XCTAssertTrue(fixture.store.values.isEmpty)
     }
 
+    func testInvalidFirstRedemptionConsumesOneTimeCredential() throws {
+        let fixture = Fixture()
+        let created = try fixture.coordinator.createOffer()
+        let prepared = try fixture.prepareRequest(for: created.offer)
+        var mac = prepared.request.bootstrapMAC
+        mac[0] ^= 0x01
+        let attackerRequest = InternetPairingDeviceRequest(
+            offerID: prepared.request.offerID,
+            deviceIdentity: prepared.request.deviceIdentity,
+            deviceName: prepared.request.deviceName,
+            ephemeralPublicKey: prepared.request.ephemeralPublicKey,
+            requestSignature: prepared.request.requestSignature,
+            bootstrapMAC: mac
+        )
+
+        XCTAssertThrowsError(try fixture.coordinator.accept(attackerRequest)) { error in
+            XCTAssertEqual(error as? InternetPairingError, .invalidBootstrapMAC)
+        }
+        XCTAssertThrowsError(try fixture.coordinator.accept(prepared.request)) { error in
+            XCTAssertEqual(error as? InternetPairingError, .offerAlreadyConsumed)
+        }
+        XCTAssertTrue(fixture.store.values.isEmpty)
+    }
+
     func testDowngradeAndIdentityKeyIDMutationAreRejected() throws {
         let fixture = Fixture()
         let offer = try fixture.coordinator.createOffer().offer

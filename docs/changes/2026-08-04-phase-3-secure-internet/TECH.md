@@ -38,7 +38,10 @@ WebRTC/network/key-store implementations.
    create an ECDSA-P256 signing key and stable random device identifier.
 2. Pair locally or through an already authenticated rendezvous. The QR offer is
    single-use, expires quickly, and carries a random challenge, host identity,
-   ephemeral key, and supported algorithms.
+   ephemeral key, and supported algorithms. The host consumes the offer on the
+   first redemption attempt, including failed bootstrap MAC or transcript checks,
+   so retrying the same one-time credential fails closed. Android rejects
+   non-canonical scanned URL envelopes before decoding credential material.
 3. Both peers sign a canonical transcript containing protocol range,
    capabilities, identities, ephemeral keys, offer identifier, challenge, and
    roles. Unknown required algorithms or downgrade attempts abort pairing.
@@ -160,6 +163,11 @@ TURN credential where needed, PeerConnection, and larger authority-agreed sessio
 epoch. The macOS UI currently fails closed and asks the operator to supply that
 fresh profile; automatic authority issuance and macOS/Android device proof of the
 complete handoff remain release gates.
+The one-time QR pairing verifier and local lease codec are intentionally separate
+from the account/session authority issuer: this slice verifies canonical QR
+input, single-use offer redemption, bounded profile expiry, replay/identity
+binding, and host-signature binding to a previously paired identity without
+minting production account or session-authority profiles.
 
 ## TURN and ICE
 
@@ -208,11 +216,13 @@ rendezvous. The local lease issuer allocates the next pairing-scoped epoch from
 durable Keychain state and never signs a caller-selected epoch. Packet seal and
 open hold the peer-scoped durable epoch lock through nonce reservation or replay
 check, AEAD, and replay commit, so an N+1 reservation cannot interleave after an
-N check. Pairing cleanup markers remain durable until identity authorization,
-reauthorization validation, and public metadata commit all succeed; failed
-business commits retain restart-retryable secret and metadata cleanup. The prior
-curated Android/macOS record remains withdrawn because its source and raw files
-were unavailable. A fresh clean-commit run now records real Android UI and
+N check. Unsigned local lease input must include a bounded `expires_at`, and the
+Mac issuer rewrites that value to its local TTL before signing so caller-supplied
+expiry cannot extend an imported Android profile. Pairing cleanup markers remain
+durable until identity authorization, reauthorization validation, and public
+metadata commit all succeed; failed business commits retain restart-retryable
+secret and metadata cleanup. The prior curated Android/macOS record remains
+withdrawn because its source and raw files were unavailable. A fresh clean-commit run now records real Android UI and
 Android M144/macOS M150 product-session interoperability through direct and
 forced local coturn with Protocol v1 application AEAD. Its media source is
 synthetic; automatic authority issuance, real screen capture, rotation,
@@ -303,7 +313,7 @@ semantic change requires a new protocol package/version.
 | Area | Repository evidence | Status / release gate |
 | --- | --- | --- |
 | Security contract | `contracts/proto/vibescreen/protocol/v1/security.proto`, pairing/session/envelope additions | P-256/HKDF/AES-GCM schema exists; generated/canonical cross-language crypto interoperability and security-semantic review remain gates |
-| Pairing and identity | `baseline/MacHost/Sources/Phase3/Security/InternetPairing*`, Android `security/InternetPairing*` | Swift/Kotlin implement the same strict pairing URL/request/acceptance shape, stable platform signing identities, ephemeral P-256 ECDH, signed canonical transcript, one-time/expiry checks, and protected pairing-secret storage. Durable transaction markers span secret writes, authorization/reauthorization and metadata commit; Android markers carry the owning pairing and recover under the global admission gate after authenticated-revocation recovery. A different verified/profile pairing cannot be replaced until its tombstone cleanup has removed binding, profile and old secrets. Upgrade cleanup is owner-aware: an old revocation deletes its pairing secret/identity, but treats a different current profile/binding as superseding state and durably retires those steps without cross-deletion. The local UI scans the offer QR and exchanges the request/acceptance as operator-copied strict JSON; automatic authenticated authority exchange and real cross-language pairing remain unproved |
+| Pairing and identity | `baseline/MacHost/Sources/Phase3/Security/InternetPairing*`, Android `security/InternetPairing*`, `contracts/fixtures/pairing/v1/wire.json` | Swift/Kotlin implement the same strict pairing URL/request/acceptance shape, stable platform signing identities, ephemeral P-256 ECDH, signed canonical transcript, one-time/expiry checks, and protected pairing-secret storage. Shared Python/Swift/Kotlin wire fixtures pin canonical request, acceptance, transcript, derived context, and key identifiers. macOS consumes an offer on the first redemption attempt even when validation fails, while Android rejects non-canonical QR URL envelopes before credential use and rejects leases whose host signature is not bound to the verified paired host. Durable transaction markers span secret writes, authorization/reauthorization and metadata commit; Android markers carry the owning pairing and recover under the global admission gate after authenticated-revocation recovery. A different verified/profile pairing cannot be replaced until its tombstone cleanup has removed binding, profile and old secrets. Upgrade cleanup is owner-aware: an old revocation deletes its pairing secret/identity, but treats a different current profile/binding as superseding state and durably retires those steps without cross-deletion. The local UI scans the offer QR and exchanges the request/acceptance as operator-copied strict JSON; automatic authenticated authority exchange, production profile issuance, and real camera QR pairing remain unproved |
 | Security core | `packages/security/` and platform security directories | Go implementation, restart snapshots, attack tests and vectors exist. macOS state is peer-scoped, keeps a Keychain-backed revoked-identity epoch floor per stable device ID, and persists signed targeted tombstones plus restart-safe secret-cleanup progress. Both platforms reserve the common authority epoch before first use. Cross-language product-session and real platform crash-boundary evidence remain gates |
 | macOS product session | `baseline/MacHost/Sources/Phase3/ProductSession/`, `AppDelegate.swift`, `SettingsWindow.swift`, stasel WebRTC `150.0.0` | Internet mode is separated from the legacy TCP server; capture/HEVC, Protocol v1 control/media, protected DataChannels, touch injection, direct/forced-TURN selection, Keychain credentials, and actionable state UI are wired. The 2026-08-20 local readiness snapshot passed synthetic direct/relay product sessions at commit `18a6ea70d0fbf6bc187f5a7242424ad3e88cf5ee`, and the narrower 2026-08-05 Nubia local synthetic-media interop record at commit `597518f948075e396352bc353afcec01a30303f3` still exists for that dated device/source pair only. Neither result proves real ScreenCaptureKit device streaming, visible Mac input effects, public Internet, or handoff, which remain gates |
 | Android product session | `MainActivity.kt`, `InternetSessionProfileStore.kt`, Android Internet packages, `io.github.webrtc-sdk:android:144.7559.09` | Internet UI scans the pairing offer, completes the copied request/acceptance flow, imports a strict host-signed short-lived lease, selects direct/forced TURN, drives Protocol v1 video/touch and decoder state, and exposes connect/disconnect/revoke/error/recovery. Lease verification precedes persistence/high-watermark changes; durable session/identity epochs reject stale ciphers and permit monotonic reauthorization after revoke. A fresh-session request or terminal failure invalidates the old transport owner, so late route/connected callbacks cannot restore touch or heartbeat. Credential, pairing and revocation cleanup retain restart-safe retry state. Tokens and pairing/session secrets are AndroidKeyStore-wrapped; sensitive dialogs disable screenshots/autofill, and release cleartext is disabled. The historical Nubia P0110 run is dated 2026-08-05 and bound only to commit `597518f948075e396352bc353afcec01a30303f3`; it covers local UI, direct/forced-coturn Android↔Mac product interop and application AEAD with synthetic Protocol v1 media. It is not current-worktree evidence and must not be extrapolated to later commits, real screen capture, public Internet, rotation, handoff, or soak |
@@ -319,11 +329,12 @@ semantic change requires a new protocol package/version.
 
 These are release blockers, not accepted architecture:
 
-- The strict Swift/Kotlin pairing formats and canonical inputs are implemented
-  independently. A shared hard-coded known-answer value now pins the bound
-  product-session context, but full pairing transcript/wire fixtures and a real QR
-  request/acceptance round trip are still required. Do not infer full
-  interoperability from same-language tests.
+- The strict Swift/Kotlin pairing formats and canonical inputs now share
+  Python/Swift/Kotlin wire fixtures for the pairing transcript and derived
+  context, plus local fail-closed tests for single-use redemption, expiry, QR URL
+  canonicalization, and host-signature binding to the verified paired identity. A
+  real Android camera QR scan and device-to-host request/acceptance round trip are
+  still required before this can be treated as device interoperability evidence.
 - macOS M150 loopback, direct signaling and forced local coturn transport E2E
   pass, including application AES-GCM. Those legacy adapter checks do not by
   themselves prove the new Protocol v1 product session. The separate product
@@ -353,6 +364,8 @@ These are release blockers, not accepted architecture:
   issuer advances pairing-scoped durable epochs. Automatic product issuance
   must reconcile these scopes before it can replace the explicit manual profile
   flow.
+- Account/session authority profile issuance is owned by the Authority service
+  path and is not duplicated by this local QR pairing verifier slice.
 - The macOS and Android local-development flows deliberately require copied
   pairing request/acceptance and imported session-authority profiles. This is an
   operable integration surface, not a production pairing/session issuer.

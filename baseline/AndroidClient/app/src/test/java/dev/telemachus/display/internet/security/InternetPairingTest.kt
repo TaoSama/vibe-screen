@@ -66,6 +66,17 @@ class InternetPairingTest {
     }
 
     @Test
+    fun scannedOfferObjectIsConsumedExactlyOnce() {
+        val fixture = Fixture()
+        val parsed = InternetPairingURL.parse(fixture.url.encode())
+
+        fixture.coordinator.begin(parsed, DEVICE_NAME).close()
+
+        assertThrows(IllegalStateException::class.java) { fixture.coordinator.begin(parsed, DEVICE_NAME) }
+        assertEquals(null, fixture.sink.sharedSecret)
+    }
+
+    @Test
     fun expirationBoundaryIsExclusiveAtScanAndAcceptance() {
         val scanBoundary = Fixture(expiresAt = NOW)
         assertThrows(IllegalArgumentException::class.java) {
@@ -151,6 +162,20 @@ class InternetPairingTest {
         val encoded = Fixture().url.encode()
         assertThrows(IllegalArgumentException::class.java) { InternetPairingURL.parse(encoded.replace("vibescreen://pair", "https://pair")) }
         assertThrows(IllegalArgumentException::class.java) { InternetPairingURL.parse("$encoded&v=1") }
+    }
+
+    @Test
+    fun urlParserRejectsNonCanonicalQrPayloadsBeforeCredentialUse() {
+        val encoded = Fixture().url.encode()
+        val payload = encoded.substringAfter("&o=")
+
+        assertThrows(IllegalArgumentException::class.java) { InternetPairingURL.parse("vibescreen://pair?o=$payload&v=1") }
+        assertThrows(IllegalArgumentException::class.java) { InternetPairingURL.parse(encoded.replace("&o=", "&o=%")) }
+        assertThrows(IllegalArgumentException::class.java) { InternetPairingURL.parse(encoded.replace("&o=", "&o=+")) }
+        assertThrows(IllegalArgumentException::class.java) { InternetPairingURL.parse("$encoded#fragment") }
+        assertThrows(IllegalArgumentException::class.java) {
+            InternetPairingURL.parse("vibescreen://pair?v=1&o=" + "A".repeat(16_384))
+        }
     }
 
     @Test

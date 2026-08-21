@@ -82,6 +82,7 @@ steps.
 | Compatibility | Swift/Kotlin golden bytes, unknown fields, old v1 peer without Phase 3 capabilities, required-capability rejection |
 | Crypto | transcript and KDF known-answer vectors; AEAD/AAD mutation; nonce uniqueness; cross-role/channel/session/key separation |
 | Identity | pair, expiry, single use, wrong identity, downgrade, rotation overlap/rollback, revocation persistence |
+| QR pairing verifier | canonical scanned URL envelope before credential use, one-time redemption consumed on first attempt, expiry boundary, transcript mutation, shared Python/Swift/Kotlin wire fixtures, paired-host lease-signature binding |
 | Replay | duplicate, too old, reordered media, reordered control, cross-channel/session/epoch/key, crash/restart counter safety |
 | Transport | direct ICE, forced TURN, IPv4/IPv6, UDP-blocked/TCP-TLS relay, control/media/audio/bulk channel semantics, payload/backlog/frame caps |
 | Recovery | Wi-Fi/cellular/VPN changes, route changes, ICE restart backoff, signaling loss, TURN loss, process restart, old-epoch injection |
@@ -337,12 +338,13 @@ named by that run:
 - Phase 3 Python tests cover fail-closed device-lease handling and evidence
   revision recording. These tests do not access the Android endpoint.
 - Swift and Kotlin pairing implementations have local happy-path, one-time,
-  expiry, downgrade, mutation, strict-wire, and protected-secret-storage tests;
-  the Android pairing target passed 8/8 tests. They have not yet completed a real
-  cross-language QR exchange. Swift and Kotlin do share a passing hard-coded
-  product-session bound-context known-answer value. The macOS package built;
-  its XCTest cases did not execute in that historical Command Line Tools-only
-  environment.
+  expiry, downgrade, mutation, strict-wire, protected-secret-storage, QR URL
+  canonicalization, and invalid-first-redemption tests. Shared Python/Swift/Kotlin
+  fixtures now cover canonical request, acceptance, transcript, derived context,
+  and key identifiers. They have not yet completed a real Android camera QR scan
+  or device-to-host request/acceptance round trip, so the fixtures remain offline
+  interoperability evidence only. The macOS package built; its XCTest cases did
+  not execute in that historical Command Line Tools-only environment.
 - Platform lifecycle tests cover peer-scoped durable epoch reservation, rollback
   rejection, signed targeted revocation, tombstone persistence, and pairing-secret
   deletion failure/retry. Added deterministic XCTest source covers an N open

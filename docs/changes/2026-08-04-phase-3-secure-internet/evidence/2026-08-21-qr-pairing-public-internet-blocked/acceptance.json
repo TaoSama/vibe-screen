@@ -1,0 +1,20 @@
+{
+  "date": "2026-08-21",
+  "branch": "codex/phase3-qr-pairing-flow",
+  "scope": "offline QR pairing verifier and local lease fail-closed checks",
+  "blocked": true,
+  "blocked_gates": [
+    "public TLS signaling or Authority deployment",
+    "production account/session authority profile issuance environment",
+    "real Android camera QR scan and device-to-host request/acceptance exchange",
+    "public Internet NAT traversal and real remote TURN route",
+    "ScreenCaptureKit-to-Android decoded video",
+    "real network handoff, revocation propagation, latency, and soak"
+  ],
+  "not_evidence": [
+    "local loopback",
+    "forced local coturn",
+    "synthetic Protocol v1 media",
+    "legacy plaintext/LAN fallback"
+  ]
+}
