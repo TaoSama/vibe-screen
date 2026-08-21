@@ -314,7 +314,7 @@ enum TransportSelfTest {
             let hostHello = try client.readEnvelope()
             let accepted = try client.readEnvelope()
             guard case .hostHello(let advertised)? = hostHello.payload,
-                  Set(advertised.capabilities) == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .clipboard, .colorManagement, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .usbHidModifierByte, .fileTransfer],
+                  Set(advertised.capabilities) == [.touch, .stylus, .stylusExtended, .keyboard, .pointer, .clipboard, .colorManagement, .multiDisplay, .hostActions, .managedConfiguration, .clientVideoControl, .usbHidModifierByte, .fileTransfer, .audio],
                   case .sessionAccepted(let session)? = accepted.payload,
                   Set(session.negotiatedCapabilities) == [.touch, .multiDisplay, .fileTransfer, .managedConfiguration] else {
                 server.stop()
