@@ -598,6 +598,12 @@ network quality may increase it.
 - HarmonyOS device acceptance must follow the
   [MatePad Mini runbook](docs/runbook/harmony-matepad-mini.md); Android results
   are never treated as HarmonyOS evidence.
+- The read-only `make harmony-readiness EVIDENCE_DIR=...` preflight now records
+  DevEco/OHPM/Hvigor/HDC, signed-HAP checksum/signature metadata, Protocol v1
+  Host build identity, and MatePad Mini HDC-target readiness into
+  `harmony-readiness.json`. It fails closed while any prerequisite is missing
+  and is not HAP, installation, streaming, secure-pairing, soak, latency, or
+  MatePad Mini acceptance evidence.
 
 ### Phase 5 — iOS and advanced capabilities
 
