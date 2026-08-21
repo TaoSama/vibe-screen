@@ -352,10 +352,12 @@ slice, not accepted production behavior:
   rendezvous access.
 - The authority's per-device `session_epoch` floor and the Mac pairing-scoped
   epoch operate in different scopes; their interaction is not yet unified.
-- PostgreSQL durable routing is implemented for `production_authority`, but
-  multi-instance operation is not proven. `session_creates_per_minute` remains a
-  process-local cap, throughput has not been validated across replicas, and no
-  public ingress deployment has exercised it.
+- PostgreSQL durable routing is implemented for `production_authority`, and a
+  local integration test covers two store instances sharing routing, long-poll
+  wakeups, and invalidation tombstones. Production multi-replica rollout is not
+  proven: `session_creates_per_minute` remains a process-local cap, throughput
+  has not been validated across replicas, and no public ingress deployment has
+  exercised it.
 - Per-message remote authorization against the authority and the global
   PostgreSQL advisory lock serialization of creates are deliberate fail-closed
   correctness choices, not a high-throughput design. Do not claim multi-instance

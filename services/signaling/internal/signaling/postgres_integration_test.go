@@ -416,6 +416,74 @@ func TestPostgresLocalStoreLifecycleAndRestart(t *testing.T) {
 	}
 }
 
+func TestPostgresStoreSharesRoutingAcrossInstances(t *testing.T) {
+	cfg := testConfig()
+	cfg.MaxCandidatesPerRole = 1
+	creator, cfg := openSignalingIntegrationStore(t, cfg)
+	ctx := context.Background()
+
+	follower, err := OpenPostgresStore(ctx, cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer follower.Close()
+
+	created, wasCreated, err := creator.Create(ctx, CreateSessionRequest{RequestID: "shared-routing", TTL: time.Minute})
+	if err != nil || !wasCreated {
+		t.Fatalf("create: created=%t err=%v", wasCreated, err)
+	}
+	if role, err := follower.Authorize(ctx, created.SessionID, created.DeviceToken); err != nil || role != RoleDevice {
+		t.Fatalf("second store did not authorize device role=%q err=%v", role, err)
+	}
+
+	type pollResult struct {
+		events []Event
+		err    error
+	}
+	result := make(chan pollResult, 1)
+	waitCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	go func() {
+		events, _, pollErr := follower.PollAuthorized(waitCtx, created.SessionID, RoleDevice, 0, true)
+		result <- pollResult{events: events, err: pollErr}
+	}()
+	waitForPostgresWaiter(t, follower, created.SessionID, RoleDevice, 1)
+
+	if _, _, err := creator.AddMessageAuthorized(ctx, created.SessionID, RoleHost, MessageRequest{
+		MessageID: "offer-from-peer-instance", Type: MessageOffer, SDP: "v=0",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case polled := <-result:
+		if polled.err != nil || len(polled.events) != 1 || polled.events[0].MessageID != "offer-from-peer-instance" {
+			t.Fatalf("cross-instance poll result=%#v", polled)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cross-instance long poll did not wake")
+	}
+	if _, _, err := follower.AddMessageAuthorized(ctx, created.SessionID, RoleDevice, MessageRequest{
+		MessageID: "answer-from-peer-instance", Type: MessageAnswer, SDP: "v=0",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	hostEvents, next, err := creator.PollAuthorized(ctx, created.SessionID, RoleHost, 1, false)
+	if err != nil || len(hostEvents) != 1 || hostEvents[0].MessageID != "answer-from-peer-instance" || next != 2 {
+		t.Fatalf("cross-instance host poll events=%#v next=%d err=%v", hostEvents, next, err)
+	}
+
+	invalidated, err := follower.Invalidate(ctx, created.SessionID)
+	if err != nil || !invalidated {
+		t.Fatalf("cross-instance invalidate invalidated=%t err=%v", invalidated, err)
+	}
+	if _, err := creator.Authorize(ctx, created.SessionID, created.HostToken); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("originating store authorized invalidated token: %v", err)
+	}
+	if _, _, err := creator.Create(ctx, CreateSessionRequest{RequestID: "shared-routing", TTL: time.Minute}); !errors.Is(err, ErrInvalidated) {
+		t.Fatalf("cross-instance tombstone replay error=%v", err)
+	}
+}
+
 func TestPostgresLocalStoreLongPollAndExpiry(t *testing.T) {
 	store, _ := openSignalingIntegrationStore(t, testConfig())
 	ctx := context.Background()

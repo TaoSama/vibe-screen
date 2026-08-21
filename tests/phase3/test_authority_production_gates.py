@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import pathlib
+import re
 import unittest
 
 
@@ -12,6 +14,19 @@ RELAY_README = ROOT / "services/relay/README.md"
 SIGNALING_README = ROOT / "services/signaling/README.md"
 DEPLOY_README = ROOT / "deploy/phase3/README.md"
 AUTHORITY_PRODUCTION_COMPOSE = ROOT / "deploy/phase3/docker-compose.authority.production.yml"
+SIGNALING_PRODUCTION_COMPOSE = ROOT / "deploy/phase3/docker-compose.production.yml"
+SIGNALING_PRODUCTION_CONFIG = ROOT / "deploy/phase3/config/signaling.production.example.json"
+
+
+def service_section(text: str, name: str) -> str:
+    lines = text.splitlines()
+    start = lines.index(f"  {name}:")
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        if lines[index].startswith("  ") and not lines[index].startswith("    "):
+            end = index
+            break
+    return "\n".join(lines[start:end])
 
 
 class AuthorityProductionGateTests(unittest.TestCase):
@@ -23,10 +38,13 @@ class AuthorityProductionGateTests(unittest.TestCase):
             "network handoff, and soak",
             "public NAT/TURN deployment",
             "remain release gates rather than shipped\nfeatures",
-            "Relay credential admission is wired to Authority",
-            "accepted coturn usage into the control-plane daily-byte ledger",
-            "structured\ncoturn reconcile helper can fail closed",
-            "production end-to-end enforcement\nremain release gates",
+            "Signaling now has a PostgreSQL-backed routing store",
+            "local\ncross-instance contract coverage",
+            "do not prove a production multi-replica rollout",
+            "Relay credential\nadmission is wired to Authority",
+            "accepted coturn usage\ninto the control-plane daily-byte ledger",
+            "structured coturn reconcile helper\ncan fail closed",
+            "production end-to-end enforcement remain release gates",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
@@ -94,6 +112,45 @@ class AuthorityProductionGateTests(unittest.TestCase):
         for variable in required_secret_vars:
             with self.subTest(variable=variable):
                 self.assertIn("$" + "{" + variable + ":?set ", text)
+
+    def test_signaling_production_config_uses_postgres_authority_and_loopback(self) -> None:
+        config = json.loads(SIGNALING_PRODUCTION_CONFIG.read_text(encoding="utf-8"))
+
+        self.assertEqual(config["listen_address"], "127.0.0.1:8088")
+        self.assertEqual(config["store_backend"], "postgres")
+        self.assertEqual(config["authority_mode"], "production_authority")
+        self.assertTrue(config["authority_url"].startswith("https://"))
+
+    def test_signaling_production_compose_runs_migration_before_service(self) -> None:
+        text = SIGNALING_PRODUCTION_COMPOSE.read_text(encoding="utf-8")
+        expected_image = (
+            "image: $" + "{VIBE_SIGNALING_IMAGE_REPOSITORY:?set the vibe-signaling image repository}"
+            "@sha256:$"
+            + "{VIBE_SIGNALING_IMAGE_SHA256:?set the 64-character vibe-signaling image digest}"
+        )
+
+        self.assertIn("signaling-migrate:", text)
+        self.assertIn(expected_image, text)
+        self.assertIn("--migrate", text)
+        self.assertIn("/usr/share/vibe-screen/migrations/001_signaling.sql", text)
+        signaling = service_section(text, "signaling")
+        self.assertIn("depends_on:", signaling)
+        self.assertIn("signaling-migrate:", signaling)
+        self.assertIn("http://127.0.0.1:8088/readyz", signaling)
+        self.assertIn("./config/signaling.production.json", signaling)
+
+    def test_signaling_production_credentials_are_file_backed(self) -> None:
+        text = SIGNALING_PRODUCTION_COMPOSE.read_text(encoding="utf-8")
+        self.assertIn("VIBE_SIGNALING_DATABASE_URL_FILE: /run/secrets/signaling_database_url", text)
+        self.assertIn("VIBE_SIGNALING_ISSUER_TOKEN_FILE: /run/secrets/signaling_issuer_token", text)
+        self.assertIn("VIBE_SIGNALING_METRICS_TOKEN_FILE: /run/secrets/signaling_metrics_token", text)
+        self.assertIn("VIBE_SIGNALING_AUTHORITY_TOKEN_FILE: /run/secrets/signaling_authority_token", text)
+        self.assertIn("VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE", text)
+        self.assertIn("VIBE_SIGNALING_DATABASE_URL_FILE", text)
+        self.assertIn("VIBE_SIGNALING_ISSUER_TOKEN_FILE", text)
+        self.assertIn("VIBE_SIGNALING_METRICS_TOKEN_FILE", text)
+        self.assertIn("VIBE_SIGNALING_AUTHORITY_TOKEN_FILE", text)
+        self.assertNotRegex(text, re.compile(r"VIBE_SIGNALING_DATABASE_URL:\s*postgres", re.MULTILINE))
 
 
 if __name__ == "__main__":
