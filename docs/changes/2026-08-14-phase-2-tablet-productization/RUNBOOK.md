@@ -32,14 +32,14 @@ Capture these before the eight-hour timer starts:
 
 ```bash
 make evidence-device-info EVIDENCE_SERIAL="$ADB_SERIAL" EVIDENCE_DIR="$RUN_DIR"
-adb shell getprop > device.txt
-adb shell wm size > wm-size.txt
-adb shell wm density > wm-density.txt
-adb shell dumpsys battery > adb-battery-before.txt
-adb shell dumpsys power > adb-power-before.txt
-adb shell dumpsys thermalservice > thermal-before.txt 2> thermal-before.err
-adb shell dumpsys SurfaceFlinger --latency-clear || true
-adb shell pidof dev.telemachus.display > android-pid.txt
+adb -s "$ADB_SERIAL" shell getprop > device.txt
+adb -s "$ADB_SERIAL" shell wm size > wm-size.txt
+adb -s "$ADB_SERIAL" shell wm density > wm-density.txt
+adb -s "$ADB_SERIAL" shell dumpsys battery > adb-battery-before.txt
+adb -s "$ADB_SERIAL" shell dumpsys power > adb-power-before.txt
+adb -s "$ADB_SERIAL" shell dumpsys thermalservice > thermal-before.txt 2> thermal-before.err
+adb -s "$ADB_SERIAL" shell dumpsys SurfaceFlinger --latency-clear || true
+adb -s "$ADB_SERIAL" shell pidof dev.telemachus.display > android-pid.txt
 ```
 
 Then write the Phase 2 manifest from the evidence root. Use
@@ -61,6 +61,8 @@ make phase2-tablet-manifest \
   PHASE2_HOST_IDENTITY="<Mac model and macOS version>" \
   PHASE2_HOST_BUILD="<host build command, signing identity, and SHA>" \
   PHASE2_APK_SHA256="<debug or release APK SHA-256>" \
+  PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS="<battery temperature limit>" \
+  PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT="<maximum net battery drain>" \
   PHASE2_RECOVERY_SCENARIOS="background_foreground,transport_reconnect"
 ```
 
@@ -74,10 +76,10 @@ start and end of a run; it is not a required evidence artifact.
 Capture the matching end-of-run platform state before stopping the app or host:
 
 ```bash
-adb shell dumpsys battery > adb-battery-after.txt
-adb shell dumpsys power > adb-power-after.txt
-adb shell dumpsys thermalservice > thermal-after.txt 2> thermal-after.err
-adb shell pidof dev.telemachus.display > android-pid-after.txt || true
+adb -s "$ADB_SERIAL" shell dumpsys battery > adb-battery-after.txt
+adb -s "$ADB_SERIAL" shell dumpsys power > adb-power-after.txt
+adb -s "$ADB_SERIAL" shell dumpsys thermalservice > thermal-after.txt 2> thermal-after.err
+adb -s "$ADB_SERIAL" shell pidof dev.telemachus.display > android-pid-after.txt || true
 ```
 
 If the final `dumpsys thermalservice` command fails or writes an empty dump,
@@ -97,6 +99,11 @@ Keep one row per sample with monotonic timestamp, wall-clock timestamp, Android
 PID/RSS, host PID/RSS, FPS, dropped frames, reconnect count, battery level,
 charging status, current/voltage when exposed, power-saver state, thermal
 status, transport state, and the active video preference/config epoch.
+`dumpsys battery` status values are Android's standard enum: `1` unknown, `2`
+charging, `3` discharging, `4` not charging, and `5` full. The gate treats only
+charging/full samples as compatible with stand-mounted charging, requires the
+derived `plugged` value to stay nonzero, and compares net battery drain against
+the predeclared manifest threshold.
 
 A directory named `phase2-8h` closes the sustained-use gate only when
 `summary.json` records `duration_seconds >= 28800`, `interval_seconds <= 60`,
@@ -104,6 +111,16 @@ and zero missing sample gaps over the measured interval. The run README must
 include the exact collection commands, links to `samples.jsonl`,
 `summary.json`, `phase2-tablet-manifest.json`, and raw logs, plus the measured
 duration, cadence, and first-failure fields.
+After deriving the exact-window report, run:
+
+```bash
+make phase2-tablet-gate EVIDENCE_DIR="$RUN_DIR"
+```
+
+The gate reads the manifest and raw evidence root as well as the soak report, so
+a short run, phone substitute, missing raw battery / power / thermal files,
+missing screenshots, or undeclared threshold remains `insufficient` instead of
+closing Phase 2.
 
 The run fails immediately if the app crashes, the host crashes, the stream does
 not recover after a required interruption, stale frames or stale input are

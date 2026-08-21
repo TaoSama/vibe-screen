@@ -1,0 +1,115 @@
+{
+  "android_artifact": {
+    "apk_sha256": "not-tested"
+  },
+  "command": [
+    "make",
+    "soak-8h",
+    "EVIDENCE_SERIAL=EP0110PZ0B9110300B",
+    "EVIDENCE_DIR=docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness"
+  ],
+  "created_at": "2026-08-20T23:50:24.777422+00:00",
+  "device": {
+    "device_class": "android_substitute",
+    "identity": {
+      "abi": "arm64-v8a",
+      "adb_serial": "EP0110PZ0B9110300B",
+      "android_release": "16",
+      "build_fingerprint": "nubia/pacific/pacific:16/BQ2A.250705.001-BP2A.250605.031.A3/20260306.003030:userdebug/test-keys",
+      "codename": "pacific",
+      "device_serial": "EP0110PZ0B9110300B",
+      "manufacturer": "nubia",
+      "model": "P0110",
+      "sdk": 36
+    },
+    "tablet_size_inches": null
+  },
+  "host": {
+    "build": "not tested in this smoke",
+    "identity": "not tested in this smoke"
+  },
+  "kind": "phase2_tablet_sustained_use_manifest",
+  "limitations": [
+    "This manifest is preparation metadata and does not close the Phase 2 gate without raw physical-device evidence.",
+    "Nubia P0110/pacific/Android 16 may be recorded as a general Android substitute only and must not be relabeled as Xiaomi 13/fuxi or as 8-9 inch tablet evidence.",
+    "The recorded device class is not a physical 8-9 inch tablet, so this manifest cannot close the tablet hardware gate."
+  ],
+  "notes": "Tooling smoke only. Uses retained Nubia P0110/pacific Android 16 identity as android_substitute and does not claim physical 8-9 inch tablet, stand-mounted charging, thermal-load, power, recovery, or eight-hour acceptance.",
+  "physical_setup": {
+    "ambient_temperature_celsius": 24.0,
+    "cable_or_dock": "not tested in this smoke",
+    "charger": "not tested in this smoke",
+    "stand_setup": "tooling smoke only; no physical stand-mounted charging run"
+  },
+  "recovery_scenarios": [
+    "background_foreground",
+    "transport_reconnect"
+  ],
+  "repository": {
+    "dirty": true,
+    "revision": "be9381179a7f5b6a9ea5e97d6a77ad486a026ca7",
+    "status_porcelain": [
+      "M Makefile",
+      " M README.md",
+      " M docs/changes/2026-08-14-phase-2-tablet-productization/RUNBOOK.md",
+      " M tools/README.md",
+      " M tools/schemas/phase2-tablet-gate.schema.json",
+      " M tools/schemas/soak-public-report.schema.json",
+      " M tools/tests/test_adb.py",
+      " M tools/tests/test_phase2_tablet_gate.py",
+      " M tools/tests/test_soak_public_report.py",
+      " M tools/tests/test_soak_report.py",
+      " M tools/vibescreen_evidence/adb.py",
+      " M tools/vibescreen_evidence/phase2_tablet_gate.py",
+      " M tools/vibescreen_evidence/soak_public_report.py",
+      " M tools/vibescreen_evidence/soak_report.py",
+      "?? docs/changes/2026-08-14-phase-2-tablet-productization/evidence/2026-08-21-phase2-gate-readiness/device-info.json"
+    ]
+  },
+  "required_artifacts": [
+    "README.md",
+    "phase2-tablet-manifest.json",
+    "device-info.json",
+    "device.txt",
+    "host.txt",
+    "build.txt",
+    "apk-sha256.txt",
+    "samples.jsonl",
+    "summary.json",
+    "adb-battery-before.txt",
+    "adb-battery-after.txt",
+    "adb-power-before.txt",
+    "adb-power-after.txt",
+    "thermal-before.txt",
+    "thermal-before.err",
+    "thermal-after.txt",
+    "thermal-after.err",
+    "raw-logcat.txt",
+    "host.log",
+    "reconnects.log",
+    "frame-drops.log",
+    "decoder-telemetry.jsonl"
+  ],
+  "required_gates": [
+    "physical_8_9_inch_tablet",
+    "stand_mounted_charging",
+    "thermal_power_sampling",
+    "foreground_background_recovery",
+    "transport_reconnect_recovery",
+    "login_startup_or_headless_recovery",
+    "eight_hour_sustained_stream"
+  ],
+  "run_id": "e3c45229-9544-4633-a5be-81a0e48a1f3f",
+  "schema_version": "vibescreen.evidence/v1",
+  "session": {
+    "duration_seconds": 28800,
+    "sample_interval_seconds": 30,
+    "transport": "usb",
+    "video_preferences": "synthetic exact-window fixture only"
+  },
+  "thresholds": {
+    "battery_temperature_limit_celsius": 45.0,
+    "maximum_net_battery_drain_percent": 5,
+    "thermal_limit_status": 2
+  }
+}

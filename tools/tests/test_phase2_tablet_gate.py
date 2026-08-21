@@ -26,6 +26,12 @@ def write_report(
     thermal_status_max: float = 1.0,
     battery_temperature_max: float = 38.0,
     include_battery_temperature: bool = True,
+    battery_level_first: float = 100.0,
+    battery_level_final: float = 100.0,
+    battery_status_counts: dict[str, int] | None = None,
+    plugged_counts: dict[str, int] | None = None,
+    include_battery_status: bool = True,
+    include_battery_plugged: bool = True,
     client_slope: float = 0.0,
     client_final: float = 210_000.0,
     host_slope: float = 0.0,
@@ -45,11 +51,11 @@ def write_report(
     battery_metrics = {
         "level_percent": {
             "count": sample_count,
-            "first": 100.0,
-            "final": 100.0,
-            "min": 99.0,
+            "first": battery_level_first,
+            "final": battery_level_final,
+            "min": min(99.0, battery_level_first, battery_level_final),
             "mean": 99.5,
-            "max": 100.0,
+            "max": max(100.0, battery_level_first, battery_level_final),
         },
         "voltage_mv": {
             "count": sample_count,
@@ -77,6 +83,29 @@ def write_report(
             "mean": 36.0,
             "max": battery_temperature_max,
         }
+    if include_battery_status:
+        battery_metrics["status"] = {
+            "count": sample_count,
+            "first": 2.0,
+            "final": 5.0,
+            "min": 2.0,
+            "mean": 2.5,
+            "max": 5.0,
+        }
+        battery_metrics["status_counts"] = battery_status_counts or {
+            "2": sample_count // 2,
+            "5": sample_count - (sample_count // 2),
+        }
+    if include_battery_plugged:
+        battery_metrics["plugged"] = {
+            "count": sample_count,
+            "first": 1.0,
+            "final": 1.0,
+            "min": 1.0,
+            "mean": 1.0,
+            "max": 1.0,
+        }
+        battery_metrics["plugged_counts"] = plugged_counts or {"1": sample_count}
 
     memory_metrics = {
         "client_total_pss": {
@@ -210,6 +239,85 @@ def write_report(
     return path
 
 
+def write_manifest(
+    directory: Path,
+    *,
+    device_class: str = "physical_8_9_inch_tablet",
+    thermal_limit_status: int = 2,
+    battery_temperature_limit_celsius: float = 45.0,
+    maximum_net_battery_drain_percent: int = 5,
+) -> Path:
+    manifest = {
+        "schema_version": "vibescreen.evidence/v1",
+        "kind": "phase2_tablet_sustained_use_manifest",
+        "run_id": "phase2-run",
+        "device": {
+            "identity": {
+                "adb_serial": "EP0110PZ0B9110300B",
+                "device_serial": "EP0110PZ0B9110300B",
+                "manufacturer": "nubia",
+                "model": "P0110",
+                "codename": "pacific",
+                "android_release": "16",
+                "sdk": "36",
+                "build_fingerprint": "nubia/pacific/test",
+                "abi": "arm64-v8a",
+            },
+            "device_class": device_class,
+            "tablet_size_inches": "8.8" if device_class == "physical_8_9_inch_tablet" else None,
+        },
+        "physical_setup": {
+            "stand_setup": "desktop stand, portrait",
+            "charger": "vendor USB-C charger",
+            "cable_or_dock": "USB-C data cable",
+            "ambient_temperature_celsius": 24.0,
+        },
+        "session": {
+            "duration_seconds": 28800,
+            "sample_interval_seconds": 30,
+        },
+        "thresholds": {
+            "thermal_limit_status": thermal_limit_status,
+            "battery_temperature_limit_celsius": battery_temperature_limit_celsius,
+            "maximum_net_battery_drain_percent": maximum_net_battery_drain_percent,
+        },
+    }
+    path = directory / "phase2-tablet-manifest.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    return path
+
+
+def write_evidence_artifacts(directory: Path) -> None:
+    for relative_path in (
+        "README.md",
+        "device-info.json",
+        "device.txt",
+        "host.txt",
+        "build.txt",
+        "apk-sha256.txt",
+        "samples.jsonl",
+        "summary.json",
+        "adb-battery-before.txt",
+        "adb-battery-after.txt",
+        "adb-power-before.txt",
+        "adb-power-after.txt",
+        "thermal-before.txt",
+        "thermal-after.txt",
+        "raw-logcat.txt",
+        "host.log",
+        "reconnects.log",
+        "frame-drops.log",
+        "decoder-telemetry.jsonl",
+    ):
+        path = directory / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{relative_path}\n", encoding="utf-8")
+    for relative_path in ("thermal-before.err", "thermal-after.err"):
+        path = directory / relative_path
+        path.write_text("", encoding="utf-8")
+    (directory / "screenshots").mkdir()
+
+
 class Phase2TabletGateTest(unittest.TestCase):
     def test_complete_eight_hour_stable_report_passes(self):
         with tempfile.TemporaryDirectory() as raw_directory:
@@ -220,6 +328,59 @@ class Phase2TabletGateTest(unittest.TestCase):
         self.assertEqual(gate["reasons"], [])
         self.assertTrue(all(item["passed"] for item in gate["sufficiency"].values()))
         self.assertTrue(all(item["passed"] for item in gate["criteria"].values()))
+
+    def test_complete_report_with_full_evidence_package_passes(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(directory)
+            write_manifest(directory)
+            write_evidence_artifacts(directory)
+            gate = derive_gate(
+                report_path,
+                manifest_path=directory / "phase2-tablet-manifest.json",
+                evidence_dir=directory,
+            )
+
+        self.assertEqual(gate["verdict"], "pass")
+        self.assertEqual(gate["reasons"], [])
+        self.assertTrue(gate["evidence_package"]["passed"])
+
+    def test_android_substitute_package_stays_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(directory)
+            write_manifest(directory, device_class="android_substitute")
+            write_evidence_artifacts(directory)
+            gate = derive_gate(
+                report_path,
+                manifest_path=directory / "phase2-tablet-manifest.json",
+                evidence_dir=directory,
+            )
+
+        self.assertEqual(gate["verdict"], "insufficient")
+        self.assertIn(
+            "insufficient evidence package: manifest.physical_8_9_inch_tablet",
+            gate["reasons"],
+        )
+
+    def test_missing_raw_evidence_package_artifact_is_insufficient(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(directory)
+            write_manifest(directory)
+            write_evidence_artifacts(directory)
+            (directory / "adb-power-after.txt").unlink()
+            gate = derive_gate(
+                report_path,
+                manifest_path=directory / "phase2-tablet-manifest.json",
+                evidence_dir=directory,
+            )
+
+        self.assertEqual(gate["verdict"], "insufficient")
+        self.assertIn(
+            "insufficient evidence package: artifact.adb_power_after",
+            gate["reasons"],
+        )
 
     def test_short_or_sparse_report_is_insufficient(self):
         with tempfile.TemporaryDirectory() as raw_directory:
@@ -248,6 +409,8 @@ class Phase2TabletGateTest(unittest.TestCase):
                 Path(raw_directory),
                 include_battery_temperature=False,
                 include_host_rss=False,
+                include_battery_status=False,
+                include_battery_plugged=False,
             )
             gate = derive_gate(report_path)
 
@@ -261,6 +424,62 @@ class Phase2TabletGateTest(unittest.TestCase):
         self.assertIn(
             "insufficient evidence: host_rss_second_half_slope_kib_per_minute",
             gate["reasons"],
+        )
+        self.assertIn("insufficient evidence: battery_status_samples", gate["reasons"])
+        self.assertIn("insufficient evidence: battery_plugged_samples", gate["reasons"])
+
+    def test_manifest_thresholds_drive_thermal_temperature_and_drain_criteria(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(
+                directory,
+                thermal_status_max=2.0,
+                battery_temperature_max=42.0,
+                battery_level_first=90.0,
+                battery_level_final=84.0,
+            )
+            write_manifest(
+                directory,
+                thermal_limit_status=1,
+                battery_temperature_limit_celsius=40.0,
+                maximum_net_battery_drain_percent=5,
+            )
+            write_evidence_artifacts(directory)
+            gate = derive_gate(
+                report_path,
+                manifest_path=directory / "phase2-tablet-manifest.json",
+                evidence_dir=directory,
+            )
+
+        self.assertEqual(gate["verdict"], "fail")
+        self.assertEqual(gate["thresholds"]["maximum_thermal_status"], 1.0)
+        self.assertEqual(gate["thresholds"]["maximum_battery_temperature_celsius"], 40.0)
+        self.assertFalse(gate["criteria"]["thermal_status_max"]["passed"])
+        self.assertFalse(gate["criteria"]["battery_temperature_celsius_max"]["passed"])
+        self.assertFalse(gate["criteria"]["net_battery_drain_percent"]["passed"])
+
+    def test_unplugged_or_discharging_samples_fail_stand_charging_criteria(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(
+                directory,
+                battery_status_counts={"2": 960, "3": 1},
+                plugged_counts={"0": 1, "1": 960},
+            )
+            write_manifest(directory)
+            write_evidence_artifacts(directory)
+            gate = derive_gate(
+                report_path,
+                manifest_path=directory / "phase2-tablet-manifest.json",
+                evidence_dir=directory,
+            )
+
+        self.assertEqual(gate["verdict"], "fail")
+        self.assertFalse(
+            gate["criteria"]["stand_charging_non_charging_status_samples"]["passed"]
+        )
+        self.assertFalse(
+            gate["criteria"]["stand_charging_unplugged_samples"]["passed"]
         )
 
     def test_rejected_heartbeats_are_insufficient(self):
@@ -342,6 +561,31 @@ class Phase2TabletGateTest(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         self.assertEqual(gate["derivation_status"], "failed")
         self.assertEqual(gate["verdict"], "insufficient")
+
+    def test_cli_with_manifest_and_evidence_dir_writes_package_result(self):
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            report_path = write_report(directory)
+            manifest_path = write_manifest(directory)
+            write_evidence_artifacts(directory)
+            output = directory / "gate.json"
+            with redirect_stdout(io.StringIO()):
+                exit_code = main(
+                    [
+                        "--report",
+                        str(report_path),
+                        "--manifest",
+                        str(manifest_path),
+                        "--evidence-dir",
+                        str(directory),
+                        "--output",
+                        str(output),
+                    ]
+                )
+            gate = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(gate["evidence_package"]["passed"])
 
     def test_cli_returns_failure_when_output_cannot_be_written(self):
         with tempfile.TemporaryDirectory() as raw_directory:

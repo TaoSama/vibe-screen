@@ -149,6 +149,8 @@ phase2-tablet-manifest: require-evidence-serial
 	@test -n "$(strip $(PHASE2_HOST_IDENTITY))" || (echo "error: set PHASE2_HOST_IDENTITY" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_HOST_BUILD))" || (echo "error: set PHASE2_HOST_BUILD" >&2; exit 2)
 	@test -n "$(strip $(PHASE2_APK_SHA256))" || (echo "error: set PHASE2_APK_SHA256" >&2; exit 2)
+	@test -n "$(strip $(PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS))" || (echo "error: set PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS" >&2; exit 2)
+	@test -n "$(strip $(PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT))" || (echo "error: set PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT" >&2; exit 2)
 	mkdir -p $(EVIDENCE_DIR)
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_manifest \
 		--output $(EVIDENCE_DIR)/phase2-tablet-manifest.json \
@@ -172,4 +174,4 @@ phase2-tablet-manifest: require-evidence-serial
 
 phase2-tablet-gate:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.soak_report --summary $(EVIDENCE_DIR)/soak-8h/summary.json --samples $(EVIDENCE_DIR)/soak-8h/samples.jsonl --host-telemetry $(EVIDENCE_DIR)/soak-8h/host-telemetry.jsonl --output $(EVIDENCE_DIR)/soak-8h/exact-window-report.json
-	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_gate --report $(EVIDENCE_DIR)/soak-8h/exact-window-report.json --output $(EVIDENCE_DIR)/soak-8h/phase2-tablet-gate.json
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=tools python3 -m vibescreen_evidence.phase2_tablet_gate --report $(EVIDENCE_DIR)/soak-8h/exact-window-report.json --manifest $(EVIDENCE_DIR)/phase2-tablet-manifest.json --evidence-dir $(EVIDENCE_DIR) --output $(EVIDENCE_DIR)/soak-8h/phase2-tablet-gate.json
