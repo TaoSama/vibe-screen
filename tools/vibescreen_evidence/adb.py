@@ -195,7 +195,7 @@ class ADBClient:
 
     def _collect_battery(self, errors: list[str]) -> dict[str, Any]:
         output = self._safe_shell("battery", errors, "dumpsys", "battery")
-        return _parse_key_values(output or "")
+        return _parse_battery(output or "")
 
     def _collect_power(self, errors: list[str]) -> dict[str, int | None]:
         values: dict[str, int | None] = {}
@@ -270,6 +270,21 @@ def _parse_key_values(output: str) -> dict[str, Any]:
         else:
             value = raw_value
         values[key.replace(" ", "_")] = value
+    return values
+
+
+def _parse_battery(output: str) -> dict[str, Any]:
+    values = _parse_key_values(output)
+    plugged = 0
+    if values.get("AC_powered") is True:
+        plugged |= 1
+    if values.get("USB_powered") is True:
+        plugged |= 2
+    if values.get("Wireless_powered") is True:
+        plugged |= 4
+    if values.get("Dock_powered") is True:
+        plugged |= 8
+    values["plugged"] = plugged
     return values
 
 

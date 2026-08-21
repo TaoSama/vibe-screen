@@ -4,6 +4,7 @@ import unittest
 from vibescreen_evidence.adb import (
     ADBClient,
     ADBError,
+    _parse_battery,
     _parse_key_values,
     _parse_meminfo,
     _parse_thermal,
@@ -201,6 +202,27 @@ class ADBParserTest(unittest.TestCase):
         self.assertEqual(
             _parse_key_values("  AC powered: false\n  level: 73\n  technology: Li-ion\n"),
             {"AC_powered": False, "level": 73, "technology": "Li-ion"},
+        )
+
+    def test_battery_parser_derives_android_plugged_bitmask(self):
+        self.assertEqual(
+            _parse_battery(
+                "  AC powered: true\n"
+                "  USB powered: false\n"
+                "  Wireless powered: false\n"
+                "  Dock powered: true\n"
+                "  status: 2\n"
+                "  level: 73\n"
+            ),
+            {
+                "AC_powered": True,
+                "USB_powered": False,
+                "Wireless_powered": False,
+                "Dock_powered": True,
+                "plugged": 9,
+                "status": 2,
+                "level": 73,
+            },
         )
 
     def test_thermal_temperatures_are_structured(self):

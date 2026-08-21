@@ -112,7 +112,9 @@ make phase2-tablet-manifest EVIDENCE_SERIAL="$ADB_SERIAL" EVIDENCE_DIR=.build/ev
   PHASE2_VIDEO_PREFERENCES="Balanced, 60 FPS, AUTO bitrate" \
   PHASE2_HOST_IDENTITY="Mac model and macOS version" \
   PHASE2_HOST_BUILD="host build command, signing identity, and SHA" \
-  PHASE2_APK_SHA256="debug or release APK SHA-256"
+  PHASE2_APK_SHA256="debug or release APK SHA-256" \
+  PHASE2_BATTERY_TEMPERATURE_LIMIT_CELSIUS=45 \
+  PHASE2_MAXIMUM_NET_BATTERY_DRAIN_PERCENT=5
 ```
 
 Use `PHASE2_DEVICE_CLASS=android_substitute` for Nubia P0110/pacific/Android 16
@@ -124,15 +126,20 @@ evidence.
 make phase2-tablet-gate EVIDENCE_DIR=.build/evidence
 ```
 
-The gate consumes `.build/evidence/soak-8h/exact-window-report.json` and writes
+The gate consumes `.build/evidence/soak-8h/exact-window-report.json`,
+`.build/evidence/phase2-tablet-manifest.json`, and the raw evidence files in
+`.build/evidence/`, then writes
 `.build/evidence/soak-8h/phase2-tablet-gate.json`. A `pass` requires an
 error-free eight-hour exact window with sufficient samples, continuous stream
 stats and heartbeats, no session disconnects, no reported frame drops, bounded
-client and host memory growth, and battery/thermal readings below the Phase 2
-thresholds. `fail` means the evidence is complete but a productization threshold
-was violated; `insufficient` means the evidence cannot close the gate. The
-command does not replace the raw physical-tablet, stand-mounted charging, login,
-headless, and background-recovery artifacts required by the Phase 2 runbook.
+client and host memory growth, battery/thermal readings below the Phase 2
+thresholds, a manifest declaring `physical_8_9_inch_tablet`, and the required
+raw README/device/host/build/APK/battery/power/thermal/log/screenshot artifacts.
+`fail` means the evidence is complete but a productization threshold was
+violated; `insufficient` means the evidence package cannot close the gate. Phone
+substitute manifests such as Nubia P0110/pacific/Android 16 remain useful
+readiness records and intentionally evaluate as `insufficient` for the formal
+8-9 inch tablet gate.
 
 ### Short Host memory regression gate
 

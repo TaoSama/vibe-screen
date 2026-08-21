@@ -49,6 +49,12 @@ stderr captures created by the runbook commands on every run. Determine thermal
 collection failure from the command status and whether the corresponding dump is
 usable, not from stderr-file presence alone.
 
+After deriving the exact-window report, run `make phase2-tablet-gate` from the
+repository root. The gate consumes `phase2-tablet-manifest.json`, the eight-hour
+soak report, and this raw evidence directory before it can report `pass`. Missing
+raw artifacts, a phone substitute such as Nubia P0110/pacific/Android 16, or an
+undeclared threshold leaves the result `insufficient`.
+
 The run `README.md` must state the real tablet model, OS build, density,
 orientation/window sizes, charger/cable/stand setup, Mac host identity, commit
 SHA, APK SHA-256, transport, video preferences, predeclared pass/fail thresholds,

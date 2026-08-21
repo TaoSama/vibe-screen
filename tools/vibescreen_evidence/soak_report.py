@@ -275,6 +275,7 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
     thermal_status: list[float] = []
     thermal_by_sensor: dict[str, list[float]] = defaultdict(list)
     battery_values: dict[str, list[float]] = defaultdict(list)
+    battery_counts: dict[str, Counter[int]] = {"plugged": Counter(), "status": Counter()}
     power_values: dict[str, list[float]] = defaultdict(list)
     for timestamp, sample in exact_samples:
         host_value = _number(_get(sample, "host", "rss_kb"))
@@ -297,10 +298,14 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
                     thermal_by_sensor[name].append(celsius)
         battery = _get(sample, "device", "battery")
         if isinstance(battery, dict):
-            for name in ("level", "temperature", "voltage", "charge_counter"):
+            for name in ("level", "plugged", "status", "temperature", "voltage", "charge_counter"):
                 value = _number(battery.get(name))
                 if value is not None:
                     battery_values[name].append(value / 10.0 if name == "temperature" else value)
+            for name in battery_counts:
+                value = battery.get(name)
+                if isinstance(value, int) and not isinstance(value, bool):
+                    battery_counts[name][value] += 1
         power = _get(sample, "device", "power")
         if isinstance(power, dict):
             for name, raw_value in power.items():
@@ -357,6 +362,8 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
 
     battery_names = {
         "level": "level_percent",
+        "plugged": "plugged",
+        "status": "status",
         "temperature": "temperature_celsius",
         "voltage": "voltage_mv",
         "charge_counter": "charge_counter",
@@ -425,8 +432,16 @@ def derive_report(summary_path: Path, samples_path: Path, telemetry_path: Path) 
                 },
             },
             "battery": {
-                battery_names[name]: _statistics(values, f"battery.{name}")
-                for name, values in sorted(battery_values.items())
+                **{
+                    battery_names[name]: _statistics(values, f"battery.{name}")
+                    for name, values in sorted(battery_values.items())
+                },
+                "plugged_counts": {
+                    str(key): count for key, count in sorted(battery_counts["plugged"].items())
+                },
+                "status_counts": {
+                    str(key): count for key, count in sorted(battery_counts["status"].items())
+                },
             },
             "power": {
                 name: _statistics(values, f"power.{name}")
