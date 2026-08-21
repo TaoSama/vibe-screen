@@ -40,6 +40,8 @@ REQUIRED_GATE_IDS = (
     "eight_hour_soak",
     "external_latency",
 )
+AVCODEC_GATE_IDS = {"h264_hardware_decode", "hevc_hardware_decode"}
+AVCODEC_MANIFEST_NAME = "harmony-avcodec-preflight.json"
 REQUIRED_ARTIFACT_KEYS = (
     "hap_sha256",
     "signature_certificate_sha256",
@@ -157,6 +159,8 @@ def validate_manifest(document: dict[str, Any], *, allow_blocked: bool = False) 
         evidence = gate.get("evidence")
         if not isinstance(evidence, list) or not evidence or not all(isinstance(item, str) and item.strip() for item in evidence):
             raise ManifestError(f"gates[{index}].evidence: expected non-empty string array")
+        if gate_id in AVCODEC_GATE_IDS and status == "pass" and not any(AVCODEC_MANIFEST_NAME in item for item in evidence):
+            raise ManifestError(f"{gate_id}: expected evidence to include {AVCODEC_MANIFEST_NAME}")
         if gate_id in REQUIRED_GATE_IDS and status != "pass":
             message = f"{gate_id}: {status}"
             if allow_blocked and status == "blocked":
@@ -177,6 +181,11 @@ def validate_manifest(document: dict[str, Any], *, allow_blocked: bool = False) 
 def template_manifest() -> dict[str, Any]:
     placeholder_hash = "0" * 64
     placeholder_commit = "0" * 40
+    def gate_evidence(gate_id: str) -> list[str]:
+        if gate_id in AVCODEC_GATE_IDS:
+            return ["evidence/harmony-avcodec-preflight.json"]
+        return ["replace with redacted raw evidence path or artifact id"]
+
     return {
         "schema": SCHEMA,
         "repository": {"commit": placeholder_commit, "tree": placeholder_commit, "status": "clean"},
@@ -206,7 +215,7 @@ def template_manifest() -> dict[str, Any]:
         },
         "host": {"commit": placeholder_commit, "build_sha256": placeholder_hash, "protocol": "Protocol v1"},
         "gates": [
-            {"id": gate_id, "status": "blocked", "evidence": ["replace with redacted raw evidence path or artifact id"]}
+            {"id": gate_id, "status": "blocked", "evidence": gate_evidence(gate_id)}
             for gate_id in REQUIRED_GATE_IDS
         ],
         "notes": ["Do not commit raw serials, credentials, IP addresses, or screen content."],

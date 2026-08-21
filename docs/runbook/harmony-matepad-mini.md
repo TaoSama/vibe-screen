@@ -28,6 +28,21 @@ the README gate.
    can be revoked and cannot reuse the credential.
 6. Stream both H.264 and HEVC. Record negotiated codec/resolution/FPS, hardware
    decoder name, dropped frames, queue depth, RSS, temperature, and power.
+   Keep the structured AVCodec manifest beside the raw logs and validate it:
+
+       make harmony-avcodec-preflight EVIDENCE_DIR=/path/to/evidence \
+         HARMONY_AVCODEC_HDC_TARGET=/redacted/hdc-target \
+         HARMONY_AVCODEC_HAP=/path/to/signed-release.hap
+       make harmony-avcodec-validate EVIDENCE_DIR=/path/to/evidence
+
+   Fill the manifest from the exact H.264 and HEVC AVCodecKit run artifacts,
+   including decoder capability, hardware decoder identity, XComponent surface,
+   buffer callback, Protocol v1 media header, PTS, render/free, flush,
+   reconfigure, EOS, and release observations for each codec. A blocked dry run
+   may be validated with `--allow-blocked`, but that output is only readiness
+   evidence. The device gate's `h264_hardware_decode` and `hevc_hardware_decode`
+   entries must reference `harmony-avcodec-preflight.json` before those gates
+   can pass.
 7. Exercise tap, drag, multi-touch, right click, wheel/trackpad scroll, hardware
    keyboard/modifiers, mouse buttons, and stylus pressure in both orientations.
 8. Background/foreground the app, turn Wi-Fi off/on, roam access points, sleep

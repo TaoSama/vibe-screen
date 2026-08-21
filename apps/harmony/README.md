@@ -48,6 +48,11 @@ general control-flow proof; capability guards must also precede every protected
 send in their straight-line platform method. It does not run the ArkTS API/type checker, parse
 the complete declarative ArkUI builder grammar, invoke DevEco, or produce a
 HAP. `make doctor` reports whether OHPM and Hvigor are available.
+The root `make harmony-avcodec-preflight` target can create a structured
+blocked/readiness manifest for the AVCodec H.264/HEVC path, and
+`make harmony-avcodec-validate` strictly validates a completed manifest. A
+passing manifest requires real DevEco/HDC/HAP/MatePad hardware evidence;
+`--allow-blocked` output is not hardware decode acceptance.
 
 ## DevEco build and test
 
@@ -157,7 +162,10 @@ incomplete.
 
 - DevEco clean sync, ArkTS/API checker, debug/release HAP, and signature proof;
 - confirmation of the commercial SDK AVCodecKit declarations and buffer APIs;
-- Asset Store CRUD, XComponent surface, and H.264/HEVC hardware decode on device;
+- Asset Store CRUD, XComponent surface, and H.264/HEVC hardware decode on device,
+  with `harmony-avcodec-preflight.json` proving decoder capability, hardware
+  identity, buffer callbacks, Protocol v1 media headers, PTS, render/free,
+  flush, reconfigure, EOS, and release for both codecs;
 - HUKS-backed P-256/HMAC/HKDF/AES-GCM provider, secure-pairing controller/UI,
   authenticated record layer, QR camera import, and Mac interoperability;
 - wheel/trackpad axis delivery and a complete physical-key USB HID map;

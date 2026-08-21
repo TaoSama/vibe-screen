@@ -466,6 +466,72 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
     return creation !== undefined && install !== undefined && start !== undefined &&
       creation.end <= install.pos && install.end <= start.pos;
   };
+  const methodWritesBufferPtsBeforePush = (relative, className, methodName) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, methodName);
+    if (sourceFile === undefined || method === undefined) return false;
+    let ptsAssignment;
+    let pushCall;
+    const visit = (node) => {
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        node.left.getText(sourceFile) === 'slot.buffer.pts' &&
+        node.right.getText(sourceFile) === 'Number(frame.timestampNs / 1000n)' && isReachableInMethod(node, method)) ptsAssignment = node;
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.expression.getText(sourceFile) === 'candidate' && node.expression.name.text === 'pushInputData' &&
+        isReachableInMethod(node, method)) pushCall = node;
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return ptsAssignment !== undefined && pushCall !== undefined && ptsAssignment.end <= pushCall.pos;
+  };
+  const methodWritesBufferFlag = (relative, className, methodName, expectedFlag) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, methodName);
+    if (sourceFile === undefined || method === undefined) return false;
+    let found = false;
+    const visit = (node) => {
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        node.left.getText(sourceFile) === 'slot.buffer.flag' && node.right.getText(sourceFile) === expectedFlag &&
+        isReachableInMethod(node, method)) found = true;
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return found;
+  };
+  const methodHasDecoderEvent = (relative, className, methodName, eventName) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, methodName);
+    if (sourceFile === undefined || method === undefined) return false;
+    let found = false;
+    const visit = (node) => {
+      if (ts.isCallExpression(node) && node.arguments.length > 0 &&
+        ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'on' &&
+        node.expression.expression.getText(sourceFile) === 'candidate' &&
+        node.arguments[0].getText(sourceFile) === `'${eventName}'` && isReachableInMethod(node, method)) found = true;
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return found;
+  };
+  const methodHasPromiseCallBefore = (relative, className, methodName, firstReceiver, firstMethod, secondReceiver, secondMethod) => {
+    const sourceFile = portableSourceFiles.get(relative);
+    const method = classMethod(relative, className, methodName);
+    if (sourceFile === undefined || method === undefined) return false;
+    let firstCall;
+    let secondCall;
+    const visit = (node) => {
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && isReachableInMethod(node, method)) {
+        const receiver = node.expression.expression.getText(sourceFile);
+        const name = node.expression.name.text;
+        if (receiver === firstReceiver && name === firstMethod) firstCall = node;
+        if (receiver === secondReceiver && name === secondMethod) secondCall = node;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(method);
+    return firstCall !== undefined && secondCall !== undefined && firstCall.end <= secondCall.pos;
+  };
+  const sourceContainsAll = (relative, snippets) => snippets.every((snippet) => read(relative).includes(snippet));
   const methodHasDominatingCapabilityGuard = (relative, className, methodName, capability, protectedCall) => {
     const sourceFile = portableSourceFiles.get(relative);
     const method = classMethod(relative, className, methodName);
@@ -659,21 +725,47 @@ export function validateProject(rootValue, repositoryRootValue = resolve(rootVal
   requireImport(decoderPath, '../core/media/DecoderLifecycle', 'DecoderLifecycle');
   requireImport(decoderPath, '../core/media/DecoderLifecycle', 'DecoderCandidateLease');
   requireImport(decoderPath, '../core/media/DecoderLifecycle', 'DecoderTransitionOwner');
+  requireImport(decoderPath, '@kit.AVCodecKit', 'media');
+  check(sourceContainsAll(decoderPath, ["VIDEO_MIME_H264: string = 'video/avc'", "VIDEO_MIME_HEVC: string = 'video/hevc'"]),
+    `${decoderPath}: HarmonyVideoDecoder must declare H.264 and HEVC AVCodec MIME strings`);
   check(classPropertyUsesCleanupOwner(decoderPath, 'HarmonyVideoDecoder', 'candidates'),
     `${decoderPath}: HarmonyVideoDecoder.candidates must construct DecoderTransitionOwner with releaseDetached cleanup`);
   check(methodHasConstructorCall(decoderPath, 'HarmonyVideoDecoder', 'configure', 'DecoderLifecycle'),
     `${decoderPath}: HarmonyVideoDecoder.configure() must construct a reachable per-candidate DecoderLifecycle`);
   check(methodHasOrderedCreationReservation(decoderPath, 'HarmonyVideoDecoder', 'configure'),
     `${decoderPath}: HarmonyVideoDecoder.configure() must reserve DecoderCandidateLease before awaiting native creation`);
+  check(sourceContainsAll(decoderPath, ['const owner: number = ++this.generation', 'this.candidates.detachAndCleanup()']),
+    `${decoderPath}: HarmonyVideoDecoder.configure() must be reconfigurable through a generation bump and decoder cleanup barrier`);
   requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'this.candidates', 'detachAndCleanup');
   check(methodAwaitsExpression(decoderPath, 'HarmonyVideoDecoder', 'configure', 'transition.completion'),
     `${decoderPath}: HarmonyVideoDecoder.configure() must await the decoder cleanup transition`);
   requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'lifecycle', 'initialize');
   requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'this', 'clearCandidateIfCurrent');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'candidate', 'configure');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'candidate', 'setOutputSurface');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'candidate', 'prepare');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'configure', 'candidate', 'start');
+  check(methodHasDecoderEvent(decoderPath, 'HarmonyVideoDecoder', 'configure', 'needInputData'),
+    `${decoderPath}: HarmonyVideoDecoder.configure() must register the AVCodec needInputData buffer callback`);
+  check(methodHasDecoderEvent(decoderPath, 'HarmonyVideoDecoder', 'configure', 'newOutputData'),
+    `${decoderPath}: HarmonyVideoDecoder.configure() must register the AVCodec newOutputData render callback`);
+  check(methodHasPromiseCallBefore(decoderPath, 'HarmonyVideoDecoder', 'configure', 'candidate', 'freeOutputBuffer', 'listener', 'onFrameRendered'),
+    `${decoderPath}: HarmonyVideoDecoder.configure() must render/free output buffers before reporting a rendered frame`);
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'drain', 'candidate', 'pushInputData');
+  check(methodWritesBufferPtsBeforePush(decoderPath, 'HarmonyVideoDecoder', 'drain'),
+    `${decoderPath}: HarmonyVideoDecoder.drain() must preserve frame PTS before pushInputData()`);
+  check(methodWritesBufferFlag(decoderPath, 'HarmonyVideoDecoder', 'drain', 'media.BufferFlag.NONE'),
+    `${decoderPath}: HarmonyVideoDecoder.drain() must mark regular input buffers as BufferFlag.NONE`);
   requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'release', 'this.candidates', 'detachAndCleanup');
   check(methodAwaitsExpression(decoderPath, 'HarmonyVideoDecoder', 'release', 'transition.completion'),
     `${decoderPath}: HarmonyVideoDecoder.release() must await the decoder cleanup transition`);
   requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'releaseDetached', 'detached.lease', 'cancelAndCleanup');
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'flush', 'active.decoder', 'flush');
+  check(sourceContainsAll(decoderPath, ['async flush(): Promise<void>', 'this.consecutiveInputFailures = 0;', 'await active.decoder.flush();']),
+    `${decoderPath}: HarmonyVideoDecoder.flush() must reset input-failure state before flushing AVCodec`);
+  check(methodWritesBufferFlag(decoderPath, 'HarmonyVideoDecoder', 'signalEndOfStream', 'media.BufferFlag.EOS'),
+    `${decoderPath}: HarmonyVideoDecoder.signalEndOfStream() must send BufferFlag.EOS`);
+  requireCallInMethod(decoderPath, 'HarmonyVideoDecoder', 'signalEndOfStream', 'active.decoder', 'pushInputData');
 
   const transportPath = 'entry/src/main/ets/platform/HarmonyTransport.ets';
   requireImport(transportPath, '../core/transport/TransportCloseOwner', 'TransportCloseOwner');

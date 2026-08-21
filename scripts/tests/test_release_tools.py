@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -14,12 +15,14 @@ from unittest import mock
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 from webrtc_m150_notices import NOTICE_RELATIVE_PATH, validate_notice_bundle
 import generate_webrtc_m150_notices
 import harmony_device_gate
 import package_macos
 import prepare_release
 import android_stylus_acceptance
+from vibescreen_evidence import harmony_avcodec_preflight
 from phase3_webrtc.model import SUPPORTED_COTURN_VERSIONS
 
 
@@ -236,7 +239,15 @@ class HarmonyDeviceGateTests(unittest.TestCase):
             "protocol": "Protocol v1",
         }
         manifest["gates"] = [
-            {"id": gate_id, "status": "pass", "evidence": [f"evidence/{gate_id}.txt"]}
+            {
+                "id": gate_id,
+                "status": "pass",
+                "evidence": [
+                    "evidence/harmony-avcodec-preflight.json"
+                    if gate_id in harmony_device_gate.AVCODEC_GATE_IDS
+                    else f"evidence/{gate_id}.txt"
+                ],
+            }
             for gate_id in harmony_device_gate.REQUIRED_GATE_IDS
         ]
         return manifest
@@ -257,6 +268,15 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         }
 
         with self.assertRaisesRegex(harmony_device_gate.ManifestError, "Android evidence"):
+            harmony_device_gate.validate_manifest(manifest)
+
+    def test_harmony_device_manifest_requires_avcodec_manifest_for_decode_gates(self) -> None:
+        manifest = self.passing_manifest()
+        for gate in manifest["gates"]:
+            if gate["id"] == "h264_hardware_decode":
+                gate["evidence"] = ["evidence/h264-hilog.txt"]
+
+        with self.assertRaisesRegex(harmony_device_gate.ManifestError, "harmony-avcodec-preflight.json"):
             harmony_device_gate.validate_manifest(manifest)
 
     def test_harmony_device_manifest_rejects_blocked_gate_unless_readiness_mode(self) -> None:
@@ -311,6 +331,124 @@ class HarmonyDeviceGateTests(unittest.TestCase):
         self.assertIn("harmony-device-gate", makefile)
         self.assertIn("scripts/harmony_device_gate.py", makefile)
         self.assertIn("$(EVIDENCE_DIR)/harmony-device-gates.json", makefile)
+
+
+class HarmonyAvcodecPreflightTests(unittest.TestCase):
+    def passing_manifest(self) -> dict[str, object]:
+        manifest = harmony_avcodec_preflight.template_manifest()
+        manifest["repository"] = {
+            "revision": "a" * 40,
+            "tree": "b" * 40,
+            "dirty": False,
+            "status_porcelain": [],
+        }
+        manifest["toolchain"] = {
+            "deveco_studio_version": "DevEco Studio 6.0",
+            "harmony_sdk_api": "API 12",
+            "harmony_sdk_version": "5.0.0(12)",
+            "hvigor_version": "5.0.2",
+            "ohpm_version": "5.0.2",
+            "hdc_version": "Ver: 3.1.0",
+        }
+        manifest["artifact"] = {
+            "bundle_name": "dev.vibescreen.harmony",
+            "version_name": "0.1.0",
+            "hap_sha256": "1" * 64,
+            "signature_certificate_sha256": "2" * 64,
+        }
+        manifest["device"] = {
+            "platform": "HarmonyOS NEXT",
+            "manufacturer": "Huawei",
+            "model": "MatePad Mini",
+            "product": "MatePad Mini",
+            "os_build": "HarmonyOS NEXT build 1",
+            "hdc_target": "redacted-hdc-target",
+            "serial_hash": "3" * 64,
+        }
+        manifest["host"] = {
+            "commit": "c" * 40,
+            "build_sha256": "4" * 64,
+            "protocol": "Protocol v1",
+        }
+        for codec in manifest["codecs"]:
+            codec["status"] = "pass"
+            codec["decoder_name"] = f"avcodec.hardware.{codec['codec']}"
+            codec["gates"] = {
+                gate: "pass" for gate in harmony_avcodec_preflight.REQUIRED_CODEC_GATE_KEYS
+            }
+            codec["artifacts"] = [f"evidence/{codec['codec']}-hilog.txt"]
+        return manifest
+
+    def test_harmony_avcodec_manifest_passes_with_both_hardware_codecs(self) -> None:
+        self.assertEqual(harmony_avcodec_preflight.validate_manifest(self.passing_manifest()), [])
+
+    def test_harmony_avcodec_manifest_rejects_android_or_p0110_identity(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["device"] = {
+            "platform": "Android",
+            "manufacturer": "nubia",
+            "model": "P0110",
+            "product": "pacific",
+            "os_build": "Android 16",
+            "hdc_target": "not-applicable",
+            "serial_hash": "3" * 64,
+        }
+
+        with self.assertRaisesRegex(harmony_avcodec_preflight.ManifestError, "Android or simulator"):
+            harmony_avcodec_preflight.validate_manifest(manifest)
+
+    def test_harmony_avcodec_manifest_rejects_software_decoder_claim(self) -> None:
+        manifest = self.passing_manifest()
+        manifest["codecs"][0]["decoder_name"] = "software h264 decoder"
+
+        with self.assertRaisesRegex(harmony_avcodec_preflight.ManifestError, "hardware decoder identity"):
+            harmony_avcodec_preflight.validate_manifest(manifest)
+
+    def test_harmony_avcodec_manifest_rejects_missing_lifecycle_gate(self) -> None:
+        manifest = self.passing_manifest()
+        del manifest["codecs"][1]["gates"]["release_completed"]
+
+        with self.assertRaisesRegex(harmony_avcodec_preflight.ManifestError, "release_completed"):
+            harmony_avcodec_preflight.validate_manifest(manifest)
+
+    def test_harmony_avcodec_template_is_blocked_only(self) -> None:
+        manifest = harmony_avcodec_preflight.template_manifest()
+
+        with self.assertRaisesRegex(harmony_avcodec_preflight.ManifestError, "placeholder zero value"):
+            harmony_avcodec_preflight.validate_manifest(manifest)
+        warnings = harmony_avcodec_preflight.validate_manifest(manifest, allow_blocked=True)
+        self.assertGreaterEqual(len(warnings), len(harmony_avcodec_preflight.REQUIRED_CODEC_GATE_KEYS) * 2)
+
+    def test_harmony_avcodec_cli_allow_blocked_never_prints_acceptance_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            manifest_path = Path(temporary_directory) / "harmony-avcodec-preflight.json"
+            manifest_path.write_text(json.dumps(harmony_avcodec_preflight.template_manifest()), encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "-m",
+                    "vibescreen_evidence.harmony_avcodec_preflight",
+                    "--allow-blocked",
+                    "--validate",
+                    str(manifest_path),
+                ],
+                cwd=str(REPOSITORY_ROOT),
+                env={**dict(os.environ), "PYTHONPATH": str(REPOSITORY_ROOT / "tools")},
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+        self.assertIn("not acceptance evidence", result.stdout)
+        self.assertNotIn("passes H.264/HEVC hardware decode gates", result.stdout)
+
+    def test_harmony_avcodec_make_targets_are_wired(self) -> None:
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+
+        self.assertIn("harmony-avcodec-preflight", makefile)
+        self.assertIn("harmony-avcodec-validate", makefile)
+        self.assertIn("vibescreen_evidence.harmony_avcodec_preflight", makefile)
 
 
 class ArchiveArtifactTests(unittest.TestCase):
