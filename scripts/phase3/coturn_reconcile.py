@@ -33,6 +33,12 @@ MAX_ALLOCATIONS = 10_000
 MAX_SNAPSHOT_BYTES = 256 * 1024
 MAX_RESPONSE_BYTES = 64 * 1024
 DEFAULT_TOKEN_ENV = "VIBE_AUTHORITY_COTURN_TOKEN"
+CHILD_ENV_ALLOWLIST = (
+    "VIBE_COTURN_ALLOCATION_REGISTRY",
+    "VIBE_COTURN_CLI_PASSWORD_FILE",
+    "VIBE_COTURN_SEQUENCE_STATE",
+    "VIBE_COTURN_SOURCE_ID",
+)
 
 SNAPSHOT_FIELDS = frozenset({"source_id", "observed_at", "allocations"})
 ALLOCATION_FIELDS = frozenset(
@@ -404,6 +410,9 @@ def validate_result(value: Any) -> dict[str, Any]:
 def _minimal_process_env() -> dict[str, str]:
     env: dict[str, str] = {}
     for key in ("PATH", "LANG", "LC_ALL"):
+        if key in os.environ:
+            env[key] = os.environ[key]
+    for key in CHILD_ENV_ALLOWLIST:
         if key in os.environ:
             env[key] = os.environ[key]
     return env

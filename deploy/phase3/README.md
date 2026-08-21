@@ -11,10 +11,13 @@ This directory contains two deliberately separate deployment slices:
   relay credential service beside coturn.
 
 They are not an integrated public Internet stack. Authority-backed signaling and
-relay credential admission can both call the shared Authority service, but these
-profiles still do not provide automatic account/session issuance, public ingress,
-multi-instance routing, or active revocation of an established PeerConnection/TURN
-allocation.
+relay credential admission can both call the shared Authority service. The relay
+production profile also wires a bounded coturn CLI reconciliation worker that can
+export active coturn sessions and disconnect mapped revoked/unauthorized/conflicting
+TURN allocations. These profiles still do not provide automatic account/session
+issuance, public ingress, multi-instance routing, durable collector scheduling/WAL,
+provider billing reconciliation, or proof that an established PeerConnection is
+actively revoked end to end.
 
 ## Authority local profile
 
@@ -170,19 +173,29 @@ Linux host:
    its `turn_realm` equals `COTURN_REALM`. Keep
    `authority_mode=production_authority`, point `authority_url` at the private
    Authority endpoint, and set `authority_source_id` to a stable identifier for
-   this TURN source. The production example selects `storage_backend: postgres`;
-   do not change it to the file backend for a multi-process or public
-   deployment.
-2. Set `VIBE_RELAY_IMAGE_REPOSITORY` and the exact 64-character
-   `VIBE_RELAY_IMAGE_SHA256`; Compose constructs a digest-only image reference
-   and the production profile intentionally has no local relay build fallback.
+   this TURN source. Keep `allocation_registry_file` on the shared
+   `coturn-allocation-registry` volume so relay can write admitted allocation
+   mappings and the reconciler can read them. The production example selects
+   `storage_backend: postgres`; do not change it to the file backend for a
+   multi-process or public deployment.
+2. Set `VIBE_RELAY_IMAGE_REPOSITORY`, `VIBE_COTURN_RECONCILER_IMAGE_REPOSITORY`,
+   and their exact 64-character SHA-256 digests. Compose constructs digest-only
+   image references and the production profile intentionally has no local relay
+   or reconciler build fallback. Build the reconciler image from
+   `coturn-reconciler.Dockerfile` with a digest-pinned `PYTHON_BASE_IMAGE`, then
+   publish and pin that resulting image digest.
 3. Provision independent migration and runtime PostgreSQL URL secret files.
    Use a short-lived DDL role for migration and a least-privilege runtime role
    for relay. Both URLs must include `sslmode=verify-full` because the profile
    sets `VIBE_RELAY_DATABASE_TLS_MODE=verify-full`.
 4. Provision independent secret files with mode `0600`; distribute the same
-   `turn_secret.txt` to relay and coturn, and provision `authority_token.txt`
-   with the same value Authority exposes as `VIBE_AUTHORITY_RELAY_TOKEN`.
+   `turn_secret.txt` to relay and coturn, provision `authority_token.txt`
+   with the same value Authority exposes as `VIBE_AUTHORITY_RELAY_TOKEN`,
+   provision `authority_coturn_token.txt` with Authority's coturn token for the
+   reconciler, and provision `coturn_cli_password.txt` for coturn's loopback
+   management CLI. The CLI password must contain at least 32 printable ASCII
+   characters and is injected into the generated runtime coturn config, never
+   committed to source.
    Because the coturn container runs as UID/GID `65532`, make
    `turn_secret.txt` owned by `65532:65532` or otherwise readable by that
    account while retaining `0600` permissions. Store/rotate all secrets through
@@ -193,7 +206,8 @@ Linux host:
    `COTURN_EXTERNAL_IP` to `public-ip/private-ip` behind one-to-one NAT, or to
    the public IP on a directly addressed host.
 7. Allow inbound UDP/TCP 3478, TCP 5349, and UDP 49152-65535. Keep relay HTTP
-   on loopback behind an authenticated TLS reverse proxy. Apply provider DDoS
+   on loopback behind an authenticated TLS reverse proxy. Keep coturn CLI bound
+   to `127.0.0.1:5766`; never expose it outside the host. Apply provider DDoS
    controls before these host rules.
 8. Validate the effective configuration, start, and inspect health/logs:
 
@@ -202,13 +216,17 @@ export COTURN_REALM=relay.example.com
 export COTURN_EXTERNAL_IP=203.0.113.10/10.0.0.10
 export VIBE_RELAY_IMAGE_REPOSITORY=registry.example.com/vibe-relay
 export VIBE_RELAY_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+export VIBE_COTURN_RECONCILER_IMAGE_REPOSITORY=registry.example.com/vibe-coturn-reconciler
+export VIBE_COTURN_RECONCILER_IMAGE_SHA256=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
+export VIBE_AUTHORITY_URL=https://authority.internal.example.com
+export VIBE_COTURN_SOURCE_ID=turn-prod-1
 export VIBE_RELAY_MIGRATION_DATABASE_URL_FILE=/run/secrets/relay-migration-url
 export VIBE_RELAY_DATABASE_URL_FILE=/run/secrets/relay-runtime-url
 docker compose -f docker-compose.production.yml config --quiet
-docker compose -f docker-compose.production.yml pull relay coturn
+docker compose -f docker-compose.production.yml pull relay coturn coturn-reconciler
 docker compose -f docker-compose.production.yml up -d --wait
 curl --fail http://127.0.0.1:8090/readyz
-docker compose -f docker-compose.production.yml logs --since=10m relay coturn
+docker compose -f docker-compose.production.yml logs --since=10m relay coturn coturn-reconciler
 ```
 
 The `relay-migrate` job applies `001_relay.sql` behind an advisory lock and a
@@ -217,6 +235,12 @@ requires the database, schema checksum, required relations/columns/constraints,
 and database clock skew to be inside the configured bound. A database outage or
 schema drift leaves `/healthz` at 200 while `/readyz`, credential issuance,
 usage writes, revocation, and metrics fail closed with 503.
+In `production_authority` mode, relay also writes
+`allocation_registry_file` before returning a TURN credential. That file is
+shared with `coturn-reconciler` through the `coturn-allocation-registry` volume;
+registry write, source mismatch, or identity conflict returns `503` and no
+credential. The registry is single-node state for this profile and must not be
+used as proof of multi-node reconciliation.
 
 `production.conf` enables UDP/TCP TURN, TLS on 5349, TLS 1.2+, fingerprints,
 short nonces, stable per-device and total allocation quotas, a 20 MB/s
@@ -226,7 +250,19 @@ IPv6 site-local, protocol-assignment, and benchmark/internal ranges; multicast
 peers are also denied. Add every provider VPC, metadata, container, Pod,
 Service, and overlay range visible in the host routing table, with a host egress
 firewall as a second layer. Never add a broad `allowed-peer-ip`, which takes
-precedence over denies.
+precedence over denies. The production profile enables coturn's management CLI
+only on loopback and injects `cli-password` from `coturn_cli_password.txt`; an
+unreadable or weak CLI password prevents coturn startup.
+
+`coturn-reconciler` runs a bounded loop around `coturn_reconcile.py`. Its exporter
+command reads coturn `ps`, joins live sessions with the relay-written allocation
+registry, emits Authority's strict snapshot JSON, and persists a monotonic
+sequence in the shared state volume. Its disconnect command consumes the
+reconcile helper's minimal environment and runs coturn `cs <session-id>` only
+when the registry and live CLI session identify exactly one allocation. Missing
+registry bindings, ambiguous usernames, CLI auth failure, malformed CLI output,
+and disconnect failure all fail closed. A `needs_ledger_close` result still exits
+non-zero; durable two-snapshot ledger-close policy is outside this slice.
 
 ## Upgrade, rollback, and rotation
 
@@ -263,12 +299,12 @@ atomically counts all session/expiry credentials under one device principal.
 `device_id/session_id/allocation_id/source_id` tuple before returning that TURN
 credential; revoked or expired Authority sessions and revoked devices fail closed
 before coturn sees a credential. Revalidate `user-quota` against legitimate
-UDP/TCP/TLS ICE allocation counts before changing it. The repository still has
-no coturn-to-`/v1/usage` collector, no production scheduler for the bounded
-reconciliation loop, and no concrete active-allocation disconnect executor.
-Therefore the control plane's daily-byte and per-device concurrent-session
-accounting is not authoritative for this deployment; coturn's own limits remain
-the immediate enforcement boundary.
+UDP/TCP/TLS ICE allocation counts before changing it. The repository now has a
+minimal coturn CLI exporter/disconnect command and a bounded production Compose
+worker, but no durable scheduler/WAL, no two-snapshot ledger-close executor, and
+no provider billing reconciliation. Therefore the control plane's daily-byte and
+per-device concurrent-session accounting is not authoritative for this
+deployment; coturn's own limits remain the immediate enforcement boundary.
 Postgres removes the previous local-state blocker for multiple relay
 control-plane processes, but it does not provide TURN usage collection, billing
 reconciliation, production database backups, NTP monitoring, or multi-region

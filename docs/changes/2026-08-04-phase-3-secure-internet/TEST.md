@@ -62,13 +62,14 @@ secrets are file-backed, relay HTTP remains loopback-only, and the coturn
 production profile retains TLS, quota, bounded relay-port, and private/internal
 peer-deny policy. They do not start a public relay, inspect real secret delivery,
 or prove public reachability. The same target validates the structured coturn
-snapshot reconciliation helper: strict JSON input, optional external exporter
-stdout validation, loopback-only plaintext Authority URLs, exact token-source
-selection, bounded failure retry, and fail-closed external disconnect execution
-when Authority reports unauthorized, conflicting, or revoked active source
-allocations. That helper test does not prove a production coturn exporter,
-production scheduler, provider billing reconciliation, or real data-plane
-allocation termination.
+snapshot reconciliation and coturn CLI control path: strict JSON input, optional
+external exporter stdout validation, loopback-only plaintext Authority URLs, exact
+token-source selection, bounded failure retry, registry-backed coturn `ps`
+parsing, monotonic sequence state, CLI password file handling, and fail-closed
+external disconnect execution when Authority reports unauthorized, conflicting,
+or revoked active source allocations. These local tests do not prove public
+coturn deployment, durable production scheduling/WAL, provider billing
+reconciliation, or real data-plane disconnect evidence.
 
 Record failures as failures. In particular, an unavailable XCTest/full-Xcode or
 device environment is not a waiver. When production WebRTC/crypto/signaling code
@@ -322,9 +323,13 @@ named by that run:
   sanitized token-source selection, loopback-only plaintext Authority URLs,
   Authority response validation, bounded retry after transient failure, and
   fail-closed handling of unauthorized/conflicting/revoked active allocations
-  when no disconnect executor exists or when the executor fails. This is a local
-  contract test, not production coturn exporter, production scheduler, provider
-  billing reconciliation, or data-plane disconnect evidence.
+  when no disconnect executor exists or when the executor fails.
+  `scripts/phase3/coturn_cli_control.py` adds focused coverage for registry
+  validation, coturn CLI `ps` parsing, snapshot export, monotonic sequence state,
+  CLI password secret loading, and mapped `cs <session-id>` execution. This is a
+  local script/static test boundary, not public coturn deployment, durable
+  production scheduling/WAL, provider billing reconciliation, or real data-plane
+  disconnect evidence.
 - Signaling issuer-only invalidation passed store, HTTP, race and repeated
   real-process tests: invalidation is idempotent, destroys role tokens and queued
   payloads, wakes long polls, and retains only the request-ID tombstone until

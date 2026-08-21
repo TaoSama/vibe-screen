@@ -13,6 +13,7 @@ AUTHORITY_PRODUCTION_COMPOSE = DEPLOY / "docker-compose.authority.production.yml
 RELAY_PRODUCTION_CONFIG = DEPLOY / "config/relay.production.example.json"
 AUTHORITY_PRODUCTION_CONFIG = DEPLOY / "config/authority.production.example.json"
 COTURN_PRODUCTION_CONFIG = DEPLOY / "coturn/production.conf"
+COTURN_RECONCILER_DOCKERFILE = DEPLOY / "coturn-reconciler.Dockerfile"
 
 PROHIBITED_RELAY_BUILD_MARKERS = (
     "build:",
@@ -54,6 +55,17 @@ def non_comment_coturn_lines() -> set[str]:
         for line in read(COTURN_PRODUCTION_CONFIG).splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     }
+
+
+def service_section(text: str, name: str) -> str:
+    lines = text.splitlines()
+    start = lines.index(f"  {name}:")
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        if lines[index].startswith("  ") and not lines[index].startswith("    "):
+            end = index
+            break
+    return "\n".join(lines[start:end])
 
 
 class ProductionProfileStaticTests(unittest.TestCase):
@@ -105,7 +117,11 @@ class ProductionProfileStaticTests(unittest.TestCase):
         self.assertIn("use-auth-secret", lines)
         self.assertIn("fingerprint", lines)
         self.assertIn("no-multicast-peers", lines)
-        self.assertIn("no-cli", lines)
+        self.assertNotIn("no-cli", lines)
+        self.assertIn("cli", lines)
+        self.assertIn("cli-ip=127.0.0.1", lines)
+        self.assertIn("cli-port=5766", lines)
+        self.assertFalse(any(line.startswith("cli-password=") for line in lines))
         self.assertIn("no-tlsv1", lines)
         self.assertIn("no-tlsv1_1", lines)
         self.assertIn("tls-listening-port=5349", lines)
@@ -135,6 +151,7 @@ class ProductionProfileStaticTests(unittest.TestCase):
         self.assertLessEqual(config["max_concurrent_sessions_per_device"], 2)
         self.assertLessEqual(config["daily_bytes_per_device"], 20 * 1024 * 1024 * 1024)
         self.assertEqual(config["state_file"], "/data/relay-state.json")
+        self.assertEqual(config["allocation_registry_file"], "/var/lib/vibe-coturn/allocation-registry.json")
 
     def test_authority_production_example_keeps_short_session_and_reconciliation_bounds(self) -> None:
         config = json.loads(read(AUTHORITY_PRODUCTION_CONFIG))
@@ -159,7 +176,35 @@ class ProductionProfileStaticTests(unittest.TestCase):
         )
         self.assertIn("_FILE:", combined)
         self.assertIn("file: ./secrets/turn_secret.txt", combined)
+        self.assertIn("file: ./secrets/coturn_cli_password.txt", combined)
         self.assertIn("file: ${VIBE_AUTHORITY_DATABASE_URL_FILE", combined)
+
+    def test_coturn_reconciler_is_digest_pinned_and_fail_closed(self) -> None:
+        compose = read(RELAY_PRODUCTION_COMPOSE)
+        dockerfile = read(COTURN_RECONCILER_DOCKERFILE)
+
+        self.assertRegex(
+            compose,
+            r"(?ms)^  coturn-reconciler:\n(?:    .+\n)*?    image: "
+            r"\$\{VIBE_COTURN_RECONCILER_IMAGE_REPOSITORY:\?[^}]+\}"
+            r"@sha256:\$\{VIBE_COTURN_RECONCILER_IMAGE_SHA256:\?[^}]+\}$",
+        )
+        self.assertIn("VIBE_COTURN_SOURCE_ID: ${VIBE_COTURN_SOURCE_ID:?set the Authority coturn source ID}", compose)
+        self.assertIn("VIBE_COTURN_ALLOCATION_REGISTRY: /var/lib/vibe-coturn/allocation-registry.json", compose)
+        self.assertIn("VIBE_COTURN_SEQUENCE_STATE: /var/lib/vibe-coturn/reconcile-sequence.json", compose)
+        self.assertIn("VIBE_COTURN_CLI_PASSWORD_FILE: /run/secrets/coturn_cli_password", compose)
+        self.assertIn("--exporter-command", compose)
+        self.assertIn("coturn_cli_control.py", compose)
+        self.assertIn("--disconnect-command", compose)
+        self.assertIn("authority_coturn_token", compose)
+        reconciler = service_section(compose, "coturn-reconciler")
+        self.assertIn("no-new-privileges:true", reconciler)
+        self.assertIn("read_only: true", reconciler)
+        self.assertNotIn("../../scripts/phase3:/opt/vibe/scripts", reconciler)
+        self.assertIn("ARG PYTHON_BASE_IMAGE", dockerfile)
+        self.assertIn("FROM ${PYTHON_BASE_IMAGE}", dockerfile)
+        self.assertIn("@sha256:[0-9a-f]{64}", dockerfile)
+        self.assertNotRegex(dockerfile, re.compile(r"(?m)^FROM [^$].*:[^@\s]+$"))
 
 
 if __name__ == "__main__":

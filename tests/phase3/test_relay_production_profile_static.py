@@ -25,6 +25,7 @@ class RelayProductionProfileStaticTests(unittest.TestCase):
         config = json.loads(CONFIG.read_text())
         self.assertEqual(config["storage_backend"], "postgres")
         self.assertEqual(config["maximum_database_clock_skew_seconds"], 5)
+        self.assertEqual(config["allocation_registry_file"], "/var/lib/vibe-coturn/allocation-registry.json")
         self.assertIn("state_file", config)
 
     def test_relay_production_compose_runs_migration_before_service(self):
@@ -51,16 +52,18 @@ class RelayProductionProfileStaticTests(unittest.TestCase):
         self.assertIn("--healthcheck", compose)
         self.assertIn("http://127.0.0.1:8090/readyz", compose)
 
-    def test_relay_production_profile_does_not_claim_coturn_reconcile_worker(self):
+    def test_relay_production_profile_runs_coturn_reconcile_worker(self):
         compose = COMPOSE.read_text()
-        self.assertNotIn("coturn-reconcile", compose)
-        self.assertNotIn("coturn_reconcile.py", compose)
-        self.assertNotIn("coturn-exporter", compose)
-        self.assertNotIn("coturn-disconnect", compose)
-        self.assertNotRegex(
-            compose,
-            re.compile(r"(?m)^  (collector|exporter|reconciler|disconnect-executor):$"),
-        )
+        reconciler = service_section(compose, "coturn-reconciler")
+        self.assertIn("coturn_reconcile.py", reconciler)
+        self.assertIn("coturn_cli_control.py", reconciler)
+        self.assertIn("--exporter-command", reconciler)
+        self.assertIn("--disconnect-command", reconciler)
+        self.assertIn("authority_coturn_token", reconciler)
+        self.assertIn("coturn_cli_password", reconciler)
+        self.assertIn("VIBE_COTURN_ALLOCATION_REGISTRY", reconciler)
+        self.assertIn("read_only: true", reconciler)
+        self.assertIn("no-new-privileges:true", reconciler)
 
 
 if __name__ == "__main__":

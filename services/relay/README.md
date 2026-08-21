@@ -207,12 +207,16 @@ The `/v1/usage` daily-byte and active-session ledger is not authoritative until
 a trusted coturn collector and reconciliation loop are deployed. It must not be
 used as the real-time allocation security boundary; coturn's stable-device
 `user-quota` remains that boundary in the current deployment.
-For Authority-backed deployments, `scripts/phase3/coturn_reconcile.py` can submit
-a trusted structured snapshot to Authority and require an external disconnect
-executor for unauthorized or conflicting active source allocations. It is a local
-contract helper only; deployments still need a production exporter, durable
-collector loop, provider/billing reconciliation, and concrete coturn allocation
-termination before the release gate closes.
+For Authority-backed deployments, relay must set `allocation_registry_file`; after
+Authority admits an allocation and before relay returns a TURN credential, relay
+atomically records the `allocation_id`, `device_id`, `session_id`, and generated
+TURN REST username in that registry. Registry write or identity-conflict failure
+returns `503` and no credential. `scripts/phase3/coturn_reconcile.py` can then
+run `scripts/phase3/coturn_cli_control.py export` as its exporter command and
+`coturn_cli_control.py disconnect` as its executor. This is a minimal single-node
+coturn CLI path; deployments still need durable collector scheduling/WAL,
+provider/billing reconciliation, multi-node registry coordination, and public
+production evidence before the release gate closes.
 
 ## Threat model
 

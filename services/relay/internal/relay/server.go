@@ -29,14 +29,15 @@ type rateWindow struct {
 }
 
 type Server struct {
-	cfg       Config
-	store     Store
-	authority relayAuthority
-	metrics   Metrics
-	now       func() time.Time
-	rateMu    sync.Mutex
-	rates     map[string]rateWindow
-	revokeMu  sync.RWMutex
+	cfg        Config
+	store      Store
+	authority  relayAuthority
+	metrics    Metrics
+	now        func() time.Time
+	rateMu     sync.Mutex
+	rates      map[string]rateWindow
+	revokeMu   sync.RWMutex
+	registryMu sync.Mutex
 }
 
 func NewServer(cfg Config) (*Server, error) {
@@ -104,6 +105,10 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	if s.authority != nil {
 		if err := s.authority.Ready(r.Context()); err != nil {
 			s.reject(w, http.StatusServiceUnavailable, "authority unavailable")
+			return
+		}
+		if err := checkAllocationRegistryReady(s.cfg.AllocationRegistryFile, s.cfg.AuthoritySourceID); err != nil {
+			s.reject(w, http.StatusServiceUnavailable, "allocation registry unavailable")
 			return
 		}
 	}
@@ -236,20 +241,52 @@ func (s *Server) credentials(w http.ResponseWriter, r *http.Request) {
 		s.rejectRevoked(w)
 		return
 	}
-	s.writeCredential(w, request, ttl)
+	credential, username, err := s.buildCredential(request, ttl)
+	if err != nil {
+		s.reject(w, http.StatusInternalServerError, "credential generation failed")
+		return
+	}
+	if err := s.registerAllocation(request, username); err != nil {
+		s.rejectStorage(w)
+		return
+	}
+	s.metrics.credentialIssued.Add(1)
+	writeJSON(w, http.StatusOK, credential)
 }
 
 func (s *Server) writeCredential(w http.ResponseWriter, request credentialRequest, ttl int64) {
+	credential, _, err := s.buildCredential(request, ttl)
+	if err != nil {
+		s.reject(w, http.StatusInternalServerError, "credential generation failed")
+		return
+	}
+	s.metrics.credentialIssued.Add(1)
+	writeJSON(w, http.StatusOK, credential)
+}
+
+func (s *Server) buildCredential(request credentialRequest, ttl int64) (map[string]any, string, error) {
 	expires := s.now().UTC().Add(time.Duration(ttl) * time.Second).Unix()
 	username := fmt.Sprintf("%d:%s", expires, request.DeviceID)
 	mac := hmac.New(sha1.New, []byte(s.cfg.TurnSecret))
 	if _, err := mac.Write([]byte(username)); err != nil {
-		s.reject(w, http.StatusInternalServerError, "credential generation failed")
-		return
+		return nil, "", err
 	}
 	password := base64.StdEncoding.EncodeToString(mac.Sum(nil))
-	s.metrics.credentialIssued.Add(1)
-	writeJSON(w, http.StatusOK, map[string]any{"username": username, "password": password, "ttl_seconds": ttl, "realm": s.cfg.TurnRealm, "uris": s.cfg.TurnURIs})
+	return map[string]any{"username": username, "password": password, "ttl_seconds": ttl, "realm": s.cfg.TurnRealm, "uris": s.cfg.TurnURIs}, username, nil
+}
+
+func (s *Server) registerAllocation(request credentialRequest, username string) error {
+	if s.cfg.EffectiveAuthorityMode() != AuthorityModeProd {
+		return nil
+	}
+	s.registryMu.Lock()
+	defer s.registryMu.Unlock()
+	return upsertAllocationRegistryEntry(s.cfg.AllocationRegistryFile, allocationRegistryEntry{
+		AllocationID: request.AllocationID,
+		DeviceID:     request.DeviceID,
+		SessionID:    request.SessionID,
+		Username:     username,
+	}, s.cfg.AuthoritySourceID)
 }
 
 func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {

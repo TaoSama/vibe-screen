@@ -10,11 +10,11 @@ local REST-credential, Allocation, ChannelBind and forced
 WebRTC relay integration used the host-installed coturn 4.16.0 binary; it does
 not prove execution of the pinned container image. This is still not a
 deployable production stack: signaling has PostgreSQL-backed durable routing but
-multi-instance operation is not proved, no authoritative usage exporter is
-bundled, no active-allocation disconnect executor is bundled, automatic issuance
-is not wired to Authority, the bundled coturn deployment does not run a usage
-exporter, reconciliation scheduler, or concrete data-plane disconnect executor,
-and no integrated implementation has run on a public host in this environment.
+multi-instance operation is not proved, automatic issuance is not wired to
+Authority, the bundled coturn deployment now includes a minimal coturn CLI
+exporter/disconnect command and bounded reconciliation worker, but that worker
+is not production-proven, has no durable scheduler/WAL, and no integrated
+implementation has run on a public host in this environment.
 
 The current `services/relay/` binary is an experimental credential/usage control
 service, not the production shape below. A trusted control-plane bearer requests
@@ -43,14 +43,15 @@ Authority owns coturn usage/reconciliation APIs. The repository also includes
 structured coturn allocation snapshot to Authority, can call an external exporter
 command whose stdout is that same strict JSON, retries failures when explicitly
 configured, and invokes an external disconnect executor for unauthorized,
-conflicting, or revoked active source allocations. The helper is not a
-production-proven coturn machine exporter, production scheduler, or concrete
-data-plane disconnect implementation. Therefore this does not remove the public-launch prohibition
-below. See the service README for the migration
-procedure, API contract, and remaining infrastructure gates.
-The structured reconcile
-  helper is locally tested, but the coturn exporter, scheduled reconciliation loop,
-  and active-allocation disconnect are not production proven.
+conflicting, or revoked active source allocations. `coturn_cli_control.py` is the
+minimal bundled coturn CLI exporter/disconnect command: it joins coturn `ps`
+output against relay's allocation registry and issues `cs <session-id>` only for
+an exact mapped allocation. The production Compose profile runs those commands
+in a bounded worker. This does not remove the public-launch prohibition below
+because the worker is not production-proven, has no durable scheduler/WAL, and no
+public coturn/provider billing deployment has validated the counters or
+disconnect behavior. See the service README for the migration procedure, API
+contract, and remaining infrastructure gates.
 Do not expose it to the public Internet until those boundaries and the
 remaining production gates below are resolved.
 
@@ -319,13 +320,14 @@ shipped:
 - Mac and Android automatic profile/account/session issuance is not wired to the
   authority.
 - Automatic account and device registration is not wired.
-- Relay credential admission is wired to the authority; the structured reconcile
-  helper is locally tested and can invoke external exporter and disconnect
-  commands, but a real coturn exporter is not implemented, no production
-  scheduler is shipped, and no concrete active-allocation disconnect executor is
-  bundled or production-proven.
-- Active PeerConnection and TURN allocations are not actively disconnected on
-  authority revocation; signaling invalidation only stops new rendezvous access.
+- Relay credential admission is wired to the authority; relay writes the
+  allocation registry required by the coturn CLI exporter/disconnect command, and
+  the production Compose profile runs a bounded reconciliation worker. The worker
+  is not production-proven and durable multi-node scheduling/WAL remains open.
+- Active PeerConnection allocations are not actively disconnected on authority
+  revocation; signaling invalidation only stops new rendezvous access. Mapped
+  TURN allocations can be terminated through coturn CLI, but the public
+  production revocation path remains unproved.
 - The authority per-device `session_epoch` floor and the Mac pairing-scoped
   epoch operate in different scopes and are not yet unified.
 - PostgreSQL durable signaling routing is implemented, but multi-instance

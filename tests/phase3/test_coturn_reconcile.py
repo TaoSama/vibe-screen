@@ -29,6 +29,7 @@ from scripts.phase3.coturn_reconcile import (  # noqa: E402
     settings_from_args,
     submit_reconcile,
     validate_result,
+    _minimal_process_env,
 )
 
 
@@ -491,6 +492,27 @@ class CoturnReconcileTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"VIBE_AUTHORITY_COTURN_TOKEN": "x" * 32}, clear=True):
             with self.assertRaisesRegex(ReconcileError, "cannot both be set"):
                 settings_from_args(parser)
+
+    def test_child_environment_carries_only_safe_coturn_paths(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "PATH": "/bin",
+                "VIBE_AUTHORITY_COTURN_TOKEN": "secret-token-value-that-must-not-leak",
+                "VIBE_COTURN_CLI_PASSWORD": "secret-password-that-must-not-leak",
+                "VIBE_COTURN_CLI_PASSWORD_FILE": "/run/secrets/coturn_cli_password",
+                "VIBE_COTURN_ALLOCATION_REGISTRY": "/etc/vibe-coturn/allocation-registry.json",
+                "VIBE_COTURN_SEQUENCE_STATE": "/var/lib/vibe-coturn/reconcile-sequence.json",
+                "VIBE_COTURN_SOURCE_ID": "turn-prod-1",
+            },
+            clear=True,
+        ):
+            env = _minimal_process_env()
+        self.assertEqual(env["PATH"], "/bin")
+        self.assertEqual(env["VIBE_COTURN_CLI_PASSWORD_FILE"], "/run/secrets/coturn_cli_password")
+        self.assertEqual(env["VIBE_COTURN_SOURCE_ID"], "turn-prod-1")
+        self.assertNotIn("VIBE_AUTHORITY_COTURN_TOKEN", env)
+        self.assertNotIn("VIBE_COTURN_CLI_PASSWORD", env)
 
     def test_float_arguments_reject_nan_and_infinity(self) -> None:
         base = ["--authority-url", "http://127.0.0.1:1", "--snapshot", "snapshot.json"]

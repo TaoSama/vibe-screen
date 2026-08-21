@@ -1,6 +1,23 @@
 name: vibe-screen-phase3-production
 
 services:
+  coturn-registry-init:
+    image: coturn/coturn:4.7.0-r0@sha256:99bf5bf6ab1c119862d0c3d2dfb2bbf805a86a131492cab18c148be64ae7d978
+    restart: "no"
+    network_mode: none
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mkdir -p /var/lib/vibe-coturn && chown 65532:65532 /var/lib/vibe-coturn && chmod 0750 /var/lib/vibe-coturn"]
+    volumes:
+      - coturn-allocation-registry:/var/lib/vibe-coturn
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    security_opt:
+      - no-new-privileges:true
+
   relay-migrate:
     image: ${VIBE_RELAY_IMAGE_REPOSITORY:?set the vibe-relay image repository}@sha256:${VIBE_RELAY_IMAGE_SHA256:?set the 64-character vibe-relay image digest}
     restart: "no"
@@ -21,6 +38,8 @@ services:
     restart: unless-stopped
     network_mode: host
     depends_on:
+      coturn-registry-init:
+        condition: service_completed_successfully
       relay-migrate:
         condition: service_completed_successfully
     environment:
@@ -42,6 +61,7 @@ services:
       - relay_database_url
     volumes:
       - ./config/relay.production.json:/etc/vibe-relay/config.json:ro
+      - coturn-allocation-registry:/var/lib/vibe-coturn
     healthcheck:
       test: ["CMD", "/vibe-relay", "--healthcheck", "http://127.0.0.1:8090/readyz"]
       interval: 10s
@@ -58,10 +78,12 @@ services:
     entrypoint: ["/bin/sh", "/opt/vibe/start-coturn.sh"]
     environment:
       COTURN_CONFIG_FILE: /etc/vibe-coturn/production.conf
+      COTURN_CLI_PASSWORD_FILE: /run/secrets/coturn_cli_password
       COTURN_EXTERNAL_IP: ${COTURN_EXTERNAL_IP:?set public/private IP mapping}
       COTURN_REALM: ${COTURN_REALM:?set the public relay hostname}
     secrets:
       - turn_secret
+      - coturn_cli_password
       - tls_certificate
       - tls_private_key
     volumes:
@@ -80,6 +102,56 @@ services:
       timeout: 5s
       retries: 5
 
+  coturn-reconciler:
+    image: ${VIBE_COTURN_RECONCILER_IMAGE_REPOSITORY:?set the coturn reconciler image repository}@sha256:${VIBE_COTURN_RECONCILER_IMAGE_SHA256:?set the 64-character coturn reconciler image digest}
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      coturn-registry-init:
+        condition: service_completed_successfully
+      coturn:
+        condition: service_healthy
+    command:
+      - /opt/vibe/scripts/coturn_reconcile.py
+      - --authority-url
+      - ${VIBE_AUTHORITY_URL:?set the Authority base URL}
+      - --coturn-token-file
+      - /run/secrets/authority_coturn_token
+      - --request-timeout-seconds
+      - "5"
+      - --interval-seconds
+      - ${VIBE_COTURN_RECONCILE_INTERVAL_SECONDS:-15}
+      - --max-iterations
+      - ${VIBE_COTURN_RECONCILE_MAX_ITERATIONS:-5760}
+      - --retry-attempts
+      - "2"
+      - --retry-backoff-seconds
+      - "1"
+      - --exporter-command
+      - /opt/vibe/scripts/coturn_cli_control.py
+      - export
+      - --disconnect-command
+      - /opt/vibe/scripts/coturn_cli_control.py
+      - disconnect
+    environment:
+      VIBE_COTURN_SOURCE_ID: ${VIBE_COTURN_SOURCE_ID:?set the Authority coturn source ID}
+      VIBE_COTURN_ALLOCATION_REGISTRY: /var/lib/vibe-coturn/allocation-registry.json
+      VIBE_COTURN_SEQUENCE_STATE: /var/lib/vibe-coturn/reconcile-sequence.json
+      VIBE_COTURN_CLI_PASSWORD_FILE: /run/secrets/coturn_cli_password
+    secrets:
+      - authority_coturn_token
+      - coturn_cli_password
+    volumes:
+      - coturn-allocation-registry:/var/lib/vibe-coturn
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=0700,uid=65532,gid=65532
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
 secrets:
   turn_secret:
     file: ./secrets/turn_secret.txt
@@ -93,6 +165,10 @@ secrets:
     file: ./secrets/admin_token.txt
   authority_token:
     file: ./secrets/authority_token.txt
+  authority_coturn_token:
+    file: ./secrets/authority_coturn_token.txt
+  coturn_cli_password:
+    file: ./secrets/coturn_cli_password.txt
   relay_migration_database_url:
     file: ${VIBE_RELAY_MIGRATION_DATABASE_URL_FILE:?set the relay migration database URL secret file}
   relay_database_url:
@@ -101,3 +177,6 @@ secrets:
     file: ./tls/fullchain.pem
   tls_private_key:
     file: ./tls/privkey.pem
+
+volumes:
+  coturn-allocation-registry:

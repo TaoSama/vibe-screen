@@ -49,6 +49,15 @@ func testConfig(t *testing.T) Config {
 	}
 }
 
+func useProductionAuthority(t *testing.T, cfg *Config, authorityURL string) {
+	t.Helper()
+	cfg.AuthorityMode = AuthorityModeProd
+	cfg.AuthorityURL = authorityURL
+	cfg.AuthoritySourceID = "turn-node-1"
+	cfg.AuthorityToken = testAuthorityToken
+	cfg.AllocationRegistryFile = filepath.Join(t.TempDir(), "allocations.json")
+}
+
 func TestCredentialsUseTURNRESTAndRateLimit(t *testing.T) {
 	server, err := NewServer(testConfig(t))
 	if err != nil {
@@ -166,10 +175,7 @@ func TestCredentialsRequireAuthorityAdmissionInProduction(t *testing.T) {
 
 	cfg := testConfig(t)
 	cfg.CredentialRequestsPerMinute = 10
-	cfg.AuthorityMode = AuthorityModeProd
-	cfg.AuthorityURL = authority.URL
-	cfg.AuthoritySourceID = "turn-node-1"
-	cfg.AuthorityToken = testAuthorityToken
+	useProductionAuthority(t, &cfg, authority.URL)
 	server, err := NewServer(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -181,9 +187,43 @@ func TestCredentialsRequireAuthorityAdmissionInProduction(t *testing.T) {
 	if admitted != (relayAdmissionRequest{DeviceID: "device-1", SessionID: "session-1", AllocationID: "allocation-1", SourceID: "turn-node-1"}) {
 		t.Fatalf("authority admission = %#v", admitted)
 	}
+	registry, err := readAllocationRegistry(cfg.AllocationRegistryFile, cfg.AuthoritySourceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Allocations) != 1 {
+		t.Fatalf("registry allocations = %#v", registry.Allocations)
+	}
+	entry := registry.Allocations[0]
+	if entry.AllocationID != "allocation-1" || entry.DeviceID != "device-1" || entry.SessionID != "session-1" || !strings.HasSuffix(entry.Username, ":device-1") {
+		t.Fatalf("registry entry = %#v", entry)
+	}
 	ready := requestJSON(t, server.Handler(), http.MethodGet, "/readyz", "", "")
 	if ready.Code != http.StatusOK {
 		t.Fatalf("ready status = %d: %s", ready.Code, ready.Body.String())
+	}
+}
+
+func TestCredentialsFailClosedWhenAllocationRegistryCannotBeWritten(t *testing.T) {
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/readyz" {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer authority.Close()
+	cfg := testConfig(t)
+	cfg.CredentialRequestsPerMinute = 10
+	useProductionAuthority(t, &cfg, authority.URL)
+	cfg.AllocationRegistryFile = t.TempDir()
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := requestJSON(t, server.Handler(), http.MethodPost, "/v1/credentials", testClientToken, "{\"device_id\":\"device-1\",\"session_id\":\"session-1\",\"allocation_id\":\"allocation-1\"}")
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "state storage unavailable") {
+		t.Fatalf("registry failure status = %d: %s", response.Code, response.Body.String())
 	}
 }
 
@@ -193,10 +233,7 @@ func TestReadyFailsClosedWhenAuthorityUnavailable(t *testing.T) {
 	}))
 	defer authority.Close()
 	cfg := testConfig(t)
-	cfg.AuthorityMode = AuthorityModeProd
-	cfg.AuthorityURL = authority.URL
-	cfg.AuthoritySourceID = "turn-node-1"
-	cfg.AuthorityToken = testAuthorityToken
+	useProductionAuthority(t, &cfg, authority.URL)
 	server, err := NewServer(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -207,16 +244,31 @@ func TestReadyFailsClosedWhenAuthorityUnavailable(t *testing.T) {
 	}
 }
 
+func TestReadyFailsClosedWhenAllocationRegistryUnavailable(t *testing.T) {
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}))
+	defer authority.Close()
+	cfg := testConfig(t)
+	useProductionAuthority(t, &cfg, authority.URL)
+	cfg.AllocationRegistryFile = t.TempDir()
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ready := requestJSON(t, server.Handler(), http.MethodGet, "/readyz", "", "")
+	if ready.Code != http.StatusServiceUnavailable || !strings.Contains(ready.Body.String(), "allocation registry unavailable") {
+		t.Fatalf("ready status = %d: %s", ready.Code, ready.Body.String())
+	}
+}
+
 func TestCredentialsFailClosedWhenAuthorityIsUnavailable(t *testing.T) {
 	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	authority.Close()
 	cfg := testConfig(t)
-	cfg.AuthorityMode = AuthorityModeProd
-	cfg.AuthorityURL = authority.URL
-	cfg.AuthoritySourceID = "turn-node-1"
-	cfg.AuthorityToken = testAuthorityToken
+	useProductionAuthority(t, &cfg, authority.URL)
 	server, err := NewServer(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -245,10 +297,7 @@ func TestCredentialsMapAuthorityPolicyRejections(t *testing.T) {
 			}))
 			defer authority.Close()
 			cfg := testConfig(t)
-			cfg.AuthorityMode = AuthorityModeProd
-			cfg.AuthorityURL = authority.URL
-			cfg.AuthoritySourceID = "turn-node-1"
-			cfg.AuthorityToken = testAuthorityToken
+			useProductionAuthority(t, &cfg, authority.URL)
 			server, err := NewServer(cfg)
 			if err != nil {
 				t.Fatal(err)
@@ -263,10 +312,7 @@ func TestCredentialsMapAuthorityPolicyRejections(t *testing.T) {
 
 func TestCredentialsRequireAllocationIDInProductionAuthorityMode(t *testing.T) {
 	cfg := testConfig(t)
-	cfg.AuthorityMode = AuthorityModeProd
-	cfg.AuthorityURL = "http://127.0.0.1:1"
-	cfg.AuthoritySourceID = "turn-node-1"
-	cfg.AuthorityToken = testAuthorityToken
+	useProductionAuthority(t, &cfg, "http://127.0.0.1:1")
 	server, err := NewServer(cfg)
 	if err != nil {
 		t.Fatal(err)

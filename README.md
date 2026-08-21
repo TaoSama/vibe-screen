@@ -537,10 +537,12 @@ services require deployment TLS, secret management, monitoring and limits
 described in their runbooks; the example local profile is loopback-only.
 `scripts/phase3/coturn_reconcile.py` now provides a bounded operator helper that
 accepts a trusted structured coturn allocation snapshot, submits it to Authority's
-reconciliation API, and requires an external active-allocation disconnect executor
-for unauthorized or conflicting source allocations. It is a contract and local
-test target for the exporter/reconciliation/executor boundary, not a deployed
-coturn exporter or proof of production enforcement.
+reconciliation API, and requires an active-allocation disconnect executor for
+unauthorized, conflicting, or revoked source allocations. The repository also
+includes a minimal coturn CLI exporter/disconnect implementation and production
+Compose wiring around a relay-written allocation registry. This is a runnable
+single-node enforcement slice, not public deployment or production enforcement
+evidence.
 
 See the [Phase 3 requirements](docs/changes/2026-08-04-phase-3-secure-internet/PRD.md),
 [technical status](docs/changes/2026-08-04-phase-3-secure-internet/TECH.md),
@@ -558,12 +560,13 @@ encoded ScreenCaptureKit output through the device, automatic fresh-session
 recovery after network handoff, public NAT/TURN deployment, cross-service
 revocation propagation and soak remain release gates rather than shipped
 features. Signaling and relay stores are currently single-node implementations.
-Relay credential admission is wired to Authority, and Authority can debit
-accepted coturn usage into the control-plane daily-byte ledger. The structured
-coturn reconcile helper can fail closed when active source allocations require a
-disconnect executor, but the coturn exporter, production reconciliation loop,
-active-allocation disconnect executor, and production end-to-end enforcement
-remain release gates.
+Relay credential admission is wired to Authority, Authority can debit accepted
+coturn usage into the control-plane daily-byte ledger, and relay now writes the
+allocation registry consumed by the coturn CLI exporter/disconnect worker. The
+bounded production Compose worker can fail closed for unauthorized,
+conflicting, or revoked source allocations, but public deployment, durable
+multi-node scheduling/WAL, provider billing reconciliation, and production
+end-to-end enforcement remain release gates.
 
 The target is roughly 80–150 ms on healthy Internet paths; relay distance and
 network quality may increase it.
