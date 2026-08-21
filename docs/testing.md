@@ -170,5 +170,11 @@ python3 scripts/controller_runtime_readiness.py \
   --serial "$ADB_SERIAL" \
   --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
   --host-app "/path/to/Vibe Screen.app" \
+  --write-blocked-on-lock \
   --evidence-dir docs/changes/2026-08-19-controller-runtime-acceptance/evidence/$(date -u +%F)-controller-runtime-readiness
 ```
+
+Without `--allow-existing-device-lock`, the collector refuses to run ADB when a
+shared Android device lock is present. With `--write-blocked-on-lock`, that
+preflight writes a blocked bundle that records the lock state instead of using
+the device.

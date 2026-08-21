@@ -30,11 +30,15 @@ Before an interactive run, collect a read-only readiness bundle:
       --serial "$ADB_SERIAL" \
       --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
       --host-app "/path/to/Vibe Screen.app" \
+      --write-blocked-on-lock \
       --evidence-dir docs/changes/2026-08-19-controller-runtime-acceptance/evidence/$(date -u +%F)-controller-runtime-readiness
 
 If no physical controller, signed Host, approved entitlement, or Host virtual
 gamepad availability is present, the summary must remain `blocked`. Do not turn
-that into a runtime pass.
+that into a runtime pass. If /tmp/vibe-screen-device-soak.lock or
+/tmp/vibe-screen-device-android.lock already exists and you do not own it, the
+collector must not run ADB; use --write-blocked-on-lock to preserve the lock
+state as blocked readiness evidence.
 
 ## Runtime Run
 
