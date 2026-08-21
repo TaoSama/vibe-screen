@@ -1,0 +1,415 @@
+{
+  "schema": "dev.vibescreen.shared-protocol-model/v1",
+  "protocolVersion": 1,
+  "sourceOfTruth": "contracts/proto/vibescreen/protocol/v1",
+  "purpose": "Fail closed if the Android and iOS Protocol v1 model boundary drifts from the shared contract without an explicit manifest update.",
+  "platforms": {
+    "android": {
+      "generatedBindingSource": "baseline/AndroidClient/app/build.gradle.kts",
+      "generatedBindingPackage": "dev.vibescreen.protocol.v1",
+      "productionModelSource": "baseline/AndroidClient/app/src/main/java/dev/telemachus/display/protocol/ProtocolV1Session.kt",
+      "productionTestSource": "baseline/AndroidClient/app/src/test/java/dev/telemachus/display/protocol/ProtocolV1SessionTest.kt"
+    },
+    "ios": {
+      "generatedBindingSource": "apps/ios/Sources/VibeScreenProtocol",
+      "generatedBindingVerifier": "apps/ios/Scripts/verify-generated-protocol.sh",
+      "productionModelSource": "apps/ios/VibeScreenApp/StreamViewModel+Protocol.swift",
+      "productionTestSource": "apps/ios/Sources/VibeScreenIOSSelfTest/main.swift"
+    }
+  },
+  "messages": {
+    "ClientHello": {
+      "proto": "contracts/proto/vibescreen/protocol/v1/session.proto",
+      "fields": {
+        "supported_protocols": 1,
+        "device_id": 2,
+        "device_name": 3,
+        "capabilities": 4,
+        "codecs": 5,
+        "transports": 6,
+        "resource_limits": 7,
+        "video_decode_capabilities": 8,
+        "required_capabilities": 9
+      }
+    },
+    "SessionAccepted": {
+      "proto": "contracts/proto/vibescreen/protocol/v1/session.proto",
+      "fields": {
+        "session_id": 1,
+        "session_epoch": 2,
+        "heartbeat_interval_ms": 3,
+        "negotiated_capabilities": 4,
+        "negotiated_resource_limits": 5
+      }
+    },
+    "DisplayDescriptor": {
+      "proto": "contracts/proto/vibescreen/protocol/v1/display.proto",
+      "fields": {
+        "display_id": 1,
+        "name": 2,
+        "logical_size": 3,
+        "scale_factor": 4,
+        "is_primary": 5,
+        "is_virtual": 6
+      }
+    },
+    "VideoConfig": {
+      "proto": "contracts/proto/vibescreen/protocol/v1/video.proto",
+      "fields": {
+        "config_epoch": 1,
+        "codec": 2,
+        "encoded_size": 3,
+        "frames_per_second": 4,
+        "bitrate_kbps": 5,
+        "stream_id": 6,
+        "color_description": 7,
+        "rotation_degrees": 8
+      }
+    },
+    "TouchEvent": {
+      "proto": "contracts/proto/vibescreen/protocol/v1/input.proto",
+      "fields": {
+        "input_id": 1,
+        "pointer_id": 2,
+        "phase": 3,
+        "position": 4,
+        "pressure": 5,
+        "target": 6
+      }
+    },
+    "KeyEvent": {
+      "proto": "contracts/proto/vibescreen/protocol/v1/input.proto",
+      "fields": {
+        "input_id": 1,
+        "usb_hid_usage": 2,
+        "pressed": 3,
+        "modifier_mask": 4,
+        "text": 5,
+        "target": 6
+      }
+    },
+    "StylusEvent": {
+      "proto": "contracts/proto/vibescreen/protocol/v1/input.proto",
+      "fields": {
+        "input_id": 1,
+        "pointer_id": 2,
+        "phase": 3,
+        "position": 4,
+        "pressure": 5,
+        "tilt_x_degrees": 6,
+        "tilt_y_degrees": 7,
+        "target": 8,
+        "tool_kind": 9,
+        "button_mask": 10,
+        "contact_state": 11
+      }
+    },
+    "ControllerEvent": {
+      "proto": "contracts/proto/vibescreen/protocol/v1/input.proto",
+      "fields": {
+        "input_id": 1,
+        "controller_id": 2,
+        "controller_epoch": 3,
+        "kind": 4,
+        "button_mask": 5,
+        "left_stick_x": 6,
+        "left_stick_y": 7,
+        "right_stick_x": 8,
+        "right_stick_y": 9,
+        "left_trigger": 10,
+        "right_trigger": 11,
+        "hat_x": 12,
+        "hat_y": 13,
+        "target": 14
+      }
+    },
+    "SetVideoPreferences": {
+      "proto": "contracts/proto/vibescreen/protocol/v1/video.proto",
+      "fields": {
+        "bitrate_kbps": 1,
+        "frames_per_second": 2,
+        "quality_preset": 3,
+        "reset_quality_to_auto": 4
+      }
+    },
+    "ManagedPolicyStatus": {
+      "proto": "contracts/proto/vibescreen/protocol/v1/advanced.proto",
+      "fields": {
+        "managed": 1,
+        "clipboard_allowed": 2,
+        "file_transfer_allowed": 3,
+        "audio_allowed": 4,
+        "wake_allowed": 5,
+        "maximum_file_bytes": 6,
+        "custom_gestures_allowed": 7,
+        "host_actions_allowed": 8,
+        "allowed_hosts": 9,
+        "allowed_hosts_restricted": 10
+      }
+    }
+  },
+  "envelopePayloads": {
+    "client_hello": 20,
+    "host_hello": 21,
+    "session_accepted": 22,
+    "list_displays_request": 40,
+    "list_displays_response": 41,
+    "start_display_request": 42,
+    "start_display_response": 43,
+    "display_changed": 45,
+    "video_config": 50,
+    "video_config_result": 51,
+    "touch_event": 60,
+    "pointer_event": 61,
+    "scroll_event": 62,
+    "key_event": 63,
+    "input_ack": 64,
+    "stylus_event": 65,
+    "controller_event": 66,
+    "clipboard_offer": 102,
+    "clipboard_request": 103,
+    "clipboard_content": 104,
+    "file_offer": 105,
+    "file_accept": 106,
+    "file_transfer_progress": 107,
+    "file_transfer_cancel": 108,
+    "file_transfer_complete": 109,
+    "host_action_catalog": 110,
+    "host_action_invoke": 111,
+    "host_action_result": 112,
+    "wake_host_request": 113,
+    "wake_host_result": 114,
+    "managed_policy_status": 115,
+    "set_video_preferences": 116
+  },
+  "capabilities": {
+    "CAPABILITY_TOUCH": {
+      "value": 3,
+      "androidProduction": "required in BASE_ADVERTISED_CAPABILITIES",
+      "iosProduction": "required in NativeInputAvailability.advertisedCapabilities"
+    },
+    "CAPABILITY_KEYBOARD": {
+      "value": 4,
+      "androidProduction": "required in BASE_ADVERTISED_CAPABILITIES",
+      "iosProduction": "required when NativeInputAvailability.keyboard is true"
+    },
+    "CAPABILITY_POINTER": {
+      "value": 5,
+      "androidProduction": "required in BASE_ADVERTISED_CAPABILITIES",
+      "iosProduction": "required when NativeInputAvailability.pointer is true"
+    },
+    "CAPABILITY_STYLUS": {
+      "value": 6,
+      "androidProduction": "required in BASE_ADVERTISED_CAPABILITIES",
+      "iosProduction": "binding and self-test only; iOS must not claim real stylus device evidence here"
+    },
+    "CAPABILITY_STYLUS_EXTENDED": {
+      "value": 25,
+      "requires": ["CAPABILITY_STYLUS"],
+      "androidProduction": "required in BASE_ADVERTISED_CAPABILITIES and dependency-filtered",
+      "iosProduction": "binding and SessionState dependency filter only"
+    },
+    "CAPABILITY_CLIENT_VIDEO_CONTROL": {
+      "value": 24,
+      "androidProduction": "required in BASE_ADVERTISED_CAPABILITIES",
+      "iosProduction": "binding only; iOS app must not advertise until it sends SetVideoPreferences"
+    },
+    "CAPABILITY_USB_HID_MODIFIER_BYTE": {
+      "value": 27,
+      "requires": ["CAPABILITY_KEYBOARD"],
+      "androidProduction": "required in BASE_ADVERTISED_CAPABILITIES and dependency-filtered",
+      "iosProduction": "required when NativeInputAvailability.keyboard is true and dependency-filtered"
+    },
+    "CAPABILITY_MANAGED_CONFIGURATION": {
+      "value": 22,
+      "androidProduction": "required in BASE_ADVERTISED_CAPABILITIES",
+      "iosProduction": "required in StreamViewModel.advertisedCapabilities"
+    },
+    "CAPABILITY_CLIPBOARD": {
+      "value": 14,
+      "androidProduction": "required unless local policy denies it",
+      "iosProduction": "required unless local policy denies it"
+    },
+    "CAPABILITY_FILE_TRANSFER": {
+      "value": 15,
+      "androidProduction": "required unless local file policy denies it",
+      "iosProduction": "required unless local policy denies it"
+    },
+    "CAPABILITY_HOST_ACTIONS": {
+      "value": 20,
+      "androidProduction": "required unless local or remote managed policy denies it",
+      "iosProduction": "required unless local policy denies it"
+    },
+    "CAPABILITY_WAKE_HOST": {
+      "value": 21,
+      "androidProduction": "required only when wake policy allows it",
+      "iosProduction": "required only when local policy allows it"
+    }
+  },
+  "requiredFixtureNames": [
+    "client_hello",
+    "host_hello",
+    "session_accepted",
+    "list_displays_response",
+    "start_display_request",
+    "start_display_response",
+    "video_config",
+    "display_changed",
+    "video_config_result",
+    "touch",
+    "stylus",
+    "stylus_extended",
+    "key_usb_hid_control",
+    "key_usb_hid_shift",
+    "key_legacy_control",
+    "key_legacy_shift",
+    "controller_connected",
+    "controller_state",
+    "controller_disconnected",
+    "clipboard_offer",
+    "clipboard_request",
+    "clipboard_content",
+    "file_offer",
+    "file_accept",
+    "file_transfer_progress",
+    "file_transfer_cancel",
+    "file_transfer_complete"
+  ],
+  "iosSelfTestFixtureNames": [
+    "client_hello",
+    "host_hello",
+    "session_accepted",
+    "list_displays_response",
+    "start_display_request",
+    "start_display_response",
+    "video_config",
+    "display_changed",
+    "video_config_result",
+    "touch",
+    "stylus"
+  ],
+  "managedPolicyCases": [
+    {
+      "name": "unmanaged_remote_preserves_local_policy",
+      "local": {
+        "managed": true,
+        "clipboard_allowed": true,
+        "file_transfer_allowed": true,
+        "audio_allowed": false,
+        "wake_allowed": true,
+        "custom_gestures_allowed": true,
+        "host_actions_allowed": true,
+        "maximum_file_bytes": 4096,
+        "allowed_hosts": [" MacBook-Pro.LOCAL ", "studio.local"],
+        "allowed_hosts_restricted": true
+      },
+      "remote": {
+        "managed": false,
+        "clipboard_allowed": false,
+        "file_transfer_allowed": false,
+        "audio_allowed": false,
+        "wake_allowed": false,
+        "custom_gestures_allowed": false,
+        "host_actions_allowed": false,
+        "maximum_file_bytes": 0,
+        "allowed_hosts": [],
+        "allowed_hosts_restricted": false
+      },
+      "effective": {
+        "managed": true,
+        "clipboard_allowed": true,
+        "file_transfer_allowed": true,
+        "audio_allowed": false,
+        "wake_allowed": true,
+        "custom_gestures_allowed": true,
+        "host_actions_allowed": true,
+        "maximum_file_bytes": 4096,
+        "allowed_hosts": ["macbook-pro.local", "studio.local"],
+        "allowed_hosts_restricted": true
+      }
+    },
+    {
+      "name": "managed_remote_deny_wins_and_file_limit_minimum",
+      "local": {
+        "managed": false,
+        "clipboard_allowed": true,
+        "file_transfer_allowed": true,
+        "audio_allowed": true,
+        "wake_allowed": true,
+        "custom_gestures_allowed": true,
+        "host_actions_allowed": true,
+        "maximum_file_bytes": 8192,
+        "allowed_hosts": [],
+        "allowed_hosts_restricted": false
+      },
+      "remote": {
+        "managed": true,
+        "clipboard_allowed": false,
+        "file_transfer_allowed": true,
+        "audio_allowed": false,
+        "wake_allowed": true,
+        "custom_gestures_allowed": false,
+        "host_actions_allowed": false,
+        "maximum_file_bytes": 1024,
+        "allowed_hosts": ["HOST-A.local", "host-b.local"],
+        "allowed_hosts_restricted": true
+      },
+      "effective": {
+        "managed": true,
+        "clipboard_allowed": false,
+        "file_transfer_allowed": true,
+        "audio_allowed": false,
+        "wake_allowed": true,
+        "custom_gestures_allowed": false,
+        "host_actions_allowed": false,
+        "maximum_file_bytes": 1024,
+        "allowed_hosts": ["host-a.local", "host-b.local"],
+        "allowed_hosts_restricted": true
+      }
+    },
+    {
+      "name": "restricted_hosts_intersect_when_both_sides_restrict",
+      "local": {
+        "managed": true,
+        "clipboard_allowed": true,
+        "file_transfer_allowed": true,
+        "audio_allowed": true,
+        "wake_allowed": true,
+        "custom_gestures_allowed": true,
+        "host_actions_allowed": true,
+        "maximum_file_bytes": 2048,
+        "allowed_hosts": ["alpha.local", "beta.local"],
+        "allowed_hosts_restricted": true
+      },
+      "remote": {
+        "managed": true,
+        "clipboard_allowed": true,
+        "file_transfer_allowed": true,
+        "audio_allowed": true,
+        "wake_allowed": true,
+        "custom_gestures_allowed": true,
+        "host_actions_allowed": true,
+        "maximum_file_bytes": 4096,
+        "allowed_hosts": ["beta.local", "gamma.local"],
+        "allowed_hosts_restricted": true
+      },
+      "effective": {
+        "managed": true,
+        "clipboard_allowed": true,
+        "file_transfer_allowed": true,
+        "audio_allowed": true,
+        "wake_allowed": true,
+        "custom_gestures_allowed": true,
+        "host_actions_allowed": true,
+        "maximum_file_bytes": 2048,
+        "allowed_hosts": ["beta.local"],
+        "allowed_hosts_restricted": true
+      }
+    }
+  ],
+  "openGates": [
+    "This contract is offline schema/source evidence only; it is not iOS Simulator, iPhone, iPad, or Android real-device evidence.",
+    "It does not introduce Kotlin Multiplatform or a shared runtime library.",
+    "A future Android application golden-byte fixture can replace the source-level production advertisement checks when device coordination is available."
+  ]
+}

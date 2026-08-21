@@ -174,8 +174,12 @@ versions.
 - Android uses Kotlin, Compose, and MediaCodec.
 - HarmonyOS NEXT uses ArkTS, ArkUI, and native hardware decoding APIs.
 - iOS uses SwiftUI and VideoToolbox.
-- KMP may share protocol models, connection state, configuration, and business
-  rules between Android and iOS. Rendering and input remain native.
+- Android and iOS currently use native Kotlin and Swift implementations backed
+  by the same Protocol v1 schemas and a fail-closed shared-model contract under
+  [`contracts/shared-models`](contracts/shared-models/v1/manifest.json). KMP
+  remains a possible future home for protocol models, connection state,
+  configuration, and business rules once shared runtime ownership is justified.
+  Rendering and input remain native.
 - HarmonyOS implements the same versioned protocol independently rather than
   depending on unsupported KMP platform integration.
 

@@ -86,6 +86,29 @@ Compatibility policy:
   discard them and are not a field-preserving relay format;
 - use a new versioned package for an incompatible wire change.
 
+## Shared Android/iOS model contract
+
+`shared-models/v1/manifest.json` pins the smallest Protocol v1 model boundary
+that Android and iOS must keep aligned while the clients continue to use native
+Kotlin and Swift code. It records the source proto fields for the shared Hello,
+session, display, video, input, managed-policy, clipboard/file, and host-action
+messages; the envelope payload field numbers; the capability values and
+dependency-gated production boundaries; and the required cross-platform fixture
+names.
+
+Run:
+
+```bash
+python3 scripts/verify_shared_protocol_model.py
+```
+
+`make protocol` also runs this verifier through `contracts/tests/`. The verifier
+is intentionally source-level and fail-closed: if a field number, capability
+value, required fixture, generated-binding source, or Android/iOS advertisement
+boundary drifts without updating the manifest, the contract test fails. This is
+not a Kotlin Multiplatform runtime slice and does not claim iOS or Android
+real-device evidence.
+
 `KeyEvent.modifier_mask` keeps its original field and uses capability-gated
 interpretation. Capability `27` selects the standard USB HID modifier byte
 (`Control=0x01`, `Shift=0x02`, `Alt=0x04`, `GUI=0x08`, right-side variants in
