@@ -804,6 +804,47 @@ class InternetProductSessionTest {
     }
 
     @Test
+    fun av1VideoConfigurationRejectionIsReportedBeforeMediaActivation() {
+        val peer = ProductFakePeerEngine()
+        val monitor = ProductFakeNetworkMonitor()
+        val callbacks =
+            object : InternetProductSessionCallbacks {
+                val configurations = mutableListOf<ProductVideoConfiguration>()
+
+                override fun onVideoConfiguration(
+                    configuration: ProductVideoConfiguration,
+                    effect: ProductVideoConfigurationEffect,
+                    completion: (ProductVideoDecision) -> Unit,
+                ) {
+                    if (configuration.codec == ProductVideoCodec.AV1) {
+                        completion(ProductVideoDecision.reject("av1_decoder_unavailable"))
+                        return
+                    }
+                    completion(
+                        effect.commit {
+                            configurations += configuration
+                            ProductVideoDecision.ACCEPT
+                        },
+                    )
+                }
+            }
+        val session = session(peer, monitor, callbacks)
+        session.start()
+        monitor.available("wifi")
+        peer.observer.onConnected(PeerRoute.DIRECT)
+        peer.receive(controlEnvelope(1).setHostHello(hostHello()).build())
+        peer.receive(controlEnvelope(2).setSessionAccepted(sessionAccepted()).build())
+
+        peer.receive(videoConfigurationEnvelope(3, codec = Codec.CODEC_AV1))
+
+        val result = Envelope.parseFrom(peer.control.last()).videoConfigResult
+        assertFalse(result.accepted)
+        assertEquals("av1_decoder_unavailable", result.rejectionReason)
+        assertEquals(InternetProductSessionState.ACTIVE, session.state)
+        assertTrue(callbacks.configurations.isEmpty())
+    }
+
+    @Test
     fun concurrentVideoConfigurationsFailClosedBeforeSecondDecoderInstall() {
         val peer = ProductFakePeerEngine()
         val monitor = ProductFakeNetworkMonitor()
@@ -1725,13 +1766,16 @@ class InternetProductSessionTest {
         assertEquals(InternetProductSessionState.ACTIVE, session.state)
     }
 
-    private fun videoConfigurationEnvelope(messageId: Long): Envelope =
+    private fun videoConfigurationEnvelope(
+        messageId: Long,
+        codec: Codec = Codec.CODEC_HEVC,
+    ): Envelope =
         controlEnvelope(messageId)
             .setVideoConfig(
                 VideoConfig
                     .newBuilder()
                     .setConfigEpoch(3)
-                    .setCodec(Codec.CODEC_HEVC)
+                    .setCodec(codec)
                     .setEncodedSize(Dimensions.newBuilder().setWidth(1920).setHeight(1080))
                     .setFramesPerSecond(60)
                     .setBitrateKbps(12_000)
