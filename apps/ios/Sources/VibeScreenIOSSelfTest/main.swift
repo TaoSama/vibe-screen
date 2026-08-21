@@ -1192,6 +1192,100 @@ func testTrustedLANStartupCodecs() throws {
     } catch SessionStateError.invalidSessionIdentifier { }
 }
 
+func testTrustedLANSecureRecords() throws {
+    let token = Data((0..<32).map(UInt8.init))
+    let hostKey = P256.KeyAgreement.PrivateKey()
+    let deviceKey = P256.KeyAgreement.PrivateKey()
+    let hostPublic = hostKey.publicKey.x963Representation
+    let devicePublic = deviceKey.publicKey.x963Representation
+    let sessionIdentifier = LANSecureRecordSession.sessionIdentifier(
+        hostPublicKey: hostPublic,
+        devicePublicKey: devicePublic
+    )
+    let context = LANSecureRecordSession.transcriptContext(
+        sessionIdentifier: sessionIdentifier,
+        hostPublicKey: hostPublic,
+        devicePublicKey: devicePublic
+    )
+    let hostSecret = try hostKey.sharedSecretFromKeyAgreement(
+        with: P256.KeyAgreement.PublicKey(x963Representation: devicePublic)
+    ).withUnsafeBytes { Data($0) }
+    let deviceSecret = try deviceKey.sharedSecretFromKeyAgreement(
+        with: P256.KeyAgreement.PublicKey(x963Representation: hostPublic)
+    ).withUnsafeBytes { Data($0) }
+    try require(hostSecret == deviceSecret, "LAN ECDH shared secret mismatch")
+    let host = try LANSecureRecordSession(
+        role: .host,
+        sessionIdentifier: sessionIdentifier,
+        sharedSecret: hostSecret,
+        bootstrapToken: token,
+        context: context
+    )
+    let device = try LANSecureRecordSession(
+        role: .device,
+        sessionIdentifier: sessionIdentifier,
+        sharedSecret: deviceSecret,
+        bootstrapToken: token,
+        context: context
+    )
+
+    let controlFrame = try TransportFrame(channel: .control, payload: Data([1, 2])).encoded()
+    let mediaFrame = try TransportFrame(channel: .video, payload: Data([3, 4])).encoded()
+    var protected = try LANSecureRecordStreamFramer.encode(try device.seal(controlFrame, channel: .control))
+    protected.append(try LANSecureRecordStreamFramer.encode(try host.seal(mediaFrame, channel: .video)))
+    var recordFramer = LANSecureRecordStreamFramer()
+    var transportFramer = TransportFramer()
+    let opened = try recordFramer.append(protected) { record in
+        if let opened = try? host.openDeclaredChannel(record) { return opened }
+        return try device.openDeclaredChannel(record)
+    }
+    let frames = try opened.flatMap { try transportFramer.append($0.payload) }
+    try require(frames.map(\.channel) == [.control, .video], "secure record channel routing")
+    try require(frames.map(\.payload) == [Data([1, 2]), Data([3, 4])], "secure record payloads")
+
+    let mismatchedInnerFrame = try TransportFrame(channel: .control, payload: Data([0xaa])).encoded()
+    let mismatchedRecord = try host.openDeclaredChannel(
+        try device.seal(mismatchedInnerFrame, channel: .video)
+    )
+    var mismatchedTransportFramer = TransportFramer()
+    let mismatchedFrames = try mismatchedTransportFramer.append(mismatchedRecord.payload)
+    try require(
+        mismatchedFrames.count == 1 && mismatchedFrames[0].channel != mismatchedRecord.channel,
+        "secure record mismatch fixture did not preserve the declared channel"
+    )
+
+    do {
+        _ = try device.open(try host.seal(Data([5]), channel: .video), channel: .control)
+        throw SelfTestError.failed("wrong secure record channel accepted")
+    } catch LANSecureRecordError.recordOpenFailed { }
+    let replay = try host.seal(Data([6]), channel: .video)
+    _ = try device.open(replay, channel: .video)
+    do {
+        _ = try device.open(replay, channel: .video)
+        throw SelfTestError.failed("replayed secure record accepted")
+    } catch LANSecureRecordError.recordOpenFailed { }
+    var tampered = try host.seal(Data([9]), channel: .video)
+    tampered[tampered.index(before: tampered.endIndex)] ^= 1
+    do {
+        _ = try device.open(tampered, channel: .video)
+        throw SelfTestError.failed("tampered secure record accepted")
+    } catch LANSecureRecordError.recordOpenFailed { }
+
+    let key = P256.KeyAgreement.PrivateKey().publicKey.x963Representation
+    let request = try LANSecureRecordNegotiation.encodeRequest(publicKey: key, allowLegacyFallback: false)
+    try require(request.prefix(4) == Data("VSLS".utf8), "VSLS request magic")
+    let decodedRequest = try LANSecureRecordNegotiation.decodeRequest(request)
+    try require(!decodedRequest.allowLegacyFallback, "default secure request allowed legacy fallback")
+    do {
+        _ = try LANSecureRecordNegotiation.encodeResponse(
+            publicKey: key,
+            encrypted: false,
+            explicitLegacyFallback: false
+        )
+        throw SelfTestError.failed("implicit plaintext legacy response accepted")
+    } catch LANSecureRecordError.invalidHandshake { }
+}
+
 func testTransportStartupCancellation() throws {
     let queue = DispatchQueue(label: "vibescreen-ios-selftest.transport")
     let listener = try NWListener(using: .tcp, on: .any)
@@ -1305,6 +1399,7 @@ do {
     try testAdvancedProtocolRoundTrip()
     FileHandle.standardError.write(Data("RUN: trusted-LAN startup codecs\n".utf8))
     try testTrustedLANStartupCodecs()
+    try testTrustedLANSecureRecords()
     try testTransportStartupCancellation()
     FileHandle.standardError.write(Data("RUN: owner/media/heartbeat generation gates\n".utf8))
     try runOwnerGenerationSelfTests()

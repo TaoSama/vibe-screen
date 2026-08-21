@@ -17,9 +17,10 @@ older Phase 0 clients remain valid.
 - generated Protocol v1 SwiftProtobuf bindings from the repository schemas;
 - capability/codec Hello, display list/start, H.264/HEVC media, current-epoch
   filtering, and native normalized touch events;
-- authenticated trusted-LAN admission and legacy-to-v1 upgrade into the
-  baseline MacHost main session on TCP `54321` through explicit plaintext
-  legacy fallback;
+- authenticated trusted-LAN admission, default AES-256-GCM secure-record
+  negotiation, and encrypted legacy-to-v1 upgrade into the baseline MacHost
+  main session on TCP `54321`, with explicit plaintext legacy fallback kept as
+  a separately reported old-peer compatibility path;
 - replaceable TCP transport framing with independent control, video, audio,
   and bulk logical channels;
 - VideoToolbox decode with native CoreVideo output;
@@ -45,22 +46,24 @@ older Phase 0 clients remain valid.
 2. Full Xcode builds the universal iPhone/iPad target for an iOS simulator.
 3. An iPhone and iPad class device install, negotiate Protocol v1, render H.264
    and HEVC, send touch, reject an old epoch, and recover from a disconnect.
-4. The baseline MacHost accepts authenticated trusted-LAN admission through the
-   explicit plaintext legacy fallback, upgrades from its legacy entry boundary,
-   and uses Protocol v1 for the main session, display list/start, video
-   configuration/media, heartbeat, targeted touch, errors, and disconnect.
+4. The baseline MacHost accepts authenticated trusted-LAN admission, negotiates
+   secure records by default before upgrading from its legacy entry boundary,
+   keeps plaintext legacy fallback explicit, and uses Protocol v1 for the main
+   session, display list/start, video configuration/media, heartbeat, targeted
+   touch, errors, and disconnect.
 5. A cross-client fixture proves Swift and Android encode/decode the same
    Protocol v1 Hello and input messages.
 6. License acknowledgements are present in any distributed app artifact.
 
 Criteria 1 and 2 are proved. Criterion 4 is proved by the release-build,
-two-process loopback for both normal lifecycle and invalid-target error paths;
-this is core wire transport/session evidence, not `StreamViewModel`, decoder,
-UI, iOS app, or device evidence. The Swift/HarmonyOS shared ClientHello fixture
-adds an independent Protocol v1 compatibility case. Criterion 5 still requires
-the Android application fixture named by the acceptance criterion. Android ADB
-evidence can prove cross-client contract behavior but cannot satisfy criterion
-3.
+two-process loopback for both normal lifecycle and invalid-target error paths on
+the default secure-record path and the explicit plaintext legacy fallback; this
+is core wire transport/session evidence, not `StreamViewModel`, decoder, UI, iOS
+app, real-network LAN, or device evidence. The Swift/HarmonyOS shared
+ClientHello fixture adds an independent Protocol v1 compatibility case.
+Criterion 5 still requires the Android application fixture named by the
+acceptance criterion. Android ADB evidence can prove cross-client contract
+behavior but cannot satisfy criterion 3.
 
 The current-base aggregate owner is #290. The merged #182 gate remains the
 historical sanitized device-acceptance baseline, while #290 owns the

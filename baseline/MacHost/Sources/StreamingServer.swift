@@ -542,6 +542,12 @@ class StreamingServer: EncodedFrameSink {
     private var acceptedConnectionObserverForSelfTest: ((NWConnection) -> Void)?
 
     var currentSessionEpoch: UInt64 { sessionEpochGate.current }
+    var currentLANRecordProtectionState: LANRecordProtectionState {
+        if DispatchQueue.getSpecific(key: Self.networkQueueKey) == ObjectIdentifier(self) {
+            return lanRecordProtectionState
+        }
+        return networkQueue.sync { lanRecordProtectionState }
+    }
 
     init(
         port: UInt16,
