@@ -172,6 +172,57 @@ final class InternetProductSessionTests: XCTestCase {
         XCTAssertTrue(harness.waitForPong(sequence: 77))
     }
 
+    func testStreamingSessionSendsAndReceivesAudioAndBulkRecords() throws {
+        let harness = try Harness()
+        let audioReceived = expectation(description: "audio record received")
+        let bulkReceived = expectation(description: "bulk record received")
+        harness.session.onAudioRecordReceived = { payload in
+            XCTAssertEqual(payload, Data([0xA1, 0xA2]))
+            audioReceived.fulfill()
+        }
+        harness.session.onBulkRecordReceived = { payload in
+            XCTAssertEqual(payload, Data([0xB1, 0xB2, 0xB3]))
+            bulkReceived.fulfill()
+        }
+
+        try reachStreaming(harness)
+
+        XCTAssertTrue(harness.session.sendAudioRecord(Data([0x11, 0x12])))
+        XCTAssertTrue(harness.waitForSentAudioCount(1))
+        let sentAudio = try XCTUnwrap(harness.engine.sentPlaintext.first { $0.channel == .audio })
+        XCTAssertEqual(sentAudio.payload, Data([0x11, 0x12]))
+
+        XCTAssertTrue(harness.session.sendBulkRecord(
+            Data([0x21, 0x22]),
+            transferID: Data(repeating: 0x33, count: 16)
+        ))
+        XCTAssertTrue(harness.waitForSentBulkCount(1))
+        let sentBulk = try XCTUnwrap(harness.engine.sentPlaintext.first { $0.channel == .bulk })
+        XCTAssertEqual(sentBulk.payload, Data([0x21, 0x22]))
+
+        harness.receiveAudio(Data([0xA1, 0xA2]))
+        harness.receiveBulk(Data([0xB1, 0xB2, 0xB3]))
+        wait(for: [audioReceived, bulkReceived], timeout: 1)
+    }
+
+    func testAdvancedChannelRecordsFailClosedWhenRejectedByProductAdmission() throws {
+        let harness = try Harness(limits: InternetTransportLimits(
+            maximumControlMessageBytes: 256 * 1_024,
+            maximumBufferedControlBytes: 2 * 1_024 * 1_024,
+            maximumMediaFrameBytes: 16 * 1_024 * 1_024,
+            maximumBufferedBulkBytes: 1,
+            maximumRelayBytesPerSession: 10 * 1_024 * 1_024 * 1_024
+        ))
+
+        try reachStreaming(harness)
+
+        XCTAssertFalse(harness.session.sendBulkRecord(
+            Data([0x41, 0x42]),
+            transferID: Data(repeating: 0x55, count: 16)
+        ))
+        XCTAssertTrue(harness.waitForFailure())
+    }
+
     func testInternetNegotiatesAndRoutesValidatedStylusWithoutTouchFallback() throws {
         let harness = try Harness()
         let routed = expectation(description: "stylus routed")
@@ -2436,6 +2487,16 @@ private final class Harness {
         selectedEngine(engineIndex).receive(record, channel: .control)
     }
 
+    func receiveAudio(_ payload: Data, engineIndex: Int = 0) {
+        let record = try! deviceCiphers[engineIndex].seal(payload, channel: .audio)
+        selectedEngine(engineIndex).receive(record, channel: .audio)
+    }
+
+    func receiveBulk(_ payload: Data, engineIndex: Int = 0) {
+        let record = try! deviceCiphers[engineIndex].seal(payload, channel: .bulk)
+        selectedEngine(engineIndex).receive(record, channel: .bulk)
+    }
+
     func clientHello(
         messageID: UInt64,
         supportsStylus: Bool = false,
@@ -2589,6 +2650,14 @@ private final class Harness {
 
     func waitForSentMediaCount(_ count: Int) -> Bool {
         waitUntil { self.engine.sentPlaintext.filter { $0.channel == .media }.count >= count }
+    }
+
+    func waitForSentAudioCount(_ count: Int) -> Bool {
+        waitUntil { self.engine.sentPlaintext.filter { $0.channel == .audio }.count >= count }
+    }
+
+    func waitForSentBulkCount(_ count: Int) -> Bool {
+        waitUntil { self.engine.sentPlaintext.filter { $0.channel == .bulk }.count >= count }
     }
 
     func waitForPong(sequence: UInt64) -> Bool {

@@ -630,9 +630,11 @@ network quality may increase it.
 - The Android and macOS Internet record layers now derive separate directional
   keys, durable nonce counters, and replay domains for control, media, audio,
   and bulk. A shared fixed-vector fixture covers all four AES-256-GCM record
-  channels and legacy-compatible key rotation. Audio/bulk WebRTC DataChannels,
-  admission/backlog limits, and public-network end-to-end behavior remain
-  unproved.
+  channels and legacy-compatible key rotation. Audio/bulk WebRTC transport
+  channels are now wired into the macOS and Android Internet product sessions
+  as raw Protocol v1 records with owner-scoped admission and bounded backlog
+  behavior. Audio capture/playback, clipboard/file-transfer product flows over
+  those channels, and public-network end-to-end behavior remain unproved.
 - The macOS Host and Android client now share a transport-neutral, bounded
   single-file transfer domain over Protocol v1 for the existing USB/LAN TCP
   session. File offers require explicit receiver approval and default to reject;
@@ -649,9 +651,9 @@ network quality may increase it.
   The iPhone Simulator XCTest and unsigned archive gates pass on the current
   interoperability commit. Signing, iPhone/iPad installation, hardware
   VideoToolbox behavior, host-side advanced adapters, AVAudioEngine playback,
-  HDR output, audio/bulk Internet transport, native input behavior, reconnect
-  behavior, and all advanced real-device behavior remain separate device
-  gates. Android results are never treated as iOS evidence; see the
+  HDR output, audio/bulk product flows over Internet DataChannels, native input
+  behavior, reconnect behavior, and all advanced real-device behavior remain
+  separate device gates. Android results are never treated as iOS evidence; see the
   [evidence record](docs/changes/2026-08-04-phase-5-ios-advanced/TEST.md).
 
 ## Device Strategy

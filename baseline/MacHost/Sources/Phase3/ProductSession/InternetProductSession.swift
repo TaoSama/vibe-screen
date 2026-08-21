@@ -22,6 +22,7 @@ struct FreshSessionRecoveryBudget {
 
 final class InternetProductSession: EncodedFrameSink {
     private static let terminalProtocolErrorDrainTimeoutMilliseconds = 500
+    private static let rawBulkAdmissionTransferID = Data("internet-bulk-v1".utf8)
 
     typealias EngineFactory = () -> WebRTCEnginePort
     typealias SecuritySessionFactory = (
@@ -99,6 +100,8 @@ final class InternetProductSession: EncodedFrameSink {
         InternetAdaptiveRequestToken,
         InternetProductVideoConfiguration
     ) -> Void)?
+    var onAudioRecordReceived: ((Data) -> Void)?
+    var onBulkRecordReceived: ((Data) -> Void)?
     var onRevoked: (() -> Void)?
     /// Composition must deliver this signed tombstone to the session authority
     /// and peer. Local persistence remains fail-closed even if propagation is delayed.
@@ -137,6 +140,7 @@ final class InternetProductSession: EncodedFrameSink {
     private var deferredRotationDegrees: Int?
     private var frameAdmission = FrameAdmissionState()
     private var controlAdmission = ControlAdmissionState()
+    private var advancedChannelGate: AdvancedChannelSecurityGate?
 
     var currentSessionEpoch: UInt64 {
         performSync { codec?.sessionEpoch ?? 0 }
@@ -295,6 +299,20 @@ final class InternetProductSession: EncodedFrameSink {
         } else if scheduling.1 {
             queue.async { [weak self] in self?.drainLatestFrame(generation: scheduling.0) }
         }
+    }
+
+    @discardableResult
+    func sendAudioRecord(_ payload: Data) -> Bool {
+        let streamID = performSync { codec?.video.streamID ?? 0 }
+        return sendAdvancedRecord(
+            payload,
+            binding: .audio(displayID: "internet-display", streamID: streamID)
+        )
+    }
+
+    @discardableResult
+    func sendBulkRecord(_ payload: Data, transferID: Data) -> Bool {
+        sendAdvancedRecord(payload, binding: .bulk(transferID: transferID))
     }
 
     func snapshotState() -> InternetProductSessionState {
@@ -492,6 +510,7 @@ final class InternetProductSession: EncodedFrameSink {
         resetQueuedWork(
             generation: generation,
             sessionEpoch: configuration.authoritativeSessionEpoch,
+            sessionIdentifier: configuration.transport.sessionIdentifier,
             limits: configuration.limits
         )
         let securitySession: InternetProductSecuritySession
@@ -586,6 +605,12 @@ final class InternetProductSession: EncodedFrameSink {
                 )),
                 generation: generation
             )
+        }
+        transport.onAudioRecordReceived = { [weak self] data in
+            self?.queue.async { self?.handleAudioRecord(data, generation: generation) }
+        }
+        transport.onBulkRecordReceived = { [weak self] data in
+            self?.queue.async { self?.handleBulkRecord(data, generation: generation) }
         }
         transport.onKeyframeRequired = { [weak self] in
             self?.queue.async {
@@ -1116,6 +1141,137 @@ final class InternetProductSession: EncodedFrameSink {
         }
     }
 
+    private func sendAdvancedRecord(_ payload: Data, binding: AdvancedChannelBinding) -> Bool {
+        do {
+            return try performSync {
+                guard isStreaming, let transport else { return false }
+                let admission = try reserveAdvancedRecord(payloadBytes: payload.count, binding: binding)
+                let result: Result<Void, InternetTransportError>
+                switch binding {
+                case .audio:
+                    result = transport.sendAudioRecord(payload)
+                case .bulk:
+                    result = transport.sendBulkRecord(payload)
+                }
+                switch result {
+                case .success:
+                    try finishAdvancedAdmission(admission)
+                    return true
+                case .failure(let error):
+                    try finishAdvancedAdmission(admission)
+                    fail(.transportFailure(error))
+                    return false
+                }
+            }
+        } catch let error as InternetProductSessionError {
+            performSync { fail(error) }
+            return false
+        } catch let error as AdvancedChannelSecurityError {
+            performSync { fail(advancedChannelFailure(error, binding: binding, actualBytes: payload.count)) }
+            return false
+        } catch {
+            performSync { fail(.securityFailure(error.localizedDescription)) }
+            return false
+        }
+    }
+
+    private func handleAudioRecord(_ payload: Data, generation: UInt64) {
+        guard sessionGeneration == generation, isStreaming else { return }
+        handleAdvancedRecord(payload, binding: .audio(displayID: "internet-display", streamID: codec?.video.streamID ?? 0)) {
+            onAudioRecordReceived?($0)
+        }
+    }
+
+    private func handleBulkRecord(_ payload: Data, generation: UInt64) {
+        guard sessionGeneration == generation, isStreaming else { return }
+        handleAdvancedRecord(payload, binding: .bulk(transferID: Self.rawBulkAdmissionTransferID)) {
+            onBulkRecordReceived?($0)
+        }
+    }
+
+    private func handleAdvancedRecord(
+        _ payload: Data,
+        binding: AdvancedChannelBinding,
+        deliver: (Data) -> Void
+    ) {
+        do {
+            let admission = try reserveAdvancedRecord(payloadBytes: payload.count, binding: binding)
+            defer { try? finishAdvancedAdmission(admission) }
+            deliver(payload)
+        } catch let error as AdvancedChannelSecurityError {
+            fail(advancedChannelFailure(error, binding: binding, actualBytes: payload.count))
+        } catch {
+            fail(.securityFailure(error.localizedDescription))
+        }
+    }
+
+    private func reserveAdvancedRecord(
+        payloadBytes: Int,
+        binding: AdvancedChannelBinding
+    ) throws -> AdvancedChannelAdmission {
+        guard let configuration, let gate = advancedChannelGate else {
+            throw AdvancedChannelSecurityError.staleOwner
+        }
+        return try gate.reserve(
+            payloadBytes: payloadBytes,
+            binding: binding,
+            owner: advancedChannelOwner(
+                generation: sessionGeneration,
+                sessionEpoch: currentSessionEpoch,
+                sessionIdentifier: configuration.transport.sessionIdentifier
+            )
+        )
+    }
+
+    private func finishAdvancedAdmission(_ admission: AdvancedChannelAdmission) throws {
+        try advancedChannelGate?.finish(admission)
+    }
+
+    private func advancedChannelOwner(
+        generation: UInt64,
+        sessionEpoch: UInt64,
+        sessionIdentifier: String
+    ) -> AdvancedChannelOwner {
+        AdvancedChannelOwner(
+            sessionIdentifier: sessionIdentifier,
+            sessionEpoch: sessionEpoch,
+            generation: generation
+        )
+    }
+
+    private func advancedChannelFailure(
+        _ error: AdvancedChannelSecurityError,
+        binding: AdvancedChannelBinding,
+        actualBytes: Int
+    ) -> InternetProductSessionError {
+        let transportChannel: InternetTransportChannel = {
+            switch binding {
+            case .audio: return .audio
+            case .bulk: return .bulk
+            }
+        }()
+        switch error {
+        case .emptyPayload:
+            return .transportFailure(.emptyPayload(channel: transportChannel))
+        case .payloadTooLarge(let maximum):
+            return .transportFailure(.payloadTooLarge(
+                channel: transportChannel,
+                actual: actualBytes,
+                maximum: maximum
+            ))
+        case .backlogExceeded(let maximum):
+            switch binding {
+            case .audio:
+                return .securityFailure("Advanced Internet audio channel backlog exceeded \(maximum) bytes.")
+            case .bulk:
+                return .transportFailure(.bulkBacklogExceeded(maximumBytes: maximum))
+            }
+        case .invalidOwner, .invalidLimits, .invalidBinding,
+             .staleOwner, .unknownAdmission, .sequenceExhausted:
+            return .securityFailure("Advanced Internet channel admission failed: \(error)")
+        }
+    }
+
     private func beginTerminalProtocolFailure(
         _ payload: Data,
         failure: InternetProductSessionError,
@@ -1257,6 +1413,7 @@ final class InternetProductSession: EncodedFrameSink {
     private func resetQueuedWork(
         generation: UInt64,
         sessionEpoch: UInt64 = 0,
+        sessionIdentifier: String? = nil,
         limits: InternetTransportLimits?
     ) {
         withFrameAdmissionLock { state in
@@ -1275,6 +1432,30 @@ final class InternetProductSession: EncodedFrameSink {
                 maximumMessageBytes: limits?.maximumControlMessageBytes ?? 0,
                 accepting: limits != nil
             )
+        }
+        if let limits, sessionEpoch > 0, let sessionIdentifier {
+            let maximumBulkRecordBytes = max(
+                1,
+                min(
+                    InternetBulkRecordContract.maximumPlaintextRecordBytes,
+                    limits.maximumBufferedBulkBytes
+                )
+            )
+            advancedChannelGate = try? AdvancedChannelSecurityGate(
+                owner: advancedChannelOwner(
+                    generation: generation,
+                    sessionEpoch: sessionEpoch,
+                    sessionIdentifier: sessionIdentifier
+                ),
+                limits: .init(
+                    maximumAudioRecordBytes: InternetAudioRecordContract.maximumPlaintextRecordBytes,
+                    maximumAudioBacklogBytes: InternetAudioRecordContract.maximumPlaintextRecordBytes,
+                    maximumBulkRecordBytes: maximumBulkRecordBytes,
+                    maximumBulkBacklogBytes: limits.maximumBufferedBulkBytes
+                )
+            )
+        } else {
+            advancedChannelGate = nil
         }
     }
 
