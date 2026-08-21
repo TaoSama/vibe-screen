@@ -84,6 +84,7 @@ Android screenshot, corner/center touch matrix, Host log, Android logcat, stable
 stream/no-teardown result, and proof that the original macOS rotation was
 restored. Then summarize those artifacts in host-display-rotation.json and run:
 
-    PYTHONPATH=tools python3 -m tools.vibescreen_evidence.host_display_rotation_gate \
+    PYTHONPATH=tools python3 -m vibescreen_evidence.host_display_rotation_gate \
       docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation.json \
-      --output docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation-gate.json
+      --output docs/changes/2026-08-05-phase-1-android-client/evidence/<run>/host-display-rotation-gate.json \
+      --check-artifacts

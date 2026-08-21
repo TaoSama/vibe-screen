@@ -46,7 +46,6 @@ REQUIRED_PROBES = (
     "no_session_teardown",
     "restored_original_host_rotation",
 )
-TEXT_ARTIFACT_EXTENSIONS = frozenset((".json", ".log", ".md", ".txt", ".xml"))
 EVIDENCE_SCHEMA_PATH = (
     Path(__file__).resolve().parents[1]
     / "schemas"
@@ -323,7 +322,7 @@ def _validate_artifact_contents(
             path.relative_to(resolved_evidence_dir)
         except ValueError:
             continue
-        if not path.is_file() or path.suffix.lower() not in TEXT_ARTIFACT_EXTENSIONS:
+        if not path.is_file():
             continue
         try:
             text = path.read_text(encoding="utf-8", errors="replace")

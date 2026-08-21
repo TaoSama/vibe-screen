@@ -28,7 +28,8 @@
     },
     "required_display_kinds": {
       "type": "array",
-      "items": {"enum": ["physical", "virtual"]}
+      "items": {"enum": ["physical", "virtual"]},
+      "const": ["physical", "virtual"]
     },
     "required_transports": {
       "type": "array",
@@ -61,11 +62,27 @@
     },
     "required_probes": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1}
+      "items": {"type": "string", "minLength": 1},
+      "const": [
+        "visual_source_orientation",
+        "input_mapping",
+        "stable_stream",
+        "no_session_teardown",
+        "restored_original_host_rotation"
+      ]
     },
     "required_artifacts": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1}
+      "items": {"type": "string", "minLength": 1},
+      "const": [
+        "device_identity",
+        "host_display_snapshot_before",
+        "host_display_snapshot_rotated",
+        "android_screenshot",
+        "touch_matrix",
+        "host_log",
+        "android_logcat"
+      ]
     },
     "artifact_file_check": {"type": "boolean"},
     "errors": {"type": "array", "items": {"type": "string"}}

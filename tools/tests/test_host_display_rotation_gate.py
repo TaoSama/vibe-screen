@@ -139,6 +139,20 @@ class HostDisplayRotationGateTest(unittest.TestCase):
         with self.assertRaises(AssertionError):
             self.assert_matches_schema(result, GATE_SCHEMA_PATH)
 
+    def test_gate_result_schema_rejects_renamed_probe_contract(self) -> None:
+        result = evaluate(complete_document())
+        result["required_probes"] = ["visual_source_orientation", "renamed_probe"]
+
+        with self.assertRaises(AssertionError):
+            self.assert_matches_schema(result, GATE_SCHEMA_PATH)
+
+    def test_gate_result_schema_rejects_renamed_artifact_contract(self) -> None:
+        result = evaluate(complete_document())
+        result["required_artifacts"] = ["device_identity", "renamed_artifact"]
+
+        with self.assertRaises(AssertionError):
+            self.assert_matches_schema(result, GATE_SCHEMA_PATH)
+
     def test_requires_both_display_kinds(self) -> None:
         document = complete_document()
         document["runs"] = [complete_run("physical")]
@@ -322,6 +336,25 @@ class HostDisplayRotationGateTest(unittest.TestCase):
 
             self.assertIn(
                 "runs[0].artifacts.host_log: must be a relative path inside the evidence directory",
+                result["errors"],
+            )
+
+    def test_artifact_check_rejects_empty_text_artifact_without_extension(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            evidence_dir = Path(directory)
+            document = complete_document()
+            document["runs"][0]["artifacts"]["host_log"] = "physical-host-log"
+            for run in document["runs"]:
+                for artifact in run["artifacts"].values():
+                    path = evidence_dir / artifact
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("retained evidence\n", encoding="utf-8")
+            (evidence_dir / "physical-host-log").write_text("", encoding="utf-8")
+
+            result = evaluate(document, evidence_dir=evidence_dir)
+
+            self.assertIn(
+                "runs[0].artifacts.host_log: retained artifact is empty",
                 result["errors"],
             )
 
