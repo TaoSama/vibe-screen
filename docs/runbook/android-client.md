@@ -23,6 +23,26 @@ After coordination grants a short Android lease, atomically create
 immediately after stopping the test client/server and report the release so
 other tasks can proceed.
 
+Before starting any acceptance sequence, collect the unified real-device
+readiness record from the repository root:
+
+```bash
+make evidence-real-device-gate-preflight \
+  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  REAL_DEVICE_GATE_DIR=docs/changes/<change>/evidence/<run>
+```
+
+The default command is read-only. It fails closed when a device lock is present,
+the explicit Android identity does not match the claimed device, ADB reverse is
+missing, the client is not foregrounded, the macOS Host is not listening on TCP
+54321, Host signing/TCC preflight fails, or fresh structured `stream_stats`
+telemetry is absent. If the device owner wants the runner to prepare
+Android-side state, add
+`REAL_DEVICE_GATE_EXTRA_ARGS="--configure-adb-reverse --launch-android-app"`;
+this still does not start the Host, modify TCC, change Keychain state, or clear
+app data. A `ready` result is only a precondition for the formal gate runners;
+it is not USB/LAN stream, latency, soak, Host RSS, or physical-input acceptance.
+
 ## Offline gate
 
 Run this without a device or Mac host:
