@@ -175,6 +175,23 @@ video encoder self-test passed
 Android Gradle: BUILD SUCCESSFUL, 70 actionable tasks
 ```
 
+The shared Android/iOS model contract adds an offline fail-closed verifier:
+
+```bash
+python3 scripts/verify_shared_protocol_model.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest contracts.tests.test_shared_protocol_model -v
+```
+
+The verifier reads `contracts/shared-models/v1/manifest.json`, the Protocol v1
+proto sources, the cross-platform fixture manifest, Android Gradle/protocol
+session sources, and iOS generated-binding/protocol-session sources. It fails if
+the pinned ClientHello/session/display/video/input/policy fields, envelope
+payload numbers, capability values, required fixture names, Android generated
+binding source, iOS generated binding parity script, or advertised-capability
+boundaries drift without an explicit manifest update. This is source and fixture
+contract evidence only: it does not introduce KMP, boot an iOS app, run an
+Android device, or close any real-device gate.
+
 The added Mac/Android unit fixtures cover explicit approval default-reject,
 safe basenames, deny-wins managed policy, maximum byte and chunk limits,
 ordered offsets, per-chunk and final SHA-256, session-epoch rejection, empty

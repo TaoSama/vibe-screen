@@ -56,11 +56,15 @@ older Phase 0 clients remain valid.
 Criteria 1 and 2 are proved. Criterion 4 is proved by the release-build,
 two-process loopback for both normal lifecycle and invalid-target error paths;
 this is core wire transport/session evidence, not `StreamViewModel`, decoder,
-UI, iOS app, or device evidence. The Swift/HarmonyOS shared ClientHello fixture
-adds an independent Protocol v1 compatibility case. Criterion 5 still requires
-the Android application fixture named by the acceptance criterion. Android ADB
-evidence can prove cross-client contract behavior but cannot satisfy criterion
-3.
+UI, iOS app, or device evidence. The shared Android/iOS model contract in
+`contracts/shared-models/v1/manifest.json` now fail-closes field-number,
+capability, envelope payload, fixture, generated-binding, and
+production-advertisement drift while Android and iOS remain native Kotlin/Swift
+implementations. The Swift/HarmonyOS shared ClientHello fixture adds an
+independent Protocol v1 compatibility case.
+Criterion 5 still requires the Android application golden-byte fixture named by
+the acceptance criterion. Android ADB evidence can prove cross-client contract
+behavior but cannot satisfy criterion 3.
 
 The current-base aggregate owner is #290. The merged #182 gate remains the
 historical sanitized device-acceptance baseline, while #290 owns the
