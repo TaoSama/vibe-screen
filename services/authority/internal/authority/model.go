@@ -32,6 +32,11 @@ type SignalingAdmission struct {
 	Created     bool      `json:"created"`
 }
 
+type SignalingAuthorization struct {
+	Role      string    `json:"role"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
 type PublicDeviceIdentity struct {
 	DeviceID           string `json:"device_id"`
 	KeyID              string `json:"key_id"`

@@ -179,10 +179,14 @@ derived from the session ID and a server secret, so an exact idempotency replay
 returns the same credentials without storing raw bearer tokens.
 
 `POST /v1/signaling/sessions/{session_id}/authorize` (signaling token) validates
-a role token against the session. It returns `{"role":"host"}` or
-`{"role":"client"}`. A revoked session, revoked device, suspended account, or
-expired admission returns `403`; signaling maps that to `404` so it does not
-disclose whether the session exists.
+a role token against the session. It returns the role plus the current session
+expiry, for example `{"role":"host","expires_at":"..."}` or
+`{"role":"client","expires_at":"..."}`. A revoked session, revoked
+device, suspended account, or expired admission returns `403`; signaling maps
+that to `404` so it does not disclose whether the session exists. Signaling uses
+the expiry only to maintain local routing state after Authority-side
+session-profile issuance; role authorization remains delegated to Authority for
+every publish and poll.
 
 `DELETE /v1/signaling/sessions/{session_id}` (signaling or admin token) revokes
 the admission. Subsequent role authorizations fail. The authority API returns

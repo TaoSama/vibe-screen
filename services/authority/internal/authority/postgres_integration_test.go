@@ -174,11 +174,11 @@ func TestPostgresSessionProfileIssuanceRegistersAndReplaysDurably(t *testing.T) 
 	if !ok || clientToken == "" || clientToken == issued.HostSignalingToken {
 		t.Fatalf("invalid unsigned lease token binding: %#v", lease)
 	}
-	if role, err := store.AuthorizeSignaling(ctx, issued.SignalingSessionID, issued.HostSignalingToken, now); err != nil || role != "host" {
-		t.Fatalf("host role authorization=%q/%v", role, err)
+	if authorization, err := store.AuthorizeSignaling(ctx, issued.SignalingSessionID, issued.HostSignalingToken, now); err != nil || authorization.Role != "host" {
+		t.Fatalf("host role authorization=%#v/%v", authorization, err)
 	}
-	if role, err := store.AuthorizeSignaling(ctx, issued.SignalingSessionID, clientToken, now); err != nil || role != "client" {
-		t.Fatalf("client role authorization=%q/%v", role, err)
+	if authorization, err := store.AuthorizeSignaling(ctx, issued.SignalingSessionID, clientToken, now); err != nil || authorization.Role != "client" {
+		t.Fatalf("client role authorization=%#v/%v", authorization, err)
 	}
 
 	restarted, err := OpenPostgres(ctx, cfg)

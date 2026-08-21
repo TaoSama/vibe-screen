@@ -13,9 +13,12 @@ Version `0.1.0` runs in one of two explicit authority modes:
   must not use it.
 - `production_authority`: session creation, per-request role-token authorization,
   and session invalidation are delegated to the PostgreSQL-backed
-  `vibe-authority` service. Any authority failure is fail-closed: the signaling
-  process never falls back to locally minted tokens, and `/readyz` reports
-  unavailable while the authority is unreachable.
+  `vibe-authority` service. Sessions issued directly by the authority profile
+  endpoint are adopted as local routing metadata only after a successful
+  authority role authorization; signaling never stores those role tokens. Any
+  authority failure is fail-closed: the signaling process never falls back to
+  locally minted tokens, and `/readyz` reports unavailable while the authority
+  is unreachable.
 
 The service has two explicit store backends. `memory` is process-local and
 intended for local development; `postgres` persists the short-lived rendezvous

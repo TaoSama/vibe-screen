@@ -27,7 +27,7 @@ type Store interface {
 	RevokeDevice(context.Context, string, uint64, time.Time) error
 	IssueSessionProfile(context.Context, SessionProfileRequest, time.Time) (SessionProfileResponse, error)
 	CreateSignaling(context.Context, SignalingRequest, time.Time) (SignalingAdmission, error)
-	AuthorizeSignaling(context.Context, string, string, time.Time) (string, error)
+	AuthorizeSignaling(context.Context, string, string, time.Time) (SignalingAuthorization, error)
 	InvalidateSignaling(context.Context, string, time.Time) error
 	AdmitRelay(context.Context, RelayAdmissionRequest, time.Time) error
 	ApplyCoturnUsage(context.Context, CoturnUsage) (bool, error)
@@ -498,25 +498,25 @@ func (s *PostgresStore) createSignalingTx(ctx context.Context, tx pgx.Tx, reques
 	return s.admission(sessionID, expiresAt, true), nil
 }
 
-func (s *PostgresStore) AuthorizeSignaling(ctx context.Context, sessionID, token string, now time.Time) (string, error) {
+func (s *PostgresStore) AuthorizeSignaling(ctx context.Context, sessionID, token string, now time.Time) (SignalingAuthorization, error) {
 	var revokedAt, accountSuspended, hostRevoked, clientRevoked *time.Time
 	var expiresAt time.Time
 	err := s.pool.QueryRow(ctx, `SELECT s.expires_at,s.revoked_at,a.suspended_at,h.revoked_at,c.revoked_at FROM authority_signaling_sessions s JOIN authority_accounts a ON a.account_id=s.account_id JOIN authority_devices h ON h.device_id=s.host_device_id JOIN authority_devices c ON c.device_id=s.client_device_id WHERE s.session_id=$1`, sessionID).Scan(&expiresAt, &revokedAt, &accountSuspended, &hostRevoked, &clientRevoked)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", ErrNotFound
+		return SignalingAuthorization{}, ErrNotFound
 	}
 	if err != nil {
-		return "", storageError("authorize signaling", err)
+		return SignalingAuthorization{}, storageError("authorize signaling", err)
 	}
 	if revokedAt != nil || accountSuspended != nil || hostRevoked != nil || clientRevoked != nil || !now.Before(expiresAt) {
-		return "", ErrRevoked
+		return SignalingAuthorization{}, ErrRevoked
 	}
 	for _, role := range []string{"host", "client"} {
 		if hmac.Equal([]byte(token), []byte(s.roleToken(sessionID, role))) {
-			return role, nil
+			return SignalingAuthorization{Role: role, ExpiresAt: expiresAt}, nil
 		}
 	}
-	return "", ErrNotFound
+	return SignalingAuthorization{}, ErrNotFound
 }
 
 func activeSessionExpiresAt(ctx context.Context, tx pgx.Tx, sessionID string, now time.Time) (time.Time, error) {

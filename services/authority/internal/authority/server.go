@@ -226,12 +226,12 @@ func (s *Server) authorizeSignaling(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, 400, "invalid role token")
 		return
 	}
-	role, err := s.store.AuthorizeSignaling(r.Context(), sessionID, request.RoleToken, s.now().UTC())
+	authorization, err := s.store.AuthorizeSignaling(r.Context(), sessionID, request.RoleToken, s.now().UTC())
 	if err != nil {
 		s.storeError(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]string{"role": role})
+	writeJSON(w, 200, authorization)
 }
 
 func (s *Server) admitRelay(w http.ResponseWriter, r *http.Request) {

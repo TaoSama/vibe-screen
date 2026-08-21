@@ -215,23 +215,23 @@ func (s *memoryStore) createSignalingLocked(request SignalingRequest, now time.T
 	s.requests[request.RequestID] = id
 	return result, nil
 }
-func (s *memoryStore) AuthorizeSignaling(_ context.Context, id, token string, now time.Time) (string, error) {
+func (s *memoryStore) AuthorizeSignaling(_ context.Context, id, token string, now time.Time) (SignalingAuthorization, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	session := s.sessions[id]
 	if session == nil {
-		return "", ErrNotFound
+		return SignalingAuthorization{}, ErrNotFound
 	}
 	if session.revoked || !now.Before(session.admission.ExpiresAt) || s.accounts[session.request.AccountID] || s.revoked[session.request.HostDeviceID] > 0 || s.revoked[session.request.ClientDeviceID] > 0 {
-		return "", ErrRevoked
+		return SignalingAuthorization{}, ErrRevoked
 	}
 	if token == session.admission.HostToken {
-		return "host", nil
+		return SignalingAuthorization{Role: "host", ExpiresAt: session.admission.ExpiresAt}, nil
 	}
 	if token == session.admission.ClientToken {
-		return "client", nil
+		return SignalingAuthorization{Role: "client", ExpiresAt: session.admission.ExpiresAt}, nil
 	}
-	return "", ErrNotFound
+	return SignalingAuthorization{}, ErrNotFound
 }
 func (s *memoryStore) InvalidateSignaling(_ context.Context, id string, _ time.Time) error {
 	s.mu.Lock()
@@ -1109,11 +1109,11 @@ func TestHTTPSessionProfileIssuanceAutoRegistersAndReturnsUnsignedLease(t *testi
 	if lease["signaling_session_id"] != response.SignalingSessionID || uint64(lease["session_epoch"].(float64)) != 3 {
 		t.Fatalf("lease session binding mismatch: %#v", lease)
 	}
-	if role, err := store.AuthorizeSignaling(context.Background(), response.SignalingSessionID, response.HostSignalingToken, now); err != nil || role != "host" {
-		t.Fatalf("host token authorization=%q/%v", role, err)
+	if authorization, err := store.AuthorizeSignaling(context.Background(), response.SignalingSessionID, response.HostSignalingToken, now); err != nil || authorization.Role != "host" {
+		t.Fatalf("host token authorization=%#v/%v", authorization, err)
 	}
-	if role, err := store.AuthorizeSignaling(context.Background(), response.SignalingSessionID, lease["signaling_token"].(string), now); err != nil || role != "client" {
-		t.Fatalf("client token authorization=%q/%v", role, err)
+	if authorization, err := store.AuthorizeSignaling(context.Background(), response.SignalingSessionID, lease["signaling_token"].(string), now); err != nil || authorization.Role != "client" {
+		t.Fatalf("client token authorization=%#v/%v", authorization, err)
 	}
 	directBody := `{"request_id":"direct","account_id":"missing","host_device_id":"host","client_device_id":"client","session_epoch":1,"ttl_seconds":60}`
 	request(t, handler, http.MethodPost, "/v1/signaling/sessions", cfg.SignalingToken, directBody, http.StatusNotFound)
