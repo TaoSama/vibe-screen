@@ -61,6 +61,38 @@ class ConnectionStateAccessibilityInstrumentedTest {
     }
 
     @Test
+    fun connectionGuidanceRegionsExposeGroupedScreenReaderStatus() {
+        withProductionLayout { root ->
+            val views = connectionPanelViews(root)
+            ConnectionPanelLayoutApplier.apply(
+                resources = root.resources,
+                views = views,
+                connectionMode = ConnectionMode.USB,
+                subtitleExpanded = false,
+            )
+
+            assertTrue(ViewCompat.isAccessibilityHeading(root.findViewById(R.id.connectionTitle)))
+            listOf(
+                R.id.connectionErrorContainer,
+                R.id.wirelessConnecting,
+                R.id.wirelessFirstTime,
+                R.id.wirelessConnected,
+                R.id.wirelessPairedIdle,
+                R.id.wirelessTokenMismatch,
+                R.id.wirelessPermDenied,
+                R.id.internetProfileSummary,
+                R.id.internetStateText,
+                R.id.internetErrorText,
+            ).forEach { id ->
+                assertTrue(
+                    root.resources.getResourceEntryName(id),
+                    ViewCompat.isScreenReaderFocusable(root.findViewById(id)),
+                )
+            }
+        }
+    }
+
+    @Test
     fun productionLayoutDoesNotPreRenderModeSpecificGuidance() {
         withProductionLayout { root ->
             val title = root.findViewById<TextView>(R.id.connectionTitle)
