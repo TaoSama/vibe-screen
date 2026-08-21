@@ -219,6 +219,19 @@ shows each scheduled retry delay. For display-removal window recovery, record
 the original window frame and display, remove or disable that display during the
 run, then record the restored frame on the current main display.
 
+Summarize the retained evidence with the fail-closed startup/recovery gate:
+
+```bash
+make macos-startup-recovery-gate EVIDENCE_DIR=<evidence-dir>
+```
+
+The input `macos-startup-recovery-observations.json` must use explicit boolean
+observations. Missing fields default to false, so a readiness preflight, a
+manual app launch, or an Android-only reconnect record cannot accidentally close
+the macOS login item, automatic startup, headless startup, or unattended
+listener recovery gate. Nubia P0110/pacific/Android 16 evidence may support only
+the Android reconnect endpoint; it is not macOS login or headless evidence.
+
 ## Upgrade and rollback
 
 1. Stop streaming and quit Vibe Screen.
