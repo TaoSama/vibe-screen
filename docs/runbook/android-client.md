@@ -170,11 +170,11 @@ For the native pointer HID mouse gate, connect a real USB or Bluetooth mouse
 before starting the observation window and run:
 
 ```bash
-python3 scripts/native_pointer_hid_acceptance.py \
-  --serial "$ADB_SERIAL" \
-  --host-log "$HOME/Library/Logs/Telemachus/telemachus.log" \
-  --visible-result-note "Mac cursor moved and the primary click focused <target app>" \
-  --evidence-dir docs/changes/2026-08-05-phase-1-android-client/evidence/$(date -u +%F)-p0110-native-pointer-hid
+make native-pointer-hid-acceptance \
+  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  NATIVE_POINTER_HOST_LOG="$HOME/Library/Logs/Telemachus/telemachus.log" \
+  NATIVE_POINTER_VISIBLE_RESULT_NOTE="Mac cursor moved and the primary click focused <target app>" \
+  EVIDENCE_DIR=docs/changes/2026-08-05-phase-1-android-client/evidence/$(date -u +%F)-p0110-native-pointer-hid
 ```
 
 The script records `dumpsys input`, Android `MA` logcat for the observation
@@ -184,7 +184,18 @@ window, and the newly appended Host log segment. A pass requires Android
 plus Host `Pointer injected` lines for `changed`, `began`, and `ended`. Missing
 hardware is `blocked`; missing Android logs, Host logs, or the visible-result
 note is `failed`, not a pass.
-Summarize a run, including blocked runs, with:
+If `/tmp/vibe-screen-device-android.lock` or
+`/tmp/vibe-screen-device-soak.lock` already exists, the Make target writes a
+`blocked_device_coordination_lock` bundle through `--write-blocked-on-lock`
+without running ADB. Use the script directly with `--allow-existing-device-lock`
+only after confirming you own the active lease.
+
+Native pointer is the existing Protocol v1 `PointerEvent` /
+`CAPABILITY_POINTER` path. It is not the generic peripheral-input framework from
+the pending peripheral admission work; do not route mouse move/click evidence
+through a placeholder `PeripheralEvent` kind.
+
+Summarize controller runs, including blocked controller runs, with:
 
 ```bash
 PYTHONPATH=tools python3 -m vibescreen_evidence.controller_runtime \

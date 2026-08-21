@@ -157,6 +157,81 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             with self.assertRaisesRegex(acceptance.AcceptanceError, "identity changed"):
                 acceptance.read_new_host_log(log, cursor, 1000)
 
+    def test_main_writes_blocked_evidence_when_device_lock_exists_without_adb(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_dir = Path(temporary_directory) / "evidence"
+            lock = Path(temporary_directory) / "device.lock"
+            lock.write_text("owner=other-task\npid=123\n", encoding="utf-8")
+            with (
+                mock.patch.object(acceptance, "DEVICE_LOCKS", (lock,)),
+                mock.patch.object(acceptance, "read_device_identity") as read_identity,
+                mock.patch.object(acceptance, "adb") as adb,
+            ):
+                exit_code = acceptance.main(
+                    [
+                        "--serial",
+                        "EP0110PZ0B9110300B",
+                        "--host-log",
+                        str(Path(temporary_directory) / "host.log"),
+                        "--evidence-dir",
+                        str(evidence_dir),
+                        "--write-blocked-on-lock",
+                    ]
+                )
+
+            self.assertEqual(exit_code, acceptance.BLOCKED_EXIT)
+            read_identity.assert_not_called()
+            adb.assert_not_called()
+            result = json.loads((evidence_dir / "result.json").read_text(encoding="utf-8"))
+            self.assertEqual(result["status"], "blocked_device_coordination_lock")
+            self.assertEqual(result["requested_serial"], "redacted-requested-serial")
+            self.assertFalse(result["adb_was_run"])
+            self.assertEqual(result["device"]["device"], "device-lock-blocked")
+            self.assertEqual(result["existing_locks"][0]["path"], str(lock))
+            self.assertIn("owner=other-task", result["existing_locks"][0]["detail"])
+            readme = (evidence_dir / "README.md").read_text(encoding="utf-8")
+            self.assertIn("ADB was run: false", readme)
+            self.assertIn("Device coordination locks", readme)
+            self.assertIn("blocked_device_coordination_lock", readme)
+            self.assertTrue((evidence_dir / "dumpsys-input.txt").exists())
+            self.assertTrue((evidence_dir / "host-log-appended.txt").exists())
+            self.assertTrue((evidence_dir / "android-logcat-native-pointer.txt").exists())
+
+    def test_main_rejects_existing_device_lock_without_adb_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence_dir = Path(temporary_directory) / "evidence"
+            lock = Path(temporary_directory) / "device.lock"
+            lock.write_text("owner=other-task\n", encoding="utf-8")
+            with (
+                mock.patch.object(acceptance, "DEVICE_LOCKS", (lock,)),
+                mock.patch.object(acceptance, "read_device_identity") as read_identity,
+                mock.patch.object(acceptance, "adb") as adb,
+            ):
+                exit_code = acceptance.main(
+                    [
+                        "--serial",
+                        "EP0110PZ0B9110300B",
+                        "--host-log",
+                        str(Path(temporary_directory) / "host.log"),
+                        "--evidence-dir",
+                        str(evidence_dir),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 1)
+            read_identity.assert_not_called()
+            adb.assert_not_called()
+            self.assertFalse((evidence_dir / "result.json").exists())
+
+    def test_describe_device_locks_reports_directory_locks_cleanly(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            lock = Path(temporary_directory) / "device.lock"
+            lock.mkdir()
+            with mock.patch.object(acceptance, "DEVICE_LOCKS", (lock,)):
+                locks = acceptance.describe_device_locks()
+
+        self.assertEqual(locks, [acceptance.CoordinationLock(str(lock), "present as directory")])
+
     def test_main_writes_blocked_evidence_when_mouse_is_absent(self) -> None:
         identity = acceptance.DeviceIdentity(
             serial="EP0110PZ0B9110300B",
@@ -181,6 +256,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             evidence_dir = Path(temporary_directory) / "evidence"
             with (
+                mock.patch.object(acceptance, "DEVICE_LOCKS", ()),
                 mock.patch.object(acceptance, "read_device_identity", return_value=identity),
                 mock.patch.object(
                     acceptance,
@@ -203,6 +279,9 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             self.assertEqual(exit_code, acceptance.BLOCKED_EXIT)
             result = json.loads((evidence_dir / "result.json").read_text(encoding="utf-8"))
             self.assertEqual(result["status"], "blocked")
+            self.assertTrue(result["adb_was_run"])
+            self.assertEqual(result["requested_serial"], "redacted-requested-serial")
+            self.assertEqual(result["existing_locks"], [])
             self.assertEqual(result["device"]["manufacturer"], "nubia")
             self.assertEqual(result["device"]["model"], "P0110")
             self.assertEqual(result["device"]["device"], "pacific")
@@ -213,6 +292,8 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             self.assertIn("No external Android input device", result["reason"])
             self.assertTrue((evidence_dir / "dumpsys-input.txt").exists())
             self.assertTrue((evidence_dir / "README.md").exists())
+            readme = (evidence_dir / "README.md").read_text(encoding="utf-8")
+            self.assertNotIn("blocked_device_coordination_lock", readme)
 
     def test_main_passes_when_required_android_host_and_visible_evidence_are_observed(self) -> None:
         identity = acceptance.DeviceIdentity(
@@ -243,6 +324,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             )
             evidence_dir = Path(temporary_directory) / "evidence"
             with (
+                mock.patch.object(acceptance, "DEVICE_LOCKS", ()),
                 mock.patch.object(acceptance, "read_device_identity", return_value=identity),
                 mock.patch.object(
                     acceptance,
@@ -278,6 +360,8 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             result = json.loads((evidence_dir / "result.json").read_text(encoding="utf-8"))
             self.assertEqual(result["status"], "passed")
+            self.assertTrue(result["adb_was_run"])
+            self.assertEqual(result["existing_locks"], [])
             self.assertEqual(result["observed_host_pointer_events"], ["move", "press", "release"])
             self.assertEqual(result["observed_android_pointer_events"], ["move", "press", "release"])
             self.assertEqual(result["external_mouse_devices"][0]["name"], "USB Optical Mouse")
@@ -314,6 +398,7 @@ class NativePointerHIDAcceptanceTests(unittest.TestCase):
             )
             evidence_dir = Path(temporary_directory) / "evidence"
             with (
+                mock.patch.object(acceptance, "DEVICE_LOCKS", ()),
                 mock.patch.object(acceptance, "read_device_identity", return_value=identity),
                 mock.patch.object(
                     acceptance,
