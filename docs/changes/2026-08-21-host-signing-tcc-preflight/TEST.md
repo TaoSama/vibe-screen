@@ -19,10 +19,24 @@ The current machine has no valid codesigning identities visible to
 therefore wrote a blocked evidence bundle and exited `2` before any Host install,
 Keychain mutation, TCC mutation, or device gate could run.
 
+The installed `/Applications/Vibe Screen.app` snapshot is useful only as a
+read-only record of the last stable-signed Host bundle. This machine still
+cannot prove Screen Recording or Accessibility readiness for the current user:
+both the current-user and system TCC databases were unreadable from the
+preflight, so the Host/TCC prerequisite remains blocked until the `Vibe Screen
+Dev` identity is recreated or selected, the Host is rebuilt and installed with
+that identity, and `make baseline-macos-touch-preflight` verifies both macOS
+privacy grants.
+
 This blocked prerequisite does not close any README gate. A future device run
 must still install a matching stable-signed `/Applications/Vibe Screen.app`,
 verify Screen Recording and Accessibility with the Host preflight, and retain
 the real Android or iOS device evidence required by the target gate.
+Until then, every gate that depends on a current stable-signed Host plus
+verified Screen Recording or Accessibility remains blocked, including USB/LAN
+stream reruns, native pointer HID confirmation, touch/stylus/controller runtime
+acceptance, host-display rotation, window migration/recovery, and sustained
+soak evidence that is meant to close README status items.
 
 Evidence:
 [`evidence/2026-08-21-local-signing-identity-blocked/README.md`](evidence/2026-08-21-local-signing-identity-blocked/README.md).
