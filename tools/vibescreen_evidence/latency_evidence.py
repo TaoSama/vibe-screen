@@ -124,6 +124,19 @@ def _describe_json_type(expected_type: str) -> str:
 def _validate_schema_node(value: Any, schema: dict[str, Any], path: str) -> list[str]:
     errors: list[str] = []
 
+    for child_schema in schema.get("allOf", []):
+        if isinstance(child_schema, dict):
+            errors.extend(_validate_schema_node(value, child_schema, path))
+
+    condition_schema = schema.get("if")
+    then_schema = schema.get("then")
+    if (
+        isinstance(condition_schema, dict)
+        and isinstance(then_schema, dict)
+        and not _validate_schema_node(value, condition_schema, path)
+    ):
+        errors.extend(_validate_schema_node(value, then_schema, path))
+
     if "const" in schema and value != schema["const"]:
         errors.append(f"{path} must be {schema['const']}")
     if "enum" in schema and value not in schema["enum"]:
@@ -135,8 +148,7 @@ def _validate_schema_node(value: Any, schema: dict[str, Any], path: str) -> list
         errors.append(f"{path} must be {_describe_json_type(expected_type)}")
         return errors
 
-    if expected_type == "object":
-        assert isinstance(value, dict)
+    if isinstance(value, dict) and (expected_type == "object" or isinstance(schema.get("properties"), dict)):
         properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
         required = schema.get("required") if isinstance(schema.get("required"), list) else []
         for field in required:
@@ -164,6 +176,12 @@ def _validate_schema_node(value: Any, schema: dict[str, Any], path: str) -> list
         minimum = schema.get("minimum")
         if isinstance(minimum, (int, float)) and number < float(minimum):
             errors.append(f"{path} must be at least {minimum}")
+        maximum = schema.get("maximum")
+        if isinstance(maximum, (int, float)) and number > float(maximum):
+            errors.append(f"{path} must be at most {maximum}")
+        exclusive_maximum = schema.get("exclusiveMaximum")
+        if isinstance(exclusive_maximum, (int, float)) and number >= float(exclusive_maximum):
+            errors.append(f"{path} must be less than {exclusive_maximum}")
 
     return errors
 
@@ -257,6 +275,10 @@ def _validate_required_metadata(manifest: dict[str, Any]) -> list[str]:
         errors.append(
             "samples.annotation_method must be manual-frame-count or direct-latency-ms"
         )
+    elif is_synchronized_clock and samples.get("annotation_method") != ANNOTATION_DIRECT_LATENCY_MS:
+        errors.append(
+            "synchronized-clock measurement_method requires samples.annotation_method direct-latency-ms"
+        )
 
     setup = manifest.get("measurement_setup") if isinstance(manifest.get("measurement_setup"), dict) else {}
     if is_external_camera:
@@ -282,6 +304,19 @@ def _validate_required_metadata(manifest: dict[str, Any]) -> list[str]:
         if manifest.get("latency_kind") != "input":
             errors.append("synchronized-clock measurement_method requires latency_kind input")
         sync = manifest.get("synchronization") if isinstance(manifest.get("synchronization"), dict) else {}
+        sync_components: dict[str, float] = {}
+        for field in ("before_skew_ms", "after_skew_ms", "max_drift_ms"):
+            value = sync.get(field)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                errors.append(f"synchronization.{field} must be a finite number")
+                continue
+            number = float(value)
+            if not math.isfinite(number):
+                errors.append(f"synchronization.{field} must be finite")
+            elif number < 0:
+                errors.append(f"synchronization.{field} must not be negative")
+            else:
+                sync_components[field] = number
         budget_value = sync.get("total_error_budget_ms")
         if isinstance(budget_value, bool) or not isinstance(budget_value, (int, float)):
             errors.append("synchronization.total_error_budget_ms must be a finite number")
@@ -296,6 +331,13 @@ def _validate_required_metadata(manifest: dict[str, Any]) -> list[str]:
                     "synchronization.total_error_budget_ms must be less than 5 ms "
                     "(10% of the sub-50 ms P95 input gate)"
                 )
+            else:
+                for field, component_ms in sync_components.items():
+                    if component_ms > budget_ms:
+                        errors.append(
+                            f"synchronization.{field} must be less than or equal to "
+                            "synchronization.total_error_budget_ms"
+                        )
 
     return errors
 

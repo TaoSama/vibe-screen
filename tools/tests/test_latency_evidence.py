@@ -362,16 +362,91 @@ class LatencyEvidenceReportTest(unittest.TestCase):
             any("total_error_budget_ms must be less than 5 ms" in reason
                 for reason in report["gate"]["reasons"])
         )
+        self.assertIn(
+            "manifest.synchronization.total_error_budget_ms must be less than 5",
+            report["gate"]["reasons"],
+        )
+
+    def test_synchronized_clock_allows_budget_just_below_5ms(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = FIXTURE_DIR / "synchronized-clock-input-valid"
+            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest["synchronization"]["total_error_budget_ms"] = 4.999
+            (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "pass")
+        self.assertEqual(report["gate"]["reasons"], [])
+
+    def test_synchronized_clock_rejects_manual_frame_count_samples(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = FIXTURE_DIR / "synchronized-clock-input-valid"
+            manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+            manifest["samples"]["annotation_method"] = "manual-frame-count"
+            self.replace_samples(
+                root,
+                manifest,
+                "start_frame,end_frame,camera_fps\n"
+                "100,105,240\n200,205,240\n300,305,240\n"
+                "400,405,240\n500,505,240\n",
+            )
+            self.write_manifest(root, manifest)
+
+            report = build_latency_evidence_report(
+                manifest_path=root / "manifest.json",
+                gate_profile=GATE_INPUT_P95_SUB50,
+            )
+
+        self.assertEqual(report["verdict"], "insufficient")
+        self.assertIn(
+            "synchronized-clock measurement_method requires samples.annotation_method direct-latency-ms",
+            report["gate"]["reasons"],
+        )
+
+    def test_synchronized_clock_components_must_fit_total_budget(self) -> None:
+        for field in ("before_skew_ms", "after_skew_ms", "max_drift_ms"):
+            with self.subTest(field=field):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    source = FIXTURE_DIR / "synchronized-clock-input-valid"
+                    manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+                    manifest["synchronization"]["total_error_budget_ms"] = 3.0
+                    manifest["synchronization"][field] = 3.1
+                    (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
+                    self.write_manifest(root, manifest)
+
+                    report = build_latency_evidence_report(
+                        manifest_path=root / "manifest.json",
+                        gate_profile=GATE_INPUT_P95_SUB50,
+                    )
+
+                self.assertEqual(report["verdict"], "insufficient")
+                self.assertIn(
+                    f"synchronization.{field} must be less than or equal to "
+                    "synchronization.total_error_budget_ms",
+                    report["gate"]["reasons"],
+                )
 
     def test_synchronized_clock_budget_applied_to_threshold(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = FIXTURE_DIR / "synchronized-clock-input-valid"
             manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
-            # p95 of the fixture samples is 21.86; set budget so p95 + budget > 50
-            manifest["synchronization"]["total_error_budget_ms"] = 30.0
+            manifest["synchronization"]["total_error_budget_ms"] = 4.5
             (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-            (root / "samples.csv").write_bytes((source / "samples.csv").read_bytes())
+            self.replace_samples(
+                root,
+                manifest,
+                "latency_ms\n45\n46\n47\n48\n49\n",
+            )
+            self.write_manifest(root, manifest)
 
             report = build_latency_evidence_report(
                 manifest_path=root / "manifest.json",
