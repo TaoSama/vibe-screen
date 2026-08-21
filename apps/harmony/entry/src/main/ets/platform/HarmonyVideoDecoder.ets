@@ -106,6 +106,26 @@ export class HarmonyVideoDecoder {
     await transition.completion;
   }
 
+  async flush(): Promise<void> {
+    const active: DecoderCandidate | undefined = this.candidates.current();
+    if (active?.decoder === undefined) return;
+    this.inputSlots = [];
+    this.frames.reset(this.epoch);
+    this.consecutiveInputFailures = 0;
+    await active.decoder.flush();
+  }
+
+  async signalEndOfStream(): Promise<void> {
+    const active: DecoderCandidate | undefined = this.candidates.current();
+    if (active?.decoder === undefined) return;
+    const slot: InputSlot | undefined = this.inputSlots.shift();
+    if (slot === undefined) throw new Error('No decoder input buffer is available for EOS');
+    slot.buffer.memory = new ArrayBuffer(0);
+    slot.buffer.pts = 0;
+    slot.buffer.flag = media.BufferFlag.EOS;
+    await active.decoder.pushInputData(slot.index);
+  }
+
   private resetDetachedState(): void {
     this.inputSlots = []; this.frames.clear(); this.listener = undefined;
     this.consecutiveInputFailures = 0;

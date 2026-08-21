@@ -41,6 +41,8 @@ REQUIRED_GATE_IDS = (
     "eight_hour_soak",
     "external_latency",
 )
+AVCODEC_GATE_IDS = {"h264_hardware_decode", "hevc_hardware_decode"}
+AVCODEC_MANIFEST_NAME = "harmony-avcodec-preflight.json"
 REQUIRED_ARTIFACT_KEYS = (
     "hap_sha256",
     "signature_certificate_sha256",
@@ -194,6 +196,8 @@ def validate_manifest(
             if manifest.get("status") != status:
                 raise ManifestError(f"gates[{index}].secure_pairing_manifest.status: must match gate status")
             _string(manifest.get("path"), f"gates[{index}].secure_pairing_manifest.path")
+        if gate_id in AVCODEC_GATE_IDS and status == "pass" and not any(AVCODEC_MANIFEST_NAME in item for item in evidence):
+            raise ManifestError(f"{gate_id}: expected evidence to include {AVCODEC_MANIFEST_NAME}")
         if gate_id in REQUIRED_GATE_IDS and status != "pass":
             message = f"{gate_id}: {status}"
             if allow_blocked and status == "blocked":
@@ -221,6 +225,11 @@ def validate_manifest(
 def template_manifest() -> dict[str, Any]:
     placeholder_hash = "0" * 64
     placeholder_commit = "0" * 40
+    def gate_evidence(gate_id: str) -> list[str]:
+        if gate_id in AVCODEC_GATE_IDS:
+            return ["evidence/harmony-avcodec-preflight.json"]
+        return ["replace with redacted raw evidence path or artifact id"]
+
     return {
         "schema": SCHEMA,
         "repository": {"commit": placeholder_commit, "tree": placeholder_commit, "status": "clean"},
@@ -253,7 +262,7 @@ def template_manifest() -> dict[str, Any]:
             {
                 "id": gate_id,
                 "status": "blocked",
-                "evidence": ["replace with redacted raw evidence path or artifact id"],
+                "evidence": gate_evidence(gate_id),
                 **({
                     "secure_pairing_manifest": {
                         "schema": SECURE_PAIRING_MANIFEST_SCHEMA,

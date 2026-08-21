@@ -807,9 +807,15 @@ increase it.
   advertises CAPABILITY_CONTROLLER, encodes ControllerEvent field 66, waits for
   Host InputAck acceptance before sending controller state, and releases active
   controllers through all-zero neutral DISCONNECTED events before teardown or
-  resume. No DevEco SDK was available for this
-  record, so the repository does not claim ArkTS compilation, a HAP, signing,
-  installation, hardware decode, production HUKS API behavior, authenticated
+  resume. The AVCodec seam now has a fail-closed H.264/HEVC preflight manifest
+  for decoder capability, hardware decoder identity, XComponent surface,
+  buffer callbacks, Protocol v1 media headers, PTS preservation, render/free,
+  flush, reconfigure, EOS, and release evidence. It can record blocked
+  readiness when DevEco/HDC/HAP/MatePad evidence is missing, but blocked or
+  Android records do not close the HarmonyOS hardware decode gate. No DevEco SDK
+  was available for this record, so the repository does not claim ArkTS
+  compilation, a HAP, signing, installation, hardware decode, HUKS-backed secure
+  pairing, authenticated
   transport, resume-capable Host interoperability, or real-device behavior.
   The HUKS secure-pairing evidence verifier and blocked manifest are recorded
   under
