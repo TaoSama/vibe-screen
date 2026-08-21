@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibe-screen.dev/schemas/evidence/v1/usb-smoke-preflight.schema.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "kind", "collected_at", "result", "blockers", "serial", "locks", "safety"],
+  "properties": {
+    "schema_version": {"const": "vibescreen.evidence/v1"},
+    "kind": {"const": "android_usb_smoke_preflight"},
+    "collected_at": {"type": "string"},
+    "result": {"enum": ["ready", "blocked"]},
+    "blockers": {"type": "array", "items": {"type": "string"}},
+    "serial": {"type": "string", "minLength": 1},
+    "locks": {"type": "array", "items": {"type": "string"}},
+    "android_device": {"type": ["object", "null"]},
+    "android_app": {"type": ["object", "null"]},
+    "adb_reverse": {"type": ["object", "null"]},
+    "host_listener": {"type": ["object", "null"]},
+    "host_preflight": {"type": "object"},
+    "safety": {
+      "type": "object",
+      "required": ["read_only", "starts_host", "changes_adb_reverse", "modifies_tcc", "modifies_keychain", "modifies_android_app_data"],
+      "properties": {
+        "read_only": {"const": true},
+        "starts_host": {"const": false},
+        "changes_adb_reverse": {"const": false},
+        "modifies_tcc": {"const": false},
+        "modifies_keychain": {"const": false},
+        "modifies_android_app_data": {"const": false}
+      }
+    }
+  }
+}

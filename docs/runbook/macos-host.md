@@ -59,6 +59,45 @@ codesign:
 security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
 ```
 
+If Keychain Access is unavailable, create the same local-only identity from the
+CLI. The final `security set-key-partition-list` command requires the
+login-keychain password through `KEYCHAIN_PASSWORD`; set it only for this shell
+and clear it afterwards:
+
+```bash
+openssl req -x509 -newkey rsa:2048 \
+  -keyout /tmp/vibe-screen-dev.key \
+  -out /tmp/vibe-screen-dev.cer \
+  -days 3650 -nodes \
+  -subj "/CN=Vibe Screen Dev" \
+  -addext "extendedKeyUsage=codeSigning"
+
+openssl pkcs12 -export \
+  -out /tmp/vibe-screen-dev.p12 \
+  -inkey /tmp/vibe-screen-dev.key \
+  -in /tmp/vibe-screen-dev.cer \
+  -passout pass:
+
+security import /tmp/vibe-screen-dev.p12 \
+  -k ~/Library/Keychains/login.keychain-db \
+  -T /usr/bin/codesign
+
+security add-trusted-cert \
+  -r trustRoot -p codeSign \
+  -k ~/Library/Keychains/login.keychain-db \
+  /tmp/vibe-screen-dev.cer
+
+export KEYCHAIN_PASSWORD='<login-keychain-password>'
+security set-key-partition-list \
+  -S apple-tool:,apple: \
+  -s -k "$KEYCHAIN_PASSWORD" \
+  ~/Library/Keychains/login.keychain-db
+unset KEYCHAIN_PASSWORD
+
+rm /tmp/vibe-screen-dev.key /tmp/vibe-screen-dev.cer /tmp/vibe-screen-dev.p12
+security find-identity -v -p codesigning | grep '"Vibe Screen Dev"'
+```
+
 Do not create multiple certificates with the same name. If more than one
 `Vibe Screen Dev` identity exists, the build fails closed so the certificate
 leaf hash cannot drift accidentally. The local install script writes the current

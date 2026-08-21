@@ -413,9 +413,28 @@ def refuse_ad_hoc_identity(sign_identity: str) -> None:
         )
 
 
-def package_dev_app(output_dir: Path, sign_identity: str) -> Path:
+def resolve_local_device_sign_identity(sign_identity: str) -> str:
     refuse_ad_hoc_identity(sign_identity)
-    package_macos.resolve_sign_identity(sign_identity)
+    try:
+        return package_macos.resolve_sign_identity(sign_identity)
+    except SystemExit as error:
+        message = str(error)
+        not_found_prefix = f"codesign identity '{sign_identity}' not found in the keychain."
+        if message.startswith(not_found_prefix):
+            message = (
+                f"{not_found_prefix} Create the documented stable Code Signing "
+                f"identity or set ${package_macos.SIGN_IDENTITY_ENV} to an existing "
+                "codesigning identity."
+            )
+        raise SystemExit(
+            f"{message} For local device reruns, do not use ad-hoc signing; create or "
+            "select one stable Code Signing identity, then grant Screen Recording "
+            f"and Accessibility to {DEFAULT_INSTALL_PATH}."
+        ) from error
+
+
+def package_dev_app(output_dir: Path, sign_identity: str) -> Path:
+    resolve_local_device_sign_identity(sign_identity)
     output_dir = output_dir.resolve()
     command = (
         sys.executable,
@@ -500,8 +519,7 @@ def preflight_command(args: argparse.Namespace) -> int:
     install_path = args.install_path.resolve()
     if not is_default_install_path(install_path):
         raise SystemExit(f"refusing nonstandard install path; use {DEFAULT_INSTALL_PATH}")
-    refuse_ad_hoc_identity(args.sign_identity)
-    package_macos.resolve_sign_identity(args.sign_identity)
+    resolve_local_device_sign_identity(args.sign_identity)
     metadata, permissions, errors = metadata_and_permissions(
         install_path,
         args.tcc_db,

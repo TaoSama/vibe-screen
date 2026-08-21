@@ -35,6 +35,26 @@ make soak-2h EVIDENCE_SERIAL="$ADB_ENDPOINT"
 make soak-8h EVIDENCE_SERIAL="$ADB_ENDPOINT"
 ```
 
+Before a short USB end-to-end smoke, use the read-only preflight to capture the
+current runnable path state without changing the Host, ADB reverse mappings,
+TCC, Keychain, or Android app data:
+
+```sh
+make evidence-usb-smoke-preflight \
+  EVIDENCE_SERIAL=EP0110PZ0B9110300B \
+  EVIDENCE_EXPECTED_MANUFACTURER=nubia \
+  EVIDENCE_EXPECTED_MODEL=P0110 \
+  EVIDENCE_EXPECTED_DEVICE=pacific \
+  EVIDENCE_EXPECTED_ANDROID_RELEASE=16
+```
+
+The command writes `usb-smoke-preflight.json` and exits zero only when the
+device identity matches, no `/tmp/vibe-screen-*.lock` exists, `adb reverse
+tcp:54321 tcp:54321` is configured, the Android app is running in the
+foreground, the Mac Host is listening on TCP `54321`, and the stable-signed Host
+preflight passes. A nonzero exit is a blocker record; it must not be reported as
+a USB stream, reconnect, input, latency, soak, or host RSS pass.
+
 Outputs go under `.build/evidence/` by default. Each soak writes raw JSONL and
 an atomic JSON summary containing connection coverage, process liveness,
 reconnects, memory, thermal, battery, power, and optional host RSS series. Use
