@@ -388,7 +388,9 @@
         android:layout_width="56dp"
         android:layout_height="56dp"
         android:layout_margin="24dp"
+        android:contentDescription="@string/display_settings"
         android:elevation="8dp"
+        android:focusable="true"
         android:visibility="gone"
         app:cardCornerRadius="28dp"
         app:cardBackgroundColor="#CC000000"
@@ -399,7 +401,7 @@
             android:layout_width="24dp"
             android:layout_height="24dp"
             android:layout_gravity="center"
-            android:contentDescription="@string/display_settings"
+            android:importantForAccessibility="no"
             android:src="@drawable/ic_settings"
             app:tint="#FFFFFF" />
     </androidx.cardview.widget.CardView>
