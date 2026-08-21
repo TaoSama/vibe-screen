@@ -434,7 +434,8 @@ private extension InternetTransportChannel {
         switch securityChannel {
         case .control: self = .control
         case .media: self = .media
-        case .audio, .bulk: return nil
+        case .audio: self = .audio
+        case .bulk: self = .bulk
         }
     }
 }

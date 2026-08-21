@@ -5,6 +5,8 @@ import dev.telemachus.display.ControllerAxes
 import dev.telemachus.display.ControllerEventKind
 import dev.telemachus.display.ControllerStateSample
 import dev.telemachus.display.StaticWakeHostPolicy
+import dev.vibescreen.protocol.v1.AudioCodec
+import dev.vibescreen.protocol.v1.AudioConfig
 import dev.vibescreen.protocol.v1.Capability
 import dev.vibescreen.protocol.v1.Codec
 import dev.vibescreen.protocol.v1.ColorDescription
@@ -74,6 +76,7 @@ class ProtocolV1SessionTest {
                 Capability.CAPABILITY_HOST_ACTIONS,
                 Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
                 Capability.CAPABILITY_CLIPBOARD,
+                Capability.CAPABILITY_AUDIO,
                 Capability.CAPABILITY_FILE_TRANSFER,
                 Capability.CAPABILITY_MANAGED_CONFIGURATION,
             ),
@@ -89,6 +92,16 @@ class ProtocolV1SessionTest {
         })
         assertEquals(FileTransferPolicy.DEFAULT_MAXIMUM_FILE_BYTES, hello.clientHello.resourceLimits.maximumFileBytes)
         assertEquals(FileTransferPolicy.DEFAULT_MAXIMUM_CHUNK_BYTES, hello.clientHello.resourceLimits.maximumFileChunkBytes)
+        assertEquals(1, hello.clientHello.resourceLimits.maximumAudioStreams)
+    }
+
+    @Test
+    fun localManagedPolicyCanDisableAudioCapabilityAndResourceLimit() {
+        val session = session(localManagedPolicy = ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(audioAllowed = false))
+        val hello = session.clientHello().clientHello
+
+        assertFalse(hello.capabilitiesList.contains(Capability.CAPABILITY_AUDIO))
+        assertEquals(0, hello.resourceLimits.maximumAudioStreams)
     }
 
     @Test
@@ -440,6 +453,79 @@ class ProtocolV1SessionTest {
 
         assertFalse(result.envelope.videoConfigResult.accepted)
         assertEquals(3L, result.envelope.videoConfigResult.configEpoch)
+    }
+
+    @Test
+    fun audioConfigRequiresNegotiatedAudioAndStreamingVideo() {
+        val beforeStreaming = sessionThroughDisplayStart()
+        assertInvalidPeerMessage { beforeStreaming.receive(audioConfigEnvelope(6)) }
+
+        val withoutAudio = streamingSession()
+        assertInvalidPeerMessage { withoutAudio.receive(audioConfigEnvelope(7)) }
+    }
+
+    @Test
+    fun audioConfigCanBeAcceptedAfterNegotiation() {
+        val session = audioStreamingSession()
+        val requested =
+            session.receive(audioConfigEnvelope(7)).single()
+                as ProtocolV1Session.Action.AudioConfigurationRequested
+
+        assertEquals(2L, requested.config.streamId)
+        assertEquals(1L, requested.config.configEpoch)
+        assertEquals(7L, requested.sessionEpoch)
+        assertFalse(session.canReceiveAudio)
+
+        val response = session.completeAudioConfiguration(requested.config, accepted = true, rejectionReason = "", correlationId = requested.correlationId)
+        assertNotNull(response)
+        assertTrue(response!!.audioConfigResult.accepted)
+        assertEquals(7L, response.correlationId)
+        assertTrue(session.canReceiveAudio)
+    }
+
+    @Test
+    fun invalidAudioConfigEpochIsRejectedWithoutConfiguringPlayback() {
+        val session = audioStreamingSession()
+
+        val result = session.receive(audioConfigEnvelope(7, configEpoch = 0)).single() as ProtocolV1Session.Action.Send
+
+        assertFalse(result.envelope.audioConfigResult.accepted)
+        assertEquals("invalid_audio_config_epoch", result.envelope.audioConfigResult.rejectionReason)
+        assertFalse(session.canReceiveAudio)
+    }
+
+    @Test
+    fun managedPolicyAudioDenyStopsActiveAudio() {
+        val session = audioStreamingSession()
+        val requested =
+            session.receive(audioConfigEnvelope(7)).single()
+                as ProtocolV1Session.Action.AudioConfigurationRequested
+        assertTrue(session.completeAudioConfiguration(requested.config, accepted = true, rejectionReason = "", correlationId = requested.correlationId)!!.audioConfigResult.accepted)
+        assertTrue(session.canReceiveAudio)
+
+        val actions = session.receive(
+            managedPolicyStatus(
+                8,
+                ProtocolV1Session.ManagedPolicy.UNMANAGED.copy(isManaged = true, audioAllowed = false).toStatus(),
+            ),
+        )
+
+        assertTrue(actions.any { it is ProtocolV1Session.Action.AudioStopped && it.reason == "managed_policy_audio_denied" })
+        assertFalse(session.canReceiveAudio)
+    }
+
+    @Test
+    fun acceptedAudioRemainsReceivableDuringDisplayReconfiguration() {
+        val session = audioMultiDisplayStreamingSession()
+        val requested =
+            session.receive(audioConfigEnvelope(7)).single()
+                as ProtocolV1Session.Action.AudioConfigurationRequested
+        assertTrue(session.completeAudioConfiguration(requested.config, accepted = true, rejectionReason = "", correlationId = requested.correlationId)!!.audioConfigResult.accepted)
+        assertTrue(session.canReceiveAudio)
+
+        assertNotNull(session.selectDisplay("display-2"))
+
+        assertTrue(session.canReceiveAudio)
     }
 
     @Test
@@ -1951,6 +2037,63 @@ class ProtocolV1SessionTest {
             )
         }
 
+    private val audioCaps =
+        listOf(
+            Capability.CAPABILITY_TOUCH,
+            Capability.CAPABILITY_AUDIO,
+            Capability.CAPABILITY_MANAGED_CONFIGURATION,
+        )
+
+    private fun audioStreamingSession(): ProtocolV1Session =
+        session().also {
+            it.clientHello()
+            it.receive(hostHello(2, advertisedCapabilities = audioCaps))
+            it.receive(
+                sessionAccepted(
+                    3,
+                    negotiatedCapabilities = audioCaps,
+                    resourceLimits = ResourceLimits.newBuilder().setMaximumAudioStreams(1).build(),
+                ),
+            )
+            it.receive(displayList(4))
+            it.receive(startDisplay(5))
+            val requested =
+                it.receive(videoConfig(6)).single()
+                    as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        }
+
+    private fun audioMultiDisplayStreamingSession(): ProtocolV1Session {
+        val capabilities = audioCaps + Capability.CAPABILITY_MULTI_DISPLAY
+        return session().also {
+            it.clientHello()
+            it.receive(hostHello(2, advertisedCapabilities = capabilities))
+            it.receive(
+                sessionAccepted(
+                    3,
+                    negotiatedCapabilities = capabilities,
+                    resourceLimits = ResourceLimits.newBuilder().setMaximumAudioStreams(1).build(),
+                ),
+            )
+            it.receive(twoDisplayList(4))
+            it.receive(startDisplay(5))
+            val requested =
+                it.receive(videoConfig(6)).single()
+                    as ProtocolV1Session.Action.VideoConfigurationRequested
+            it.completeVideoConfiguration(
+                completedConfigEpoch = 3,
+                configurationToken = requested.configurationToken,
+                accepted = true,
+                rejectionReason = "",
+            )
+        }
+    }
+
     private fun hostActionManagedStreamingSession(): ProtocolV1Session {
         val caps = hostActionCaps + Capability.CAPABILITY_MANAGED_CONFIGURATION
         return session().also {
@@ -2259,6 +2402,23 @@ class ProtocolV1SessionTest {
                             builder.colorDescription = colorDescription
                         }
                     },
+            ).build()
+
+    private fun audioConfigEnvelope(
+        id: Long,
+        streamId: Long = 2,
+        configEpoch: Long = 1,
+    ): Envelope =
+        base(id)
+            .setAudioConfig(
+                AudioConfig
+                    .newBuilder()
+                    .setStreamId(streamId)
+                    .setConfigEpoch(configEpoch)
+                    .setCodec(AudioCodec.AUDIO_CODEC_PCM_S16LE)
+                    .setSampleRateHz(48_000)
+                    .setChannelCount(2)
+                    .setFramesPerPacket(480),
             ).build()
 
     private fun hdrColor(): ColorDescription =

@@ -85,11 +85,17 @@ final class LANSecureRecordAdapterTests: XCTestCase {
         let pair = try makePair()
         let control = try pair.device.seal(Data([1]), channel: .control)
         let media = try pair.host.seal(Data([2]), channel: .media)
+        let audio = try pair.host.seal(Data([3]), channel: .audio)
+        let bulk = try pair.device.seal(Data([4]), channel: .bulk)
 
         XCTAssertEqual(PlatformSessionPacketCipher.declaredInternetChannel(in: control), .control)
         XCTAssertEqual(PlatformSessionPacketCipher.declaredInternetChannel(in: media), .media)
+        XCTAssertEqual(PlatformSessionPacketCipher.declaredInternetChannel(in: audio), .audio)
+        XCTAssertEqual(PlatformSessionPacketCipher.declaredInternetChannel(in: bulk), .bulk)
         XCTAssertEqual(try pair.host.openDeclaredChannel(control), Data([1]))
         XCTAssertEqual(try pair.device.openDeclaredChannel(media), Data([2]))
+        XCTAssertEqual(try pair.device.openDeclaredChannel(audio), Data([3]))
+        XCTAssertEqual(try pair.host.openDeclaredChannel(bulk), Data([4]))
     }
 
     private func makePair(

@@ -28,6 +28,33 @@ final class ProtocolV1SessionTests: XCTestCase {
         ).contains(.wakeHost))
     }
 
+    func testProductionHostCapabilitiesIncludeAudioOnlyWhenCaptureIsAvailableAndPolicyAllows() {
+        XCTAssertFalse(
+            ProtocolV1SessionConfiguration.productionHostCapabilities(touchEnabled: true).contains(.audio)
+        )
+        XCTAssertTrue(ProtocolV1SessionConfiguration.productionHostCapabilities(
+            touchEnabled: true,
+            audioCaptureAvailable: true
+        ).contains(.audio))
+
+        let policy = ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: false,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: []
+        )
+        XCTAssertFalse(ProtocolV1SessionConfiguration.productionHostCapabilities(
+            touchEnabled: true,
+            managedPolicy: policy,
+            audioCaptureAvailable: true
+        ).contains(.audio))
+    }
+
     func testManagedPolicyAppliesDenyWinsAndAllowedHosts() {
         let local = ManagedPolicy(
             isManaged: true,
@@ -1414,6 +1441,143 @@ final class ProtocolV1SessionTests: XCTestCase {
         XCTAssertFalse(capabilities.contains(.wakeHost))
     }
 
+    func testAudioNegotiationRequestsConfigurationAfterVideoReady() throws {
+        let session = makeAudioSession()
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .audio]
+        hello.clientHello.resourceLimits.maximumAudioStreams = 1
+
+        _ = session.handleControl(try hello.serializedData())
+        let responses = try controlEnvelopes(session.completeCodecNegotiation())
+        guard case .hostHello(let hostHello)? = responses[0].payload,
+              case .sessionAccepted(let accepted)? = responses[1].payload else {
+            return XCTFail("Expected HostHello + SessionAccepted")
+        }
+        XCTAssertTrue(hostHello.capabilities.contains(.audio))
+        XCTAssertTrue(accepted.negotiatedCapabilities.contains(.audio))
+        XCTAssertEqual(accepted.negotiatedResourceLimits.maximumAudioStreams, 1)
+
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .listDisplaysRequest(VSListDisplaysRequest())
+        ).serializedData())
+        let startActions = session.handleControl(try envelope(
+            id: 3,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        guard case .videoConfig(let videoConfig)? = try controlEnvelopes(startActions).last?.payload else {
+            return XCTFail("Expected VideoConfig")
+        }
+
+        var videoResult = VSVideoConfigResult()
+        videoResult.configEpoch = videoConfig.configEpoch
+        videoResult.streamID = videoConfig.streamID
+        videoResult.accepted = true
+        let readyActions = session.handleControl(try envelope(
+            id: 4,
+            payload: .videoConfigResult(videoResult)
+        ).serializedData())
+
+        let readyEnvelopes = try controlEnvelopes(readyActions)
+        guard case .audioConfig(let audioConfig)? = readyEnvelopes.first?.payload else {
+            return XCTFail("Expected AudioConfig before media ready actions")
+        }
+        XCTAssertEqual(audioConfig.streamID, 2)
+        XCTAssertEqual(audioConfig.configEpoch, 1)
+        XCTAssertEqual(audioConfig.codec, .pcmS16Le)
+        XCTAssertEqual(audioConfig.sampleRateHz, 48_000)
+        XCTAssertEqual(audioConfig.channelCount, 2)
+        XCTAssertEqual(audioConfig.framesPerPacket, 480)
+        XCTAssertTrue(readyActions.containsConnectionReady)
+    }
+
+    func testAudioConfigResultStartsAudioAndRejectsStaleEpochs() throws {
+        let session = try readyAudioPendingSession()
+
+        var accepted = VSAudioConfigResult()
+        accepted.streamID = 2
+        accepted.configEpoch = 1
+        accepted.accepted = true
+        let acceptedActions = session.handleControl(try envelope(
+            id: 5,
+            payload: .audioConfigResult(accepted)
+        ).serializedData())
+
+        guard case .startAudio(let config)? = acceptedActions.first else {
+            return XCTFail("Expected startAudio")
+        }
+        XCTAssertEqual(config.streamID, 2)
+        XCTAssertEqual(config.configEpoch, 1)
+
+        let stale = try readyAudioPendingSession()
+        var staleResult = VSAudioConfigResult()
+        staleResult.streamID = 2
+        staleResult.configEpoch = 2
+        staleResult.accepted = true
+        let staleActions = stale.handleControl(try envelope(
+            id: 5,
+            payload: .audioConfigResult(staleResult)
+        ).serializedData())
+        XCTAssertEqual(try protocolError(from: staleActions).code, .invalidState)
+        XCTAssertTrue(staleActions.containsClose)
+    }
+
+    func testRejectedAudioConfigDoesNotRepeatOnVideoRenegotiation() throws {
+        let session = try readyAudioPendingSession()
+
+        var rejected = VSAudioConfigResult()
+        rejected.streamID = 2
+        rejected.configEpoch = 1
+        rejected.accepted = false
+        rejected.rejectionReason = "audio_track_create_failed"
+        let rejectedActions = session.handleControl(try envelope(
+            id: 5,
+            payload: .audioConfigResult(rejected)
+        ).serializedData())
+        XCTAssertTrue(rejectedActions.containsAudioStop(reason: "audio_track_create_failed"))
+
+        let reconfigure = session.handleControl(try envelope(
+            id: 6,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        guard case .videoConfig(let videoConfig)? = try controlEnvelopes(reconfigure).last?.payload else {
+            return XCTFail("Expected VideoConfig")
+        }
+        var videoResult = VSVideoConfigResult()
+        videoResult.configEpoch = videoConfig.configEpoch
+        videoResult.streamID = videoConfig.streamID
+        videoResult.accepted = true
+        let readyAgain = session.handleControl(try envelope(
+            id: 7,
+            payload: .videoConfigResult(videoResult)
+        ).serializedData())
+        XCTAssertFalse(try controlEnvelopes(readyAgain).contains {
+            if case .audioConfig = $0.payload { return true }
+            return false
+        })
+    }
+
+    func testManagedPolicyDenyStopsConfiguredAudio() throws {
+        let session = try readyAudioStreamingSession(managed: true)
+
+        var remote = ManagedPolicy.unmanaged.protocolStatus
+        remote.managed = true
+        remote.clipboardAllowed = true
+        remote.fileTransferAllowed = true
+        remote.audioAllowed = false
+        remote.wakeAllowed = true
+        remote.customGesturesAllowed = true
+        remote.hostActionsAllowed = true
+        remote.maximumFileBytes = ManagedPolicy.defaultMaximumFileBytes
+        remote.allowedHosts = ["host"]
+        let actions = session.handleControl(try envelope(
+            id: 6,
+            payload: .managedPolicyStatus(remote)
+        ).serializedData())
+
+        XCTAssertTrue(actions.containsAudioStop(reason: "managed_policy_audio_denied"))
+    }
+
     func testProductionHostCapabilitiesIncludeControllerOnlyWhenAvailable() {
         let withoutController = ProtocolV1SessionConfiguration.productionHostCapabilities(
             touchEnabled: true,
@@ -1992,6 +2156,32 @@ final class ProtocolV1SessionTests: XCTestCase {
         ))
     }
 
+    private func makeAudioSession(managedPolicy: ManagedPolicy = .unmanaged) -> ProtocolV1SessionCoordinator {
+        var configuration = ProtocolV1SessionConfiguration(
+            sessionID: sessionID,
+            sessionEpoch: sessionEpoch,
+            displayWidth: 1920,
+            displayHeight: 1080,
+            rotation: 90,
+            framesPerSecond: 60,
+            bitrateKbps: 20_000,
+            hostCapabilities: ProtocolV1SessionConfiguration.productionHostCapabilities(
+                touchEnabled: true,
+                managedPolicy: managedPolicy,
+                audioCaptureAvailable: true
+            ),
+            requiredClientCapabilities: [.touch],
+            supportedCodecs: [.hevc, .h264],
+            hostID: "host",
+            hostName: "Mac",
+            displayID: "active-display",
+            displayName: "Display",
+            displayIsVirtual: true
+        )
+        configuration.managedPolicy = managedPolicy
+        return ProtocolV1SessionCoordinator(configuration: configuration)
+    }
+
     private func makeMultiDisplaySession() -> ProtocolV1SessionCoordinator {
         ProtocolV1SessionCoordinator(configuration: ProtocolV1SessionConfiguration(
             sessionID: sessionID,
@@ -2195,6 +2385,46 @@ final class ProtocolV1SessionTests: XCTestCase {
         result.streamID = 1
         result.accepted = true
         _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(result)).serializedData())
+        return session
+    }
+
+    private func readyAudioPendingSession(managed: Bool = false) throws -> ProtocolV1SessionCoordinator {
+        let policy = managed ? ManagedPolicy(
+            isManaged: true,
+            clipboardAllowed: true,
+            fileTransferAllowed: true,
+            audioAllowed: true,
+            wakeAllowed: true,
+            customGesturesAllowed: true,
+            hostActionsAllowed: true,
+            maximumFileBytes: ManagedPolicy.defaultMaximumFileBytes,
+            allowedHosts: ["host"]
+        ) : .unmanaged
+        let session = makeAudioSession(managedPolicy: policy)
+        var hello = clientHello()
+        hello.clientHello.capabilities = [.touch, .multiDisplay, .managedConfiguration, .audio]
+        hello.clientHello.resourceLimits.maximumAudioStreams = 1
+        _ = session.handleControl(try hello.serializedData())
+        _ = session.completeCodecNegotiation()
+        _ = session.handleControl(try envelope(
+            id: 2,
+            payload: .startDisplayRequest(existingDisplayRequest())
+        ).serializedData())
+        var videoResult = VSVideoConfigResult()
+        videoResult.configEpoch = 1
+        videoResult.streamID = 1
+        videoResult.accepted = true
+        _ = session.handleControl(try envelope(id: 3, payload: .videoConfigResult(videoResult)).serializedData())
+        return session
+    }
+
+    private func readyAudioStreamingSession(managed: Bool = false) throws -> ProtocolV1SessionCoordinator {
+        let session = try readyAudioPendingSession(managed: managed)
+        var audioResult = VSAudioConfigResult()
+        audioResult.streamID = 2
+        audioResult.configEpoch = 1
+        audioResult.accepted = true
+        _ = session.handleControl(try envelope(id: 5, payload: .audioConfigResult(audioResult)).serializedData())
         return session
     }
 
@@ -2419,6 +2649,12 @@ private extension Array where Element == ProtocolV1SessionAction {
     var containsScroll: Bool { contains { if case .scroll = $0 { true } else { false } } }
     var containsHeartbeat: Bool { contains { if case .heartbeat = $0 { true } else { false } } }
     var containsClose: Bool { contains { if case .close = $0 { true } else { false } } }
+    func containsAudioStop(reason expectedReason: String) -> Bool {
+        contains {
+            if case .stopAudio(let reason) = $0 { return reason == expectedReason }
+            return false
+        }
+    }
     var containsPeerErrorAndClose: Bool {
         contains { if case .peerError = $0 { true } else { false } } &&
             contains { if case .close = $0 { true } else { false } }

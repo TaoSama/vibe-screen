@@ -66,7 +66,8 @@ class ProtocolV1FramingTest {
         val bytes = ByteArrayOutputStream()
         ProtocolV1Framing.write(bytes, ProtocolChannel.CONTROL, byteArrayOf(1, 2, 3))
         ProtocolV1Framing.write(bytes, ProtocolChannel.VIDEO, byteArrayOf(4, 5))
-        ProtocolV1Framing.write(bytes, ProtocolChannel.BULK, byteArrayOf(6, 7, 8, 9))
+        ProtocolV1Framing.write(bytes, ProtocolChannel.AUDIO, byteArrayOf(6, 7, 8))
+        ProtocolV1Framing.write(bytes, ProtocolChannel.BULK, byteArrayOf(9, 10, 11, 12))
         val input = OneByteInputStream(bytes.toByteArray())
 
         val control = ProtocolV1Framing.read(input)
@@ -75,9 +76,12 @@ class ProtocolV1FramingTest {
         val video = ProtocolV1Framing.read(input)
         assertEquals(ProtocolChannel.VIDEO, video.channel)
         assertArrayEquals(byteArrayOf(4, 5), video.payload)
+        val audio = ProtocolV1Framing.read(input)
+        assertEquals(ProtocolChannel.AUDIO, audio.channel)
+        assertArrayEquals(byteArrayOf(6, 7, 8), audio.payload)
         val bulk = ProtocolV1Framing.read(input)
         assertEquals(ProtocolChannel.BULK, bulk.channel)
-        assertArrayEquals(byteArrayOf(6, 7, 8, 9), bulk.payload)
+        assertArrayEquals(byteArrayOf(9, 10, 11, 12), bulk.payload)
     }
 
     @Test
