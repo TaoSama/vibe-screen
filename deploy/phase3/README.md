@@ -128,11 +128,11 @@ secret files, and independent issuer, metrics, and Authority client token files:
 ```bash
 export VIBE_SIGNALING_IMAGE_REPOSITORY=registry.example.com/vibe-signaling
 export VIBE_SIGNALING_IMAGE_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-export VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE=/run/secrets/signaling-migration-url
-export VIBE_SIGNALING_DATABASE_URL_FILE=/run/secrets/signaling-runtime-url
-export VIBE_SIGNALING_ISSUER_TOKEN_FILE=/run/secrets/signaling-issuer-token
-export VIBE_SIGNALING_METRICS_TOKEN_FILE=/run/secrets/signaling-metrics-token
-export VIBE_SIGNALING_AUTHORITY_TOKEN_FILE=/run/secrets/signaling-authority-token
+export VIBE_SIGNALING_MIGRATION_DATABASE_URL_FILE=/etc/vibe-secrets/signaling-migration-url
+export VIBE_SIGNALING_DATABASE_URL_FILE=/etc/vibe-secrets/signaling-runtime-url
+export VIBE_SIGNALING_ISSUER_TOKEN_FILE=/etc/vibe-secrets/signaling-issuer-token
+export VIBE_SIGNALING_METRICS_TOKEN_FILE=/etc/vibe-secrets/signaling-metrics-token
+export VIBE_SIGNALING_AUTHORITY_TOKEN_FILE=/etc/vibe-secrets/signaling-authority-token
 docker compose -f docker-compose.production.yml config --quiet
 docker compose -f docker-compose.production.yml pull signaling
 docker compose -f docker-compose.production.yml up -d --wait signaling
@@ -147,6 +147,12 @@ short-lived session row. Long-poll waiters are stored as connection-scoped
 leases keyed by PostgreSQL backend PID and backend start time, so a replacement
 instance can reclaim a waiter slot after the failed instance database backend
 disappears.
+
+The signaling runtime role must either be shared by all signaling instances or
+have `pg_read_all_stats`/`pg_monitor` so live listener backend start times are
+visible in `pg_stat_activity`. If a pooler sits between signaling and
+PostgreSQL, use session pooling; transaction pooling breaks `LISTEN` and stable
+backend identity.
 
 Place signaling behind a private TLS 1.2+ reverse proxy or service mesh and route
 only client role endpoints publicly. Keep issuer and metrics endpoints internal.

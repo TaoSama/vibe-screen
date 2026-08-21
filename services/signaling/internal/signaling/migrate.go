@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -32,14 +31,22 @@ func ApplyMigration(ctx context.Context, databaseURL, source string) error {
 	err = connection.QueryRow(ctx, "SELECT checksum_sha256 FROM signaling_schema_migrations WHERE version=1").Scan(&existing)
 	if err == nil {
 		if existing != checksum {
-			if existing != previousWaiterCountSchemaChecksum || !strings.Contains(source, "signaling_waiter_leases") {
+			if existing != previousWaiterCountSchemaChecksum || checksum != requiredSignalingSchemaChecksum {
 				return errors.New("signaling migration 1 checksum mismatch")
 			}
-			if _, err := connection.Exec(ctx, source); err != nil {
+			tx, err := connection.Begin(ctx)
+			if err != nil {
+				return fmt.Errorf("begin signaling waiter lease upgrade: %w", err)
+			}
+			defer func() { _ = tx.Rollback(ctx) }()
+			if _, err := tx.Exec(ctx, source); err != nil {
 				return fmt.Errorf("upgrade signaling waiter leases: %w", err)
 			}
-			if _, err := connection.Exec(ctx, "UPDATE signaling_schema_migrations SET checksum_sha256=$1, applied_at=now() WHERE version=1", checksum); err != nil {
+			if _, err := tx.Exec(ctx, "UPDATE signaling_schema_migrations SET checksum_sha256=$1, applied_at=now() WHERE version=1", checksum); err != nil {
 				return fmt.Errorf("record signaling waiter lease upgrade: %w", err)
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return fmt.Errorf("commit signaling waiter lease upgrade: %w", err)
 			}
 		}
 		return nil

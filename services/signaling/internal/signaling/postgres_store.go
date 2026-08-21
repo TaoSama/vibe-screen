@@ -16,7 +16,7 @@ import (
 
 const (
 	requiredSignalingSchemaVersion  int64 = 1
-	requiredSignalingSchemaChecksum       = "0ae6188c613207a070a40664243447d55b8e584826e9bdbdfc29a6690bf738f4"
+	requiredSignalingSchemaChecksum       = "ec37efb1b97858309ebca3c6a3782b7bc14ba0079df6d9a8fc513fe93960824b"
 	authorityReservationPrefix            = "pending-authority-"
 	postgresNotifyTimeout                 = 250 * time.Millisecond
 	postgresBackgroundTimeout             = 10 * time.Second
@@ -827,7 +827,7 @@ func (s *PostgresStore) eventsAfterTx(ctx context.Context, tx pgx.Tx, sessionID 
 
 func (s *PostgresStore) waitersTx(ctx context.Context, tx pgx.Tx, sessionID string, role Role, leaseID string) (int, error) {
 	var waiters int
-	if _, err := tx.Exec(ctx, "DELETE FROM signaling_waiter_leases l WHERE NOT EXISTS (SELECT 1 FROM pg_stat_activity a WHERE a.pid=l.backend_pid AND a.backend_start=l.backend_started_at)"); err != nil {
+	if _, err := tx.Exec(ctx, "DELETE FROM signaling_waiter_leases l WHERE l.session_id=$1 AND l.role=$2 AND NOT EXISTS (SELECT 1 FROM pg_stat_activity a WHERE a.pid=l.backend_pid AND a.backend_start=l.backend_started_at)", sessionID, role); err != nil {
 		return 0, err
 	}
 	err := tx.QueryRow(ctx, "SELECT COUNT(*) FROM signaling_waiter_leases WHERE session_id=$1 AND role=$2 AND lease_id<>$3", sessionID, role, leaseID).Scan(&waiters)
@@ -931,11 +931,18 @@ func (s *PostgresStore) enforceCapacityTx(ctx context.Context, tx pgx.Tx) error 
 }
 
 func (s *PostgresStore) cleanupTx(ctx context.Context, tx pgx.Tx) error {
-	_, err := s.cleanupTxCount(ctx, tx)
+	_, err := s.cleanupExpiredSessionsTx(ctx, tx)
 	return err
 }
 
 func (s *PostgresStore) cleanupTxCount(ctx context.Context, tx pgx.Tx) (int, error) {
+	if _, err := tx.Exec(ctx, "DELETE FROM signaling_waiter_leases l WHERE NOT EXISTS (SELECT 1 FROM pg_stat_activity a WHERE a.pid=l.backend_pid AND a.backend_start=l.backend_started_at)"); err != nil {
+		return 0, err
+	}
+	return s.cleanupExpiredSessionsTx(ctx, tx)
+}
+
+func (s *PostgresStore) cleanupExpiredSessionsTx(ctx context.Context, tx pgx.Tx) (int, error) {
 	tag, err := tx.Exec(ctx, "DELETE FROM signaling_sessions WHERE expires_at<=now()")
 	if err != nil {
 		return 0, err

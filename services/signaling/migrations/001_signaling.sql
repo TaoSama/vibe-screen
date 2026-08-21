@@ -49,3 +49,5 @@ CREATE TABLE IF NOT EXISTS signaling_waiter_leases (
     registered_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (session_id, role, lease_id)
 );
+CREATE INDEX IF NOT EXISTS signaling_waiter_leases_backend_idx
+    ON signaling_waiter_leases(backend_pid, backend_started_at);

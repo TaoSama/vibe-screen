@@ -667,6 +667,13 @@ func TestSignalingMigrationUpgradesWaiterCountSchema(t *testing.T) {
 	if oldTableExists {
 		t.Fatal("old waiter count table survived migration")
 	}
+	var recorded string
+	if err := pool.QueryRow(ctx, "SELECT checksum_sha256 FROM signaling_schema_migrations WHERE version=1").Scan(&recorded); err != nil {
+		t.Fatal(err)
+	}
+	if recorded != requiredSignalingSchemaChecksum {
+		t.Fatalf("recorded checksum = %q, want %q", recorded, requiredSignalingSchemaChecksum)
+	}
 	if err := ApplyMigration(ctx, databaseURL, readSignalingMigration(t)); err != nil {
 		t.Fatalf("reapply upgraded migration: %v", err)
 	}
@@ -681,7 +688,9 @@ const newWaiterLeaseSchemaForTest = "DROP TABLE IF EXISTS signaling_waiters;\n\n
 	"    backend_started_at timestamptz NOT NULL,\n" +
 	"    registered_at timestamptz NOT NULL DEFAULT now(),\n" +
 	"    PRIMARY KEY (session_id, role, lease_id)\n" +
-	");"
+	");\n" +
+	"CREATE INDEX IF NOT EXISTS signaling_waiter_leases_backend_idx\n" +
+	"    ON signaling_waiter_leases(backend_pid, backend_started_at);"
 
 const oldWaiterCountSchemaForTest = "CREATE TABLE IF NOT EXISTS signaling_waiters (\n" +
 	"    session_id text NOT NULL REFERENCES signaling_sessions(session_id) ON DELETE CASCADE,\n" +

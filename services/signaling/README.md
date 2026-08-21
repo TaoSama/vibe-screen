@@ -117,8 +117,9 @@ field returns `409`.
 
 With `store_backend: postgres`, the short-lived routing state, request-ID
 idempotency record, invalidation tombstone, message cursor, per-role message
-rate window, and long-poll waiter leases are backed by PostgreSQL and survive a
-signaling process restart until TTL cleanup. Waiter leases are tied to the
+rate window are backed by PostgreSQL and survive a signaling process restart
+until TTL cleanup. Long-poll waiter leases are stored in PostgreSQL and are
+reclaimed when their listener backend disappears. Waiter leases are tied to the
 PostgreSQL listener backend PID and start timestamp; another instance clears a
 lease only after that backend disappears, so a crashed or killed signaling
 process cannot permanently consume the per-role waiter slot. Replaying the same
