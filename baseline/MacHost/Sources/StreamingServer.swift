@@ -466,6 +466,12 @@ class StreamingServer: EncodedFrameSink {
     private let wakeHostPacketSender: any WakeHostPacketSending
 
     var currentSessionEpoch: UInt64 { sessionEpochGate.current }
+    var currentLANRecordProtectionState: LANRecordProtectionState {
+        if DispatchQueue.getSpecific(key: Self.networkQueueKey) == ObjectIdentifier(self) {
+            return lanRecordProtectionState
+        }
+        return networkQueue.sync { lanRecordProtectionState }
+    }
 
     init(
         port: UInt16,

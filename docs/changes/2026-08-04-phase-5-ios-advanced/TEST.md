@@ -56,6 +56,19 @@ startup disconnect and Task-cancellation completion, host control message
 ordering/session-epoch validation, Ping/Pong correlation, and the client
 disconnect envelope factory.
 
+On 2026-08-21, the same portable self-test also covered the iOS trusted-LAN
+secure-record contract: directional host/device keys for control, video, audio,
+and bulk; `VSCR` session-epoch/header authentication; nonce and replay
+rejection; explicit legacy-fallback negotiation rules; and rejection of records
+whose authenticated channel does not match the inner Protocol v1 frame channel.
+The local command completed with:
+
+```text
+RUN: trusted-LAN startup codecs
+RUN: owner/media/heartbeat generation gates
+PASS: Phase 5A-5D core and trusted-LAN Protocol v1 startup
+```
+
 Project metadata also passes:
 
 ```text
@@ -78,42 +91,72 @@ Run the release-build, real two-process loopback from the repository root:
 
 ```bash
 apps/ios/Scripts/run_machost_loopback.py
+apps/ios/Scripts/run_machost_loopback.py --legacy-plaintext
 ```
 
 The harness starts the production `Vibe Screen` executable with its bounded iOS
-loopback adapter on `127.0.0.1:54321` and explicit plaintext legacy fallback,
-then starts the iOS Core transport/session executable as a separate process. The
-client uses the production
+loopback adapter on an OS-assigned `127.0.0.1` port, then starts the iOS Core
+transport/session executable as a separate process. The default path completes
+authenticated `SSWA`/`SSWR` admission, negotiates `VSLS`/`VSLR` secure
+records, sends the `0D`/`0D01` Protocol v1 upgrade inside AES-256-GCM
+records, and continues with encrypted Protocol v1 TCP frames. The explicit
+`--legacy-plaintext` path covers only old-peer compatibility and reports that
+state separately. The client uses the production
 generation-scoped `ControlOutbox` for every outbound control envelope. It runs
 a normal lifecycle and a separate invalid-target case. The covered boundary is:
 
 ```text
-SSWA/SSWR authentication -> explicit plaintext legacy fallback
--> 0D/0D01 upgrade -> ClientHello/HostHello
+SSWA/SSWR authentication -> VSLS/VSLR secure records
+-> encrypted 0D/0D01 upgrade -> ClientHello/HostHello
 -> SessionAccepted/capabilities -> display list/start -> VideoConfigResult
 -> video media frame -> Ping/Pong -> display+stream-targeted TouchEvent
 -> DisconnectNotice
 
 invalid display+stream target -> ProtocolError(INVALID_STATE)
+
+--legacy-plaintext repeats the same lifecycle and invalid-target checks without
+VSLS/VSLR and reports explicitLegacyFallback=true.
 ```
 
-Observed result on the host recorded above:
+Observed result on 2026-08-21 is recorded under
+`evidence/2026-08-21-ios-trusted-lan-secure-records`. The secure run reports:
 
 ```text
-iOS Core MacHost loopback: PASS (auth=SSWA/SSWR, upgrade=0D/0D01,
-hello=true, displays=true, videoAck=true, media=true, pong=true,
-targetedTouch=true, disconnect=true)
+iOS Core MacHost loopback: PASS (... encryptedRecords=true,
+explicitLegacyFallback=false, hello=true, displays=true, videoAck=true,
+media=true, pong=true, targetedTouch=true, disconnect=true)
 iOS Core MacHost loopback: PASS (scenario=invalid-target,
+encryptedRecords=true, explicitLegacyFallback=false,
 protocolError=invalidState)
-MacHost loopback: PASS (external lifecycle + invalid-target
-production-process integration)
+MacHost loopback: PASS (... encryptedRecords:true,
+explicitLegacyFallback:false,...)
 ```
 
 This proves the iOS Core trusted-LAN transport, FIFO control writer, and
-main-session composition against the baseline MacHost's explicit legacy
-fallback. It does not exercise `StreamViewModel`, the decoder, or UI; boot the
-iOS application; use an iOS device; prove hardware VideoToolbox behavior; or
-prove the macOS/Android secure-record LAN path.
+main-session composition against the baseline MacHost's secure trusted-LAN
+record path. The iOS record tests also consume
+`contracts/fixtures/security/v1/channel-records.json` to authenticate shared
+fixed vectors across host/device directions and control/video/audio/bulk
+channels, reject wrong-channel, replay, tamper, and wrong-session opens, and
+exercise strict control/bulk ordering plus bounded media/audio reordering. This
+does not exercise `StreamViewModel`, the decoder, or UI; boot the iOS
+application; use an iOS device; prove hardware VideoToolbox behavior; or prove
+real-network LAN behavior.
+
+Local 2026-08-21 command status:
+
+```text
+swift build --package-path apps/ios -c debug: pass
+swift run --package-path apps/ios -c release vibescreen-ios-selftest: pass
+python3 -m unittest apps/ios/Scripts/tests/test_run_machost_loopback.py: pass, 5 tests
+python3 -m py_compile apps/ios/Scripts/run_machost_loopback.py apps/ios/Scripts/tests/test_run_machost_loopback.py: pass
+swift build --package-path apps/ios -c release --product vibescreen-mac-host-loopback: pass
+swift build --package-path baseline/MacHost -c release --product "Vibe Screen": pass
+apps/ios/Scripts/run_machost_loopback.py --skip-build --startup-timeout 30 --test-timeout 30: pass, encryptedRecords:true, explicitLegacyFallback:false
+apps/ios/Scripts/run_machost_loopback.py --skip-build --legacy-plaintext --startup-timeout 30 --test-timeout 30: pass, encryptedRecords:false, explicitLegacyFallback:true
+swift test --package-path apps/ios -c debug: blocked locally because selected Command Line Tools cannot import XCTest
+git diff --check: pass
+```
 
 ## iOS SDK build evidence
 
@@ -208,8 +251,9 @@ The following remain unproved until their dedicated gates produce evidence:
 - host-side multi-client/display, audio capture, clipboard/file handlers,
   color retry, actions, and wake helper;
 - audio/bulk WebRTC DataChannel integration, admission/backlog limits, and
-  real-network E2E behavior. The Android/macOS record-layer key, nonce, replay,
-  and fixed-vector checks are offline evidence only;
+  real-network E2E behavior. The Android/macOS/iOS record-layer key, nonce,
+  replay, and fixed-vector checks are offline evidence; the iOS secure-record
+  loopback is two-process Core evidence only;
 - HDR/EDR output (the current client deliberately advertises SDR only).
 
 ## Required iOS acceptance run
