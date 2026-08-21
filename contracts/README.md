@@ -50,9 +50,12 @@ channel: uint8 | payload_length: uint32 big-endian | payload
 
 Control is channel `1` and contains one serialized `Envelope`. Video is channel
 `2` and contains a protobuf-varint header length, the serialized
-`MediaPacketHeader`, and exactly `payload_length` bytes of Annex-B video. The
-maximum framed payload is 16 MiB. Control is reliable and ordered; video keeps
-its independent latest-frame policy even when both channels share one TCP
+`MediaPacketHeader`, and exactly `payload_length` bytes of Annex-B video. Audio
+is channel `3` and contains a protobuf-varint header length, the serialized
+`AudioPacketHeader`, and exactly `payload_length` bytes of PCM audio for
+negotiated Protocol v1 sessions. Bulk file-transfer data is channel `4`. The
+maximum framed payload is 16 MiB. Control is reliable and ordered; video and
+audio keep independent low-latency queues even when all channels share one TCP
 connection.
 
 `fixtures/messages/v1/` contains fixed cross-platform protobuf and framing

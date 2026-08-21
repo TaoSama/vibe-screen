@@ -8,6 +8,8 @@ import dev.telemachus.display.WakeHostPolicy
 import dev.telemachus.display.WakeHostProof
 import dev.telemachus.display.WakeHostRequestContext
 import dev.vibescreen.protocol.v1.Capability
+import dev.vibescreen.protocol.v1.AudioConfig
+import dev.vibescreen.protocol.v1.AudioConfigResult
 import dev.vibescreen.protocol.v1.ClientHello
 import dev.vibescreen.protocol.v1.ClipboardContent
 import dev.vibescreen.protocol.v1.ClipboardOffer
@@ -129,6 +131,14 @@ internal class ProtocolV1Session(
             val configEpoch: Long,
             val reason: String,
         ) : Action()
+
+        data class AudioConfigurationRequested(
+            val config: AudioConfig,
+            val sessionEpoch: Long,
+            val correlationId: Long,
+        ) : Action()
+
+        data class AudioStopped(val reason: String) : Action()
 
         data class DisplayGeometryChanged(
             val width: Int,
@@ -403,6 +413,8 @@ internal class ProtocolV1Session(
     private var configEpoch = 0L
     private var retiredConfigEpoch = 0L
     private var configuredCodec = Codec.CODEC_UNSPECIFIED
+    private var audioStreamId = 0L
+    private var audioConfigEpoch = 0L
     private var pendingVideoConfiguration: PendingVideoConfiguration? = null
     // Latest client video-preferences intent that arrived while a
     // reconfiguration was still in flight (state != STREAMING). Only the newest
@@ -570,6 +582,13 @@ internal class ProtocolV1Session(
         @Synchronized
         get() = state == State.STREAMING && Capability.CAPABILITY_WAKE_HOST in negotiatedCapabilities
 
+    val canReceiveAudio: Boolean
+        @Synchronized
+        get() =
+            (state == State.STREAMING || state == State.REDISPLAY_REQUESTED) &&
+                Capability.CAPABILITY_AUDIO in negotiatedCapabilities &&
+                audioStreamId > 0L
+
     enum class MediaDisposition {
         ACCEPT,
         DROP_PENDING_CONFIGURATION,
@@ -602,6 +621,7 @@ internal class ProtocolV1Session(
                         .setMaximumClients(1)
                         .setMaximumDisplays(1)
                         .setMaximumVideoStreams(1)
+                        .setMaximumAudioStreams(if (Capability.CAPABILITY_AUDIO in advertisedCapabilities) 1 else 0)
                         .setMaximumClipboardBytes(LOCAL_MAX_CLIPBOARD_BYTES)
                         .setMaximumFileBytes(if (fileTransferPolicy.allowed) fileTransferPolicy.maximumFileBytes else 0L)
                         .setMaximumFileChunkBytes(if (fileTransferPolicy.allowed) fileTransferPolicy.maximumChunkBytes else 0),
@@ -628,6 +648,7 @@ internal class ProtocolV1Session(
             Envelope.PayloadCase.LIST_DISPLAYS_RESPONSE -> onDisplays(envelope)
             Envelope.PayloadCase.START_DISPLAY_RESPONSE -> onStartDisplay(envelope)
             Envelope.PayloadCase.VIDEO_CONFIG -> onVideoConfig(envelope)
+            Envelope.PayloadCase.AUDIO_CONFIG -> onAudioConfig(envelope)
             Envelope.PayloadCase.DISPLAY_CHANGED -> onDisplayChanged(envelope)
             Envelope.PayloadCase.PING ->
                 listOf(
@@ -664,6 +685,7 @@ internal class ProtocolV1Session(
                 clearClipboardState()
                 remoteManagedClipboardAllowed = true
                 managedPolicyResolver.clearRemote()
+                clearAudioState()
                 state = State.CLOSED
                 listOf(
                     Action.Disconnected(
@@ -681,6 +703,7 @@ internal class ProtocolV1Session(
                 pendingDisplaySelectionStreamId = 0L
                 pendingDisplaySelectionWidth = 0
                 pendingDisplaySelectionHeight = 0
+                clearAudioState()
                 clearClipboardState()
                 remoteManagedClipboardAllowed = true
                 managedPolicyResolver.clearRemote()
@@ -1598,6 +1621,54 @@ internal class ProtocolV1Session(
         )
     }
 
+    private fun onAudioConfig(envelope: Envelope): List<Action> {
+        if (!isNegotiated()) throw protocolFailure("AudioConfig in state $state")
+        if (Capability.CAPABILITY_AUDIO !in negotiatedCapabilities) {
+            throw protocolFailure("AudioConfig without negotiated audio")
+        }
+        if (state != State.STREAMING) throw protocolFailure("AudioConfig arrived before video streaming")
+        val config = envelope.audioConfig
+        if (config.streamId <= 0L || config.configEpoch <= 0L || config.configEpoch <= audioConfigEpoch) {
+            return listOf(
+                Action.Send(
+                    audioConfigResult(
+                        streamId = config.streamId,
+                        configEpoch = config.configEpoch,
+                        accepted = false,
+                        rejectionReason = "invalid_audio_config_epoch",
+                        correlationId = envelope.messageId,
+                    ),
+                ),
+            )
+        }
+        return listOf(Action.AudioConfigurationRequested(config, sessionEpoch, envelope.messageId))
+    }
+
+    @Synchronized
+    fun completeAudioConfiguration(
+        config: AudioConfig,
+        accepted: Boolean,
+        rejectionReason: String,
+        correlationId: Long,
+    ): Envelope? {
+        if (state != State.STREAMING) return null
+        if (Capability.CAPABILITY_AUDIO !in negotiatedCapabilities) return null
+        if (config.streamId <= 0L || config.configEpoch <= 0L || config.configEpoch <= audioConfigEpoch) return null
+        if (accepted) {
+            audioStreamId = config.streamId
+            audioConfigEpoch = config.configEpoch
+        } else {
+            clearAudioState()
+        }
+        return audioConfigResult(
+            streamId = config.streamId,
+            configEpoch = config.configEpoch,
+            accepted = accepted,
+            rejectionReason = if (accepted) "" else rejectionReason.ifBlank { "audio_configuration_rejected" },
+            correlationId = correlationId,
+        )
+    }
+
     private fun updateDisplayDescriptor(
         display: dev.vibescreen.protocol.v1.DisplayDescriptor,
         expectedDisplayId: String?,
@@ -2073,17 +2144,23 @@ internal class ProtocolV1Session(
             Capability.CAPABILITY_HOST_ACTIONS in negotiatedCapabilities ||
                 availableHostActions.isNotEmpty() ||
                 pendingHostActionInvocations.isNotEmpty()
+        val hadAudioState = Capability.CAPABILITY_AUDIO in negotiatedCapabilities && audioStreamId > 0L
         negotiatedCapabilities = baseNegotiatedCapabilities.filteredBy(effective)
+        val actions = mutableListOf<Action>(Action.ManagedPolicyReceived(status))
+        if (hadAudioState && Capability.CAPABILITY_AUDIO !in negotiatedCapabilities) {
+            clearAudioState()
+            actions += Action.AudioStopped("managed_policy_audio_denied")
+        }
         if (!effective.hostActionsAllowed) {
             availableHostActions = emptyList()
             pendingHostActionInvocations.clear()
             return if (hadHostActionState) {
-                listOf(Action.ManagedPolicyReceived(status), Action.HostActionsAvailable(emptyList()))
+                actions + Action.HostActionsAvailable(emptyList())
             } else {
-                listOf(Action.ManagedPolicyReceived(status))
+                actions
             }
         }
-        return listOf(Action.ManagedPolicyReceived(status))
+        return actions
     }
 
     private fun onFileOffer(envelope: Envelope): List<Action> {
@@ -2206,6 +2283,28 @@ internal class ProtocolV1Session(
                     },
             ).build()
 
+    private fun audioConfigResult(
+        streamId: Long,
+        configEpoch: Long,
+        accepted: Boolean,
+        rejectionReason: String,
+        correlationId: Long,
+    ): Envelope =
+        envelope(correlationId = correlationId)
+            .setAudioConfigResult(
+                AudioConfigResult
+                    .newBuilder()
+                    .setStreamId(streamId)
+                    .setConfigEpoch(configEpoch)
+                    .setAccepted(accepted)
+                    .setRejectionReason(rejectionReason),
+            ).build()
+
+    private fun clearAudioState() {
+        audioStreamId = 0L
+        audioConfigEpoch = 0L
+    }
+
     private fun validateEnvelope(envelope: Envelope) {
         if (envelope.protocolVersion != VERSION) throw protocolFailure("Unsupported envelope version ${envelope.protocolVersion}")
         if (envelope.messageId <= lastInboundMessageId) throw protocolFailure("Non-monotonic message_id")
@@ -2319,6 +2418,7 @@ internal class ProtocolV1Session(
                 Capability.CAPABILITY_HOST_ACTIONS,
                 Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
                 Capability.CAPABILITY_CLIPBOARD,
+                Capability.CAPABILITY_AUDIO,
                 Capability.CAPABILITY_MANAGED_CONFIGURATION,
             )
 

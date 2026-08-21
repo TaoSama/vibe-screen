@@ -9,6 +9,7 @@ enum ProtocolV1Upgrade {
 enum ProtocolV1LogicalChannel: UInt8, Equatable {
     case control = 1
     case video = 2
+    case audio = 3
     case bulk = 4
 }
 

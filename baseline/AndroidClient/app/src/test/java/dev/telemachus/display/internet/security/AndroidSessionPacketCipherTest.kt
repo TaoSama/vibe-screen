@@ -107,6 +107,17 @@ class AndroidSessionPacketCipherTest {
     }
 
     @Test
+    fun declaredSessionChannelRecognizesAudioAndBulkRecords() {
+        val host = cipher(PeerRole.HOST)
+        val device = cipher(PeerRole.DEVICE)
+        val audio = host.seal(SessionChannel.AUDIO, byteArrayOf(1))
+        val bulk = device.seal(SessionChannel.BULK, byteArrayOf(2))
+
+        assertEquals(SessionChannel.AUDIO, AndroidSessionPacketCipher.declaredSessionChannel(audio))
+        assertEquals(SessionChannel.BULK, AndroidSessionPacketCipher.declaredSessionChannel(bulk))
+    }
+
+    @Test
     fun maximumPlaintextMediaRecordSealsWithinFourMiBAndroidBoundary() {
         val host = cipher(PeerRole.HOST)
         val plaintext = ByteArray(InternetMediaRecordContract.MAXIMUM_PLAINTEXT_RECORD_BYTES)

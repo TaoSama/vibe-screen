@@ -12,11 +12,16 @@ internal class ProtocolPcmAudioPlayer(
 ) {
     private var active: ActivePlayback? = null
 
+    @Synchronized
     fun configure(
         config: AudioConfig,
         sessionEpoch: Long,
         firstSequence: Long = INITIAL_AUDIO_SEQUENCE,
     ): ProtocolAudioConfigureResult {
+        val previousStopFailure = stop()
+        if (previousStopFailure != null) {
+            return ProtocolAudioConfigureResult.PlaybackFailed(previousStopFailure)
+        }
         if (sessionEpoch <= 0) {
             return ProtocolAudioConfigureResult.Rejected(AudioRejectReason.INVALID_SESSION_EPOCH)
         }
@@ -29,12 +34,8 @@ internal class ProtocolPcmAudioPlayer(
         val jitterBuffer =
             try {
                 AudioJitterBuffer(firstSequence, maximumBufferedPackets)
-            } catch (failure: IllegalArgumentException) {
-                return ProtocolAudioConfigureResult.Rejected(AudioRejectReason.INVALID_SEQUENCE)
-            }
-        val previousStopFailure = stop()
-        if (previousStopFailure != null) {
-            return ProtocolAudioConfigureResult.PlaybackFailed(previousStopFailure)
+        } catch (failure: IllegalArgumentException) {
+            return ProtocolAudioConfigureResult.Rejected(AudioRejectReason.INVALID_SEQUENCE)
         }
         val output =
             try {
@@ -57,6 +58,7 @@ internal class ProtocolPcmAudioPlayer(
         }
     }
 
+    @Synchronized
     fun submit(serializedFrame: ByteArray): ProtocolAudioPacketResult {
         val packet =
             try {
@@ -67,6 +69,7 @@ internal class ProtocolPcmAudioPlayer(
         return submit(packet)
     }
 
+    @Synchronized
     fun submit(packet: ProtocolAudioPacket): ProtocolAudioPacketResult {
         val current = active ?: return ProtocolAudioPacketResult.Rejected(AudioPacketRejectReason.NO_CONFIGURATION)
         val enqueueResult =
@@ -88,12 +91,14 @@ internal class ProtocolPcmAudioPlayer(
         return ProtocolAudioPacketResult.Accepted(enqueueResult, writtenPackets)
     }
 
+    @Synchronized
     fun stop(): AudioOutputFailureReason? {
         val current = active ?: return null
         active = null
         return current.output.closeCapturingFailure()
     }
 
+    @Synchronized
     fun activeFormat(): PcmAudioStreamFormat? = active?.format
 
     private data class ActivePlayback(

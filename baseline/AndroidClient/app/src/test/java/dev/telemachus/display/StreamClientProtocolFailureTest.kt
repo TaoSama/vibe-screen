@@ -393,6 +393,7 @@ class StreamClientProtocolFailureTest {
                 Capability.CAPABILITY_HOST_ACTIONS,
                 Capability.CAPABILITY_USB_HID_MODIFIER_BYTE,
                 Capability.CAPABILITY_CLIPBOARD,
+                Capability.CAPABILITY_AUDIO,
                 Capability.CAPABILITY_FILE_TRANSFER,
                 Capability.CAPABILITY_MANAGED_CONFIGURATION,
             ),
